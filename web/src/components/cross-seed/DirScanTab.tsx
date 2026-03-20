@@ -111,6 +111,34 @@ function formatRelativeTimeStr(date: string | Date): string {
   return formatRelativeTime(typeof date === "string" ? new Date(date) : date)
 }
 
+function getRunDiscoveredFiles(run: DirScanRun): number {
+  return run.filesFound + run.filesSkipped
+}
+
+function getRunFilesLabel(run: DirScanRun): string {
+  return `${run.filesFound} eligible`
+}
+
+function RunFilesBadge({ run }: { run: DirScanRun }) {
+  const discovered = getRunDiscoveredFiles(run)
+  const showDetails = discovered > run.filesFound
+
+  if (!showDetails) {
+    return <span className="text-muted-foreground">{getRunFilesLabel(run)}</span>
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger className="cursor-default text-muted-foreground">
+        {getRunFilesLabel(run)}
+      </TooltipTrigger>
+      <TooltipContent>
+        {discovered} discovered, {run.filesSkipped} skipped
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 export function DirScanTab({ instances }: DirScanTabProps) {
   const { formatISOTimestamp } = useDateTimeFormatters()
   const [selectedDirectoryId, setSelectedDirectoryId] = useState<number | null>(null)
@@ -431,15 +459,20 @@ function DirectoryStatusBadge({ run }: { run: DirScanRun }) {
   }
 
   const config = statusConfig[run.status]
-  const hasStats = run.filesFound > 0 || run.matchesFound > 0 || run.torrentsAdded > 0
+  const hasStats = run.filesFound > 0 || run.filesSkipped > 0 || run.matchesFound > 0 || run.torrentsAdded > 0
 
   return (
     <div className={`flex items-center gap-1.5 text-xs ${config.color}`}>
       {config.icon}
       <span>{config.label}</span>
       {hasStats && (
-        <span className="text-muted-foreground">
-          ({run.filesFound} files, {run.matchesFound} matches, {run.torrentsAdded} added)
+        <span className="inline-flex items-center gap-1">
+          <span className="text-muted-foreground">(</span>
+          <RunFilesBadge run={run} />
+          <span className="text-muted-foreground">
+            {run.filesSkipped > 0 ? `, ${run.filesSkipped} skipped` : ""}
+            , {run.matchesFound} matches, {run.torrentsAdded} added)
+          </span>
         </span>
       )}
     </div>
@@ -524,7 +557,9 @@ function RunRow({
             )}
           </div>
         </TableCell>
-        <TableCell>{run.filesFound}</TableCell>
+        <TableCell>
+          <RunFilesBadge run={run} />
+        </TableCell>
         <TableCell>{run.matchesFound}</TableCell>
         <TableCell>{run.torrentsAdded}</TableCell>
         <TableCell>
@@ -673,7 +708,7 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
               <TableRow>
                 <TableHead>Started</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Files</TableHead>
+                <TableHead>Eligible</TableHead>
                 <TableHead>Matches</TableHead>
                 <TableHead>Added</TableHead>
                 <TableHead>Duration</TableHead>
@@ -736,12 +771,15 @@ interface SettingsDialogProps {
   instances: Instance[]
 }
 
+const ageFilterPresets = [1, 3, 7, 14, 30, 60, 90]
+
 function buildSettingsFormState(settings: SettingsDialogProps["settings"]) {
   return {
     matchMode: (settings?.matchMode ?? "strict") as DirScanMatchMode,
     sizeTolerancePercent: settings?.sizeTolerancePercent ?? 2,
     minPieceRatio: settings?.minPieceRatio ?? 98,
     maxSearcheesPerRun: settings?.maxSearcheesPerRun ?? 0,
+    maxSearcheeAgeDays: settings?.maxSearcheeAgeDays ?? 0,
     allowPartial: settings?.allowPartial ?? false,
     skipPieceBoundarySafetyCheck: settings?.skipPieceBoundarySafetyCheck ?? true,
     startPaused: settings?.startPaused ?? false,
@@ -832,6 +870,16 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
     return "No tags"
   }, [instanceIds.length, tagSelectOptions.length])
 
+  const ageFilterEnabled = form.maxSearcheeAgeDays > 0
+  const ageFilterCutoffPreview = useMemo(() => {
+    if (!ageFilterEnabled) {
+      return ""
+    }
+    const days = Math.max(1, form.maxSearcheeAgeDays)
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    return cutoff.toLocaleString()
+  }, [ageFilterEnabled, form.maxSearcheeAgeDays])
+
   const handleSave = useCallback(() => {
     updateSettings.mutate(form, {
       onSuccess: () => {
@@ -846,15 +894,15 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      <DialogContent className="max-w-lg max-h-[90dvh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>Directory Scanner Settings</DialogTitle>
           <DialogDescription>
             Configure global settings for directory scanning.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 flex-1 overflow-y-auto min-h-0">
           <div className="space-y-2">
             <Label htmlFor="match-mode">Match Mode</Label>
             <Select
@@ -938,6 +986,70 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
             <p className="text-xs text-muted-foreground">
               0 = unlimited. Useful for making progress across restarts.
             </p>
+          </div>
+
+          <div className="space-y-2 rounded-lg border p-3">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="max-searchee-age-enabled"
+                checked={ageFilterEnabled}
+                onCheckedChange={(checked) => {
+                  setForm((prev) => ({
+                    ...prev,
+                    maxSearcheeAgeDays: checked ? Math.max(prev.maxSearcheeAgeDays || 0, 7) : 0,
+                  }))
+                }}
+              />
+              <Label htmlFor="max-searchee-age-enabled">Only process items changed within the last</Label>
+            </div>
+
+            {ageFilterEnabled && (
+              <>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="max-searchee-age-days"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={form.maxSearcheeAgeDays}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        maxSearcheeAgeDays: Math.max(1, Number.parseInt(e.target.value, 10) || 1),
+                      }))
+                    }
+                    className="w-28"
+                  />
+                  <span className="text-sm text-muted-foreground">days</span>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {ageFilterPresets.map((days) => (
+                    <Button
+                      key={days}
+                      type="button"
+                      variant={form.maxSearcheeAgeDays === days ? "default" : "outline"}
+                      size="sm"
+                      onClick={() =>
+                        setForm((prev) => ({ ...prev, maxSearcheeAgeDays: days }))
+                      }
+                    >
+                      {days}d
+                    </Button>
+                  ))}
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Uses video/audio file modified time (mtime). Fresh subtitles or extras do not keep old items in scope.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Webhook-triggered scans ignore this cutoff and trust the imported path instead.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Current cutoff: {ageFilterCutoffPreview}
+                </p>
+              </>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -1040,7 +1152,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

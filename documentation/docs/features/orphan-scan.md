@@ -4,8 +4,8 @@ title: Orphan Scan
 description: Find and remove files not associated with any torrent.
 ---
 
-import LocalFilesystemDocker from '@site/docs/_partials/_local-filesystem-docker.mdx';
-import OrphanScanDefaultIgnores from '@site/docs/_partials/_orphan-scan-default-ignores.mdx';
+import LocalFilesystemDocker from "../_partials/_local-filesystem-docker.mdx";
+import OrphanScanDefaultIgnores from "../_partials/_orphan-scan-default-ignores.mdx";
 
 # Orphan Scan
 
@@ -17,6 +17,10 @@ Finds and removes files in your download directories that aren't associated with
 2. Files not referenced by any torrent are flagged as orphans
 3. You preview the list before confirming deletion
 4. Empty directories are cleaned up after file deletion
+
+:::note
+qui normalizes Unicode paths to canonical NFC form during matching. This avoids false orphans when equivalent composed/decomposed names are reported differently. On normalization-sensitive filesystems, two byte-distinct canonical-equivalent names are treated as one logical path.
+:::
 
 :::info
 If you have multiple **active** qBittorrent instances with `Has local filesystem access` enabled, and their torrent `SavePath` directories overlap, qui also protects files referenced by torrents from those other instances (even when scanning a single instance).
@@ -43,11 +47,25 @@ Directories are only scanned if at least one torrent points to them. If you dele
 | Grace period | Skip files modified within this window | 10 minutes |
 | Ignore paths | Directories to exclude from scanning | - |
 | Scan interval | How often scheduled scans run | 24 hours |
-| Max files per run | Limit results to prevent overwhelming large scans | 1,000 |
+| Max files per run | Maximum orphan preview entries saved for a run (also caps what can be deleted from that run) | 1,000 |
 | Auto-cleanup | Automatically delete orphans from scheduled scans | Disabled |
 | Auto-cleanup max files | Only auto-delete if orphan count is at or below this threshold | 100 |
 
 <OrphanScanDefaultIgnores />
+
+## Max Files Per Run Behavior
+
+- Scan scope is still full: qui walks all scan roots each run.
+- Then it sorts orphan candidates by your selected preview sort.
+- Then it applies `Max files per run` and marks the run as truncated when more candidates exist.
+- Deletion only operates on files saved in that run's preview list.
+
+**Example:** If 5,000 files are scanned, 2,000 are orphan candidates, and `Max files per run` is 1,000, qui scans all 5,000, saves the top 1,000 candidates for preview/deletion, and marks the run truncated.
+
+### FAQ
+
+**Do I need multiple runs to scan everything?**
+No. Each run scans all roots. Multiple runs are only needed if you want to work through orphan candidates beyond the per-run preview cap.
 
 ## Workflow
 

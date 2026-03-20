@@ -47,8 +47,10 @@ export default defineConfig(() => ({
         // VitePWA defaults to 2 MiB; our main bundle can exceed that, which breaks CI builds.
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         sourcemap: true,
-        // Avoid serving the SPA shell for backend proxy routes (also under custom base URLs)
-        navigateFallbackDenylist: [/\/api(?:\/|$)/, /\/proxy(?:\/|$)/],
+        // Avoid serving the SPA shell for backend proxy routes and SSO callback paths
+        // (also under custom base URLs). /cdn-cgi/ is used by Cloudflare Access for its
+        // auth callback (/cdn-cgi/access/authorized); intercepting it breaks the SSO flow.
+        navigateFallbackDenylist: [/\/api(?:\/|$)/, /\/proxy(?:\/|$)/, /\/cdn-cgi(?:\/|$)/, /\/\.well-known(?:\/|$)/],
         // Some deployments sit behind Basic Auth; skip assets that tend to 401 (e.g. manifest, source maps)
         manifestTransforms: [
           async (entries) => {
@@ -74,8 +76,8 @@ export default defineConfig(() => ({
         theme_color: "#000000", // Will be updated dynamically by PWA theme manager
         background_color: "#000000",
         display: "standalone",
-        scope: "/",
-        start_url: "/",
+        scope: "./",
+        start_url: "./",
         categories: ["utilities", "productivity"],
         icons: [
           {
@@ -97,6 +99,23 @@ export default defineConfig(() => ({
             purpose: "maskable",
           },
         ],
+        protocol_handlers: [
+          {
+            protocol: "magnet",
+            url: "./add?url=%s",
+          },
+        ],
+        file_handlers: [
+          {
+            action: "./add",
+            accept: {
+              "application/x-bittorrent": [".torrent"],
+            },
+          },
+        ],
+        launch_handler: {
+          client_mode: "navigate-existing",
+        },
       },
     }),
   ],

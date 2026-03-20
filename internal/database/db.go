@@ -54,6 +54,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -73,11 +74,13 @@ var migrationsFS embed.FS
 
 // reader/writer fields on DB
 type DB struct {
-	writerConn  *sql.DB                            // Single connection for all writes (SetMaxOpenConns=1)
-	readerPool  *sql.DB                            // Read-only connection pool for concurrent reads
-	writerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for writer connection
-	readerStmts *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for reader pool
-	stmtMu      sync.RWMutex                       // Protects stmt caches during Close and cache ops
+	writerConn      *sql.DB                            // Single connection for all writes (SetMaxOpenConns=1)
+	readerPool      *sql.DB                            // Read-only connection pool for concurrent reads
+	writerStmts     *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for writer connection
+	readerStmts     *ttlcache.Cache[string, *sql.Stmt] // Prepared statements for reader pool
+	stmtMu          sync.RWMutex                       // Protects stmt caches during Close and cache ops
+	dialect         Dialect
+	serializeWrites bool
 
 	// Write transaction serialization
 	// Even though writerConn has SetMaxOpenConns=1, BeginTx doesn't queue properly
@@ -100,6 +103,48 @@ type DB struct {
 	closeErr  error
 }
 
+type migrationFilenameRename struct {
+	from string
+	to   string
+}
+
+var sharedMigrationFilenameRenames = []migrationFilenameRename{
+	// Keep historical migration filename rewrites here whenever an embedded
+	// migration filename changes. Migration tracking keys off the filename, so
+	// old names must be normalized before pending migrations are computed.
+	// Use direct old -> current mappings for each backend rather than chains.
+	{
+		from: "061_add_notifications.sql",
+		to:   "062_add_notifications.sql",
+	},
+	{
+		from: "052_add_dir_scan.sql",
+		to:   "053_add_dir_scan.sql",
+	},
+	{
+		from: "055_add_license_provider_dodo.sql",
+		to:   "057_add_license_provider_dodo.sql",
+	},
+}
+
+var sqliteMigrationFilenameRenames = []migrationFilenameRename{
+	{
+		from: "064_add_completion_bypass_torznab_cache.sql",
+		to:   "066_add_completion_bypass_torznab_cache.sql",
+	},
+	{
+		from: "065_add_completion_bypass_torznab_cache.sql",
+		to:   "066_add_completion_bypass_torznab_cache.sql",
+	},
+}
+
+var postgresMigrationFilenameRenames = []migrationFilenameRename{
+	{
+		from: "066_add_completion_bypass_torznab_cache.sql",
+		to:   "067_add_completion_bypass_torznab_cache.sql",
+	},
+}
+
 // Tx wraps sql.Tx to provide prepared statement caching for transaction queries
 type Tx struct {
 	tx         *sql.Tx
@@ -110,18 +155,55 @@ type Tx struct {
 	unlockOnce sync.Once       // ensures unlock happens only once
 
 	// Track statements prepared during this transaction for promotion to DB cache after commit
-	txStmts map[string]struct{} // query -> struct{} (used as set to track which queries to cache)
-	txMu    sync.Mutex          // protects txStmts map
+	txStmts    map[string]struct{} // query -> struct{} (used as set to track which queries to cache)
+	tempTables map[string]struct{} // temp table names created/used in this transaction
+	txMu       sync.Mutex          // protects transaction-local cache metadata
 }
 
-// markQueryForCaching marks a query for promotion to the DB cache
+// markQueryForCaching records a successfully executed query for post-commit
+// statement promotion and tracks temp-table lifecycle within the transaction.
 func (t *Tx) markQueryForCaching(query string) {
 	t.txMu.Lock()
+	defer t.txMu.Unlock()
+
+	if name, ok := tempTableNameFromCreate(query); ok {
+		if t.tempTables == nil {
+			t.tempTables = make(map[string]struct{})
+		}
+		t.tempTables[name] = struct{}{}
+		return
+	}
+
+	if name, ok := tableNameFromDrop(query); ok {
+		delete(t.tempTables, name)
+		return
+	}
+
+	if queryReferencesTempTable(query, t.tempTables) {
+		return
+	}
+
 	if t.txStmts == nil {
 		t.txStmts = make(map[string]struct{})
 	}
 	t.txStmts[query] = struct{}{}
-	t.txMu.Unlock()
+}
+
+func (t *Tx) shouldBypassStatementCache(query string) bool {
+	t.txMu.Lock()
+	defer t.txMu.Unlock()
+
+	if _, ok := tempTableNameFromCreate(query); ok {
+		return true
+	}
+
+	if name, ok := tableNameFromDrop(query); ok {
+		if _, exists := t.tempTables[name]; exists {
+			return true
+		}
+	}
+
+	return queryReferencesTempTable(query, t.tempTables)
 }
 
 type txExecResult struct{ tx *Tx }
@@ -131,8 +213,11 @@ func (e txExecResult) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) 
 }
 
 func (e txExecResult) execDirect(_ *sql.DB, ctx context.Context, query string, args []any) (sql.Result, error) {
-	e.tx.markQueryForCaching(query)
-	return e.tx.tx.ExecContext(ctx, query, args...)
+	result, err := e.tx.tx.ExecContext(ctx, e.tx.db.bindQuery(query), args...)
+	if err == nil {
+		e.tx.markQueryForCaching(query)
+	}
+	return result, err
 }
 
 func (txExecResult) getErr(sql.Result) error { return nil }
@@ -145,8 +230,11 @@ func (q txQueryRows) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (
 }
 
 func (q txQueryRows) execDirect(_ *sql.DB, ctx context.Context, query string, args []any) (*sql.Rows, error) {
-	q.tx.markQueryForCaching(query)
-	return q.tx.tx.QueryContext(ctx, query, args...)
+	rows, err := q.tx.tx.QueryContext(ctx, q.tx.db.bindQuery(query), args...)
+	if err == nil {
+		q.tx.markQueryForCaching(query)
+	}
+	return rows, err
 }
 
 func (txQueryRows) getErr(r *sql.Rows) error {
@@ -177,8 +265,11 @@ func (t *Tx) QueryContext(ctx context.Context, query string, args ...any) (*sql.
 func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	stmt, err := t.db.getStmt(ctx, query, t)
 	if err != nil {
-		t.markQueryForCaching(query)
-		return t.tx.QueryRowContext(ctx, query, args...)
+		row := t.tx.QueryRowContext(ctx, t.db.bindQuery(query), args...)
+		if row.Err() == nil {
+			t.markQueryForCaching(query)
+		}
+		return row
 	}
 
 	row := stmt.QueryRowContext(ctx, args...)
@@ -191,8 +282,11 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 
 	stmt, err = t.db.getStmt(ctx, query, t)
 	if err != nil {
-		t.markQueryForCaching(query)
-		return t.tx.QueryRowContext(ctx, query, args...)
+		row := t.tx.QueryRowContext(ctx, t.db.bindQuery(query), args...)
+		if row.Err() == nil {
+			t.markQueryForCaching(query)
+		}
+		return row
 	}
 	return stmt.QueryRowContext(ctx, args...)
 }
@@ -244,6 +338,7 @@ func (t *Tx) promoteStatementsToCache() {
 	defer cancel()
 
 	for query := range queries {
+		boundQuery := t.db.bindQuery(query)
 		// Skip promotion during shutdown
 		if t.db.closing.Load() {
 			return
@@ -268,19 +363,19 @@ func (t *Tx) promoteStatementsToCache() {
 		}
 
 		// Double-check it's not already cached (race condition protection)
-		if _, found := stmts.Get(query); found {
+		if _, found := stmts.Get(boundQuery); found {
 			t.db.stmtMu.RUnlock()
 			continue
 		}
 
 		// Prepare and cache the statement
-		stmt, err := conn.PrepareContext(ctx, query)
+		stmt, err := conn.PrepareContext(ctx, boundQuery)
 		if err != nil {
 			t.db.stmtMu.RUnlock()
 			continue // silently skip - caching is best-effort
 		}
 
-		stmts.Set(query, stmt, ttlcache.DefaultTTL)
+		stmts.Set(boundQuery, stmt, ttlcache.DefaultTTL)
 		t.db.stmtMu.RUnlock()
 	}
 }
@@ -315,19 +410,14 @@ func registerConnectionHook() {
 }
 
 func isReadOnlyDSN(dsn string) bool {
-	queryStart := strings.IndexByte(dsn, '?')
-	if queryStart == -1 {
+	_, after, ok := strings.Cut(dsn, "?")
+	if !ok {
 		return false
 	}
-	query := dsn[queryStart+1:]
-	for _, segment := range strings.FieldsFunc(query, func(r rune) bool {
+	query := after
+	return slices.Contains(strings.FieldsFunc(query, func(r rune) bool {
 		return r == '&' || r == ';'
-	}) {
-		if segment == "mode=ro" {
-			return true
-		}
-	}
-	return false
+	}), "mode=ro")
 }
 
 type pragmaDirective struct {
@@ -441,10 +531,12 @@ func New(databasePath string) (*DB, error) {
 	readerStmtsCache := ttlcache.New(readerStmtOpts)
 
 	db := &DB{
-		writerConn:  writerConn,
-		readerPool:  readerPool,
-		writerStmts: writerStmtsCache,
-		readerStmts: readerStmtsCache,
+		writerConn:      writerConn,
+		readerPool:      readerPool,
+		writerStmts:     writerStmtsCache,
+		readerStmts:     readerStmtsCache,
+		dialect:         DialectSQLite,
+		serializeWrites: true,
 	}
 
 	// Run migrations with writer connection
@@ -482,6 +574,21 @@ func New(databasePath string) (*DB, error) {
 func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, error) {
 	if db.closing.Load() {
 		return nil, sql.ErrConnDone
+	}
+	query = db.bindQuery(query)
+
+	if tx != nil {
+		if tx.shouldBypassStatementCache(query) {
+			if tx.isWriteTx {
+				db.deleteStmt(query, true)
+			} else {
+				db.deleteStmt(query, false)
+			}
+			return nil, errors.New("statement not cacheable")
+		}
+	} else if isTempTableDDL(query) {
+		db.deleteStmt(query, true)
+		return nil, errors.New("statement not cacheable")
 	}
 
 	db.stmtMu.RLock()
@@ -549,6 +656,7 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 }
 
 func (db *DB) deleteStmt(query string, isWrite bool) {
+	query = db.bindQuery(query)
 	db.stmtMu.RLock()
 	defer db.stmtMu.RUnlock()
 
@@ -589,6 +697,119 @@ func isWriteQuery(query string) bool {
 		strings.HasPrefix(upper, "ALTER") ||
 		strings.HasPrefix(upper, "DROP") ||
 		strings.HasPrefix(upper, "VACUUM")
+}
+
+func isTempTableDDL(query string) bool {
+	_, ok := tempTableNameFromCreate(query)
+	return ok
+}
+
+func tempTableNameFromCreate(query string) (string, bool) {
+	fields := strings.Fields(query)
+	if len(fields) < 4 || !strings.EqualFold(fields[0], "create") {
+		return "", false
+	}
+
+	next := 1
+	if !strings.EqualFold(fields[next], "temp") && !strings.EqualFold(fields[next], "temporary") {
+		return "", false
+	}
+	next++
+
+	if next >= len(fields) || !strings.EqualFold(fields[next], "table") {
+		return "", false
+	}
+	next++
+
+	if next+2 < len(fields) &&
+		strings.EqualFold(fields[next], "if") &&
+		strings.EqualFold(fields[next+1], "not") &&
+		strings.EqualFold(fields[next+2], "exists") {
+		next += 3
+	}
+	if next >= len(fields) {
+		return "", false
+	}
+
+	name := normalizeIdentifier(trimIdentifierToken(fields[next]))
+	if name == "" {
+		return "", false
+	}
+	return name, true
+}
+
+func tableNameFromDrop(query string) (string, bool) {
+	fields := strings.Fields(query)
+	if len(fields) < 3 || !strings.EqualFold(fields[0], "drop") || !strings.EqualFold(fields[1], "table") {
+		return "", false
+	}
+
+	next := 2
+	if next+1 < len(fields) && strings.EqualFold(fields[next], "if") && strings.EqualFold(fields[next+1], "exists") {
+		next += 2
+	}
+	if next >= len(fields) {
+		return "", false
+	}
+
+	name := normalizeIdentifier(trimIdentifierToken(fields[next]))
+	if name == "" {
+		return "", false
+	}
+	return name, true
+}
+
+// queryReferencesTempTable uses lightweight token matching over internal SQL.
+// It intentionally does not parse string literals or comments, so a literal like
+// 'current_hashes' could produce a false positive. That's acceptable here
+// because this helper only guards our fixed-format temp-table maintenance SQL.
+func queryReferencesTempTable(query string, tempTables map[string]struct{}) bool {
+	if len(tempTables) == 0 {
+		return false
+	}
+
+	for _, token := range sqlKeywordTokens(query) {
+		if _, ok := tempTables[token]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// sqlKeywordTokens is a lightweight tokenizer for internal SQL snippets. It
+// lowercases and splits on non-identifier runes, but it does not understand SQL
+// literals or comments.
+func sqlKeywordTokens(query string) []string {
+	return strings.FieldsFunc(strings.ToLower(query), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_'
+	})
+}
+
+func normalizeIdentifier(raw string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimRight(raw, ";,(")
+	if raw == "" {
+		return ""
+	}
+
+	parts := strings.Split(raw, ".")
+	name := strings.TrimSpace(parts[len(parts)-1])
+	name = strings.Trim(name, "\"`[]")
+	return strings.ToLower(name)
+}
+
+func trimIdentifierToken(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	if idx := strings.IndexAny(raw, "(,;"); idx >= 0 {
+		raw = raw[:idx]
+	}
+
+	return strings.TrimSpace(raw)
 }
 
 const sqliteNestedTxErrSubstring = "cannot start a transaction within a transaction"
@@ -643,10 +864,11 @@ func (queryRows) getTx() *Tx { return nil }
 func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query string, args []any, executor E) (T, error) {
 	stmt, err := db.getStmt(ctx, query, executor.getTx())
 	if err != nil {
+		boundQuery := db.bindQuery(query)
 		if isWriteQuery(query) {
-			return executor.execDirect(db.writerConn, ctx, query, args)
+			return executor.execDirect(db.writerConn, ctx, boundQuery, args)
 		}
-		return executor.execDirect(db.readerPool, ctx, query, args)
+		return executor.execDirect(db.readerPool, ctx, boundQuery, args)
 	}
 
 	result, execErr := executor.execStmt(stmt, ctx, args)
@@ -665,10 +887,11 @@ func execWithRetry[T any, E stmtExecutor[T]](db *DB, ctx context.Context, query 
 
 	stmt, err = db.getStmt(ctx, query, executor.getTx())
 	if err != nil {
+		boundQuery := db.bindQuery(query)
 		if isWriteQuery(query) {
-			return executor.execDirect(db.writerConn, ctx, query, args)
+			return executor.execDirect(db.writerConn, ctx, boundQuery, args)
 		}
-		return executor.execDirect(db.readerPool, ctx, query, args)
+		return executor.execDirect(db.readerPool, ctx, boundQuery, args)
 	}
 
 	result, execErr = executor.execStmt(stmt, ctx, args)
@@ -683,8 +906,10 @@ func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.R
 		return execWithRetry(db, ctx, query, args, execResult{})
 	}
 
-	db.writerMu.Lock()
-	defer db.writerMu.Unlock()
+	if db.serializeWrites {
+		db.writerMu.Lock()
+		defer db.writerMu.Unlock()
+	}
 
 	return execWithRetry(db, ctx, query, args, execResult{})
 }
@@ -696,8 +921,10 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 		return execWithRetry(db, ctx, query, args, queryRows{})
 	}
 
-	db.writerMu.Lock()
-	defer db.writerMu.Unlock()
+	if db.serializeWrites {
+		db.writerMu.Lock()
+		defer db.writerMu.Unlock()
+	}
 
 	return execWithRetry(db, ctx, query, args, queryRows{})
 }
@@ -705,7 +932,7 @@ func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql
 // QueryRowContext routes write queries to the single writer connection and
 // read queries to the reader pool. Uses prepared statements when possible.
 func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
-	if isWriteQuery(query) {
+	if isWriteQuery(query) && db.serializeWrites {
 		db.writerMu.Lock()
 		row := db.queryRowUnlocked(ctx, query, args...)
 		db.writerMu.Unlock()
@@ -717,10 +944,11 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 func (db *DB) queryRowUnlocked(ctx context.Context, query string, args ...any) *sql.Row {
 	stmt, err := db.getStmt(ctx, query, nil)
 	if err != nil {
+		boundQuery := db.bindQuery(query)
 		if isWriteQuery(query) {
-			return db.writerConn.QueryRowContext(ctx, query, args...)
+			return db.writerConn.QueryRowContext(ctx, boundQuery, args...)
 		}
-		return db.readerPool.QueryRowContext(ctx, query, args...)
+		return db.readerPool.QueryRowContext(ctx, boundQuery, args...)
 	}
 
 	row := stmt.QueryRowContext(ctx, args...)
@@ -737,10 +965,11 @@ func (db *DB) queryRowUnlocked(ctx context.Context, query string, args ...any) *
 
 	stmt, err = db.getStmt(ctx, query, nil)
 	if err != nil {
+		boundQuery := db.bindQuery(query)
 		if isWriteQuery(query) {
-			return db.writerConn.QueryRowContext(ctx, query, args...)
+			return db.writerConn.QueryRowContext(ctx, boundQuery, args...)
 		}
-		return db.readerPool.QueryRowContext(ctx, query, args...)
+		return db.readerPool.QueryRowContext(ctx, boundQuery, args...)
 	}
 	return stmt.QueryRowContext(ctx, args...)
 }
@@ -866,11 +1095,15 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 
 	// Write transactions: Lock mutex for the ENTIRE transaction lifetime.
 	// The mutex will be unlocked by Commit() or Rollback().
-	db.writerMu.Lock()
+	if db.serializeWrites {
+		db.writerMu.Lock()
+	}
 
 	tx, err := db.writerConn.BeginTx(ctx, opts)
 	if err != nil {
-		db.writerMu.Unlock()
+		if db.serializeWrites {
+			db.writerMu.Unlock()
+		}
 		if isSQLiteNestedTxErr(err) {
 			// This indicates a bug: a previous transaction failed to rollback properly,
 			// leaving the connection wedged. Log with stack trace to help diagnose.
@@ -890,7 +1123,11 @@ func (db *DB) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQ
 		db:        db,
 		ctx:       ctx,
 		isWriteTx: true,
-		unlockFn:  db.writerMu.Unlock,
+		unlockFn: func() {
+			if db.serializeWrites {
+				db.writerMu.Unlock()
+			}
+		},
 	}, nil
 }
 
@@ -903,11 +1140,13 @@ func (db *DB) Close() error {
 			db.cleanupCancel()
 		}
 
-		// Run PRAGMA optimize on writer connection before closing
-		ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
-		defer cancel()
-		if _, err := db.writerConn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
-			log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")
+		if db.dialect == DialectSQLite {
+			// Run PRAGMA optimize on writer connection before closing
+			ctx, cancel := context.WithTimeout(context.Background(), connectionSetupTimeout)
+			defer cancel()
+			if _, err := db.writerConn.ExecContext(ctx, "PRAGMA optimize"); err != nil {
+				log.Warn().Err(err).Msg("failed to run PRAGMA optimize during close")
+			}
 		}
 
 		db.stmtMu.Lock()
@@ -956,8 +1195,8 @@ func (db *DB) migrate() error {
 			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		)
 		`); err != nil {
-			return fmt.Errorf("failed to create migrations table: %w", err)
-		}
+		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
 
 	// Handle historical migration file renames.
 	// If we ever rename an embedded migration file, we must update the filename
@@ -1001,34 +1240,36 @@ func (db *DB) migrate() error {
 }
 
 func (db *DB) normalizeMigrationFilenames(ctx context.Context) error {
-	renames := []struct {
-		from string
-		to   string
-	}{
-		{
-			from: "052_add_dir_scan.sql",
-			to:   "053_add_dir_scan.sql",
-		},
-	}
+	return db.normalizeMigrationFilenamesWithExecer(ctx, db.writerConn, sharedMigrationFilenameRenames, sqliteMigrationFilenameRenames)
+}
 
-	for _, r := range renames {
-		// If both entries exist, keep the new name.
-		if _, err := db.writerConn.ExecContext(ctx, `
-			DELETE FROM migrations
-			WHERE filename = ?
-			  AND EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
-		`, r.from, r.to); err != nil {
-			return fmt.Errorf("failed to dedupe migration %s -> %s: %w", r.from, r.to, err)
-		}
+func (db *DB) normalizeMigrationFilenamesWithExecer(
+	ctx context.Context,
+	execer interface {
+		ExecContext(context.Context, string, ...any) (sql.Result, error)
+	},
+	renameSets ...[]migrationFilenameRename,
+) error {
+	for _, renames := range renameSets {
+		for _, r := range renames {
+			// If both entries exist, keep the new name.
+			if _, err := execer.ExecContext(ctx, db.bindQuery(`
+				DELETE FROM migrations
+				WHERE filename = ?
+				  AND EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+			`), r.from, r.to); err != nil {
+				return fmt.Errorf("failed to dedupe migration %s -> %s: %w", r.from, r.to, err)
+			}
 
-		// Rename old -> new if the new entry doesn't already exist.
-		if _, err := db.writerConn.ExecContext(ctx, `
-			UPDATE migrations
-			SET filename = ?
-			WHERE filename = ?
-			  AND NOT EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
-		`, r.to, r.from, r.to); err != nil {
-			return fmt.Errorf("failed to rename migration %s -> %s: %w", r.from, r.to, err)
+			// Rename old -> new if the new entry doesn't already exist.
+			if _, err := execer.ExecContext(ctx, db.bindQuery(`
+				UPDATE migrations
+				SET filename = ?
+				WHERE filename = ?
+				  AND NOT EXISTS (SELECT 1 FROM migrations WHERE filename = ?)
+			`), r.to, r.from, r.to); err != nil {
+				return fmt.Errorf("failed to rename migration %s -> %s: %w", r.from, r.to, err)
+			}
 		}
 	}
 
@@ -1257,6 +1498,8 @@ const referencedStringsInsertQuery = `
 	UNION ALL
 	SELECT indexer_id_string_id AS string_id FROM torznab_indexers WHERE indexer_id_string_id IS NOT NULL
 	UNION ALL
+	SELECT basic_username_id AS string_id FROM torznab_indexers WHERE basic_username_id IS NOT NULL
+	UNION ALL
 	SELECT capability_type_id AS string_id FROM torznab_indexer_capabilities WHERE capability_type_id IS NOT NULL
 	UNION ALL
 	SELECT category_name_id AS string_id FROM torznab_indexer_categories WHERE category_name_id IS NOT NULL
@@ -1266,6 +1509,8 @@ const referencedStringsInsertQuery = `
 	SELECT name_id AS string_id FROM arr_instances WHERE name_id IS NOT NULL
 	UNION ALL
 	SELECT base_url_id AS string_id FROM arr_instances WHERE base_url_id IS NOT NULL
+	UNION ALL
+	SELECT basic_username_id AS string_id FROM arr_instances WHERE basic_username_id IS NOT NULL
 `
 
 func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
@@ -1275,24 +1520,6 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 		return 0, nil
 	}
 	defer db.cleanupRunning.Store(false)
-
-	// Drop temp table if it exists from previous run
-	_, _ = db.ExecContext(ctx, "DROP TABLE IF EXISTS temp_referenced_strings")
-
-	// Ensure temp table is cleaned up at the end
-	defer func() {
-		_, _ = db.ExecContext(context.Background(), "DROP TABLE IF EXISTS temp_referenced_strings")
-	}()
-
-	// Create temp table for referenced string IDs (automatically indexed due to PRIMARY KEY)
-	_, err := db.ExecContext(ctx, `
-		CREATE TEMP TABLE temp_referenced_strings (
-			string_id INTEGER PRIMARY KEY
-		)
-	`)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create temp table: %w", err)
-	}
 
 	// Begin transaction for the actual cleanup work
 	tx, err := db.BeginTx(ctx, nil)
@@ -1305,11 +1532,21 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	// All string_pool references use ON DELETE RESTRICT which would prevent deletion
 	// even when there are no actual references. Deferring allows the transaction to
 	// complete and verify constraints at commit time rather than immediately.
-	if err := dbinterface.DeferForeignKeyChecks(tx); err != nil {
+	if err := dbinterface.DeferForeignKeyChecks(ctx, tx); err != nil {
 		return 0, fmt.Errorf("failed to defer foreign keys: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO temp_referenced_strings (string_id) SELECT string_id FROM (
+	// Temp tables are connection-local on Postgres, so create and use them on the same tx.
+	_, err = tx.ExecContext(ctx, `
+		CREATE TEMP TABLE temp_referenced_strings (
+			string_id INTEGER PRIMARY KEY
+		)
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create temp table: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx, `INSERT INTO temp_referenced_strings (string_id) SELECT DISTINCT string_id FROM (
 `+referencedStringsInsertQuery+`
 		) AS subquery`)
 	if err != nil {
@@ -1319,13 +1556,18 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	// Delete strings not in the temp table - fast due to PRIMARY KEY index on temp table
 	// Using NOT EXISTS instead of NOT IN to avoid any potential SQLite limitations
 	result, err := tx.ExecContext(ctx, `
-		DELETE FROM string_pool 
+		DELETE FROM string_pool
 		WHERE NOT EXISTS (
 			SELECT 1 FROM temp_referenced_strings trs WHERE trs.string_id = string_pool.id
 		)
 	`)
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete unused strings: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx, `DROP TABLE temp_referenced_strings`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to drop temp table: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -1378,10 +1620,12 @@ func NewForTest(conn *sql.DB) *DB {
 	stmtsCache := ttlcache.New(stmtOpts)
 
 	db := &DB{
-		writerConn:  conn,
-		readerPool:  conn,       // For tests, use same connection for both
-		writerStmts: stmtsCache, // For tests, use same cache for both
-		readerStmts: stmtsCache, // For tests, use same cache for both
+		writerConn:      conn,
+		readerPool:      conn,       // For tests, use same connection for both
+		writerStmts:     stmtsCache, // For tests, use same cache for both
+		readerStmts:     stmtsCache, // For tests, use same cache for both
+		dialect:         DialectSQLite,
+		serializeWrites: true,
 	}
 
 	// Note: stringPoolCleanupLoop is NOT started for tests

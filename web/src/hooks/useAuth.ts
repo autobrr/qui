@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { navigateAfterAuth } from "@/lib/add-intent"
 import { api } from "@/lib/api"
 import type { User } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
@@ -24,7 +25,7 @@ export function useAuth() {
       api.login(username, password, rememberMe),
     onSuccess: (data) => {
       queryClient.setQueryData(["auth", "user"], data.user)
-      navigate({ to: "/dashboard" })
+      navigateAfterAuth(navigate)
     },
   })
 
@@ -33,7 +34,7 @@ export function useAuth() {
       api.setup(username, password),
     onSuccess: (data) => {
       queryClient.setQueryData(["auth", "user"], data.user)
-      navigate({ to: "/dashboard" })
+      navigateAfterAuth(navigate)
     },
   })
 

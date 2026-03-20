@@ -154,7 +154,7 @@ func TestDiscoverJackettIndexers_RedactsAPIKey(t *testing.T) {
 	server.Close()
 
 	// Try to discover indexers against the closed server
-	_, err := DiscoverJackettIndexers(context.Background(), server.URL, secretAPIKey)
+	_, err := DiscoverJackettIndexers(context.Background(), server.URL, secretAPIKey, nil, nil)
 
 	// We expect an error since the server is closed
 	require.Error(t, err, "Expected an error when connecting to closed server")

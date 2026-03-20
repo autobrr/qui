@@ -30,3 +30,19 @@ qui automatically detects the features available on each qBittorrent instance an
 :::note
 Hybrid and v2 torrent creation requires a qBittorrent build that links against libtorrent v2. Builds compiled with libtorrent 1.x ignore the `format` parameter.
 :::
+
+## Troubleshooting: Missing Features
+
+### Create Torrent button is not visible
+
+The **Create Torrent** button in the header bar is only displayed when qui detects that your qBittorrent instance supports the torrent creation API. If you do not see the button, your qBittorrent version is below **5.0.0** (Web API v2.11.2).
+
+To resolve this, upgrade qBittorrent to version 5.0.0 or later and refresh the qui web UI.
+
+### Hybrid and v2 torrent formats are unavailable
+
+Even with qBittorrent 5.0.0+, the **hybrid** and **v2** torrent format options require qBittorrent to be built against **libtorrent v2.x**. If your build uses libtorrent 1.x, the torrent creation dialog will display an alert indicating that only the **v1** format is available. This is a build-time dependency of qBittorrent itself and cannot be changed through qui.
+
+### "Too many active torrent creation tasks" error
+
+There is a limit on the number of concurrent torrent creation tasks. If you see a **409 Conflict** error with this message, wait for your existing creation tasks to finish before starting new ones. You can monitor active tasks in the torrent creation task list.

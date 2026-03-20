@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -51,7 +50,7 @@ func NewArrIDCacheStore(db dbinterface.Querier) *ArrIDCacheStore {
 
 // ComputeTitleHash computes a SHA256 hash of the normalized title for cache lookup
 func ComputeTitleHash(title string) string {
-	normalized := strings.ToLower(strings.TrimSpace(title))
+	normalized := normalizeLowerTrim(title)
 	hash := sha256.Sum256([]byte(normalized))
 	return hex.EncodeToString(hash[:])
 }
@@ -67,6 +66,7 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 	var entry ArrIDCacheEntry
 	var imdbID *string
 	var tmdbID, tvdbID, tvmazeID *int
+	var isNegative int
 
 	err := s.db.QueryRowContext(ctx, query, titleHash, contentType).Scan(
 		&entry.ID,
@@ -77,7 +77,7 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 		&tmdbID,
 		&tvdbID,
 		&tvmazeID,
-		&entry.IsNegative,
+		&isNegative,
 		&entry.CachedAt,
 		&entry.ExpiresAt,
 	)
@@ -98,6 +98,7 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 	if tvmazeID != nil {
 		entry.ExternalIDs.TVMazeID = *tvmazeID
 	}
+	entry.IsNegative = SQLiteIntToBool(isNegative)
 
 	return &entry, nil
 }
@@ -139,7 +140,7 @@ func (s *ArrIDCacheStore) Set(ctx context.Context, titleHash, contentType string
 			expires_at = excluded.expires_at
 	`
 
-	_, err := s.db.ExecContext(ctx, query, titleHash, contentType, arrInstanceID, imdbID, tmdbID, tvdbID, tvmazeID, isNegative, expiresAt)
+	_, err := s.db.ExecContext(ctx, query, titleHash, contentType, arrInstanceID, imdbID, tmdbID, tvdbID, tvmazeID, BoolToSQLite(isNegative), expiresAt)
 	if err != nil {
 		return fmt.Errorf("failed to set arr id cache entry: %w", err)
 	}

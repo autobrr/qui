@@ -21,6 +21,9 @@ const instanceSearchSchema = z.object({
 export const Route = createFileRoute("/_authenticated/instances/$instanceId")({
   validateSearch: instanceSearchSchema,
   component: InstanceTorrents,
+  staticData: {
+    title: "Torrents",
+  },
 })
 
 function InstanceTorrents() {
@@ -49,7 +52,11 @@ function InstanceTorrents() {
     }
   }, [instanceIdNumber, resetLayoutRouteState, setLayoutRouteState, shouldShowInstanceControls])
 
-  const handleSearchChange = (newSearch: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined }) => {
+  const handleSearchChange = (newSearch: {
+    modal?: "add-torrent" | "create-torrent" | "tasks" | undefined
+    torrent?: string
+    tab?: string
+  }) => {
     navigate({
       search: newSearch,
       replace: true,

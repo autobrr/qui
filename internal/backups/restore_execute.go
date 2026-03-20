@@ -411,7 +411,7 @@ func buildHashSet(items []string) map[string]struct{} {
 	}
 	set := make(map[string]struct{}, len(items))
 	for _, hash := range items {
-		normalized := strings.TrimSpace(strings.ToLower(hash))
+		normalized := normalizeLowerTrim(hash)
 		if normalized == "" {
 			continue
 		}
@@ -427,7 +427,7 @@ func shouldSkipTorrent(hash string, exclude map[string]struct{}) bool {
 	if len(exclude) == 0 {
 		return false
 	}
-	normalized := strings.TrimSpace(strings.ToLower(hash))
+	normalized := normalizeLowerTrim(hash)
 	_, skip := exclude[normalized]
 	return skip
 }

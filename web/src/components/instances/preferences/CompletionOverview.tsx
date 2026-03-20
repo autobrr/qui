@@ -15,7 +15,7 @@ import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { cn } from "@/lib/utils"
 import type { Instance, InstanceCrossSeedCompletionSettings } from "@/types"
-import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Info, Loader2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -26,6 +26,8 @@ interface CompletionFormState {
   tags: string[]
   excludeCategories: string[]
   excludeTags: string[]
+  indexerIds: number[]
+  bypassTorznabCache: boolean
 }
 
 const DEFAULT_COMPLETION_FORM: CompletionFormState = {
@@ -34,6 +36,8 @@ const DEFAULT_COMPLETION_FORM: CompletionFormState = {
   tags: [],
   excludeCategories: [],
   excludeTags: [],
+  indexerIds: [],
+  bypassTorznabCache: false,
 }
 
 function settingsToForm(settings: InstanceCrossSeedCompletionSettings | undefined): CompletionFormState {
@@ -44,6 +48,8 @@ function settingsToForm(settings: InstanceCrossSeedCompletionSettings | undefine
     tags: settings.tags ?? [],
     excludeCategories: settings.excludeCategories ?? [],
     excludeTags: settings.excludeTags ?? [],
+    indexerIds: settings.indexerIds ?? [],
+    bypassTorznabCache: settings.bypassTorznabCache ?? false,
   }
 }
 
@@ -54,7 +60,21 @@ function formToSettings(form: CompletionFormState): Omit<InstanceCrossSeedComple
     tags: form.tags,
     excludeCategories: form.excludeCategories,
     excludeTags: form.excludeTags,
+    indexerIds: form.indexerIds,
+    bypassTorznabCache: form.bypassTorznabCache,
   }
+}
+
+function normalizeNumberList(values: Array<string | number>): number[] {
+  const normalized: number[] = []
+  const seen = new Set<number>()
+  values.forEach((value) => {
+    const parsed = typeof value === "number" ? value : Number(value)
+    if (!Number.isFinite(parsed) || parsed <= 0 || seen.has(parsed)) return
+    seen.add(parsed)
+    normalized.push(parsed)
+  })
+  return normalized
 }
 
 export function CompletionOverview() {
@@ -77,6 +97,22 @@ export function CompletionOverview() {
       staleTime: 30000,
     })),
   })
+
+  const indexersQuery = useQuery({
+    queryKey: ["torznab-indexers"],
+    queryFn: () => api.listTorznabIndexers(),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const enabledIndexers = useMemo(
+    () => (indexersQuery.data ?? []).filter((indexer) => indexer.enabled),
+    [indexersQuery.data]
+  )
+  const indexerOptions = useMemo(
+    () => enabledIndexers.map((indexer) => ({ label: indexer.name, value: String(indexer.id) })),
+    [enabledIndexers]
+  )
+  const hasEnabledIndexers = enabledIndexers.length > 0
 
   // Fetch categories/tags for all active instances
   const metadataQueries = useQueries({
@@ -136,7 +172,7 @@ export function CompletionOverview() {
   const handleFormChange = (
     instanceId: number,
     field: keyof CompletionFormState,
-    value: string[] | boolean,
+    value: string[] | number[] | boolean,
     currentForm: CompletionFormState
   ) => {
     setFormMap((prev) => ({
@@ -304,6 +340,36 @@ export function CompletionOverview() {
                             </p>
                           </div>
                         )}
+                        {indexersQuery.isError && (
+                          <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
+                            <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
+                            <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                              Could not load Torznab indexers. Completion searches will use all available indexers.
+                            </p>
+                          </div>
+                        )}
+                        {!indexersQuery.isError && !indexersQuery.isPending && !hasEnabledIndexers && (
+                          <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
+                            <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
+                            <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                              No enabled Torznab indexers found. Enable at least one in Settings → Indexers.
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between rounded-md border border-border/50 bg-muted/30 p-3">
+                          <div className="space-y-0.5">
+                            <Label className="text-sm font-medium">Bypass Torznab cache</Label>
+                            <p className="text-xs text-muted-foreground">
+                              When on, completion searches for this instance always hit indexers (no cached results). Default off.
+                            </p>
+                          </div>
+                          <Switch
+                            checked={form.bypassTorznabCache}
+                            onCheckedChange={(checked) => handleFormChange(instance.id, "bypassTorznabCache", checked, form)}
+                            disabled={isSaving}
+                          />
+                        </div>
 
                         <div className="grid gap-4 md:grid-cols-2">
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">
@@ -338,6 +404,21 @@ export function CompletionOverview() {
                                 {form.tags.length === 0
                                   ? "All tags will be included."
                                   : `Only ${form.tags.length} selected ${form.tags.length === 1 ? "tag" : "tags"} will be matched.`}
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-xs">Indexers</Label>
+                              <MultiSelect
+                                options={indexerOptions}
+                                selected={form.indexerIds.map(String)}
+                                onChange={(values) => handleFormChange(instance.id, "indexerIds", normalizeNumberList(values), form)}
+                                placeholder="All indexers"
+                                disabled={isSaving || indexersQuery.isPending || (!hasEnabledIndexers && !indexersQuery.isPending)}
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                {form.indexerIds.length === 0
+                                  ? "All enabled indexers will be searched."
+                                  : `Only ${form.indexerIds.length} selected ${form.indexerIds.length === 1 ? "indexer" : "indexers"} will be queried.`}
                               </p>
                             </div>
                           </div>

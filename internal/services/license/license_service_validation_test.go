@@ -38,6 +38,7 @@ func TestValidateLicenses_NetworkTimeoutDoesNotInvalidate(t *testing.T) {
 		Status:            models.LicenseStatusActive,
 		ActivatedAt:       now.Add(-time.Hour),
 		LastValidated:     now.Add(-time.Hour),
+		Provider:          models.LicenseProviderPolar,
 		PolarActivationID: "activation-id",
 		Username:          "tester",
 		CreatedAt:         now.Add(-time.Hour),
@@ -56,7 +57,7 @@ func TestValidateLicenses_NetworkTimeoutDoesNotInvalidate(t *testing.T) {
 		}),
 	)
 
-	service := NewLicenseService(repo, client, t.TempDir())
+	service := NewLicenseService(repo, client, nil, t.TempDir())
 
 	valid, err := service.ValidateLicenses(ctx)
 	require.Error(t, err)
@@ -68,7 +69,7 @@ func TestValidateLicenses_NetworkTimeoutDoesNotInvalidate(t *testing.T) {
 	assert.Equal(t, models.LicenseStatusActive, stored.Status)
 }
 
-func TestValidateLicenses_OfflineBeyondGraceMarksInvalid(t *testing.T) {
+func TestValidateLicenses_OfflineBeyondGraceDoesNotInvalidate(t *testing.T) {
 	ctx := context.Background()
 
 	dbPath := filepath.Join(t.TempDir(), "licenses.db")
@@ -85,6 +86,7 @@ func TestValidateLicenses_OfflineBeyondGraceMarksInvalid(t *testing.T) {
 		Status:            models.LicenseStatusActive,
 		ActivatedAt:       now.Add(-time.Hour),
 		LastValidated:     now.Add(-(offlineGracePeriod + time.Hour)),
+		Provider:          models.LicenseProviderPolar,
 		PolarActivationID: "activation-id",
 		Username:          "tester",
 		CreatedAt:         now.Add(-time.Hour),
@@ -103,15 +105,16 @@ func TestValidateLicenses_OfflineBeyondGraceMarksInvalid(t *testing.T) {
 		}),
 	)
 
-	service := NewLicenseService(repo, client, t.TempDir())
+	service := NewLicenseService(repo, client, nil, t.TempDir())
 
 	valid, err := service.ValidateLicenses(ctx)
-	require.NoError(t, err)
-	assert.False(t, valid, "offline beyond grace should mark license invalid")
+	require.Error(t, err)
+	require.ErrorIs(t, err, timeoutErr)
+	assert.True(t, valid, "transient errors should not mark the license invalid, regardless of last validation time")
 
 	stored, err := repo.GetLicenseByKey(ctx, license.LicenseKey)
 	require.NoError(t, err)
-	assert.Equal(t, models.LicenseStatusInvalid, stored.Status)
+	assert.Equal(t, models.LicenseStatusActive, stored.Status)
 }
 
 func TestValidateLicenses_InvalidThenTransientStillReturnsInvalid(t *testing.T) {
@@ -131,6 +134,7 @@ func TestValidateLicenses_InvalidThenTransientStillReturnsInvalid(t *testing.T) 
 		Status:            models.LicenseStatusActive,
 		ActivatedAt:       now.Add(-time.Hour),
 		LastValidated:     now.Add(-time.Hour),
+		Provider:          models.LicenseProviderPolar,
 		PolarActivationID: "activation-bad",
 		Username:          "tester",
 		CreatedAt:         now.Add(-time.Hour),
@@ -142,6 +146,7 @@ func TestValidateLicenses_InvalidThenTransientStillReturnsInvalid(t *testing.T) 
 		Status:            models.LicenseStatusActive,
 		ActivatedAt:       now.Add(-time.Hour),
 		LastValidated:     now.Add(-time.Hour),
+		Provider:          models.LicenseProviderPolar,
 		PolarActivationID: "activation-slow",
 		Username:          "tester",
 		CreatedAt:         now.Add(-time.Hour),
@@ -169,7 +174,7 @@ func TestValidateLicenses_InvalidThenTransientStillReturnsInvalid(t *testing.T) 
 		}),
 	)
 
-	service := NewLicenseService(repo, client, t.TempDir())
+	service := NewLicenseService(repo, client, nil, t.TempDir())
 
 	valid, err := service.ValidateLicenses(ctx)
 	require.NoError(t, err, "transient error should be suppressed when invalid licenses were found")
@@ -201,6 +206,7 @@ func TestValidateLicenses_InvalidStatusMarksLicenseInvalid(t *testing.T) {
 		Status:            models.LicenseStatusActive,
 		ActivatedAt:       now.Add(-time.Hour),
 		LastValidated:     now.Add(-time.Hour),
+		Provider:          models.LicenseProviderPolar,
 		PolarActivationID: "activation-id",
 		Username:          "tester",
 		CreatedAt:         now.Add(-time.Hour),
@@ -223,7 +229,7 @@ func TestValidateLicenses_InvalidStatusMarksLicenseInvalid(t *testing.T) {
 		}),
 	)
 
-	service := NewLicenseService(repo, client, t.TempDir())
+	service := NewLicenseService(repo, client, nil, t.TempDir())
 
 	valid, err := service.ValidateLicenses(ctx)
 	require.NoError(t, err)

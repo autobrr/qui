@@ -12,6 +12,7 @@ export interface ArrInstance {
   type: ArrInstanceType
   name: string
   base_url: string
+  basic_username?: string
   enabled: boolean
   priority: number
   timeout_seconds: number
@@ -27,6 +28,8 @@ export interface ArrInstanceFormData {
   name: string
   base_url: string
   api_key: string
+  basic_username?: string
+  basic_password?: string
   enabled?: boolean
   priority?: number
   timeout_seconds?: number
@@ -36,6 +39,8 @@ export interface ArrInstanceUpdateData {
   name?: string
   base_url?: string
   api_key?: string
+  basic_username?: string
+  basic_password?: string
   enabled?: boolean
   priority?: number
   timeout_seconds?: number
@@ -45,6 +50,8 @@ export interface ArrTestConnectionRequest {
   type: ArrInstanceType
   base_url: string
   api_key: string
+  basic_username?: string
+  basic_password?: string
 }
 
 export interface ArrTestResponse {

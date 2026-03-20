@@ -5,6 +5,9 @@ package crossseed
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/reflinktree"
 )
 
 // Note: qbtLayoutToHardlinkLayout is no longer used in hardlink mode.
@@ -231,6 +235,7 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 			result := s.buildHardlinkDestDir(
 				context.Background(),
 				instance,
+				tt.baseDir,
 				tt.torrentHash,
 				tt.torrentName,
 				candidate,
@@ -280,6 +285,7 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 	result := s.buildHardlinkDestDir(
 		context.Background(),
 		instance,
+		instance.HardlinkBaseDir,
 		"abcdef1234567890",
 		"Movie",
 		candidate,
@@ -295,6 +301,142 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 
 	// Should contain the sanitized name
 	assert.Contains(t, result, "TrackerName")
+}
+
+func TestFindMatchingBaseDir(t *testing.T) {
+	tests := []struct {
+		name        string
+		configured  string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:        "empty configured returns error",
+			configured:  "",
+			wantErr:     true,
+			errContains: "not configured",
+		},
+		{
+			name:        "whitespace only returns error",
+			configured:  "   ",
+			wantErr:     true,
+			errContains: "not configured",
+		},
+		{
+			name:        "nonexistent single path returns error",
+			configured:  "/nonexistent/path/that/does/not/exist",
+			wantErr:     true,
+			errContains: "no base directory",
+		},
+		{
+			name:        "multiple nonexistent paths returns error",
+			configured:  "/nonexistent/path1, /nonexistent/path2, /nonexistent/path3",
+			wantErr:     true,
+			errContains: "no base directory",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := FindMatchingBaseDir(tt.configured, "/some/source/path")
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			assert.NotEmpty(t, result)
+		})
+	}
+}
+
+func TestFindMatchingBaseDir_ParsesCommaSeparated(t *testing.T) {
+	sourceRoot := t.TempDir()
+	sourceFile := filepath.Join(sourceRoot, "source.bin")
+	require.NoError(t, os.WriteFile(sourceFile, []byte("source"), 0o600))
+
+	invalidPath1 := filepath.Join(t.TempDir(), "not-a-directory-1")
+	invalidPath2 := filepath.Join(t.TempDir(), "not-a-directory-2")
+	invalidPath3 := filepath.Join(t.TempDir(), "not-a-directory-3")
+	require.NoError(t, os.WriteFile(invalidPath1, []byte("file"), 0o600))
+	require.NoError(t, os.WriteFile(invalidPath2, []byte("file"), 0o600))
+	require.NoError(t, os.WriteFile(invalidPath3, []byte("file"), 0o600))
+
+	configured := invalidPath1 + ", " + invalidPath2 + " , " + invalidPath3
+	_, err := FindMatchingBaseDir(configured, sourceFile)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no base directory")
+}
+
+func TestFindMatchingBaseDir_TrimsWhitespace(t *testing.T) {
+	tests := []struct {
+		name       string
+		configured string
+	}{
+		{
+			name:       "spaces around commas",
+			configured: "/path1 , /path2 , /path3",
+		},
+		{
+			name:       "tabs around commas",
+			configured: "/path1\t,\t/path2\t,\t/path3",
+		},
+		{
+			name:       "mixed whitespace",
+			configured: "  /path1  ,   /path2   ,  /path3  ",
+		},
+		{
+			name:       "no spaces",
+			configured: "/path1,/path2,/path3",
+		},
+		{
+			name:       "empty segments ignored",
+			configured: "/path1, , /path2, ,, /path3",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := FindMatchingBaseDir(tt.configured, "/nonexistent/source")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "no base directory")
+		})
+	}
+}
+
+func TestFindMatchingBaseDir_ReturnsFirstMatchingDir(t *testing.T) {
+	sourceRoot := t.TempDir()
+	sourceFile := filepath.Join(sourceRoot, "source.bin")
+	require.NoError(t, os.WriteFile(sourceFile, []byte("source"), 0o600))
+
+	firstDir := filepath.Join(t.TempDir(), "first")
+	secondDir := filepath.Join(t.TempDir(), "second")
+
+	result, err := FindMatchingBaseDir("  "+firstDir+" , "+secondDir+"  ", sourceFile)
+	require.NoError(t, err)
+	assert.Equal(t, firstDir, result)
+	assert.DirExists(t, firstDir)
+}
+
+func TestFindMatchingBaseDir_SkipsInvalidDirAndFindsNextMatch(t *testing.T) {
+	sourceRoot := t.TempDir()
+	sourceFile := filepath.Join(sourceRoot, "source.bin")
+	require.NoError(t, os.WriteFile(sourceFile, []byte("source"), 0o600))
+
+	invalidFilePath := filepath.Join(t.TempDir(), "not-a-directory")
+	require.NoError(t, os.WriteFile(invalidFilePath, []byte("file"), 0o600))
+
+	validDir := filepath.Join(t.TempDir(), "valid")
+
+	result, err := FindMatchingBaseDir(invalidFilePath+", "+validDir, sourceFile)
+	require.NoError(t, err)
+	assert.Equal(t, validDir, result)
+	assert.DirExists(t, validDir)
 }
 
 func TestProcessHardlinkMode_NotUsedWhenDisabled(t *testing.T) {
@@ -764,4 +906,40 @@ func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
 	assert.False(t, result.Success, "result should indicate failure")
 	assert.Equal(t, "reflink_error", result.Result.Status)
 	assert.Contains(t, result.Result.Message, "base directory")
+}
+
+func TestShouldWarnForReflinkCreateError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "plain wrapped unsupported error",
+			err:  fmt.Errorf("reflink create failed: %w", reflinktree.ErrReflinkUnsupported),
+			want: true,
+		},
+		{
+			name: "joined rollback error stays error level",
+			err: errors.Join(
+				fmt.Errorf("reflink create failed: %w", reflinktree.ErrReflinkUnsupported),
+				errors.New("rollback also failed"),
+			),
+			want: false,
+		},
+		{
+			name: "unrelated error",
+			err:  errors.New("boom"),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, shouldWarnForReflinkCreateError(tt.err))
+		})
+	}
 }

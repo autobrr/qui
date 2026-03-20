@@ -38,6 +38,7 @@ import { toast } from "sonner"
 import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackerContextMenu, TrackersTable, WebSeedsTable } from "./details"
 import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
 import { TorrentFileTree } from "./TorrentFileTree"
+import { TorrentFileMediaInfoDialog } from "./TorrentFileMediaInfoDialog"
 
 interface TorrentDetailsPanelProps {
   instanceId: number;
@@ -89,6 +90,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const incognitoHash = incognitoMode && torrent?.hash ? getLinuxHash(torrent.hash) : undefined
   const [pendingFileIndices, setPendingFileIndices] = useState<Set<number>>(() => new Set())
   const supportsFilePriority = capabilities?.supportsFilePriority ?? false
+  const { data: instances } = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances(), staleTime: 60000 })
+  const hasLocalFilesystemAccess = instances?.find(i => i.id === instanceId)?.hasLocalFilesystemAccess ?? false
   const [selectedCrossSeedTorrents, setSelectedCrossSeedTorrents] = useState<Set<string>>(() => new Set())
   const [showDeleteCrossSeedDialog, setShowDeleteCrossSeedDialog] = useState(false)
   const [deleteCrossSeedFiles, setDeleteCrossSeedFiles] = useState(false)
@@ -652,6 +655,31 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     if (!torrent) return
     renameFileMutation.mutate({ hash: torrent.hash, oldPath, newPath })
   }, [renameFileMutation, torrent])
+
+  // Handle download content file
+  const handleDownloadFile = useCallback((file: TorrentFile) => {
+    if (!torrent || incognitoMode) return
+    api.downloadContentFile(instanceId, torrent.hash, file.index)
+  }, [instanceId, torrent, incognitoMode])
+
+  const [showMediaInfoDialog, setShowMediaInfoDialog] = useState(false)
+  const [mediaInfoFile, setMediaInfoFile] = useState<TorrentFile | null>(null)
+  const [mediaInfoTorrentHash, setMediaInfoTorrentHash] = useState<string | null>(null)
+
+  const handleShowMediaInfo = useCallback((file: TorrentFile) => {
+    if (!torrent) return
+    setMediaInfoFile(file)
+    setMediaInfoTorrentHash(torrent.hash)
+    setShowMediaInfoDialog(true)
+  }, [torrent])
+
+  const handleMediaInfoDialogOpenChange = useCallback((open: boolean) => {
+    setShowMediaInfoDialog(open)
+    if (!open) {
+      setMediaInfoFile(null)
+      setMediaInfoTorrentHash(null)
+    }
+  }, [])
 
   // Handle rename folder
   const handleRenameFolderConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
@@ -1503,6 +1531,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 onToggleFolder={handleToggleFolderDownload}
                 onRenameFile={handleRenameFileClick}
                 onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
+                onDownloadFile={hasLocalFilesystemAccess ? handleDownloadFile : undefined}
+                onShowMediaInfo={hasLocalFilesystemAccess ? handleShowMediaInfo : undefined}
               />
             ) : activeTab === "content" && loadingFiles && !files ? (
               <div className="flex items-center justify-center p-8 flex-1">
@@ -1555,6 +1585,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                       onToggleFolder={handleToggleFolderDownload}
                       onRenameFile={handleRenameFileClick}
                       onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
+                      onDownloadFile={hasLocalFilesystemAccess ? handleDownloadFile : undefined}
+                      onShowMediaInfo={hasLocalFilesystemAccess ? handleShowMediaInfo : undefined}
                     />
                   </div>
                 </ScrollArea>
@@ -2037,6 +2069,14 @@ tracker.example.com:8080
         selectedHashes={torrent ? [torrent.hash] : []}
         onConfirm={(oldURL, newURL) => editTrackerMutation.mutate({ oldURL, newURL })}
         isPending={editTrackerMutation.isPending}
+      />
+
+      <TorrentFileMediaInfoDialog
+        open={showMediaInfoDialog}
+        onOpenChange={handleMediaInfoDialogOpenChange}
+        instanceId={instanceId}
+        torrentHash={mediaInfoTorrentHash ?? ""}
+        file={mediaInfoFile}
       />
     </div>
   )

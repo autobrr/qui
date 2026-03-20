@@ -34,11 +34,12 @@ env:
 permissions:
   contents: write
   packages: write
+  actions: write
 
 jobs:
   web:
     name: Build web
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -96,21 +97,21 @@ jobs:
         run: CI= pnpm run build
 
       - name: Upload web production build
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: web-dist
           path: web/dist
 
   test:
     name: Run tests
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs: [web]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
       - name: Download web production build
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: web/dist
@@ -134,11 +135,15 @@ jobs:
 
       - name: Run tests
         run: |
-          go test -v -race -coverprofile=coverage.out ./...
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            go test -v -coverprofile=coverage.out ./...
+          else
+            go test -v -race -coverprofile=coverage.out ./...
+          fi
           go tool cover -html=coverage.out -o coverage.html
 
       - name: Upload coverage reports
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: |
@@ -147,7 +152,7 @@ jobs:
 
   goreleaserbuild:
     name: Build distribution binaries
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs: [test, web]
     steps:
       - name: Checkout
@@ -156,7 +161,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download web production build
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: web/dist
@@ -169,7 +174,7 @@ jobs:
 
       - name: Run GoReleaser build
         if: github.event_name == 'pull_request'
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: "~> v2"
@@ -180,7 +185,7 @@ jobs:
 
       - name: Run GoReleaser build and publish tags
         if: startsWith(github.ref, 'refs/tags/')
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: "~> v2"
@@ -190,7 +195,7 @@ jobs:
           BUILDER: ${{ github.actor }}@github-actions
 
       - name: Upload assets
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: qui
           path: |
@@ -201,7 +206,7 @@ jobs:
 
   docker:
     name: Build Docker images
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs: [test, web]
     strategy:
       fail-fast: true
@@ -220,21 +225,21 @@ jobs:
           fetch-depth: 0
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download web production build
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: web/dist
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY_IMAGE }}
           tags: |
@@ -246,27 +251,28 @@ jobs:
             latest=auto
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
-      - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
       - name: Build and publish image
         id: docker_build
-        uses: useblacksmith/build-push-action@v2
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./distrib/docker/ci.Dockerfile
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=${{ (github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request') && 'true' || 'false' }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
             VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
             REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
             BUILDER=${{ github.actor }}@github-actions
-            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-            POLAR_ORG_ID=${{ secrets.POLAR_ORG_ID }}
+            POLAR_ORG_ID=${{ env.POLAR_ORG_ID }}
           provenance: false
 
       - name: Export image digest
@@ -278,7 +284,7 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload image digest
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: docker-digests-${{ steps.digest-prep.outputs.manifest-hash }}
           path: /tmp/digests/*
@@ -288,21 +294,21 @@ jobs:
   docker-merge:
     name: Publish Docker multi-arch manifest
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request' }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     needs: [docker]
     steps:
       - name: Download image digests
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
           pattern: docker-digests-*
           merge-multiple: true
 
-      - name: Setup Blacksmith Builder
-        uses: useblacksmith/setup-docker-builder@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
@@ -310,7 +316,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY_IMAGE }}
           tags: |

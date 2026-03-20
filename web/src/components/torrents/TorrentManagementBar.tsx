@@ -20,13 +20,15 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
+import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstances } from "@/hooks/useInstances"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
-import { getCommonCategory, getCommonSavePath, getCommonTags, getTotalSize } from "@/lib/torrent-utils"
+import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
+import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag, getTotalSize, parseTorrentTags } from "@/lib/torrent-utils"
 import { formatBytes } from "@/lib/utils"
-import type { Torrent, TorrentFilters } from "@/types"
+import type { Category, Torrent, TorrentFilters } from "@/types"
 import {
   ArrowDown,
   ArrowUp,
@@ -50,11 +52,10 @@ import {
 import { memo, useCallback, useMemo } from "react"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import {
-  AddTagsDialog,
   LocationWarningDialog,
   SetCategoryDialog,
   SetLocationDialog,
-  SetTagsDialog,
+  TagEditorDialog,
   ShareLimitDialog,
   SpeedLimitsDialog,
   TmmConfirmDialog
@@ -62,6 +63,7 @@ import {
 
 interface TorrentManagementBarProps {
   instanceId?: number
+  instanceIds?: number[]
   selectedHashes?: string[]
   selectedTorrents?: Torrent[]
   isAllSelected?: boolean
@@ -70,11 +72,13 @@ interface TorrentManagementBarProps {
   filters?: TorrentFilters
   search?: string
   excludeHashes?: string[]
+  excludeTargets?: Array<{ instanceId: number; hash: string }>
   onComplete?: () => void
 }
 
 export const TorrentManagementBar = memo(function TorrentManagementBar({
   instanceId,
+  instanceIds,
   selectedHashes = [],
   selectedTorrents = [],
   isAllSelected = false,
@@ -83,30 +87,61 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   filters,
   search,
   excludeHashes = [],
+  excludeTargets = [],
   onComplete,
 }: TorrentManagementBarProps) {
   const selectionCount = totalSelectionCount || selectedHashes.length
-  // Safe instanceId for hooks - guard at end handles invalid values
-  const safeInstanceId = typeof instanceId === "number" && instanceId > 0 ? instanceId : 0
+  const hasActionScope = typeof instanceId === "number" && instanceId >= 0
+  const actionInstanceId = hasActionScope ? instanceId : -1
+  const metadataInstanceId = actionInstanceId > 0 ? actionInstanceId : 0
+  const supportsCrossSeedDeleteTools = actionInstanceId > 0
+  const supportsCrossSeedBlocklist = actionInstanceId >= 0
 
   // Use shared metadata hook to leverage cache from table and filter sidebar
-  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(safeInstanceId)
-  const availableTags = metadata?.tags || []
-  const availableCategories = metadata?.categories || {}
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(metadataInstanceId)
+  const fallbackTags = useMemo(() => {
+    const tags = new Set<string>()
+    for (const torrent of selectedTorrents) {
+      for (const tag of parseTorrentTags(torrent.tags)) {
+        tags.add(tag)
+      }
+    }
+    return Array.from(tags).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+  }, [selectedTorrents])
+  const fallbackCategories = useMemo(() => {
+    const categories: Record<string, Category> = {}
+    for (const torrent of selectedTorrents) {
+      const name = torrent.category?.trim()
+      if (!name) {
+        continue
+      }
+      const existing = categories[name]
+      if (!existing) {
+        categories[name] = { name, savePath: torrent.save_path ?? "" }
+        continue
+      }
+      if (!existing.savePath && torrent.save_path) {
+        categories[name] = { ...existing, savePath: torrent.save_path }
+      }
+    }
+    return categories
+  }, [selectedTorrents])
+  const availableTags = metadata?.tags?.length ? metadata.tags : fallbackTags
+  const availableCategories = Object.keys(metadata?.categories ?? {}).length > 0 ? (metadata?.categories ?? {}) : fallbackCategories
   const preferences = metadata?.preferences
 
-  const isLoadingTagsData = isMetadataLoading && availableTags.length === 0
-  const isLoadingCategoriesData = isMetadataLoading && Object.keys(availableCategories).length === 0
+  const isLoadingTagsData = metadataInstanceId > 0 && isMetadataLoading && availableTags.length === 0
+  const isLoadingCategoriesData = metadataInstanceId > 0 && isMetadataLoading && Object.keys(availableCategories).length === 0
 
   // Get capabilities to check subcategory support
-  const { data: capabilities } = useInstanceCapabilities(safeInstanceId)
+  const { data: capabilities } = useInstanceCapabilities(metadataInstanceId, { enabled: metadataInstanceId > 0 })
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
   const allowSubcategories =
     supportsSubcategories && (preferences?.use_subcategories ?? false)
 
   // Get instance name for cross-seed warning
   const { instances } = useInstances()
-  const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
+  const instance = useMemo(() => instances?.find(i => i.id === actionInstanceId), [instances, actionInstanceId])
 
   // Use the shared torrent actions hook
   const {
@@ -116,12 +151,12 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     setDeleteFiles,
     isDeleteFilesLocked,
     toggleDeleteFilesLock,
+    blockCrossSeeds,
+    setBlockCrossSeeds,
     deleteCrossSeeds,
     setDeleteCrossSeeds,
-    showAddTagsDialog,
-    setShowAddTagsDialog,
-    showSetTagsDialog,
-    setShowSetTagsDialog,
+    showTagsDialog,
+    setShowTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
     showShareLimitDialog,
@@ -142,8 +177,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     isPending,
     handleAction,
     handleDelete,
-    handleAddTags,
-    handleSetTags,
+    handleUpdateTags,
     handleSetCategory,
     handleSetLocation,
     handleSetShareLimit,
@@ -162,7 +196,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     prepareReannounceAction,
     prepareTmmAction,
   } = useTorrentActions({
-    instanceId: safeInstanceId,
+    instanceId: actionInstanceId,
+    instanceIds,
     onActionComplete: (action) => {
       if (action === TORRENT_ACTIONS.DELETE) {
         onComplete?.()
@@ -172,26 +207,95 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
 
   // Cross-seed warning for delete dialog
   const crossSeedWarning = useCrossSeedWarning({
-    instanceId: safeInstanceId,
+    instanceId: actionInstanceId,
     instanceName: instance?.name ?? "",
     torrents: selectedTorrents,
   })
+  const crossSeedAffectedTorrents = useMemo(
+    () => (supportsCrossSeedDeleteTools ? crossSeedWarning.affectedTorrents : []),
+    [supportsCrossSeedDeleteTools, crossSeedWarning.affectedTorrents]
+  )
+
+  const hasCrossSeedTag = useMemo(
+    () => supportsCrossSeedBlocklist
+      && (anyTorrentHasTag(selectedTorrents, "cross-seed") || anyTorrentHasTag(crossSeedAffectedTorrents, "cross-seed")),
+    [supportsCrossSeedBlocklist, selectedTorrents, crossSeedAffectedTorrents]
+  )
+  const shouldBlockCrossSeeds = hasCrossSeedTag && blockCrossSeeds
+  const { blockCrossSeedHashes } = useCrossSeedBlocklistActions(actionInstanceId)
 
   // Wrapper functions to adapt hook handlers to component needs
   const actionHashes = useMemo(() => (isAllSelected ? [] : selectedHashes), [isAllSelected, selectedHashes])
+  const actionTargets = useMemo(
+    () => buildTorrentActionTargets(selectedTorrents, actionInstanceId),
+    [selectedTorrents, actionInstanceId]
+  )
+  const selectedRequestTargets = useMemo(() => {
+    const seen = new Set<string>()
+    const targets: Array<{ instanceId: number; hash: string }> = []
+
+    for (const selectedHash of selectedHashes) {
+      const trimmed = selectedHash.trim()
+      if (!trimmed) {
+        continue
+      }
+
+      const separatorIndex = trimmed.indexOf(":")
+      const target = separatorIndex > 0
+        ? {
+            instanceId: Number(trimmed.slice(0, separatorIndex)),
+            hash: trimmed.slice(separatorIndex + 1),
+          }
+        : {
+            instanceId: actionInstanceId,
+            hash: trimmed,
+          }
+
+      if (target.instanceId <= 0 || !target.hash) {
+        continue
+      }
+
+      const dedupeKey = `${target.instanceId}:${target.hash.toLowerCase()}`
+      if (seen.has(dedupeKey)) {
+        continue
+      }
+
+      seen.add(dedupeKey)
+      targets.push(target)
+    }
+
+    return targets
+  }, [actionInstanceId, selectedHashes])
+  const selectedRequestHashes = useMemo(
+    () => Array.from(new Set(selectedHashes.map((selectedHash) => {
+      const trimmed = selectedHash.trim()
+      if (!trimmed) {
+        return ""
+      }
+
+      const separatorIndex = trimmed.indexOf(":")
+      return separatorIndex > 0 ? trimmed.slice(separatorIndex + 1) : trimmed
+    }).filter(Boolean))),
+    [selectedHashes]
+  )
   const actionOptions = useMemo(() => ({
+    instanceIds,
+    targets: isAllSelected || selectedRequestTargets.length !== selectedRequestHashes.length ? undefined : selectedRequestTargets,
     selectAll: isAllSelected,
     filters: isAllSelected ? filters : undefined,
     search: isAllSelected ? search : undefined,
     excludeHashes: isAllSelected ? excludeHashes : undefined,
+    excludeTargets: isAllSelected ? excludeTargets : undefined,
     clientHashes: selectedHashes,
     clientCount: selectionCount,
-  }), [isAllSelected, filters, search, excludeHashes, selectedHashes, selectionCount])
+  }), [instanceIds, isAllSelected, selectedRequestTargets, selectedRequestHashes.length, filters, search, excludeHashes, excludeTargets, selectedHashes, selectionCount])
 
   const clientMeta = useMemo(() => ({
     clientHashes: selectedHashes,
     totalSelected: selectionCount,
-  }), [selectedHashes, selectionCount])
+    actionTargets: isAllSelected || selectedRequestTargets.length !== selectedRequestHashes.length ? undefined : selectedRequestTargets,
+    excludeTargets,
+  }), [selectedHashes, selectionCount, isAllSelected, selectedRequestTargets, selectedRequestHashes.length, excludeTargets])
 
   const deleteDialogTotalSize = useMemo(() => {
     if (totalSelectionSize > 0) {
@@ -213,18 +317,24 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     })
   }, [handleAction, actionHashes, actionOptions])
 
-  const handleDeleteWrapper = useCallback(() => {
+  const handleDeleteWrapper = useCallback(async () => {
+    if (shouldBlockCrossSeeds) {
+      const taggedHashes = getTorrentHashesWithTag(selectedTorrents, "cross-seed")
+      const crossSeedHashes = supportsCrossSeedDeleteTools && deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedAffectedTorrents, "cross-seed") : []
+      const blocklistTargets = [
+        ...actionTargets,
+        ...buildTorrentActionTargets(crossSeedAffectedTorrents, actionInstanceId),
+      ]
+      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes], blocklistTargets)
+    }
+
     // Include cross-seed hashes if user opted to delete them
-    const hashesToDelete = deleteCrossSeeds
-      ? [...selectedHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]
-      : selectedHashes
+    const hashesToDelete = supportsCrossSeedDeleteTools && deleteCrossSeeds ? [...selectedHashes, ...crossSeedAffectedTorrents.map(t => t.hash)] : selectedHashes
 
     // Update count to include cross-seeds for accurate toast message
-    const deleteClientMeta = deleteCrossSeeds
-      ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }
-      : clientMeta
+    const deleteClientMeta = supportsCrossSeedDeleteTools && deleteCrossSeeds ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length } : clientMeta
 
-    handleDelete(
+    await handleDelete(
       hashesToDelete,
       isAllSelected,
       filters,
@@ -232,31 +342,35 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       excludeHashes,
       deleteClientMeta
     )
-  }, [handleDelete, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta, deleteCrossSeeds, crossSeedWarning.affectedTorrents])
+  }, [
+    actionInstanceId,
+    actionTargets,
+    blockCrossSeedHashes,
+    clientMeta,
+    crossSeedAffectedTorrents,
+    deleteCrossSeeds,
+    excludeHashes,
+    filters,
+    handleDelete,
+    isAllSelected,
+    search,
+    selectedHashes,
+    selectedTorrents,
+    shouldBlockCrossSeeds,
+    supportsCrossSeedDeleteTools,
+  ])
 
-  const handleAddTagsWrapper = useCallback((tags: string[]) => {
-    handleAddTags(
-      tags,
-      selectedHashes,
+  const handleTagsWrapper = useCallback((plan: Parameters<typeof handleUpdateTags>[0]) => {
+    handleUpdateTags(
+      plan,
+      selectedRequestHashes,
       isAllSelected,
       filters,
       search,
       excludeHashes,
       clientMeta
     )
-  }, [handleAddTags, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
-
-  const handleSetTagsWrapper = useCallback((tags: string[]) => {
-    handleSetTags(
-      tags,
-      selectedHashes,
-      isAllSelected,
-      filters,
-      search,
-      excludeHashes,
-      clientMeta
-    )
-  }, [handleSetTags, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
+  }, [handleUpdateTags, selectedRequestHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
   const handleSetCategoryWrapper = useCallback((category: string) => {
     handleSetCategory(
@@ -376,10 +490,10 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   }, [handleTmmConfirm, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
   const hasSelection = selectionCount > 0 || isAllSelected
-  const isDisabled = !safeInstanceId || !hasSelection
+  const isDisabled = !hasActionScope || !hasSelection
 
   // Keep this guard after hooks so their invocation order stays stable.
-  if (!safeInstanceId || !hasSelection) {
+  if (!hasActionScope || !hasSelection) {
     return null
   }
 
@@ -493,18 +607,11 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             </Tooltip>
             <DropdownMenuContent align="center">
               <DropdownMenuItem
-                onClick={() => prepareTagsAction("add", selectedHashes, selectedTorrents)}
+                onClick={() => prepareTagsAction(selectedHashes, selectedTorrents)}
                 disabled={isPending || isDisabled}
               >
                 <Tag className="h-4 w-4 mr-2" />
-                Add Tags {selectionCount > 1 ? `(${selectionCount})` : ""}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => prepareTagsAction("set", selectedHashes, selectedTorrents)}
-                disabled={isPending || isDisabled}
-              >
-                <Tag className="h-4 w-4 mr-2" />
-                Replace Tags {selectionCount > 1 ? `(${selectionCount})` : ""}
+                Set Tags {selectionCount > 1 ? `(${selectionCount})` : ""}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -679,30 +786,32 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onToggleDeleteFilesLock={toggleDeleteFilesLock}
         deleteCrossSeeds={deleteCrossSeeds}
         onDeleteCrossSeedsChange={setDeleteCrossSeeds}
-        crossSeedWarning={crossSeedWarning}
+        showBlockCrossSeeds={hasCrossSeedTag}
+        blockCrossSeeds={blockCrossSeeds}
+        onBlockCrossSeedsChange={setBlockCrossSeeds}
+        crossSeedWarning={supportsCrossSeedDeleteTools ? crossSeedWarning : null}
         onConfirm={handleDeleteWrapper}
       />
 
-      {/* Add Tags Dialog */}
-      <AddTagsDialog
-        open={showAddTagsDialog}
-        onOpenChange={setShowAddTagsDialog}
+      <TagEditorDialog
+        open={showTagsDialog}
+        onOpenChange={setShowTagsDialog}
         availableTags={availableTags || []}
+        selectedTorrents={selectedTorrents}
         hashCount={totalSelectionCount || selectedHashes.length}
-        onConfirm={handleAddTagsWrapper}
+        selectionRequest={{
+          instanceId: metadataInstanceId,
+          instanceIds,
+          hashes: !isAllSelected ? selectedRequestHashes : undefined,
+          targets: !isAllSelected && selectedRequestTargets.length === selectedRequestHashes.length ? selectedRequestTargets : undefined,
+          selectAll: isAllSelected,
+          filters: isAllSelected ? filters : undefined,
+          search: isAllSelected ? search : undefined,
+          excludeHashes: isAllSelected ? excludeHashes : undefined,
+          excludeTargets: isAllSelected ? excludeTargets : undefined,
+        }}
+        onConfirm={handleTagsWrapper}
         isPending={isPending}
-        isLoadingTags={isLoadingTagsData}
-      />
-
-      {/* Set Tags Dialog */}
-      <SetTagsDialog
-        open={showSetTagsDialog}
-        onOpenChange={setShowSetTagsDialog}
-        availableTags={availableTags || []}
-        hashCount={totalSelectionCount || selectedHashes.length}
-        onConfirm={handleSetTagsWrapper}
-        isPending={isPending}
-        initialTags={getCommonTags(selectedTorrents)}
         isLoadingTags={isLoadingTagsData}
       />
 
@@ -727,6 +836,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         onConfirm={handleSetLocationWrapper}
         isPending={isPending}
         initialLocation={getCommonSavePath(selectedTorrents)}
+        instanceId={metadataInstanceId}
+        capabilities={capabilities}
       />
 
       <ShareLimitDialog

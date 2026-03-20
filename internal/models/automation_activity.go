@@ -25,13 +25,18 @@ const (
 	ActivityActionSpeedLimitsChanged  = "speed_limits_changed" // Batch speed limit operation
 	ActivityActionShareLimitsChanged  = "share_limits_changed" // Batch share limit operation
 	ActivityActionPaused              = "paused"               // Batch pause operation
+	ActivityActionResumed             = "resumed"              // Batch resume operation
+	ActivityActionRechecked           = "rechecked"            // Batch force recheck operation
+	ActivityActionReannounced         = "reannounced"          // Batch force reannounce operation
 	ActivityActionMoved               = "moved"                // Batch move operation
+	ActivityActionDryRunNoMatch       = "dry_run_no_match"     // Manual dry-run completed with no matching actions
 )
 
 // Activity outcome types
 const (
 	ActivityOutcomeSuccess = "success"
 	ActivityOutcomeFailed  = "failed"
+	ActivityOutcomeDryRun  = "dry-run"
 )
 
 type AutomationActivity struct {
@@ -62,6 +67,28 @@ func (s *AutomationActivityStore) Create(ctx context.Context, activity *Automati
 		return nil
 	}
 
+	_, err := s.insert(ctx, activity)
+	return err
+}
+
+func (s *AutomationActivityStore) CreateWithID(ctx context.Context, activity *AutomationActivity) (int, error) {
+	if activity == nil {
+		return 0, nil
+	}
+
+	id, err := s.insert(ctx, activity)
+	if err != nil {
+		return 0, err
+	}
+
+	return id, nil
+}
+
+func (s *AutomationActivityStore) insert(ctx context.Context, activity *AutomationActivity) (int, error) {
+	if s == nil || s.db == nil || activity == nil {
+		return 0, nil
+	}
+
 	var detailsStr sql.NullString
 	if len(activity.Details) > 0 {
 		detailsStr = sql.NullString{String: string(activity.Details), Valid: true}
@@ -72,15 +99,37 @@ func (s *AutomationActivityStore) Create(ctx context.Context, activity *Automati
 		ruleID = sql.NullInt64{Int64: int64(*activity.RuleID), Valid: true}
 	}
 
-	_, err := s.db.ExecContext(ctx, `
+	if dbinterface.DialectOf(s.db) != "postgres" {
+		res, err := s.db.ExecContext(ctx, `
 		INSERT INTO automation_activity
 			(instance_id, hash, torrent_name, tracker_domain, action, rule_id, rule_name, outcome, reason, details)
 		VALUES
 			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, activity.InstanceID, activity.Hash, activity.TorrentName, activity.TrackerDomain, activity.Action,
-		ruleID, activity.RuleName, activity.Outcome, activity.Reason, detailsStr)
+			ruleID, activity.RuleName, activity.Outcome, activity.Reason, detailsStr)
+		if err != nil {
+			return 0, err
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			return 0, err
+		}
+		return int(id), nil
+	}
 
-	return err
+	var id int
+	err := s.db.QueryRowContext(ctx, `
+		INSERT INTO automation_activity
+			(instance_id, hash, torrent_name, tracker_domain, action, rule_id, rule_name, outcome, reason, details)
+		VALUES
+			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id
+	`, activity.InstanceID, activity.Hash, activity.TorrentName, activity.TrackerDomain, activity.Action,
+		ruleID, activity.RuleName, activity.Outcome, activity.Reason, detailsStr).Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 func (s *AutomationActivityStore) ListByInstance(ctx context.Context, instanceID int, limit int) ([]*AutomationActivity, error) {
@@ -167,10 +216,11 @@ func (s *AutomationActivityStore) DeleteOlderThan(ctx context.Context, instanceI
 		days = 7
 	}
 
+	cutoff := time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour)
 	res, err := s.db.ExecContext(ctx, `
 		DELETE FROM automation_activity
-		WHERE instance_id = ? AND created_at < datetime('now', '-' || ? || ' days')
-	`, instanceID, days)
+		WHERE instance_id = ? AND created_at < ?
+	`, instanceID, cutoff)
 	if err != nil {
 		return 0, err
 	}
@@ -183,10 +233,11 @@ func (s *AutomationActivityStore) Prune(ctx context.Context, retentionDays int) 
 		retentionDays = 7
 	}
 
+	cutoff := time.Now().UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour)
 	res, err := s.db.ExecContext(ctx, `
 		DELETE FROM automation_activity
-		WHERE created_at < datetime('now', '-' || ? || ' days')
-	`, retentionDays)
+		WHERE created_at < ?
+	`, cutoff)
 	if err != nil {
 		return 0, err
 	}

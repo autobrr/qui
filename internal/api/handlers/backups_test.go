@@ -72,7 +72,7 @@ func setupTestBackupHandler(t *testing.T) (*BackupsHandler, *database.DB, string
 		PollInterval: 0,
 		WorkerCount:  1,
 	}
-	service := backups.NewService(backupStore, nil, nil, cfg)
+	service := backups.NewService(backupStore, nil, nil, cfg, nil)
 
 	handler := NewBackupsHandler(service)
 

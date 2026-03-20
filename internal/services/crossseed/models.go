@@ -224,6 +224,11 @@ type TorrentSearchOptions struct {
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
 	// CacheMode forces cache behaviour when querying Torznab ("" = default, "bypass" = skip cache)
 	CacheMode string `json:"cache_mode,omitempty"`
+	// DisableTorznab skips all Torznab search stages while still allowing Gazelle matching.
+	DisableTorznab bool `json:"disable_torznab,omitempty"`
+	// SkipGazelle disables Gazelle pre-search in mixed search mode.
+	// Internal-only (not exposed in API payloads).
+	SkipGazelle bool `json:"-"`
 }
 
 // TorrentSearchResult represents an indexer search result that appears to match the seeded torrent.
@@ -282,6 +287,7 @@ type TorrentSearchAddResult struct {
 	Title           string                    `json:"title"`
 	Indexer         string                    `json:"indexer"`
 	TorrentName     string                    `json:"torrent_name,omitempty"`
+	InfoHash        string                    `json:"info_hash,omitempty"`
 	Success         bool                      `json:"success"`
 	InstanceResults []InstanceCrossSeedResult `json:"instance_results,omitempty"`
 	Error           string                    `json:"error,omitempty"`
@@ -378,6 +384,9 @@ type WebhookCheckRequest struct {
 	InstanceIDs []int `json:"instanceIds,omitempty"`
 	// Size is the total torrent size in bytes (optional - enables size validation if provided)
 	Size uint64 `json:"size,omitempty"`
+	// Indexer is autobrr's stable indexer identifier (for example "hdb").
+	// Used to apply tracker-specific webhook matching rules.
+	Indexer string `json:"indexer,omitempty"`
 	// FindIndividualEpisodes overrides the default behavior when matching season packs vs episodes.
 	// When omitted, qui uses the automation setting; when set, this explicitly forces the behavior.
 	FindIndividualEpisodes *bool `json:"findIndividualEpisodes,omitempty"`
@@ -412,8 +421,8 @@ type AutobrrApplyRequest struct {
 	SkipIfExists *bool    `json:"skipIfExists,omitempty"`
 	// FindIndividualEpisodes overrides the automation-level episode matching behavior when set.
 	FindIndividualEpisodes *bool `json:"findIndividualEpisodes,omitempty"`
-	// IndexerName is the display name of the indexer (e.g., "TorrentDB") used when
-	// "Use indexer name as category" mode is enabled. Without this field, webhook applies
-	// cannot derive the indexer from the torrent file itself.
-	IndexerName string `json:"indexerName,omitempty"`
+	// Indexer is autobrr's stable indexer identifier (for example "hdb").
+	// Used when "Use indexer name as category" mode is enabled because webhook applies
+	// cannot derive tracker identity from the torrent file itself.
+	Indexer string `json:"indexer,omitempty"`
 }

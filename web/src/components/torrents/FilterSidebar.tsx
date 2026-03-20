@@ -109,6 +109,7 @@ function FilterBadge({ count, onClick }: FilterBadgeProps) {
 
 interface FilterSidebarProps {
   instanceId: number
+  readOnly?: boolean
   selectedFilters: TorrentFilters
   onFilterChange: (filters: TorrentFilters) => void
   torrentCounts?: Record<string, number>
@@ -176,6 +177,7 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
 
 const FilterSidebarComponent = ({
   instanceId,
+  readOnly = false,
   selectedFilters,
   onFilterChange,
   torrentCounts,
@@ -189,9 +191,11 @@ const FilterSidebarComponent = ({
   isLoading = false,
   isMobile = false,
 }: FilterSidebarProps) => {
+  const isReadOnly = readOnly || instanceId <= 0
+  const isConcreteInstanceScope = instanceId > 0
   const { instances } = useInstances()
   const instanceMeta = instances?.find(instance => instance.id === instanceId)
-  const isInstanceActive = instanceMeta?.isActive ?? true
+  const isInstanceActive = !isConcreteInstanceScope || (instanceMeta?.isActive ?? true)
 
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
@@ -199,19 +203,21 @@ const FilterSidebarComponent = ({
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: capabilities } = useInstanceCapabilities(
     instanceId,
-    { enabled: isInstanceActive }
+    { enabled: isConcreteInstanceScope && isInstanceActive }
   )
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
-  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? false
-  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const supportsTrackerEditing = !isReadOnly && (capabilities?.supportsTrackerEditing ?? false)
+  const supportsSubcategories = isConcreteInstanceScope
+    ? (capabilities?.supportsSubcategories ?? false)
+    : Boolean(useSubcategories)
   const { preferences } = useInstancePreferences(
     instanceId,
-    { enabled: isInstanceActive }
+    { enabled: isConcreteInstanceScope && isInstanceActive }
   )
   const preferenceUseSubcategories = preferences?.use_subcategories
-  const subcategoriesEnabled = Boolean(
-    supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false)
-  )
+  const subcategoriesEnabled = isConcreteInstanceScope
+    ? Boolean(supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false))
+    : Boolean(useSubcategories)
 
   // View mode syncs with the torrent list (table on desktop, cards on mobile).
   // Desktop supports all modes including "dense" (compact table rows).
@@ -848,7 +854,7 @@ const FilterSidebarComponent = ({
   }, [incognitoMode, isLoading, torrentCounts])
 
   // Use virtual scrolling for large lists to handle performance efficiently
-  const VIRTUAL_THRESHOLD = 30 // Use virtual scrolling for lists > 30 items
+  const VIRTUAL_THRESHOLD = 250 // Use virtual scrolling for lists > 250 items
 
   // Refs for virtual scrolling
   const categoryListRef = useRef<HTMLDivElement>(null)
@@ -1639,6 +1645,8 @@ const FilterSidebarComponent = ({
   const accordionTriggerClass = viewMode === "dense" ? "px-2 py-1" : "px-3 py-2"
   const accordionContentClass = viewMode === "dense" ? "px-2 pb-1" : "px-3 pb-2"
   const filterItemClass = viewMode === "dense" ? "px-1.5 py-0.5" : "px-2 py-1.5"
+  const filterRowClass = "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2"
+  const filterRowWithIconClass = "grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2"
 
   const categoryVirtualizer = useVirtualizer({
     count: filteredCategories.length,
@@ -1726,12 +1734,12 @@ const FilterSidebarComponent = ({
   }
 
   const handleCreateSubcategory = useCallback((categoryName: string) => {
-    if (!subcategoriesEnabled) {
+    if (isReadOnly || !subcategoriesEnabled) {
       return
     }
     setParentCategoryForNew(categoryName)
     setShowCreateCategoryDialog(true)
-  }, [subcategoriesEnabled])
+  }, [isReadOnly, subcategoriesEnabled])
 
   const handleToggleCollapse = useCallback((categoryName: string) => {
     setCollapsedCategories((prev) => {
@@ -1746,22 +1754,31 @@ const FilterSidebarComponent = ({
   }, [setCollapsedCategories])
 
   const handleEditCategoryByName = useCallback((categoryName: string) => {
+    if (isReadOnly) {
+      return
+    }
     const category = categories[categoryName]
     if (!category) {
       return
     }
     setCategoryToEdit(category)
     setShowEditCategoryDialog(true)
-  }, [categories, setCategoryToEdit, setShowEditCategoryDialog])
+  }, [categories, isReadOnly, setCategoryToEdit, setShowEditCategoryDialog])
 
   const handleDeleteCategoryByName = useCallback((categoryName: string) => {
+    if (isReadOnly) {
+      return
+    }
     setCategoryToDelete(categoryName)
     setShowDeleteCategoryDialog(true)
-  }, [setCategoryToDelete, setShowDeleteCategoryDialog])
+  }, [isReadOnly, setCategoryToDelete, setShowDeleteCategoryDialog])
 
   const handleRemoveEmptyCategories = useCallback(() => {
+    if (isReadOnly) {
+      return
+    }
     setShowDeleteEmptyCategoriesDialog(true)
-  }, [setShowDeleteEmptyCategoriesDialog])
+  }, [isReadOnly, setShowDeleteEmptyCategoriesDialog])
 
   // Track previous subcategories state to detect transitions
   const prevAllowSubcategories = useRef<boolean | null>(null)
@@ -1809,7 +1826,7 @@ const FilterSidebarComponent = ({
     selectedFilters.excludeTrackers.length > 0 ||
     Boolean(selectedFilters.expr)
 
-  if (!isInstanceActive) {
+  if (isConcreteInstanceScope && !isInstanceActive) {
     return (
       <div className={cn("flex h-full items-center justify-center text-center text-sm text-muted-foreground px-4", className)}>
         This instance is disabled. Enable it from Settings → Instances to use filters.
@@ -1830,7 +1847,7 @@ const FilterSidebarComponent = ({
       <ScrollArea className="h-full flex-1 overscroll-contain select-none">
         <div className={viewMode === "dense" ? "px-3 py-2" : "p-4"}>
           <div className={cn("flex items-center justify-between", viewMode === "dense" ? "mb-2" : "mb-4")}>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <h3 className="font-semibold">Filters</h3>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1853,7 +1870,7 @@ const FilterSidebarComponent = ({
             {hasActiveFilters && (
               <button
                 onClick={clearFilters}
-                className="text-xs text-muted-foreground hover:text-foreground"
+                className="text-xs text-muted-foreground hover:text-foreground shrink-0"
               >
                 Clear all
               </button>
@@ -1959,7 +1976,8 @@ const FilterSidebarComponent = ({
                       <label
                         key={state.value}
                         className={cn(
-                          "flex items-center gap-2 rounded",
+                          filterRowClass,
+                          "rounded w-full min-w-0",
                           filterItemClass,
                           isCrossSeed && statusState === "neutral" ? "cursor-default" : "cursor-pointer",
                           statusState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": isCrossSeed && statusState === "neutral" ? "" : "hover:bg-muted"
@@ -1974,17 +1992,17 @@ const FilterSidebarComponent = ({
                         />
                         <span
                           className={cn(
-                            "text-sm flex-1 flex items-center gap-2",
+                            "text-sm flex-1 min-w-0 flex items-center gap-2",
                             statusState === "exclude" ? "text-destructive" : undefined,
                             isCrossSeed && statusState === "neutral" ? "text-muted-foreground" : undefined
                           )}
                         >
-                          <state.icon className="h-4 w-4" />
-                          <span>{state.label}</span>
+                          <state.icon className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{state.label}</span>
                         </span>
                         <span
                           className={cn(
-                            "text-xs",
+                            "text-xs tabular-nums shrink-0",
                             statusState === "exclude" ? "text-destructive" : "text-muted-foreground"
                           )}
                         >
@@ -2030,8 +2048,13 @@ const FilterSidebarComponent = ({
                   {/* Add new category button and show/hide empty toggle */}
                   <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", filterItemClass)}>
                     <button
-                      className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+                      className={cn("flex items-center gap-1.5 transition-colors", isReadOnly ? "cursor-not-allowed opacity-60" : "hover:text-foreground")}
+                      disabled={isReadOnly}
+                      title={isReadOnly ? "Unavailable in unified view" : undefined}
                       onClick={() => {
+                        if (isReadOnly) {
+                          return
+                        }
                         setParentCategoryForNew(undefined)
                         setShowCreateCategoryDialog(true)
                       }}
@@ -2078,7 +2101,8 @@ const FilterSidebarComponent = ({
                   {!allowSubcategories && (getRawCount("category:") > 0 || uncategorizedState !== "neutral") && (
                     <label
                       className={cn(
-                        "flex items-center gap-2 rounded cursor-pointer",
+                        filterRowClass,
+                        "rounded cursor-pointer w-full min-w-0",
                         filterItemClass,
                         uncategorizedState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                       )}
@@ -2092,7 +2116,7 @@ const FilterSidebarComponent = ({
                       />
                       <span
                         className={cn(
-                          "text-sm flex-1 italic",
+                          "text-sm flex-1 min-w-0 italic truncate",
                           uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                         )}
                       >
@@ -2102,7 +2126,7 @@ const FilterSidebarComponent = ({
                         <TooltipTrigger asChild>
                           <span
                             className={cn(
-                              "text-xs tabular-nums",
+                              "text-xs tabular-nums shrink-0",
                               uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                             )}
                           >
@@ -2151,6 +2175,7 @@ const FilterSidebarComponent = ({
                     <CategoryTree
                       categories={categoriesForTree}
                       counts={torrentCounts ?? {}}
+                      readOnly={isReadOnly}
                       useSubcategories={allowSubcategories}
                       collapsedCategories={collapsedCategories}
                       onToggleCollapse={handleToggleCollapse}
@@ -2201,7 +2226,8 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center gap-2 rounded cursor-pointer",
+                                      filterRowClass,
+                                      "rounded cursor-pointer w-full min-w-0",
                                       filterItemClass,
                                       categoryState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                                     )}
@@ -2220,7 +2246,7 @@ const FilterSidebarComponent = ({
                                     )}
                                     <TruncatedText
                                       className={cn(
-                                        "text-sm flex-1 w-8",
+                                        "text-sm flex-1 min-w-0",
                                         categoryState === "exclude" ? "text-destructive" : undefined
                                       )}
                                     >
@@ -2230,7 +2256,7 @@ const FilterSidebarComponent = ({
                                       <TooltipTrigger asChild>
                                         <span
                                           className={cn(
-                                            "text-xs tabular-nums",
+                                            "text-xs tabular-nums shrink-0",
                                             categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                           )}
                                         >
@@ -2248,7 +2274,10 @@ const FilterSidebarComponent = ({
                                 <ContextMenuContent>
                                   {allowSubcategories && (
                                     <>
-                                      <ContextMenuItem onClick={() => handleCreateSubcategory(name)}>
+                                      <ContextMenuItem
+                                        disabled={isReadOnly}
+                                        onClick={() => handleCreateSubcategory(name)}
+                                      >
                                         <FolderPlus className="mr-2 h-4 w-4" />
                                         Create Subcategory
                                       </ContextMenuItem>
@@ -2256,9 +2285,9 @@ const FilterSidebarComponent = ({
                                     </>
                                   )}
                                   <ContextMenuItem
-                                    disabled={isSynthetic}
+                                    disabled={isSynthetic || isReadOnly}
                                     onClick={() => {
-                                      if (isSynthetic) {
+                                      if (isSynthetic || isReadOnly) {
                                         return
                                       }
                                       setCategoryToEdit(category)
@@ -2270,9 +2299,9 @@ const FilterSidebarComponent = ({
                                   </ContextMenuItem>
                                   <ContextMenuSeparator />
                                   <ContextMenuItem
-                                    disabled={isSynthetic}
+                                    disabled={isSynthetic || isReadOnly}
                                     onClick={() => {
-                                      if (isSynthetic) {
+                                      if (isSynthetic || isReadOnly) {
                                         return
                                       }
                                       setCategoryToDelete(name)
@@ -2285,7 +2314,7 @@ const FilterSidebarComponent = ({
                                   </ContextMenuItem>
                                   <ContextMenuItem
                                     onClick={handleRemoveEmptyCategories}
-                                    disabled={!hasEmptyCategories}
+                                    disabled={isReadOnly || !hasEmptyCategories}
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
@@ -2309,7 +2338,8 @@ const FilterSidebarComponent = ({
                           <ContextMenuTrigger asChild>
                             <label
                               className={cn(
-                                "flex items-center gap-2 rounded cursor-pointer",
+                                filterRowClass,
+                                "rounded cursor-pointer w-full min-w-0",
                                 filterItemClass,
                                 categoryState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                               )}
@@ -2328,7 +2358,7 @@ const FilterSidebarComponent = ({
                               )}
                               <TruncatedText
                                 className={cn(
-                                  "text-sm flex-1 w-8",
+                                  "text-sm flex-1 min-w-0",
                                   categoryState === "exclude" ? "text-destructive" : undefined
                                 )}
                               >
@@ -2338,7 +2368,7 @@ const FilterSidebarComponent = ({
                                 <TooltipTrigger asChild>
                                   <span
                                     className={cn(
-                                      "text-xs tabular-nums",
+                                      "text-xs tabular-nums shrink-0",
                                       categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                     )}
                                   >
@@ -2356,7 +2386,10 @@ const FilterSidebarComponent = ({
                           <ContextMenuContent>
                             {allowSubcategories && (
                               <>
-                                <ContextMenuItem onClick={() => handleCreateSubcategory(name)}>
+                                <ContextMenuItem
+                                  disabled={isReadOnly}
+                                  onClick={() => handleCreateSubcategory(name)}
+                                >
                                   <FolderPlus className="mr-2 h-4 w-4" />
                                   Create Subcategory
                                 </ContextMenuItem>
@@ -2364,9 +2397,9 @@ const FilterSidebarComponent = ({
                               </>
                             )}
                             <ContextMenuItem
-                              disabled={isSynthetic}
+                              disabled={isSynthetic || isReadOnly}
                               onClick={() => {
-                                if (isSynthetic) {
+                                if (isSynthetic || isReadOnly) {
                                   return
                                 }
                                 setCategoryToEdit(category)
@@ -2378,9 +2411,9 @@ const FilterSidebarComponent = ({
                             </ContextMenuItem>
                             <ContextMenuSeparator />
                             <ContextMenuItem
-                              disabled={isSynthetic}
+                              disabled={isSynthetic || isReadOnly}
                               onClick={() => {
-                                if (isSynthetic) {
+                                if (isSynthetic || isReadOnly) {
                                   return
                                 }
                                 setCategoryToDelete(name)
@@ -2393,7 +2426,7 @@ const FilterSidebarComponent = ({
                             </ContextMenuItem>
                             <ContextMenuItem
                               onClick={handleRemoveEmptyCategories}
-                              disabled={!hasEmptyCategories}
+                              disabled={isReadOnly || !hasEmptyCategories}
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
@@ -2426,8 +2459,15 @@ const FilterSidebarComponent = ({
                   {/* Add new tag button and show/hide empty toggle */}
                   <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", filterItemClass)}>
                     <button
-                      className="flex items-center gap-1.5 hover:text-foreground transition-colors"
-                      onClick={() => setShowCreateTagDialog(true)}
+                      className={cn("flex items-center gap-1.5 transition-colors", isReadOnly ? "cursor-not-allowed opacity-60" : "hover:text-foreground")}
+                      disabled={isReadOnly}
+                      title={isReadOnly ? "Unavailable in unified view" : undefined}
+                      onClick={() => {
+                        if (isReadOnly) {
+                          return
+                        }
+                        setShowCreateTagDialog(true)
+                      }}
                     >
                       <Plus className="h-3 w-3" />
                       <span>Add tag</span>
@@ -2471,7 +2511,8 @@ const FilterSidebarComponent = ({
                   {(getRawCount("tag:") > 0 || untaggedState !== "neutral") && (
                     <label
                       className={cn(
-                        "flex items-center gap-2 rounded cursor-pointer",
+                        filterRowClass,
+                        "rounded cursor-pointer w-full min-w-0",
                         filterItemClass,
                         untaggedState === "exclude" ? "bg-destructive/10 text-destructive hover:bg-destructive/15" : "hover:bg-muted"
                       )}
@@ -2485,7 +2526,7 @@ const FilterSidebarComponent = ({
                       />
                       <span
                         className={cn(
-                          "text-sm flex-1 italic",
+                          "text-sm flex-1 min-w-0 italic truncate",
                           untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                         )}
                       >
@@ -2495,7 +2536,7 @@ const FilterSidebarComponent = ({
                         <TooltipTrigger asChild>
                           <span
                             className={cn(
-                              "text-xs tabular-nums",
+                              "text-xs tabular-nums shrink-0",
                               untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                             )}
                           >
@@ -2568,7 +2609,8 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center gap-2 rounded cursor-pointer",
+                                      filterRowClass,
+                                      "rounded cursor-pointer w-full min-w-0",
                                       filterItemClass,
                                       tagState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                                     )}
@@ -2581,7 +2623,7 @@ const FilterSidebarComponent = ({
                                     />
                                     <TruncatedText
                                       className={cn(
-                                        "text-sm flex-1 w-8",
+                                        "text-sm flex-1 min-w-0",
                                         tagState === "exclude" ? "text-destructive" : undefined
                                       )}
                                     >
@@ -2591,7 +2633,7 @@ const FilterSidebarComponent = ({
                                       <TooltipTrigger asChild>
                                         <span
                                           className={cn(
-                                            "text-xs tabular-nums",
+                                            "text-xs tabular-nums shrink-0",
                                             tagState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                           )}
                                         >
@@ -2609,9 +2651,13 @@ const FilterSidebarComponent = ({
                                 <ContextMenuContent>
                                   <ContextMenuItem
                                     onClick={() => {
+                                      if (isReadOnly) {
+                                        return
+                                      }
                                       setTagToDelete(tag)
                                       setShowDeleteTagDialog(true)
                                     }}
+                                    disabled={isReadOnly}
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
@@ -2619,7 +2665,13 @@ const FilterSidebarComponent = ({
                                   </ContextMenuItem>
                                   <ContextMenuSeparator />
                                   <ContextMenuItem
-                                    onClick={() => setShowDeleteUnusedTagsDialog(true)}
+                                    onClick={() => {
+                                      if (isReadOnly) {
+                                        return
+                                      }
+                                      setShowDeleteUnusedTagsDialog(true)
+                                    }}
+                                    disabled={isReadOnly}
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
@@ -2640,7 +2692,8 @@ const FilterSidebarComponent = ({
                           <ContextMenuTrigger asChild>
                             <label
                               className={cn(
-                                "flex items-center gap-2 rounded cursor-pointer",
+                                filterRowClass,
+                                "rounded cursor-pointer w-full min-w-0",
                                 filterItemClass,
                                 tagState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                               )}
@@ -2653,7 +2706,7 @@ const FilterSidebarComponent = ({
                               />
                               <TruncatedText
                                 className={cn(
-                                  "text-sm flex-1 w-8",
+                                  "text-sm flex-1 min-w-0",
                                   tagState === "exclude" ? "text-destructive" : undefined
                                 )}
                               >
@@ -2663,7 +2716,7 @@ const FilterSidebarComponent = ({
                                 <TooltipTrigger asChild>
                                   <span
                                     className={cn(
-                                      "text-xs tabular-nums",
+                                      "text-xs tabular-nums shrink-0",
                                       tagState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                     )}
                                   >
@@ -2681,9 +2734,13 @@ const FilterSidebarComponent = ({
                           <ContextMenuContent>
                             <ContextMenuItem
                               onClick={() => {
+                                if (isReadOnly) {
+                                  return
+                                }
                                 setTagToDelete(tag)
                                 setShowDeleteTagDialog(true)
                               }}
+                              disabled={isReadOnly}
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
@@ -2691,7 +2748,13 @@ const FilterSidebarComponent = ({
                             </ContextMenuItem>
                             <ContextMenuSeparator />
                             <ContextMenuItem
-                              onClick={() => setShowDeleteUnusedTagsDialog(true)}
+                              onClick={() => {
+                                if (isReadOnly) {
+                                  return
+                                }
+                                setShowDeleteUnusedTagsDialog(true)
+                              }}
+                              disabled={isReadOnly}
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
@@ -2735,7 +2798,8 @@ const FilterSidebarComponent = ({
                   {/* No tracker option */}
                   <label
                     className={cn(
-                      "flex items-center gap-2 rounded cursor-pointer",
+                      filterRowClass,
+                      "rounded cursor-pointer w-full min-w-0",
                       filterItemClass,
                       noTrackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                     )}
@@ -2749,7 +2813,7 @@ const FilterSidebarComponent = ({
                     />
                     <span
                       className={cn(
-                        "text-sm flex-1 italic",
+                        "text-sm flex-1 min-w-0 italic truncate",
                         noTrackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                       )}
                     >
@@ -2757,7 +2821,7 @@ const FilterSidebarComponent = ({
                     </span>
                     <span
                       className={cn(
-                        "text-xs",
+                        "text-xs tabular-nums shrink-0",
                         noTrackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                       )}
                     >
@@ -2808,7 +2872,8 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center gap-2 rounded cursor-pointer",
+                                      filterRowWithIconClass,
+                                      "rounded cursor-pointer w-full min-w-0",
                                       filterItemClass,
                                       trackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                                     )}
@@ -2822,7 +2887,7 @@ const FilterSidebarComponent = ({
                                     <TrackerIconImage tracker={trackerGroup.iconDomain} trackerIcons={trackerIcons} />
                                     <TruncatedText
                                       className={cn(
-                                        "text-sm flex-1 w-8",
+                                        "text-sm flex-1 min-w-0",
                                         trackerState === "exclude" ? "text-destructive" : undefined
                                       )}
                                       tooltipContent={trackerGroup.isCustomized ? `${trackerGroup.displayName} (${trackerGroup.domains.join(", ")})` : undefined}
@@ -2831,7 +2896,7 @@ const FilterSidebarComponent = ({
                                     </TruncatedText>
                                     <span
                                       className={cn(
-                                        "text-xs",
+                                        "text-xs tabular-nums shrink-0",
                                         trackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                       )}
                                     >
@@ -2895,7 +2960,8 @@ const FilterSidebarComponent = ({
                           <ContextMenuTrigger asChild>
                             <label
                               className={cn(
-                                "flex items-center gap-2 rounded cursor-pointer",
+                                filterRowWithIconClass,
+                                "rounded cursor-pointer w-full min-w-0",
                                 filterItemClass,
                                 trackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                               )}
@@ -2909,7 +2975,7 @@ const FilterSidebarComponent = ({
                               <TrackerIconImage tracker={trackerGroup.iconDomain} trackerIcons={trackerIcons} />
                               <TruncatedText
                                 className={cn(
-                                  "text-sm flex-1 w-8",
+                                  "text-sm flex-1 min-w-0",
                                   trackerState === "exclude" ? "text-destructive" : undefined
                                 )}
                                 tooltipContent={trackerGroup.isCustomized ? `${trackerGroup.displayName} (${trackerGroup.domains.join(", ")})` : undefined}
@@ -2918,7 +2984,7 @@ const FilterSidebarComponent = ({
                               </TruncatedText>
                               <span
                                 className={cn(
-                                  "text-xs",
+                                  "text-xs tabular-nums shrink-0",
                                   trackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                 )}
                               >
@@ -2981,20 +3047,20 @@ const FilterSidebarComponent = ({
 
       {/* Dialogs */}
       <CreateTagDialog
-        open={showCreateTagDialog}
+        open={!isReadOnly && showCreateTagDialog}
         onOpenChange={setShowCreateTagDialog}
         instanceId={instanceId}
       />
 
       <DeleteTagDialog
-        open={showDeleteTagDialog}
+        open={!isReadOnly && showDeleteTagDialog}
         onOpenChange={setShowDeleteTagDialog}
         instanceId={instanceId}
         tag={tagToDelete}
       />
 
       <CreateCategoryDialog
-        open={showCreateCategoryDialog}
+        open={!isReadOnly && showCreateCategoryDialog}
         onOpenChange={(open) => {
           setShowCreateCategoryDialog(open)
           if (!open) {
@@ -3007,7 +3073,7 @@ const FilterSidebarComponent = ({
 
       {categoryToEdit && (
         <EditCategoryDialog
-          open={showEditCategoryDialog}
+          open={!isReadOnly && showEditCategoryDialog}
           onOpenChange={setShowEditCategoryDialog}
           instanceId={instanceId}
           category={categoryToEdit}
@@ -3015,14 +3081,14 @@ const FilterSidebarComponent = ({
       )}
 
       <DeleteCategoryDialog
-        open={showDeleteCategoryDialog}
+        open={!isReadOnly && showDeleteCategoryDialog}
         onOpenChange={setShowDeleteCategoryDialog}
         instanceId={instanceId}
         categoryName={categoryToDelete}
       />
 
       <DeleteEmptyCategoriesDialog
-        open={showDeleteEmptyCategoriesDialog}
+        open={!isReadOnly && showDeleteEmptyCategoriesDialog}
         onOpenChange={setShowDeleteEmptyCategoriesDialog}
         instanceId={instanceId}
         categories={categories}
@@ -3030,7 +3096,7 @@ const FilterSidebarComponent = ({
       />
 
       <DeleteUnusedTagsDialog
-        open={showDeleteUnusedTagsDialog}
+        open={!isReadOnly && showDeleteUnusedTagsDialog}
         onOpenChange={setShowDeleteUnusedTagsDialog}
         instanceId={instanceId}
         tags={tags}
@@ -3038,7 +3104,7 @@ const FilterSidebarComponent = ({
       />
 
       <EditTrackerDialog
-        open={showEditTrackerDialog}
+        open={!isReadOnly && showEditTrackerDialog}
         onOpenChange={(open) => {
           setShowEditTrackerDialog(open)
           if (!open) {
@@ -3066,6 +3132,7 @@ export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps)
   if (prevProps.isStaleData !== nextProps.isStaleData) return false
   if (prevProps.isLoading !== nextProps.isLoading) return false
   if (prevProps.isMobile !== nextProps.isMobile) return false
+  if ((prevProps.readOnly ?? false) !== (nextProps.readOnly ?? false)) return false
   if (prevProps.onFilterChange !== nextProps.onFilterChange) return false
   if ((prevProps.useSubcategories ?? false) !== (nextProps.useSubcategories ?? false)) return false
 

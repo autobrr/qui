@@ -1,0 +1,526 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package handlers
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"sync"
+	"testing"
+
+	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/models"
+)
+
+type mockContentResolver struct {
+	files         *qbt.TorrentFiles
+	filesErr      error
+	properties    *qbt.TorrentProperties
+	propertiesErr error
+	torrents      []qbt.Torrent
+	torrentsErr   error
+	filesCalls    int
+	propsCalls    int
+	torrentsCalls int
+}
+
+func (m *mockContentResolver) GetTorrentFiles(_ context.Context, _ int, _ string) (*qbt.TorrentFiles, error) {
+	m.filesCalls++
+	return m.files, m.filesErr
+}
+
+func (m *mockContentResolver) GetTorrentProperties(_ context.Context, _ int, _ string) (*qbt.TorrentProperties, error) {
+	m.propsCalls++
+	return m.properties, m.propertiesErr
+}
+
+func (m *mockContentResolver) GetTorrents(_ context.Context, _ int, _ qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
+	m.torrentsCalls++
+	return m.torrents, m.torrentsErr
+}
+
+type sharedInstanceStoreFixture struct {
+	once             sync.Once
+	store            *models.InstanceStore
+	localInstanceID  int
+	remoteInstanceID int
+	err              error
+}
+
+var torrentsHandlerInstanceFixture sharedInstanceStoreFixture
+
+func createInstanceStoreWithInstance(t *testing.T, hasLocalAccess bool) (*models.InstanceStore, int) {
+	t.Helper()
+
+	torrentsHandlerInstanceFixture.once.Do(func() {
+		tempDir, err := os.MkdirTemp("", "qui-torrents-handler-tests-")
+		if err != nil {
+			torrentsHandlerInstanceFixture.err = err
+			return
+		}
+
+		dbPath := filepath.Join(tempDir, "test.db")
+		db, err := database.New(dbPath)
+		if err != nil {
+			torrentsHandlerInstanceFixture.err = err
+			return
+		}
+
+		instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+		if err != nil {
+			torrentsHandlerInstanceFixture.err = err
+			return
+		}
+
+		createInstance := func(name string, hasLocal bool) int {
+			instance, err := instanceStore.Create(
+				context.Background(),
+				name,
+				"http://localhost:8080",
+				"admin",
+				"admin",
+				nil,
+				nil,
+				false,
+				&hasLocal,
+			)
+			if err != nil {
+				torrentsHandlerInstanceFixture.err = err
+				return 0
+			}
+			return instance.ID
+		}
+
+		torrentsHandlerInstanceFixture.store = instanceStore
+		torrentsHandlerInstanceFixture.localInstanceID = createInstance("test-instance-local", true)
+		if torrentsHandlerInstanceFixture.err != nil {
+			return
+		}
+		torrentsHandlerInstanceFixture.remoteInstanceID = createInstance("test-instance-remote", false)
+	})
+
+	require.NoError(t, torrentsHandlerInstanceFixture.err)
+
+	if hasLocalAccess {
+		return torrentsHandlerInstanceFixture.store, torrentsHandlerInstanceFixture.localInstanceID
+	}
+	return torrentsHandlerInstanceFixture.store, torrentsHandlerInstanceFixture.remoteInstanceID
+}
+
+func newDownloadRequest(t *testing.T, instanceID int, hash, fileIndex string) *http.Request {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/instances/"+strconv.Itoa(instanceID)+"/torrents/"+hash+"/files/"+fileIndex+"/download", nil)
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("instanceID", strconv.Itoa(instanceID))
+	routeCtx.URLParams.Add("hash", hash)
+	routeCtx.URLParams.Add("fileIndex", fileIndex)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+}
+
+func TestDownloadTorrentContentFile_ReturnsServerErrorWithoutInstanceStore(t *testing.T) {
+	t.Parallel()
+
+	handler := NewTorrentsHandlerForTesting(nil, nil)
+	rec := httptest.NewRecorder()
+	req := newDownloadRequest(t, 1, "hash123", "0")
+
+	handler.DownloadTorrentContentFile(rec, req)
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	require.Contains(t, rec.Body.String(), "Instance store not configured")
+}
+
+func TestDownloadTorrentContentFile_RejectsInvalidFileIndex(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name      string
+		fileIndex string
+	}{
+		{name: "negative", fileIndex: "-1"},
+		{name: "not_integer", fileIndex: "abc"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
+			resolver := &mockContentResolver{}
+			handler := &TorrentsHandler{
+				instanceStore:   instanceStore,
+				contentResolver: resolver,
+			}
+
+			rec := httptest.NewRecorder()
+			req := newDownloadRequest(t, instanceID, "hash123", tc.fileIndex)
+
+			handler.DownloadTorrentContentFile(rec, req)
+
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.Contains(t, rec.Body.String(), "Invalid file index")
+			require.Equal(t, 0, resolver.filesCalls)
+		})
+	}
+}
+
+func TestDownloadTorrentContentFile_ReturnsNotFoundForMissingInstance(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, _ := createInstanceStoreWithInstance(t, true)
+	resolver := &mockContentResolver{}
+	handler := &TorrentsHandler{
+		instanceStore:   instanceStore,
+		contentResolver: resolver,
+	}
+
+	rec := httptest.NewRecorder()
+	req := newDownloadRequest(t, 999999, "hash123", "0")
+
+	handler.DownloadTorrentContentFile(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	require.Contains(t, rec.Body.String(), "Instance not found")
+	require.Equal(t, 0, resolver.filesCalls)
+}
+
+func TestDownloadTorrentContentFile_ReturnsForbiddenWithoutLocalAccess(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, instanceID := createInstanceStoreWithInstance(t, false)
+	resolver := &mockContentResolver{}
+	handler := &TorrentsHandler{
+		instanceStore:   instanceStore,
+		contentResolver: resolver,
+	}
+
+	rec := httptest.NewRecorder()
+	req := newDownloadRequest(t, instanceID, "hash123", "0")
+
+	handler.DownloadTorrentContentFile(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), "local filesystem access")
+	require.Equal(t, 0, resolver.filesCalls)
+}
+
+func TestDownloadTorrentContentFile_ReturnsNotFoundForUnknownFileIndex(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
+	files := qbt.TorrentFiles{
+		{Index: 1, Name: "known.mkv"},
+	}
+	resolver := &mockContentResolver{files: &files}
+	handler := &TorrentsHandler{
+		instanceStore:   instanceStore,
+		contentResolver: resolver,
+	}
+
+	rec := httptest.NewRecorder()
+	req := newDownloadRequest(t, instanceID, "hash123", "9")
+
+	handler.DownloadTorrentContentFile(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	require.Contains(t, rec.Body.String(), "File index not found")
+	require.Equal(t, 1, resolver.filesCalls)
+	require.Equal(t, 0, resolver.propsCalls)
+}
+
+func TestDownloadTorrentContentFile_RejectsTraversalPaths(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
+	files := qbt.TorrentFiles{
+		{Index: 5, Name: "../escape.txt"},
+	}
+	resolver := &mockContentResolver{
+		files:      &files,
+		properties: &qbt.TorrentProperties{SavePath: "/downloads"},
+	}
+	handler := &TorrentsHandler{
+		instanceStore:   instanceStore,
+		contentResolver: resolver,
+	}
+
+	rec := httptest.NewRecorder()
+	req := newDownloadRequest(t, instanceID, "hash123", "5")
+
+	handler.DownloadTorrentContentFile(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "Invalid file path")
+}
+
+func TestDownloadTorrentContentFile_ReturnsNotFoundWhenFileMissingOnDisk(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
+	files := qbt.TorrentFiles{
+		{Index: 2, Name: "movie.txt"},
+	}
+	resolver := &mockContentResolver{
+		files:      &files,
+		properties: &qbt.TorrentProperties{SavePath: t.TempDir()},
+	}
+	handler := &TorrentsHandler{
+		instanceStore:   instanceStore,
+		contentResolver: resolver,
+	}
+
+	rec := httptest.NewRecorder()
+	req := newDownloadRequest(t, instanceID, "hash123", "2")
+
+	handler.DownloadTorrentContentFile(rec, req)
+
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	require.Contains(t, rec.Body.String(), "File not found on disk")
+}
+
+func TestDownloadTorrentContentFile_ReturnsServerErrorWhenPropertiesNil(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
+	files := qbt.TorrentFiles{{Index: 4, Name: "movie.txt"}}
+	resolver := &mockContentResolver{
+		files:      &files,
+		properties: nil,
+	}
+	handler := &TorrentsHandler{
+		instanceStore:   instanceStore,
+		contentResolver: resolver,
+	}
+
+	rec := httptest.NewRecorder()
+	req := newDownloadRequest(t, instanceID, "hash123", "4")
+
+	handler.DownloadTorrentContentFile(rec, req)
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	require.Contains(t, rec.Body.String(), "Failed to get torrent properties")
+}
+
+func TestDownloadTorrentContentFile_SkipsDirectoryCandidateAndStreamsFile(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
+	baseDir := t.TempDir()
+	relativePath := "Movie.iso"
+	contentPath := filepath.Join(baseDir, "Movie.iso")
+	savePath := filepath.Join(baseDir, "save")
+
+	require.NoError(t, os.MkdirAll(contentPath, 0o755))
+	require.NoError(t, os.MkdirAll(savePath, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(savePath, relativePath), []byte("from save path"), 0o600))
+
+	files := qbt.TorrentFiles{{Index: 7, Name: relativePath}}
+	resolver := &mockContentResolver{
+		files:      &files,
+		properties: &qbt.TorrentProperties{SavePath: savePath},
+		torrents:   []qbt.Torrent{{ContentPath: contentPath}},
+	}
+	handler := &TorrentsHandler{
+		instanceStore:   instanceStore,
+		contentResolver: resolver,
+	}
+
+	rec := httptest.NewRecorder()
+	req := newDownloadRequest(t, instanceID, "hash123", "7")
+
+	handler.DownloadTorrentContentFile(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "from save path", rec.Body.String())
+}
+
+func TestDownloadTorrentContentFile_StreamsFile(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, instanceID := createInstanceStoreWithInstance(t, true)
+	baseDir := t.TempDir()
+	relativePath := "folder/file.txt"
+	fullPath := filepath.Join(baseDir, relativePath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(fullPath), 0o755))
+	require.NoError(t, os.WriteFile(fullPath, []byte("hello world"), 0o600))
+
+	files := qbt.TorrentFiles{{Index: 3, Name: relativePath}}
+	resolver := &mockContentResolver{
+		files:      &files,
+		properties: &qbt.TorrentProperties{SavePath: baseDir},
+	}
+	handler := &TorrentsHandler{
+		instanceStore:   instanceStore,
+		contentResolver: resolver,
+	}
+
+	rec := httptest.NewRecorder()
+	req := newDownloadRequest(t, instanceID, "hash123", "3")
+
+	handler.DownloadTorrentContentFile(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+	require.Contains(t, rec.Header().Get("Content-Disposition"), "attachment")
+	require.Contains(t, rec.Header().Get("Content-Disposition"), "file.txt")
+	require.Contains(t, rec.Header().Get("Content-Type"), "text/plain")
+	require.Equal(t, "hello world", rec.Body.String())
+}
+
+func TestFilePathCandidates(t *testing.T) {
+	testCases := []struct {
+		name            string
+		savePathRel     string
+		downloadPathRel string
+		contentPathRel  string
+		relativePath    string
+		singleFile      bool
+		check           func(t *testing.T, candidates []string, savePath, downloadPath, contentPath, relativePath string)
+	}{
+		{
+			name:           "content_path_single_file_fallback",
+			savePathRel:    filepath.Join("downloads", "tv"),
+			contentPathRel: filepath.Join("downloads", "tv", "Show.S01E01", "Show.S01E01.mkv"),
+			relativePath:   "Show.S01E01.v2.mkv",
+			singleFile:     true,
+			check: func(t *testing.T, candidates []string, savePath, _, contentPath, relativePath string) {
+				require.Contains(t, candidates, filepath.Clean(filepath.Join(savePath, relativePath)))
+				require.Contains(t, candidates, filepath.Clean(contentPath))
+				require.Contains(t, candidates, filepath.Clean(filepath.Join(filepath.Dir(contentPath), relativePath)))
+			},
+		},
+		{
+			name:           "content_path_multi_file_fallback",
+			savePathRel:    "downloads",
+			contentPathRel: filepath.Join("downloads", "Show.S01"),
+			relativePath:   "Show.S01/Show.S01E01.mkv",
+			singleFile:     false,
+			check: func(t *testing.T, candidates []string, savePath, _, contentPath, relativePath string) {
+				require.Contains(t, candidates, filepath.Clean(filepath.Join(savePath, relativePath)))
+				require.Contains(t, candidates, filepath.Clean(filepath.Join(contentPath, relativePath)))
+			},
+		},
+		{
+			name:           "deduplicates_equivalent_paths",
+			savePathRel:    "downloads",
+			contentPathRel: filepath.Join("downloads", "Movie.mkv"),
+			relativePath:   "Movie.mkv",
+			singleFile:     true,
+			check: func(t *testing.T, candidates []string, savePath, _, _, relativePath string) {
+				want := filepath.Clean(filepath.Join(savePath, relativePath))
+				count := 0
+				for _, candidate := range candidates {
+					if candidate == want {
+						count++
+					}
+				}
+				require.Equal(t, 1, count)
+			},
+		},
+		{
+			name:            "uses_download_path_after_content_and_save",
+			savePathRel:     "downloads",
+			downloadPathRel: filepath.Join("tmp", "incomplete"),
+			contentPathRel:  filepath.Join("downloads", "Show.S01"),
+			relativePath:    "Show.S01/Show.S01E01.mkv",
+			singleFile:      false,
+			check: func(t *testing.T, candidates []string, savePath, downloadPath, contentPath, relativePath string) {
+				require.GreaterOrEqual(t, len(candidates), 3)
+				contentCandidate := filepath.Clean(filepath.Join(contentPath, relativePath))
+				saveCandidate := filepath.Clean(filepath.Join(savePath, relativePath))
+				downloadCandidate := filepath.Clean(filepath.Join(downloadPath, relativePath))
+				contentIdx := slices.Index(candidates, contentCandidate)
+				saveIdx := slices.Index(candidates, saveCandidate)
+				downloadIdx := slices.Index(candidates, downloadCandidate)
+				require.NotEqual(t, -1, contentIdx)
+				require.NotEqual(t, -1, saveIdx)
+				require.NotEqual(t, -1, downloadIdx)
+				require.Less(t, contentIdx, saveIdx)
+				require.Less(t, saveIdx, downloadIdx)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			baseRoot := filepath.Join(t.TempDir(), "qui-file-path-candidates")
+
+			savePath := ""
+			if tc.savePathRel != "" {
+				savePath = filepath.Join(baseRoot, tc.savePathRel)
+				require.NoError(t, os.MkdirAll(savePath, 0o755))
+			}
+
+			downloadPath := ""
+			if tc.downloadPathRel != "" {
+				downloadPath = filepath.Join(baseRoot, tc.downloadPathRel)
+				require.NoError(t, os.MkdirAll(downloadPath, 0o755))
+			}
+
+			contentPath := ""
+			if tc.contentPathRel != "" {
+				contentPath = filepath.Join(baseRoot, tc.contentPathRel)
+				if tc.singleFile {
+					require.NoError(t, os.MkdirAll(filepath.Dir(contentPath), 0o755))
+					require.NoError(t, os.WriteFile(contentPath, []byte("content"), 0o600))
+				} else {
+					require.NoError(t, os.MkdirAll(contentPath, 0o755))
+				}
+			}
+
+			candidates := filePathCandidates(savePath, downloadPath, contentPath, tc.relativePath, tc.singleFile)
+			tc.check(t, candidates, savePath, downloadPath, contentPath, tc.relativePath)
+		})
+	}
+}
+
+func TestResolveTorrentFilePath_ResolvesSymlinkPathWithinBase(t *testing.T) {
+	baseDir := t.TempDir()
+	realDir := filepath.Join(baseDir, "real")
+	require.NoError(t, os.MkdirAll(realDir, 0o755))
+
+	target := filepath.Join(realDir, "file.mkv")
+	require.NoError(t, os.WriteFile(target, []byte("ok"), 0o600))
+
+	symlinkPath := filepath.Join(baseDir, "alias.mkv")
+	if err := os.Symlink(target, symlinkPath); err != nil {
+		t.Skipf("symlink not supported on this system: %v", err)
+	}
+
+	resolved, err := resolveTorrentFilePath(baseDir, "alias.mkv")
+	require.NoError(t, err)
+
+	expected, err := filepath.EvalSymlinks(target)
+	require.NoError(t, err)
+	require.Equal(t, expected, resolved)
+}
+
+func TestResolveTorrentFilePath_RejectsSymlinkEscapeOutsideBase(t *testing.T) {
+	baseDir := t.TempDir()
+	outsideDir := t.TempDir()
+
+	target := filepath.Join(outsideDir, "outside.mkv")
+	require.NoError(t, os.WriteFile(target, []byte("ok"), 0o600))
+
+	symlinkPath := filepath.Join(baseDir, "escape.mkv")
+	if err := os.Symlink(target, symlinkPath); err != nil {
+		t.Skipf("symlink not supported on this system: %v", err)
+	}
+
+	_, err := resolveTorrentFilePath(baseDir, "escape.mkv")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "path traversal")
+}

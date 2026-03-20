@@ -4,12 +4,18 @@
 package automations
 
 import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"strings"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -274,6 +280,435 @@ func TestDetectCrossSeeds(t *testing.T) {
 	}
 }
 
+func TestRuleUsesCondition_IncludesSortingConfig(t *testing.T) {
+	tests := []struct {
+		name  string
+		rule  *models.Automation
+		field ConditionField
+		want  bool
+	}{
+		{
+			name: "simple sort field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeSimple,
+					Field:         models.FieldFreeSpace,
+					Direction:     models.SortDirectionDESC,
+				},
+			},
+			field: FieldFreeSpace,
+			want:  true,
+		},
+		{
+			name: "score conditional field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeScore,
+					Direction:     models.SortDirectionDESC,
+					ScoreRules: []models.ScoreRule{
+						{
+							Type: models.ScoreRuleTypeConditional,
+							Conditional: &models.ConditionalScoreRule{
+								Condition: &models.RuleCondition{
+									Field:    models.FieldHasMissingFiles,
+									Operator: models.OperatorEqual,
+									Value:    "true",
+								},
+								Score: 10,
+							},
+						},
+					},
+				},
+			},
+			field: FieldHasMissingFiles,
+			want:  true,
+		},
+		{
+			name: "score field multiplier field",
+			rule: &models.Automation{
+				Enabled: true,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeScore,
+					Direction:     models.SortDirectionDESC,
+					ScoreRules: []models.ScoreRule{
+						{
+							Type: models.ScoreRuleTypeFieldMultiplier,
+							FieldMultiplier: &models.FieldMultiplierScoreRule{
+								Field:      models.FieldFreeSpace,
+								Multiplier: 1,
+							},
+						},
+					},
+				},
+			},
+			field: FieldFreeSpace,
+			want:  true,
+		},
+		{
+			name: "disabled preview rule still counts",
+			rule: &models.Automation{
+				Enabled: false,
+				SortingConfig: &models.SortingConfig{
+					SchemaVersion: "1",
+					Type:          models.SortingTypeSimple,
+					Field:         models.FieldFreeSpace,
+					Direction:     models.SortDirectionDESC,
+				},
+			},
+			field: FieldFreeSpace,
+			want:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, ruleUsesCondition(tt.rule, tt.field))
+		})
+	}
+}
+
+func TestActionConditionsUseField_IgnoresDisabledActions(t *testing.T) {
+	ac := &models.ActionConditions{
+		Pause: &models.PauseAction{
+			Enabled: false,
+			Condition: &models.RuleCondition{
+				Field:    models.FieldFreeSpace,
+				Operator: models.OperatorLessThan,
+				Value:    "100",
+			},
+		},
+		Tag: &models.TagAction{
+			Enabled: false,
+			Condition: &models.RuleCondition{
+				Field:    models.FieldHasMissingFiles,
+				Operator: models.OperatorEqual,
+				Value:    "true",
+			},
+		},
+	}
+
+	require.False(t, actionConditionsUseField(ac, FieldFreeSpace))
+	require.False(t, actionConditionsUseField(ac, FieldHasMissingFiles))
+}
+
+func TestComputePreviewScore_UsesFrozenScoreMap(t *testing.T) {
+	rule := &models.Automation{
+		SortingConfig: &models.SortingConfig{
+			SchemaVersion: "1",
+			Type:          models.SortingTypeScore,
+			Direction:     models.SortDirectionDESC,
+			ScoreRules: []models.ScoreRule{
+				{
+					Type: models.ScoreRuleTypeFieldMultiplier,
+					FieldMultiplier: &models.FieldMultiplierScoreRule{
+						Field:      models.FieldFreeSpace,
+						Multiplier: 1,
+					},
+				},
+			},
+		},
+	}
+	torrents := []qbt.Torrent{{Hash: "a"}}
+	evalCtx := &EvalContext{FreeSpace: 100}
+
+	scoreByHash := buildPreviewScoreMap(torrents, rule, evalCtx)
+	evalCtx.FreeSpace = 25
+
+	score := computePreviewScore(&torrents[0], rule, evalCtx, scoreByHash)
+	require.NotNil(t, score)
+	require.InDelta(t, 100, *score, 0.001)
+}
+
+func TestExecuteBatch_LoadsRuleScopedEvalContextBeforeSorting(t *testing.T) {
+	rule := &models.Automation{
+		ID:             7,
+		Name:           "grouped sort",
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			Grouping: &models.GroupingConfig{},
+		},
+		SortingConfig: &models.SortingConfig{
+			SchemaVersion: "1",
+			Type:          models.SortingTypeScore,
+			Direction:     models.SortDirectionDESC,
+			ScoreRules: []models.ScoreRule{
+				{
+					Type: models.ScoreRuleTypeConditional,
+					Conditional: &models.ConditionalScoreRule{
+						Condition: &models.RuleCondition{
+							Field:    models.FieldIsGrouped,
+							Operator: models.OperatorEqual,
+							Value:    "true",
+						},
+						Score: 100,
+					},
+				},
+			},
+		},
+	}
+
+	torrents := []qbt.Torrent{
+		{Hash: "a", ContentPath: "/data/solo", SavePath: "/data"},
+		{Hash: "z", ContentPath: "/data/group", SavePath: "/data"},
+		{Hash: "y", ContentPath: "/data/group", SavePath: "/data"},
+	}
+
+	executeBatch(
+		1,
+		[]*models.Automation{rule},
+		torrents,
+		&EvalContext{},
+		nil,
+		nil,
+		map[int]*ruleRunStats{},
+		map[string]*torrentDesiredState{},
+	)
+
+	require.ElementsMatch(t, []string{"y", "z"}, []string{torrents[0].Hash, torrents[1].Hash})
+	require.Equal(t, "a", torrents[2].Hash)
+}
+
+func TestRulesCanShareSortingBatch_RejectsRuleScopedSortingContext(t *testing.T) {
+	scoreSort := &models.SortingConfig{
+		SchemaVersion: "1",
+		Type:          models.SortingTypeScore,
+		Direction:     models.SortDirectionDESC,
+		ScoreRules: []models.ScoreRule{
+			{
+				Type: models.ScoreRuleTypeConditional,
+				Conditional: &models.ConditionalScoreRule{
+					Condition: &models.RuleCondition{
+						Field:    models.FieldIsGrouped,
+						Operator: models.OperatorEqual,
+						Value:    "true",
+					},
+					Score: 100,
+				},
+			},
+		},
+	}
+
+	freeSpaceSort := &models.SortingConfig{
+		SchemaVersion: "1",
+		Type:          models.SortingTypeSimple,
+		Field:         models.FieldFreeSpace,
+		Direction:     models.SortDirectionDESC,
+	}
+
+	require.False(t, rulesCanShareSortingBatch(
+		&models.Automation{SortingConfig: scoreSort},
+		&models.Automation{SortingConfig: scoreSort},
+	))
+	require.False(t, rulesCanShareSortingBatch(
+		&models.Automation{SortingConfig: freeSpaceSort},
+		&models.Automation{SortingConfig: freeSpaceSort},
+	))
+}
+
+func TestShouldBlockGroupedMoveTriggerFallback(t *testing.T) {
+	torrents := []qbt.Torrent{
+		{Hash: "a", ContentPath: "/data/shared", SavePath: "/data", Ratio: 3.0},
+		{Hash: "b", ContentPath: "/data/shared", SavePath: "/data", Ratio: 1.0},
+	}
+	torrentByHash := map[string]qbt.Torrent{
+		"a": torrents[0],
+		"b": torrents[1],
+	}
+	crossSeedIndex := buildCrossSeedIndex(torrents)
+
+	t.Run("disabled block flag returns false", func(t *testing.T) {
+		state := &torrentDesiredState{moveBlockIfCrossSeed: false}
+		require.False(t, shouldBlockGroupedMoveTriggerFallback("a", state, torrentByHash, crossSeedIndex, nil))
+	})
+
+	t.Run("nil condition does not block", func(t *testing.T) {
+		state := &torrentDesiredState{
+			moveBlockIfCrossSeed: true,
+			moveCondition:        nil,
+		}
+		require.False(t, shouldBlockGroupedMoveTriggerFallback("a", state, torrentByHash, crossSeedIndex, nil))
+	})
+
+	t.Run("condition mismatch in cross-seed blocks fallback", func(t *testing.T) {
+		state := &torrentDesiredState{
+			moveBlockIfCrossSeed: true,
+			moveCondition: &models.RuleCondition{
+				Field:    models.FieldRatio,
+				Operator: models.OperatorGreaterThan,
+				Value:    "2.0",
+			},
+		}
+		require.True(t, shouldBlockGroupedMoveTriggerFallback("a", state, torrentByHash, crossSeedIndex, nil))
+	})
+
+	t.Run("missing torrent is blocked conservatively", func(t *testing.T) {
+		state := &torrentDesiredState{moveBlockIfCrossSeed: true}
+		require.True(t, shouldBlockGroupedMoveTriggerFallback("missing", state, torrentByHash, crossSeedIndex, nil))
+	})
+}
+
+func TestPrepareRuleForDryRun(t *testing.T) {
+	interval := 900
+	rule := &models.Automation{
+		ID:         42,
+		InstanceID: 99,
+		Name:       "Test Rule",
+		Enabled:    false,
+		DryRun:     false,
+		Conditions: &models.ActionConditions{
+			Pause: &models.PauseAction{Enabled: true},
+		},
+		IntervalSeconds: &interval,
+	}
+
+	got := prepareRuleForDryRun(rule, 7)
+	require.NotNil(t, got)
+
+	assert.Equal(t, 42, got.ID)
+	assert.Equal(t, 7, got.InstanceID)
+	assert.Equal(t, "Test Rule", got.Name)
+	assert.True(t, got.Enabled)
+	assert.True(t, got.DryRun)
+	assert.Equal(t, rule.Conditions, got.Conditions)
+	assert.Equal(t, rule.IntervalSeconds, got.IntervalSeconds)
+
+	// Original rule should remain unchanged.
+	assert.Equal(t, 99, rule.InstanceID)
+	assert.False(t, rule.Enabled)
+	assert.False(t, rule.DryRun)
+}
+
+func TestPrepareRuleForDryRun_AssignsEphemeralRuleIDForUnsavedRules(t *testing.T) {
+	rule := &models.Automation{
+		ID:         0,
+		InstanceID: 10,
+		Name:       "Unsaved Rule",
+		Enabled:    false,
+		DryRun:     false,
+		Conditions: &models.ActionConditions{
+			Move: &models.MoveAction{Enabled: true, Path: "/data"},
+		},
+	}
+
+	got := prepareRuleForDryRun(rule, 7)
+	require.NotNil(t, got)
+	require.Positive(t, got.ID)
+	assert.Equal(t, dryRunEphemeralRuleIDBase+7, got.ID)
+	assert.Equal(t, 7, got.InstanceID)
+	assert.True(t, got.Enabled)
+	assert.True(t, got.DryRun)
+
+	// Original rule must remain untouched.
+	assert.Equal(t, 0, rule.ID)
+	assert.Equal(t, 10, rule.InstanceID)
+	assert.False(t, rule.Enabled)
+	assert.False(t, rule.DryRun)
+}
+
+func TestPrepareRuleForPreview_AssignsEphemeralRuleIDForUnsavedRules(t *testing.T) {
+	rule := &models.Automation{
+		ID:         0,
+		InstanceID: 10,
+		Name:       "Unsaved Rule",
+		Conditions: &models.ActionConditions{},
+	}
+
+	got := prepareRuleForPreview(rule, 11)
+	require.NotNil(t, got)
+	require.Positive(t, got.ID)
+	assert.Equal(t, dryRunEphemeralRuleIDBase+11, got.ID)
+
+	// Ensure no mutation on caller-owned rule.
+	assert.Equal(t, 0, rule.ID)
+}
+
+func TestApplyRuleDryRun_NoServiceOrRule(t *testing.T) {
+	ctx := context.Background()
+	activities, err := (*Service)(nil).ApplyRuleDryRun(ctx, 1, nil)
+	require.NoError(t, err)
+	require.Nil(t, activities)
+
+	svc := &Service{}
+	activities, err = svc.ApplyRuleDryRun(ctx, 1, nil)
+	require.NoError(t, err)
+	require.Nil(t, activities)
+}
+
+func TestCollectManagedTagsForClientReset(t *testing.T) {
+	rules := []*models.Automation{
+		{
+			Enabled: true,
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled: true,
+					Mode:    models.TagModeFull,
+					Tags:    []string{"managed", " stale "},
+				},
+			},
+		},
+		{
+			Enabled: true,
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled:          true,
+					DeleteFromClient: true,
+					UseTrackerAsTag:  true, // not supported for reset collection
+					Tags:             []string{"ignored"},
+				},
+			},
+		},
+		{
+			Enabled: true,
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled:          false,
+					DeleteFromClient: true,
+					Tags:             []string{"disabled"},
+				},
+			},
+		},
+		{
+			Enabled: true,
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled: true,
+					Mode:    models.TagModeAdd,
+					Tags:    []string{"add-only"},
+				},
+			},
+		},
+		{
+			Enabled: true,
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled:          true,
+					DeleteFromClient: true,
+					Tags:             []string{"managed"},
+				},
+			},
+		},
+		{
+			Enabled: false,
+			Conditions: &models.ActionConditions{
+				Tag: &models.TagAction{
+					Enabled:          true,
+					DeleteFromClient: true,
+					Tags:             []string{"disabled-rule"},
+				},
+			},
+		},
+	}
+
+	got := collectManagedTagsForClientReset(rules)
+	require.Equal(t, []string{"managed"}, got)
+}
+
 // -----------------------------------------------------------------------------
 // normalizePath tests
 // -----------------------------------------------------------------------------
@@ -322,6 +757,120 @@ func TestNormalizePath(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+func TestCrossSeedRuleRefsByKey(t *testing.T) {
+	t.Parallel()
+
+	torrentByHash := map[string]qbt.Torrent{
+		"h1": {Hash: "h1", ContentPath: "/downloads/group-a", SavePath: "/downloads"},
+		"h2": {Hash: "h2", ContentPath: "/downloads/group-b", SavePath: "/downloads"},
+		"h3": {Hash: "h3", ContentPath: "/downloads/group-a", SavePath: "/downloads"},
+	}
+	ruleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Rule A"},
+		"h2": {id: 20, name: "Rule B"},
+		"h3": {id: 30, name: "Rule A Override"},
+	}
+
+	got := crossSeedRuleRefsByKey([]string{"h1", "h3", "h2"}, torrentByHash, ruleByHash)
+	gotShuffled := crossSeedRuleRefsByKey([]string{"h3", "h2", "h1"}, torrentByHash, ruleByHash)
+	require.Len(t, got, 2)
+	require.Len(t, gotShuffled, 2)
+
+	keyA, ok := makeCrossSeedKey(torrentByHash["h1"])
+	require.True(t, ok)
+	keyB, ok := makeCrossSeedKey(torrentByHash["h2"])
+	require.True(t, ok)
+
+	// Selection must be stable regardless of incoming hash order.
+	require.Equal(t, ruleRef{id: 10, name: "Rule A"}, got[keyA])
+	require.Equal(t, ruleRef{id: 20, name: "Rule B"}, got[keyB])
+	require.Equal(t, got[keyA], gotShuffled[keyA])
+	require.Equal(t, got[keyB], gotShuffled[keyB])
+}
+
+func TestCategoryExpandableHashes(t *testing.T) {
+	t.Parallel()
+
+	hashes := []string{"h1", "h2", "h3"}
+	states := map[string]*torrentDesiredState{
+		"h1": {categoryIncludeCrossSeeds: false},
+		"h2": {categoryIncludeCrossSeeds: true},
+	}
+
+	got := categoryExpandableHashes(hashes, states)
+	require.Equal(t, []string{"h2"}, got)
+}
+
+func TestCategoryCrossSeedRuleAttributionUsesExpandableHashes(t *testing.T) {
+	t.Parallel()
+
+	torrentByHash := map[string]qbt.Torrent{
+		"h1": {Hash: "h1", ContentPath: "/downloads/group-a", SavePath: "/downloads"},
+		"h2": {Hash: "h2", ContentPath: "/downloads/group-a", SavePath: "/downloads"},
+	}
+	ruleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Non expanding rule"},
+		"h2": {id: 20, name: "Expanding rule"},
+	}
+	states := map[string]*torrentDesiredState{
+		"h1": {categoryIncludeCrossSeeds: false},
+		"h2": {categoryIncludeCrossSeeds: true},
+	}
+
+	expandableHashes := categoryExpandableHashes([]string{"h1", "h2"}, states)
+	got := crossSeedRuleRefsByKey(expandableHashes, torrentByHash, ruleByHash)
+
+	key, ok := makeCrossSeedKey(torrentByHash["h1"])
+	require.True(t, ok)
+	require.Len(t, got, 1)
+	require.Equal(t, ruleRef{id: 20, name: "Expanding rule"}, got[key])
+}
+
+func TestBuildRuleCountsFromHashMaps(t *testing.T) {
+	t.Parallel()
+
+	hashes := []string{"h1", "h2"}
+	ratioRuleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Rule A"},
+		"h2": {id: 10, name: "Rule A"},
+	}
+	seedingRuleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Rule A"},
+		"h2": {id: 20, name: "Rule B"},
+	}
+
+	counts := buildRuleCountsFromHashMaps(hashes, ratioRuleByHash, seedingRuleByHash)
+	require.Equal(t, 2, counts[ruleRef{id: 10, name: "Rule A"}])
+	require.Equal(t, 1, counts[ruleRef{id: 20, name: "Rule B"}])
+}
+
+func TestInheritRuleRefForCrossSeed(t *testing.T) {
+	t.Parallel()
+
+	key := crossSeedKey{
+		contentPath: "/downloads/group-a",
+		savePath:    "/downloads",
+	}
+	ruleByHash := map[string]ruleRef{
+		"h1": {id: 10, name: "Rule A"},
+	}
+	ruleByCrossSeedKey := map[crossSeedKey]ruleRef{
+		key: {id: 10, name: "Rule A"},
+	}
+
+	inheritRuleRefForCrossSeed("x1", key, ruleByHash, ruleByCrossSeedKey)
+	require.Equal(t, ruleRef{id: 10, name: "Rule A"}, ruleByHash["x1"])
+
+	// Existing explicit attribution should not be overwritten.
+	ruleByHash["x1"] = ruleRef{id: 99, name: "Explicit Rule"}
+	inheritRuleRefForCrossSeed("x1", key, ruleByHash, ruleByCrossSeedKey)
+	require.Equal(t, ruleRef{id: 99, name: "Explicit Rule"}, ruleByHash["x1"])
+
+	counts := buildRuleCountsFromHashes([]string{"h1", "x1"}, ruleByHash)
+	require.Equal(t, 1, counts[ruleRef{id: 10, name: "Rule A"}])
+	require.Equal(t, 1, counts[ruleRef{id: 99, name: "Explicit Rule"}])
 }
 
 // -----------------------------------------------------------------------------
@@ -592,8 +1141,8 @@ func TestCategoryLastRuleWins(t *testing.T) {
 	}
 
 	// Process rules in order
-	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil)
-	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil)
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
 
 	// Last rule wins - category should be "completed"
 	require.NotNil(t, state.category)
@@ -637,8 +1186,8 @@ func TestCategoryLastRuleWinsEvenWhenMatchesCurrent(t *testing.T) {
 	}
 
 	// Process rules in order
-	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil)
-	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil)
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
 
 	// Last rule wins - category should be "movies"
 	// Even though it matches current, the processor should set it (service filters no-op)
@@ -680,7 +1229,7 @@ func TestCategoryWithCondition(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil)
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
 
 	// Condition matched, category should be set
 	require.NotNil(t, state.category)
@@ -721,7 +1270,7 @@ func TestCategoryConditionNotMet(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil)
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
 
 	// Condition not met, category should not be set
 	assert.Nil(t, state.category)
@@ -1199,3 +1748,579 @@ func TestFreeSpaceCondition_StopWhenSatisfied(t *testing.T) {
 	match3 := EvaluateConditionWithContext(condition, qbt.Torrent{}, evalCtx, 0)
 	assert.False(t, match3, "Should NOT match when effective free space exceeds target")
 }
+
+// -----------------------------------------------------------------------------
+// executeExternalProgramsFromAutomation tests
+// -----------------------------------------------------------------------------
+
+func TestExecuteExternalProgramsFromAutomation_EmptyExecutions(_ *testing.T) {
+	// Test that empty executions list returns early without any side effects
+	s := &Service{}
+
+	// Should not panic and return immediately
+	s.executeExternalProgramsFromAutomation(context.Background(), 1, []pendingProgramExec{})
+
+	// If we get here without panic, the test passes
+}
+
+func TestExecuteExternalProgramsFromAutomation_NilExternalProgramService(_ *testing.T) {
+	// Test that nil externalProgramService is handled gracefully
+	// and doesn't panic (activity logging requires a real store, tested separately)
+	s := &Service{
+		externalProgramService: nil,
+		activityStore:          nil, // No activity store to avoid nil pointer dereference
+	}
+
+	executions := []pendingProgramExec{
+		{
+			hash:      "abc123",
+			torrent:   qbt.Torrent{Hash: "abc123", Name: "Test Torrent"},
+			programID: 1,
+			ruleID:    1,
+			ruleName:  "Test Rule",
+		},
+	}
+
+	// Should not panic - the nil check handles this gracefully
+	s.executeExternalProgramsFromAutomation(context.Background(), 1, executions)
+}
+
+func TestExecuteExternalProgramsFromAutomation_NilServiceWithActivityStore(t *testing.T) {
+	// Test that nil externalProgramService logs activities when activityStore is available
+	// Uses a mock querier to capture activity writes
+
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	s := &Service{
+		externalProgramService: nil,
+		activityStore:          activityStore,
+	}
+
+	executions := []pendingProgramExec{
+		{
+			hash:      "abc123",
+			torrent:   qbt.Torrent{Hash: "abc123", Name: "Test Torrent 1"},
+			programID: 1,
+			ruleID:    1,
+			ruleName:  "Test Rule",
+		},
+		{
+			hash:      "def456",
+			torrent:   qbt.Torrent{Hash: "def456", Name: "Test Torrent 2"},
+			programID: 2,
+			ruleID:    2,
+			ruleName:  "Another Rule",
+		},
+	}
+
+	// Should not panic and should log activities
+	s.executeExternalProgramsFromAutomation(context.Background(), 1, executions)
+
+	// Verify activities were logged
+	require.Len(t, mockDB.activities, 2, "Expected 2 activity entries for 2 executions")
+
+	// Verify first activity
+	assert.Equal(t, "abc123", mockDB.activities[0].Hash)
+	assert.Equal(t, "Test Torrent 1", mockDB.activities[0].TorrentName)
+	assert.Equal(t, "external_program", mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityOutcomeFailed, mockDB.activities[0].Outcome)
+	assert.Contains(t, mockDB.activities[0].Reason, "not configured")
+
+	// Verify second activity
+	assert.Equal(t, "def456", mockDB.activities[1].Hash)
+	assert.Equal(t, "Test Torrent 2", mockDB.activities[1].TorrentName)
+}
+
+func TestRecordDryRunActivities_Deletes(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	pending := map[string]pendingDeletion{
+		"abc123": {
+			hash:   "abc123",
+			action: models.ActivityActionDeletedCondition,
+		},
+	}
+
+	torrent := qbt.Torrent{
+		Hash:    "abc123",
+		Name:    "Test Torrent",
+		Tracker: "https://tracker.example.com/announce",
+	}
+
+	_ = s.recordDryRunActivities(
+		context.Background(),
+		1,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		pending,
+		nil,
+		map[string]qbt.Torrent{"abc123": torrent},
+		[]qbt.Torrent{torrent},
+		map[string]*torrentDesiredState{},
+		nil,
+		nil,
+		true,
+	)
+
+	require.Len(t, mockDB.activities, 1)
+	assert.Empty(t, mockDB.activities[0].Hash)
+	assert.Equal(t, models.ActivityActionDeletedCondition, mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
+}
+
+func TestRecordDryRunActivities_Resumes(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	torrent := qbt.Torrent{
+		Hash:    "abc123",
+		Name:    "Test Torrent",
+		Tracker: "https://tracker.example.com/announce",
+	}
+
+	_ = s.recordDryRunActivities(
+		context.Background(),
+		1,
+		nil,
+		nil,
+		nil,
+		nil,
+		[]string{"abc123", "abc123"},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		map[string]qbt.Torrent{"abc123": torrent},
+		[]qbt.Torrent{torrent},
+		map[string]*torrentDesiredState{},
+		nil,
+		nil,
+		true,
+	)
+
+	require.Len(t, mockDB.activities, 1)
+	assert.Empty(t, mockDB.activities[0].Hash)
+	assert.Equal(t, models.ActivityActionResumed, mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
+}
+
+func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireConditionForAllMembers(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		syncManager:   sm,
+	}
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "h1",
+			Name:        "Tagged",
+			Category:    "old",
+			SavePath:    "/data",
+			ContentPath: "/data/show",
+			Tags:        "abcd",
+			Tracker:     "https://tracker.example.com/announce",
+		},
+		{
+			Hash:        "h2",
+			Name:        "Untagged",
+			Category:    "old",
+			SavePath:    "/data",
+			ContentPath: "/data/show",
+			Tags:        "",
+			Tracker:     "https://tracker.example.com/announce",
+		},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Category: &models.CategoryAction{
+				Enabled:           true,
+				Category:          "new-category",
+				IncludeCrossSeeds: true,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldTags,
+					Operator: models.OperatorContains,
+					Value:    "abcd",
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+	require.Contains(t, states, "h1")
+	require.NotContains(t, states, "h2")
+
+	categoryBatches := map[string][]string{
+		"new-category": {"h1"},
+	}
+	torrentByHash := map[string]qbt.Torrent{
+		"h1": torrents[0],
+		"h2": torrents[1],
+	}
+
+	_ = s.recordDryRunActivities(
+		context.Background(),
+		1,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		categoryBatches,
+		nil,
+		nil,
+		nil,
+		torrentByHash,
+		torrents,
+		states,
+		map[int]*models.Automation{1: rule},
+		nil,
+		true,
+	)
+
+	require.Len(t, mockDB.activities, 1)
+	assert.Equal(t, models.ActivityActionCategoryChanged, mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
+
+	var details struct {
+		Categories map[string]int `json:"categories"`
+	}
+	require.NoError(t, json.Unmarshal(mockDB.activities[0].Details, &details))
+	assert.Equal(t, 2, details.Categories["new-category"])
+}
+
+func TestRecordDryRunActivities_NoMatches_LogsSummary(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	activities := s.recordDryRunActivities(
+		context.Background(),
+		1,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		true,
+	)
+
+	require.Len(t, activities, 1)
+	require.Len(t, mockDB.activities, 1)
+	assert.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
+	assert.Equal(t, models.ActivityOutcomeDryRun, mockDB.activities[0].Outcome)
+}
+
+func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	targetCategory := "movies"
+	torrent := qbt.Torrent{
+		Hash:     "abc123",
+		Name:     "Test Torrent",
+		Category: "tv",
+		Tracker:  "https://tracker.example.com/announce",
+	}
+
+	states := map[string]*torrentDesiredState{
+		"abc123": {
+			category:        &targetCategory,
+			categoryGroupID: "unknown-group-id",
+			categoryRuleID:  42,
+		},
+	}
+	ruleByID := map[int]*models.Automation{
+		42: {
+			ID:         42,
+			Name:       "Category Rule",
+			Enabled:    true,
+			Conditions: &models.ActionConditions{},
+		},
+	}
+
+	require.NotPanics(t, func() {
+		_ = s.recordDryRunActivities(
+			context.Background(),
+			1,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			map[string][]string{"movies": {"abc123"}},
+			nil,
+			nil,
+			nil,
+			map[string]qbt.Torrent{"abc123": torrent},
+			[]qbt.Torrent{torrent},
+			states,
+			ruleByID,
+			nil,
+			true,
+		)
+	})
+
+	require.Len(t, mockDB.activities, 1)
+	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
+}
+
+func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "a",
+			Name:        "Group Member A",
+			ContentPath: "/data/shared/release",
+			SavePath:    "/downloads",
+			NumSeeds:    4,
+			Tracker:     "https://tracker.example.com/announce",
+		},
+		{
+			Hash:        "b",
+			Name:        "Group Member B",
+			ContentPath: "/data/shared/release",
+			SavePath:    "/downloads",
+			NumSeeds:    2,
+			Tracker:     "https://tracker.example.com/announce",
+		},
+		{
+			Hash:        "c",
+			Name:        "Group Member C",
+			ContentPath: "/data/shared/release",
+			SavePath:    "/downloads",
+			NumSeeds:    1,
+			Tracker:     "https://tracker.example.com/announce",
+		},
+	}
+
+	torrentByHash := map[string]qbt.Torrent{
+		"a": torrents[0],
+		"b": torrents[1],
+		"c": torrents[2],
+	}
+
+	states := map[string]*torrentDesiredState{
+		"a": {
+			shouldMove:  true,
+			movePath:    "/data/moved",
+			moveGroupID: GroupCrossSeedContentPath,
+			moveRuleID:  77,
+		},
+	}
+
+	ruleByID := map[int]*models.Automation{
+		77: {
+			ID:   77,
+			Name: "Strict grouped move",
+			Conditions: &models.ActionConditions{
+				Move: &models.MoveAction{
+					Enabled: true,
+					Condition: &models.RuleCondition{
+						Field:    models.FieldNumSeeds,
+						Operator: models.OperatorGreaterThan,
+						Value:    "3",
+					},
+				},
+			},
+		},
+	}
+
+	_ = s.recordDryRunActivities(
+		context.Background(),
+		1,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		map[string][]string{"/data/moved": {"a"}},
+		nil,
+		nil,
+		torrentByHash,
+		torrents,
+		states,
+		ruleByID,
+		nil,
+		true,
+	)
+
+	require.Len(t, mockDB.activities, 1)
+	require.Equal(t, models.ActivityActionDryRunNoMatch, mockDB.activities[0].Action)
+}
+
+func TestRecordDryRunActivities_NoMatches_DoesNotLogSummaryWhenDisabled(t *testing.T) {
+	mockDB := &mockQuerier{
+		activities: make([]*models.AutomationActivity, 0),
+	}
+	activityStore := models.NewAutomationActivityStore(mockDB)
+
+	sm := qbittorrent.NewSyncManager(nil, nil)
+	s := &Service{
+		activityStore: activityStore,
+		activityRuns:  newActivityRunStore(24*time.Hour, 10),
+		syncManager:   sm,
+	}
+
+	activities := s.recordDryRunActivities(
+		context.Background(),
+		1,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		false,
+	)
+
+	require.Empty(t, activities)
+	require.Empty(t, mockDB.activities)
+}
+
+// mockQuerier implements dbinterface.Querier for testing activity logging
+type mockQuerier struct {
+	activities []*models.AutomationActivity
+}
+
+func (m *mockQuerier) QueryRowContext(_ context.Context, _ string, _ ...any) *sql.Row {
+	return nil
+}
+
+func (m *mockQuerier) ExecContext(_ context.Context, query string, args ...any) (sql.Result, error) {
+	// Capture activity insertions
+	if len(args) >= 10 && strings.Contains(query, "automation_activity") {
+		activity := &models.AutomationActivity{
+			InstanceID:  args[0].(int),
+			Hash:        args[1].(string),
+			TorrentName: args[2].(string),
+			Action:      args[4].(string),
+			RuleName:    args[6].(string),
+			Outcome:     args[7].(string),
+			Reason:      args[8].(string),
+		}
+		if details, ok := args[9].(sql.NullString); ok && details.Valid {
+			activity.Details = json.RawMessage(details.String)
+		}
+		m.activities = append(m.activities, activity)
+	}
+	return mockResult{}, nil
+}
+
+func (m *mockQuerier) QueryContext(_ context.Context, _ string, _ ...any) (*sql.Rows, error) {
+	return nil, nil
+}
+
+func (m *mockQuerier) BeginTx(_ context.Context, _ *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	return nil, nil
+}
+
+// mockResult implements sql.Result for the mock
+type mockResult struct{}
+
+func (m mockResult) LastInsertId() (int64, error) { return 0, nil }
+func (m mockResult) RowsAffected() (int64, error) { return 1, nil }

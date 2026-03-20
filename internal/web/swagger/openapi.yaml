@@ -520,6 +520,147 @@ paths:
         '500':
           description: Internal server error (failed to get client for instance, failed to retrieve torrent info)
 
+  /api/notifications/events:
+    get:
+      tags:
+        - Notifications
+      summary: List notification events
+      description: Get supported notification event types
+      responses:
+        '200':
+          description: Notification event types
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationEventDefinition'
+
+  /api/notifications/targets:
+    get:
+      tags:
+        - Notifications
+      summary: List notification targets
+      description: Get configured notification targets
+      responses:
+        '200':
+          description: List of notification targets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationTarget'
+    post:
+      tags:
+        - Notifications
+      summary: Create notification target
+      description: Add a new notification target
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationTargetRequest'
+      responses:
+        '201':
+          description: Notification target created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationTarget'
+        '400':
+          description: Invalid request
+        '500':
+          description: Internal server error
+
+  /api/notifications/targets/{id}:
+    put:
+      tags:
+        - Notifications
+      summary: Update notification target
+      description: Update an existing notification target
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationTargetRequest'
+      responses:
+        '200':
+          description: Notification target updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationTarget'
+        '400':
+          description: Invalid request
+        '404':
+          description: Notification target not found
+        '500':
+          description: Internal server error
+    delete:
+      tags:
+        - Notifications
+      summary: Delete notification target
+      description: Delete a notification target
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Notification target deleted
+        '404':
+          description: Notification target not found
+        '500':
+          description: Internal server error
+
+  /api/notifications/targets/{id}/test:
+    post:
+      tags:
+        - Notifications
+      summary: Test notification target
+      description: Send a test notification to a target
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationTestRequest'
+      responses:
+        '200':
+          description: Test notification sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '400':
+          description: Invalid request
+        '404':
+          description: Notification target not found
+        '502':
+          description: Failed to send test notification
+        '500':
+          description: Internal server error
+
   /api/arr/instances:
     get:
       tags:
@@ -967,6 +1108,30 @@ paths:
         '503':
           description: Instance unavailable
 
+  /api/instances/{instanceID}/transfer-info:
+    get:
+      tags:
+        - Instances
+      summary: Get transfer info
+      description: Retrieve lightweight transfer statistics for a qBittorrent instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Transfer info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferInfo'
+        '400':
+          description: Invalid instance ID
+        '409':
+          description: Instance is disabled
+        '500':
+          description: Failed to get transfer info
+        '503':
+          description: Instance unavailable
+
   /api/instances/{instanceID}/getDirectoryContent:
     get:
       tags:
@@ -1227,7 +1392,7 @@ paths:
             schema:
               type: object
               properties:
-                torrentFile:
+                torrent:
                   type: string
                   format: binary
                 urls:
@@ -1240,10 +1405,46 @@ paths:
                   type: array
                   items:
                     type: string
-                startPaused:
+                paused:
                   type: boolean
-                savePath:
+                savepath:
                   type: string
+                indexer_id:
+                  type: integer
+                  description: Indexer ID for downloading torrent from an indexer
+                skip_checking:
+                  type: boolean
+                sequentialDownload:
+                  type: boolean
+                firstLastPiecePrio:
+                  type: boolean
+                upLimit:
+                  type: integer
+                  description: Upload speed limit in KB/s
+                dlLimit:
+                  type: integer
+                  description: Download speed limit in KB/s
+                ratioLimit:
+                  type: string
+                  description: Share ratio limit
+                seedingTimeLimit:
+                  type: string
+                  description: Seeding time limit in minutes
+                contentLayout:
+                  type: string
+                  description: Content layout (Original, Subfolder, NoSubfolder)
+                rename:
+                  type: string
+                  description: Rename torrent
+                useDownloadPath:
+                  type: boolean
+                  description: Use download path
+                downloadPath:
+                  type: string
+                  description: Download path
+                autoTMM:
+                  type: boolean
+                  description: Automatic torrent management
       responses:
         '201':
           description: Torrent added successfully
@@ -1417,6 +1618,105 @@ paths:
         '200':
           description: Action performed successfully
 
+  /api/instances/{instanceID}/torrents/field:
+    post:
+      tags:
+        - Torrents
+      summary: Get torrent field values
+      description: Returns field values for torrents matching the given filters. Used for select all copy operations and bulk tag baselines.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - field
+              properties:
+                field:
+                  type: string
+                  description: The torrent field to retrieve. When set to `tags`, the 200 response `values` array contains one raw comma-separated tag string per matching torrent, and empty strings represent untagged torrents.
+                  enum:
+                    - name
+                    - hash
+                    - full_path
+                    - tags
+                sort:
+                  type: string
+                  description: Sort field. Defaults to added_on.
+                order:
+                  type: string
+                  description: Sort order. Defaults to desc.
+                  enum:
+                    - asc
+                    - desc
+                hashes:
+                  type: array
+                  description: Explicit torrent hashes to query when not using filter scope.
+                  items:
+                    type: string
+                targets:
+                  type: array
+                  description: Explicit instance/hash targets to query when not using filter scope.
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                      hash:
+                        type: string
+                selectAll:
+                  type: boolean
+                  description: When true, query all torrents matching filters/search/exclusions.
+                search:
+                  type: string
+                  description: Optional search query to filter torrents.
+                filters:
+                  type: object
+                  description: Filter criteria for selecting torrents.
+                  properties:
+                    status:
+                      type: array
+                      items:
+                        type: string
+                    categories:
+                      type: array
+                      items:
+                        type: string
+                    tags:
+                      type: array
+                      items:
+                        type: string
+                    trackers:
+                      type: array
+                      items:
+                        type: string
+                excludeHashes:
+                  type: array
+                  items:
+                    type: string
+                  description: Hashes to exclude from the results.
+      responses:
+        '200':
+          description: Field values returned successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  values:
+                    type: array
+                    items:
+                      type: string
+                    description: |
+                      List of per-torrent field values for the matching torrents. When `field=tags`, each item is the raw
+                      comma-separated tag string returned for one matching torrent, and an empty string indicates
+                      an untagged torrent.
 
   /api/instances/{instanceID}/torrents/{hash}/export:
     get:
@@ -1674,6 +1974,173 @@ paths:
           description: Torrent metadata not yet available
         '500':
           description: Failed to update file priorities
+
+  /api/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/download:
+    get:
+      tags:
+        - Torrent Details
+      summary: Download a torrent content file
+      description: >
+        Streams a single file from the torrent's content on the local filesystem.
+        Requires the instance to have local filesystem access enabled.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+        - $ref: '#/components/parameters/fileIndex'
+      responses:
+        '200':
+          description: Binary file stream
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Invalid instance ID, hash, or file index
+        '403':
+          description: Instance does not have local filesystem access
+        '404':
+          description: Torrent, file index, or file on disk not found
+        '500':
+          description: Internal server error
+
+  /api/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/mediainfo:
+    get:
+      tags:
+        - Torrent Details
+      summary: Get MediaInfo for a torrent content file
+      description: >
+        Analyzes a single file from the torrent's content on the local filesystem and returns a human-readable
+        stream/field report plus the raw MediaInfo JSON output.
+        Requires the instance to have local filesystem access enabled.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+        - $ref: '#/components/parameters/fileIndex'
+      responses:
+        '200':
+          description: MediaInfo report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TorrentFileMediaInfoResponse'
+        '400':
+          description: Invalid instance ID, hash, or file index
+        '403':
+          description: Instance does not have local filesystem access
+        '404':
+          description: Torrent, file index, or file on disk not found
+        '500':
+          description: Internal server error
+
+  /api/instances/{instanceID}/mediainfo:
+    get:
+      tags:
+        - Torrent Details
+      summary: Get MediaInfo for an instance content path
+      description: >
+        Analyzes a file from an instance-relative content path and returns both text summary and parsed
+        MediaInfo JSON output.
+        Requires the instance to have local filesystem access enabled.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: contentPath
+          in: query
+          required: true
+          description: "Canonical instance-relative content path parameter (legacy alias: content_path)"
+          schema:
+            type: string
+        - name: content_path
+          in: query
+          deprecated: true
+          required: false
+          description: Legacy alias for contentPath (maps to the canonical contentPath parameter)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: MediaInfo summary and JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentPathMediaInfoResponse'
+        '400':
+          description: Invalid instance ID or content path
+        '403':
+          description: Instance does not have local filesystem access
+        '404':
+          description: File not found on disk
+        '500':
+          description: Internal server error
+
+  /proxy/{api-key}/api/v2/torrents/mediainfo:
+    get:
+      tags:
+        - Proxy
+      summary: Get MediaInfo via proxy API key
+      description: >
+        Returns MediaInfo summary text and JSON output for an instance-relative content path using
+        a client API key in the proxy path.
+      security: []
+      parameters:
+        - name: api-key
+          in: path
+          required: true
+          description: Client API key created in qui client API keys.
+          schema:
+            type: string
+        - name: contentPath
+          in: query
+          required: false
+          description: "Canonical instance-relative content path (legacy alias: content_path)"
+          schema:
+            type: string
+        - name: content_path
+          in: query
+          required: false
+          description: Legacy alias of contentPath
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                contentPath:
+                  type: string
+                  description: Canonical instance-relative content path
+                content_path:
+                  type: string
+                  description: Legacy alias for contentPath
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                contentPath:
+                  type: string
+                  description: Canonical instance-relative content path
+                content_path:
+                  type: string
+                  description: Legacy alias for contentPath
+      responses:
+        '200':
+          description: MediaInfo summary and JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentPathMediaInfoResponse'
+        '400':
+          description: Invalid content path
+        '401':
+          description: Missing or invalid client API key
+        '403':
+          description: Instance does not have local filesystem access
+        '404':
+          description: Instance or file not found
+        '500':
+          description: Internal server error
 
   /api/instances/{instanceID}/torrents/{hash}/rename:
     put:
@@ -2448,6 +2915,11 @@ paths:
                       type: string
                     status:
                       type: string
+                    provider:
+                      type: string
+                      enum:
+                        - polar
+                        - dodo
                     createdAt:
                       type: string
                       format: date-time
@@ -2843,6 +3315,113 @@ paths:
         '500':
           description: Failed to cancel scan
 
+  /api/dir-scan/webhook/scan:
+    post:
+      tags:
+        - Dir Scan
+      summary: Trigger a directory scan from an external webhook
+      description: |
+        Accepts a plain `path` payload or native Sonarr, Radarr, Lidarr, or Readarr webhook payloads.
+        qui accepts `eventType: test` payloads as a no-op health check. For real events,
+        it extracts the path, matches it against enabled scan directories using longest-prefix matching,
+        and starts a scan rooted at the provided path subtree.
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+        - ApiKeyQuery: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: Plain path payload or native *arr webhook payload.
+              oneOf:
+                - type: object
+                  required:
+                    - path
+                  properties:
+                    path:
+                      type: string
+                      description: Plain path to match against configured scan directories.
+                      example: "/data/media/movies/Movie Name (2024)"
+                - type: object
+                  required:
+                    - series
+                  properties:
+                    eventType:
+                      type: string
+                    series:
+                      type: object
+                      required:
+                        - path
+                      properties:
+                        path:
+                          type: string
+                - type: object
+                  required:
+                    - movie
+                  properties:
+                    eventType:
+                      type: string
+                    movie:
+                      type: object
+                      required:
+                        - folderPath
+                      properties:
+                        folderPath:
+                          type: string
+                - type: object
+                  required:
+                    - artist
+                  properties:
+                    eventType:
+                      type: string
+                    artist:
+                      type: object
+                      required:
+                        - path
+                      properties:
+                        path:
+                          type: string
+                - type: object
+                  required:
+                    - author
+                  properties:
+                    eventType:
+                      type: string
+                    author:
+                      type: object
+                      required:
+                        - path
+                      properties:
+                        path:
+                          type: string
+                - type: object
+                  required:
+                    - eventType
+                  properties:
+                    eventType:
+                      type: string
+                      enum:
+                        - test
+      responses:
+        '202':
+          description: Scan started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirScanTriggerResponse'
+        '204':
+          description: Test webhook accepted; no scan started
+        '400':
+          description: Invalid request body or no supported path found in payload
+        '404':
+          description: No enabled directory matched the provided path
+        '409':
+          description: A scan is already in progress for the matched directory
+        '500':
+          description: Failed to start scan
+
   /api/dir-scan/directories/{directoryID}/status:
     get:
       tags:
@@ -3056,6 +3635,81 @@ paths:
         '409':
           description: No automation run is currently active
 
+  /api/cross-seed/blocklist:
+    get:
+      tags:
+        - Cross-Seed
+      summary: List cross-seed blocklist entries
+      description: Returns the per-instance cross-seed blocklist entries.
+      parameters:
+        - name: instanceId
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+          description: Instance ID
+      responses:
+        '200':
+          description: Blocklist entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CrossSeedBlocklistEntry'
+        '400':
+          description: instanceId must be a positive integer
+        '500':
+          description: Failed to load blocklist
+    post:
+      tags:
+        - Cross-Seed
+      summary: Add cross-seed blocklist entry
+      description: Adds or updates a blocked infohash for a specific instance.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrossSeedBlocklistRequest'
+      responses:
+        '201':
+          description: Blocklist entry created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossSeedBlocklistEntry'
+        '400':
+          description: Invalid request body
+        '404':
+          description: Instance not found
+        '500':
+          description: Failed to add blocklist entry
+
+  /api/cross-seed/blocklist/{instanceID}/{infohash}:
+    delete:
+      tags:
+        - Cross-Seed
+      summary: Remove cross-seed blocklist entry
+      description: Removes a blocked infohash for a specific instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: infohash
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Infohash to remove
+      responses:
+        '204':
+          description: Blocklist entry removed
+        '400':
+          description: Invalid instanceID or infohash
+        '404':
+          description: Blocklist entry not found
+        '500':
+          description: Failed to delete blocklist entry
+
   /api/cross-seed/search/settings:
     get:
       tags:
@@ -3130,6 +3784,9 @@ paths:
                   items:
                     type: integer
                   description: Specific indexers to search
+                disableTorznab:
+                  type: boolean
+                  description: Disable Torznab searches (Gazelle-only for OPS/RED torrents; other torrents will be skipped)
                 cooldownMinutes:
                   type: integer
                   description: Cooldown period between searches for the same torrent
@@ -3326,6 +3983,10 @@ paths:
                   type: integer
                   format: uint64
                   description: Total torrent size in bytes (optional - enables size validation when provided)
+                indexer:
+                  type: string
+                  minLength: 1
+                  description: Optional autobrr indexer identifier (for example "hdb"). Required if you want qui's HDBits-specific missing collection fallback on webhook checks.
                 findIndividualEpisodes:
                   type: boolean
                   description: Optional override for matching season packs vs episodes. Defaults to the Cross-Seed automation setting when omitted.
@@ -3397,9 +4058,10 @@ paths:
                   type: boolean
                 findIndividualEpisodes:
                   type: boolean
-                indexerName:
+                indexer:
                   type: string
-                  description: Indexer display name (e.g., "TorrentDB"). Only used when "Use indexer name as category" mode is enabled; ignored otherwise. Webhook applies cannot derive the indexer from the torrent file, so this field is required for that mode.
+                  minLength: 1
+                  description: autobrr indexer identifier (for example "hdb"). Only used when "Use indexer name as category" mode is enabled; when provided in that mode, qui uses this identifier as the category value. If omitted, qui falls back to the matched torrent category. Webhook applies cannot derive tracker identity from the torrent file.
       responses:
         '200':
           description: Torrent processed
@@ -4629,6 +5291,11 @@ components:
       in: header
       name: X-API-Key
       description: API key for authentication
+    ApiKeyQuery:
+      type: apiKey
+      in: query
+      name: apikey
+      description: API key via query parameter for external webhook integrations
     SessionAuth:
       type: apiKey
       in: cookie
@@ -4642,6 +5309,7 @@ components:
       required: true
       schema:
         type: integer
+        minimum: 1
       description: qBittorrent instance ID
     hash:
       name: hash
@@ -4650,6 +5318,14 @@ components:
       schema:
         type: string
       description: Torrent hash
+    fileIndex:
+      name: fileIndex
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+      description: Torrent file index
     directoryID:
       name: directoryID
       in: path
@@ -4798,6 +5474,70 @@ components:
           type: string
           format: date-time
 
+    NotificationEventDefinition:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Notification event identifier
+        label:
+          type: string
+          description: Human-readable event label
+        description:
+          type: string
+          description: Event description
+
+    NotificationTarget:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        enabled:
+          type: boolean
+        eventTypes:
+          type: array
+          items:
+            type: string
+          description: List of event types this target subscribes to (empty means all events)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    NotificationTargetRequest:
+      type: object
+      required:
+        - name
+        - url
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        enabled:
+          type: boolean
+        eventTypes:
+          type: array
+          items:
+            type: string
+          description: List of event types this target subscribes to (empty means all events)
+
+    NotificationTestRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        message:
+          type: string
+
     Instance:
       type: object
       properties:
@@ -4907,6 +5647,26 @@ components:
           type: string
           nullable: true
           description: Reported qBittorrent Web API version for the instance.
+
+    TransferInfo:
+      type: object
+      properties:
+        connection_status:
+          type: string
+        dht_nodes:
+          type: integer
+        dl_info_data:
+          type: integer
+        dl_info_speed:
+          type: integer
+        dl_rate_limit:
+          type: integer
+        up_info_data:
+          type: integer
+        up_info_speed:
+          type: integer
+        up_rate_limit:
+          type: integer
 
 
     Torrent:
@@ -5027,6 +5787,79 @@ components:
           type: boolean
         availability:
           type: number
+
+    TorrentFileMediaInfoField:
+      type: object
+      required:
+        - name
+        - value
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+
+    TorrentFileMediaInfoStream:
+      type: object
+      required:
+        - kind
+        - fields
+      properties:
+        kind:
+          type: string
+          description: Stream kind (General, Video, Audio, Text, etc.)
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/TorrentFileMediaInfoField'
+
+    TorrentFileMediaInfoResponse:
+      type: object
+      required:
+        - fileIndex
+        - relativePath
+        - streams
+        - rawJSON
+      properties:
+        fileIndex:
+          type: integer
+        relativePath:
+          type: string
+          description: Torrent-relative path from qBittorrent file list
+        streams:
+          type: array
+          items:
+            $ref: '#/components/schemas/TorrentFileMediaInfoStream'
+        rawJSON:
+          type: string
+          description: Raw MediaInfo JSON output
+
+    ContentPathMediaInfoRequest:
+      type: object
+      required:
+        - contentPath
+      properties:
+        contentPath:
+          type: string
+          description: Instance-relative file path to analyze
+
+    ContentPathMediaInfoResponse:
+      type: object
+      required:
+        - contentPath
+        - summaryTxt
+        - mediaInfoJson
+      properties:
+        contentPath:
+          type: string
+          description: Normalized instance-relative file path that was analyzed
+        summaryTxt:
+          type: string
+          description: Human-readable MediaInfo text summary
+        mediaInfoJson:
+          type: object
+          description: Parsed MediaInfo JSON output
+          additionalProperties: true
 
     DuplicateTorrentMatch:
       type: object
@@ -5313,6 +6146,32 @@ components:
           items:
             $ref: '#/components/schemas/CrossSeedRunResult'
 
+    CrossSeedBlocklistEntry:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+        infoHash:
+          type: string
+        note:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CrossSeedBlocklistRequest:
+      type: object
+      required:
+        - instanceId
+        - infoHash
+      properties:
+        instanceId:
+          type: integer
+        infoHash:
+          type: string
+        note:
+          type: string
+
     InstanceCrossSeedCompletionSettings:
       type: object
       description: Per-instance cross-seed completion settings
@@ -5343,6 +6202,15 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags
+        indexerIds:
+          type: array
+          items:
+            type: integer
+          description: Limit completion searches to these Torznab indexer IDs (empty means all)
+        bypassTorznabCache:
+          type: boolean
+          default: false
+          description: When true, completion searches for this instance bypass the Torznab search cache and always perform a fresh search. Default false.
 
     InstanceCrossSeedCompletionSettingsRequest:
       type: object
@@ -5371,12 +6239,30 @@ components:
           items:
             type: string
           description: Skip torrents with any of these tags
+        indexerIds:
+          type: array
+          items:
+            type: integer
+          description: Limit completion searches to these Torznab indexer IDs (empty means all)
+        bypassTorznabCache:
+          type: boolean
+          default: false
+          description: When true, completion searches for this instance bypass the Torznab search cache and always perform a fresh search. Default false.
 
     CrossSeedAutomationSettingsPatch:
       type: object
       properties:
         enabled:
           type: boolean
+        gazelleEnabled:
+          type: boolean
+          description: Enable Gazelle matching for OPS/RED torrents
+        redactedApiKey:
+          type: string
+          description: Redacted (RED) API key. Responses may return a redacted placeholder instead of the real value.
+        orpheusApiKey:
+          type: string
+          description: Orpheus (OPS) API key. Responses may return a redacted placeholder instead of the real value.
         runIntervalMinutes:
           type: integer
         startPaused:
@@ -5465,6 +6351,15 @@ components:
       properties:
         enabled:
           type: boolean
+        gazelleEnabled:
+          type: boolean
+          description: Enable Gazelle matching for OPS/RED torrents
+        redactedApiKey:
+          type: string
+          description: Redacted (RED) API key. Responses may return a redacted placeholder instead of the real value.
+        orpheusApiKey:
+          type: string
+          description: Orpheus (OPS) API key. Responses may return a redacted placeholder instead of the real value.
         runIntervalMinutes:
           type: integer
         startPaused:
@@ -6197,6 +7092,9 @@ components:
           type: string
         base_url:
           type: string
+        basic_username:
+          type: string
+          nullable: true
         enabled:
           type: boolean
         priority:
@@ -6238,6 +7136,13 @@ components:
         api_key:
           type: string
           writeOnly: true
+        basic_username:
+          type: string
+          description: Optional HTTP basic auth username for reverse proxies
+        basic_password:
+          type: string
+          writeOnly: true
+          description: Optional HTTP basic auth password for reverse proxies
         enabled:
           type: boolean
           default: true
@@ -6259,6 +7164,13 @@ components:
           type: string
           writeOnly: true
           description: Only update if provided
+        basic_username:
+          type: string
+          description: Optional HTTP basic auth username for reverse proxies (empty string clears)
+        basic_password:
+          type: string
+          writeOnly: true
+          description: Optional HTTP basic auth password for reverse proxies
         enabled:
           type: boolean
         priority:
@@ -6281,6 +7193,13 @@ components:
         api_key:
           type: string
           writeOnly: true
+        basic_username:
+          type: string
+          description: Optional HTTP basic auth username for reverse proxies
+        basic_password:
+          type: string
+          writeOnly: true
+          description: Optional HTTP basic auth password for reverse proxies
 
     ArrTestResponse:
       type: object
@@ -6424,6 +7343,9 @@ components:
         maxSearcheesPerRun:
           type: integer
           description: Maximum eligible searchees to process per scan run (0 = unlimited)
+        maxSearcheeAgeDays:
+          type: integer
+          description: Skip searchees older than this many days using file modification time (0 = disabled)
         allowPartial:
           type: boolean
         skipPieceBoundarySafetyCheck:
@@ -6449,6 +7371,7 @@ components:
         - sizeTolerancePercent
         - minPieceRatio
         - maxSearcheesPerRun
+        - maxSearcheeAgeDays
         - allowPartial
         - skipPieceBoundarySafetyCheck
         - startPaused
@@ -6471,6 +7394,8 @@ components:
           type: number
           format: double
         maxSearcheesPerRun:
+          type: integer
+        maxSearcheeAgeDays:
           type: integer
         allowPartial:
           type: boolean
@@ -6591,6 +7516,9 @@ components:
           $ref: '#/components/schemas/DirScanRunStatus'
         triggeredBy:
           type: string
+        scanRoot:
+          type: string
+          description: Effective scan root for the run. Empty when the run scanned the configured directory path.
         filesFound:
           type: integer
         filesSkipped:
@@ -6725,8 +7653,22 @@ components:
       properties:
         runId:
           type: integer
+          format: int64
+          description: Started scan run ID.
+        directoryId:
+          type: integer
+          description: Matched dir-scan directory ID.
+        directoryPath:
+          type: string
+          description: Matched dir-scan directory path.
+        scanRoot:
+          type: string
+          description: Effective scan root for this run.
       required:
         - runId
+        - directoryId
+        - directoryPath
+        - scanRoot
 
     DirScanIdleStatus:
       type: object
@@ -6883,6 +7825,8 @@ tags:
     description: User authentication and session management
   - name: API Keys
     description: API key management
+  - name: Notifications
+    description: Notification-related endpoints for targets and events
   - name: ARR Integrations
     description: Sonarr/Radarr instance management for external ID lookups
   - name: Client API Keys
@@ -6909,3 +7853,5 @@ tags:
     description: RSS feed and auto-download rule management
   - name: Theme Licenses
     description: Theme license management (optional feature)
+  - name: Proxy
+    description: qBittorrent-compatible proxy endpoints authenticated by client API key

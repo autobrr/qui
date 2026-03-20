@@ -219,88 +219,86 @@ export const ThemeToggle: React.FC = () => {
         {/* Theme Selection */}
         <div className="px-2 py-1.5 text-sm font-medium">Theme</div>
         {sortedThemes.map((theme) => {
-            const isPremium = isThemePremium(theme.id);
-            const isLocked = isPremium && !canSwitchPremium;
-            const colors = getPreviewColors(theme);
-            const showVariations = activeThemeId === theme.id;
-            const currentVariation = showVariations ? getThemeVariation(theme.id) : null;
+          const isPremium = isThemePremium(theme.id);
+          const isLocked = isPremium && !canSwitchPremium;
+          const colors = getPreviewColors(theme);
+          const showVariations = activeThemeId === theme.id;
+          const currentVariation = showVariations ? getThemeVariation(theme.id) : null;
 
-            return (
-              <DropdownMenuItem
-                key={theme.id}
-                onClick={() => handleThemeSelect(theme.id)}
-                onMouseEnter={() => {
-                  if (theme.variations && theme.variations.length > 0) {
-                    setActiveThemeId(theme.id);
-                  }
-                }}
-                onFocus={() => {
-                  if (theme.variations && theme.variations.length > 0) {
-                    setActiveThemeId(theme.id);
-                  }
-                }}
-                className={cn(
-                  "flex items-center gap-2",
-                  isLocked && "opacity-60"
-                )}
-                disabled={isLocked}
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 flex-1">
-                    <div
-                      className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 transition-all duration-300 ease-out"
-                      style={{
-                        backgroundColor: colors.primary,
-                        backgroundImage: "none",
-                        background: colors.primary + " !important",
-                      }}
-                    />
-                    <div className="flex items-center justify-between gap-1.5 flex-1">
-                      <span>{theme.name}</span>
-                      {isPremium && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium">
-                          Premium
-                        </span>
-                      )}
+          return (
+            <DropdownMenuItem
+              key={theme.id}
+              onClick={() => handleThemeSelect(theme.id)}
+              onMouseEnter={() => {
+                if (theme.variations && theme.variations.length > 0) {
+                  setActiveThemeId(theme.id);
+                }
+              }}
+              onFocus={() => {
+                if (theme.variations && theme.variations.length > 0) {
+                  setActiveThemeId(theme.id);
+                }
+              }}
+              className={cn(
+                "flex items-center gap-2",
+                isLocked && "opacity-60"
+              )}
+              disabled={isLocked}
+            >
+              <div className="flex-1">
+                <div className="flex items-center gap-2 flex-1">
+                  <div
+                    className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 transition-all duration-300 ease-out"
+                    style={{
+                      backgroundColor: colors.primary,
+                      backgroundImage: "none",
+                      background: colors.primary + " !important",
+                    }}
+                  />
+                  <div className="flex items-center justify-between gap-1.5 flex-1">
+                    <span>{theme.name}</span>
+                    {isPremium && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium">
+                        Premium
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Variation pills */}
+                {showVariations && colors.variations && colors.variations.length > 0 && (
+                  <div className="flex items-center gap-1.5 pl-1.5">
+                    <CornerDownRight className="h-3 w-3 text-muted-foreground" />
+                    <div className="flex gap-1 mt-1.5">
+                      {colors.variations.map((variation) => {
+                        const isSelected = currentVariation === variation.id;
+                        return (
+                          <div
+                            key={variation.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleVariationSelect(theme.id, variation.id);
+                            }}
+                            className={cn(
+                              "w-4 h-4 rounded-full transition-all cursor-pointer",
+                              isSelected? "ring-2 ring-black dark:ring-white": "ring-1 ring-black/10 dark:ring-white/10"
+                            )}
+                            style={{
+                              backgroundColor: variation.color,
+                              backgroundImage: "none",
+                              background: variation.color + " !important",
+                            }}
+                          />
+                        );
+                      })}
                     </div>
                   </div>
-
-                  {/* Variation pills */}
-                  {showVariations && colors.variations && colors.variations.length > 0 && (
-                    <div className="flex items-center gap-1.5 pl-1.5">
-                      <CornerDownRight className="h-3 w-3 text-muted-foreground" />
-                      <div className="flex gap-1 mt-1.5">
-                        {colors.variations.map((variation) => {
-                          const isSelected = currentVariation === variation.id;
-                          return (
-                            <div
-                              key={variation.id}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleVariationSelect(theme.id, variation.id);
-                              }}
-                              className={cn(
-                                "w-4 h-4 rounded-full transition-all cursor-pointer",
-                                isSelected
-                                  ? "ring-2 ring-black dark:ring-white"
-                                  : "ring-1 ring-black/10 dark:ring-white/10"
-                              )}
-                              style={{
-                                backgroundColor: variation.color,
-                                backgroundImage: "none",
-                                background: variation.color + " !important",
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                {currentTheme.id === theme.id && <Check className="h-4 w-4 self-center" />}
-              </DropdownMenuItem>
-            );
-          })}
+                )}
+              </div>
+              {currentTheme.id === theme.id && <Check className="h-4 w-4 self-center" />}
+            </DropdownMenuItem>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );

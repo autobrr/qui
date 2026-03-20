@@ -9,7 +9,7 @@ import { getLinuxFileName } from "@/lib/incognito"
 import { cn, formatBytes } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { ChevronRight, FilePen, FolderPen, Loader2 } from "lucide-react"
+import { ChevronRight, Download, FilePen, FolderPen, Info, Loader2 } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 interface TorrentFileTreeProps {
@@ -22,6 +22,8 @@ interface TorrentFileTreeProps {
   onToggleFolder: (folderPath: string, selected: boolean) => void
   onRenameFile: (filePath: string) => void
   onRenameFolder: (folderPath: string) => void
+  onDownloadFile?: (file: TorrentFile) => void
+  onShowMediaInfo?: (file: TorrentFile) => void
 }
 
 interface FileTreeNode {
@@ -179,6 +181,8 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   onToggleFolder,
   onRenameFile,
   onRenameFolder,
+  onDownloadFile,
+  onShowMediaInfo,
 }: TorrentFileTreeProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
@@ -351,6 +355,24 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                   </div>
                 </ContextMenuTrigger>
                 <ContextMenuContent>
+                  {onDownloadFile && file && (
+                    <ContextMenuItem
+                      onClick={() => onDownloadFile(file)}
+                      disabled={incognitoMode}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download
+                    </ContextMenuItem>
+                  )}
+                  {onShowMediaInfo && file && (
+                    <ContextMenuItem
+                      onClick={() => onShowMediaInfo(file)}
+                      disabled={incognitoMode}
+                    >
+                      <Info className="h-4 w-4 mr-2" />
+                      MediaInfo
+                    </ContextMenuItem>
+                  )}
                   <ContextMenuItem
                     onClick={() => onRenameFile(file.name)}
                     disabled={incognitoMode}

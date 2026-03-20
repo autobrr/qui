@@ -22,6 +22,8 @@ import (
 type Config struct {
 	Host       string
 	APIKey     string
+	BasicUser  string
+	BasicPass  string
 	Timeout    int
 	HTTPClient *http.Client
 	UserAgent  string
@@ -38,6 +40,8 @@ type TorznabError struct {
 type Client struct {
 	host       string
 	apiKey     string
+	basicUser  string
+	basicPass  string
 	httpClient *http.Client
 	userAgent  string
 	version    string
@@ -67,6 +71,8 @@ func NewClient(cfg Config) *Client {
 	return &Client{
 		host:       strings.TrimRight(cfg.Host, "/"),
 		apiKey:     cfg.APIKey,
+		basicUser:  strings.TrimSpace(cfg.BasicUser),
+		basicPass:  strings.TrimSpace(cfg.BasicPass),
 		httpClient: client,
 		userAgent:  ua,
 		version:    version,
@@ -144,6 +150,9 @@ func (c *Client) SearchIndexer(ctx context.Context, indexerID string, params map
 		return rss, fmt.Errorf("failed to build prowlarr request: %w", err)
 	}
 	req.URL.RawQuery = query.Encode()
+	if c.basicUser != "" {
+		req.SetBasicAuth(c.basicUser, c.basicPass)
+	}
 	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
@@ -201,6 +210,9 @@ func (c *Client) GetIndexers(ctx context.Context) ([]Indexer, error) {
 	if c.apiKey != "" {
 		req.Header.Set("X-Api-Key", c.apiKey)
 	}
+	if c.basicUser != "" {
+		req.SetBasicAuth(c.basicUser, c.basicPass)
+	}
 	req.Header.Set("User-Agent", c.userAgent)
 
 	resp, err := c.httpClient.Do(req)
@@ -248,6 +260,9 @@ func (c *Client) GetIndexer(ctx context.Context, indexerID int) (*IndexerDetail,
 	}
 	if c.apiKey != "" {
 		req.Header.Set("X-Api-Key", c.apiKey)
+	}
+	if c.basicUser != "" {
+		req.SetBasicAuth(c.basicUser, c.basicPass)
 	}
 	req.Header.Set("User-Agent", c.userAgent)
 

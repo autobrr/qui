@@ -17,6 +17,11 @@ func BoolToSQLite(v bool) int {
 	return 0
 }
 
+// SQLiteIntToBool converts SQLite/Postgres integer-backed boolean columns to bool.
+func SQLiteIntToBool(v int) bool {
+	return v != 0
+}
+
 // SanitizeStringSlice trims whitespace, removes empty strings, and deduplicates case-insensitively.
 // Original casing is preserved for the first occurrence of each unique value.
 func SanitizeStringSlice(values []string) []string {
@@ -30,7 +35,7 @@ func SanitizeStringSlice(values []string) []string {
 		if trimmed == "" {
 			continue
 		}
-		lower := strings.ToLower(trimmed)
+		lower := normalizeLowerTrim(trimmed)
 		if _, exists := seen[lower]; exists {
 			continue
 		}
@@ -49,12 +54,12 @@ func SanitizeCommaSeparatedStringSlice(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	var result []string
 	for _, value := range values {
-		for _, part := range strings.Split(value, ",") {
+		for part := range strings.SplitSeq(value, ",") {
 			trimmed := strings.TrimSpace(part)
 			if trimmed == "" {
 				continue
 			}
-			lower := strings.ToLower(trimmed)
+			lower := normalizeLowerTrim(trimmed)
 			if _, exists := seen[lower]; exists {
 				continue
 			}

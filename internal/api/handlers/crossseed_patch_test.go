@@ -9,16 +9,12 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-func ptrBool(v bool) *bool        { return &v }
-func ptrInt(v int) *int           { return &v }
-func ptrFloat(v float64) *float64 { return &v }
-
 func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	existing := models.CrossSeedAutomationSettings{
 		Enabled:                      false,
 		RunIntervalMinutes:           120,
 		StartPaused:                  true,
-		Category:                     stringPtr("tv"),
+		Category:                     new("tv"),
 		RSSAutomationTags:            []string{"old"},
 		SeededSearchTags:             []string{"old"},
 		CompletionSearchTags:         []string{"old"},
@@ -29,24 +25,30 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 		FindIndividualEpisodes:       false,
 		SizeMismatchTolerancePercent: 5.0,
 		UseCategoryFromIndexer:       false,
-		RunExternalProgramID:         ptrInt(42),
+		RunExternalProgramID:         new(42),
+		GazelleEnabled:               false,
+		RedactedAPIKey:               "",
+		OrpheusAPIKey:                "",
 	}
 
 	newCategory := " movies "
 	patch := automationSettingsPatchRequest{
-		Enabled:                      ptrBool(true),
-		RunIntervalMinutes:           ptrInt(45),
-		StartPaused:                  ptrBool(false),
+		Enabled:                      new(true),
+		RunIntervalMinutes:           new(45),
+		StartPaused:                  new(false),
 		Category:                     optionalString{Set: true, Value: &newCategory},
 		RSSAutomationTags:            &[]string{"new"},
 		SeededSearchTags:             &[]string{"new-seeded"},
 		TargetInstanceIDs:            &[]int{3, 4},
 		TargetIndexerIDs:             &[]int{7},
-		MaxResultsPerRun:             ptrInt(25),
-		FindIndividualEpisodes:       ptrBool(true),
-		SizeMismatchTolerancePercent: ptrFloat(12.5),
-		UseCategoryFromIndexer:       ptrBool(true),
+		MaxResultsPerRun:             new(25),
+		FindIndividualEpisodes:       new(true),
+		SizeMismatchTolerancePercent: new(12.5),
+		UseCategoryFromIndexer:       new(true),
 		RunExternalProgramID:         optionalInt{Set: true, Value: nil},
+		GazelleEnabled:               new(true),
+		RedactedAPIKey:               new("red-key"),
+		OrpheusAPIKey:                new("ops-key"),
 	}
 
 	applyAutomationSettingsPatch(&existing, patch)
@@ -97,13 +99,22 @@ func TestApplyAutomationSettingsPatch_MergesFields(t *testing.T) {
 	if existing.RunExternalProgramID != nil {
 		t.Fatalf("expected runExternalProgramID to be nil")
 	}
+	if !existing.GazelleEnabled {
+		t.Fatalf("expected gazelleEnabled to be true")
+	}
+	if existing.RedactedAPIKey != "red-key" {
+		t.Fatalf("expected redacted api key to be set")
+	}
+	if existing.OrpheusAPIKey != "ops-key" {
+		t.Fatalf("expected orpheus api key to be set")
+	}
 }
 
 func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 	existing := models.CrossSeedAutomationSettings{
 		Enabled:              true,
 		RunIntervalMinutes:   60,
-		Category:             stringPtr("tv"),
+		Category:             new("tv"),
 		RSSAutomationTags:    []string{"keep"},
 		SeededSearchTags:     []string{"keep-seeded"},
 		CompletionSearchTags: []string{"keep-completion"},
@@ -111,7 +122,7 @@ func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 	}
 
 	patch := automationSettingsPatchRequest{
-		SizeMismatchTolerancePercent: ptrFloat(20),
+		SizeMismatchTolerancePercent: new(float64(20)),
 		Category:                     optionalString{Set: true, Value: nil}, // explicit clear
 	}
 
@@ -137,8 +148,6 @@ func TestApplyAutomationSettingsPatch_PreservesUnspecifiedFields(t *testing.T) {
 	}
 }
 
-func stringPtr(value string) *string { return &value }
-
 func TestApplyAutomationSettingsPatch_CategoryAffix(t *testing.T) {
 	existing := models.CrossSeedAutomationSettings{
 		UseCrossCategoryAffix:  true,
@@ -152,7 +161,7 @@ func TestApplyAutomationSettingsPatch_CategoryAffix(t *testing.T) {
 	newAffixMode := models.CategoryAffixModePrefix
 	newAffix := "cross/"
 	patch := automationSettingsPatchRequest{
-		UseCrossCategoryAffix: ptrBool(true),
+		UseCrossCategoryAffix: new(true),
 		CategoryAffixMode:     &newAffixMode,
 		CategoryAffix:         &newAffix,
 	}
@@ -182,8 +191,8 @@ func TestApplyAutomationSettingsPatch_CustomCategory(t *testing.T) {
 
 	customCat := "cross-seed"
 	patch := automationSettingsPatchRequest{
-		UseCrossCategoryAffix: ptrBool(false),
-		UseCustomCategory:     ptrBool(true),
+		UseCrossCategoryAffix: new(false),
+		UseCustomCategory:     new(true),
 		CustomCategory:        &customCat,
 	}
 

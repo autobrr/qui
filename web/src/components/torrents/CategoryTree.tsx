@@ -36,6 +36,7 @@ export interface CategoryNode {
 interface CategoryTreeProps {
   categories: Record<string, Category>
   counts: Record<string, number>
+  readOnly?: boolean
   useSubcategories: boolean
   collapsedCategories: Set<string>
   onToggleCollapse: (category: string) => void
@@ -132,6 +133,7 @@ const CategoryTreeNode = memo(({
   getCategoryCount,
   getCategorySize,
   viewMode = "normal",
+  readOnly = false,
 }: {
   node: CategoryNode
   getCategoryState: (category: string) => "include" | "exclude" | "neutral"
@@ -151,6 +153,7 @@ const CategoryTreeNode = memo(({
   getCategoryCount: (category: string) => string
   getCategorySize?: (category: string) => string | null
   viewMode?: ViewMode
+  readOnly?: boolean
 }) => {
   const hasChildren = node.children.length > 0
   const isCollapsed = collapsedCategories.has(node.name)
@@ -160,6 +163,10 @@ const CategoryTreeNode = memo(({
   const isSynthetic = syntheticCategories?.has(node.name) ?? false
   const itemPadding = viewMode === "dense" ? "px-1 py-0.5" : "px-1.5 py-1.5"
   const itemGap = viewMode === "dense" ? "gap-1.5" : "gap-2"
+  const hasToggleSlot = useSubcategories && (hasChildren || node.level > 0)
+  const itemColumns = hasToggleSlot
+    ? "grid-cols-[auto_auto_minmax(0,1fr)_auto]"
+    : "grid-cols-[auto_minmax(0,1fr)_auto]"
 
   const handleToggleCollapse = useCallback((e: ReactMouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
@@ -177,54 +184,58 @@ const CategoryTreeNode = memo(({
   }, [onCategoryPointerDown, node.name])
 
   const handleCreateSubcategory = useCallback(() => {
-    if (!node.name) {
+    if (!node.name || readOnly) {
       return
     }
     onCreateSubcategory(node.name)
-  }, [node.name, onCreateSubcategory])
+  }, [node.name, onCreateSubcategory, readOnly])
 
   const handleEditCategory = useCallback(() => {
-    if (isSynthetic) {
+    if (isSynthetic || readOnly) {
       return
     }
     onEditCategory(node.name)
-  }, [isSynthetic, node.name, onEditCategory])
+  }, [isSynthetic, node.name, onEditCategory, readOnly])
 
   const handleDeleteCategory = useCallback(() => {
-    if (isSynthetic) {
+    if (isSynthetic || readOnly) {
       return
     }
     onDeleteCategory(node.name)
-  }, [isSynthetic, node.name, onDeleteCategory])
+  }, [isSynthetic, node.name, onDeleteCategory, readOnly])
 
   return (
     <>
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <li
-          className={cn("flex items-center hover:bg-muted rounded-md cursor-pointer select-none", itemGap, itemPadding)}
-          style={{ paddingLeft: `${indentLevel + (viewMode === "dense" ? 4 : 6)}px` }}
-          onPointerDown={handlePointerDown}
-          onPointerLeave={onCategoryPointerLeave}
-          role="presentation"
-        >
-            {useSubcategories && hasChildren && (
-              <button
-                onClick={handleToggleCollapse}
-                className="size-4 flex items-center justify-center"
-                type="button"
-                aria-label={isCollapsed ? "Expand category" : "Collapse category"}
-              >
-                {isCollapsed ? (
-                  <ChevronRight className="size-3" />
-                ) : (
-                  <ChevronDown className="size-3" />
-                )}
-              </button>
-            )}
-            {/* Spacer for subcategories without children to align with parent's checkbox */}
-            {useSubcategories && !hasChildren && node.level > 0 && (
-              <span className="size-4" />
+            className={cn("grid items-center hover:bg-muted rounded-md cursor-pointer select-none w-full min-w-0", itemColumns, itemGap, itemPadding)}
+            style={{ paddingLeft: `${indentLevel + (viewMode === "dense" ? 4 : 6)}px` }}
+            onPointerDown={handlePointerDown}
+            onPointerLeave={onCategoryPointerLeave}
+            role="presentation"
+          >
+            {hasToggleSlot && (
+              hasChildren ? (
+                <button
+                  onClick={handleToggleCollapse}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  className="size-4 flex items-center justify-center"
+                  type="button"
+                  aria-label={isCollapsed ? "Expand category" : "Collapse category"}
+                >
+                  {isCollapsed ? (
+                    <ChevronRight className="size-3" />
+                  ) : (
+                    <ChevronDown className="size-3" />
+                  )}
+                </button>
+              ) : (
+                <span
+                  className="size-4"
+                  onPointerDown={(event) => event.stopPropagation()}
+                />
+              )
             )}
 
             <Checkbox
@@ -234,7 +245,7 @@ const CategoryTreeNode = memo(({
             />
 
             <span
-              className={`flex-1 text-sm cursor-pointer ${categoryState === "exclude" ? "text-destructive" : ""}`}
+              className={`flex-1 min-w-0 truncate text-sm cursor-pointer ${categoryState === "exclude" ? "text-destructive" : ""}`}
               onClick={handleCheckboxChange}
             >
               {node.displayName}
@@ -242,7 +253,7 @@ const CategoryTreeNode = memo(({
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className={`text-xs tabular-nums ${categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"}`}>
+                <span className={`text-xs tabular-nums shrink-0 ${categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"}`}>
                   {getCategoryCount(node.name)}
                 </span>
               </TooltipTrigger>
@@ -258,26 +269,26 @@ const CategoryTreeNode = memo(({
         <ContextMenuContent>
           {useSubcategories && (
             <>
-              <ContextMenuItem onClick={handleCreateSubcategory} disabled={!node.name}>
+              <ContextMenuItem onClick={handleCreateSubcategory} disabled={!node.name || readOnly}>
                 <FolderPlus className="mr-2 size-4" />
                 Create subcategory
               </ContextMenuItem>
               <ContextMenuSeparator />
             </>
           )}
-          <ContextMenuItem onClick={handleEditCategory} disabled={isSynthetic}>
+          <ContextMenuItem onClick={handleEditCategory} disabled={isSynthetic || readOnly}>
             <Edit className="mr-2 size-4" />
             Edit category
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem onClick={handleDeleteCategory} disabled={isSynthetic} className="text-destructive">
+          <ContextMenuItem onClick={handleDeleteCategory} disabled={isSynthetic || readOnly} className="text-destructive">
             <Trash2 className="mr-2 size-4" />
             Delete category
           </ContextMenuItem>
           {onRemoveEmptyCategories && (
             <ContextMenuItem
               onClick={() => onRemoveEmptyCategories()}
-              disabled={!hasEmptyCategories}
+              disabled={readOnly || !hasEmptyCategories}
               className="text-destructive"
             >
               <Trash2 className="mr-2 size-4" />
@@ -310,6 +321,7 @@ const CategoryTreeNode = memo(({
               getCategoryCount={getCategoryCount}
               getCategorySize={getCategorySize}
               viewMode={viewMode}
+              readOnly={readOnly}
             />
           ))}
         </ul>
@@ -341,9 +353,11 @@ export const CategoryTree = memo(({
   getCategoryCount,
   getCategorySize,
   viewMode = "normal",
+  readOnly = false,
 }: CategoryTreeProps) => {
   const itemPadding = viewMode === "dense" ? "px-1 py-0.5" : "px-1.5 py-1.5"
   const itemGap = viewMode === "dense" ? "gap-1.5" : "gap-2"
+  const uncategorizedColumns = "grid-cols-[auto_minmax(0,1fr)_auto]"
   // Filter categories based on search term
   const filteredCategories = useMemo(() => {
     if (!searchTerm) return categories
@@ -378,7 +392,7 @@ export const CategoryTree = memo(({
       {/* All/Uncategorized special items */}
 
       <li
-        className={cn("flex items-center hover:bg-muted rounded-md cursor-pointer", itemGap, itemPadding)}
+        className={cn("grid items-center hover:bg-muted rounded-md cursor-pointer w-full min-w-0", uncategorizedColumns, itemGap, itemPadding)}
         onClick={() => onCategoryCheckboxChange("")}
         onPointerDown={(event) => onCategoryPointerDown?.(event, "")}
         onPointerLeave={onCategoryPointerLeave}
@@ -387,12 +401,12 @@ export const CategoryTree = memo(({
           checked={uncategorizedCheckboxState}
           className="size-4"
         />
-        <span className={cn("flex-1 text-sm italic", uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground")}>
+        <span className={cn("flex-1 min-w-0 truncate text-sm italic", uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground")}>
           Uncategorized
         </span>
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className={cn("text-xs tabular-nums", uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground")}>
+            <span className={cn("text-xs tabular-nums shrink-0", uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground")}>
               {uncategorizedCount}
             </span>
           </TooltipTrigger>
@@ -428,6 +442,7 @@ export const CategoryTree = memo(({
           getCategoryCount={getCategoryCount}
           getCategorySize={getCategorySize}
           viewMode={viewMode}
+          readOnly={readOnly}
         />
       ))}
     </div>

@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"strings"
 	"testing"
@@ -56,6 +57,10 @@ func (m *discPolicySyncManager) GetTorrentFilesBatch(_ context.Context, _ int, h
 		}
 	}
 	return result, nil
+}
+
+func (*discPolicySyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	return nil, "", "", errors.New("not implemented")
 }
 
 func (*discPolicySyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {

@@ -629,3 +629,38 @@ func TestWalkScanRoot_MixedCaseMarkerDirectlyUnderScanRoot(t *testing.T) {
 		t.Fatalf("expected orphan unit path %q (exact casing), got %q", bdmvDir, gotUnit)
 	}
 }
+
+func TestWalkScanRoot_UnicodeCanonicalEquivalenceDoesNotFalseOrphan(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	// Decomposed form on disk; composed form in qBittorrent file list (or vice versa).
+	dirDecomposed := filepath.Join(root, "La\u030apsley")
+	if err := os.MkdirAll(dirDecomposed, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	fileDecomposed := filepath.Join(dirDecomposed, "track.flac")
+	if err := os.WriteFile(fileDecomposed, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(fileDecomposed, old, old)
+
+	// Equivalent composed path string.
+	fileComposed := filepath.Join(root, "Låpsley", "track.flac")
+	if fileComposed == fileDecomposed {
+		t.Fatalf("expected composed and decomposed paths to differ (test bug): %q", fileComposed)
+	}
+
+	tfm := NewTorrentFileMap()
+	tfm.Add(fileComposed)
+
+	orphans, _, err := walkScanRoot(context.Background(), root, tfm, nil, 0, 100)
+	if err != nil {
+		t.Fatalf("walkScanRoot: %v", err)
+	}
+	if len(orphans) != 0 {
+		t.Fatalf("expected no orphans for canonical-equivalent unicode paths, got %d: %v", len(orphans), orphans)
+	}
+}

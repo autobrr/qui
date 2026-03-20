@@ -2,4 +2,4 @@ blank_issues_enabled: false
 contact_links:
   - name: Features, Bug Reports, Questions
     url: https://github.com/autobrr/qui/discussions/new/choose
-    about: Our preferred starting point if you have any questions or suggestions about issues, features or behavior.
+    about: Our preferred starting point for questions/suggestions (and contributions; PR creation is collaborators-only).

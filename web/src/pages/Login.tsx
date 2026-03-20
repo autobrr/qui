@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Logo } from "@/components/ui/Logo"
 import { Separator } from "@/components/ui/separator"
 import { useAuth } from "@/hooks/useAuth"
+import { navigateAfterAuth } from "@/lib/add-intent"
 import { api } from "@/lib/api"
 import { useQuery } from "@tanstack/react-query"
 import { useForm } from "@tanstack/react-form"
@@ -45,6 +46,13 @@ export function Login() {
   })
 
   useEffect(() => {
+    if (sessionStorage.getItem("qui_sso_recovered")) {
+      sessionStorage.removeItem("qui_sso_recovered")
+      toast.info("SSO session refreshed. Please sign in again.")
+    }
+  }, [])
+
+  useEffect(() => {
     // Redirect to homepage if user is already authenticated
     if (isAuthenticated && !isLoading) {
       navigate({ to: "/dashboard" })
@@ -65,9 +73,8 @@ export function Login() {
     if (code && state) {
       // This is an OIDC callback, validate the session
       api.validate().then(() => {
-        // If validation succeeds, set the user as logged in
         setIsAuthenticated(true)
-        navigate({ to: "/" })
+        navigateAfterAuth(navigate, "/")
       }).catch(error => {
         // If validation fails, show an error
         toast.error(error.message || "OIDC authentication failed")

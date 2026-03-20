@@ -496,11 +496,16 @@ func normalizeFileKey(path string) string {
 
 	// Normalize Unicode characters (Shōgun → Shogun, etc.)
 	base = stringutils.NormalizeUnicode(base)
+	base = strings.ToLower(base)
+
+	// Dolby Digital Plus commonly appears as either DDP or DD+ depending on indexer naming.
+	// Normalize to the same token so equivalent files match by key.
+	base = strings.ReplaceAll(base, "dd+", "ddp")
 
 	var b strings.Builder
 	for _, r := range base {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(unicode.ToLower(r))
+			b.WriteRune(r)
 		}
 	}
 

@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -132,26 +133,17 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		return false
 	}
 
-	isTV := source.Series > 0 || candidate.Series > 0
-
-	if isTV {
-		// For TV, allow a bit of fuzziness in the title (e.g. different punctuation)
-		// while still requiring the titles to be closely related.
-		if sourceTitleNorm != candidateTitleNorm &&
-			!strings.Contains(sourceTitleNorm, candidateTitleNorm) &&
-			!strings.Contains(candidateTitleNorm, sourceTitleNorm) {
-			// Title mismatches are expected for most candidates - don't log to avoid noise
-			return false
-		}
-	} else {
-		// For non-TV content (movies, music, audiobooks, etc.), require exact title
-		// match after normalization. This avoids very loose substring matches across
-		// unrelated content types.
-		if sourceTitleNorm != candidateTitleNorm {
-			// Title mismatches are expected for most candidates - don't log to avoid noise
-			return false
-		}
+	// Require exact title match after normalization.
+	//
+	// This is intentionally strict to avoid false positives between related-but-distinct
+	// TV franchises/spinoffs (e.g. "FBI" vs "FBI Most Wanted") where substring matching
+	// would incorrectly treat them as the same show.
+	if sourceTitleNorm != candidateTitleNorm {
+		// Title mismatches are expected for most candidates - don't log to avoid noise
+		return false
 	}
+
+	isTV := source.Series > 0 || candidate.Series > 0
 
 	// Artist must match for content with artist metadata (music, 0day scene radio shows, etc.)
 	// This prevents matching different artists with the same show/album title.
@@ -275,7 +267,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		// rls omits resolution for many SD releases (e.g. "WEB" without "480p"), so
 		// treat an empty resolution as a match only when the other side is clearly SD.
 		isKnownSD := func(res string) bool {
-			switch strings.ToUpper(strings.TrimSpace(res)) {
+			switch normalizeVariant(res) {
 			case "480P", "576P", "SD":
 				return true
 			default:
@@ -309,9 +301,17 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 
 	// HDR must match if either is present (HDR vs SDR are different encodes)
 	// If one release has HDR metadata and the other doesn't, they cannot match
-	sourceHDR := joinNormalizedSlice(source.HDR)
-	candidateHDR := joinNormalizedSlice(candidate.HDR)
+	sourceHDR := joinNormalizedHDRSlice(source.HDR)
+	candidateHDR := joinNormalizedHDRSlice(candidate.HDR)
 	if sourceHDR != candidateHDR {
+		return false
+	}
+
+	// Bit depth should match when both are present (8-bit vs 10-bit are different encodes).
+	// We intentionally don't enforce "either present" here since indexer titles often omit it.
+	sourceBitDepth := s.stringNormalizer.Normalize(source.BitDepth)
+	candidateBitDepth := s.stringNormalizer.Normalize(candidate.BitDepth)
+	if sourceBitDepth != "" && candidateBitDepth != "" && sourceBitDepth != candidateBitDepth {
 		return false
 	}
 
@@ -393,6 +393,82 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	return true
 }
 
+const hdbitsAutobrrIndexer = "hdb"
+
+func (s *Service) releasesMatchWebhook(source, candidate *rls.Release, findIndividualEpisodes bool, indexer string) bool {
+	if s.releasesMatch(source, candidate, findIndividualEpisodes) {
+		return true
+	}
+
+	if !canUseWebhookCollectionFallback(source, candidate, indexer, s.stringNormalizer) {
+		return false
+	}
+
+	sourceWithCollection := *source
+	sourceWithCollection.Collection = candidate.Collection
+
+	return s.releasesMatch(&sourceWithCollection, candidate, findIndividualEpisodes)
+}
+
+func canUseWebhookCollectionFallback(
+	source, candidate *rls.Release,
+	indexer string,
+	normalizer *stringutils.Normalizer[string, string],
+) bool {
+	if !supportsWebhookCollectionFallback(indexer) {
+		return false
+	}
+
+	if source == nil || candidate == nil {
+		return false
+	}
+
+	// Some indexers can announce generic WEB-DL titles without the collection/
+	// service tag while the existing torrent keeps the canonical source service
+	// (for example "DSNP"). Only retry when the incoming title is missing
+	// Collection and the group or site already anchors the release identity.
+	if source.Collection != "" || candidate.Collection == "" {
+		return false
+	}
+
+	if !supportsWebhookCollectionFallbackContent(source, candidate) {
+		return false
+	}
+
+	return hasNonEmptyNormalizedMatch(normalizer, source.Group, candidate.Group) ||
+		hasNonEmptyNormalizedMatch(normalizer, source.Site, candidate.Site)
+}
+
+func supportsWebhookCollectionFallback(indexer string) bool {
+	switch indexer {
+	case hdbitsAutobrrIndexer:
+		return true
+	default:
+		return false
+	}
+}
+
+func supportsWebhookCollectionFallbackContent(source, candidate *rls.Release) bool {
+	if source == nil || candidate == nil {
+		return false
+	}
+
+	if source.Series > 0 && candidate.Series > 0 {
+		return true
+	}
+
+	return isWebSource(normalizeSource(source.Source)) && isWebSource(normalizeSource(candidate.Source))
+}
+
+func hasNonEmptyNormalizedMatch(normalizer *stringutils.Normalizer[string, string], left, right string) bool {
+	if normalizer == nil {
+		normalizer = stringutils.DefaultNormalizer
+	}
+
+	left = normalizer.Normalize(left)
+	return left != "" && left == normalizer.Normalize(right)
+}
+
 // joinNormalizedSlice converts a string slice to a normalized uppercase string for comparison.
 // Uppercases and joins elements to ensure consistent comparison regardless of case or order.
 func joinNormalizedSlice(slice []string) string {
@@ -401,9 +477,14 @@ func joinNormalizedSlice(slice []string) string {
 	}
 	normalized := make([]string, len(slice))
 	for i, s := range slice {
-		normalized[i] = strings.ToUpper(strings.TrimSpace(s))
+		normalized[i] = normalizeVariant(s)
 	}
 	sort.Strings(normalized)
+	return strings.Join(normalized, " ")
+}
+
+func joinNormalizedHDRSlice(slice []string) string {
+	normalized := releases.NormalizeHDRTags(slice)
 	return strings.Join(normalized, " ")
 }
 
@@ -424,7 +505,7 @@ var videoCodecAliases = map[string]string{
 // normalizeVideoCodec converts a video codec string to its canonical form.
 // Returns the original (uppercased) string if no alias mapping exists.
 func normalizeVideoCodec(codec string) string {
-	upper := strings.ToUpper(strings.TrimSpace(codec))
+	upper := normalizeVariant(codec)
 	if canonical, ok := videoCodecAliases[upper]; ok {
 		return canonical
 	}
@@ -444,11 +525,20 @@ var sourceAliases = map[string]string{
 // normalizeSource converts a source string to its canonical form.
 // Returns the original (uppercased) string if no alias mapping exists.
 func normalizeSource(source string) string {
-	upper := strings.ToUpper(strings.TrimSpace(source))
+	upper := normalizeVariant(source)
 	if canonical, ok := sourceAliases[upper]; ok {
 		return canonical
 	}
 	return upper
+}
+
+func isWebSource(source string) bool {
+	switch source {
+	case "WEB", "WEBDL", "WEBRIP":
+		return true
+	default:
+		return false
+	}
 }
 
 // sourcesCompatible checks if two sources are compatible for cross-seed precheck.
@@ -461,17 +551,6 @@ func sourcesCompatible(source, candidate string) bool {
 	}
 	if source == candidate {
 		return true
-	}
-
-	// WEB is ambiguous: treat it as compatible with both WEBDL and WEBRIP.
-	// It must not match non-web sources (BLURAY, HDTV, etc.).
-	isWebSource := func(s string) bool {
-		switch s {
-		case "WEB", "WEBDL", "WEBRIP":
-			return true
-		default:
-			return false
-		}
 	}
 
 	if !isWebSource(source) || !isWebSource(candidate) {
@@ -1037,6 +1116,11 @@ func enrichReleaseFromTorrent(fileRelease *rls.Release, torrentRelease *rls.Rele
 	// Fill in missing HDR info from torrent.
 	if len(enriched.HDR) == 0 && len(torrentRelease.HDR) > 0 {
 		enriched.HDR = torrentRelease.HDR
+	}
+
+	// Fill in missing bit depth from torrent.
+	if enriched.BitDepth == "" && torrentRelease.BitDepth != "" {
+		enriched.BitDepth = torrentRelease.BitDepth
 	}
 
 	// Fill in missing season from torrent (for season packs).

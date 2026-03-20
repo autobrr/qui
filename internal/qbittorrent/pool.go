@@ -64,6 +64,7 @@ type ClientPool struct {
 	failureTracker    map[int]*failureInfo
 	decryptionTracker map[int]*decryptionErrorInfo
 	completionHandler TorrentCompletionHandler
+	addedHandler      TorrentAddedHandler
 	syncManager       *SyncManager // Reference for starting background tasks
 }
 
@@ -104,6 +105,22 @@ func (cp *ClientPool) SetTorrentCompletionHandler(handler TorrentCompletionHandl
 
 	for _, client := range clients {
 		client.SetTorrentCompletionHandler(handler)
+	}
+}
+
+// SetTorrentAddedHandler registers a callback for new and existing clients when torrents are added.
+func (cp *ClientPool) SetTorrentAddedHandler(handler TorrentAddedHandler) {
+	cp.mu.Lock()
+	cp.addedHandler = handler
+
+	clients := make([]*Client, 0, len(cp.clients))
+	for _, client := range cp.clients {
+		clients = append(clients, client)
+	}
+	cp.mu.Unlock()
+
+	for _, client := range clients {
+		client.SetTorrentAddedHandler(handler)
 	}
 }
 
@@ -247,11 +264,15 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	cp.clients[instanceID] = client
 	// Reset failure tracking on successful connection
 	cp.resetFailureTrackingLocked(instanceID)
-	handler := cp.completionHandler
+	completionHandler := cp.completionHandler
+	addedHandler := cp.addedHandler
 	cp.mu.Unlock()
 
-	if handler != nil {
-		client.SetTorrentCompletionHandler(handler)
+	if completionHandler != nil {
+		client.SetTorrentCompletionHandler(completionHandler)
+	}
+	if addedHandler != nil {
+		client.SetTorrentAddedHandler(addedHandler)
 	}
 
 	// Start the sync manager

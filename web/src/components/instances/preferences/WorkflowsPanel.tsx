@@ -22,7 +22,7 @@ import { api } from "@/lib/api"
 import { cn, parseTrackerDomains } from "@/lib/utils"
 import type { Automation } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Folder, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Tag, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Folder, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Tag, Terminal, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { WorkflowDialog } from "./WorkflowDialog"
@@ -47,6 +47,17 @@ function formatSpeedLimit(kiB: number | undefined): string | null {
   if (kiB === undefined) return null
   if (kiB === 0) return "Unlimited"
   return `${kiB} KiB/s`
+}
+
+function getTagActions(rule: Automation) {
+  const conditions = rule.conditions
+  if (conditions.tags && conditions.tags.length > 0) {
+    return conditions.tags
+  }
+  if (conditions.tag) {
+    return [conditions.tag]
+  }
+  return []
 }
 
 export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelProps) {
@@ -317,7 +328,8 @@ function RuleSummary({ rule }: { rule: Automation }) {
     conditions?.pause?.enabled ||
     conditions?.delete?.enabled ||
     conditions?.tag?.enabled ||
-    conditions?.category?.enabled
+    conditions?.category?.enabled ||
+    conditions?.externalProgram?.enabled
 
   if (!hasActions && !isAllTrackers && trackers.length === 0) {
     return <span className="text-xs text-muted-foreground">No actions set</span>
@@ -400,6 +412,22 @@ function RuleSummary({ rule }: { rule: Automation }) {
         </Badge>
       )}
 
+      {/* Recheck */}
+      {conditions?.recheck?.enabled && (
+        <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-orange-600 border-orange-600/50 cursor-default">
+          <RefreshCw className="h-3 w-3" />
+          Recheck
+        </Badge>
+      )}
+
+      {/* Reannounce */}
+      {conditions?.reannounce?.enabled && (
+        <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-fuchsia-600 border-fuchsia-600/50 cursor-default">
+          <RefreshCw className="h-3 w-3" />
+          Reannounce
+        </Badge>
+      )}
+
       {/* Delete */}
       {conditions?.delete?.enabled && (
         <Tooltip>
@@ -410,31 +438,34 @@ function RuleSummary({ rule }: { rule: Automation }) {
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
-            <p>{conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"
-              ? "Delete with files (preserve cross-seeds)"
-              : conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"
-                ? "Delete with files (include cross-seeds)"
-                : conditions.delete.mode === "deleteWithFiles"
-                  ? "Delete with files"
-                  : "Delete (keep files)"}</p>
+            <p>{
+              {
+                deleteWithFilesPreserveCrossSeeds: "Delete with files (preserve cross-seeds)",
+                deleteWithFilesIncludeCrossSeeds: "Delete with files (include cross-seeds)",
+                deleteWithFiles: "Delete with files",
+              }[conditions.delete.mode as string] ?? "Delete (keep files)"
+            }</p>
           </TooltipContent>
         </Tooltip>
       )}
 
       {/* Tag */}
-      {conditions?.tag?.enabled && (
+      {getTagActions(rule).some((action) => action.enabled) && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-blue-600 border-blue-600/50 cursor-help">
               <Tag className="h-3 w-3" />
-              {conditions.tag.tags.length} tag{conditions.tag.tags.length !== 1 ? "s" : ""}
+              {getTagActions(rule).length} action{getTagActions(rule).length !== 1 ? "s" : ""}
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Tags: {conditions.tag.tags.join(", ")}</p>
-            <p className="text-muted-foreground">
-              Mode: {conditions.tag.mode === "full" ? "Full sync" : conditions.tag.mode === "add" ? "Add only" : "Remove only"}
-            </p>
+            {getTagActions(rule).map((action, index) => (
+              <p key={index}>
+                #{index + 1}: {action.useTrackerAsTag ? "Tracker-derived tag" : (action.tags?.join(", ") || "No tags")}
+                {" "}
+                ({action.mode === "full" ? "Full sync" : action.mode === "add" ? "Add only" : "Remove only"})
+              </p>
+            ))}
           </TooltipContent>
         </Tooltip>
       )}
@@ -453,7 +484,21 @@ function RuleSummary({ rule }: { rule: Automation }) {
           </TooltipContent>
         </Tooltip>
       )}
+
+      {/* External Program */}
+      {conditions?.externalProgram?.enabled && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-teal-600 border-teal-600/50 cursor-help">
+              <Terminal className="h-3 w-3" />
+              External program
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Program ID: {conditions.externalProgram.programId ?? "-"}</p>
+          </TooltipContent>
+        </Tooltip>
+      )}
     </div>
   )
 }
-

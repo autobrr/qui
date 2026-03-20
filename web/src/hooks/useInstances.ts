@@ -54,9 +54,7 @@ export function useInstances() {
       // flag to avoid UI flicker (testConnection will refresh it)
       queryClient.setQueryData<InstanceResponse[]>(["instances"], (old) => {
         if (!old) return [updatedInstance]
-        return old.map(i => i.id === updatedInstance.id
-          ? { ...updatedInstance, connected: i.connected }
-          : i)
+        return old.map(i => i.id === updatedInstance.id? { ...updatedInstance, connected: i.connected }: i)
       })
 
       // Test connection immediately to get actual status
@@ -86,14 +84,12 @@ export function useInstances() {
 
       if (previousInstances) {
         queryClient.setQueryData<InstanceResponse[]>(["instances"], previousInstances.map(instance =>
-          instance.id === id
-            ? {
-                ...instance,
-                isActive,
-                connected: false,
-                connectionStatus: isActive ? "" : "disabled",
-              }
-            : instance,
+          instance.id === id? {
+            ...instance,
+            isActive,
+            connected: false,
+            connectionStatus: isActive ? "" : "disabled",
+          }: instance
         ))
       }
 
@@ -162,9 +158,7 @@ export function useInstances() {
     },
   })
 
-  const updatingStatusId = statusMutation.isPending
-    ? statusMutation.variables?.id ?? null
-    : null
+  const updatingStatusId = statusMutation.isPending? statusMutation.variables?.id ?? null: null
 
   return {
     instances: instances as InstanceResponse[] | undefined,

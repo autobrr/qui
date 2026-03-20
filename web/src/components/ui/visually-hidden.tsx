@@ -6,7 +6,7 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
-interface VisuallyHiddenProps extends React.HTMLAttributes<HTMLSpanElement> {}
+type VisuallyHiddenProps = React.HTMLAttributes<HTMLSpanElement>
 
 function VisuallyHidden({ className, ...props }: VisuallyHiddenProps) {
   return (

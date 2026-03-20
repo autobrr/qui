@@ -6,19 +6,28 @@ ifneq (,$(wildcard .env))
     export
 endif
 
+# Windows compatibility: run recipes through Git Bash so POSIX tools work
+ifeq ($(OS),Windows_NT)
+	GIT_BASH ?= C:/Progra~1/Git/bin/bash.exe
+	override SHELL := $(GIT_BASH)
+	override MAKESHELL := $(SHELL)
+	.SHELLFLAGS := -lc
+endif
+
 # Variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 GIT_COMMIT := $(shell git rev-parse HEAD 2> /dev/null)
 GIT_TAG := $(shell git describe --abbrev=0 --tags)
+BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 BINARY_NAME = qui
 BUILD_DIR = build
 WEB_DIR = web
 INTERNAL_WEB_DIR = internal/web
 
 # Go build flags with Polar credentials
-LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X main.PolarOrgID=$(POLAR_ORG_ID)"
+LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE) -X main.PolarOrgID=$(POLAR_ORG_ID)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt modern deps docs-dev docs-build
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed precommit deps docs-dev docs-build
 
 # Default target
 all: build
@@ -28,10 +37,10 @@ build: frontend backend
 
 build/docker:
 	@echo "Building docker image..."
-	docker build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg  GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg POLAR_ORG_ID=$(POLAR_ORG_ID) --build-arg VERSION=$(VERSION)
+	docker build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) --build-arg POLAR_ORG_ID=$(POLAR_ORG_ID) --build-arg VERSION=$(VERSION)
 
 build/dockerx:
-	docker buildx build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
+	docker buildx build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
 
 # Fetch premium themes from private repository
 themes-fetch:
@@ -100,7 +109,7 @@ clean: themes-clean
 # Run tests
 test:
 	@echo "Running tests..."
-	go test -race -count=3 -v ./...
+	go test -race -v ./...
 
 # Validate OpenAPI specification
 test-openapi:
@@ -115,6 +124,63 @@ fmt:
 	@echo "Formatting changed frontend code..."
 	@webfiles=$$({ git diff --name-only --diff-filter=d -- '$(WEB_DIR)/'; git diff --name-only --cached --diff-filter=d -- '$(WEB_DIR)/'; } | sort -u | sed 's|^$(WEB_DIR)/||' | grep -E '\.(ts|tsx|js|jsx)$$' || true); \
 		if [ -n "$$webfiles" ]; then cd $(WEB_DIR) && echo "$$webfiles" | xargs pnpm eslint --fix; fi
+
+# Apply go fix to changed Go files only
+gofix-changed:
+	@echo "Running go fix on changed Go files..."
+	@gofiles=$$({ git diff --name-only --diff-filter=d; git diff --name-only --cached --diff-filter=d; } | sort -u | grep '\.go$$' || true); \
+		if [ -z "$$gofiles" ]; then \
+			echo "No changed Go files for go fix."; \
+			exit 0; \
+		fi; \
+		gopkgs=$$(printf '%s\n' "$$gofiles" | xargs -n 1 dirname | sort -u); \
+		printf '%s\n' "$$gopkgs" | while IFS= read -r pkg; do \
+			[ -n "$$pkg" ] || continue; \
+			go fix "./$$pkg" || true; \
+		done; \
+		tmp=$$(mktemp); \
+		printf '%s\n' "$$gopkgs" | while IFS= read -r pkg; do \
+			[ -n "$$pkg" ] || continue; \
+			go fix -diff "./$$pkg" >> "$$tmp" || true; \
+		done; \
+		if [ -s "$$tmp" ]; then \
+			echo "go fix left pending changes for changed Go files:"; \
+			cat "$$tmp"; \
+			rm -f "$$tmp"; \
+			echo "Re-run 'make gofix-changed'."; \
+			exit 1; \
+		fi; \
+		rm -f "$$tmp"; \
+		echo "go fix applied."
+
+# Check go fix drift on changed Go files only (for CI/pre-commit)
+gofix-check-changed:
+	@echo "Checking go fix drift on changed Go files..."
+	@tmp=$$(mktemp); \
+		gofiles=$$({ git diff --name-only --diff-filter=d; git diff --name-only --cached --diff-filter=d; } | sort -u | grep '\.go$$' || true); \
+		if [ -z "$$gofiles" ]; then \
+			rm -f "$$tmp"; \
+			echo "No changed Go files for go fix check."; \
+			exit 0; \
+		fi; \
+		gopkgs=$$(printf '%s\n' "$$gofiles" | xargs -n 1 dirname | sort -u); \
+		printf '%s\n' "$$gopkgs" | while IFS= read -r pkg; do \
+			[ -n "$$pkg" ] || continue; \
+			go fix -diff "./$$pkg" >> "$$tmp" || true; \
+		done; \
+		if [ -s "$$tmp" ]; then \
+			echo "go fix changes required for changed Go files:"; \
+			cat "$$tmp"; \
+			rm -f "$$tmp"; \
+			echo "Run 'make gofix-changed'."; \
+			exit 1; \
+		fi; \
+		rm -f "$$tmp"; \
+		echo "go fix check clean."
+
+# Local pre-commit gate (changed files only)
+precommit: fmt gofix-changed lint
+	@echo "Pre-commit checks passed."
 
 # Lint code (changed files only - fast feedback for AI iteration)
 lint:
@@ -141,11 +207,6 @@ lint-fix:
 	@echo "Running linters with auto-fix..."
 	golangci-lint run --fix --timeout=10m
 	cd $(WEB_DIR) && pnpm lint --fix
-
-# Modernize Go code (interface{} -> any, etc)
-modern:
-	@echo "Modernizing Go code..."
-	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -fix -test ./...
 
 # Install development dependencies
 deps:
@@ -191,7 +252,9 @@ help:
 	@echo ""
 	@echo "Formatting:"
 	@echo "  make fmt            - Format changed files only (fast, for iteration)"
-	@echo "  make modern         - Modernize Go code (interface{} -> any)"
+	@echo "  make gofix-changed  - Apply go fix to changed Go files only"
+	@echo "  make gofix-check-changed - Check go fix drift on changed Go files only"
+	@echo "  make precommit      - Run local pre-commit gate (fmt + gofix + lint)"
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs-dev       - Run documentation development server"

@@ -14,6 +14,8 @@ import { Clock, Download, Upload } from "lucide-react"
 import React from "react"
 import { toast } from "sonner"
 
+import { PreferencesFormShell } from "./PreferencesFormShell"
+
 // Convert bytes/s to MiB/s for display
 function bytesToMiB(bytes: number): number {
   return bytes === 0 ? 0 : bytes / (1024 * 1024)
@@ -49,6 +51,7 @@ function SpeedLimitInput({
   onChange: (value: number) => void
   icon: React.ComponentType<{ className?: string }>
 }) {
+  const inputId = React.useId()
   const [localValue, setLocalValue] = React.useState("")
   const [isFocused, setIsFocused] = React.useState(false)
 
@@ -63,11 +66,12 @@ function SpeedLimitInput({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-        <Label className="text-sm font-medium">{label}</Label>
+        <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <Label htmlFor={inputId} className="text-sm font-medium">{label}</Label>
       </div>
       <div className="flex items-center gap-2">
         <Input
+          id={inputId}
           type="number"
           min="0"
           step="0.1"
@@ -83,8 +87,9 @@ function SpeedLimitInput({
           onBlur={() => setIsFocused(false)}
           placeholder="0 (Unlimited)"
           className="flex-1"
+          aria-describedby={`${inputId}-unit`}
         />
-        <span className="text-sm text-muted-foreground min-w-12">MiB/s</span>
+        <span id={`${inputId}-unit`} className="text-sm text-muted-foreground min-w-12">MiB/s</span>
       </div>
     </div>
   )
@@ -96,15 +101,17 @@ function TimeInput({
   onHourChange,
   onMinuteChange,
   disabled = false,
+  labelPrefix = "Schedule",
 }: {
   hour: number
   minute: number
   onHourChange: (hour: number) => void
   onMinuteChange: (minute: number) => void
   disabled?: boolean
+  labelPrefix?: string
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1" role="group" aria-label={`${labelPrefix} time`}>
       <Input
         type="number"
         min="0"
@@ -118,8 +125,9 @@ function TimeInput({
         }}
         disabled={disabled}
         className="w-16 text-center"
+        aria-label={`${labelPrefix} hour (0-23)`}
       />
-      <span className="text-muted-foreground">:</span>
+      <span className="text-muted-foreground" aria-hidden="true">:</span>
       <Input
         type="number"
         min="0"
@@ -133,6 +141,7 @@ function TimeInput({
         }}
         disabled={disabled}
         className="w-16 text-center"
+        aria-label={`${labelPrefix} minute (0-59)`}
       />
     </div>
   )
@@ -195,11 +204,12 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
       form.setFieldValue("schedule_to_min", memoizedPreferences.schedule_to_min)
       form.setFieldValue("scheduler_days", memoizedPreferences.scheduler_days)
     }
-  }, [memoizedPreferences, form, isFormDirty])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- form reference is stable, only sync on preferences change
+  }, [memoizedPreferences, isFormDirty])
 
   if (isLoading) {
     return (
-      <div className="text-center py-8">
+      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
         <p className="text-sm text-muted-foreground">Loading speed limits...</p>
       </div>
     )
@@ -207,250 +217,19 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
 
   if (!memoizedPreferences) {
     return (
-      <div className="text-center py-8">
+      <div className="flex items-center justify-center py-8" role="alert">
         <p className="text-sm text-muted-foreground">Failed to load preferences</p>
       </div>
     )
   }
 
   return (
-    <form
+    <PreferencesFormShell
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()
       }}
-      className="space-y-6"
-    >
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <form.Field 
-          name="dl_limit"
-          validators={{
-            onChange: ({ value }) => {
-              if (value < 0) {
-                return 'Global download rate limit must be greater than 0 or disabled'
-              }
-              return undefined
-            }
-          }}
-        >
-          {(field) => (
-            <div className="space-y-2">
-              <SpeedLimitInput
-                label="Download Limit"
-                value={(field.state.value as number) ?? 0}
-                onChange={(value) => {
-                  setIsFormDirty(true)
-                  field.handleChange(value)
-                }}
-                icon={Download}
-              />
-              {field.state.meta.errors.length > 0 && (
-                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
-              )}
-            </div>
-          )}
-        </form.Field>
-
-        <form.Field 
-          name="up_limit"
-          validators={{
-            onChange: ({ value }) => {
-              if (value < 0) {
-                return 'Global upload rate limit must be greater than 0 or disabled'
-              }
-              return undefined
-            }
-          }}
-        >
-          {(field) => (
-            <div className="space-y-2">
-              <SpeedLimitInput
-                label="Upload Limit"
-                value={(field.state.value as number) ?? 0}
-                onChange={(value) => {
-                  setIsFormDirty(true)
-                  field.handleChange(value)
-                }}
-                icon={Upload}
-              />
-              {field.state.meta.errors.length > 0 && (
-                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
-              )}
-            </div>
-          )}
-        </form.Field>
-
-        <form.Field 
-          name="alt_dl_limit"
-          validators={{
-            onChange: ({ value }) => {
-              if (value < 0) {
-                return 'Alternative download rate limit must be greater than 0 or disabled'
-              }
-              return undefined
-            }
-          }}
-        >
-          {(field) => (
-            <div className="space-y-2">
-              <SpeedLimitInput
-                label="Alternative Download Limit"
-                value={(field.state.value as number) ?? 0}
-                onChange={(value) => {
-                  setIsFormDirty(true)
-                  field.handleChange(value)
-                }}
-                icon={Download}
-              />
-              {field.state.meta.errors.length > 0 && (
-                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
-              )}
-            </div>
-          )}
-        </form.Field>
-
-        <form.Field 
-          name="alt_up_limit"
-          validators={{
-            onChange: ({ value }) => {
-              if (value < 0) {
-                return 'Alternative upload rate limit must be greater than 0 or disabled'
-              }
-              return undefined
-            }
-          }}
-        >
-          {(field) => (
-            <div className="space-y-2">
-              <SpeedLimitInput
-                label="Alternative Upload Limit"
-                value={(field.state.value as number) ?? 0}
-                onChange={(value) => {
-                  setIsFormDirty(true)
-                  field.handleChange(value)
-                }}
-                icon={Upload}
-              />
-              {field.state.meta.errors.length > 0 && (
-                <p className="text-sm text-red-500">{field.state.meta.errors[0]}</p>
-              )}
-            </div>
-          )}
-        </form.Field>
-      </div>
-
-      {/* Scheduler Section */}
-      <div className="space-y-4 pt-6 border-t border-border">
-        <form.Field name="scheduler_enabled">
-          {(field) => (
-            <div className="flex items-center gap-3">
-              <Switch
-                checked={field.state.value as boolean}
-                onCheckedChange={(checked) => {
-                  setIsFormDirty(true)
-                  field.handleChange(checked)
-                }}
-              />
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-muted-foreground" />
-                <Label className="text-sm font-medium">
-                  Schedule the use of alternative rate limits
-                </Label>
-              </div>
-            </div>
-          )}
-        </form.Field>
-
-        <form.Subscribe selector={(state) => state.values.scheduler_enabled}>
-          {(schedulerEnabled) => (
-            schedulerEnabled && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">From:</Label>
-                    <div className="flex items-center gap-4">
-                      <form.Field name="schedule_from_hour">
-                        {(hourField) => (
-                          <form.Field name="schedule_from_min">
-                            {(minField) => (
-                              <TimeInput
-                                hour={(hourField.state.value as number) ?? 16}
-                                minute={(minField.state.value as number) ?? 0}
-                                onHourChange={(hour) => {
-                                  setIsFormDirty(true)
-                                  hourField.handleChange(hour)
-                                }}
-                                onMinuteChange={(minute) => {
-                                  setIsFormDirty(true)
-                                  minField.handleChange(minute)
-                                }}
-                              />
-                            )}
-                          </form.Field>
-                        )}
-                      </form.Field>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium">To:</Label>
-                    <div className="flex items-center gap-4">
-                      <form.Field name="schedule_to_hour">
-                        {(hourField) => (
-                          <form.Field name="schedule_to_min">
-                            {(minField) => (
-                              <TimeInput
-                                hour={(hourField.state.value as number) ?? 23}
-                                minute={(minField.state.value as number) ?? 0}
-                                onHourChange={(hour) => {
-                                  setIsFormDirty(true)
-                                  hourField.handleChange(hour)
-                                }}
-                                onMinuteChange={(minute) => {
-                                  setIsFormDirty(true)
-                                  minField.handleChange(minute)
-                                }}
-                              />
-                            )}
-                          </form.Field>
-                        )}
-                      </form.Field>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium">When:</Label>
-                  <form.Field name="scheduler_days">
-                    {(field) => (
-                      <Select
-                        value={(field.state.value as number).toString()}
-                        onValueChange={(value) => {
-                          setIsFormDirty(true)
-                          field.handleChange(parseInt(value, 10))
-                        }}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {dayOptions.map((option) => (
-                            <SelectItem key={option.value} value={option.value.toString()}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </form.Field>
-                </div>
-              </div>
-            )
-          )}
-        </form.Subscribe>
-      </div>
-
-      <div className="flex justify-end pt-4">
+      footer={(
         <form.Subscribe
           selector={(state) => [state.canSubmit, state.isSubmitting]}
         >
@@ -464,7 +243,240 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
             </Button>
           )}
         </form.Subscribe>
+      )}
+    >
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <form.Field
+            name="dl_limit"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0) {
+                  return "Global download rate limit must be greater than 0 or disabled"
+                }
+                return undefined
+              },
+            }}
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <SpeedLimitInput
+                  label="Download Limit"
+                  value={(field.state.value as number) ?? 0}
+                  onChange={(value) => {
+                    setIsFormDirty(true)
+                    field.handleChange(value)
+                  }}
+                  icon={Download}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field
+            name="up_limit"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0) {
+                  return "Global upload rate limit must be greater than 0 or disabled"
+                }
+                return undefined
+              },
+            }}
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <SpeedLimitInput
+                  label="Upload Limit"
+                  value={(field.state.value as number) ?? 0}
+                  onChange={(value) => {
+                    setIsFormDirty(true)
+                    field.handleChange(value)
+                  }}
+                  icon={Upload}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field
+            name="alt_dl_limit"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0) {
+                  return "Alternative download rate limit must be greater than 0 or disabled"
+                }
+                return undefined
+              },
+            }}
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <SpeedLimitInput
+                  label="Alternative Download Limit"
+                  value={(field.state.value as number) ?? 0}
+                  onChange={(value) => {
+                    setIsFormDirty(true)
+                    field.handleChange(value)
+                  }}
+                  icon={Download}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field
+            name="alt_up_limit"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0) {
+                  return "Alternative upload rate limit must be greater than 0 or disabled"
+                }
+                return undefined
+              },
+            }}
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <SpeedLimitInput
+                  label="Alternative Upload Limit"
+                  value={(field.state.value as number) ?? 0}
+                  onChange={(value) => {
+                    setIsFormDirty(true)
+                    field.handleChange(value)
+                  }}
+                  icon={Upload}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
+            )}
+          </form.Field>
+        </div>
+
+        {/* Scheduler Section */}
+        <div className="space-y-4 pt-6 border-t border-border">
+          <form.Field name="scheduler_enabled">
+            {(field) => (
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={field.state.value as boolean}
+                  onCheckedChange={(checked) => {
+                    setIsFormDirty(true)
+                    field.handleChange(checked)
+                  }}
+                />
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-sm font-medium">
+                    Schedule the use of alternative rate limits
+                  </Label>
+                </div>
+              </div>
+            )}
+          </form.Field>
+
+          <form.Subscribe selector={(state) => state.values.scheduler_enabled}>
+            {(schedulerEnabled) => (
+              schedulerEnabled && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">From:</Label>
+                      <div className="flex items-center gap-4">
+                        <form.Field name="schedule_from_hour">
+                          {(hourField) => (
+                            <form.Field name="schedule_from_min">
+                              {(minField) => (
+                                <TimeInput
+                                  hour={(hourField.state.value as number) ?? 16}
+                                  minute={(minField.state.value as number) ?? 0}
+                                  onHourChange={(hour) => {
+                                    setIsFormDirty(true)
+                                    hourField.handleChange(hour)
+                                  }}
+                                  onMinuteChange={(minute) => {
+                                    setIsFormDirty(true)
+                                    minField.handleChange(minute)
+                                  }}
+                                  labelPrefix="Start"
+                                />
+                              )}
+                            </form.Field>
+                          )}
+                        </form.Field>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">To:</Label>
+                      <div className="flex items-center gap-4">
+                        <form.Field name="schedule_to_hour">
+                          {(hourField) => (
+                            <form.Field name="schedule_to_min">
+                              {(minField) => (
+                                <TimeInput
+                                  hour={(hourField.state.value as number) ?? 23}
+                                  minute={(minField.state.value as number) ?? 0}
+                                  onHourChange={(hour) => {
+                                    setIsFormDirty(true)
+                                    hourField.handleChange(hour)
+                                  }}
+                                  onMinuteChange={(minute) => {
+                                    setIsFormDirty(true)
+                                    minField.handleChange(minute)
+                                  }}
+                                  labelPrefix="End"
+                                />
+                              )}
+                            </form.Field>
+                          )}
+                        </form.Field>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">When:</Label>
+                    <form.Field name="scheduler_days">
+                      {(field) => (
+                        <Select
+                          value={(field.state.value as number).toString()}
+                          onValueChange={(value) => {
+                            setIsFormDirty(true)
+                            field.handleChange(parseInt(value, 10))
+                          }}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {dayOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value.toString()}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </form.Field>
+                  </div>
+                </div>
+              )
+            )}
+          </form.Subscribe>
+        </div>
       </div>
-    </form>
+    </PreferencesFormShell>
   )
 }

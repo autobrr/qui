@@ -745,7 +745,7 @@ func TestAddTorrentHandler_InvalidIndexerID_Returns400(t *testing.T) {
 	t.Parallel()
 
 	// Create handler with nil dependencies - we won't reach them due to early return
-	handler := NewTorrentsHandler(nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil)
 
 	// Create multipart form with invalid indexer_id
 	body := &bytes.Buffer{}
@@ -775,7 +775,7 @@ func TestAddTorrentHandler_InvalidIndexerID_Returns400(t *testing.T) {
 func TestAddTorrentHandler_NegativeIndexerID_Returns400(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandler(nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -802,7 +802,7 @@ func TestAddTorrentHandler_NegativeIndexerID_Returns400(t *testing.T) {
 func TestAddTorrentHandler_ZeroIndexerID_Returns400(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandler(nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -832,7 +832,7 @@ func TestAddTorrentHandler_JackettServiceUnavailable_Returns503(t *testing.T) {
 	// Create handler with nil jackettService but valid syncManager
 	// We need a non-nil syncManager to get past the URL processing,
 	// but jackettService is nil to trigger the 503
-	handler := NewTorrentsHandler(nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -859,7 +859,7 @@ func TestAddTorrentHandler_JackettServiceUnavailable_Returns503(t *testing.T) {
 func TestAddTorrentHandler_NoURLsOrFiles_Returns400(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandler(nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -885,7 +885,7 @@ func TestAddTorrentHandler_NoURLsOrFiles_Returns400(t *testing.T) {
 func TestAddTorrentHandler_InvalidInstanceID_Returns400(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandler(nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)

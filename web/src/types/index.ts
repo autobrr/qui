@@ -16,6 +16,34 @@ export interface AuthResponse {
   message?: string
 }
 
+export interface ApplicationDatabaseInfo {
+  engine: string
+  target: string
+}
+
+export interface ApplicationInfo {
+  version: string
+  commit?: string
+  commitShort?: string
+  buildDate?: string
+  startedAt: string
+  uptimeSeconds: number
+  goVersion: string
+  goOS: string
+  goArch: string
+  baseUrl: string
+  host: string
+  port: number
+  configDir: string
+  dataDir: string
+  authMode: "builtin" | "oidc" | "disabled"
+  oidcEnabled: boolean
+  builtInLoginEnabled: boolean
+  oidcIssuerHost?: string
+  checkForUpdates: boolean
+  database: ApplicationDatabaseInfo
+}
+
 // Generic warning response for operations that succeed with caveats
 export interface WarningResponse {
   warning?: string
@@ -95,6 +123,8 @@ export interface InstanceCrossSeedCompletionSettings {
   tags: string[]
   excludeCategories: string[]
   excludeTags: string[]
+  indexerIds: number[]
+  bypassTorznabCache: boolean
 }
 
 /**
@@ -153,47 +183,85 @@ export type ConditionField =
   // String fields
   | "NAME"
   | "HASH"
+  | "INFOHASH_V1"
+  | "INFOHASH_V2"
+  | "MAGNET_URI"
   | "CATEGORY"
   | "TAGS"
   | "SAVE_PATH"
   | "CONTENT_PATH"
+  | "DOWNLOAD_PATH"
+  | "CREATED_BY"
+  | "TRACKERS"
+  | "CONTENT_TYPE"
+  | "EFFECTIVE_NAME"
+  | "RLS_SOURCE"
+  | "RLS_RESOLUTION"
+  | "RLS_CODEC"
+  | "RLS_HDR"
+  | "RLS_AUDIO"
+  | "RLS_CHANNELS"
+  | "RLS_GROUP"
   | "STATE"
   | "TRACKER"
   | "COMMENT"
   // Numeric fields (bytes)
   | "SIZE"
   | "TOTAL_SIZE"
+  | "COMPLETED"
   | "DOWNLOADED"
+  | "DOWNLOADED_SESSION"
   | "UPLOADED"
+  | "UPLOADED_SESSION"
   | "AMOUNT_LEFT"
   | "FREE_SPACE"
-  // Numeric fields (timestamps/seconds)
+  // Time fields (duration seconds and timestamp-backed ages)
   | "ADDED_ON"
   | "COMPLETION_ON"
   | "LAST_ACTIVITY"
+  | "SEEN_COMPLETE"
+  | "ETA"
+  | "REANNOUNCE"
   | "SEEDING_TIME"
   | "TIME_ACTIVE"
-  // Age fields (time since timestamp - duration type)
+  | "MAX_SEEDING_TIME"
+  | "MAX_INACTIVE_SEEDING_TIME"
+  | "SEEDING_TIME_LIMIT"
+  | "INACTIVE_SEEDING_TIME_LIMIT"
+  // Legacy age aliases (duration type)
   | "ADDED_ON_AGE"
   | "COMPLETION_ON_AGE"
   | "LAST_ACTIVITY_AGE"
   // Numeric fields (float64)
   | "RATIO"
+  | "RATIO_LIMIT"
+  | "MAX_RATIO"
   | "PROGRESS"
   | "AVAILABILITY"
+  | "POPULARITY"
   // Numeric fields (speeds)
   | "DL_SPEED"
   | "UP_SPEED"
-  // Numeric fields (counts)
+  | "DL_LIMIT"
+  | "UP_LIMIT"
+  // Numeric fields (counts/misc)
   | "NUM_SEEDS"
   | "NUM_LEECHS"
   | "NUM_COMPLETE"
   | "NUM_INCOMPLETE"
   | "TRACKERS_COUNT"
+  | "PRIORITY"
+  | "GROUP_SIZE"
   // Boolean fields
   | "PRIVATE"
+  | "AUTO_MANAGED"
+  | "FIRST_LAST_PIECE_PRIO"
+  | "FORCE_START"
+  | "SEQUENTIAL_DOWNLOAD"
+  | "SUPER_SEEDING"
   | "IS_UNREGISTERED"
   | "HAS_MISSING_FILES"
+  | "IS_GROUPED"
   // Enum-like fields
   | "HARDLINK_SCOPE"
 
@@ -223,6 +291,7 @@ export interface RuleCondition {
   clientId?: string
   field?: ConditionField
   operator: ConditionOperator
+  groupId?: string
   value?: string
   minValue?: number
   maxValue?: number
@@ -250,10 +319,39 @@ export interface PauseAction {
   condition?: RuleCondition
 }
 
+export interface ResumeAction {
+  enabled: boolean
+  condition?: RuleCondition
+}
+
+export interface RecheckAction {
+  enabled: boolean
+  condition?: RuleCondition
+}
+
+export interface ReannounceAction {
+  enabled: boolean
+  condition?: RuleCondition
+}
+
+export interface GroupDefinition {
+  id: string
+  keys: string[]
+  ambiguousPolicy?: "verify_overlap" | "skip"
+  minFileOverlapPercent?: number
+}
+
+export interface GroupingConfig {
+  defaultGroupId?: string
+  groups?: GroupDefinition[]
+}
+
 export interface DeleteAction {
   enabled: boolean
   mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
   includeHardlinks?: boolean // Only valid when mode is "deleteWithFilesIncludeCrossSeeds"
+  groupId?: string
+  atomic?: "all"
   condition?: RuleCondition
 }
 
@@ -261,6 +359,7 @@ export interface TagAction {
   enabled: boolean
   tags: string[]
   mode: "full" | "add" | "remove"
+  deleteFromClient?: boolean
   useTrackerAsTag?: boolean
   useDisplayName?: boolean
   condition?: RuleCondition
@@ -270,6 +369,7 @@ export interface CategoryAction {
   enabled: boolean
   category: string
   includeCrossSeeds?: boolean
+  groupId?: string
   blockIfCrossSeedInCategories?: string[]
   condition?: RuleCondition
 }
@@ -278,18 +378,34 @@ export interface MoveAction {
   enabled: boolean
   path: string
   blockIfCrossSeed?: boolean
+  groupId?: string
+  atomic?: "all"
+  condition?: RuleCondition
+}
+
+export interface ExternalProgramAction {
+  enabled: boolean
+  programId: number
   condition?: RuleCondition
 }
 
 export interface ActionConditions {
   schemaVersion: string
+  grouping?: GroupingConfig
   speedLimits?: SpeedLimitAction
   shareLimits?: ShareLimitsAction
   pause?: PauseAction
+  resume?: ResumeAction
+  recheck?: RecheckAction
+  reannounce?: ReannounceAction
   delete?: DeleteAction
+  // Legacy single-tag action (still accepted for existing automations)
   tag?: TagAction
+  // Preferred multi-tag actions
+  tags?: TagAction[]
   category?: CategoryAction
   move?: MoveAction
+  externalProgram?: ExternalProgramAction
 }
 
 export type FreeSpaceSource =
@@ -297,6 +413,36 @@ export type FreeSpaceSource =
   | { type: "path"; path: string }
 
 export type FreeSpaceSourceType = FreeSpaceSource["type"]
+
+export type ScoreRuleType = "field_multiplier" | "conditional"
+
+export interface FieldMultiplierScoreRule {
+  field: ConditionField
+  multiplier: number
+}
+
+export interface ConditionalScoreRule {
+  condition: RuleCondition
+  score: number
+}
+
+export type ScoreRule =
+  | { type: "field_multiplier"; fieldMultiplier: FieldMultiplierScoreRule }
+  | { type: "conditional"; conditional: ConditionalScoreRule }
+
+export type SortingConfig =
+  | {
+    schemaVersion: string
+    type: "simple"
+    field: ConditionField
+    direction: "ASC" | "DESC"
+  }
+  | {
+    schemaVersion: string
+    type: "score"
+    direction: "ASC" | "DESC"
+    scoreRules: ScoreRule[]
+  }
 
 export interface Automation {
   id: number
@@ -306,7 +452,9 @@ export interface Automation {
   trackerDomains?: string[]
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
+  sortingConfig?: SortingConfig
   enabled: boolean
+  dryRun: boolean
   sortOrder: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
   createdAt?: string
@@ -319,7 +467,9 @@ export interface AutomationInput {
   trackerDomains?: string[]
   conditions: ActionConditions
   freeSpaceSource?: FreeSpaceSource
+  sortingConfig?: SortingConfig
   enabled?: boolean
+  dryRun?: boolean
   sortOrder?: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
 }
@@ -332,16 +482,22 @@ export interface AutomationPreviewInput extends AutomationInput {
   previewView?: PreviewView
 }
 
+export interface AutomationDryRunResult {
+  status: string
+  activityIds?: number[]
+  activities?: AutomationActivity[]
+}
+
 export interface AutomationActivity {
   id: number
   instanceId: number
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "moved"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "moved" | "external_program" | "dry_run_no_match"
   ruleId?: number
   ruleName?: string
-  outcome: "success" | "failed"
+  outcome: "success" | "failed" | "dry-run"
   reason?: string
   details?: {
     ratio?: number
@@ -353,6 +509,8 @@ export interface AutomationActivity {
     limitKiB?: number
     count?: number
     type?: string
+    programId?: number
+    programName?: string
     // Tag activity details
     added?: Record<string, number>   // tag -> count of torrents
     removed?: Record<string, number> // tag -> count of torrents
@@ -364,6 +522,28 @@ export interface AutomationActivity {
     paths?: Record<string, number> // path -> count of torrents
   }
   createdAt: string
+}
+
+export interface AutomationActivityRunItem {
+  hash: string
+  name: string
+  trackerDomain?: string
+  tagsAdded?: string[]
+  tagsRemoved?: string[]
+  category?: string
+  movePath?: string
+  size?: number
+  ratio?: number
+  addedOn?: number
+  uploadLimitKiB?: number
+  downloadLimitKiB?: number
+  ratioLimit?: number
+  seedingMinutes?: number
+}
+
+export interface AutomationActivityRun {
+  total: number
+  items: AutomationActivityRunItem[]
 }
 
 export interface AutomationPreviewTorrent {
@@ -395,6 +575,7 @@ export interface AutomationPreviewTorrent {
   lastActivity: number
   completionOn: number
   totalSize: number
+  score?: number
 }
 
 export interface AutomationPreviewResult {
@@ -503,6 +684,23 @@ export interface TorrentFile {
   priority: number
   progress: number
   size: number
+}
+
+export interface TorrentFileMediaInfoField {
+  name: string
+  value: string
+}
+
+export interface TorrentFileMediaInfoStream {
+  kind: string
+  fields: TorrentFileMediaInfoField[]
+}
+
+export interface TorrentFileMediaInfoResponse {
+  fileIndex: number
+  relativePath: string
+  streams: TorrentFileMediaInfoStream[]
+  rawJSON: string
 }
 
 export interface Torrent {
@@ -752,6 +950,17 @@ export interface ServerState {
   write_cache_overload?: string
   last_external_address_v4?: string
   last_external_address_v6?: string
+}
+
+export interface TransferInfo {
+  connection_status: string
+  dht_nodes: number
+  dl_info_data: number
+  dl_info_speed: number
+  dl_rate_limit: number
+  up_info_data: number
+  up_info_speed: number
+  up_rate_limit: number
 }
 
 export interface TorrentPeer {
@@ -1319,11 +1528,40 @@ export interface ExternalProgramExecuteResponse {
   results: ExternalProgramExecuteResult[]
 }
 
+export interface NotificationEventDefinition {
+  type: string
+  label: string
+  description: string
+}
+
+export interface NotificationTarget {
+  id: number
+  name: string
+  url: string
+  enabled: boolean
+  eventTypes: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NotificationTargetRequest {
+  name: string
+  url: string
+  enabled: boolean
+  eventTypes: string[]
+}
+
+export interface NotificationTestRequest {
+  title?: string
+  message?: string
+}
+
 export interface TorznabIndexer {
   id: number
   name: string
   base_url: string
   indexer_id: string
+  basic_username?: string
   backend: "jackett" | "prowlarr" | "native"
   enabled: boolean
   priority: number
@@ -1457,6 +1695,8 @@ export interface TorznabIndexerFormData {
   base_url: string
   indexer_id?: string
   api_key: string
+  basic_username?: string
+  basic_password?: string
   backend?: "jackett" | "prowlarr" | "native"
   enabled?: boolean
   priority?: number
@@ -1470,6 +1710,8 @@ export interface TorznabIndexerUpdate {
   base_url?: string
   api_key?: string
   indexer_id?: string
+  basic_username?: string
+  basic_password?: string
   backend?: "jackett" | "prowlarr" | "native"
   enabled?: boolean
   priority?: number
@@ -1569,6 +1811,8 @@ export interface JackettIndexer {
 export interface DiscoverJackettRequest {
   base_url: string
   api_key: string
+  basic_username?: string
+  basic_password?: string
 }
 
 export interface DiscoverJackettResponse {
@@ -1664,6 +1908,7 @@ export interface CrossSeedApplyResult {
   title: string
   indexer: string
   torrentName?: string
+  infoHash?: string
   success: boolean
   instanceResults?: CrossSeedInstanceResult[]
   error?: string
@@ -1671,6 +1916,13 @@ export interface CrossSeedApplyResult {
 
 export interface CrossSeedApplyResponse {
   results: CrossSeedApplyResult[]
+}
+
+export interface CrossSeedBlocklistEntry {
+  instanceId: number
+  infoHash: string
+  note?: string
+  createdAt: string
 }
 
 export interface CrossSeedRunResult {
@@ -1745,6 +1997,10 @@ export interface CrossSeedAutomationSettings {
   useHardlinks: boolean
   hardlinkBaseDir: string
   hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+  // Gazelle (OPS/RED) cross-seed settings
+  gazelleEnabled: boolean
+  redactedApiKey: string
+  orpheusApiKey: string
   createdAt?: string
   updatedAt?: string
 }
@@ -1792,6 +2048,10 @@ export interface CrossSeedAutomationSettingsPatch {
   useHardlinks?: boolean
   hardlinkBaseDir?: string
   hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
+  // Gazelle (OPS/RED) cross-seed settings
+  gazelleEnabled?: boolean
+  redactedApiKey?: string
+  orpheusApiKey?: string
 }
 
 export interface CrossSeedAutomationStatus {
@@ -1987,6 +2247,7 @@ export interface DirScanSettings {
   sizeTolerancePercent: number
   minPieceRatio: number
   maxSearcheesPerRun: number
+  maxSearcheeAgeDays: number
   allowPartial: boolean
   skipPieceBoundarySafetyCheck: boolean
   startPaused: boolean
@@ -2002,6 +2263,7 @@ export interface DirScanSettingsUpdate {
   sizeTolerancePercent?: number
   minPieceRatio?: number
   maxSearcheesPerRun?: number
+  maxSearcheeAgeDays?: number
   allowPartial?: boolean
   skipPieceBoundarySafetyCheck?: boolean
   startPaused?: boolean
@@ -2051,6 +2313,7 @@ export interface DirScanRun {
   directoryId: number
   status: DirScanRunStatus
   triggeredBy: string
+  scanRoot?: string
   filesFound: number
   filesSkipped: number
   matchesFound: number
@@ -2058,6 +2321,13 @@ export interface DirScanRun {
   errorMessage?: string
   startedAt: string
   completedAt?: string
+}
+
+export interface DirScanTriggerResponse {
+  runId: number
+  directoryId: number
+  directoryPath: string
+  scanRoot: string
 }
 
 export type DirScanRunInjectionStatus = "added" | "failed"

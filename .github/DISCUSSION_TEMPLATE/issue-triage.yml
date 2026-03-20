@@ -5,6 +5,8 @@ body:
       value: |
         > [!IMPORTANT]
         > Before opening a discussion, please check the [documentation](https://qui.autobrr.com) and search existing [Discussions](https://github.com/autobrr/qui/discussions) and [Issues](https://github.com/autobrr/qui/issues).
+        >
+        > Code contributions: PR creation is restricted to collaborators only, so start here (or open an Issue) to coordinate changes.
 
   - type: textarea
     attributes:

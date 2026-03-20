@@ -36,6 +36,7 @@ type IndexerStore interface {
 	List(ctx context.Context) ([]*models.TorznabIndexer, error)
 	ListEnabled(ctx context.Context) ([]*models.TorznabIndexer, error)
 	GetDecryptedAPIKey(indexer *models.TorznabIndexer) (string, error)
+	GetDecryptedBasicPassword(indexer *models.TorznabIndexer) (string, error)
 	GetCapabilities(ctx context.Context, indexerID int) ([]string, error)
 	SetCapabilities(ctx context.Context, indexerID int, capabilities []string) error
 	SetCategories(ctx context.Context, indexerID int, categories []models.TorznabIndexerCategory) error
@@ -358,12 +359,16 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 
 	// Use a sync mechanism to aggregate results for the legacy callback interface
 	var (
-		mu         sync.Mutex
-		allResults []Result
-		coverage   = make(map[int]struct{})
-		failures   int
-		lastErr    error
+		mu          sync.Mutex
+		allResults  []Result
+		coverage    = make(map[int]struct{})
+		failures    int
+		lastErr     error
+		waitSkips   int
+		lastWaitErr error
 	)
+	var completionWG sync.WaitGroup
+	completionWG.Add(len(indexers))
 
 	_, err := s.searchScheduler.Submit(ctx, SubmitRequest{
 		Indexers: indexers,
@@ -371,9 +376,15 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 		Meta:     meta,
 		Callbacks: JobCallbacks{
 			OnComplete: func(jobID uint64, indexer *models.TorznabIndexer, results []Result, cov []int, err error) {
+				defer completionWG.Done()
+
 				// Call the legacy onComplete callback
 				if onComplete != nil {
-					onComplete(jobID, indexer.ID, err)
+					indexerID := 0
+					if indexer != nil {
+						indexerID = indexer.ID
+					}
+					onComplete(jobID, indexerID, err)
 				}
 
 				mu.Lock()
@@ -382,6 +393,8 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 				if err != nil {
 					// Rate limit wait errors are treated as skips
 					if _, isWait := asRateLimitWaitError(err); isWait {
+						waitSkips++
+						lastWaitErr = err
 						return
 					}
 					failures++
@@ -403,13 +416,23 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 				}
 			},
 			OnJobDone: func(jobID uint64) {
+				completionWG.Wait()
+
 				mu.Lock()
 				finalResults := allResults
 				finalCoverage := coverageSetToSlice(coverage)
 				finalErr := lastErr
 				totalIndexers := len(indexers)
 				totalFailures := failures
+				totalWaitSkips := waitSkips
+				finalWaitErr := lastWaitErr
 				mu.Unlock()
+
+				// If all indexers were skipped due to rate-limit waiting, surface that as error.
+				if totalWaitSkips == totalIndexers && finalWaitErr != nil && len(finalResults) == 0 {
+					resultCallback(jobID, nil, finalCoverage, finalWaitErr)
+					return
+				}
 
 				// If all indexers failed, return the last error
 				if totalFailures == totalIndexers && finalErr != nil && len(finalResults) == 0 {
@@ -954,7 +977,12 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 		return nil, fmt.Errorf("failed to decrypt API key for indexer %d: %w", req.IndexerID, err)
 	}
 
-	client := NewClient(indexer.BaseURL, apiKey, indexer.Backend, indexer.TimeoutSeconds)
+	basicUser, basicPass, err := s.basicAuthForIndexer(indexer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt basic auth password for indexer %d: %w", req.IndexerID, err)
+	}
+
+	client := NewClient(indexer.BaseURL, apiKey, basicUser, basicPass, indexer.Backend, indexer.TimeoutSeconds)
 
 	// Retry loop with exponential backoff
 	var lastErr error
@@ -977,10 +1005,7 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 			}
 
 			// Exponential backoff with cap
-			backoff = time.Duration(float64(backoff) * 2)
-			if backoff > downloadMaxBackoff {
-				backoff = downloadMaxBackoff
-			}
+			backoff = min(time.Duration(float64(backoff)*2), downloadMaxBackoff)
 		}
 
 		data, err := client.Download(ctx, downloadURL)
@@ -1090,6 +1115,20 @@ func isRetryableDownloadError(err error) bool {
 	// Check for specific syscall errors (connection refused, reset, etc.)
 	var opErr *net.OpError
 	return errors.As(err, &opErr)
+}
+
+func (s *Service) basicAuthForIndexer(indexer *models.TorznabIndexer) (*string, *string, error) {
+	if s == nil || s.indexerStore == nil || indexer == nil || indexer.BasicUsername == nil || strings.TrimSpace(*indexer.BasicUsername) == "" {
+		return nil, nil, nil
+	}
+
+	pass, err := s.indexerStore.GetDecryptedBasicPassword(indexer)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	p := pass
+	return indexer.BasicUsername, &p, nil
 }
 
 func collectIndexerIDs(indexers []*models.TorznabIndexer) []int {
@@ -1658,7 +1697,12 @@ func (s *Service) SyncIndexerCaps(ctx context.Context, indexerID int) (*models.T
 		return nil, fmt.Errorf("decrypt torznab api key: %w", err)
 	}
 
-	client := NewClient(indexer.BaseURL, apiKey, indexer.Backend, indexer.TimeoutSeconds)
+	basicUser, basicPass, err := s.basicAuthForIndexer(indexer)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt torznab basic auth password: %w", err)
+	}
+
+	client := NewClient(indexer.BaseURL, apiKey, basicUser, basicPass, indexer.Backend, indexer.TimeoutSeconds)
 
 	identifier, err := resolveCapsIdentifier(indexer)
 	if err != nil {
@@ -1818,7 +1862,17 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		return indexerExecResult{id: idx.ID, err: err}
 	}
 
-	client := NewClient(idx.BaseURL, apiKey, idx.Backend, idx.TimeoutSeconds)
+	basicUser, basicPass, err := s.basicAuthForIndexer(idx)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Msg("Failed to decrypt basic auth password")
+		return indexerExecResult{id: idx.ID, err: err}
+	}
+
+	client := NewClient(idx.BaseURL, apiKey, basicUser, basicPass, idx.Backend, idx.TimeoutSeconds)
 
 	paramsMap := make(map[string]string)
 	for key, values := range params {
@@ -3120,10 +3174,7 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 			group = parsed.Group
 		}
 
-		leechers := r.Peers - r.Seeders
-		if leechers < 0 {
-			leechers = 0
-		}
+		leechers := max(r.Peers-r.Seeders, 0)
 
 		result := SearchResult{
 			Indexer:              r.Tracker,
@@ -3317,8 +3368,8 @@ func extractInfoHashFromMagnet(magnetURL string) string {
 		return ""
 	}
 
-	params := strings.Split(parts[1], "&")
-	for _, param := range params {
+	params := strings.SplitSeq(parts[1], "&")
+	for param := range params {
 		if strings.HasPrefix(strings.ToLower(param), "xt=urn:btih:") {
 			// Extract the hash part after "xt=urn:btih:"
 			hashPart := param[12:] // len("xt=urn:btih:") == 12
@@ -4030,7 +4081,12 @@ func (s *Service) getProwlarrIndexerDomain(ctx context.Context, indexer *models.
 	}
 
 	// Create Prowlarr client
-	client := NewClient(indexer.BaseURL, apiKey, models.TorznabBackendProwlarr, 30)
+	basicUser, basicPass, err := s.basicAuthForIndexer(indexer)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt basic auth password: %w", err)
+	}
+
+	client := NewClient(indexer.BaseURL, apiKey, basicUser, basicPass, models.TorznabBackendProwlarr, 30)
 	if client.prowlarr == nil {
 		return "", fmt.Errorf("failed to create Prowlarr client")
 	}
@@ -4090,12 +4146,18 @@ func (s *Service) getProwlarrTrackerDomains(ctx context.Context, prowlarrIndexer
 			continue
 		}
 
+		basicUser, basicPass, err := s.basicAuthForIndexer(indexers[0])
+		if err != nil {
+			log.Warn().Err(err).Str("baseURL", redact.URLString(baseURL)).Msg("Failed to decrypt basic auth password for Prowlarr instance")
+			continue
+		}
+
 		// Create Prowlarr client for this instance
 		timeout := indexers[0].TimeoutSeconds
 		if timeout <= 0 {
 			timeout = 30
 		}
-		client := NewClient(baseURL, apiKey, models.TorznabBackendProwlarr, timeout)
+		client := NewClient(baseURL, apiKey, basicUser, basicPass, models.TorznabBackendProwlarr, timeout)
 		if client.prowlarr == nil {
 			log.Warn().Str("baseURL", redact.URLString(baseURL)).Msg("Failed to create Prowlarr client")
 			continue

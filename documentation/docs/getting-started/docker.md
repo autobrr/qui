@@ -6,7 +6,8 @@ description: Run qui in Docker with compose or standalone.
 
 import CodeBlock from '@theme/CodeBlock';
 import DockerCompose from '!!raw-loader!@site/../distrib/docker/docker-compose.yml';
-import LocalFilesystemDocker from '@site/docs/_partials/_local-filesystem-docker.mdx';
+import DockerComposePostgres from '!!raw-loader!@site/../distrib/docker/docker-compose.postgres.yml';
+import LocalFilesystemDocker from "../_partials/_local-filesystem-docker.mdx";
 
 # Docker
 
@@ -16,6 +17,14 @@ import LocalFilesystemDocker from '@site/docs/_partials/_local-filesystem-docker
 
 ```bash
 docker compose up -d
+```
+
+## Docker Compose (Postgres)
+
+<CodeBlock language="yaml" title="docker-compose.postgres.yml">{DockerComposePostgres}</CodeBlock>
+
+```bash
+docker compose -f docker-compose.postgres.yml up -d
 ```
 
 ## Standalone
@@ -46,10 +55,11 @@ Our release workflow builds multi-architecture images (`linux/amd64`, `linux/arm
 7. Enable **Advanced View** (top right)
 8. Set **Icon URL** to `https://raw.githubusercontent.com/autobrr/qui/main/web/public/icon.png`
 9. Set **WebUI** to `http://[IP]:[PORT:7476]`
-10. (Optional) add environment variables for advanced settings (e.g., `QUI__BASE_URL`, `QUI__LOG_LEVEL`, `TZ`)
-11. Click **Apply** to pull the image and start the container
+10. Set **Extra Parameters** to `--user="99:100"` (if you ran qui without this before you will need to change the ownership for the config and hardlink folders to `nobody`)
+11. (Optional) add environment variables for advanced settings (e.g., `QUI__BASE_URL`, `QUI__LOG_LEVEL`, `TZ`)
+12. Click **Apply** to pull the image and start the container
 
-The `/config` mount stores `config.toml`, the SQLite database, and logs. Point it at your preferred appdata share so settings persist across upgrades.
+The `/config` mount stores `config.toml`, logs, tracker icon cache, and other runtime assets. If you use the default SQLite engine, `qui.db` is stored there too. Point it at your preferred appdata share so settings persist across upgrades.
 
 If the app logs to stdout, check logs via Docker → qui → Logs; if it writes to files, they'll be under `/config`.
 

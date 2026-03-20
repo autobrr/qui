@@ -45,19 +45,21 @@ func ParseArrInstanceType(value string) (ArrInstanceType, error) {
 
 // ArrInstance represents a Sonarr or Radarr instance used for ID lookups
 type ArrInstance struct {
-	ID              int             `json:"id"`
-	Type            ArrInstanceType `json:"type"`
-	Name            string          `json:"name"`
-	BaseURL         string          `json:"base_url"`
-	APIKeyEncrypted string          `json:"-"`
-	Enabled         bool            `json:"enabled"`
-	Priority        int             `json:"priority"`
-	TimeoutSeconds  int             `json:"timeout_seconds"`
-	LastTestAt      *time.Time      `json:"last_test_at,omitempty"`
-	LastTestStatus  string          `json:"last_test_status"`
-	LastTestError   *string         `json:"last_test_error,omitempty"`
-	CreatedAt       time.Time       `json:"created_at"`
-	UpdatedAt       time.Time       `json:"updated_at"`
+	ID                     int             `json:"id"`
+	Type                   ArrInstanceType `json:"type"`
+	Name                   string          `json:"name"`
+	BaseURL                string          `json:"base_url"`
+	BasicUsername          *string         `json:"basic_username,omitempty"`
+	APIKeyEncrypted        string          `json:"-"`
+	BasicPasswordEncrypted *string         `json:"-"`
+	Enabled                bool            `json:"enabled"`
+	Priority               int             `json:"priority"`
+	TimeoutSeconds         int             `json:"timeout_seconds"`
+	LastTestAt             *time.Time      `json:"last_test_at,omitempty"`
+	LastTestStatus         string          `json:"last_test_status"`
+	LastTestError          *string         `json:"last_test_error,omitempty"`
+	CreatedAt              time.Time       `json:"created_at"`
+	UpdatedAt              time.Time       `json:"updated_at"`
 }
 
 // ArrInstanceUpdateParams captures optional fields for updating an ARR instance.
@@ -65,15 +67,54 @@ type ArrInstanceUpdateParams struct {
 	Name           *string
 	BaseURL        *string
 	APIKey         *string
+	BasicUsername  *string
+	BasicPassword  *string
 	Enabled        *bool
 	Priority       *int
 	TimeoutSeconds *int
+}
+
+type arrInstanceCreateParams struct {
+	instanceType   ArrInstanceType
+	name           string
+	baseURL        string
+	apiKey         string
+	basicUsername  *string
+	basicPassword  *string
+	timeoutSeconds int
 }
 
 // ArrInstanceStore manages ARR instances in the database
 type ArrInstanceStore struct {
 	db            dbinterface.Querier
 	encryptionKey []byte
+}
+
+func normalizeName(value string) string {
+	return strings.TrimSpace(value)
+}
+
+func normalizeBaseURL(value string) string {
+	return strings.TrimRight(strings.TrimSpace(value), "/")
+}
+
+func normalizeAPIKey(value string) string {
+	return strings.TrimSpace(value)
+}
+
+func validateBasicAuth(username *string, password *string) (*string, *string, error) {
+	trimmedUser := strings.TrimSpace(stringOrEmpty(username))
+	if trimmedUser == "" {
+		return nil, nil, nil
+	}
+	if password == nil {
+		return &trimmedUser, nil, nil
+	}
+	trimmedPass := strings.TrimSpace(*password)
+	if trimmedPass == "" {
+		return &trimmedUser, nil, ErrBasicAuthPasswordRequired
+	}
+	return &trimmedUser, &trimmedPass, nil
 }
 
 // NewArrInstanceStore creates a new ArrInstanceStore
@@ -140,34 +181,25 @@ func (s *ArrInstanceStore) decrypt(ciphertext string) (string, error) {
 }
 
 // Create creates a new ARR instance
-func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceType, name, baseURL, apiKey string, enabled bool, priority, timeoutSeconds int) (*ArrInstance, error) {
-	if name == "" {
-		return nil, errors.New("name cannot be empty")
-	}
-	if baseURL == "" {
-		return nil, errors.New("base URL cannot be empty")
-	}
-	if apiKey == "" {
-		return nil, errors.New("API key cannot be empty")
+func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceType, name, baseURL, apiKey string, basicUsername, basicPassword *string, enabled bool, priority, timeoutSeconds int) (*ArrInstance, error) {
+	prepared, err := prepareCreateParams(instanceType, name, baseURL, apiKey, basicUsername, basicPassword, timeoutSeconds)
+	if err != nil {
+		return nil, err
 	}
 
-	// Validate instance type
-	if instanceType != ArrInstanceTypeSonarr && instanceType != ArrInstanceTypeRadarr {
-		return nil, fmt.Errorf("invalid arr instance type: %s", instanceType)
-	}
-
-	// Normalize base URL (remove trailing slash)
-	baseURL = strings.TrimRight(baseURL, "/")
-
-	// Encrypt API key
-	encryptedAPIKey, err := s.encrypt(apiKey)
+	encryptedAPIKey, err := s.encrypt(prepared.apiKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt API key: %w", err)
 	}
 
-	// Set defaults
-	if timeoutSeconds <= 0 {
-		timeoutSeconds = 15
+	// Encrypt basic auth password if provided
+	var encryptedBasicPassword *string
+	if prepared.basicPassword != nil && *prepared.basicPassword != "" {
+		encrypted, err := s.encrypt(*prepared.basicPassword)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt basic auth password: %w", err)
+		}
+		encryptedBasicPassword = &encrypted
 	}
 
 	// Begin transaction for string interning and insert
@@ -178,51 +210,103 @@ func (s *ArrInstanceStore) Create(ctx context.Context, instanceType ArrInstanceT
 	defer tx.Rollback()
 
 	// Intern strings into string_pool
-	ids, err := dbinterface.InternStrings(ctx, tx, name, baseURL)
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &prepared.name, &prepared.baseURL, prepared.basicUsername)
 	if err != nil {
 		return nil, fmt.Errorf("failed to intern strings: %w", err)
 	}
-	nameID, baseURLID := ids[0], ids[1]
+	nameID := allIDs[0].Int64
+	baseURLID := allIDs[1].Int64
 
 	query := `
-		INSERT INTO arr_instances (type, name_id, base_url_id, api_key_encrypted, enabled, priority, timeout_seconds)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO arr_instances (type, name_id, base_url_id, basic_username_id, basic_password_encrypted, api_key_encrypted, enabled, priority, timeout_seconds)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING id
 	`
 
-	result, err := tx.ExecContext(ctx, query, instanceType, nameID, baseURLID, encryptedAPIKey, enabled, priority, timeoutSeconds)
+	var id int
+	err = tx.QueryRowContext(ctx, query, prepared.instanceType, nameID, baseURLID, allIDs[2], encryptedBasicPassword, encryptedAPIKey, BoolToSQLite(enabled), priority, prepared.timeoutSeconds).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create arr instance: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get last insert ID: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return s.Get(ctx, int(id))
+	return s.Get(ctx, id)
+}
+
+func prepareCreateParams(instanceType ArrInstanceType, name, baseURL, apiKey string, basicUsername, basicPassword *string, timeoutSeconds int) (arrInstanceCreateParams, error) {
+	name = normalizeName(name)
+	baseURL = normalizeBaseURL(baseURL)
+	apiKey = normalizeAPIKey(apiKey)
+
+	if name == "" {
+		return arrInstanceCreateParams{}, errors.New("name cannot be empty")
+	}
+	if baseURL == "" {
+		return arrInstanceCreateParams{}, errors.New("base URL cannot be empty")
+	}
+	if apiKey == "" {
+		return arrInstanceCreateParams{}, errors.New("API key cannot be empty")
+	}
+	normalizedType, err := ParseArrInstanceType(string(instanceType))
+	if err != nil {
+		return arrInstanceCreateParams{}, err
+	}
+
+	normalizedBasicUser, normalizedBasicPass, err := validateBasicAuth(basicUsername, basicPassword)
+	if err != nil {
+		return arrInstanceCreateParams{}, err
+	}
+	if normalizedBasicUser == nil {
+		basicUsername = nil
+		basicPassword = nil
+	} else {
+		if normalizedBasicPass == nil {
+			return arrInstanceCreateParams{}, ErrBasicAuthPasswordRequired
+		}
+		basicUsername = normalizedBasicUser
+		basicPassword = normalizedBasicPass
+	}
+
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 15
+	}
+
+	return arrInstanceCreateParams{
+		instanceType:   normalizedType,
+		name:           name,
+		baseURL:        baseURL,
+		apiKey:         apiKey,
+		basicUsername:  basicUsername,
+		basicPassword:  basicPassword,
+		timeoutSeconds: timeoutSeconds,
+	}, nil
 }
 
 // Get retrieves an ARR instance by ID using the view
 func (s *ArrInstanceStore) Get(ctx context.Context, id int) (*ArrInstance, error) {
 	query := `
-		SELECT id, type, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
+		SELECT id, type, name, base_url, basic_username, basic_password_encrypted, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM arr_instances_view
 		WHERE id = ?
 	`
 
 	var instance ArrInstance
 	var typeStr string
+	var basicUser sql.NullString
+	var basicPass sql.NullString
+	var enabled int
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&instance.ID,
 		&typeStr,
 		&instance.Name,
 		&instance.BaseURL,
+		&basicUser,
+		&basicPass,
 		&instance.APIKeyEncrypted,
-		&instance.Enabled,
+		&enabled,
 		&instance.Priority,
 		&instance.TimeoutSeconds,
 		&instance.LastTestAt,
@@ -237,6 +321,7 @@ func (s *ArrInstanceStore) Get(ctx context.Context, id int) (*ArrInstance, error
 		}
 		return nil, fmt.Errorf("failed to get arr instance: %w", err)
 	}
+	instance.Enabled = SQLiteIntToBool(enabled)
 
 	parsedType, err := ParseArrInstanceType(typeStr)
 	if err != nil {
@@ -244,13 +329,22 @@ func (s *ArrInstanceStore) Get(ctx context.Context, id int) (*ArrInstance, error
 	}
 	instance.Type = parsedType
 
+	if basicUser.Valid {
+		u := basicUser.String
+		instance.BasicUsername = &u
+	}
+	if basicPass.Valid {
+		p := basicPass.String
+		instance.BasicPasswordEncrypted = &p
+	}
+
 	return &instance, nil
 }
 
 // List retrieves all ARR instances using the view, ordered by type, priority (descending), and name
 func (s *ArrInstanceStore) List(ctx context.Context) ([]*ArrInstance, error) {
 	query := `
-		SELECT id, type, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
+		SELECT id, type, name, base_url, basic_username, basic_password_encrypted, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM arr_instances_view
 		ORDER BY type ASC, priority DESC, name ASC
 	`
@@ -265,13 +359,18 @@ func (s *ArrInstanceStore) List(ctx context.Context) ([]*ArrInstance, error) {
 	for rows.Next() {
 		var instance ArrInstance
 		var typeStr string
+		var basicUser sql.NullString
+		var basicPass sql.NullString
+		var enabled int
 		err := rows.Scan(
 			&instance.ID,
 			&typeStr,
 			&instance.Name,
 			&instance.BaseURL,
+			&basicUser,
+			&basicPass,
 			&instance.APIKeyEncrypted,
-			&instance.Enabled,
+			&enabled,
 			&instance.Priority,
 			&instance.TimeoutSeconds,
 			&instance.LastTestAt,
@@ -283,12 +382,22 @@ func (s *ArrInstanceStore) List(ctx context.Context) ([]*ArrInstance, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan arr instance: %w", err)
 		}
+		instance.Enabled = SQLiteIntToBool(enabled)
 
 		parsedType, err := ParseArrInstanceType(typeStr)
 		if err != nil {
 			return nil, err
 		}
 		instance.Type = parsedType
+
+		if basicUser.Valid {
+			u := basicUser.String
+			instance.BasicUsername = &u
+		}
+		if basicPass.Valid {
+			p := basicPass.String
+			instance.BasicPasswordEncrypted = &p
+		}
 
 		instances = append(instances, &instance)
 	}
@@ -303,7 +412,7 @@ func (s *ArrInstanceStore) List(ctx context.Context) ([]*ArrInstance, error) {
 // ListEnabled retrieves all enabled ARR instances, ordered by type, priority (descending), and name
 func (s *ArrInstanceStore) ListEnabled(ctx context.Context) ([]*ArrInstance, error) {
 	query := `
-		SELECT id, type, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
+		SELECT id, type, name, base_url, basic_username, basic_password_encrypted, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM arr_instances_view
 		WHERE enabled = 1
 		ORDER BY type ASC, priority DESC, name ASC
@@ -319,13 +428,18 @@ func (s *ArrInstanceStore) ListEnabled(ctx context.Context) ([]*ArrInstance, err
 	for rows.Next() {
 		var instance ArrInstance
 		var typeStr string
+		var basicUser sql.NullString
+		var basicPass sql.NullString
+		var enabled int
 		err := rows.Scan(
 			&instance.ID,
 			&typeStr,
 			&instance.Name,
 			&instance.BaseURL,
+			&basicUser,
+			&basicPass,
 			&instance.APIKeyEncrypted,
-			&instance.Enabled,
+			&enabled,
 			&instance.Priority,
 			&instance.TimeoutSeconds,
 			&instance.LastTestAt,
@@ -337,12 +451,22 @@ func (s *ArrInstanceStore) ListEnabled(ctx context.Context) ([]*ArrInstance, err
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan arr instance: %w", err)
 		}
+		instance.Enabled = SQLiteIntToBool(enabled)
 
 		parsedType, err := ParseArrInstanceType(typeStr)
 		if err != nil {
 			return nil, err
 		}
 		instance.Type = parsedType
+
+		if basicUser.Valid {
+			u := basicUser.String
+			instance.BasicUsername = &u
+		}
+		if basicPass.Valid {
+			p := basicPass.String
+			instance.BasicPasswordEncrypted = &p
+		}
 
 		instances = append(instances, &instance)
 	}
@@ -357,7 +481,7 @@ func (s *ArrInstanceStore) ListEnabled(ctx context.Context) ([]*ArrInstance, err
 // ListEnabledByType retrieves all enabled ARR instances of a specific type, ordered by priority (descending)
 func (s *ArrInstanceStore) ListEnabledByType(ctx context.Context, instanceType ArrInstanceType) ([]*ArrInstance, error) {
 	query := `
-		SELECT id, type, name, base_url, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
+		SELECT id, type, name, base_url, basic_username, basic_password_encrypted, api_key_encrypted, enabled, priority, timeout_seconds, last_test_at, last_test_status, last_test_error, created_at, updated_at
 		FROM arr_instances_view
 		WHERE enabled = 1 AND type = ?
 		ORDER BY priority DESC, name ASC
@@ -373,13 +497,18 @@ func (s *ArrInstanceStore) ListEnabledByType(ctx context.Context, instanceType A
 	for rows.Next() {
 		var instance ArrInstance
 		var typeStr string
+		var basicUser sql.NullString
+		var basicPass sql.NullString
+		var enabled int
 		err := rows.Scan(
 			&instance.ID,
 			&typeStr,
 			&instance.Name,
 			&instance.BaseURL,
+			&basicUser,
+			&basicPass,
 			&instance.APIKeyEncrypted,
-			&instance.Enabled,
+			&enabled,
 			&instance.Priority,
 			&instance.TimeoutSeconds,
 			&instance.LastTestAt,
@@ -391,12 +520,22 @@ func (s *ArrInstanceStore) ListEnabledByType(ctx context.Context, instanceType A
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan arr instance: %w", err)
 		}
+		instance.Enabled = SQLiteIntToBool(enabled)
 
 		parsedType, err := ParseArrInstanceType(typeStr)
 		if err != nil {
 			return nil, err
 		}
 		instance.Type = parsedType
+
+		if basicUser.Valid {
+			u := basicUser.String
+			instance.BasicUsername = &u
+		}
+		if basicPass.Valid {
+			p := basicPass.String
+			instance.BasicPasswordEncrypted = &p
+		}
 
 		instances = append(instances, &instance)
 	}
@@ -408,19 +547,20 @@ func (s *ArrInstanceStore) ListEnabledByType(ctx context.Context, instanceType A
 	return instances, nil
 }
 
-// Update updates an existing ARR instance
-func (s *ArrInstanceStore) Update(ctx context.Context, id int, params *ArrInstanceUpdateParams) (*ArrInstance, error) {
-	existing, err := s.Get(ctx, id)
-	if err != nil {
-		return nil, err
+func normalizeUpdateParams(_ context.Context, params *ArrInstanceUpdateParams, existing *ArrInstance) error {
+	if params.Name != nil {
+		normalizedName := normalizeName(*params.Name)
+		if normalizedName == "" {
+			return errors.New("name cannot be empty")
+		}
+		existing.Name = normalizedName
 	}
-
-	// Apply updates
-	if params.Name != nil && *params.Name != "" {
-		existing.Name = *params.Name
-	}
-	if params.BaseURL != nil && *params.BaseURL != "" {
-		existing.BaseURL = strings.TrimRight(*params.BaseURL, "/")
+	if params.BaseURL != nil {
+		normalizedBaseURL := normalizeBaseURL(*params.BaseURL)
+		if normalizedBaseURL == "" {
+			return errors.New("base URL cannot be empty")
+		}
+		existing.BaseURL = normalizedBaseURL
 	}
 	if params.Enabled != nil {
 		existing.Enabled = *params.Enabled
@@ -431,51 +571,123 @@ func (s *ArrInstanceStore) Update(ctx context.Context, id int, params *ArrInstan
 	if params.TimeoutSeconds != nil {
 		existing.TimeoutSeconds = *params.TimeoutSeconds
 	}
+	return nil
+}
 
+func encryptCredentials(existing *ArrInstance, params *ArrInstanceUpdateParams, encryptFn func(string) (string, error)) error {
 	// Handle API key update
-	if params.APIKey != nil && *params.APIKey != "" {
-		encryptedAPIKey, err := s.encrypt(*params.APIKey)
+	if params.APIKey != nil {
+		normalizedAPIKey := normalizeAPIKey(*params.APIKey)
+		if normalizedAPIKey == "" {
+			return errors.New("API key cannot be empty")
+		}
+		encryptedAPIKey, err := encryptFn(normalizedAPIKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt API key: %w", err)
+			return fmt.Errorf("failed to encrypt API key: %w", err)
 		}
 		existing.APIKeyEncrypted = encryptedAPIKey
 	}
 
+	// Handle basic auth update
+	if params.BasicUsername != nil {
+		normalizedBasicUser, normalizedBasicPass, err := validateBasicAuth(params.BasicUsername, params.BasicPassword)
+		if err != nil {
+			return err
+		}
+
+		if normalizedBasicUser == nil {
+			existing.BasicUsername = nil
+			existing.BasicPasswordEncrypted = nil
+			return nil
+		}
+
+		existing.BasicUsername = normalizedBasicUser
+
+		// Only update password when explicitly provided.
+		if params.BasicPassword != nil {
+			if normalizedBasicPass == nil {
+				existing.BasicPasswordEncrypted = nil
+			} else {
+				encrypted, err := encryptFn(*normalizedBasicPass)
+				if err != nil {
+					return fmt.Errorf("failed to encrypt basic auth password: %w", err)
+				}
+				existing.BasicPasswordEncrypted = &encrypted
+			}
+		}
+		// If enabling basic auth and no password exists, require it.
+		if existing.BasicPasswordEncrypted == nil || *existing.BasicPasswordEncrypted == "" {
+			return ErrBasicAuthPasswordRequired
+		}
+	}
+
+	return nil
+}
+
+func persistUpdateWithIntern(ctx context.Context, txProvider dbinterface.Querier, existing *ArrInstance) error {
 	// Begin transaction for string interning and update
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := txProvider.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
 	// Intern strings into string_pool
-	ids, err := dbinterface.InternStrings(ctx, tx, existing.Name, existing.BaseURL)
+	allIDs, err := dbinterface.InternStringNullable(ctx, tx, &existing.Name, &existing.BaseURL, existing.BasicUsername)
 	if err != nil {
-		return nil, fmt.Errorf("failed to intern strings: %w", err)
+		return fmt.Errorf("failed to intern strings: %w", err)
 	}
-	nameID, baseURLID := ids[0], ids[1]
+	nameID := allIDs[0].Int64
+	baseURLID := allIDs[1].Int64
 
 	query := `
 		UPDATE arr_instances
-		SET name_id = ?, base_url_id = ?, api_key_encrypted = ?, enabled = ?, priority = ?, timeout_seconds = ?
+		SET name_id = ?, base_url_id = ?, basic_username_id = ?, basic_password_encrypted = ?, api_key_encrypted = ?, enabled = ?, priority = ?, timeout_seconds = ?
 		WHERE id = ?
 	`
 
 	_, err = tx.ExecContext(ctx, query,
 		nameID,
 		baseURLID,
+		allIDs[2],
+		existing.BasicPasswordEncrypted,
 		existing.APIKeyEncrypted,
-		existing.Enabled,
+		BoolToSQLite(existing.Enabled),
 		existing.Priority,
 		existing.TimeoutSeconds,
-		id,
+		existing.ID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to update arr instance: %w", err)
+		return fmt.Errorf("failed to update arr instance: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return nil
+}
+
+// Update updates an existing ARR instance
+func (s *ArrInstanceStore) Update(ctx context.Context, id int, params *ArrInstanceUpdateParams) (*ArrInstance, error) {
+	if params == nil {
+		return nil, errors.New("params cannot be nil")
+	}
+
+	existing, err := s.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := normalizeUpdateParams(ctx, params, existing); err != nil {
+		return nil, err
+	}
+
+	if err := encryptCredentials(existing, params, s.encrypt); err != nil {
+		return nil, err
+	}
+
+	if err := persistUpdateWithIntern(ctx, s.db, existing); err != nil {
+		return nil, err
 	}
 
 	return s.Get(ctx, id)
@@ -531,4 +743,19 @@ func (s *ArrInstanceStore) UpdateTestStatus(ctx context.Context, id int, status 
 // GetDecryptedAPIKey returns the decrypted API key for an ARR instance
 func (s *ArrInstanceStore) GetDecryptedAPIKey(instance *ArrInstance) (string, error) {
 	return s.decrypt(instance.APIKeyEncrypted)
+}
+
+// GetDecryptedBasicPassword returns the decrypted basic auth password for an ARR instance.
+func (s *ArrInstanceStore) GetDecryptedBasicPassword(instance *ArrInstance) (string, error) {
+	if instance.BasicPasswordEncrypted == nil || *instance.BasicPasswordEncrypted == "" {
+		return "", nil
+	}
+	return s.decrypt(*instance.BasicPasswordEncrypted)
+}
+
+func stringOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
