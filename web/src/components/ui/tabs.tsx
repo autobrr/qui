@@ -54,10 +54,12 @@ function TabsList({
     const observer = new MutationObserver(updateIndicator)
     observer.observe(list, { attributes: true, subtree: true, attributeFilter: ["data-state"] })
 
-    window.addEventListener("resize", updateIndicator)
+    const resizeObserver = new ResizeObserver(updateIndicator)
+    resizeObserver.observe(list)
+
     return () => {
       observer.disconnect()
-      window.removeEventListener("resize", updateIndicator)
+      resizeObserver.disconnect()
     }
   }, [updateIndicator])
 
