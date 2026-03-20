@@ -1787,6 +1787,11 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		return fmt.Errorf("no valid torrents found for bulk action: %s", action)
 	}
 
+	var managedDeleteCleanupTargets []managedDeleteCleanupTarget
+	if action == "deleteWithFiles" {
+		managedDeleteCleanupTargets = sm.buildManagedDeleteCleanupTargets(ctx, instanceID, syncManager, canonicalHashes)
+	}
+
 	// Log debug info when variant resolution was used (helps diagnose hybrid hash issues)
 	if variantResolutions > 0 {
 		log.Debug().
@@ -1853,6 +1858,7 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, true)
 		// Invalidate caches for deleted torrents
 		if err == nil {
+			cleanupManagedDeleteTargets(managedDeleteCleanupTargets)
 			sm.RemoveHashesFromTrackerHealthCache(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
 			if fm := sm.getFilesManager(); fm != nil {
@@ -1899,6 +1905,29 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	}
 
 	return err
+}
+
+func (sm *SyncManager) buildManagedDeleteCleanupTargets(
+	ctx context.Context,
+	instanceID int,
+	syncManager *qbt.SyncManager,
+	hashes []string,
+) []managedDeleteCleanupTarget {
+	if sm == nil || sm.clientPool == nil || sm.clientPool.instanceStore == nil || syncManager == nil {
+		return nil
+	}
+
+	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
+	if err != nil || instance == nil || !instance.HasLocalFilesystemAccess || strings.TrimSpace(instance.HardlinkBaseDir) == "" {
+		return nil
+	}
+
+	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
+	if len(torrents) == 0 {
+		return nil
+	}
+
+	return buildManagedDeleteCleanupTargets(instance.HardlinkBaseDir, torrents)
 }
 
 // bulkActionSyncRetry forces a sync and retries hash resolution for just-added torrents.

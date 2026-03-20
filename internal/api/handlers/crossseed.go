@@ -822,7 +822,7 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 		Int64("size", totalSize).
 		Int("fileCount", fileCount).
 		Ints("instanceIds", req.InstanceIDs).
-		Str("indexerName", req.IndexerName).
+		Str("indexer", req.Indexer).
 		Str("category", req.Category).
 		Msg("Webhook apply: received request")
 

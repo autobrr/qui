@@ -29,7 +29,7 @@ make dev-backend        # Backend only with hot-reload
 make dev-frontend       # Frontend only
 
 # Testing
-make test               # go test -race -count=3 -v ./...
+make test               # go test -race -count=1 -v ./...
 make test-openapi       # Validate OpenAPI spec after touching internal/web/swagger
 
 # Linting
@@ -97,9 +97,11 @@ Keep Go code `gofmt`-clean with PascalCase exports, camelCase locals, and packag
 
 Place backend tests beside implementations as `*_test.go`, mirroring paths such as `internal/qbittorrent/pool_test.go`. Prefer table-driven cases and reuse the integration fixtures already in `internal/qbittorrent/`. Run `make test` before every push and add `make test-openapi` when contracts change. Frontend work should include Vitest + React Testing Library specs named `*.test.tsx` near the component.
 
-When running tests, always use `-race` and `-count=3` to catch race conditions.
+When running tests, always use `-race` and `-count=1`.
 
 For changes under `internal/services/crossseed` or `internal/qbittorrent`, run targeted package tests first, then run the full `make test` suite.
+
+When adding Go tests that create files with `os.WriteFile`, use `0o600` or tighter permissions unless the test explicitly needs broader mode bits. This avoids `gosec` `G306` lint failures.
 
 ## Commit & Pull Request Guidelines
 
@@ -125,7 +127,7 @@ Load secrets such as `THEMES_REPO_TOKEN` via `.env` so the Makefile can fetch pr
 
 ## API & Database Change Rules
 
-- Database schema changes must ship as migrations under `internal/database/migrations` and include matching model/store updates in the same PR.
+- Database schema changes must ship as migrations under `internal/database/migrations`, include matching model/store updates in the same PR, and add both SQLite and Postgres migrations.
 - API contract changes must update OpenAPI content under `internal/web/swagger` and pass `make test-openapi`.
 - Prefer minimal, reviewable diffs in high-churn areas (`internal/services/crossseed`, `internal/qbittorrent`, `internal/models`).
 

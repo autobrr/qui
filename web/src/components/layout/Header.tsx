@@ -4,11 +4,11 @@
  */
 
 import { InstancePreferencesDialog } from "@/components/instances/preferences/InstancePreferencesDialog"
+import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  DropdownMenuCheckboxItem,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -101,8 +101,6 @@ export function Header({
     [persistedUnifiedFilter, activeInstanceIds]
   )
   const effectiveUnifiedInstanceIds = normalizedUnifiedInstanceIds.length > 0? normalizedUnifiedInstanceIds: activeInstanceIds
-  const hasCustomUnifiedScope = normalizedUnifiedInstanceIds.length > 0
-  const unifiedScopeSummary = `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}`
   const applyUnifiedScope = useCallback((nextIds: number[]) => {
     const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
     saveUnifiedFilter(normalizedIds)
@@ -263,70 +261,19 @@ export function Header({
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-64 mt-2" side="bottom" align="start">
               <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Switch Scope
+                Instances
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               {hasMultipleActiveInstances && (
                 <>
-                  <DropdownMenuItem asChild>
-                    <Link
-                      to="/instances"
-                      className={cn(
-                        "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none",
-                        isAllInstancesRoute ? "bg-accent text-accent-foreground font-medium" : "hover:bg-accent/80 data-[highlighted]:bg-accent/80 text-foreground"
-                      )}
-                    >
-                      <HardDrive className="h-4 w-4 flex-shrink-0" />
-                      <span className="flex-1 truncate">Unified</span>
-                      <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
-                        {activeInstances.length} active
-                      </span>
-                      {hasCustomUnifiedScope && (
-                        <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
-                          {unifiedScopeSummary}
-                        </span>
-                      )}
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
-                    Unified Scope
-                  </DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.preventDefault()
-                      resetUnifiedScope()
-                    }}
-                    className="cursor-pointer text-xs"
-                  >
-                    All active ({activeInstances.length})
-                  </DropdownMenuItem>
-                  {activeInstances.map((instance) => {
-                    const checked = effectiveUnifiedInstanceIds.includes(instance.id)
-                    return (
-                      <DropdownMenuCheckboxItem
-                        key={`scope-${instance.id}`}
-                        checked={checked}
-                        onSelect={(event) => {
-                          event.preventDefault()
-                          toggleUnifiedScopeInstance(instance.id)
-                        }}
-                        className="cursor-pointer"
-                      >
-                        <span className="flex w-full items-center justify-between gap-2">
-                          <span className="truncate">{instance.name}</span>
-                          <span
-                            className={cn(
-                              "h-2 w-2 rounded-full flex-shrink-0",
-                              instance.connected ? "bg-green-500" : "bg-red-500"
-                            )}
-                            aria-hidden="true"
-                          />
-                        </span>
-                      </DropdownMenuCheckboxItem>
-                    )
-                  })}
-                  <DropdownMenuSeparator />
+                  <UnifiedScopeDropdownSection
+                    activeInstances={activeInstances}
+                    effectiveUnifiedInstanceIds={effectiveUnifiedInstanceIds}
+                    isAllInstancesRoute={isAllInstancesRoute}
+                    onResetUnifiedScope={resetUnifiedScope}
+                    onToggleUnifiedScopeInstance={toggleUnifiedScopeInstance}
+                    scopeKeyPrefix="header-switch-scope"
+                  />
                 </>
               )}
               <div className="max-h-64 overflow-y-auto space-y-1">
@@ -709,76 +656,22 @@ export function Header({
                   Logs
                 </Link>
               </DropdownMenuItem>
-              {hasMultipleActiveInstances && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link
-                      to="/instances"
-                      className={cn(
-                        "flex cursor-pointer",
-                        isAllInstancesRoute && "bg-accent text-accent-foreground font-medium"
-                      )}
-                    >
-                      <HardDrive className="mr-2 h-4 w-4" />
-                      <span className="truncate">Unified</span>
-                      <span className="ml-auto rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
-                        {activeInstances.length} active
-                      </span>
-                      {hasCustomUnifiedScope && (
-                        <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
-                          {unifiedScopeSummary}
-                        </span>
-                      )}
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
-                    Unified Scope
-                  </DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.preventDefault()
-                      resetUnifiedScope()
-                    }}
-                    className="cursor-pointer text-xs"
-                  >
-                    All active ({activeInstances.length})
-                  </DropdownMenuItem>
-                  {activeInstances.map((instance) => {
-                    const checked = effectiveUnifiedInstanceIds.includes(instance.id)
-                    return (
-                      <DropdownMenuCheckboxItem
-                        key={`menu-scope-${instance.id}`}
-                        checked={checked}
-                        onSelect={(event) => {
-                          event.preventDefault()
-                          toggleUnifiedScopeInstance(instance.id)
-                        }}
-                        className="cursor-pointer"
-                      >
-                        <span className="flex w-full items-center justify-between gap-2">
-                          <span className="truncate">{instance.name}</span>
-                          <span
-                            className={cn(
-                              "h-2 w-2 rounded-full flex-shrink-0",
-                              instance.connected ? "bg-green-500" : "bg-red-500"
-                            )}
-                            aria-hidden="true"
-                          />
-                        </span>
-                      </DropdownMenuCheckboxItem>
-                    )
-                  })}
-                  <DropdownMenuSeparator />
-                </>
-              )}
+              {activeInstances.length > 0 && <DropdownMenuSeparator />}
               {activeInstances.length > 0 ? (
                 <>
-                  {!hasMultipleActiveInstances && <DropdownMenuSeparator />}
                   <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
                     Instances
                   </DropdownMenuLabel>
+                  {hasMultipleActiveInstances && (
+                    <UnifiedScopeDropdownSection
+                      activeInstances={activeInstances}
+                      effectiveUnifiedInstanceIds={effectiveUnifiedInstanceIds}
+                      isAllInstancesRoute={isAllInstancesRoute}
+                      onResetUnifiedScope={resetUnifiedScope}
+                      onToggleUnifiedScopeInstance={toggleUnifiedScopeInstance}
+                      scopeKeyPrefix="header-menu-scope"
+                    />
+                  )}
                   {activeInstances.map((instance) => {
                     const csState = crossSeedInstanceState[instance.id]
                     const hasRss = csState?.rssEnabled || csState?.rssRunning
@@ -789,7 +682,7 @@ export function Header({
                         <Link
                           to="/instances/$instanceId"
                           params={{ instanceId: instance.id.toString() }}
-                          className="flex cursor-pointer pl-6"
+                          className="flex cursor-pointer"
                         >
                           <HardDrive className="mr-2 h-4 w-4" />
                           <span className="truncate">{instance.name}</span>
