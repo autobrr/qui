@@ -2319,6 +2319,7 @@ export interface DirScanRun {
   directoryId: number
   status: DirScanRunStatus
   triggeredBy: string
+  scanRoot?: string
   filesFound: number
   filesSkipped: number
   matchesFound: number
@@ -2326,6 +2327,13 @@ export interface DirScanRun {
   errorMessage?: string
   startedAt: string
   completedAt?: string
+}
+
+export interface DirScanTriggerResponse {
+  runId: number
+  directoryId: number
+  directoryPath: string
+  scanRoot: string
 }
 
 export type DirScanRunInjectionStatus = "added" | "failed"

@@ -171,7 +171,7 @@ Open **Dir Scan > Settings**:
 | Size Tolerance (%) | Allows small size differences when matching. |
 | Minimum Piece Ratio (%) | For partial matches, minimum percent of torrent data that must exist on disk. |
 | Max searchees per run | Limits how many eligible searchees are processed per run. `0` = unlimited. Useful for making progress across restarts. |
-| Skip searchees older than (days) | Excludes searchees where all files are older than the cutoff. `0` = disabled. |
+| Only process items changed within the last (days) | Excludes stale work items before search. Uses video/audio mtimes only for manual/scheduled scans. Webhook-triggered scans ignore this cutoff. `0` = disabled. |
 | Allow partial matches | Add torrents even if they have extra/missing files compared to disk. |
 | Skip piece boundary safety check | Allow partial matches where downloading missing files could modify pieces containing existing content. |
 | Start torrents paused | Add injected torrents in paused state. |
@@ -188,19 +188,23 @@ So if **Max searchees per run = 5**, Dir Scan will process up to **5 show folder
 
 This is **not** a cap on the total number of indexer searches. TV folders can trigger multiple searches (season-level + per-episode heuristics), even though they still count as a single top-level searchee.
 
-### "Skip searchees older than (days)" explained
+### "Only process items changed within the last (days)" explained
 
 This setting reduces tracker/API load by excluding stale content before search begins.
 
-- A searchee is excluded only if **all files in that searchee** are older than the cutoff.
+- Movies/music are included only when the item's newest video/audio file is within the cutoff.
+- TV is evaluated at the season/episode work-item level so one fresh episode does not pull an entire older show back in.
+- Season-pack searches are kept only when all episode files in that season work item are within the cutoff; otherwise qui falls back to fresh episode-level work only.
 - Cutoff is computed as `now - N days` (for example, `7` means “older than 7 days”).
-- The timestamp used is filesystem **modified time (mtime)**, not release date or qBittorrent add time.
+- The timestamp used is filesystem **modified time (mtime)** from video/audio files only, not subtitles, extras, release date, or qBittorrent add time.
+- Webhook-triggered scans ignore the cutoff entirely and trust the webhook path as the freshness signal.
 - `0` disables age filtering.
 
 Example with `7` days:
 
-- `Movie.2024/` has one subtitle updated yesterday -> included.
-- `Old.Show.S01/` has all files older than 7 days -> skipped.
+- `Movie.2024/` has only an `.srt` updated yesterday while the `.mkv` is old -> skipped.
+- `Show.Name/Season 01/` has one fresh episode and nine old ones -> only the fresh episode stays in scope.
+- `Old.Show.S01/` has all episode files older than 7 days -> skipped.
 
 ## Directories
 
@@ -234,6 +238,66 @@ If you want to force a directory to be re-processed from scratch, use **Reset Sc
 - **Manual scans** can be triggered from the UI at any time via the "Scan Now" button.
 
 Both types can be canceled from the UI while running.
+
+### Webhook trigger
+
+You can trigger a scan automatically when Sonarr, Radarr, Lidarr, or Readarr imports content. The webhook endpoint natively understands *arr webhook payloads — no custom scripts needed.
+
+```http
+POST /api/dir-scan/webhook/scan?apikey=YOUR_API_KEY
+```
+
+qui extracts the path from the *arr payload (`series.path`, `movie.folderPath`, `artist.path`, or `author.path`), matches it against the Dir Scan **Directory Path** values configured in qui, and uses the provided path itself as the scan root. It does not use qBittorrent path prefixes for this lookup. On success, the response includes `runId`, `directoryId`, `directoryPath`, and `scanRoot`.
+
+#### Setting up in Sonarr / Radarr
+
+1. Go to **Settings → Connect → Add → Webhook**.
+2. Set **Name** to something like `qui Dir Scan`.
+3. Under **Notification Triggers**, enable **On File Import**. Optionally enable **On File Upgrade** if you also want scans after upgrades. In Sonarr, **On Import Complete** also works.
+4. Set **Webhook URL** to:
+   ```text
+   http://your-qui-host:7476/api/dir-scan/webhook/scan?apikey=YOUR_API_KEY
+   ```
+5. Set **Method** to `POST`.
+6. Leave **Username** and **Password** empty (auth is handled by the API key in the URL).
+7. Click **Test** or **Save**. The built-in **Test** action is accepted as a no-op health check and does not start a scan.
+
+The same steps apply to Lidarr and Readarr.
+
+:::tip
+The webhook uses query-param API key authentication (`?apikey=...`), the same pattern as the cross-seed webhook. You can also use the `X-API-Key` header instead.
+:::
+
+#### How path matching works
+
+qui uses longest-prefix matching against the configured Dir Scan **Directory Path** values to choose which directory settings apply. The actual scan root is the path from the webhook payload. For example, if you have directories configured for `/data/media/movies` and `/data/media/tv`, and Sonarr sends `series.path: "/data/media/tv/Show Name"`, qui matches `/data/media/tv` and scans `/data/media/tv/Show Name`.
+
+In split-mount setups, the *arr app must send the same library path that qui sees on disk. If Sonarr/Radarr uses a different mount path than qui, the webhook will not find a matching directory.
+
+#### Response codes
+
+| Status Code | Meaning |
+|-------------|---------|
+| `202` | Scan accepted. If the directory is idle, qui starts the run immediately. If a webhook scan is already running for that directory, qui keeps one follow-up queued run and merges later webhook paths into it. Example: `{"runId": 42, "directoryId": 3, "directoryPath": "/data/media/tv", "scanRoot": "/data/media/tv/Show Name"}` |
+| `204` | Test webhook accepted. No scan started |
+| `400` | Invalid JSON payload, or no supported path field was found in the request body |
+| `404` | No enabled directory matches the path in the payload |
+| `409` | Multiple directories match the given path |
+| `500` | Internal server error — scan could not be started due to an internal failure |
+
+If a second webhook arrives while the same directory is already scanning, qui returns `202` again. It does not reject the request or require client-side retries. Instead, it updates one queued follow-up run for that directory and expands the queued `scanRoot` to the nearest common ancestor when needed.
+
+Webhook-triggered scans also ignore the global age cutoff. This avoids false skips when Sonarr/Radarr imports files that preserve old filesystem mtimes.
+
+#### Simple mode
+
+You can also call the webhook directly with a plain path (useful for scripts or other tools):
+
+```bash
+curl -X POST "http://localhost:7476/api/dir-scan/webhook/scan?apikey=YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/data/media/movies/Movie Name (2024)"}'
+```
 
 ### Scan phases
 

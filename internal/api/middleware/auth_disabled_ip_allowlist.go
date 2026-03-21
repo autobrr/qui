@@ -38,6 +38,11 @@ func RequireAuthDisabledIPAllowlist(cfg *domain.Config) func(http.Handler) http.
 				return
 			}
 
+			if addr.IsLoopback() && isBuiltInHealthEndpoint(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			for _, prefix := range prefixes {
 				if prefix.Contains(addr) {
 					next.ServeHTTP(w, r)
@@ -71,4 +76,13 @@ func parseRemoteAddrIP(remoteAddr string) (netip.Addr, error) {
 	}
 
 	return addr.Unmap(), nil
+}
+
+func isBuiltInHealthEndpoint(path string) bool {
+	switch path {
+	case "/health", "/healthz/readiness", "/healthz/liveness":
+		return true
+	default:
+		return false
+	}
 }
