@@ -2339,8 +2339,8 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="w-full sm:w-auto">
-          <Zap className="h-4 w-4 mr-2" />
-          Quick Actions
+          <Plus className="h-4 w-4 mr-2" />
+          Add Torrent
           <ChevronDown className="h-3 w-3 ml-1" />
         </Button>
       </DropdownMenuTrigger>
@@ -2474,7 +2474,7 @@ export function Dashboard() {
               <QuickActionsDropdown statsData={statsData} />
               <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }} className="w-full sm:w-auto">
                 <Button variant="outline" size="sm" className="w-full sm:w-auto">
-                  <Plus className="h-4 w-4 mr-2" />
+                  <HardDrive className="h-4 w-4 mr-2" />
                   Add Instance
                 </Button>
               </Link>
@@ -2574,7 +2574,7 @@ export function Dashboard() {
             </div>
             <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
               <Button>
-                <Plus className="h-4 w-4 mr-2" />
+                <HardDrive className="h-4 w-4 mr-2" />
                 Add Instance
               </Button>
             </Link>
