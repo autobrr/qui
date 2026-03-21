@@ -27,6 +27,10 @@ const (
 	CategoryAffixModeSuffix = "suffix"
 )
 
+// MaxMissingBytesAfterRecheckDefault is the default maximum missing bytes
+// allowed after recheck for pooled reflink automation (100 MiB).
+const MaxMissingBytesAfterRecheckDefault = 100 * 1024 * 1024
+
 // CrossSeedAutomationSettings controls automatic cross-seed behaviour.
 // Contains both RSS Automation-specific settings and global cross-seed settings.
 type CrossSeedAutomationSettings struct {
@@ -77,12 +81,15 @@ type CrossSeedAutomationSettings struct {
 
 	// Skip auto-resume settings per source mode.
 	// When enabled, torrents remain paused after hash check instead of auto-resuming.
-	SkipAutoResumeRSS            bool `json:"skipAutoResumeRss"`            // Skip auto-resume for RSS automation results
-	SkipAutoResumeSeededSearch   bool `json:"skipAutoResumeSeededSearch"`   // Skip auto-resume for seeded torrent search results
-	SkipAutoResumeCompletion     bool `json:"skipAutoResumeCompletion"`     // Skip auto-resume for completion-triggered search results
-	SkipAutoResumeWebhook        bool `json:"skipAutoResumeWebhook"`        // Skip auto-resume for /apply webhook results
-	SkipRecheck                  bool `json:"skipRecheck"`                  // Skip cross-seed matches that require a recheck
-	SkipPieceBoundarySafetyCheck bool `json:"skipPieceBoundarySafetyCheck"` // Skip piece boundary safety check (risky: may corrupt existing seeded data)
+	SkipAutoResumeRSS                  bool  `json:"skipAutoResumeRss"`                  // Skip auto-resume for RSS automation results
+	SkipAutoResumeSeededSearch         bool  `json:"skipAutoResumeSeededSearch"`         // Skip auto-resume for seeded torrent search results
+	SkipAutoResumeCompletion           bool  `json:"skipAutoResumeCompletion"`           // Skip auto-resume for completion-triggered search results
+	SkipAutoResumeWebhook              bool  `json:"skipAutoResumeWebhook"`              // Skip auto-resume for /apply webhook results
+	SkipRecheck                        bool  `json:"skipRecheck"`                        // Skip cross-seed matches that require a recheck
+	SkipPieceBoundarySafetyCheck       bool  `json:"skipPieceBoundarySafetyCheck"`       // Skip piece boundary safety check (risky: may corrupt existing seeded data)
+	EnablePooledPartialCompletion      bool  `json:"enablePooledPartialCompletion"`      // Coordinate related managed partial cross-seeds as a temporary shared pool
+	AllowReflinkSingleFileSizeMismatch bool  `json:"allowReflinkSingleFileSizeMismatch"` // In reflink mode, allow single-file size mismatches when normalized names still match and resume once recheck reaches 99%
+	MaxMissingBytesAfterRecheck        int64 `json:"maxMissingBytesAfterRecheck"`        // Maximum missing bytes after recheck to keep pooled automation active
 
 	// Gazelle (OPS/RED) cross-seed settings.
 	// When enabled, qui uses the tracker JSON APIs to find matches for OPS/RED torrents
@@ -143,17 +150,20 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		UseCustomCategory: false,
 		CustomCategory:    "",
 		// Skip auto-resume - default to false to preserve existing behavior
-		SkipAutoResumeRSS:            false,
-		SkipAutoResumeSeededSearch:   false,
-		SkipAutoResumeCompletion:     false,
-		SkipAutoResumeWebhook:        false,
-		SkipRecheck:                  false,
-		SkipPieceBoundarySafetyCheck: true, // Skip by default to maximize matches
-		GazelleEnabled:               false,
-		RedactedAPIKey:               "",
-		OrpheusAPIKey:                "",
-		CreatedAt:                    time.Now().UTC(),
-		UpdatedAt:                    time.Now().UTC(),
+		SkipAutoResumeRSS:                  false,
+		SkipAutoResumeSeededSearch:         false,
+		SkipAutoResumeCompletion:           false,
+		SkipAutoResumeWebhook:              false,
+		SkipRecheck:                        false,
+		SkipPieceBoundarySafetyCheck:       true, // Skip by default to maximize matches
+		EnablePooledPartialCompletion:      false,
+		AllowReflinkSingleFileSizeMismatch: false,
+		MaxMissingBytesAfterRecheck:        MaxMissingBytesAfterRecheckDefault,
+		GazelleEnabled:                     false,
+		RedactedAPIKey:                     "",
+		OrpheusAPIKey:                      "",
+		CreatedAt:                          time.Now().UTC(),
+		UpdatedAt:                          time.Now().UTC(),
 	}
 }
 
@@ -387,6 +397,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
 		       skip_recheck, skip_piece_boundary_safety_check,
+		       enable_pooled_partial_completion, allow_reflink_single_file_size_mismatch, max_missing_bytes_after_recheck,
 		       gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted,
 		       created_at, updated_at
 		FROM cross_seed_settings
@@ -407,6 +418,8 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var inheritSourceTags, useCrossCategoryAffix, useCustomCategory int
 	var skipAutoResumeRSS, skipAutoResumeSeededSearch, skipAutoResumeCompletion, skipAutoResumeWebhook int
 	var skipRecheck, skipPieceBoundarySafetyCheck int
+	var enablePooledPartialCompletion int
+	var allowReflinkSingleFileSizeMismatch int
 	var gazelleEnabled int
 	var redactedAPIKeyEncrypted, orpheusAPIKeyEncrypted sql.NullString
 	var createdAt, updatedAt sql.NullTime
@@ -447,6 +460,9 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&skipAutoResumeWebhook,
 		&skipRecheck,
 		&skipPieceBoundarySafetyCheck,
+		&enablePooledPartialCompletion,
+		&allowReflinkSingleFileSizeMismatch,
+		&settings.MaxMissingBytesAfterRecheck,
 		&gazelleEnabled,
 		&redactedAPIKeyEncrypted,
 		&orpheusAPIKeyEncrypted,
@@ -539,6 +555,8 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	settings.SkipAutoResumeWebhook = SQLiteIntToBool(skipAutoResumeWebhook)
 	settings.SkipRecheck = SQLiteIntToBool(skipRecheck)
 	settings.SkipPieceBoundarySafetyCheck = SQLiteIntToBool(skipPieceBoundarySafetyCheck)
+	settings.EnablePooledPartialCompletion = SQLiteIntToBool(enablePooledPartialCompletion)
+	settings.AllowReflinkSingleFileSizeMismatch = SQLiteIntToBool(allowReflinkSingleFileSizeMismatch)
 	settings.GazelleEnabled = SQLiteIntToBool(gazelleEnabled)
 	if redactedAPIKeyEncrypted.Valid {
 		settings.RedactedAPIKey = s.apiKeyRedacted(redactedAPIKeyEncrypted.String)
@@ -730,9 +748,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook,
 			skip_recheck, skip_piece_boundary_safety_check,
+			enable_pooled_partial_completion, allow_reflink_single_file_size_mismatch, max_missing_bytes_after_recheck,
 			gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -770,6 +789,9 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_webhook = excluded.skip_auto_resume_webhook,
 			skip_recheck = excluded.skip_recheck,
 			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check,
+			enable_pooled_partial_completion = excluded.enable_pooled_partial_completion,
+			allow_reflink_single_file_size_mismatch = excluded.allow_reflink_single_file_size_mismatch,
+			max_missing_bytes_after_recheck = excluded.max_missing_bytes_after_recheck,
 			gazelle_enabled = excluded.gazelle_enabled,
 			redacted_api_key_encrypted = excluded.redacted_api_key_encrypted,
 			orpheus_api_key_encrypted = excluded.orpheus_api_key_encrypted
@@ -823,6 +845,9 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		BoolToSQLite(settings.SkipAutoResumeWebhook),
 		BoolToSQLite(settings.SkipRecheck),
 		BoolToSQLite(settings.SkipPieceBoundarySafetyCheck),
+		BoolToSQLite(settings.EnablePooledPartialCompletion),
+		BoolToSQLite(settings.AllowReflinkSingleFileSizeMismatch),
+		settings.MaxMissingBytesAfterRecheck,
 		BoolToSQLite(settings.GazelleEnabled),
 		redactedAPIKeyEncrypted,
 		orpheusAPIKeyEncrypted,

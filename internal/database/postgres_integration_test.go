@@ -35,6 +35,21 @@ func TestOpenPostgres(t *testing.T) {
 	if count == 0 {
 		t.Fatalf("expected at least one postgres migration row, got %d", count)
 	}
+
+	var columnCount int
+	err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM information_schema.columns
+		WHERE table_schema = current_schema()
+		  AND table_name = 'cross_seed_settings'
+		  AND column_name IN (
+			  'enable_pooled_partial_completion',
+			  'allow_reflink_single_file_size_mismatch',
+			  'max_missing_bytes_after_recheck'
+		  )
+	`).Scan(&columnCount)
+	require.NoError(t, err)
+	require.Equal(t, 3, columnCount)
 }
 
 func TestCleanupUnusedStringsPostgres(t *testing.T) {

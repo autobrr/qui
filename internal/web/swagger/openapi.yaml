@@ -6335,6 +6335,17 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck (alignment, extra files, or disc layouts like BDMV/VIDEO_TS)
+        enablePooledPartialCompletion:
+          type: boolean
+          description: Coordinate related hardlink/reflink partial adds against the same matched local source torrent using a temporary in-memory pooled-completion state that can be restored only while the pool remains active
+        allowReflinkSingleFileSizeMismatch:
+          type: boolean
+          description: In reflink mode, allow single-file size mismatches when normalized filenames still match; add paused, recheck, and auto-resume once completion reaches 99%
+        maxMissingBytesAfterRecheck:
+          type: integer
+          format: int64
+          minimum: 1048576
+          description: Maximum missing bytes allowed after recheck for pooled reflink automation before the torrent is left paused for manual review. Minimum 1 MiB, default 100 MiB.
         useHardlinks:
           type: boolean
           description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
@@ -6432,6 +6443,17 @@ components:
         skipRecheck:
           type: boolean
           description: Skip cross-seed matches that would require a manual recheck (alignment, extra files, or disc layouts like BDMV/VIDEO_TS)
+        enablePooledPartialCompletion:
+          type: boolean
+          description: Coordinate related hardlink/reflink partial adds against the same matched local source torrent using a temporary in-memory pooled-completion state that can be restored only while the pool remains active
+        allowReflinkSingleFileSizeMismatch:
+          type: boolean
+          description: In reflink mode, allow single-file size mismatches when normalized filenames still match; add paused, recheck, and auto-resume once completion reaches 99%
+        maxMissingBytesAfterRecheck:
+          type: integer
+          format: int64
+          minimum: 1048576
+          description: Maximum missing bytes allowed after recheck for pooled reflink automation before the torrent is left paused for manual review. Minimum 1 MiB, default 100 MiB.
         useHardlinks:
           type: boolean
           description: Enable hardlink mode for cross-seeding (creates hardlinked file trees)
