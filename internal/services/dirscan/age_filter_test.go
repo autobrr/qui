@@ -12,116 +12,75 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-func TestSelectEligibleRootWork_TVKeepsOnlyFreshEpisodeItems(t *testing.T) {
-	now := time.Date(2026, time.March, 16, 13, 0, 0, 0, time.UTC)
-	old := now.AddDate(0, 0, -10)
+func TestApplyMaxSearcheeAgeFilter_ExcludesOnlyFullyStaleSearchees(t *testing.T) {
+	now := time.Date(2026, time.February, 21, 18, 0, 0, 0, time.UTC)
 	fresh := now.Add(-24 * time.Hour)
-
-	scanResult := &ScanResult{
-		Searchees: []*Searchee{
-			{
-				Name: "Show.Name",
-				Path: "/data/tv/Show.Name",
-				Files: []*ScannedFile{
-					{Path: "/data/tv/Show.Name/Season 01/Show.Name.S01E01.mkv", ModTime: old, Size: 100},
-					{Path: "/data/tv/Show.Name/Season 01/Show.Name.S01E02.mkv", ModTime: fresh, Size: 100},
-				},
-			},
-		},
-	}
-
-	selection := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now, nil)
-
-	require.Equal(t, now.AddDate(0, 0, -3), selection.cutoff)
-	require.Equal(t, 2, selection.discoveredFiles)
-	require.Equal(t, 1, selection.eligibleFiles)
-	require.Equal(t, 1, selection.skippedFiles)
-	require.Len(t, selection.roots, 1)
-	require.Len(t, selection.roots[0].items, 1)
-	require.Equal(t, "Show.Name.S01E02", selection.roots[0].items[0].searchee.Name)
-}
-
-func TestSelectEligibleRootWork_IgnoresFreshSubtitleBumps(t *testing.T) {
-	now := time.Date(2026, time.March, 16, 13, 0, 0, 0, time.UTC)
-	old := now.AddDate(0, 0, -10)
-	fresh := now.Add(-2 * time.Hour)
-
-	scanResult := &ScanResult{
-		Searchees: []*Searchee{
-			{
-				Name: "Movie.2024",
-				Path: "/data/movies/Movie.2024",
-				Files: []*ScannedFile{
-					{Path: "/data/movies/Movie.2024/movie.mkv", ModTime: old, Size: 1000},
-					{Path: "/data/movies/Movie.2024/movie.srt", ModTime: fresh, Size: 10},
-				},
-			},
-		},
-	}
-
-	selection := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now, nil)
-
-	require.Equal(t, 2, selection.discoveredFiles)
-	require.Equal(t, 0, selection.eligibleFiles)
-	require.Equal(t, 2, selection.skippedFiles)
-	require.Empty(t, selection.roots)
-}
-
-func TestSelectEligibleRootWork_TreatsAOBAsAudioContent(t *testing.T) {
-	now := time.Date(2026, time.March, 16, 13, 0, 0, 0, time.UTC)
 	old := now.AddDate(0, 0, -10)
 
 	scanResult := &ScanResult{
 		Searchees: []*Searchee{
 			{
-				Name: "Album",
-				Path: "/data/music/Album",
+				Name: "recent",
 				Files: []*ScannedFile{
-					{Path: "/data/music/Album/AUDIO_TS/ATS_01_1.AOB", ModTime: old, Size: 1000},
+					{Path: "/data/recent.mkv", ModTime: fresh, Size: 100},
+				},
+			},
+			{
+				Name: "old",
+				Files: []*ScannedFile{
+					{Path: "/data/old.mkv", ModTime: old, Size: 200},
+				},
+			},
+			{
+				Name: "mixed",
+				Files: []*ScannedFile{
+					{Path: "/data/mixed-old.mkv", ModTime: old, Size: 50},
+					{Path: "/data/mixed-fresh.mkv", ModTime: fresh, Size: 60},
+				},
+			},
+		},
+		TotalFiles:   999,
+		TotalSize:    999,
+		SkippedFiles: 999,
+	}
+
+	stats := applyMaxSearcheeAgeFilter(scanResult, 7, now, nil)
+
+	require.Equal(t, 1, stats.ExcludedSearchees)
+	require.Equal(t, 1, stats.ExcludedFiles)
+	require.EqualValues(t, 200, stats.ExcludedBytes)
+	require.Equal(t, now.AddDate(0, 0, -7), stats.Cutoff)
+
+	require.Len(t, scanResult.Searchees, 2)
+	require.Equal(t, "recent", scanResult.Searchees[0].Name)
+	require.Equal(t, "mixed", scanResult.Searchees[1].Name)
+
+	require.Equal(t, 3, scanResult.TotalFiles)
+	require.EqualValues(t, 210, scanResult.TotalSize)
+	require.Equal(t, 0, scanResult.SkippedFiles)
+}
+
+func TestApplyMaxSearcheeAgeFilter_UsesStrictlyOlderThanCutoff(t *testing.T) {
+	now := time.Date(2026, time.February, 21, 18, 0, 0, 0, time.UTC)
+	exactCutoff := now.AddDate(0, 0, -7)
+
+	scanResult := &ScanResult{
+		Searchees: []*Searchee{
+			{
+				Name: "at-cutoff",
+				Files: []*ScannedFile{
+					{Path: "/data/at-cutoff.mkv", ModTime: exactCutoff, Size: 100},
 				},
 			},
 		},
 	}
 
-	selection := selectEligibleRootWork(scanResult, nil, NewParser(nil), 3, now, nil)
+	stats := applyMaxSearcheeAgeFilter(scanResult, 7, now, nil)
 
-	require.Equal(t, 1, selection.discoveredFiles)
-	require.Equal(t, 0, selection.eligibleFiles)
-	require.Equal(t, 1, selection.skippedFiles)
-	require.Empty(t, selection.roots)
-}
-
-func TestWorkItemIsStale_KeepsFreshSeasonPack(t *testing.T) {
-	now := time.Date(2026, time.March, 16, 13, 0, 0, 0, time.UTC)
-	fresh := now.Add(-24 * time.Hour)
-
-	root := &Searchee{
-		Name: "Show.Name",
-		Path: "/data/tv/Show.Name",
-		Files: []*ScannedFile{
-			{Path: "/data/tv/Show.Name/Season 01/Show.Name.S01E01.mkv", ModTime: fresh, Size: 100},
-			{Path: "/data/tv/Show.Name/Season 01/Show.Name.S01E02.mkv", ModTime: fresh, Size: 100},
-		},
-	}
-
-	items := buildSearcheeWorkItems(root, NewParser(nil))
-	// root + 2 episode work items
-	require.Len(t, items, 3)
-
-	var seasonItem *searcheeWorkItem
-	for i := range items {
-		item := &items[i]
-		if item.searchee == nil {
-			continue
-		}
-		if item.searchee.Path == root.Path && len(item.searchee.Files) == len(root.Files) {
-			seasonItem = item
-			break
-		}
-	}
-
-	require.NotNil(t, seasonItem)
-	require.False(t, workItemIsStale(*seasonItem, now.AddDate(0, 0, -3)))
+	require.Equal(t, 0, stats.ExcludedSearchees)
+	require.Len(t, scanResult.Searchees, 1)
+	require.Equal(t, 1, scanResult.TotalFiles)
+	require.EqualValues(t, 100, scanResult.TotalSize)
 }
 
 func TestMaxSearcheeAgeDaysFromSettings(t *testing.T) {
@@ -129,13 +88,4 @@ func TestMaxSearcheeAgeDaysFromSettings(t *testing.T) {
 	require.Equal(t, 0, maxSearcheeAgeDaysFromSettings(&models.DirScanSettings{MaxSearcheeAgeDays: 0}))
 	require.Equal(t, 0, maxSearcheeAgeDaysFromSettings(&models.DirScanSettings{MaxSearcheeAgeDays: -1}))
 	require.Equal(t, 14, maxSearcheeAgeDaysFromSettings(&models.DirScanSettings{MaxSearcheeAgeDays: 14}))
-}
-
-func TestEffectiveMaxSearcheeAgeDays(t *testing.T) {
-	settings := &models.DirScanSettings{MaxSearcheeAgeDays: 14}
-
-	require.Equal(t, 14, effectiveMaxSearcheeAgeDays(settings, "manual"))
-	require.Equal(t, 14, effectiveMaxSearcheeAgeDays(settings, "scheduled"))
-	require.Equal(t, 0, effectiveMaxSearcheeAgeDays(settings, "webhook"))
-	require.Equal(t, 0, effectiveMaxSearcheeAgeDays(nil, "webhook"))
 }

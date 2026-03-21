@@ -42,7 +42,6 @@ import type {
   DashboardSettingsInput,
   DirScanDirectory,
   DirScanDirectoryCreate,
-  DirScanTriggerResponse,
   DirScanDirectoryUpdate,
   DirScanFile,
   DirScanRun,
@@ -322,36 +321,14 @@ async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; t
   sessionStorage.setItem(SSO_RECOVERY_GUARD_KEY, "1")
   sessionStorage.setItem(SSO_RECOVERY_TS_KEY, Date.now().toString())
 
-  // Scope cleanup to qui's own service worker and caches to avoid disrupting
-  // other apps on a shared origin (e.g. https://host/qui alongside https://host/photos).
-  const quiScope = new URL(withBasePath("/"), window.location.origin).href
-
-  // Unregister qui's service worker so its NavigationRoute cannot intercept the
-  // recovery navigation. Without this, Workbox's createHandlerBoundToURL tries
-  // to fetch index.html from the network on cache miss, which Badger/Pangolin
-  // redirect cross-origin — the SW can't handle that response for a navigation
-  // request, and some mobile browsers don't fall back to the network properly.
-  // The SW re-registers automatically on the next page load via pwa.ts.
-  if ("serviceWorker" in navigator) {
-    try {
-      const registrations = await navigator.serviceWorker.getRegistrations()
-      await Promise.all(
-        registrations.filter(r => r.scope === quiScope).map(r => r.unregister()),
-      )
-    } catch {
-      // ignore unregister errors
-    }
-  }
-
-  // Clear qui's caches so the next navigation goes straight to the network,
-  // letting the SSO proxy intercept. Workbox names its precache after the SW
-  // scope, so filtering by quiScope avoids touching other apps' caches.
+  // Clear all caches (including the service worker's precache) so the next
+  // navigation goes to the network. The SW stays registered but will fall back
+  // to the network on cache miss, letting the SSO proxy intercept the request.
+  // Unregistering the SW entirely can break the SSO proxy's auth flow.
   if ("caches" in window) {
     try {
       const names = await caches.keys()
-      await Promise.all(
-        names.filter(name => name.endsWith(quiScope)).map(name => caches.delete(name)),
-      )
+      await Promise.all(names.map(name => caches.delete(name)))
     } catch {
       // ignore cache clear errors
     }
@@ -2506,8 +2483,8 @@ class ApiClient {
     return this.request(`/dir-scan/directories/${directoryId}/reset-files`, { method: "POST" })
   }
 
-  async triggerDirScan(directoryId: number): Promise<DirScanTriggerResponse> {
-    return this.request<DirScanTriggerResponse>(`/dir-scan/directories/${directoryId}/scan`, {
+  async triggerDirScan(directoryId: number): Promise<{ runId: number }> {
+    return this.request<{ runId: number }>(`/dir-scan/directories/${directoryId}/scan`, {
       method: "POST",
     })
   }

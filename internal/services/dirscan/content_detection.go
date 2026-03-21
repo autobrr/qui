@@ -13,11 +13,6 @@ var videoExtensions = map[string]struct{}{
 	".ts": {}, ".m2ts": {}, ".vob": {}, ".mpg": {}, ".mpeg": {}, ".webm": {}, ".flv": {},
 }
 
-var audioExtensions = map[string]struct{}{
-	".flac": {}, ".mp3": {}, ".wav": {}, ".aac": {}, ".ogg": {}, ".m4a": {},
-	".wma": {}, ".ape": {}, ".alac": {}, ".dsd": {}, ".dsf": {}, ".dff": {}, ".aob": {},
-}
-
 func hasAnyVideoFile(files []*ScannedFile) bool {
 	for _, f := range files {
 		if f == nil {
@@ -50,27 +45,6 @@ func isVideoPath(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	_, ok := videoExtensions[ext]
 	return ok
-}
-
-func isAudioPath(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	_, ok := audioExtensions[ext]
-	return ok
-}
-
-func isContentPath(path string) bool {
-	return isVideoPath(path) || isAudioPath(path)
-}
-
-func filterContentFiles(files []*ScannedFile) []*ScannedFile {
-	contentFiles := make([]*ScannedFile, 0, len(files))
-	for _, f := range files {
-		if f == nil || !isContentPath(f.Path) {
-			continue
-		}
-		contentFiles = append(contentFiles, f)
-	}
-	return contentFiles
 }
 
 func shouldPreferFileMetadata(folderMeta, fileMeta *SearcheeMetadata) bool {

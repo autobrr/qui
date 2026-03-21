@@ -4135,7 +4135,7 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		SkipAutoResume:               skipAutoResume,
 		SkipRecheck:                  skipRecheck,
 		SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
-		IndexerName:                  req.Indexer,
+		IndexerName:                  req.IndexerName,
 	}
 	// Pass webhook source filters so CrossSeed respects them when finding candidates
 	if settings != nil {
@@ -10648,7 +10648,6 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Bool("globalScan", len(requestedInstanceIDs) == 0).
 		Str("torrentName", req.TorrentName).
 		Uint64("size", req.Size).
-		Str("indexer", req.Indexer).
 		Str("contentType", contentInfo.ContentType).
 		Bool("findIndividualEpisodes", findIndividualEpisodes).
 		Str("title", incomingRelease.Title).
@@ -10735,9 +10734,8 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				continue
 			}
 
-			// Webhook matching is strict by default, with one narrow retry for
-			// anchored releases whose incoming title omits the collection/service tag.
-			if !s.releasesMatchWebhook(incomingRelease, existingRelease, findIndividualEpisodes, req.Indexer) {
+			// Check if releases match using the configured strict or episode-aware matching.
+			if !s.releasesMatch(incomingRelease, existingRelease, findIndividualEpisodes) {
 				continue
 			}
 
@@ -11414,7 +11412,7 @@ func (s *Service) resolveManagedDestinationContext(
 		return managedDestinationContext{}, false, errors.New("matched torrent has no content path or save path")
 	}
 
-	selectedBaseDir, err := FindMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
+	selectedBaseDir, err := findMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
 	if err != nil {
 		return managedDestinationContext{}, false, err
 	}
@@ -11944,9 +11942,7 @@ func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTracker
 // findMatchingBaseDir finds the first base directory from a comma-separated list
 // that is on the same filesystem as the source path. Returns the matching directory
 // or an error if none match.
-// FindMatchingBaseDir returns the first configured base directory on the same
-// filesystem as the source path.
-func FindMatchingBaseDir(configuredDirs string, sourcePath string) (string, error) {
+func findMatchingBaseDir(configuredDirs string, sourcePath string) (string, error) {
 	if strings.TrimSpace(configuredDirs) == "" {
 		return "", errors.New("base directory not configured")
 	}

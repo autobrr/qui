@@ -136,27 +136,27 @@ func TestAutobrrApplyTargetInstanceIDs(t *testing.T) {
 	}
 }
 
-// TestAutobrrApply_IndexerPassthrough verifies that Indexer from the request
+// TestAutobrrApply_IndexerNamePassthrough verifies that IndexerName from the request
 // is passed through to the CrossSeedRequest, enabling "Use indexer name as category" mode
 // for webhook applies where the indexer cannot be derived from the torrent file.
-func TestAutobrrApply_IndexerPassthrough(t *testing.T) {
+func TestAutobrrApply_IndexerNamePassthrough(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 
 	tests := []struct {
 		name              string
-		indexer           string
+		indexerName       string
 		expectIndexerName string
 	}{
 		{
-			name:              "indexer passed through",
-			indexer:           "hdb",
-			expectIndexerName: "hdb",
+			name:              "indexer name passed through",
+			indexerName:       "TorrentDB",
+			expectIndexerName: "TorrentDB",
 		},
 		{
-			name:              "empty indexer remains empty",
-			indexer:           "",
+			name:              "empty indexer name remains empty",
+			indexerName:       "",
 			expectIndexerName: "",
 		},
 	}
@@ -175,7 +175,7 @@ func TestAutobrrApply_IndexerPassthrough(t *testing.T) {
 			req := &AutobrrApplyRequest{
 				TorrentData: "ZGF0YQ==",
 				InstanceIDs: []int{1},
-				Indexer:     tt.indexer,
+				IndexerName: tt.indexerName,
 			}
 
 			_, err := service.AutobrrApply(ctx, req)

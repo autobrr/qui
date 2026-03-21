@@ -953,7 +953,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                               </TooltipTrigger>
                               <TooltipContent>
                                 <div className="max-w-xs">
-                                  {Array.isArray(field.state.value) && field.state.value.slice(0, 3).map((file, index) => {
+                                  {field.state.value.slice(0, 3).map((file, index) => {
                                     const fileKey = createFileKey(file)
                                     const duplicateInfo = duplicateFileEntries[fileKey]
                                     return (

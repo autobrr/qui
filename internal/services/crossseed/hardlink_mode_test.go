@@ -342,7 +342,7 @@ func TestFindMatchingBaseDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := FindMatchingBaseDir(tt.configured, "/some/source/path")
+			result, err := findMatchingBaseDir(tt.configured, "/some/source/path")
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -371,7 +371,7 @@ func TestFindMatchingBaseDir_ParsesCommaSeparated(t *testing.T) {
 	require.NoError(t, os.WriteFile(invalidPath3, []byte("file"), 0o600))
 
 	configured := invalidPath1 + ", " + invalidPath2 + " , " + invalidPath3
-	_, err := FindMatchingBaseDir(configured, sourceFile)
+	_, err := findMatchingBaseDir(configured, sourceFile)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no base directory")
@@ -406,7 +406,7 @@ func TestFindMatchingBaseDir_TrimsWhitespace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := FindMatchingBaseDir(tt.configured, "/nonexistent/source")
+			_, err := findMatchingBaseDir(tt.configured, "/nonexistent/source")
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "no base directory")
 		})
@@ -421,7 +421,7 @@ func TestFindMatchingBaseDir_ReturnsFirstMatchingDir(t *testing.T) {
 	firstDir := filepath.Join(t.TempDir(), "first")
 	secondDir := filepath.Join(t.TempDir(), "second")
 
-	result, err := FindMatchingBaseDir("  "+firstDir+" , "+secondDir+"  ", sourceFile)
+	result, err := findMatchingBaseDir("  "+firstDir+" , "+secondDir+"  ", sourceFile)
 	require.NoError(t, err)
 	assert.Equal(t, firstDir, result)
 	assert.DirExists(t, firstDir)
@@ -437,7 +437,7 @@ func TestFindMatchingBaseDir_SkipsInvalidDirAndFindsNextMatch(t *testing.T) {
 
 	validDir := filepath.Join(t.TempDir(), "valid")
 
-	result, err := FindMatchingBaseDir(invalidFilePath+", "+validDir, sourceFile)
+	result, err := findMatchingBaseDir(invalidFilePath+", "+validDir, sourceFile)
 	require.NoError(t, err)
 	assert.Equal(t, validDir, result)
 	assert.DirExists(t, validDir)

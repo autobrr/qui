@@ -10,7 +10,7 @@ qui integrates with autobrr through webhook endpoints, enabling real-time cross-
 ## How It Works
 
 1. autobrr sees a new release from a tracker
-2. autobrr sends the torrent name and indexer identifier to qui's `/api/cross-seed/webhook/check` endpoint
+2. autobrr sends the torrent name to qui's `/api/cross-seed/webhook/check` endpoint
 3. qui searches your qBittorrent instances for matching content
 4. qui responds with:
    - `200 OK` – matching torrent is complete and ready to cross-seed
@@ -62,8 +62,7 @@ In your new autobrr filter, go to **External** tab → **Add new**:
 ```json
 {
   "torrentName": {{ toRawJson .TorrentName }},
-  "instanceIds": [1],
-  "indexer": {{ toRawJson .Indexer }}
+  "instanceIds": [1]
 }
 ```
 
@@ -71,8 +70,7 @@ To search all instances, omit `instanceIds`:
 
 ```json
 {
-  "torrentName": {{ toRawJson .TorrentName }},
-  "indexer": {{ toRawJson .Indexer }}
+  "torrentName": {{ toRawJson .TorrentName }}
 }
 ```
 
@@ -80,7 +78,6 @@ To search all instances, omit `instanceIds`:
 
 - `torrentName` (required): The release name as announced
 - `instanceIds` (optional): qBittorrent instance IDs to scan. Omit to search all instances.
-- `indexer` (optional): autobrr indexer identifier (for example `hdb`). Required for qui's HDBits-specific missing-collection fallback on `/check`.
 - `findIndividualEpisodes` (optional): Override the global episode matching setting
 
 ### 3. Configure Retry Handling
@@ -109,7 +106,7 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 {
   "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
   "instanceIds": [1],
-  "indexer": {{ toRawJson .Indexer }}
+  "indexerName": {{ toRawJson .IndexerName }}
 }
 ```
 
@@ -117,9 +114,9 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/apply`:
 
 - `torrentData` (required) - Base64-encoded torrent file bytes
 - `instanceIds` (optional) - Target instances (omit to apply to any matching instance)
-- `indexer` (optional) - autobrr indexer identifier (for example `hdb`). When "Use indexer name as category" mode is enabled, qui uses this identifier value as the category; ignored otherwise
+- `indexerName` (optional) - Indexer display name (e.g., "TorrentDB"). Only used when "Use indexer name as category" mode is enabled; ignored otherwise
 - `tags` (optional) - Override webhook tags from settings
-- `category` (optional) - Override category. Takes precedence over `indexer`
+- `category` (optional) - Override category. Takes precedence over `indexerName`
 - `startPaused` (optional) - Override whether torrents are added paused
 - `skipIfExists` (optional) - Skip adding if the torrent already exists
 - `findIndividualEpisodes` (optional) - Override the global episode matching setting

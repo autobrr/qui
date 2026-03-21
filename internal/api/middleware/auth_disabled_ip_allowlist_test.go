@@ -4,7 +4,6 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,21 +21,18 @@ func TestRequireAuthDisabledIPAllowlist(t *testing.T) {
 	tests := []struct {
 		name       string
 		cfg        *domain.Config
-		path       string
 		remoteAddr string
 		wantStatus int
 	}{
 		{
 			name:       "passes through when config is nil",
 			cfg:        nil,
-			path:       "/api/instances",
 			remoteAddr: "203.0.113.10:12345",
 			wantStatus: http.StatusOK,
 		},
 		{
 			name:       "passes when auth-disabled mode is off",
 			cfg:        &domain.Config{},
-			path:       "/api/instances",
 			remoteAddr: "203.0.113.10:12345",
 			wantStatus: http.StatusOK,
 		},
@@ -47,7 +43,6 @@ func TestRequireAuthDisabledIPAllowlist(t *testing.T) {
 				IAcknowledgeThisIsABadIdea: true,
 				AuthDisabledAllowedCIDRs:   []string{"127.0.0.1/32"},
 			},
-			path:       "/api/instances",
 			remoteAddr: "127.0.0.1:54321",
 			wantStatus: http.StatusOK,
 		},
@@ -58,7 +53,6 @@ func TestRequireAuthDisabledIPAllowlist(t *testing.T) {
 				IAcknowledgeThisIsABadIdea: true,
 				AuthDisabledAllowedCIDRs:   []string{"127.0.0.1/32"},
 			},
-			path:       "/api/instances",
 			remoteAddr: "203.0.113.10:54321",
 			wantStatus: http.StatusForbidden,
 		},
@@ -69,7 +63,6 @@ func TestRequireAuthDisabledIPAllowlist(t *testing.T) {
 				IAcknowledgeThisIsABadIdea: true,
 				AuthDisabledAllowedCIDRs:   []string{"invalid-cidr"},
 			},
-			path:       "/api/instances",
 			remoteAddr: "127.0.0.1:54321",
 			wantStatus: http.StatusForbidden,
 		},
@@ -80,7 +73,6 @@ func TestRequireAuthDisabledIPAllowlist(t *testing.T) {
 				IAcknowledgeThisIsABadIdea: true,
 				AuthDisabledAllowedCIDRs:   []string{},
 			},
-			path:       "/api/instances",
 			remoteAddr: "127.0.0.1:54321",
 			wantStatus: http.StatusForbidden,
 		},
@@ -91,41 +83,7 @@ func TestRequireAuthDisabledIPAllowlist(t *testing.T) {
 				IAcknowledgeThisIsABadIdea: true,
 				AuthDisabledAllowedCIDRs:   []string{"127.0.0.1/32"},
 			},
-			path:       "/api/instances",
 			remoteAddr: "not-an-address",
-			wantStatus: http.StatusForbidden,
-		},
-		{
-			name: "allows IPv4 loopback health probe outside configured CIDRs",
-			cfg: &domain.Config{
-				AuthDisabled:               true,
-				IAcknowledgeThisIsABadIdea: true,
-				AuthDisabledAllowedCIDRs:   []string{"192.168.1.0/24"},
-			},
-			path:       "/health",
-			remoteAddr: "127.0.0.1:54321",
-			wantStatus: http.StatusOK,
-		},
-		{
-			name: "allows IPv6 loopback health probe outside configured CIDRs",
-			cfg: &domain.Config{
-				AuthDisabled:               true,
-				IAcknowledgeThisIsABadIdea: true,
-				AuthDisabledAllowedCIDRs:   []string{"192.168.1.0/24"},
-			},
-			path:       "/healthz/liveness",
-			remoteAddr: "[::1]:54321",
-			wantStatus: http.StatusOK,
-		},
-		{
-			name: "blocks non-health loopback request outside configured CIDRs",
-			cfg: &domain.Config{
-				AuthDisabled:               true,
-				IAcknowledgeThisIsABadIdea: true,
-				AuthDisabledAllowedCIDRs:   []string{"192.168.1.0/24"},
-			},
-			path:       "/api/instances",
-			remoteAddr: "127.0.0.1:54321",
 			wantStatus: http.StatusForbidden,
 		},
 	}
@@ -134,7 +92,7 @@ func TestRequireAuthDisabledIPAllowlist(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			handler := RequireAuthDisabledIPAllowlist(tc.cfg)(inner)
 
-			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, tc.path, nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/instances", nil)
 			req.RemoteAddr = tc.remoteAddr
 			resp := httptest.NewRecorder()
 

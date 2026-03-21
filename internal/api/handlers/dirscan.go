@@ -9,10 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -201,10 +198,6 @@ func (h *DirScanHandler) CreateDirectory(w http.ResponseWriter, r *http.Request)
 
 	created, err := h.service.CreateDirectory(r.Context(), dir)
 	if err != nil {
-		if errors.Is(err, models.ErrDuplicateDirScanDirectoryPath) {
-			RespondError(w, http.StatusConflict, "A directory with this path already exists")
-			return
-		}
 		log.Error().Err(err).Msg("dirscan: failed to create directory")
 		RespondError(w, http.StatusInternalServerError, "Failed to create directory")
 		return
@@ -323,10 +316,6 @@ func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request)
 			RespondError(w, http.StatusNotFound, "Directory not found")
 			return
 		}
-		if errors.Is(err, models.ErrDuplicateDirScanDirectoryPath) {
-			RespondError(w, http.StatusConflict, "A directory with this path already exists")
-			return
-		}
 		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to update directory")
 		RespondError(w, http.StatusInternalServerError, "Failed to update directory")
 		return
@@ -362,15 +351,7 @@ func (h *DirScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dir, err := h.service.GetDirectory(r.Context(), dirID)
-	switch {
-	case err == nil:
-	case errors.Is(err, models.ErrDirectoryNotFound):
-		RespondError(w, http.StatusNotFound, "Directory not found")
-		return
-	default:
-		log.Error().Err(err).Int("directoryID", dirID).Msg("dirscan: failed to validate directory")
-		RespondError(w, http.StatusInternalServerError, "Failed to validate directory")
+	if !h.requireDirectory(w, r, dirID) {
 		return
 	}
 
@@ -385,12 +366,7 @@ func (h *DirScanHandler) TriggerScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	RespondJSON(w, http.StatusAccepted, dirScanTriggerResponse{
-		RunID:         runID,
-		DirectoryID:   dirID,
-		DirectoryPath: dir.Path,
-		ScanRoot:      dir.Path,
-	})
+	RespondJSON(w, http.StatusAccepted, map[string]int64{"runId": runID})
 }
 
 // CancelScan cancels a running scan for a directory.
@@ -655,169 +631,4 @@ func (h *DirScanHandler) requireDirectory(w http.ResponseWriter, r *http.Request
 		RespondError(w, http.StatusInternalServerError, "Failed to validate directory")
 	}
 	return false
-}
-
-// webhookTriggerScanPayload accepts both a direct {"path": "..."} and native
-// *arr webhook payloads (Sonarr, Radarr, Lidarr, Readarr).
-type webhookTriggerScanPayload struct {
-	EventType string `json:"eventType"`
-	// Direct path (simple mode)
-	Path string `json:"path"`
-	// Sonarr: series.path
-	Series *struct {
-		Path string `json:"path"`
-	} `json:"series"`
-	// Radarr: movie.folderPath
-	Movie *struct {
-		FolderPath string `json:"folderPath"`
-	} `json:"movie"`
-	// Lidarr: artist.path
-	Artist *struct {
-		Path string `json:"path"`
-	} `json:"artist"`
-	// Readarr: author.path
-	Author *struct {
-		Path string `json:"path"`
-	} `json:"author"`
-}
-
-type dirScanTriggerResponse struct {
-	RunID         int64  `json:"runId"`
-	DirectoryID   int    `json:"directoryId"`
-	DirectoryPath string `json:"directoryPath"`
-	ScanRoot      string `json:"scanRoot"`
-}
-
-// resolvedPath extracts the path from whichever format was provided.
-func (p *webhookTriggerScanPayload) resolvedPath() string {
-	if p.Path != "" {
-		return p.Path
-	}
-	if p.Series != nil && p.Series.Path != "" {
-		return p.Series.Path
-	}
-	if p.Movie != nil && p.Movie.FolderPath != "" {
-		return p.Movie.FolderPath
-	}
-	if p.Artist != nil && p.Artist.Path != "" {
-		return p.Artist.Path
-	}
-	if p.Author != nil && p.Author.Path != "" {
-		return p.Author.Path
-	}
-	return ""
-}
-
-func (p *webhookTriggerScanPayload) isTestEvent() bool {
-	return strings.EqualFold(p.EventType, "test")
-}
-
-func normalizeScanRoot(path string) string {
-	cleanPath := filepath.Clean(path)
-	info, err := os.Stat(cleanPath)
-	if err == nil && !info.IsDir() {
-		return filepath.Dir(cleanPath)
-	}
-	return cleanPath
-}
-
-func pathMatchesDirectory(cleanPath, dirPath string) bool {
-	if cleanPath == dirPath {
-		return true
-	}
-
-	rel, err := filepath.Rel(dirPath, cleanPath)
-	if err != nil {
-		return false
-	}
-
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
-// WebhookTriggerScan triggers a directory scan by matching the provided path
-// against configured scan directories. Accepts native Sonarr/Radarr/Lidarr/Readarr
-// webhook payloads or a simple {"path": "..."} body.
-func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Request) {
-	var payload webhookTriggerScanPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-
-	if payload.isTestEvent() {
-		log.Debug().Msg("dirscan: webhook test payload accepted")
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	resolvedPath := payload.resolvedPath()
-	if resolvedPath == "" {
-		RespondError(w, http.StatusBadRequest, "Could not determine path from request body (expected 'path', 'series.path', 'movie.folderPath', 'artist.path', or 'author.path')")
-		return
-	}
-
-	// Clean and normalize the path
-	cleanPath := filepath.Clean(resolvedPath)
-
-	dirs, err := h.service.ListDirectories(r.Context())
-	if err != nil {
-		log.Error().Err(err).Msg("dirscan: webhook failed to list directories")
-		RespondError(w, http.StatusInternalServerError, "Failed to list directories")
-		return
-	}
-
-	// Find the best matching directory using longest-prefix match
-	var bestMatch *models.DirScanDirectory
-	bestLen := 0
-	ambiguous := false
-	for _, dir := range dirs {
-		if !dir.Enabled {
-			continue
-		}
-		dirPath := filepath.Clean(dir.Path)
-		if pathMatchesDirectory(cleanPath, dirPath) {
-			if len(dirPath) > bestLen {
-				bestMatch = dir
-				bestLen = len(dirPath)
-				ambiguous = false
-			} else if len(dirPath) == bestLen {
-				ambiguous = true
-			}
-		}
-	}
-
-	if bestMatch == nil {
-		RespondError(w, http.StatusNotFound, "No matching directory found for the given path")
-		return
-	}
-	if ambiguous {
-		RespondError(w, http.StatusConflict, "Multiple directories match the given path")
-		return
-	}
-
-	scanRoot := normalizeScanRoot(cleanPath)
-	runID, err := h.service.StartWebhookScan(r.Context(), bestMatch.ID, scanRoot)
-	if err != nil {
-		if errors.Is(err, models.ErrDirScanRunAlreadyActive) {
-			RespondError(w, http.StatusConflict, "A scan is already in progress for this directory")
-			return
-		}
-		log.Error().Err(err).Int("directoryID", bestMatch.ID).Str("path", resolvedPath).Msg("dirscan: webhook failed to start scan")
-		RespondError(w, http.StatusInternalServerError, "Failed to start scan")
-		return
-	}
-
-	log.Info().
-		Int("directoryID", bestMatch.ID).
-		Str("path", resolvedPath).
-		Str("scanRoot", scanRoot).
-		Int64("runID", runID).
-		Msg("dirscan: webhook triggered scan")
-
-	RespondJSON(w, http.StatusAccepted, dirScanTriggerResponse{
-		RunID:         runID,
-		DirectoryID:   bestMatch.ID,
-		DirectoryPath: bestMatch.Path,
-		ScanRoot:      scanRoot,
-	})
 }

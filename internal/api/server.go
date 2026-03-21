@@ -364,13 +364,6 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		// Cross-seed routes (query param auth for select endpoints)
 		crossSeedHandler.Routes(r, authMiddleware, apiKeyQueryMiddleware)
 
-		// Dir scan webhook (query param auth for external triggers like *arr custom scripts)
-		if dirScanHandler != nil {
-			r.Route("/dir-scan/webhook", func(r chi.Router) {
-				r.With(apiKeyQueryMiddleware, authMiddleware).Post("/scan", dirScanHandler.WebhookTriggerScan)
-			})
-		}
-
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware)
 
