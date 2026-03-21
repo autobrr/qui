@@ -2753,6 +2753,20 @@ type fakeInstanceStore struct {
 	instances map[int]*models.Instance
 }
 
+func cloneFakeInstance(instance *models.Instance) *models.Instance {
+	if instance == nil {
+		return nil
+	}
+
+	clone := *instance
+	if !clone.IsActive {
+		// Test fixtures in this file usually omit IsActive; production defaults those instances to active.
+		clone.IsActive = true
+	}
+
+	return &clone
+}
+
 type recordingNotifier struct {
 	events []notifications.Event
 }
@@ -2769,7 +2783,7 @@ func (r *recordingNotifier) Events() []notifications.Event {
 
 func (f *fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
 	if inst, ok := f.instances[id]; ok {
-		return inst, nil
+		return cloneFakeInstance(inst), nil
 	}
 	return nil, models.ErrInstanceNotFound
 }
@@ -2777,7 +2791,7 @@ func (f *fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, er
 func (f *fakeInstanceStore) List(_ context.Context) ([]*models.Instance, error) {
 	result := make([]*models.Instance, 0, len(f.instances))
 	for _, inst := range f.instances {
-		result = append(result, inst)
+		result = append(result, cloneFakeInstance(inst))
 	}
 	return result, nil
 }

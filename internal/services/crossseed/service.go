@@ -475,6 +475,7 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	if err != nil {
 		return nil, fmt.Errorf("failed to list instances: %w", err)
 	}
+	instances = activeInstancesOnly(instances)
 
 	// Find the source torrent
 	sourceTorrents, err := s.syncManager.GetTorrents(ctx, sourceInstanceID, qbt.TorrentFilterOptions{
@@ -557,6 +558,17 @@ func (s *Service) collectLocalMatches(
 	}
 
 	return matches
+}
+
+func activeInstancesOnly(instances []*models.Instance) []*models.Instance {
+	active := make([]*models.Instance, 0, len(instances))
+	for _, instance := range instances {
+		if instance == nil || !instance.IsActive {
+			continue
+		}
+		active = append(active, instance)
+	}
+	return active
 }
 
 // matchTorrentsInInstance checks torrents in a single instance for matches.
@@ -9606,7 +9618,7 @@ func (s *Service) resolveInstances(ctx context.Context, requested []int) ([]*mod
 		if err != nil {
 			return nil, fmt.Errorf("failed to list cross-seed instances: %w", err)
 		}
-		return instances, nil
+		return activeInstancesOnly(instances), nil
 	}
 
 	instances := make([]*models.Instance, 0, len(requested))
@@ -9620,6 +9632,9 @@ func (s *Service) resolveInstances(ctx context.Context, requested []int) ([]*mod
 				continue
 			}
 			return nil, fmt.Errorf("failed to get instance %d: %w", id, err)
+		}
+		if instance == nil || !instance.IsActive {
+			continue
 		}
 		instances = append(instances, instance)
 	}
