@@ -114,6 +114,10 @@ export function Header({
     () => activeInstances.filter(instance => effectiveUnifiedInstanceIds.includes(instance.id)),
     [activeInstances, effectiveUnifiedInstanceIds]
   )
+  const unifiedManageableInstances = useMemo(
+    () => unifiedScopeInstances.filter((instance) => instance.id > 0),
+    [unifiedScopeInstances],
+  )
   const applyUnifiedScope = useCallback((nextIds: number[]) => {
     const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
     saveUnifiedFilter(normalizedIds)
@@ -238,6 +242,29 @@ export function Header({
   useEffect(() => {
     setInstanceSettingsOpen(false)
   }, [selectedInstanceId])
+
+  // Clear stale unified dialog IDs when the scope instance set changes
+  useEffect(() => {
+    const validIds = new Set(unifiedManageableInstances.map((instance) => instance.id))
+    if (unifiedAddTorrentInstanceId !== null && !validIds.has(unifiedAddTorrentInstanceId)) {
+      setUnifiedAddTorrentInstanceId(null)
+    }
+    if (unifiedCreateTorrentInstanceId !== null && !validIds.has(unifiedCreateTorrentInstanceId)) {
+      setUnifiedCreateTorrentInstanceId(null)
+    }
+    if (unifiedTasksInstanceId !== null && !validIds.has(unifiedTasksInstanceId)) {
+      setUnifiedTasksInstanceId(null)
+    }
+    if (unifiedSettingsInstanceId !== null && !validIds.has(unifiedSettingsInstanceId)) {
+      setUnifiedSettingsInstanceId(null)
+    }
+  }, [
+    unifiedManageableInstances,
+    unifiedAddTorrentInstanceId,
+    unifiedCreateTorrentInstanceId,
+    unifiedTasksInstanceId,
+    unifiedSettingsInstanceId,
+  ])
 
   const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
 
@@ -370,7 +397,7 @@ export function Header({
               </TooltipTrigger>
               <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
             </Tooltip>
-            {isAllInstancesRoute && unifiedScopeInstances.length > 0 && (
+            {isAllInstancesRoute && unifiedManageableInstances.length > 0 && (
               <DropdownMenu>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -392,7 +419,7 @@ export function Header({
                     Add to instance
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {unifiedScopeInstances.map((instance) => (
+                  {unifiedManageableInstances.map((instance) => (
                     <DropdownMenuItem
                       key={instance.id}
                       onClick={() => setUnifiedAddTorrentInstanceId(instance.id)}
@@ -411,7 +438,7 @@ export function Header({
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            {isAllInstancesRoute && unifiedScopeInstances.some(i => i.id > 0) && (
+            {isAllInstancesRoute && unifiedManageableInstances.length > 0 && (
               <>
                 {/* Unified Create Torrent dropdown */}
                 <DropdownMenu>
@@ -435,7 +462,7 @@ export function Header({
                       Create for instance
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {unifiedScopeInstances.filter(i => i.id > 0).map((instance) => (
+                    {unifiedManageableInstances.map((instance) => (
                       <DropdownMenuItem
                         key={instance.id}
                         onClick={() => setUnifiedCreateTorrentInstanceId(instance.id)}
@@ -476,7 +503,7 @@ export function Header({
                       Tasks for instance
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {unifiedScopeInstances.filter(i => i.id > 0).map((instance) => (
+                    {unifiedManageableInstances.map((instance) => (
                       <DropdownMenuItem
                         key={instance.id}
                         onClick={() => setUnifiedTasksInstanceId(instance.id)}
@@ -517,7 +544,7 @@ export function Header({
                       Settings for instance
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {unifiedScopeInstances.filter(i => i.id > 0).map((instance) => (
+                    {unifiedManageableInstances.map((instance) => (
                       <DropdownMenuItem
                         key={instance.id}
                         onClick={() => setUnifiedSettingsInstanceId(instance.id)}
