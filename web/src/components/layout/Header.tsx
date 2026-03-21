@@ -64,6 +64,28 @@ interface HeaderProps {
   sidebarCollapsed?: boolean
 }
 
+function renderUnifiedInstanceMenuItems(
+  instances: Array<{ id: number; name: string; connected: boolean }>,
+  onSelect: (id: number) => void,
+) {
+  return instances.map((instance) => (
+    <DropdownMenuItem
+      key={instance.id}
+      onClick={() => onSelect(instance.id)}
+      className="cursor-pointer"
+    >
+      <HardDrive className="mr-2 h-4 w-4 flex-shrink-0" />
+      <span className="flex-1 truncate">{instance.name}</span>
+      <span
+        className={cn(
+          "ml-2 h-2 w-2 rounded-full flex-shrink-0",
+          instance.connected ? "bg-green-500" : "bg-red-500",
+        )}
+      />
+    </DropdownMenuItem>
+  ))
+}
+
 export function Header({
   children,
   sidebarCollapsed = false,
@@ -398,48 +420,33 @@ export function Header({
               <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
             </Tooltip>
             {isAllInstancesRoute && unifiedManageableInstances.length > 0 && (
-              <DropdownMenu>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="hidden md:inline-flex"
-                        aria-label="Add torrent"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent>Add torrent</TooltipContent>
-                </Tooltip>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Add to instance
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {unifiedManageableInstances.map((instance) => (
-                    <DropdownMenuItem
-                      key={instance.id}
-                      onClick={() => setUnifiedAddTorrentInstanceId(instance.id)}
-                      className="cursor-pointer"
-                    >
-                      <HardDrive className="mr-2 h-4 w-4 flex-shrink-0" />
-                      <span className="flex-1 truncate">{instance.name}</span>
-                      <span
-                        className={cn(
-                          "ml-2 h-2 w-2 rounded-full flex-shrink-0",
-                          instance.connected ? "bg-green-500" : "bg-red-500"
-                        )}
-                      />
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            {isAllInstancesRoute && unifiedManageableInstances.length > 0 && (
               <>
+                {/* Unified Add Torrent dropdown */}
+                <DropdownMenu>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="hidden md:inline-flex"
+                          aria-label="Add torrent"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>Add torrent</TooltipContent>
+                  </Tooltip>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Add to instance
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {renderUnifiedInstanceMenuItems(unifiedManageableInstances, setUnifiedAddTorrentInstanceId)}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                 {/* Unified Create Torrent dropdown */}
                 <DropdownMenu>
                   <Tooltip>
@@ -462,22 +469,7 @@ export function Header({
                       Create for instance
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {unifiedManageableInstances.map((instance) => (
-                      <DropdownMenuItem
-                        key={instance.id}
-                        onClick={() => setUnifiedCreateTorrentInstanceId(instance.id)}
-                        className="cursor-pointer"
-                      >
-                        <HardDrive className="mr-2 h-4 w-4 flex-shrink-0" />
-                        <span className="flex-1 truncate">{instance.name}</span>
-                        <span
-                          className={cn(
-                            "ml-2 h-2 w-2 rounded-full flex-shrink-0",
-                            instance.connected ? "bg-green-500" : "bg-red-500"
-                          )}
-                        />
-                      </DropdownMenuItem>
-                    ))}
+                    {renderUnifiedInstanceMenuItems(unifiedManageableInstances, setUnifiedCreateTorrentInstanceId)}
                   </DropdownMenuContent>
                 </DropdownMenu>
 
@@ -503,22 +495,7 @@ export function Header({
                       Tasks for instance
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {unifiedManageableInstances.map((instance) => (
-                      <DropdownMenuItem
-                        key={instance.id}
-                        onClick={() => setUnifiedTasksInstanceId(instance.id)}
-                        className="cursor-pointer"
-                      >
-                        <HardDrive className="mr-2 h-4 w-4 flex-shrink-0" />
-                        <span className="flex-1 truncate">{instance.name}</span>
-                        <span
-                          className={cn(
-                            "ml-2 h-2 w-2 rounded-full flex-shrink-0",
-                            instance.connected ? "bg-green-500" : "bg-red-500"
-                          )}
-                        />
-                      </DropdownMenuItem>
-                    ))}
+                    {renderUnifiedInstanceMenuItems(unifiedManageableInstances, setUnifiedTasksInstanceId)}
                   </DropdownMenuContent>
                 </DropdownMenu>
 
@@ -544,22 +521,7 @@ export function Header({
                       Settings for instance
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {unifiedManageableInstances.map((instance) => (
-                      <DropdownMenuItem
-                        key={instance.id}
-                        onClick={() => setUnifiedSettingsInstanceId(instance.id)}
-                        className="cursor-pointer"
-                      >
-                        <HardDrive className="mr-2 h-4 w-4 flex-shrink-0" />
-                        <span className="flex-1 truncate">{instance.name}</span>
-                        <span
-                          className={cn(
-                            "ml-2 h-2 w-2 rounded-full flex-shrink-0",
-                            instance.connected ? "bg-green-500" : "bg-red-500"
-                          )}
-                        />
-                      </DropdownMenuItem>
-                    ))}
+                    {renderUnifiedInstanceMenuItems(unifiedManageableInstances, setUnifiedSettingsInstanceId)}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </>
@@ -999,6 +961,7 @@ export function Header({
       {/* Unified Torrent Creation Tasks Dialog */}
       {unifiedTasksInstanceId !== null && (() => {
         const inst = activeInstances.find(i => i.id === unifiedTasksInstanceId)
+        if (!inst) return null
         return (
           <Dialog open={true} onOpenChange={(open) => { if (!open) setUnifiedTasksInstanceId(null) }}>
             <DialogContent className="w-full sm:max-w-screen-sm md:max-w-screen-md lg:max-w-screen-xl xl:max-w-screen-xl max-h-[85vh] overflow-hidden flex flex-col">
