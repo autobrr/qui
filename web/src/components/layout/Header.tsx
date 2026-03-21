@@ -53,7 +53,7 @@ import {
 } from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
-import { useQuery } from "@tanstack/react-query"
+import { useQueries, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { Archive, ChevronsUpDown, Cog, Download, FileEdit, FileText, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -64,26 +64,56 @@ interface HeaderProps {
   sidebarCollapsed?: boolean
 }
 
-function renderUnifiedInstanceMenuItems(
-  instances: Array<{ id: number; name: string; connected: boolean }>,
-  onSelect: (id: number) => void,
-) {
-  return instances.map((instance) => (
-    <DropdownMenuItem
-      key={instance.id}
-      onClick={() => onSelect(instance.id)}
-      className="cursor-pointer"
-    >
-      <HardDrive className="mr-2 h-4 w-4 flex-shrink-0" />
-      <span className="flex-1 truncate">{instance.name}</span>
-      <span
-        className={cn(
-          "ml-2 h-2 w-2 rounded-full flex-shrink-0",
-          instance.connected ? "bg-green-500" : "bg-red-500",
-        )}
-      />
-    </DropdownMenuItem>
-  ))
+interface UnifiedActionDropdownProps {
+  icon: ReactNode
+  tooltip: string
+  label: string
+  instances: Array<{ id: number; name: string; connected: boolean }>
+  onSelectInstance: (id: number) => void
+}
+
+function UnifiedActionDropdown({ icon, tooltip, label, instances, onSelectInstance }: UnifiedActionDropdownProps) {
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              className="hidden md:inline-flex"
+              aria-label={tooltip}
+            >
+              {icon}
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{tooltip}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="start">
+        <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          {label}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {instances.map((instance) => (
+          <DropdownMenuItem
+            key={instance.id}
+            onSelect={() => onSelectInstance(instance.id)}
+            className="cursor-pointer"
+          >
+            <HardDrive className="mr-2 h-4 w-4 flex-shrink-0" />
+            <span className="flex-1 truncate">{instance.name}</span>
+            <span
+              className={cn(
+                "ml-2 h-2 w-2 rounded-full flex-shrink-0",
+                instance.connected ? "bg-green-500" : "bg-red-500",
+              )}
+            />
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 }
 
 export function Header({
@@ -139,6 +169,20 @@ export function Header({
   const unifiedManageableInstances = useMemo(
     () => unifiedScopeInstances.filter((instance) => instance.id > 0),
     [unifiedScopeInstances],
+  )
+  const unifiedCapabilitiesResults = useQueries({
+    queries: unifiedManageableInstances.map((instance) => ({
+      queryKey: ["instance-capabilities", instance.id],
+      queryFn: () => api.getInstanceCapabilities(instance.id),
+      staleTime: 60_000,
+      enabled: isAllInstancesRoute,
+    })),
+  })
+  const unifiedTorrentCreationInstances = useMemo(
+    () => unifiedManageableInstances.filter((_instance, i) =>
+      unifiedCapabilitiesResults[i]?.data?.supportsTorrentCreation ?? true
+    ),
+    [unifiedManageableInstances, unifiedCapabilitiesResults],
   )
   const applyUnifiedScope = useCallback((nextIds: number[]) => {
     const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
@@ -261,32 +305,15 @@ export function Header({
   const [unifiedTasksInstanceId, setUnifiedTasksInstanceId] = useState<number | null>(null)
   const [unifiedSettingsInstanceId, setUnifiedSettingsInstanceId] = useState<number | null>(null)
 
+  // Derived at render time — avoids a cleanup Effect for stale IDs
+  const validUnifiedIds = useMemo(
+    () => new Set(unifiedManageableInstances.map((instance) => instance.id)),
+    [unifiedManageableInstances],
+  )
+
   useEffect(() => {
     setInstanceSettingsOpen(false)
   }, [selectedInstanceId])
-
-  // Clear stale unified dialog IDs when the scope instance set changes
-  useEffect(() => {
-    const validIds = new Set(unifiedManageableInstances.map((instance) => instance.id))
-    if (unifiedAddTorrentInstanceId !== null && !validIds.has(unifiedAddTorrentInstanceId)) {
-      setUnifiedAddTorrentInstanceId(null)
-    }
-    if (unifiedCreateTorrentInstanceId !== null && !validIds.has(unifiedCreateTorrentInstanceId)) {
-      setUnifiedCreateTorrentInstanceId(null)
-    }
-    if (unifiedTasksInstanceId !== null && !validIds.has(unifiedTasksInstanceId)) {
-      setUnifiedTasksInstanceId(null)
-    }
-    if (unifiedSettingsInstanceId !== null && !validIds.has(unifiedSettingsInstanceId)) {
-      setUnifiedSettingsInstanceId(null)
-    }
-  }, [
-    unifiedManageableInstances,
-    unifiedAddTorrentInstanceId,
-    unifiedCreateTorrentInstanceId,
-    unifiedTasksInstanceId,
-    unifiedSettingsInstanceId,
-  ])
 
   const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
 
@@ -421,109 +448,34 @@ export function Header({
             </Tooltip>
             {isAllInstancesRoute && unifiedManageableInstances.length > 0 && (
               <>
-                {/* Unified Add Torrent dropdown */}
-                <DropdownMenu>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="hidden md:inline-flex"
-                          aria-label="Add torrent"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent>Add torrent</TooltipContent>
-                  </Tooltip>
-                  <DropdownMenuContent align="start">
-                    <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Add to instance
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {renderUnifiedInstanceMenuItems(unifiedManageableInstances, setUnifiedAddTorrentInstanceId)}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* Unified Create Torrent dropdown */}
-                <DropdownMenu>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="hidden md:inline-flex"
-                          aria-label="Create torrent"
-                        >
-                          <FileEdit className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent>Create torrent</TooltipContent>
-                  </Tooltip>
-                  <DropdownMenuContent align="start">
-                    <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Create for instance
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {renderUnifiedInstanceMenuItems(unifiedManageableInstances, setUnifiedCreateTorrentInstanceId)}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* Unified Tasks dropdown */}
-                <DropdownMenu>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="hidden md:inline-flex"
-                          aria-label="Torrent creation tasks"
-                        >
-                          <ListTodo className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent>Torrent creation tasks</TooltipContent>
-                  </Tooltip>
-                  <DropdownMenuContent align="start">
-                    <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Tasks for instance
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {renderUnifiedInstanceMenuItems(unifiedManageableInstances, setUnifiedTasksInstanceId)}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* Unified Instance Settings dropdown */}
-                <DropdownMenu>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="hidden md:inline-flex"
-                          aria-label="Instance settings"
-                        >
-                          <Cog className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent>Instance settings</TooltipContent>
-                  </Tooltip>
-                  <DropdownMenuContent align="start">
-                    <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Settings for instance
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {renderUnifiedInstanceMenuItems(unifiedManageableInstances, setUnifiedSettingsInstanceId)}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <UnifiedActionDropdown
+                  icon={<Plus className="h-4 w-4" />}
+                  tooltip="Add torrent"
+                  label="Add to instance"
+                  instances={unifiedManageableInstances}
+                  onSelectInstance={setUnifiedAddTorrentInstanceId}
+                />
+                <UnifiedActionDropdown
+                  icon={<FileEdit className="h-4 w-4" />}
+                  tooltip="Create torrent"
+                  label="Create for instance"
+                  instances={unifiedTorrentCreationInstances}
+                  onSelectInstance={setUnifiedCreateTorrentInstanceId}
+                />
+                <UnifiedActionDropdown
+                  icon={<ListTodo className="h-4 w-4" />}
+                  tooltip="Torrent creation tasks"
+                  label="Tasks for instance"
+                  instances={unifiedTorrentCreationInstances}
+                  onSelectInstance={setUnifiedTasksInstanceId}
+                />
+                <UnifiedActionDropdown
+                  icon={<Cog className="h-4 w-4" />}
+                  tooltip="Instance settings"
+                  label="Settings for instance"
+                  instances={unifiedManageableInstances}
+                  onSelectInstance={setUnifiedSettingsInstanceId}
+                />
               </>
             )}
             {canManageSelectedInstance && (
@@ -937,7 +889,7 @@ export function Header({
       )}
 
       {/* Unified Add Torrent Dialog */}
-      {unifiedAddTorrentInstanceId !== null && (
+      {unifiedAddTorrentInstanceId !== null && validUnifiedIds.has(unifiedAddTorrentInstanceId) && (
         <AddTorrentDialog
           instanceId={unifiedAddTorrentInstanceId}
           open={true}
@@ -948,7 +900,7 @@ export function Header({
       )}
 
       {/* Unified Create Torrent Dialog */}
-      {unifiedCreateTorrentInstanceId !== null && (
+      {unifiedCreateTorrentInstanceId !== null && validUnifiedIds.has(unifiedCreateTorrentInstanceId) && (
         <TorrentCreatorDialog
           instanceId={unifiedCreateTorrentInstanceId}
           open={true}
@@ -959,7 +911,7 @@ export function Header({
       )}
 
       {/* Unified Torrent Creation Tasks Dialog */}
-      {unifiedTasksInstanceId !== null && (() => {
+      {unifiedTasksInstanceId !== null && validUnifiedIds.has(unifiedTasksInstanceId) && (() => {
         const inst = activeInstances.find(i => i.id === unifiedTasksInstanceId)
         if (!inst) return null
         return (
@@ -977,7 +929,7 @@ export function Header({
       })()}
 
       {/* Unified Instance Settings Dialog */}
-      {unifiedSettingsInstanceId !== null && (() => {
+      {unifiedSettingsInstanceId !== null && validUnifiedIds.has(unifiedSettingsInstanceId) && (() => {
         const inst = activeInstances.find(i => i.id === unifiedSettingsInstanceId)
         if (!inst) return null
         return (
