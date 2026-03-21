@@ -821,30 +821,18 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
             className="space-y-4 pb-2"
           >
             {/* Tab selection */}
-            <div className="flex rounded-md bg-muted p-1">
-              <button
-                type="button"
-                onClick={() => setActiveTab("file")}
-                className={cn(
-                  "flex-1 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors flex items-center justify-center",
-                  activeTab === "file" ? "bg-accent text-accent-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                )}
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                File
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("url")}
-                className={cn(
-                  "flex-1 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors flex items-center justify-center",
-                  activeTab === "url" ? "bg-accent text-accent-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                )}
-              >
-                <Link className="mr-2 h-4 w-4" />
-                URL
-              </button>
-            </div>
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="file" className="gap-2">
+                  <Upload className="h-4 w-4" />
+                  File
+                </TabsTrigger>
+                <TabsTrigger value="url" className="gap-2">
+                  <Link className="h-4 w-4" />
+                  URL
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
 
             {showDuplicateCheckIndicator && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">

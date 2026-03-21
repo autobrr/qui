@@ -1685,7 +1685,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as typeof activeTab)} className="space-y-4">
-        <TabsList className="w-full md:w-auto flex gap-2 overflow-x-auto">
+        <TabsList className="w-full md:w-auto overflow-x-auto">
           <TabsTrigger className="shrink-0" value="auto">Auto</TabsTrigger>
           <TabsTrigger className="shrink-0" value="scan">Scan</TabsTrigger>
           <TabsTrigger className="shrink-0" value="dir-scan">Dir Scan</TabsTrigger>

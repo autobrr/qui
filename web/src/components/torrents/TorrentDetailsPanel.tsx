@@ -37,8 +37,8 @@ import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
 import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackerContextMenu, TrackersTable, WebSeedsTable } from "./details"
 import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
-import { TorrentFileTree } from "./TorrentFileTree"
 import { TorrentFileMediaInfoDialog } from "./TorrentFileMediaInfoDialog"
+import { TorrentFileTree } from "./TorrentFileTree"
 
 interface TorrentDetailsPanelProps {
   instanceId: number;
@@ -752,43 +752,25 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
         <div className="border-b flex items-center">
           <div className="flex-1 overflow-x-auto scroll-smooth">
-            <TabsList className="w-fit sm:w-full justify-start rounded-none h-8 bg-background px-4 sm:px-6 py-0 flex-nowrap">
-              <TabsTrigger
-                value="general"
-                className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
-              >
+            <TabsList className="w-full justify-start rounded-none h-8 bg-background px-4 sm:px-2 flex-nowrap">
+              <TabsTrigger value="general" className="text-xs shrink-0">
                 General
               </TabsTrigger>
-              <TabsTrigger
-                value="trackers"
-                className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
-              >
+              <TabsTrigger value="trackers" className="text-xs shrink-0">
                 Trackers
               </TabsTrigger>
-              <TabsTrigger
-                value="peers"
-                className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
-              >
+              <TabsTrigger value="peers" className="text-xs shrink-0">
                 Peers
               </TabsTrigger>
               {hasWebseeds && (
-                <TabsTrigger
-                  value="webseeds"
-                  className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
-                >
+                <TabsTrigger value="webseeds" className="text-xs shrink-0">
                   HTTP Sources
                 </TabsTrigger>
               )}
-              <TabsTrigger
-                value="content"
-                className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
-              >
+              <TabsTrigger value="content" className="text-xs shrink-0">
                 Content
               </TabsTrigger>
-              <TabsTrigger
-                value="crossseed"
-                className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform shrink-0"
-              >
+              <TabsTrigger value="crossseed" className="text-xs shrink-0">
                 Cross-Seed
               </TabsTrigger>
             </TabsList>
