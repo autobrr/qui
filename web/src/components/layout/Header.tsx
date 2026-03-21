@@ -180,7 +180,7 @@ export function Header({
   })
   const unifiedTorrentCreationInstances = useMemo(
     () => unifiedManageableInstances.filter((_instance, i) =>
-      unifiedCapabilitiesResults[i]?.data?.supportsTorrentCreation ?? true
+      unifiedCapabilitiesResults[i]?.data?.supportsTorrentCreation === true
     ),
     [unifiedManageableInstances, unifiedCapabilitiesResults],
   )
@@ -455,20 +455,24 @@ export function Header({
                   instances={unifiedManageableInstances}
                   onSelectInstance={setUnifiedAddTorrentInstanceId}
                 />
-                <UnifiedActionDropdown
-                  icon={<FileEdit className="h-4 w-4" />}
-                  tooltip="Create torrent"
-                  label="Create for instance"
-                  instances={unifiedTorrentCreationInstances}
-                  onSelectInstance={setUnifiedCreateTorrentInstanceId}
-                />
-                <UnifiedActionDropdown
-                  icon={<ListTodo className="h-4 w-4" />}
-                  tooltip="Torrent creation tasks"
-                  label="Tasks for instance"
-                  instances={unifiedTorrentCreationInstances}
-                  onSelectInstance={setUnifiedTasksInstanceId}
-                />
+                {unifiedTorrentCreationInstances.length > 0 && (
+                  <>
+                    <UnifiedActionDropdown
+                      icon={<FileEdit className="h-4 w-4" />}
+                      tooltip="Create torrent"
+                      label="Create for instance"
+                      instances={unifiedTorrentCreationInstances}
+                      onSelectInstance={setUnifiedCreateTorrentInstanceId}
+                    />
+                    <UnifiedActionDropdown
+                      icon={<ListTodo className="h-4 w-4" />}
+                      tooltip="Torrent creation tasks"
+                      label="Tasks for instance"
+                      instances={unifiedTorrentCreationInstances}
+                      onSelectInstance={setUnifiedTasksInstanceId}
+                    />
+                  </>
+                )}
                 <UnifiedActionDropdown
                   icon={<Cog className="h-4 w-4" />}
                   tooltip="Instance settings"
