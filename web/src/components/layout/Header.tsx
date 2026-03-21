@@ -310,6 +310,10 @@ export function Header({
     () => new Set(unifiedManageableInstances.map((instance) => instance.id)),
     [unifiedManageableInstances],
   )
+  const validUnifiedTorrentCreationIds = useMemo(
+    () => new Set(unifiedTorrentCreationInstances.map((instance) => instance.id)),
+    [unifiedTorrentCreationInstances],
+  )
 
   useEffect(() => {
     setInstanceSettingsOpen(false)
@@ -904,7 +908,7 @@ export function Header({
       )}
 
       {/* Unified Create Torrent Dialog */}
-      {unifiedCreateTorrentInstanceId !== null && validUnifiedIds.has(unifiedCreateTorrentInstanceId) && (
+      {unifiedCreateTorrentInstanceId !== null && validUnifiedTorrentCreationIds.has(unifiedCreateTorrentInstanceId) && (
         <TorrentCreatorDialog
           instanceId={unifiedCreateTorrentInstanceId}
           open={true}
@@ -915,7 +919,7 @@ export function Header({
       )}
 
       {/* Unified Torrent Creation Tasks Dialog */}
-      {unifiedTasksInstanceId !== null && validUnifiedIds.has(unifiedTasksInstanceId) && (() => {
+      {unifiedTasksInstanceId !== null && validUnifiedTorrentCreationIds.has(unifiedTasksInstanceId) && (() => {
         const inst = activeInstances.find(i => i.id === unifiedTasksInstanceId)
         if (!inst) return null
         return (
