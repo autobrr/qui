@@ -1049,17 +1049,31 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
 }: SetCategoryDialogProps) {
   const [categoryInput, setCategoryInput] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
+  const [dialogCategories, setDialogCategories] = useState<Record<string, Category>>({})
+  const [dialogUseSubcategories, setDialogUseSubcategories] = useState(useSubcategories)
   const wasOpen = useRef(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const availableCategoryCount = Object.keys(availableCategories || {}).length
+  const dialogCategoryCount = Object.keys(dialogCategories).length
 
-  // Initialize category only when dialog transitions from closed to open
+  // Freeze the category list while the dialog is open so background table refreshes
+  // do not reshuffle the scroll container. If the dialog opened before categories
+  // finished loading, hydrate exactly once when the first non-empty list arrives.
   useEffect(() => {
     if (open && !wasOpen.current) {
       setCategoryInput(initialCategory)
       setSearchQuery("")
+      setDialogCategories(availableCategories || {})
+      setDialogUseSubcategories(useSubcategories)
+    } else if (open && dialogCategoryCount === 0 && availableCategoryCount > 0) {
+      setDialogCategories(availableCategories || {})
+      setDialogUseSubcategories(useSubcategories)
+    } else if (!open && wasOpen.current) {
+      setDialogCategories({})
+      setDialogUseSubcategories(useSubcategories)
     }
     wasOpen.current = open
-  }, [open, initialCategory])
+  }, [availableCategories, availableCategoryCount, dialogCategoryCount, initialCategory, open, useSubcategories])
 
   const handleConfirm = useCallback(() => {
     onConfirm(categoryInput)
@@ -1074,13 +1088,13 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
   }, [onOpenChange])
 
   // Filter categories based on search, with subcategory support
-  const categoryList = Object.keys(availableCategories || {}).sort()
+  const categoryList = useMemo(() => Object.keys(dialogCategories).sort(), [dialogCategories])
 
   const filteredCategories = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
 
-    if (useSubcategories) {
-      const tree = buildCategoryTree(availableCategories || {}, {})
+    if (dialogUseSubcategories) {
+      const tree = buildCategoryTree(dialogCategories, {})
       const shouldIncludeCache = new Map<CategoryNode, boolean>()
 
       const shouldIncludeNode = (node: CategoryNode): boolean => {
@@ -1133,9 +1147,10 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
       displayName: name,
       level: 0,
     }))
-  }, [availableCategories, categoryList, searchQuery, useSubcategories])
+  }, [categoryList, dialogCategories, dialogUseSubcategories, searchQuery])
 
   const shouldUseVirtualization = filteredCategories.length > 50
+  const showLoadingCategories = isLoadingCategories && dialogCategoryCount === 0
 
   const virtualizer = useVirtualizer({
     count: shouldUseVirtualization ? filteredCategories.length : 0,
@@ -1170,7 +1185,7 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
           {/* Category list with optional virtualization */}
           <div className="space-y-2">
             <Label>Select Category</Label>
-            {isLoadingCategories ? (
+            {showLoadingCategories ? (
               <div className="max-h-64 border rounded-md p-3 flex items-center justify-center">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
