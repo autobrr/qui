@@ -1149,15 +1149,8 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
     }))
   }, [categoryList, dialogCategories, dialogUseSubcategories, searchQuery])
 
-  const shouldUseVirtualization = filteredCategories.length > 50
   const showLoadingCategories = isLoadingCategories && dialogCategoryCount === 0
-
-  const virtualizer = useVirtualizer({
-    count: shouldUseVirtualization ? filteredCategories.length : 0,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 36,
-    overscan: 5,
-  })
+  const showSearch = !showLoadingCategories && categoryList.length > 10
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1170,89 +1163,47 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
         </DialogHeader>
         <div className="py-4 space-y-4">
           {/* Search bar for categories */}
-          {!isLoadingCategories && categoryList.length > 10 && (
-            <div className="space-y-2">
-              <Label htmlFor="categorySearch">Search Categories</Label>
-              <Input
-                id="categorySearch"
-                placeholder="Type to search..."
-                value={searchQuery}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          )}
+          <div className={showSearch ? "space-y-2" : "hidden"} aria-hidden={!showSearch}>
+            {showSearch && (
+              <>
+                <Label htmlFor="categorySearch">Search Categories</Label>
+                <Input
+                  id="categorySearch"
+                  placeholder="Type to search..."
+                  value={searchQuery}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+                />
+              </>
+            )}
+          </div>
 
           {/* Category list with optional virtualization */}
           <div className="space-y-2">
             <Label>Select Category</Label>
-            {showLoadingCategories ? (
-              <div className="max-h-64 border rounded-md p-3 flex items-center justify-center">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">Loading categories...</span>
-                </div>
-              </div>
-            ) : (
-              <div
-                ref={scrollContainerRef}
-                className="max-h-64 border rounded-md overflow-y-auto"
-              >
-                {/* No category option */}
-                <button
-                  type="button"
-                  onClick={() => setCategoryInput("")}
-                  className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                    categoryInput === "" ? "bg-accent" : ""
-                  }`}
-                >
-                  <span className="text-sm text-muted-foreground italic">(No category)</span>
-                </button>
-
-                {shouldUseVirtualization ? (
-                // Virtualized rendering for large lists
-                  <div
-                    style={{
-                      height: `${virtualizer.getTotalSize()}px`,
-                      width: "100%",
-                      position: "relative",
-                    }}
-                  >
-                    {virtualizer.getVirtualItems().map((virtualRow) => {
-                      const category = filteredCategories[virtualRow.index]
-                      return (
-                        <div
-                          key={virtualRow.key}
-                          data-index={virtualRow.index}
-                          ref={virtualizer.measureElement}
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            width: "100%",
-                            transform: `translateY(${virtualRow.start}px)`,
-                          }}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setCategoryInput(category.name)}
-                            className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                              categoryInput === category.name ? "bg-accent" : ""
-                            }`}
-                            title={category.name}
-                          >
-                            <span
-                              className="text-sm"
-                              style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
-                            >
-                              {category.displayName}
-                            </span>
-                          </button>
-                        </div>
-                      )
-                    })}
+            <div
+              ref={scrollContainerRef}
+              className="max-h-64 border rounded-md overflow-y-auto"
+            >
+              {showLoadingCategories ? (
+                <div className="p-3 flex items-center justify-center">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">Loading categories...</span>
                   </div>
-                ) : (
-                // Simple rendering for small lists - much faster!
+                </div>
+              ) : (
+                <>
+                  {/* No category option */}
+                  <button
+                    type="button"
+                    onClick={() => setCategoryInput("")}
+                    className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                      categoryInput === "" ? "bg-accent" : ""
+                    }`}
+                  >
+                    <span className="text-sm text-muted-foreground italic">(No category)</span>
+                  </button>
+
                   <div>
                     {filteredCategories.map((category) => (
                       <button
@@ -1273,15 +1224,15 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
                       </button>
                     ))}
                   </div>
-                )}
 
-                {filteredCategories.length === 0 && searchQuery && (
-                  <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                    No categories found matching "{searchQuery}"
-                  </div>
-                )}
-              </div>
-            )}
+                  {filteredCategories.length === 0 && searchQuery && (
+                    <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                      No categories found matching "{searchQuery}"
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
 
           {/* Option to enter new category */}
