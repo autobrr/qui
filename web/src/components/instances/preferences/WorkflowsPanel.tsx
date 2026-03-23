@@ -344,6 +344,8 @@ function RuleSummary({ rule, tr }: { rule: Automation; tr: TranslateFn }) {
     conditions?.shareLimits?.enabled ||
     conditions?.pause?.enabled ||
     conditions?.delete?.enabled ||
+    conditions?.recheck?.enabled ||
+    conditions?.reannounce?.enabled ||
     conditions?.tag?.enabled ||
     conditions?.category?.enabled ||
     conditions?.externalProgram?.enabled

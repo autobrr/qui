@@ -862,11 +862,17 @@
       "categories": "分类",
       "tags": "标签",
       "indexers": "索引器",
+      "bypassTorznabCacheLabel": "绕过 Torznab 缓存",
+      "bypassTorznabCacheDescription": "启用后，此实例的完成搜索将始终直接查询索引器（不使用缓存结果）。默认关闭。",
       "includeAllCategories": "将包含所有分类。",
       "includeAllTags": "将包含所有标签。",
-      "onlySelectedMatched": "仅匹配已选择的 {{count}} 个{{item}}。",
+      "onlySelectedCategoriesMatched_one": "仅匹配已选择的 {{count}} 个分类。",
+      "onlySelectedCategoriesMatched_other": "仅匹配已选择的 {{count}} 个分类。",
       "searchAllEnabledIndexers": "将搜索所有已启用的索引器。",
-      "onlySelectedQueried": "仅查询已选择的 {{count}} 个{{item}}。",
+      "onlySelectedTagsMatched_one": "仅匹配已选择的 {{count}} 个标签。",
+      "onlySelectedTagsMatched_other": "仅匹配已选择的 {{count}} 个标签。",
+      "onlySelectedIndexersQueried_one": "仅查询已选择的 {{count}} 个索引器。",
+      "onlySelectedIndexersQueried_other": "仅查询已选择的 {{count}} 个索引器。",
       "skipCategories": "跳过这些分类中的种子。",
       "skipTags": "跳过带有这些标签的种子。"
     },
@@ -5957,7 +5963,8 @@
       "maxUploadsRange": "全局上传槽位限制必须大于 0 或禁用",
       "maxUploadsPerTorrentRange": "每个种子的最大上传槽位限制必须大于 0 或禁用",
       "outgoingPortsMinRange": "出站端口最小值必须在 0 到 65535 之间",
-      "outgoingPortsMaxRange": "出站端口最大值必须在 0 到 65535 之间"
+      "outgoingPortsMaxRange": "出站端口最大值必须在 0 到 65535 之间",
+      "outgoingPortsOrder": "出站端口最小值必须小于或等于最大值"
     },
     "actions": {
       "saving": "保存中...",

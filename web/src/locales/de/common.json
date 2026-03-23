@@ -862,11 +862,17 @@
       "categories": "Kategorien",
       "tags": "Tags",
       "indexers": "Indexer",
+      "bypassTorznabCacheLabel": "Torznab-Cache umgehen",
+      "bypassTorznabCacheDescription": "Wenn aktiviert, greifen Abschlusssuchen für diese Instanz immer direkt auf Indexer zu (keine zwischengespeicherten Ergebnisse). Standardmäßig aus.",
       "includeAllCategories": "Alle Kategorien werden eingeschlossen.",
       "includeAllTags": "Alle Tags werden eingeschlossen.",
-      "onlySelectedMatched": "Nur {{count}} ausgewählte {{item}} werden berücksichtigt.",
+      "onlySelectedCategoriesMatched_one": "Nur {{count}} ausgewählte Kategorie wird berücksichtigt.",
+      "onlySelectedCategoriesMatched_other": "Nur {{count}} ausgewählte Kategorien werden berücksichtigt.",
       "searchAllEnabledIndexers": "Alle aktivierten Indexer werden durchsucht.",
-      "onlySelectedQueried": "Nur {{count}} ausgewählte {{item}} werden abgefragt.",
+      "onlySelectedTagsMatched_one": "Nur {{count}} ausgewählter Tag wird berücksichtigt.",
+      "onlySelectedTagsMatched_other": "Nur {{count}} ausgewählte Tags werden berücksichtigt.",
+      "onlySelectedIndexersQueried_one": "Nur {{count}} ausgewählter Indexer wird abgefragt.",
+      "onlySelectedIndexersQueried_other": "Nur {{count}} ausgewählte Indexer werden abgefragt.",
       "skipCategories": "Torrents in diesen Kategorien überspringen.",
       "skipTags": "Torrents mit diesen Tags überspringen."
     },
@@ -5957,7 +5963,8 @@
       "maxUploadsRange": "Das globale Limit für Upload-Slots muss größer als 0 sein oder deaktiviert werden",
       "maxUploadsPerTorrentRange": "Das Limit für Upload-Slots pro Torrent muss größer als 0 sein oder deaktiviert werden",
       "outgoingPortsMinRange": "Der minimale ausgehende Port muss zwischen 0 und 65535 liegen",
-      "outgoingPortsMaxRange": "Der maximale ausgehende Port muss zwischen 0 und 65535 liegen"
+      "outgoingPortsMaxRange": "Der maximale ausgehende Port muss zwischen 0 und 65535 liegen",
+      "outgoingPortsOrder": "Der minimale ausgehende Port muss kleiner oder gleich dem maximalen ausgehenden Port sein"
     },
     "actions": {
       "saving": "Wird gespeichert...",

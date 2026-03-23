@@ -370,9 +370,9 @@ export function CompletionOverview() {
 
                         <div className="flex items-center justify-between rounded-md border border-border/50 bg-muted/30 p-3">
                           <div className="space-y-0.5">
-                            <Label className="text-sm font-medium">Bypass Torznab cache</Label>
+                            <Label className="text-sm font-medium">{tr("completionOverview.filters.bypassTorznabCacheLabel")}</Label>
                             <p className="text-xs text-muted-foreground">
-                              When on, completion searches for this instance always hit indexers (no cached results). Default off.
+                              {tr("completionOverview.filters.bypassTorznabCacheDescription")}
                             </p>
                           </div>
                           <Switch
@@ -396,14 +396,7 @@ export function CompletionOverview() {
                                 disabled={isSaving}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.categories.length === 0
-                                  ? tr("completionOverview.filters.includeAllCategories")
-                                  : tr("completionOverview.filters.onlySelectedMatched", {
-                                    count: form.categories.length,
-                                    item: form.categories.length === 1
-                                      ? tr("completionOverview.values.category")
-                                      : tr("completionOverview.values.categories"),
-                                  })}
+                                {form.categories.length === 0 ? tr("completionOverview.filters.includeAllCategories") : tr("completionOverview.filters.onlySelectedCategoriesMatched", { count: form.categories.length })}
                               </p>
                             </div>
                             <div className="space-y-2">
@@ -417,14 +410,7 @@ export function CompletionOverview() {
                                 disabled={isSaving}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.tags.length === 0
-                                  ? tr("completionOverview.filters.includeAllTags")
-                                  : tr("completionOverview.filters.onlySelectedMatched", {
-                                    count: form.tags.length,
-                                    item: form.tags.length === 1
-                                      ? tr("completionOverview.values.tag")
-                                      : tr("completionOverview.values.tags"),
-                                  })}
+                                {form.tags.length === 0 ? tr("completionOverview.filters.includeAllTags") : tr("completionOverview.filters.onlySelectedTagsMatched", { count: form.tags.length })}
                               </p>
                             </div>
                             <div className="space-y-2">
@@ -437,14 +423,7 @@ export function CompletionOverview() {
                                 disabled={isSaving || indexersQuery.isPending || (!hasEnabledIndexers && !indexersQuery.isPending)}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.indexerIds.length === 0
-                                  ? tr("completionOverview.filters.searchAllEnabledIndexers")
-                                  : tr("completionOverview.filters.onlySelectedQueried", {
-                                    count: form.indexerIds.length,
-                                    item: form.indexerIds.length === 1
-                                      ? tr("completionOverview.values.indexer")
-                                      : tr("completionOverview.values.indexers"),
-                                  })}
+                                {form.indexerIds.length === 0 ? tr("completionOverview.filters.searchAllEnabledIndexers") : tr("completionOverview.filters.onlySelectedIndexersQueried", { count: form.indexerIds.length })}
                               </p>
                             </div>
                           </div>

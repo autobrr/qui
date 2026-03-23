@@ -1018,11 +1018,17 @@
       "categories": "Catégories",
       "tags": "Tags",
       "indexers": "Indexeurs",
+      "bypassTorznabCacheLabel": "Ignorer le cache Torznab",
+      "bypassTorznabCacheDescription": "Quand c'est activé, les recherches de complétion pour cette instance interrogent toujours les indexeurs directement (sans résultats en cache). Désactivé par défaut.",
       "includeAllCategories": "Toutes les catégories seront incluses.",
       "includeAllTags": "Tous les tags seront inclus.",
-      "onlySelectedMatched": "Seuls {{count}} {{item}} sélectionnés seront pris en compte.",
+      "onlySelectedCategoriesMatched_one": "Seule {{count}} catégorie sélectionnée sera prise en compte.",
+      "onlySelectedCategoriesMatched_other": "Seules {{count}} catégories sélectionnées seront prises en compte.",
       "searchAllEnabledIndexers": "Tous les indexeurs activés seront recherchés.",
-      "onlySelectedQueried": "Seuls {{count}} {{item}} sélectionnés seront interrogés.",
+      "onlySelectedTagsMatched_one": "Seul {{count}} tag sélectionné sera pris en compte.",
+      "onlySelectedTagsMatched_other": "Seuls {{count}} tags sélectionnés seront pris en compte.",
+      "onlySelectedIndexersQueried_one": "Seul {{count}} indexeur sélectionné sera interrogé.",
+      "onlySelectedIndexersQueried_other": "Seuls {{count}} indexeurs sélectionnés seront interrogés.",
       "skipCategories": "Ignorer les torrents dans ces catégories.",
       "skipTags": "Ignorer les torrents avec ces tags."
     },
@@ -6113,7 +6119,8 @@
       "maxUploadsRange": "La limite globale de slots d'upload doit être > 0 ou désactivée",
       "maxUploadsPerTorrentRange": "La limite de slots d'upload par torrent doit être > 0 ou désactivée",
       "outgoingPortsMinRange": "Le minimum de la plage de ports sortants doit être entre 0 et 65535",
-      "outgoingPortsMaxRange": "Le maximum de la plage de ports sortants doit être entre 0 et 65535"
+      "outgoingPortsMaxRange": "Le maximum de la plage de ports sortants doit être entre 0 et 65535",
+      "outgoingPortsOrder": "Le minimum de la plage de ports sortants doit être inférieur ou égal au maximum"
     },
     "actions": {
       "saving": "Enregistrement...",

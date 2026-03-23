@@ -1018,11 +1018,17 @@
       "categories": "Categorías",
       "tags": "Etiquetas",
       "indexers": "Indexadores",
+      "bypassTorznabCacheLabel": "Omitir caché de Torznab",
+      "bypassTorznabCacheDescription": "Si está activado, las búsquedas de finalización de esta instancia siempre consultan a los indexadores directamente (sin resultados en caché). Desactivado por defecto.",
       "includeAllCategories": "Se incluirán todas las categorías.",
       "includeAllTags": "Se incluirán todas las etiquetas.",
-      "onlySelectedMatched": "Solo coincidirán {{count}} {{item}} seleccionados.",
+      "onlySelectedCategoriesMatched_one": "Solo coincidirá {{count}} categoría seleccionada.",
+      "onlySelectedCategoriesMatched_other": "Solo coincidirán {{count}} categorías seleccionadas.",
       "searchAllEnabledIndexers": "Se buscará en todos los indexadores habilitados.",
-      "onlySelectedQueried": "Solo se consultarán {{count}} {{item}} seleccionados.",
+      "onlySelectedTagsMatched_one": "Solo coincidirá {{count}} etiqueta seleccionada.",
+      "onlySelectedTagsMatched_other": "Solo coincidirán {{count}} etiquetas seleccionadas.",
+      "onlySelectedIndexersQueried_one": "Solo se consultará {{count}} indexador seleccionado.",
+      "onlySelectedIndexersQueried_other": "Solo se consultarán {{count}} indexadores seleccionados.",
       "skipCategories": "Omitir torrents en estas categorías.",
       "skipTags": "Omitir torrents con estas etiquetas."
     },
@@ -6113,7 +6119,8 @@
       "maxUploadsRange": "El límite global de slots de subida debe ser mayor que 0 o estar deshabilitado",
       "maxUploadsPerTorrentRange": "El límite de slots de subida por torrent debe ser mayor que 0 o estar deshabilitado",
       "outgoingPortsMinRange": "El mínimo del rango de puertos de salida debe estar entre 0 y 65535",
-      "outgoingPortsMaxRange": "El máximo del rango de puertos de salida debe estar entre 0 y 65535"
+      "outgoingPortsMaxRange": "El máximo del rango de puertos de salida debe estar entre 0 y 65535",
+      "outgoingPortsOrder": "El puerto mínimo del rango de salida debe ser menor o igual que el máximo"
     },
     "actions": {
       "saving": "Guardando...",

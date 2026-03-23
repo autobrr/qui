@@ -1018,11 +1018,17 @@
       "categories": "카테고리",
       "tags": "태그",
       "indexers": "인덱서",
+      "bypassTorznabCacheLabel": "Torznab 캐시 우회",
+      "bypassTorznabCacheDescription": "켜면 이 인스턴스의 완료 검색은 항상 인덱서를 직접 조회합니다(캐시된 결과 사용 안 함). 기본값은 꺼짐입니다.",
       "includeAllCategories": "모든 카테고리가 포함됩니다.",
       "includeAllTags": "모든 태그가 포함됩니다.",
-      "onlySelectedMatched": "선택한 {{count}}개 {{item}}만 일치 대상으로 사용합니다.",
+      "onlySelectedCategoriesMatched_one": "선택한 {{count}}개 카테고리만 일치 대상으로 사용합니다.",
+      "onlySelectedCategoriesMatched_other": "선택한 {{count}}개 카테고리만 일치 대상으로 사용합니다.",
       "searchAllEnabledIndexers": "활성화된 모든 인덱서를 검색합니다.",
-      "onlySelectedQueried": "선택한 {{count}}개 {{item}}만 조회합니다.",
+      "onlySelectedTagsMatched_one": "선택한 {{count}}개 태그만 일치 대상으로 사용합니다.",
+      "onlySelectedTagsMatched_other": "선택한 {{count}}개 태그만 일치 대상으로 사용합니다.",
+      "onlySelectedIndexersQueried_one": "선택한 {{count}}개 인덱서만 조회합니다.",
+      "onlySelectedIndexersQueried_other": "선택한 {{count}}개 인덱서만 조회합니다.",
       "skipCategories": "이 카테고리의 토렌트는 건너뜁니다.",
       "skipTags": "이 태그가 있는 토렌트는 건너뜁니다."
     },
@@ -6113,7 +6119,8 @@
       "maxUploadsRange": "전역 업로드 슬롯 제한은 0보다 크거나 비활성화되어야 합니다",
       "maxUploadsPerTorrentRange": "토렌트당 업로드 슬롯 제한은 0보다 크거나 비활성화되어야 합니다",
       "outgoingPortsMinRange": "출발 포트 최소값은 0~65535 사이여야 합니다",
-      "outgoingPortsMaxRange": "출발 포트 최대값은 0~65535 사이여야 합니다"
+      "outgoingPortsMaxRange": "출발 포트 최대값은 0~65535 사이여야 합니다",
+      "outgoingPortsOrder": "출발 포트 최소값은 최대값보다 작거나 같아야 합니다"
     },
     "actions": {
       "saving": "저장 중...",

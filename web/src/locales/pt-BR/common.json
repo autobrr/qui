@@ -862,11 +862,17 @@
       "categories": "Categorias",
       "tags": "Tags",
       "indexers": "Indexadores",
+      "bypassTorznabCacheLabel": "Ignorar cache do Torznab",
+      "bypassTorznabCacheDescription": "Quando ativado, as buscas de conclusão desta instância sempre consultam os indexadores diretamente (sem resultados em cache). O padrão é desativado.",
       "includeAllCategories": "Todas as categorias serão incluídas.",
       "includeAllTags": "Todas as tags serão incluídas.",
-      "onlySelectedMatched": "Somente {{count}} {{item}} selecionados serão considerados.",
+      "onlySelectedCategoriesMatched_one": "Somente {{count}} categoria selecionada será considerada.",
+      "onlySelectedCategoriesMatched_other": "Somente {{count}} categorias selecionadas serão consideradas.",
       "searchAllEnabledIndexers": "Todos os indexadores habilitados serão pesquisados.",
-      "onlySelectedQueried": "Somente {{count}} {{item}} selecionados serão consultados.",
+      "onlySelectedTagsMatched_one": "Somente {{count}} tag selecionada será considerada.",
+      "onlySelectedTagsMatched_other": "Somente {{count}} tags selecionadas serão consideradas.",
+      "onlySelectedIndexersQueried_one": "Somente {{count}} indexador selecionado será consultado.",
+      "onlySelectedIndexersQueried_other": "Somente {{count}} indexadores selecionados serão consultados.",
       "skipCategories": "Ignorar torrents nessas categorias.",
       "skipTags": "Ignorar torrents com essas tags."
     },
@@ -5957,7 +5963,8 @@
       "maxUploadsRange": "O limite global de slots de upload deve ser maior que 0 ou desativado",
       "maxUploadsPerTorrentRange": "O limite de slots de upload por torrent deve ser maior que 0 ou desativado",
       "outgoingPortsMinRange": "O mínimo da faixa de portas de saída deve estar entre 0 e 65535",
-      "outgoingPortsMaxRange": "O máximo da faixa de portas de saída deve estar entre 0 e 65535"
+      "outgoingPortsMaxRange": "O máximo da faixa de portas de saída deve estar entre 0 e 65535",
+      "outgoingPortsOrder": "O mínimo da faixa de portas de saída deve ser menor ou igual ao máximo"
     },
     "actions": {
       "saving": "Salvando...",

@@ -133,6 +133,9 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
   const fieldVisibility = useQBittorrentFieldVisibility(instanceId)
   const [incognitoMode] = useIncognitoMode()
   const validateUnlimitedRange = (value: number, errorKey: string) => (value < -1 ? tr(errorKey) : undefined)
+  const validateOutgoingPortOrder = (min: number, max: number) => (
+    min > max ? tr("connectionSettingsForm.errors.outgoingPortsOrder") : undefined
+  )
 
   const form = useForm({
     defaultValues: {
@@ -589,11 +592,12 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
           <form.Field
             name="outgoing_ports_min"
             validators={{
-              onChange: ({ value }) => {
+              onChangeListenTo: ["outgoing_ports_max"],
+              onChange: ({ value, fieldApi }) => {
                 if (value < 0 || value > 65535) {
                   return tr("connectionSettingsForm.errors.outgoingPortsMinRange")
                 }
-                return undefined
+                return validateOutgoingPortOrder(value, fieldApi.form.getFieldValue("outgoing_ports_max"))
               },
             }}
           >
@@ -617,11 +621,12 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
           <form.Field
             name="outgoing_ports_max"
             validators={{
-              onChange: ({ value }) => {
+              onChangeListenTo: ["outgoing_ports_min"],
+              onChange: ({ value, fieldApi }) => {
                 if (value < 0 || value > 65535) {
                   return tr("connectionSettingsForm.errors.outgoingPortsMaxRange")
                 }
-                return undefined
+                return validateOutgoingPortOrder(fieldApi.form.getFieldValue("outgoing_ports_min"), value)
               },
             }}
           >

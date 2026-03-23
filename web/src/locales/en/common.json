@@ -993,11 +993,17 @@
       "categories": "Categories",
       "tags": "Tags",
       "indexers": "Indexers",
+      "bypassTorznabCacheLabel": "Bypass Torznab cache",
+      "bypassTorznabCacheDescription": "When on, completion searches for this instance always hit indexers (no cached results). Default off.",
       "includeAllCategories": "All categories will be included.",
       "includeAllTags": "All tags will be included.",
-      "onlySelectedMatched": "Only {{count}} selected {{item}} will be matched.",
+      "onlySelectedCategoriesMatched_one": "Only {{count}} selected category will be matched.",
+      "onlySelectedCategoriesMatched_other": "Only {{count}} selected categories will be matched.",
       "searchAllEnabledIndexers": "All enabled indexers will be searched.",
-      "onlySelectedQueried": "Only {{count}} selected {{item}} will be queried.",
+      "onlySelectedTagsMatched_one": "Only {{count}} selected tag will be matched.",
+      "onlySelectedTagsMatched_other": "Only {{count}} selected tags will be matched.",
+      "onlySelectedIndexersQueried_one": "Only {{count}} selected indexer will be queried.",
+      "onlySelectedIndexersQueried_other": "Only {{count}} selected indexers will be queried.",
       "skipCategories": "Skip torrents in these categories.",
       "skipTags": "Skip torrents with these tags."
     },
@@ -6167,7 +6173,8 @@
       "maxUploadsRange": "Global number of upload slots limit must be greater than 0 or disabled",
       "maxUploadsPerTorrentRange": "Maximum number of upload slots per torrent limit must be greater than 0 or disabled",
       "outgoingPortsMinRange": "Outgoing port range minimum must be between 0 and 65535",
-      "outgoingPortsMaxRange": "Outgoing port range maximum must be between 0 and 65535"
+      "outgoingPortsMaxRange": "Outgoing port range maximum must be between 0 and 65535",
+      "outgoingPortsOrder": "Outgoing port range minimum must be less than or equal to the maximum"
     },
     "actions": {
       "saving": "Saving...",

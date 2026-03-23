@@ -862,11 +862,17 @@
       "categories": "カテゴリ",
       "tags": "タグ",
       "indexers": "インデクサ",
+      "bypassTorznabCacheLabel": "Torznab キャッシュを迂回",
+      "bypassTorznabCacheDescription": "有効にすると、このインスタンスの完了検索は常にインデクサへ直接問い合わせます（キャッシュ結果は使いません）。初期状態ではオフです。",
       "includeAllCategories": "すべてのカテゴリが対象になります。",
       "includeAllTags": "すべてのタグが対象になります。",
-      "onlySelectedMatched": "選択した {{count}} 件の{{item}}のみ一致対象になります。",
+      "onlySelectedCategoriesMatched_one": "選択した {{count}} 件のカテゴリのみ一致対象になります。",
+      "onlySelectedCategoriesMatched_other": "選択した {{count}} 件のカテゴリのみ一致対象になります。",
       "searchAllEnabledIndexers": "有効なすべてのインデクサを検索します。",
-      "onlySelectedQueried": "選択した {{count}} 件の{{item}}のみ問い合わせます。",
+      "onlySelectedTagsMatched_one": "選択した {{count}} 件のタグのみ一致対象になります。",
+      "onlySelectedTagsMatched_other": "選択した {{count}} 件のタグのみ一致対象になります。",
+      "onlySelectedIndexersQueried_one": "選択した {{count}} 件のインデクサのみ問い合わせます。",
+      "onlySelectedIndexersQueried_other": "選択した {{count}} 件のインデクサのみ問い合わせます。",
       "skipCategories": "これらのカテゴリのトレントはスキップします。",
       "skipTags": "これらのタグ付きトレントはスキップします。"
     },
@@ -5957,7 +5963,8 @@
       "maxUploadsRange": "全体のアップロードスロット数は 0 より大きい値にするか、無効化してください",
       "maxUploadsPerTorrentRange": "トレントごとのアップロードスロット数は 0 より大きい値にするか、無効化してください",
       "outgoingPortsMinRange": "送信ポート最小値は 0 から 65535 の範囲で指定してください",
-      "outgoingPortsMaxRange": "送信ポート最大値は 0 から 65535 の範囲で指定してください"
+      "outgoingPortsMaxRange": "送信ポート最大値は 0 から 65535 の範囲で指定してください",
+      "outgoingPortsOrder": "送信ポートの最小値は最大値以下である必要があります"
     },
     "actions": {
       "saving": "保存中...",
