@@ -589,32 +589,19 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
             )
           })()}
 
-          {/* Tag Actions */}
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={isPending || isDisabled}
-                  >
-                    <Tag className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>Tag Actions</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent align="center">
-              <DropdownMenuItem
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => prepareTagsAction(selectedHashes, selectedTorrents)}
                 disabled={isPending || isDisabled}
               >
-                <Tag className="h-4 w-4 mr-2" />
-                Set Tags {selectionCount > 1 ? `(${selectionCount})` : ""}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <Tag className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Set Tags</TooltipContent>
+          </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
