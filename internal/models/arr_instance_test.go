@@ -43,14 +43,14 @@ func TestArrInstanceStoreUpdateNilParams(t *testing.T) {
 		{
 			name: "empty name",
 			params: &models.ArrInstanceUpdateParams{
-				Name: ptr("   "),
+				Name: new("   "),
 			},
 			expectedErr: "name cannot be empty",
 		},
 		{
 			name: "empty base URL",
 			params: &models.ArrInstanceUpdateParams{
-				BaseURL: ptr("   "),
+				BaseURL: new("   "),
 			},
 			expectedErr: "base URL cannot be empty",
 		},
@@ -64,6 +64,7 @@ func TestArrInstanceStoreUpdateNilParams(t *testing.T) {
 	}
 }
 
+//go:fix inline
 func ptr(value string) *string {
-	return &value
+	return new(value)
 }

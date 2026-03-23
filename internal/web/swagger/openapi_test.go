@@ -111,9 +111,10 @@ func TestOpenAPISecuritySchemes(t *testing.T) {
 	}
 }
 
-// TestAddTorrentFormFieldsDocumented verifies every r.FormValue() parameter in the
-// add-torrent handler is documented in the OpenAPI spec's multipart schema, and vice versa.
-// This catches mismatches like savePath vs savepath that cause silent API failures.
+// TestAddTorrentFormFieldsDocumented verifies every multipart form field the
+// add-torrent handler reads is documented in the OpenAPI spec, and vice versa.
+// This catches mismatches like savePath vs savepath or torrentFile vs torrent
+// that cause silent API failures.
 func TestAddTorrentFormFieldsDocumented(t *testing.T) {
 	// Locate torrents.go relative to this test file so the test works
 	// regardless of the working directory used by `go test`.
@@ -137,8 +138,17 @@ func TestAddTorrentFormFieldsDocumented(t *testing.T) {
 		if !ok || fn.Name.Name != "AddTorrent" {
 			continue
 		}
-		// Walk the AST of AddTorrent looking for r.FormValue("...") calls.
+		// Walk the AST of AddTorrent looking for multipart form field access.
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			index, ok := n.(*ast.IndexExpr)
+			if ok && selectorChain(index.X, "r", "MultipartForm", "File") {
+				arg, ok := index.Index.(*ast.BasicLit)
+				if ok && arg.Kind == token.STRING {
+					field := arg.Value[1 : len(arg.Value)-1]
+					handlerFields[field] = true
+				}
+			}
+
 			call, ok := n.(*ast.CallExpr)
 			if !ok || len(call.Args) != 1 {
 				return true
@@ -158,7 +168,7 @@ func TestAddTorrentFormFieldsDocumented(t *testing.T) {
 		})
 	}
 	if len(handlerFields) == 0 {
-		t.Fatal("No FormValue calls found in AddTorrent handler")
+		t.Fatal("No multipart fields found in AddTorrent handler")
 	}
 
 	// Parse the OpenAPI spec and extract properties from the add-torrent endpoint.
@@ -200,31 +210,37 @@ func TestAddTorrentFormFieldsDocumented(t *testing.T) {
 		specFields[name] = true
 	}
 
-	// torrentFile is a file upload field, not read via FormValue — exclude it.
-	// urls is read via FormValue but also present in spec.
-	skipHandler := map[string]bool{
-		"torrentFile": true,
-	}
-
 	// Check: every handler field must be in the spec.
 	for field := range handlerFields {
-		if skipHandler[field] {
-			continue
-		}
 		if !specFields[field] {
-			t.Errorf("Handler reads r.FormValue(%q) but OpenAPI spec does not document it", field)
+			t.Errorf("Handler reads multipart field %q but OpenAPI spec does not document it", field)
 		}
 	}
 
-	// Check: every spec field must be in the handler (or be torrentFile).
+	// Check: every spec field must be in the handler.
 	for field := range specFields {
-		if skipHandler[field] {
-			continue
-		}
 		if !handlerFields[field] {
-			t.Errorf("OpenAPI spec documents %q but handler does not read it via r.FormValue", field)
+			t.Errorf("OpenAPI spec documents %q but handler does not read it", field)
 		}
 	}
 
 	t.Logf("Handler fields: %d, Spec fields: %d", len(handlerFields), len(specFields))
+}
+
+func selectorChain(expr ast.Expr, parts ...string) bool {
+	if len(parts) == 0 {
+		return false
+	}
+
+	current := expr
+	for i := len(parts) - 1; i > 0; i-- {
+		sel, ok := current.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != parts[i] {
+			return false
+		}
+		current = sel.X
+	}
+
+	ident, ok := current.(*ast.Ident)
+	return ok && ident.Name == parts[0]
 }

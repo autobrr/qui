@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
@@ -31,7 +32,6 @@ import type { TorznabIndexer, TorznabRecentSearch, TorznabSearchRequest, Torznab
 import { Link } from "@tanstack/react-router"
 import { Check, ChevronDown, ChevronUp, Download, ExternalLink, Plus, RefreshCw, Search as SearchIcon, SlidersHorizontal, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 type AdvancedParamsState = {
@@ -91,8 +91,7 @@ const ADVANCED_PARAM_CONFIG: AdvancedParamConfig[] = [
 const LAST_USED_INSTANCE_KEY = "qui:search:lastInstanceId"
 
 export function Search() {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => t(key as any, options as any)
+  const tr = useCommonTr()
   const SUGGESTION_BLUR_DELAY_MS = 100
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
@@ -190,11 +189,7 @@ export function Search() {
     return instances.find(instance => instance.id === selectedInstanceId) ?? null
   }, [instances, selectedInstanceId])
   const totalIndexers = indexers.length
-  const indexerSummaryText = totalIndexers === 0
-    ? tr("searchPage.indexers.summary.none")
-    : selectedIndexers.size === totalIndexers
-      ? tr("searchPage.indexers.summary.allEnabled", { count: totalIndexers })
-      : tr("searchPage.indexers.summary.selected", { selected: selectedIndexers.size, total: totalIndexers })
+  const indexerSummaryText = totalIndexers === 0? tr("searchPage.indexers.summary.none"): selectedIndexers.size === totalIndexers? tr("searchPage.indexers.summary.allEnabled", { count: totalIndexers }): tr("searchPage.indexers.summary.selected", { selected: selectedIndexers.size, total: totalIndexers })
 
   const REFRESH_COOLDOWN_MS = 30_000
   const refreshCooldownRemaining = Math.max(0, refreshCooldownUntil - Date.now())
@@ -788,14 +783,8 @@ export function Search() {
     }
   }
 
-  const addButtonTitle = targetInstance
-    ? tr("searchPage.actions.addToInstance", { name: targetInstance.name })
-    : hasInstances
-      ? tr("searchPage.errors.chooseInstanceToAdd")
-      : tr("searchPage.errors.addInstanceUnderSettings")
-  const primaryAddButtonLabel = targetInstance
-    ? tr("searchPage.actions.addToInstance", { name: targetInstance.name })
-    : tr("searchPage.actions.addToInstanceGeneric")
+  const addButtonTitle = targetInstance? tr("searchPage.actions.addToInstance", { name: targetInstance.name }): hasInstances? tr("searchPage.errors.chooseInstanceToAdd"): tr("searchPage.errors.addInstanceUnderSettings")
+  const primaryAddButtonLabel = targetInstance? tr("searchPage.actions.addToInstance", { name: targetInstance.name }): tr("searchPage.actions.addToInstanceGeneric")
   const instancesAvailable = hasInstances
 
   return (
@@ -908,14 +897,10 @@ export function Search() {
                     className="flex w-full items-center justify-center gap-2 sm:w-auto sm:justify-start"
                   >
                     <span className="text-sm">
-                      {targetInstance
-                        ? tr("searchPage.instances.target", {
-                          name: targetInstance.name,
-                          status: !targetInstance.connected ? tr("searchPage.instances.offlineSuffix") : "",
-                        })
-                        : instancesAvailable
-                          ? tr("searchPage.instances.chooseTarget")
-                          : tr("searchPage.instances.none")}
+                      {targetInstance? tr("searchPage.instances.target", {
+                        name: targetInstance.name,
+                        status: !targetInstance.connected ? tr("searchPage.instances.offlineSuffix") : "",
+                      }): instancesAvailable? tr("searchPage.instances.chooseTarget"): tr("searchPage.instances.none")}
                     </span>
                     <ChevronDown className="h-3 w-3" />
                   </Button>
@@ -1366,9 +1351,7 @@ export function Search() {
                       className={`h-7 w-7 opacity-40 transition-opacity hover:opacity-100 ${!showRefreshButton ? "invisible" : ""}`}
                       onClick={() => setRefreshConfirmOpen(true)}
                       disabled={!canForceRefresh}
-                      title={refreshCooldownRemaining > 0
-                        ? tr("searchPage.actions.readyIn", { seconds: Math.ceil(refreshCooldownRemaining / 1000) })
-                        : tr("searchPage.actions.refreshFromIndexers")}
+                      title={refreshCooldownRemaining > 0? tr("searchPage.actions.readyIn", { seconds: Math.ceil(refreshCooldownRemaining / 1000) }): tr("searchPage.actions.refreshFromIndexers")}
                     >
                       <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
                     </Button>

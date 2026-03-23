@@ -3485,6 +3485,21 @@
       "selectedSummary": "Tags selecionadas: {{tags}}",
       "confirm": "Definir tags"
     },
+    "tagEditor": {
+      "description": "Tags mistos permanecem inalterados até você clicar. Clique em uma linha para alternar Misto para Ligado, Ligado para Desligado e Desligado para Ligado.",
+      "noTags": "Ainda não há tags disponíveis. Adicione uma abaixo.",
+      "errors": {
+        "baseline": "Não foi possível montar a base completa de tags para esta seleção"
+      },
+      "toasts": {
+        "failedLoad": "Não foi possível carregar as tags dos torrents selecionados"
+      },
+      "summary": {
+        "addEverywhere": "Adicionar em todos: {{tags}}",
+        "removeEverywhere": "Remover de todos: {{tags}}",
+        "noChanges": "Nenhuma alteração de tags."
+      }
+    },
     "setLocation": {
       "title": "Definir local para {{count}} torrent(s)",
       "description": "Informe um novo local de salvamento para os torrents selecionados.",

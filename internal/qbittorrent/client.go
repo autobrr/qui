@@ -51,7 +51,6 @@ type Client struct {
 	trackerIncludeSupported  bool
 	supportsSetRSSFeedURL    bool
 	lastHealthCheck          time.Time
-	lastRecoveryTime         time.Time // When client transitioned from unhealthy→healthy (or was created)
 	isHealthy                bool
 	syncManager              *qbt.SyncManager
 	peerSyncManager          map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
@@ -102,11 +101,10 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	}
 
 	client := &Client{
-		Client:           qbtClient,
-		instanceID:       instanceID,
-		lastHealthCheck:  time.Now(),
-		lastRecoveryTime: time.Now(), // Treat fresh client as "just recovered"
-		isHealthy:        true,
+		Client:          qbtClient,
+		instanceID:      instanceID,
+		lastHealthCheck: time.Now(),
+		isHealthy:       true,
 		optimisticUpdates: ttlcache.New(ttlcache.Options[string, *OptimisticTorrentUpdate]{}.
 			SetDefaultTTL(30 * time.Second)), // Updates expire after 30 seconds
 		trackerExclusions: make(map[string]map[string]struct{}),
@@ -186,11 +184,6 @@ func (c *Client) updateHealthStatus(healthy bool) {
 	c.healthMu.Lock()
 	defer c.healthMu.Unlock()
 
-	// Track recovery time when transitioning to healthy
-	if healthy && !c.isHealthy {
-		c.lastRecoveryTime = time.Now()
-	}
-
 	c.isHealthy = healthy
 	c.lastHealthCheck = time.Now()
 }
@@ -199,12 +192,6 @@ func (c *Client) IsHealthy() bool {
 	c.healthMu.RLock()
 	defer c.healthMu.RUnlock()
 	return c.isHealthy
-}
-
-func (c *Client) GetLastRecoveryTime() time.Time {
-	c.healthMu.RLock()
-	defer c.healthMu.RUnlock()
-	return c.lastRecoveryTime
 }
 
 func (c *Client) SupportsTorrentCreation() bool {

@@ -3695,6 +3695,21 @@
       "selectedSummary": "Selected tags: {{tags}}",
       "confirm": "Set Tags"
     },
+    "tagEditor": {
+      "description": "Mixed tags stay unchanged until clicked. Click a row to cycle Mixed to On, On to Off, and Off to On.",
+      "noTags": "No tags available yet. Add one below.",
+      "errors": {
+        "baseline": "Could not build the full tag baseline for this selection"
+      },
+      "toasts": {
+        "failedLoad": "Failed to load selected torrent tags"
+      },
+      "summary": {
+        "addEverywhere": "Add everywhere: {{tags}}",
+        "removeEverywhere": "Remove everywhere: {{tags}}",
+        "noChanges": "No tag changes."
+      }
+    },
     "setLocation": {
       "title": "Set Location for {{count}} torrent(s)",
       "description": "Enter a new save location for the selected torrents.",

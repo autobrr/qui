@@ -3485,6 +3485,21 @@
       "selectedSummary": "已选标签：{{tags}}",
       "confirm": "设置标签"
     },
+    "tagEditor": {
+      "description": "混合标签在点击前会保持不变。点击一行会按“混合”->“开”->“关”->“开”的顺序切换。",
+      "noTags": "还没有可用标签。请在下方添加。",
+      "errors": {
+        "baseline": "无法为此选择构建完整的标签基线"
+      },
+      "toasts": {
+        "failedLoad": "无法加载所选种子的标签"
+      },
+      "summary": {
+        "addEverywhere": "全部添加：{{tags}}",
+        "removeEverywhere": "全部移除：{{tags}}",
+        "noChanges": "没有标签更改。"
+      }
+    },
     "setLocation": {
       "title": "设置 {{count}} 个种子的位置",
       "description": "为所选种子输入新的保存位置。",

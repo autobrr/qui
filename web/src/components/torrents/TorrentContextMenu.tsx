@@ -63,7 +63,7 @@ interface TorrentContextMenuProps {
   onTorrentSelect?: (torrent: Torrent | null, initialTab?: string) => void
   onAction: (action: TorrentAction, hashes: string[], options?: { enable?: boolean; targets?: Array<{ instanceId: number; hash: string }> }) => void
   onPrepareDelete: (hashes: string[], torrents?: Torrent[]) => void
-  onPrepareTags: (action: "add" | "set" | "remove", hashes: string[], torrents?: Torrent[]) => void
+  onPrepareTags: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareCategory: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareCreateCategory: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareShareLimit: (hashes: string[], torrents?: Torrent[]) => void
@@ -506,18 +506,11 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             )}
             {(canCrossSeedSearch || onFilterChange) && <ContextMenuSeparator />}
             <ContextMenuItem
-              onClick={() => onPrepareTags("add", hashes, torrents)}
+              onClick={() => onPrepareTags(hashes, torrents)}
               disabled={isPending}
             >
               <Tag className="mr-2 h-4 w-4" />
-              {withCount(tr("torrentContextMenu.actions.addTags"))}
-            </ContextMenuItem>
-            <ContextMenuItem
-              onClick={() => onPrepareTags("set", hashes, torrents)}
-              disabled={isPending}
-            >
-              <Tag className="mr-2 h-4 w-4" />
-              {withCount(tr("torrentContextMenu.actions.replaceTags"))}
+              {withCount(tr("torrentDialogs.setTags.confirm"))}
             </ContextMenuItem>
             <CategorySubmenu
               type="context"

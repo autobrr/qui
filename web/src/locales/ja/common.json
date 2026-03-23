@@ -3485,6 +3485,21 @@
       "selectedSummary": "選択中のタグ: {{tags}}",
       "confirm": "タグを設定"
     },
+    "tagEditor": {
+      "description": "混在しているタグはクリックするまで変更されません。行をクリックすると、「混在」→「オン」→「オフ」→「オン」の順に切り替わります。",
+      "noTags": "まだ利用できるタグがありません。下で追加してください。",
+      "errors": {
+        "baseline": "この選択の完全なタグ基準を作成できませんでした"
+      },
+      "toasts": {
+        "failedLoad": "選択したトレントのタグを読み込めませんでした"
+      },
+      "summary": {
+        "addEverywhere": "すべてに追加: {{tags}}",
+        "removeEverywhere": "すべてから削除: {{tags}}",
+        "noChanges": "タグの変更はありません。"
+      }
+    },
     "setLocation": {
       "title": "{{count}} 件のトレントの保存先を設定",
       "description": "選択したトレントの新しい保存先を入力してください。",

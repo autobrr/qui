@@ -282,7 +282,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             {fieldVisibility.showUpnpLeaseField && (
               <form.Field name="upnp_lease_duration">
                 {(field) => (
-                <NumberInput
+                  <NumberInput
                     label={tr("connectionSettingsForm.fields.upnpLeaseDurationLabel")}
                     value={field.state.value}
                     onChange={(value) => field.handleChange(value)}
@@ -477,20 +477,20 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             validators={{
               onChange: ({ value }) => validateUnlimitedRange(value, "connectionSettingsForm.errors.maxConnectionsRange"),
             }}
-            >
-              {(field) => (
-                <div className="space-y-2">
-                  <NumberInputWithUnlimited
-                    label={tr("connectionSettingsForm.fields.maxConnectionsLabel")}
-                    value={field.state.value}
-                    onChange={(value) => field.handleChange(value)}
-                    allowUnlimited={true}
-                    description={tr("connectionSettingsForm.fields.maxConnectionsDescription")}
-                    unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
-                    unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
-                  />
-                  {field.state.meta.errors.length > 0 && (
-                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label={tr("connectionSettingsForm.fields.maxConnectionsLabel")}
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  allowUnlimited={true}
+                  description={tr("connectionSettingsForm.fields.maxConnectionsDescription")}
+                  unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
+                  unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -501,20 +501,20 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             validators={{
               onChange: ({ value }) => validateUnlimitedRange(value, "connectionSettingsForm.errors.maxConnectionsPerTorrentRange"),
             }}
-            >
-              {(field) => (
-                <div className="space-y-2">
-                  <NumberInputWithUnlimited
-                    label={tr("connectionSettingsForm.fields.maxConnectionsPerTorrentLabel")}
-                    value={field.state.value}
-                    onChange={(value) => field.handleChange(value)}
-                    allowUnlimited={true}
-                    description={tr("connectionSettingsForm.fields.maxConnectionsPerTorrentDescription")}
-                    unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
-                    unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
-                  />
-                  {field.state.meta.errors.length > 0 && (
-                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label={tr("connectionSettingsForm.fields.maxConnectionsPerTorrentLabel")}
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  allowUnlimited={true}
+                  description={tr("connectionSettingsForm.fields.maxConnectionsPerTorrentDescription")}
+                  unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
+                  unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -525,20 +525,20 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             validators={{
               onChange: ({ value }) => validateUnlimitedRange(value, "connectionSettingsForm.errors.maxUploadsRange"),
             }}
-            >
-              {(field) => (
-                <div className="space-y-2">
-                  <NumberInputWithUnlimited
-                    label={tr("connectionSettingsForm.fields.maxUploadsLabel")}
-                    value={field.state.value}
-                    onChange={(value) => field.handleChange(value)}
-                    allowUnlimited={true}
-                    description={tr("connectionSettingsForm.fields.maxUploadsDescription")}
-                    unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
-                    unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
-                  />
-                  {field.state.meta.errors.length > 0 && (
-                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label={tr("connectionSettingsForm.fields.maxUploadsLabel")}
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  allowUnlimited={true}
+                  description={tr("connectionSettingsForm.fields.maxUploadsDescription")}
+                  unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
+                  unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -549,20 +549,20 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
             validators={{
               onChange: ({ value }) => validateUnlimitedRange(value, "connectionSettingsForm.errors.maxUploadsPerTorrentRange"),
             }}
-            >
-              {(field) => (
-                <div className="space-y-2">
-                  <NumberInputWithUnlimited
-                    label={tr("connectionSettingsForm.fields.maxUploadsPerTorrentLabel")}
-                    value={field.state.value}
-                    onChange={(value) => field.handleChange(value)}
-                    allowUnlimited={true}
-                    description={tr("connectionSettingsForm.fields.maxUploadsPerTorrentDescription")}
-                    unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
-                    unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
-                  />
-                  {field.state.meta.errors.length > 0 && (
-                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label={tr("connectionSettingsForm.fields.maxUploadsPerTorrentLabel")}
+                  value={field.state.value}
+                  onChange={(value) => field.handleChange(value)}
+                  allowUnlimited={true}
+                  description={tr("connectionSettingsForm.fields.maxUploadsPerTorrentDescription")}
+                  unlimitedPlaceholder={tr("connectionSettingsForm.values.unlimitedPlaceholder")}
+                  unlimitedHint={tr("connectionSettingsForm.values.unlimitedHint")}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                 )}
               </div>
             )}
@@ -588,14 +588,14 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <form.Field
             name="outgoing_ports_min"
-              validators={{
-                onChange: ({ value }) => {
-                  if (value < 0 || value > 65535) {
-                    return tr("connectionSettingsForm.errors.outgoingPortsMinRange")
-                  }
-                  return undefined
-                },
-              }}
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0 || value > 65535) {
+                  return tr("connectionSettingsForm.errors.outgoingPortsMinRange")
+                }
+                return undefined
+              },
+            }}
           >
             {(field) => (
               <div className="space-y-2">
@@ -616,14 +616,14 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
           <form.Field
             name="outgoing_ports_max"
-              validators={{
-                onChange: ({ value }) => {
-                  if (value < 0 || value > 65535) {
-                    return tr("connectionSettingsForm.errors.outgoingPortsMaxRange")
-                  }
-                  return undefined
-                },
-              }}
+            validators={{
+              onChange: ({ value }) => {
+                if (value < 0 || value > 65535) {
+                  return tr("connectionSettingsForm.errors.outgoingPortsMaxRange")
+                }
+                return undefined
+              },
+            }}
           >
             {(field) => (
               <div className="space-y-2">

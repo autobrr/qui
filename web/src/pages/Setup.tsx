@@ -172,7 +172,7 @@ export function Setup() {
               </form.Field>
 
               {setupError && (
-                  <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-md text-sm">
+                <div className="bg-destructive/10 border border-destructive/20 text-destructive px-4 py-3 rounded-md text-sm">
                   {setupError.message || t("auth:setup.errors.createUserFailed")}
                 </div>
               )}

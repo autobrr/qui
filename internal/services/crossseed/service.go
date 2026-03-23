@@ -234,10 +234,24 @@ const (
 	minSearchIntervalSecondsTorznab     = 60
 	minSearchIntervalSecondsGazelleOnly = 5
 	minSearchCooldownMinutes            = 720
+	maxCompletionSearchAttempts         = 3
+	defaultCompletionRetryDelay         = 30 * time.Second
 
 	// User-facing message when cross-seed is skipped due to recheck requirement
 	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
 )
+
+var completionRateLimitTokens = []string{
+	"429",
+	"rate limit",
+	"rate-limited",
+	"too many requests",
+	"cooldown",
+	"request limit reached",
+	"query limit",
+	"grab limit",
+	"disabled till",
+}
 
 func computeAutomationSearchTimeout(indexerCount int) time.Duration {
 	return timeouts.AdaptiveSearchTimeout(indexerCount)
@@ -321,9 +335,15 @@ type Service struct {
 	// Metrics for monitoring service health and performance
 	metrics *ServiceMetrics
 
+	// Per-instance completion coordination.
+	// Ensures completion-triggered searches run serially per instance.
+	completionLaneMu sync.Mutex
+	completionLanes  map[int]*completionLane
+
 	// test hooks
-	crossSeedInvoker    func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
-	torrentDownloadFunc func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
+	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
+	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
+	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
 
 	// Recheck resume worker
 	recheckResumeChan   chan *pendingResume
@@ -337,6 +357,10 @@ type pendingResume struct {
 	hash       string
 	threshold  float64
 	addedAt    time.Time
+}
+
+type completionLane struct {
+	mu sync.Mutex
 }
 
 // NewService creates a new cross-seed service
@@ -393,6 +417,7 @@ func NewService(
 		torrentFilesCache:             contentFilesCache,
 		dedupCache:                    dedupCache,
 		metrics:                       NewServiceMetrics(),
+		completionLanes:               make(map[int]*completionLane),
 		recheckResumeChan:             make(chan *pendingResume, 100),
 		recheckResumeCtx:              recheckCtx,
 		recheckResumeCancel:           recheckCancel,
@@ -450,6 +475,7 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	if err != nil {
 		return nil, fmt.Errorf("failed to list instances: %w", err)
 	}
+	instances = activeInstancesOnly(instances)
 
 	// Find the source torrent
 	sourceTorrents, err := s.syncManager.GetTorrents(ctx, sourceInstanceID, qbt.TorrentFilterOptions{
@@ -532,6 +558,17 @@ func (s *Service) collectLocalMatches(
 	}
 
 	return matches
+}
+
+func activeInstancesOnly(instances []*models.Instance) []*models.Instance {
+	active := make([]*models.Instance, 0, len(instances))
+	for _, instance := range instances {
+		if instance == nil || !instance.IsActive {
+			continue
+		}
+		active = append(active, instance)
+	}
+	return active
 }
 
 // matchTorrentsInInstance checks torrents in a single instance for matches.
@@ -1430,8 +1467,11 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		settings = models.DefaultCrossSeedAutomationSettings()
 	}
 
-	// Execute cross-seed search immediately
-	err = s.executeCompletionSearch(ctx, instanceID, &torrent, settings, completionSettings)
+	lane := s.getCompletionLane(instanceID)
+	lane.mu.Lock()
+	defer lane.mu.Unlock()
+
+	err = s.executeCompletionSearchWithRetry(ctx, instanceID, &torrent, settings, completionSettings)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -1440,6 +1480,100 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 			Str("name", torrent.Name).
 			Msg("[CROSSSEED-COMPLETION] Failed to execute completion search")
 	}
+}
+
+func (s *Service) getCompletionLane(instanceID int) *completionLane {
+	s.completionLaneMu.Lock()
+	defer s.completionLaneMu.Unlock()
+
+	if s.completionLanes == nil {
+		s.completionLanes = make(map[int]*completionLane)
+	}
+
+	lane, ok := s.completionLanes[instanceID]
+	if !ok {
+		lane = &completionLane{}
+		s.completionLanes[instanceID] = lane
+	}
+	return lane
+}
+
+func (s *Service) executeCompletionSearchWithRetry(
+	ctx context.Context,
+	instanceID int,
+	torrent *qbt.Torrent,
+	settings *models.CrossSeedAutomationSettings,
+	completionSettings *models.InstanceCrossSeedCompletionSettings,
+) error {
+	var lastErr error
+	for attempt := 1; attempt <= maxCompletionSearchAttempts; attempt++ {
+		err := s.invokeCompletionSearch(ctx, instanceID, torrent, settings, completionSettings)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+
+		retryAfter, retry := completionRetryDelay(err)
+		if !retry || attempt == maxCompletionSearchAttempts {
+			break
+		}
+		if retryAfter <= 0 {
+			retryAfter = defaultCompletionRetryDelay
+		}
+
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Int("attempt", attempt).
+			Dur("retryAfter", retryAfter).
+			Msg("[CROSSSEED-COMPLETION] Rate-limited completion search, retrying")
+
+		timer := time.NewTimer(retryAfter)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return lastErr
+}
+
+func (s *Service) invokeCompletionSearch(
+	ctx context.Context,
+	instanceID int,
+	torrent *qbt.Torrent,
+	settings *models.CrossSeedAutomationSettings,
+	completionSettings *models.InstanceCrossSeedCompletionSettings,
+) error {
+	if s.completionSearchInvoker != nil {
+		return s.completionSearchInvoker(ctx, instanceID, torrent, settings, completionSettings)
+	}
+	return s.executeCompletionSearch(ctx, instanceID, torrent, settings, completionSettings)
+}
+
+func completionRetryDelay(err error) (time.Duration, bool) {
+	if err == nil {
+		return 0, false
+	}
+
+	var waitErr *jackett.RateLimitWaitError
+	if errors.As(err, &waitErr) {
+		if waitErr.Wait > 0 {
+			return waitErr.Wait, true
+		}
+		return defaultCompletionRetryDelay, true
+	}
+
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	for _, token := range completionRateLimitTokens {
+		if strings.Contains(msg, token) {
+			return defaultCompletionRetryDelay, true
+		}
+	}
+
+	return 0, false
 }
 
 // updateAutomationRunWithRetry attempts to update the automation run in the database with retries
@@ -1717,11 +1851,16 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 				searchCtx := ctx
 				searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityCompletion)
 
+				cacheMode := ""
+				if completionSettings != nil && completionSettings.BypassTorznabCache {
+					cacheMode = jackett.CacheModeBypass
+				}
 				resp, err := s.SearchTorrentMatches(searchCtx, instanceID, torrent.Hash, TorrentSearchOptions{
 					IndexerIDs:             allowedIndexerIDs,
 					FindIndividualEpisodes: settings.FindIndividualEpisodes,
 					// Completion search should prioritize Torznab for non-Gazelle sources.
 					SkipGazelle: !isGazelleSource,
+					CacheMode:   cacheMode,
 				})
 				if err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {
@@ -3312,7 +3451,7 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		SkipAutoResume:               skipAutoResume,
 		SkipRecheck:                  skipRecheck,
 		SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
-		IndexerName:                  req.IndexerName,
+		IndexerName:                  req.Indexer,
 	}
 	// Pass webhook source filters so CrossSeed respects them when finding candidates
 	if settings != nil {
@@ -9479,7 +9618,7 @@ func (s *Service) resolveInstances(ctx context.Context, requested []int) ([]*mod
 		if err != nil {
 			return nil, fmt.Errorf("failed to list cross-seed instances: %w", err)
 		}
-		return instances, nil
+		return activeInstancesOnly(instances), nil
 	}
 
 	instances := make([]*models.Instance, 0, len(requested))
@@ -9493,6 +9632,9 @@ func (s *Service) resolveInstances(ctx context.Context, requested []int) ([]*mod
 				continue
 			}
 			return nil, fmt.Errorf("failed to get instance %d: %w", id, err)
+		}
+		if instance == nil || !instance.IsActive {
+			continue
 		}
 		instances = append(instances, instance)
 	}
@@ -9562,6 +9704,7 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 		Bool("globalScan", len(requestedInstanceIDs) == 0).
 		Str("torrentName", req.TorrentName).
 		Uint64("size", req.Size).
+		Str("indexer", req.Indexer).
 		Str("contentType", contentInfo.ContentType).
 		Bool("findIndividualEpisodes", findIndividualEpisodes).
 		Str("title", incomingRelease.Title).
@@ -9648,8 +9791,9 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 				continue
 			}
 
-			// Check if releases match using the configured strict or episode-aware matching.
-			if !s.releasesMatch(incomingRelease, existingRelease, findIndividualEpisodes) {
+			// Webhook matching is strict by default, with one narrow retry for
+			// anchored releases whose incoming title omits the collection/service tag.
+			if !s.releasesMatchWebhook(incomingRelease, existingRelease, findIndividualEpisodes, req.Indexer) {
 				continue
 			}
 
@@ -10332,7 +10476,7 @@ func (s *Service) processHardlinkMode(
 		return handleError("No content path or save path available for matched torrent")
 	}
 
-	selectedBaseDir, err := findMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
+	selectedBaseDir, err := FindMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -10687,7 +10831,9 @@ func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTracker
 // findMatchingBaseDir finds the first base directory from a comma-separated list
 // that is on the same filesystem as the source path. Returns the matching directory
 // or an error if none match.
-func findMatchingBaseDir(configuredDirs string, sourcePath string) (string, error) {
+// FindMatchingBaseDir returns the first configured base directory on the same
+// filesystem as the source path.
+func FindMatchingBaseDir(configuredDirs string, sourcePath string) (string, error) {
 	if strings.TrimSpace(configuredDirs) == "" {
 		return "", errors.New("base directory not configured")
 	}
@@ -10732,6 +10878,19 @@ type reflinkModeResult struct {
 	// Result is the final InstanceCrossSeedResult when reflink mode is used.
 	// Only valid when Used is true.
 	Result InstanceCrossSeedResult
+}
+
+func shouldWarnForReflinkCreateError(err error) bool {
+	if !errors.Is(err, reflinktree.ErrReflinkUnsupported) {
+		return false
+	}
+
+	type multiUnwrapper interface {
+		Unwrap() []error
+	}
+
+	var joined multiUnwrapper
+	return !errors.As(err, &joined)
 }
 
 // processReflinkMode attempts to add a cross-seed torrent using reflink (copy-on-write) mode.
@@ -10861,7 +11020,7 @@ func (s *Service) processReflinkMode(
 		return handleError("No content path or save path available for matched torrent")
 	}
 
-	selectedBaseDir, err := findMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
+	selectedBaseDir, err := FindMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -10954,7 +11113,11 @@ func (s *Service) processReflinkMode(
 
 	// Create reflink tree on disk
 	if err := reflinktree.Create(plan); err != nil {
-		log.Error().
+		logEvent := log.Error()
+		if shouldWarnForReflinkCreateError(err) {
+			logEvent = log.Warn()
+		}
+		logEvent.
 			Err(err).
 			Int("instanceID", candidate.InstanceID).
 			Str("torrentName", torrentName).

@@ -359,12 +359,16 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 
 	// Use a sync mechanism to aggregate results for the legacy callback interface
 	var (
-		mu         sync.Mutex
-		allResults []Result
-		coverage   = make(map[int]struct{})
-		failures   int
-		lastErr    error
+		mu          sync.Mutex
+		allResults  []Result
+		coverage    = make(map[int]struct{})
+		failures    int
+		lastErr     error
+		waitSkips   int
+		lastWaitErr error
 	)
+	var completionWG sync.WaitGroup
+	completionWG.Add(len(indexers))
 
 	_, err := s.searchScheduler.Submit(ctx, SubmitRequest{
 		Indexers: indexers,
@@ -372,9 +376,15 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 		Meta:     meta,
 		Callbacks: JobCallbacks{
 			OnComplete: func(jobID uint64, indexer *models.TorznabIndexer, results []Result, cov []int, err error) {
+				defer completionWG.Done()
+
 				// Call the legacy onComplete callback
 				if onComplete != nil {
-					onComplete(jobID, indexer.ID, err)
+					indexerID := 0
+					if indexer != nil {
+						indexerID = indexer.ID
+					}
+					onComplete(jobID, indexerID, err)
 				}
 
 				mu.Lock()
@@ -383,6 +393,8 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 				if err != nil {
 					// Rate limit wait errors are treated as skips
 					if _, isWait := asRateLimitWaitError(err); isWait {
+						waitSkips++
+						lastWaitErr = err
 						return
 					}
 					failures++
@@ -404,13 +416,23 @@ func (s *Service) searchIndexersWithScheduler(ctx context.Context, indexers []*m
 				}
 			},
 			OnJobDone: func(jobID uint64) {
+				completionWG.Wait()
+
 				mu.Lock()
 				finalResults := allResults
 				finalCoverage := coverageSetToSlice(coverage)
 				finalErr := lastErr
 				totalIndexers := len(indexers)
 				totalFailures := failures
+				totalWaitSkips := waitSkips
+				finalWaitErr := lastWaitErr
 				mu.Unlock()
+
+				// If all indexers were skipped due to rate-limit waiting, surface that as error.
+				if totalWaitSkips == totalIndexers && finalWaitErr != nil && len(finalResults) == 0 {
+					resultCallback(jobID, nil, finalCoverage, finalWaitErr)
+					return
+				}
 
 				// If all indexers failed, return the last error
 				if totalFailures == totalIndexers && finalErr != nil && len(finalResults) == 0 {
@@ -983,10 +1005,7 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 			}
 
 			// Exponential backoff with cap
-			backoff = time.Duration(float64(backoff) * 2)
-			if backoff > downloadMaxBackoff {
-				backoff = downloadMaxBackoff
-			}
+			backoff = min(time.Duration(float64(backoff)*2), downloadMaxBackoff)
 		}
 
 		data, err := client.Download(ctx, downloadURL)
@@ -3155,10 +3174,7 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 			group = parsed.Group
 		}
 
-		leechers := r.Peers - r.Seeders
-		if leechers < 0 {
-			leechers = 0
-		}
+		leechers := max(r.Peers-r.Seeders, 0)
 
 		result := SearchResult{
 			Indexer:              r.Tracker,
@@ -3352,8 +3368,8 @@ func extractInfoHashFromMagnet(magnetURL string) string {
 		return ""
 	}
 
-	params := strings.Split(parts[1], "&")
-	for _, param := range params {
+	params := strings.SplitSeq(parts[1], "&")
+	for param := range params {
 		if strings.HasPrefix(strings.ToLower(param), "xt=urn:btih:") {
 			// Extract the hash part after "xt=urn:btih:"
 			hashPart := param[12:] // len("xt=urn:btih:") == 12

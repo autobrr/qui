@@ -3641,6 +3641,21 @@
       "selectedSummary": "선택한 태그: {{tags}}",
       "confirm": "태그 설정"
     },
+    "tagEditor": {
+      "description": "혼합 태그는 클릭하기 전까지 변경되지 않습니다. 행을 클릭하면 혼합 -> 켜짐 -> 꺼짐 -> 켜짐 순서로 전환됩니다.",
+      "noTags": "아직 사용할 수 있는 태그가 없습니다. 아래에서 추가하세요.",
+      "errors": {
+        "baseline": "이 선택에 대한 전체 태그 기준을 만들 수 없습니다"
+      },
+      "toasts": {
+        "failedLoad": "선택한 토렌트 태그를 불러오지 못했습니다"
+      },
+      "summary": {
+        "addEverywhere": "모두에 추가: {{tags}}",
+        "removeEverywhere": "모두에서 제거: {{tags}}",
+        "noChanges": "태그 변경 사항이 없습니다."
+      }
+    },
     "setLocation": {
       "title": "{{count}}개 토렌트 위치 설정",
       "description": "선택한 토렌트의 새 저장 위치를 입력하세요.",

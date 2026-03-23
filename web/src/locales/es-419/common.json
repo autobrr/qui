@@ -3641,6 +3641,21 @@
       "selectedSummary": "Etiquetas seleccionadas: {{tags}}",
       "confirm": "Establecer etiquetas"
     },
+    "tagEditor": {
+      "description": "Las etiquetas mixtas no cambian hasta que las pulses. Haz clic en una fila para alternar Mixta a Activa, Activa a Desactivada y Desactivada a Activa.",
+      "noTags": "Todavía no hay etiquetas disponibles. Agrega una abajo.",
+      "errors": {
+        "baseline": "No se pudo construir la línea base completa de etiquetas para esta selección"
+      },
+      "toasts": {
+        "failedLoad": "No se pudieron cargar las etiquetas de los torrents seleccionados"
+      },
+      "summary": {
+        "addEverywhere": "Agregar en todos: {{tags}}",
+        "removeEverywhere": "Quitar de todos: {{tags}}",
+        "noChanges": "Sin cambios de etiquetas."
+      }
+    },
     "setLocation": {
       "title": "Establecer ubicación para {{count}} torrent(s)",
       "description": "Ingresa una nueva ubicación de guardado para los torrents seleccionados.",

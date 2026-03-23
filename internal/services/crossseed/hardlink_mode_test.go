@@ -5,6 +5,8 @@ package crossseed
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/reflinktree"
 )
 
 // Note: qbtLayoutToHardlinkLayout is no longer used in hardlink mode.
@@ -335,7 +338,7 @@ func TestFindMatchingBaseDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := findMatchingBaseDir(tt.configured, "/some/source/path")
+			result, err := FindMatchingBaseDir(tt.configured, "/some/source/path")
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -364,7 +367,7 @@ func TestFindMatchingBaseDir_ParsesCommaSeparated(t *testing.T) {
 	require.NoError(t, os.WriteFile(invalidPath3, []byte("file"), 0o600))
 
 	configured := invalidPath1 + ", " + invalidPath2 + " , " + invalidPath3
-	_, err := findMatchingBaseDir(configured, sourceFile)
+	_, err := FindMatchingBaseDir(configured, sourceFile)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no base directory")
@@ -399,7 +402,7 @@ func TestFindMatchingBaseDir_TrimsWhitespace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := findMatchingBaseDir(tt.configured, "/nonexistent/source")
+			_, err := FindMatchingBaseDir(tt.configured, "/nonexistent/source")
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "no base directory")
 		})
@@ -414,7 +417,7 @@ func TestFindMatchingBaseDir_ReturnsFirstMatchingDir(t *testing.T) {
 	firstDir := filepath.Join(t.TempDir(), "first")
 	secondDir := filepath.Join(t.TempDir(), "second")
 
-	result, err := findMatchingBaseDir("  "+firstDir+" , "+secondDir+"  ", sourceFile)
+	result, err := FindMatchingBaseDir("  "+firstDir+" , "+secondDir+"  ", sourceFile)
 	require.NoError(t, err)
 	assert.Equal(t, firstDir, result)
 	assert.DirExists(t, firstDir)
@@ -430,7 +433,7 @@ func TestFindMatchingBaseDir_SkipsInvalidDirAndFindsNextMatch(t *testing.T) {
 
 	validDir := filepath.Join(t.TempDir(), "valid")
 
-	result, err := findMatchingBaseDir(invalidFilePath+", "+validDir, sourceFile)
+	result, err := FindMatchingBaseDir(invalidFilePath+", "+validDir, sourceFile)
 	require.NoError(t, err)
 	assert.Equal(t, validDir, result)
 	assert.DirExists(t, validDir)
@@ -903,4 +906,40 @@ func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
 	assert.False(t, result.Success, "result should indicate failure")
 	assert.Equal(t, "reflink_error", result.Result.Status)
 	assert.Contains(t, result.Result.Message, "base directory")
+}
+
+func TestShouldWarnForReflinkCreateError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "plain wrapped unsupported error",
+			err:  fmt.Errorf("reflink create failed: %w", reflinktree.ErrReflinkUnsupported),
+			want: true,
+		},
+		{
+			name: "joined rollback error stays error level",
+			err: errors.Join(
+				fmt.Errorf("reflink create failed: %w", reflinktree.ErrReflinkUnsupported),
+				errors.New("rollback also failed"),
+			),
+			want: false,
+		},
+		{
+			name: "unrelated error",
+			err:  errors.New("boom"),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, shouldWarnForReflinkCreateError(tt.err))
+		})
+	}
 }

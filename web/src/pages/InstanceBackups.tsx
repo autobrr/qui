@@ -434,9 +434,7 @@ export function InstanceBackups() {
         state: "ready",
         kind: activeRun.kind,
         timestamp: formatDateSafe(activeRun.startedAt ?? activeRun.requestedAt, formatDate),
-        status: activeRun.status === "running"
-          ? tr("instanceBackups.nextSchedule.running")
-          : tr("instanceBackups.nextSchedule.queued"),
+        status: activeRun.status === "running"? tr("instanceBackups.nextSchedule.running"): tr("instanceBackups.nextSchedule.queued"),
       }
     }
 
@@ -730,9 +728,7 @@ export function InstanceBackups() {
       setRestoreResult(result)
       setRestorePlan(result.plan)
       setRestorePlanError(null)
-      const message = restoreDryRun
-        ? tr("instanceBackups.toasts.restoreDryRunCompleted")
-        : tr("instanceBackups.toasts.restoreExecuted")
+      const message = restoreDryRun? tr("instanceBackups.toasts.restoreDryRunCompleted"): tr("instanceBackups.toasts.restoreExecuted")
       toast.success(message)
     } catch (error) {
       const message = error instanceof Error ? error.message : tr("instanceBackups.toasts.failedExecuteRestore")
@@ -756,17 +752,9 @@ export function InstanceBackups() {
 
   // Show instance selector when no instance is selected
   if (!instanceId) {
-    const selectionHeading = hasSupportedInstances
-      ? tr("instanceBackups.selection.heading.selectInstance")
-      : hasInstances
-        ? tr("instanceBackups.selection.heading.noCompatibleInstances")
-        : tr("instanceBackups.selection.heading.connectInstance")
+    const selectionHeading = hasSupportedInstances? tr("instanceBackups.selection.heading.selectInstance"): hasInstances? tr("instanceBackups.selection.heading.noCompatibleInstances"): tr("instanceBackups.selection.heading.connectInstance")
 
-    const selectionMessage = !hasInstances
-      ? tr("instanceBackups.selection.message.noInstancesConfigured")
-      : hasSupportedInstances
-        ? tr("instanceBackups.selection.message.chooseFromDropdown")
-        : tr("instanceBackups.selection.message.noSupportedInstances")
+    const selectionMessage = !hasInstances? tr("instanceBackups.selection.message.noInstancesConfigured"): hasSupportedInstances? tr("instanceBackups.selection.message.chooseFromDropdown"): tr("instanceBackups.selection.message.noSupportedInstances")
 
     return (
       <TooltipProvider>
@@ -837,9 +825,7 @@ export function InstanceBackups() {
 
   if (!supportsTorrentExport) {
     const versionRaw = capabilities?.webAPIVersion?.trim()
-    const reportedVersion = versionRaw && versionRaw.length > 0
-      ? versionRaw
-      : tr("instanceBackups.capabilities.olderApiVersion")
+    const reportedVersion = versionRaw && versionRaw.length > 0? versionRaw: tr("instanceBackups.capabilities.olderApiVersion")
 
     return (
       <div className="p-6 space-y-4">
@@ -1105,16 +1091,14 @@ export function InstanceBackups() {
             closeRestoreDialog()
           }
         }}>
-        <DialogContent className="!w-[96vw] !max-w-6xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
+          <DialogContent className="!w-[96vw] !max-w-6xl !md:w-[90vw] !h-[92vh] md:!h-[80vh] lg:!h-[75vh] overflow-hidden flex flex-col gap-4">
             <DialogHeader>
               <DialogTitle>{tr("instanceBackups.restore.title")}</DialogTitle>
               <DialogDescription>
-                {restoreTargetRun
-                  ? tr("instanceBackups.restore.runDescription", {
-                    id: restoreTargetRun.id,
-                    kind: getRunKindLabel(restoreTargetRun.kind),
-                  })
-                  : tr("instanceBackups.restore.selectBackup")}
+                {restoreTargetRun? tr("instanceBackups.restore.runDescription", {
+                  id: restoreTargetRun.id,
+                  kind: getRunKindLabel(restoreTargetRun.kind),
+                }): tr("instanceBackups.restore.selectBackup")}
               </DialogDescription>
             </DialogHeader>
 
@@ -1247,11 +1231,7 @@ export function InstanceBackups() {
                   onClick={handleExecuteRestore}
                   disabled={!restoreTargetRun || restorePlanLoading || executeRestore.isPending}
                 >
-                  {executeRestore.isPending
-                    ? tr("instanceBackups.restore.actions.executing")
-                    : restoreDryRun
-                      ? tr("instanceBackups.restore.actions.runDryRun")
-                      : tr("instanceBackups.restore.actions.executeRestore")}
+                  {executeRestore.isPending? tr("instanceBackups.restore.actions.executing"): restoreDryRun? tr("instanceBackups.restore.actions.runDryRun"): tr("instanceBackups.restore.actions.executeRestore")}
                 </Button>
               </div>
             </div>
@@ -1431,9 +1411,7 @@ export function InstanceBackups() {
                                             )}
                                             disabled={restorePlanLoading}
                                             aria-label={tr("instanceBackups.restore.actions.toggleTorrentInRestoreAria", {
-                                              action: isExcluded
-                                                ? tr("instanceBackups.restore.actions.include")
-                                                : tr("instanceBackups.restore.actions.exclude"),
+                                              action: isExcluded? tr("instanceBackups.restore.actions.include"): tr("instanceBackups.restore.actions.exclude"),
                                               name: item.manifest.name || hash,
                                             })}
                                           >
@@ -1499,9 +1477,7 @@ export function InstanceBackups() {
                                                 )}
                                                 disabled={restorePlanLoading}
                                                 aria-label={tr("instanceBackups.restore.actions.toggleTorrentInRestoreAria", {
-                                                  action: isExcluded
-                                                    ? tr("instanceBackups.restore.actions.include")
-                                                    : tr("instanceBackups.restore.actions.exclude"),
+                                                  action: isExcluded? tr("instanceBackups.restore.actions.include"): tr("instanceBackups.restore.actions.exclude"),
                                                   name: update.desired.name || update.current.name || update.hash,
                                                 })}
                                               >
@@ -1524,9 +1500,7 @@ export function InstanceBackups() {
                                                   variant={change.supported ? "secondary" : "outline"}
                                                   className="text-[10px] uppercase"
                                                 >
-                                                  {change.supported
-                                                    ? tr("instanceBackups.restore.labels.auto")
-                                                    : tr("instanceBackups.restore.labels.manual")}
+                                                  {change.supported? tr("instanceBackups.restore.labels.auto"): tr("instanceBackups.restore.labels.manual")}
                                                 </Badge>
                                                 <span className="font-medium capitalize">{humanizeChangeField(change.field, tr)}</span>
                                                 <span className="text-xs text-muted-foreground">
@@ -1569,9 +1543,7 @@ export function InstanceBackups() {
                                             )}
                                             disabled={restorePlanLoading}
                                             aria-label={tr("instanceBackups.restore.actions.toggleTorrentInRestoreAria", {
-                                              action: isExcluded
-                                                ? tr("instanceBackups.restore.actions.include")
-                                                : tr("instanceBackups.restore.actions.exclude"),
+                                              action: isExcluded? tr("instanceBackups.restore.actions.include"): tr("instanceBackups.restore.actions.exclude"),
                                               name: hash,
                                             })}
                                           >
@@ -1625,9 +1597,7 @@ export function InstanceBackups() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h4 className="text-sm font-semibold">{tr("instanceBackups.restore.lastExecutionTitle")}</h4>
                   <Badge variant={restoreResult.dryRun ? "outline" : "default"} className="text-xs">
-                    {restoreResult.dryRun
-                      ? tr("instanceBackups.restore.results.dryRun")
-                      : tr("instanceBackups.restore.results.applied")}
+                    {restoreResult.dryRun? tr("instanceBackups.restore.results.dryRun"): tr("instanceBackups.restore.results.applied")}
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -1737,9 +1707,7 @@ export function InstanceBackups() {
                 }}
                 disabled={!importFile || importManifest.isPending}
               >
-                {importManifest.isPending
-                  ? tr("instanceBackups.import.importing")
-                  : tr("instanceBackups.import.importAction")}
+                {importManifest.isPending? tr("instanceBackups.import.importing"): tr("instanceBackups.import.importAction")}
               </Button>
             </div>
           </DialogContent>
@@ -1966,9 +1934,7 @@ export function InstanceBackups() {
                 </Table>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  {canGoPrevious
-                    ? tr("instanceBackups.history.empty.currentPage")
-                    : tr("instanceBackups.history.empty.noneCreated")}
+                  {canGoPrevious? tr("instanceBackups.history.empty.currentPage"): tr("instanceBackups.history.empty.noneCreated")}
                 </p>
               )}
               {shouldShowPagination && (
@@ -2015,9 +1981,7 @@ export function InstanceBackups() {
             <DialogHeader>
               <DialogTitle>{tr("instanceBackups.manifest.title")}</DialogTitle>
               <DialogDescription>
-                {manifestRunId
-                  ? tr("instanceBackups.manifest.runDescription", { id: manifestRunId })
-                  : tr("instanceBackups.manifest.selectBackup")}
+                {manifestRunId? tr("instanceBackups.manifest.runDescription", { id: manifestRunId }): tr("instanceBackups.manifest.selectBackup")}
               </DialogDescription>
             </DialogHeader>
             {manifestLoading ? (
@@ -2114,9 +2078,7 @@ export function InstanceBackups() {
                       ) : (
                         <TableRow>
                           <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
-                            {manifestSearch
-                              ? tr("instanceBackups.manifest.empty.filtered", { query: manifestSearch })
-                              : tr("instanceBackups.manifest.empty.none")}
+                            {manifestSearch? tr("instanceBackups.manifest.empty.filtered", { query: manifestSearch }): tr("instanceBackups.manifest.empty.none")}
                           </TableCell>
                         </TableRow>
                       )}

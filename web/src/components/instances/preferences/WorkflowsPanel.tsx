@@ -378,7 +378,7 @@ function RuleSummary({ rule, tr }: { rule: Automation; tr: TranslateFn }) {
       )}
 
       {/* Speed Limits */}
-              {conditions?.speedLimits?.enabled && (
+      {conditions?.speedLimits?.enabled && (
         <Tooltip>
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-help">
@@ -477,14 +477,8 @@ function RuleSummary({ rule, tr }: { rule: Automation; tr: TranslateFn }) {
               <p key={index}>
                 {tr("workflowDialog.panel.summary.tooltips.tagActionLine", {
                   index: index + 1,
-                  tagLabel: action.useTrackerAsTag
-                    ? tr("workflowDialog.panel.summary.tooltips.trackerDerivedTag")
-                    : (action.tags?.join(", ") || tr("workflowDialog.panel.summary.tooltips.noTags")),
-                  mode: action.mode === "full"
-                    ? tr("workflowDialog.panel.summary.tagModes.full")
-                    : action.mode === "add"
-                      ? tr("workflowDialog.panel.summary.tagModes.addOnly")
-                      : tr("workflowDialog.panel.summary.tagModes.removeOnly"),
+                  tagLabel: action.useTrackerAsTag? tr("workflowDialog.panel.summary.tooltips.trackerDerivedTag"): (action.tags?.join(", ") || tr("workflowDialog.panel.summary.tooltips.noTags")),
+                  mode: action.mode === "full"? tr("workflowDialog.panel.summary.tagModes.full"): action.mode === "add"? tr("workflowDialog.panel.summary.tagModes.addOnly"): tr("workflowDialog.panel.summary.tagModes.removeOnly"),
                 })}
               </p>
             ))}

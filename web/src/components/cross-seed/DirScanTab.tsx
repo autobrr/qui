@@ -1038,7 +1038,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                   setForm((prev) => ({ ...prev, allowPartial: checked }))
                 }
               />
-                <Label htmlFor="allow-partial" className="flex items-center gap-1">
+              <Label htmlFor="allow-partial" className="flex items-center gap-1">
                 {tr("dirScanTab.settings.allowPartial.label")}
                 <Tooltip>
                   <TooltipTrigger>
@@ -1331,9 +1331,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
                 setForm((prev) => ({ ...prev, category: values.at(-1) ?? "" }))
               }
               placeholder={
-                directoryCategoryOptions.length
-                  ? tr("dirScanTab.directoryDialog.useGlobalCategoryPlaceholder")
-                  : tr("dirScanTab.directoryDialog.typeCategoryPlaceholder")
+                directoryCategoryOptions.length? tr("dirScanTab.directoryDialog.useGlobalCategoryPlaceholder"): tr("dirScanTab.directoryDialog.typeCategoryPlaceholder")
               }
               creatable
               disabled={isPending}
@@ -1355,9 +1353,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
               selected={form.tags ?? []}
               onChange={(values) => setForm((prev) => ({ ...prev, tags: values }))}
               placeholder={
-                directoryTagOptions.length
-                  ? tr("dirScanTab.directoryDialog.addTagsPlaceholder")
-                  : tr("dirScanTab.directoryDialog.typeTagsPlaceholder")
+                directoryTagOptions.length? tr("dirScanTab.directoryDialog.addTagsPlaceholder"): tr("dirScanTab.directoryDialog.typeTagsPlaceholder")
               }
               creatable
               disabled={isPending}

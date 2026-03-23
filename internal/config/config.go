@@ -101,6 +101,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("host", host)
 	c.viper.SetDefault("port", 7476)
 	c.viper.SetDefault("baseUrl", "/")
+	c.viper.SetDefault("corsAllowedOrigins", []string{})
 	c.viper.SetDefault("sessionSecret", sessionSecret)
 	c.viper.SetDefault("logLevel", "INFO")
 	c.viper.SetDefault("logPath", "")
@@ -203,6 +204,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("host", envPrefix+"HOST")
 	c.viper.BindEnv("port", envPrefix+"PORT")
 	c.viper.BindEnv("baseUrl", envPrefix+"BASE_URL")
+	c.viper.BindEnv("corsAllowedOrigins", envPrefix+"CORS_ALLOWED_ORIGINS")
 	c.bindOrReadFromFile("sessionSecret", envPrefix+"SESSION_SECRET")
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
 	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
@@ -256,6 +258,7 @@ func (c *AppConfig) watchConfig() {
 			iAcknowledgeThisIsABadIdea: c.Config.IAcknowledgeThisIsABadIdea,
 			authDisabledAllowedCIDRs:   append([]string(nil), c.Config.AuthDisabledAllowedCIDRs...),
 			oidcEnabled:                c.Config.OIDCEnabled,
+			corsAllowedOrigins:         append([]string(nil), c.Config.CORSAllowedOrigins...),
 		}
 
 		// Reload configuration
@@ -275,6 +278,7 @@ type authReloadSettings struct {
 	iAcknowledgeThisIsABadIdea bool
 	authDisabledAllowedCIDRs   []string
 	oidcEnabled                bool
+	corsAllowedOrigins         []string
 }
 
 func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings) {
@@ -289,8 +293,14 @@ func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings)
 		c.Config.IAcknowledgeThisIsABadIdea = previousAuthSettings.iAcknowledgeThisIsABadIdea
 		c.Config.AuthDisabledAllowedCIDRs = append([]string(nil), previousAuthSettings.authDisabledAllowedCIDRs...)
 		c.Config.OIDCEnabled = previousAuthSettings.oidcEnabled
+		c.Config.CORSAllowedOrigins = append([]string(nil), previousAuthSettings.corsAllowedOrigins...)
 
 		return
+	}
+
+	if err := c.Config.NormalizeCORSAllowedOrigins(); err != nil {
+		log.Error().Err(err).Msg("CORS config is invalid after reload; keeping previous valid corsAllowedOrigins")
+		c.Config.CORSAllowedOrigins = append([]string(nil), previousAuthSettings.corsAllowedOrigins...)
 	}
 
 	switch {
@@ -307,6 +317,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.Host = c.viper.GetString("host")
 	c.Config.Port = c.viper.GetInt("port")
 	c.Config.BaseURL = c.viper.GetString("baseUrl")
+	c.Config.CORSAllowedOrigins = c.getNormalizedStringSlice("corsAllowedOrigins")
 	c.Config.SessionSecret = c.viper.GetString("sessionSecret")
 
 	c.Config.LogLevel = c.viper.GetString("logLevel")
@@ -453,6 +464,13 @@ port = {{ .port }}
 # Not needed for subdomain, or by accessing with :port directly.
 # Optional
 #baseUrl = "/qui/"
+
+# CORS allowlist
+# Empty (default) disables CORS.
+# Entries must be explicit origins (scheme + host + optional non-default port).
+# Wildcards are not allowed.
+# Example:
+#corsAllowedOrigins = ["https://sso.example.com", "https://panel.example.com"]
 
 # Session secret
 # Auto-generated if not provided

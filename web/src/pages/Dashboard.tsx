@@ -246,11 +246,7 @@ function InstanceCard({
   })()
 
   const listenPort = preferences?.listen_port
-  const connectionStatusTooltip = connectionStatusDisplay
-    ? `${isConnectable
-      ? tr("dashboardPage.instanceCard.connection.connectable")
-      : connectionStatusDisplay}${listenPort ? tr("dashboardPage.instanceCard.connection.port", { port: listenPort }) : ""}`
-    : ""
+  const connectionStatusTooltip = connectionStatusDisplay? `${isConnectable? tr("dashboardPage.instanceCard.connection.connectable"): connectionStatusDisplay}${listenPort ? tr("dashboardPage.instanceCard.connection.port", { port: listenPort }) : ""}`: ""
 
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
@@ -319,9 +315,7 @@ function InstanceCard({
                   </TooltipTrigger>
                   <TooltipContent>
                     {tr("dashboardPage.instanceCard.altSpeed.tooltip", {
-                      state: altSpeedEnabled
-                        ? tr("dashboardPage.instanceCard.altSpeed.stateOn")
-                        : tr("dashboardPage.instanceCard.altSpeed.stateOff"),
+                      state: altSpeedEnabled? tr("dashboardPage.instanceCard.altSpeed.stateOn"): tr("dashboardPage.instanceCard.altSpeed.stateOff"),
                     })}
                   </TooltipContent>
                 </Tooltip>
@@ -349,14 +343,10 @@ function InstanceCard({
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>
-                  {altSpeedEnabled
-                    ? tr("dashboardPage.instanceCard.altSpeed.disableTitle")
-                    : tr("dashboardPage.instanceCard.altSpeed.enableTitle")}
+                  {altSpeedEnabled? tr("dashboardPage.instanceCard.altSpeed.disableTitle"): tr("dashboardPage.instanceCard.altSpeed.enableTitle")}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  {altSpeedEnabled
-                    ? tr("dashboardPage.instanceCard.altSpeed.disableDescription", { instanceName: instance.name })
-                    : tr("dashboardPage.instanceCard.altSpeed.enableDescription", { instanceName: instance.name })}
+                  {altSpeedEnabled? tr("dashboardPage.instanceCard.altSpeed.disableDescription", { instanceName: instance.name }): tr("dashboardPage.instanceCard.altSpeed.enableDescription", { instanceName: instance.name })}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -367,9 +357,7 @@ function InstanceCard({
                     setShowSpeedLimitDialog(false)
                   }}
                 >
-                  {altSpeedEnabled
-                    ? tr("dashboardPage.instanceCard.altSpeed.disableAction")
-                    : tr("dashboardPage.instanceCard.altSpeed.enableAction")}
+                  {altSpeedEnabled? tr("dashboardPage.instanceCard.altSpeed.disableAction"): tr("dashboardPage.instanceCard.altSpeed.enableAction")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -475,7 +463,7 @@ function InstanceCard({
                       try {
                         localStorage.setItem("qui-filters-global", JSON.stringify({
                           status: ["unregistered"],
-                          excludeStatus: []
+                          excludeStatus: [],
                         }))
                       } catch (error) {
                         console.error("Failed to set filter state:", error)
@@ -496,7 +484,7 @@ function InstanceCard({
                       try {
                         localStorage.setItem("qui-filters-global", JSON.stringify({
                           status: ["tracker_down"],
-                          excludeStatus: []
+                          excludeStatus: [],
                         }))
                       } catch (error) {
                         console.error("Failed to set filter state:", error)
@@ -517,7 +505,7 @@ function InstanceCard({
                       try {
                         localStorage.setItem("qui-filters-global", JSON.stringify({
                           status: ["errored"],
-                          excludeStatus: []
+                          excludeStatus: [],
                         }))
                       } catch (error) {
                         console.error("Failed to set filter state:", error)
@@ -575,9 +563,7 @@ function InstanceCard({
                     <ChevronRight className="h-3 w-3" />
                   )}
                   <span>
-                    {isAdvancedMetricsOpen
-                      ? tr("dashboardPage.instanceCard.actions.showLess")
-                      : tr("dashboardPage.instanceCard.actions.showMore")}
+                    {isAdvancedMetricsOpen? tr("dashboardPage.instanceCard.actions.showLess"): tr("dashboardPage.instanceCard.actions.showMore")}
                   </span>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="space-y-2 mt-2">
@@ -848,8 +834,8 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
                   <span className="text-sm font-semibold">{formatBytes(globalStats.alltimeUl)}</span>
                 </div>
               </div>
-                <div className="flex items-center gap-4 text-sm">
-                  <div>
+              <div className="flex items-center gap-4 text-sm">
+                <div>
                   <span className="text-xs text-muted-foreground">{tr("dashboardPage.serverStats.ratioLabel")}</span>
                   <span className="font-semibold" style={{ color: ratioColor }}>
                     {globalStats.globalRatio.toFixed(2)}
@@ -1792,9 +1778,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                             {(isMerged || (hasCustomization && displayName !== domain)) && (
                               <TooltipContent>
                                 <p className="text-xs">
-                                  {isMerged
-                                    ? tr("dashboardPage.trackerBreakdown.tooltips.mergedFrom", { domains: originalDomains.join(", ") })
-                                    : tr("dashboardPage.trackerBreakdown.tooltips.original", { domain })}
+                                  {isMerged? tr("dashboardPage.trackerBreakdown.tooltips.mergedFrom", { domains: originalDomains.join(", ") }): tr("dashboardPage.trackerBreakdown.tooltips.original", { domain })}
                                 </p>
                               </TooltipContent>
                             )}
@@ -2049,9 +2033,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                             {(isMerged || (hasCustomization && displayName !== domain)) && (
                               <TooltipContent>
                                 <p className="text-xs">
-                                  {isMerged
-                                    ? tr("dashboardPage.trackerBreakdown.tooltips.mergedFrom", { domains: originalDomains.join(", ") })
-                                    : tr("dashboardPage.trackerBreakdown.tooltips.original", { domain })}
+                                  {isMerged? tr("dashboardPage.trackerBreakdown.tooltips.mergedFrom", { domains: originalDomains.join(", ") }): tr("dashboardPage.trackerBreakdown.tooltips.original", { domain })}
                                 </p>
                               </TooltipContent>
                             )}
@@ -2118,11 +2100,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  {selectedGroupId
-                                    ? tr("dashboardPage.trackerBreakdown.tooltips.mergeIntoGroup")
-                                    : selectedDomains.size > 0
-                                      ? tr("dashboardPage.trackerBreakdown.tooltips.addToMerge")
-                                      : tr("dashboardPage.trackerBreakdown.tooltips.rename")}
+                                  {selectedGroupId? tr("dashboardPage.trackerBreakdown.tooltips.mergeIntoGroup"): selectedDomains.size > 0? tr("dashboardPage.trackerBreakdown.tooltips.addToMerge"): tr("dashboardPage.trackerBreakdown.tooltips.rename")}
                                 </TooltipContent>
                               </Tooltip>
                             )}
@@ -2201,18 +2179,10 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
         <DialogContent className="max-h-[90dvh] flex flex-col">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle>
-              {editingCustomization
-                ? tr("dashboardPage.trackerBreakdown.customizeDialog.titleEdit")
-                : selectedDomains.size === 1
-                  ? tr("dashboardPage.trackerBreakdown.customizeDialog.titleRename")
-                  : tr("dashboardPage.trackerBreakdown.customizeDialog.titleMerge")}
+              {editingCustomization? tr("dashboardPage.trackerBreakdown.customizeDialog.titleEdit"): selectedDomains.size === 1? tr("dashboardPage.trackerBreakdown.customizeDialog.titleRename"): tr("dashboardPage.trackerBreakdown.customizeDialog.titleMerge")}
             </DialogTitle>
             <DialogDescription>
-              {editingCustomization
-                ? tr("dashboardPage.trackerBreakdown.customizeDialog.descriptionEdit")
-                : selectedDomains.size === 1
-                  ? tr("dashboardPage.trackerBreakdown.customizeDialog.descriptionRename")
-                  : tr("dashboardPage.trackerBreakdown.customizeDialog.descriptionMerge")}
+              {editingCustomization? tr("dashboardPage.trackerBreakdown.customizeDialog.descriptionEdit"): selectedDomains.size === 1? tr("dashboardPage.trackerBreakdown.customizeDialog.descriptionRename"): tr("dashboardPage.trackerBreakdown.customizeDialog.descriptionMerge")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4 min-h-0 flex-1 flex flex-col">
@@ -2227,9 +2197,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
             </div>
             <div className="space-y-2 min-h-0 flex-1 flex flex-col overflow-hidden">
               <Label>
-                {editingCustomization
-                  ? tr("dashboardPage.trackerBreakdown.customizeDialog.domainsLabel")
-                  : tr("dashboardPage.trackerBreakdown.customizeDialog.selectedTrackersLabel")}
+                {editingCustomization? tr("dashboardPage.trackerBreakdown.customizeDialog.domainsLabel"): tr("dashboardPage.trackerBreakdown.customizeDialog.selectedTrackersLabel")}
               </Label>
               {((editingCustomization && editingCustomization.domains.length > 1) || (!editingCustomization && selectedDomains.size > 1)) && (
                 <p className="text-xs text-muted-foreground">
@@ -2287,13 +2255,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               onClick={handleSaveCustomization}
               disabled={!customizeDisplayName.trim() || createCustomization.isPending || updateCustomization.isPending}
             >
-              {(createCustomization.isPending || updateCustomization.isPending)
-                ? tr("dashboardPage.actions.saving")
-                : editingCustomization
-                  ? tr("dashboardPage.actions.save")
-                  : selectedDomains.size === 1
-                    ? tr("dashboardPage.actions.rename")
-                    : tr("dashboardPage.actions.merge")}
+              {(createCustomization.isPending || updateCustomization.isPending)? tr("dashboardPage.actions.saving"): editingCustomization? tr("dashboardPage.actions.save"): selectedDomains.size === 1? tr("dashboardPage.actions.rename"): tr("dashboardPage.actions.merge")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2414,9 +2376,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               onClick={handleImport}
               disabled={!parseImportJson.valid || !allConflictsResolved || createCustomization.isPending || updateCustomization.isPending}
             >
-              {(createCustomization.isPending || updateCustomization.isPending)
-                ? tr("dashboardPage.actions.importing")
-                : tr("dashboardPage.actions.import")}
+              {(createCustomization.isPending || updateCustomization.isPending)? tr("dashboardPage.actions.importing"): tr("dashboardPage.actions.import")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2440,8 +2400,8 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="w-full sm:w-auto">
-          <Zap className="h-4 w-4 mr-2" />
-          {tr("dashboardPage.quickActions.title")}
+          <Plus className="h-4 w-4 mr-2" />
+          {tr("dashboardPage.quickActions.addTorrent")}
           <ChevronDown className="h-3 w-3 ml-1" />
         </Button>
       </DropdownMenuTrigger>
@@ -2512,18 +2472,14 @@ export function Dashboard() {
     },
     { dl: 0, up: 0, hasData: false }
   )
-  const backgroundSpeeds = backgroundSpeedsState.hasData
-    ? { dl: backgroundSpeedsState.dl, up: backgroundSpeedsState.up }
-    : undefined
+  const backgroundSpeeds = backgroundSpeedsState.hasData? { dl: backgroundSpeedsState.dl, up: backgroundSpeedsState.up }: undefined
   useTitleBarSpeeds({
     mode: "dashboard",
     enabled: titleBarSpeedsEnabled && hasActiveInstances,
-    foregroundSpeeds: hasActiveInstances
-      ? {
-        dl: globalStats.totalDownload ?? 0,
-        up: globalStats.totalUpload ?? 0,
-      }
-      : undefined,
+    foregroundSpeeds: hasActiveInstances? {
+      dl: globalStats.totalDownload ?? 0,
+      up: globalStats.totalUpload ?? 0,
+    }: undefined,
     backgroundSpeeds: isHiddenDelayed && hasActiveInstances ? backgroundSpeeds : undefined,
   })
 
@@ -2577,7 +2533,7 @@ export function Dashboard() {
               <QuickActionsDropdown statsData={statsData} />
               <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }} className="w-full sm:w-auto">
                 <Button variant="outline" size="sm" className="w-full sm:w-auto">
-                  <Plus className="h-4 w-4 mr-2" />
+                  <HardDrive className="h-4 w-4 mr-2" />
                   {tr("dashboardPage.header.actions.addInstance")}
                 </Button>
               </Link>
@@ -2677,7 +2633,7 @@ export function Dashboard() {
             </div>
             <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
               <Button>
-                <Plus className="h-4 w-4 mr-2" />
+                <HardDrive className="h-4 w-4 mr-2" />
                 {tr("dashboardPage.header.actions.addInstance")}
               </Button>
             </Link>

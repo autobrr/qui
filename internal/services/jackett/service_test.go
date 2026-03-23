@@ -31,8 +31,8 @@ func TestDetectContentType(t *testing.T) {
 			name: "detects TV show by episode",
 			req: &TorznabSearchRequest{
 				Query:   "Breaking Bad",
-				Season:  intPtr(1),
-				Episode: intPtr(1),
+				Season:  new(1),
+				Episode: new(1),
 			},
 			expected: contentTypeTVShow,
 		},
@@ -40,7 +40,7 @@ func TestDetectContentType(t *testing.T) {
 			name: "detects TV show by season pack",
 			req: &TorznabSearchRequest{
 				Query:  "The Wire",
-				Season: intPtr(2),
+				Season: new(2),
 			},
 			expected: contentTypeTVShow,
 		},
@@ -812,8 +812,8 @@ func TestBuildSearchParams(t *testing.T) {
 			name: "query with season and episode",
 			req: &TorznabSearchRequest{
 				Query:   "Game of Thrones",
-				Season:  intPtr(1),
-				Episode: intPtr(1),
+				Season:  new(1),
+				Episode: new(1),
 			},
 			searchMode: "tvsearch",
 			expected: map[string]string{
@@ -842,8 +842,8 @@ func TestBuildSearchParams(t *testing.T) {
 				Query:      "Breaking Bad",
 				Categories: []int{CategoryTV},
 				TVDbID:     "81189",
-				Season:     intPtr(1),
-				Episode:    intPtr(1),
+				Season:     new(1),
+				Episode:    new(1),
 				Limit:      50,
 				Offset:     10,
 			},
@@ -1059,8 +1059,8 @@ func TestSearchAutoDetectCategories(t *testing.T) {
 			name: "auto-detects TV categories",
 			req: &TorznabSearchRequest{
 				Query:   "Breaking Bad",
-				Season:  intPtr(1),
-				Episode: intPtr(1),
+				Season:  new(1),
+				Episode: new(1),
 			},
 			expectedCats:     []int{CategoryTV, CategoryTVSD, CategoryTVHD, CategoryTV4K},
 			shouldAutoDetect: true,
@@ -1380,8 +1380,10 @@ func TestSearchRespectsRequestedIndexerIDs(t *testing.T) {
 }
 
 // Helper functions
+//
+//go:fix inline
 func intPtr(i int) *int {
-	return &i
+	return new(i)
 }
 
 // Mock store for testing
@@ -1579,6 +1581,82 @@ func TestSearchMultipleIndexersAllRateLimited(t *testing.T) {
 
 	if len(store.apiKeyCalls) != 0 {
 		t.Fatalf("expected no API key calls when all indexers are skipped, apiKeyCalls=%v", store.apiKeyCalls)
+	}
+}
+
+func TestSearch_AllIndexersSkippedByRateLimitWaitReturnsError(t *testing.T) {
+	service := NewService(&mockTorznabIndexerStore{})
+	indexers := []*models.TorznabIndexer{
+		{ID: 1, Name: "A", Backend: models.TorznabBackendJackett, BaseURL: "http://127.0.0.1", Enabled: true, IndexerID: "a"},
+		{ID: 2, Name: "B", Backend: models.TorznabBackendJackett, BaseURL: "http://127.0.0.1", Enabled: true, IndexerID: "b"},
+	}
+
+	// Prime both indexers so wait exceeds MaxWait for every task.
+	service.rateLimiter.RecordRequest(1, time.Now())
+	service.rateLimiter.RecordRequest(2, time.Now())
+
+	done := make(chan struct{})
+	completeErrs := make(chan error, len(indexers))
+	var callbackErr error
+	var callbackResults []Result
+	var callbackCoverage []int
+	opts := &RateLimitOptions{
+		Priority:    RateLimitPriorityBackground,
+		MinInterval: 5 * time.Second,
+		MaxWait:     10 * time.Millisecond,
+	}
+	if wait := service.rateLimiter.NextWait(indexers[0], opts); wait <= opts.MaxWait {
+		t.Fatalf("test setup invalid: expected wait > maxWait for indexer 1, got wait=%v maxWait=%v", wait, opts.MaxWait)
+	}
+	if wait := service.rateLimiter.NextWait(indexers[1], opts); wait <= opts.MaxWait {
+		t.Fatalf("test setup invalid: expected wait > maxWait for indexer 2, got wait=%v maxWait=%v", wait, opts.MaxWait)
+	}
+
+	err := service.searchIndexersWithScheduler(
+		context.Background(),
+		indexers,
+		url.Values{"q": {"test"}},
+		&searchContext{
+			rateLimit: opts,
+		},
+		func(_ uint64, _ int, err error) {
+			completeErrs <- err
+		},
+		func(_ uint64, results []Result, coverage []int, err error) {
+			callbackResults = results
+			callbackCoverage = coverage
+			callbackErr = err
+			close(done)
+		},
+	)
+	if err != nil {
+		t.Fatalf("scheduler setup error: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for scheduler callback")
+	}
+
+	close(completeErrs)
+	for err := range completeErrs {
+		if err == nil {
+			t.Fatal("expected per-indexer wait error, got nil")
+		}
+	}
+
+	if callbackErr == nil {
+		t.Fatal("expected rate-limit wait error when all indexers are skipped")
+	}
+	if !strings.Contains(strings.ToLower(callbackErr.Error()), "rate limit") {
+		t.Fatalf("expected rate-limit error, got: %v", callbackErr)
+	}
+	if len(callbackResults) != 0 {
+		t.Fatalf("expected no results when all indexers are skipped, got %d", len(callbackResults))
+	}
+	if len(callbackCoverage) != 0 {
+		t.Fatalf("expected no coverage when all indexers are skipped, got %v", callbackCoverage)
 	}
 }
 

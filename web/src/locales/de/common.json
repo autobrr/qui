@@ -3485,6 +3485,21 @@
       "selectedSummary": "Ausgewählte Tags: {{tags}}",
       "confirm": "Tags setzen"
     },
+    "tagEditor": {
+      "description": "Gemischte Tags bleiben unverändert, bis du sie anklickst. Ein Klick schaltet Gemischt zu Ein, Ein zu Aus und Aus zu Ein.",
+      "noTags": "Noch keine Tags verfügbar. Füge unten eins hinzu.",
+      "errors": {
+        "baseline": "Die vollständige Tag-Basis für diese Auswahl konnte nicht ermittelt werden"
+      },
+      "toasts": {
+        "failedLoad": "Ausgewählte Torrent-Tags konnten nicht geladen werden"
+      },
+      "summary": {
+        "addEverywhere": "Überall hinzufügen: {{tags}}",
+        "removeEverywhere": "Überall entfernen: {{tags}}",
+        "noChanges": "Keine Tag-Änderungen."
+      }
+    },
     "setLocation": {
       "title": "Speicherort für {{count}} Torrent(s) setzen",
       "description": "Gib einen neuen Speicherort für die ausgewählten Torrents ein.",

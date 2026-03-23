@@ -325,7 +325,7 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
           <div className="space-y-4">
             <form.Field name="proxy_peer_connections">
               {(field) => (
-              <SwitchSetting
+                <SwitchSetting
                   label={tr("proxySettingsForm.fields.peerConnections")}
                   description={tr("proxySettingsForm.fields.peerConnectionsDescription")}
                   checked={field.state.value}
@@ -336,7 +336,7 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
 
             <form.Field name="proxy_torrents_only">
               {(field) => (
-              <SwitchSetting
+                <SwitchSetting
                   label={tr("proxySettingsForm.fields.torrentsOnly")}
                   description={tr("proxySettingsForm.fields.torrentsOnlyDescription")}
                   checked={field.state.value}
@@ -347,7 +347,7 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
 
             <form.Field name="proxy_hostname_lookup">
               {(field) => (
-              <SwitchSetting
+                <SwitchSetting
                   label={tr("proxySettingsForm.fields.hostnameLookups")}
                   description={tr("proxySettingsForm.fields.hostnameLookupsDescription")}
                   checked={field.state.value}

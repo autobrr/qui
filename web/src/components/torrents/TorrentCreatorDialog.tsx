@@ -8,7 +8,6 @@ import { useCallback, useEffect, useState } from "react"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, ChevronDown, Info, Loader2 } from "lucide-react"
-import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -38,6 +37,7 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
@@ -96,17 +96,14 @@ interface TorrentCreatorDialogProps {
 }
 
 export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: TorrentCreatorDialogProps) {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => t(key as any, options as any)
+  const tr = useCommonTr()
   const [error, setError] = useState<string | null>(null)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const queryClient = useQueryClient()
 
   const { versionInfo } = useQBittorrentAppInfo(instanceId)
   const supportsFormatSelection = versionInfo.isLibtorrent2 !== false
-  const libtorrentVersionLabel = versionInfo.libtorrentMajorVersion
-    ? tr("searchPage.torrentCreatorDialog.libtorrentVersion", { major: versionInfo.libtorrentMajorVersion })
-    : tr("searchPage.torrentCreatorDialog.libtorrentVersionFallback")
+  const libtorrentVersionLabel = versionInfo.libtorrentMajorVersion? tr("searchPage.torrentCreatorDialog.libtorrentVersion", { major: versionInfo.libtorrentMajorVersion }): tr("searchPage.torrentCreatorDialog.libtorrentVersionFallback")
 
   // Fetch active trackers for the select dropdown
   const { data: activeTrackers } = useInstanceTrackers(instanceId, { enabled: open })
@@ -324,8 +321,8 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                           const newTrackers = currentTrackers? `${currentTrackers}\n${trackerUrl}`: trackerUrl
                           field.handleChange(newTrackers)
                         }}
-                        >
-                          <SelectTrigger>
+                      >
+                        <SelectTrigger>
                           <SelectValue placeholder={tr("searchPage.torrentCreatorDialog.form.trackersSelectPlaceholder")} />
                         </SelectTrigger>
                         <SelectContent>

@@ -17,8 +17,8 @@ func TestSupportsReflink(t *testing.T) {
 
 	supported, reason := SupportsReflink(tmpDir)
 
-	// On unsupported platforms, should return false
-	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+	// On unsupported platforms, should return false.
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
 		if supported {
 			t.Errorf("SupportsReflink should return false on %s", runtime.GOOS)
 		}
@@ -28,8 +28,8 @@ func TestSupportsReflink(t *testing.T) {
 		return
 	}
 
-	// On supported platforms, the result depends on filesystem
-	// We just verify the function doesn't panic and returns sensible values
+	// On supported platforms, the result depends on filesystem.
+	// We just verify the function doesn't panic and returns sensible values.
 	t.Logf("SupportsReflink(%s): supported=%v, reason=%s", tmpDir, supported, reason)
 
 	if !supported {

@@ -29,15 +29,20 @@ make dev-backend        # Backend only with hot-reload
 make dev-frontend       # Frontend only
 
 # Testing
-make test               # go test -race -count=3 -v ./...
+make test               # go test -race -count=1 -v ./...
 make test-openapi       # Validate OpenAPI spec after touching internal/web/swagger
 
 # Linting
 make lint               # Changed files only (fast, use during iteration)
 make lint-json          # JSON output to lint-report.json
 
+# Pre-commit
+make precommit          # fmt + gofix + lint on changed files
+
 # Formatting
-make fmt                # gofmt + pnpm format
+make fmt                # gofmt + frontend eslint --fix on changed files
+make gofix-changed      # Apply go fix on changed Go files only
+make gofix-check-changed # Check go fix drift on changed Go files only
 ```
 
 ## Linting Strategy
@@ -54,7 +59,7 @@ The project uses golangci-lint v2 with strict configuration targeting AI-generat
 | gocritic | Non-idiomatic patterns | diagnostic + style + performance |
 
 **Workflow:**
-1. During implementation: `make lint` (changed files only, fast feedback)
+1. During implementation: `make precommit` (changed files only, fast feedback)
 2. To fix issues: `make lint-fix` then address remaining manually
 
 **Guardrail (web formatting):** avoid repo-wide `pnpm format` / `eslint --fix` sweeps unless explicitly requested. Prefer fixing only the files reported by lint for the current task/PR.
@@ -72,6 +77,13 @@ Keep Go code `gofmt`-clean with PascalCase exports, camelCase locals, and packag
 
 **Single-user self-hosted context:** qui runs on someone's home server, not as a multi-tenant SaaS with untrusted input and complex failure modes. Skip paranoid defensive programming for impossible or purely theoretical scenarios. Code that guards against states that can't happen adds complexity without value. Prioritize readable, maintainable code over excessive robustness.
 
+## Code Shape
+
+- Prefer behavior-bearing branches only. If multiple `switch` cases return the same value as `default`, collapse them.
+- In boolean classifiers, list only the exceptional cases (`true` cases or error cases). Let `default` handle the common path.
+- Do not add documentation-only branches unless they enforce something mechanically via compiler, linter, or tests.
+- When a branch only enumerates known states, ask whether it changes behavior, improves safety, or provides exhaustiveness checking. If not, delete it.
+
 ## React Effects
 
 - Use `useEffect` only to sync with external systems (DOM, subscriptions, network).
@@ -85,9 +97,11 @@ Keep Go code `gofmt`-clean with PascalCase exports, camelCase locals, and packag
 
 Place backend tests beside implementations as `*_test.go`, mirroring paths such as `internal/qbittorrent/pool_test.go`. Prefer table-driven cases and reuse the integration fixtures already in `internal/qbittorrent/`. Run `make test` before every push and add `make test-openapi` when contracts change. Frontend work should include Vitest + React Testing Library specs named `*.test.tsx` near the component.
 
-When running tests, always use `-race` and `-count=3` to catch race conditions.
+When running tests, always use `-race` and `-count=1`.
 
 For changes under `internal/services/crossseed` or `internal/qbittorrent`, run targeted package tests first, then run the full `make test` suite.
+
+When adding Go tests that create files with `os.WriteFile`, use `0o600` or tighter permissions unless the test explicitly needs broader mode bits. This avoids `gosec` `G306` lint failures.
 
 ## Commit & Pull Request Guidelines
 
@@ -102,7 +116,7 @@ PRs need a clear summary, testing checklist, and UI screenshots for visual tweak
 
 ## Pre-Commit Checklist
 
-1. `make lint` passes
+1. `make precommit` passes (`fmt` + `gofix-changed` + `lint`, changed files only)
 2. `make test` passes
 3. `make build` succeeds
 4. If touched `internal/web/swagger`, run `make test-openapi`
@@ -113,7 +127,7 @@ Load secrets such as `THEMES_REPO_TOKEN` via `.env` so the Makefile can fetch pr
 
 ## API & Database Change Rules
 
-- Database schema changes must ship as migrations under `internal/database/migrations` and include matching model/store updates in the same PR.
+- Database schema changes must ship as migrations under `internal/database/migrations`, include matching model/store updates in the same PR, and add both SQLite and Postgres migrations.
 - API contract changes must update OpenAPI content under `internal/web/swagger` and pass `make test-openapi`.
 - Prefer minimal, reviewable diffs in high-churn areas (`internal/services/crossseed`, `internal/qbittorrent`, `internal/models`).
 
