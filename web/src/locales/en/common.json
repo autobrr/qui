@@ -5089,7 +5089,10 @@
       "torrents": "Loading torrents..."
     },
     "empty": {
-      "clearFilters": "Clear filters"
+      "clearFilters": "Clear filters",
+      "noMatchingFilters": "No torrents match the current filters",
+      "noMatchingSearch": "No torrents match the current search",
+      "noTorrentsFound": "No torrents found"
     }
   },
   "torrentTableColumns": {
@@ -5651,7 +5654,7 @@
     "crossSeed": "Cross-Seed",
     "automations": "Automations",
     "backups": "Backups",
-    "rss": "RSS",
+    "rss": "Feeds",
     "settings": "Settings",
     "logs": "Logs",
     "torrents": "Torrents"

@@ -254,7 +254,11 @@ function getStatusBadgeVariant(state: string): "default" | "secondary" | "destru
   }
 }
 
-function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean): {
+function getStatusBadgeProps(
+  torrent: Torrent,
+  supportsTrackerHealth: boolean,
+  trackerHealthLabels: { trackerDown: string, unregistered: string }
+): {
   variant: "default" | "secondary" | "destructive" | "outline"
   label: string
   className: string
@@ -267,11 +271,11 @@ function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean): 
   if (supportsTrackerHealth) {
     const trackerHealth = torrent.tracker_health ?? null
     if (trackerHealth === "tracker_down") {
-      label = "Tracker Down"
+      label = trackerHealthLabels.trackerDown
       variant = "outline"
       className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
     } else if (trackerHealth === "unregistered") {
-      label = "Unregistered"
+      label = trackerHealthLabels.unregistered
       variant = "outline"
       className = "text-destructive border-destructive/40 bg-destructive/10"
     }
@@ -378,11 +382,12 @@ const CompactRow = memo(({
   const displayCategory = incognitoMode ? getLinuxCategory(torrent.hash) : torrent.category
   const displayTags = incognitoMode ? getLinuxTags(torrent.hash) : torrent.tags
   const displayRatio = incognitoMode ? getLinuxRatio(torrent.hash) : torrent.ratio
+  const trackerHealthLabels = {
+    trackerDown: tr("torrentTable.values.trackerDown"),
+    unregistered: tr("torrentTable.values.unregistered"),
+  }
 
-  const { variant: statusBadgeVariant, label: statusBadgeLabel, className: statusBadgeClass } = useMemo(
-    () => getStatusBadgeProps(torrent, supportsTrackerHealth),
-    [torrent, supportsTrackerHealth]
-  )
+  const { variant: statusBadgeVariant, label: statusBadgeLabel, className: statusBadgeClass } = getStatusBadgeProps(torrent, supportsTrackerHealth, trackerHealthLabels)
 
   // Resolve tracker display name and icon using customizations
   const trackerRaw = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
@@ -1107,13 +1112,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [hasSidebarFilters, columnFilters])
   const emptyStateMessage = useMemo(() => {
     if (hasFilterControls) {
-      return "No torrents match the current filters"
+      return tr("torrentTableOptimized.empty.noMatchingFilters")
     }
     if (hasSearchQuery) {
-      return "No torrents match the current search"
+      return tr("torrentTableOptimized.empty.noMatchingSearch")
     }
-    return "No torrents found"
-  }, [hasFilterControls, hasSearchQuery])
+    return tr("torrentTableOptimized.empty.noTorrentsFound")
+  }, [hasFilterControls, hasSearchQuery, tr])
 
   // Call the callback when filtered data updates
   useEffect(() => {
@@ -3134,17 +3139,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Force Recheck {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</DialogTitle>
+              <DialogTitle>{tr("torrentManagementBar.dialogs.recheck.title", { count: isAllSelected ? effectiveSelectionCount : contextHashes.length })}</DialogTitle>
               <DialogDescription>
-                This will force qBittorrent to recheck all pieces of the selected torrents. This process may take some time and will temporarily pause the torrents.
+                {tr("torrentManagementBar.dialogs.recheck.description")}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
-                Cancel
+                {tr("torrentManagementBar.dialogs.actions.cancel")}
               </Button>
               <Button onClick={handleRecheckWrapper} disabled={isPending}>
-                Force Recheck
+                {tr("torrentManagementBar.dialogs.recheck.confirm")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -3154,17 +3159,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         <Dialog open={showReannounceDialog} onOpenChange={setShowReannounceDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Reannounce {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</DialogTitle>
+              <DialogTitle>{tr("torrentManagementBar.dialogs.reannounce.title", { count: isAllSelected ? effectiveSelectionCount : contextHashes.length })}</DialogTitle>
               <DialogDescription>
-                This will force the selected torrents to reannounce to all their trackers. This is useful when trackers are not responding or you want to refresh your connection.
+                {tr("torrentManagementBar.dialogs.reannounce.description")}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
-                Cancel
+                {tr("torrentManagementBar.dialogs.actions.cancel")}
               </Button>
               <Button onClick={handleReannounceWrapper} disabled={isPending}>
-                Reannounce
+                {tr("torrentManagementBar.dialogs.reannounce.confirm")}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -4879,7 +4879,10 @@
       "torrents": "トレントを読み込み中..."
     },
     "empty": {
-      "clearFilters": "フィルターをクリア"
+      "clearFilters": "フィルターをクリア",
+      "noMatchingFilters": "現在のフィルターに一致するトレントはありません",
+      "noMatchingSearch": "現在の検索に一致するトレントはありません",
+      "noTorrentsFound": "トレントが見つかりません"
     }
   },
   "torrentTableColumns": {
@@ -5441,7 +5444,7 @@
     "crossSeed": "クロスシード",
     "automations": "自動化",
     "backups": "バックアップ",
-    "rss": "RSS",
+    "rss": "フィード",
     "settings": "設定",
     "logs": "ログ",
     "torrents": "トレント"

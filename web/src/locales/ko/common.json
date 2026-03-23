@@ -5035,7 +5035,10 @@
       "torrents": "토렌트 로딩 중..."
     },
     "empty": {
-      "clearFilters": "필터 지우기"
+      "clearFilters": "필터 지우기",
+      "noMatchingFilters": "현재 필터와 일치하는 토렌트가 없습니다",
+      "noMatchingSearch": "현재 검색과 일치하는 토렌트가 없습니다",
+      "noTorrentsFound": "토렌트를 찾을 수 없습니다"
     }
   },
   "torrentTableColumns": {
@@ -5597,7 +5600,7 @@
     "crossSeed": "크로스시드",
     "automations": "자동화",
     "backups": "백업",
-    "rss": "RSS",
+    "rss": "피드",
     "settings": "설정",
     "logs": "로그",
     "torrents": "토렌트"

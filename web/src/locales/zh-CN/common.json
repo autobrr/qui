@@ -4879,7 +4879,10 @@
       "torrents": "正在加载种子..."
     },
     "empty": {
-      "clearFilters": "清除筛选"
+      "clearFilters": "清除筛选",
+      "noMatchingFilters": "没有种子符合当前筛选条件",
+      "noMatchingSearch": "没有种子符合当前搜索条件",
+      "noTorrentsFound": "未找到种子"
     }
   },
   "torrentTableColumns": {
@@ -5441,7 +5444,7 @@
     "crossSeed": "辅种",
     "automations": "自动化",
     "backups": "备份",
-    "rss": "RSS",
+    "rss": "订阅源",
     "settings": "设置",
     "logs": "日志",
     "torrents": "种子"

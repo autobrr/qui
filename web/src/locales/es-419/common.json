@@ -5035,7 +5035,10 @@
       "torrents": "Cargando torrents..."
     },
     "empty": {
-      "clearFilters": "Limpiar filtros"
+      "clearFilters": "Limpiar filtros",
+      "noMatchingFilters": "Ningún torrent coincide con los filtros actuales",
+      "noMatchingSearch": "Ningún torrent coincide con la búsqueda actual",
+      "noTorrentsFound": "No se encontraron torrents"
     }
   },
   "torrentTableColumns": {
@@ -5597,7 +5600,7 @@
     "crossSeed": "Cross-Seed",
     "automations": "Automatizaciones",
     "backups": "Respaldos",
-    "rss": "RSS",
+    "rss": "Fuentes",
     "settings": "Configuración",
     "logs": "Registros",
     "torrents": "Torrents"
