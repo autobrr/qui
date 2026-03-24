@@ -864,17 +864,17 @@ func (s *Service) initPreviewEvalContext(ctx context.Context, instanceID int, to
 }
 
 // setupPreviewCrossMatchContext populates all cross-match hash sets (same-instance
-// and other-instance) in evalCtx based on which fields the condition uses.
-func (s *Service) setupPreviewCrossMatchContext(ctx context.Context, instanceID int, cond *RuleCondition, evalCtx *EvalContext) {
-	if evalCtx == nil || cond == nil {
+// and other-instance) in evalCtx based on which fields the condition or sorting config uses.
+func (s *Service) setupPreviewCrossMatchContext(ctx context.Context, instanceID int, rule *models.Automation, cond *RuleCondition, evalCtx *EvalContext) {
+	if evalCtx == nil || rule == nil {
 		return
 	}
 
 	needs := CrossMatchNeeds{
-		SameExists:   ConditionUsesField(cond, FieldExistsOnSameInstance),
-		SameSeeding:  ConditionUsesField(cond, FieldSeedingOnSameInstance),
-		OtherExists:  ConditionUsesField(cond, FieldExistsOnOtherInstance),
-		OtherSeeding: ConditionUsesField(cond, FieldSeedingOnOtherInstance),
+		SameExists:   ConditionUsesField(cond, FieldExistsOnSameInstance) || sortingConfigUsesField(rule.SortingConfig, FieldExistsOnSameInstance),
+		SameSeeding:  ConditionUsesField(cond, FieldSeedingOnSameInstance) || sortingConfigUsesField(rule.SortingConfig, FieldSeedingOnSameInstance),
+		OtherExists:  ConditionUsesField(cond, FieldExistsOnOtherInstance) || sortingConfigUsesField(rule.SortingConfig, FieldExistsOnOtherInstance),
+		OtherSeeding: ConditionUsesField(cond, FieldSeedingOnOtherInstance) || sortingConfigUsesField(rule.SortingConfig, FieldSeedingOnOtherInstance),
 	}
 	if !needs.SameExists && !needs.SameSeeding && !needs.OtherExists && !needs.OtherSeeding {
 		return
@@ -954,7 +954,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil {
 		deleteCondition = rule.Conditions.Delete.Condition
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Delete.Condition, evalCtx)
-		s.setupPreviewCrossMatchContext(ctx, instanceID, rule.Conditions.Delete.Condition, evalCtx)
+		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, rule.Conditions.Delete.Condition, evalCtx)
 	}
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx, instance)
@@ -1556,7 +1556,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
 	if rule != nil && rule.Conditions != nil && rule.Conditions.Category != nil {
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Category.Condition, evalCtx)
-		s.setupPreviewCrossMatchContext(ctx, instanceID, rule.Conditions.Category.Condition, evalCtx)
+		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, rule.Conditions.Category.Condition, evalCtx)
 	}
 	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx, instance)
