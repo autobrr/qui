@@ -229,13 +229,10 @@ func (s *Service) matchAgainstIndex(source *qbt.Torrent, idx *matchIndex, exclud
 				if excludeSelf && c.hash == sourceHash {
 					continue
 				}
-				if c.seeding {
-					return true, true
-				}
 				matched = true
-			}
-			if matched {
-				return true, false
+				if c.seeding {
+					matchSeeding = true
+				}
 			}
 		}
 	}
@@ -248,13 +245,10 @@ func (s *Service) matchAgainstIndex(source *qbt.Torrent, idx *matchIndex, exclud
 				if excludeSelf && c.hash == sourceHash {
 					continue
 				}
-				if c.seeding {
-					return true, true
-				}
 				matched = true
-			}
-			if matched {
-				return true, false
+				if c.seeding {
+					matchSeeding = true
+				}
 			}
 		}
 	}
@@ -270,19 +264,16 @@ func (s *Service) matchAgainstIndex(source *qbt.Torrent, idx *matchIndex, exclud
 					continue
 				}
 				if s.releasesMatch(sourceRelease, c.release, false) {
-					if c.seeding {
-						return true, true
-					}
 					matched = true
+					if c.seeding {
+						matchSeeding = true
+					}
 				}
-			}
-			if matched {
-				return true, false
 			}
 		}
 	}
 
-	return false, false
+	return matched, matchSeeding
 }
 
 // isTorrentViewSeeding checks if a CrossInstanceTorrentView is in a seeding state.

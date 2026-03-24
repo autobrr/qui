@@ -247,6 +247,25 @@ func TestMatchAgainstIndex_SeedingDetection(t *testing.T) {
 			t.Error("expected seeding (bbb is uploading)")
 		}
 	})
+
+	t.Run("cross-strategy seeding detected", func(t *testing.T) {
+		t.Parallel()
+		views := []qbittorrent.CrossInstanceTorrentView{
+			// Matches by content path but not seeding
+			makeView("aaa", "Different.Name", "/data/movie.mkv", "/data", 1.0, qbt.TorrentStatePausedUp),
+			// Matches by release metadata and is seeding
+			makeView("bbb", "Movie.2024.1080p.BluRay.x264", "/other/path", "/other", 1.0, qbt.TorrentStateUploading),
+		}
+		idx := svc.buildIndexFromViews(views, true)
+		source := &qbt.Torrent{Hash: "xxx", ContentPath: "/data/movie.mkv", SavePath: "/data", Name: "Movie.2024.1080p.BluRay.x264"}
+		matched, seeding := svc.matchAgainstIndex(source, idx, false)
+		if !matched {
+			t.Error("expected match")
+		}
+		if !seeding {
+			t.Error("expected seeding from release metadata strategy even though content path match was not seeding")
+		}
+	})
 }
 
 func TestBuildIndexFromViews(t *testing.T) {
