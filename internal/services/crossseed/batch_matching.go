@@ -295,7 +295,15 @@ func isTorrentViewSeeding(view *qbittorrent.CrossInstanceTorrentView) bool {
 		qbt.TorrentStateQueuedUp, qbt.TorrentStateCheckingUp,
 		qbt.TorrentStateForcedUp:
 		return true
-	default:
+	case qbt.TorrentStateError, qbt.TorrentStateMissingFiles,
+		qbt.TorrentStatePausedUp, qbt.TorrentStateStoppedUp,
+		qbt.TorrentStateAllocating, qbt.TorrentStateDownloading,
+		qbt.TorrentStateMetaDl, qbt.TorrentStatePausedDl,
+		qbt.TorrentStateStoppedDl, qbt.TorrentStateQueuedDl,
+		qbt.TorrentStateStalledDl, qbt.TorrentStateCheckingDl,
+		qbt.TorrentStateForcedDl, qbt.TorrentStateCheckingResumeData,
+		qbt.TorrentStateMoving, qbt.TorrentStateUnknown:
 		return false
 	}
+	return false
 }
