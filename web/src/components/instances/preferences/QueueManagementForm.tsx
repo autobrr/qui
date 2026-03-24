@@ -10,8 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { toast } from "sonner"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
-
-import { PreferencesFormShell } from "./PreferencesFormShell"
+import { useTranslation } from "react-i18next"
 
 
 function SwitchSetting({
@@ -55,6 +54,8 @@ interface QueueManagementFormProps {
 }
 
 export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFormProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
 
   const form = useForm({
@@ -65,14 +66,16 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
       max_active_torrents: 0,
       max_active_checking_torrents: 0,
     },
-    onSubmit: async ({ value }) => {
-      try {
-        updatePreferences(value)
-        toast.success("Queue settings updated successfully")
-        onSuccess?.()
-      } catch {
-        toast.error("Failed to update queue settings")
-      }
+    onSubmit: ({ value }) => {
+      updatePreferences(value, {
+        onSuccess: () => {
+          toast.success(tr("queueManagementForm.toasts.updated"))
+          onSuccess?.()
+        },
+        onError: () => {
+          toast.error(tr("queueManagementForm.toasts.failedUpdate"))
+        },
+      })
     },
   })
 
@@ -90,7 +93,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">Loading queue settings...</p>
+        <p className="text-sm text-muted-foreground">{tr("queueManagementForm.loading")}</p>
       </div>
     )
   }
@@ -98,18 +101,132 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
   if (!preferences) {
     return (
       <div className="flex items-center justify-center py-8" role="alert">
-        <p className="text-sm text-muted-foreground">Failed to load preferences</p>
+        <p className="text-sm text-muted-foreground">{tr("queueManagementForm.loadFailed")}</p>
       </div>
     )
   }
 
   return (
-    <PreferencesFormShell
+    <form
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()
       }}
-      footer={(
+      className="space-y-6"
+    >
+      <div className="space-y-6">
+        <form.Field name="queueing_enabled">
+          {(field) => (
+            <SwitchSetting
+              label={tr("queueManagementForm.fields.enableQueueingLabel")}
+              checked={(field.state.value as boolean) ?? false}
+              onCheckedChange={field.handleChange}
+              description={tr("queueManagementForm.fields.enableQueueingDescription")}
+            />
+          )}
+        </form.Field>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <form.Field
+            name="max_active_downloads"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < -1) {
+                  return tr("queueManagementForm.errors.maxActiveDownloadsMin")
+                }
+                return undefined
+              }
+            }}
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label={tr("queueManagementForm.fields.maxActiveDownloadsLabel")}
+                  value={(field.state.value as number) ?? 3}
+                  onChange={field.handleChange}
+                  max={99999}
+                  description={tr("queueManagementForm.fields.maxActiveDownloadsDescription")}
+                  allowUnlimited={true}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field
+            name="max_active_uploads"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < -1) {
+                  return tr("queueManagementForm.errors.maxActiveUploadsMin")
+                }
+                return undefined
+              }
+            }}
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label={tr("queueManagementForm.fields.maxActiveUploadsLabel")}
+                  value={(field.state.value as number) ?? 3}
+                  onChange={field.handleChange}
+                  max={99999}
+                  description={tr("queueManagementForm.fields.maxActiveUploadsDescription")}
+                  allowUnlimited={true}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field
+            name="max_active_torrents"
+            validators={{
+              onChange: ({ value }) => {
+                if (value < -1) {
+                  return tr("queueManagementForm.errors.maxActiveTorrentsMin")
+                }
+                return undefined
+              }
+            }}
+          >
+            {(field) => (
+              <div className="space-y-2">
+                <NumberInputWithUnlimited
+                  label={tr("queueManagementForm.fields.maxActiveTorrentsLabel")}
+                  value={(field.state.value as number) ?? 5}
+                  onChange={field.handleChange}
+                  max={99999}
+                  description={tr("queueManagementForm.fields.maxActiveTorrentsDescription")}
+                  allowUnlimited={true}
+                />
+                {field.state.meta.errors.length > 0 && (
+                  <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
+                )}
+              </div>
+            )}
+          </form.Field>
+
+          <form.Field name="max_active_checking_torrents">
+            {(field) => (
+              <NumberInputWithUnlimited
+                label={tr("queueManagementForm.fields.maxCheckingTorrentsLabel")}
+                value={(field.state.value as number) ?? 1}
+                onChange={field.handleChange}
+                max={99999}
+                description={tr("queueManagementForm.fields.maxCheckingTorrentsDescription")}
+                allowUnlimited={true}
+              />
+            )}
+          </form.Field>
+        </div>
+      </div>
+
+      <div className="flex justify-end pt-4">
         <form.Subscribe
           selector={(state) => [state.canSubmit, state.isSubmitting]}
         >
@@ -119,125 +236,11 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
               disabled={!canSubmit || isSubmitting || isUpdating}
               className="min-w-32"
             >
-              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+              {isSubmitting || isUpdating ? tr("queueManagementForm.actions.saving") : tr("queueManagementForm.actions.saveChanges")}
             </Button>
           )}
         </form.Subscribe>
-      )}
-    >
-      <div className="space-y-6">
-        <div className="space-y-6">
-          <form.Field name="queueing_enabled">
-            {(field) => (
-              <SwitchSetting
-                label="Enable Queueing"
-                checked={(field.state.value as boolean) ?? false}
-                onCheckedChange={field.handleChange}
-                description="Limit the number of active torrents"
-              />
-            )}
-          </form.Field>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <form.Field
-              name="max_active_downloads"
-              validators={{
-                onChange: ({ value }) => {
-                  if (value < -1) {
-                    return "Maximum active downloads must be greater than -1"
-                  }
-                  return undefined
-                },
-              }}
-            >
-              {(field) => (
-                <div className="space-y-2">
-                  <NumberInputWithUnlimited
-                    label="Max Active Downloads"
-                    value={(field.state.value as number) ?? 3}
-                    onChange={field.handleChange}
-                    max={99999}
-                    description="Maximum number of downloading torrents"
-                    allowUnlimited={true}
-                  />
-                  {field.state.meta.errors.length > 0 && (
-                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
-                  )}
-                </div>
-              )}
-            </form.Field>
-
-            <form.Field
-              name="max_active_uploads"
-              validators={{
-                onChange: ({ value }) => {
-                  if (value < -1) {
-                    return "Maximum active uploads must be greater than -1"
-                  }
-                  return undefined
-                },
-              }}
-            >
-              {(field) => (
-                <div className="space-y-2">
-                  <NumberInputWithUnlimited
-                    label="Max Active Uploads"
-                    value={(field.state.value as number) ?? 3}
-                    onChange={field.handleChange}
-                    max={99999}
-                    description="Maximum number of uploading torrents"
-                    allowUnlimited={true}
-                  />
-                  {field.state.meta.errors.length > 0 && (
-                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
-                  )}
-                </div>
-              )}
-            </form.Field>
-
-            <form.Field
-              name="max_active_torrents"
-              validators={{
-                onChange: ({ value }) => {
-                  if (value < -1) {
-                    return "Maximum active torrents must be greater than -1"
-                  }
-                  return undefined
-                },
-              }}
-            >
-              {(field) => (
-                <div className="space-y-2">
-                  <NumberInputWithUnlimited
-                    label="Max Active Torrents"
-                    value={(field.state.value as number) ?? 5}
-                    onChange={field.handleChange}
-                    max={99999}
-                    description="Total maximum active torrents"
-                    allowUnlimited={true}
-                  />
-                  {field.state.meta.errors.length > 0 && (
-                    <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
-                  )}
-                </div>
-              )}
-            </form.Field>
-
-            <form.Field name="max_active_checking_torrents">
-              {(field) => (
-                <NumberInputWithUnlimited
-                  label="Max Checking Torrents"
-                  value={(field.state.value as number) ?? 1}
-                  onChange={field.handleChange}
-                  max={99999}
-                  description="Maximum torrents checking simultaneously"
-                  allowUnlimited={true}
-                />
-              )}
-            </form.Field>
-          </div>
-        </div>
       </div>
-    </PreferencesFormShell>
+    </form>
   )
 }

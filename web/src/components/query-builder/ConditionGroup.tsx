@@ -9,11 +9,12 @@ import type { ConditionOperator, RuleCondition } from "@/types";
 import {
   SortableContext,
   useSortable,
-  verticalListSortingStrategy,
+  verticalListSortingStrategy
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Plus, X } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import type { DisabledField, DisabledStateValue } from "./constants";
 import { DropZone } from "./DropZone";
 import { LeafCondition } from "./LeafCondition";
@@ -63,8 +64,10 @@ export function ConditionGroup({
   disabledStateValues,
   groupOptions,
 }: ConditionGroupProps) {
+  const { t } = useTranslation();
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never));
   const isGroup = condition.operator === "AND" || condition.operator === "OR";
-  const children = condition.conditions ?? [];
+  const children = useMemo(() => condition.conditions ?? [], [condition.conditions]);
   const {
     attributes,
     listeners,
@@ -76,6 +79,16 @@ export function ConditionGroup({
   const style = {
     transform: CSS.Translate.toString(transform),
   };
+  let nestedColorClasses = "border-amber-500/45 bg-amber-500/10";
+  if (depth % 2 === 1) {
+    nestedColorClasses = "border-cyan-500/40 bg-cyan-500/10";
+  }
+  let operatorClass = "border-orange-500/50 bg-orange-500/10 text-orange-500";
+  let operatorHelp = tr("conditionGroup.operatorHelp.or");
+  if (condition.operator === "AND") {
+    operatorClass = "border-blue-500/50 bg-blue-500/10 text-blue-500";
+    operatorHelp = tr("conditionGroup.operatorHelp.and");
+  }
 
   const toggleOperator = useCallback(() => {
     onChange({
@@ -148,7 +161,7 @@ export function ConditionGroup({
         });
       }
     },
-    [condition, children, isRoot, onChange, onRemove]
+    [condition, children, onChange, onRemove]
   );
 
   // For leaf conditions, render LeafCondition
@@ -169,10 +182,6 @@ export function ConditionGroup({
 
   // Generate unique IDs for children
   const childIds = children.map((child, index) => child.clientId ?? `${id}-${index}`);
-  const nestedColorClasses = depth % 2 === 1
-    ? "border-cyan-500/40 bg-cyan-500/10"
-    : "border-amber-500/45 bg-amber-500/10";
-
   return (
     <div
       ref={setNodeRef}
@@ -192,7 +201,7 @@ export function ConditionGroup({
             className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
             {...attributes}
             {...listeners}
-            aria-label="Drag group"
+            aria-label={tr("conditionGroup.aria.dragGroup")}
           >
             <GripVertical className="size-4" />
           </button>
@@ -204,16 +213,14 @@ export function ConditionGroup({
           size="sm"
           className={cn(
             "h-7 px-3 font-mono text-xs font-semibold",
-            condition.operator === "AND"
-              ? "border-blue-500/50 bg-blue-500/10 text-blue-500"
-              : "border-orange-500/50 bg-orange-500/10 text-orange-500"
+            operatorClass
           )}
           onClick={toggleOperator}
         >
           {condition.operator}
         </Button>
         <span className="text-xs text-muted-foreground">
-          {condition.operator === "AND" ? "All conditions must match" : "Any condition must match"}
+          {operatorHelp}
         </span>
 
         {/* Remove group button (not for root) */}
@@ -282,7 +289,7 @@ export function ConditionGroup({
           onClick={addCondition}
         >
           <Plus className="mr-1 size-3" />
-          Condition
+          {tr("conditionGroup.actions.addCondition")}
         </Button>
         {depth < MAX_DEPTH && (
           <Button
@@ -293,7 +300,7 @@ export function ConditionGroup({
             onClick={addGroup}
           >
             <Plus className="mr-1 size-3" />
-            Group
+            {tr("conditionGroup.actions.addGroup")}
           </Button>
         )}
       </div>

@@ -10,8 +10,10 @@ import { ReannounceSettingsDialog } from "@/components/instances/preferences/Rea
 import { WorkflowsOverview } from "@/components/instances/preferences/WorkflowsOverview"
 import { useInstances } from "@/hooks/useInstances"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 
 export function Automations() {
+  const { t } = useTranslation("common")
   const { instances } = useInstances()
   const [configureInstanceId, setConfigureInstanceId] = useState<number | null>(null)
   const [configureOrphanScanId, setConfigureOrphanScanId] = useState<number | null>(null)
@@ -41,9 +43,9 @@ export function Automations() {
     <div className="container mx-auto px-6 space-y-6 py-6 overflow-x-hidden">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex-1 space-y-2">
-          <h1 className="text-2xl font-semibold">Automations</h1>
+          <h1 className="text-2xl font-semibold">{t("automationsPage.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Instance-level automation services managed by qui.
+            {t("automationsPage.description")}
           </p>
         </div>
       </div>
@@ -70,7 +72,7 @@ export function Automations() {
 
       {instances && instances.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          No instances configured yet. Add one in Settings to use services.
+          {t("automationsPage.noInstances")}
         </p>
       )}
 

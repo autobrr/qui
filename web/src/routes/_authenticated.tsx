@@ -6,6 +6,7 @@
 import { useAuth } from "@/hooks/useAuth"
 import { AppLayout } from "@/layouts/AppLayout"
 import { createFileRoute, Navigate } from "@tanstack/react-router"
+import { useTranslation } from "react-i18next"
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthLayout,
@@ -13,9 +14,10 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthLayout() {
   const { isAuthenticated, isLoading } = useAuth()
+  const { t } = useTranslation()
 
   if (isLoading) {
-    return <div className="hidden">Loading...</div>
+    return <div className="hidden">{t("loading")}</div>
   }
 
   if (!isAuthenticated) {

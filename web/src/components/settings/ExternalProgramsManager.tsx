@@ -34,6 +34,7 @@ import type { ExternalProgram, ExternalProgramCreate, ExternalProgramUpdate, Pat
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Edit, Plus, Trash2, X } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 // Type for automation references in delete conflict response
@@ -43,13 +44,15 @@ interface AutomationReference {
   name: string
 }
 
-function getErrorMessage(error: unknown): string {
+function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof APIError) return error.message
   if (error instanceof Error) return error.message
-  return "Unknown error"
+  return fallback
 }
 
 export function ExternalProgramsManager() {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editProgram, setEditProgram] = useState<ExternalProgram | null>(null)
   const [deleteProgram, setDeleteProgram] = useState<ExternalProgram | null>(null)
@@ -57,11 +60,10 @@ export function ExternalProgramsManager() {
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
 
-  // Fetch external programs
   const { data: programs, isLoading, error } = useQuery({
     queryKey: ["externalPrograms"],
     queryFn: () => api.listExternalPrograms(),
-    staleTime: 30 * 1000, // 30 seconds
+    staleTime: 30 * 1000,
   })
 
   const createMutation = useMutation({
@@ -71,10 +73,14 @@ export function ExternalProgramsManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["externalPrograms"] })
       setShowCreateDialog(false)
-      toast.success("External program created successfully")
+      toast.success(tr("externalProgramsManager.toasts.created"))
     },
     onError: (error: unknown) => {
-      toast.error(`Failed to create external program: ${getErrorMessage(error)}`)
+      toast.error(
+        tr("externalProgramsManager.toasts.failedCreate", {
+          error: getErrorMessage(error, tr("externalProgramsManager.common.unknownError")),
+        })
+      )
     },
   })
 
@@ -85,10 +91,14 @@ export function ExternalProgramsManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["externalPrograms"] })
       setEditProgram(null)
-      toast.success("External program updated successfully")
+      toast.success(tr("externalProgramsManager.toasts.updated"))
     },
     onError: (error: unknown) => {
-      toast.error(`Failed to update external program: ${getErrorMessage(error)}`)
+      toast.error(
+        tr("externalProgramsManager.toasts.failedUpdate", {
+          error: getErrorMessage(error, tr("externalProgramsManager.common.unknownError")),
+        })
+      )
     },
   })
 
@@ -98,11 +108,10 @@ export function ExternalProgramsManager() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["externalPrograms"] })
-      // Also invalidate automations since we may have modified them
       queryClient.invalidateQueries({ queryKey: ["automations"] })
       setDeleteProgram(null)
       setDeleteConflict(null)
-      toast.success("External program deleted successfully")
+      toast.success(tr("externalProgramsManager.toasts.deleted"))
     },
     onError: (error: unknown) => {
       if (error instanceof APIError && error.status === 409) {
@@ -112,7 +121,11 @@ export function ExternalProgramsManager() {
           return
         }
       }
-      toast.error(`Failed to delete external program: ${getErrorMessage(error)}`)
+      toast.error(
+        tr("externalProgramsManager.toasts.failedDelete", {
+          error: getErrorMessage(error, tr("externalProgramsManager.common.unknownError")),
+        })
+      )
     },
   })
 
@@ -123,14 +136,14 @@ export function ExternalProgramsManager() {
           <DialogTrigger asChild>
             <Button size="sm" className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
-              Create External Program
+              {tr("externalProgramsManager.actions.createExternalProgram")}
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-2xl max-w-full max-h-[90dvh] flex flex-col">
             <DialogHeader className="flex-shrink-0">
-              <DialogTitle>Create External Program</DialogTitle>
+              <DialogTitle>{tr("externalProgramsManager.dialogs.createTitle")}</DialogTitle>
               <DialogDescription>
-                Configure an external program or script that can be executed from the torrent context menu.
+                {tr("externalProgramsManager.dialogs.createDescription")}
               </DialogDescription>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto min-h-0">
@@ -144,11 +157,11 @@ export function ExternalProgramsManager() {
         </Dialog>
       </div>
 
-      {isLoading && <div className="text-center py-8">Loading external programs...</div>}
+      {isLoading && <div className="text-center py-8">{tr("externalProgramsManager.states.loading")}</div>}
       {error && (
         <Card>
           <CardContent className="pt-6">
-            <div className="text-destructive">Failed to load external programs</div>
+            <div className="text-destructive">{tr("externalProgramsManager.states.failedLoad")}</div>
           </CardContent>
         </Card>
       )}
@@ -157,7 +170,7 @@ export function ExternalProgramsManager() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-center text-muted-foreground">
-              No external programs configured. Create one to get started.
+              {tr("externalProgramsManager.states.empty")}
             </div>
           </CardContent>
         </Card>
@@ -173,13 +186,23 @@ export function ExternalProgramsManager() {
                     <div className="flex items-center gap-2">
                       <CardTitle className="text-lg">{program.name}</CardTitle>
                       <Badge variant={program.enabled ? "default" : "secondary"}>
-                        {program.enabled ? "Enabled" : "Disabled"}
+                        {program.enabled
+                          ? tr("externalProgramsManager.values.enabled")
+                          : tr("externalProgramsManager.values.disabled")}
                       </Badge>
                     </div>
                     <CardDescription className="text-xs">
-                      Created {formatDate(new Date(program.created_at))}
-                      {program.updated_at !== program.created_at &&
-                        ` • Updated ${formatDate(new Date(program.updated_at))}`}
+                      {tr("externalProgramsManager.labels.createdOn", {
+                        date: formatDate(new Date(program.created_at)),
+                      })}
+                      {program.updated_at !== program.created_at && (
+                        <>
+                          {" • "}
+                          {tr("externalProgramsManager.labels.updatedOn", {
+                            date: formatDate(new Date(program.updated_at)),
+                          })}
+                        </>
+                      )}
                     </CardDescription>
                   </div>
                   <div className="flex gap-2">
@@ -187,7 +210,7 @@ export function ExternalProgramsManager() {
                       variant="ghost"
                       size="sm"
                       onClick={() => setEditProgram(program)}
-                      aria-label={`Edit ${program.name}`}
+                      aria-label={tr("externalProgramsManager.aria.editProgram", { name: program.name })}
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -195,7 +218,7 @@ export function ExternalProgramsManager() {
                       variant="ghost"
                       size="sm"
                       onClick={() => setDeleteProgram(program)}
-                      aria-label={`Delete ${program.name}`}
+                      aria-label={tr("externalProgramsManager.aria.deleteProgram", { name: program.name })}
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
@@ -204,14 +227,16 @@ export function ExternalProgramsManager() {
               </CardHeader>
               <CardContent className="space-y-2">
                 <div>
-                  <div className="text-sm font-medium mb-1">Program Path:</div>
+                  <div className="text-sm font-medium mb-1">{tr("externalProgramsManager.labels.programPath")}</div>
                   <code className="text-xs bg-muted px-2 py-1 rounded block break-all">
                     {program.path}
                   </code>
                 </div>
                 {program.args_template && (
                   <div>
-                    <div className="text-sm font-medium mb-1">Arguments Template:</div>
+                    <div className="text-sm font-medium mb-1">
+                      {tr("externalProgramsManager.labels.argumentsTemplate")}
+                    </div>
                     <code className="text-xs bg-muted px-2 py-1 rounded block break-all">
                       {program.args_template}
                     </code>
@@ -223,12 +248,11 @@ export function ExternalProgramsManager() {
         </div>
       )}
 
-      {/* Edit Dialog */}
       {editProgram && (
         <Dialog open={true} onOpenChange={() => setEditProgram(null)}>
           <DialogContent className="sm:max-w-2xl max-w-full max-h-[90dvh] flex flex-col">
             <DialogHeader className="flex-shrink-0">
-              <DialogTitle>Edit External Program</DialogTitle>
+              <DialogTitle>{tr("externalProgramsManager.dialogs.editTitle")}</DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto min-h-0">
               <ProgramForm
@@ -242,46 +266,51 @@ export function ExternalProgramsManager() {
         </Dialog>
       )}
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={deleteProgram !== null} onOpenChange={(open) => {
-        if (!open) {
-          setDeleteProgram(null)
-          setDeleteConflict(null)
-        }
-      }}>
+      <AlertDialog
+        open={deleteProgram !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteProgram(null)
+            setDeleteConflict(null)
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete External Program</AlertDialogTitle>
+            <AlertDialogTitle>{tr("externalProgramsManager.dialogs.deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-3">
                 {deleteConflict ? (
                   <>
                     <p className="text-amber-600 dark:text-amber-500">
-                      This program is used by the following automation rules:
+                      {tr("externalProgramsManager.dialogs.deleteConflictIntro")}
                     </p>
                     <ul className="list-disc list-inside text-sm space-y-1 max-h-32 overflow-y-auto">
                       {deleteConflict.map((ref) => (
                         <li key={ref.id}>{ref.name}</li>
                       ))}
                     </ul>
-                    <p>
-                      If you proceed, the external program action will be removed from these automation rules.
-                    </p>
+                    <p>{tr("externalProgramsManager.dialogs.deleteConflictOutro")}</p>
                   </>
                 ) : (
-                  <p>Are you sure you want to delete "{deleteProgram?.name}"? This action cannot be undone.</p>
+                  <p>{tr("externalProgramsManager.dialogs.deleteConfirm", { name: deleteProgram?.name })}</p>
                 )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tr("externalProgramsManager.actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteProgram && deleteMutation.mutate({ id: deleteProgram.id, force: deleteConflict !== null })}
+              onClick={() =>
+                deleteProgram &&
+                deleteMutation.mutate({ id: deleteProgram.id, force: deleteConflict !== null })
+              }
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={deleteMutation.isPending}
             >
-              {deleteConflict ? "Delete Anyway" : "Delete"}
+              {deleteConflict
+                ? tr("externalProgramsManager.actions.deleteAnyway")
+                : tr("externalProgramsManager.actions.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -298,6 +327,8 @@ interface ProgramFormProps {
 }
 
 function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const [name, setName] = useState(program?.name || "")
   const [path, setPath] = useState(program?.path || "")
   const [argsTemplate, setArgsTemplate] = useState(program?.args_template || "")
@@ -309,16 +340,15 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
     e.preventDefault()
 
     if (!name.trim()) {
-      toast.error("Name is required")
+      toast.error(tr("externalProgramsManager.fieldErrors.nameRequired"))
       return
     }
 
     if (!path.trim()) {
-      toast.error("Program path is required")
+      toast.error(tr("externalProgramsManager.fieldErrors.programPathRequired"))
       return
     }
 
-    // Filter out empty path mappings
     const validPathMappings = pathMappings.filter(
       (mapping) => mapping.from.trim() !== "" && mapping.to.trim() !== ""
     )
@@ -336,65 +366,65 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="name">Name *</Label>
+        <Label htmlFor="name">{tr("externalProgramsManager.labels.nameRequiredMark")}</Label>
         <Input
           id="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="My External Program"
+          placeholder={tr("externalProgramsManager.placeholders.name")}
           required
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="path">Program Path *</Label>
+        <Label htmlFor="path">{tr("externalProgramsManager.labels.programPathRequiredMark")}</Label>
         <Input
           id="path"
           value={path}
           onChange={(e) => setPath(e.target.value)}
-          placeholder="/usr/bin/my-script.sh or C:\Scripts\my-script.bat"
+          placeholder={tr("externalProgramsManager.placeholders.programPath")}
           required
         />
         <p className="text-xs text-muted-foreground">
-          Full path to the executable
+          {tr("externalProgramsManager.labels.fullPathToExecutable")}
         </p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="args">Arguments Template</Label>
+        <Label htmlFor="args">{tr("externalProgramsManager.labels.argumentsTemplateLabel")}</Label>
         <Textarea
           id="args"
           value={argsTemplate}
           onChange={(e) => setArgsTemplate(e.target.value)}
-          placeholder='"{hash}" "{name}" --save-path "{save_path}"'
+          placeholder={tr("externalProgramsManager.placeholders.argsTemplate")}
           rows={3}
         />
         <div className="text-xs text-muted-foreground space-y-1">
-          <div>Full path to script with arguments</div>
-          <div>Available placeholders:</div>
+          <div>{tr("externalProgramsManager.labels.fullPathToScriptWithArguments")}</div>
+          <div>{tr("externalProgramsManager.labels.availablePlaceholders")}</div>
           <ul className="list-disc list-inside pl-2 space-y-0.5">
-            <li><code className="bg-muted px-1 rounded">{"{hash}"}</code> - Torrent hash</li>
-            <li><code className="bg-muted px-1 rounded">{"{name}"}</code> - Torrent name</li>
-            <li><code className="bg-muted px-1 rounded">{"{save_path}"}</code> - Save path</li>
-            <li><code className="bg-muted px-1 rounded">{"{content_path}"}</code> - Content path</li>
-            <li><code className="bg-muted px-1 rounded">{"{category}"}</code> - Category</li>
-            <li><code className="bg-muted px-1 rounded">{"{tags}"}</code> - Tags (comma-separated)</li>
-            <li><code className="bg-muted px-1 rounded">{"{state}"}</code> - Torrent state</li>
-            <li><code className="bg-muted px-1 rounded">{"{size}"}</code> - Size in bytes</li>
-            <li><code className="bg-muted px-1 rounded">{"{progress}"}</code> - Progress (0-1)</li>
-            <li><code className="bg-muted px-1 rounded">{"{comment}"}</code> - Torrent comment</li>
+            <li><code className="bg-muted px-1 rounded">{"{hash}"}</code> - {tr("externalProgramsManager.placeholderDescriptions.hash")}</li>
+            <li><code className="bg-muted px-1 rounded">{"{name}"}</code> - {tr("externalProgramsManager.placeholderDescriptions.name")}</li>
+            <li><code className="bg-muted px-1 rounded">{"{save_path}"}</code> - {tr("externalProgramsManager.placeholderDescriptions.savePath")}</li>
+            <li><code className="bg-muted px-1 rounded">{"{content_path}"}</code> - {tr("externalProgramsManager.placeholderDescriptions.contentPath")}</li>
+            <li><code className="bg-muted px-1 rounded">{"{category}"}</code> - {tr("externalProgramsManager.placeholderDescriptions.category")}</li>
+            <li><code className="bg-muted px-1 rounded">{"{tags}"}</code> - {tr("externalProgramsManager.placeholderDescriptions.tags")}</li>
+            <li><code className="bg-muted px-1 rounded">{"{state}"}</code> - {tr("externalProgramsManager.placeholderDescriptions.state")}</li>
+            <li><code className="bg-muted px-1 rounded">{"{size}"}</code> - {tr("externalProgramsManager.placeholderDescriptions.size")}</li>
+            <li><code className="bg-muted px-1 rounded">{"{progress}"}</code> - {tr("externalProgramsManager.placeholderDescriptions.progress")}</li>
+            <li><code className="bg-muted px-1 rounded">{"{comment}"}</code> - {tr("externalProgramsManager.placeholderDescriptions.comment")}</li>
           </ul>
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label>Path Mappings</Label>
+        <Label>{tr("externalProgramsManager.labels.pathMappings")}</Label>
         <div className="space-y-2">
           {pathMappings.map((mapping, index) => (
             <div key={index} className="flex gap-2 items-start">
               <div className="flex-1">
                 <Input
-                  placeholder="Remote path (e.g., /mnt/remote-storage)"
+                  placeholder={tr("externalProgramsManager.placeholders.remotePath")}
                   value={mapping.from}
                   onChange={(e) => {
                     const newMappings = [...pathMappings]
@@ -405,7 +435,7 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
               </div>
               <div className="flex-1">
                 <Input
-                  placeholder="Local path (e.g., /home/user/mounts/remote)"
+                  placeholder={tr("externalProgramsManager.placeholders.localPath")}
                   value={mapping.to}
                   onChange={(e) => {
                     const newMappings = [...pathMappings]
@@ -422,7 +452,7 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
                   const newMappings = pathMappings.filter((_, i) => i !== index)
                   setPathMappings(newMappings)
                 }}
-                aria-label="Remove path mapping"
+                aria-label={tr("externalProgramsManager.aria.removePathMapping")}
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -437,12 +467,11 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
             }}
           >
             <Plus className="mr-2 h-4 w-4" />
-            Add Path Mapping
+            {tr("externalProgramsManager.actions.addPathMapping")}
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Path mappings convert remote paths to local mount points. Useful when running external programs on a local qui server while qBittorrent is remote.
-          Paths are matched by longest prefix first. Use the same path separator style as the remote qBittorrent instance (/ for Linux, \ for Windows).
+          {tr("externalProgramsManager.labels.pathMappingsHelp")}
         </p>
       </div>
 
@@ -454,11 +483,11 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
             onCheckedChange={setUseTerminal}
           />
           <Label htmlFor="useTerminal" className="cursor-pointer">
-            Launch in terminal window
+            {tr("externalProgramsManager.labels.launchInTerminal")}
           </Label>
         </div>
         <p className="text-xs text-muted-foreground ml-9">
-          When enabled, the program will open in a new terminal window. Disable for GUI applications or programs that don't need terminal output.
+          {tr("externalProgramsManager.labels.launchInTerminalHelp")}
         </p>
 
         <div className="flex items-center space-x-2">
@@ -468,17 +497,21 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
             onCheckedChange={setEnabled}
           />
           <Label htmlFor="enabled" className="cursor-pointer">
-            Enable this program
+            {tr("externalProgramsManager.labels.enableProgram")}
           </Label>
         </div>
       </div>
 
       <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-          Cancel
+          {tr("externalProgramsManager.actions.cancel")}
         </Button>
         <Button type="submit" disabled={isPending}>
-          {isPending ? "Saving..." : program ? "Update" : "Create"}
+          {isPending
+            ? tr("externalProgramsManager.actions.saving")
+            : program
+              ? tr("externalProgramsManager.actions.saveUpdate")
+              : tr("externalProgramsManager.actions.saveCreate")}
         </Button>
       </div>
     </form>

@@ -5,6 +5,7 @@
 
 import { useEffect, useState, useRef } from "react"
 import { ArrowUp } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -19,6 +20,8 @@ export function ScrollToTopButton({
   threshold = 300,
   className,
 }: ScrollToTopButtonProps) {
+  const { t } = useTranslation()
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const [isVisible, setIsVisible] = useState(false)
   const animationFrameRef = useRef<number | undefined>(undefined)
 
@@ -63,7 +66,7 @@ export function ScrollToTopButton({
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none",
         className
       )}
-      aria-label="Scroll to top"
+      aria-label={tr("scrollToTopButton.aria.scrollToTop")}
     >
       <ArrowUp className="h-4 w-4" />
     </Button>

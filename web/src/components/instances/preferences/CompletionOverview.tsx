@@ -18,6 +18,7 @@ import type { Instance, InstanceCrossSeedCompletionSettings } from "@/types"
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Info, Loader2 } from "lucide-react"
 import { useMemo, useState } from "react"
+import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface CompletionFormState {
@@ -78,6 +79,8 @@ function normalizeNumberList(values: Array<string | number>): number[] {
 }
 
 export function CompletionOverview() {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const queryClient = useQueryClient()
   const { instances } = useInstances()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
@@ -143,13 +146,13 @@ export function CompletionOverview() {
         ...prev,
         [variables.instanceId]: false,
       }))
-      toast.success("Settings saved", {
+      toast.success(tr("completionOverview.toasts.settingsSaved"), {
         description: activeInstances.find((i) => i.id === variables.instanceId)?.name,
       })
     },
     onError: (error) => {
-      toast.error("Failed to save settings", {
-        description: error instanceof Error ? error.message : "Unknown error",
+      toast.error(tr("completionOverview.toasts.failedSaveSettings"), {
+        description: error instanceof Error ? error.message : tr("completionOverview.values.unknownError"),
       })
     },
   })
@@ -158,7 +161,7 @@ export function CompletionOverview() {
     const query = settingsQueries[queryIndex]
     // Don't allow toggle if settings haven't loaded successfully
     if (query?.isError || (!query?.data && !formMap[instance.id])) {
-      toast.error("Cannot toggle - settings failed to load")
+      toast.error(tr("completionOverview.toasts.cannotToggleSettingsLoadFailed"))
       return
     }
 
@@ -192,7 +195,7 @@ export function CompletionOverview() {
     const query = settingsQueries[queryIndex]
     // Don't allow save if settings haven't loaded successfully
     if (query?.isError || (!query?.data && !formMap[instance.id])) {
-      toast.error("Cannot save - settings failed to load")
+      toast.error(tr("completionOverview.toasts.cannotSaveSettingsLoadFailed"))
       return
     }
 
@@ -207,9 +210,9 @@ export function CompletionOverview() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Auto-search on completion</CardTitle>
+          <CardTitle className="text-lg font-semibold">{tr("completionOverview.header.title")}</CardTitle>
           <CardDescription>
-            No instances configured. Add one in Settings to use this feature.
+            {tr("completionOverview.header.noInstances")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -220,9 +223,9 @@ export function CompletionOverview() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Auto-search on completion</CardTitle>
+          <CardTitle className="text-lg font-semibold">{tr("completionOverview.header.title")}</CardTitle>
           <CardDescription>
-            No active instances. Enable an instance in Settings to use this feature.
+            {tr("completionOverview.header.noActiveInstances")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -233,21 +236,29 @@ export function CompletionOverview() {
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">Auto-search on completion</CardTitle>
+          <CardTitle className="text-lg font-semibold">{tr("completionOverview.header.title")}</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
             </TooltipTrigger>
             <TooltipContent className="max-w-[300px]">
               <p>
-                Automatically trigger a cross-seed search when torrents complete downloading.
-                Torrents already tagged <span className="font-semibold">cross-seed</span> are skipped.
+                <Trans
+                  i18nKey="completionOverview.header.tooltip"
+                  ns="common"
+                  components={{
+                    tag: <span className="font-semibold" />,
+                  }}
+                  values={{
+                    tag: tr("completionOverview.header.crossSeedTag"),
+                  }}
+                />
               </p>
             </TooltipContent>
           </Tooltip>
         </div>
         <CardDescription>
-          Kick off a cross-seed search the moment a torrent finishes.
+          {tr("completionOverview.header.description")}
         </CardDescription>
       </CardHeader>
 
@@ -303,7 +314,7 @@ export function CompletionOverview() {
                           "text-xs font-medium",
                           isEnabled ? "text-emerald-500" : "text-muted-foreground"
                         )}>
-                          {isEnabled ? "On" : "Off"}
+                          {isEnabled ? tr("completionOverview.values.on") : tr("completionOverview.values.off")}
                         </span>
                         <Switch
                           checked={isEnabled}
@@ -323,7 +334,7 @@ export function CompletionOverview() {
                       <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/30 bg-destructive/10">
                         <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
                         <p className="text-sm text-destructive">
-                          Failed to load settings. Please try refreshing the page.
+                          {tr("completionOverview.states.failedLoadSettings")}
                         </p>
                       </div>
                     )}
@@ -336,7 +347,7 @@ export function CompletionOverview() {
                           <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
                             <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
                             <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                              Could not load categories and tags from qBittorrent. You can still type custom values.
+                              {tr("completionOverview.states.failedLoadMetadata")}
                             </p>
                           </div>
                         )}
@@ -344,7 +355,7 @@ export function CompletionOverview() {
                           <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
                             <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
                             <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                              Could not load Torznab indexers. Completion searches will use all available indexers.
+                              {tr("completionOverview.states.failedLoadIndexers")}
                             </p>
                           </div>
                         )}
@@ -352,16 +363,16 @@ export function CompletionOverview() {
                           <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
                             <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
                             <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                              No enabled Torznab indexers found. Enable at least one in Settings → Indexers.
+                              {tr("completionOverview.states.noEnabledIndexers")}
                             </p>
                           </div>
                         )}
 
                         <div className="flex items-center justify-between rounded-md border border-border/50 bg-muted/30 p-3">
                           <div className="space-y-0.5">
-                            <Label className="text-sm font-medium">Bypass Torznab cache</Label>
+                            <Label className="text-sm font-medium">{tr("completionOverview.filters.bypassTorznabCacheLabel")}</Label>
                             <p className="text-xs text-muted-foreground">
-                              When on, completion searches for this instance always hit indexers (no cached results). Default off.
+                              {tr("completionOverview.filters.bypassTorznabCacheDescription")}
                             </p>
                           </div>
                           <Switch
@@ -373,81 +384,75 @@ export function CompletionOverview() {
 
                         <div className="grid gap-4 md:grid-cols-2">
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">
-                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Include filters</p>
+                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{tr("completionOverview.filters.includeTitle")}</p>
                             <div className="space-y-2">
-                              <Label className="text-xs">Categories</Label>
+                              <Label className="text-xs">{tr("completionOverview.filters.categories")}</Label>
                               <MultiSelect
                                 options={categoryOptions}
                                 selected={form.categories}
                                 onChange={(values) => handleFormChange(instance.id, "categories", values, form)}
-                                placeholder="All categories"
+                                placeholder={tr("completionOverview.placeholders.allCategories")}
                                 creatable
                                 disabled={isSaving}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.categories.length === 0
-                                  ? "All categories will be included."
-                                  : `Only ${form.categories.length} selected ${form.categories.length === 1 ? "category" : "categories"} will be matched.`}
+                                {form.categories.length === 0 ? tr("completionOverview.filters.includeAllCategories") : tr("completionOverview.filters.onlySelectedCategoriesMatched", { count: form.categories.length })}
                               </p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">Tags</Label>
+                              <Label className="text-xs">{tr("completionOverview.filters.tags")}</Label>
                               <MultiSelect
                                 options={tagOptions}
                                 selected={form.tags}
                                 onChange={(values) => handleFormChange(instance.id, "tags", values, form)}
-                                placeholder="All tags"
+                                placeholder={tr("completionOverview.placeholders.allTags")}
                                 creatable
                                 disabled={isSaving}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.tags.length === 0
-                                  ? "All tags will be included."
-                                  : `Only ${form.tags.length} selected ${form.tags.length === 1 ? "tag" : "tags"} will be matched.`}
+                                {form.tags.length === 0 ? tr("completionOverview.filters.includeAllTags") : tr("completionOverview.filters.onlySelectedTagsMatched", { count: form.tags.length })}
                               </p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">Indexers</Label>
+                              <Label className="text-xs">{tr("completionOverview.filters.indexers")}</Label>
                               <MultiSelect
                                 options={indexerOptions}
                                 selected={form.indexerIds.map(String)}
                                 onChange={(values) => handleFormChange(instance.id, "indexerIds", normalizeNumberList(values), form)}
-                                placeholder="All indexers"
+                                placeholder={tr("completionOverview.placeholders.allIndexers")}
                                 disabled={isSaving || indexersQuery.isPending || (!hasEnabledIndexers && !indexersQuery.isPending)}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.indexerIds.length === 0
-                                  ? "All enabled indexers will be searched."
-                                  : `Only ${form.indexerIds.length} selected ${form.indexerIds.length === 1 ? "indexer" : "indexers"} will be queried.`}
+                                {form.indexerIds.length === 0 ? tr("completionOverview.filters.searchAllEnabledIndexers") : tr("completionOverview.filters.onlySelectedIndexersQueried", { count: form.indexerIds.length })}
                               </p>
                             </div>
                           </div>
 
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">
-                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Exclude filters</p>
+                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{tr("completionOverview.filters.excludeTitle")}</p>
                             <div className="space-y-2">
-                              <Label className="text-xs">Categories</Label>
+                              <Label className="text-xs">{tr("completionOverview.filters.categories")}</Label>
                               <MultiSelect
                                 options={categoryOptions}
                                 selected={form.excludeCategories}
                                 onChange={(values) => handleFormChange(instance.id, "excludeCategories", values, form)}
-                                placeholder="None"
+                                placeholder={tr("completionOverview.placeholders.none")}
                                 creatable
                                 disabled={isSaving}
                               />
-                              <p className="text-xs text-muted-foreground">Skip torrents in these categories.</p>
+                              <p className="text-xs text-muted-foreground">{tr("completionOverview.filters.skipCategories")}</p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">Tags</Label>
+                              <Label className="text-xs">{tr("completionOverview.filters.tags")}</Label>
                               <MultiSelect
                                 options={tagOptions}
                                 selected={form.excludeTags}
                                 onChange={(values) => handleFormChange(instance.id, "excludeTags", values, form)}
-                                placeholder="None"
+                                placeholder={tr("completionOverview.placeholders.none")}
                                 creatable
                                 disabled={isSaving}
                               />
-                              <p className="text-xs text-muted-foreground">Skip torrents with these tags.</p>
+                              <p className="text-xs text-muted-foreground">{tr("completionOverview.filters.skipTags")}</p>
                             </div>
                           </div>
                         </div>
@@ -459,7 +464,7 @@ export function CompletionOverview() {
                             size="sm"
                           >
                             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {isDirty ? "Save changes" : "Saved"}
+                            {isDirty ? tr("completionOverview.actions.saveChanges") : tr("completionOverview.actions.saved")}
                           </Button>
                         </div>
                       </>
@@ -469,7 +474,7 @@ export function CompletionOverview() {
                     {!isError && !isEnabled && (
                       <div className="flex flex-col items-center justify-center py-6 text-center space-y-2 border border-dashed rounded-lg">
                         <p className="text-sm text-muted-foreground">
-                          Enable auto-search to configure filters for this instance.
+                          {tr("completionOverview.states.enableToConfigure")}
                         </p>
                       </div>
                     )}

@@ -7,6 +7,7 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import App from "./App.tsx"
 import { setupLaunchQueueConsumer } from "@/lib/launch-queue"
+import "@/i18n"
 import "./index.css"
 
 setupLaunchQueueConsumer()

@@ -45,9 +45,12 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckCircle, Edit, Loader2, Plus, Trash2, XCircle, Zap } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 export function ArrInstancesManager() {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editInstance, setEditInstance] = useState<ArrInstance | null>(null)
   const [deleteInstance, setDeleteInstance] = useState<ArrInstance | null>(null)
@@ -68,10 +71,10 @@ export function ArrInstancesManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["arrInstances"] })
       setShowCreateDialog(false)
-      toast.success("ARR instance created successfully")
+      toast.success(tr("arrInstancesManager.toasts.created"))
     },
     onError: (error: Error) => {
-      toast.error(`Failed to create ARR instance: ${error.message || "Unknown error"}`)
+      toast.error(tr("arrInstancesManager.toasts.failedCreate", { error: error.message || tr("arrInstancesManager.common.unknownError") }))
     },
   })
 
@@ -82,10 +85,10 @@ export function ArrInstancesManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["arrInstances"] })
       setEditInstance(null)
-      toast.success("ARR instance updated successfully")
+      toast.success(tr("arrInstancesManager.toasts.updated"))
     },
     onError: (error: Error) => {
-      toast.error(`Failed to update ARR instance: ${error.message || "Unknown error"}`)
+      toast.error(tr("arrInstancesManager.toasts.failedUpdate", { error: error.message || tr("arrInstancesManager.common.unknownError") }))
     },
   })
 
@@ -96,10 +99,10 @@ export function ArrInstancesManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["arrInstances"] })
       setDeleteInstance(null)
-      toast.success("ARR instance deleted successfully")
+      toast.success(tr("arrInstancesManager.toasts.deleted"))
     },
     onError: (error: Error) => {
-      toast.error(`Failed to delete ARR instance: ${error.message || "Unknown error"}`)
+      toast.error(tr("arrInstancesManager.toasts.failedDelete", { error: error.message || tr("arrInstancesManager.common.unknownError") }))
     },
   })
 
@@ -111,13 +114,13 @@ export function ArrInstancesManager() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["arrInstances"] })
       if (result.success) {
-        toast.success("Connection successful")
+        toast.success(tr("arrInstancesManager.toasts.connectionSuccessful"))
       } else {
-        toast.error(`Connection failed: ${result.error || "Unknown error"}`)
+        toast.error(tr("arrInstancesManager.toasts.connectionFailed", { error: result.error || tr("arrInstancesManager.common.unknownError") }))
       }
     },
     onError: (error: Error) => {
-      toast.error(`Connection test failed: ${error.message || "Unknown error"}`)
+      toast.error(tr("arrInstancesManager.toasts.connectionTestFailed", { error: error.message || tr("arrInstancesManager.common.unknownError") }))
     },
     onSettled: () => {
       setTestingId(null)
@@ -136,18 +139,18 @@ export function ArrInstancesManager() {
             <div className="flex items-center gap-2 flex-wrap">
               <CardTitle className="text-lg truncate">{instance.name}</CardTitle>
               <Badge variant={instance.enabled ? "default" : "secondary"}>
-                {instance.enabled ? "Enabled" : "Disabled"}
+                {instance.enabled ? tr("arrInstancesManager.badges.enabled") : tr("arrInstancesManager.badges.disabled")}
               </Badge>
               {instance.last_test_status === "ok" && (
                 <Badge variant="outline" className="text-green-500 border-green-500/50">
                   <CheckCircle className="h-3 w-3 mr-1" />
-                  Connected
+                  {tr("arrInstancesManager.badges.connected")}
                 </Badge>
               )}
               {instance.last_test_status === "error" && (
                 <Badge variant="outline" className="text-red-500 border-red-500/50">
                   <XCircle className="h-3 w-3 mr-1" />
-                  Failed
+                  {tr("arrInstancesManager.badges.failed")}
                 </Badge>
               )}
             </div>
@@ -155,8 +158,8 @@ export function ArrInstancesManager() {
               {instance.base_url}
             </CardDescription>
             <CardDescription className="text-xs">
-              Created {formatDate(new Date(instance.created_at))}
-              {instance.last_test_at && ` • Tested ${formatDate(new Date(instance.last_test_at))}`}
+              {tr("arrInstancesManager.labels.created", { date: formatDate(new Date(instance.created_at)) })}
+              {instance.last_test_at && tr("arrInstancesManager.labels.tested", { date: formatDate(new Date(instance.last_test_at)) })}
             </CardDescription>
           </div>
           <div className="flex gap-1 flex-shrink-0">
@@ -165,7 +168,7 @@ export function ArrInstancesManager() {
               size="sm"
               onClick={() => testMutation.mutate(instance.id)}
               disabled={testingId === instance.id}
-              aria-label={`Test connection for ${instance.name}`}
+              aria-label={tr("arrInstancesManager.aria.testConnection", { name: instance.name })}
             >
               {testingId === instance.id ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -177,7 +180,7 @@ export function ArrInstancesManager() {
               variant="ghost"
               size="sm"
               onClick={() => setEditInstance(instance)}
-              aria-label={`Edit ${instance.name}`}
+              aria-label={tr("arrInstancesManager.aria.edit", { name: instance.name })}
             >
               <Edit className="h-4 w-4" />
             </Button>
@@ -185,7 +188,7 @@ export function ArrInstancesManager() {
               variant="ghost"
               size="sm"
               onClick={() => setDeleteInstance(instance)}
-              aria-label={`Delete ${instance.name}`}
+              aria-label={tr("arrInstancesManager.aria.delete", { name: instance.name })}
             >
               <Trash2 className="h-4 w-4 text-destructive" />
             </Button>
@@ -209,14 +212,14 @@ export function ArrInstancesManager() {
           <DialogTrigger asChild>
             <Button size="sm" className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
-              Add ARR Instance
+              {tr("arrInstancesManager.actions.addInstance")}
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg max-w-full max-h-[90dvh] flex flex-col">
             <DialogHeader className="flex-shrink-0">
-              <DialogTitle>Add ARR Instance</DialogTitle>
+              <DialogTitle>{tr("arrInstancesManager.dialogs.addTitle")}</DialogTitle>
               <DialogDescription>
-                Configure a Sonarr or Radarr instance for ID lookups during cross-seed searches.
+                {tr("arrInstancesManager.dialogs.addDescription")}
               </DialogDescription>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto min-h-0">
@@ -230,11 +233,11 @@ export function ArrInstancesManager() {
         </Dialog>
       </div>
 
-      {isLoading && <div className="text-center py-8">Loading ARR instances...</div>}
+      {isLoading && <div className="text-center py-8">{tr("arrInstancesManager.states.loading")}</div>}
       {error && (
         <Card>
           <CardContent className="pt-6">
-            <div className="text-destructive">Failed to load ARR instances</div>
+            <div className="text-destructive">{tr("arrInstancesManager.states.failedLoad")}</div>
           </CardContent>
         </Card>
       )}
@@ -243,7 +246,7 @@ export function ArrInstancesManager() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-center text-muted-foreground">
-              No ARR instances configured. Add a Sonarr or Radarr instance to enable ID-based cross-seed searches.
+              {tr("arrInstancesManager.states.empty")}
             </div>
           </CardContent>
         </Card>
@@ -251,7 +254,7 @@ export function ArrInstancesManager() {
 
       {sonarrInstances.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-sm font-medium text-muted-foreground">Sonarr Instances</h3>
+          <h3 className="text-sm font-medium text-muted-foreground">{tr("arrInstancesManager.sections.sonarr")}</h3>
           <div className="grid gap-3">
             {sonarrInstances.map(renderInstanceCard)}
           </div>
@@ -260,7 +263,7 @@ export function ArrInstancesManager() {
 
       {radarrInstances.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-sm font-medium text-muted-foreground">Radarr Instances</h3>
+          <h3 className="text-sm font-medium text-muted-foreground">{tr("arrInstancesManager.sections.radarr")}</h3>
           <div className="grid gap-3">
             {radarrInstances.map(renderInstanceCard)}
           </div>
@@ -272,7 +275,7 @@ export function ArrInstancesManager() {
         <Dialog open={true} onOpenChange={() => setEditInstance(null)}>
           <DialogContent className="sm:max-w-lg max-w-full max-h-[90dvh] flex flex-col">
             <DialogHeader className="flex-shrink-0">
-              <DialogTitle>Edit ARR Instance</DialogTitle>
+              <DialogTitle>{tr("arrInstancesManager.dialogs.editTitle")}</DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto min-h-0">
               <ArrInstanceForm
@@ -290,18 +293,18 @@ export function ArrInstancesManager() {
       <AlertDialog open={deleteInstance !== null} onOpenChange={() => setDeleteInstance(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete ARR Instance</AlertDialogTitle>
+            <AlertDialogTitle>{tr("arrInstancesManager.dialogs.deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteInstance?.name}"? This action cannot be undone.
+              {tr("arrInstancesManager.dialogs.deleteDescription", { name: deleteInstance?.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{tr("arrInstancesManager.actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteInstance && deleteMutation.mutate(deleteInstance.id)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {tr("arrInstancesManager.actions.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -318,6 +321,8 @@ interface ArrInstanceFormProps {
 }
 
 function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanceFormProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const [type, setType] = useState<ArrInstanceType>(instance?.type || "sonarr")
   const [name, setName] = useState(instance?.name || "")
   const [baseUrl, setBaseUrl] = useState(instance?.base_url || "")
@@ -335,7 +340,7 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
 
   const handleTestConnection = async () => {
     if (!baseUrl.trim() || !apiKey.trim()) {
-      toast.error("Base URL and API Key are required to test connection")
+      toast.error(tr("arrInstancesManager.form.errors.baseUrlApiRequiredForTest"))
       return
     }
 
@@ -343,11 +348,11 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
     const trimmedBasicPass = basicPassword
     if (showBasicAuth) {
       if (!trimmedBasicUser) {
-        toast.error("Basic auth username is required")
+        toast.error(tr("arrInstancesManager.form.errors.basicUsernameRequired"))
         return
       }
       if (!trimmedBasicPass || trimmedBasicPass === "<redacted>") {
-        toast.error("Enter the basic auth password to test connection")
+        toast.error(tr("arrInstancesManager.form.errors.basicPasswordRequiredForTest"))
         return
       }
     }
@@ -365,14 +370,14 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
       })
       setTestResult(result)
       if (result.success) {
-        toast.success("Connection successful")
+        toast.success(tr("arrInstancesManager.toasts.connectionSuccessful"))
       } else {
-        toast.error(`Connection failed: ${result.error || "Unknown error"}`)
+        toast.error(tr("arrInstancesManager.toasts.connectionFailed", { error: result.error || tr("arrInstancesManager.common.unknownError") }))
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error"
+      const message = error instanceof Error ? error.message : tr("arrInstancesManager.common.unknownError")
       setTestResult({ success: false, error: message })
-      toast.error(`Connection test failed: ${message}`)
+      toast.error(tr("arrInstancesManager.toasts.connectionTestFailed", { error: message }))
     } finally {
       setIsTesting(false)
     }
@@ -382,12 +387,12 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
     e.preventDefault()
 
     if (!name.trim()) {
-      toast.error("Name is required")
+      toast.error(tr("arrInstancesManager.form.errors.nameRequired"))
       return
     }
 
     if (!baseUrl.trim()) {
-      toast.error("Base URL is required")
+      toast.error(tr("arrInstancesManager.form.errors.baseUrlRequired"))
       return
     }
 
@@ -395,21 +400,21 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
     const trimmedBasicPass = basicPassword
     if (showBasicAuth) {
       if (!trimmedBasicUser) {
-        toast.error("Basic auth username is required")
+        toast.error(tr("arrInstancesManager.form.errors.basicUsernameRequired"))
         return
       }
       if (!isEdit && !trimmedBasicPass) {
-        toast.error("Basic auth password is required")
+        toast.error(tr("arrInstancesManager.form.errors.basicPasswordRequired"))
         return
       }
       if (isEdit && trimmedBasicPass === "") {
-        toast.error("Basic auth password is required (or keep <redacted>)")
+        toast.error(tr("arrInstancesManager.form.errors.basicPasswordRequiredOrRedacted"))
         return
       }
     }
 
     if (!isEdit && !apiKey.trim()) {
-      toast.error("API Key is required")
+      toast.error(tr("arrInstancesManager.form.errors.apiKeyRequired"))
       return
     }
 
@@ -456,32 +461,34 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
     <form onSubmit={handleSubmit} className="space-y-4">
       {!isEdit && (
         <div className="space-y-2">
-          <Label htmlFor="type">Type *</Label>
+          <Label htmlFor="type">{tr("arrInstancesManager.form.fields.type")} *</Label>
           <Select value={type} onValueChange={(v) => setType(v as ArrInstanceType)}>
             <SelectTrigger>
-              <SelectValue placeholder="Select type" />
+              <SelectValue placeholder={tr("arrInstancesManager.form.placeholders.selectType")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="sonarr">Sonarr (TV Shows)</SelectItem>
-              <SelectItem value="radarr">Radarr (Movies)</SelectItem>
+              <SelectItem value="sonarr">{tr("arrInstancesManager.form.options.sonarr")}</SelectItem>
+              <SelectItem value="radarr">{tr("arrInstancesManager.form.options.radarr")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="name">Name *</Label>
+        <Label htmlFor="name">{tr("arrInstancesManager.form.fields.name")} *</Label>
         <Input
           id="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder={`My ${type === "sonarr" ? "Sonarr" : "Radarr"}`}
+          placeholder={tr("arrInstancesManager.form.placeholders.name", { type: type === "sonarr"
+            ? tr("arrInstancesManager.form.types.sonarr")
+            : tr("arrInstancesManager.form.types.radarr") })}
           required
         />
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="baseUrl">Base URL *</Label>
+        <Label htmlFor="baseUrl">{tr("arrInstancesManager.form.fields.baseUrl")} *</Label>
         <Input
           id="baseUrl"
           value={baseUrl}
@@ -490,30 +497,36 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
           required
         />
         <p className="text-xs text-muted-foreground">
-          The base URL of your {type === "sonarr" ? "Sonarr" : "Radarr"} instance
+          {tr("arrInstancesManager.form.descriptions.baseUrl", { type: type === "sonarr"
+            ? tr("arrInstancesManager.form.types.sonarr")
+            : tr("arrInstancesManager.form.types.radarr") })}
         </p>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="apiKey">API Key {isEdit ? "(leave empty to keep current)" : "*"}</Label>
+        <Label htmlFor="apiKey">
+          {tr("arrInstancesManager.form.fields.apiKey")} {isEdit ? tr("arrInstancesManager.form.labels.apiKeyLeaveEmpty") : "*"}
+        </Label>
         <Input
           id="apiKey"
           type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-          placeholder={isEdit ? "••••••••" : "Enter API key"}
+          placeholder={isEdit ? tr("arrInstancesManager.form.placeholders.redactedKey") : tr("arrInstancesManager.form.placeholders.enterApiKey")}
           required={!isEdit}
         />
         <p className="text-xs text-muted-foreground">
-          Found in Settings &gt; General in {type === "sonarr" ? "Sonarr" : "Radarr"}
+          {tr("arrInstancesManager.form.descriptions.apiKeyLocation", { type: type === "sonarr"
+            ? tr("arrInstancesManager.form.types.sonarr")
+            : tr("arrInstancesManager.form.types.radarr") })}
         </p>
       </div>
 
       <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/40 p-4">
         <div className="space-y-1">
-          <Label htmlFor="arr-basic-auth">Basic Auth</Label>
+          <Label htmlFor="arr-basic-auth">{tr("arrInstancesManager.form.fields.basicAuth")}</Label>
           <p className="text-sm text-muted-foreground max-w-prose">
-            Use HTTP basic authentication for ARR behind a reverse proxy.
+            {tr("arrInstancesManager.form.descriptions.basicAuth")}
           </p>
         </div>
         <Switch
@@ -534,32 +547,32 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
       {showBasicAuth && (
         <div className="grid gap-4 rounded-lg border bg-muted/20 p-4">
           <div className="grid gap-2">
-            <Label htmlFor="basicUsername">Basic Username</Label>
+            <Label htmlFor="basicUsername">{tr("arrInstancesManager.form.fields.basicUsername")}</Label>
             <Input
               id="basicUsername"
               value={basicUsername}
               onChange={(e) => setBasicUsername(e.target.value)}
-              placeholder="Username"
+              placeholder={tr("arrInstancesManager.form.placeholders.username")}
               autoComplete="off"
               data-1p-ignore
               required
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="basicPassword">Basic Password</Label>
+            <Label htmlFor="basicPassword">{tr("arrInstancesManager.form.fields.basicPassword")}</Label>
             <Input
               id="basicPassword"
               type="password"
               value={basicPassword}
               onChange={(e) => setBasicPassword(e.target.value)}
-              placeholder={isEdit ? "<redacted>" : "Password"}
+              placeholder={isEdit ? tr("arrInstancesManager.form.placeholders.redactedPassword") : tr("arrInstancesManager.form.placeholders.password")}
               autoComplete="off"
               data-1p-ignore
               required={!isEdit}
             />
             {isEdit && (
               <p className="text-xs text-muted-foreground">
-                Leave as <span className="font-mono">&lt;redacted&gt;</span> to keep existing password.
+                {tr("arrInstancesManager.form.descriptions.keepRedactedPasswordPrefix")} <span className="font-mono">&lt;redacted&gt;</span> {tr("arrInstancesManager.form.descriptions.keepRedactedPasswordSuffix")}
               </p>
             )}
           </div>
@@ -568,7 +581,7 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="priority">Priority</Label>
+          <Label htmlFor="priority">{tr("arrInstancesManager.form.fields.priority")}</Label>
           <Input
             id="priority"
             type="number"
@@ -577,12 +590,12 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
             min={0}
           />
           <p className="text-xs text-muted-foreground">
-            Higher priority instances are queried first
+            {tr("arrInstancesManager.form.descriptions.priority")}
           </p>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="timeout">Timeout (seconds)</Label>
+          <Label htmlFor="timeout">{tr("arrInstancesManager.form.fields.timeoutSeconds")}</Label>
           <Input
             id="timeout"
             type="number"
@@ -601,13 +614,15 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
           onCheckedChange={setEnabled}
         />
         <Label htmlFor="enabled" className="cursor-pointer">
-          Enable this instance
+          {tr("arrInstancesManager.form.fields.enableInstance")}
         </Label>
       </div>
 
       {testResult && (
         <div className={`text-sm p-2 rounded ${testResult.success ? "bg-green-500/10 text-green-500" : "bg-destructive/10 text-destructive"}`}>
-          {testResult.success ? "Connection successful" : `Connection failed: ${testResult.error}`}
+          {testResult.success
+            ? tr("arrInstancesManager.toasts.connectionSuccessful")
+            : tr("arrInstancesManager.toasts.connectionFailed", { error: testResult.error })}
         </div>
       )}
 
@@ -621,21 +636,21 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
           {isTesting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Testing...
+              {tr("arrInstancesManager.actions.testing")}
             </>
           ) : (
             <>
               <Zap className="mr-2 h-4 w-4" />
-              Test Connection
+              {tr("arrInstancesManager.actions.testConnection")}
             </>
           )}
         </Button>
         <div className="flex gap-2">
           <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-            Cancel
+            {tr("arrInstancesManager.actions.cancel")}
           </Button>
           <Button type="submit" disabled={isPending}>
-            {isPending ? "Saving..." : isEdit ? "Update" : "Create"}
+            {isPending ? tr("arrInstancesManager.actions.saving") : isEdit ? tr("arrInstancesManager.actions.update") : tr("arrInstancesManager.actions.create")}
           </Button>
         </div>
       </div>

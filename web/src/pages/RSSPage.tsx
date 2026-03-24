@@ -106,6 +106,7 @@ import type {
 } from "@/types"
 import { isRSSFeed } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 
 import { AddTorrentDialog, type AddTorrentDropPayload } from "@/components/torrents/AddTorrentDialog"
 
@@ -118,6 +119,11 @@ interface RSSPageProps {
   onRuleSelect: (ruleName: string | undefined) => void
 }
 
+function useCommonTr() {
+  const { t } = useTranslation("common")
+  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+}
+
 export function RSSPage({
   activeTab,
   selectedFeedPath,
@@ -126,6 +132,7 @@ export function RSSPage({
   onFeedSelect,
   onRuleSelect,
 }: RSSPageProps) {
+  const tr = useCommonTr()
   const { instances } = useInstances()
   const [selectedInstanceId, setSelectedInstanceId] = usePersistedInstanceSelection("rss")
 
@@ -211,10 +218,10 @@ export function RSSPage({
       return
     }
     if (sseStatus === "disconnected" && sseReconnectAttempt > 0 && !sseDisconnectToastShownRef.current) {
-      toast.error("Live RSS updates disconnected")
+      toast.error(tr("rssPage.toasts.liveUpdatesDisconnected"))
       sseDisconnectToastShownRef.current = true
     }
-  }, [sseStatus, sseReconnectAttempt])
+  }, [sseStatus, sseReconnectAttempt, tr])
 
   // Mutations
   const reprocessRules = useReprocessRSSRules(instanceId)
@@ -232,7 +239,7 @@ export function RSSPage({
         <div className="flex items-center gap-2 min-w-0 overflow-hidden">
           <HardDrive className="h-4 w-4 flex-shrink-0" />
           <span className="truncate">
-            <SelectValue placeholder="Select instance" />
+            <SelectValue placeholder={tr("rssPage.instanceSelector.placeholder")} />
           </span>
         </div>
       </SelectTrigger>
@@ -259,9 +266,9 @@ export function RSSPage({
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
-            <CardTitle>No Instances Available</CardTitle>
+            <CardTitle>{tr("rssPage.empty.noInstancesTitle")}</CardTitle>
             <CardDescription>
-              Add a qBittorrent instance to manage RSS feeds and auto-download rules.
+              {tr("rssPage.empty.noInstancesDescription")}
             </CardDescription>
           </CardHeader>
         </Card>
@@ -276,7 +283,7 @@ export function RSSPage({
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <Rss className="h-6 w-6" />
-            <h1 className="text-2xl font-semibold">RSS</h1>
+            <h1 className="text-2xl font-semibold">{tr("rssPage.header.title")}</h1>
           </div>
           {renderInstanceSelector()}
         </div>
@@ -284,9 +291,9 @@ export function RSSPage({
           <Card className="w-full max-w-md">
             <CardHeader className="text-center">
               <HardDrive className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
-              <CardTitle>Select an Instance</CardTitle>
+              <CardTitle>{tr("rssPage.empty.selectInstanceTitle")}</CardTitle>
               <CardDescription>
-                Choose a qBittorrent instance to manage its RSS feeds and auto-download rules.
+                {tr("rssPage.empty.selectInstanceDescription")}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -300,9 +307,9 @@ export function RSSPage({
       {/* Header */}
       <div className="flex items-center justify-between mb-4 shrink-0">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold">RSS</h1>
+          <h1 className="text-2xl font-semibold">{tr("rssPage.header.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Manage qBittorrent's native RSS feeds and auto-download rules
+            {tr("rssPage.header.description")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -320,7 +327,7 @@ export function RSSPage({
         <Alert variant="destructive" className="mb-4 flex items-center gap-3 [&>svg]:static [&>svg]:shrink-0 [&>svg~*]:pl-0">
           <AlertCircle className="h-4 w-4" />
           <span className="flex-1 text-sm">
-            RSS feed fetching is disabled. Feeds will not be refreshed automatically.
+            {tr("rssPage.warnings.processingDisabled")}
           </span>
           <Button
             size="sm"
@@ -330,14 +337,14 @@ export function RSSPage({
               updatePreferences(
                 { rss_processing_enabled: true },
                 {
-                  onSuccess: () => toast.success("RSS processing enabled"),
-                  onError: () => toast.error("Failed to enable RSS processing"),
+                  onSuccess: () => toast.success(tr("rssPage.toasts.rssProcessingEnabled")),
+                  onError: () => toast.error(tr("rssPage.toasts.enableRssProcessingFailed")),
                 }
               )
             }}
             disabled={isUpdatingPreferences}
           >
-            {isUpdatingPreferences ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enable RSS"}
+            {isUpdatingPreferences ? <Loader2 className="h-4 w-4 animate-spin" /> : tr("rssPage.actions.enableRss")}
           </Button>
         </Alert>
       )}
@@ -346,7 +353,7 @@ export function RSSPage({
         <Alert variant="warning" className="mb-4 flex items-center gap-3 [&>svg]:static [&>svg]:shrink-0 [&>svg~*]:pl-0">
           <AlertCircle className="h-4 w-4" />
           <span className="flex-1 text-sm">
-            RSS auto-downloading is disabled. Rules will not automatically download torrents.
+            {tr("rssPage.warnings.autoDownloadDisabled")}
           </span>
           <Button
             size="sm"
@@ -356,14 +363,14 @@ export function RSSPage({
               updatePreferences(
                 { rss_auto_downloading_enabled: true },
                 {
-                  onSuccess: () => toast.success("RSS auto-downloading enabled"),
-                  onError: () => toast.error("Failed to enable RSS auto-downloading"),
+                  onSuccess: () => toast.success(tr("rssPage.toasts.autoDownloadingEnabled")),
+                  onError: () => toast.error(tr("rssPage.toasts.enableAutoDownloadingFailed")),
                 }
               )
             }}
             disabled={isUpdatingPreferences}
           >
-            {isUpdatingPreferences ? <Loader2 className="h-4 w-4 animate-spin" /> : "Enable Auto-Download"}
+            {isUpdatingPreferences ? <Loader2 className="h-4 w-4 animate-spin" /> : tr("rssPage.actions.enableAutoDownload")}
           </Button>
         </Alert>
       )}
@@ -374,11 +381,11 @@ export function RSSPage({
           <TabsList>
             <TabsTrigger value="feeds" className="gap-2">
               <Rss className="h-4 w-4" />
-              Feeds
+              {tr("rssPage.tabs.feeds")}
             </TabsTrigger>
             <TabsTrigger value="rules" className="gap-2">
               <FileText className="h-4 w-4" />
-              Rules
+              {tr("rssPage.tabs.rules")}
             </TabsTrigger>
           </TabsList>
 
@@ -395,7 +402,15 @@ export function RSSPage({
                   {sseStatus === "live" && <span className="h-2 w-2 rounded-full bg-green-500" />}
                   {sseStatus === "disconnected" && <span className="h-2 w-2 rounded-full bg-red-500" />}
                   <span className="text-xs">
-                    {sseStatus === "live"? "SSE Live": sseStatus === "connecting"? "SSE Connecting": sseStatus === "reconnecting"? `Reconnecting${sseReconnectAttempt > 0 ? ` (${sseReconnectAttempt}/5)` : ""}`: "Disconnected"}
+                    {sseStatus === "live"
+                      ? tr("rssPage.sse.live")
+                      : sseStatus === "connecting"
+                        ? tr("rssPage.sse.connecting")
+                        : sseStatus === "reconnecting"
+                          ? sseReconnectAttempt > 0
+                            ? tr("rssPage.sse.reconnectingWithAttempt", { attempt: sseReconnectAttempt, max: 5 })
+                            : tr("rssPage.sse.reconnecting")
+                          : tr("rssPage.sse.disconnected")}
                   </span>
                 </Badge>
               )}
@@ -406,8 +421,8 @@ export function RSSPage({
                   refreshAllFeeds.mutate(
                     { itemPath: "" },
                     {
-                      onSuccess: () => toast.success("Refreshing all feeds..."),
-                      onError: () => toast.error("Failed to refresh feeds"),
+                      onSuccess: () => toast.success(tr("rssPage.toasts.refreshingAllFeeds")),
+                      onError: () => toast.error(tr("rssPage.toasts.refreshFeedsFailed")),
                     }
                   )
                 }}
@@ -418,15 +433,15 @@ export function RSSPage({
                 ) : (
                   <RefreshCw className="h-4 w-4 mr-2" />
                 )}
-                Refresh All
+                {tr("rssPage.actions.refreshAll")}
               </Button>
               <Button variant="outline" size="sm" onClick={() => setAddFolderOpen(true)}>
                 <Folder className="h-4 w-4 mr-2" />
-                Add Folder
+                {tr("rssPage.actions.addFolder")}
               </Button>
               <Button size="sm" onClick={() => setAddFeedOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Feed
+                {tr("rssPage.actions.addFeed")}
               </Button>
             </div>
           )}
@@ -441,10 +456,10 @@ export function RSSPage({
                     onClick={() => {
                       reprocessRules.mutate(undefined, {
                         onSuccess: () => {
-                          toast.success("Rules reprocessed - unread articles will be checked against all rules")
+                          toast.success(tr("rssPage.toasts.rulesReprocessed"))
                         },
                         onError: () => {
-                          toast.error("Failed to reprocess rules")
+                          toast.error(tr("rssPage.toasts.reprocessRulesFailed"))
                         },
                       })
                     }}
@@ -455,16 +470,16 @@ export function RSSPage({
                     ) : (
                       <RefreshCw className="h-4 w-4 mr-2" />
                     )}
-                    Reprocess
+                    {tr("rssPage.actions.reprocess")}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Re-check all unread articles against rules</p>
+                  <p>{tr("rssPage.tooltips.reprocess")}</p>
                 </TooltipContent>
               </Tooltip>
               <Button size="sm" onClick={() => setAddRuleOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Rule
+                {tr("rssPage.actions.addRule")}
               </Button>
             </div>
           )}
@@ -549,6 +564,7 @@ function FeedsTab({
   selectedFeedPath,
   onFeedSelect,
 }: FeedsTabProps) {
+  const tr = useCommonTr()
   const queryClient = useQueryClient()
   const removeFeed = useRemoveRSSItem(instanceId)
   const refreshFeed = useRefreshRSSFeed(instanceId)
@@ -595,7 +611,7 @@ function FeedsTab({
   }
 
   if (feedsIsError) {
-    const message = feedsError instanceof Error ? feedsError.message : "Failed to load RSS feeds"
+    const message = feedsError instanceof Error ? feedsError.message : tr("rssPage.errors.failedLoadFeeds")
     return (
       <Card>
         <CardContent className="py-6">
@@ -605,7 +621,7 @@ function FeedsTab({
           >
             <AlertCircle className="h-4 w-4" />
             <div className="flex-1 min-w-0">
-              <AlertTitle>Failed to load RSS feeds</AlertTitle>
+              <AlertTitle>{tr("rssPage.errors.failedLoadFeeds")}</AlertTitle>
               <AlertDescription className="break-words">{message}</AlertDescription>
             </div>
             <Button
@@ -617,7 +633,7 @@ function FeedsTab({
                 queryClient.invalidateQueries({ queryKey: rssKeys.feeds(instanceId) })
               }}
             >
-              Retry
+              {tr("rssPage.actions.retry")}
             </Button>
           </Alert>
         </CardContent>
@@ -631,7 +647,7 @@ function FeedsTab({
         <CardContent className="flex flex-col items-center justify-center py-12">
           <Rss className="h-12 w-12 text-muted-foreground mb-4" />
           <p className="text-muted-foreground text-center">
-            No RSS feeds configured. Add a feed to get started.
+            {tr("rssPage.empty.noFeedsConfigured")}
           </p>
         </CardContent>
       </Card>
@@ -641,12 +657,12 @@ function FeedsTab({
   const handleRemoveFeed = async (path: string) => {
     try {
       await removeFeed.mutateAsync({ path })
-      toast.success("Feed removed successfully")
+      toast.success(tr("rssPage.toasts.feedRemoved"))
       if (selectedFeedPath === path) {
         onFeedSelect(undefined)
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to remove feed"
+      const message = err instanceof Error ? err.message : tr("rssPage.toasts.removeFeedFailed")
       toast.error(message)
     }
   }
@@ -654,13 +670,13 @@ function FeedsTab({
   const handleRefreshFeed = async (path: string) => {
     try {
       await refreshFeed.mutateAsync({ itemPath: path })
-      toast.success("Feed refresh triggered")
+      toast.success(tr("rssPage.toasts.feedRefreshTriggered"))
       // Invalidate to pick up changes
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: rssKeys.feeds(instanceId) })
       }, 2000)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to refresh feed"
+      const message = err instanceof Error ? err.message : tr("rssPage.toasts.refreshFeedFailed")
       toast.error(message)
     }
   }
@@ -668,9 +684,9 @@ function FeedsTab({
   const handleMarkAllAsRead = async (feedPath: string) => {
     try {
       await markAsRead.mutateAsync({ itemPath: feedPath })
-      toast.success("Marked all articles as read")
+      toast.success(tr("rssPage.toasts.markedAllRead"))
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to mark all as read"
+      const message = err instanceof Error ? err.message : tr("rssPage.toasts.markAllReadFailed")
       toast.error(message)
     }
   }
@@ -696,14 +712,14 @@ function FeedsTab({
       const destPath = segments.join("\\")
 
       await moveFeed.mutateAsync({ itemPath: renameDialog.path, destPath })
-      toast.success("Feed renamed successfully")
+      toast.success(tr("rssPage.toasts.feedRenamed"))
 
       // Update selection if the renamed feed was selected
       if (selectedFeedPath === renameDialog.path) {
         onFeedSelect(destPath)
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to rename feed"
+      const message = err instanceof Error ? err.message : tr("rssPage.toasts.renameFeedFailed")
       toast.error(message)
     } finally {
       setRenameDialog({ open: false, path: "", currentName: "" })
@@ -723,9 +739,9 @@ function FeedsTab({
 
     try {
       await setFeedURL.mutateAsync({ path: editURLDialog.path, url: newURL.trim() })
-      toast.success("Feed URL updated successfully")
+      toast.success(tr("rssPage.toasts.feedUrlUpdated"))
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to update feed URL"
+      const message = err instanceof Error ? err.message : tr("rssPage.toasts.updateFeedUrlFailed")
       toast.error(message)
     } finally {
       setEditURLDialog({ open: false, path: "", currentURL: "" })
@@ -746,7 +762,7 @@ function FeedsTab({
       {/* Feed Tree - Narrow sidebar */}
       <Card className="flex flex-col min-h-0">
         <CardHeader className="shrink-0 flex flex-row items-center justify-between space-y-0 py-0">
-          <CardTitle className="text-sm font-medium">Feeds</CardTitle>
+          <CardTitle className="text-sm font-medium">{tr("rssPage.tabs.feeds")}</CardTitle>
           {unreadCount > 0 && (
             <span className="text-xs text-muted-foreground">{unreadCount}</span>
           )}
@@ -770,23 +786,23 @@ function FeedsTab({
       <Dialog open={renameDialog.open} onOpenChange={(open) => !open && setRenameDialog({ open: false, path: "", currentName: "" })}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Rename Feed</DialogTitle>
-            <DialogDescription>Enter a new name for this feed.</DialogDescription>
+            <DialogTitle>{tr("rssPage.dialogs.renameFeed.title")}</DialogTitle>
+            <DialogDescription>{tr("rssPage.dialogs.renameFeed.description")}</DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <Input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="Feed name"
+              placeholder={tr("rssPage.dialogs.renameFeed.placeholder")}
               onKeyDown={(e) => e.key === "Enter" && handleRenameFeed()}
             />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRenameDialog({ open: false, path: "", currentName: "" })}>
-              Cancel
+              {tr("rssPage.actions.cancel")}
             </Button>
             <Button onClick={handleRenameFeed} disabled={!newName.trim() || newName === renameDialog.currentName}>
-              Rename
+              {tr("rssPage.actions.rename")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -796,23 +812,23 @@ function FeedsTab({
       <Dialog open={editURLDialog.open} onOpenChange={(open) => !open && setEditURLDialog({ open: false, path: "", currentURL: "" })}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Feed URL</DialogTitle>
-            <DialogDescription>Enter a new URL for this feed.</DialogDescription>
+            <DialogTitle>{tr("rssPage.dialogs.editFeedUrl.title")}</DialogTitle>
+            <DialogDescription>{tr("rssPage.dialogs.editFeedUrl.description")}</DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <Input
               value={newURL}
               onChange={(e) => setNewURL(e.target.value)}
-              placeholder="https://example.com/rss"
+              placeholder={tr("rssPage.dialogs.editFeedUrl.placeholder")}
               onKeyDown={(e) => e.key === "Enter" && handleEditURL()}
             />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditURLDialog({ open: false, path: "", currentURL: "" })}>
-              Cancel
+              {tr("rssPage.actions.cancel")}
             </Button>
             <Button onClick={handleEditURL} disabled={!newURL.trim() || newURL === editURLDialog.currentURL}>
-              Save
+              {tr("rssPage.actions.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -831,15 +847,15 @@ function FeedsTab({
       <Card className="flex flex-col min-h-0">
         <CardHeader className="shrink-0 flex flex-row items-center justify-between space-y-0 py-0">
           <CardTitle className="text-sm font-medium truncate min-w-0" title={selectedFeed?.url}>
-            {selectedFeed ? (selectedFeed.title || "Articles") : "Articles"}
+            {selectedFeed ? (selectedFeed.title || tr("rssPage.articles.title")) : tr("rssPage.articles.title")}
           </CardTitle>
           {selectedFeed && (
             <div className="flex items-center gap-3 shrink-0">
               {selectedFeedUnread > 0 && (
-                <span className="text-xs text-muted-foreground">{selectedFeedUnread} unread</span>
+                <span className="text-xs text-muted-foreground">{tr("rssPage.articles.unreadCount", { count: selectedFeedUnread })}</span>
               )}
               <Button variant="outline" size="sm" onClick={() => handleMarkAllAsRead(selectedFeedPath!)}>
-                Mark all as read
+                {tr("rssPage.actions.markAllRead")}
               </Button>
             </div>
           )}
@@ -850,7 +866,7 @@ function FeedsTab({
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
               <Rss className="h-8 w-8 mb-3 opacity-50" />
-              <p className="text-sm">Select a feed to view articles</p>
+              <p className="text-sm">{tr("rssPage.empty.selectFeedToView")}</p>
             </div>
           )}
         </CardContent>
@@ -876,6 +892,7 @@ interface FeedTreeProps {
 }
 
 function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, onRename, onEditURL, supportsEditURL }: FeedTreeProps) {
+  const tr = useCommonTr()
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
 
   // Auto-expand parent folders when selectedPath changes (e.g., on page load)
@@ -956,30 +973,30 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, on
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => onRefresh(itemPath)}>
                     <RefreshCw className="h-4 w-4 mr-2" />
-                    Refresh
+                    {tr("rssPage.actions.refresh")}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => onRename(itemPath)}>
                     <Pencil className="h-4 w-4 mr-2" />
-                    Rename
+                    {tr("rssPage.actions.rename")}
                   </DropdownMenuItem>
                   {supportsEditURL && feed.url && (
                     <DropdownMenuItem onClick={() => onEditURL(itemPath, feed.url)}>
                       <Link className="h-4 w-4 mr-2" />
-                      Edit URL
+                      {tr("rssPage.actions.editUrl")}
                     </DropdownMenuItem>
                   )}
                   {feed.url && (
                     <DropdownMenuItem asChild>
                       <a href={feed.url} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="h-4 w-4 mr-2" />
-                        Open URL
+                        {tr("rssPage.actions.openUrl")}
                       </a>
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem className="text-destructive" onClick={() => onRemove(itemPath)}>
                     <Trash2 className="h-4 w-4 mr-2" />
-                    Remove
+                    {tr("rssPage.actions.remove")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1022,12 +1039,12 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, on
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={() => onRename(itemPath)}>
                       <Pencil className="h-4 w-4 mr-2" />
-                      Rename
+                      {tr("rssPage.actions.rename")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem className="text-destructive" onClick={() => onRemove(itemPath)}>
                       <Trash2 className="h-4 w-4 mr-2" />
-                      Remove Folder
+                      {tr("rssPage.actions.removeFolder")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -1067,6 +1084,7 @@ interface ArticlesPanelProps {
 }
 
 function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanelProps) {
+  const tr = useCommonTr()
   const { formatDate } = useDateTimeFormatters()
   const markAsRead = useMarkRSSAsRead(instanceId)
   const [search, setSearch] = useState("")
@@ -1109,7 +1127,7 @@ function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanel
     try {
       await markAsRead.mutateAsync({ itemPath: feedPath, articleId })
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to mark as read"
+      const message = err instanceof Error ? err.message : tr("rssPage.toasts.markAsReadFailed")
       toast.error(message)
     }
   }
@@ -1118,7 +1136,7 @@ function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanel
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
         <Rss className="h-8 w-8 mb-3 opacity-50" />
-        <p className="text-sm">No articles in this feed</p>
+        <p className="text-sm">{tr("rssPage.empty.noArticlesInFeed")}</p>
       </div>
     )
   }
@@ -1128,7 +1146,7 @@ function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanel
       <div className="relative mb-2">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search articles..."
+          placeholder={tr("rssPage.articles.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-8 h-8"
@@ -1137,7 +1155,7 @@ function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanel
       <div className="flex-1 min-h-0 overflow-y-auto">
         {filteredArticles.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
-            <p className="text-sm">No matching articles</p>
+            <p className="text-sm">{tr("rssPage.empty.noMatchingArticles")}</p>
           </div>
         ) : (
           <div className="space-y-1 pr-1">
@@ -1181,6 +1199,7 @@ function stripHtml(html: string): string {
 }
 
 function ArticleRow({ article, formatDate, onMarkAsRead, onDownload }: ArticleRowProps) {
+  const tr = useCommonTr()
   const formattedDate = article.date ? formatDate(new Date(article.date)) : ""
   const hasDetails = article.description || article.author
   const rowClass = `group grid grid-cols-[1fr_auto] items-center gap-2 px-3 py-2 rounded-md border border-border transition-colors hover:bg-accent hover:text-accent-foreground ${
@@ -1203,20 +1222,32 @@ function ArticleRow({ article, formatDate, onMarkAsRead, onDownload }: ArticleRo
           size="icon"
           className="h-7 w-7 text-muted-foreground hover:text-foreground"
           onClick={() => onDownload(article.torrentURL!)}
-          title="Download torrent"
+          title={tr("rssPage.articles.downloadTorrent")}
         >
           <Download className="h-4 w-4" />
         </Button>
       )}
       {article.link && article.link !== article.torrentURL && (
-        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" asChild title="Open link">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+          asChild
+          title={tr("rssPage.articles.openLink")}
+        >
           <a href={article.link} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="h-4 w-4" />
           </a>
         </Button>
       )}
       {!article.isRead && (
-        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={onMarkAsRead} title="Mark as read">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground"
+          onClick={onMarkAsRead}
+          title={tr("rssPage.actions.markAsRead")}
+        >
           <Check className="h-4 w-4" />
         </Button>
       )}
@@ -1237,7 +1268,10 @@ function ArticleRow({ article, formatDate, onMarkAsRead, onDownload }: ArticleRo
       <div className={rowClass}>
         <CollapsibleTrigger className="min-w-0 text-left">{titleContent}</CollapsibleTrigger>
         <div className="flex items-center gap-0.5 shrink-0">
-          <CollapsibleTrigger className="h-7 w-7 inline-flex items-center justify-center text-muted-foreground hover:text-foreground" title="Toggle details">
+          <CollapsibleTrigger
+            className="h-7 w-7 inline-flex items-center justify-center text-muted-foreground hover:text-foreground"
+            title={tr("rssPage.articles.toggleDetails")}
+          >
             <ChevronRight className="h-4 w-4 transition-transform [data-state=open]:rotate-90" />
           </CollapsibleTrigger>
           {actionButtons}
@@ -1246,7 +1280,7 @@ function ArticleRow({ article, formatDate, onMarkAsRead, onDownload }: ArticleRo
       <CollapsibleContent>
         <div className="px-3 pb-3 pt-1 text-sm text-muted-foreground">
           {article.description && <p className="whitespace-pre-wrap">{renderTextWithLinks(stripHtml(article.description))}</p>}
-          {article.author && <p className="text-xs mt-1">By {article.author}</p>}
+          {article.author && <p className="text-xs mt-1">{tr("rssPage.articles.byAuthor", { author: article.author })}</p>}
         </div>
       </CollapsibleContent>
     </Collapsible>
@@ -1284,6 +1318,7 @@ function RulesTab({
   categories,
   tags,
 }: RulesTabProps) {
+  const tr = useCommonTr()
   const setRule = useSetRSSRule(instanceId)
   const removeRule = useRemoveRSSRule(instanceId)
   const queryClient = useQueryClient()
@@ -1299,7 +1334,7 @@ function RulesTab({
   }
 
   if (rulesIsError) {
-    const message = rulesError instanceof Error ? rulesError.message : "Failed to load RSS rules"
+    const message = rulesError instanceof Error ? rulesError.message : tr("rssPage.errors.failedLoadRules")
     return (
       <Card>
         <CardContent className="py-6">
@@ -1309,7 +1344,7 @@ function RulesTab({
           >
             <AlertCircle className="h-4 w-4" />
             <div className="flex-1 min-w-0">
-              <AlertTitle>Failed to load RSS rules</AlertTitle>
+              <AlertTitle>{tr("rssPage.errors.failedLoadRules")}</AlertTitle>
               <AlertDescription className="break-words">{message}</AlertDescription>
             </div>
             <Button
@@ -1321,7 +1356,7 @@ function RulesTab({
                 queryClient.invalidateQueries({ queryKey: rssKeys.rules(instanceId) })
               }}
             >
-              Retry
+              {tr("rssPage.actions.retry")}
             </Button>
           </Alert>
         </CardContent>
@@ -1335,7 +1370,7 @@ function RulesTab({
         <CardContent className="flex flex-col items-center justify-center py-12">
           <FileText className="h-12 w-12 text-muted-foreground mb-4" />
           <p className="text-muted-foreground text-center">
-            No auto-download rules configured. Add a rule to automatically download torrents from feeds.
+            {tr("rssPage.empty.noRulesConfigured")}
           </p>
         </CardContent>
       </Card>
@@ -1348,9 +1383,9 @@ function RulesTab({
         name,
         rule: { ...rule, enabled: !rule.enabled },
       })
-      toast.success(`Rule ${rule.enabled ? "disabled" : "enabled"}`)
+      toast.success(rule.enabled ? tr("rssPage.toasts.ruleDisabled") : tr("rssPage.toasts.ruleEnabled"))
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to update rule"
+      const message = err instanceof Error ? err.message : tr("rssPage.toasts.updateRuleFailed")
       toast.error(message)
     }
   }
@@ -1358,12 +1393,12 @@ function RulesTab({
   const handleRemoveRule = async (name: string) => {
     try {
       await removeRule.mutateAsync(name)
-      toast.success("Rule removed successfully")
+      toast.success(tr("rssPage.toasts.ruleRemoved"))
       if (selectedRuleName === name) {
         onRuleSelect(undefined)
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to remove rule"
+      const message = err instanceof Error ? err.message : tr("rssPage.toasts.removeRuleFailed")
       toast.error(message)
     }
   }
@@ -1430,22 +1465,23 @@ interface RuleCardProps {
 }
 
 function RuleCard({ name, rule, isSelected, onSelect, onToggle, onEdit, onRemove }: RuleCardProps) {
+  const tr = useCommonTr()
   const category = rule.torrentParams?.category || rule.assignedCategory
 
   // Build compact filter summary
   const filterParts: string[] = []
   if (rule.mustContain) {
     const count = rule.mustContain.split("|").filter(Boolean).length
-    filterParts.push(`+${count} match`)
+    filterParts.push(tr("rssPage.ruleCard.matchCount", { count }))
   }
   if (rule.mustNotContain) {
     const count = rule.mustNotContain.split("|").filter(Boolean).length
-    filterParts.push(`-${count} exclude`)
+    filterParts.push(tr("rssPage.ruleCard.excludeCount", { count }))
   }
   if (rule.episodeFilter) {
-    filterParts.push(`ep: ${rule.episodeFilter}`)
+    filterParts.push(tr("rssPage.ruleCard.episodeFilter", { value: rule.episodeFilter }))
   }
-  const filterSummary = filterParts.join(" · ") || "No filters"
+  const filterSummary = filterParts.join(" · ") || tr("rssPage.ruleCard.noFilters")
 
   return (
     <div
@@ -1466,7 +1502,7 @@ function RuleCard({ name, rule, isSelected, onSelect, onToggle, onEdit, onRemove
             </Badge>
           )}
           {rule.smartFilter && (
-            <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">Smart</Badge>
+            <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{tr("rssPage.ruleCard.smart")}</Badge>
           )}
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1495,7 +1531,7 @@ function RuleCard({ name, rule, isSelected, onSelect, onToggle, onEdit, onRemove
               <Search className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Preview matches</TooltipContent>
+          <TooltipContent>{tr("rssPage.tooltips.previewMatches")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -1503,7 +1539,7 @@ function RuleCard({ name, rule, isSelected, onSelect, onToggle, onEdit, onRemove
               <Pencil className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Edit rule</TooltipContent>
+          <TooltipContent>{tr("rssPage.tooltips.editRule")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -1511,7 +1547,7 @@ function RuleCard({ name, rule, isSelected, onSelect, onToggle, onEdit, onRemove
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Remove rule</TooltipContent>
+          <TooltipContent>{tr("rssPage.tooltips.removeRule")}</TooltipContent>
         </Tooltip>
       </div>
     </div>
@@ -1530,6 +1566,7 @@ interface RulePreviewSheetProps {
 }
 
 function RulePreviewSheet({ instanceId, ruleName, open, onOpenChange }: RulePreviewSheetProps) {
+  const tr = useCommonTr()
   const { data: matchingArticles, isLoading } = useRSSMatchingArticles(instanceId, ruleName ?? "", {
     enabled: !!ruleName,
   })
@@ -1538,8 +1575,8 @@ function RulePreviewSheet({ instanceId, ruleName, open, onOpenChange }: RulePrev
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-[500px] sm:max-w-[500px]">
         <SheetHeader>
-          <SheetTitle>Matching Articles</SheetTitle>
-          <SheetDescription>Articles that match the rule "{ruleName}"</SheetDescription>
+          <SheetTitle>{tr("rssPage.preview.title")}</SheetTitle>
+          <SheetDescription>{tr("rssPage.preview.description", { ruleName })}</SheetDescription>
         </SheetHeader>
         <div className="mt-4">
           {isLoading ? (
@@ -1568,7 +1605,7 @@ function RulePreviewSheet({ instanceId, ruleName, open, onOpenChange }: RulePrev
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <FileText className="h-12 w-12 mb-4" />
-              <p>No matching articles found</p>
+              <p>{tr("rssPage.empty.noMatchingArticlesFound")}</p>
             </div>
           )}
         </div>
@@ -1591,6 +1628,7 @@ interface AddFeedDialogProps {
 const ROOT_FOLDER_VALUE = "__root__"
 
 function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDialogProps) {
+  const tr = useCommonTr()
   const [url, setUrl] = useState("")
   const [path, setPath] = useState(ROOT_FOLDER_VALUE)
   const addFeed = useAddRSSFeed(instanceId)
@@ -1599,7 +1637,7 @@ function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDia
 
   const handleSubmit = async () => {
     if (!url.trim()) {
-      toast.error("URL is required")
+      toast.error(tr("rssPage.errors.urlRequired"))
       return
     }
 
@@ -1611,13 +1649,13 @@ function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDia
       if (result?.warning) {
         toast.warning(result.warning)
       } else {
-        toast.success("Feed added successfully")
+        toast.success(tr("rssPage.toasts.feedAdded"))
       }
       setUrl("")
       setPath(ROOT_FOLDER_VALUE)
       onOpenChange(false)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to add feed"
+      const message = err instanceof Error ? err.message : tr("rssPage.toasts.addFeedFailed")
       toast.error(message)
     }
   }
@@ -1626,27 +1664,27 @@ function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDia
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add RSS Feed</DialogTitle>
-          <DialogDescription>Add a new RSS feed to monitor for torrents.</DialogDescription>
+          <DialogTitle>{tr("rssPage.dialogs.addFeed.title")}</DialogTitle>
+          <DialogDescription>{tr("rssPage.dialogs.addFeed.description")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="feed-url">Feed URL</Label>
+            <Label htmlFor="feed-url">{tr("rssPage.dialogs.addFeed.feedUrlLabel")}</Label>
             <Input
               id="feed-url"
-              placeholder="https://example.com/rss"
+              placeholder={tr("rssPage.dialogs.addFeed.feedUrlPlaceholder")}
               value={url}
               onChange={(e) => setUrl(e.target.value)}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="feed-path">Folder (optional)</Label>
+            <Label htmlFor="feed-path">{tr("rssPage.dialogs.addFeed.folderOptionalLabel")}</Label>
             <Select value={path} onValueChange={setPath}>
               <SelectTrigger>
-                <SelectValue placeholder="Root" />
+                <SelectValue placeholder={tr("rssPage.dialogs.addFeed.root")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ROOT_FOLDER_VALUE}>Root</SelectItem>
+                <SelectItem value={ROOT_FOLDER_VALUE}>{tr("rssPage.dialogs.addFeed.root")}</SelectItem>
                 {folders.map((folder) => (
                   <SelectItem key={folder} value={folder}>
                     {folder}
@@ -1658,11 +1696,11 @@ function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDia
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {tr("rssPage.actions.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={addFeed.isPending}>
             {addFeed.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Add Feed
+            {tr("rssPage.actions.addFeed")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1681,22 +1719,23 @@ interface AddFolderDialogProps {
 }
 
 function AddFolderDialog({ instanceId, open, onOpenChange }: AddFolderDialogProps) {
+  const tr = useCommonTr()
   const [path, setPath] = useState("")
   const addFolder = useAddRSSFolder(instanceId)
 
   const handleSubmit = async () => {
     if (!path.trim()) {
-      toast.error("Folder name is required")
+      toast.error(tr("rssPage.errors.folderNameRequired"))
       return
     }
 
     try {
       await addFolder.mutateAsync({ path: path.trim() })
-      toast.success("Folder created successfully")
+      toast.success(tr("rssPage.toasts.folderCreated"))
       setPath("")
       onOpenChange(false)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to create folder"
+      const message = err instanceof Error ? err.message : tr("rssPage.toasts.createFolderFailed")
       toast.error(message)
     }
   }
@@ -1705,17 +1744,17 @@ function AddFolderDialog({ instanceId, open, onOpenChange }: AddFolderDialogProp
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Folder</DialogTitle>
+          <DialogTitle>{tr("rssPage.dialogs.addFolder.title")}</DialogTitle>
           <DialogDescription>
-            Create a new folder to organize your RSS feeds. Use backslash (\) for nested folders.
+            {tr("rssPage.dialogs.addFolder.description")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="folder-path">Folder Path</Label>
+            <Label htmlFor="folder-path">{tr("rssPage.dialogs.addFolder.folderPathLabel")}</Label>
             <Input
               id="folder-path"
-              placeholder="My Feeds\Subfolder"
+              placeholder={tr("rssPage.dialogs.addFolder.folderPathPlaceholder")}
               value={path}
               onChange={(e) => setPath(e.target.value)}
             />
@@ -1723,11 +1762,11 @@ function AddFolderDialog({ instanceId, open, onOpenChange }: AddFolderDialogProp
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {tr("rssPage.actions.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={addFolder.isPending}>
             {addFolder.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Create Folder
+            {tr("rssPage.actions.createFolder")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1786,23 +1825,24 @@ function RuleFormFields({
   availableTags,
   idPrefix,
 }: RuleFormFieldsProps) {
+  const tr = useCommonTr()
   return (
     <>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-must-contain`}>Must Contain</Label>
+          <Label htmlFor={`${idPrefix}-must-contain`}>{tr("rssPage.ruleForm.mustContainLabel")}</Label>
           <Input
             id={`${idPrefix}-must-contain`}
-            placeholder="keyword1|keyword2"
+            placeholder={tr("rssPage.ruleForm.mustContainPlaceholder")}
             value={state.mustContain}
             onChange={(e) => onChange("mustContain", e.target.value)}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-must-not-contain`}>Must Not Contain</Label>
+          <Label htmlFor={`${idPrefix}-must-not-contain`}>{tr("rssPage.ruleForm.mustNotContainLabel")}</Label>
           <Input
             id={`${idPrefix}-must-not-contain`}
-            placeholder="unwanted"
+            placeholder={tr("rssPage.ruleForm.mustNotContainPlaceholder")}
             value={state.mustNotContain}
             onChange={(e) => onChange("mustNotContain", e.target.value)}
           />
@@ -1810,15 +1850,15 @@ function RuleFormFields({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-episode-filter`}>Episode Filter</Label>
+        <Label htmlFor={`${idPrefix}-episode-filter`}>{tr("rssPage.ruleForm.episodeFilterLabel")}</Label>
         <Input
           id={`${idPrefix}-episode-filter`}
-          placeholder="S01-S03;E01-E10"
+          placeholder={tr("rssPage.ruleForm.episodeFilterPlaceholder")}
           value={state.episodeFilter}
           onChange={(e) => onChange("episodeFilter", e.target.value)}
         />
         <p className="text-xs text-muted-foreground">
-          Format: S01-S03;E01-E10 (season and episode ranges)
+          {tr("rssPage.ruleForm.episodeFilterHelp")}
         </p>
       </div>
 
@@ -1829,7 +1869,7 @@ function RuleFormFields({
             onCheckedChange={(v) => onChange("useRegex", v)}
             id={`${idPrefix}-use-regex`}
           />
-          <Label htmlFor={`${idPrefix}-use-regex`}>Use Regex</Label>
+          <Label htmlFor={`${idPrefix}-use-regex`}>{tr("rssPage.ruleForm.useRegexLabel")}</Label>
         </div>
         <div className="flex items-center gap-2">
           <Switch
@@ -1837,14 +1877,14 @@ function RuleFormFields({
             onCheckedChange={(v) => onChange("smartFilter", v)}
             id={`${idPrefix}-smart-filter`}
           />
-          <Label htmlFor={`${idPrefix}-smart-filter`}>Smart Episode Filter</Label>
+          <Label htmlFor={`${idPrefix}-smart-filter`}>{tr("rssPage.ruleForm.smartEpisodeFilterLabel")}</Label>
         </div>
       </div>
 
       <Separator />
 
       <div className="space-y-2">
-        <Label>Affected Feeds</Label>
+        <Label>{tr("rssPage.ruleForm.affectedFeedsLabel")}</Label>
         <div className="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto">
           {feedUrls.map((feedUrl) => (
             <label key={feedUrl} className="flex items-center gap-2 text-sm">
@@ -1867,7 +1907,7 @@ function RuleFormFields({
             </label>
           ))}
           {feedUrls.length === 0 && (
-            <p className="text-sm text-muted-foreground">No feeds available</p>
+            <p className="text-sm text-muted-foreground">{tr("rssPage.ruleForm.noFeedsAvailable")}</p>
           )}
         </div>
       </div>
@@ -1876,25 +1916,25 @@ function RuleFormFields({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-save-path`}>Save Path</Label>
+          <Label htmlFor={`${idPrefix}-save-path`}>{tr("rssPage.ruleForm.savePathLabel")}</Label>
           <Input
             id={`${idPrefix}-save-path`}
-            placeholder="/downloads/shows"
+            placeholder={tr("rssPage.ruleForm.savePathPlaceholder")}
             value={state.savePath}
             onChange={(e) => onChange("savePath", e.target.value)}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-category`}>Category</Label>
+          <Label htmlFor={`${idPrefix}-category`}>{tr("rssPage.ruleForm.categoryLabel")}</Label>
           <Select
             value={state.category || "__none__"}
             onValueChange={(v) => onChange("category", v === "__none__" ? "" : v)}
           >
             <SelectTrigger id={`${idPrefix}-category`}>
-              <SelectValue placeholder="Select category..." />
+              <SelectValue placeholder={tr("rssPage.ruleForm.selectCategoryPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__none__">None</SelectItem>
+              <SelectItem value="__none__">{tr("rssPage.ruleForm.none")}</SelectItem>
               {buildCategorySelectOptions(categories).map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
@@ -1906,12 +1946,12 @@ function RuleFormFields({
       </div>
 
       <div className="space-y-2">
-        <Label>Tags</Label>
+        <Label>{tr("rssPage.ruleForm.tagsLabel")}</Label>
         <MultiSelect
           options={buildTagSelectOptions(availableTags, state.tags)}
           selected={state.tags}
           onChange={(v) => onChange("tags", v)}
-          placeholder="Select tags..."
+          placeholder={tr("rssPage.ruleForm.selectTagsPlaceholder")}
           creatable
         />
       </div>
@@ -1920,7 +1960,7 @@ function RuleFormFields({
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-ignore-days`}>Ignore subsequent matches for</Label>
+          <Label htmlFor={`${idPrefix}-ignore-days`}>{tr("rssPage.ruleForm.ignoreSubsequentLabel")}</Label>
           <div className="flex items-center gap-2">
             <Input
               id={`${idPrefix}-ignore-days`}
@@ -1930,41 +1970,41 @@ function RuleFormFields({
               value={state.ignoreDays}
               onChange={(e) => onChange("ignoreDays", parseInt(e.target.value) || 0)}
             />
-            <span className="text-sm text-muted-foreground">days</span>
+            <span className="text-sm text-muted-foreground">{tr("rssPage.ruleForm.days")}</span>
           </div>
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${idPrefix}-content-layout`}>Torrent Content Layout</Label>
+          <Label htmlFor={`${idPrefix}-content-layout`}>{tr("rssPage.ruleForm.contentLayoutLabel")}</Label>
           <Select
             value={state.contentLayout || "__global__"}
             onValueChange={(v) => onChange("contentLayout", v === "__global__" ? "" : v)}
           >
             <SelectTrigger id={`${idPrefix}-content-layout`}>
-              <SelectValue placeholder="Use global settings" />
+              <SelectValue placeholder={tr("rssPage.ruleForm.useGlobalSettings")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__global__">Use global settings</SelectItem>
-              <SelectItem value="Original">Original</SelectItem>
-              <SelectItem value="Subfolder">Create subfolder</SelectItem>
-              <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
+              <SelectItem value="__global__">{tr("rssPage.ruleForm.useGlobalSettings")}</SelectItem>
+              <SelectItem value="Original">{tr("rssPage.ruleForm.contentLayoutOriginal")}</SelectItem>
+              <SelectItem value="Subfolder">{tr("rssPage.ruleForm.contentLayoutSubfolder")}</SelectItem>
+              <SelectItem value="NoSubfolder">{tr("rssPage.ruleForm.contentLayoutNoSubfolder")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`${idPrefix}-add-stopped`}>Add Stopped</Label>
+        <Label htmlFor={`${idPrefix}-add-stopped`}>{tr("rssPage.ruleForm.addStoppedLabel")}</Label>
         <Select
           value={state.addStopped === null ? "__global__" : state.addStopped ? "true" : "false"}
           onValueChange={(v) => onChange("addStopped", v === "__global__" ? null : v === "true")}
         >
           <SelectTrigger id={`${idPrefix}-add-stopped`}>
-            <SelectValue placeholder="Use global settings" />
+            <SelectValue placeholder={tr("rssPage.ruleForm.useGlobalSettings")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__global__">Use global settings</SelectItem>
-            <SelectItem value="true">Always add stopped</SelectItem>
-            <SelectItem value="false">Never add stopped</SelectItem>
+            <SelectItem value="__global__">{tr("rssPage.ruleForm.useGlobalSettings")}</SelectItem>
+            <SelectItem value="true">{tr("rssPage.ruleForm.alwaysAddStopped")}</SelectItem>
+            <SelectItem value="false">{tr("rssPage.ruleForm.neverAddStopped")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -1993,6 +2033,7 @@ function AddRuleDialog({
   categories,
   tags: availableTags,
 }: AddRuleDialogProps) {
+  const tr = useCommonTr()
   const [name, setName] = useState("")
   const [formState, setFormState] = useState<RuleFormState>(DEFAULT_RULE_FORM_STATE)
 
@@ -2005,7 +2046,7 @@ function AddRuleDialog({
 
   const handleSubmit = async () => {
     if (!name.trim()) {
-      toast.error("Rule name is required")
+      toast.error(tr("rssPage.errors.ruleNameRequired"))
       return
     }
 
@@ -2032,12 +2073,12 @@ function AddRuleDialog({
           },
         },
       })
-      toast.success("Rule created successfully")
+      toast.success(tr("rssPage.toasts.ruleCreated"))
       setName("")
       setFormState(DEFAULT_RULE_FORM_STATE)
       onOpenChange(false)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to create rule"
+      const message = err instanceof Error ? err.message : tr("rssPage.toasts.createRuleFailed")
       toast.error(message)
     }
   }
@@ -2046,17 +2087,17 @@ function AddRuleDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add Auto-Download Rule</DialogTitle>
+          <DialogTitle>{tr("rssPage.dialogs.addRule.title")}</DialogTitle>
           <DialogDescription>
-            Create a rule to automatically download torrents matching your criteria.
+            {tr("rssPage.dialogs.addRule.description")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="add-rule-name">Rule Name</Label>
+            <Label htmlFor="add-rule-name">{tr("rssPage.dialogs.addRule.ruleNameLabel")}</Label>
             <Input
               id="add-rule-name"
-              placeholder="My Show S01"
+              placeholder={tr("rssPage.dialogs.addRule.ruleNamePlaceholder")}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -2075,11 +2116,11 @@ function AddRuleDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {tr("rssPage.actions.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={setRule.isPending}>
             {setRule.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Create Rule
+            {tr("rssPage.actions.createRule")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -2112,6 +2153,7 @@ function EditRuleDialog({
   categories,
   tags: availableTags,
 }: EditRuleDialogProps) {
+  const tr = useCommonTr()
   const [formState, setFormState] = useState<RuleFormState>(DEFAULT_RULE_FORM_STATE)
   const { formatDate } = useDateTimeFormatters()
 
@@ -2172,10 +2214,10 @@ function EditRuleDialog({
           },
         },
       })
-      toast.success("Rule updated successfully")
+      toast.success(tr("rssPage.toasts.ruleUpdated"))
       onOpenChange(false)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to update rule"
+      const message = err instanceof Error ? err.message : tr("rssPage.toasts.updateRuleFailed")
       toast.error(message)
     }
   }
@@ -2184,8 +2226,8 @@ function EditRuleDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Rule: {ruleName}</DialogTitle>
-          <DialogDescription>Modify the auto-download rule settings.</DialogDescription>
+          <DialogTitle>{tr("rssPage.dialogs.editRule.title", { name: ruleName })}</DialogTitle>
+          <DialogDescription>{tr("rssPage.dialogs.editRule.description")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <RuleFormFields
@@ -2199,7 +2241,7 @@ function EditRuleDialog({
 
           {lastMatchDate && (
             <div className="space-y-2">
-              <Label>Last Match</Label>
+              <Label>{tr("rssPage.dialogs.editRule.lastMatchLabel")}</Label>
               <p className="text-sm text-muted-foreground">
                 {formatDate(lastMatchDate)}
               </p>
@@ -2208,11 +2250,11 @@ function EditRuleDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {tr("rssPage.actions.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={setRuleMutation.isPending}>
             {setRuleMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Save Changes
+            {tr("rssPage.actions.saveChanges")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -2303,6 +2345,7 @@ function RssSettingsPopover({
   updatePreferences: ReturnType<typeof useInstancePreferences>["updatePreferences"]
   isUpdating: boolean
 }) {
+  const tr = useCommonTr()
   const [refreshInterval, setRefreshInterval] = useState(preferences?.rss_refresh_interval ?? 30)
   const [maxArticles, setMaxArticles] = useState(preferences?.rss_max_articles_per_feed ?? 50)
   const [downloadRepack, setDownloadRepack] = useState(preferences?.rss_download_repack_proper_episodes ?? false)
@@ -2320,8 +2363,8 @@ function RssSettingsPopover({
       rss_max_articles_per_feed: maxArticles,
       rss_download_repack_proper_episodes: downloadRepack,
     }, {
-      onSuccess: () => toast.success("RSS settings saved"),
-      onError: () => toast.error("Failed to save RSS settings"),
+      onSuccess: () => toast.success(tr("rssPage.toasts.rssSettingsSaved")),
+      onError: () => toast.error(tr("rssPage.toasts.saveRssSettingsFailed")),
     })
   }
 
@@ -2335,15 +2378,15 @@ function RssSettingsPopover({
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent>RSS Settings</TooltipContent>
+        <TooltipContent>{tr("rssPage.settings.title")}</TooltipContent>
       </Tooltip>
       <PopoverContent className="w-72" align="end">
         <div className="space-y-4">
-          <h4 className="font-medium">RSS Settings</h4>
+          <h4 className="font-medium">{tr("rssPage.settings.title")}</h4>
 
           <div className="space-y-3">
             <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
-              <Label className="text-sm">Refresh interval</Label>
+              <Label className="text-sm">{tr("rssPage.settings.refreshIntervalLabel")}</Label>
               <Input
                 type="number"
                 className="w-16 h-8 text-center"
@@ -2351,11 +2394,11 @@ function RssSettingsPopover({
                 value={refreshInterval}
                 onChange={(e) => setRefreshInterval(parseInt(e.target.value) || 30)}
               />
-              <span className="text-xs text-muted-foreground w-6">min</span>
+              <span className="text-xs text-muted-foreground w-6">{tr("rssPage.settings.minutesShort")}</span>
             </div>
 
             <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
-              <Label className="text-sm">Max articles per feed</Label>
+              <Label className="text-sm">{tr("rssPage.settings.maxArticlesLabel")}</Label>
               <Input
                 type="number"
                 className="w-16 h-8 text-center"
@@ -2371,10 +2414,10 @@ function RssSettingsPopover({
 
           {/* Auto-Download Settings */}
           <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">Auto-Download</p>
+            <p className="text-xs text-muted-foreground">{tr("rssPage.settings.autoDownloadSection")}</p>
 
             <div className="flex items-center justify-between">
-              <Label className="text-sm">Download REPACK/PROPER</Label>
+              <Label className="text-sm">{tr("rssPage.settings.downloadRepackProperLabel")}</Label>
               <Switch
                 checked={downloadRepack}
                 onCheckedChange={setDownloadRepack}
@@ -2383,7 +2426,7 @@ function RssSettingsPopover({
           </div>
 
           <Button onClick={handleSave} disabled={isUpdating} className="w-full">
-            {isUpdating ? "Saving..." : "Save"}
+            {isUpdating ? tr("rssPage.actions.saving") : tr("rssPage.actions.save")}
           </Button>
         </div>
       </PopoverContent>
