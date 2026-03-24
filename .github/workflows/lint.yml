@@ -45,9 +45,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch base branch
-        run: git fetch --no-tags --prune --depth=1 origin "${{ github.base_ref }}"
-
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
@@ -99,4 +96,4 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.1
-          args: --new-from-merge-base=origin/${{ github.base_ref }} --timeout=5m
+          only-new-issues: true

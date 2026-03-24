@@ -4,7 +4,6 @@
 package api
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,7 +19,7 @@ func TestCORSDisabledByDefault(t *testing.T) {
 	router, err := server.Handler()
 	require.NoError(t, err)
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodOptions, "/api/auth/me", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/api/auth/me", nil)
 	req.Header.Set("Origin", "https://example.com")
 	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
 
@@ -40,7 +39,7 @@ func TestCORSPreflightAllowsConfiguredOrigin(t *testing.T) {
 	router, err := server.Handler()
 	require.NoError(t, err)
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodOptions, "/api/auth/me", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/api/auth/me", nil)
 	req.Header.Set("Origin", "https://example.com")
 	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
 
@@ -61,7 +60,7 @@ func TestCORSPreflightDeniesUnconfiguredOrigin(t *testing.T) {
 	router, err := server.Handler()
 	require.NoError(t, err)
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodOptions, "/api/auth/me", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/api/auth/me", nil)
 	req.Header.Set("Origin", "https://blocked.example")
 	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
 
@@ -81,7 +80,7 @@ func TestCORSAllowsXRequestedWithHeaderForConfiguredOrigin(t *testing.T) {
 	router, err := server.Handler()
 	require.NoError(t, err)
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodOptions, "/api/auth/me", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/api/auth/me", nil)
 	req.Header.Set("Origin", "https://example.com")
 	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
 	req.Header.Set("Access-Control-Request-Headers", "x-requested-with")
@@ -107,7 +106,7 @@ func TestCORSPreflightDeniesUnconfiguredRequestHeader(t *testing.T) {
 	router, err := server.Handler()
 	require.NoError(t, err)
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodOptions, "/api/auth/me", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/api/auth/me", nil)
 	req.Header.Set("Origin", "https://example.com")
 	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
 	req.Header.Set("Access-Control-Request-Headers", "x-not-allowed")
@@ -129,7 +128,7 @@ func TestCORSPreflightWithCustomBaseURLAndConfiguredOrigin(t *testing.T) {
 	router, err := server.Handler()
 	require.NoError(t, err)
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodOptions, "/qui/api/auth/me", nil)
+	req := httptest.NewRequest(http.MethodOptions, "/qui/api/auth/me", nil)
 	req.Header.Set("Origin", "https://example.com")
 	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
 
@@ -150,7 +149,7 @@ func TestCORSGetIncludesHeadersForConfiguredOrigin(t *testing.T) {
 	router, err := server.Handler()
 	require.NoError(t, err)
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/auth/me", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
 	req.Header.Set("Origin", "https://example.com")
 
 	rec := httptest.NewRecorder()
@@ -169,7 +168,7 @@ func TestCORSGetOmitsHeadersForUnconfiguredOrigin(t *testing.T) {
 	router, err := server.Handler()
 	require.NoError(t, err)
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/auth/me", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
 	req.Header.Set("Origin", "https://blocked.example")
 
 	rec := httptest.NewRecorder()
