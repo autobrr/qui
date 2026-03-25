@@ -78,6 +78,9 @@ By default, hardlink-added torrents start seeding immediately (since `skip_check
 - Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not necessarily free space until all links are removed.
 - Windows support: folder names are sanitized to remove characters Windows forbids. Torrent file paths themselves still need to be valid for your qBittorrent setup.
 - Hardlink mode supports extra files when piece-boundary safe. If the incoming torrent contains extra files not present in the matched torrent (e.g., `.nfo`/`.srt` sidecars), hardlink mode will link the content files and trigger a recheck so qBittorrent downloads the extras. If extras share pieces with content (unsafe), the cross-seed is skipped.
+- If you enable pooled partial completion in the **Hardlink / Reflink Mode** section of the Rules tab, related hardlink adds against the same matched local source torrent can cooperate temporarily. Hardlink automation only continues when post-recheck missing data is limited to whole missing files. If qBittorrent reports missing bytes inside an already linked file, qui leaves that torrent paused for manual review.
+- With pooled partial completion enabled, hardlink mode can still add paused even when no files are immediately reusable, then rely on recheck and the pool to decide whether it can continue automatically. The pool waits for any currently active member to finish downloading its missing content before automatically moving on, and the preferred downloader rotates on a timer so another member can take over in long-lived pools.
+- If you manually start another paused torrent from the same pool, qui notices it on the next pool review and uses that torrent's completed files in the same propagation/recheck flow as automatically selected members.
 
 ## Reflink Mode (Alternative)
 
@@ -115,8 +118,23 @@ On Linux, check the filesystem type with `df -T /path` (you want `xfs`/`btrfs`, 
 | Aspect | Hardlink Mode | Reflink Mode |
 |--------|--------------|--------------|
 | Piece-boundary check | Skips if unsafe | Never skips (safe to modify clones) |
-| Recheck | Only when extras exist | Only when extras exist |
+| Recheck | When the linked set is incomplete and **Skip recheck** is off | When the cloned set is incomplete and **Skip recheck** is off; the single-file size mismatch override also uses this path |
 | Disk usage | Zero (shared blocks) | Starts near-zero; grows as modified |
+| Single-file size mismatch | Not supported | Optional normalized-name override |
+
+When pooled partial completion is enabled, reflink members may continue even when a file is only partially complete after recheck, as long as the total missing bytes remain within the configured post-recheck limit. As with hardlink pools, qui keeps coordination to one active downloader at a time, rotates the preferred downloader on a timer for long-lived pools, and re-reviews the pool when you manually start another paused member.
+
+### Single-File Size Mismatch Override
+
+If you enable **Allow reflink single-file size mismatch** in the **Hardlink / Reflink Mode** section, qui can accept a reflink cross-seed when:
+
+- both torrents contain exactly one file;
+- the normalized file names match; and
+- the sizes differ but are still within 1%.
+
+This option creates a recheck-required reflink add. If **Skip recheck-required matches** is enabled in the Rules tab, qui skips the match instead of adding it. When **Skip recheck-required matches** is disabled, qui clones the file into the reflink tree, adds the torrent paused, and queues a recheck; if qBittorrent reaches at least **99%** after recheck, qui resumes it automatically.
+
+This override is separate from pooled partial completion, so enabling **Allow reflink single-file size mismatch** does not place that add into a pooled partial-completion flow. Reflink mode can still enter the recheck path for other reasons, such as extra files or any other incomplete cloned set, and those rechecks can also be skipped entirely when **Skip recheck-required matches** is enabled.
 
 ### Disk Usage Implications
 

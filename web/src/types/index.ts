@@ -1993,6 +1993,9 @@ export interface CrossSeedAutomationSettings {
   skipAutoResumeWebhook: boolean
   skipRecheck: boolean
   skipPieceBoundarySafetyCheck: boolean
+  enablePooledPartialCompletion: boolean
+  allowReflinkSingleFileSizeMismatch: boolean
+  maxMissingBytesAfterRecheck: number
   // Hardlink mode settings
   useHardlinks: boolean
   hardlinkBaseDir: string
@@ -2044,6 +2047,9 @@ export interface CrossSeedAutomationSettingsPatch {
   skipAutoResumeWebhook?: boolean
   skipRecheck?: boolean
   skipPieceBoundarySafetyCheck?: boolean
+  enablePooledPartialCompletion?: boolean
+  allowReflinkSingleFileSizeMismatch?: boolean
+  maxMissingBytesAfterRecheck?: number
   // Hardlink mode settings
   useHardlinks?: boolean
   hardlinkBaseDir?: string
