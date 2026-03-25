@@ -3618,12 +3618,16 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	s.notifyAutomationSummary(ctx, instanceID, summary)
+	s.notifyAutomationSummary(ctx, instanceID, summary, eligibleRules)
 	return nil, nil
 }
 
-func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, summary *automationSummary) {
+func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, summary *automationSummary, rules []*models.Automation) {
 	if s == nil || s.notifier == nil || summary == nil || !summary.hasActivity() {
+		return
+	}
+
+	if !shouldNotifyAutomationSummary(summary, rules) {
 		return
 	}
 
@@ -3647,6 +3651,30 @@ func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, s
 		ErrorMessage:  errorMessage,
 		ErrorMessages: errorMessages,
 	})
+}
+
+// shouldNotifyAutomationSummary checks whether at least one participating rule
+// has notifications enabled.
+func shouldNotifyAutomationSummary(summary *automationSummary, rules []*models.Automation) bool {
+	if summary == nil || len(rules) == 0 {
+		return false
+	}
+
+	notifyByRuleID := make(map[int]bool, len(rules))
+	for _, rule := range rules {
+		notifyByRuleID[rule.ID] = rule.Notify
+	}
+
+	for _, ruleSummary := range summary.rules {
+		if ruleSummary == nil {
+			continue
+		}
+		if notifyByRuleID[ruleSummary.ruleID] {
+			return true
+		}
+	}
+
+	return false
 }
 
 func buildAutomationRuleSummaries(summary *automationSummary) []notifications.AutomationRuleSummary {
