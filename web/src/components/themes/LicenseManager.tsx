@@ -258,7 +258,14 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
                   , run{" "}
                   <button
                     type="button"
-                    onClick={() => { copyTextToClipboard("/verify"); toast.success("Copied /verify") }}
+                    onClick={async () => {
+                      try {
+                        await copyTextToClipboard("/verify")
+                        toast.success("Copied /verify")
+                      } catch {
+                        toast.error("Failed to copy /verify")
+                      }
+                    }}
                     className="inline-flex items-center rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] font-semibold tracking-[-0.01em] text-foreground shadow-sm transition-colors hover:bg-muted cursor-pointer"
                     aria-label="Copy /verify command"
                     title="Click to copy"
