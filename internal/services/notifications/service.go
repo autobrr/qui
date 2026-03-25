@@ -339,10 +339,16 @@ func (s *Service) formatEvent(ctx context.Context, event Event, humanReadableMet
 		return title, buildMessage(instanceLabel, lines)
 	case EventBackupSucceeded:
 		title := "Backup completed"
+		if strings.TrimSpace(event.ErrorMessage) != "" {
+			title = "Backup completed with warnings"
+		}
 		lines := []string{
 			formatLine("Backup", formatKind(event.BackupKind)),
 			formatLine("Run", strconv.FormatInt(event.BackupRunID, 10)),
 			formatLine("Torrents", strconv.Itoa(event.BackupTorrentCount)),
+		}
+		if warning := strings.TrimSpace(event.ErrorMessage); warning != "" {
+			lines = append(lines, formatLine("Warnings", formatErrorMessage(warning)))
 		}
 		return title, buildMessage(instanceLabel, lines)
 	case EventBackupFailed:

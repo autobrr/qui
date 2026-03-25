@@ -1060,6 +1060,12 @@ export interface BackupManifestItem {
   torrentBlob?: string
 }
 
+export interface BackupManifestWarning {
+  hash: string
+  name: string
+  reason: string
+}
+
 export interface BackupCategorySnapshot {
   savePath?: string | null
 }
@@ -1071,6 +1077,7 @@ export interface BackupManifest {
   torrentCount: number
   categories?: Record<string, BackupCategorySnapshot>
   tags?: string[]
+  warnings?: BackupManifestWarning[]
   items: BackupManifestItem[]
 }
 

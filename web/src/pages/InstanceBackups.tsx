@@ -140,6 +140,9 @@ const statusVariants: Record<BackupRunStatus, "default" | "secondary" | "destruc
   canceled: "outline",
 }
 
+const hasBackupWarnings = (run: BackupRun) => run.status === "success" && Boolean(run.errorMessage?.trim())
+const backupStatusLabel = (run: BackupRun) => (hasBackupWarnings(run) ? "success with warnings" : run.status)
+
 export function InstanceBackups() {
   const { instances } = useInstances()
   const [selectedInstanceId, setSelectedInstanceId] = usePersistedInstanceSelection("backups")
@@ -910,7 +913,19 @@ export function InstanceBackups() {
                         </p>
                       </div>
                     ) : (
-                      <p className="text-xs text-muted-foreground capitalize">Status: {lastRun.status}</p>
+                      <div className="space-y-1">
+                        <Badge
+                          variant={statusVariants[lastRun.status]}
+                          className={hasBackupWarnings(lastRun)
+                            ? "capitalize border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-50"
+                            : "capitalize"}
+                        >
+                          {backupStatusLabel(lastRun)}
+                        </Badge>
+                        {hasBackupWarnings(lastRun) ? (
+                          <p className="max-w-xs text-xs text-amber-700">{lastRun.errorMessage}</p>
+                        ) : null}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1743,7 +1758,19 @@ export function InstanceBackups() {
                               </p>
                             </div>
                           ) : (
-                            <Badge variant={statusVariants[run.status]} className="capitalize">{run.status}</Badge>
+                            <div className="space-y-1">
+                              <Badge
+                                variant={statusVariants[run.status]}
+                                className={hasBackupWarnings(run)
+                                  ? "capitalize border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-50"
+                                  : "capitalize"}
+                              >
+                                {backupStatusLabel(run)}
+                              </Badge>
+                              {hasBackupWarnings(run) ? (
+                                <p className="max-w-xs text-xs text-amber-700">{run.errorMessage}</p>
+                              ) : null}
+                            </div>
                           )}
                         </TableCell>
                         <TableCell>{formatDateSafe(run.requestedAt, formatDate)}</TableCell>
@@ -1942,8 +1969,26 @@ export function InstanceBackups() {
                       <span>Categories: {manifestCategoryEntries.length}</span>
                     )}
                     {manifestTags.length > 0 && <span>Tags: {manifestTags.length}</span>}
+                    {manifest.warnings && manifest.warnings.length > 0 && <span>Warnings: {manifest.warnings.length}</span>}
                     <span>Generated {formatDateSafe(manifest.generatedAt, formatDate)}</span>
                   </div>
+                  {manifest.warnings && manifest.warnings.length > 0 ? (
+                    <Alert className="border-amber-300 bg-amber-50 text-amber-950">
+                      <AlertTitle>Partial backup warnings</AlertTitle>
+                      <AlertDescription className="space-y-2">
+                        <p>This backup completed, but some torrent exports were skipped.</p>
+                        <ul className="space-y-1 text-xs">
+                          {manifest.warnings.map(warning => (
+                            <li key={`${warning.hash}-${warning.reason}`} className="break-words">
+                              <span className="font-medium">{warning.name || warning.hash}</span>
+                              {" — "}
+                              {warning.reason}
+                            </li>
+                          ))}
+                        </ul>
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
                   {displayedCategoryEntries.length > 0 && (
                     <div>
                       <p className="font-medium text-foreground mb-2">Categories</p>
