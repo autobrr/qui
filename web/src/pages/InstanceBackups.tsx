@@ -585,25 +585,19 @@ export function InstanceBackups() {
   const handleSaveAll = async () => {
     if (!formState) return
     setSavingAll(true)
-    try {
-      const results = await Promise.allSettled(
-        (supportedInstances ?? []).map(inst => api.updateBackupSettings(inst.id, formState)),
-      )
-      const failed = results.filter((result: PromiseSettledResult<void>): result is PromiseRejectedResult => result.status === "rejected")
+    const results = await Promise.allSettled(
+      (supportedInstances ?? []).map(inst => api.updateBackupSettings(inst.id, formState)),
+    )
+    const failed = results.filter((result): result is PromiseRejectedResult => result.status === "rejected")
 
-      await queryClient.invalidateQueries({ queryKey: ["instance-backups"] })
+    await queryClient.invalidateQueries({ queryKey: ["instance-backups"] })
 
-      if (failed.length === 0) {
-        toast.success("Settings applied to all instances")
-      } else {
-        toast.error(`Applied to ${results.length - failed.length}/${results.length} instances`)
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to apply settings to all instances"
-      toast.error(message)
-    } finally {
-      setSavingAll(false)
+    if (failed.length === 0) {
+      toast.success("Settings applied to all instances")
+    } else {
+      toast.error(`Applied to ${results.length - failed.length}/${results.length} instances`)
     }
+    setSavingAll(false)
   }
 
   const handleTrigger = async (kind: BackupRunKind = "manual") => {
