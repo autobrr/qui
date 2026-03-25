@@ -1068,7 +1068,7 @@ export function InstanceBackups() {
                       <Button
                         variant="outline"
                         onClick={handleSave}
-                        disabled={saveDisabled}
+                        disabled={saveDisabled || savingAll}
                         title={requiresCadenceSelection ? "Select at least one cadence to enable automatic backups." : undefined}
                       >
                         <Save className="mr-2 h-4 w-4" /> Save changes
