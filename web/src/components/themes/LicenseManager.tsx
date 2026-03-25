@@ -25,7 +25,7 @@ import {
 import { withBasePath } from "@/lib/base-url"
 import { getLicenseErrorMessage } from "@/lib/license-errors"
 import { POLAR_PORTAL_URL } from "@/lib/polar-constants"
-import { SUPPORT_CRYPTOCURRENCY_URL } from "@/lib/support-constants"
+import { QUI_DISCORD_URL, SUPPORT_CRYPTOCURRENCY_URL } from "@/lib/support-constants"
 import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Bitcoin, Copy, ExternalLink, Heart, Key, RefreshCw, Sparkles, Trash2 } from "lucide-react"
@@ -193,10 +193,11 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
         <CardContent>
           {/* Premium License Status */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="flex items-start gap-3 flex-1">
+            {/* Status header */}
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+              <div className="flex items-start gap-3">
                 <Sparkles className={hasPremiumAccess ? "h-5 w-5 text-primary flex-shrink-0 mt-0.5" : "h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5"} />
-                <div className="min-w-0 space-y-1 flex-1">
+                <div className="space-y-1">
                   <p className="font-medium text-base">{accessTitle}</p>
                   <p className="text-sm text-muted-foreground">{accessDescription}</p>
                   {!hasPremiumAccess && !hasInvalidLicense && (
@@ -213,73 +214,19 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
                       .
                     </p>
                   )}
-
-                  {/* License Key Details - Show for both active and invalid licenses */}
-                  {primaryLicense && (
-                    <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
-                      <div className="font-mono text-xs break-all text-muted-foreground">
-                        {maskLicenseKey(primaryLicense.licenseKey)}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {primaryLicense.productName} • Status: {primaryLicense.status} • Added {formatDate(new Date(primaryLicense.createdAt))}
-                      </div>
-                      {hasInvalidLicense && (
-                        <div className="space-y-2">
-                          <div className="text-xs text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
-                            <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                            {provider === "polar" ? (
-                              <span>
-                                This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s active, or manage activations via{" "}
-                                <a
-                                  href={portalUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="underline hover:no-underline inline-flex items-center gap-0.5"
-                                >
-                                  {portalUrl.replace("https://", "")}
-                                  <ExternalLink className="h-2.5 w-2.5" />
-                                </a>
-                                .
-                              </span>
-                            ) : (
-                              <span>This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s currently active.</span>
-                            )}
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              // Re-attempt activation with the existing license key
-                              if (primaryLicense) {
-                                activateLicense.mutate(primaryLicense.licenseKey)
-                              }
-                            }}
-                            disabled={activateLicense.isPending}
-                            className="h-7 text-xs"
-                          >
-                            <RefreshCw className={`h-3 w-3 mr-1 ${activateLicense.isPending ? "animate-spin" : ""}`} />
-                            {activateLicense.isPending ? "Activating..." : "Re-activate License"}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               </div>
-
               <div className="flex gap-2 flex-shrink-0 flex-wrap sm:flex-nowrap">
                 {primaryLicense && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDeleteLicense(primaryLicense.licenseKey)}
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Remove
-                    </Button>
-                  </>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteLicense(primaryLicense.licenseKey)}
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Remove
+                  </Button>
                 )}
                 {!hasPremiumAccess && !hasInvalidLicense && (
                   <Button size="sm" onClick={() => setShowPaymentDialog(true)}>
@@ -290,6 +237,88 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
                 )}
               </div>
             </div>
+
+            {/* Discord perk */}
+            {hasPremiumAccess && (
+              <div className="mt-4 border-t border-border/50 pt-4 animate-in fade-in duration-300 motion-reduce:animate-none">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Discord perk
+                </p>
+                <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                  Claim the <span className="font-medium text-foreground">qui-premium</span> role for access to a private channel.{" "}
+                  <a
+                    href={QUI_DISCORD_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 font-medium text-primary transition-colors hover:text-primary/80"
+                  >
+                    Open qui Discord
+                    <span className="sr-only">(opens in new tab)</span>
+                  </a>
+                  , run{" "}
+                  <button
+                    type="button"
+                    onClick={() => { copyTextToClipboard("/verify"); toast.success("Copied /verify") }}
+                    className="inline-flex items-center rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] font-semibold tracking-[-0.01em] text-foreground shadow-sm transition-colors hover:bg-muted cursor-pointer"
+                    aria-label="Copy /verify command"
+                    title="Click to copy"
+                  >
+                    /verify
+                  </button>
+                  {" "}in <span className="font-medium text-foreground">#qui</span>, and sign in with your license email.
+                </p>
+              </div>
+            )}
+
+            {/* License key details */}
+            {primaryLicense && (
+              <div className="mt-3 border-t border-border/50 pt-3 space-y-2">
+                <div className="font-mono text-xs break-all text-muted-foreground">
+                  {maskLicenseKey(primaryLicense.licenseKey)}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {primaryLicense.productName}{primaryLicense.status !== "active" && <> • Status: {primaryLicense.status}</>} • Added {formatDate(new Date(primaryLicense.createdAt))}
+                </div>
+                {hasInvalidLicense && (
+                  <div className="space-y-2">
+                    <div className="text-xs text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
+                      <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                      {provider === "polar" ? (
+                        <span>
+                          This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s active, or manage activations via{" "}
+                          <a
+                            href={portalUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline hover:no-underline inline-flex items-center gap-0.5"
+                          >
+                            {portalUrl.replace("https://", "")}
+                            <ExternalLink className="h-2.5 w-2.5" />
+                          </a>
+                          .
+                        </span>
+                      ) : (
+                        <span>This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s currently active.</span>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (primaryLicense) {
+                          activateLicense.mutate(primaryLicense.licenseKey)
+                        }
+                      }}
+                      disabled={activateLicense.isPending}
+                      className="h-7 text-xs"
+                    >
+                      <RefreshCw className={`h-3 w-3 mr-1 ${activateLicense.isPending ? "animate-spin" : ""}`} />
+                      {activateLicense.isPending ? "Activating..." : "Re-activate License"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
