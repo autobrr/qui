@@ -4,7 +4,7 @@
  */
 
 import { Link } from "@tanstack/react-router"
-import { ArrowDownToLine, ChevronLeft, ChevronRight, CircleHelp, CircleX, Clock, Download, FileText, HardDrive, ListChecks, RefreshCw, Trash, Undo2 } from "lucide-react"
+import { ArrowDownToLine, ChevronLeft, ChevronRight, CircleHelp, CircleX, Clock, Download, FileText, HardDrive, ListChecks, RefreshCw, Save, Trash, Undo2 } from "lucide-react"
 import type { ChangeEvent } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
@@ -580,6 +580,25 @@ export function InstanceBackups() {
     }
   }
 
+  const [savingAll, setSavingAll] = useState(false)
+
+  const handleSaveAll = async () => {
+    if (!formState) return
+    setSavingAll(true)
+    try {
+      await Promise.all(
+        (supportedInstances ?? []).map(inst => api.updateBackupSettings(inst.id, formState))
+      )
+      queryClient.invalidateQueries({ queryKey: ["instance-backups"] })
+      toast.success("Settings applied to all instances")
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to apply settings to all instances"
+      toast.error(message)
+    } finally {
+      setSavingAll(false)
+    }
+  }
+
   const handleTrigger = async (kind: BackupRunKind = "manual") => {
     try {
       await triggerBackup.mutateAsync({ kind, requestedBy: "ui" })
@@ -1038,20 +1057,29 @@ export function InstanceBackups() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    <Button onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
-                      <ArrowDownToLine className="mr-2 h-4 w-4" /> Run manual backup
-                    </Button>
-                    <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-                      <FileText className="mr-2 h-4 w-4" /> Import backup
-                    </Button>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      <Button onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
+                        <ArrowDownToLine className="mr-2 h-4 w-4" /> Run manual backup
+                      </Button>
+                      <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+                        <FileText className="mr-2 h-4 w-4" /> Import backup
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleSave}
+                        disabled={saveDisabled}
+                        title={requiresCadenceSelection ? "Select at least one cadence to enable automatic backups." : undefined}
+                      >
+                        <Save className="mr-2 h-4 w-4" /> Save changes
+                      </Button>
+                    </div>
                     <Button
                       variant="outline"
-                      onClick={handleSave}
-                      disabled={saveDisabled}
-                      title={requiresCadenceSelection ? "Select at least one cadence to enable automatic backups." : undefined}
+                      onClick={handleSaveAll}
+                      disabled={saveDisabled || savingAll}
                     >
-                      Save changes
+                      <Save className="mr-2 h-4 w-4" /> Save changes to all instances
                     </Button>
                   </div>
                   {requiresCadenceSelection ? (
