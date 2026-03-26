@@ -19,6 +19,7 @@ export interface WorkflowExport {
   sortingConfig?: SortingConfig
   intervalSeconds?: number
   dryRun?: boolean
+  notify?: boolean
 }
 
 const DEFAULT_INTERVAL_SECONDS = 900
@@ -47,6 +48,10 @@ export function toExportFormat(workflow: Automation): WorkflowExport {
 
   if (workflow.dryRun) {
     exported.dryRun = true
+  }
+
+  if (!workflow.notify) {
+    exported.notify = false
   }
 
   return exported
@@ -86,6 +91,7 @@ export function fromImportFormat(
     sortingConfig: data.sortingConfig,
     enabled: false, // Always start disabled
     dryRun: data.dryRun ?? false,
+    notify: data.notify ?? true,
   }
 
   // Include intervalSeconds if specified and differs from default
@@ -187,6 +193,10 @@ export function parseImportJSON(jsonString: string): { data: WorkflowExport; err
   // Optional intervalSeconds
   if (typeof obj.intervalSeconds === "number" && obj.intervalSeconds >= 60) {
     data.intervalSeconds = obj.intervalSeconds
+  }
+
+  if (typeof obj.notify === "boolean") {
+    data.notify = obj.notify
   }
 
   return { data, error: null }
