@@ -75,6 +75,19 @@ release:
 checksum:
   name_template: "checksums.txt"
 
+signs:
+  - artifacts: checksum
+    cmd: openssl
+    signature: "${artifact}.sig"
+    args:
+      - "dgst"
+      - "-sha256"
+      - "-sign"
+      - "{{ .Env.RELEASE_SIGNING_KEY_FILE }}"
+      - "-out"
+      - "${signature}"
+      - "${artifact}"
+
 changelog:
   sort: asc
   use: github
