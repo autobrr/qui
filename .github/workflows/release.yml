@@ -259,6 +259,15 @@ jobs:
           POLAR_ORG_ID: ${{ env.POLAR_ORG_ID }}
           RELEASE_SIGNING_KEY_FILE: ${{ env.RELEASE_SIGNING_KEY_FILE }}
 
+      - name: Verify signed checksum signature
+        run: |
+          public_key_file="$RUNNER_TEMP/release-signing-key.pub.pem"
+          openssl pkey -in "$RELEASE_SIGNING_KEY_FILE" -pubout -out "$public_key_file"
+          openssl dgst -sha256 \
+            -verify "$public_key_file" \
+            -signature dist/checksums.txt.sig \
+            dist/checksums.txt
+
   docker:
     name: Build Docker images
     runs-on: ubuntu-latest
