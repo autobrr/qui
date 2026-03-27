@@ -216,6 +216,49 @@ jobs:
             dist/*.deb
             dist/*.rpm
 
+  goreleasersignedsmoke:
+    name: PR signed release smoke test (ephemeral key)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    needs: [test, web]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download web production build
+        uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Prepare ephemeral release signing key
+        run: |
+          key_file="$RUNNER_TEMP/release-signing-key.pem"
+          openssl ecparam -name prime256v1 -genkey -noout -out "$key_file"
+          chmod 600 "$key_file"
+          echo "RELEASE_SIGNING_KEY_FILE=$key_file" >> "$GITHUB_ENV"
+          echo "POLAR_ORG_ID=00000000-0000-0000-0000-000000000000" >> "$GITHUB_ENV"
+
+      - name: Run signed GoReleaser smoke build
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --snapshot --clean --config .goreleaser.release.yml --parallelism 5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILDER: ${{ github.actor }}@github-actions
+          POLAR_ORG_ID: ${{ env.POLAR_ORG_ID }}
+          RELEASE_SIGNING_KEY_FILE: ${{ env.RELEASE_SIGNING_KEY_FILE }}
+
   docker:
     name: Build Docker images
     runs-on: ubuntu-latest
