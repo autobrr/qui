@@ -31,7 +31,7 @@ func TestReleaseValidatorValidatesSignedChecksums(t *testing.T) {
 
 	assetName := "qui_1.2.3_linux_x86_64.tar.gz"
 	asset := []byte("release payload")
-	checksums := []byte(fmt.Sprintf("%x  %s\n", sha256.Sum256(asset), assetName))
+	checksums := fmt.Appendf(nil, "%x  %s\n", sha256.Sum256(asset), assetName)
 	signature := signECDSA(t, privateKey, checksums)
 
 	require.Equal(t, releaseChecksumsAsset, validator.GetValidationAssetName(assetName))
