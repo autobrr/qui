@@ -68,7 +68,7 @@ export function useTorrentsList(
 
   // Detect if this is cross-seed filtering based on expression content
   const isCrossSeedFiltering = useMemo(() => {
-    return filters?.expr?.includes('Hash ==') && filters?.expr?.includes('||')
+    return filters?.expr?.includes("Hash ==") && filters?.expr?.includes("||")
   }, [filters?.expr])
   const useCrossInstanceEndpoint = isAllInstancesView || isCrossSeedFiltering
 
@@ -260,6 +260,7 @@ export function useTorrentsList(
     counts: data?.counts,
     categories: data?.categories,
     tags: data?.tags,
+    trackerHealthSupported: data?.trackerHealthSupported ?? false,
     supportsTorrentCreation: isAllInstancesView ? false : capabilities?.supportsTorrentCreation ?? true,
     capabilities: isAllInstancesView ? undefined : capabilities,
     serverState: data?.serverState ?? null,

@@ -287,6 +287,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   const [categories, setCategories] = useState<Record<string, Category> | undefined>(undefined)
   const [tags, setTags] = useState<string[] | undefined>(undefined)
   const [useSubcategories, setUseSubcategories] = useState<boolean>(false)
+  const [supportsTrackerHealth, setSupportsTrackerHealth] = useState<boolean>(false)
   const [lastInstanceId, setLastInstanceId] = useState<number | null>(null)
 
   const isSameTorrent = useCallback((left: Torrent | null, right: Torrent | null) => {
@@ -317,7 +318,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   }, [instanceId])
 
   // Callback when filtered data updates - now receives counts, categories, tags, and useSubcategories from backend
-  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: TorrentCounts, categoriesData?: Record<string, Category>, tagsData?: string[], subcategoriesEnabled?: boolean) => {
+  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: TorrentCounts, categoriesData?: Record<string, Category>, tagsData?: string[], subcategoriesEnabled?: boolean, trackerHealthEnabled?: boolean) => {
     // Update the last instance ID when we receive new data
     setLastInstanceId(instanceId)
 
@@ -370,6 +371,9 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     // Update subcategories flag when provided
     if (subcategoriesEnabled !== undefined) {
       setUseSubcategories(subcategoriesEnabled)
+    }
+    if (trackerHealthEnabled !== undefined) {
+      setSupportsTrackerHealth(trackerHealthEnabled)
     }
   }, [instanceId])
 
@@ -445,6 +449,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
             key={`filter-sidebar-${instanceId}`}
             instanceId={instanceId}
             readOnly={isAllInstances}
+            supportsTrackerHealth={isAllInstances ? supportsTrackerHealth : undefined}
             selectedFilters={filters}
             onFilterChange={setFilters}
             torrentCounts={torrentCounts}
@@ -481,6 +486,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
               key={`filter-sidebar-mobile-${instanceId}`}
               instanceId={instanceId}
               readOnly={isAllInstances}
+              supportsTrackerHealth={isAllInstances ? supportsTrackerHealth : undefined}
               selectedFilters={filters}
               onFilterChange={setFilters}
               torrentCounts={torrentCounts}
