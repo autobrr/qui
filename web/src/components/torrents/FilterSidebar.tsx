@@ -3135,6 +3135,7 @@ export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps)
   if (prevProps.isLoading !== nextProps.isLoading) return false
   if (prevProps.isMobile !== nextProps.isMobile) return false
   if ((prevProps.readOnly ?? false) !== (nextProps.readOnly ?? false)) return false
+  if ((prevProps.supportsTrackerHealth ?? false) !== (nextProps.supportsTrackerHealth ?? false)) return false
   if (prevProps.onFilterChange !== nextProps.onFilterChange) return false
   if ((prevProps.useSubcategories ?? false) !== (nextProps.useSubcategories ?? false)) return false
 
