@@ -7,15 +7,18 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // Helper function to insert a test instance with interned fields
@@ -230,6 +233,177 @@ func TestUpdateSettingsNormalizesRetention(t *testing.T) {
 	require.Equal(t, 1, reloaded.KeepHourly)
 	require.Equal(t, 1, reloaded.KeepDaily)
 	require.Equal(t, 1, reloaded.KeepMonthly)
+}
+
+func TestShouldSkipLiveExportForBackup(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		torrent       qbt.Torrent
+		cacheErr      error
+		hasCachedBlob bool
+		want          bool
+	}{
+		{
+			name: "skip uncached hybrid torrent",
+			torrent: qbt.Torrent{
+				Hash:       "hybrid-id",
+				InfohashV1: "v1-hash",
+				InfohashV2: "v2-hash",
+			},
+			want: true,
+		},
+		{
+			name: "allow cached hybrid torrent",
+			torrent: qbt.Torrent{
+				Hash:       "hybrid-id",
+				InfohashV1: "v1-hash",
+				InfohashV2: "v2-hash",
+			},
+			hasCachedBlob: true,
+			want:          false,
+		},
+		{
+			name: "allow legacy torrent",
+			torrent: qbt.Torrent{
+				Hash:       "v1-hash",
+				InfohashV1: "v1-hash",
+			},
+			want: false,
+		},
+		{
+			name: "allow v2-only torrent",
+			torrent: qbt.Torrent{
+				Hash:       "v2-id",
+				InfohashV2: "full-v2-hash",
+			},
+			want: false,
+		},
+		{
+			name: "allow hybrid torrent when cache lookup failed",
+			torrent: qbt.Torrent{
+				Hash:       "hybrid-id",
+				InfohashV1: "v1-hash",
+				InfohashV2: "v2-hash",
+			},
+			cacheErr: errors.New("db unavailable"),
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, shouldSkipLiveExportForBackup(tt.torrent, tt.hasCachedBlob, tt.cacheErr))
+		})
+	}
+}
+
+func TestExecuteBackupSkipsUncachedHybridBeforeExport(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "hybrid-skip")
+	store := models.NewBackupStore(db)
+
+	require.NoError(t, store.UpsertSettings(ctx, &models.BackupSettings{
+		InstanceID:    instanceID,
+		Enabled:       true,
+		HourlyEnabled: true,
+		KeepHourly:    1,
+	}))
+
+	sm := &stubBackupSyncManager{
+		torrents: []qbt.Torrent{{
+			Hash:       "hybrid-id",
+			Name:       "Hybrid Torrent",
+			InfohashV1: "v1-hash",
+			InfohashV2: "v2-hash",
+			TotalSize:  123,
+		}},
+	}
+
+	svc := NewService(store, sm, nil, Config{WorkerCount: 1, DataDir: t.TempDir()}, nil)
+	svc.now = func() time.Time { return time.Unix(0, 0).UTC() }
+
+	result, err := svc.executeBackup(ctx, job{runID: 42, instanceID: instanceID, kind: models.BackupRunKindManual})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 0, result.torrentCount)
+	require.Empty(t, result.items)
+	require.Equal(t, 0, sm.exportCalls)
+
+	svc.progressMu.RLock()
+	progress := svc.progress[42]
+	svc.progressMu.RUnlock()
+	require.NotNil(t, progress)
+	require.Equal(t, 1, progress.Current)
+	require.Equal(t, 1, progress.Total)
+}
+
+func TestExecuteBackupUsesCachedBlobForHybridTorrent(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "hybrid-cache")
+	store := models.NewBackupStore(db)
+
+	require.NoError(t, store.UpsertSettings(ctx, &models.BackupSettings{
+		InstanceID:    instanceID,
+		Enabled:       true,
+		HourlyEnabled: true,
+		KeepHourly:    1,
+	}))
+
+	dataDir := t.TempDir()
+	blobRelPath := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "cc", "cached.torrent"))
+	blobAbsPath := filepath.Join(dataDir, blobRelPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbsPath), 0o755))
+	require.NoError(t, os.WriteFile(blobAbsPath, []byte("cached"), 0o600))
+
+	now := time.Unix(0, 0).UTC()
+	run := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindManual,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "tester",
+		RequestedAt: now,
+		StartedAt:   &now,
+		CompletedAt: &now,
+	}
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.InsertItems(ctx, run.ID, []models.BackupItem{{
+		RunID:           run.ID,
+		TorrentHash:     "hybrid-id",
+		Name:            "Hybrid Torrent",
+		SizeBytes:       123,
+		TorrentBlobPath: &blobRelPath,
+	}}))
+
+	sm := &stubBackupSyncManager{
+		torrents: []qbt.Torrent{{
+			Hash:       "hybrid-id",
+			Name:       "Hybrid Torrent",
+			InfohashV1: "v1-hash",
+			InfohashV2: "v2-hash",
+			TotalSize:  123,
+		}},
+	}
+
+	svc := NewService(store, sm, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+	svc.now = func() time.Time { return now }
+
+	result, err := svc.executeBackup(ctx, job{runID: 43, instanceID: instanceID, kind: models.BackupRunKindManual})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.torrentCount)
+	require.Len(t, result.items, 1)
+	require.Equal(t, 0, sm.exportCalls)
+	require.NotNil(t, result.items[0].TorrentBlobPath)
+	require.Equal(t, blobRelPath, *result.items[0].TorrentBlobPath)
 }
 
 func TestNormalizeAndPersistSettingsRepairsLegacyValues(t *testing.T) {
@@ -966,3 +1140,71 @@ func TestWaitForExportThrottleRespectsContextCancellation(t *testing.T) {
 	err := waitForExportThrottle(ctx, throttle)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
+
+type stubBackupSyncManager struct {
+	torrents    []qbt.Torrent
+	categories  map[string]qbt.Category
+	tags        []string
+	webAPIVer   string
+	exportData  []byte
+	exportName  string
+	exportTrack string
+	exportErr   error
+	exportCalls int
+}
+
+func (s *stubBackupSyncManager) GetAllTorrents(context.Context, int) ([]qbt.Torrent, error) {
+	return append([]qbt.Torrent(nil), s.torrents...), nil
+}
+
+func (s *stubBackupSyncManager) GetCategories(context.Context, int) (map[string]qbt.Category, error) {
+	if s.categories == nil {
+		return nil, nil
+	}
+
+	out := make(map[string]qbt.Category, len(s.categories))
+	for k, v := range s.categories {
+		out[k] = v
+	}
+	return out, nil
+}
+
+func (s *stubBackupSyncManager) GetTags(context.Context, int) ([]string, error) {
+	return append([]string(nil), s.tags...), nil
+}
+
+func (s *stubBackupSyncManager) GetInstanceWebAPIVersion(context.Context, int) (string, error) {
+	return s.webAPIVer, nil
+}
+
+func (s *stubBackupSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	s.exportCalls++
+	return append([]byte(nil), s.exportData...), s.exportName, s.exportTrack, s.exportErr
+}
+
+func (s *stubBackupSyncManager) GetTorrentTrackers(context.Context, int, string) ([]qbt.TorrentTracker, error) {
+	return nil, nil
+}
+
+func (*stubBackupSyncManager) CreateCategory(context.Context, int, string, string) error { return nil }
+
+func (*stubBackupSyncManager) EditCategory(context.Context, int, string, string) error { return nil }
+
+func (*stubBackupSyncManager) RemoveCategories(context.Context, int, []string) error { return nil }
+
+func (*stubBackupSyncManager) CreateTags(context.Context, int, []string) error { return nil }
+
+func (*stubBackupSyncManager) DeleteTags(context.Context, int, []string) error { return nil }
+
+func (*stubBackupSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
+	return nil
+}
+
+func (*stubBackupSyncManager) SetCategory(context.Context, int, []string, string) error { return nil }
+
+func (*stubBackupSyncManager) SetTags(context.Context, int, []string, string) error { return nil }
+
+func (*stubBackupSyncManager) ResumeWhenComplete(int, []string, qbittorrent.ResumeWhenCompleteOptions) {
+}
+
+func (*stubBackupSyncManager) BulkAction(context.Context, int, []string, string) error { return nil }

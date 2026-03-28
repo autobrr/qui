@@ -59,7 +59,7 @@ type missingTorrent struct {
 
 type Service struct {
 	store       *models.BackupStore
-	syncManager *qbittorrent.SyncManager
+	syncManager backupSyncManager
 	jackettSvc  *jackett.Service
 	notifier    notifications.Notifier
 	cfg         Config
@@ -78,6 +78,25 @@ type Service struct {
 	progressMu sync.RWMutex
 
 	now func() time.Time
+}
+
+type backupSyncManager interface {
+	GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
+	GetTags(ctx context.Context, instanceID int) ([]string, error)
+	GetInstanceWebAPIVersion(ctx context.Context, instanceID int) (string, error)
+	ExportTorrent(ctx context.Context, instanceID int, hash string) ([]byte, string, string, error)
+	GetTorrentTrackers(ctx context.Context, instanceID int, hash string) ([]qbt.TorrentTracker, error)
+	CreateCategory(ctx context.Context, instanceID int, name string, path string) error
+	EditCategory(ctx context.Context, instanceID int, name string, path string) error
+	RemoveCategories(ctx context.Context, instanceID int, categories []string) error
+	CreateTags(ctx context.Context, instanceID int, tags []string) error
+	DeleteTags(ctx context.Context, instanceID int, tags []string) error
+	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
+	SetCategory(ctx context.Context, instanceID int, hashes []string, category string) error
+	SetTags(ctx context.Context, instanceID int, hashes []string, tags string) error
+	ResumeWhenComplete(instanceID int, hashes []string, opts qbittorrent.ResumeWhenCompleteOptions)
+	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 }
 
 type job struct {
@@ -110,7 +129,7 @@ type ManifestItem struct {
 	TorrentBlob string   `json:"torrentBlob,omitempty"`
 }
 
-func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager, jackettSvc any, cfg Config, notifier notifications.Notifier) *Service {
+func NewService(store *models.BackupStore, syncManager backupSyncManager, jackettSvc any, cfg Config, notifier notifications.Notifier) *Service {
 	if cfg.WorkerCount <= 0 {
 		cfg.WorkerCount = 1
 	}
@@ -562,6 +581,14 @@ type backupResult struct {
 	tags            []string
 }
 
+func shouldSkipLiveExportForBackup(torrent qbt.Torrent, hasCachedBlob bool, cacheErr error) bool {
+	if hasCachedBlob || cacheErr != nil {
+		return false
+	}
+
+	return strings.TrimSpace(torrent.InfohashV1) != "" && strings.TrimSpace(torrent.InfohashV2) != ""
+}
+
 func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, error) {
 	settings, err := s.store.GetSettings(ctx, j.instanceID)
 	if err != nil {
@@ -679,9 +706,9 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			blobRelPath   *string
 		)
 
-		cachedTorrent, err := s.loadCachedTorrent(ctx, j.instanceID, torrent.Hash)
-		if err != nil {
-			log.Warn().Err(err).Str("hash", torrent.Hash).Msg("Failed to load cached torrent blob")
+		cachedTorrent, cacheErr := s.loadCachedTorrent(ctx, j.instanceID, torrent.Hash)
+		if cacheErr != nil {
+			log.Warn().Err(cacheErr).Str("hash", torrent.Hash).Msg("Failed to load cached torrent blob")
 		}
 		if cachedTorrent != nil {
 			data = cachedTorrent.data
@@ -692,6 +719,15 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		}
 
 		if data == nil {
+			if shouldSkipLiveExportForBackup(torrent, cachedTorrent != nil, cacheErr) {
+				log.Warn().
+					Str("hash", torrent.Hash).
+					Str("name", torrent.Name).
+					Int("instanceID", j.instanceID).
+					Msg("Skipping torrent export; live qBittorrent export disabled for hybrid torrents")
+				s.updateProgress(j.runID, idx+1)
+				continue
+			}
 			if err := waitForExportThrottle(ctx, exportThrottle); err != nil {
 				return nil, err
 			}
