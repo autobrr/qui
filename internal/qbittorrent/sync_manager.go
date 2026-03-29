@@ -1486,6 +1486,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	var partialResults bool
 	var aggregatedStats *TorrentStats
 	var aggregatedCounts *TorrentCounts
+	var trackerHealthSupported bool
 	var useSubcategories bool
 	aggregatedCategories := make(map[string]qbt.Category)
 	aggregatedTagSet := make(map[string]struct{})
@@ -1535,6 +1536,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 
 		aggregatedStats = mergeTorrentStats(aggregatedStats, instanceResponse.Stats)
 		aggregatedCounts = mergeTorrentCounts(aggregatedCounts, instanceResponse.Counts)
+		trackerHealthSupported = trackerHealthSupported || instanceResponse.TrackerHealthSupported
 		mergeTorrentCategories(aggregatedCategories, instanceResponse.Categories)
 		mergeTorrentTags(aggregatedTagSet, instanceResponse.Tags)
 		useSubcategories = useSubcategories || instanceResponse.UseSubcategories
@@ -1590,7 +1592,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		Tags:                   sortedTagKeys(aggregatedTagSet),
 		UseSubcategories:       useSubcategories,
 		HasMore:                hasMore,
-		TrackerHealthSupported: false, // Cross-instance doesn't support tracker health
+		TrackerHealthSupported: trackerHealthSupported,
 		IsCrossInstance:        true,
 		PartialResults:         partialResults,
 	}
