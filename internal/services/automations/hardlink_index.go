@@ -304,15 +304,15 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 
 		index.ScopeByHash[hash] = scope
 
-		// Only include in duplicate index if:
-		// 1. Has hardlinks (otherwise not a duplicate candidate)
-		// 2. No outside links (safe for expansion)
-		if !info.hasHardlinks {
-			continue // Not a hardlink duplicate candidate
-		}
 		if hasOutsideLinks {
 			torrentsWithOutsideLinks++
-			continue
+		}
+
+		// Include in duplicate index if torrent has hardlinks.
+		// Torrents with outside links are still included — the scope is tracked
+		// separately in ScopeByHash so actions (e.g. delete) can check it independently.
+		if !info.hasHardlinks {
+			continue // Not a hardlink duplicate candidate
 		}
 
 		// Compute signature: sha256 of sorted FileIDs

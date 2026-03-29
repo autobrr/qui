@@ -1446,6 +1446,151 @@ func TestFindCrossSeedGroup(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
+// ruleUsesHardlinkSignatureGrouping tests
+// -----------------------------------------------------------------------------
+
+func TestRuleUsesHardlinkSignatureGrouping(t *testing.T) {
+	tests := []struct {
+		name string
+		rule *models.Automation
+		want bool
+	}{
+		{
+			name: "nil rule",
+			rule: nil,
+			want: false,
+		},
+		{
+			name: "disabled rule",
+			rule: &models.Automation{Enabled: false},
+			want: false,
+		},
+		{
+			name: "default group is hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Grouping: &models.GroupingConfig{
+						DefaultGroupID: "hardlink_signature",
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "delete action GroupID is hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Grouping: &models.GroupingConfig{},
+					Delete: &models.DeleteAction{
+						Enabled: true,
+						GroupID: "hardlink_signature",
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "tag condition uses IS_GROUPED with hardlink_signature, no grouping config",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldIsGrouped,
+								GroupID: "hardlink_signature",
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "tag condition uses GROUP_SIZE with hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldGroupSize,
+								GroupID: "hardlink_signature",
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "nested condition uses hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Operator: "AND",
+								Conditions: []*models.RuleCondition{
+									{
+										Field:   models.FieldIsGrouped,
+										GroupID: "hardlink_signature",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "tag condition with unrelated groupId",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldIsGrouped,
+								GroupID: "cross_seed_content_path",
+							},
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "no grouping references at all",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Delete: &models.DeleteAction{
+						Enabled: true,
+						Mode:    "delete",
+					},
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ruleUsesHardlinkSignatureGrouping(tc.rule)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
 // HardlinkIndex.GetHardlinkCopies tests
 // -----------------------------------------------------------------------------
 

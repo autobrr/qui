@@ -4524,10 +4524,7 @@ func ruleUsesHardlinkSignatureGrouping(rule *models.Automation) bool {
 		return false
 	}
 
-	grouping := rule.Conditions.Grouping
-	if grouping == nil {
-		return false
-	}
+	grouping := rule.Conditions.Grouping // may be nil for built-in group IDs
 
 	groupUsesHardlinkSignature := func(groupID string) bool {
 		id := strings.TrimSpace(groupID)
@@ -4542,7 +4539,7 @@ func ruleUsesHardlinkSignatureGrouping(rule *models.Automation) bool {
 	}
 
 	// Default group for group-aware conditions (GROUP_SIZE / IS_GROUPED).
-	if groupUsesHardlinkSignature(grouping.DefaultGroupID) {
+	if grouping != nil && groupUsesHardlinkSignature(grouping.DefaultGroupID) {
 		return true
 	}
 
@@ -4557,7 +4554,21 @@ func ruleUsesHardlinkSignatureGrouping(rule *models.Automation) bool {
 		return true
 	}
 
-	return false
+	// Condition-level grouping IDs: scan all condition trees (including tag actions,
+	// external program, etc.) for IS_GROUPED/GROUP_SIZE referencing hardlink_signature.
+	var conditionTreeUsesHardlinkSignature func(cond *models.RuleCondition) bool
+	conditionTreeUsesHardlinkSignature = func(cond *models.RuleCondition) bool {
+		if cond == nil {
+			return false
+		}
+		if (cond.Field == models.FieldGroupSize || cond.Field == models.FieldIsGrouped) &&
+			groupUsesHardlinkSignature(cond.GroupID) {
+			return true
+		}
+		return slices.ContainsFunc(cond.Conditions, conditionTreeUsesHardlinkSignature)
+	}
+
+	return slices.ContainsFunc(conditionTreesForRule(rule), conditionTreeUsesHardlinkSignature)
 }
 
 // buildTrackerDisplayNameMap builds a map from lowercase domain to display name.
