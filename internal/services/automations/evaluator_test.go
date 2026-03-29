@@ -5,8 +5,10 @@ package automations
 
 import (
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/qui/internal/models"
 )
 
 func TestEvaluateCondition_StringFields(t *testing.T) {
@@ -555,6 +557,60 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.evalCtx, 0)
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestEvaluateCondition_SystemTimeFields(t *testing.T) {
+	evalTime := time.Date(2025, time.August, 15, 14, 30, 0, 0, time.Local) // Friday (5)
+	ctx := &EvalContext{
+		NowUnix: evalTime.Unix(),
+	}
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		expected bool
+	}{
+		{
+			name: "system hour equals",
+			cond: &RuleCondition{Field: models.FieldSystemHour, Operator: OperatorEqual, Value: "14"},
+			expected: true,
+		},
+		{
+			name: "system minute greater than",
+			cond: &RuleCondition{Field: models.FieldSystemMinute, Operator: OperatorGreaterThan, Value: "20"},
+			expected: true,
+		},
+		{
+			name: "system day of week equals Friday (5)",
+			cond: &RuleCondition{Field: models.FieldSystemDayOfWeek, Operator: OperatorEqual, Value: "5"},
+			expected: true,
+		},
+		{
+			name: "system day equals 15",
+			cond: &RuleCondition{Field: models.FieldSystemDay, Operator: OperatorEqual, Value: "15"},
+			expected: true,
+		},
+		{
+			name: "system month equals 8",
+			cond: &RuleCondition{Field: models.FieldSystemMonth, Operator: OperatorEqual, Value: "8"},
+			expected: true,
+		},
+		{
+			name: "system year equals 2025",
+			cond: &RuleCondition{Field: models.FieldSystemYear, Operator: OperatorEqual, Value: "2025"},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, ctx, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
