@@ -59,7 +59,9 @@ type missingTorrent struct {
 
 type Service struct {
 	store       *models.BackupStore
-	syncManager backupSyncManager
+	reader      backupReader
+	tracker     backupTrackerSource
+	mutator     backupMutator
 	jackettSvc  *jackett.Service
 	notifier    notifications.Notifier
 	cfg         Config
@@ -80,13 +82,15 @@ type Service struct {
 	now func() time.Time
 }
 
-type backupSyncManager interface {
+type backupReader interface {
 	GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
 	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
 	GetTags(ctx context.Context, instanceID int) ([]string, error)
 	GetInstanceWebAPIVersion(ctx context.Context, instanceID int) (string, error)
 	ExportTorrent(ctx context.Context, instanceID int, hash string) ([]byte, string, string, error)
-	GetTorrentTrackers(ctx context.Context, instanceID int, hash string) ([]qbt.TorrentTracker, error)
+}
+
+type backupMutator interface {
 	CreateCategory(ctx context.Context, instanceID int, name string, path string) error
 	EditCategory(ctx context.Context, instanceID int, name string, path string) error
 	RemoveCategories(ctx context.Context, instanceID int, categories []string) error
@@ -129,7 +133,7 @@ type ManifestItem struct {
 	TorrentBlob string   `json:"torrentBlob,omitempty"`
 }
 
-func NewService(store *models.BackupStore, syncManager backupSyncManager, jackettSvc any, cfg Config, notifier notifications.Notifier) *Service {
+func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, cfg Config, notifier notifications.Notifier) *Service {
 	if cfg.WorkerCount <= 0 {
 		cfg.WorkerCount = 1
 	}
@@ -156,18 +160,26 @@ func NewService(store *models.BackupStore, syncManager backupSyncManager, jacket
 		_ = svc // TODO: jackettService = svc when jackett fallback is re-enabled
 	}
 
-	return &Service{
-		store:       store,
-		syncManager: syncManager,
-		jackettSvc:  jackettService,
-		notifier:    notifier,
-		cfg:         cfg,
-		cacheDir:    cacheDir,
-		jobs:        make(chan job, cfg.WorkerCount*2),
-		inflight:    make(map[int]int64),
-		progress:    make(map[int64]*BackupProgress),
-		now:         func() time.Time { return time.Now().UTC() },
+	svc := &Service{
+		store:      store,
+		reader:     reader,
+		jackettSvc: jackettService,
+		notifier:   notifier,
+		cfg:        cfg,
+		cacheDir:   cacheDir,
+		jobs:       make(chan job, cfg.WorkerCount*2),
+		inflight:   make(map[int]int64),
+		progress:   make(map[int64]*BackupProgress),
+		now:        func() time.Time { return time.Now().UTC() },
 	}
+	if tracker, ok := reader.(backupTrackerSource); ok {
+		svc.tracker = tracker
+	}
+	if mutator, ok := reader.(backupMutator); ok {
+		svc.mutator = mutator
+	}
+
+	return svc
 }
 
 func normalizeBackupSettings(settings *models.BackupSettings) bool {
@@ -466,7 +478,7 @@ func (s *Service) worker(ctx context.Context) {
 }
 
 func (s *Service) handleJob(ctx context.Context, j job) {
-	if s.syncManager == nil {
+	if s.reader == nil {
 		now := s.now()
 		msg := "sync manager not configured"
 		_ = s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
@@ -596,7 +608,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}
 	s.normalizeAndPersistSettings(ctx, settings)
 
-	torrents, err := s.syncManager.GetAllTorrents(ctx, j.instanceID)
+	torrents, err := s.reader.GetAllTorrents(ctx, j.instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load torrents: %w", err)
 	}
@@ -626,7 +638,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 	var snapshotCategories map[string]models.CategorySnapshot
 	if settings.IncludeCategories {
-		categories, err := s.syncManager.GetCategories(ctx, j.instanceID)
+		categories, err := s.reader.GetCategories(ctx, j.instanceID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load categories: %w", err)
 		}
@@ -640,7 +652,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 	var snapshotTags []string
 	if settings.IncludeTags {
-		tags, err := s.syncManager.GetTags(ctx, j.instanceID)
+		tags, err := s.reader.GetTags(ctx, j.instanceID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load tags: %w", err)
 		}
@@ -654,7 +666,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 	webAPIVersion := ""
 	patchTrackers := false
-	if version, err := s.syncManager.GetInstanceWebAPIVersion(ctx, j.instanceID); err != nil {
+	if version, err := s.reader.GetInstanceWebAPIVersion(ctx, j.instanceID); err != nil {
 		log.Debug().Err(err).Int("instanceID", j.instanceID).Msg("Unable to determine qBittorrent API version for tracker patching")
 	} else {
 		webAPIVersion = version
@@ -732,7 +744,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 				return nil, err
 			}
 			var tracker string
-			data, suggestedName, tracker, err = s.syncManager.ExportTorrent(ctx, j.instanceID, torrent.Hash)
+			data, suggestedName, tracker, err = s.reader.ExportTorrent(ctx, j.instanceID, torrent.Hash)
 			if err != nil {
 				if isExportMetadataUnavailable(err) {
 					log.Warn().
@@ -750,7 +762,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		}
 
 		if patchTrackers {
-			trackers := gatherTrackerURLs(ctx, s.syncManager, j.instanceID, torrent)
+			trackers := gatherTrackerURLs(ctx, s.tracker, j.instanceID, torrent)
 			if patched, changed, err := patchTorrentTrackers(data, trackers); err != nil {
 				log.Warn().Err(err).Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Msg("Failed to patch exported torrent trackers")
 			} else if changed {
@@ -1619,7 +1631,7 @@ func (s *Service) copyTorrentFromTemp(srcPath, destPath string) error {
 
 // downloadMissingTorrents downloads torrent blobs in the background for imported manifests
 func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing []missingTorrent) {
-	if s.syncManager == nil {
+	if s.reader == nil {
 		log.Warn().Int64("runID", runID).Msg("No sync manager available for background torrent downloads")
 		s.markImportComplete(runID)
 		return
@@ -1657,7 +1669,7 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		if data, _, _, err := s.syncManager.ExportTorrent(ctx, instanceID, mt.hash); err == nil {
+		if data, _, _, err := s.reader.ExportTorrent(ctx, instanceID, mt.hash); err == nil {
 			// Ensure directory exists
 			if err := os.MkdirAll(filepath.Dir(mt.absPath), 0o755); err != nil {
 				log.Error().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Failed to create directory for torrent blob")

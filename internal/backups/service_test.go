@@ -19,7 +19,6 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
-	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 // Helper function to insert a test instance with interned fields
@@ -1180,30 +1179,3 @@ func (s *stubBackupSyncManager) ExportTorrent(context.Context, int, string) ([]b
 	s.exportCalls++
 	return append([]byte(nil), s.exportData...), s.exportName, s.exportTrack, s.exportErr
 }
-
-func (s *stubBackupSyncManager) GetTorrentTrackers(context.Context, int, string) ([]qbt.TorrentTracker, error) {
-	return nil, nil
-}
-
-func (*stubBackupSyncManager) CreateCategory(context.Context, int, string, string) error { return nil }
-
-func (*stubBackupSyncManager) EditCategory(context.Context, int, string, string) error { return nil }
-
-func (*stubBackupSyncManager) RemoveCategories(context.Context, int, []string) error { return nil }
-
-func (*stubBackupSyncManager) CreateTags(context.Context, int, []string) error { return nil }
-
-func (*stubBackupSyncManager) DeleteTags(context.Context, int, []string) error { return nil }
-
-func (*stubBackupSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
-}
-
-func (*stubBackupSyncManager) SetCategory(context.Context, int, []string, string) error { return nil }
-
-func (*stubBackupSyncManager) SetTags(context.Context, int, []string, string) error { return nil }
-
-func (*stubBackupSyncManager) ResumeWhenComplete(int, []string, qbittorrent.ResumeWhenCompleteOptions) {
-}
-
-func (*stubBackupSyncManager) BulkAction(context.Context, int, []string, string) error { return nil }

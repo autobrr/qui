@@ -126,7 +126,7 @@ func gatherTrackerURLs(ctx context.Context, sm backupTrackerSource, instanceID i
 		appendTracker(tr.Url)
 	}
 
-	if len(trackers) == 0 {
+	if len(trackers) == 0 && sm != nil {
 		extra, err := sm.GetTorrentTrackers(ctx, instanceID, torrent.Hash)
 		if err == nil {
 			for _, tr := range extra {
