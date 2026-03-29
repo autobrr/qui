@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
@@ -1163,9 +1164,7 @@ func (s *stubBackupSyncManager) GetCategories(context.Context, int) (map[string]
 	}
 
 	out := make(map[string]qbt.Category, len(s.categories))
-	for k, v := range s.categories {
-		out[k] = v
-	}
+	maps.Copy(out, s.categories)
 	return out, nil
 }
 
