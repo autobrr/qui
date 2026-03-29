@@ -100,7 +100,7 @@ func (s *Service) ExecuteRestore(ctx context.Context, runID int64, mode RestoreM
 		return result, nil
 	}
 
-	if s.reader == nil || s.mutator == nil {
+	if s.reader == nil || s.categoryWriter == nil || s.tagWriter == nil || s.torrentWriter == nil {
 		return result, errors.New("sync manager unavailable")
 	}
 
@@ -137,7 +137,7 @@ func (s *Service) applyCategoryPlan(ctx context.Context, plan *RestorePlan, appl
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := s.mutator.CreateCategory(ctx, instanceID, spec.Name, spec.SavePath); err != nil {
+		if err := s.categoryWriter.CreateCategory(ctx, instanceID, spec.Name, spec.SavePath); err != nil {
 			appendRestoreError(errs, "create_category", spec.Name, err)
 			log.Warn().Err(err).Int("instanceID", instanceID).Str("category", spec.Name).Msg("Restore: create category failed")
 			continue
@@ -149,7 +149,7 @@ func (s *Service) applyCategoryPlan(ctx context.Context, plan *RestorePlan, appl
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := s.mutator.EditCategory(ctx, instanceID, update.Name, update.DesiredPath); err != nil {
+		if err := s.categoryWriter.EditCategory(ctx, instanceID, update.Name, update.DesiredPath); err != nil {
 			appendRestoreError(errs, "update_category", update.Name, err)
 			log.Warn().Err(err).Int("instanceID", instanceID).Str("category", update.Name).Msg("Restore: update category failed")
 			continue
@@ -165,13 +165,13 @@ func (s *Service) applyCategoryPlan(ctx context.Context, plan *RestorePlan, appl
 		return err
 	}
 
-	if err := s.mutator.RemoveCategories(ctx, instanceID, plan.Categories.Delete); err != nil {
+	if err := s.categoryWriter.RemoveCategories(ctx, instanceID, plan.Categories.Delete); err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Strs("categories", plan.Categories.Delete).Msg("Restore: batch category removal failed, retry individually")
 		for _, name := range plan.Categories.Delete {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if err := s.mutator.RemoveCategories(ctx, instanceID, []string{name}); err != nil {
+			if err := s.categoryWriter.RemoveCategories(ctx, instanceID, []string{name}); err != nil {
 				appendRestoreError(errs, "delete_category", name, err)
 				continue
 			}
@@ -195,13 +195,13 @@ func (s *Service) applyTagPlan(ctx context.Context, plan *RestorePlan, applied *
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := s.mutator.CreateTags(ctx, instanceID, tags); err != nil {
+		if err := s.tagWriter.CreateTags(ctx, instanceID, tags); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Strs("tags", tags).Msg("Restore: batch tag creation failed, retry individually")
 			for _, tag := range tags {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				if err := s.mutator.CreateTags(ctx, instanceID, []string{tag}); err != nil {
+				if err := s.tagWriter.CreateTags(ctx, instanceID, []string{tag}); err != nil {
 					appendRestoreError(errs, "create_tag", tag, err)
 					continue
 				}
@@ -220,13 +220,13 @@ func (s *Service) applyTagPlan(ctx context.Context, plan *RestorePlan, applied *
 		return err
 	}
 
-	if err := s.mutator.DeleteTags(ctx, instanceID, plan.Tags.Delete); err != nil {
+	if err := s.tagWriter.DeleteTags(ctx, instanceID, plan.Tags.Delete); err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Strs("tags", plan.Tags.Delete).Msg("Restore: batch tag deletion failed, retry individually")
 		for _, tag := range plan.Tags.Delete {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if err := s.mutator.DeleteTags(ctx, instanceID, []string{tag}); err != nil {
+			if err := s.tagWriter.DeleteTags(ctx, instanceID, []string{tag}); err != nil {
 				appendRestoreError(errs, "delete_tag", tag, err)
 				continue
 			}
@@ -290,7 +290,7 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 			options["tags"] = strings.Join(spec.Manifest.Tags, ",")
 		}
 
-		if err := s.mutator.AddTorrent(ctx, instanceID, payload, options); err != nil {
+		if err := s.torrentWriter.AddTorrent(ctx, instanceID, payload, options); err != nil {
 			appendRestoreError(errs, "add_torrent", spec.Manifest.Hash, err)
 			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", spec.Manifest.Hash).Msg("Restore: add torrent failed")
 			continue
@@ -298,14 +298,14 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 
 		desiredCategory := normalizeCategory(spec.Manifest.Category)
 		if desiredCategory != "" {
-			if err := s.mutator.SetCategory(ctx, instanceID, []string{spec.Manifest.Hash}, desiredCategory); err != nil {
+			if err := s.torrentWriter.SetCategory(ctx, instanceID, []string{spec.Manifest.Hash}, desiredCategory); err != nil {
 				appendRestoreError(errs, "set_category", spec.Manifest.Hash, err)
 			}
 		}
 
 		if len(spec.Manifest.Tags) > 0 {
 			tagPayload := strings.Join(spec.Manifest.Tags, ",")
-			if err := s.mutator.SetTags(ctx, instanceID, []string{spec.Manifest.Hash}, tagPayload); err != nil {
+			if err := s.torrentWriter.SetTags(ctx, instanceID, []string{spec.Manifest.Hash}, tagPayload); err != nil {
 				appendRestoreError(errs, "set_tags", spec.Manifest.Hash, err)
 			}
 		}
@@ -341,7 +341,7 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 			switch change.Field {
 			case "category":
 				desired := normalizeCategoryPtr(asString(change.Desired))
-				if err := s.mutator.SetCategory(ctx, instanceID, []string{update.Hash}, desired); err != nil {
+				if err := s.torrentWriter.SetCategory(ctx, instanceID, []string{update.Hash}, desired); err != nil {
 					appendRestoreError(errs, "set_category", update.Hash, err)
 				} else {
 					supportedApplied = true
@@ -349,7 +349,7 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 			case "tags":
 				desiredTags := asStringSlice(change.Desired)
 				tagPayload := strings.Join(desiredTags, ",")
-				if err := s.mutator.SetTags(ctx, instanceID, []string{update.Hash}, tagPayload); err != nil {
+				if err := s.torrentWriter.SetTags(ctx, instanceID, []string{update.Hash}, tagPayload); err != nil {
 					appendRestoreError(errs, "set_tags", update.Hash, err)
 				} else {
 					supportedApplied = true
@@ -362,8 +362,8 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 		}
 	}
 
-	if len(pendingResume) > 0 && s.mutator != nil {
-		s.mutator.ResumeWhenComplete(instanceID, pendingResume, qbittorrent.ResumeWhenCompleteOptions{})
+	if len(pendingResume) > 0 && s.torrentWriter != nil {
+		s.torrentWriter.ResumeWhenComplete(instanceID, pendingResume, qbittorrent.ResumeWhenCompleteOptions{})
 	}
 
 	if len(plan.Torrents.Delete) == 0 {
@@ -386,13 +386,13 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 		return warnings, nil
 	}
 
-	if err := s.mutator.BulkAction(ctx, instanceID, deleteTargets, "delete"); err != nil {
+	if err := s.torrentWriter.BulkAction(ctx, instanceID, deleteTargets, "delete"); err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).Strs("hashes", deleteTargets).Msg("Restore: bulk torrent delete failed, retry individually")
 		for _, hash := range deleteTargets {
 			if err := ctx.Err(); err != nil {
 				return warnings, err
 			}
-			if err := s.mutator.BulkAction(ctx, instanceID, []string{hash}, "delete"); err != nil {
+			if err := s.torrentWriter.BulkAction(ctx, instanceID, []string{hash}, "delete"); err != nil {
 				appendRestoreError(errs, "delete_torrent", hash, err)
 				continue
 			}

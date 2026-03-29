@@ -58,14 +58,16 @@ type missingTorrent struct {
 }
 
 type Service struct {
-	store       *models.BackupStore
-	reader      backupReader
-	tracker     backupTrackerSource
-	mutator     backupMutator
-	jackettSvc  *jackett.Service
-	notifier    notifications.Notifier
-	cfg         Config
-	cacheDir    string
+	store          *models.BackupStore
+	reader         backupReader
+	tracker        backupTrackerSource
+	categoryWriter backupCategoryMutator
+	tagWriter      backupTagMutator
+	torrentWriter  backupTorrentMutator
+	jackettSvc     *jackett.Service
+	notifier       notifications.Notifier
+	cfg            Config
+	cacheDir       string
 
 	jobs   chan job
 	wg     sync.WaitGroup
@@ -90,12 +92,18 @@ type backupReader interface {
 	ExportTorrent(ctx context.Context, instanceID int, hash string) ([]byte, string, string, error)
 }
 
-type backupMutator interface {
+type backupCategoryMutator interface {
 	CreateCategory(ctx context.Context, instanceID int, name string, path string) error
 	EditCategory(ctx context.Context, instanceID int, name string, path string) error
 	RemoveCategories(ctx context.Context, instanceID int, categories []string) error
+}
+
+type backupTagMutator interface {
 	CreateTags(ctx context.Context, instanceID int, tags []string) error
 	DeleteTags(ctx context.Context, instanceID int, tags []string) error
+}
+
+type backupTorrentMutator interface {
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
 	SetCategory(ctx context.Context, instanceID int, hashes []string, category string) error
 	SetTags(ctx context.Context, instanceID int, hashes []string, tags string) error
@@ -175,8 +183,14 @@ func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, 
 	if tracker, ok := reader.(backupTrackerSource); ok {
 		svc.tracker = tracker
 	}
-	if mutator, ok := reader.(backupMutator); ok {
-		svc.mutator = mutator
+	if writer, ok := reader.(backupCategoryMutator); ok {
+		svc.categoryWriter = writer
+	}
+	if writer, ok := reader.(backupTagMutator); ok {
+		svc.tagWriter = writer
+	}
+	if writer, ok := reader.(backupTorrentMutator); ok {
+		svc.torrentWriter = writer
 	}
 
 	return svc
