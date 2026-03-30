@@ -2005,6 +2005,8 @@ export interface CrossSeedAutomationSettings {
   seasonPackEnabled: boolean
   seasonPackCoverageThreshold: number
   seasonPackTags: string[]
+  seasonPackTvdbApiKey?: string
+  seasonPackTvdbPin?: string
   createdAt?: string
   updatedAt?: string
 }
@@ -2060,6 +2062,8 @@ export interface CrossSeedAutomationSettingsPatch {
   seasonPackEnabled?: boolean
   seasonPackCoverageThreshold?: number
   seasonPackTags?: string[]
+  seasonPackTvdbApiKey?: string
+  seasonPackTvdbPin?: string
 }
 
 export interface CrossSeedAutomationStatus {

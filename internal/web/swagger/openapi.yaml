@@ -3948,8 +3948,9 @@ paths:
         - Cross-Seed
       summary: Check whether a season pack can be assembled from existing episodes
       description: |
-        Accepts a season pack torrent (base64-encoded) and checks if enough local episode data exists to inject it using hardlinks or reflinks.
-        Coverage uses the larger of the playable episode count in the pack and the Sonarr season total when Sonarr can resolve the show.
+        Checks if enough local episode data exists to inject a season pack using hardlinks or reflinks.
+        `torrentData` (base64-encoded torrent file) is optional. When provided, coverage uses the larger of the playable episode count in the pack and the episode total from metadata providers (Sonarr, TVDB, TVMaze).
+        When omitted, episode coverage is computed using metadata providers only. If no metadata source is available, the check only verifies that matching episodes exist and skips the coverage threshold.
         * `200 OK` - coverage meets threshold; ready to apply
         * `404 Not Found` - not enough episodes or not eligible
       security:
@@ -6461,12 +6462,18 @@ components:
           format: double
           exclusiveMinimum: 0
           maximum: 1
-          description: Minimum local coverage ratio (0..1, default 0.75) before injecting a season pack. Uses Sonarr season totals when available, otherwise playable files in the pack.
+          description: Minimum local coverage ratio (0..1, default 0.75) before injecting a season pack. Uses episode totals from Sonarr, TVDB, or TVMaze when available, otherwise playable files in the pack.
         seasonPackTags:
           type: array
           items:
             type: string
           description: Tags applied to season-pack injections
+        seasonPackTvdbApiKey:
+          type: string
+          description: TVDB API key for season pack metadata resolution. Redacted in API responses.
+        seasonPackTvdbPin:
+          type: string
+          description: TVDB subscriber PIN for season pack metadata resolution. Redacted in API responses.
 
     CrossSeedAutomationSettings:
       type: object
@@ -6572,12 +6579,18 @@ components:
           format: double
           exclusiveMinimum: 0
           maximum: 1
-          description: Minimum local coverage ratio (0..1, default 0.75) before injecting a season pack. Uses Sonarr season totals when available, otherwise playable files in the pack.
+          description: Minimum local coverage ratio (0..1, default 0.75) before injecting a season pack. Uses episode totals from Sonarr, TVDB, or TVMaze when available, otherwise playable files in the pack.
         seasonPackTags:
           type: array
           items:
             type: string
           description: Tags applied to season-pack injections
+        seasonPackTvdbApiKey:
+          type: string
+          description: TVDB API key for season pack metadata resolution. Redacted in API responses.
+        seasonPackTvdbPin:
+          type: string
+          description: TVDB subscriber PIN for season pack metadata resolution. Redacted in API responses.
         createdAt:
           type: string
           format: date-time
@@ -6604,14 +6617,13 @@ components:
       type: object
       required:
         - torrentName
-        - torrentData
       properties:
         torrentName:
           type: string
           description: Season pack release name
         torrentData:
           type: string
-          description: Base64-encoded torrent file
+          description: Optional base64-encoded torrent file. When omitted, coverage uses metadata providers (TVDB/TVMaze) instead of the torrent file contents.
         instanceIds:
           type: array
           items:
@@ -6633,6 +6645,9 @@ components:
         message:
           type: string
           description: Human-readable explanation
+        thresholdSkipped:
+          type: boolean
+          description: "True when coverage threshold was not enforced because no episode total was available. The check only verified that matching episodes exist."
         matches:
           type: array
           items:
@@ -6647,7 +6662,7 @@ components:
           type: integer
         totalEpisodes:
           type: integer
-          description: "Coverage denominator: Sonarr season total when available, otherwise playable files in the pack"
+          description: "Coverage denominator: episode total from Sonarr, TVDB, or TVMaze when available, otherwise playable files in the pack"
         coverage:
           type: number
           format: double

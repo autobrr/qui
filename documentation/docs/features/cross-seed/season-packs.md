@@ -11,12 +11,14 @@ qui can assemble season-pack torrents from individual episodes you already seed.
 ## How It Works
 
 1. autobrr sees a season pack release
-2. autobrr sends the torrent name and torrent file to qui's `/api/cross-seed/season-pack/check` endpoint
-3. qui parses the pack torrent's file list to determine playable episode files
+2. autobrr sends the torrent name (and optionally the torrent file) to qui's `/api/cross-seed/season-pack/check` endpoint
+3. If a torrent file is provided, qui parses its file list to determine playable episode files. If not, qui uses metadata providers for episode counts.
 4. qui scans your qBittorrent instances for completed individual episodes that match the season pack's release details
-5. qui computes coverage using the larger of:
+5. qui computes coverage using the largest available episode total from:
    - Sonarr's season episode total, when Sonarr can resolve the show
-   - The playable episode count inside the pack torrent
+   - TVDB episode total, when a TVDB API key is configured
+   - TVMaze episode total (always available, public API)
+   - The playable episode count inside the pack torrent (when torrent data is provided)
 6. qui responds with:
    - `200 OK` - coverage meets the threshold, ready to apply
    - `404 Not Found` - local coverage is too low, the release is not a season pack, or the feature is disabled
@@ -26,12 +28,16 @@ qui can assemble season-pack torrents from individual episodes you already seed.
 
 ## Coverage Model
 
-qui uses the larger of:
+qui picks the largest episode total from these sources (in priority order):
 
-- Sonarr's episode count for the matched season, when Sonarr can resolve the release
-- The playable episode count inside the pack torrent
+1. **Sonarr** - season episode total, when Sonarr can resolve the release
+2. **TVDB** - season episode total, when a TVDB API key is configured (opt-in)
+3. **TVMaze** - season episode total from the public API (always available, no config needed)
+4. **Pack torrent** - playable episode count from the torrent file (when torrent data is provided)
 
-The torrent file still provides the file-layout truth for apply. Sonarr only improves the threshold decision.
+If none of these sources are available (no torrent data, no Sonarr, no metadata), the check endpoint skips threshold enforcement and only verifies that matching episodes exist. The apply endpoint always requires the torrent file and enforces the threshold.
+
+The torrent file still provides the file-layout truth for apply. Metadata providers only improve the threshold decision on check.
 
 When qui falls back to the pack torrent, it:
 
@@ -83,6 +89,7 @@ See [Hardlink Mode](hardlink-mode) for setup instructions.
 - Go to **Cross-Seed > Season Packs**
 - Enable the feature
 - Set the coverage threshold (default 75%)
+- Optionally, add a TVDB API key for improved episode count accuracy. TVMaze is used automatically as a free fallback without any configuration.
 
 ### 2. Create an API Key
 
@@ -119,7 +126,6 @@ In your new autobrr filter, go to **External** tab > **Add new**:
 ```json
 {
   "torrentName": {{ toRawJson .TorrentName }},
-  "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
   "instanceIds": [1],
   "indexer": {{ toRawJson .Indexer }}
 }
@@ -130,15 +136,18 @@ To search all instances, omit `instanceIds`:
 ```json
 {
   "torrentName": {{ toRawJson .TorrentName }},
-  "torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}",
   "indexer": {{ toRawJson .Indexer }}
 }
 ```
 
+:::tip
+The check endpoint no longer requires the torrent file. Sending only the release name avoids downloading the `.torrent` for every season pack announce. qui uses Sonarr, TVDB, or TVMaze to determine the episode count for threshold enforcement. If you still want qui to use the torrent file for the check, include `"torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}"` in the payload.
+:::
+
 **Field descriptions:**
 
 - `torrentName` (required) - The release name as announced
-- `torrentData` (required) - Base64-encoded torrent file. qui parses this to determine playable pack files and apply layout.
+- `torrentData` (optional) - Base64-encoded torrent file. When provided, qui parses it to determine playable pack files. When omitted, qui uses metadata providers for episode counts.
 - `instanceIds` (optional) - qBittorrent instance IDs to scan. Omit to search all eligible instances.
 - `indexer` (optional) - autobrr indexer identifier. Used when **Use indexer name as category** is enabled.
 

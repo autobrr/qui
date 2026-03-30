@@ -637,6 +637,7 @@ func (app *Application) runServer() {
 		notificationService,
 		cfg.Config.CrossSeedRecoverErroredTorrents,
 		seasonPackRunStore,
+		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService)

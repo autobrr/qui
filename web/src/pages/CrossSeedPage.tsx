@@ -117,6 +117,8 @@ interface GlobalCrossSeedSettings {
   seasonPackEnabled: boolean
   seasonPackCoverageThreshold: number
   seasonPackTags: string[]
+  seasonPackTvdbApiKey: string
+  seasonPackTvdbPin: string
   // Note: Hardlink mode settings have been moved to per-instance configuration
 }
 
@@ -172,6 +174,8 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   seasonPackEnabled: false,
   seasonPackCoverageThreshold: 0.75,
   seasonPackTags: ["cross-seed"],
+  seasonPackTvdbApiKey: "",
+  seasonPackTvdbPin: "",
   // Webhook source filtering defaults - empty means no filtering (all torrents)
   webhookSourceCategories: [],
   webhookSourceTags: [],
@@ -871,6 +875,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         seasonPackEnabled: settings.seasonPackEnabled ?? false,
         seasonPackCoverageThreshold: settings.seasonPackCoverageThreshold ?? 0.75,
         seasonPackTags: settings.seasonPackTags ?? ["cross-seed"],
+        seasonPackTvdbApiKey: settings.seasonPackTvdbApiKey ?? "",
+        seasonPackTvdbPin: settings.seasonPackTvdbPin ?? "",
         // Note: Hardlink mode is now per-instance (configured in Instance Settings)
       })
       setGlobalSettingsInitialized(true)
@@ -962,6 +968,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       seasonPackEnabled: settings.seasonPackEnabled ?? false,
       seasonPackCoverageThreshold: settings.seasonPackCoverageThreshold ?? 0.75,
       seasonPackTags: settings.seasonPackTags ?? ["cross-seed"],
+      seasonPackTvdbApiKey: settings.seasonPackTvdbApiKey ?? "",
+      seasonPackTvdbPin: settings.seasonPackTvdbPin ?? "",
       // Note: Hardlink mode is now per-instance
     }
 
@@ -1000,6 +1008,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       seasonPackEnabled: globalSource.seasonPackEnabled,
       seasonPackCoverageThreshold: globalSource.seasonPackCoverageThreshold,
       seasonPackTags: globalSource.seasonPackTags,
+      seasonPackTvdbApiKey: globalSource.seasonPackTvdbApiKey,
+      seasonPackTvdbPin: globalSource.seasonPackTvdbPin,
       // Note: Hardlink mode is now per-instance (see Instance Settings)
     }
   }, [
@@ -2626,6 +2636,39 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     Minimum local coverage before qui injects a season pack. If Sonarr resolves the show, qui uses the larger season total; otherwise it falls back to playable files in the pack. Incomplete packs are added paused, rechecked, then resumed automatically.
                   </p>
                 </div>
+
+                <div className="grid gap-4 md:grid-cols-2 pt-3 border-t border-border/50">
+                  <div className="space-y-2">
+                    <Label htmlFor="season-pack-tvdb-api-key">TVDB API Key</Label>
+                    <Input
+                      id="season-pack-tvdb-api-key"
+                      type="password"
+                      value={globalSettings.seasonPackTvdbApiKey}
+                      data-1p-ignore="true"
+                      onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackTvdbApiKey: event.target.value }))}
+                      placeholder={globalSettings.seasonPackEnabled ? "Paste TVDB API key" : "Enable to configure"}
+                      disabled={!globalSettings.seasonPackEnabled}
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="season-pack-tvdb-pin">TVDB Subscriber PIN</Label>
+                    <Input
+                      id="season-pack-tvdb-pin"
+                      type="password"
+                      value={globalSettings.seasonPackTvdbPin}
+                      data-1p-ignore="true"
+                      onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackTvdbPin: event.target.value }))}
+                      placeholder={globalSettings.seasonPackEnabled ? "Paste TVDB PIN" : "Enable to configure"}
+                      disabled={!globalSettings.seasonPackEnabled}
+                      autoComplete="off"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Optional. Improves threshold accuracy when the check endpoint is called without torrent data. TVMaze is used automatically as a free fallback.
+                </p>
               </div>
 
               {/* Safety & validation */}

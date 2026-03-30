@@ -170,10 +170,70 @@ func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentDat
 	}, "", "", nil
 }
 
+// prepareSeasonPackCheck runs a lighter validation pipeline for the check endpoint.
+// When torrentData is omitted, it skips torrent parsing and uses metadata providers
+// for episode totals. Returns the same tuple convention as prepareSeasonPack.
+func (s *Service) prepareSeasonPackCheck(ctx context.Context, torrentName, torrentData string, instanceIDs []int) (*seasonPackPrep, string, string, error) {
+	// When torrentData is provided, use the full pipeline.
+	if torrentData != "" {
+		return s.prepareSeasonPack(ctx, torrentName, torrentData, instanceIDs)
+	}
+
+	settings, err := s.automationSettingsLoader(ctx)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("load automation settings: %w", err)
+	}
+	if !settings.SeasonPackEnabled {
+		return nil, "disabled", "", nil
+	}
+	if torrentName == "" {
+		return nil, "invalid_payload", "torrentName is required", nil
+	}
+
+	packRelease := s.releaseCache.Parse(torrentName)
+	if !isTVSeasonPack(packRelease) {
+		return nil, "not_season_pack", fmt.Sprintf("release %q is not a season pack", torrentName), nil
+	}
+
+	instances, resolveErr := s.resolveInstances(ctx, instanceIDs)
+	if resolveErr != nil {
+		return nil, "", "", fmt.Errorf("resolve instances: %w", resolveErr)
+	}
+
+	eligible := filterLinkEligible(instances)
+	if len(eligible) == 0 {
+		return nil, "no_eligible_instances", "no instances with local filesystem access and hardlink/reflink mode", nil
+	}
+
+	// Try to get episode total from metadata chain (Sonarr -> TVDB/TVMaze).
+	totalEpisodes := -1
+	lookup := s.seasonPackEpisodeTotalLookup
+	if lookup == nil {
+		lookup = s.lookupSeasonPackEpisodeTotal
+	}
+	if total, ok := lookup(ctx, torrentName, packRelease); ok && total > 0 {
+		totalEpisodes = total
+	}
+
+	threshold := settings.SeasonPackCoverageThreshold
+	if threshold <= 0 {
+		threshold = 0.75
+	}
+
+	return &seasonPackPrep{
+		settings:      settings,
+		packRelease:   packRelease,
+		packEpisodes:  nil, // no torrent file = accept any matching episode
+		totalEpisodes: totalEpisodes,
+		eligible:      eligible,
+		threshold:     threshold,
+	}, "", "", nil
+}
+
 // CheckSeasonPackWebhook evaluates whether a season pack torrent can be
 // reconstructed from existing individual episodes across eligible instances.
 func (s *Service) CheckSeasonPackWebhook(ctx context.Context, req *SeasonPackCheckRequest) (*SeasonPackCheckResponse, error) {
-	prep, reason, message, prepErr := s.prepareSeasonPack(ctx, req.TorrentName, req.TorrentData, req.InstanceIDs)
+	prep, reason, message, prepErr := s.prepareSeasonPackCheck(ctx, req.TorrentName, req.TorrentData, req.InstanceIDs)
 	if prep == nil {
 		if prepErr != nil {
 			return nil, prepErr
@@ -181,6 +241,12 @@ func (s *Service) CheckSeasonPackWebhook(ctx context.Context, req *SeasonPackChe
 		resp := &SeasonPackCheckResponse{Reason: reason, Message: message}
 		s.recordCheckRun(ctx, req.TorrentName, resp, nil, 0)
 		return resp, nil
+	}
+
+	// When totalEpisodes == -1, no metadata source was available and no torrent data
+	// was provided. Skip threshold enforcement and just check for any matches.
+	if prep.totalEpisodes == -1 {
+		return s.checkSeasonPackNoThreshold(ctx, req.TorrentName, prep)
 	}
 
 	matches := s.computeCoverage(ctx, prep.eligible, prep.packRelease, prep.packEpisodes, prep.totalEpisodes, prep.settings)
@@ -194,6 +260,56 @@ func (s *Service) CheckSeasonPackWebhook(ctx context.Context, req *SeasonPackChe
 
 	resp := buildCheckResponse(passing, matches, prep.totalEpisodes, prep.threshold)
 	s.recordCheckRun(ctx, req.TorrentName, resp, passing, prep.totalEpisodes)
+	return resp, nil
+}
+
+// checkSeasonPackNoThreshold handles the check path when no episode total is available.
+// Returns ready=true if any instance has matching episodes.
+func (s *Service) checkSeasonPackNoThreshold(ctx context.Context, torrentName string, prep *seasonPackPrep) (*SeasonPackCheckResponse, error) {
+	var matches []SeasonPackCheckMatch
+
+	for _, inst := range prep.eligible {
+		cached, err := s.syncManager.GetCachedInstanceTorrents(ctx, inst.ID)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", inst.ID).
+				Msg("failed to get cached torrents for season pack coverage")
+			continue
+		}
+
+		matched := s.matchEpisodesOnInstance(cached, prep.packRelease, prep.packEpisodes, prep.settings)
+		if len(matched) == 0 {
+			continue
+		}
+
+		matches = append(matches, SeasonPackCheckMatch{
+			InstanceID:      inst.ID,
+			MatchedEpisodes: len(matched),
+		})
+	}
+
+	if len(matches) > 0 {
+		best := matches[0]
+		for i := range matches[1:] {
+			if matches[i+1].MatchedEpisodes > best.MatchedEpisodes {
+				best = matches[i+1]
+			}
+		}
+		resp := &SeasonPackCheckResponse{
+			Ready:            true,
+			Message:          fmt.Sprintf("%d instance(s) have matching episodes (threshold skipped, no episode total available)", len(matches)),
+			Matches:          matches,
+			ThresholdSkipped: true,
+		}
+		s.recordCheckRunNoThreshold(ctx, torrentName, best.MatchedEpisodes, best.InstanceID)
+		return resp, nil
+	}
+
+	resp := &SeasonPackCheckResponse{
+		Reason:           "no_matches",
+		Message:          "no matching episodes found on any instance",
+		ThresholdSkipped: true,
+	}
+	s.recordCheckRun(ctx, torrentName, resp, nil, 0)
 	return resp, nil
 }
 
@@ -505,21 +621,34 @@ func (s *Service) seasonPackCoverageTotal(ctx context.Context, torrentName strin
 }
 
 func (s *Service) lookupSeasonPackEpisodeTotal(ctx context.Context, torrentName string, packRelease *rls.Release) (int, bool) {
-	if s == nil || s.arrService == nil || packRelease == nil || packRelease.Series <= 0 || torrentName == "" {
+	if s == nil || packRelease == nil || packRelease.Series <= 0 || torrentName == "" {
 		return 0, false
 	}
 
-	result, err := s.arrService.LookupSeasonEpisodeTotal(ctx, torrentName, packRelease.Series)
-	if err != nil {
-		log.Debug().Err(err).Str("torrentName", torrentName).Int("season", packRelease.Series).
-			Msg("season pack: failed to resolve Sonarr season total")
-		return 0, false
-	}
-	if result == nil || result.TotalEpisodes <= 0 {
-		return 0, false
+	// 1. Try Sonarr first.
+	if s.arrService != nil {
+		result, err := s.arrService.LookupSeasonEpisodeTotal(ctx, torrentName, packRelease.Series)
+		if err != nil {
+			log.Debug().Err(err).Str("torrentName", torrentName).Int("season", packRelease.Series).
+				Msg("season pack: failed to resolve Sonarr season total")
+		} else if result != nil && result.TotalEpisodes > 0 {
+			return result.TotalEpisodes, true
+		}
 	}
 
-	return result.TotalEpisodes, true
+	// 2. Try metadata providers (TVDB/TVMaze).
+	metaSvc := s.getMetadataService(ctx)
+	if metaSvc != nil {
+		total, err := metaSvc.LookupEpisodeTotal(ctx, torrentName, packRelease.Series)
+		if err != nil {
+			log.Debug().Err(err).Str("torrentName", torrentName).Int("season", packRelease.Series).
+				Msg("season pack: metadata provider lookup failed")
+		} else if total > 0 {
+			return total, true
+		}
+	}
+
+	return 0, false
 }
 
 // computeCoverage calculates episode coverage for each instance by scanning
@@ -612,8 +741,10 @@ func (s *Service) matchEpisodesDetailed(
 		}
 
 		id := episodeIdentity{series: parsed.Series, episode: parsed.Episode}
-		if _, inPack := packEpisodes[id]; !inPack {
-			continue
+		if packEpisodes != nil {
+			if _, inPack := packEpisodes[id]; !inPack {
+				continue
+			}
 		}
 		if _, already := matched[id]; already {
 			continue
@@ -991,6 +1122,29 @@ func (s *Service) recordCheckRun(
 		run.Status = "skipped"
 		run.Reason = resp.Reason
 		run.Message = resp.Message
+	}
+
+	if _, err := s.seasonPackRunStore.Create(ctx, run); err != nil {
+		log.Warn().Err(err).Str("torrentName", torrentName).
+			Msg("failed to record season pack check run")
+	}
+}
+
+// recordCheckRunNoThreshold persists a check row when threshold was skipped.
+func (s *Service) recordCheckRunNoThreshold(ctx context.Context, torrentName string, matchedEpisodes, instanceID int) {
+	if s.seasonPackRunStore == nil {
+		return
+	}
+
+	run := &models.SeasonPackRun{
+		TorrentName:     torrentName,
+		Phase:           "check",
+		Status:          "ready_no_threshold",
+		Reason:          "no_episode_total",
+		MatchedEpisodes: matchedEpisodes,
+	}
+	if instanceID > 0 {
+		run.InstanceID = &instanceID
 	}
 
 	if _, err := s.seasonPackRunStore.Create(ctx, run); err != nil {

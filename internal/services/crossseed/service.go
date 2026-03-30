@@ -52,6 +52,7 @@ import (
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/services/metadata"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
@@ -360,6 +361,12 @@ type Service struct {
 	recheckResumeCancel context.CancelFunc
 
 	seasonPackEpisodeTotalLookup func(context.Context, string, *rls.Release) (int, bool)
+
+	// Metadata provider for season pack episode totals (TVDB/TVMaze).
+	metadataCredentialLoader func(ctx context.Context) (apiKey, pin string, err error)
+	metadataService          *metadata.Service
+	metadataMu               sync.Mutex
+	metadataCredsFingerprint string
 }
 
 // pendingResume tracks a torrent waiting for recheck to complete before resuming.
@@ -390,6 +397,7 @@ func NewService(
 	notifier notifications.Notifier,
 	recoverErroredTorrents bool,
 	seasonPackRunStore seasonPackRunCreator,
+	metadataCredentialLoader func(ctx context.Context) (apiKey, pin string, err error),
 ) *Service {
 	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
 		SetDefaultTTL(searchResultCacheTTL))
@@ -434,12 +442,39 @@ func NewService(
 		recheckResumeChan:             make(chan *pendingResume, 100),
 		recheckResumeCtx:              recheckCtx,
 		recheckResumeCancel:           recheckCancel,
+		metadataCredentialLoader:      metadataCredentialLoader,
+		metadataService:               metadata.NewService("", ""), // TVMaze-only default
 	}
 
 	// Start the single worker goroutine for processing recheck resumes
 	go svc.recheckResumeWorker()
 
 	return svc
+}
+
+// getMetadataService returns the metadata service, recreating it if credentials changed.
+func (s *Service) getMetadataService(ctx context.Context) *metadata.Service {
+	if s.metadataCredentialLoader == nil {
+		return s.metadataService
+	}
+
+	apiKey, pin, err := s.metadataCredentialLoader(ctx)
+	if err != nil {
+		log.Debug().Err(err).Msg("metadata: failed to load TVDB credentials, using existing service")
+		return s.metadataService
+	}
+
+	fingerprint := apiKey + ":" + pin
+
+	s.metadataMu.Lock()
+	defer s.metadataMu.Unlock()
+
+	if fingerprint != s.metadataCredsFingerprint {
+		s.metadataService = metadata.NewService(apiKey, pin)
+		s.metadataCredsFingerprint = fingerprint
+	}
+
+	return s.metadataService
 }
 
 // HealthCheck performs comprehensive health checks on the cross-seed service

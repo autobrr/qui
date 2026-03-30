@@ -77,7 +77,7 @@ Right-click any torrent in the list to access cross-seed actions:
 
 ### Season Pack Assembly
 
-Assemble season-pack torrents from individual episodes you already seed. When autobrr announces a season pack, qui checks your qBittorrent instances for matching episodes, links whatever is already local, and lets qBittorrent download the remainder after recheck when coverage passes the configured threshold (default 75%). Sonarr improves the threshold decision when available. Requires local filesystem access and hardlink/reflink mode. See [Season Packs](season-packs) for setup.
+Assemble season-pack torrents from individual episodes you already seed. When autobrr announces a season pack, qui checks your qBittorrent instances for matching episodes, links whatever is already local, and lets qBittorrent download the remainder after recheck when coverage passes the configured threshold (default 75%). Sonarr, TVDB, and TVMaze improve the threshold decision when available. Requires local filesystem access and hardlink/reflink mode. See [Season Packs](season-packs) for setup.
 
 ## Blocklist
 

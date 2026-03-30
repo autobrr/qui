@@ -1331,3 +1331,239 @@ func TestApplySeasonPackWebhook_ResolvesEpisodeFileFromDirectoryContentPath(t *t
 	require.Len(t, capturedPlan.Files, 1)
 	require.Equal(t, filepath.Join(contentDir, "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv"), capturedPlan.Files[0].SourcePath)
 }
+
+// --- Light check tests (no torrentData) ---
+
+func TestCheckSeasonPackWebhook_NoTorrentData_WithMetadata_ThresholdWorks(t *testing.T) {
+	store := &stubSeasonPackRunStore{}
+	baseDir := t.TempDir()
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
+	}
+
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", Progress: 1.0},
+	}
+
+	sm := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackRunStore:       store,
+		// Mock metadata lookup returns 4 total episodes.
+		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, bool) {
+			return 4, true
+		},
+	}
+
+	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
+		TorrentName: "Cool.Show.S01.1080p.WEB.x264-GRP",
+		TorrentData: "", // no torrent data
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	// 3/4 = 75%, meets threshold.
+	require.True(t, resp.Ready)
+	require.False(t, resp.ThresholdSkipped)
+	require.NotEmpty(t, resp.Matches)
+	require.Equal(t, 3, resp.Matches[0].MatchedEpisodes)
+	require.Equal(t, 4, resp.Matches[0].TotalEpisodes)
+}
+
+func TestCheckSeasonPackWebhook_NoTorrentData_NoMetadata_ReturnsReadyIfMatchesExist(t *testing.T) {
+	store := &stubSeasonPackRunStore{}
+	baseDir := t.TempDir()
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
+	}
+
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", Progress: 1.0},
+	}
+
+	sm := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackRunStore:       store,
+		// No metadata available.
+		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, bool) {
+			return 0, false
+		},
+	}
+
+	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
+		TorrentName: "Cool.Show.S01.1080p.WEB.x264-GRP",
+		TorrentData: "",
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.Ready)
+	require.True(t, resp.ThresholdSkipped)
+	require.NotEmpty(t, resp.Matches)
+	require.Equal(t, 2, resp.Matches[0].MatchedEpisodes)
+	// TotalEpisodes should be 0 when threshold is skipped.
+	require.Equal(t, 0, resp.Matches[0].TotalEpisodes)
+
+	// Verify run was recorded with ready_no_threshold.
+	require.Len(t, store.runs, 1)
+	require.Equal(t, "ready_no_threshold", store.runs[0].Status)
+	require.Equal(t, "no_episode_total", store.runs[0].Reason)
+}
+
+func TestCheckSeasonPackWebhook_NoTorrentData_NoMetadata_NoMatches_ReturnsNotReady(t *testing.T) {
+	store := &stubSeasonPackRunStore{}
+	baseDir := t.TempDir()
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
+	}
+
+	// No matching episodes on this instance.
+	sm := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: {}},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackRunStore:       store,
+		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, bool) {
+			return 0, false
+		},
+	}
+
+	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
+		TorrentName: "Cool.Show.S01.1080p.WEB.x264-GRP",
+		TorrentData: "",
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.False(t, resp.Ready)
+	require.True(t, resp.ThresholdSkipped)
+	require.Equal(t, "no_matches", resp.Reason)
+}
+
+func TestCheckSeasonPackWebhook_NoTorrentData_BelowThreshold_ReturnsNotReady(t *testing.T) {
+	store := &stubSeasonPackRunStore{}
+	baseDir := t.TempDir()
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
+	}
+
+	// Only 1 of 10 episodes available - well below 75%.
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", Progress: 1.0},
+	}
+
+	sm := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackRunStore:       store,
+		// Metadata says 10 episodes total.
+		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, bool) {
+			return 10, true
+		},
+	}
+
+	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
+		TorrentName: "Cool.Show.S01.1080p.WEB.x264-GRP",
+		TorrentData: "",
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.False(t, resp.Ready)
+	require.False(t, resp.ThresholdSkipped)
+	require.Equal(t, "below_threshold", resp.Reason)
+}
+
+func TestCheckSeasonPackWebhook_NoTorrentData_NilPackEpisodes_DeduplicatesByIdentity(t *testing.T) {
+	store := &stubSeasonPackRunStore{}
+	baseDir := t.TempDir()
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
+	}
+
+	// Two torrents for the same episode should count as one.
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e01a", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e01b", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", Progress: 1.0},
+	}
+
+	sm := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackRunStore:       store,
+		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, bool) {
+			return 0, false
+		},
+	}
+
+	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
+		TorrentName: "Cool.Show.S01.1080p.WEB.x264-GRP",
+		TorrentData: "",
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.Ready)
+	require.True(t, resp.ThresholdSkipped)
+	// Should be 2 unique episodes, not 3.
+	require.Equal(t, 2, resp.Matches[0].MatchedEpisodes)
+}

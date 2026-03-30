@@ -448,10 +448,11 @@ type SeasonPackCheckMatch struct {
 
 // SeasonPackCheckResponse is the response to a season-pack check request.
 type SeasonPackCheckResponse struct {
-	Ready   bool                   `json:"ready"`
-	Reason  string                 `json:"reason,omitempty"`
-	Message string                 `json:"message,omitempty"`
-	Matches []SeasonPackCheckMatch `json:"matches,omitempty"`
+	Ready            bool                   `json:"ready"`
+	Reason           string                 `json:"reason,omitempty"`
+	Message          string                 `json:"message,omitempty"`
+	Matches          []SeasonPackCheckMatch `json:"matches,omitempty"`
+	ThresholdSkipped bool                   `json:"thresholdSkipped,omitempty"`
 }
 
 // SeasonPackApplyRequest represents a request to apply (add) a season pack torrent

@@ -55,9 +55,11 @@ type automationSettingsRequest struct {
 	SeasonPackCoverageThreshold  float64  `json:"seasonPackCoverageThreshold"`
 	SeasonPackTags               []string `json:"seasonPackTags"`
 	// Gazelle (OPS/RED) cross-seed settings.
-	GazelleEnabled bool   `json:"gazelleEnabled"`
-	RedactedAPIKey string `json:"redactedApiKey"`
-	OrpheusAPIKey  string `json:"orpheusApiKey"`
+	GazelleEnabled       bool   `json:"gazelleEnabled"`
+	RedactedAPIKey       string `json:"redactedApiKey"`
+	OrpheusAPIKey        string `json:"orpheusApiKey"`
+	SeasonPackTVDBAPIKey string `json:"seasonPackTvdbApiKey"`
+	SeasonPackTVDBPIN    string `json:"seasonPackTvdbPin"`
 }
 
 type automationSettingsPatchRequest struct {
@@ -108,6 +110,8 @@ type automationSettingsPatchRequest struct {
 	GazelleEnabled              *bool     `json:"gazelleEnabled,omitempty"`
 	RedactedAPIKey              *string   `json:"redactedApiKey,omitempty"`
 	OrpheusAPIKey               *string   `json:"orpheusApiKey,omitempty"`
+	SeasonPackTVDBAPIKey        *string   `json:"seasonPackTvdbApiKey,omitempty"`
+	SeasonPackTVDBPIN           *string   `json:"seasonPackTvdbPin,omitempty"`
 }
 
 type optionalString struct {
@@ -207,7 +211,9 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SeasonPackTags == nil &&
 		r.GazelleEnabled == nil &&
 		r.RedactedAPIKey == nil &&
-		r.OrpheusAPIKey == nil
+		r.OrpheusAPIKey == nil &&
+		r.SeasonPackTVDBAPIKey == nil &&
+		r.SeasonPackTVDBPIN == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -347,6 +353,12 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	}
 	if patch.OrpheusAPIKey != nil {
 		settings.OrpheusAPIKey = strings.TrimSpace(*patch.OrpheusAPIKey)
+	}
+	if patch.SeasonPackTVDBAPIKey != nil {
+		settings.SeasonPackTVDBAPIKey = strings.TrimSpace(*patch.SeasonPackTVDBAPIKey)
+	}
+	if patch.SeasonPackTVDBPIN != nil {
+		settings.SeasonPackTVDBPIN = strings.TrimSpace(*patch.SeasonPackTVDBPIN)
 	}
 }
 
@@ -882,6 +894,8 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		GazelleEnabled:               req.GazelleEnabled,
 		RedactedAPIKey:               strings.TrimSpace(req.RedactedAPIKey),
 		OrpheusAPIKey:                strings.TrimSpace(req.OrpheusAPIKey),
+		SeasonPackTVDBAPIKey:         strings.TrimSpace(req.SeasonPackTVDBAPIKey),
+		SeasonPackTVDBPIN:            strings.TrimSpace(req.SeasonPackTVDBPIN),
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
