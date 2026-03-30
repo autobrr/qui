@@ -1331,7 +1331,7 @@ func (s *Service) setupHardlinkSignatureContext(evalCtx *EvalContext, hardlinkIn
 	if !ConditionUsesField(cond, FieldFreeSpace) {
 		return
 	}
-	evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+	evalCtx.DeleteSafeHardlinkSignatureByHash = hardlinkIndex.DeleteSafeSignatureByHash
 	evalCtx.HardlinkSignaturesToClear = make(map[string]struct{})
 }
 
@@ -1997,7 +1997,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		// Build hardlink signature map for FREE_SPACE dedupe if any rule needs it.
 		// Must happen BEFORE processTorrents() so SpaceToClear is correctly deduplicated.
 		if rulesNeedHardlinkSignatureMap(eligibleRules) && hardlinkIndex != nil {
-			evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+			evalCtx.DeleteSafeHardlinkSignatureByHash = hardlinkIndex.DeleteSafeSignatureByHash
 		}
 	}
 

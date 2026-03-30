@@ -1596,39 +1596,39 @@ func TestRuleUsesHardlinkSignatureGrouping(t *testing.T) {
 
 func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 	tests := []struct {
-		name             string
-		triggerHash      string
-		signatureByHash  map[string]string
-		groupBySignature map[string][]string
-		wantCopies       []string
+		name                      string
+		triggerHash               string
+		deleteSafeSignatureByHash map[string]string
+		deleteSafeGroupBySig      map[string][]string
+		wantCopies                []string
 	}{
 		{
 			name:        "trigger hash not in any group",
 			triggerHash: "not-found",
-			signatureByHash: map[string]string{
+			deleteSafeSignatureByHash: map[string]string{
 				"abc123": "sig1",
 				"def456": "sig1",
 			},
-			groupBySignature: map[string][]string{
+			deleteSafeGroupBySig: map[string][]string{
 				"sig1": {"abc123", "def456"},
 			},
 			wantCopies: nil,
 		},
 		{
-			name:             "trigger is only member of group (singleton filtered out)",
-			triggerHash:      "abc123",
-			signatureByHash:  map[string]string{}, // Singleton groups are filtered, so no entry
-			groupBySignature: map[string][]string{},
-			wantCopies:       nil,
+			name:                      "trigger is only member of group (singleton filtered out)",
+			triggerHash:               "abc123",
+			deleteSafeSignatureByHash: map[string]string{}, // Singleton groups are filtered, so no entry
+			deleteSafeGroupBySig:      map[string][]string{},
+			wantCopies:                nil,
 		},
 		{
 			name:        "trigger has one hardlink copy",
 			triggerHash: "abc123",
-			signatureByHash: map[string]string{
+			deleteSafeSignatureByHash: map[string]string{
 				"abc123": "sig1",
 				"def456": "sig1",
 			},
-			groupBySignature: map[string][]string{
+			deleteSafeGroupBySig: map[string][]string{
 				"sig1": {"abc123", "def456"},
 			},
 			wantCopies: []string{"def456"},
@@ -1636,12 +1636,12 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 		{
 			name:        "trigger has multiple hardlink copies",
 			triggerHash: "abc123",
-			signatureByHash: map[string]string{
+			deleteSafeSignatureByHash: map[string]string{
 				"abc123": "sig1",
 				"def456": "sig1",
 				"ghi789": "sig1",
 			},
-			groupBySignature: map[string][]string{
+			deleteSafeGroupBySig: map[string][]string{
 				"sig1": {"abc123", "def456", "ghi789"},
 			},
 			wantCopies: []string{"def456", "ghi789"},
@@ -1649,41 +1649,50 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 		{
 			name:        "multiple groups, trigger in second",
 			triggerHash: "xyz999",
-			signatureByHash: map[string]string{
+			deleteSafeSignatureByHash: map[string]string{
 				"abc123": "sig1",
 				"def456": "sig1",
 				"xyz999": "sig2",
 				"uvw888": "sig2",
 			},
-			groupBySignature: map[string][]string{
+			deleteSafeGroupBySig: map[string][]string{
 				"sig1": {"abc123", "def456"},
 				"sig2": {"xyz999", "uvw888"},
 			},
 			wantCopies: []string{"uvw888"},
 		},
 		{
-			name:             "nil index returns nil",
-			triggerHash:      "abc123",
-			signatureByHash:  nil,
-			groupBySignature: nil,
-			wantCopies:       nil,
+			name:                      "nil index returns nil",
+			triggerHash:               "abc123",
+			deleteSafeSignatureByHash: nil,
+			deleteSafeGroupBySig:      nil,
+			wantCopies:                nil,
 		},
 		{
-			name:             "empty index returns nil",
-			triggerHash:      "abc123",
-			signatureByHash:  map[string]string{},
-			groupBySignature: map[string][]string{},
-			wantCopies:       nil,
+			name:                      "empty index returns nil",
+			triggerHash:               "abc123",
+			deleteSafeSignatureByHash: map[string]string{},
+			deleteSafeGroupBySig:      map[string][]string{},
+			wantCopies:                nil,
+		},
+		{
+			name:                      "grouping-only signatures do not expand deletes",
+			triggerHash:               "abc123",
+			deleteSafeSignatureByHash: map[string]string{},
+			deleteSafeGroupBySig:      map[string][]string{},
+			wantCopies:                nil,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var idx *HardlinkIndex
-			if tc.signatureByHash != nil || tc.groupBySignature != nil {
+			if tc.deleteSafeSignatureByHash != nil || tc.deleteSafeGroupBySig != nil {
 				idx = &HardlinkIndex{
-					SignatureByHash:  tc.signatureByHash,
-					GroupBySignature: tc.groupBySignature,
+					SignatureByHash:            map[string]string{"abc123": "sig1", "def456": "sig1"},
+					GroupBySignature:           map[string][]string{"sig1": {"abc123", "def456"}},
+					DeleteSafeSignatureByHash:  tc.deleteSafeSignatureByHash,
+					DeleteSafeGroupBySignature: tc.deleteSafeGroupBySig,
 				}
 			}
 			got := idx.GetHardlinkCopies(tc.triggerHash)
@@ -1694,6 +1703,24 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSetupHardlinkSignatureContext_UsesDeleteSafeSignatures(t *testing.T) {
+	svc := &Service{}
+	evalCtx := &EvalContext{
+		HardlinkSignatureByHash: map[string]string{"abc123": "grouping-sig"},
+	}
+	hardlinkIndex := &HardlinkIndex{
+		SignatureByHash:           map[string]string{"abc123": "grouping-sig"},
+		DeleteSafeSignatureByHash: map[string]string{"abc123": "delete-sig"},
+	}
+	cond := &RuleCondition{Field: FieldFreeSpace}
+
+	svc.setupHardlinkSignatureContext(evalCtx, hardlinkIndex, cond, false, true)
+
+	require.Equal(t, map[string]string{"abc123": "grouping-sig"}, evalCtx.HardlinkSignatureByHash)
+	require.Equal(t, map[string]string{"abc123": "delete-sig"}, evalCtx.DeleteSafeHardlinkSignatureByHash)
+	require.NotNil(t, evalCtx.HardlinkSignaturesToClear)
 }
 
 // -----------------------------------------------------------------------------

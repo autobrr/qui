@@ -32,12 +32,21 @@ const hardlinkIndexTTL = 2 * time.Minute
 // It enables O(1) lookups for hardlink expansion and FREE_SPACE projection dedupe.
 type HardlinkIndex struct {
 	// SignatureByHash maps torrent hash to its hardlink signature (hex-encoded sha256 of sorted FileIDs).
-	// Only torrents with all files hard-linked within qBittorrent ("safe" duplicates) are included.
+	// Includes all inspected torrents with hardlinks and is used for hardlink_signature grouping.
 	SignatureByHash map[string]string
 
 	// GroupBySignature maps signature to list of torrent hashes sharing that signature.
 	// Only contains groups with 2+ members (actual duplicates).
 	GroupBySignature map[string][]string
+
+	// DeleteSafeSignatureByHash maps torrent hash to its hardlink signature for torrents whose
+	// hardlinks stay fully inside qBittorrent. Used by delete/include-hardlinks expansion and
+	// FREE_SPACE dedupe so destructive paths never follow outside links.
+	DeleteSafeSignatureByHash map[string]string
+
+	// DeleteSafeGroupBySignature maps signature to list of delete-safe torrent hashes sharing it.
+	// Only contains groups with 2+ members.
+	DeleteSafeGroupBySignature map[string][]string
 
 	// ScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent).
 	// Used for HARDLINK_SCOPE condition evaluation.
@@ -148,10 +157,12 @@ type fileIDTracker struct {
 func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torrents []qbt.Torrent, digest string) *HardlinkIndex {
 	startTime := time.Now()
 	index := &HardlinkIndex{
-		SignatureByHash:  make(map[string]string),
-		GroupBySignature: make(map[string][]string),
-		ScopeByHash:      make(map[string]string),
-		digest:           digest,
+		SignatureByHash:            make(map[string]string),
+		GroupBySignature:           make(map[string][]string),
+		DeleteSafeSignatureByHash:  make(map[string]string),
+		DeleteSafeGroupBySignature: make(map[string][]string),
+		ScopeByHash:                make(map[string]string),
+		digest:                     digest,
 		// builtAt is set at the end of a successful build to avoid TTL issues with slow builds
 	}
 
@@ -304,30 +315,28 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 
 		index.ScopeByHash[hash] = scope
 
-		if hasOutsideLinks {
-			torrentsWithOutsideLinks++
-		}
-
-		// Include in duplicate index if torrent has hardlinks.
-		// Torrents with outside links are still included — the scope is tracked
-		// separately in ScopeByHash so actions (e.g. delete) can check it independently.
+		// Only include in duplicate index if:
+		// 1. Has hardlinks (otherwise not a duplicate candidate)
 		if !info.hasHardlinks {
 			continue // Not a hardlink duplicate candidate
 		}
 
-		// Compute signature: sha256 of sorted FileIDs
+		if hasOutsideLinks {
+			torrentsWithOutsideLinks++
+		}
+
+		// Compute signature once; feed broad grouping map plus delete-safe subset.
 		sig := computeFileIDSignature(info.fileIDs)
 		index.SignatureByHash[hash] = sig
 		index.GroupBySignature[sig] = append(index.GroupBySignature[sig], hash)
-	}
-
-	// Remove singleton groups (not actual duplicates)
-	for sig, hashes := range index.GroupBySignature {
-		if len(hashes) < 2 {
-			delete(index.GroupBySignature, sig)
-			delete(index.SignatureByHash, hashes[0])
+		if !hasOutsideLinks {
+			index.DeleteSafeSignatureByHash[hash] = sig
+			index.DeleteSafeGroupBySignature[sig] = append(index.DeleteSafeGroupBySignature[sig], hash)
 		}
 	}
+
+	pruneSingletonHardlinkGroups(index.SignatureByHash, index.GroupBySignature)
+	pruneSingletonHardlinkGroups(index.DeleteSafeSignatureByHash, index.DeleteSafeGroupBySignature)
 
 	// Set builtAt at the end of successful build (not start) to avoid TTL issues with slow builds
 	index.builtAt = time.Now()
@@ -341,8 +350,10 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		Int("instanceID", instanceID).
 		Int("totalTorrents", len(torrents)).
 		Int("scopeComputed", len(index.ScopeByHash)).
-		Int("duplicateGroups", len(index.GroupBySignature)).
-		Int("duplicateTorrents", len(index.SignatureByHash)).
+		Int("groupingDuplicateGroups", len(index.GroupBySignature)).
+		Int("groupingDuplicateTorrents", len(index.SignatureByHash)).
+		Int("deleteSafeDuplicateGroups", len(index.DeleteSafeGroupBySignature)).
+		Int("deleteSafeDuplicateTorrents", len(index.DeleteSafeSignatureByHash)).
 		Int("outsideLinks", torrentsWithOutsideLinks).
 		Int("inaccessible", torrentsInaccessible).
 		Int("invalidPaths", torrentsInvalidPaths).
@@ -350,6 +361,18 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		Msg("automations: hardlink index built")
 
 	return index
+}
+
+func pruneSingletonHardlinkGroups(signatureByHash map[string]string, groupsBySignature map[string][]string) {
+	for sig, hashes := range groupsBySignature {
+		if len(hashes) >= 2 {
+			continue
+		}
+		delete(groupsBySignature, sig)
+		if len(hashes) == 1 {
+			delete(signatureByHash, hashes[0])
+		}
+	}
 }
 
 // computeFileIDSignature creates a compact signature from a list of FileIDs.
@@ -404,12 +427,12 @@ func (idx *HardlinkIndex) GetHardlinkCopies(triggerHash string) []string {
 		return nil
 	}
 
-	sig, ok := idx.SignatureByHash[triggerHash]
+	sig, ok := idx.DeleteSafeSignatureByHash[triggerHash]
 	if !ok {
 		return nil
 	}
 
-	group := idx.GroupBySignature[sig]
+	group := idx.DeleteSafeGroupBySignature[sig]
 	if len(group) <= 1 {
 		return nil
 	}
