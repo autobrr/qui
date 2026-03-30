@@ -4520,7 +4520,7 @@ func rulesUseHardlinkSignatureGrouping(rules []*models.Automation) bool {
 }
 
 func ruleUsesHardlinkSignatureGrouping(rule *models.Automation) bool {
-	if rule == nil || !rule.Enabled || rule.Conditions == nil {
+	if rule == nil || rule.Conditions == nil {
 		return false
 	}
 

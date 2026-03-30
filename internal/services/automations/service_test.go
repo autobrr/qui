@@ -1466,6 +1466,24 @@ func TestRuleUsesHardlinkSignatureGrouping(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "disabled preview rule still detects hardlink_signature condition usage",
+			rule: &models.Automation{
+				Enabled: false,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldIsGrouped,
+								GroupID: "hardlink_signature",
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
 			name: "default group is hardlink_signature",
 			rule: &models.Automation{
 				Enabled: true,
