@@ -853,6 +853,10 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, category affix, or custom category.")
 		return
 	}
+	if req.SeasonPackCoverageThreshold <= 0 || req.SeasonPackCoverageThreshold > 1 {
+		RespondError(w, http.StatusBadRequest, "Season pack coverage threshold must be between 0 (exclusive) and 1 (inclusive)")
+		return
+	}
 
 	settings := &models.CrossSeedAutomationSettings{
 		Enabled:                      req.Enabled,
@@ -1582,6 +1586,18 @@ func (h *CrossSeedHandler) SeasonPackApply(w http.ResponseWriter, r *http.Reques
 	resp, err := h.service.ApplySeasonPackWebhook(context.WithoutCancel(r.Context()), &req)
 	if err != nil {
 		log.Error().Err(err).Str("torrentName", req.TorrentName).Msg("Season pack apply failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to apply season pack")
+		return
+	}
+	if resp == nil || !resp.Applied {
+		reason := ""
+		if resp != nil {
+			reason = resp.Reason
+		}
+		log.Error().
+			Str("torrentName", req.TorrentName).
+			Str("reason", reason).
+			Msg("Season pack apply returned failure response")
 		RespondError(w, http.StatusInternalServerError, "Failed to apply season pack")
 		return
 	}

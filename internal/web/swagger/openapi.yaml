@@ -3952,6 +3952,10 @@ paths:
         Coverage uses the larger of the playable episode count in the pack and the Sonarr season total when Sonarr can resolve the show.
         * `200 OK` - coverage meets threshold; ready to apply
         * `404 Not Found` - not enough episodes or not eligible
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+        - ApiKeyQuery: []
       parameters:
         - name: apikey
           in: query
@@ -3989,6 +3993,10 @@ paths:
         - Cross-Seed
       summary: Apply a season pack torrent using linked episode data
       description: Links the matched local episodes, adds the season pack torrent to the best matching instance, and queues a recheck when episodes or extras are still missing.
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+        - ApiKeyQuery: []
       parameters:
         - name: apikey
           in: query
@@ -6562,6 +6570,8 @@ components:
         seasonPackCoverageThreshold:
           type: number
           format: double
+          exclusiveMinimum: 0
+          maximum: 1
           description: Minimum local coverage ratio (0..1, default 0.75) before injecting a season pack. Uses Sonarr season totals when available, otherwise playable files in the pack.
         seasonPackTags:
           type: array

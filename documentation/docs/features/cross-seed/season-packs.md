@@ -22,7 +22,7 @@ qui can assemble season-pack torrents from individual episodes you already seed.
    - `404 Not Found` - local coverage is too low, the release is not a season pack, or the feature is disabled
 7. On `200 OK`, autobrr sends the torrent file to `/api/cross-seed/season-pack/apply`
 8. qui links the matched episodes, applies your configured season-pack tags, and adds the season pack torrent
-9. If episodes or extras are still missing, qui adds the torrent paused, triggers a recheck, then auto-resumes once qBittorrent reports the linked data
+9. If episodes or extras are still missing, qui adds the torrent paused, attempts an automatic recheck, and may queue an automatic resume if qBittorrent reports enough linked data. Best-effort fallbacks are reported by name, including `automatic recheck failed`, `automatic resume is unavailable`, and `automatic resume queue is full`.
 
 ## Coverage Model
 
@@ -61,8 +61,8 @@ When `/apply` runs, qui:
 - Links every matched episode file it can verify locally
 - Leaves unmatched episodes and extras for qBittorrent to download
 - Adds the torrent paused when anything is still missing
-- Triggers recheck so qBittorrent discovers the linked bytes
-- Auto-resumes once recheck finishes at the expected local-data threshold
+- Attempts an automatic recheck so qBittorrent can discover the linked bytes
+- May auto-resume after recheck if automatic resume is available and queueing succeeds; otherwise qui reports `automatic recheck failed`, `automatic resume is unavailable`, or `automatic resume queue is full`
 
 If **Skip Recheck** is enabled and the pack is incomplete, qui skips the apply instead of adding a broken torrent.
 
@@ -188,7 +188,7 @@ When qui applies a season pack, it:
 
 - Always adds the torrent with an explicit `savepath` pointing at the linked tree
 - Applies the tags configured in **Cross-Seed > Season Packs**
-- Adds incomplete packs paused, triggers recheck, then auto-resumes after qBittorrent discovers the linked files
+- Adds incomplete packs paused, then best-effort attempts automatic recheck and automatic resume; fallback outcomes include `automatic recheck failed`, `automatic resume is unavailable`, and `automatic resume queue is full`
 - Uses your normal cross-seed category rules:
   - Custom category, if enabled
   - Otherwise category affix mode, if enabled

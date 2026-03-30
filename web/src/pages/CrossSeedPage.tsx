@@ -2608,7 +2608,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <Input
                     id="season-pack-threshold"
                     type="number"
-                    min={0}
+                    min={1}
                     max={100}
                     className="w-32"
                     value={Math.round(globalSettings.seasonPackCoverageThreshold * 100)}
@@ -2617,7 +2617,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       if (!Number.isNaN(parsed)) {
                         setGlobalSettings(prev => ({
                           ...prev,
-                          seasonPackCoverageThreshold: Math.max(0, Math.min(100, parsed)) / 100,
+                          seasonPackCoverageThreshold: Math.max(1, Math.min(100, parsed)) / 100,
                         }))
                       }
                     }}

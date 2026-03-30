@@ -212,7 +212,14 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 	// Check if torrent already exists on any eligible instance.
 	hashes := collectHashes(prep.meta)
 	for _, inst := range prep.eligible {
-		if _, found, _ := s.syncManager.HasTorrentByAnyHash(ctx, inst.ID, hashes); found {
+		if _, found, err := s.syncManager.HasTorrentByAnyHash(ctx, inst.ID, hashes); err != nil {
+			message := fmt.Sprintf("failed to check existing torrents on instance %d: %v", inst.ID, err)
+			s.recordApplyRun(ctx, req.TorrentName, "existing_check_failed", message, inst.ID, 0, prep.totalEpisodes, 0, "")
+			return &SeasonPackApplyResponse{
+				Reason:  "existing_check_failed",
+				Message: message,
+			}, nil
+		} else if found {
 			s.recordApplyRun(ctx, req.TorrentName, "already_exists", "", inst.ID, 0, prep.totalEpisodes, 0, "")
 			return &SeasonPackApplyResponse{
 				Reason:  "already_exists",
@@ -251,7 +258,9 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		opts["tags"] = strings.Join(tags, ",")
 	}
 	if err := s.syncManager.AddTorrent(ctx, inst.ID, torrentBytes, opts); err != nil {
-		rollbackSeasonPackTree(linkMode, planBuild.plan)
+		if rollbackErr := rollbackSeasonPackTree(linkMode, planBuild.plan); rollbackErr != nil {
+			log.Warn().Err(rollbackErr).Str("torrentName", req.TorrentName).Msg("season pack: failed to rollback after add failure")
+		}
 		s.recordApplyRun(ctx, req.TorrentName, "add_failed", err.Error(), winner.InstanceID, winner.MatchedEpisodes, prep.totalEpisodes, winner.Coverage, linkMode)
 		return &SeasonPackApplyResponse{Reason: "add_failed", Message: "failed to add torrent to qbittorrent"}, nil
 	}
@@ -343,6 +352,9 @@ func (s *Service) assembleSeasonPack(
 		createFn = linkCreatorForMode(linkMode)
 	}
 	if err := createFn(planBuild.plan); err != nil {
+		if rollbackErr := rollbackSeasonPackTree(linkMode, planBuild.plan); rollbackErr != nil {
+			return nil, nil, nil, fmt.Errorf("link_failed: %w", errors.Join(err, fmt.Errorf("rollback failed: %w", rollbackErr)))
+		}
 		return nil, nil, nil, fmt.Errorf("link_failed: %w", err)
 	}
 
@@ -463,7 +475,13 @@ func extractPackEpisodes(files qbt.TorrentFiles, packRelease *rls.Release) map[e
 func filterLinkEligible(instances []*models.Instance) []*models.Instance {
 	var eligible []*models.Instance
 	for _, inst := range instances {
-		if inst.HasLocalFilesystemAccess && (inst.UseHardlinks || inst.UseReflinks) {
+		if !inst.HasLocalFilesystemAccess {
+			continue
+		}
+		switch {
+		case inst.UseHardlinks && inst.HardlinkBaseDir != "":
+			eligible = append(eligible, inst)
+		case inst.UseReflinks && inst.HardlinkBaseDir != "":
 			eligible = append(eligible, inst)
 		}
 	}
@@ -624,7 +642,7 @@ func (s *Service) resolveSeasonPackLocalFiles(
 
 	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", errLayoutMismatch, fmt.Errorf("load matched episode files: %w", err))
+		return nil, fmt.Errorf("load matched episode files: %w", err)
 	}
 
 	normalizer := seasonPackNormalizer(s)
@@ -684,7 +702,11 @@ func resolveSeasonPackSourcePath(contentPath string, files qbt.TorrentFiles, fil
 		}
 	}
 
-	return filepath.Join(rootDir, filepath.FromSlash(relativePath))
+	candidatePath, ok := safeSeasonPackJoin(rootDir, relativePath)
+	if !ok {
+		return ""
+	}
+	return candidatePath
 }
 
 func hasUnsafeSeasonPackPendingFiles(
@@ -729,8 +751,12 @@ func buildSeasonPackPlan(
 	localFiles map[episodeIdentity]seasonPackLocalFile,
 	normalizer *stringutils.Normalizer[string, string],
 ) (*seasonPackPlanBuild, error) {
+	rootDir, ok := safeSeasonPackJoin(destDir, packName)
+	if !ok {
+		return nil, fmt.Errorf("%w: invalid pack root path %q", errLayoutMismatch, packName)
+	}
 	plan := &hardlinktree.TreePlan{
-		RootDir: filepath.Join(destDir, packName),
+		RootDir: rootDir,
 		Files:   make([]hardlinktree.FilePlan, 0, len(packFiles)),
 	}
 	matcher := &Service{stringNormalizer: normalizer}
@@ -761,7 +787,10 @@ func buildSeasonPackPlan(
 			return nil, fmt.Errorf("%w: release mismatch for %s", errLayoutMismatch, pf.Name)
 		}
 
-		targetPath := filepath.Join(plan.RootDir, pf.Name)
+		targetPath, ok := safeSeasonPackJoin(plan.RootDir, pf.Name)
+		if !ok {
+			return nil, fmt.Errorf("%w: invalid pack target path %q", errLayoutMismatch, pf.Name)
+		}
 		plan.Files = append(plan.Files, hardlinktree.FilePlan{
 			SourcePath: localFile.sourcePath,
 			TargetPath: targetPath,
@@ -781,27 +810,55 @@ func buildSeasonPackPlan(
 	return build, nil
 }
 
-// rollbackSeasonPackTree removes a created link tree on failure.
-func rollbackSeasonPackTree(linkMode string, plan *hardlinktree.TreePlan) {
-	if plan == nil || plan.RootDir == "" {
-		return
+func safeSeasonPackJoin(rootDir, relativePath string) (string, bool) {
+	cleanedPath := filepath.Clean(filepath.FromSlash(strings.ReplaceAll(relativePath, "\\", "/")))
+	if cleanedPath == "." ||
+		filepath.IsAbs(cleanedPath) ||
+		isWindowsDriveAbs(filepath.ToSlash(cleanedPath)) ||
+		cleanedPath == ".." ||
+		strings.HasPrefix(cleanedPath, ".."+string(filepath.Separator)) {
+		return "", false
 	}
 
-	var err error
+	candidatePath := filepath.Join(rootDir, cleanedPath)
+	relativeToRoot, err := filepath.Rel(rootDir, candidatePath)
+	if err != nil {
+		return "", false
+	}
+	if relativeToRoot == ".." ||
+		strings.HasPrefix(relativeToRoot, ".."+string(filepath.Separator)) ||
+		filepath.IsAbs(relativeToRoot) ||
+		isWindowsDriveAbs(filepath.ToSlash(relativeToRoot)) {
+		return "", false
+	}
+
+	return candidatePath, true
+}
+
+// rollbackSeasonPackTree removes a created link tree on failure.
+func rollbackSeasonPackTree(linkMode string, plan *hardlinktree.TreePlan) error {
+	if plan == nil || plan.RootDir == "" {
+		return nil
+	}
+
+	var errs []error
 	switch linkMode {
 	case "hardlink":
-		err = hardlinktree.Rollback(plan)
+		if err := hardlinktree.Rollback(plan); err != nil {
+			errs = append(errs, err)
+		}
 	case "reflink":
-		err = reflinktree.Rollback(plan)
+		if err := reflinktree.Rollback(plan); err != nil {
+			errs = append(errs, err)
+		}
 	default:
-		return
+		return nil
 	}
 
-	if err != nil {
-		log.Warn().Err(err).Str("rootDir", plan.RootDir).Str("mode", linkMode).
-			Msg("season pack: failed to rollback link tree")
+	if err := os.RemoveAll(plan.RootDir); err != nil && !errors.Is(err, os.ErrNotExist) {
+		errs = append(errs, err)
 	}
-	_ = os.Remove(plan.RootDir)
+	return errors.Join(errs...)
 }
 
 // selectWinner picks the best instance from the coverage matches using

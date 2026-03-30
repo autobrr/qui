@@ -211,49 +211,123 @@ func TestClient_ParseTitle_Sonarr(t *testing.T) {
 	}
 }
 
-func TestClient_ParseSonarrTitle(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api/v3/parse", r.URL.Path)
-		assert.Equal(t, "Breaking Bad S01", r.URL.Query().Get("title"))
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{
-			"title": "Breaking Bad S01",
-			"parsedEpisodeInfo": {"seasonNumber": 1},
-			"series": {"id": 123, "title": "Breaking Bad", "tvdbId": 81189}
-		}`))
-	}))
-	defer server.Close()
+func TestClient_SonarrHelpers(t *testing.T) {
+	tests := []struct {
+		name           string
+		path           string
+		query          map[string]string
+		responseCode   int
+		responseBody   string
+		wantErrContain string
+		assertResult   func(*testing.T, *Client)
+	}{
+		{
+			name:         "parse title success",
+			path:         "/api/v3/parse",
+			query:        map[string]string{"title": "Breaking Bad S01"},
+			responseCode: http.StatusOK,
+			responseBody: `{
+				"title": "Breaking Bad S01",
+				"parsedEpisodeInfo": {"seasonNumber": 1},
+				"series": {"id": 123, "title": "Breaking Bad", "tvdbId": 81189}
+			}`,
+			assertResult: func(t *testing.T, client *Client) {
+				resp, err := client.ParseSonarrTitle(context.Background(), "Breaking Bad S01")
+				require.NoError(t, err)
+				require.NotNil(t, resp)
+				require.NotNil(t, resp.Series)
+				require.NotNil(t, resp.ParsedEpisodeInfo)
+				assert.Equal(t, 123, resp.Series.ID)
+				assert.Equal(t, 1, resp.ParsedEpisodeInfo.SeasonNumber)
+			},
+		},
+		{
+			name:           "parse title non-200",
+			path:           "/api/v3/parse",
+			query:          map[string]string{"title": "Breaking Bad S01"},
+			responseCode:   http.StatusBadGateway,
+			responseBody:   "bad gateway",
+			wantErrContain: "unexpected status 502",
+			assertResult: func(t *testing.T, client *Client) {
+				resp, err := client.ParseSonarrTitle(context.Background(), "Breaking Bad S01")
+				require.Nil(t, resp)
+				require.ErrorContains(t, err, "unexpected status 502")
+			},
+		},
+		{
+			name:           "parse title invalid json",
+			path:           "/api/v3/parse",
+			query:          map[string]string{"title": "Breaking Bad S01"},
+			responseCode:   http.StatusOK,
+			responseBody:   `not json`,
+			wantErrContain: "failed to decode Sonarr parse response",
+			assertResult: func(t *testing.T, client *Client) {
+				resp, err := client.ParseSonarrTitle(context.Background(), "Breaking Bad S01")
+				require.Nil(t, resp)
+				require.ErrorContains(t, err, "failed to decode Sonarr parse response")
+			},
+		},
+		{
+			name:         "season episodes success",
+			path:         "/api/v3/episode",
+			query:        map[string]string{"seriesId": "123", "seasonNumber": "1"},
+			responseCode: http.StatusOK,
+			responseBody: `[
+				{"id": 1, "seasonNumber": 1, "episodeNumber": 1},
+				{"id": 2, "seasonNumber": 1, "episodeNumber": 2},
+				{"id": 3, "seasonNumber": 1, "episodeNumber": 3}
+			]`,
+			assertResult: func(t *testing.T, client *Client) {
+				episodes, err := client.GetSonarrSeasonEpisodes(context.Background(), 123, 1)
+				require.NoError(t, err)
+				require.Len(t, episodes, 3)
+				assert.Equal(t, 3, episodes[2].EpisodeNumber)
+			},
+		},
+		{
+			name:           "season episodes non-200",
+			path:           "/api/v3/episode",
+			query:          map[string]string{"seriesId": "123", "seasonNumber": "1"},
+			responseCode:   http.StatusServiceUnavailable,
+			responseBody:   "down",
+			wantErrContain: "unexpected status 503",
+			assertResult: func(t *testing.T, client *Client) {
+				episodes, err := client.GetSonarrSeasonEpisodes(context.Background(), 123, 1)
+				require.Nil(t, episodes)
+				require.ErrorContains(t, err, "unexpected status 503")
+			},
+		},
+		{
+			name:           "season episodes invalid json",
+			path:           "/api/v3/episode",
+			query:          map[string]string{"seriesId": "123", "seasonNumber": "1"},
+			responseCode:   http.StatusOK,
+			responseBody:   `not json`,
+			wantErrContain: "failed to decode Sonarr episode response",
+			assertResult: func(t *testing.T, client *Client) {
+				episodes, err := client.GetSonarrSeasonEpisodes(context.Background(), 123, 1)
+				require.Nil(t, episodes)
+				require.ErrorContains(t, err, "failed to decode Sonarr episode response")
+			},
+		},
+	}
 
-	client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
-	resp, err := client.ParseSonarrTitle(context.Background(), "Breaking Bad S01")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, tt.path, r.URL.Path)
+				for key, value := range tt.query {
+					assert.Equal(t, value, r.URL.Query().Get(key))
+				}
+				w.WriteHeader(tt.responseCode)
+				_, _ = w.Write([]byte(tt.responseBody))
+			}))
+			defer server.Close()
 
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.NotNil(t, resp.Series)
-	assert.Equal(t, 123, resp.Series.ID)
-	assert.Equal(t, 1, resp.ParsedEpisodeInfo.SeasonNumber)
-}
-
-func TestClient_GetSonarrSeasonEpisodes(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api/v3/episode", r.URL.Path)
-		assert.Equal(t, "123", r.URL.Query().Get("seriesId"))
-		assert.Equal(t, "1", r.URL.Query().Get("seasonNumber"))
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`[
-			{"id": 1, "seasonNumber": 1, "episodeNumber": 1},
-			{"id": 2, "seasonNumber": 1, "episodeNumber": 2},
-			{"id": 3, "seasonNumber": 1, "episodeNumber": 3}
-		]`))
-	}))
-	defer server.Close()
-
-	client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
-	episodes, err := client.GetSonarrSeasonEpisodes(context.Background(), 123, 1)
-
-	require.NoError(t, err)
-	require.Len(t, episodes, 3)
-	assert.Equal(t, 3, episodes[2].EpisodeNumber)
+			client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+			tt.assertResult(t, client)
+		})
+	}
 }
 
 func TestClient_ParseTitle_Radarr(t *testing.T) {

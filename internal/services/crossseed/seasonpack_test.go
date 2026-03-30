@@ -148,11 +148,13 @@ func defaultSettings(enabled bool, threshold float64) func(context.Context) (*mo
 func TestCheckSeasonPackWebhook_ReturnsReadyWhenCoveragePasses(t *testing.T) {
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}
+	baseDir := t.TempDir()
 
 	inst := &models.Instance{
 		ID: 1, Name: "Test", IsActive: true,
 		HasLocalFilesystemAccess: true,
 		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
 	}
 
 	episodeTorrents := []qbt.Torrent{
@@ -197,11 +199,13 @@ func TestCheckSeasonPackWebhook_ReturnsReadyWhenCoveragePasses(t *testing.T) {
 func TestCheckSeasonPackWebhook_ReturnsNotFoundBelowThreshold(t *testing.T) {
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}
+	baseDir := t.TempDir()
 
 	inst := &models.Instance{
 		ID: 1, Name: "Test", IsActive: true,
 		HasLocalFilesystemAccess: true,
 		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
 	}
 
 	// Only 2 of 4 episodes = 50% coverage, below 75% threshold.
@@ -295,6 +299,7 @@ func TestCheckSeasonPackWebhook_SkipsInstancesWithoutLocalAccessOrLinkMode(t *te
 
 func TestCheckSeasonPackWebhook_IgnoresExtrasAndDeduplicatesEpisodeCount(t *testing.T) {
 	store := &stubSeasonPackRunStore{}
+	baseDir := t.TempDir()
 
 	packName := "Cool.Show.S01.1080p.WEB.x264-GRP"
 	// Include extras (nfo, srt) and duplicate episode via different names.
@@ -313,6 +318,7 @@ func TestCheckSeasonPackWebhook_IgnoresExtrasAndDeduplicatesEpisodeCount(t *test
 		ID: 1, Name: "Test", IsActive: true,
 		HasLocalFilesystemAccess: true,
 		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
 	}
 
 	episodeTorrents := []qbt.Torrent{
@@ -349,6 +355,7 @@ func TestCheckSeasonPackWebhook_IgnoresExtrasAndDeduplicatesEpisodeCount(t *test
 
 func TestCheckSeasonPackWebhook_IgnoresSampleVideoFiles(t *testing.T) {
 	store := &stubSeasonPackRunStore{}
+	baseDir := t.TempDir()
 
 	packName := "Cool.Show.S01.1080p.WEB.x264-GRP"
 	packFiles := []string{
@@ -365,6 +372,7 @@ func TestCheckSeasonPackWebhook_IgnoresSampleVideoFiles(t *testing.T) {
 		ID: 1, Name: "Test", IsActive: true,
 		HasLocalFilesystemAccess: true,
 		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
 	}
 
 	episodeTorrents := []qbt.Torrent{
@@ -402,11 +410,13 @@ func TestCheckSeasonPackWebhook_IgnoresSampleVideoFiles(t *testing.T) {
 
 func TestCheckSeasonPackWebhook_UsesSeasonTotalLookupWhenAvailable(t *testing.T) {
 	fix := newSeasonPackFixture(t)
+	baseDir := t.TempDir()
 
 	inst := &models.Instance{
 		ID: 1, Name: "Test", IsActive: true,
 		HasLocalFilesystemAccess: true,
 		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
 	}
 
 	episodeTorrents := []qbt.Torrent{
@@ -449,11 +459,13 @@ func TestCheckSeasonPackWebhook_UsesSeasonTotalLookupWhenAvailable(t *testing.T)
 func TestCheckSeasonPackWebhook_UsesWebhookSourceFilters(t *testing.T) {
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}
+	baseDir := t.TempDir()
 
 	inst := &models.Instance{
 		ID: 1, Name: "Test", IsActive: true,
 		HasLocalFilesystemAccess: true,
 		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
 	}
 
 	// Episodes are in "tv" category, but we'll filter to only "movies".
@@ -497,11 +509,13 @@ func TestCheckSeasonPackWebhook_UsesWebhookSourceFilters(t *testing.T) {
 
 func TestCheckSeasonPackWebhook_IgnoresIncompleteEpisodeTorrents(t *testing.T) {
 	fix := newSeasonPackFixture(t)
+	baseDir := t.TempDir()
 
 	inst := &models.Instance{
 		ID: 1, Name: "Test", IsActive: true,
 		HasLocalFilesystemAccess: true,
 		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
 	}
 
 	episodeTorrents := []qbt.Torrent{
@@ -539,6 +553,7 @@ func TestCheckSeasonPackWebhook_IgnoresIncompleteEpisodeTorrents(t *testing.T) {
 
 func TestCheckSeasonPackWebhook_RejectsMismatchedEpisodeVariants(t *testing.T) {
 	packName := "Cool.Show.S01.1080p.BluRay.x264-GRP"
+	baseDir := t.TempDir()
 	packFiles := []string{
 		"Cool.Show.S01E01.1080p.BluRay.x264-GRP.mkv",
 		"Cool.Show.S01E02.1080p.BluRay.x264-GRP.mkv",
@@ -553,6 +568,7 @@ func TestCheckSeasonPackWebhook_RejectsMismatchedEpisodeVariants(t *testing.T) {
 		ID: 1, Name: "Test", IsActive: true,
 		HasLocalFilesystemAccess: true,
 		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
 	}
 
 	episodeTorrents := []qbt.Torrent{
@@ -589,11 +605,13 @@ func TestCheckSeasonPackWebhook_RejectsMismatchedEpisodeVariants(t *testing.T) {
 func TestApplySeasonPackWebhook_ReturnsAlreadyExistsWhenTorrentPresent(t *testing.T) {
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}
+	baseDir := t.TempDir()
 
 	inst := &models.Instance{
 		ID: 1, Name: "Test", IsActive: true,
 		HasLocalFilesystemAccess: true,
 		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
 	}
 
 	// Decode the torrent to get its hash for the "already exists" check.
@@ -708,11 +726,13 @@ func TestApplySeasonPackWebhook_SelectsDeterministicWinner(t *testing.T) {
 func TestApplySeasonPackWebhook_HardFailsWhenCoverageDrifts(t *testing.T) {
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}
+	baseDir := t.TempDir()
 
 	inst := &models.Instance{
 		ID: 1, Name: "Test", IsActive: true,
 		HasLocalFilesystemAccess: true,
 		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
 	}
 
 	// Only 1 of 4 episodes = 25% coverage, below threshold.

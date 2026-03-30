@@ -38,6 +38,8 @@ func newTestCrossSeedStore(t *testing.T) *models.CrossSeedStore {
 	return store
 }
 
+// setServiceField injects an unexported crossseed.Service field via reflect/unsafe.
+// Tests use this to isolate handler behavior without constructing every service dependency.
 func setServiceField[T any](t *testing.T, svc *crossseed.Service, name string, value T) {
 	t.Helper()
 
@@ -78,4 +80,24 @@ func TestUpdateAutomationSettings_PersistsSeasonPackFields(t *testing.T) {
 	require.True(t, stored.SeasonPackEnabled)
 	require.InDelta(t, 0.9, stored.SeasonPackCoverageThreshold, 0.001)
 	require.Equal(t, []string{"season-pack", "cross-seed"}, stored.SeasonPackTags)
+}
+
+func TestUpdateAutomationSettings_RejectsInvalidSeasonPackThreshold(t *testing.T) {
+	store := newTestCrossSeedStore(t)
+
+	svc := &crossseed.Service{}
+	setServiceField(t, svc, "automationStore", store)
+
+	handler := &CrossSeedHandler{service: svc}
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/cross-seed/settings", strings.NewReader(`{
+		"seasonPackCoverageThreshold": 0
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+
+	handler.UpdateAutomationSettings(resp, req)
+
+	require.Equal(t, http.StatusBadRequest, resp.Code)
+	require.Contains(t, resp.Body.String(), "Season pack coverage threshold")
 }

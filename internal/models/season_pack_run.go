@@ -97,7 +97,7 @@ func (s *SeasonPackRunStore) List(ctx context.Context, limit int) ([]*SeasonPack
 		       instance_id, matched_episodes, total_episodes, coverage, link_mode,
 		       created_at
 		FROM season_pack_runs
-		ORDER BY created_at DESC
+		ORDER BY created_at DESC, id DESC
 		LIMIT ?
 	`, limit)
 	if err != nil {
