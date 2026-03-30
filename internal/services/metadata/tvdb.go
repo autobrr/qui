@@ -175,7 +175,12 @@ func (p *tvdbProvider) countEpisodes(ctx context.Context, seriesID string, seaso
 		return 0, fmt.Errorf("tvdb: decode episodes response: %w", err)
 	}
 
-	count := len(result.Data.Episodes)
+	count := 0
+	for _, ep := range result.Data.Episodes {
+		if ep.SeasonNumber == seasonNumber {
+			count++
+		}
+	}
 	if count == 0 {
 		return 0, fmt.Errorf("tvdb: no episodes found for season %d", seasonNumber)
 	}
