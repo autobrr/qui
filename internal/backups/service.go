@@ -34,6 +34,7 @@ import (
 var (
 	// ErrInstanceBusy is returned when a backup is already running for the instance.
 	ErrInstanceBusy = errors.New("backup already running for this instance")
+	removeFile      = os.Remove
 )
 
 // Config controls background backup scheduling.
@@ -1899,22 +1900,16 @@ func (s *Service) deleteFilesParallel(ctx context.Context, paths []string) {
 		return
 	}
 
-	var wg sync.WaitGroup
-	for _, p := range paths {
-		wg.Add(1)
-		go func(path string) {
-			defer wg.Done()
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-				log.Warn().Err(err).Str("path", path).Msg("Failed to remove file during bulk cleanup")
-			}
-		}(p)
+	for _, path := range paths {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		if err := removeFile(path); err != nil && !os.IsNotExist(err) {
+			log.Warn().Err(err).Str("path", path).Msg("Failed to remove file during bulk cleanup")
+		}
 	}
-	wg.Wait()
 }
 
 func trackerDomainFromTorrent(t qbt.Torrent) string {

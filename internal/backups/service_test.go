@@ -10,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -1139,6 +1140,215 @@ func TestWaitForExportThrottleRespectsContextCancellation(t *testing.T) {
 
 	err := waitForExportThrottle(ctx, throttle)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestDeleteFilesParallelStopsWhenContextCanceled(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var (
+		mu      sync.Mutex
+		removed []string
+	)
+
+	originalRemoveFile := removeFile
+	removeFile = func(path string) error {
+		mu.Lock()
+		removed = append(removed, path)
+		callCount := len(removed)
+		mu.Unlock()
+
+		if callCount == 1 {
+			cancel()
+		}
+
+		return nil
+	}
+	t.Cleanup(func() { removeFile = originalRemoveFile })
+
+	svc.deleteFilesParallel(ctx, []string{"one", "two", "three"})
+
+	require.Equal(t, []string{"one"}, removed)
+}
+
+func TestDeleteRunRemovesFilesAndCleansState(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "delete-run")
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	manifestRelPath := filepath.ToSlash(filepath.Join("backups", "runs", "manifest.json"))
+	archiveRelPath := filepath.ToSlash(filepath.Join("backups", "runs", "archive.zip"))
+	blobRelPath := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "blob.torrent"))
+
+	for _, rel := range []string{manifestRelPath, archiveRelPath, blobRelPath} {
+		abs := filepath.Join(dataDir, rel)
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+		require.NoError(t, os.WriteFile(abs, []byte(rel), 0o600))
+	}
+
+	now := time.Unix(0, 0).UTC()
+	run := &models.BackupRun{
+		InstanceID:   instanceID,
+		Kind:         models.BackupRunKindManual,
+		Status:       models.BackupRunStatusSuccess,
+		RequestedBy:  "tester",
+		RequestedAt:  now,
+		StartedAt:    &now,
+		CompletedAt:  &now,
+		ManifestPath: &manifestRelPath,
+		ArchivePath:  &archiveRelPath,
+	}
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.InsertItems(ctx, run.ID, []models.BackupItem{{
+		RunID:           run.ID,
+		TorrentHash:     "hash-a",
+		Name:            "Torrent A",
+		SizeBytes:       123,
+		TorrentBlobPath: &blobRelPath,
+	}}))
+
+	require.NoError(t, svc.DeleteRun(ctx, run.ID))
+
+	for _, rel := range []string{manifestRelPath, archiveRelPath, blobRelPath} {
+		_, err := os.Stat(filepath.Join(dataDir, rel))
+		require.ErrorIs(t, err, os.ErrNotExist)
+	}
+
+	_, err := store.GetRun(ctx, run.ID)
+	require.ErrorIs(t, err, sql.ErrNoRows)
+
+	items, err := store.ListItems(ctx, run.ID)
+	require.NoError(t, err)
+	require.Empty(t, items)
+}
+
+func TestDeleteAllRunsRemovesFilesAndToleratesMissingOnes(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "delete-all")
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	now := time.Unix(0, 0).UTC()
+	manifestA := filepath.ToSlash(filepath.Join("backups", "runs", "run-a-manifest.json"))
+	archiveA := filepath.ToSlash(filepath.Join("backups", "runs", "run-a.zip"))
+	manifestB := filepath.ToSlash(filepath.Join("backups", "runs", "run-b-manifest.json"))
+	archiveB := filepath.ToSlash(filepath.Join("backups", "runs", "run-b.zip"))
+
+	runA := &models.BackupRun{
+		InstanceID:   instanceID,
+		Kind:         models.BackupRunKindManual,
+		Status:       models.BackupRunStatusSuccess,
+		RequestedBy:  "tester",
+		RequestedAt:  now,
+		StartedAt:    &now,
+		CompletedAt:  &now,
+		ManifestPath: &manifestA,
+		ArchivePath:  &archiveA,
+	}
+	runB := &models.BackupRun{
+		InstanceID:   instanceID,
+		Kind:         models.BackupRunKindHourly,
+		Status:       models.BackupRunStatusSuccess,
+		RequestedBy:  "tester",
+		RequestedAt:  now,
+		StartedAt:    &now,
+		CompletedAt:  &now,
+		ManifestPath: &manifestB,
+		ArchivePath:  &archiveB,
+	}
+	require.NoError(t, store.CreateRun(ctx, runA))
+	require.NoError(t, store.CreateRun(ctx, runB))
+
+	for _, rel := range []string{manifestA, archiveA, manifestB} {
+		abs := filepath.Join(dataDir, rel)
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+		require.NoError(t, os.WriteFile(abs, []byte(rel), 0o600))
+	}
+
+	require.NoError(t, svc.DeleteAllRuns(ctx, instanceID))
+
+	for _, rel := range []string{manifestA, archiveA, manifestB, archiveB} {
+		_, err := os.Stat(filepath.Join(dataDir, rel))
+		require.ErrorIs(t, err, os.ErrNotExist)
+	}
+
+	runIDs, err := store.ListRunIDs(ctx, instanceID)
+	require.NoError(t, err)
+	require.Empty(t, runIDs)
+}
+
+func TestCleanupTorrentBlobsKeepsReferencedBlobs(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "blob-refs")
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	now := time.Unix(0, 0).UTC()
+	blobRelPath := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "shared.torrent"))
+	blobAbsPath := filepath.Join(dataDir, blobRelPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbsPath), 0o755))
+	require.NoError(t, os.WriteFile(blobAbsPath, []byte("blob"), 0o600))
+
+	runA := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindManual,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "tester",
+		RequestedAt: now,
+		StartedAt:   &now,
+		CompletedAt: &now,
+	}
+	runB := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "tester",
+		RequestedAt: now,
+		StartedAt:   &now,
+		CompletedAt: &now,
+	}
+	require.NoError(t, store.CreateRun(ctx, runA))
+	require.NoError(t, store.CreateRun(ctx, runB))
+	require.NoError(t, store.InsertItems(ctx, runA.ID, []models.BackupItem{{
+		RunID:           runA.ID,
+		TorrentHash:     "hash-a",
+		Name:            "Torrent A",
+		SizeBytes:       1,
+		TorrentBlobPath: &blobRelPath,
+	}}))
+	require.NoError(t, store.InsertItems(ctx, runB.ID, []models.BackupItem{{
+		RunID:           runB.ID,
+		TorrentHash:     "hash-b",
+		Name:            "Torrent B",
+		SizeBytes:       1,
+		TorrentBlobPath: &blobRelPath,
+	}}))
+
+	items, err := store.ListItems(ctx, runA.ID)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+
+	require.NoError(t, store.CleanupRun(ctx, runA.ID))
+	svc.cleanupTorrentBlobs(ctx, items)
+
+	_, err = os.Stat(blobAbsPath)
+	require.NoError(t, err)
 }
 
 type stubBackupSyncManager struct {
