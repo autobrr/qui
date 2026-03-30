@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"maps"
 	"path/filepath"
 	"testing"
 
@@ -53,9 +54,7 @@ type seasonPackSyncManager struct {
 
 func (s *seasonPackSyncManager) AddTorrent(_ context.Context, instanceID int, _ []byte, options map[string]string) error {
 	copied := make(map[string]string, len(options))
-	for key, value := range options {
-		copied[key] = value
-	}
+	maps.Copy(copied, options)
 	s.addCalls = append(s.addCalls, addTorrentRecord{instanceID: instanceID, options: copied})
 	return s.addErr
 }
