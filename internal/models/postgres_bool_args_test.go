@@ -399,6 +399,9 @@ func TestCrossSeedUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 			skip_auto_resume_webhook INTEGER NOT NULL DEFAULT 0,
 			skip_recheck INTEGER NOT NULL DEFAULT 0,
 			skip_piece_boundary_safety_check INTEGER NOT NULL DEFAULT 1,
+			season_pack_enabled INTEGER NOT NULL DEFAULT 0,
+			season_pack_coverage_threshold REAL NOT NULL DEFAULT 0.75,
+			season_pack_tags TEXT NOT NULL DEFAULT '["cross-seed"]',
 			gazelle_enabled INTEGER NOT NULL DEFAULT 0,
 			redacted_api_key_encrypted TEXT NOT NULL DEFAULT '',
 			orpheus_api_key_encrypted TEXT NOT NULL DEFAULT '',
@@ -426,9 +429,9 @@ func TestCrossSeedUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 
 	_, err = store.UpsertSettings(context.Background(), settings)
 	require.NoError(t, err)
-	require.Len(t, insertArgs, 39)
+	require.Len(t, insertArgs, 42)
 
-	boolIndexes := []int{1, 3, 16, 18, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36}
+	boolIndexes := []int{1, 3, 16, 18, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 39}
 	for _, idx := range boolIndexes {
 		_, ok := insertArgs[idx].(int)
 		require.Truef(t, ok, "expected int arg at index %d, got %T", idx, insertArgs[idx])

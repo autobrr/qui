@@ -211,6 +211,51 @@ func TestClient_ParseTitle_Sonarr(t *testing.T) {
 	}
 }
 
+func TestClient_ParseSonarrTitle(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v3/parse", r.URL.Path)
+		assert.Equal(t, "Breaking Bad S01", r.URL.Query().Get("title"))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"title": "Breaking Bad S01",
+			"parsedEpisodeInfo": {"seasonNumber": 1},
+			"series": {"id": 123, "title": "Breaking Bad", "tvdbId": 81189}
+		}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+	resp, err := client.ParseSonarrTitle(context.Background(), "Breaking Bad S01")
+
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.NotNil(t, resp.Series)
+	assert.Equal(t, 123, resp.Series.ID)
+	assert.Equal(t, 1, resp.ParsedEpisodeInfo.SeasonNumber)
+}
+
+func TestClient_GetSonarrSeasonEpisodes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v3/episode", r.URL.Path)
+		assert.Equal(t, "123", r.URL.Query().Get("seriesId"))
+		assert.Equal(t, "1", r.URL.Query().Get("seasonNumber"))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[
+			{"id": 1, "seasonNumber": 1, "episodeNumber": 1},
+			{"id": 2, "seasonNumber": 1, "episodeNumber": 2},
+			{"id": 3, "seasonNumber": 1, "episodeNumber": 3}
+		]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+	episodes, err := client.GetSonarrSeasonEpisodes(context.Background(), 123, 1)
+
+	require.NoError(t, err)
+	require.Len(t, episodes, 3)
+	assert.Equal(t, 3, episodes[2].EpisodeNumber)
+}
+
 func TestClient_ParseTitle_Radarr(t *testing.T) {
 	tests := []struct {
 		name         string

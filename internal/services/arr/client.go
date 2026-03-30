@@ -6,10 +6,12 @@ package arr
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -71,7 +73,7 @@ func (c *Client) Ping(ctx context.Context) error {
 	defer httphelpers.DrainAndClose(resp)
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("authentication failed: invalid API key")
+		return errors.New("authentication failed: invalid API key")
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -121,7 +123,7 @@ func (c *Client) ParseTitle(ctx context.Context, title string) (*models.External
 	defer httphelpers.DrainAndClose(resp)
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, fmt.Errorf("authentication failed: invalid API key")
+		return nil, errors.New("authentication failed: invalid API key")
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -138,6 +140,95 @@ func (c *Client) ParseTitle(ctx context.Context, title string) (*models.External
 	default:
 		return nil, fmt.Errorf("unsupported instance type: %s", c.instanceType)
 	}
+}
+
+// ParseSonarrTitle returns the full Sonarr parse response for TV lookups that need the series ID.
+func (c *Client) ParseSonarrTitle(ctx context.Context, title string) (*SonarrParseResponse, error) {
+	if c.instanceType != models.ArrInstanceTypeSonarr {
+		return nil, fmt.Errorf("unsupported instance type for Sonarr parse: %s", c.instanceType)
+	}
+
+	endpoint := c.baseURL + "/api/v3/parse"
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse endpoint URL: %w", err)
+	}
+	q := u.Query()
+	q.Set("title", title)
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	c.setHeaders(req)
+
+	resp, err := c.httpClient.Do(req) //nolint:bodyclose // closed by DrainAndClose
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer httphelpers.DrainAndClose(resp)
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, errors.New("authentication failed: invalid API key")
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var parseResp SonarrParseResponse
+	if err := json.NewDecoder(resp.Body).Decode(&parseResp); err != nil {
+		return nil, fmt.Errorf("failed to decode Sonarr parse response: %w", err)
+	}
+
+	return &parseResp, nil
+}
+
+// GetSonarrSeasonEpisodes fetches episodes for a specific Sonarr series season.
+func (c *Client) GetSonarrSeasonEpisodes(ctx context.Context, seriesID, seasonNumber int) ([]SonarrEpisodeResource, error) {
+	if c.instanceType != models.ArrInstanceTypeSonarr {
+		return nil, fmt.Errorf("unsupported instance type for Sonarr episodes: %s", c.instanceType)
+	}
+
+	endpoint := c.baseURL + "/api/v3/episode"
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse endpoint URL: %w", err)
+	}
+	q := u.Query()
+	q.Set("seriesId", strconv.Itoa(seriesID))
+	q.Set("seasonNumber", strconv.Itoa(seasonNumber))
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	c.setHeaders(req)
+
+	resp, err := c.httpClient.Do(req) //nolint:bodyclose // closed by DrainAndClose
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer httphelpers.DrainAndClose(resp)
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, errors.New("authentication failed: invalid API key")
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var episodes []SonarrEpisodeResource
+	if err := json.NewDecoder(resp.Body).Decode(&episodes); err != nil {
+		return nil, fmt.Errorf("failed to decode Sonarr episode response: %w", err)
+	}
+
+	return episodes, nil
 }
 
 // parseSonarrResponse parses a Sonarr parse response and extracts external IDs

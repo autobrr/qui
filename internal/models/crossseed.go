@@ -84,6 +84,11 @@ type CrossSeedAutomationSettings struct {
 	SkipRecheck                  bool `json:"skipRecheck"`                  // Skip cross-seed matches that require a recheck
 	SkipPieceBoundarySafetyCheck bool `json:"skipPieceBoundarySafetyCheck"` // Skip piece boundary safety check (risky: may corrupt existing seeded data)
 
+	// Season pack settings
+	SeasonPackEnabled           bool     `json:"seasonPackEnabled"`           // Enable season pack webhook flow
+	SeasonPackCoverageThreshold float64  `json:"seasonPackCoverageThreshold"` // Minimum episode coverage to trigger (0..1, default 0.75)
+	SeasonPackTags              []string `json:"seasonPackTags"`              // Tags for season pack results
+
 	// Gazelle (OPS/RED) cross-seed settings.
 	// When enabled, qui uses the tracker JSON APIs to find matches for OPS/RED torrents
 	// instead of Torznab. Keys are stored encrypted and are redacted in API responses.
@@ -149,11 +154,15 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		SkipAutoResumeWebhook:        false,
 		SkipRecheck:                  false,
 		SkipPieceBoundarySafetyCheck: true, // Skip by default to maximize matches
-		GazelleEnabled:               false,
-		RedactedAPIKey:               "",
-		OrpheusAPIKey:                "",
-		CreatedAt:                    time.Now().UTC(),
-		UpdatedAt:                    time.Now().UTC(),
+		// Season pack defaults
+		SeasonPackEnabled:           false,
+		SeasonPackCoverageThreshold: 0.75,
+		SeasonPackTags:              []string{"cross-seed"},
+		GazelleEnabled:              false,
+		RedactedAPIKey:              "",
+		OrpheusAPIKey:               "",
+		CreatedAt:                   time.Now().UTC(),
+		UpdatedAt:                   time.Now().UTC(),
 	}
 }
 
@@ -387,6 +396,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
 		       skip_recheck, skip_piece_boundary_safety_check,
+		       season_pack_enabled, season_pack_coverage_threshold, season_pack_tags,
 		       gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted,
 		       created_at, updated_at
 		FROM cross_seed_settings
@@ -407,6 +417,8 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var inheritSourceTags, useCrossCategoryAffix, useCustomCategory int
 	var skipAutoResumeRSS, skipAutoResumeSeededSearch, skipAutoResumeCompletion, skipAutoResumeWebhook int
 	var skipRecheck, skipPieceBoundarySafetyCheck int
+	var seasonPackEnabled int
+	var seasonPackTags sql.NullString
 	var gazelleEnabled int
 	var redactedAPIKeyEncrypted, orpheusAPIKeyEncrypted sql.NullString
 	var createdAt, updatedAt sql.NullTime
@@ -447,6 +459,9 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&skipAutoResumeWebhook,
 		&skipRecheck,
 		&skipPieceBoundarySafetyCheck,
+		&seasonPackEnabled,
+		&settings.SeasonPackCoverageThreshold,
+		&seasonPackTags,
 		&gazelleEnabled,
 		&redactedAPIKeyEncrypted,
 		&orpheusAPIKeyEncrypted,
@@ -518,6 +533,9 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	if err := decodeStringSliceWithDefault(webhookTags, &settings.WebhookTags, defaults.WebhookTags); err != nil {
 		return nil, fmt.Errorf("decode webhook tags: %w", err)
 	}
+	if err := decodeStringSliceWithDefault(seasonPackTags, &settings.SeasonPackTags, defaults.SeasonPackTags); err != nil {
+		return nil, fmt.Errorf("decode season pack tags: %w", err)
+	}
 
 	if createdAt.Valid {
 		settings.CreatedAt = createdAt.Time
@@ -539,6 +557,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	settings.SkipAutoResumeWebhook = SQLiteIntToBool(skipAutoResumeWebhook)
 	settings.SkipRecheck = SQLiteIntToBool(skipRecheck)
 	settings.SkipPieceBoundarySafetyCheck = SQLiteIntToBool(skipPieceBoundarySafetyCheck)
+	settings.SeasonPackEnabled = SQLiteIntToBool(seasonPackEnabled)
 	settings.GazelleEnabled = SQLiteIntToBool(gazelleEnabled)
 	if redactedAPIKeyEncrypted.Valid {
 		settings.RedactedAPIKey = s.apiKeyRedacted(redactedAPIKeyEncrypted.String)
@@ -655,6 +674,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 	if err != nil {
 		return nil, fmt.Errorf("encode webhook tags: %w", err)
 	}
+	seasonPackTags, err := encodeStringSlice(settings.SeasonPackTags)
+	if err != nil {
+		return nil, fmt.Errorf("encode season pack tags: %w", err)
+	}
 
 	var existingRedactedEncrypted string
 	var existingOrpheusEncrypted string
@@ -730,9 +753,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook,
 			skip_recheck, skip_piece_boundary_safety_check,
+			season_pack_enabled, season_pack_coverage_threshold, season_pack_tags,
 			gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -770,6 +794,9 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_webhook = excluded.skip_auto_resume_webhook,
 			skip_recheck = excluded.skip_recheck,
 			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check,
+			season_pack_enabled = excluded.season_pack_enabled,
+			season_pack_coverage_threshold = excluded.season_pack_coverage_threshold,
+			season_pack_tags = excluded.season_pack_tags,
 			gazelle_enabled = excluded.gazelle_enabled,
 			redacted_api_key_encrypted = excluded.redacted_api_key_encrypted,
 			orpheus_api_key_encrypted = excluded.orpheus_api_key_encrypted
@@ -823,6 +850,9 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		BoolToSQLite(settings.SkipAutoResumeWebhook),
 		BoolToSQLite(settings.SkipRecheck),
 		BoolToSQLite(settings.SkipPieceBoundarySafetyCheck),
+		BoolToSQLite(settings.SeasonPackEnabled),
+		settings.SeasonPackCoverageThreshold,
+		seasonPackTags,
 		BoolToSQLite(settings.GazelleEnabled),
 		redactedAPIKeyEncrypted,
 		orpheusAPIKeyEncrypted,

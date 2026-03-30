@@ -71,6 +71,11 @@ type trackerCustomizationProvider interface {
 	List(ctx context.Context) ([]*models.TrackerCustomization, error)
 }
 
+// seasonPackRunCreator persists season-pack run rows.
+type seasonPackRunCreator interface {
+	Create(ctx context.Context, run *models.SeasonPackRun) (*models.SeasonPackRun, error)
+}
+
 // qbittorrentSync exposes the sync manager functionality needed by the service.
 type qbittorrentSync interface {
 	GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error)
@@ -340,15 +345,21 @@ type Service struct {
 	completionLaneMu sync.Mutex
 	completionLanes  map[int]*completionLane
 
+	// Season-pack webhook support
+	seasonPackRunStore seasonPackRunCreator
+
 	// test hooks
 	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
 	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
+	seasonPackLinkCreator   func(plan *hardlinktree.TreePlan) error
 
 	// Recheck resume worker
 	recheckResumeChan   chan *pendingResume
 	recheckResumeCtx    context.Context
 	recheckResumeCancel context.CancelFunc
+
+	seasonPackEpisodeTotalLookup func(context.Context, string, *rls.Release) (int, bool)
 }
 
 // pendingResume tracks a torrent waiting for recheck to complete before resuming.
@@ -378,6 +389,7 @@ func NewService(
 	trackerCustomizationStore *models.TrackerCustomizationStore,
 	notifier notifications.Notifier,
 	recoverErroredTorrents bool,
+	seasonPackRunStore seasonPackRunCreator,
 ) *Service {
 	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
 		SetDefaultTTL(searchResultCacheTTL))
@@ -412,6 +424,7 @@ func NewService(
 		externalProgramService:        externalProgramService,
 		completionStore:               completionStore,
 		recoverErroredTorrentsEnabled: recoverErroredTorrents,
+		seasonPackRunStore:            seasonPackRunStore,
 		automationWake:                make(chan struct{}, 1),
 		domainMappings:                initializeDomainMappings(),
 		torrentFilesCache:             contentFilesCache,

@@ -25,31 +25,35 @@ import (
 
 // CrossSeedHandler handles cross-seed API endpoints
 type CrossSeedHandler struct {
-	service         *crossseed.Service
-	completionStore *models.InstanceCrossSeedCompletionStore
-	instanceStore   *models.InstanceStore
+	service            *crossseed.Service
+	completionStore    *models.InstanceCrossSeedCompletionStore
+	instanceStore      *models.InstanceStore
+	seasonPackRunStore *models.SeasonPackRunStore
 }
 
 var infoHashRegex = regexp.MustCompile(`^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$`)
 
 type automationSettingsRequest struct {
-	Enabled                      bool    `json:"enabled"`
-	RunIntervalMinutes           int     `json:"runIntervalMinutes"`
-	StartPaused                  bool    `json:"startPaused"`
-	Category                     *string `json:"category"`
-	TargetInstanceIDs            []int   `json:"targetInstanceIds"`
-	TargetIndexerIDs             []int   `json:"targetIndexerIds"`
-	MaxResultsPerRun             int     `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
-	FindIndividualEpisodes       bool    `json:"findIndividualEpisodes"`
-	SizeMismatchTolerancePercent float64 `json:"sizeMismatchTolerancePercent"`
-	UseCategoryFromIndexer       bool    `json:"useCategoryFromIndexer"`
-	UseCrossCategoryAffix        bool    `json:"useCrossCategoryAffix"`
-	CategoryAffixMode            string  `json:"categoryAffixMode"`
-	CategoryAffix                string  `json:"categoryAffix"`
-	UseCustomCategory            bool    `json:"useCustomCategory"`
-	CustomCategory               string  `json:"customCategory"`
-	RunExternalProgramID         *int    `json:"runExternalProgramId"`
-	SkipRecheck                  bool    `json:"skipRecheck"`
+	Enabled                      bool     `json:"enabled"`
+	RunIntervalMinutes           int      `json:"runIntervalMinutes"`
+	StartPaused                  bool     `json:"startPaused"`
+	Category                     *string  `json:"category"`
+	TargetInstanceIDs            []int    `json:"targetInstanceIds"`
+	TargetIndexerIDs             []int    `json:"targetIndexerIds"`
+	MaxResultsPerRun             int      `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
+	FindIndividualEpisodes       bool     `json:"findIndividualEpisodes"`
+	SizeMismatchTolerancePercent float64  `json:"sizeMismatchTolerancePercent"`
+	UseCategoryFromIndexer       bool     `json:"useCategoryFromIndexer"`
+	UseCrossCategoryAffix        bool     `json:"useCrossCategoryAffix"`
+	CategoryAffixMode            string   `json:"categoryAffixMode"`
+	CategoryAffix                string   `json:"categoryAffix"`
+	UseCustomCategory            bool     `json:"useCustomCategory"`
+	CustomCategory               string   `json:"customCategory"`
+	RunExternalProgramID         *int     `json:"runExternalProgramId"`
+	SkipRecheck                  bool     `json:"skipRecheck"`
+	SeasonPackEnabled            bool     `json:"seasonPackEnabled"`
+	SeasonPackCoverageThreshold  float64  `json:"seasonPackCoverageThreshold"`
+	SeasonPackTags               []string `json:"seasonPackTags"`
 	// Gazelle (OPS/RED) cross-seed settings.
 	GazelleEnabled bool   `json:"gazelleEnabled"`
 	RedactedAPIKey string `json:"redactedApiKey"`
@@ -97,9 +101,13 @@ type automationSettingsPatchRequest struct {
 	SkipRecheck                  *bool `json:"skipRecheck,omitempty"`
 	SkipPieceBoundarySafetyCheck *bool `json:"skipPieceBoundarySafetyCheck,omitempty"`
 	// Gazelle (OPS/RED) cross-seed settings.
-	GazelleEnabled *bool   `json:"gazelleEnabled,omitempty"`
-	RedactedAPIKey *string `json:"redactedApiKey,omitempty"`
-	OrpheusAPIKey  *string `json:"orpheusApiKey,omitempty"`
+	// Season pack settings
+	SeasonPackEnabled           *bool     `json:"seasonPackEnabled,omitempty"`
+	SeasonPackCoverageThreshold *float64  `json:"seasonPackCoverageThreshold,omitempty"`
+	SeasonPackTags              *[]string `json:"seasonPackTags,omitempty"`
+	GazelleEnabled              *bool     `json:"gazelleEnabled,omitempty"`
+	RedactedAPIKey              *string   `json:"redactedApiKey,omitempty"`
+	OrpheusAPIKey               *string   `json:"orpheusApiKey,omitempty"`
 }
 
 type optionalString struct {
@@ -194,6 +202,9 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SkipAutoResumeWebhook == nil &&
 		r.SkipRecheck == nil &&
 		r.SkipPieceBoundarySafetyCheck == nil &&
+		r.SeasonPackEnabled == nil &&
+		r.SeasonPackCoverageThreshold == nil &&
+		r.SeasonPackTags == nil &&
 		r.GazelleEnabled == nil &&
 		r.RedactedAPIKey == nil &&
 		r.OrpheusAPIKey == nil
@@ -318,6 +329,16 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.SkipPieceBoundarySafetyCheck != nil {
 		settings.SkipPieceBoundarySafetyCheck = *patch.SkipPieceBoundarySafetyCheck
 	}
+	// Season pack settings
+	if patch.SeasonPackEnabled != nil {
+		settings.SeasonPackEnabled = *patch.SeasonPackEnabled
+	}
+	if patch.SeasonPackCoverageThreshold != nil {
+		settings.SeasonPackCoverageThreshold = *patch.SeasonPackCoverageThreshold
+	}
+	if patch.SeasonPackTags != nil {
+		settings.SeasonPackTags = *patch.SeasonPackTags
+	}
 	if patch.GazelleEnabled != nil {
 		settings.GazelleEnabled = *patch.GazelleEnabled
 	}
@@ -353,11 +374,12 @@ type CrossSeedBlocklistRequest struct {
 }
 
 // NewCrossSeedHandler creates a new cross-seed handler
-func NewCrossSeedHandler(service *crossseed.Service, completionStore *models.InstanceCrossSeedCompletionStore, instanceStore *models.InstanceStore) *CrossSeedHandler {
+func NewCrossSeedHandler(service *crossseed.Service, completionStore *models.InstanceCrossSeedCompletionStore, instanceStore *models.InstanceStore, seasonPackRunStore *models.SeasonPackRunStore) *CrossSeedHandler {
 	return &CrossSeedHandler{
-		service:         service,
-		completionStore: completionStore,
-		instanceStore:   instanceStore,
+		service:            service,
+		completionStore:    completionStore,
+		instanceStore:      instanceStore,
+		seasonPackRunStore: seasonPackRunStore,
 	}
 }
 
@@ -402,6 +424,11 @@ func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler
 		r.With(authMiddleware).Route("/completion", func(r chi.Router) {
 			r.Get("/{instanceID}", h.GetInstanceCompletionSettings)
 			r.Put("/{instanceID}", h.UpdateInstanceCompletionSettings)
+		})
+		r.Route("/season-pack", func(r chi.Router) {
+			r.With(apiKeyQueryMiddleware, authMiddleware).Post("/check", h.SeasonPackCheck)
+			r.With(apiKeyQueryMiddleware, authMiddleware).Post("/apply", h.SeasonPackApply)
+			r.With(authMiddleware).Get("/runs", h.ListSeasonPackRuns)
 		})
 	})
 }
@@ -845,6 +872,9 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		CustomCategory:               req.CustomCategory,
 		RunExternalProgramID:         req.RunExternalProgramID,
 		SkipRecheck:                  req.SkipRecheck,
+		SeasonPackEnabled:            req.SeasonPackEnabled,
+		SeasonPackCoverageThreshold:  req.SeasonPackCoverageThreshold,
+		SeasonPackTags:               req.SeasonPackTags,
 		GazelleEnabled:               req.GazelleEnabled,
 		RedactedAPIKey:               strings.TrimSpace(req.RedactedAPIKey),
 		OrpheusAPIKey:                strings.TrimSpace(req.OrpheusAPIKey),
@@ -906,6 +936,15 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 	if req.CategoryAffixMode != nil && *req.CategoryAffixMode != "" && *req.CategoryAffixMode != models.CategoryAffixModePrefix && *req.CategoryAffixMode != models.CategoryAffixModeSuffix {
 		RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
 		return
+	}
+
+	// Validate season pack coverage threshold if provided
+	if req.SeasonPackCoverageThreshold != nil {
+		t := *req.SeasonPackCoverageThreshold
+		if t <= 0 || t > 1 {
+			RespondError(w, http.StatusBadRequest, "Season pack coverage threshold must be between 0 (exclusive) and 1 (inclusive)")
+			return
+		}
 	}
 
 	current, err := h.service.GetAutomationSettings(r.Context())
@@ -1508,6 +1547,65 @@ func webhookResponseStatus(response *crossseed.WebhookCheckResponse) int {
 	default:
 		return http.StatusNotFound
 	}
+}
+
+// SeasonPackCheck checks whether a season pack can be reconstructed from existing episodes.
+func (h *CrossSeedHandler) SeasonPackCheck(w http.ResponseWriter, r *http.Request) {
+	var req crossseed.SeasonPackCheckRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	resp, err := h.service.CheckSeasonPackWebhook(r.Context(), &req)
+	if err != nil {
+		log.Error().Err(err).Str("torrentName", req.TorrentName).Msg("Season pack check failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to check season pack")
+		return
+	}
+
+	if resp.Ready {
+		RespondJSON(w, http.StatusOK, resp)
+		return
+	}
+	RespondJSON(w, http.StatusNotFound, resp)
+}
+
+// SeasonPackApply attempts to add a season pack torrent using linked episode data.
+func (h *CrossSeedHandler) SeasonPackApply(w http.ResponseWriter, r *http.Request) {
+	var req crossseed.SeasonPackApplyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	resp, err := h.service.ApplySeasonPackWebhook(context.WithoutCancel(r.Context()), &req)
+	if err != nil {
+		log.Error().Err(err).Str("torrentName", req.TorrentName).Msg("Season pack apply failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to apply season pack")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, resp)
+}
+
+// ListSeasonPackRuns returns recent season-pack processing activity.
+func (h *CrossSeedHandler) ListSeasonPackRuns(w http.ResponseWriter, r *http.Request) {
+	limit := 20
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 200 {
+			limit = parsed
+		}
+	}
+
+	runs, err := h.seasonPackRunStore.List(r.Context(), limit)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list season pack runs")
+		RespondError(w, http.StatusInternalServerError, "Failed to list season pack runs")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, runs)
 }
 
 // instanceCompletionSettingsResponse is the API response for per-instance completion settings.

@@ -621,6 +621,7 @@ func (app *Application) runServer() {
 	}
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
+	seasonPackRunStore := models.NewSeasonPackRunStore(db)
 	crossSeedService := crossseed.NewService(
 		instanceStore,
 		syncManager,
@@ -635,6 +636,7 @@ func (app *Application) runServer() {
 		trackerCustomizationStore,
 		notificationService,
 		cfg.Config.CrossSeedRecoverErroredTorrents,
+		seasonPackRunStore,
 	)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService)
@@ -771,6 +773,7 @@ func (app *Application) runServer() {
 		NotificationTargetStore:          notificationTargetStore,
 		NotificationService:              notificationService,
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
+		SeasonPackRunStore:               seasonPackRunStore,
 		OrphanScanStore:                  orphanScanStore,
 		OrphanScanService:                orphanScanService,
 		DirScanService:                   dirScanService,

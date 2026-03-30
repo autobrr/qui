@@ -2001,6 +2001,10 @@ export interface CrossSeedAutomationSettings {
   gazelleEnabled: boolean
   redactedApiKey: string
   orpheusApiKey: string
+  // Season pack settings
+  seasonPackEnabled: boolean
+  seasonPackCoverageThreshold: number
+  seasonPackTags: string[]
   createdAt?: string
   updatedAt?: string
 }
@@ -2052,6 +2056,10 @@ export interface CrossSeedAutomationSettingsPatch {
   gazelleEnabled?: boolean
   redactedApiKey?: string
   orpheusApiKey?: string
+  // Season pack settings
+  seasonPackEnabled?: boolean
+  seasonPackCoverageThreshold?: number
+  seasonPackTags?: string[]
 }
 
 export interface CrossSeedAutomationStatus {
@@ -2131,6 +2139,22 @@ export interface CrossSeedSearchStatus {
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
 }
+
+export interface SeasonPackRun {
+  id: number
+  torrentName: string
+  phase: "check" | "apply"
+  status: "ready" | "skipped" | "applied" | "failed"
+  reason: string
+  message: string
+  instanceId?: number
+  matchedEpisodes: number
+  totalEpisodes: number
+  coverage: number
+  linkMode?: string
+  createdAt: string
+}
+
 // Orphan Scan types
 export type OrphanScanRunStatus =
   | "pending"

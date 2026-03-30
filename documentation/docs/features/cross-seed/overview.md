@@ -75,6 +75,10 @@ Right-click any torrent in the list to access cross-seed actions:
 - **Search Cross-Seeds** - Query indexers for matching torrents on other trackers
 - **Filter Cross-Seeds** - Show torrents in your library that share content with the selected torrent (useful for identifying existing cross-seeds)
 
+### Season Pack Assembly
+
+Assemble season-pack torrents from individual episodes you already seed. When autobrr announces a season pack, qui checks your qBittorrent instances for matching episodes, links whatever is already local, and lets qBittorrent download the remainder after recheck when coverage passes the configured threshold (default 75%). Sonarr improves the threshold decision when available. Requires local filesystem access and hardlink/reflink mode. See [Season Packs](season-packs) for setup.
+
 ## Blocklist
 
 Use the per-instance blocklist to prevent specific infohashes from being injected again.
