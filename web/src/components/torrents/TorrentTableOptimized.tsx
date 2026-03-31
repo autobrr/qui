@@ -22,6 +22,7 @@ import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
+import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { formatBytes, getRatioColor } from "@/lib/utils"
 import {
@@ -88,7 +89,7 @@ import { isAllInstancesScope } from "@/lib/instances"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { getStateLabel } from "@/lib/torrent-state-utils"
-import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getCommonTags, getTorrentHashesWithTag, getTotalSize } from "@/lib/torrent-utils"
+import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag, getTotalSize } from "@/lib/torrent-utils"
 import { cn } from "@/lib/utils"
 import type {
   Category,
@@ -116,16 +117,14 @@ import { DraggableTableHeader } from "./DraggableTableHeader"
 import type { SelectionInfo } from "./GlobalStatusBar"
 import { SelectAllHotkey } from "./SelectAllHotkey"
 import {
-  AddTagsDialog,
   CreateAndAssignCategoryDialog,
   LocationWarningDialog,
-  RemoveTagsDialog,
   RenameTorrentDialog,
   RenameTorrentFileDialog,
   RenameTorrentFolderDialog,
   SetCategoryDialog,
   SetLocationDialog,
-  SetTagsDialog,
+  TagEditorDialog,
   ShareLimitDialog,
   SpeedLimitsDialog,
   TmmConfirmDialog
@@ -558,7 +557,8 @@ interface TorrentTableOptimizedProps {
     counts?: TorrentCounts,
     categories?: Record<string, Category>,
     tags?: string[],
-    useSubcategories?: boolean
+    useSubcategories?: boolean,
+    supportsTrackerHealth?: boolean
   ) => void
   onSelectionChange?: (
     selectedHashes: string[],
@@ -690,6 +690,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     torrentsLength?: number
     useSubcategories?: boolean
     supportsSubcategories?: boolean
+    supportsTrackerHealth?: boolean
   }>({})
   const serverStateRef = useRef<{ instanceId: number, state: ServerState | null }>({
     instanceId,
@@ -765,12 +766,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setBlockCrossSeeds,
     deleteCrossSeeds,
     setDeleteCrossSeeds,
-    showAddTagsDialog,
-    setShowAddTagsDialog,
-    showSetTagsDialog,
-    setShowSetTagsDialog,
-    showRemoveTagsDialog,
-    setShowRemoveTagsDialog,
+    showTagsDialog,
+    setShowTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
     showCreateCategoryDialog,
@@ -801,9 +798,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isPending,
     handleAction,
     handleDelete,
-    handleAddTags,
-    handleSetTags,
-    handleRemoveTags,
+    handleUpdateTags,
     handleSetCategory,
     handleSetLocation,
     handleRenameTorrent,
@@ -994,6 +989,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     counts,
     categories,
     tags,
+    trackerHealthSupported,
     serverState,
     capabilities,
     useSubcategories: subcategoriesFromData,
@@ -1027,7 +1023,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     order: activeSortOrder,
   })
 
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
+  const supportsTrackerHealth = resolveTrackerHealthSupport({
+    isUnifiedView: isAllInstancesView,
+    capabilitySupport: capabilities?.supportsTrackerHealth,
+    responseSupport: trackerHealthSupported,
+  })
   const supportsSubcategories = isAllInstancesView
     ? Boolean(subcategoriesFromData)
     : (capabilities?.supportsSubcategories ?? false)
@@ -1129,8 +1129,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     const nextTags = tags ?? lastMetadataRef.current.tags
     const prevSupportsSubcategories = lastMetadataRef.current.supportsSubcategories ?? false
     const previousUseSubcategories = lastMetadataRef.current.useSubcategories ?? false
+    const previousSupportsTrackerHealth = lastMetadataRef.current.supportsTrackerHealth ?? false
     const nextSupportsSubcategories = supportsSubcategories
     const nextUseSubcategories = nextSupportsSubcategories ? (subcategoriesFromData ?? previousUseSubcategories) : false
+    const nextSupportsTrackerHealth = supportsTrackerHealth
     const nextTotalCount = totalCount
 
     const hasAnyMetadata =
@@ -1150,6 +1152,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       nextTags !== lastMetadataRef.current.tags ||
       nextSupportsSubcategories !== prevSupportsSubcategories ||
       nextUseSubcategories !== previousUseSubcategories ||
+      nextSupportsTrackerHealth !== previousSupportsTrackerHealth ||
       nextTotalCount !== lastMetadataRef.current.totalCount
 
     const torrentsLengthChanged = torrents.length !== (lastMetadataRef.current.torrentsLength ?? -1)
@@ -1164,7 +1167,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       nextCounts,
       nextCategories,
       nextTags,
-      nextUseSubcategories
+      nextUseSubcategories,
+      nextSupportsTrackerHealth
     )
 
     lastMetadataRef.current = {
@@ -1175,8 +1179,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       torrentsLength: torrents.length,
       useSubcategories: nextUseSubcategories,
       supportsSubcategories: nextSupportsSubcategories,
+      supportsTrackerHealth: nextSupportsTrackerHealth,
     }
-  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData, supportsSubcategories])
+  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData, supportsSubcategories, supportsTrackerHealth])
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
@@ -2049,6 +2054,18 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     excludeHashes: isAllSelected ? selectAllExcludeHashes : undefined,
     excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
   }), [isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
+  const normalizedSelectionFilters = useMemo(() => {
+    const sourceFilters = selectAllFilters ?? filters
+    if (!sourceFilters) {
+      return undefined
+    }
+
+    return {
+      ...sourceFilters,
+      categories: sourceFilters.expandedCategories ?? sourceFilters.categories ?? [],
+      excludeCategories: sourceFilters.expandedExcludeCategories ?? sourceFilters.excludeCategories ?? [],
+    }
+  }, [selectAllFilters, filters])
 
   const contextClientMeta = useMemo(() => ({
     clientHashes: contextHashes,
@@ -2139,29 +2156,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     shouldBlockCrossSeeds,
   ])
 
-  const handleAddTagsWrapper = useCallback((tags: string[]) => {
-    handleAddTags(
-      tags,
+  const handleTagsWrapper = useCallback((plan: Parameters<typeof handleUpdateTags>[0]) => {
+    handleUpdateTags(
+      plan,
       contextHashes,
       isAllSelected,
-      selectAllFilters ?? filters,
+      normalizedSelectionFilters ?? selectAllFilters ?? filters,
       effectiveSearch,
       selectAllExcludeHashes,
       contextClientMeta
     )
-  }, [handleAddTags, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
-
-  const handleSetTagsWrapper = useCallback((tags: string[]) => {
-    handleSetTags(
-      tags,
-      contextHashes,
-      isAllSelected,
-      selectAllFilters ?? filters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleSetTags, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+  }, [handleUpdateTags, contextHashes, isAllSelected, normalizedSelectionFilters, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   const handleSetCategoryWrapper = useCallback((category: string) => {
     handleSetCategory(
@@ -2241,18 +2246,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     if (!oldPath || !newPath) return
     await handleRenameFolder(hash, oldPath, newPath)
   }, [handleRenameFolder, contextHashes])
-
-  const handleRemoveTagsWrapper = useCallback((tags: string[]) => {
-    handleRemoveTags(
-      tags,
-      contextHashes,
-      isAllSelected,
-      selectAllFilters ?? filters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleRemoveTags, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   const handleRecheckWrapper = useCallback(() => {
     handleRecheck(
@@ -3038,26 +3031,25 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           onConfirm={handleDeleteWrapper}
         />
 
-        {/* Add Tags Dialog */}
-        <AddTagsDialog
-          open={showAddTagsDialog}
-          onOpenChange={setShowAddTagsDialog}
+        <TagEditorDialog
+          open={showTagsDialog}
+          onOpenChange={setShowTagsDialog}
           availableTags={availableTags || []}
+          selectedTorrents={contextTorrents}
           hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={handleAddTagsWrapper}
+          selectionRequest={{
+            instanceId,
+            instanceIds: isCrossInstanceEndpoint ? instanceIds : undefined,
+            hashes: !isAllSelected ? contextHashes : undefined,
+            targets: !isAllSelected && (contextClientMeta.actionTargets?.length ?? 0) === contextHashes.length ? contextClientMeta.actionTargets : undefined,
+            selectAll: isAllSelected,
+            filters: isAllSelected ? normalizedSelectionFilters : undefined,
+            search: isAllSelected ? effectiveSearch : undefined,
+            excludeHashes: isAllSelected ? selectAllExcludeHashes : undefined,
+            excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
+          }}
+          onConfirm={handleTagsWrapper}
           isPending={isPending}
-          isLoadingTags={isLoadingTags}
-        />
-
-        {/* Set Tags Dialog */}
-        <SetTagsDialog
-          open={showSetTagsDialog}
-          onOpenChange={setShowSetTagsDialog}
-          availableTags={availableTags || []}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={handleSetTagsWrapper}
-          isPending={isPending}
-          initialTags={getCommonTags(contextTorrents)}
           isLoadingTags={isLoadingTags}
         />
 
@@ -3109,6 +3101,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           onConfirm={handleSetLocationWrapper}
           isPending={isPending}
           initialLocation={getCommonSavePath(contextTorrents)}
+          instanceId={instanceId}
+          capabilities={capabilities}
         />
 
         {/* Rename dialogs */}
@@ -3136,16 +3130,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           isPending={isPending}
         />
 
-        {/* Remove Tags Dialog */}
-        <RemoveTagsDialog
-          open={showRemoveTagsDialog}
-          onOpenChange={setShowRemoveTagsDialog}
-          availableTags={availableTags || []}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={handleRemoveTagsWrapper}
-          isPending={isPending}
-          currentTags={getCommonTags(contextTorrents)}
-        />
 
         {/* Force Recheck Confirmation Dialog */}
         <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>

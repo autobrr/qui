@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -47,7 +48,7 @@ func TestDirScanStore_CreateRunIfNoActive_CreatesQueuedRun(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "manual")
+	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "manual", "")
 	require.NoError(t, err)
 	require.Greater(t, runID, int64(0))
 
@@ -86,7 +87,7 @@ func TestDirScanStore_MarkActiveRunsFailed_IncludesQueued(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "manual")
+	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "manual", "")
 	require.NoError(t, err)
 
 	affected, err := store.MarkActiveRunsFailed(ctx, "restart")
@@ -121,7 +122,7 @@ func TestDirScanStore_CreateRun_TrimsOldRunsPerDirectory(t *testing.T) {
 	require.NoError(t, err)
 
 	for i := range 12 {
-		runID, createErr := store.CreateRun(ctx, dir.ID, fmt.Sprintf("manual-%d", i))
+		runID, createErr := store.CreateRun(ctx, dir.ID, fmt.Sprintf("manual-%d", i), "")
 		require.NoError(t, createErr)
 		require.NoError(t, store.UpdateRunCompleted(ctx, runID, i, i))
 	}
@@ -136,6 +137,88 @@ func TestDirScanStore_CreateRun_TrimsOldRunsPerDirectory(t *testing.T) {
 
 	oldestRetained := runs[len(runs)-1]
 	require.Equal(t, "manual-2", oldestRetained.TriggeredBy)
+}
+
+func TestDirScanStore_GetActiveRun_PrefersRunningOverQueued(t *testing.T) {
+	ctx := context.Background()
+	db := setupDirScanTestDB(t)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	store := models.NewDirScanStore(db)
+	dir, err := store.CreateDirectory(ctx, &models.DirScanDirectory{
+		Path:                "/data/media",
+		Enabled:             true,
+		TargetInstanceID:    instance.ID,
+		ScanIntervalMinutes: 60,
+	})
+	require.NoError(t, err)
+
+	runningID, err := store.CreateRun(ctx, dir.ID, "webhook", "/data/media/show-a")
+	require.NoError(t, err)
+	require.NoError(t, store.UpdateRunStatus(ctx, runningID, models.DirScanRunStatusScanning))
+
+	queuedID, err := store.CreateRun(ctx, dir.ID, "webhook", "/data/media/show-b")
+	require.NoError(t, err)
+
+	activeRun, err := store.GetActiveRun(ctx, dir.ID)
+	require.NoError(t, err)
+	require.NotNil(t, activeRun)
+	require.Equal(t, runningID, activeRun.ID)
+	require.Equal(t, models.DirScanRunStatusScanning, activeRun.Status)
+
+	queuedRun, err := store.GetQueuedRun(ctx, dir.ID)
+	require.NoError(t, err)
+	require.NotNil(t, queuedRun)
+	require.Equal(t, queuedID, queuedRun.ID)
+	require.Equal(t, models.DirScanRunStatusQueued, queuedRun.Status)
+}
+
+func TestDirScanStore_GetQueuedRun_PrefersNewestIDWhenStartedAtTies(t *testing.T) {
+	ctx := context.Background()
+	db := setupDirScanTestDB(t)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	store := models.NewDirScanStore(db)
+	dir, err := store.CreateDirectory(ctx, &models.DirScanDirectory{
+		Path:                "/data/media",
+		Enabled:             true,
+		TargetInstanceID:    instance.ID,
+		ScanIntervalMinutes: 60,
+	})
+	require.NoError(t, err)
+
+	firstID, err := store.CreateRun(ctx, dir.ID, "webhook", "/data/media/show-a")
+	require.NoError(t, err)
+	secondID, err := store.CreateRun(ctx, dir.ID, "webhook", "/data/media/show-b")
+	require.NoError(t, err)
+
+	tiedStartedAt := time.Date(2026, time.March, 16, 12, 0, 0, 0, time.UTC)
+	_, err = db.ExecContext(ctx, `
+		UPDATE dir_scan_runs
+		SET started_at = ?
+		WHERE id IN (?, ?)
+	`, tiedStartedAt, firstID, secondID)
+	require.NoError(t, err)
+
+	activeRun, err := store.GetActiveRun(ctx, dir.ID)
+	require.NoError(t, err)
+	require.NotNil(t, activeRun)
+	require.Equal(t, secondID, activeRun.ID)
+
+	queuedRun, err := store.GetQueuedRun(ctx, dir.ID)
+	require.NoError(t, err)
+	require.NotNil(t, queuedRun)
+	require.Equal(t, secondID, queuedRun.ID)
 }
 
 func TestDirScanStore_PruneRunHistory_TrimsLegacyRows(t *testing.T) {

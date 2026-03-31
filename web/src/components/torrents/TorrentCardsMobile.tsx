@@ -39,9 +39,10 @@ import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
+import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
-import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getCommonTags, getTorrentHashesWithTag } from "@/lib/torrent-utils"
+import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag } from "@/lib/torrent-utils"
 import { isAllInstancesScope } from "@/lib/instances"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -78,7 +79,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
-import { LocationWarningDialog, RemoveTagsDialog, SetCategoryDialog, SetLocationDialog, SetTagsDialog, TmmConfirmDialog } from "./TorrentDialogs"
+import { LocationWarningDialog, SetCategoryDialog, SetLocationDialog, TagEditorDialog, TmmConfirmDialog } from "./TorrentDialogs"
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
@@ -316,7 +317,7 @@ interface TorrentCardsMobileProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
-  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[], useSubcategories?: boolean) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[], useSubcategories?: boolean, supportsTrackerHealth?: boolean) => void
   onFilterChange?: (filters: TorrentFilters) => void
   canCrossSeedSearch?: boolean
   onCrossSeedSearch?: (torrent: Torrent) => void
@@ -1071,10 +1072,8 @@ export function TorrentCardsMobile({
     setBlockCrossSeeds,
     deleteCrossSeeds,
     setDeleteCrossSeeds,
-    showSetTagsDialog,
-    setShowSetTagsDialog,
-    showRemoveTagsDialog,
-    setShowRemoveTagsDialog,
+    showTagsDialog,
+    setShowTagsDialog,
     showCategoryDialog,
     setShowCategoryDialog,
     showLocationDialog,
@@ -1087,8 +1086,7 @@ export function TorrentCardsMobile({
     isPending,
     handleAction,
     handleDelete,
-    handleSetTags,
-    handleRemoveTags,
+    handleUpdateTags,
     handleSetCategory,
     handleSetLocation,
     handleSetShareLimit,
@@ -1232,6 +1230,7 @@ export function TorrentCardsMobile({
     tags,
     stats,
     useSubcategories: subcategoriesFromData,
+    trackerHealthSupported,
 
     isLoading,
     isLoadingMore,
@@ -1247,7 +1246,11 @@ export function TorrentCardsMobile({
   })
 
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: instanceId > 0 })
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
+  const supportsTrackerHealth = resolveTrackerHealthSupport({
+    isUnifiedView: isAllInstancesView,
+    capabilitySupport: capabilities?.supportsTrackerHealth,
+    responseSupport: trackerHealthSupported,
+  })
   const supportsTorrentCreation = isAllInstancesView ? false : (capabilities?.supportsTorrentCreation ?? true)
   const supportsSubcategories = isAllInstancesView
     ? Boolean(subcategoriesFromData)
@@ -1300,10 +1303,10 @@ export function TorrentCardsMobile({
   // Call the callback when filtered data updates
   useEffect(() => {
     if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
-      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags, subcategoriesFromData)
+      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags, subcategoriesFromData, supportsTrackerHealth)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalCount, isLoading, torrents.length, counts, categories, tags, subcategoriesFromData, onFilteredDataUpdate]) // Update when data changes
+  }, [totalCount, isLoading, torrents.length, counts, categories, tags, subcategoriesFromData, onFilteredDataUpdate, supportsTrackerHealth]) // Update when data changes
 
   // Calculate the effective selection count for display
   const effectiveSelectionCount = useMemo(() => {
@@ -1772,15 +1775,15 @@ export function TorrentCardsMobile({
     excludeHashesForRequest,
   ])
 
-  const handleSetTagsWrapper = useCallback(async (tags: string[]) => {
+  const handleTagsWrapper = useCallback(async (plan: Parameters<typeof handleUpdateTags>[0]) => {
     const hashes = isAllSelected ? [] : selectedRequestHashes
     const visibleHashes = isAllSelected ? torrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t))).map(t => t.hash) : selectedRequestHashes
     const totalSelected = isAllSelected ? effectiveSelectionCount : selectedActionTargets.length || visibleHashes.length
-    await handleSetTags(
-      tags,
+    await handleUpdateTags(
+      plan,
       hashes,
       isAllSelected,
-      isAllSelected ? filters : undefined,
+      isAllSelected ? effectiveFilters : undefined,
       isAllSelected ? effectiveSearch : undefined,
       isAllSelected ? excludeHashesForRequest : undefined,
       {
@@ -1793,7 +1796,7 @@ export function TorrentCardsMobile({
       }
     )
     setActionTorrents([])
-  }, [isAllSelected, selectedRequestHashes, handleSetTags, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount, instanceId, getSelectionIdentity, excludeHashesForRequest, excludedTorrents, selectedActionTargets])
+  }, [isAllSelected, selectedRequestHashes, handleUpdateTags, effectiveFilters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount, instanceId, getSelectionIdentity, excludeHashesForRequest, excludedTorrents, selectedActionTargets])
 
   const handleSetCategoryWrapper = useCallback(async (category: string) => {
     const hashes = isAllSelected ? [] : selectedRequestHashes
@@ -2137,7 +2140,7 @@ export function TorrentCardsMobile({
             <button
               onClick={() => {
                 setActionTorrents(getSelectedTorrents)
-                setShowSetTagsDialog(true)
+                setShowTagsDialog(true)
               }}
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
@@ -2401,14 +2404,27 @@ export function TorrentCardsMobile({
       />
 
       {/* Tags dialog */}
-      <SetTagsDialog
-        open={showSetTagsDialog}
-        onOpenChange={setShowSetTagsDialog}
+      <TagEditorDialog
+        open={showTagsDialog}
+        onOpenChange={setShowTagsDialog}
         availableTags={availableTags || []}
-        hashCount={actionTorrents.length}
-        onConfirm={handleSetTagsWrapper}
+        selectedTorrents={actionTorrents}
+        hashCount={effectiveSelectionCount}
+        selectionRequest={{
+          instanceId,
+          instanceIds,
+          hashes: !isAllSelected ? selectedRequestHashes : undefined,
+          targets: !isAllSelected && selectedActionTargets.length === selectedRequestHashes.length ? selectedActionTargets : undefined,
+          selectAll: isAllSelected,
+          filters: isAllSelected ? effectiveFilters : undefined,
+          search: isAllSelected ? effectiveSearch : undefined,
+          excludeHashes: isAllSelected ? excludeHashesForRequest : undefined,
+          excludeTargets: isAllSelected
+            ? buildTorrentActionTargets(excludedTorrents, instanceId)
+            : undefined,
+        }}
+        onConfirm={handleTagsWrapper}
         isPending={isPending}
-        initialTags={getCommonTags(actionTorrents)}
       />
 
       {/* Category dialog */}
@@ -2421,37 +2437,6 @@ export function TorrentCardsMobile({
         isPending={isPending}
         initialCategory={getCommonCategory(actionTorrents)}
         useSubcategories={allowSubcategories}
-      />
-
-      {/* Remove Tags dialog */}
-      <RemoveTagsDialog
-        open={showRemoveTagsDialog}
-        onOpenChange={setShowRemoveTagsDialog}
-        availableTags={availableTags || []}
-        hashCount={actionTorrents.length}
-        onConfirm={async (tags) => {
-          const hashes = isAllSelected ? [] : selectedRequestHashes
-          const visibleHashes = isAllSelected ? torrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t))).map(t => t.hash) : selectedRequestHashes
-          const totalSelected = isAllSelected ? effectiveSelectionCount : selectedActionTargets.length || visibleHashes.length
-          await handleRemoveTags(
-            tags,
-            hashes,
-            isAllSelected,
-            isAllSelected ? filters : undefined,
-            isAllSelected ? effectiveSearch : undefined,
-            isAllSelected ? excludeHashesForRequest : undefined,
-            {
-              clientHashes: visibleHashes,
-              totalSelected,
-              actionTargets: isAllSelected ? undefined : selectedActionTargets,
-              excludeTargets: isAllSelected
-                ? buildTorrentActionTargets(excludedTorrents, instanceId)
-                : undefined,
-            }
-          )
-          setActionTorrents([])
-        }}
-        isPending={isPending}
       />
 
       {/* Share Limits Dialog */}
@@ -2525,6 +2510,8 @@ export function TorrentCardsMobile({
         initialLocation={getCommonSavePath(getSelectedTorrents)}
         onConfirm={handleSetLocationWrapper}
         isPending={isPending}
+        instanceId={instanceId}
+        capabilities={capabilities}
       />
 
       {/* TMM Confirmation Dialog */}

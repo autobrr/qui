@@ -4,6 +4,7 @@
  */
 
 import { buildCategoryTree, type CategoryNode } from "@/components/torrents/CategoryTree"
+import { ReannounceEnableWarningAlert, ReannounceEnableWarningDialog } from "@/components/instances/preferences/ReannounceEnableWarning"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -61,6 +62,11 @@ const GLOBAL_SCAN_INTERVAL_SECONDS = 7
 
 type MonitorScopeField = keyof Pick<InstanceReannounceSettings, "categories" | "tags" | "trackers">
 
+interface PersistSettingsCallbacks {
+  onSuccess?: () => void
+  onError?: (error: unknown) => void
+}
+
 export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess, variant = "card", formId }: TrackerReannounceFormProps) {
   const { instances, updateInstance, isUpdating } = useInstances()
   const { formatISOTimestamp } = useDateTimeFormatters()
@@ -72,11 +78,19 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   const [settings, setSettings] = useState<InstanceReannounceSettings>(() => cloneSettings(instance?.reannounceSettings))
   const [hideSkipped, setHideSkipped] = useState(true)
   const [activeTab, setActiveTab] = useState("settings")
+  const [pendingEnableSettings, setPendingEnableSettings] = useState<InstanceReannounceSettings | null>(null)
+  const [showEnableDialog, setShowEnableDialog] = useState(false)
 
-  // Reset settings when instance changes
+  // Sync form values with persisted settings for the active instance.
   useEffect(() => {
     setSettings(cloneSettings(instance?.reannounceSettings))
-  }, [instanceId, instance?.reannounceSettings])
+  }, [instance?.reannounceSettings])
+
+  // Reset ephemeral dialog state only when switching instances.
+  useEffect(() => {
+    setPendingEnableSettings(null)
+    setShowEnableDialog(false)
+  }, [instanceId])
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: !!instance })
   const { data: trackerCustomizations } = useTrackerCustomizations()
@@ -213,7 +227,11 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     })
   }
 
-  const persistSettings = (nextSettings: InstanceReannounceSettings, successMessage = "Settings saved successfully.") => {
+  const persistSettings = (
+    nextSettings: InstanceReannounceSettings,
+    successMessage = "Settings saved successfully.",
+    callbacks?: PersistSettingsCallbacks
+  ) => {
     if (!instance) {
       toast.error("Instance missing", { description: "Please close and reopen the dialog." })
       return
@@ -237,10 +255,12 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
       {
         onSuccess: () => {
           toast.success("Tracker monitoring updated", { description: successMessage })
+          callbacks?.onSuccess?.()
           onSuccess?.()
         },
         onError: (error) => {
           toast.error("Update failed", { description: error instanceof Error ? error.message : "Unable to update settings" })
+          callbacks?.onError?.(error)
         },
       }
     )
@@ -248,7 +268,33 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    persistSettings(settings)
+    const sanitized = sanitizeSettings(settings)
+    const wasEnabled = instance?.reannounceSettings?.enabled ?? DEFAULT_SETTINGS.enabled
+
+    if (!wasEnabled && sanitized.enabled) {
+      setPendingEnableSettings(sanitized)
+      setShowEnableDialog(true)
+      return
+    }
+
+    persistSettings(sanitized)
+  }
+
+  const confirmEnable = () => {
+    if (!pendingEnableSettings) return
+    persistSettings(pendingEnableSettings, "Settings saved successfully.", {
+      onSuccess: () => {
+        setPendingEnableSettings(null)
+        setShowEnableDialog(false)
+      },
+    })
+  }
+
+  const handleEnableDialogChange = (open: boolean) => {
+    setShowEnableDialog(open)
+    if (!open) {
+      setPendingEnableSettings(null)
+    }
   }
 
   const handleToggleEnabled = (enabled: boolean) => {
@@ -353,6 +399,8 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
   const settingsContent = (
     <div className="space-y-6">
+      <ReannounceEnableWarningAlert />
+
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Timing & Behavior</h3>
@@ -700,41 +748,56 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     </div>
   )
 
+  const enableWarningDialog = (
+    <ReannounceEnableWarningDialog
+      open={showEnableDialog}
+      onOpenChange={handleEnableDialogChange}
+      onConfirm={confirmEnable}
+      confirming={isUpdating}
+    />
+  )
+
   if (variant === "embedded") {
     // Embedded mode: only show settings, no tabs (activity is shown in overview)
     return (
-      <form id={formId} onSubmit={handleSubmit} className="space-y-6">
-        {headerContent}
-        {settingsContent}
-      </form>
+      <>
+        <form id={formId} onSubmit={handleSubmit} className="space-y-6">
+          {headerContent}
+          {settingsContent}
+        </form>
+        {enableWarningDialog}
+      </>
     )
   }
 
   // Card mode: show tabs with settings and activity
   return (
-    <form onSubmit={handleSubmit}>
-      <Card className="w-full">
-        <CardHeader className="space-y-4">
-          {headerContent}
-        </CardHeader>
-        <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <div className="flex items-center justify-between mb-4">
-              <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
-                <TabsTrigger value="settings">Settings</TabsTrigger>
-                <TabsTrigger value="activity">Activity Log</TabsTrigger>
-              </TabsList>
-            </div>
-            <TabsContent value="settings" className="mt-0">
-              {settingsContent}
-            </TabsContent>
-            <TabsContent value="activity" className="mt-0">
-              {activityContent}
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
-    </form>
+    <>
+      <form id={formId} onSubmit={handleSubmit}>
+        <Card className="w-full">
+          <CardHeader className="space-y-4">
+            {headerContent}
+          </CardHeader>
+          <CardContent>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <div className="flex items-center justify-between mb-4">
+                <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
+                  <TabsTrigger value="settings">Settings</TabsTrigger>
+                  <TabsTrigger value="activity">Activity Log</TabsTrigger>
+                </TabsList>
+              </div>
+              <TabsContent value="settings" className="mt-0">
+                {settingsContent}
+              </TabsContent>
+              <TabsContent value="activity" className="mt-0">
+                {activityContent}
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+      </form>
+      {enableWarningDialog}
+    </>
   )
 }
 

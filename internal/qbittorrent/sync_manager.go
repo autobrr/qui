@@ -107,6 +107,11 @@ type CrossInstanceTorrentView struct {
 	InstanceName string `json:"instance_name"`
 }
 
+type TorrentTarget struct {
+	InstanceID int
+	Hash       string
+}
+
 type TorrentResponse struct {
 	Torrents               []TorrentView              `json:"torrents"`
 	CrossInstanceTorrents  []CrossInstanceTorrentView `json:"cross_instance_torrents,omitempty"`
@@ -1267,9 +1272,16 @@ type TorrentFieldResponse struct {
 }
 
 // GetTorrentField returns field values for torrents matching the given filters.
-// Supported fields: "name", "hash", "full_path" (save_path/name).
-// excludeHashes removes specific torrents from the result
-func (sm *SyncManager) GetTorrentField(ctx context.Context, instanceID int, field, sort, order, search string, filters FilterOptions, excludeHashes []string) (*TorrentFieldResponse, error) {
+// Supported fields: "name", "hash", "full_path" (save_path/name), "tags".
+// excludeHashes and excludeTargets remove specific torrents from the result.
+func (sm *SyncManager) GetTorrentField(
+	ctx context.Context,
+	instanceID int,
+	field, sort, order, search string,
+	filters FilterOptions,
+	excludeHashes []string,
+	excludeTargets []TorrentTarget,
+) (*TorrentFieldResponse, error) {
 	response, err := sm.GetTorrentsWithFilters(ctx, instanceID, 0, 0, sort, order, search, filters)
 	if err != nil {
 		return nil, err
@@ -1280,16 +1292,31 @@ func (sm *SyncManager) GetTorrentField(ctx context.Context, instanceID int, fiel
 	if len(excludeHashes) > 0 {
 		excluded = make(map[string]struct{}, len(excludeHashes))
 		for _, h := range excludeHashes {
-			excluded[h] = struct{}{}
+			normalized := normalizeTorrentFieldHash(h)
+			if normalized != "" {
+				excluded[normalized] = struct{}{}
+			}
+		}
+	}
+
+	var excludedTargets map[string]struct{}
+	if len(excludeTargets) > 0 {
+		excludedTargets = make(map[string]struct{}, len(excludeTargets))
+		for _, target := range excludeTargets {
+			if target.InstanceID != instanceID {
+				continue
+			}
+			normalized := normalizeTorrentFieldHash(target.Hash)
+			if normalized != "" {
+				excludedTargets[normalized] = struct{}{}
+			}
 		}
 	}
 
 	values := make([]string, 0, len(response.Torrents))
 	for _, t := range response.Torrents {
-		if excluded != nil {
-			if _, skip := excluded[t.Hash]; skip {
-				continue
-			}
+		if torrentFieldHashExcluded(excluded, excludedTargets, t.Hash, t.InfohashV1, t.InfohashV2) {
+			continue
 		}
 
 		var v string
@@ -1317,8 +1344,10 @@ func (sm *SyncManager) GetTorrentField(ctx context.Context, instanceID int, fiel
 					v = savePath + "/" + t.Name
 				}
 			}
+		case "tags":
+			v = t.Tags
 		}
-		if v != "" {
+		if field == "tags" || v != "" {
 			values = append(values, v)
 		}
 	}
@@ -1327,6 +1356,51 @@ func (sm *SyncManager) GetTorrentField(ctx context.Context, instanceID int, fiel
 		Values: values,
 		Total:  len(values),
 	}, nil
+}
+
+func normalizeTorrentFieldHash(hash string) string {
+	return strings.ToLower(strings.TrimSpace(hash))
+}
+
+func torrentFieldHashVariants(hash, infohashV1, infohashV2 string) []string {
+	candidates := []string{
+		hash,
+		infohashV1,
+		infohashV2,
+		canonicalizeHash(hash),
+		canonicalizeHash(infohashV1),
+		canonicalizeHash(infohashV2),
+	}
+	seen := make(map[string]struct{}, len(candidates))
+	var variants []string
+	for _, candidate := range candidates {
+		normalized := normalizeTorrentFieldHash(candidate)
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		variants = append(variants, normalized)
+	}
+	return variants
+}
+
+func torrentFieldHashExcluded(excluded, excludedTargets map[string]struct{}, hash, infohashV1, infohashV2 string) bool {
+	for _, candidate := range torrentFieldHashVariants(hash, infohashV1, infohashV2) {
+		if excluded != nil {
+			if _, skip := excluded[candidate]; skip {
+				return true
+			}
+		}
+		if excludedTargets != nil {
+			if _, skip := excludedTargets[candidate]; skip {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // GetCachedInstanceTorrents returns a snapshot of torrents for a single instance using cached sync data.
@@ -1412,6 +1486,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	var partialResults bool
 	var aggregatedStats *TorrentStats
 	var aggregatedCounts *TorrentCounts
+	var trackerHealthSupported bool
 	var useSubcategories bool
 	aggregatedCategories := make(map[string]qbt.Category)
 	aggregatedTagSet := make(map[string]struct{})
@@ -1461,6 +1536,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 
 		aggregatedStats = mergeTorrentStats(aggregatedStats, instanceResponse.Stats)
 		aggregatedCounts = mergeTorrentCounts(aggregatedCounts, instanceResponse.Counts)
+		trackerHealthSupported = trackerHealthSupported || instanceResponse.TrackerHealthSupported
 		mergeTorrentCategories(aggregatedCategories, instanceResponse.Categories)
 		mergeTorrentTags(aggregatedTagSet, instanceResponse.Tags)
 		useSubcategories = useSubcategories || instanceResponse.UseSubcategories
@@ -1516,7 +1592,7 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		Tags:                   sortedTagKeys(aggregatedTagSet),
 		UseSubcategories:       useSubcategories,
 		HasMore:                hasMore,
-		TrackerHealthSupported: false, // Cross-instance doesn't support tracker health
+		TrackerHealthSupported: trackerHealthSupported,
 		IsCrossInstance:        true,
 		PartialResults:         partialResults,
 	}
@@ -1713,6 +1789,11 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		return fmt.Errorf("no valid torrents found for bulk action: %s", action)
 	}
 
+	var managedDeleteCleanupTargets []managedDeleteCleanupTarget
+	if action == "deleteWithFiles" {
+		managedDeleteCleanupTargets = sm.buildManagedDeleteCleanupTargets(ctx, instanceID, syncManager, canonicalHashes)
+	}
+
 	// Log debug info when variant resolution was used (helps diagnose hybrid hash issues)
 	if variantResolutions > 0 {
 		log.Debug().
@@ -1779,6 +1860,7 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, true)
 		// Invalidate caches for deleted torrents
 		if err == nil {
+			cleanupManagedDeleteTargets(managedDeleteCleanupTargets)
 			sm.RemoveHashesFromTrackerHealthCache(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
 			if fm := sm.getFilesManager(); fm != nil {
@@ -1825,6 +1907,29 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	}
 
 	return err
+}
+
+func (sm *SyncManager) buildManagedDeleteCleanupTargets(
+	ctx context.Context,
+	instanceID int,
+	syncManager *qbt.SyncManager,
+	hashes []string,
+) []managedDeleteCleanupTarget {
+	if sm == nil || sm.clientPool == nil || sm.clientPool.instanceStore == nil || syncManager == nil {
+		return nil
+	}
+
+	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
+	if err != nil || instance == nil || !instance.HasLocalFilesystemAccess || strings.TrimSpace(instance.HardlinkBaseDir) == "" {
+		return nil
+	}
+
+	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
+	if len(torrents) == 0 {
+		return nil
+	}
+
+	return buildManagedDeleteCleanupTargets(instance.HardlinkBaseDir, torrents)
 }
 
 // bulkActionSyncRetry forces a sync and retries hash resolution for just-added torrents.
