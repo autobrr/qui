@@ -200,3 +200,33 @@ func TestTVMaze_NoEpisodesInSeason(t *testing.T) {
 		t.Errorf("error should mention no episodes, got: %v", err)
 	}
 }
+
+func TestNormalizeTitle(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"The Show (2024)", "The Show"},    // parenthesized year stripped
+		{"The Show 2024", "The Show 2024"}, // bare year preserved (ambiguous)
+		{"The Show 1080p WEB-DL", "The Show"},
+		{"1923", "1923"},                         // numeric title preserved
+		{"1883", "1883"},                         // numeric title preserved
+		{"Yellowstone 1923", "Yellowstone 1923"}, // bare year preserved (could be title)
+		{"Show Name HDTV x264", "Show Name"},
+		{"  Spacey Title  ", "Spacey Title"},
+		{"未来 2024", "未来 2024"},  // bare year preserved
+		{"인간실격 (2021)", "인간실격"}, // parenthesized year stripped
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			got := normalizeTitle(tt.input)
+			if got != tt.want {
+				t.Errorf("normalizeTitle(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}

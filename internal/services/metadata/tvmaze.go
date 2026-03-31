@@ -87,23 +87,23 @@ func (p *tvmazeProvider) searchShow(ctx context.Context, title string) (int, err
 }
 
 func (p *tvmazeProvider) countEpisodes(ctx context.Context, showID, seasonNumber int) (int, error) {
+	// /shows/:id/episodes excludes specials by default (unlike /seasons/:id/episodes).
+	// Stream-decode to avoid buffering the full response for shows with many seasons.
 	u := fmt.Sprintf("%s/shows/%d/episodes", tvmazeBaseURL, showID)
 
-	body, err := p.doGet(ctx, u)
+	resp, err := p.doGetResponse(ctx, u)
 	if err != nil {
 		return 0, err
 	}
+	defer resp.Body.Close()
 
-	var episodes []tvmazeEpisode
-	if err := json.Unmarshal(body, &episodes); err != nil {
-		return 0, fmt.Errorf("tvmaze: decode episodes response: %w", err)
-	}
+	// Cap reads at 2 MiB to match readBody's limit and fail fast on pathological responses.
+	const maxBody = 2 << 20
+	bounded := io.LimitReader(resp.Body, maxBody)
 
-	count := 0
-	for _, ep := range episodes {
-		if ep.Season == seasonNumber {
-			count++
-		}
+	count, err := streamCountSeasonEpisodes(bounded, seasonNumber)
+	if err != nil {
+		return 0, fmt.Errorf("tvmaze: decode episodes: %w", err)
 	}
 
 	if count == 0 {
@@ -113,7 +113,8 @@ func (p *tvmazeProvider) countEpisodes(ctx context.Context, showID, seasonNumber
 	return count, nil
 }
 
-func (p *tvmazeProvider) doGet(ctx context.Context, rawURL string) ([]byte, error) {
+// doGetResponse performs a GET request and returns the raw response (caller must close body).
+func (p *tvmazeProvider) doGetResponse(ctx context.Context, rawURL string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("tvmaze: create request: %w", err)
@@ -123,20 +124,32 @@ func (p *tvmazeProvider) doGet(ctx context.Context, rawURL string) ([]byte, erro
 	if err != nil {
 		return nil, fmt.Errorf("tvmaze: request failed: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusTooManyRequests {
+		resp.Body.Close()
 		retryAfter := resp.Header.Get("Retry-After")
 		return nil, fmt.Errorf("tvmaze: rate limited (retry-after: %s)", retryAfter)
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
 		return nil, fmt.Errorf("tvmaze: %w", ErrShowNotFound)
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
 		return nil, fmt.Errorf("tvmaze: unexpected status %d", resp.StatusCode)
 	}
+
+	return resp, nil
+}
+
+func (p *tvmazeProvider) doGet(ctx context.Context, rawURL string) ([]byte, error) {
+	resp, err := p.doGetResponse(ctx, rawURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
 
 	body, err := readBody(resp)
 	if err != nil {
@@ -147,9 +160,13 @@ func (p *tvmazeProvider) doGet(ctx context.Context, rawURL string) ([]byte, erro
 }
 
 // normalizeTitle strips year suffixes, quality tags, and other noise from torrent titles.
+// titleCleanupPatterns strips parenthesized years, quality tags, and source
+// noise from torrent titles. Bare trailing years (e.g. "Show 2024") are NOT
+// stripped because they are ambiguous -- could be part of the title (e.g.
+// "1923", "Yellowstone 1923"). Parenthesized years like "(2024)" are a clear
+// torrent convention and safe to remove.
 var titleCleanupPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\s*\(\d{4}\)\s*$`),                            // (2024)
-	regexp.MustCompile(`\s+\d{4}\s*$`),                                // trailing year
 	regexp.MustCompile(`(?i)\s+(720|1080|2160)p.*$`),                  // quality info
 	regexp.MustCompile(`(?i)\s+(hdtv|webrip|bluray|web-dl|webdl).*$`), // source info
 }
@@ -166,6 +183,47 @@ func normalizeTitle(title string) string {
 		}
 	}
 	return result
+}
+
+// streamCountSeasonEpisodes counts episodes matching the given season number
+// by streaming the JSON array, avoiding full deserialization into memory.
+func streamCountSeasonEpisodes(r io.Reader, seasonNumber int) (int, error) {
+	dec := json.NewDecoder(r)
+
+	// Expect opening bracket.
+	t, err := dec.Token()
+	if err != nil {
+		return 0, fmt.Errorf("expected array start: %w", err)
+	}
+	if delim, ok := t.(json.Delim); !ok || delim != '[' {
+		return 0, fmt.Errorf("expected '[', got %v", t)
+	}
+
+	type episodeKey struct {
+		Season int `json:"season"`
+	}
+
+	count := 0
+	for dec.More() {
+		var ep episodeKey
+		if err := dec.Decode(&ep); err != nil {
+			return 0, fmt.Errorf("decode element: %w", err)
+		}
+		if ep.Season == seasonNumber {
+			count++
+		}
+	}
+
+	// Require valid closing bracket to reject truncated responses.
+	t, err = dec.Token()
+	if err != nil {
+		return 0, fmt.Errorf("expected array end: %w", err)
+	}
+	if delim, ok := t.(json.Delim); !ok || delim != ']' {
+		return 0, fmt.Errorf("expected ']', got %v", t)
+	}
+
+	return count, nil
 }
 
 // readBody reads the full response body with a size limit.
