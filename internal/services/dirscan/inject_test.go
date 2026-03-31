@@ -158,6 +158,10 @@ func TestHumanizeLinkPlanError(t *testing.T) {
 
 func TestInjector_Inject_HumanizesLinkPlanMismatchError(t *testing.T) {
 	tmp := t.TempDir()
+	sourceFile := filepath.Join(tmp, "file.mkv")
+	if err := os.WriteFile(sourceFile, []byte("abc"), 0o600); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
 
 	hardlinkBase := filepath.Join(tmp, "links")
 
@@ -187,14 +191,14 @@ func TestInjector_Inject_HumanizesLinkPlanMismatchError(t *testing.T) {
 			Name: "Example.Release",
 			Path: tmp,
 			Files: []*ScannedFile{{
-				Path:    filepath.Join(tmp, "file.mkv"),
+				Path:    sourceFile,
 				RelPath: "file.mkv",
 				Size:    3,
 			}},
 		},
 		MatchResult: &MatchResult{
 			MatchedFiles: []MatchedFilePair{{
-				SearcheeFile: &ScannedFile{Path: filepath.Join(tmp, "file.mkv"), RelPath: "file.mkv", Size: 3},
+				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "file.mkv", Size: 3},
 				TorrentFile:  TorrentFile{Path: "Example.Release/file.mkv", Size: 4},
 			}},
 			IsMatch: true,
