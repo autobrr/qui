@@ -454,6 +454,22 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 
 	plan, err := hardlinktree.BuildPlan(linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
 	if err != nil {
+		// Debug: dump file data so we can diagnose BuildPlan mismatches.
+		for idx, lf := range linkableFiles {
+			log.Debug().
+				Int("idx", idx).
+				Str("path", lf.Path).
+				Int64("size", lf.Size).
+				Msg("dirscan: linkable file (candidate)")
+		}
+		for idx, ef := range existingFiles {
+			log.Debug().
+				Int("idx", idx).
+				Str("absPath", ef.AbsPath).
+				Str("relPath", ef.RelPath).
+				Int64("size", ef.Size).
+				Msg("dirscan: existing file")
+		}
 		log.Warn().
 			Err(err).
 			Int("instanceID", instance.ID).
