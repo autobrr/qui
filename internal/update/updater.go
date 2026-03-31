@@ -11,6 +11,8 @@ import (
 	"github.com/creativeprojects/go-selfupdate"
 )
 
+const releaseChecksumsAsset = "checksums.txt"
+
 type Config struct {
 	Repository string
 	Version    string
@@ -32,7 +34,12 @@ func (u *Updater) Run(ctx context.Context) error {
 		return fmt.Errorf("could not parse version: %w", err)
 	}
 
-	latest, found, err := selfupdate.DetectLatest(ctx, selfupdate.ParseSlug(u.config.Repository))
+	updater, err := newSelfUpdater()
+	if err != nil {
+		return err
+	}
+
+	latest, found, err := updater.DetectLatest(ctx, selfupdate.ParseSlug(u.config.Repository))
 	if err != nil {
 		return fmt.Errorf("error occurred while detecting version: %w", err)
 	}
@@ -50,7 +57,7 @@ func (u *Updater) Run(ctx context.Context) error {
 		return fmt.Errorf("could not locate executable path: %w", err)
 	}
 
-	if err := selfupdate.UpdateTo(ctx, latest.AssetURL, latest.AssetName, exe); err != nil {
+	if err := updater.UpdateTo(ctx, latest, exe); err != nil {
 		return fmt.Errorf("error occurred while updating binary: %w", err)
 	}
 
