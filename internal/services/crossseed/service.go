@@ -8550,13 +8550,13 @@ func (s *Service) filterIndexerIDsForTorrentAsync(ctx context.Context, instanceI
 		if existing, found := s.asyncFilteringCache.Get(cacheKey); found {
 			existingSnapshot := existing.Clone()
 			if existingSnapshot != nil && existingSnapshot.ContentCompleted {
-				log.Warn().
+				log.Trace().
 					Str("torrentHash", hash).
 					Int("instanceID", instanceID).
 					Str("cacheKey", cacheKey).
 					Bool("existingContentCompleted", existingSnapshot.ContentCompleted).
 					Int("existingFilteredCount", len(existingSnapshot.FilteredIndexers)).
-					Msg("[CROSSSEED-ASYNC] WARNING: Avoiding overwrite of completed content filtering")
+					Msg("[crossseed-async] Reusing completed content-filtering cache entry")
 
 				var torrentInfo *TorrentInfo
 				asyncAnalysis, err := s.AnalyzeTorrentForSearchAsync(ctx, instanceID, hash, false)
