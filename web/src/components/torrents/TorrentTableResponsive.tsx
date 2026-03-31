@@ -28,7 +28,8 @@ interface TorrentTableResponsiveProps {
     counts?: TorrentCounts,
     categories?: Record<string, Category>,
     tags?: string[],
-    useSubcategories?: boolean
+    useSubcategories?: boolean,
+    supportsTrackerHealth?: boolean
   ) => void
   onFilterChange?: (filters: TorrentFilters) => void
   onServerStateUpdate?: (serverState: ServerState | null, listenPort?: number | null) => void
