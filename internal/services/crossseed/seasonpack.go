@@ -179,7 +179,7 @@ func (s *Service) prepareSeasonPackCheck(ctx context.Context, torrentName, torre
 		return s.prepareSeasonPack(ctx, torrentName, torrentData, instanceIDs)
 	}
 
-	settings, err := s.automationSettingsLoader(ctx)
+	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("load automation settings: %w", err)
 	}

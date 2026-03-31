@@ -196,3 +196,65 @@ func TestTVDB_EpisodesFails(t *testing.T) {
 		t.Fatal("expected error when episodes endpoint fails")
 	}
 }
+
+func TestTVDB_UnauthorizedClearsToken(t *testing.T) {
+	t.Parallel()
+
+	var searchCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v4/login", handleLogin)
+
+	mux.HandleFunc("/v4/search", func(w http.ResponseWriter, _ *http.Request) {
+		searchCalls++
+		if searchCalls == 1 {
+			// First search returns 401 (token revoked server-side).
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		// Second search succeeds after re-auth.
+		resp := tvdbSearchResult{
+			Data: []struct {
+				TVDBID   string `json:"tvdb_id"`
+				Name     string `json:"name"`
+				ObjectID string `json:"objectID"`
+			}{
+				{TVDBID: "999", Name: "Test Show"},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	mux.HandleFunc("/v4/series/999/episodes/default", func(w http.ResponseWriter, _ *http.Request) {
+		result := tvdbEpisodesResult{}
+		result.Data.Episodes = []struct {
+			SeasonNumber int `json:"seasonNumber"`
+			Number       int `json:"number"`
+		}{
+			{SeasonNumber: 1, Number: 1},
+			{SeasonNumber: 1, Number: 2},
+		}
+		_ = json.NewEncoder(w).Encode(result)
+	})
+
+	ts := serveTVDB(t, mux)
+	p := tvdbProviderWithBase(ts.URL, "test-key", "")
+
+	// First call fails with 401.
+	_, err := p.EpisodesInSeason(context.Background(), "Test Show", 1)
+	if err == nil {
+		t.Fatal("expected error on 401")
+	}
+
+	// Token should be cleared, so next call re-authenticates and succeeds.
+	if p.token != "" {
+		t.Fatalf("token should be cleared after 401, got %q", p.token)
+	}
+
+	count, err := p.EpisodesInSeason(context.Background(), "Test Show", 1)
+	if err != nil {
+		t.Fatalf("second call should succeed after re-auth: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("got count %d, want 2", count)
+	}
+}

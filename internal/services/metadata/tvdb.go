@@ -209,7 +209,12 @@ func (p *tvdbProvider) doAuthGet(ctx context.Context, rawURL string) ([]byte, er
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
-		return nil, errors.New("tvdb: unauthorized, token may be expired")
+		// Clear the cached token so ensureToken will re-authenticate on the next call.
+		p.mu.Lock()
+		p.token = ""
+		p.tokenExpiry = time.Time{}
+		p.mu.Unlock()
+		return nil, errors.New("tvdb: unauthorized, token expired or revoked")
 	}
 
 	if resp.StatusCode != http.StatusOK {
