@@ -596,6 +596,76 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 	return &LocalMatchesResponse{Matches: matches}, nil
 }
 
+// FindDeleteAffectedMatches returns same-instance file-sharing matches for delete expansion.
+// Uses strict mode so ambiguous overlap verification failures bubble up instead of
+// silently omitting affected torrents from delete workflows.
+func (s *Service) FindDeleteAffectedMatches(ctx context.Context, sourceInstanceID int, sourceHash string) ([]LocalMatch, error) {
+	sourceInstance, err := s.instanceStore.Get(ctx, sourceInstanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get source instance: %w", err)
+	}
+	if sourceInstance == nil || !sourceInstance.IsActive {
+		return nil, nil
+	}
+
+	sourceTorrents, err := s.syncManager.GetTorrents(ctx, sourceInstanceID, qbt.TorrentFilterOptions{
+		Filter: "all",
+		Hashes: []string{sourceHash},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get source torrent: %w", err)
+	}
+	if len(sourceTorrents) == 0 {
+		return nil, ErrTorrentNotFound
+	}
+	sourceTorrent := sourceTorrents[0]
+	sourceRelease := s.releaseCache.Parse(sourceTorrent.Name)
+	normalizedContentPath := normalizePathForComparison(sourceTorrent.ContentPath)
+
+	matchCtx := &localMatchContext{
+		ctx:              ctx,
+		svc:              s,
+		sourceInstanceID: sourceInstanceID,
+		sourceHash:       sourceTorrent.Hash,
+	}
+
+	cachedTorrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, sourceInstanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cached torrents for instance: %w", err)
+	}
+
+	matches := s.matchTorrentsInInstance(
+		ctx,
+		nil,
+		sourceInstance,
+		cachedTorrents,
+		sourceInstanceID,
+		normalizeHash(sourceTorrent.Hash),
+		&sourceTorrent,
+		sourceRelease,
+		normalizedContentPath,
+		matchCtx,
+	)
+
+	overlapErr := matchCtx.sourceFilesErr
+	if overlapErr == nil {
+		overlapErr = matchCtx.candidateFilesErr
+	}
+	if overlapErr != nil {
+		return nil, fmt.Errorf("failed to verify file overlap for cross-seed detection: %w", overlapErr)
+	}
+
+	deleteAffected := make([]LocalMatch, 0, len(matches))
+	for _, match := range matches {
+		if match.MatchType != matchTypeContentPath {
+			continue
+		}
+		deleteAffected = append(deleteAffected, match)
+	}
+
+	return deleteAffected, nil
+}
+
 // collectLocalMatches iterates through all instances and collects matching torrents.
 func (s *Service) collectLocalMatches(
 	ctx context.Context,

@@ -12,6 +12,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 type orderedInstanceStore struct {
@@ -76,6 +77,7 @@ type findLocalMatchesSyncManager struct {
 	localMatchSyncManager
 	sourceTorrent     qbt.Torrent
 	cachedInstanceIDs []int
+	cachedByInstance  map[int][]internalqb.CrossInstanceTorrentView
 }
 
 //nolint:gocritic // Interface requires value type for TorrentFilterOptions
@@ -88,7 +90,10 @@ func (m *findLocalMatchesSyncManager) GetTorrents(_ context.Context, instanceID 
 
 func (m *findLocalMatchesSyncManager) GetCachedInstanceTorrents(_ context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
 	m.cachedInstanceIDs = append(m.cachedInstanceIDs, instanceID)
-	return nil, nil
+	if m.cachedByInstance == nil {
+		return nil, nil
+	}
+	return m.cachedByInstance[instanceID], nil
 }
 
 func TestFindLocalMatches_SkipsDisabledInstances(t *testing.T) {
@@ -116,5 +121,166 @@ func TestFindLocalMatches_SkipsDisabledInstances(t *testing.T) {
 	resp, err := svc.FindLocalMatches(context.Background(), active.ID, source.Hash, false)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
+	require.Equal(t, []int{active.ID}, syncManager.cachedInstanceIDs)
+}
+
+func TestFindDeleteAffectedMatches_ContentPathOnly(t *testing.T) {
+	t.Parallel()
+
+	active := &models.Instance{ID: 1, Name: "active", IsActive: true}
+	other := &models.Instance{ID: 2, Name: "other", IsActive: true}
+	source := qbt.Torrent{
+		Hash:        "abc123def456abc123def456abc123def456abc1",
+		Name:        "Movie.2025.1080p.WEB.h264",
+		SavePath:    "/downloads/source",
+		ContentPath: "/downloads/source/Movie.2025.1080p.WEB.h264.mkv",
+	}
+
+	syncManager := &findLocalMatchesSyncManager{
+		sourceTorrent: source,
+	}
+	syncManager.files = map[string]qbt.TorrentFiles{
+		normalizeHash(source.Hash): {
+			{Name: "Movie.2025.1080p.WEB.h264.mkv", Size: 100},
+		},
+	}
+	syncManager.cachedInstanceIDs = nil
+
+	syncManager.files[normalizeHash("sameinst-content")] = qbt.TorrentFiles{
+		{Name: "Movie.2025.1080p.WEB.h264.mkv", Size: 100},
+	}
+
+	sameInstance := []internalqb.CrossInstanceTorrentView{
+		{
+			TorrentView: &internalqb.TorrentView{Torrent: &qbt.Torrent{
+				Hash:        "sameinst-name",
+				Name:        source.Name,
+				SavePath:    "/downloads/name",
+				ContentPath: "/downloads/name/another-copy.mkv",
+			}},
+			InstanceID: active.ID,
+		},
+		{
+			TorrentView: &internalqb.TorrentView{Torrent: &qbt.Torrent{
+				Hash:        "sameinst-release",
+				Name:        "Movie.2025.1080p.WEB.h264-OTHER",
+				SavePath:    "/downloads/release",
+				ContentPath: "/downloads/release/movie-copy.mkv",
+			}},
+			InstanceID: active.ID,
+		},
+		{
+			TorrentView: &internalqb.TorrentView{Torrent: &qbt.Torrent{
+				Hash:        "sameinst-content",
+				Name:        "Movie.2025.1080p.WEB.h264.Sample",
+				SavePath:    "/downloads/content",
+				ContentPath: source.ContentPath,
+			}},
+			InstanceID: active.ID,
+		},
+	}
+
+	otherInstance := []internalqb.CrossInstanceTorrentView{
+		{
+			TorrentView: &internalqb.TorrentView{Torrent: &qbt.Torrent{
+				Hash:        "otherinst-name",
+				Name:        source.Name,
+				SavePath:    "/downloads/other",
+				ContentPath: "/downloads/other/other-copy.mkv",
+			}},
+			InstanceID: other.ID,
+		},
+	}
+
+	syncManager.cachedByInstance = map[int][]internalqb.CrossInstanceTorrentView{
+		active.ID: sameInstance,
+		other.ID:  otherInstance,
+	}
+
+	svc := &Service{
+		instanceStore:    newOrderedInstanceStore(active, other),
+		syncManager:      syncManager,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	matches, err := svc.FindDeleteAffectedMatches(context.Background(), active.ID, source.Hash)
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+
+	gotByHash := make(map[string]string, len(matches))
+	for _, match := range matches {
+		gotByHash[match.Hash] = match.MatchType
+	}
+
+	require.Equal(t, matchTypeContentPath, gotByHash["sameinst-content"])
+	require.NotContains(t, gotByHash, "sameinst-name")
+	require.NotContains(t, gotByHash, "sameinst-release")
+	require.NotContains(t, gotByHash, "otherinst-name")
+}
+
+func TestFindDeleteAffectedMatches_IgnoresOtherInstanceVerificationErrors(t *testing.T) {
+	t.Parallel()
+
+	active := &models.Instance{ID: 1, Name: "active", IsActive: true}
+	other := &models.Instance{ID: 2, Name: "other", IsActive: true}
+	source := qbt.Torrent{
+		Hash:        "source-hash",
+		Name:        "Show.S01",
+		SavePath:    "/downloads/show",
+		ContentPath: "/downloads/show",
+	}
+
+	syncManager := &findLocalMatchesSyncManager{
+		sourceTorrent: source,
+		localMatchSyncManager: localMatchSyncManager{
+			files: map[string]qbt.TorrentFiles{
+				normalizeHash(source.Hash): {
+					{Name: "Show/S01E01.mkv", Size: 100},
+					{Name: "Show/S01E02.mkv", Size: 100},
+				},
+				normalizeHash("sameinst-content"): {
+					{Name: "Show/S01E01.mkv", Size: 100},
+					{Name: "Show/S01E02.mkv", Size: 100},
+				},
+			},
+		},
+		cachedByInstance: map[int][]internalqb.CrossInstanceTorrentView{
+			active.ID: {
+				{
+					TorrentView: &internalqb.TorrentView{Torrent: &qbt.Torrent{
+						Hash:        "sameinst-content",
+						Name:        "Show.S01.Pack",
+						SavePath:    "/downloads/show",
+						ContentPath: "/downloads/show",
+					}},
+					InstanceID: active.ID,
+				},
+			},
+			other.ID: {
+				{
+					TorrentView: &internalqb.TorrentView{Torrent: &qbt.Torrent{
+						Hash:        "otherinst-ambiguous",
+						Name:        "Show.S01.Other",
+						SavePath:    "/downloads/show",
+						ContentPath: "/downloads/show",
+					}},
+					InstanceID: other.ID,
+				},
+			},
+		},
+	}
+
+	svc := &Service{
+		instanceStore:    newOrderedInstanceStore(active, other),
+		syncManager:      syncManager,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	matches, err := svc.FindDeleteAffectedMatches(context.Background(), active.ID, source.Hash)
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+	require.Equal(t, "sameinst-content", matches[0].Hash)
 	require.Equal(t, []int{active.ID}, syncManager.cachedInstanceIDs)
 }

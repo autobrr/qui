@@ -87,13 +87,13 @@ export function useCrossSeedWarning({
         // strict=true ensures we fail if overlap checks can't complete (delete safety)
         const matches = await api.getLocalCrossSeedMatches(instanceId, torrent.hash, true)
 
-        // Filter and dedupe matches - only include matches that share the same content_path
+        // Filter and dedupe matches - only include torrents confirmed to share files.
         for (const match of matches) {
           // Skip if not on this instance
           if (match.instanceId !== instanceId) continue
           // Skip torrents being deleted
           if (hashesBeingDeleted.has(match.hash)) continue
-          // Only include matches that share the same on-disk location
+          // Only include matches that share the same on-disk bytes
           if (match.matchType !== "content_path") continue
           // Skip duplicates
           if (seenHashes.has(match.hash)) continue
