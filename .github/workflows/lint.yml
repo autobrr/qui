@@ -2,6 +2,7 @@ name: Lint
 
 on:
   pull_request:
+  workflow_dispatch:
 
 env:
   NODE_VERSION: "22.18.0"
@@ -31,10 +32,11 @@ jobs:
         run: pnpm install
 
       - name: Lint frontend
-        working-directory: web
+        env:
+          BASE_REF: ${{ github.base_ref || 'develop' }}
         run: |
-          webfiles=$({ git diff --name-only --diff-filter=d "origin/${{ github.base_ref }}"...HEAD -- 'web/'; } | sort -u | sed 's|^web/||' | grep -E '\.(ts|tsx|js|jsx)$' || true)
-          if [ -n "$webfiles" ]; then echo "$webfiles" | xargs pnpm eslint; else echo "No frontend files to lint."; fi
+          webfiles=$({ git diff --name-only --diff-filter=d "origin/$BASE_REF"...HEAD -- 'web/'; } | sort -u | sed 's|^web/||' | grep -E '\.(ts|tsx|js|jsx)$' || true)
+          if [ -n "$webfiles" ]; then echo "$webfiles" | xargs pnpm --dir web eslint; else echo "No frontend files to lint."; fi
 
   backend:
     runs-on: ubuntu-latest
@@ -52,8 +54,10 @@ jobs:
           cache: true
 
       - name: Check gofix drift on changed Go files
+        env:
+          BASE_REF: ${{ github.base_ref || 'develop' }}
         run: |
-          gofiles=$({ git diff --name-only --diff-filter=d "origin/${{ github.base_ref }}"...HEAD; } | sort -u | grep '\.go$' || true)
+          gofiles=$({ git diff --name-only --diff-filter=d "origin/$BASE_REF"...HEAD; } | sort -u | grep '\.go$' || true)
           if [ -z "$gofiles" ]; then
             echo "No backend files to check with go fix."
             exit 0
