@@ -5,6 +5,7 @@ package models_test
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -101,6 +102,43 @@ func TestDirScanStore_MarkActiveRunsFailed_IncludesQueued(t *testing.T) {
 	require.NotNil(t, run.CompletedAt)
 }
 
+func TestDirScanStore_CreateRun_TrimsOldRunsPerDirectory(t *testing.T) {
+	ctx := context.Background()
+	db := setupDirScanTestDB(t)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	store := models.NewDirScanStore(db)
+	dir, err := store.CreateDirectory(ctx, &models.DirScanDirectory{
+		Path:                "/data/media",
+		Enabled:             true,
+		TargetInstanceID:    instance.ID,
+		ScanIntervalMinutes: 60,
+	})
+	require.NoError(t, err)
+
+	for i := range 12 {
+		runID, createErr := store.CreateRun(ctx, dir.ID, fmt.Sprintf("manual-%d", i), "")
+		require.NoError(t, createErr)
+		require.NoError(t, store.UpdateRunCompleted(ctx, runID, i, i))
+	}
+
+	runs, err := store.ListRuns(ctx, dir.ID, 100)
+	require.NoError(t, err)
+	require.Len(t, runs, 10)
+
+	var count int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM dir_scan_runs WHERE directory_id = ?`, dir.ID).Scan(&count))
+	require.Equal(t, 10, count)
+
+	oldestRetained := runs[len(runs)-1]
+	require.Equal(t, "manual-2", oldestRetained.TriggeredBy)
+}
+
 func TestDirScanStore_GetActiveRun_PrefersRunningOverQueued(t *testing.T) {
 	ctx := context.Background()
 	db := setupDirScanTestDB(t)
@@ -181,4 +219,58 @@ func TestDirScanStore_GetQueuedRun_PrefersNewestIDWhenStartedAtTies(t *testing.T
 	require.NoError(t, err)
 	require.NotNil(t, queuedRun)
 	require.Equal(t, secondID, queuedRun.ID)
+}
+
+func TestDirScanStore_PruneRunHistory_TrimsLegacyRows(t *testing.T) {
+	ctx := context.Background()
+	db := setupDirScanTestDB(t)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	store := models.NewDirScanStore(db)
+	dirA, err := store.CreateDirectory(ctx, &models.DirScanDirectory{
+		Path:                "/data/media/a",
+		Enabled:             true,
+		TargetInstanceID:    instance.ID,
+		ScanIntervalMinutes: 60,
+	})
+	require.NoError(t, err)
+	dirB, err := store.CreateDirectory(ctx, &models.DirScanDirectory{
+		Path:                "/data/media/b",
+		Enabled:             true,
+		TargetInstanceID:    instance.ID,
+		ScanIntervalMinutes: 60,
+	})
+	require.NoError(t, err)
+
+	for i := range 12 {
+		_, execErr := db.ExecContext(ctx, `
+			INSERT INTO dir_scan_runs (directory_id, status, triggered_by, started_at, completed_at)
+			VALUES (?, ?, ?, datetime('now', printf('-%d minutes', ?)), datetime('now', printf('-%d minutes', ?)))
+		`, dirA.ID, models.DirScanRunStatusSuccess, fmt.Sprintf("legacy-a-%d", i), 12-i, 12-i)
+		require.NoError(t, execErr)
+	}
+	for i := range 4 {
+		_, execErr := db.ExecContext(ctx, `
+			INSERT INTO dir_scan_runs (directory_id, status, triggered_by, started_at, completed_at)
+			VALUES (?, ?, ?, datetime('now', printf('-%d minutes', ?)), datetime('now', printf('-%d minutes', ?)))
+		`, dirB.ID, models.DirScanRunStatusSuccess, fmt.Sprintf("legacy-b-%d", i), 4-i, 4-i)
+		require.NoError(t, execErr)
+	}
+
+	require.NoError(t, store.PruneRunHistory(ctx))
+
+	runsA, err := store.ListRuns(ctx, dirA.ID, 100)
+	require.NoError(t, err)
+	require.Len(t, runsA, 10)
+	require.Equal(t, "legacy-a-11", runsA[0].TriggeredBy)
+	require.Equal(t, "legacy-a-2", runsA[len(runsA)-1].TriggeredBy)
+
+	runsB, err := store.ListRuns(ctx, dirB.ID, 100)
+	require.NoError(t, err)
+	require.Len(t, runsB, 4)
 }

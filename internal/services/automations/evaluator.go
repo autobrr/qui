@@ -65,8 +65,11 @@ type EvalContext struct {
 	// FilesToClear is a map of cross-seed keys to the amount of disk space that will be cleared by the "free space" condition, ensuring we don't double count cross-seeds (current active source)
 	FilesToClear map[crossSeedKey]struct{}
 	// HardlinkSignatureByHash maps torrent hash to its hardlink signature (sorted file IDs joined with ";").
-	// Only populated when includeHardlinks is enabled for FREE_SPACE rules.
+	// Used for hardlink_signature grouping and grouped-condition evaluation.
 	HardlinkSignatureByHash map[string]string
+	// DeleteSafeHardlinkSignatureByHash maps torrent hash to its hardlink signature for torrents whose
+	// hardlinks stay fully inside qBittorrent. Used only by delete/include-hardlinks FREE_SPACE dedupe.
+	DeleteSafeHardlinkSignatureByHash map[string]string
 	// HardlinkSignaturesToClear tracks hardlink signatures already counted in space projection (current active source).
 	// Torrents with the same signature share physical files and should only be counted once.
 	HardlinkSignaturesToClear map[string]struct{}
@@ -88,6 +91,20 @@ type EvalContext struct {
 	// NowUnix is the current Unix timestamp, used for age field evaluation.
 	// If zero, time.Now().Unix() is used. Set this for deterministic tests.
 	NowUnix int64
+
+	// CrossInstanceHashSet contains hashes of torrents that exist on at least one other instance.
+	// Built from SyncManager cached data when rules use EXISTS_ON_OTHER_INSTANCE.
+	CrossInstanceHashSet map[string]struct{}
+	// CrossInstanceSeedingHashSet contains hashes of torrents that are actively seeding on at least one other instance.
+	// Built from SyncManager cached data when rules use SEEDING_ON_OTHER_INSTANCE.
+	CrossInstanceSeedingHashSet map[string]struct{}
+
+	// SameInstanceCrossSeedHashSet contains hashes of torrents that have a cross-seed
+	// (same content path, different hash) on the same instance.
+	SameInstanceCrossSeedHashSet map[string]struct{}
+	// SameInstanceCrossSeedSeedingHashSet contains hashes of torrents that have a cross-seed
+	// seeding (Progress >= 1.0) on the same instance.
+	SameInstanceCrossSeedSeedingHashSet map[string]struct{}
 
 	// TrackerDisplayNameByDomain maps lowercase tracker domains to their display names.
 	// Used for UseTrackerAsTag with UseDisplayName option.
@@ -541,6 +558,34 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			grouped = idx.SizeForHash(torrent.Hash) > 1
 		}
 		return compareBool(grouped, cond)
+
+	case FieldExistsOnOtherInstance:
+		exists := false
+		if ctx != nil && ctx.CrossInstanceHashSet != nil {
+			_, exists = ctx.CrossInstanceHashSet[torrent.Hash]
+		}
+		return compareBool(exists, cond)
+
+	case FieldSeedingOnOtherInstance:
+		seeding := false
+		if ctx != nil && ctx.CrossInstanceSeedingHashSet != nil {
+			_, seeding = ctx.CrossInstanceSeedingHashSet[torrent.Hash]
+		}
+		return compareBool(seeding, cond)
+
+	case FieldExistsOnSameInstance:
+		exists := false
+		if ctx != nil && ctx.SameInstanceCrossSeedHashSet != nil {
+			_, exists = ctx.SameInstanceCrossSeedHashSet[torrent.Hash]
+		}
+		return compareBool(exists, cond)
+
+	case FieldSeedingOnSameInstance:
+		seeding := false
+		if ctx != nil && ctx.SameInstanceCrossSeedSeedingHashSet != nil {
+			_, seeding = ctx.SameInstanceCrossSeedSeedingHashSet[torrent.Hash]
+		}
+		return compareBool(seeding, cond)
 
 	default:
 		return false

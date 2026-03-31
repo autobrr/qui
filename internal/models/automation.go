@@ -175,6 +175,7 @@ type Automation struct {
 	SortingConfig   *SortingConfig    `json:"sortingConfig,omitempty"`   // nil = default sorting (oldest first)
 	Enabled         bool              `json:"enabled"`
 	DryRun          bool              `json:"dryRun"`
+	Notify          bool              `json:"notify"`
 	SortOrder       int               `json:"sortOrder"`
 	IntervalSeconds *int              `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
 	CreatedAt       time.Time         `json:"createdAt"`
@@ -231,7 +232,7 @@ func normalizeTrackerPattern(pattern string, domains []string) string {
 
 func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([]*Automation, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, dry_run, sort_order, interval_seconds, free_space_source, sorting_config, created_at, updated_at
+		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, dry_run, notify, sort_order, interval_seconds, free_space_source, sorting_config, created_at, updated_at
 		FROM automations
 		WHERE instance_id = ?
 		ORDER BY sort_order ASC, id ASC
@@ -248,7 +249,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 		var intervalSeconds sql.NullInt64
 		var freeSpaceSourceJSON sql.NullString
 		var sortingConfigJSON sql.NullString
-		var enabled, dryRun int
+		var enabled, dryRun, notify int
 
 		if err := rows.Scan(
 			&automation.ID,
@@ -258,6 +259,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 			&conditionsJSON,
 			&enabled,
 			&dryRun,
+			&notify,
 			&automation.SortOrder,
 			&intervalSeconds,
 			&freeSpaceSourceJSON,
@@ -277,6 +279,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 
 		automation.Enabled = SQLiteIntToBool(enabled)
 		automation.DryRun = SQLiteIntToBool(dryRun)
+		automation.Notify = SQLiteIntToBool(notify)
 		automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
 
 		if intervalSeconds.Valid {
@@ -312,7 +315,7 @@ func (s *AutomationStore) ListByInstance(ctx context.Context, instanceID int) ([
 
 func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automation, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, dry_run, sort_order, interval_seconds, free_space_source, sorting_config, created_at, updated_at
+		SELECT id, instance_id, name, tracker_pattern, conditions, enabled, dry_run, notify, sort_order, interval_seconds, free_space_source, sorting_config, created_at, updated_at
 		FROM automations
 		WHERE id = ? AND instance_id = ?
 	`, id, instanceID)
@@ -322,7 +325,7 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 	var intervalSeconds sql.NullInt64
 	var freeSpaceSourceJSON sql.NullString
 	var sortingConfigJSON sql.NullString
-	var enabled, dryRun int
+	var enabled, dryRun, notify int
 
 	if err := row.Scan(
 		&automation.ID,
@@ -332,6 +335,7 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 		&conditionsJSON,
 		&enabled,
 		&dryRun,
+		&notify,
 		&automation.SortOrder,
 		&intervalSeconds,
 		&freeSpaceSourceJSON,
@@ -351,6 +355,7 @@ func (s *AutomationStore) Get(ctx context.Context, instanceID, id int) (*Automat
 
 	automation.Enabled = SQLiteIntToBool(enabled)
 	automation.DryRun = SQLiteIntToBool(dryRun)
+	automation.Notify = SQLiteIntToBool(notify)
 	automation.TrackerDomains = splitPatterns(automation.TrackerPattern)
 
 	if intervalSeconds.Valid {
@@ -445,11 +450,11 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 	var id int
 	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO automations
-			(instance_id, name, tracker_pattern, conditions, enabled, dry_run, sort_order, interval_seconds, free_space_source, sorting_config)
+			(instance_id, name, tracker_pattern, conditions, enabled, dry_run, notify, sort_order, interval_seconds, free_space_source, sorting_config)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id
-	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), boolToInt(automation.DryRun), sortOrder, intervalSeconds, freeSpaceSourceJSON, sortingConfigJSON).Scan(&id)
+	`, automation.InstanceID, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), boolToInt(automation.DryRun), boolToInt(automation.Notify), sortOrder, intervalSeconds, freeSpaceSourceJSON, sortingConfigJSON).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
@@ -507,9 +512,9 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE automations
-		SET name = ?, tracker_pattern = ?, conditions = ?, enabled = ?, dry_run = ?, sort_order = ?, interval_seconds = ?, free_space_source = ?, sorting_config = ?
+		SET name = ?, tracker_pattern = ?, conditions = ?, enabled = ?, dry_run = ?, notify = ?, sort_order = ?, interval_seconds = ?, free_space_source = ?, sorting_config = ?
 		WHERE id = ? AND instance_id = ?
-	`, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), boolToInt(automation.DryRun), automation.SortOrder, intervalSeconds, freeSpaceSourceJSON, sortingConfigJSON, automation.ID, automation.InstanceID)
+	`, automation.Name, automation.TrackerPattern, string(conditionsJSON), boolToInt(automation.Enabled), boolToInt(automation.DryRun), boolToInt(automation.Notify), automation.SortOrder, intervalSeconds, freeSpaceSourceJSON, sortingConfigJSON, automation.ID, automation.InstanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -726,15 +731,19 @@ const (
 	FieldGroupSize     ConditionField = "GROUP_SIZE"
 
 	// Boolean fields
-	FieldPrivate            ConditionField = "PRIVATE"
-	FieldAutoManaged        ConditionField = "AUTO_MANAGED"
-	FieldFirstLastPiecePrio ConditionField = "FIRST_LAST_PIECE_PRIO"
-	FieldForceStart         ConditionField = "FORCE_START"
-	FieldSequentialDownload ConditionField = "SEQUENTIAL_DOWNLOAD"
-	FieldSuperSeeding       ConditionField = "SUPER_SEEDING"
-	FieldIsUnregistered     ConditionField = "IS_UNREGISTERED"
-	FieldHasMissingFiles    ConditionField = "HAS_MISSING_FILES"
-	FieldIsGrouped          ConditionField = "IS_GROUPED"
+	FieldPrivate                ConditionField = "PRIVATE"
+	FieldAutoManaged            ConditionField = "AUTO_MANAGED"
+	FieldFirstLastPiecePrio     ConditionField = "FIRST_LAST_PIECE_PRIO"
+	FieldForceStart             ConditionField = "FORCE_START"
+	FieldSequentialDownload     ConditionField = "SEQUENTIAL_DOWNLOAD"
+	FieldSuperSeeding           ConditionField = "SUPER_SEEDING"
+	FieldIsUnregistered         ConditionField = "IS_UNREGISTERED"
+	FieldHasMissingFiles        ConditionField = "HAS_MISSING_FILES"
+	FieldIsGrouped              ConditionField = "IS_GROUPED"
+	FieldExistsOnOtherInstance  ConditionField = "EXISTS_ON_OTHER_INSTANCE"
+	FieldSeedingOnOtherInstance ConditionField = "SEEDING_ON_OTHER_INSTANCE"
+	FieldExistsOnSameInstance   ConditionField = "EXISTS_ON_SAME_INSTANCE"
+	FieldSeedingOnSameInstance  ConditionField = "SEEDING_ON_SAME_INSTANCE"
 
 	// Enum-like fields
 	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"

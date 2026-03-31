@@ -184,7 +184,7 @@ This setting limits how many **top-level folders/files** Dir Scan will process i
 - If your directory is a TV root like `/mnt/storage/media/tv`, then each **show folder** is one searchee (for example `Show.Name/`, `Another.Show/`).
 - If your directory is a movies root like `/mnt/storage/media/movies`, then each **movie folder** is one searchee (for example `Movie.Title (2024)/`, `Another.Movie (2023)/`).
 
-So if **Max searchees per run = 5**, Dir Scan will process up to **5 show folders** (TV) or **5 movie folders** (movies) per run, then stop and persist per-file progress for the next run (so already-final files won't be reprocessed). See [Incremental progress and resets](#incremental-progress-and-resets).
+So if **Max searchees per run = 5**, Dir Scan will process up to **5 show folders** (TV) or **5 movie folders** (movies) per run, then stop and persist per-file progress for the next run. The next run rechecks the directory, skips already-final files, and retries unfinished work. See [Incremental progress and resets](#incremental-progress-and-resets).
 
 This is **not** a cap on the total number of indexer searches. TV folders can trigger multiple searches (season-level + per-episode heuristics), even though they still count as a single top-level searchee.
 
@@ -228,7 +228,15 @@ Only one scan runs per directory at a time. If a scheduled scan triggers while a
 
 ### Incremental progress and resets
 
-Dir Scan persists per-file progress and skips unchanged searchees whose files are already in a final state (matched/no match/already seeding/in qBittorrent). This makes scans resumable across restarts.
+Dir Scan persists per-file progress and skips unchanged searchees whose files are already in a final state (matched/no match/already seeding/in qBittorrent).
+
+This is **not** an exact checkpoint resume. When you start a new run after canceling or restarting qui, Dir Scan:
+
+- rechecks the directory from the top
+- keeps finished files skipped if they are unchanged
+- retries unfinished or errored files
+
+From a user perspective, this behaves like **restart with preserved progress**, not “continue from the exact file where it stopped.”
 
 If you want to force a directory to be re-processed from scratch, use **Reset Scan Progress** for that directory in the UI. This clears the tracked file state for that directory.
 
@@ -238,6 +246,8 @@ If you want to force a directory to be re-processed from scratch, use **Reset Sc
 - **Manual scans** can be triggered from the UI at any time via the "Scan Now" button.
 
 Both types can be canceled from the UI while running.
+
+The UI keeps the **last 10 run entries** per directory. Older run rows are pruned automatically.
 
 ### Webhook trigger
 
