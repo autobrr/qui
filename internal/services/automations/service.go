@@ -3506,6 +3506,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			Details:    detailsJSON,
 		}
 		summary.recordActivity(activity, failureCount)
+		recordMoveFailureRuleCounts(summary, failedMoveHashesByPath, moveRuleByHash)
 		summary.addTorrentSamples(collectTorrentNamesForHashes(flattenHashGroupsByPath(failedMoveHashesByPath), torrentByHash), 3)
 		if s.activityStore != nil {
 			if err := s.activityStore.Create(ctx, activity); err != nil {
@@ -3799,6 +3800,17 @@ func buildRuleCountsFromHashes(hashes []string, ruleByHash map[string]ruleRef) m
 		return nil
 	}
 	return counts
+}
+
+func recordMoveFailureRuleCounts(summary *automationSummary, failedMoveHashesByPath map[string][]string, moveRuleByHash map[string]ruleRef) {
+	if summary == nil {
+		return
+	}
+	summary.recordRuleCounts(
+		models.ActivityActionMoved,
+		models.ActivityOutcomeFailed,
+		buildRuleCountsFromHashes(flattenHashGroupsByPath(failedMoveHashesByPath), moveRuleByHash),
+	)
 }
 
 func buildRuleCountsFromHashMaps(hashes []string, ruleByHashMaps ...map[string]ruleRef) map[ruleRef]int {

@@ -166,3 +166,28 @@ func TestAutomationSummaryAddTorrentSamplesUsesLimitAndDedupes(t *testing.T) {
 	require.Contains(t, msg, "Torrent B")
 	require.Contains(t, msg, "Torrent C")
 }
+
+func TestRecordMoveFailureRuleCountsContributesToNotifyGate(t *testing.T) {
+	t.Parallel()
+
+	summary := newAutomationSummary()
+	summary.recordActivity(&models.AutomationActivity{
+		Action:  models.ActivityActionMoved,
+		Outcome: models.ActivityOutcomeFailed,
+	}, 2)
+
+	recordMoveFailureRuleCounts(summary, map[string][]string{
+		"/library/destination": {"hash-a", "hash-b"},
+	}, map[string]ruleRef{
+		"hash-a": {id: 42, name: "Move rule"},
+		"hash-b": {id: 42, name: "Move rule"},
+	})
+
+	require.True(t, shouldNotifyAutomationSummary(summary, []*models.Automation{
+		{ID: 42, Notify: true},
+	}))
+
+	got := buildAutomationRuleSummaries(summary)
+	require.Len(t, got, 1)
+	require.Equal(t, 2, got[0].Failed)
+}
