@@ -40,7 +40,6 @@ CREATE TABLE dir_scan_settings (
     allow_partial                      INTEGER NOT NULL DEFAULT 0,
     skip_piece_boundary_safety_check   INTEGER NOT NULL DEFAULT 1,
     start_paused                       INTEGER NOT NULL DEFAULT 1,
-    download_missing_files             INTEGER NOT NULL DEFAULT 1,
     category                           TEXT,
     tags                               TEXT,
     created_at                         TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
