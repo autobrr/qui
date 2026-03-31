@@ -462,6 +462,7 @@ export interface Automation {
   sortingConfig?: SortingConfig
   enabled: boolean
   dryRun: boolean
+  notify: boolean
   sortOrder: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
   createdAt?: string
@@ -477,6 +478,7 @@ export interface AutomationInput {
   sortingConfig?: SortingConfig
   enabled?: boolean
   dryRun?: boolean
+  notify?: boolean
   sortOrder?: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
 }
