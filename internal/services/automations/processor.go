@@ -812,7 +812,7 @@ func parseTorrentTags(tags string) map[string]struct{} {
 // updateCumulativeFreeSpaceCleared updates the cumulative free space cleared for the "free space" condition.
 // Only increments SpaceToClear when deleteFreesSpace returns true for the given mode/torrent.
 // This ensures keep-files and preserve-cross-seeds modes don't over-project freed disk space.
-// When HardlinkSignatureByHash is populated, also dedupes by hardlink signature to avoid
+// When DeleteSafeHardlinkSignatureByHash is populated, also dedupes by hardlink signature to avoid
 // double-counting torrents that share the same physical files via hardlinks.
 func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, allTorrents []qbt.Torrent) {
 	if evalCtx == nil || evalCtx.FilesToClear == nil {
@@ -828,8 +828,8 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 	// Hardlink signature dedupe only makes sense when the delete mode can actually delete the
 	// whole hardlink group via expansion; this avoids affecting other delete modes.
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds &&
-		evalCtx.HardlinkSignatureByHash != nil && evalCtx.HardlinkSignaturesToClear != nil {
-		if sig, ok := evalCtx.HardlinkSignatureByHash[torrent.Hash]; ok && sig != "" {
+		evalCtx.DeleteSafeHardlinkSignatureByHash != nil && evalCtx.HardlinkSignaturesToClear != nil {
+		if sig, ok := evalCtx.DeleteSafeHardlinkSignatureByHash[torrent.Hash]; ok && sig != "" {
 			if _, counted := evalCtx.HardlinkSignaturesToClear[sig]; counted {
 				// Already counted this hardlink group
 				return

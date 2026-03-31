@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+/// <reference lib="WebWorker" />
+
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import path from "node:path"
