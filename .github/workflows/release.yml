@@ -183,6 +183,21 @@ jobs:
           chmod 600 "$key_file"
           echo "RELEASE_SIGNING_KEY_FILE=$key_file" >> "$GITHUB_ENV"
 
+      - name: Verify release signing key matches embedded updater cert
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cert_public_key_file="$RUNNER_TEMP/release-signing-cert.pub.der"
+          signing_public_key_file="$RUNNER_TEMP/release-signing-key.pub.der"
+
+          openssl x509 -in internal/update/release_signing_cert.pem -pubkey -noout |
+            openssl pkey -pubin -outform DER > "$cert_public_key_file"
+          openssl pkey -in "$RELEASE_SIGNING_KEY_FILE" -pubout -outform DER > "$signing_public_key_file"
+
+          if ! cmp -s "$cert_public_key_file" "$signing_public_key_file"; then
+            echo "::error::RELEASE_SIGNING_PRIVATE_KEY does not match internal/update/release_signing_cert.pem"
+            exit 1
+          fi
+
       - name: Run GoReleaser build
         if: github.event_name == 'pull_request'
         uses: goreleaser/goreleaser-action@v7
