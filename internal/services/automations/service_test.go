@@ -2205,6 +2205,7 @@ func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireCondi
 		nil,
 		nil,
 		nil,
+		nil,
 		categoryBatches,
 		nil,
 		nil,
