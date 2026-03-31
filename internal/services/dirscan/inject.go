@@ -558,7 +558,7 @@ func buildLinkTreeMatchedFiles(match *MatchResult) ([]hardlinktree.TorrentFile, 
 		existingFiles = append(existingFiles, hardlinktree.ExistingFile{
 			AbsPath: pair.SearcheeFile.Path,
 			RelPath: pair.TorrentFile.Path,
-			Size:    pair.SearcheeFile.Size,
+			Size:    pair.TorrentFile.Size,
 		})
 	}
 

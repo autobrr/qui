@@ -156,67 +156,37 @@ func TestHumanizeLinkPlanError(t *testing.T) {
 	}
 }
 
-func TestInjector_Inject_HumanizesLinkPlanMismatchError(t *testing.T) {
-	tmp := t.TempDir()
-	sourceFile := filepath.Join(tmp, "file.mkv")
-	if err := os.WriteFile(sourceFile, []byte("abc"), 0o600); err != nil {
-		t.Fatalf("write source file: %v", err)
-	}
-
-	hardlinkBase := filepath.Join(tmp, "links")
-
-	instance := &models.Instance{
-		ID:                       1,
-		Name:                     "test",
-		HasLocalFilesystemAccess: true,
-		UseHardlinks:             true,
-		HardlinkBaseDir:          hardlinkBase,
-		FallbackToRegularMode:    false,
-	}
-
-	injector := NewInjector(nil, &recordingTorrentManager{}, nil, &fakeInstanceStore{instance: instance}, nil)
-
-	req := &InjectRequest{
-		InstanceID:   1,
-		TorrentBytes: []byte("x"),
-		ParsedTorrent: &ParsedTorrent{
-			Name:     "Example.Release",
-			InfoHash: "deadbeef",
-			Files: []TorrentFile{
-				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
+func TestBuildLinkTreeMatchedFiles_SizeToleranceMismatch(t *testing.T) {
+	// Simulate flexible-mode match where sizes differ within tolerance:
+	// torrent file is 1000 bytes, searchee file is 1040 bytes (4% diff).
+	match := &MatchResult{
+		MatchedFiles: []MatchedFilePair{
+			{
+				TorrentFile: TorrentFile{
+					Path: "[SubsPlease] Show - 07 (1080p) [ABCD1234].mkv",
+					Size: 1000,
+				},
+				SearcheeFile: &ScannedFile{
+					Path:    "/media/tv/Show (2024)/Season 01/Show (2024) - S01E07 - Title [CR][WEBDL-1080p]-Group.mkv",
+					RelPath: "Show (2024) - S01E07 - Title [CR][WEBDL-1080p]-Group.mkv",
+					Size:    1040,
+				},
 			},
-			PieceLength: 16384,
 		},
-		Searchee: &Searchee{
-			Name: "Example.Release",
-			Path: tmp,
-			Files: []*ScannedFile{{
-				Path:    sourceFile,
-				RelPath: "file.mkv",
-				Size:    3,
-			}},
-		},
-		MatchResult: &MatchResult{
-			MatchedFiles: []MatchedFilePair{{
-				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "file.mkv", Size: 3},
-				TorrentFile:  TorrentFile{Path: "Example.Release/file.mkv", Size: 4},
-			}},
-			IsMatch: true,
-		},
-		SearchResult: &jackett.SearchResult{Indexer: "Test"},
 	}
 
-	res, err := injector.Inject(context.Background(), req)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	linkable, existing, err := buildLinkTreeMatchedFiles(match)
+	if err != nil {
+		t.Fatalf("buildLinkTreeMatchedFiles: %v", err)
 	}
 
-	want := "couldn't prepare linked files for this release: no matching local source file was found for a required release file (Example.Release/file.mkv). The local file may be missing, renamed, or a different size"
-	if err.Error() != want {
-		t.Fatalf("expected error %q, got %q", want, err.Error())
-	}
-	if res.ErrorMessage != want {
-		t.Fatalf("expected result error %q, got %q", want, res.ErrorMessage)
+	// The bug: existing[0].Size was set to SearcheeFile.Size (1040),
+	// but linkable[0].Size is TorrentFile.Size (1000).
+	// BuildPlan indexes by existing size and looks up by candidate size,
+	// so mismatched sizes cause "no matching file" error.
+	_, err = hardlinktree.BuildPlan(linkable, existing, hardlinktree.LayoutOriginal, "Show", t.TempDir())
+	if err != nil {
+		t.Fatalf("BuildPlan should succeed with tolerance-matched sizes, got: %v", err)
 	}
 }
 
