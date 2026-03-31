@@ -577,33 +577,33 @@ func TestEvaluateCondition_SystemTimeFields(t *testing.T) {
 		expected bool
 	}{
 		{
-			name: "system hour equals",
-			cond: &RuleCondition{Field: models.FieldSystemHour, Operator: OperatorEqual, Value: "14"},
+			name:     "system hour equals",
+			cond:     &RuleCondition{Field: models.FieldSystemHour, Operator: OperatorEqual, Value: "14"},
 			expected: true,
 		},
 		{
-			name: "system minute greater than",
-			cond: &RuleCondition{Field: models.FieldSystemMinute, Operator: OperatorGreaterThan, Value: "20"},
+			name:     "system minute greater than",
+			cond:     &RuleCondition{Field: models.FieldSystemMinute, Operator: OperatorGreaterThan, Value: "20"},
 			expected: true,
 		},
 		{
-			name: "system day of week equals Friday (5)",
-			cond: &RuleCondition{Field: models.FieldSystemDayOfWeek, Operator: OperatorEqual, Value: "5"},
+			name:     "system day of week equals Friday (5)",
+			cond:     &RuleCondition{Field: models.FieldSystemDayOfWeek, Operator: OperatorEqual, Value: "5"},
 			expected: true,
 		},
 		{
-			name: "system day equals 15",
-			cond: &RuleCondition{Field: models.FieldSystemDay, Operator: OperatorEqual, Value: "15"},
+			name:     "system day equals 15",
+			cond:     &RuleCondition{Field: models.FieldSystemDay, Operator: OperatorEqual, Value: "15"},
 			expected: true,
 		},
 		{
-			name: "system month equals 8",
-			cond: &RuleCondition{Field: models.FieldSystemMonth, Operator: OperatorEqual, Value: "8"},
+			name:     "system month equals 8",
+			cond:     &RuleCondition{Field: models.FieldSystemMonth, Operator: OperatorEqual, Value: "8"},
 			expected: true,
 		},
 		{
-			name: "system year equals 2025",
-			cond: &RuleCondition{Field: models.FieldSystemYear, Operator: OperatorEqual, Value: "2025"},
+			name:     "system year equals 2025",
+			cond:     &RuleCondition{Field: models.FieldSystemYear, Operator: OperatorEqual, Value: "2025"},
 			expected: true,
 		},
 	}
