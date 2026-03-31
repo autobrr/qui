@@ -2168,7 +2168,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	resumeHashes := make([]string, 0)
 	recheckHashes := make([]string, 0)
 	reannounceHashes := make([]string, 0)
-	autoManageHashes := make([]string, 0)
+	autoManageEnableHashes := make([]string, 0)
+	autoManageDisableHashes := make([]string, 0)
 	uploadRuleByHash := make(map[string]ruleRef)
 	downloadRuleByHash := make(map[string]ruleRef)
 	shareRatioRuleByHash := make(map[string]ruleRef)
@@ -2549,7 +2550,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 		// Auto management
 		if state.shouldAutoManage {
-			autoManageHashes = append(autoManageHashes, hash)
+			if state.autoManageValue {
+				autoManageEnableHashes = append(autoManageEnableHashes, hash)
+			} else {
+				autoManageDisableHashes = append(autoManageDisableHashes, hash)
+			}
 			autoManageRuleByHash[hash] = state.autoManageRule
 		}
 
@@ -2616,7 +2621,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			resumeHashes,
 			recheckHashes,
 			reannounceHashes,
-			autoManageHashes,
+			append(autoManageEnableHashes, autoManageDisableHashes...),
 			tagChanges,
 			categoryBatches,
 			moveBatches,
@@ -2950,13 +2955,23 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// Execute auto management actions
 	autoManagedCount := 0
 	autoManagedHashesSuccess := make([]string, 0)
-	if len(autoManageHashes) > 0 {
-		limited := limitHashBatch(autoManageHashes, s.cfg.MaxBatchHashes)
+	for _, group := range []struct {
+		hashes []string
+		enable bool
+		verb   string
+	}{
+		{autoManageEnableHashes, true, "enabled"},
+		{autoManageDisableHashes, false, "disabled"},
+	} {
+		if len(group.hashes) == 0 {
+			continue
+		}
+		limited := limitHashBatch(group.hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
-			if err := s.syncManager.SetAutoTMM(ctx, instanceID, batch, true); err != nil {
+			if err := s.syncManager.SetAutoTMM(ctx, instanceID, batch, group.enable); err != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: auto management action failed")
 			} else {
-				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: enabled auto management for torrents")
+				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Str("mode", group.verb).Msg("automations: auto management for torrents")
 				autoManagedCount += len(batch)
 				autoManagedHashesSuccess = append(autoManagedHashesSuccess, batch...)
 			}
