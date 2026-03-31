@@ -2253,6 +2253,7 @@ export interface DirScanSettings {
   allowPartial: boolean
   skipPieceBoundarySafetyCheck: boolean
   startPaused: boolean
+  downloadMissingFiles: boolean
   category: string
   tags: string[]
   createdAt: string
@@ -2269,6 +2270,7 @@ export interface DirScanSettingsUpdate {
   allowPartial?: boolean
   skipPieceBoundarySafetyCheck?: boolean
   startPaused?: boolean
+  downloadMissingFiles?: boolean
   category?: string
   tags?: string[]
 }

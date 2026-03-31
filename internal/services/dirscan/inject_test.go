@@ -6,11 +6,15 @@ package dirscan
 import (
 	"context"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	qbt "github.com/autobrr/go-qbittorrent"
 
 	"github.com/autobrr/qui/internal/models"
 	qbsync "github.com/autobrr/qui/internal/qbittorrent"
@@ -432,6 +436,431 @@ func TestInjector_Inject_PausedPerfect_DoesNotTriggerRecheck(t *testing.T) {
 	}
 	if manager.addOptions["skip_checking"] != "true" {
 		t.Fatalf("expected skip_checking=true, got %q", manager.addOptions["skip_checking"])
+	}
+}
+
+// fakeTorrentChecker simulates state transitions. It returns states from the
+// list in order, staying on the last state once exhausted. This lets tests
+// model the recheck flow: checking -> paused/downloading.
+type fakeTorrentChecker struct {
+	mu     sync.Mutex
+	hash   string
+	states []qbt.TorrentState
+	idx    int
+}
+
+func (c *fakeTorrentChecker) HasTorrentByAnyHash(_ context.Context, _ int, _ []string) (*qbt.Torrent, bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.states) == 0 {
+		return nil, false, nil
+	}
+	state := c.states[c.idx]
+	if c.idx < len(c.states)-1 {
+		c.idx++
+	}
+	return &qbt.Torrent{Hash: c.hash, State: state}, true, nil
+}
+
+// safeRecordingManager is a thread-safe version of recordingTorrentManager for tests
+// involving async goroutines (resumeAfterRecheck).
+type safeRecordingManager struct {
+	mu         sync.Mutex
+	addOptions map[string]string
+	bulkCalls  []struct {
+		instanceID int
+		hashes     []string
+		action     string
+	}
+}
+
+func (m *safeRecordingManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.addOptions = options
+	return nil
+}
+
+func (m *safeRecordingManager) BulkAction(_ context.Context, instanceID int, hashes []string, action string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bulkCalls = append(m.bulkCalls, struct {
+		instanceID int
+		hashes     []string
+		action     string
+	}{instanceID: instanceID, hashes: hashes, action: action})
+	return nil
+}
+
+func (m *safeRecordingManager) ResumeWhenComplete(_ int, _ []string, _ qbsync.ResumeWhenCompleteOptions) {
+}
+
+func (m *safeRecordingManager) getBulkCalls() []struct {
+	instanceID int
+	hashes     []string
+	action     string
+} {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := make([]struct {
+		instanceID int
+		hashes     []string
+		action     string
+	}, len(m.bulkCalls))
+	copy(cp, m.bulkCalls)
+	return cp
+}
+
+func (m *safeRecordingManager) getAddOptions() map[string]string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cp := make(map[string]string, len(m.addOptions))
+	maps.Copy(cp, m.addOptions)
+	return cp
+}
+
+func TestInjector_PartialLinkTree_DownloadMissingEnabled_NotPaused(t *testing.T) {
+	tmp := t.TempDir()
+
+	sourceDir := filepath.Join(tmp, "source")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatalf("mkdir source: %v", err)
+	}
+	sourceFile := filepath.Join(sourceDir, "file.mkv")
+	if err := os.WriteFile(sourceFile, []byte("data"), 0o600); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	hardlinkBase := filepath.Join(tmp, "links")
+
+	instance := &models.Instance{
+		ID:                       1,
+		Name:                     "test",
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          hardlinkBase,
+	}
+
+	checker := &fakeTorrentChecker{
+		hash: "deadbeef",
+		// Return non-checking state: simulates recheck completing quickly.
+		states: []qbt.TorrentState{qbt.TorrentStatePausedDl},
+	}
+
+	manager := &safeRecordingManager{}
+	injector := NewInjector(nil, manager, checker, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:     "Example.Release",
+			InfoHash: "deadbeef",
+			Files: []TorrentFile{
+				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
+				{Path: "Example.Release/extras.nfo", Size: 1, Offset: 4},
+			},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name: "Example.Release",
+			Path: sourceDir,
+			Files: []*ScannedFile{{
+				Path:    sourceFile,
+				RelPath: "file.mkv",
+				Size:    4,
+			}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles: []MatchedFilePair{{
+				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "file.mkv", Size: 4},
+				TorrentFile:  TorrentFile{Path: "Example.Release/file.mkv", Size: 4},
+			}},
+			UnmatchedTorrentFiles: []TorrentFile{{Path: "Example.Release/extras.nfo", Size: 1}},
+			IsMatch:               true,
+			IsPartialMatch:        true,
+		},
+		SearchResult:         &jackett.SearchResult{Indexer: "Test"},
+		StartPaused:          false,
+		DownloadMissingFiles: true,
+	}
+
+	res, err := injector.Inject(context.Background(), req)
+	if err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got %+v", res)
+	}
+	if res.Mode != injectModeHardlink {
+		t.Fatalf("expected hardlink mode, got %q", res.Mode)
+	}
+
+	// Torrent must be forced paused for the recheck, even though StartPaused=false.
+	opts := manager.getAddOptions()
+	if opts["paused"] != "true" || opts["stopped"] != "true" {
+		t.Fatalf("expected forced paused/stopped for partial link tree, got paused=%q stopped=%q",
+			opts["paused"], opts["stopped"])
+	}
+
+	// Wait for the async resume goroutine: 3s grace + first poll.
+	deadline := time.After(15 * time.Second)
+	for {
+		calls := manager.getBulkCalls()
+		if len(calls) >= 2 {
+			if calls[0].action != "recheck" {
+				t.Fatalf("first bulk call should be recheck, got %q", calls[0].action)
+			}
+			if calls[1].action != "resume" {
+				t.Fatalf("second bulk call should be resume, got %q", calls[1].action)
+			}
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("timed out waiting for resume bulk call, got %d calls", len(calls))
+		default:
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+}
+
+func TestInjector_PartialLinkTree_DownloadMissingEnabled_Paused(t *testing.T) {
+	tmp := t.TempDir()
+
+	sourceDir := filepath.Join(tmp, "source")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatalf("mkdir source: %v", err)
+	}
+	sourceFile := filepath.Join(sourceDir, "file.mkv")
+	if err := os.WriteFile(sourceFile, []byte("data"), 0o600); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	hardlinkBase := filepath.Join(tmp, "links")
+
+	instance := &models.Instance{
+		ID:                       1,
+		Name:                     "test",
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          hardlinkBase,
+	}
+
+	manager := &safeRecordingManager{}
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:     "Example.Release",
+			InfoHash: "deadbeef",
+			Files: []TorrentFile{
+				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
+				{Path: "Example.Release/extras.nfo", Size: 1, Offset: 4},
+			},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name: "Example.Release",
+			Path: sourceDir,
+			Files: []*ScannedFile{{
+				Path:    sourceFile,
+				RelPath: "file.mkv",
+				Size:    4,
+			}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles: []MatchedFilePair{{
+				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "file.mkv", Size: 4},
+				TorrentFile:  TorrentFile{Path: "Example.Release/file.mkv", Size: 4},
+			}},
+			UnmatchedTorrentFiles: []TorrentFile{{Path: "Example.Release/extras.nfo", Size: 1}},
+			IsMatch:               true,
+			IsPartialMatch:        true,
+		},
+		SearchResult:         &jackett.SearchResult{Indexer: "Test"},
+		StartPaused:          true,
+		DownloadMissingFiles: true,
+	}
+
+	res, err := injector.Inject(context.Background(), req)
+	if err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got %+v", res)
+	}
+
+	calls := manager.getBulkCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected exactly 1 bulk call (recheck only, no resume), got %d", len(calls))
+	}
+	if calls[0].action != "recheck" {
+		t.Fatalf("expected recheck, got %q", calls[0].action)
+	}
+}
+
+func TestInjector_PartialLinkTree_DownloadMissingDisabled(t *testing.T) {
+	tmp := t.TempDir()
+
+	sourceDir := filepath.Join(tmp, "source")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatalf("mkdir source: %v", err)
+	}
+	sourceFile := filepath.Join(sourceDir, "file.mkv")
+	if err := os.WriteFile(sourceFile, []byte("data"), 0o600); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	hardlinkBase := filepath.Join(tmp, "links")
+
+	instance := &models.Instance{
+		ID:                       1,
+		Name:                     "test",
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          hardlinkBase,
+	}
+
+	manager := &safeRecordingManager{}
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:     "Example.Release",
+			InfoHash: "deadbeef",
+			Files: []TorrentFile{
+				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
+				{Path: "Example.Release/extras.nfo", Size: 1, Offset: 4},
+			},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name: "Example.Release",
+			Path: sourceDir,
+			Files: []*ScannedFile{{
+				Path:    sourceFile,
+				RelPath: "file.mkv",
+				Size:    4,
+			}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles: []MatchedFilePair{{
+				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "file.mkv", Size: 4},
+				TorrentFile:  TorrentFile{Path: "Example.Release/file.mkv", Size: 4},
+			}},
+			UnmatchedTorrentFiles: []TorrentFile{{Path: "Example.Release/extras.nfo", Size: 1}},
+			IsMatch:               true,
+			IsPartialMatch:        true,
+		},
+		SearchResult:         &jackett.SearchResult{Indexer: "Test"},
+		DownloadMissingFiles: false,
+	}
+
+	_, err := injector.Inject(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error for partial link tree with DownloadMissingFiles=false")
+	}
+	if !strings.Contains(err.Error(), "missing files") {
+		t.Fatalf("expected 'missing files' in error, got: %v", err)
+	}
+
+	// No torrent should have been added.
+	calls := manager.getBulkCalls()
+	if len(calls) != 0 {
+		t.Fatalf("expected no bulk calls, got %d", len(calls))
+	}
+
+	// Link tree should have been cleaned up.
+	entries, readErr := os.ReadDir(hardlinkBase)
+	if readErr != nil {
+		t.Fatalf("readdir: %v", readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected hardlink base to be empty after rejection rollback, got %d entries", len(entries))
+	}
+}
+
+func TestInjector_PerfectMatch_UnaffectedByDownloadMissing(t *testing.T) {
+	tmp := t.TempDir()
+
+	sourceDir := filepath.Join(tmp, "source")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatalf("mkdir source: %v", err)
+	}
+	sourceFile := filepath.Join(sourceDir, "file.mkv")
+	if err := os.WriteFile(sourceFile, []byte("data"), 0o600); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	hardlinkBase := filepath.Join(tmp, "links")
+
+	instance := &models.Instance{
+		ID:                       1,
+		Name:                     "test",
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          hardlinkBase,
+	}
+
+	manager := &safeRecordingManager{}
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:     "Example.Release",
+			InfoHash: "deadbeef",
+			Files: []TorrentFile{
+				{Path: "Example.Release/file.mkv", Size: 4, Offset: 0},
+			},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name: "Example.Release",
+			Path: sourceDir,
+			Files: []*ScannedFile{{
+				Path:    sourceFile,
+				RelPath: "file.mkv",
+				Size:    4,
+			}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles: []MatchedFilePair{{
+				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "file.mkv", Size: 4},
+				TorrentFile:  TorrentFile{Path: "Example.Release/file.mkv", Size: 4},
+			}},
+			IsMatch:        true,
+			IsPerfectMatch: true,
+		},
+		SearchResult:         &jackett.SearchResult{Indexer: "Test"},
+		DownloadMissingFiles: false, // Should not matter for perfect match.
+	}
+
+	res, err := injector.Inject(context.Background(), req)
+	if err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got %+v", res)
+	}
+	if res.Mode != injectModeHardlink {
+		t.Fatalf("expected hardlink mode, got %q", res.Mode)
+	}
+
+	opts := manager.getAddOptions()
+	if opts["skip_checking"] != "true" {
+		t.Fatalf("expected skip_checking=true for perfect match, got %q", opts["skip_checking"])
+	}
+
+	calls := manager.getBulkCalls()
+	if len(calls) != 0 {
+		t.Fatalf("expected no bulk calls for perfect match, got %d", len(calls))
 	}
 }
 

@@ -150,6 +150,10 @@ type InjectRequest struct {
 
 	// StartPaused adds the torrent in paused state.
 	StartPaused bool
+
+	// DownloadMissingFiles allows partial link tree injections to proceed.
+	// When true, the torrent is added paused, rechecked, and optionally resumed.
+	DownloadMissingFiles bool
 }
 
 // InjectResult contains the result of an injection attempt.
@@ -199,9 +203,26 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	result.Mode = addMode
 	result.SavePath = savePath
 
+	hasUnmatchedFiles := len(req.MatchResult.UnmatchedTorrentFiles) > 0
+	partialLinkTree := isLinkTreeMode(addMode) && hasUnmatchedFiles
+
+	// Reject partial link tree injections when downloading missing files is disabled.
+	if partialLinkTree && !req.DownloadMissingFiles {
+		i.rollbackLinkTree(addMode, linkPlan)
+		return result, fmt.Errorf("partial match has %d missing files; enable 'Download missing files' to allow",
+			len(req.MatchResult.UnmatchedTorrentFiles))
+	}
+
 	options := i.buildAddOptions(req, savePath)
-	if len(req.MatchResult.UnmatchedTorrentFiles) == 0 {
+	if !hasUnmatchedFiles {
 		options["skip_checking"] = qbitBoolTrue
+	}
+
+	// For partial link tree injections, force paused so we can safely recheck
+	// before qBit tries to use the incomplete link tree.
+	if partialLinkTree {
+		options["paused"] = qbitBoolTrue
+		options["stopped"] = qbitBoolTrue
 	}
 
 	i.applyAddPolicy(options, req)
@@ -213,11 +234,120 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		return result, fmt.Errorf("add torrent: %w", err)
 	}
 
-	i.triggerRecheckForPausedPartial(ctx, req)
+	if partialLinkTree {
+		if err := i.triggerRecheckForPartialLinkTree(req); err != nil {
+			result.ErrorMessage = fmt.Sprintf("torrent added but recheck failed: %v", err)
+			return result, fmt.Errorf("partial link tree recheck: %w", err)
+		}
+	} else {
+		i.triggerRecheckForPausedPartial(ctx, req)
+	}
 
 	result.Success = true
 	result.TorrentHash = req.ParsedTorrent.InfoHash
 	return result, nil
+}
+
+func isLinkTreeMode(mode string) bool {
+	return mode == injectModeHardlink || mode == injectModeReflink
+}
+
+func isCheckingState(state qbt.TorrentState) bool {
+	switch state { //nolint:exhaustive // only checking states matter
+	case qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp,
+		qbt.TorrentStateCheckingResumeData, qbt.TorrentStateAllocating:
+		return true
+	}
+	return false
+}
+
+// triggerRecheckForPartialLinkTree handles partial link tree injections:
+// trigger a force recheck, then optionally resume the torrent once checking completes.
+// The torrent was added paused (forced) so qBit doesn't try to use the incomplete link tree.
+// Returns an error if the recheck cannot be scheduled, since the torrent would be stuck
+// in a forced-paused state with no way to recover.
+func (i *Injector) triggerRecheckForPartialLinkTree(req *InjectRequest) error {
+	if i == nil || i.syncManager == nil || req == nil || req.ParsedTorrent == nil {
+		return errors.New("missing injector components for recheck")
+	}
+
+	hash := req.ParsedTorrent.InfoHash
+	ctx := context.Background()
+
+	if err := i.syncManager.BulkAction(ctx, req.InstanceID, []string{hash}, "recheck"); err != nil {
+		return fmt.Errorf("trigger recheck for partial link tree: %w", err)
+	}
+
+	// If the user wanted the torrent running, resume it after the recheck finishes.
+	// If StartPaused=true, leave it paused (we just honor the user's setting).
+	if !req.StartPaused {
+		i.resumeAfterRecheck(req.InstanceID, hash)
+	}
+	return nil
+}
+
+// resumeAfterRecheck polls the torrent state in a background goroutine and
+// resumes the torrent once it exits checking states. This is used for partial
+// link tree injections where we temporarily forced the torrent paused for a
+// safe recheck, but the user's StartPaused=false means they want it running.
+func (i *Injector) resumeAfterRecheck(instanceID int, hash string) {
+	if i.torrentChecker == nil || i.syncManager == nil {
+		return
+	}
+
+	go func() {
+		const (
+			gracePeriod  = 3 * time.Second
+			pollInterval = 5 * time.Second
+			timeout      = 10 * time.Minute
+		)
+
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		// Give qBit time to start the recheck before we begin polling.
+		// Without this, the first poll can see a stale paused/stopped state
+		// and resume prematurely.
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(gracePeriod):
+		}
+
+		ticker := time.NewTicker(pollInterval)
+		defer ticker.Stop()
+
+		for {
+			torrent, found, err := i.torrentChecker.HasTorrentByAnyHash(ctx, instanceID, []string{hash})
+			if err == nil && found && torrent != nil && !isCheckingState(torrent.State) {
+				break
+			}
+
+			select {
+			case <-ctx.Done():
+				log.Debug().
+					Int("instanceID", instanceID).
+					Str("hash", hash).
+					Msg("dirscan: resumeAfterRecheck timed out")
+				return
+			case <-ticker.C:
+			}
+		}
+
+		if err := i.syncManager.BulkAction(ctx, instanceID, []string{hash}, "resume"); err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Msg("dirscan: failed to resume torrent after recheck")
+			return
+		}
+
+		log.Info().
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("dirscan: resumed torrent after partial link tree recheck")
+	}()
 }
 
 func (i *Injector) triggerRecheckForPausedPartial(ctx context.Context, req *InjectRequest) {

@@ -173,6 +173,7 @@ Open **Dir Scan > Settings**:
 | Max searchees per run | Limits how many eligible searchees are processed per run. `0` = unlimited. Useful for making progress across restarts. |
 | Only process items changed within the last (days) | Excludes stale work items before search. Uses video/audio mtimes only for manual/scheduled scans. Webhook-triggered scans ignore this cutoff. `0` = disabled. |
 | Allow partial matches | Add torrents even if they have extra/missing files compared to disk. |
+| Download missing files | Downloads files not found on disk for partial matches. Required for season packs and partial releases in hardlink/reflink mode. Enabled by default. |
 | Skip piece boundary safety check | Allow partial matches where downloading missing files could modify pieces containing existing content. |
 | Start torrents paused | Add injected torrents in paused state. |
 | Default Category / Tags | Applied to all injected torrents. Directory-level settings add to these. |
@@ -326,6 +327,10 @@ If the target qBittorrent instance has hardlink or reflink mode enabled, Dir Sca
 
 - Builds a link tree matching the incoming torrent's layout.
 - Adds the torrent pointing at that tree (`contentLayout=Original`). Full matches use `skip_checking=true`; partial matches allow qBittorrent to verify existing data and download missing files safely into the link tree.
+
+:::note
+Partial matches in link tree mode (hardlink or reflink) require **Download missing files** to be enabled in Dir Scan settings. Without it, partial link tree injections are rejected.
+:::
 
 See:
 - [Hardlink Mode](hardlink-mode)
