@@ -103,15 +103,19 @@ const (
 	FieldGroupSize     = models.FieldGroupSize
 
 	// Boolean fields
-	FieldPrivate            = models.FieldPrivate
-	FieldAutoManaged        = models.FieldAutoManaged
-	FieldFirstLastPiecePrio = models.FieldFirstLastPiecePrio
-	FieldForceStart         = models.FieldForceStart
-	FieldSequentialDownload = models.FieldSequentialDownload
-	FieldSuperSeeding       = models.FieldSuperSeeding
-	FieldIsUnregistered     = models.FieldIsUnregistered
-	FieldHasMissingFiles    = models.FieldHasMissingFiles
-	FieldIsGrouped          = models.FieldIsGrouped
+	FieldPrivate                = models.FieldPrivate
+	FieldAutoManaged            = models.FieldAutoManaged
+	FieldFirstLastPiecePrio     = models.FieldFirstLastPiecePrio
+	FieldForceStart             = models.FieldForceStart
+	FieldSequentialDownload     = models.FieldSequentialDownload
+	FieldSuperSeeding           = models.FieldSuperSeeding
+	FieldIsUnregistered         = models.FieldIsUnregistered
+	FieldHasMissingFiles        = models.FieldHasMissingFiles
+	FieldIsGrouped              = models.FieldIsGrouped
+	FieldExistsOnOtherInstance  = models.FieldExistsOnOtherInstance
+	FieldSeedingOnOtherInstance = models.FieldSeedingOnOtherInstance
+	FieldExistsOnSameInstance   = models.FieldExistsOnSameInstance
+	FieldSeedingOnSameInstance  = models.FieldSeedingOnSameInstance
 
 	// Enum-like fields
 	FieldHardlinkScope = models.FieldHardlinkScope
