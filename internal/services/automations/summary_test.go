@@ -170,24 +170,86 @@ func TestAutomationSummaryAddTorrentSamplesUsesLimitAndDedupes(t *testing.T) {
 func TestRecordMoveFailureRuleCountsContributesToNotifyGate(t *testing.T) {
 	t.Parallel()
 
-	summary := newAutomationSummary()
-	summary.recordActivity(&models.AutomationActivity{
-		Action:  models.ActivityActionMoved,
-		Outcome: models.ActivityOutcomeFailed,
-	}, 2)
+	tests := []struct {
+		name               string
+		automations        []*models.Automation
+		ruleByHash         map[string]ruleRef
+		wantNotify         bool
+		wantFailedByRuleID map[int]int
+	}{
+		{
+			name: "notify enabled",
+			automations: []*models.Automation{
+				{ID: 42, Notify: true},
+			},
+			ruleByHash: map[string]ruleRef{
+				"hash-a": {id: 42, name: "Move rule"},
+				"hash-b": {id: 42, name: "Move rule"},
+			},
+			wantNotify:         true,
+			wantFailedByRuleID: map[int]int{42: 2},
+		},
+		{
+			name: "notify disabled",
+			automations: []*models.Automation{
+				{ID: 42, Notify: false},
+			},
+			ruleByHash: map[string]ruleRef{
+				"hash-a": {id: 42, name: "Move rule"},
+				"hash-b": {id: 42, name: "Move rule"},
+			},
+			wantNotify:         false,
+			wantFailedByRuleID: map[int]int{42: 2},
+		},
+		{
+			name: "mixed rules suppress non-notifying rule",
+			automations: []*models.Automation{
+				{ID: 42, Notify: false},
+				{ID: 43, Notify: true},
+			},
+			ruleByHash: map[string]ruleRef{
+				"hash-a": {id: 42, name: "Suppressed rule"},
+				"hash-b": {id: 43, name: "Notifying rule"},
+			},
+			wantNotify:         true,
+			wantFailedByRuleID: map[int]int{42: 1, 43: 1},
+		},
+	}
 
-	recordMoveFailureRuleCounts(summary, map[string][]string{
-		"/library/destination": {"hash-a", "hash-b"},
-	}, map[string]ruleRef{
-		"hash-a": {id: 42, name: "Move rule"},
-		"hash-b": {id: 42, name: "Move rule"},
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	require.True(t, shouldNotifyAutomationSummary(summary, []*models.Automation{
-		{ID: 42, Notify: true},
-	}))
+			summary := newAutomationSummary()
+			summary.recordActivity(&models.AutomationActivity{
+				Action:  models.ActivityActionMoved,
+				Outcome: models.ActivityOutcomeFailed,
+			}, 2)
 
-	got := buildAutomationRuleSummaries(summary)
-	require.Len(t, got, 1)
-	require.Equal(t, 2, got[0].Failed)
+			recordMoveFailureRuleCounts(summary, map[string][]string{
+				"/library/destination": {"hash-a", "hash-b"},
+			}, tt.ruleByHash)
+
+			require.Equal(t, tt.wantNotify, shouldNotifyAutomationSummary(summary, tt.automations))
+
+			got := buildAutomationRuleSummaries(summary)
+			require.Len(t, got, len(tt.wantFailedByRuleID))
+			for _, rule := range got {
+				require.Equal(t, tt.wantFailedByRuleID[rule.RuleID], rule.Failed)
+			}
+		})
+	}
+}
+
+func TestInheritRuleRefForMoveGroupIncludesExpandedMembers(t *testing.T) {
+	t.Parallel()
+
+	moveRuleByHash := map[string]ruleRef{
+		"trigger-hash": {id: 77, name: "Grouped move"},
+	}
+
+	inheritRuleRefForMoveGroup("member-hash", "trigger-hash", moveRuleByHash)
+
+	counts := buildRuleCountsFromHashes([]string{"trigger-hash", "member-hash"}, moveRuleByHash)
+	require.Equal(t, 2, counts[ruleRef{id: 77, name: "Grouped move"}])
 }

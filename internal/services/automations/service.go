@@ -3404,6 +3404,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 						}
 						expandedHashes = append(expandedHashes, memberHash)
 						movedHashes[memberHash] = struct{}{}
+						inheritRuleRefForMoveGroup(memberHash, hash, moveRuleByHash)
 					}
 					continue
 				}
@@ -3632,22 +3633,27 @@ func (s *Service) notifyAutomationSummary(ctx context.Context, instanceID int, s
 		return
 	}
 
+	notifiedSummary := buildNotifiedAutomationSummary(summary, rules)
+	if notifiedSummary == nil || !notifiedSummary.hasActivity() {
+		return
+	}
+
 	var errorMessage string
 	var errorMessages []string
-	if summary.failed > 0 && len(summary.sampleErrors) > 0 {
-		errorMessages = append([]string(nil), summary.sampleErrors...)
-		errorMessage = summary.sampleErrors[0]
+	if notifiedSummary.failed > 0 && len(notifiedSummary.sampleErrors) > 0 {
+		errorMessages = append([]string(nil), notifiedSummary.sampleErrors...)
+		errorMessage = notifiedSummary.sampleErrors[0]
 	}
 
 	s.notifier.Notify(ctx, notifications.Event{
 		Type:       notifications.EventAutomationsActionsApplied,
 		InstanceID: instanceID,
-		Message:    summary.message(),
+		Message:    notifiedSummary.message(),
 		Automations: &notifications.AutomationsEventData{
-			Applied: summary.applied,
-			Failed:  summary.failed,
-			Rules:   buildAutomationRuleSummaries(summary),
-			Samples: append([]string(nil), summary.sampleTorrents...),
+			Applied: notifiedSummary.applied,
+			Failed:  notifiedSummary.failed,
+			Rules:   buildAutomationRuleSummaries(notifiedSummary),
+			Samples: append([]string(nil), notifiedSummary.sampleTorrents...),
 		},
 		ErrorMessage:  errorMessage,
 		ErrorMessages: errorMessages,
@@ -3811,6 +3817,74 @@ func recordMoveFailureRuleCounts(summary *automationSummary, failedMoveHashesByP
 		models.ActivityOutcomeFailed,
 		buildRuleCountsFromHashes(flattenHashGroupsByPath(failedMoveHashesByPath), moveRuleByHash),
 	)
+}
+
+func buildNotifiedAutomationSummary(summary *automationSummary, rules []*models.Automation) *automationSummary {
+	if summary == nil || len(summary.rules) == 0 || len(rules) == 0 {
+		return nil
+	}
+
+	notifyByRuleID := make(map[int]bool, len(rules))
+	for _, rule := range rules {
+		notifyByRuleID[rule.ID] = rule.Notify
+	}
+
+	filtered := newAutomationSummary()
+	totalRules := 0
+	notifiedRules := 0
+
+	for key, rule := range summary.rules {
+		if rule == nil {
+			continue
+		}
+		totalRules++
+		if !notifyByRuleID[rule.ruleID] {
+			continue
+		}
+		notifiedRules++
+
+		clonedRule := &automationRuleSummary{
+			ruleID:   rule.ruleID,
+			ruleName: rule.ruleName,
+			applied:  rule.applied,
+			failed:   rule.failed,
+			actions:  make(map[string]*automationActionCounts, len(rule.actions)),
+		}
+
+		for action, counts := range rule.actions {
+			if counts == nil {
+				continue
+			}
+			clonedRule.actions[action] = &automationActionCounts{
+				applied: counts.applied,
+				failed:  counts.failed,
+			}
+			filtered.appliedByAction[action] += counts.applied
+			filtered.failedByAction[action] += counts.failed
+		}
+
+		filtered.applied += rule.applied
+		filtered.failed += rule.failed
+		filtered.rules[key] = clonedRule
+	}
+
+	if notifiedRules == 0 {
+		return nil
+	}
+
+	if notifiedRules == totalRules {
+		filtered.sampleTorrents = append([]string(nil), summary.sampleTorrents...)
+		filtered.sampleErrors = append([]string(nil), summary.sampleErrors...)
+		filtered.tagSamples = append([]string(nil), summary.tagSamples...)
+		for name, count := range summary.tagAddedByName {
+			filtered.tagAddedByName[name] = count
+		}
+		for name, count := range summary.tagRemovedByName {
+			filtered.tagRemovedByName[name] = count
+		}
+	}
+
+	return filtered
 }
 
 func buildRuleCountsFromHashMaps(hashes []string, ruleByHashMaps ...map[string]ruleRef) map[ruleRef]int {
@@ -4112,6 +4186,17 @@ func inheritRuleRefForCrossSeed(expandedHash string, key crossSeedKey, ruleByHas
 		return
 	}
 	ref, ok := ruleByCrossSeedKey[key]
+	if !ok {
+		return
+	}
+	ruleByHash[expandedHash] = ref
+}
+
+func inheritRuleRefForMoveGroup(expandedHash, triggerHash string, ruleByHash map[string]ruleRef) {
+	if strings.TrimSpace(expandedHash) == "" || strings.TrimSpace(triggerHash) == "" || len(ruleByHash) == 0 {
+		return
+	}
+	ref, ok := ruleByHash[triggerHash]
 	if !ok {
 		return
 	}

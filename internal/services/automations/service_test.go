@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/notifications"
 )
 
 // -----------------------------------------------------------------------------
@@ -2282,6 +2283,52 @@ func TestRecordDryRunActivities_NoMatches_DoesNotLogSummaryWhenDisabled(t *testi
 	require.Empty(t, mockDB.activities)
 }
 
+func TestNotifyAutomationSummaryFiltersSuppressedRules(t *testing.T) {
+	t.Parallel()
+
+	notifier := &automationRecordingNotifier{}
+	s := &Service{notifier: notifier}
+
+	summary := newAutomationSummary()
+	notifyRuleID := 42
+	suppressedRuleID := 43
+
+	summary.recordActivity(&models.AutomationActivity{
+		RuleID:      &notifyRuleID,
+		RuleName:    "Notify me",
+		Action:      models.ActivityActionMoved,
+		Outcome:     models.ActivityOutcomeSuccess,
+		TorrentName: "Notify.Release.2026",
+	}, 1)
+	summary.recordActivity(&models.AutomationActivity{
+		RuleID:      &suppressedRuleID,
+		RuleName:    "Suppress me",
+		Action:      models.ActivityActionMoved,
+		Outcome:     models.ActivityOutcomeFailed,
+		TorrentName: "Suppressed.Release.2026",
+		Reason:      "permission denied",
+	}, 1)
+
+	s.notifyAutomationSummary(context.Background(), 1, summary, []*models.Automation{
+		{ID: notifyRuleID, Notify: true},
+		{ID: suppressedRuleID, Notify: false},
+	})
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+
+	event := events[0]
+	require.Equal(t, notifications.EventAutomationsActionsApplied, event.Type)
+	require.Equal(t, 1, event.Automations.Applied)
+	require.Equal(t, 0, event.Automations.Failed)
+	require.Len(t, event.Automations.Rules, 1)
+	require.Equal(t, notifyRuleID, event.Automations.Rules[0].RuleID)
+	require.Equal(t, "Notify me", event.Automations.Rules[0].RuleName)
+	require.NotContains(t, event.Message, "Suppress me")
+	require.NotContains(t, event.Message, "permission denied")
+	require.NotContains(t, event.Message, "Suppressed.Release.2026")
+}
+
 // mockQuerier implements dbinterface.Querier for testing activity logging
 type mockQuerier struct {
 	activities []*models.AutomationActivity
@@ -2324,3 +2371,17 @@ type mockResult struct{}
 
 func (m mockResult) LastInsertId() (int64, error) { return 0, nil }
 func (m mockResult) RowsAffected() (int64, error) { return 1, nil }
+
+type automationRecordingNotifier struct {
+	events []notifications.Event
+}
+
+func (r *automationRecordingNotifier) Notify(_ context.Context, event notifications.Event) {
+	r.events = append(r.events, event)
+}
+
+func (r *automationRecordingNotifier) Events() []notifications.Event {
+	out := make([]notifications.Event, len(r.events))
+	copy(out, r.events)
+	return out
+}
