@@ -364,7 +364,7 @@ function DirectoryCard({
 
   const handleCancel = useCallback(() => {
     cancelScan.mutate(undefined, {
-      onSuccess: () => toast.success("Scan canceled. Next run will recheck the directory and continue with unfinished items."),
+      onSuccess: () => toast.success("Scan canceled. Next run will recheck the directory and retry unfinished items."),
       onError: (error) => toast.error(`Failed to cancel scan: ${error.message}`),
     })
   }, [cancelScan])
@@ -984,7 +984,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
               }
             />
             <p className="text-xs text-muted-foreground">
-              0 = unlimited. Useful for incremental progress: the next run rechecks the directory, skips finished items, and retries unfinished ones.
+              0 = unlimited. Useful when you want large directories to finish over multiple runs: each run rechecks the directory, skips finished items, and retries unfinished ones.
             </p>
           </div>
 
