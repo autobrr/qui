@@ -507,9 +507,20 @@ func (s *Service) getMetadataService(ctx context.Context) *metadata.Service {
 
 	fingerprint := apiKey + ":" + pin
 
+	// Fast path: credentials unchanged, read lock only.
+	s.metadataMu.RLock()
+	if fingerprint == s.metadataCredsFingerprint {
+		svc := s.metadataService
+		s.metadataMu.RUnlock()
+		return svc
+	}
+	s.metadataMu.RUnlock()
+
+	// Slow path: credentials changed, acquire write lock.
 	s.metadataMu.Lock()
 	defer s.metadataMu.Unlock()
 
+	// Re-check after lock acquisition.
 	if fingerprint != s.metadataCredsFingerprint {
 		s.metadataService = metadata.NewService(apiKey, pin)
 		s.metadataCredsFingerprint = fingerprint

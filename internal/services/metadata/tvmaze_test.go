@@ -81,14 +81,21 @@ func TestTVMaze_RetryWithNormalizedTitle(t *testing.T) {
 	var calls atomic.Int32
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/singlesearch/shows", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/singlesearch/shows", func(w http.ResponseWriter, r *http.Request) {
 		n := calls.Add(1)
+		q := r.URL.Query().Get("q")
 		if n == 1 {
-			// First call with original title returns 404.
+			// First call must carry the original title.
+			if q != "The Show (2024)" {
+				t.Errorf("first search: got q=%q, want %q", q, "The Show (2024)")
+			}
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		// Second call with normalized title succeeds.
+		// Second call must carry the normalized title.
+		if q != "The Show" {
+			t.Errorf("second search: got q=%q, want %q", q, "The Show")
+		}
 		_ = json.NewEncoder(w).Encode(tvmazeShow{ID: 42, Name: "The Show"})
 	})
 

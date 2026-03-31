@@ -156,10 +156,16 @@ var titleCleanupPatterns = []*regexp.Regexp{
 
 func normalizeTitle(title string) string {
 	result := strings.TrimSpace(title)
-	for _, re := range titleCleanupPatterns {
-		result = re.ReplaceAllString(result, "")
+	for {
+		prev := result
+		for _, re := range titleCleanupPatterns {
+			result = strings.TrimSpace(re.ReplaceAllString(result, ""))
+		}
+		if result == prev {
+			break
+		}
 	}
-	return strings.TrimSpace(result)
+	return result
 }
 
 // readBody reads the full response body with a size limit.
