@@ -41,7 +41,7 @@ jobs:
       - name: Lint frontend
         run: |
           webfiles=$({ git diff --name-only --diff-filter=d "origin/develop"...HEAD -- 'web/'; } | sort -u | sed 's|^web/||' | grep -E '\.(ts|tsx|js|jsx)$' || true)
-          if [ -n "$webfiles" ]; then echo "$webfiles" | xargs pnpm --dir web eslint; else echo "No frontend files to lint."; fi
+          if [ -n "$webfiles" ]; then echo "$webfiles" | xargs pnpm -C web eslint; else echo "No frontend files to lint."; fi
 
   lint-backend:
     name: Lint backend
@@ -102,7 +102,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.1
-          only-new-issues: true
+          args: --new-from-rev=origin/develop
 
   test:
     name: Test
