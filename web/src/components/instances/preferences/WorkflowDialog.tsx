@@ -435,6 +435,7 @@ type FormState = {
   recheckEnabled: boolean
   reannounceEnabled: boolean
   autoManagementEnabled: boolean
+  autoManageMode: "enable" | "disable"
   deleteEnabled: boolean
   tagEnabled: boolean
   categoryEnabled: boolean
@@ -497,6 +498,7 @@ const emptyFormState: FormState = {
   recheckEnabled: false,
   reannounceEnabled: false,
   autoManagementEnabled: false,
+  autoManageMode: "enable",
   deleteEnabled: false,
   tagEnabled: false,
   categoryEnabled: false,
@@ -1020,7 +1022,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           if (conditions.reannounce?.enabled) {
             reannounceEnabled = true
           }
-          if (conditions.autoManagement?.enabled) {
+          if (conditions.autoManagement != null) {
             autoManagementEnabled = true
           }
           if (conditions.delete?.enabled) {
@@ -1081,6 +1083,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           recheckEnabled,
           reannounceEnabled,
           autoManagementEnabled,
+          autoManageMode: conditions.autoManagement?.enabled !== false ? "enable" : "disable",
           deleteEnabled,
           tagEnabled,
           categoryEnabled,
@@ -1330,7 +1333,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
     if (input.autoManagementEnabled) {
       conditions.autoManagement = {
-        enabled: true,
+        enabled: input.autoManageMode === "enable",
         condition: input.actionCondition ?? undefined,
       }
     }
@@ -2905,7 +2908,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     )}
                     {/* Auto management */}
                     {formState.autoManagementEnabled && (
-                      <div className="rounded-lg border p-3">
+                      <div className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-center justify-between">
                           <Label className="text-sm font-medium">Auto management</Label>
                           <Button
@@ -2918,6 +2921,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <X className="h-3.5 w-3.5" />
                           </Button>
                         </div>
+                        <Select
+                          value={formState.autoManageMode}
+                          onValueChange={(v) => setFormState(prev => ({ ...prev, autoManageMode: v as "enable" | "disable" }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="enable">Enable automatic torrent management</SelectItem>
+                            <SelectItem value="disable">Disable automatic torrent management</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     )}
                     {/* Tag */}

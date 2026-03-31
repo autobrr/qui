@@ -56,6 +56,7 @@ type torrentDesiredState struct {
 
 	// Auto management (last rule wins)
 	shouldAutoManage bool
+	autoManageValue  bool // true = enable ATM, false = disable ATM
 	autoManageRule   ruleRef
 
 	// Tags (accumulated, last action per tag wins)
@@ -390,7 +391,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 	}
 
 	// Auto management (last rule wins)
-	if conditions.AutoManagement != nil && conditions.AutoManagement.Enabled {
+	if conditions.AutoManagement != nil {
 		shouldApply := conditions.AutoManagement.Condition == nil ||
 			EvaluateConditionWithContext(conditions.AutoManagement.Condition, torrent, evalCtx, 0)
 
@@ -398,9 +399,10 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			if stats != nil {
 				stats.AutoManageApplied++
 			}
-			// Only enable if not already auto-managed
-			if !torrent.AutoManaged {
+			// Only act if the current state differs from the desired state
+			if torrent.AutoManaged != conditions.AutoManagement.Enabled {
 				state.shouldAutoManage = true
+				state.autoManageValue = conditions.AutoManagement.Enabled
 				state.autoManageRule = ruleRef{id: rule.ID, name: rule.Name}
 			}
 		} else if stats != nil {
