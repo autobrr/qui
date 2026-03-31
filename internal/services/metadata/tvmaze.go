@@ -20,6 +20,9 @@ import (
 
 const tvmazeBaseURL = "https://api.tvmaze.com"
 
+// ErrShowNotFound is returned when a show lookup yields no results (HTTP 404 or empty response).
+var ErrShowNotFound = errors.New("show not found")
+
 type tvmazeProvider struct {
 	client *http.Client
 }
@@ -45,7 +48,12 @@ type tvmazeEpisode struct {
 func (p *tvmazeProvider) EpisodesInSeason(ctx context.Context, title string, seasonNumber int) (int, error) {
 	showID, err := p.searchShow(ctx, title)
 	if err != nil {
-		// Retry with normalized title on failure.
+		// Only retry with normalized title when the show wasn't found.
+		// For transient errors (rate limits, timeouts, 5xx) return immediately.
+		if !errors.Is(err, ErrShowNotFound) {
+			return 0, fmt.Errorf("tvmaze search failed for %q: %w", title, err)
+		}
+
 		normalized := normalizeTitle(title)
 		if normalized != title {
 			log.Debug().Str("original", title).Str("normalized", normalized).Msg("tvmaze: retrying with normalized title")
@@ -123,7 +131,7 @@ func (p *tvmazeProvider) doGet(ctx context.Context, rawURL string) ([]byte, erro
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, errors.New("tvmaze: not found (404)")
+		return nil, fmt.Errorf("tvmaze: %w", ErrShowNotFound)
 	}
 
 	if resp.StatusCode != http.StatusOK {

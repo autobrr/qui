@@ -140,6 +140,31 @@ func TestTVMaze_RateLimited(t *testing.T) {
 	}
 }
 
+// TestTVMaze_TransientErrorSkipsNormalizationRetry verifies that non-404
+// errors (rate limits, 5xx) do not trigger a normalized-title retry.
+func TestTVMaze_TransientErrorSkipsNormalizationRetry(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/singlesearch/shows", func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+
+	ts := serveTVMaze(t, mux)
+	p := tvmazeProviderWithBase(ts.URL)
+
+	// Title with year suffix would normally trigger normalization on a 404.
+	_, err := p.EpisodesInSeason(context.Background(), "Some Show (2024)", 1)
+	if err == nil {
+		t.Fatal("expected error for 500 response")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("expected exactly 1 search call (no retry), got %d", got)
+	}
+}
+
 func TestTVMaze_NoEpisodesInSeason(t *testing.T) {
 	t.Parallel()
 

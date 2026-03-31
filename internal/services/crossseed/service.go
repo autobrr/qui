@@ -365,7 +365,7 @@ type Service struct {
 	// Metadata provider for season pack episode totals (TVDB/TVMaze).
 	metadataCredentialLoader func(ctx context.Context) (apiKey, pin string, err error)
 	metadataService          *metadata.Service
-	metadataMu               sync.Mutex
+	metadataMu               sync.RWMutex
 	metadataCredsFingerprint string
 }
 
@@ -455,13 +455,19 @@ func NewService(
 // getMetadataService returns the metadata service, recreating it if credentials changed.
 func (s *Service) getMetadataService(ctx context.Context) *metadata.Service {
 	if s.metadataCredentialLoader == nil {
-		return s.metadataService
+		s.metadataMu.RLock()
+		svc := s.metadataService
+		s.metadataMu.RUnlock()
+		return svc
 	}
 
 	apiKey, pin, err := s.metadataCredentialLoader(ctx)
 	if err != nil {
 		log.Debug().Err(err).Msg("metadata: failed to load TVDB credentials, using existing service")
-		return s.metadataService
+		s.metadataMu.RLock()
+		svc := s.metadataService
+		s.metadataMu.RUnlock()
+		return svc
 	}
 
 	fingerprint := apiKey + ":" + pin
