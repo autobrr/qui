@@ -454,7 +454,13 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 
 	plan, err := hardlinktree.BuildPlan(linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
 	if err != nil {
-		return nil, "", fmt.Errorf("build link plan: %w", err)
+		log.Warn().
+			Err(err).
+			Int("instanceID", instance.ID).
+			Str("instanceName", instance.Name).
+			Str("torrentName", req.ParsedTorrent.Name).
+			Msg("dirscan: failed to build link plan")
+		return nil, "", humanizeLinkPlanError(err)
 	}
 
 	mode, err := i.createLinkTree(instance, selectedBaseDir, existingFiles, plan)
@@ -463,6 +469,33 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 	}
 
 	return plan, mode, nil
+}
+
+func humanizeLinkPlanError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	const prefix = "couldn't prepare linked files for this release"
+
+	var linkErr *hardlinktree.LinkPlanError
+	if !errors.As(err, &linkErr) {
+		return errors.New(prefix)
+	}
+
+	switch {
+	case errors.Is(err, hardlinktree.ErrNoMatchingFile):
+		file := linkErr.File
+		return fmt.Errorf("%s: no matching local source file was found for a required release file (%s). The local file may be missing, renamed, or a different size", prefix, file)
+	case errors.Is(err, hardlinktree.ErrNoAvailableFile):
+		file := linkErr.File
+		return fmt.Errorf("%s: no usable local source file remained for (%s)", prefix, file)
+	case errors.Is(err, hardlinktree.ErrCouldNotMatch):
+		file := linkErr.File
+		return fmt.Errorf("%s: couldn't map a required release file to a local source file (%s)", prefix, file)
+	default:
+		return errors.New(prefix)
+	}
 }
 
 func (i *Injector) resolveTrackerDisplayName(ctx context.Context, incomingTrackerDomain, indexerName string) string {

@@ -110,6 +110,7 @@ function FilterBadge({ count, onClick }: FilterBadgeProps) {
 interface FilterSidebarProps {
   instanceId: number
   readOnly?: boolean
+  supportsTrackerHealth?: boolean
   selectedFilters: TorrentFilters
   onFilterChange: (filters: TorrentFilters) => void
   torrentCounts?: Record<string, number>
@@ -178,6 +179,7 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
 const FilterSidebarComponent = ({
   instanceId,
   readOnly = false,
+  supportsTrackerHealth: supportsTrackerHealthProp,
   selectedFilters,
   onFilterChange,
   torrentCounts,
@@ -205,7 +207,7 @@ const FilterSidebarComponent = ({
     instanceId,
     { enabled: isConcreteInstanceScope && isInstanceActive }
   )
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
+  const supportsTrackerHealth = supportsTrackerHealthProp ?? capabilities?.supportsTrackerHealth ?? false
   const supportsTrackerEditing = !isReadOnly && (capabilities?.supportsTrackerEditing ?? false)
   const supportsSubcategories = isConcreteInstanceScope
     ? (capabilities?.supportsSubcategories ?? false)
@@ -3133,6 +3135,7 @@ export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps)
   if (prevProps.isLoading !== nextProps.isLoading) return false
   if (prevProps.isMobile !== nextProps.isMobile) return false
   if ((prevProps.readOnly ?? false) !== (nextProps.readOnly ?? false)) return false
+  if ((prevProps.supportsTrackerHealth ?? false) !== (nextProps.supportsTrackerHealth ?? false)) return false
   if (prevProps.onFilterChange !== nextProps.onFilterChange) return false
   if ((prevProps.useSubcategories ?? false) !== (nextProps.useSubcategories ?? false)) return false
 
