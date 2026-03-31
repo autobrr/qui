@@ -505,7 +505,7 @@ func (s *Service) getMetadataService(ctx context.Context) *metadata.Service {
 		return svc
 	}
 
-	fingerprint := apiKey + ":" + pin
+	fingerprint := fmt.Sprintf("%d:%s%s", len(apiKey), apiKey, pin)
 
 	// Fast path: credentials unchanged, read lock only.
 	s.metadataMu.RLock()
