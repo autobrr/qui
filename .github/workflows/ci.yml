@@ -1,0 +1,253 @@
+name: CI
+
+on:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  lint-web:
+    name: Lint frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22.18.0"
+
+      - uses: pnpm/action-setup@v5
+        with:
+          version: latest
+
+      - name: Install dependencies
+        working-directory: web
+        run: pnpm install
+
+      - name: Lint frontend
+        run: |
+          webfiles=$({ git diff --name-only --diff-filter=d "origin/develop"...HEAD -- 'web/'; } | sort -u | sed 's|^web/||' | grep -E '\.(ts|tsx|js|jsx)$' || true)
+          if [ -n "$webfiles" ]; then echo "$webfiles" | xargs pnpm --dir web eslint; else echo "No frontend files to lint."; fi
+
+  lint-backend:
+    name: Lint backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+          cache: true
+
+      - name: Check gofix drift
+        run: |
+          gofiles=$({ git diff --name-only --diff-filter=d "origin/develop"...HEAD; } | sort -u | grep '\.go$' || true)
+          if [ -z "$gofiles" ]; then
+            echo "No backend files to check with go fix."
+            exit 0
+          fi
+
+          gopkgs=$(printf '%s\n' "$gofiles" | xargs -n 1 dirname | sort -u)
+          tmp=$(mktemp)
+          failed=0
+          while IFS= read -r pkg; do
+            [ -n "$pkg" ] || continue
+            pkg_err=$(mktemp)
+            if ! go fix -diff "./$pkg" >> "$tmp" 2> "$pkg_err"; then
+              if grep -Eq 'fix: .* skipped \(e\.g\. due to conflicts\)' "$pkg_err"; then
+                echo "go fix reported skipped fixes for ./$pkg; continuing."
+              else
+                echo "go fix failed for ./$pkg:"
+                cat "$pkg_err"
+                failed=1
+              fi
+            fi
+            rm -f "$pkg_err"
+          done <<< "$gopkgs"
+
+          if [ "$failed" -ne 0 ]; then
+            rm -f "$tmp"
+            exit 1
+          fi
+
+          if [ -s "$tmp" ]; then
+            echo "go fix changes required for changed Go files:"
+            cat "$tmp"
+            rm -f "$tmp"
+            exit 1
+          fi
+
+          rm -f "$tmp"
+          echo "go fix check clean."
+
+      - name: Lint backend
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11.1
+          only-new-issues: true
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: qui
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d qui"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests
+        env:
+          QUI_TEST_POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/qui?sslmode=disable
+        run: go test -race -v -timeout 20m ./internal/database -run TestOpenPostgres
+
+  web:
+    name: Build web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web frontend
+        working-directory: web
+        run: CI= pnpm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+
+  docker:
+    name: Build (${{ matrix.slug }})
+    runs-on: ubuntu-latest
+    needs: web
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            slug: amd64
+          - platform: linux/arm64
+            slug: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.slug == 'arm64'
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.IMAGE_NAME }}
+
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          file: distrib/docker/ci.Dockerfile
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.slug }}
+          cache-to: type=gha,scope=${{ matrix.slug }},mode=max
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            REVISION=${{ github.sha }}
+            BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          provenance: false
+
+      - name: Export image digest
+        id: digest-prep
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          echo "manifest-hash=${digest#sha256:}" >> "$GITHUB_OUTPUT"
+          touch "/tmp/digests/${digest#sha256:}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-digest-${{ steps.digest-prep.outputs.manifest-hash }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  publish:
+    name: Publish multi-arch image
+    runs-on: ubuntu-latest
+    needs: [lint-web, lint-backend, test, docker]
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: docker-digest-*
+          merge-multiple: true
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.IMAGE_NAME }}@sha256:%s ' *)
