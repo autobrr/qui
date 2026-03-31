@@ -2556,6 +2556,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="category">Category</SelectItem>
                         <SelectItem value="move">Move</SelectItem>
                         <SelectItem value="externalProgram">Run external program</SelectItem>
+                        <SelectItem value="autoManagement">Auto management</SelectItem>
                         <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete (standalone only)</SelectItem>
                       </SelectContent>
                     </Select>
