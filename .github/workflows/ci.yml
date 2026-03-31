@@ -39,9 +39,10 @@ jobs:
         run: pnpm install
 
       - name: Lint frontend
+        working-directory: web
         run: |
-          webfiles=$({ git diff --name-only --diff-filter=d "origin/develop"...HEAD -- 'web/'; } | sort -u | sed 's|^web/||' | grep -E '\.(ts|tsx|js|jsx)$' || true)
-          if [ -n "$webfiles" ]; then echo "$webfiles" | xargs pnpm -C web eslint; else echo "No frontend files to lint."; fi
+          webfiles=$({ git -C .. diff --name-only --diff-filter=d "origin/develop"...HEAD -- 'web/'; } | sort -u | sed 's|^web/||' | grep -E '\.(ts|tsx|js|jsx)$' || true)
+          if [ -n "$webfiles" ]; then echo "$webfiles" | xargs pnpm eslint; else echo "No frontend files to lint."; fi
 
   lint-backend:
     name: Lint backend
