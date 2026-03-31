@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -894,21 +895,35 @@ func (s *DirScanStore) pruneRunHistoryForDirectory(ctx context.Context, director
 		return nil
 	}
 
-	_, err := s.db.ExecContext(ctx, `
+	_, err := s.db.ExecContext(ctx, pruneRunHistoryForDirectoryQuery(dbinterface.DialectOf(s.db)),
+		directoryID, directoryID, limit)
+	if err != nil {
+		return fmt.Errorf("delete old runs: %w", err)
+	}
+
+	return nil
+}
+
+func pruneRunHistoryForDirectoryQuery(dialect string) string {
+	base := `
 		DELETE FROM dir_scan_runs
 		WHERE directory_id = ?
 		  AND id IN (
 			  SELECT id FROM dir_scan_runs
 			  WHERE directory_id = ?
 			  ORDER BY started_at DESC, id DESC
-			  LIMIT -1 OFFSET ?
+	`
+	if strings.EqualFold(strings.TrimSpace(dialect), "postgres") {
+		return base + `
+			  OFFSET ?
 		  )
-	`, directoryID, directoryID, limit)
-	if err != nil {
-		return fmt.Errorf("delete old runs: %w", err)
+		`
 	}
 
-	return nil
+	return base + `
+			  LIMIT -1 OFFSET ?
+		  )
+		`
 }
 
 func (s *DirScanStore) trimRunHistoryBestEffort(ctx context.Context, directoryID int) {
