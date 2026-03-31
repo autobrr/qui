@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"path"
 	"path/filepath"
 	"slices"
@@ -3876,12 +3877,8 @@ func buildNotifiedAutomationSummary(summary *automationSummary, rules []*models.
 		filtered.sampleTorrents = append([]string(nil), summary.sampleTorrents...)
 		filtered.sampleErrors = append([]string(nil), summary.sampleErrors...)
 		filtered.tagSamples = append([]string(nil), summary.tagSamples...)
-		for name, count := range summary.tagAddedByName {
-			filtered.tagAddedByName[name] = count
-		}
-		for name, count := range summary.tagRemovedByName {
-			filtered.tagRemovedByName[name] = count
-		}
+		maps.Copy(filtered.tagAddedByName, summary.tagAddedByName)
+		maps.Copy(filtered.tagRemovedByName, summary.tagRemovedByName)
 	}
 
 	return filtered
