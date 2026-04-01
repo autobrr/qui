@@ -232,6 +232,13 @@ export type ConditionField =
   | "ADDED_ON_AGE"
   | "COMPLETION_ON_AGE"
   | "LAST_ACTIVITY_AGE"
+  // System Time fields
+  | "SYSTEM_HOUR"
+  | "SYSTEM_MINUTE"
+  | "SYSTEM_DAY_OF_WEEK"
+  | "SYSTEM_DAY"
+  | "SYSTEM_MONTH"
+  | "SYSTEM_YEAR"
   // Numeric fields (float64)
   | "RATIO"
   | "RATIO_LIMIT"

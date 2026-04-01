@@ -745,6 +745,14 @@ const (
 	FieldExistsOnSameInstance   ConditionField = "EXISTS_ON_SAME_INSTANCE"
 	FieldSeedingOnSameInstance  ConditionField = "SEEDING_ON_SAME_INSTANCE"
 
+	// System time fields
+	FieldSystemHour      ConditionField = "SYSTEM_HOUR"
+	FieldSystemMinute    ConditionField = "SYSTEM_MINUTE"
+	FieldSystemDayOfWeek ConditionField = "SYSTEM_DAY_OF_WEEK"
+	FieldSystemDay       ConditionField = "SYSTEM_DAY"
+	FieldSystemMonth     ConditionField = "SYSTEM_MONTH"
+	FieldSystemYear      ConditionField = "SYSTEM_YEAR"
+
 	// Enum-like fields
 	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"
 )
@@ -757,7 +765,8 @@ func (f ConditionField) IsNumeric() bool {
 		FieldAddedOnAge, FieldCompletionOnAge, FieldLastActivityAge,
 		FieldRatio, FieldProgress, FieldAvailability,
 		FieldDlSpeed, FieldUpSpeed,
-		FieldNumSeeds, FieldNumLeechs, FieldNumComplete, FieldNumIncomplete, FieldTrackersCount:
+		FieldNumSeeds, FieldNumLeechs, FieldNumComplete, FieldNumIncomplete, FieldTrackersCount,
+		FieldSystemHour, FieldSystemMinute, FieldSystemDayOfWeek, FieldSystemDay, FieldSystemMonth, FieldSystemYear:
 		return true
 	default:
 		return false
