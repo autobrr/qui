@@ -364,7 +364,7 @@ function DirectoryCard({
 
   const handleCancel = useCallback(() => {
     cancelScan.mutate(undefined, {
-      onSuccess: () => toast.success("Scan canceled"),
+      onSuccess: () => toast.success("Scan canceled. Next run will recheck the directory and retry unfinished items."),
       onError: (error) => toast.error(`Failed to cancel scan: ${error.message}`),
     })
   }, [cancelScan])
@@ -681,7 +681,7 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
       <CardHeader className="flex flex-row items-start justify-between">
         <div>
           <CardTitle>Recent Scan Runs</CardTitle>
-          <CardDescription>History of recent scans for this directory.</CardDescription>
+          <CardDescription>Last 10 runs retained for this directory.</CardDescription>
         </div>
         <Button
           variant="outline"
@@ -742,8 +742,8 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
           <AlertDialogHeader>
             <AlertDialogTitle>Reset scan progress?</AlertDialogTitle>
             <AlertDialogDescription>
-              This deletes tracked dir-scan file state for this directory. The next scan will
-              re-process searchees from the beginning.
+              This deletes tracked dir-scan progress for this directory. The next scan will
+              recheck the directory and retry all items, including ones that were already finished.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -984,7 +984,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
               }
             />
             <p className="text-xs text-muted-foreground">
-              0 = unlimited. Useful for making progress across restarts.
+              0 = unlimited. Useful when you want large directories to finish over multiple runs: each run rechecks the directory, skips finished items, and retries unfinished ones.
             </p>
           </div>
 
