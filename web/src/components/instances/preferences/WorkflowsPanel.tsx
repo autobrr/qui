@@ -429,10 +429,10 @@ function RuleSummary({ rule }: { rule: Automation }) {
       )}
 
       {/* Auto management */}
-      {conditions?.autoManagement?.enabled && (
+      {conditions?.autoManagement != null && (
         <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-cyan-600 border-cyan-600/50 cursor-default">
           <Folder className="h-3 w-3" />
-          Auto management
+          {conditions.autoManagement.enabled ? "AutoTMM on" : "AutoTMM off"}
         </Badge>
       )}
 

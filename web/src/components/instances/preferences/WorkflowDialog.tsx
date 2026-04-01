@@ -202,6 +202,7 @@ function formatDryRunEventSummary(event: AutomationActivity): string {
     case "resumed":
     case "rechecked":
     case "reannounced":
+    case "auto_managed":
     case "external_program":
     case "deleted_ratio":
     case "deleted_seeding":

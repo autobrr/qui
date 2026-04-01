@@ -184,6 +184,8 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Recheck"
     case "reannounced":
       return "Reannounce"
+    case "auto_managed":
+      return "Auto management"
     case "moved":
       return "Move"
     case "external_program":
@@ -297,6 +299,7 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
   "resumed",
   "rechecked",
   "reannounced",
+  "auto_managed",
   "moved",
 ])
 
