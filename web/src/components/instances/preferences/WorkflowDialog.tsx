@@ -1084,7 +1084,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           recheckEnabled,
           reannounceEnabled,
           autoManagementEnabled,
-          autoManageMode: conditions.autoManagement?.enabled !== false ? "enable" : "disable",
+          autoManageMode: conditions?.autoManagement?.enabled !== false ? "enable" : "disable",
           deleteEnabled,
           tagEnabled,
           categoryEnabled,
