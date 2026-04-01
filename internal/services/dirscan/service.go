@@ -161,6 +161,9 @@ func (s *Service) Start(ctx context.Context) error {
 	if err := s.recoverStuckRuns(); err != nil {
 		log.Error().Err(err).Msg("dirscan: failed to recover stuck runs")
 	}
+	if err := s.pruneLegacyRunHistory(); err != nil {
+		log.Error().Err(err).Msg("dirscan: failed to prune legacy run history")
+	}
 
 	s.schedulerCtx, s.schedulerCancel = context.WithCancel(ctx)
 	s.schedulerWg.Add(1)
@@ -1275,6 +1278,21 @@ func (s *Service) clearRunProgress(runID int64) {
 	s.progressMu.Lock()
 	delete(s.runProgress, runID)
 	s.progressMu.Unlock()
+}
+
+func (s *Service) pruneLegacyRunHistory() error {
+	if s == nil || s.store == nil {
+		return nil
+	}
+
+	pruneCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := s.store.PruneRunHistory(pruneCtx); err != nil {
+		return fmt.Errorf("prune run history: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Service) recoverStuckRuns() error {

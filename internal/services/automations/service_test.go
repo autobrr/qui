@@ -18,6 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/notifications"
 )
 
 // -----------------------------------------------------------------------------
@@ -1446,44 +1447,207 @@ func TestFindCrossSeedGroup(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
+// ruleUsesHardlinkSignatureGrouping tests
+// -----------------------------------------------------------------------------
+
+func TestRuleUsesHardlinkSignatureGrouping(t *testing.T) {
+	tests := []struct {
+		name string
+		rule *models.Automation
+		want bool
+	}{
+		{
+			name: "nil rule",
+			rule: nil,
+			want: false,
+		},
+		{
+			name: "disabled rule",
+			rule: &models.Automation{Enabled: false},
+			want: false,
+		},
+		{
+			name: "disabled preview rule still detects hardlink_signature condition usage",
+			rule: &models.Automation{
+				Enabled: false,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldIsGrouped,
+								GroupID: "hardlink_signature",
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "default group is hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Grouping: &models.GroupingConfig{
+						DefaultGroupID: "hardlink_signature",
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "delete action GroupID is hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Grouping: &models.GroupingConfig{},
+					Delete: &models.DeleteAction{
+						Enabled: true,
+						GroupID: "hardlink_signature",
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "tag condition uses IS_GROUPED with hardlink_signature, no grouping config",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldIsGrouped,
+								GroupID: "hardlink_signature",
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "tag condition uses GROUP_SIZE with hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldGroupSize,
+								GroupID: "hardlink_signature",
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "nested condition uses hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Operator: "AND",
+								Conditions: []*models.RuleCondition{
+									{
+										Field:   models.FieldIsGrouped,
+										GroupID: "hardlink_signature",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "tag condition with unrelated groupId",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldIsGrouped,
+								GroupID: "cross_seed_content_path",
+							},
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "no grouping references at all",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Delete: &models.DeleteAction{
+						Enabled: true,
+						Mode:    "delete",
+					},
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ruleUsesHardlinkSignatureGrouping(tc.rule)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
 // HardlinkIndex.GetHardlinkCopies tests
 // -----------------------------------------------------------------------------
 
 func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 	tests := []struct {
-		name             string
-		triggerHash      string
-		signatureByHash  map[string]string
-		groupBySignature map[string][]string
-		wantCopies       []string
+		name                      string
+		triggerHash               string
+		deleteSafeSignatureByHash map[string]string
+		deleteSafeGroupBySig      map[string][]string
+		wantCopies                []string
 	}{
 		{
 			name:        "trigger hash not in any group",
 			triggerHash: "not-found",
-			signatureByHash: map[string]string{
+			deleteSafeSignatureByHash: map[string]string{
 				"abc123": "sig1",
 				"def456": "sig1",
 			},
-			groupBySignature: map[string][]string{
+			deleteSafeGroupBySig: map[string][]string{
 				"sig1": {"abc123", "def456"},
 			},
 			wantCopies: nil,
 		},
 		{
-			name:             "trigger is only member of group (singleton filtered out)",
-			triggerHash:      "abc123",
-			signatureByHash:  map[string]string{}, // Singleton groups are filtered, so no entry
-			groupBySignature: map[string][]string{},
-			wantCopies:       nil,
+			name:                      "trigger is only member of group (singleton filtered out)",
+			triggerHash:               "abc123",
+			deleteSafeSignatureByHash: map[string]string{}, // Singleton groups are filtered, so no entry
+			deleteSafeGroupBySig:      map[string][]string{},
+			wantCopies:                nil,
 		},
 		{
 			name:        "trigger has one hardlink copy",
 			triggerHash: "abc123",
-			signatureByHash: map[string]string{
+			deleteSafeSignatureByHash: map[string]string{
 				"abc123": "sig1",
 				"def456": "sig1",
 			},
-			groupBySignature: map[string][]string{
+			deleteSafeGroupBySig: map[string][]string{
 				"sig1": {"abc123", "def456"},
 			},
 			wantCopies: []string{"def456"},
@@ -1491,12 +1655,12 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 		{
 			name:        "trigger has multiple hardlink copies",
 			triggerHash: "abc123",
-			signatureByHash: map[string]string{
+			deleteSafeSignatureByHash: map[string]string{
 				"abc123": "sig1",
 				"def456": "sig1",
 				"ghi789": "sig1",
 			},
-			groupBySignature: map[string][]string{
+			deleteSafeGroupBySig: map[string][]string{
 				"sig1": {"abc123", "def456", "ghi789"},
 			},
 			wantCopies: []string{"def456", "ghi789"},
@@ -1504,41 +1668,50 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 		{
 			name:        "multiple groups, trigger in second",
 			triggerHash: "xyz999",
-			signatureByHash: map[string]string{
+			deleteSafeSignatureByHash: map[string]string{
 				"abc123": "sig1",
 				"def456": "sig1",
 				"xyz999": "sig2",
 				"uvw888": "sig2",
 			},
-			groupBySignature: map[string][]string{
+			deleteSafeGroupBySig: map[string][]string{
 				"sig1": {"abc123", "def456"},
 				"sig2": {"xyz999", "uvw888"},
 			},
 			wantCopies: []string{"uvw888"},
 		},
 		{
-			name:             "nil index returns nil",
-			triggerHash:      "abc123",
-			signatureByHash:  nil,
-			groupBySignature: nil,
-			wantCopies:       nil,
+			name:                      "nil index returns nil",
+			triggerHash:               "abc123",
+			deleteSafeSignatureByHash: nil,
+			deleteSafeGroupBySig:      nil,
+			wantCopies:                nil,
 		},
 		{
-			name:             "empty index returns nil",
-			triggerHash:      "abc123",
-			signatureByHash:  map[string]string{},
-			groupBySignature: map[string][]string{},
-			wantCopies:       nil,
+			name:                      "empty index returns nil",
+			triggerHash:               "abc123",
+			deleteSafeSignatureByHash: map[string]string{},
+			deleteSafeGroupBySig:      map[string][]string{},
+			wantCopies:                nil,
+		},
+		{
+			name:                      "grouping-only signatures do not expand deletes",
+			triggerHash:               "abc123",
+			deleteSafeSignatureByHash: map[string]string{},
+			deleteSafeGroupBySig:      map[string][]string{},
+			wantCopies:                nil,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var idx *HardlinkIndex
-			if tc.signatureByHash != nil || tc.groupBySignature != nil {
+			if tc.deleteSafeSignatureByHash != nil || tc.deleteSafeGroupBySig != nil {
 				idx = &HardlinkIndex{
-					SignatureByHash:  tc.signatureByHash,
-					GroupBySignature: tc.groupBySignature,
+					SignatureByHash:            map[string]string{"abc123": "sig1", "def456": "sig1"},
+					GroupBySignature:           map[string][]string{"sig1": {"abc123", "def456"}},
+					DeleteSafeSignatureByHash:  tc.deleteSafeSignatureByHash,
+					DeleteSafeGroupBySignature: tc.deleteSafeGroupBySig,
 				}
 			}
 			got := idx.GetHardlinkCopies(tc.triggerHash)
@@ -1549,6 +1722,24 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSetupHardlinkSignatureContext_UsesDeleteSafeSignatures(t *testing.T) {
+	svc := &Service{}
+	evalCtx := &EvalContext{
+		HardlinkSignatureByHash: map[string]string{"abc123": "grouping-sig"},
+	}
+	hardlinkIndex := &HardlinkIndex{
+		SignatureByHash:           map[string]string{"abc123": "grouping-sig"},
+		DeleteSafeSignatureByHash: map[string]string{"abc123": "delete-sig"},
+	}
+	cond := &RuleCondition{Field: FieldFreeSpace}
+
+	svc.setupHardlinkSignatureContext(evalCtx, hardlinkIndex, cond, false, true)
+
+	require.Equal(t, map[string]string{"abc123": "grouping-sig"}, evalCtx.HardlinkSignatureByHash)
+	require.Equal(t, map[string]string{"abc123": "delete-sig"}, evalCtx.DeleteSafeHardlinkSignatureByHash)
+	require.NotNil(t, evalCtx.HardlinkSignaturesToClear)
 }
 
 // -----------------------------------------------------------------------------
@@ -2282,6 +2473,52 @@ func TestRecordDryRunActivities_NoMatches_DoesNotLogSummaryWhenDisabled(t *testi
 	require.Empty(t, mockDB.activities)
 }
 
+func TestNotifyAutomationSummaryFiltersSuppressedRules(t *testing.T) {
+	t.Parallel()
+
+	notifier := &automationRecordingNotifier{}
+	s := &Service{notifier: notifier}
+
+	summary := newAutomationSummary()
+	notifyRuleID := 42
+	suppressedRuleID := 43
+
+	summary.recordActivity(&models.AutomationActivity{
+		RuleID:      &notifyRuleID,
+		RuleName:    "Notify me",
+		Action:      models.ActivityActionMoved,
+		Outcome:     models.ActivityOutcomeSuccess,
+		TorrentName: "Notify.Release.2026",
+	}, 1)
+	summary.recordActivity(&models.AutomationActivity{
+		RuleID:      &suppressedRuleID,
+		RuleName:    "Suppress me",
+		Action:      models.ActivityActionMoved,
+		Outcome:     models.ActivityOutcomeFailed,
+		TorrentName: "Suppressed.Release.2026",
+		Reason:      "permission denied",
+	}, 1)
+
+	s.notifyAutomationSummary(context.Background(), 1, summary, []*models.Automation{
+		{ID: notifyRuleID, Notify: true},
+		{ID: suppressedRuleID, Notify: false},
+	})
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+
+	event := events[0]
+	require.Equal(t, notifications.EventAutomationsActionsApplied, event.Type)
+	require.Equal(t, 1, event.Automations.Applied)
+	require.Equal(t, 0, event.Automations.Failed)
+	require.Len(t, event.Automations.Rules, 1)
+	require.Equal(t, notifyRuleID, event.Automations.Rules[0].RuleID)
+	require.Equal(t, "Notify me", event.Automations.Rules[0].RuleName)
+	require.NotContains(t, event.Message, "Suppress me")
+	require.NotContains(t, event.Message, "permission denied")
+	require.NotContains(t, event.Message, "Suppressed.Release.2026")
+}
+
 // mockQuerier implements dbinterface.Querier for testing activity logging
 type mockQuerier struct {
 	activities []*models.AutomationActivity
@@ -2324,3 +2561,17 @@ type mockResult struct{}
 
 func (m mockResult) LastInsertId() (int64, error) { return 0, nil }
 func (m mockResult) RowsAffected() (int64, error) { return 1, nil }
+
+type automationRecordingNotifier struct {
+	events []notifications.Event
+}
+
+func (r *automationRecordingNotifier) Notify(_ context.Context, event notifications.Event) {
+	r.events = append(r.events, event)
+}
+
+func (r *automationRecordingNotifier) Events() []notifications.Event {
+	out := make([]notifications.Event, len(r.events))
+	copy(out, r.events)
+	return out
+}
