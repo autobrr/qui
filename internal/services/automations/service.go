@@ -22,6 +22,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/releases"
@@ -499,6 +500,18 @@ func DefaultConfig() Config {
 	}
 }
 
+// CrossMatchNeeds specifies which cross-match sets to compute.
+type CrossMatchNeeds = crossseed.CrossMatchNeeds
+
+// CrossMatchResult contains all cross-match sets for a given instance.
+type CrossMatchResult = crossseed.CrossMatchResult
+
+// CrossMatcher provides cross-seed torrent matching using content-aware
+// strategies (content path, name, release metadata) — the same logic as "Filter Cross-Seeds".
+type CrossMatcher interface {
+	BuildCrossMatchSets(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) *CrossMatchResult
+}
+
 // Service periodically applies automation rules to torrents for all active instances.
 type Service struct {
 	cfg                       Config
@@ -509,6 +522,7 @@ type Service struct {
 	syncManager               *qbittorrent.SyncManager
 	notifier                  notifications.Notifier
 	externalProgramService    *externalprograms.Service // for executing external programs
+	crossMatcher              CrossMatcher
 	activityRuns              *activityRunStore
 	releaseParser             *releases.Parser
 
@@ -520,7 +534,7 @@ type Service struct {
 	mu                    sync.RWMutex
 }
 
-func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher) *Service {
 	if cfg.ScanInterval <= 0 {
 		cfg.ScanInterval = DefaultConfig().ScanInterval
 	}
@@ -548,6 +562,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		syncManager:               syncManager,
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
+		crossMatcher:              crossMatcher,
 		activityRuns:              newActivityRunStore(cfg.ActivityRunRetention, cfg.ActivityRunMax),
 		releaseParser:             releases.NewDefaultParser(),
 		lastApplied:               make(map[int]map[string]time.Time),
@@ -849,6 +864,26 @@ func (s *Service) initPreviewEvalContext(ctx context.Context, instanceID int, to
 	return evalCtx, instance
 }
 
+// setupPreviewCrossMatchContext populates all cross-match hash sets (same-instance
+// and other-instance) in evalCtx based on which fields the condition or sorting config uses.
+func (s *Service) setupPreviewCrossMatchContext(ctx context.Context, instanceID int, rule *models.Automation, cond *RuleCondition, evalCtx *EvalContext) {
+	if evalCtx == nil || rule == nil {
+		return
+	}
+
+	needs := CrossMatchNeeds{
+		SameExists:   ConditionUsesField(cond, FieldExistsOnSameInstance) || sortingConfigUsesField(rule.SortingConfig, FieldExistsOnSameInstance),
+		SameSeeding:  ConditionUsesField(cond, FieldSeedingOnSameInstance) || sortingConfigUsesField(rule.SortingConfig, FieldSeedingOnSameInstance),
+		OtherExists:  ConditionUsesField(cond, FieldExistsOnOtherInstance) || sortingConfigUsesField(rule.SortingConfig, FieldExistsOnOtherInstance),
+		OtherSeeding: ConditionUsesField(cond, FieldSeedingOnOtherInstance) || sortingConfigUsesField(rule.SortingConfig, FieldSeedingOnOtherInstance),
+	}
+	if !needs.SameExists && !needs.SameSeeding && !needs.OtherExists && !needs.OtherSeeding {
+		return
+	}
+
+	s.applyCrossMatchResult(evalCtx, s.buildCrossMatchSets(ctx, instanceID, needs))
+}
+
 func (s *Service) setupPreviewTrackerDisplayNames(ctx context.Context, instanceID int, cond *RuleCondition, evalCtx *EvalContext) {
 	if evalCtx == nil || cond == nil || evalCtx.TrackerDisplayNameByDomain != nil {
 		return
@@ -920,6 +955,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil {
 		deleteCondition = rule.Conditions.Delete.Condition
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Delete.Condition, evalCtx)
+		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, rule.Conditions.Delete.Condition, evalCtx)
 	}
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx, instance)
@@ -1521,6 +1557,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
 	if rule != nil && rule.Conditions != nil && rule.Conditions.Category != nil {
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Category.Condition, evalCtx)
+		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, rule.Conditions.Category.Condition, evalCtx)
 	}
 	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx, instance)
@@ -1948,6 +1985,17 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// On-demand missing files detection (only if rules use HAS_MISSING_FILES and instance has local access)
 	if instance.HasLocalFilesystemAccess && rulesUseCondition(eligibleRules, FieldHasMissingFiles) {
 		evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
+	}
+
+	// On-demand cross-match lookup (same-instance and other-instance cross-seed detection)
+	needs := CrossMatchNeeds{
+		SameExists:   rulesUseCondition(eligibleRules, FieldExistsOnSameInstance),
+		SameSeeding:  rulesUseCondition(eligibleRules, FieldSeedingOnSameInstance),
+		OtherExists:  rulesUseCondition(eligibleRules, FieldExistsOnOtherInstance),
+		OtherSeeding: rulesUseCondition(eligibleRules, FieldSeedingOnOtherInstance),
+	}
+	if needs.SameExists || needs.SameSeeding || needs.OtherExists || needs.OtherSeeding {
+		s.applyCrossMatchResult(evalCtx, s.buildCrossMatchSets(ctx, instanceID, needs))
 	}
 
 	// Get free space on instance (only if rules use FREE_SPACE field)
@@ -4612,6 +4660,33 @@ func rulesUseIncludeHardlinks(rules []*models.Automation) bool {
 		}
 	}
 	return false
+}
+
+// buildCrossMatchSets delegates to the CrossMatcher to build all cross-match sets.
+func (s *Service) buildCrossMatchSets(ctx context.Context, instanceID int, needs CrossMatchNeeds) *CrossMatchResult {
+	if s.crossMatcher != nil {
+		return s.crossMatcher.BuildCrossMatchSets(ctx, instanceID, needs)
+	}
+	return &CrossMatchResult{}
+}
+
+// applyCrossMatchResult populates the EvalContext with cross-match hash sets.
+func (s *Service) applyCrossMatchResult(evalCtx *EvalContext, result *CrossMatchResult) {
+	if result == nil {
+		return
+	}
+	if result.SameInstanceExists != nil {
+		evalCtx.SameInstanceCrossSeedHashSet = result.SameInstanceExists
+	}
+	if result.SameInstanceSeeding != nil {
+		evalCtx.SameInstanceCrossSeedSeedingHashSet = result.SameInstanceSeeding
+	}
+	if result.OtherInstanceExists != nil {
+		evalCtx.CrossInstanceHashSet = result.OtherInstanceExists
+	}
+	if result.OtherInstanceSeeding != nil {
+		evalCtx.CrossInstanceSeedingHashSet = result.OtherInstanceSeeding
+	}
 }
 
 // rulesNeedHardlinkSignatureMap checks if any rule uses FREE_SPACE + includeHardlinks
