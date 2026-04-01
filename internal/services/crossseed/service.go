@@ -599,6 +599,10 @@ func (s *Service) FindLocalMatches(ctx context.Context, sourceInstanceID int, so
 // FindDeleteAffectedMatches returns same-instance file-sharing matches for delete expansion.
 // Uses strict mode so ambiguous overlap verification failures bubble up instead of
 // silently omitting affected torrents from delete workflows.
+//
+// Limitation: this only checks the source instance. If multiple instances on the same
+// machine have torrents pointing to the same path on disk, those cross-instance matches
+// are not detected here.
 func (s *Service) FindDeleteAffectedMatches(ctx context.Context, sourceInstanceID int, sourceHash string) ([]LocalMatch, error) {
 	sourceInstance, err := s.instanceStore.Get(ctx, sourceInstanceID)
 	if err != nil {

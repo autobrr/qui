@@ -616,6 +616,10 @@ Automations detect cross-seeded torrents (same content/files) and can handle the
 - **Category Rules** - Enable "Include Cross-Seeds" to move related torrents together
 - **Blocking** - Prevent category moves if cross-seeds are in protected categories
 
+:::warning
+Cross-seed detection for delete operations is scoped to the instance being processed. If you run multiple qBittorrent instances on the same machine and they have torrents pointing to the same files on disk, deleting with files on one instance will not detect or warn about the affected torrents on other instances.
+:::
+
 ### Hardlink Detection
 
 The `HARDLINK_SCOPE` field lets automations distinguish between torrents whose files are hardlinked into an external library (Sonarr, Radarr, etc.) and torrents that exist only within qBittorrent. This is the foundation for safe "Remove Upgraded Torrents" automations.
