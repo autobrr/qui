@@ -4628,6 +4628,9 @@ func actionConditionsUseField(ac *models.ActionConditions, field ConditionField)
 	if ac.Reannounce != nil && ac.Reannounce.Enabled {
 		conds = append(conds, ac.Reannounce.Condition)
 	}
+	if ac.AutoManagement != nil {
+		conds = append(conds, ac.AutoManagement.Condition)
+	}
 	if ac.Delete != nil && ac.Delete.Enabled {
 		conds = append(conds, ac.Delete.Condition)
 	}
