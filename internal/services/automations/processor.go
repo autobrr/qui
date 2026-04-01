@@ -399,12 +399,12 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			if stats != nil {
 				stats.AutoManageApplied++
 			}
-			// Only act if the current state differs from the desired state
-			if torrent.AutoManaged != conditions.AutoManagement.Enabled {
-				state.shouldAutoManage = true
-				state.autoManageValue = conditions.AutoManagement.Enabled
-				state.autoManageRule = ruleRef{id: rule.ID, name: rule.Name}
-			}
+			// Always record the last matching rule's desired state so later
+			// rules can override earlier ones (last rule wins). The actual
+			// API call is skipped when the torrent already has the desired state.
+			state.autoManageValue = conditions.AutoManagement.Enabled
+			state.autoManageRule = ruleRef{id: rule.ID, name: rule.Name}
+			state.shouldAutoManage = torrent.AutoManaged != state.autoManageValue
 		} else if stats != nil {
 			stats.AutoManageConditionNotMet++
 		}
