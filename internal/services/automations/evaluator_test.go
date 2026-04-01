@@ -606,6 +606,37 @@ func TestEvaluateCondition_SystemTimeFields(t *testing.T) {
 			cond:     &RuleCondition{Field: models.FieldSystemYear, Operator: OperatorEqual, Value: "2025"},
 			expected: true,
 		},
+		// False cases: verify non-matching values are rejected
+		{
+			name:     "system hour not equal",
+			cond:     &RuleCondition{Field: models.FieldSystemHour, Operator: OperatorEqual, Value: "9"},
+			expected: false,
+		},
+		{
+			name:     "system minute not greater than",
+			cond:     &RuleCondition{Field: models.FieldSystemMinute, Operator: OperatorGreaterThan, Value: "45"},
+			expected: false,
+		},
+		{
+			name:     "system day of week not Saturday",
+			cond:     &RuleCondition{Field: models.FieldSystemDayOfWeek, Operator: OperatorEqual, Value: "6"},
+			expected: false,
+		},
+		{
+			name:     "system day less than actual",
+			cond:     &RuleCondition{Field: models.FieldSystemDay, Operator: OperatorLessThan, Value: "10"},
+			expected: false,
+		},
+		{
+			name:     "system month not equal",
+			cond:     &RuleCondition{Field: models.FieldSystemMonth, Operator: OperatorEqual, Value: "3"},
+			expected: false,
+		},
+		{
+			name:     "system year not equal",
+			cond:     &RuleCondition{Field: models.FieldSystemYear, Operator: OperatorEqual, Value: "2024"},
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
