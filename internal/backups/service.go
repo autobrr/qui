@@ -34,6 +34,7 @@ import (
 var (
 	// ErrInstanceBusy is returned when a backup is already running for the instance.
 	ErrInstanceBusy = errors.New("backup already running for this instance")
+	removeFile      = os.Remove
 )
 
 // Config controls background backup scheduling.
@@ -58,12 +59,16 @@ type missingTorrent struct {
 }
 
 type Service struct {
-	store       *models.BackupStore
-	syncManager *qbittorrent.SyncManager
-	jackettSvc  *jackett.Service
-	notifier    notifications.Notifier
-	cfg         Config
-	cacheDir    string
+	store          *models.BackupStore
+	reader         backupReader
+	tracker        backupTrackerSource
+	categoryWriter backupCategoryMutator
+	tagWriter      backupTagMutator
+	torrentWriter  backupTorrentMutator
+	jackettSvc     *jackett.Service
+	notifier       notifications.Notifier
+	cfg            Config
+	cacheDir       string
 
 	jobs   chan job
 	wg     sync.WaitGroup
@@ -78,6 +83,33 @@ type Service struct {
 	progressMu sync.RWMutex
 
 	now func() time.Time
+}
+
+type backupReader interface {
+	GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
+	GetTags(ctx context.Context, instanceID int) ([]string, error)
+	GetInstanceWebAPIVersion(ctx context.Context, instanceID int) (string, error)
+	ExportTorrent(ctx context.Context, instanceID int, hash string) ([]byte, string, string, error)
+}
+
+type backupCategoryMutator interface {
+	CreateCategory(ctx context.Context, instanceID int, name string, path string) error
+	EditCategory(ctx context.Context, instanceID int, name string, path string) error
+	RemoveCategories(ctx context.Context, instanceID int, categories []string) error
+}
+
+type backupTagMutator interface {
+	CreateTags(ctx context.Context, instanceID int, tags []string) error
+	DeleteTags(ctx context.Context, instanceID int, tags []string) error
+}
+
+type backupTorrentMutator interface {
+	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
+	SetCategory(ctx context.Context, instanceID int, hashes []string, category string) error
+	SetTags(ctx context.Context, instanceID int, hashes []string, tags string) error
+	ResumeWhenComplete(instanceID int, hashes []string, opts qbittorrent.ResumeWhenCompleteOptions)
+	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 }
 
 type job struct {
@@ -110,7 +142,7 @@ type ManifestItem struct {
 	TorrentBlob string   `json:"torrentBlob,omitempty"`
 }
 
-func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager, jackettSvc any, cfg Config, notifier notifications.Notifier) *Service {
+func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, cfg Config, notifier notifications.Notifier) *Service {
 	if cfg.WorkerCount <= 0 {
 		cfg.WorkerCount = 1
 	}
@@ -137,18 +169,32 @@ func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager,
 		_ = svc // TODO: jackettService = svc when jackett fallback is re-enabled
 	}
 
-	return &Service{
-		store:       store,
-		syncManager: syncManager,
-		jackettSvc:  jackettService,
-		notifier:    notifier,
-		cfg:         cfg,
-		cacheDir:    cacheDir,
-		jobs:        make(chan job, cfg.WorkerCount*2),
-		inflight:    make(map[int]int64),
-		progress:    make(map[int64]*BackupProgress),
-		now:         func() time.Time { return time.Now().UTC() },
+	svc := &Service{
+		store:      store,
+		reader:     reader,
+		jackettSvc: jackettService,
+		notifier:   notifier,
+		cfg:        cfg,
+		cacheDir:   cacheDir,
+		jobs:       make(chan job, cfg.WorkerCount*2),
+		inflight:   make(map[int]int64),
+		progress:   make(map[int64]*BackupProgress),
+		now:        func() time.Time { return time.Now().UTC() },
 	}
+	if tracker, ok := reader.(backupTrackerSource); ok {
+		svc.tracker = tracker
+	}
+	if writer, ok := reader.(backupCategoryMutator); ok {
+		svc.categoryWriter = writer
+	}
+	if writer, ok := reader.(backupTagMutator); ok {
+		svc.tagWriter = writer
+	}
+	if writer, ok := reader.(backupTorrentMutator); ok {
+		svc.torrentWriter = writer
+	}
+
+	return svc
 }
 
 func normalizeBackupSettings(settings *models.BackupSettings) bool {
@@ -447,7 +493,7 @@ func (s *Service) worker(ctx context.Context) {
 }
 
 func (s *Service) handleJob(ctx context.Context, j job) {
-	if s.syncManager == nil {
+	if s.reader == nil {
 		now := s.now()
 		msg := "sync manager not configured"
 		_ = s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
@@ -562,6 +608,14 @@ type backupResult struct {
 	tags            []string
 }
 
+func shouldSkipLiveExportForBackup(torrent qbt.Torrent, hasCachedBlob bool, cacheErr error) bool {
+	if hasCachedBlob || cacheErr != nil {
+		return false
+	}
+
+	return strings.TrimSpace(torrent.InfohashV1) != "" && strings.TrimSpace(torrent.InfohashV2) != ""
+}
+
 func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, error) {
 	settings, err := s.store.GetSettings(ctx, j.instanceID)
 	if err != nil {
@@ -569,7 +623,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}
 	s.normalizeAndPersistSettings(ctx, settings)
 
-	torrents, err := s.syncManager.GetAllTorrents(ctx, j.instanceID)
+	torrents, err := s.reader.GetAllTorrents(ctx, j.instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load torrents: %w", err)
 	}
@@ -591,7 +645,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 	var snapshotCategories map[string]models.CategorySnapshot
 	if settings.IncludeCategories {
-		categories, err := s.syncManager.GetCategories(ctx, j.instanceID)
+		categories, err := s.reader.GetCategories(ctx, j.instanceID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load categories: %w", err)
 		}
@@ -605,7 +659,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 	var snapshotTags []string
 	if settings.IncludeTags {
-		tags, err := s.syncManager.GetTags(ctx, j.instanceID)
+		tags, err := s.reader.GetTags(ctx, j.instanceID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load tags: %w", err)
 		}
@@ -619,7 +673,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 	webAPIVersion := ""
 	patchTrackers := false
-	if version, err := s.syncManager.GetInstanceWebAPIVersion(ctx, j.instanceID); err != nil {
+	if version, err := s.reader.GetInstanceWebAPIVersion(ctx, j.instanceID); err != nil {
 		log.Debug().Err(err).Int("instanceID", j.instanceID).Msg("Unable to determine qBittorrent API version for tracker patching")
 	} else {
 		webAPIVersion = version
@@ -671,9 +725,9 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			blobRelPath   *string
 		)
 
-		cachedTorrent, err := s.loadCachedTorrent(ctx, j.instanceID, torrent.Hash)
-		if err != nil {
-			log.Warn().Err(err).Str("hash", torrent.Hash).Msg("Failed to load cached torrent blob")
+		cachedTorrent, cacheErr := s.loadCachedTorrent(ctx, j.instanceID, torrent.Hash)
+		if cacheErr != nil {
+			log.Warn().Err(cacheErr).Str("hash", torrent.Hash).Msg("Failed to load cached torrent blob")
 		}
 		if cachedTorrent != nil {
 			data = cachedTorrent.data
@@ -684,12 +738,21 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		}
 
 		if data == nil {
+			if shouldSkipLiveExportForBackup(torrent, cachedTorrent != nil, cacheErr) {
+				log.Warn().
+					Str("hash", torrent.Hash).
+					Str("name", torrent.Name).
+					Int("instanceID", j.instanceID).
+					Msg("Skipping torrent export; live qBittorrent export disabled for hybrid torrents")
+				s.updateProgress(j.runID, idx+1)
+				continue
+			}
 			if err := adaptiveExportDelay(ctx, s.cfg.ExportThrottle, lastExportElapsed); err != nil {
 				return nil, err
 			}
 			exportStart := time.Now()
 			var tracker string
-			data, suggestedName, tracker, err = s.syncManager.ExportTorrent(ctx, j.instanceID, torrent.Hash)
+			data, suggestedName, tracker, err = s.reader.ExportTorrent(ctx, j.instanceID, torrent.Hash)
 			lastExportElapsed = time.Since(exportStart)
 			if err != nil {
 				if isExportMetadataUnavailable(err) {
@@ -708,7 +771,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		}
 
 		if patchTrackers {
-			trackers := gatherTrackerURLs(ctx, s.syncManager, j.instanceID, torrent)
+			trackers := gatherTrackerURLs(ctx, s.tracker, j.instanceID, torrent)
 			if patched, changed, err := patchTorrentTrackers(data, trackers); err != nil {
 				log.Warn().Err(err).Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Msg("Failed to patch exported torrent trackers")
 			} else if changed {
@@ -1585,7 +1648,7 @@ func (s *Service) copyTorrentFromTemp(srcPath, destPath string) error {
 
 // downloadMissingTorrents downloads torrent blobs in the background for imported manifests
 func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing []missingTorrent) {
-	if s.syncManager == nil {
+	if s.reader == nil {
 		log.Warn().Int64("runID", runID).Msg("No sync manager available for background torrent downloads")
 		s.markImportComplete(runID)
 		return
@@ -1623,7 +1686,7 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		if data, _, _, err := s.syncManager.ExportTorrent(ctx, instanceID, mt.hash); err == nil {
+		if data, _, _, err := s.reader.ExportTorrent(ctx, instanceID, mt.hash); err == nil {
 			// Ensure directory exists
 			if err := os.MkdirAll(filepath.Dir(mt.absPath), 0o755); err != nil {
 				log.Error().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Failed to create directory for torrent blob")
@@ -1839,22 +1902,16 @@ func (s *Service) deleteFilesParallel(ctx context.Context, paths []string) {
 		return
 	}
 
-	var wg sync.WaitGroup
-	for _, p := range paths {
-		wg.Add(1)
-		go func(path string) {
-			defer wg.Done()
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-				log.Warn().Err(err).Str("path", path).Msg("Failed to remove file during bulk cleanup")
-			}
-		}(p)
+	for _, path := range paths {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		if err := removeFile(path); err != nil && !os.IsNotExist(err) {
+			log.Warn().Err(err).Str("path", path).Msg("Failed to remove file during bulk cleanup")
+		}
 	}
-	wg.Wait()
 }
 
 func trackerDomainFromTorrent(t qbt.Torrent) string {

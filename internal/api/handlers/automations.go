@@ -45,6 +45,7 @@ type AutomationPayload struct {
 	TrackerDomains  []string                 `json:"trackerDomains"`
 	Enabled         *bool                    `json:"enabled"`
 	DryRun          *bool                    `json:"dryRun"`
+	Notify          *bool                    `json:"notify"`
 	SortOrder       *int                     `json:"sortOrder"`
 	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
 	Conditions      *models.ActionConditions `json:"conditions"`
@@ -82,6 +83,7 @@ func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 		SortingConfig:   p.SortingConfig,
 		Enabled:         true,
 		DryRun:          false,
+		Notify:          true,
 		IntervalSeconds: p.IntervalSeconds,
 	}
 	if p.Enabled != nil {
@@ -89,6 +91,9 @@ func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 	}
 	if p.DryRun != nil {
 		automation.DryRun = *p.DryRun
+	}
+	if p.Notify != nil {
+		automation.Notify = *p.Notify
 	}
 	if p.SortOrder != nil {
 		automation.SortOrder = *p.SortOrder

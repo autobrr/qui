@@ -13,14 +13,16 @@ import (
 	"github.com/anacrolix/torrent/bencode"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
-
-	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 var trackerPatchWebAPIVersions = map[string]struct{}{
 	"2.9.1": {},
 	"2.9.2": {},
 	"2.9.3": {},
+}
+
+type backupTrackerSource interface {
+	GetTorrentTrackers(ctx context.Context, instanceID int, hash string) ([]qbt.TorrentTracker, error)
 }
 
 // patchTorrentTrackers ensures the exported .torrent includes tracker metadata.
@@ -104,7 +106,7 @@ func firstTracker(trackers []string) string {
 	return ""
 }
 
-func gatherTrackerURLs(ctx context.Context, sm *qbittorrent.SyncManager, instanceID int, torrent qbt.Torrent) []string {
+func gatherTrackerURLs(ctx context.Context, sm backupTrackerSource, instanceID int, torrent qbt.Torrent) []string {
 	seen := make(map[string]struct{})
 	var trackers []string
 
@@ -124,7 +126,7 @@ func gatherTrackerURLs(ctx context.Context, sm *qbittorrent.SyncManager, instanc
 		appendTracker(tr.Url)
 	}
 
-	if len(trackers) == 0 {
+	if len(trackers) == 0 && sm != nil {
 		extra, err := sm.GetTorrentTrackers(ctx, instanceID, torrent.Hash)
 		if err == nil {
 			for _, tr := range extra {
