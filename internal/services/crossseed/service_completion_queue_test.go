@@ -516,6 +516,68 @@ func TestHandleTorrentCompletion_DefersWhileChecking(t *testing.T) {
 	}
 }
 
+func TestHandleTorrentCompletion_DefersWhileMoving(t *testing.T) {
+	completionStore := setupCompletionStoreForQueueTests(t)
+
+	hash := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	syncMock := newCompletionPollingSyncMock(map[string][]qbt.Torrent{
+		hash: {
+			{
+				Hash:         hash,
+				Name:         "moving",
+				Progress:     1.0,
+				State:        qbt.TorrentStateMoving,
+				CompletionOn: 210,
+			},
+			{
+				Hash:         hash,
+				Name:         "moving",
+				Progress:     1.0,
+				State:        qbt.TorrentStateMoving,
+				CompletionOn: 210,
+			},
+			{
+				Hash:         hash,
+				Name:         "moving",
+				Progress:     1.0,
+				State:        qbt.TorrentStateUploading,
+				CompletionOn: 210,
+			},
+		},
+	})
+
+	invoked := make(chan qbt.Torrent, 1)
+	svc := &Service{
+		completionStore: completionStore,
+		syncManager:     syncMock,
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return models.DefaultCrossSeedAutomationSettings(), nil
+		},
+		completionSearchInvoker: func(_ context.Context, _ int, torrent *qbt.Torrent, _ *models.CrossSeedAutomationSettings, _ *models.InstanceCrossSeedCompletionSettings) error {
+			invoked <- *torrent
+			return nil
+		},
+	}
+	setCompletionCheckingTimings(svc, 5*time.Millisecond, 50*time.Millisecond)
+
+	svc.HandleTorrentCompletion(context.Background(), 1, qbt.Torrent{
+		Hash:         hash,
+		Name:         "moving",
+		Progress:     1.0,
+		State:        qbt.TorrentStateMoving,
+		CompletionOn: 210,
+	})
+
+	select {
+	case torrent := <-invoked:
+		require.Equal(t, qbt.TorrentStateUploading, torrent.State)
+	case <-time.After(time.Second):
+		t.Fatal("completion search was not invoked after moving finished")
+	}
+
+	require.GreaterOrEqual(t, syncMock.hitCount(hash), 3)
+}
+
 func TestHandleTorrentCompletion_RetriesAfterCheckingTimeout(t *testing.T) {
 	completionStore := setupCompletionStoreForQueueTests(t)
 
