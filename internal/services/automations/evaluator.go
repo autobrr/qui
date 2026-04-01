@@ -16,6 +16,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -268,6 +269,14 @@ func ConditionUsesField(cond *RuleCondition, field ConditionField) bool {
 	return false
 }
 
+// evaluateTime returns the current time, using ctx.NowUnix if provided.
+func evaluateTime(ctx *EvalContext) time.Time {
+	if ctx != nil && ctx.NowUnix > 0 {
+		return time.Unix(ctx.NowUnix, 0)
+	}
+	return time.Now()
+}
+
 // EvaluateCondition recursively evaluates a condition against a torrent.
 // Returns true if the torrent matches the condition.
 // For conditions that require additional context (like isUnregistered), use EvaluateConditionWithContext.
@@ -496,6 +505,20 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			size = int64(idx.SizeForHash(torrent.Hash))
 		}
 		return compareInt64(size, cond)
+
+	// System time fields
+	case models.FieldSystemHour:
+		return compareInt64(int64(evaluateTime(ctx).Hour()), cond)
+	case models.FieldSystemMinute:
+		return compareInt64(int64(evaluateTime(ctx).Minute()), cond)
+	case models.FieldSystemDayOfWeek:
+		return compareInt64(int64(evaluateTime(ctx).Weekday()), cond)
+	case models.FieldSystemDay:
+		return compareInt64(int64(evaluateTime(ctx).Day()), cond)
+	case models.FieldSystemMonth:
+		return compareInt64(int64(evaluateTime(ctx).Month()), cond)
+	case models.FieldSystemYear:
+		return compareInt64(int64(evaluateTime(ctx).Year()), cond)
 
 	// Boolean fields
 	case FieldPrivate:

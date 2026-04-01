@@ -61,6 +61,14 @@ export const CONDITION_FIELDS = {
   COMPLETION_ON_AGE: { label: "Completed Age (legacy)", type: "duration" as const, description: "Legacy alias for Completed Age" },
   LAST_ACTIVITY_AGE: { label: "Inactive Time (legacy)", type: "duration" as const, description: "Legacy alias for Inactive Time" },
 
+  // System Time fields
+  SYSTEM_HOUR: { label: "System Hour", type: "integer" as const, description: "Current system hour (0-23)" },
+  SYSTEM_MINUTE: { label: "System Minute", type: "integer" as const, description: "Current system minute (0-59)" },
+  SYSTEM_DAY_OF_WEEK: { label: "System Day of Week", type: "integer" as const, description: "Current system day of week (0=Sun to 6=Sat)" },
+  SYSTEM_DAY: { label: "System Day", type: "integer" as const, description: "Current system day of month (1-31)" },
+  SYSTEM_MONTH: { label: "System Month", type: "integer" as const, description: "Current system month (1-12)" },
+  SYSTEM_YEAR: { label: "System Year", type: "integer" as const, description: "Current system year" },
+
   // Float fields
   RATIO: { label: "Ratio", type: "float" as const, description: "Upload/download ratio" },
   RATIO_LIMIT: { label: "Ratio Limit", type: "float" as const, description: "Configured ratio limit" },
@@ -247,6 +255,10 @@ export const FIELD_GROUPS = [
   {
     label: "Time",
     fields: ["ADDED_ON", "COMPLETION_ON", "LAST_ACTIVITY", "SEEN_COMPLETE", "ETA", "REANNOUNCE", "SEEDING_TIME", "TIME_ACTIVE", "MAX_SEEDING_TIME", "MAX_INACTIVE_SEEDING_TIME", "SEEDING_TIME_LIMIT", "INACTIVE_SEEDING_TIME_LIMIT"],
+  },
+  {
+    label: "System Time",
+    fields: ["SYSTEM_HOUR", "SYSTEM_MINUTE", "SYSTEM_DAY_OF_WEEK", "SYSTEM_DAY", "SYSTEM_MONTH", "SYSTEM_YEAR"],
   },
   {
     label: "Progress",

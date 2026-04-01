@@ -1077,6 +1077,18 @@ func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *E
 		return float64(t.NumIncomplete)
 	case models.FieldTrackersCount:
 		return float64(t.TrackersCount)
+	case models.FieldSystemHour:
+		return float64(evaluateTime(evalCtx).Hour())
+	case models.FieldSystemMinute:
+		return float64(evaluateTime(evalCtx).Minute())
+	case models.FieldSystemDayOfWeek:
+		return float64(evaluateTime(evalCtx).Weekday())
+	case models.FieldSystemDay:
+		return float64(evaluateTime(evalCtx).Day())
+	case models.FieldSystemMonth:
+		return float64(evaluateTime(evalCtx).Month())
+	case models.FieldSystemYear:
+		return float64(evaluateTime(evalCtx).Year())
 	default:
 		return 0
 	}

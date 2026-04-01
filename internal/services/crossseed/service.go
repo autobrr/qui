@@ -2065,7 +2065,8 @@ func (s *Service) getCompletionTorrents(ctx context.Context, instanceID int, has
 func isCompletionCheckingState(state qbt.TorrentState) bool {
 	return state == qbt.TorrentStateCheckingDl ||
 		state == qbt.TorrentStateCheckingUp ||
-		state == qbt.TorrentStateCheckingResumeData
+		state == qbt.TorrentStateCheckingResumeData ||
+		state == qbt.TorrentStateMoving
 }
 
 func (s *Service) executeCompletionSearchWithRetry(
