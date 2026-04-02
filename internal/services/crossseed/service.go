@@ -4445,14 +4445,20 @@ func (s *Service) processCrossSeedCandidate(
 			categorySavePath = props.SavePath
 		}
 
-		// Ensure the cross-seed category exists with the correct SavePath
-		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath); err != nil {
-			log.Warn().Err(err).
-				Str("category", crossCategory).
-				Str("savePath", categorySavePath).
-				Msg("[CROSSSEED] Failed to ensure category exists, continuing without category")
-			crossCategory = ""            // Clear category to proceed without it
-			categoryCreationFailed = true // Track for result message
+		// Defer category creation for reflink/hardlink modes — they will create the category
+		// with the correct save path derived from the base directory and tracker/instance name.
+		// This avoids setting incorrect save paths when the category doesn't exist yet and
+		// the fallback to props.SavePath would produce the wrong path.
+		if !useReflinkMode && !useHardlinkMode {
+			// Ensure the cross-seed category exists with the correct SavePath
+			if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath); err != nil {
+				log.Warn().Err(err).
+					Str("category", crossCategory).
+					Str("savePath", categorySavePath).
+					Msg("[CROSSSEED] Failed to ensure category exists, continuing without category")
+				crossCategory = ""            // Clear category to proceed without it
+				categoryCreationFailed = true // Track for result message
+			}
 		}
 	}
 
@@ -4486,6 +4492,18 @@ func (s *Service) processCrossSeedCandidate(
 			// Hardlink mode was attempted (regardless of success/failure)
 			return hlResult.Result
 		}
+	}
+
+	// If link mode fell through (Used=false), a category may already have been created
+	// with a link-mode base dir (e.g., handleError after ensureCrossCategory when
+	// FallbackToRegularMode is enabled). To avoid inheriting a mismatched save_path
+	// in regular mode, skip category isolation here.
+	if crossCategory != "" && (useReflinkMode || useHardlinkMode) {
+		log.Debug().
+			Str("category", crossCategory).
+			Msg("[CROSSSEED] Link-mode fallback to regular: skipping category to avoid inheriting link-mode save_path")
+		crossCategory = ""
+		categoryCreationFailed = true
 	}
 
 	// Regular mode: continue with reuse+rename alignment
@@ -11077,6 +11095,21 @@ func (s *Service) processHardlinkMode(
 	// Build destination directory based on preset and torrent structure
 	destDir := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
 
+	// Ensure cross-seed category exists with the correct save path derived from
+	// the base directory and directory preset, rather than the matched torrent's save path.
+	categoryCreationFailed := false
+	if crossCategory != "" {
+		categorySavePath := s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
+		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath); err != nil {
+			log.Warn().Err(err).
+				Str("category", crossCategory).
+				Str("savePath", categorySavePath).
+				Msg("[CROSSSEED] Hardlink mode: failed to ensure category exists, continuing without category")
+			crossCategory = ""
+			categoryCreationFailed = true
+		}
+	}
+
 	// Build existing files list (all files on disk from matched torrent).
 	// We pass all existing files to BuildPlan so it can use path/name matching
 	// to select the correct source file for each target.
@@ -11250,7 +11283,15 @@ func (s *Service) processHardlinkMode(
 	}
 
 	// Build result message
-	statusMsg := fmt.Sprintf("Added via hardlink mode (match: %s, files: %d/%d)", matchType, len(candidateTorrentFilesToLink), len(sourceFiles))
+	var statusMsg string
+	switch {
+	case categoryCreationFailed:
+		statusMsg = fmt.Sprintf("Added via hardlink mode WITHOUT category isolation (match: %s, files: %d/%d)", matchType, len(candidateTorrentFilesToLink), len(sourceFiles))
+	case crossCategory != "":
+		statusMsg = fmt.Sprintf("Added via hardlink mode (match: %s, category: %s, files: %d/%d)", matchType, crossCategory, len(candidateTorrentFilesToLink), len(sourceFiles))
+	default:
+		statusMsg = fmt.Sprintf("Added via hardlink mode (match: %s, files: %d/%d)", matchType, len(candidateTorrentFilesToLink), len(sourceFiles))
+	}
 	if addPolicy.DiscLayout {
 		statusMsg += addPolicy.StatusSuffix()
 	}
@@ -11375,6 +11416,29 @@ func (s *Service) buildHardlinkDestDir(
 	default: // "flat" or unknown
 		// For flat layout, always use isolation folder to keep torrents separated
 		return filepath.Join(baseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
+	}
+}
+
+// buildCategorySavePath computes the correct save path for a cross-seed category
+// based on the instance's directory preset. This produces the tracker-level or
+// instance-level base directory (e.g., /data/cross-seed/TrackerName) rather than
+// a torrent-specific path with an isolation folder suffix.
+func (s *Service) buildCategorySavePath(
+	ctx context.Context,
+	instance *models.Instance,
+	baseDir string,
+	incomingTrackerDomain string,
+	candidate CrossSeedCandidate,
+	req *CrossSeedRequest,
+) string {
+	switch instance.HardlinkDirPreset {
+	case "by-tracker":
+		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
+		return filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
+	case "by-instance":
+		return filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName))
+	default: // "flat" or unknown
+		return baseDir
 	}
 }
 
@@ -11629,6 +11693,21 @@ func (s *Service) processReflinkMode(
 	// Build destination directory based on preset and torrent structure
 	destDir := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
 
+	// Ensure cross-seed category exists with the correct save path derived from
+	// the base directory and directory preset, rather than the matched torrent's save path.
+	categoryCreationFailed := false
+	if crossCategory != "" {
+		categorySavePath := s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
+		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath); err != nil {
+			log.Warn().Err(err).
+				Str("category", crossCategory).
+				Str("savePath", categorySavePath).
+				Msg("[CROSSSEED] Reflink mode: failed to ensure category exists, continuing without category")
+			crossCategory = ""
+			categoryCreationFailed = true
+		}
+	}
+
 	// Build existing files list (all files on disk from matched torrent)
 	existingFiles := make([]hardlinktree.ExistingFile, 0, len(candidateFiles))
 	for _, f := range candidateFiles {
@@ -11804,7 +11883,15 @@ func (s *Service) processReflinkMode(
 	}
 
 	// Build result message
-	statusMsg := fmt.Sprintf("Added via reflink mode (match: %s, files: %d/%d)", matchType, clonedFiles, totalFiles)
+	var statusMsg string
+	switch {
+	case categoryCreationFailed:
+		statusMsg = fmt.Sprintf("Added via reflink mode WITHOUT category isolation (match: %s, files: %d/%d)", matchType, clonedFiles, totalFiles)
+	case crossCategory != "":
+		statusMsg = fmt.Sprintf("Added via reflink mode (match: %s, category: %s, files: %d/%d)", matchType, crossCategory, clonedFiles, totalFiles)
+	default:
+		statusMsg = fmt.Sprintf("Added via reflink mode (match: %s, files: %d/%d)", matchType, clonedFiles, totalFiles)
+	}
 	if addPolicy.DiscLayout {
 		statusMsg += addPolicy.StatusSuffix()
 	}
