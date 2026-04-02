@@ -155,18 +155,55 @@ type Tx struct {
 	unlockOnce sync.Once       // ensures unlock happens only once
 
 	// Track statements prepared during this transaction for promotion to DB cache after commit
-	txStmts map[string]struct{} // query -> struct{} (used as set to track which queries to cache)
-	txMu    sync.Mutex          // protects txStmts map
+	txStmts    map[string]struct{} // query -> struct{} (used as set to track which queries to cache)
+	tempTables map[string]struct{} // temp table names created/used in this transaction
+	txMu       sync.Mutex          // protects transaction-local cache metadata
 }
 
-// markQueryForCaching marks a query for promotion to the DB cache
+// markQueryForCaching records a successfully executed query for post-commit
+// statement promotion and tracks temp-table lifecycle within the transaction.
 func (t *Tx) markQueryForCaching(query string) {
 	t.txMu.Lock()
+	defer t.txMu.Unlock()
+
+	if name, ok := tempTableNameFromCreate(query); ok {
+		if t.tempTables == nil {
+			t.tempTables = make(map[string]struct{})
+		}
+		t.tempTables[name] = struct{}{}
+		return
+	}
+
+	if name, ok := tableNameFromDrop(query); ok {
+		delete(t.tempTables, name)
+		return
+	}
+
+	if queryReferencesTempTable(query, t.tempTables) {
+		return
+	}
+
 	if t.txStmts == nil {
 		t.txStmts = make(map[string]struct{})
 	}
 	t.txStmts[query] = struct{}{}
-	t.txMu.Unlock()
+}
+
+func (t *Tx) shouldBypassStatementCache(query string) bool {
+	t.txMu.Lock()
+	defer t.txMu.Unlock()
+
+	if _, ok := tempTableNameFromCreate(query); ok {
+		return true
+	}
+
+	if name, ok := tableNameFromDrop(query); ok {
+		if _, exists := t.tempTables[name]; exists {
+			return true
+		}
+	}
+
+	return queryReferencesTempTable(query, t.tempTables)
 }
 
 type txExecResult struct{ tx *Tx }
@@ -176,8 +213,11 @@ func (e txExecResult) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) 
 }
 
 func (e txExecResult) execDirect(_ *sql.DB, ctx context.Context, query string, args []any) (sql.Result, error) {
-	e.tx.markQueryForCaching(query)
-	return e.tx.tx.ExecContext(ctx, e.tx.db.bindQuery(query), args...)
+	result, err := e.tx.tx.ExecContext(ctx, e.tx.db.bindQuery(query), args...)
+	if err == nil {
+		e.tx.markQueryForCaching(query)
+	}
+	return result, err
 }
 
 func (txExecResult) getErr(sql.Result) error { return nil }
@@ -190,8 +230,11 @@ func (q txQueryRows) execStmt(stmt *sql.Stmt, ctx context.Context, args []any) (
 }
 
 func (q txQueryRows) execDirect(_ *sql.DB, ctx context.Context, query string, args []any) (*sql.Rows, error) {
-	q.tx.markQueryForCaching(query)
-	return q.tx.tx.QueryContext(ctx, q.tx.db.bindQuery(query), args...)
+	rows, err := q.tx.tx.QueryContext(ctx, q.tx.db.bindQuery(query), args...)
+	if err == nil {
+		q.tx.markQueryForCaching(query)
+	}
+	return rows, err
 }
 
 func (txQueryRows) getErr(r *sql.Rows) error {
@@ -222,8 +265,11 @@ func (t *Tx) QueryContext(ctx context.Context, query string, args ...any) (*sql.
 func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	stmt, err := t.db.getStmt(ctx, query, t)
 	if err != nil {
-		t.markQueryForCaching(query)
-		return t.tx.QueryRowContext(ctx, t.db.bindQuery(query), args...)
+		row := t.tx.QueryRowContext(ctx, t.db.bindQuery(query), args...)
+		if row.Err() == nil {
+			t.markQueryForCaching(query)
+		}
+		return row
 	}
 
 	row := stmt.QueryRowContext(ctx, args...)
@@ -236,8 +282,11 @@ func (t *Tx) QueryRowContext(ctx context.Context, query string, args ...any) *sq
 
 	stmt, err = t.db.getStmt(ctx, query, t)
 	if err != nil {
-		t.markQueryForCaching(query)
-		return t.tx.QueryRowContext(ctx, t.db.bindQuery(query), args...)
+		row := t.tx.QueryRowContext(ctx, t.db.bindQuery(query), args...)
+		if row.Err() == nil {
+			t.markQueryForCaching(query)
+		}
+		return row
 	}
 	return stmt.QueryRowContext(ctx, args...)
 }
@@ -528,6 +577,20 @@ func (db *DB) getStmt(ctx context.Context, query string, tx *Tx) (*sql.Stmt, err
 	}
 	query = db.bindQuery(query)
 
+	if tx != nil {
+		if tx.shouldBypassStatementCache(query) {
+			if tx.isWriteTx {
+				db.deleteStmt(query, true)
+			} else {
+				db.deleteStmt(query, false)
+			}
+			return nil, errors.New("statement not cacheable")
+		}
+	} else if isTempTableDDL(query) {
+		db.deleteStmt(query, true)
+		return nil, errors.New("statement not cacheable")
+	}
+
 	db.stmtMu.RLock()
 	defer db.stmtMu.RUnlock()
 
@@ -634,6 +697,119 @@ func isWriteQuery(query string) bool {
 		strings.HasPrefix(upper, "ALTER") ||
 		strings.HasPrefix(upper, "DROP") ||
 		strings.HasPrefix(upper, "VACUUM")
+}
+
+func isTempTableDDL(query string) bool {
+	_, ok := tempTableNameFromCreate(query)
+	return ok
+}
+
+func tempTableNameFromCreate(query string) (string, bool) {
+	fields := strings.Fields(query)
+	if len(fields) < 4 || !strings.EqualFold(fields[0], "create") {
+		return "", false
+	}
+
+	next := 1
+	if !strings.EqualFold(fields[next], "temp") && !strings.EqualFold(fields[next], "temporary") {
+		return "", false
+	}
+	next++
+
+	if next >= len(fields) || !strings.EqualFold(fields[next], "table") {
+		return "", false
+	}
+	next++
+
+	if next+2 < len(fields) &&
+		strings.EqualFold(fields[next], "if") &&
+		strings.EqualFold(fields[next+1], "not") &&
+		strings.EqualFold(fields[next+2], "exists") {
+		next += 3
+	}
+	if next >= len(fields) {
+		return "", false
+	}
+
+	name := normalizeIdentifier(trimIdentifierToken(fields[next]))
+	if name == "" {
+		return "", false
+	}
+	return name, true
+}
+
+func tableNameFromDrop(query string) (string, bool) {
+	fields := strings.Fields(query)
+	if len(fields) < 3 || !strings.EqualFold(fields[0], "drop") || !strings.EqualFold(fields[1], "table") {
+		return "", false
+	}
+
+	next := 2
+	if next+1 < len(fields) && strings.EqualFold(fields[next], "if") && strings.EqualFold(fields[next+1], "exists") {
+		next += 2
+	}
+	if next >= len(fields) {
+		return "", false
+	}
+
+	name := normalizeIdentifier(trimIdentifierToken(fields[next]))
+	if name == "" {
+		return "", false
+	}
+	return name, true
+}
+
+// queryReferencesTempTable uses lightweight token matching over internal SQL.
+// It intentionally does not parse string literals or comments, so a literal like
+// 'current_hashes' could produce a false positive. That's acceptable here
+// because this helper only guards our fixed-format temp-table maintenance SQL.
+func queryReferencesTempTable(query string, tempTables map[string]struct{}) bool {
+	if len(tempTables) == 0 {
+		return false
+	}
+
+	for _, token := range sqlKeywordTokens(query) {
+		if _, ok := tempTables[token]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// sqlKeywordTokens is a lightweight tokenizer for internal SQL snippets. It
+// lowercases and splits on non-identifier runes, but it does not understand SQL
+// literals or comments.
+func sqlKeywordTokens(query string) []string {
+	return strings.FieldsFunc(strings.ToLower(query), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_'
+	})
+}
+
+func normalizeIdentifier(raw string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimRight(raw, ";,(")
+	if raw == "" {
+		return ""
+	}
+
+	parts := strings.Split(raw, ".")
+	name := strings.TrimSpace(parts[len(parts)-1])
+	name = strings.Trim(name, "\"`[]")
+	return strings.ToLower(name)
+}
+
+func trimIdentifierToken(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	if idx := strings.IndexAny(raw, "(,;"); idx >= 0 {
+		raw = raw[:idx]
+	}
+
+	return strings.TrimSpace(raw)
 }
 
 const sqliteNestedTxErrSubstring = "cannot start a transaction within a transaction"
@@ -1345,24 +1521,6 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	}
 	defer db.cleanupRunning.Store(false)
 
-	// Drop temp table if it exists from previous run
-	_, _ = db.ExecContext(ctx, "DROP TABLE IF EXISTS temp_referenced_strings")
-
-	// Ensure temp table is cleaned up at the end
-	defer func() {
-		_, _ = db.ExecContext(context.Background(), "DROP TABLE IF EXISTS temp_referenced_strings")
-	}()
-
-	// Create temp table for referenced string IDs (automatically indexed due to PRIMARY KEY)
-	_, err := db.ExecContext(ctx, `
-		CREATE TEMP TABLE temp_referenced_strings (
-			string_id INTEGER PRIMARY KEY
-		)
-	`)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create temp table: %w", err)
-	}
-
 	// Begin transaction for the actual cleanup work
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -1376,6 +1534,16 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	// complete and verify constraints at commit time rather than immediately.
 	if err := dbinterface.DeferForeignKeyChecks(ctx, tx); err != nil {
 		return 0, fmt.Errorf("failed to defer foreign keys: %w", err)
+	}
+
+	// Temp tables are connection-local on Postgres, so create and use them on the same tx.
+	_, err = tx.ExecContext(ctx, `
+		CREATE TEMP TABLE temp_referenced_strings (
+			string_id INTEGER PRIMARY KEY
+		)
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create temp table: %w", err)
 	}
 
 	_, err = tx.ExecContext(ctx, `INSERT INTO temp_referenced_strings (string_id) SELECT DISTINCT string_id FROM (
@@ -1395,6 +1563,11 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	`)
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete unused strings: %w", err)
+	}
+
+	_, err = tx.ExecContext(ctx, `DROP TABLE temp_referenced_strings`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to drop temp table: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {

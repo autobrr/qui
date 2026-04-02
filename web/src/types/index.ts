@@ -232,6 +232,13 @@ export type ConditionField =
   | "ADDED_ON_AGE"
   | "COMPLETION_ON_AGE"
   | "LAST_ACTIVITY_AGE"
+  // System Time fields
+  | "SYSTEM_HOUR"
+  | "SYSTEM_MINUTE"
+  | "SYSTEM_DAY_OF_WEEK"
+  | "SYSTEM_DAY"
+  | "SYSTEM_MONTH"
+  | "SYSTEM_YEAR"
   // Numeric fields (float64)
   | "RATIO"
   | "RATIO_LIMIT"
@@ -262,6 +269,10 @@ export type ConditionField =
   | "IS_UNREGISTERED"
   | "HAS_MISSING_FILES"
   | "IS_GROUPED"
+  | "EXISTS_ON_OTHER_INSTANCE"
+  | "SEEDING_ON_OTHER_INSTANCE"
+  | "EXISTS_ON_SAME_INSTANCE"
+  | "SEEDING_ON_SAME_INSTANCE"
   // Enum-like fields
   | "HARDLINK_SCOPE"
 
@@ -455,6 +466,7 @@ export interface Automation {
   sortingConfig?: SortingConfig
   enabled: boolean
   dryRun: boolean
+  notify: boolean
   sortOrder: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
   createdAt?: string
@@ -470,6 +482,7 @@ export interface AutomationInput {
   sortingConfig?: SortingConfig
   enabled?: boolean
   dryRun?: boolean
+  notify?: boolean
   sortOrder?: number
   intervalSeconds?: number | null // null = use global default (15 minutes)
 }
@@ -2313,6 +2326,7 @@ export interface DirScanRun {
   directoryId: number
   status: DirScanRunStatus
   triggeredBy: string
+  scanRoot?: string
   filesFound: number
   filesSkipped: number
   matchesFound: number
@@ -2320,6 +2334,13 @@ export interface DirScanRun {
   errorMessage?: string
   startedAt: string
   completedAt?: string
+}
+
+export interface DirScanTriggerResponse {
+  runId: number
+  directoryId: number
+  directoryPath: string
+  scanRoot: string
 }
 
 export type DirScanRunInjectionStatus = "added" | "failed"

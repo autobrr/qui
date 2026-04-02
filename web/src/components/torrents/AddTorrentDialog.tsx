@@ -222,7 +222,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const checkForDuplicates = useCallback(async (files: File[] | null, urls: string) => {
     duplicateCheckRequestRef.current += 1
     const requestId = duplicateCheckRequestRef.current
-    setDuplicateSummary(createEmptyDuplicateSummary())
     setDuplicateCheckStatus("pending")
     if (duplicateCheckIndicatorTimeoutRef.current !== null) {
       window.clearTimeout(duplicateCheckIndicatorTimeoutRef.current)
@@ -674,7 +673,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
     // Check for duplicates when files are dropped
     if (allFiles.length > 0) {
-      checkForDuplicates(allFiles, "")
+      checkForDuplicates(allFiles, form.getFieldValue("urls"))
     }
   }, [form, checkForDuplicates])
 
@@ -821,30 +820,18 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
             className="space-y-4 pb-2"
           >
             {/* Tab selection */}
-            <div className="flex rounded-md bg-muted p-1">
-              <button
-                type="button"
-                onClick={() => setActiveTab("file")}
-                className={cn(
-                  "flex-1 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors flex items-center justify-center",
-                  activeTab === "file" ? "bg-accent text-accent-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                )}
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                File
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("url")}
-                className={cn(
-                  "flex-1 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors flex items-center justify-center",
-                  activeTab === "url" ? "bg-accent text-accent-foreground shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                )}
-              >
-                <Link className="mr-2 h-4 w-4" />
-                URL
-              </button>
-            </div>
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="file" className="gap-2">
+                  <Upload className="h-4 w-4" />
+                  File
+                </TabsTrigger>
+                <TabsTrigger value="url" className="gap-2">
+                  <Link className="h-4 w-4" />
+                  URL
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
 
             {showDuplicateCheckIndicator && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -953,7 +940,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                               </TooltipTrigger>
                               <TooltipContent>
                                 <div className="max-w-xs">
-                                  {field.state.value.slice(0, 3).map((file, index) => {
+                                  {Array.isArray(field.state.value) && field.state.value.slice(0, 3).map((file, index) => {
                                     const fileKey = createFileKey(file)
                                     const duplicateInfo = duplicateFileEntries[fileKey]
                                     return (
@@ -976,7 +963,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         {showFileList && field.state.value && field.state.value.length > 0 && (
                           <div className="max-h-24 overflow-y-auto border rounded-md p-2">
                             <div className="space-y-1 text-xs">
-                              {field.state.value.map((file, index) => {
+                              {Array.isArray(field.state.value) && field.state.value.map((file, index) => {
                                 const fileKey = createFileKey(file)
                                 const duplicateInfo = duplicateFileEntries[fileKey]
                                 const isDuplicate = Boolean(duplicateInfo)
@@ -1039,7 +1026,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           onChange={(e) => {
                             field.handleChange(e.target.value)
                             // Check for duplicates when URLs are entered
-                            checkForDuplicates(null, e.target.value)
+                            checkForDuplicates(form.getFieldValue("torrentFiles"), e.target.value)
                           }}
                         />
                         {duplicateUrlKeys.length > 0 && (

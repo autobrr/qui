@@ -64,16 +64,16 @@ release:
 
     - `docker pull ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/qui:{{ .Tag }}`
     - `docker pull ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/qui:latest`
-    
-    
+
+
     ## What to do next?
 
     - Join our [Discord server](https://discord.autobrr.com/qui)
-    
+
     Thank you for using qui!
 
 checksum:
-  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  name_template: "checksums.txt"
 
 changelog:
   sort: asc

@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
@@ -392,6 +393,82 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	return true
 }
 
+const hdbitsAutobrrIndexer = "hdb"
+
+func (s *Service) releasesMatchWebhook(source, candidate *rls.Release, findIndividualEpisodes bool, indexer string) bool {
+	if s.releasesMatch(source, candidate, findIndividualEpisodes) {
+		return true
+	}
+
+	if !canUseWebhookCollectionFallback(source, candidate, indexer, s.stringNormalizer) {
+		return false
+	}
+
+	sourceWithCollection := *source
+	sourceWithCollection.Collection = candidate.Collection
+
+	return s.releasesMatch(&sourceWithCollection, candidate, findIndividualEpisodes)
+}
+
+func canUseWebhookCollectionFallback(
+	source, candidate *rls.Release,
+	indexer string,
+	normalizer *stringutils.Normalizer[string, string],
+) bool {
+	if !supportsWebhookCollectionFallback(indexer) {
+		return false
+	}
+
+	if source == nil || candidate == nil {
+		return false
+	}
+
+	// Some indexers can announce generic WEB-DL titles without the collection/
+	// service tag while the existing torrent keeps the canonical source service
+	// (for example "DSNP"). Only retry when the incoming title is missing
+	// Collection and the group or site already anchors the release identity.
+	if source.Collection != "" || candidate.Collection == "" {
+		return false
+	}
+
+	if !supportsWebhookCollectionFallbackContent(source, candidate) {
+		return false
+	}
+
+	return hasNonEmptyNormalizedMatch(normalizer, source.Group, candidate.Group) ||
+		hasNonEmptyNormalizedMatch(normalizer, source.Site, candidate.Site)
+}
+
+func supportsWebhookCollectionFallback(indexer string) bool {
+	switch indexer {
+	case hdbitsAutobrrIndexer:
+		return true
+	default:
+		return false
+	}
+}
+
+func supportsWebhookCollectionFallbackContent(source, candidate *rls.Release) bool {
+	if source == nil || candidate == nil {
+		return false
+	}
+
+	if source.Series > 0 && candidate.Series > 0 {
+		return true
+	}
+
+	return isWebSource(normalizeSource(source.Source)) && isWebSource(normalizeSource(candidate.Source))
+}
+
+func hasNonEmptyNormalizedMatch(normalizer *stringutils.Normalizer[string, string], left, right string) bool {
+	if normalizer == nil {
+		normalizer = stringutils.DefaultNormalizer
+	}
+
+	left = normalizer.Normalize(left)
+	return left != "" && left == normalizer.Normalize(right)
+}
+
 // joinNormalizedSlice converts a string slice to a normalized uppercase string for comparison.
 // Uppercases and joins elements to ensure consistent comparison regardless of case or order.
 func joinNormalizedSlice(slice []string) string {
@@ -407,58 +484,8 @@ func joinNormalizedSlice(slice []string) string {
 }
 
 func joinNormalizedHDRSlice(slice []string) string {
-	if len(slice) == 0 {
-		return ""
-	}
-
-	seen := make(map[string]struct{}, len(slice))
-	hasHDR10Plus := false
-	for _, tag := range slice {
-		n := normalizeHDRVariant(tag)
-		if n == "" {
-			continue
-		}
-		if n == "HDR10+" {
-			hasHDR10Plus = true
-		}
-		seen[n] = struct{}{}
-	}
-
-	if hasHDR10Plus {
-		delete(seen, "HDR10")
-	}
-
-	normalized := make([]string, 0, len(seen))
-	for tag := range seen {
-		normalized = append(normalized, tag)
-	}
-
-	sort.Strings(normalized)
+	normalized := releases.NormalizeHDRTags(slice)
 	return strings.Join(normalized, " ")
-}
-
-func normalizeHDRVariant(value string) string {
-	upper := normalizeVariant(value)
-	if upper == "" {
-		return ""
-	}
-
-	key := strings.NewReplacer(" ", "", ".", "", "_", "", "-", "").Replace(upper)
-
-	switch key {
-	case "DOVI", "DOLBYVISION", "DV":
-		return "DV"
-	case "HDR10PLUS", "HDR10P", "HDR10+":
-		return "HDR10+"
-	case "HDR10":
-		return "HDR10"
-	case "HDR":
-		return "HDR"
-	case "HLG":
-		return "HLG"
-	default:
-		return upper
-	}
 }
 
 // videoCodecAliases maps equivalent video codec names to a canonical form.
@@ -505,6 +532,15 @@ func normalizeSource(source string) string {
 	return upper
 }
 
+func isWebSource(source string) bool {
+	switch source {
+	case "WEB", "WEBDL", "WEBRIP":
+		return true
+	default:
+		return false
+	}
+}
+
 // sourcesCompatible checks if two sources are compatible for cross-seed precheck.
 // Plain "WEB" is ambiguous and matches both WEBDL and WEBRIP.
 // WEBDL and WEBRIP are explicitly different and do not match each other.
@@ -515,17 +551,6 @@ func sourcesCompatible(source, candidate string) bool {
 	}
 	if source == candidate {
 		return true
-	}
-
-	// WEB is ambiguous: treat it as compatible with both WEBDL and WEBRIP.
-	// It must not match non-web sources (BLURAY, HDTV, etc.).
-	isWebSource := func(s string) bool {
-		switch s {
-		case "WEB", "WEBDL", "WEBRIP":
-			return true
-		default:
-			return false
-		}
 	}
 
 	if !isWebSource(source) || !isWebSource(candidate) {

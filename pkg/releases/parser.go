@@ -92,7 +92,7 @@ func enrichReleaseHDR(rawName string, release *rls.Release) {
 		}
 	}
 
-	release.HDR = normalizeHDRTags(tags)
+	release.HDR = NormalizeHDRTags(tags)
 }
 
 func shouldScanRawHDR(release *rls.Release) bool {
@@ -109,13 +109,10 @@ func shouldScanRawHDR(release *rls.Release) bool {
 	}
 
 	for _, codec := range release.Codec {
-		switch canonicalHDRTag(codec) {
+		switch CanonicalHDRTag(codec) {
 		case "DV", "HDR", "HDR10", "HDR10+", "HLG":
 			return true
 		}
-	}
-
-	for _, codec := range release.Codec {
 		upper := strings.ToUpper(strings.TrimSpace(codec))
 		switch upper {
 		case "X264", "H264", "H.264", "AVC", "X265", "H265", "H.265", "HEVC", "AV1", "XVID", "DIVX":
@@ -126,12 +123,14 @@ func shouldScanRawHDR(release *rls.Release) bool {
 	return false
 }
 
-func normalizeHDRTags(tags []string) []string {
+// NormalizeHDRTags deduplicates and canonicalizes a slice of HDR tag strings.
+// HDR10 is subsumed by HDR10+ when both are present. Returns nil for empty input.
+func NormalizeHDRTags(tags []string) []string {
 	seen := make(map[string]struct{}, len(tags))
 	hasHDR10Plus := false
 
 	for _, tag := range tags {
-		canonical := canonicalHDRTag(tag)
+		canonical := CanonicalHDRTag(tag)
 		if canonical == "" {
 			continue
 		}
@@ -253,7 +252,9 @@ func trailingTokenRegexes(token string) []*regexp.Regexp {
 	return actual.([]*regexp.Regexp)
 }
 
-func canonicalHDRTag(tag string) string {
+// CanonicalHDRTag maps an HDR tag string to its canonical form.
+// For example, "HDR10P", "HDR10PLUS", and "HDR10+" all map to "HDR10+".
+func CanonicalHDRTag(tag string) string {
 	upper := strings.ToUpper(strings.TrimSpace(tag))
 	if upper == "" {
 		return ""

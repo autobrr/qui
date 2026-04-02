@@ -5,6 +5,7 @@ package dirscan
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -51,7 +52,7 @@ func TestService_CancelScan_QueuedRunBumpsLastScanAt(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, dir.LastScanAt)
 
-	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "scheduled")
+	runID, err := store.CreateRunIfNoActive(ctx, dir.ID, "scheduled", "")
 	require.NoError(t, err)
 	require.Positive(t, runID)
 
@@ -72,4 +73,45 @@ func TestService_CancelScan_QueuedRunBumpsLastScanAt(t *testing.T) {
 	active, err := store.HasActiveRun(ctx, dir.ID)
 	require.NoError(t, err)
 	require.False(t, active)
+}
+
+func TestService_Start_PrunesLegacyRunHistory(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	db := setupDirScanServiceTestDB(t)
+
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+
+	localFS := true
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, &localFS)
+	require.NoError(t, err)
+
+	store := models.NewDirScanStore(db)
+	dir, err := store.CreateDirectory(ctx, &models.DirScanDirectory{
+		Path:                "/data/media",
+		Enabled:             true,
+		TargetInstanceID:    instance.ID,
+		ScanIntervalMinutes: 60,
+	})
+	require.NoError(t, err)
+
+	for i := range 12 {
+		_, execErr := db.ExecContext(ctx, `
+			INSERT INTO dir_scan_runs (directory_id, status, triggered_by, started_at, completed_at)
+			VALUES (?, ?, ?, datetime('now', printf('-%d minutes', ?)), datetime('now', printf('-%d minutes', ?)))
+		`, dir.ID, models.DirScanRunStatusSuccess, fmt.Sprintf("legacy-%d", i), 12-i, 12-i)
+		require.NoError(t, execErr)
+	}
+
+	svc := NewService(DefaultConfig(), store, nil, instanceStore, nil, nil, nil, nil, nil)
+	require.NoError(t, svc.Start(ctx))
+	svc.Stop()
+
+	runs, err := store.ListRuns(ctx, dir.ID, 100)
+	require.NoError(t, err)
+	require.Len(t, runs, 10)
+	require.Equal(t, "legacy-11", runs[0].TriggeredBy)
+	require.Equal(t, "legacy-2", runs[len(runs)-1].TriggeredBy)
 }

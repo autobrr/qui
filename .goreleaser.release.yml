@@ -1,0 +1,109 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: qui
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/autobrr/qui/internal/buildinfo.Version={{.Version}}
+      - -X github.com/autobrr/qui/internal/buildinfo.Date={{.Date}}
+      - -X github.com/autobrr/qui/internal/buildinfo.Commit={{.Commit}}
+      - -X main.PolarOrgID={{.Env.POLAR_ORG_ID}}
+    goos:
+      - linux
+      - windows
+      - darwin
+      - freebsd
+    goarch:
+      - amd64
+      - arm
+      - arm64
+    goarm:
+      - 6
+    ignore:
+      - goos: windows
+        goarch: arm
+      - goos: windows
+        goarch: arm64
+      - goos: darwin
+        goarch: arm
+      - goos: freebsd
+        goarch: arm
+      - goos: freebsd
+        goarch: arm64
+    main: ./cmd/qui
+    binary: qui
+
+archives:
+  - id: qui-archive
+    ids:
+      - qui
+    format_overrides:
+      - goos: windows
+        formats: ['zip']
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+
+release:
+  prerelease: auto
+  footer: |
+    **Full Changelog**: https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/qui/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+    ## Docker images
+
+    - `docker pull ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/qui:{{ .Tag }}`
+    - `docker pull ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/qui:latest`
+
+
+    ## What to do next?
+
+    - Join our [Discord server](https://discord.autobrr.com/qui)
+
+    Thank you for using qui!
+
+checksum:
+  name_template: "checksums.txt"
+
+signs:
+  - artifacts: checksum
+    cmd: openssl
+    signature: "${artifact}.sig"
+    args:
+      - "dgst"
+      - "-sha256"
+      - "-sign"
+      - "{{ .Env.RELEASE_SIGNING_KEY_FILE }}"
+      - "-out"
+      - "${signature}"
+      - "${artifact}"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+      - go mod tidy
+  groups:
+    - title: "New Features"
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: "Bug Fixes"
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 10
+    - title: "Other Changes"
+      regexp: "^.*(chore|docs|style|refactor|test|perf|security|build|ci)[(\\w)]*:+.*$"
+      order: 20
