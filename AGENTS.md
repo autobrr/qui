@@ -107,11 +107,6 @@ When adding Go tests that create files with `os.WriteFile`, use `0o600` or tight
 
 Follow the conventional commit style in history (`feat(scope):`, `fix(scope):`, etc.) and link issues or PR numbers in the body when relevant. Keep commits focused—split backend and frontend changes when practical.
 
-**Never add:**
-- "🤖 Generated with [Claude Code](https://claude.com/claude-code)"
-- "Co-Authored-By: Claude" or any AI co-author credits
-- Any advertising or attribution in commit messages
-
 PRs need a clear summary, testing checklist, and UI screenshots for visual tweaks. Confirm local targeted verification, `make lint`, and a fresh `make build` succeed before requesting review; rely on CI for the full `make test` suite unless explicitly requested.
 
 ## Pre-Commit Checklist
