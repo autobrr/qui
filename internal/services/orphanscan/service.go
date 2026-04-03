@@ -1148,6 +1148,25 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 		for _, f := range files {
 			tfm.Add(normalizePath(filepath.Join(savePath, f.Name)))
 		}
+
+		// When Auto TMM updates save_path without moving files, content_path
+		// still reflects the real location on disk. Derive the actual save path
+		// by stripping the first file's name from content_path. For single-file
+		// torrents, content_path = actualSavePath/filename. For folder torrents,
+		// content_path = actualSavePath/folder/filename and f.Name = folder/filename.
+		// In both cases, trimming the file's Name suffix from content_path yields
+		// the real save path.
+		contentPath := filepath.Clean(torrent.ContentPath)
+		if contentPath != "" && filepath.IsAbs(contentPath) && len(files) > 0 {
+			firstFileName := filepath.Clean(files[0].Name)
+			actualSavePath := strings.TrimSuffix(contentPath, string(filepath.Separator)+firstFileName)
+			if actualSavePath != "" && filepath.IsAbs(actualSavePath) && actualSavePath != contentPath && actualSavePath != savePath {
+				scanRoots[actualSavePath] = struct{}{}
+				for _, f := range files {
+					tfm.Add(normalizePath(filepath.Join(actualSavePath, f.Name)))
+				}
+			}
+		}
 	}
 
 	if stableMissingFiles > 0 {
