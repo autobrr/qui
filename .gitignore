@@ -36,6 +36,9 @@ yarn.lock
 # If needed, package-lock.json shall be added manually using an explicit git add command
 package-lock.json
 
+# Build output
+/qui
+
 # Others
 web/build
 bin/
