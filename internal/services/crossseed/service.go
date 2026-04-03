@@ -10032,7 +10032,7 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 	}
 
 	key := fmt.Sprintf("%d:%s", instanceID, crossCategory)
-	requestedSavePath := normalizePath(savePath)
+	requestedSavePath := normalizePathForComparison(savePath)
 
 	cacheMatches := func(cached any) bool {
 		cachedSavePath, ok := cached.(string)
@@ -10042,7 +10042,7 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 		if requestedSavePath == "" {
 			return true
 		}
-		return cachedSavePath == requestedSavePath
+		return normalizePathForComparison(cachedSavePath) == requestedSavePath
 	}
 
 	// Fast path: we already created or verified this category in this session
@@ -10068,7 +10068,7 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 
 		// Check if category already exists
 		if existing, exists := categories[crossCategory]; exists {
-			actualSavePath := normalizePath(existing.SavePath)
+			actualSavePath := normalizePathForComparison(existing.SavePath)
 
 			// Category exists - check if save_path differs (informational warning only)
 			if savePath != "" && existing.SavePath != "" && actualSavePath != requestedSavePath {

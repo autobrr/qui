@@ -66,3 +66,31 @@ func TestEnsureCrossCategory_RevalidatesWhenRequestedSavePathChanges(t *testing.
 	require.Equal(t, 3, syncManager.getCategoriesCalls)
 	require.Equal(t, 1, syncManager.createCategoryCalls)
 }
+
+func TestEnsureCrossCategory_CacheMatchesPathCaseInsensitively(t *testing.T) {
+	t.Parallel()
+
+	const (
+		instanceID   = 1
+		categoryName = "movies.cross"
+		initialPath  = "C:/Data/Cross-Seed/FearNoPeer"
+		requestPath  = "c:/data/cross-seed/fearnOpeer"
+	)
+
+	syncManager := &categoryCacheSyncManager{
+		categories: make(map[string]qbt.Category),
+	}
+	service := &Service{
+		syncManager: syncManager,
+	}
+
+	ctx := context.Background()
+
+	require.NoError(t, service.ensureCrossCategory(ctx, instanceID, categoryName, initialPath))
+	require.Equal(t, 1, syncManager.getCategoriesCalls)
+	require.Equal(t, 1, syncManager.createCategoryCalls)
+
+	require.NoError(t, service.ensureCrossCategory(ctx, instanceID, categoryName, requestPath))
+	require.Equal(t, 1, syncManager.getCategoriesCalls)
+	require.Equal(t, 1, syncManager.createCategoryCalls)
+}
