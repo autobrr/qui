@@ -198,3 +198,34 @@ func TestFilterScanRootsCoveredBySkippedRoots(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildFileMapFromTorrents_ContentPathDivergesFromSavePath(t *testing.T) {
+	t.Parallel()
+
+	categoryRoot := filepath.Join(t.TempDir(), "cross-seed")
+	trackerDir := filepath.Join(categoryRoot, "tracker-name")
+	result, err := buildFileMapFromTorrents(
+		[]qbt.Torrent{
+			{
+				Hash:        "abc123",
+				SavePath:    categoryRoot,
+				ContentPath: filepath.Join(trackerDir, "My.Torrent", "file1.mkv"),
+				State:       qbt.TorrentStatePausedUp,
+			},
+		},
+		map[string]qbt.TorrentFiles{
+			"abc123": {
+				{Name: "My.Torrent/file1.mkv", Size: 1000},
+				{Name: "My.Torrent/file2.srt", Size: 100},
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(categoryRoot, "My.Torrent", "file1.mkv"))))
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(categoryRoot, "My.Torrent", "file2.srt"))))
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(trackerDir, "My.Torrent", "file1.mkv"))))
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(trackerDir, "My.Torrent", "file2.srt"))))
+	assert.Contains(t, result.scanRoots, filepath.Clean(categoryRoot))
+	assert.Contains(t, result.scanRoots, filepath.Clean(trackerDir))
+}

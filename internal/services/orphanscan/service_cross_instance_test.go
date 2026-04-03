@@ -116,6 +116,82 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 	}
 }
 
+func TestBuildFileMap_MergesOtherInstanceWhenOnlyContentPathsOverlap(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	instanceOneSaveRoot := filepath.Join(root, "qb1", "cross-seed")
+	instanceTwoSaveRoot := filepath.Join(root, "qb2", "cross-seed")
+	sharedContentRoot := filepath.Join(root, "shared", "tracker-name")
+
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+
+	now := time.Now()
+	lastSync := now.Add(-10 * time.Second)
+
+	svc.getClientProvider = func(_ context.Context, _ int) (healthChecker, error) {
+		return stubHealthChecker{
+			healthy:  true,
+			lastSync: lastSync,
+		}, nil
+	}
+
+	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
+		return []*models.Instance{
+			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
+			{ID: 2, Name: "two", IsActive: true, HasLocalFilesystemAccess: true},
+		}, nil
+	}
+
+	svc.getAllTorrentsProvider = func(_ context.Context, instanceID int) ([]qbt.Torrent, error) {
+		switch instanceID {
+		case 1:
+			return []qbt.Torrent{{
+				Hash:        "A",
+				SavePath:    instanceOneSaveRoot,
+				ContentPath: filepath.Join(sharedContentRoot, "Movie.One", "file1.mkv"),
+				State:       qbt.TorrentStatePausedUp,
+			}}, nil
+		case 2:
+			return []qbt.Torrent{{
+				Hash:        "B",
+				SavePath:    instanceTwoSaveRoot,
+				ContentPath: filepath.Join(sharedContentRoot, "Movie.Two", "file1.mkv"),
+				State:       qbt.TorrentStatePausedUp,
+			}}, nil
+		default:
+			return nil, nil
+		}
+	}
+
+	svc.getTorrentFilesBatchProvider = func(_ context.Context, instanceID int, _ []string) (map[string]qbt.TorrentFiles, error) {
+		switch instanceID {
+		case 1:
+			return map[string]qbt.TorrentFiles{
+				"a": {{Name: "Movie.One/file1.mkv", Size: 1}},
+			}, nil
+		case 2:
+			return map[string]qbt.TorrentFiles{
+				"b": {{Name: "Movie.Two/file1.mkv", Size: 1}},
+			}, nil
+		default:
+			return map[string]qbt.TorrentFiles{}, nil
+		}
+	}
+
+	result, err := svc.buildFileMap(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("buildFileMap: %v", err)
+	}
+
+	if !result.fileMap.Has(normalizePath(filepath.Join(sharedContentRoot, "Movie.One", "file1.mkv"))) {
+		t.Fatalf("expected instance 1 actual content path to be protected")
+	}
+	if !result.fileMap.Has(normalizePath(filepath.Join(sharedContentRoot, "Movie.Two", "file1.mkv"))) {
+		t.Fatalf("expected instance 2 actual content path to be merged when content paths overlap")
+	}
+}
+
 func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 	t.Parallel()
 
