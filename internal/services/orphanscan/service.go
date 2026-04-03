@@ -1151,16 +1151,22 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 
 		// When Auto TMM updates save_path without moving files, content_path
 		// still reflects the real location on disk. Derive the actual save path
-		// by stripping the first file's name from content_path. For single-file
-		// torrents, content_path = actualSavePath/filename. For folder torrents,
-		// content_path = actualSavePath/folder/filename and f.Name = folder/filename.
-		// In both cases, trimming the file's Name suffix from content_path yields
-		// the real save path.
+		// from content_path so files at the original location are not falsely
+		// flagged as orphans.
+		//
+		// For single-file(-in-folder) torrents, content_path ends with the file
+		// name: strip the first file's Name suffix to get the actual save path.
+		// For multi-file torrents, content_path IS the torrent folder and file
+		// names already include the folder prefix: use filepath.Dir.
 		contentPath := filepath.Clean(torrent.ContentPath)
 		if contentPath != "" && filepath.IsAbs(contentPath) && len(files) > 0 {
 			firstFileName := filepath.Clean(files[0].Name)
 			actualSavePath := strings.TrimSuffix(contentPath, string(filepath.Separator)+firstFileName)
-			if actualSavePath != "" && filepath.IsAbs(actualSavePath) && actualSavePath != contentPath && actualSavePath != savePath {
+			if actualSavePath == contentPath {
+				// Multi-file torrent: content_path is the folder itself.
+				actualSavePath = filepath.Dir(contentPath)
+			}
+			if actualSavePath != "" && filepath.IsAbs(actualSavePath) && actualSavePath != savePath {
 				scanRoots[actualSavePath] = struct{}{}
 				for _, f := range files {
 					tfm.Add(normalizePath(filepath.Join(actualSavePath, f.Name)))
