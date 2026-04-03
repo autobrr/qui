@@ -202,15 +202,8 @@ func TestFilterScanRootsCoveredBySkippedRoots(t *testing.T) {
 func TestBuildFileMapFromTorrents_ContentPathDivergesFromSavePath(t *testing.T) {
 	t.Parallel()
 
-	// Simulates Auto TMM updating save_path to category default without
-	// moving files. content_path still points to the real location.
 	categoryRoot := filepath.Join(t.TempDir(), "cross-seed")
 	trackerDir := filepath.Join(categoryRoot, "tracker-name")
-
-	// Folder torrent: content_path points to folder, file names include folder prefix.
-	// content_path = .../tracker-name/My.Torrent/file1.mkv (first file in folder torrent)
-	// but qBittorrent reports content_path as the folder for multi-file torrents.
-	// For single-file-in-folder, content_path = folder/filename.
 	result, err := buildFileMapFromTorrents(
 		[]qbt.Torrent{
 			{
@@ -229,15 +222,10 @@ func TestBuildFileMapFromTorrents_ContentPathDivergesFromSavePath(t *testing.T) 
 	)
 	require.NoError(t, err)
 
-	// Files at the reported save_path should be in the map.
-	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(categoryRoot, "My.Torrent/file1.mkv"))))
-	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(categoryRoot, "My.Torrent/file2.srt"))))
-
-	// Files at the actual location (derived from content_path) should also be in the map.
-	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(trackerDir, "My.Torrent/file1.mkv"))))
-	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(trackerDir, "My.Torrent/file2.srt"))))
-
-	// Both roots should be scan roots.
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(categoryRoot, "My.Torrent", "file1.mkv"))))
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(categoryRoot, "My.Torrent", "file2.srt"))))
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(trackerDir, "My.Torrent", "file1.mkv"))))
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(trackerDir, "My.Torrent", "file2.srt"))))
 	assert.Contains(t, result.scanRoots, filepath.Clean(categoryRoot))
 	assert.Contains(t, result.scanRoots, filepath.Clean(trackerDir))
 }

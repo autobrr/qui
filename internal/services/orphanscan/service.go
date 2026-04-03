@@ -137,11 +137,12 @@ func (s *Service) getLastCompletedRun(ctx context.Context, instanceID int) (*mod
 func scanRootsFromTorrents(torrents []qbt.Torrent) []string {
 	scanRoots := make(map[string]struct{})
 	for i := range torrents {
-		savePath := filepath.Clean(torrents[i].SavePath)
-		if savePath == "" || !filepath.IsAbs(savePath) {
-			continue
-		}
-		scanRoots[savePath] = struct{}{}
+		addAbsoluteScanRoot(scanRoots, torrents[i].SavePath)
+
+		// Auto TMM can rewrite save_path to a category root without moving the
+		// payload. content_path still points at the real file/folder on disk, and
+		// using it directly is enough for conservative overlap detection.
+		addAbsoluteScanRoot(scanRoots, torrents[i].ContentPath)
 	}
 
 	roots := make([]string, 0, len(scanRoots))
@@ -1107,6 +1108,32 @@ func filterScanRootsCoveredBySkippedRoots(scanRoots, skippedRoots []string) []st
 	return filtered
 }
 
+func addAbsoluteScanRoot(scanRoots map[string]struct{}, root string) {
+	root = filepath.Clean(root)
+	if root == "" || !filepath.IsAbs(root) {
+		return
+	}
+	scanRoots[root] = struct{}{}
+}
+
+func actualSavePathFromContentPath(contentPath string, files qbt.TorrentFiles) string {
+	contentPath = filepath.Clean(contentPath)
+	if contentPath == "" || !filepath.IsAbs(contentPath) || len(files) == 0 {
+		return ""
+	}
+
+	firstFileName := filepath.Clean(files[0].Name)
+	actualSavePath := strings.TrimSuffix(contentPath, string(filepath.Separator)+firstFileName)
+	if actualSavePath == "" || actualSavePath == contentPath {
+		actualSavePath = filepath.Dir(contentPath)
+	}
+	if actualSavePath == "" || !filepath.IsAbs(actualSavePath) {
+		return ""
+	}
+
+	return filepath.Clean(actualSavePath)
+}
+
 // buildFileMapResult contains the file map plus metadata for storage
 type buildFileMapResult struct {
 	fileMap      *TorrentFileMap
@@ -1149,28 +1176,13 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 			tfm.Add(normalizePath(filepath.Join(savePath, f.Name)))
 		}
 
-		// When Auto TMM updates save_path without moving files, content_path
-		// still reflects the real location on disk. Derive the actual save path
-		// from content_path so files at the original location are not falsely
-		// flagged as orphans.
-		//
-		// For single-file(-in-folder) torrents, content_path ends with the file
-		// name: strip the first file's Name suffix to get the actual save path.
-		// For multi-file torrents, content_path IS the torrent folder and file
-		// names already include the folder prefix: use filepath.Dir.
-		contentPath := filepath.Clean(torrent.ContentPath)
-		if contentPath != "" && filepath.IsAbs(contentPath) && len(files) > 0 {
-			firstFileName := filepath.Clean(files[0].Name)
-			actualSavePath := strings.TrimSuffix(contentPath, string(filepath.Separator)+firstFileName)
-			if actualSavePath == contentPath {
-				// Multi-file torrent: content_path is the folder itself.
-				actualSavePath = filepath.Dir(contentPath)
-			}
-			if actualSavePath != "" && filepath.IsAbs(actualSavePath) && actualSavePath != savePath {
-				scanRoots[actualSavePath] = struct{}{}
-				for _, f := range files {
-					tfm.Add(normalizePath(filepath.Join(actualSavePath, f.Name)))
-				}
+		// Auto TMM can update save_path to the category root without moving the
+		// payload. content_path still reflects the real on-disk location.
+		actualSavePath := actualSavePathFromContentPath(torrent.ContentPath, files)
+		if actualSavePath != "" && actualSavePath != savePath {
+			scanRoots[actualSavePath] = struct{}{}
+			for _, f := range files {
+				tfm.Add(normalizePath(filepath.Join(actualSavePath, f.Name)))
 			}
 		}
 	}
