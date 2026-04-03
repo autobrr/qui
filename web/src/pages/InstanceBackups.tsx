@@ -612,9 +612,9 @@ export function InstanceBackups() {
     await queryClient.invalidateQueries({ queryKey: ["instance-backups"] })
 
     if (failed.length === 0) {
-      toast.success("Settings applied to all instances")
+      toast.success(tr("instanceBackups.toasts.settingsAppliedToAll"))
     } else {
-      toast.error(`Applied to ${results.length - failed.length}/${results.length} instances`)
+      toast.error(tr("instanceBackups.toasts.settingsPartiallyApplied", { applied: results.length - failed.length, total: results.length }))
     }
     setSavingAll(false)
   }

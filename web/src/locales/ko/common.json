@@ -2611,6 +2611,8 @@
       "includedInRestore": "{{label}}을(를) 포함했습니다",
       "restoreDryRunCompleted": "복원 시뮬레이션이 완료되었습니다",
       "restoreExecuted": "복원이 실행되었습니다",
+      "settingsAppliedToAll": "모든 인스턴스에 설정이 적용되었습니다",
+      "settingsPartiallyApplied": "{{applied}}/{{total}} 인스턴스에 적용됨",
       "settingsUpdated": "백업 설정이 업데이트되었습니다"
     }
   },
@@ -2996,6 +2998,19 @@
       "title": "라이선스를 제거할까요?"
     },
     "description": "테마 라이선스와 프리미엄 접근 권한을 관리합니다",
+    "discord": {
+      "claimPrefix": "",
+      "claimSuffix": "역할을 받아 전용 채널에 접근하세요.",
+      "clickToCopy": "클릭하여 복사",
+      "copiedVerify": "/verify 복사됨",
+      "copyVerifyAria": "/verify 명령어 복사",
+      "copyVerifyFailed": "/verify 복사 실패",
+      "openDiscord": "qui Discord 열기",
+      "opensInNewTab": "(새 탭에서 열림)",
+      "runPrefix": "",
+      "runSuffix": "를 #qui에서 실행하고 라이선스 이메일로 로그인하세요.",
+      "title": "Discord 혜택"
+    },
     "help": {
       "buyAndRecoverPrefix": "DodoPayments에서 구매한 후 여기에서 라이선스 키를 입력하세요. 키를 잃어버린 경우 다음에서 복구할 수 있습니다:",
       "dodoInactive": "이 라이선스는 이 기기에서 활성화되어 있지 않습니다. 여기에서 사용하려면 재활성화를 클릭하세요. 활성화 한도에 도달하면 현재 활성화된 다른 기기에서 비활성화하세요.",

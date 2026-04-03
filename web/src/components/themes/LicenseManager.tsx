@@ -315,90 +315,43 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
             {hasPremiumAccess && (
               <div className="mt-4 border-t border-border/50 pt-4 animate-in fade-in duration-300 motion-reduce:animate-none">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Discord perk
+                  {tr("licenseManager.discord.title")}
                 </p>
                 <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-                  Claim the <span className="font-medium text-foreground">qui-premium</span> role for access to a private channel.{" "}
+                  {tr("licenseManager.discord.claimPrefix")}{" "}
+                  <span className="font-medium text-foreground">qui-premium</span>{" "}
+                  {tr("licenseManager.discord.claimSuffix")}{" "}
                   <a
                     href={QUI_DISCORD_URL}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 font-medium text-primary transition-colors hover:text-primary/80"
                   >
-                    Open qui Discord
-                    <span className="sr-only">(opens in new tab)</span>
+                    {tr("licenseManager.discord.openDiscord")}
+                    <span className="sr-only">{tr("licenseManager.discord.opensInNewTab")}</span>
                   </a>
-                  , run{" "}
+                  , {tr("licenseManager.discord.runPrefix")}{" "}
                   <button
                     type="button"
                     onClick={async () => {
                       try {
                         await copyTextToClipboard("/verify")
-                        toast.success("Copied /verify")
+                        toast.success(tr("licenseManager.discord.copiedVerify"))
                       } catch {
-                        toast.error("Failed to copy /verify")
+                        toast.error(tr("licenseManager.discord.copyVerifyFailed"))
                       }
                     }}
                     className="inline-flex items-center rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] font-semibold tracking-[-0.01em] text-foreground shadow-sm transition-colors hover:bg-muted cursor-pointer"
-                    aria-label="Copy /verify command"
-                    title="Click to copy"
+                    aria-label={tr("licenseManager.discord.copyVerifyAria")}
+                    title={tr("licenseManager.discord.clickToCopy")}
                   >
                     /verify
                   </button>
-                  {" "}in <span className="font-medium text-foreground">#qui</span>, and sign in with your license email.
+                  {" "}{tr("licenseManager.discord.runSuffix")}
                 </p>
               </div>
             )}
 
-            {/* License key details */}
-            {primaryLicense && (
-              <div className="mt-3 border-t border-border/50 pt-3 space-y-2">
-                <div className="font-mono text-xs break-all text-muted-foreground">
-                  {maskLicenseKey(primaryLicense.licenseKey)}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {primaryLicense.productName}{primaryLicense.status !== "active" && <> • Status: {primaryLicense.status}</>} • Added {formatDate(new Date(primaryLicense.createdAt))}
-                </div>
-                {hasInvalidLicense && (
-                  <div className="space-y-2">
-                    <div className="text-xs text-amber-600 dark:text-amber-500 mt-2 flex items-start gap-1">
-                      <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                      {provider === "polar" ? (
-                        <span>
-                          This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s active, or manage activations via{" "}
-                          <a
-                            href={portalUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline hover:no-underline inline-flex items-center gap-0.5"
-                          >
-                            {portalUrl.replace("https://", "")}
-                            <ExternalLink className="h-2.5 w-2.5" />
-                          </a>
-                          .
-                        </span>
-                      ) : (
-                        <span>This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s currently active.</span>
-                      )}
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        if (primaryLicense) {
-                          activateLicense.mutate(primaryLicense.licenseKey)
-                        }
-                      }}
-                      disabled={activateLicense.isPending}
-                      className="h-7 text-xs"
-                    >
-                      <RefreshCw className={`h-3 w-3 mr-1 ${activateLicense.isPending ? "animate-spin" : ""}`} />
-                      {activateLicense.isPending ? "Activating..." : "Re-activate License"}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>

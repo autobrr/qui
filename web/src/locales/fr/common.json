@@ -1054,8 +1054,8 @@
       "na": "—",
       "noInstanceSelected": "Aucune instance sélectionnée",
       "noMessageProvided": "Aucun message fourni",
-      "none": "Aucun",
       "noRunsYet": "Aucune exécution",
+      "none": "Aucun",
       "off": "Désactivé",
       "on": "Activé",
       "ready": "Prêt",
@@ -1393,9 +1393,9 @@
       },
       "tooltips": {
         "addToMerge": "Ajouter à la fusion",
-        "mergedFrom": "Fusionné depuis : {{domains}}",
         "mergeIntoGroup": "Fusionner dans le groupe",
         "mergeIntoThisGroup": "Fusionner les trackers sélectionnés dans ce groupe",
+        "mergedFrom": "Fusionné depuis : {{domains}}",
         "original": "Original : {{domain}}",
         "rename": "Renommer",
         "seededHelp": "Envoyé ÷ taille du contenu — combien de fois vous avez seedé votre contenu"
@@ -1532,9 +1532,9 @@
     },
     "directoryDialog": {
       "addDescription": "Ajoutez un nouveau répertoire à scanner pour du contenu cross-seedable.",
-      "additionalTagsLabel": "Tags supplémentaires",
       "addTagsPlaceholder": "Ajouter des tags (optionnel)",
       "addTitle": "Ajouter un répertoire",
+      "additionalTagsLabel": "Tags supplémentaires",
       "categoryHelp": "Optionnel. Quand défini, surcharge la catégorie globale par défaut pour ce répertoire.",
       "categoryLoadError": "Impossible de charger les catégories depuis qBittorrent. Vous pouvez quand même saisir une valeur personnalisée.",
       "categoryOverrideLabel": "Surcharge de catégorie",
@@ -1697,10 +1697,10 @@
       "resetScanProgressFailed": "Échec de la réinitialisation de la progression du scan : {{message}}",
       "saveSettingsFailed": "Échec de l'enregistrement des paramètres : {{message}}",
       "scanCanceled": "Scan annulé",
-      "scannerDisabled": "Scanner de répertoires désactivé",
-      "scannerEnabled": "Scanner de répertoires activé",
       "scanProgressReset": "Progression du scan réinitialisée",
       "scanStarted": "Scan démarré",
+      "scannerDisabled": "Scanner de répertoires désactivé",
+      "scannerEnabled": "Scanner de répertoires activé",
       "settingsSaved": "Paramètres enregistrés",
       "startScanFailed": "Échec du démarrage du scan : {{message}}",
       "updateDirectoryFailed": "Échec de la mise à jour du répertoire : {{message}}",
@@ -2064,8 +2064,8 @@
     "disconnected": "Déconnecté",
     "globPlaceholder": "Motif glob...",
     "hideFilters": "Masquer les filtres",
-    "instances": "Instances",
     "instanceSettings": "Paramètres de l'instance",
+    "instances": "Instances",
     "noActiveInstances": "Aucune instance active",
     "noInstancesConfigured": "Aucune instance configurée",
     "rssEnabled": "RSS activé",
@@ -2182,42 +2182,6 @@
       "updatedWithWarnings": "Indexeur mis à jour avec avertissements : {{warnings}}"
     }
   },
-  "indexersPage": {
-    "actions": {
-      "addSingle": "Ajouter un",
-      "cancel": "Annuler",
-      "delete": "Supprimer",
-      "deleteAll": "Tout supprimer",
-      "discover": "Découvrir"
-    },
-    "deleteAllDialog": {
-      "description": "Cette action est irréversible. Les {{count}} indexeurs seront supprimés définitivement.",
-      "title": "Supprimer tous les indexeurs ?"
-    },
-    "deleteDialog": {
-      "description": "Cette action est irréversible. L'indexeur sera supprimé définitivement.",
-      "title": "Supprimer l'indexeur ?"
-    },
-    "description": "Gérez les indexeurs Torznab alimentés par Jackett, Prowlarr ou des endpoints tracker natifs",
-    "summary": "{{enabled}} activés, {{capabilities}} avec capacités",
-    "title": "Indexeurs Torznab",
-    "toasts": {
-      "connectionFailed": "Échec du test de connexion",
-      "connectionSuccess": "Test de connexion réussi",
-      "deleted": "Indexeur supprimé avec succès",
-      "deletedAll": "{{count}} indexeurs supprimés",
-      "deletedSome": "{{success}} indexeurs supprimés, {{failed}} en échec : {{failedNames}}",
-      "deleteFailed": "Échec de la suppression de l'indexeur",
-      "failedIndexers": "Indexeurs en échec : {{failedNames}}",
-      "loadFailed": "Échec du chargement des indexeurs",
-      "noIndexersToTest": "Aucun indexeur à tester",
-      "syncCapsFailed": "Échec de la synchronisation des capacités",
-      "syncCapsSuccess": "Capacités synchronisées depuis le backend",
-      "testedAllSuccess": "{{count}} indexeurs testés avec succès",
-      "testedMixed": "{{success}} réussites, {{failed}} échecs",
-      "testingAll": "Test de {{count}} indexeurs..."
-    }
-  },
   "indexerTable": {
     "actions": {
       "clearFilters": "Effacer les filtres",
@@ -2286,6 +2250,42 @@
     },
     "units": {
       "seconds": "{{value}}s"
+    }
+  },
+  "indexersPage": {
+    "actions": {
+      "addSingle": "Ajouter un",
+      "cancel": "Annuler",
+      "delete": "Supprimer",
+      "deleteAll": "Tout supprimer",
+      "discover": "Découvrir"
+    },
+    "deleteAllDialog": {
+      "description": "Cette action est irréversible. Les {{count}} indexeurs seront supprimés définitivement.",
+      "title": "Supprimer tous les indexeurs ?"
+    },
+    "deleteDialog": {
+      "description": "Cette action est irréversible. L'indexeur sera supprimé définitivement.",
+      "title": "Supprimer l'indexeur ?"
+    },
+    "description": "Gérez les indexeurs Torznab alimentés par Jackett, Prowlarr ou des endpoints tracker natifs",
+    "summary": "{{enabled}} activés, {{capabilities}} avec capacités",
+    "title": "Indexeurs Torznab",
+    "toasts": {
+      "connectionFailed": "Échec du test de connexion",
+      "connectionSuccess": "Test de connexion réussi",
+      "deleteFailed": "Échec de la suppression de l'indexeur",
+      "deleted": "Indexeur supprimé avec succès",
+      "deletedAll": "{{count}} indexeurs supprimés",
+      "deletedSome": "{{success}} indexeurs supprimés, {{failed}} en échec : {{failedNames}}",
+      "failedIndexers": "Indexeurs en échec : {{failedNames}}",
+      "loadFailed": "Échec du chargement des indexeurs",
+      "noIndexersToTest": "Aucun indexeur à tester",
+      "syncCapsFailed": "Échec de la synchronisation des capacités",
+      "syncCapsSuccess": "Capacités synchronisées depuis le backend",
+      "testedAllSuccess": "{{count}} indexeurs testés avec succès",
+      "testedMixed": "{{success}} réussites, {{failed}} échecs",
+      "testingAll": "Test de {{count}} indexeurs..."
     }
   },
   "instanceBackups": {
@@ -2611,6 +2611,8 @@
       "includedInRestore": "{{label}} inclus",
       "restoreDryRunCompleted": "Simulation de restauration terminée",
       "restoreExecuted": "Restauration exécutée",
+      "settingsAppliedToAll": "Paramètres appliqués à toutes les instances",
+      "settingsPartiallyApplied": "Appliqué à {{applied}}/{{total}} instances",
       "settingsUpdated": "Paramètres de sauvegarde mis à jour"
     }
   },
@@ -2707,14 +2709,14 @@
       "username": "Nom d'utilisateur qBittorrent (souvent admin)"
     },
     "toasts": {
-      "createdDescription": "Instance créée avec succès. Test de connexion en arrière-plan...",
-      "createdTitle": "Instance créée",
       "createFailedDescription": "Impossible de créer l'instance",
       "createFailedTitle": "Échec de la création",
-      "updatedDescription": "Instance mise à jour avec succès. Test de connexion en arrière-plan...",
-      "updatedTitle": "Instance mise à jour",
+      "createdDescription": "Instance créée avec succès. Test de connexion en arrière-plan...",
+      "createdTitle": "Instance créée",
       "updateFailedDescription": "Impossible de mettre à jour l'instance",
-      "updateFailedTitle": "Échec de la mise à jour"
+      "updateFailedTitle": "Échec de la mise à jour",
+      "updatedDescription": "Instance mise à jour avec succès. Test de connexion en arrière-plan...",
+      "updatedTitle": "Instance mise à jour"
     },
     "validation": {
       "basicAuthPasswordRequired": "Le mot de passe Basic Auth est requis lorsque Basic Auth est activé",
@@ -2996,6 +2998,19 @@
       "title": "Supprimer la licence ?"
     },
     "description": "Gérez votre licence de thème et votre accès premium",
+    "discord": {
+      "claimPrefix": "Réclamez le rôle",
+      "claimSuffix": "pour accéder à un salon privé.",
+      "clickToCopy": "Cliquer pour copier",
+      "copiedVerify": "/verify copié",
+      "copyVerifyAria": "Copier la commande /verify",
+      "copyVerifyFailed": "Impossible de copier /verify",
+      "openDiscord": "Ouvrir qui Discord",
+      "opensInNewTab": "(s'ouvre dans un nouvel onglet)",
+      "runPrefix": "lancez",
+      "runSuffix": "dans #qui, puis connectez-vous avec l'e-mail de votre licence.",
+      "title": "Avantage Discord"
+    },
     "help": {
       "buyAndRecoverPrefix": "Achetez sur DodoPayments puis saisissez votre clé ici. Si vous la perdez, récupérez-la depuis le",
       "dodoInactive": "Cette licence n'est pas active sur cette machine. Cliquez sur réactiver pour l'utiliser ici. Si vous atteignez la limite d'activation, désactivez-la sur l'autre machine où elle est active.",
@@ -3091,8 +3106,8 @@
     "panel": {
       "changesAppliedImmediately": "Les changements sont appliqués immédiatement.",
       "logConfigurationTitle": "Configuration des logs",
-      "logsDescription": "Logs applicatifs en temps réel. Cliquez sur un badge de niveau pour masquer les entrées similaires.",
       "logSettingsSrOnly": "Paramètres de logs",
+      "logsDescription": "Logs applicatifs en temps réel. Cliquez sur un badge de niveau pour masquer les entrées similaires.",
       "logsTitle": "Logs"
     },
     "search": {
@@ -3463,8 +3478,8 @@
     "toasts": {
       "settingsSaved": "Paramètres enregistrés",
       "unableToUpdate": "Impossible de mettre à jour les paramètres",
-      "updated": "Scan d'orphelins mis à jour",
-      "updateFailed": "Échec de la mise à jour"
+      "updateFailed": "Échec de la mise à jour",
+      "updated": "Scan d'orphelins mis à jour"
     },
     "units": {
       "files": "fichiers",
@@ -3510,12 +3525,12 @@
     "columns": {
       "address": "IP:Port",
       "client": "Client",
-      "downloaded": "Téléchargé",
       "downloadSpeed": "Vitesse DL",
+      "downloaded": "Téléchargé",
       "flags": "Drapeaux",
       "progress": "Progression",
-      "uploaded": "Envoyé",
-      "uploadSpeed": "Vitesse UL"
+      "uploadSpeed": "Vitesse UL",
+      "uploaded": "Envoyé"
     },
     "empty": {
       "noPeersConnected": "Aucun pair connecté"
@@ -3870,8 +3885,8 @@
       "ruleDisabled": "Règle désactivée",
       "ruleEnabled": "Règle activée",
       "ruleRemoved": "Règle supprimée avec succès",
-      "rulesReprocessed": "Règles retraitées : les articles non lus seront vérifiés avec toutes les règles",
       "ruleUpdated": "Règle mise à jour avec succès",
+      "rulesReprocessed": "Règles retraitées : les articles non lus seront vérifiés avec toutes les règles",
       "saveRssSettingsFailed": "Échec de l'enregistrement des paramètres RSS",
       "updateFeedUrlFailed": "Échec de la mise à jour de l'URL du flux",
       "updateRuleFailed": "Échec de la mise à jour de la règle"
@@ -3928,12 +3943,12 @@
     "params": {
       "categories": {
         "audio": "Audio",
-        "audiobook": "Livre audio",
         "audioForeign": "Audio étranger",
         "audioLossless": "Audio sans perte",
         "audioMp3": "Audio MP3",
         "audioOther": "Autre audio",
         "audioVideo": "Audio vidéo",
+        "audiobook": "Livre audio",
         "books": "Livres",
         "booksComics": "BD",
         "booksEbook": "E-books",
@@ -4036,8 +4051,8 @@
     },
     "addTorrentDialog": {
       "actions": {
-        "adding": "Ajout...",
         "addTorrent": "Ajouter le torrent",
+        "adding": "Ajout...",
         "cancel": "Annuler",
         "clearAll": "Tout effacer",
         "hideFiles": "Masquer les fichiers",
@@ -4199,8 +4214,8 @@
     },
     "crossSeedDialog": {
       "actions": {
-        "adding": "Ajout...",
         "addSelected": "Ajouter la sélection",
+        "adding": "Ajout...",
         "block": "Bloquer",
         "blocking": "Blocage...",
         "clear": "Effacer",
@@ -4268,15 +4283,15 @@
         "capabilityNoteTitle": "Note de capacité",
         "enabledIndexers": "{{count}} indexeurs activés",
         "filtering": "Filtrage...",
-        "noneSelected": "Aucun sélectionné",
         "noTorznabIndexers": "Aucun indexeur Torznab disponible",
         "noTorznabIndexersHint": "Ajoutez ou activez des indexeurs Torznab dans Paramètres pour rechercher des cross-seeds.",
+        "noneSelected": "Aucun sélectionné",
         "searchIndexers": "{{count}} indexeurs pour la recherche",
         "searching": "Recherche...",
         "selectCustom": "Sélection personnalisée",
+        "selectIndexers": "Sélectionner des indexeurs",
         "selectedCount": "{{count}} sélectionnés",
         "selectedOfTotal": "{{selected}} sur {{total}} sélectionnés",
-        "selectIndexers": "Sélectionner des indexeurs",
         "title": "Portée de recherche"
       },
       "searchingIndexers": "Recherche des indexeurs...",
@@ -4524,8 +4539,8 @@
         "commit": "Commit",
         "configDir": "Config dir",
         "currentSessionAuth": "Current session auth",
-        "database": "Database",
         "dataDir": "Data dir",
+        "database": "Database",
         "oidcEnabled": "OIDC enabled",
         "oidcIssuerHost": "OIDC issuer host",
         "runtime": "Runtime",
@@ -4579,9 +4594,9 @@
         "lastChecked": "Last checked: {{value}}",
         "notChecked": "Not checked yet",
         "unknown": "Unknown",
-        "updateAvailable": "Update available",
         "upToDate": "Up to date",
         "upToDateDetail": "No newer release is currently cached.",
+        "updateAvailable": "Update available",
         "waiting": "Waiting for application metadata."
       },
       "values": {
@@ -4631,8 +4646,8 @@
     "instances": {
       "actions": {
         "addFirstInstance": "Ajouter votre première instance",
-        "adding": "Ajout...",
         "addInstance": "Ajouter une instance",
+        "adding": "Ajout...",
         "cancel": "Annuler"
       },
       "dialogs": {
@@ -5005,12 +5020,12 @@
       "sortBy": "Trier par"
     },
     "stats": {
+      "loadMore": "Charger plus",
       "loadedOfTotal": "{{loaded}} torrents chargés sur {{total}}",
       "loadedSimple": "{{count}} torrents",
       "loading": "Chargement...",
       "loadingMoreTorrents": "Chargement de torrents supplémentaires...",
       "loadingTorrents": "Chargement des torrents...",
-      "loadMore": "Charger plus",
       "noTorrentsFound": "Aucun torrent trouvé"
     },
     "units": {
@@ -5071,10 +5086,10 @@
       "loading": "Chargement des programmes...",
       "title": "Programmes externes",
       "toasts": {
+        "executeFailed": "Échec d'exécution du programme externe : {{message}}",
         "executedAllFailed": "Échec d'exécution du programme externe pour les {{failureCount}} torrent(s)",
         "executedAllSuccess": "Programme externe exécuté avec succès pour {{successCount}} torrent(s)",
-        "executedPartial": "Exécuté pour {{successCount}} torrent(s), échec pour {{failureCount}}",
-        "executeFailed": "Échec d'exécution du programme externe : {{message}}"
+        "executedPartial": "Exécuté pour {{successCount}} torrent(s), échec pour {{failureCount}}"
       }
     },
     "filterCrossSeeds": {
@@ -5120,8 +5135,8 @@
       "running": "En cours"
     },
     "toasts": {
-      "deleted": "Tâche de création de torrent supprimée",
       "deleteFailed": "Échec de la suppression de la tâche de création de torrent",
+      "deleted": "Tâche de création de torrent supprimée",
       "downloadFailed": "Échec du téléchargement du fichier torrent",
       "downloadStarted": "Téléchargement du fichier torrent démarré"
     }
@@ -5165,8 +5180,6 @@
       "checkingMoreInstances": "Vérification d'autres instances...",
       "hardlinkTooltip": "Fichiers stockés dans le répertoire hardlink (séparé de la source)",
       "instanceLabel": "Instance : {{value}}",
-      "matchingFoundAcrossInstances": "{{count}} {{noun}} trouvés sur toutes les instances",
-      "matchingFoundChecking": "{{count}} {{noun}} trouvés, vérification d'autres instances...",
       "matchLabel": "Correspondance : {{value}}",
       "matchType": {
         "contentPath": "Chemin du contenu",
@@ -5180,6 +5193,8 @@
         "name": "Même nom de torrent",
         "savePath": "Même répertoire et même nom de fichier"
       },
+      "matchingFoundAcrossInstances": "{{count}} {{noun}} trouvés sur toutes les instances",
+      "matchingFoundChecking": "{{count}} {{noun}} trouvés, vérification d'autres instances...",
       "selectedCount": "{{selected}} sur {{total}} sélectionnés",
       "tagsLabel": "Tags : {{value}}",
       "trackerLabel": "Tracker : {{value}}"
@@ -5232,9 +5247,9 @@
       "countryLabel": "Pays :",
       "created": "Créé",
       "createdBy": "Créé par",
-      "downloaded": "Téléchargé",
       "downloadPath": "Chemin de téléchargement",
       "downloadSpeed": "Vitesse de download",
+      "downloaded": "Téléchargé",
       "flagsLabel": "Flags :",
       "infoHashV1": "Info Hash v1",
       "infoHashV2": "Info Hash v2",
@@ -5246,8 +5261,8 @@
       "maxUploads": "Max envois",
       "peerProgress": "Progression du peer",
       "peers": "Peers",
-      "pieces": "Pieces",
       "pieceSizeEach": "({{size}} chacune)",
+      "pieces": "Pieces",
       "priority": "Priorité",
       "savePath": "Chemin d'enregistrement",
       "seedingTime": "Temps de seed",
@@ -5256,8 +5271,8 @@
       "timeActive": "Temps actif",
       "torrentName": "Nom du torrent",
       "totalSize": "Taille totale",
-      "uploaded": "Envoyé",
       "uploadSpeed": "Vitesse d'upload",
+      "uploaded": "Envoyé",
       "wasted": "Gaspillé"
     },
     "peers": {
@@ -5291,9 +5306,9 @@
       "copiedPeerAddress": "{{address}} copié dans le presse-papiers",
       "copiedToClipboard": "{{label}} copié dans le presse-papiers",
       "copyFailed": "Échec de la copie dans le presse-papiers",
+      "deleteFailed": "Échec de la suppression : {{message}}",
       "deletedCurrentTorrent": "Torrent supprimé : {{name}}",
       "deletedTorrents": "{{count}} {{noun}} supprimés",
-      "deleteFailed": "Échec de la suppression : {{message}}",
       "filePriorityUpdateFailed": "Échec de la mise à jour des priorités de fichiers",
       "fileRenamed": "Fichier renommé avec succès",
       "folderRenamed": "Dossier renommé avec succès",
@@ -5301,8 +5316,8 @@
       "peersAdded": "Peers ajoutés avec succès",
       "renameFileFailed": "Échec du renommage du fichier",
       "renameFolderFailed": "Échec du renommage du dossier",
-      "trackerUpdated": "URL du tracker mise à jour avec succès",
       "trackerUpdateFailedTitle": "Échec de la mise à jour du tracker",
+      "trackerUpdated": "URL du tracker mise à jour avec succès",
       "urlCopied": "URL copiée dans le presse-papiers"
     },
     "trackers": {
@@ -5431,18 +5446,6 @@
       "selectedSummary": "Tags sélectionnés : {{tags}}",
       "title": "Définir les tags pour {{count}} torrent(s)"
     },
-    "shared": {
-      "availableTags": "Tags disponibles",
-      "cancel": "Annuler",
-      "deselectAll": "Tout désélectionner",
-      "enterNewTagPlaceholder": "Saisir un nouveau tag",
-      "loading": "Chargement...",
-      "loadingTags": "Chargement des tags...",
-      "locationLabel": "Emplacement",
-      "newTagSuffix": "(nouveau)",
-      "rename": "Renommer",
-      "setting": "Application..."
-    },
     "shareLimits": {
       "confirm": "Appliquer les limites",
       "description": "Configurez les limites de seed pour les torrents sélectionnés. Les trois champs seront appliqués.",
@@ -5477,6 +5480,18 @@
       "seedTimePlaceholder": "ex. 1440",
       "setAllToGlobal": "Tout définir sur Global",
       "title": "Définir les limites de partage pour {{count}} torrent(s)"
+    },
+    "shared": {
+      "availableTags": "Tags disponibles",
+      "cancel": "Annuler",
+      "deselectAll": "Tout désélectionner",
+      "enterNewTagPlaceholder": "Saisir un nouveau tag",
+      "loading": "Chargement...",
+      "loadingTags": "Chargement des tags...",
+      "locationLabel": "Emplacement",
+      "newTagSuffix": "(nouveau)",
+      "rename": "Renommer",
+      "setting": "Application..."
     },
     "speedLimits": {
       "confirm": "Appliquer les limites",
@@ -5600,16 +5615,16 @@
       "completed": "Terminé",
       "created": "Créé",
       "createdBy": "Créé par",
-      "downloaded": "Téléchargé",
       "downloadLimit": "Limite DL",
       "downloadShort": "DL",
+      "downloaded": "Téléchargé",
       "hashV1": "Hash v1",
       "hashV2": "Hash v2",
       "inactiveLimit": "Limite d'inactivité",
       "name": "Nom",
       "peers": "Peers",
-      "pieces": "Pièces",
       "pieceSize": "Taille de pièce",
+      "pieces": "Pièces",
       "priority": "Priorité",
       "ratio": "Ratio",
       "ratioLimit": "Limite de ratio",
@@ -5620,9 +5635,9 @@
       "sequentialDownload": "Téléchargement séquentiel",
       "size": "Taille",
       "tempPath": "Chemin temporaire",
-      "uploaded": "Envoyé",
       "uploadLimit": "Limite UL",
       "uploadShort": "UL",
+      "uploaded": "Envoyé",
       "wasted": "Perdu"
     },
     "sections": {
@@ -5694,11 +5709,6 @@
       "tmmMixed": "TMM (mixte)"
     }
   },
-  "torrentsPage": {
-    "detailsTitle": "Détails du torrent",
-    "detailsTitleWithName": "Détails du torrent : {{name}}",
-    "filtersTitle": "Filtres"
-  },
   "torrentTableColumns": {
     "headers": {
       "added": "Ajouté",
@@ -5707,8 +5717,8 @@
       "completed": "Terminé",
       "completedOn": "Terminé le",
       "downLimit": "Limite DL",
-      "downloaded": "Téléchargé",
       "downSpeed": "Vitesse DL",
+      "downloaded": "Téléchargé",
       "eta": "Temps restant",
       "infoHashV1": "Info Hash v1",
       "infoHashV2": "Info Hash v2",
@@ -5740,8 +5750,8 @@
       "tracker": "Tracker",
       "trackerIcon": "Icône du tracker",
       "upLimit": "Limite UL",
-      "uploaded": "Envoyé",
-      "upSpeed": "Vitesse UL"
+      "upSpeed": "Vitesse UL",
+      "uploaded": "Envoyé"
     },
     "priority": {
       "tooltip": "Priorité"
@@ -5797,6 +5807,11 @@
     "table": {
       "ariaLabel": "Table des torrents"
     }
+  },
+  "torrentsPage": {
+    "detailsTitle": "Détails du torrent",
+    "detailsTitleWithName": "Détails du torrent : {{name}}",
+    "filtersTitle": "Filtres"
   },
   "trackerReannounceForm": {
     "actions": {
@@ -5976,10 +5991,10 @@
       "description": "{{timestamp}} - {{total}} torrents - stocké temporairement en mémoire",
       "dryRunNote": "Simulation : aucun changement n'a été appliqué.",
       "failedLoad": "Échec du chargement des détails d'exécution.",
-      "loading": "Chargement...",
       "loadMore": "Charger plus",
-      "notAvailable": "Détails d'exécution indisponibles (mémoire uniquement).",
+      "loading": "Chargement...",
       "noTorrents": "Aucun torrent enregistré pour cette exécution.",
+      "notAvailable": "Détails d'exécution indisponibles (mémoire uniquement).",
       "originalTracker": "Original : {{tracker}}",
       "showing": "Affichage de {{shown}} sur {{total}}",
       "table": {
@@ -6088,11 +6103,11 @@
     "dryRun": {
       "actions": {
         "categoryChanged": "Catégorie",
+        "deleteFailed": "Échec de suppression",
         "deletedCondition": "Supprimer (condition)",
         "deletedRatio": "Supprimer (ratio)",
         "deletedSeeding": "Supprimer (seed)",
         "deletedUnregistered": "Supprimer (non enregistré)",
-        "deleteFailed": "Échec de suppression",
         "externalProgram": "Programme externe",
         "limitFailed": "Échec de limite",
         "moved": "Déplacement",
@@ -6228,11 +6243,11 @@
       "activity": {
         "actionValues": {
           "categoryChanged": "Catégorie",
+          "deleteFailed": "Suppression",
           "deletedCondition": "Condition",
           "deletedRatio": "Limite de ratio",
           "deletedSeeding": "Temps de seed",
           "deletedUnregistered": "Non enregistré",
-          "deleteFailed": "Suppression",
           "dryRunNoMatch": "Simulation",
           "externalProgram": "Programme externe",
           "limitFailed": "Définir les limites",
@@ -6528,8 +6543,8 @@
         "outsideQbittorrent": "Hors qBittorrent (bibliothèque/import)",
         "torrentsOnly": "Autres torrents uniquement"
       },
-      "loadingInitial": "Chargement de l'aperçu. Cela peut prendre un moment...",
       "loadMore": "Charger plus",
+      "loadingInitial": "Chargement de l'aperçu. Cela peut prendre un moment...",
       "moreTorrents": "... et {{count}} torrents supplémentaires",
       "stateValues": {
         "active": "Actif",
@@ -6680,11 +6695,11 @@
     "activity": {
       "actionValues": {
         "categoryChanged": "Catégorie",
+        "deleteFailed": "Supprimer",
         "deletedCondition": "Condition",
         "deletedRatio": "Limite de ratio",
         "deletedSeeding": "Temps de seed",
         "deletedUnregistered": "Non enregistré",
-        "deleteFailed": "Supprimer",
         "dryRunNoMatch": "Simulation",
         "externalProgram": "Programme externe",
         "limitFailed": "Définir des limites",

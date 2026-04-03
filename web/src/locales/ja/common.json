@@ -2611,6 +2611,8 @@
       "includedInRestore": "{{label}} を復元対象に戻しました",
       "restoreDryRunCompleted": "復元ドライランが完了しました",
       "restoreExecuted": "復元を実行しました",
+      "settingsAppliedToAll": "全インスタンスに設定を適用しました",
+      "settingsPartiallyApplied": "{{applied}}/{{total}} のインスタンスに適用しました",
       "settingsUpdated": "バックアップ設定を更新しました"
     }
   },
@@ -2996,6 +2998,19 @@
       "title": "ライセンスを削除しますか？"
     },
     "description": "テーマライセンスとプレミアム権限を管理します",
+    "discord": {
+      "claimPrefix": "",
+      "claimSuffix": "ロールを取得してプライベートチャンネルにアクセスしましょう。",
+      "clickToCopy": "クリックしてコピー",
+      "copiedVerify": "/verify をコピーしました",
+      "copyVerifyAria": "/verify コマンドをコピー",
+      "copyVerifyFailed": "/verify のコピーに失敗しました",
+      "openDiscord": "qui Discord を開く",
+      "opensInNewTab": "(新しいタブで開きます)",
+      "runPrefix": "",
+      "runSuffix": "を #qui で実行し、ライセンスのメールアドレスでサインインしてください。",
+      "title": "Discord 特典"
+    },
     "help": {
       "buyAndRecoverPrefix": "DodoPayments で購入後、ここにライセンスキーを入力してください。キーを紛失した場合は次のポータルから復元できます：",
       "dodoInactive": "このマシンではライセンスが有効化されていません。再有効化すると利用できます。上限に達した場合は現在有効な別のマシンで無効化してください。",

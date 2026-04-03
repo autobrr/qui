@@ -1054,8 +1054,8 @@
       "na": "—",
       "noInstanceSelected": "Nenhuma instância selecionada",
       "noMessageProvided": "Nenhuma mensagem fornecida",
-      "none": "Nenhum",
       "noRunsYet": "Sem execuções",
+      "none": "Nenhum",
       "off": "Desligado",
       "on": "Ligado",
       "ready": "Pronto",
@@ -1393,9 +1393,9 @@
       },
       "tooltips": {
         "addToMerge": "Adicionar à mesclagem",
-        "mergedFrom": "Mesclado de: {{domains}}",
         "mergeIntoGroup": "Mesclar no grupo",
         "mergeIntoThisGroup": "Mesclar trackers selecionados neste grupo",
+        "mergedFrom": "Mesclado de: {{domains}}",
         "original": "Original: {{domain}}",
         "rename": "Renomear",
         "seededHelp": "Enviado ÷ tamanho do conteúdo — quantas vezes você semeou o conteúdo"
@@ -1532,9 +1532,9 @@
     },
     "directoryDialog": {
       "addDescription": "Adicione um novo diretório para escanear conteúdo apto a cross-seed.",
-      "additionalTagsLabel": "Tags adicionais",
       "addTagsPlaceholder": "Adicionar tags (opcional)",
       "addTitle": "Adicionar diretório",
+      "additionalTagsLabel": "Tags adicionais",
       "categoryHelp": "Opcional. Quando definido, sobrescreve a categoria padrão global para este diretório.",
       "categoryLoadError": "Não foi possível carregar categorias do qBittorrent. Você ainda pode digitar um valor personalizado.",
       "categoryOverrideLabel": "Sobrescrever categoria",
@@ -1697,10 +1697,10 @@
       "resetScanProgressFailed": "Falha ao resetar progresso da varredura: {{message}}",
       "saveSettingsFailed": "Falha ao salvar configurações: {{message}}",
       "scanCanceled": "Varredura cancelada",
-      "scannerDisabled": "Scanner de Diretórios desativado",
-      "scannerEnabled": "Scanner de Diretórios ativado",
       "scanProgressReset": "Progresso da varredura resetado",
       "scanStarted": "Varredura iniciada",
+      "scannerDisabled": "Scanner de Diretórios desativado",
+      "scannerEnabled": "Scanner de Diretórios ativado",
       "settingsSaved": "Configurações salvas",
       "startScanFailed": "Falha ao iniciar varredura: {{message}}",
       "updateDirectoryFailed": "Falha ao atualizar diretório: {{message}}",
@@ -2064,8 +2064,8 @@
     "disconnected": "Desconectado",
     "globPlaceholder": "Padrão glob...",
     "hideFilters": "Ocultar filtros",
-    "instances": "Instâncias",
     "instanceSettings": "Configurações da instância",
+    "instances": "Instâncias",
     "noActiveInstances": "Nenhuma instância ativa",
     "noInstancesConfigured": "Nenhuma instância configurada",
     "rssEnabled": "RSS ativado",
@@ -2182,42 +2182,6 @@
       "updatedWithWarnings": "Indexador atualizado com avisos: {{warnings}}"
     }
   },
-  "indexersPage": {
-    "actions": {
-      "addSingle": "Adicionar único",
-      "cancel": "Cancelar",
-      "delete": "Excluir",
-      "deleteAll": "Excluir todos",
-      "discover": "Descobrir"
-    },
-    "deleteAllDialog": {
-      "description": "Esta ação não pode ser desfeita. Todos os {{count}} indexadores serão removidos permanentemente.",
-      "title": "Excluir todos os indexadores?"
-    },
-    "deleteDialog": {
-      "description": "Esta ação não pode ser desfeita. O indexador será removido permanentemente.",
-      "title": "Excluir indexador?"
-    },
-    "description": "Gerencie indexadores Torznab com Jackett, Prowlarr ou endpoints nativos de tracker",
-    "summary": "{{enabled}} habilitados, {{capabilities}} com capacidades",
-    "title": "Indexadores Torznab",
-    "toasts": {
-      "connectionFailed": "Falha no teste de conexão",
-      "connectionSuccess": "Teste de conexão bem-sucedido",
-      "deleted": "Indexador excluído com sucesso",
-      "deletedAll": "Todos os {{count}} indexadores foram excluídos",
-      "deletedSome": "{{success}} indexadores excluídos, {{failed}} falharam: {{failedNames}}",
-      "deleteFailed": "Falha ao excluir indexador",
-      "failedIndexers": "Indexadores com falha: {{failedNames}}",
-      "loadFailed": "Falha ao carregar indexadores",
-      "noIndexersToTest": "Nenhum indexador para testar",
-      "syncCapsFailed": "Falha ao sincronizar capacidades",
-      "syncCapsSuccess": "Capacidades sincronizadas do backend",
-      "testedAllSuccess": "Todos os {{count}} indexadores foram testados com sucesso",
-      "testedMixed": "{{success}} passaram, {{failed}} falharam",
-      "testingAll": "Testando {{count}} indexadores..."
-    }
-  },
   "indexerTable": {
     "actions": {
       "clearFilters": "Limpar filtros",
@@ -2286,6 +2250,42 @@
     },
     "units": {
       "seconds": "{{value}}s"
+    }
+  },
+  "indexersPage": {
+    "actions": {
+      "addSingle": "Adicionar único",
+      "cancel": "Cancelar",
+      "delete": "Excluir",
+      "deleteAll": "Excluir todos",
+      "discover": "Descobrir"
+    },
+    "deleteAllDialog": {
+      "description": "Esta ação não pode ser desfeita. Todos os {{count}} indexadores serão removidos permanentemente.",
+      "title": "Excluir todos os indexadores?"
+    },
+    "deleteDialog": {
+      "description": "Esta ação não pode ser desfeita. O indexador será removido permanentemente.",
+      "title": "Excluir indexador?"
+    },
+    "description": "Gerencie indexadores Torznab com Jackett, Prowlarr ou endpoints nativos de tracker",
+    "summary": "{{enabled}} habilitados, {{capabilities}} com capacidades",
+    "title": "Indexadores Torznab",
+    "toasts": {
+      "connectionFailed": "Falha no teste de conexão",
+      "connectionSuccess": "Teste de conexão bem-sucedido",
+      "deleteFailed": "Falha ao excluir indexador",
+      "deleted": "Indexador excluído com sucesso",
+      "deletedAll": "Todos os {{count}} indexadores foram excluídos",
+      "deletedSome": "{{success}} indexadores excluídos, {{failed}} falharam: {{failedNames}}",
+      "failedIndexers": "Indexadores com falha: {{failedNames}}",
+      "loadFailed": "Falha ao carregar indexadores",
+      "noIndexersToTest": "Nenhum indexador para testar",
+      "syncCapsFailed": "Falha ao sincronizar capacidades",
+      "syncCapsSuccess": "Capacidades sincronizadas do backend",
+      "testedAllSuccess": "Todos os {{count}} indexadores foram testados com sucesso",
+      "testedMixed": "{{success}} passaram, {{failed}} falharam",
+      "testingAll": "Testando {{count}} indexadores..."
     }
   },
   "instanceBackups": {
@@ -2611,6 +2611,8 @@
       "includedInRestore": "{{label}} foi incluído",
       "restoreDryRunCompleted": "Simulação de restauração concluída",
       "restoreExecuted": "Restauração executada",
+      "settingsAppliedToAll": "Configurações aplicadas a todas as instâncias",
+      "settingsPartiallyApplied": "Aplicado a {{applied}}/{{total}} instâncias",
       "settingsUpdated": "Configurações de backup atualizadas"
     }
   },
@@ -2707,14 +2709,14 @@
       "username": "Usuário do qBittorrent (geralmente admin)"
     },
     "toasts": {
-      "createdDescription": "Instância criada com sucesso. Testando conexão em segundo plano...",
-      "createdTitle": "Instância criada",
       "createFailedDescription": "Falha ao criar instância",
       "createFailedTitle": "Falha na criação",
-      "updatedDescription": "Instância atualizada com sucesso. Testando conexão em segundo plano...",
-      "updatedTitle": "Instância atualizada",
+      "createdDescription": "Instância criada com sucesso. Testando conexão em segundo plano...",
+      "createdTitle": "Instância criada",
       "updateFailedDescription": "Falha ao atualizar instância",
-      "updateFailedTitle": "Falha na atualização"
+      "updateFailedTitle": "Falha na atualização",
+      "updatedDescription": "Instância atualizada com sucesso. Testando conexão em segundo plano...",
+      "updatedTitle": "Instância atualizada"
     },
     "validation": {
       "basicAuthPasswordRequired": "A senha de Basic Auth é obrigatória quando o Basic Auth está ativado",
@@ -2996,6 +2998,19 @@
       "title": "Remover licença?"
     },
     "description": "Gerencie sua licença de tema e acesso premium",
+    "discord": {
+      "claimPrefix": "Reivindique o cargo",
+      "claimSuffix": "para acessar um canal privado.",
+      "clickToCopy": "Clique para copiar",
+      "copiedVerify": "/verify copiado",
+      "copyVerifyAria": "Copiar comando /verify",
+      "copyVerifyFailed": "Falha ao copiar /verify",
+      "openDiscord": "Abrir qui Discord",
+      "opensInNewTab": "(abre em nova aba)",
+      "runPrefix": "execute",
+      "runSuffix": "em #qui e entre com o e-mail da sua licença.",
+      "title": "Vantagem Discord"
+    },
     "help": {
       "buyAndRecoverPrefix": "Compre na DodoPayments e depois informe sua chave aqui. Se perder a chave, recupere pelo",
       "dodoInactive": "Esta licença não está ativa nesta máquina. Clique em reativar para usá-la aqui. Se atingir o limite de ativações, desative na outra máquina em que ela está ativa.",
@@ -3091,8 +3106,8 @@
     "panel": {
       "changesAppliedImmediately": "As mudanças são aplicadas imediatamente.",
       "logConfigurationTitle": "Configuração de log",
-      "logsDescription": "Logs da aplicação em tempo real. Clique no selo de nível para silenciar entradas parecidas.",
       "logSettingsSrOnly": "Configurações de log",
+      "logsDescription": "Logs da aplicação em tempo real. Clique no selo de nível para silenciar entradas parecidas.",
       "logsTitle": "Logs"
     },
     "search": {
@@ -3463,8 +3478,8 @@
     "toasts": {
       "settingsSaved": "Configurações salvas",
       "unableToUpdate": "Não foi possível atualizar as configurações",
-      "updated": "Varredura de órfãos atualizada",
-      "updateFailed": "Falha na atualização"
+      "updateFailed": "Falha na atualização",
+      "updated": "Varredura de órfãos atualizada"
     },
     "units": {
       "files": "arquivos",
@@ -3510,12 +3525,12 @@
     "columns": {
       "address": "IP:Porta",
       "client": "Cliente",
-      "downloaded": "Baixado",
       "downloadSpeed": "Velocidade DL",
+      "downloaded": "Baixado",
       "flags": "Sinalizadores",
       "progress": "Progresso",
-      "uploaded": "Enviado",
-      "uploadSpeed": "Velocidade UL"
+      "uploadSpeed": "Velocidade UL",
+      "uploaded": "Enviado"
     },
     "empty": {
       "noPeersConnected": "Nenhum peer conectado"
@@ -3870,8 +3885,8 @@
       "ruleDisabled": "Regra desativada",
       "ruleEnabled": "Regra ativada",
       "ruleRemoved": "Regra removida com sucesso",
-      "rulesReprocessed": "Regras reprocessadas: artigos não lidos serão verificados contra todas as regras",
       "ruleUpdated": "Regra atualizada com sucesso",
+      "rulesReprocessed": "Regras reprocessadas: artigos não lidos serão verificados contra todas as regras",
       "saveRssSettingsFailed": "Falha ao salvar configurações RSS",
       "updateFeedUrlFailed": "Falha ao atualizar URL do feed",
       "updateRuleFailed": "Falha ao atualizar regra"
@@ -3928,12 +3943,12 @@
     "params": {
       "categories": {
         "audio": "Áudio",
-        "audiobook": "Audiolivro",
         "audioForeign": "Áudio estrangeiro",
         "audioLossless": "Áudio lossless",
         "audioMp3": "Áudio MP3",
         "audioOther": "Outros áudios",
         "audioVideo": "Áudio em vídeo",
+        "audiobook": "Audiolivro",
         "books": "Livros",
         "booksComics": "Quadrinhos",
         "booksEbook": "E-books",
@@ -4036,8 +4051,8 @@
     },
     "addTorrentDialog": {
       "actions": {
-        "adding": "Adicionando...",
         "addTorrent": "Adicionar torrent",
+        "adding": "Adicionando...",
         "cancel": "Cancelar",
         "clearAll": "Limpar tudo",
         "hideFiles": "Ocultar arquivos",
@@ -4199,8 +4214,8 @@
     },
     "crossSeedDialog": {
       "actions": {
-        "adding": "Adicionando...",
         "addSelected": "Adicionar selecionados",
+        "adding": "Adicionando...",
         "block": "Bloquear",
         "blocking": "Bloqueando...",
         "clear": "Limpar",
@@ -4268,15 +4283,15 @@
         "capabilityNoteTitle": "Nota de capacidade",
         "enabledIndexers": "{{count}} indexadores habilitados",
         "filtering": "Filtrando...",
-        "noneSelected": "Nenhum selecionado",
         "noTorznabIndexers": "Nenhum indexador Torznab disponível",
         "noTorznabIndexersHint": "Adicione ou habilite indexadores Torznab em Configurações para buscar cross-seeds.",
+        "noneSelected": "Nenhum selecionado",
         "searchIndexers": "{{count}} indexadores para busca",
         "searching": "Buscando",
         "selectCustom": "Selecionar personalizados",
+        "selectIndexers": "Selecionar indexadores",
         "selectedCount": "{{count}} selecionados",
         "selectedOfTotal": "{{selected}} de {{total}} selecionados",
-        "selectIndexers": "Selecionar indexadores",
         "title": "Escopo da busca"
       },
       "searchingIndexers": "Buscando indexadores...",
@@ -4524,8 +4539,8 @@
         "commit": "Commit",
         "configDir": "Config dir",
         "currentSessionAuth": "Current session auth",
-        "database": "Database",
         "dataDir": "Data dir",
+        "database": "Database",
         "oidcEnabled": "OIDC enabled",
         "oidcIssuerHost": "OIDC issuer host",
         "runtime": "Runtime",
@@ -4579,9 +4594,9 @@
         "lastChecked": "Last checked: {{value}}",
         "notChecked": "Not checked yet",
         "unknown": "Unknown",
-        "updateAvailable": "Update available",
         "upToDate": "Up to date",
         "upToDateDetail": "No newer release is currently cached.",
+        "updateAvailable": "Update available",
         "waiting": "Waiting for application metadata."
       },
       "values": {
@@ -4631,8 +4646,8 @@
     "instances": {
       "actions": {
         "addFirstInstance": "Adicionar sua primeira instância",
-        "adding": "Adicionando...",
         "addInstance": "Adicionar instância",
+        "adding": "Adicionando...",
         "cancel": "Cancelar"
       },
       "dialogs": {
@@ -5005,12 +5020,12 @@
       "sortBy": "Ordenar por"
     },
     "stats": {
+      "loadMore": "Carregar mais",
       "loadedOfTotal": "{{loaded}} de {{total}} torrents carregados",
       "loadedSimple": "{{count}} torrents",
       "loading": "Carregando...",
       "loadingMoreTorrents": "Carregando mais torrents...",
       "loadingTorrents": "Carregando torrents...",
-      "loadMore": "Carregar mais",
       "noTorrentsFound": "Nenhum torrent encontrado"
     },
     "units": {
@@ -5071,10 +5086,10 @@
       "loading": "Carregando programas...",
       "title": "Programas externos",
       "toasts": {
+        "executeFailed": "Falha ao executar programa externo: {{message}}",
         "executedAllFailed": "Falha ao executar o programa externo para todos os {{failureCount}} torrent(s)",
         "executedAllSuccess": "Programa externo executado com sucesso para {{successCount}} torrent(s)",
-        "executedPartial": "Executado para {{successCount}} torrent(s), falhou para {{failureCount}}",
-        "executeFailed": "Falha ao executar programa externo: {{message}}"
+        "executedPartial": "Executado para {{successCount}} torrent(s), falhou para {{failureCount}}"
       }
     },
     "filterCrossSeeds": {
@@ -5120,8 +5135,8 @@
       "running": "Executando"
     },
     "toasts": {
-      "deleted": "Tarefa de criação de torrent excluída",
       "deleteFailed": "Falha ao excluir tarefa de criação de torrent",
+      "deleted": "Tarefa de criação de torrent excluída",
       "downloadFailed": "Falha ao baixar arquivo torrent",
       "downloadStarted": "Download do arquivo torrent iniciado"
     }
@@ -5165,8 +5180,6 @@
       "checkingMoreInstances": "Verificando mais instâncias...",
       "hardlinkTooltip": "Arquivos armazenados no diretório de hardlink (separado da origem)",
       "instanceLabel": "Instância: {{value}}",
-      "matchingFoundAcrossInstances": "{{count}} {{noun}} encontrados em todas as instâncias",
-      "matchingFoundChecking": "{{count}} {{noun}} encontrados, verificando mais instâncias...",
       "matchLabel": "Correspondência: {{value}}",
       "matchType": {
         "contentPath": "Caminho do Conteúdo",
@@ -5180,6 +5193,8 @@
         "name": "Mesmo nome de torrent",
         "savePath": "Mesmo diretório e nome de arquivo"
       },
+      "matchingFoundAcrossInstances": "{{count}} {{noun}} encontrados em todas as instâncias",
+      "matchingFoundChecking": "{{count}} {{noun}} encontrados, verificando mais instâncias...",
       "selectedCount": "{{selected}} de {{total}} selecionados",
       "tagsLabel": "Tags: {{value}}",
       "trackerLabel": "Tracker: {{value}}"
@@ -5232,9 +5247,9 @@
       "countryLabel": "País:",
       "created": "Criado",
       "createdBy": "Criado Por",
-      "downloaded": "Baixado",
       "downloadPath": "Caminho de Download",
       "downloadSpeed": "Velocidade de Download",
+      "downloaded": "Baixado",
       "flagsLabel": "Flags:",
       "infoHashV1": "Info Hash v1",
       "infoHashV2": "Info Hash v2",
@@ -5246,8 +5261,8 @@
       "maxUploads": "Máx. Uploads",
       "peerProgress": "Progresso do Peer",
       "peers": "Peers",
-      "pieces": "Partes",
       "pieceSizeEach": "({{size}} cada)",
+      "pieces": "Partes",
       "priority": "Prioridade",
       "savePath": "Caminho de Salvamento",
       "seedingTime": "Tempo de Seeding",
@@ -5256,8 +5271,8 @@
       "timeActive": "Tempo Ativo",
       "torrentName": "Nome do Torrent",
       "totalSize": "Tamanho Total",
-      "uploaded": "Enviado",
       "uploadSpeed": "Velocidade de Upload",
+      "uploaded": "Enviado",
       "wasted": "Desperdiçado"
     },
     "peers": {
@@ -5291,9 +5306,9 @@
       "copiedPeerAddress": "{{address}} copiado para a área de transferência",
       "copiedToClipboard": "{{label}} copiado para a área de transferência",
       "copyFailed": "Falha ao copiar para a área de transferência",
+      "deleteFailed": "Falha ao excluir: {{message}}",
       "deletedCurrentTorrent": "Torrent excluído: {{name}}",
       "deletedTorrents": "{{count}} {{noun}} excluídos",
-      "deleteFailed": "Falha ao excluir: {{message}}",
       "filePriorityUpdateFailed": "Falha ao atualizar prioridades de arquivo",
       "fileRenamed": "Arquivo renomeado com sucesso",
       "folderRenamed": "Pasta renomeada com sucesso",
@@ -5301,8 +5316,8 @@
       "peersAdded": "Peers adicionados com sucesso",
       "renameFileFailed": "Falha ao renomear arquivo",
       "renameFolderFailed": "Falha ao renomear pasta",
-      "trackerUpdated": "URL do tracker atualizada com sucesso",
       "trackerUpdateFailedTitle": "Falha ao atualizar tracker",
+      "trackerUpdated": "URL do tracker atualizada com sucesso",
       "urlCopied": "URL copiada para a área de transferência"
     },
     "trackers": {
@@ -5431,18 +5446,6 @@
       "selectedSummary": "Tags selecionadas: {{tags}}",
       "title": "Definir tags para {{count}} torrent(s)"
     },
-    "shared": {
-      "availableTags": "Tags disponíveis",
-      "cancel": "Cancelar",
-      "deselectAll": "Desmarcar tudo",
-      "enterNewTagPlaceholder": "Digite uma nova tag",
-      "loading": "Carregando...",
-      "loadingTags": "Carregando tags...",
-      "locationLabel": "Local",
-      "newTagSuffix": "(nova)",
-      "rename": "Renomear",
-      "setting": "Aplicando..."
-    },
     "shareLimits": {
       "confirm": "Aplicar limites",
       "description": "Configure os limites de semeadura para os torrents selecionados. Os três campos serão aplicados.",
@@ -5477,6 +5480,18 @@
       "seedTimePlaceholder": "ex.: 1440",
       "setAllToGlobal": "Definir tudo como Global",
       "title": "Definir limites de compartilhamento para {{count}} torrent(s)"
+    },
+    "shared": {
+      "availableTags": "Tags disponíveis",
+      "cancel": "Cancelar",
+      "deselectAll": "Desmarcar tudo",
+      "enterNewTagPlaceholder": "Digite uma nova tag",
+      "loading": "Carregando...",
+      "loadingTags": "Carregando tags...",
+      "locationLabel": "Local",
+      "newTagSuffix": "(nova)",
+      "rename": "Renomear",
+      "setting": "Aplicando..."
     },
     "speedLimits": {
       "confirm": "Aplicar limites",
@@ -5600,16 +5615,16 @@
       "completed": "Concluído",
       "created": "Criado",
       "createdBy": "Criado por",
-      "downloaded": "Baixado",
       "downloadLimit": "Limite DL",
       "downloadShort": "DL",
+      "downloaded": "Baixado",
       "hashV1": "Hash v1",
       "hashV2": "Hash v2",
       "inactiveLimit": "Limite inativo",
       "name": "Nome",
       "peers": "Peers",
-      "pieces": "Partes",
       "pieceSize": "Tamanho da parte",
+      "pieces": "Partes",
       "priority": "Prioridade",
       "ratio": "Ratio",
       "ratioLimit": "Limite de ratio",
@@ -5620,9 +5635,9 @@
       "sequentialDownload": "Download sequencial",
       "size": "Tamanho",
       "tempPath": "Caminho temporário",
-      "uploaded": "Enviado",
       "uploadLimit": "Limite UL",
       "uploadShort": "UL",
+      "uploaded": "Enviado",
       "wasted": "Desperdiçado"
     },
     "sections": {
@@ -5694,11 +5709,6 @@
       "tmmMixed": "TMM (Misto)"
     }
   },
-  "torrentsPage": {
-    "detailsTitle": "Detalhes do torrent",
-    "detailsTitleWithName": "Detalhes do torrent: {{name}}",
-    "filtersTitle": "Filtros"
-  },
   "torrentTableColumns": {
     "headers": {
       "added": "Adicionado em",
@@ -5707,8 +5717,8 @@
       "completed": "Concluído",
       "completedOn": "Concluído em",
       "downLimit": "Limite de download",
-      "downloaded": "Baixado",
       "downSpeed": "Velocidade de download",
+      "downloaded": "Baixado",
       "eta": "ETA",
       "infoHashV1": "Info Hash v1",
       "infoHashV2": "Info Hash v2",
@@ -5740,8 +5750,8 @@
       "tracker": "Tracker",
       "trackerIcon": "Ícone do tracker",
       "upLimit": "Limite de upload",
-      "uploaded": "Enviado",
-      "upSpeed": "Velocidade de upload"
+      "upSpeed": "Velocidade de upload",
+      "uploaded": "Enviado"
     },
     "priority": {
       "tooltip": "Prioridade"
@@ -5797,6 +5807,11 @@
     "table": {
       "ariaLabel": "Tabela de torrents"
     }
+  },
+  "torrentsPage": {
+    "detailsTitle": "Detalhes do torrent",
+    "detailsTitleWithName": "Detalhes do torrent: {{name}}",
+    "filtersTitle": "Filtros"
   },
   "trackerReannounceForm": {
     "actions": {
@@ -5976,10 +5991,10 @@
       "description": "{{timestamp}} - {{total}} torrents - armazenado temporariamente em memória",
       "dryRunNote": "Simulação: nenhuma alteração foi aplicada.",
       "failedLoad": "Falha ao carregar detalhes da execução.",
-      "loading": "Carregando...",
       "loadMore": "Carregar mais",
-      "notAvailable": "Detalhes da execução não disponíveis (somente em memória).",
+      "loading": "Carregando...",
       "noTorrents": "Nenhum torrent registrado nesta execução.",
+      "notAvailable": "Detalhes da execução não disponíveis (somente em memória).",
       "originalTracker": "Original: {{tracker}}",
       "showing": "Mostrando {{shown}} de {{total}}",
       "table": {
@@ -6088,11 +6103,11 @@
     "dryRun": {
       "actions": {
         "categoryChanged": "Categoria",
+        "deleteFailed": "Falha ao excluir",
         "deletedCondition": "Excluir (condição)",
         "deletedRatio": "Excluir (ratio)",
         "deletedSeeding": "Excluir (seed)",
         "deletedUnregistered": "Excluir (não registrado)",
-        "deleteFailed": "Falha ao excluir",
         "externalProgram": "Programa externo",
         "limitFailed": "Falha em limite",
         "moved": "Movido",
@@ -6228,11 +6243,11 @@
       "activity": {
         "actionValues": {
           "categoryChanged": "Category",
+          "deleteFailed": "Delete",
           "deletedCondition": "Condition",
           "deletedRatio": "Ratio limit",
           "deletedSeeding": "Seeding time",
           "deletedUnregistered": "Unregistered",
-          "deleteFailed": "Delete",
           "dryRunNoMatch": "Dry-run",
           "externalProgram": "External program",
           "limitFailed": "Set limits",
@@ -6528,8 +6543,8 @@
         "outsideQbittorrent": "Fora do qBittorrent (biblioteca/importação)",
         "torrentsOnly": "Somente outros torrents"
       },
-      "loadingInitial": "Carregando prévia. Isso pode levar um tempo...",
       "loadMore": "Carregar mais",
+      "loadingInitial": "Carregando prévia. Isso pode levar um tempo...",
       "moreTorrents": "... e mais {{count}} torrents",
       "stateValues": {
         "active": "Ativo",
@@ -6680,11 +6695,11 @@
     "activity": {
       "actionValues": {
         "categoryChanged": "Categoria",
+        "deleteFailed": "Excluir",
         "deletedCondition": "Condição",
         "deletedRatio": "Limite de ratio",
         "deletedSeeding": "Tempo de seed",
         "deletedUnregistered": "Não registrado",
-        "deleteFailed": "Excluir",
         "dryRunNoMatch": "Simulação",
         "externalProgram": "Programa externo",
         "limitFailed": "Definir limites",

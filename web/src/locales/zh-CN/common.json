@@ -1054,8 +1054,8 @@
       "na": "—",
       "noInstanceSelected": "未选择实例",
       "noMessageProvided": "未提供信息",
-      "none": "无",
       "noRunsYet": "暂无运行",
+      "none": "无",
       "off": "关",
       "on": "开",
       "ready": "可运行",
@@ -1393,9 +1393,9 @@
       },
       "tooltips": {
         "addToMerge": "加入合并",
-        "mergedFrom": "合并来源：{{domains}}",
         "mergeIntoGroup": "合并到分组",
         "mergeIntoThisGroup": "将选中的 tracker 合并到此分组",
+        "mergedFrom": "合并来源：{{domains}}",
         "original": "原始域名：{{domain}}",
         "rename": "重命名",
         "seededHelp": "上传量 ÷ 内容大小，用于表示你已做种多少倍"
@@ -1532,9 +1532,9 @@
     },
     "directoryDialog": {
       "addDescription": "添加一个新目录用于扫描可交叉做种内容。",
-      "additionalTagsLabel": "附加标签",
       "addTagsPlaceholder": "添加标签（可选）",
       "addTitle": "添加目录",
+      "additionalTagsLabel": "附加标签",
       "categoryHelp": "可选。设置后将覆盖该目录的全局默认分类。",
       "categoryLoadError": "无法从 qBittorrent 加载分类，你仍可输入自定义值。",
       "categoryOverrideLabel": "分类覆盖",
@@ -1697,10 +1697,10 @@
       "resetScanProgressFailed": "重置扫描进度失败：{{message}}",
       "saveSettingsFailed": "保存设置失败：{{message}}",
       "scanCanceled": "扫描已取消",
-      "scannerDisabled": "目录扫描已禁用",
-      "scannerEnabled": "目录扫描已启用",
       "scanProgressReset": "扫描进度已重置",
       "scanStarted": "扫描已开始",
+      "scannerDisabled": "目录扫描已禁用",
+      "scannerEnabled": "目录扫描已启用",
       "settingsSaved": "设置已保存",
       "startScanFailed": "启动扫描失败：{{message}}",
       "updateDirectoryFailed": "更新目录失败：{{message}}",
@@ -2064,8 +2064,8 @@
     "disconnected": "已断开",
     "globPlaceholder": "Glob 模式...",
     "hideFilters": "隐藏筛选器",
-    "instances": "实例",
     "instanceSettings": "实例设置",
+    "instances": "实例",
     "noActiveInstances": "没有活跃实例",
     "noInstancesConfigured": "尚未配置实例",
     "rssEnabled": "RSS 已启用",
@@ -2182,42 +2182,6 @@
       "updatedWithWarnings": "索引器已更新，但有警告：{{warnings}}"
     }
   },
-  "indexersPage": {
-    "actions": {
-      "addSingle": "添加单个",
-      "cancel": "取消",
-      "delete": "删除",
-      "deleteAll": "删除全部",
-      "discover": "发现"
-    },
-    "deleteAllDialog": {
-      "description": "此操作无法撤销。将永久删除全部 {{count}} 个索引器。",
-      "title": "删除所有索引器？"
-    },
-    "deleteDialog": {
-      "description": "此操作无法撤销。删除后该索引器将被永久移除。",
-      "title": "删除索引器？"
-    },
-    "description": "管理由 Jackett、Prowlarr 或原生 tracker 端点驱动的 Torznab 索引器",
-    "summary": "已启用 {{enabled}} 个，含能力数据 {{capabilities}} 个",
-    "title": "Torznab 索引器",
-    "toasts": {
-      "connectionFailed": "连接测试失败",
-      "connectionSuccess": "连接测试成功",
-      "deleted": "索引器删除成功",
-      "deletedAll": "已删除全部 {{count}} 个索引器",
-      "deletedSome": "已删除 {{success}} 个索引器，{{failed}} 个失败：{{failedNames}}",
-      "deleteFailed": "删除索引器失败",
-      "failedIndexers": "失败索引器：{{failedNames}}",
-      "loadFailed": "加载索引器失败",
-      "noIndexersToTest": "没有可测试的索引器",
-      "syncCapsFailed": "同步能力失败",
-      "syncCapsSuccess": "已从后端同步能力",
-      "testedAllSuccess": "全部 {{count}} 个索引器测试成功",
-      "testedMixed": "{{success}} 个通过，{{failed}} 个失败",
-      "testingAll": "正在测试 {{count}} 个索引器..."
-    }
-  },
   "indexerTable": {
     "actions": {
       "clearFilters": "清除筛选",
@@ -2286,6 +2250,42 @@
     },
     "units": {
       "seconds": "{{value}}秒"
+    }
+  },
+  "indexersPage": {
+    "actions": {
+      "addSingle": "添加单个",
+      "cancel": "取消",
+      "delete": "删除",
+      "deleteAll": "删除全部",
+      "discover": "发现"
+    },
+    "deleteAllDialog": {
+      "description": "此操作无法撤销。将永久删除全部 {{count}} 个索引器。",
+      "title": "删除所有索引器？"
+    },
+    "deleteDialog": {
+      "description": "此操作无法撤销。删除后该索引器将被永久移除。",
+      "title": "删除索引器？"
+    },
+    "description": "管理由 Jackett、Prowlarr 或原生 tracker 端点驱动的 Torznab 索引器",
+    "summary": "已启用 {{enabled}} 个，含能力数据 {{capabilities}} 个",
+    "title": "Torznab 索引器",
+    "toasts": {
+      "connectionFailed": "连接测试失败",
+      "connectionSuccess": "连接测试成功",
+      "deleteFailed": "删除索引器失败",
+      "deleted": "索引器删除成功",
+      "deletedAll": "已删除全部 {{count}} 个索引器",
+      "deletedSome": "已删除 {{success}} 个索引器，{{failed}} 个失败：{{failedNames}}",
+      "failedIndexers": "失败索引器：{{failedNames}}",
+      "loadFailed": "加载索引器失败",
+      "noIndexersToTest": "没有可测试的索引器",
+      "syncCapsFailed": "同步能力失败",
+      "syncCapsSuccess": "已从后端同步能力",
+      "testedAllSuccess": "全部 {{count}} 个索引器测试成功",
+      "testedMixed": "{{success}} 个通过，{{failed}} 个失败",
+      "testingAll": "正在测试 {{count}} 个索引器..."
     }
   },
   "instanceBackups": {
@@ -2611,6 +2611,8 @@
       "includedInRestore": "已重新包含 {{label}}",
       "restoreDryRunCompleted": "恢复试运行已完成",
       "restoreExecuted": "恢复已执行",
+      "settingsAppliedToAll": "设置已应用到所有实例",
+      "settingsPartiallyApplied": "已应用到 {{applied}}/{{total}} 个实例",
       "settingsUpdated": "备份设置已更新"
     }
   },
@@ -2707,14 +2709,14 @@
       "username": "qBittorrent 用户名（通常为 admin）"
     },
     "toasts": {
-      "createdDescription": "实例创建成功，后台正在测试连接...",
-      "createdTitle": "实例已创建",
       "createFailedDescription": "创建实例失败",
       "createFailedTitle": "创建失败",
-      "updatedDescription": "实例更新成功，后台正在测试连接...",
-      "updatedTitle": "实例已更新",
+      "createdDescription": "实例创建成功，后台正在测试连接...",
+      "createdTitle": "实例已创建",
       "updateFailedDescription": "更新实例失败",
-      "updateFailedTitle": "更新失败"
+      "updateFailedTitle": "更新失败",
+      "updatedDescription": "实例更新成功，后台正在测试连接...",
+      "updatedTitle": "实例已更新"
     },
     "validation": {
       "basicAuthPasswordRequired": "启用 Basic Auth 时必须填写 Basic Auth 密码",
@@ -2996,6 +2998,19 @@
       "title": "移除许可证？"
     },
     "description": "管理主题许可证和高级权限",
+    "discord": {
+      "claimPrefix": "领取",
+      "claimSuffix": "身份组以进入专属频道。",
+      "clickToCopy": "点击复制",
+      "copiedVerify": "已复制 /verify",
+      "copyVerifyAria": "复制 /verify 命令",
+      "copyVerifyFailed": "复制 /verify 失败",
+      "openDiscord": "打开 qui Discord",
+      "opensInNewTab": "(在新标签页中打开)",
+      "runPrefix": "运行",
+      "runSuffix": "（在 #qui 频道），然后使用许可证邮箱登录。",
+      "title": "Discord 福利"
+    },
     "help": {
       "buyAndRecoverPrefix": "请先在 DodoPayments 购买，然后在此输入许可证密钥。若密钥丢失，可通过以下页面找回：",
       "dodoInactive": "该许可证在此设备上未激活。点击“重新激活”可在本机使用。若达到激活上限，请先在当前激活的另一台设备上停用。",
@@ -3091,8 +3106,8 @@
     "panel": {
       "changesAppliedImmediately": "修改会立即生效。",
       "logConfigurationTitle": "日志配置",
-      "logsDescription": "实时应用日志。点击级别徽章可静默类似日志。",
       "logSettingsSrOnly": "日志设置",
+      "logsDescription": "实时应用日志。点击级别徽章可静默类似日志。",
       "logsTitle": "日志"
     },
     "search": {
@@ -3463,8 +3478,8 @@
     "toasts": {
       "settingsSaved": "设置已保存",
       "unableToUpdate": "无法更新设置",
-      "updated": "孤立扫描设置已更新",
-      "updateFailed": "更新失败"
+      "updateFailed": "更新失败",
+      "updated": "孤立扫描设置已更新"
     },
     "units": {
       "files": "个文件",
@@ -3510,12 +3525,12 @@
     "columns": {
       "address": "IP:端口",
       "client": "客户端",
-      "downloaded": "已下载",
       "downloadSpeed": "下载速度",
+      "downloaded": "已下载",
       "flags": "标记",
       "progress": "进度",
-      "uploaded": "已上传",
-      "uploadSpeed": "上传速度"
+      "uploadSpeed": "上传速度",
+      "uploaded": "已上传"
     },
     "empty": {
       "noPeersConnected": "当前无已连接用户"
@@ -3870,8 +3885,8 @@
       "ruleDisabled": "规则已禁用",
       "ruleEnabled": "规则已启用",
       "ruleRemoved": "规则删除成功",
-      "rulesReprocessed": "规则已重新处理，所有未读文章将重新匹配全部规则",
       "ruleUpdated": "规则更新成功",
+      "rulesReprocessed": "规则已重新处理，所有未读文章将重新匹配全部规则",
       "saveRssSettingsFailed": "保存 RSS 设置失败",
       "updateFeedUrlFailed": "更新订阅源 URL 失败",
       "updateRuleFailed": "更新规则失败"
@@ -3928,12 +3943,12 @@
     "params": {
       "categories": {
         "audio": "音频",
-        "audiobook": "有声书",
         "audioForeign": "外语音频",
         "audioLossless": "无损音频",
         "audioMp3": "MP3 音频",
         "audioOther": "音频其他",
         "audioVideo": "音频视频",
+        "audiobook": "有声书",
         "books": "书籍",
         "booksComics": "漫画",
         "booksEbook": "电子书",
@@ -4036,8 +4051,8 @@
     },
     "addTorrentDialog": {
       "actions": {
-        "adding": "添加中...",
         "addTorrent": "添加种子",
+        "adding": "添加中...",
         "cancel": "取消",
         "clearAll": "全部清除",
         "hideFiles": "隐藏文件",
@@ -4199,8 +4214,8 @@
     },
     "crossSeedDialog": {
       "actions": {
-        "adding": "添加中...",
         "addSelected": "添加所选",
+        "adding": "添加中...",
         "block": "屏蔽",
         "blocking": "屏蔽中...",
         "clear": "清除",
@@ -4268,15 +4283,15 @@
         "capabilityNoteTitle": "能力说明",
         "enabledIndexers": "{{count}} 个已启用索引器",
         "filtering": "筛选中...",
-        "noneSelected": "未选择",
         "noTorznabIndexers": "没有可用的 Torznab 索引器",
         "noTorznabIndexersHint": "请先在设置中添加或启用 Torznab 索引器，再进行辅种搜索。",
+        "noneSelected": "未选择",
         "searchIndexers": "用于搜索的索引器：{{count}}",
         "searching": "搜索中",
         "selectCustom": "自定义选择",
+        "selectIndexers": "选择索引器",
         "selectedCount": "已选 {{count}} 个",
         "selectedOfTotal": "已选 {{selected}} / {{total}}",
-        "selectIndexers": "选择索引器",
         "title": "搜索范围"
       },
       "searchingIndexers": "正在搜索索引器...",
@@ -4524,8 +4539,8 @@
         "commit": "Commit",
         "configDir": "Config dir",
         "currentSessionAuth": "Current session auth",
-        "database": "Database",
         "dataDir": "Data dir",
+        "database": "Database",
         "oidcEnabled": "OIDC enabled",
         "oidcIssuerHost": "OIDC issuer host",
         "runtime": "Runtime",
@@ -4579,9 +4594,9 @@
         "lastChecked": "Last checked: {{value}}",
         "notChecked": "Not checked yet",
         "unknown": "Unknown",
-        "updateAvailable": "Update available",
         "upToDate": "Up to date",
         "upToDateDetail": "No newer release is currently cached.",
+        "updateAvailable": "Update available",
         "waiting": "Waiting for application metadata."
       },
       "values": {
@@ -4631,8 +4646,8 @@
     "instances": {
       "actions": {
         "addFirstInstance": "添加你的第一个实例",
-        "adding": "添加中...",
         "addInstance": "添加实例",
+        "adding": "添加中...",
         "cancel": "取消"
       },
       "dialogs": {
@@ -5005,12 +5020,12 @@
       "sortBy": "排序方式"
     },
     "stats": {
+      "loadMore": "加载更多",
       "loadedOfTotal": "已加载 {{loaded}} / {{total}} 个种子",
       "loadedSimple": "{{count}} 个种子",
       "loading": "加载中...",
       "loadingMoreTorrents": "正在加载更多种子...",
       "loadingTorrents": "正在加载种子...",
-      "loadMore": "加载更多",
       "noTorrentsFound": "未找到种子"
     },
     "units": {
@@ -5071,10 +5086,10 @@
       "loading": "正在加载程序...",
       "title": "外部程序",
       "toasts": {
+        "executeFailed": "执行外部程序失败：{{message}}",
         "executedAllFailed": "外部程序在全部 {{failureCount}} 个种子上执行失败",
         "executedAllSuccess": "外部程序已成功执行于 {{successCount}} 个种子",
-        "executedPartial": "已在 {{successCount}} 个种子上执行，{{failureCount}} 个失败",
-        "executeFailed": "执行外部程序失败：{{message}}"
+        "executedPartial": "已在 {{successCount}} 个种子上执行，{{failureCount}} 个失败"
       }
     },
     "filterCrossSeeds": {
@@ -5120,8 +5135,8 @@
       "running": "进行中"
     },
     "toasts": {
-      "deleted": "种子创建任务已删除",
       "deleteFailed": "删除种子创建任务失败",
+      "deleted": "种子创建任务已删除",
       "downloadFailed": "下载种子文件失败",
       "downloadStarted": "种子文件下载已开始"
     }
@@ -5165,8 +5180,6 @@
       "checkingMoreInstances": "正在检查更多实例...",
       "hardlinkTooltip": "文件存储在硬链接目录中（与源目录分离）",
       "instanceLabel": "实例：{{value}}",
-      "matchingFoundAcrossInstances": "已在所有实例中找到 {{count}}{{noun}}",
-      "matchingFoundChecking": "已找到 {{count}}{{noun}}，正在检查更多实例...",
       "matchLabel": "匹配方式：{{value}}",
       "matchType": {
         "contentPath": "内容路径",
@@ -5180,6 +5193,8 @@
         "name": "种子名称相同",
         "savePath": "保存目录和文件名相同"
       },
+      "matchingFoundAcrossInstances": "已在所有实例中找到 {{count}}{{noun}}",
+      "matchingFoundChecking": "已找到 {{count}}{{noun}}，正在检查更多实例...",
       "selectedCount": "已选择 {{selected}} / {{total}}",
       "tagsLabel": "标签：{{value}}",
       "trackerLabel": "追踪器：{{value}}"
@@ -5232,9 +5247,9 @@
       "countryLabel": "国家/地区：",
       "created": "创建时间",
       "createdBy": "创建者",
-      "downloaded": "已下载",
       "downloadPath": "下载路径",
       "downloadSpeed": "下载速度",
+      "downloaded": "已下载",
       "flagsLabel": "标记：",
       "infoHashV1": "Info Hash v1",
       "infoHashV2": "Info Hash v2",
@@ -5246,8 +5261,8 @@
       "maxUploads": "最大上传数",
       "peerProgress": "对等端进度",
       "peers": "对等端",
-      "pieces": "分片",
       "pieceSizeEach": "（每个 {{size}}）",
+      "pieces": "分片",
       "priority": "优先级",
       "savePath": "保存路径",
       "seedingTime": "做种时长",
@@ -5256,8 +5271,8 @@
       "timeActive": "活动时长",
       "torrentName": "种子名称",
       "totalSize": "总大小",
-      "uploaded": "已上传",
       "uploadSpeed": "上传速度",
+      "uploaded": "已上传",
       "wasted": "浪费"
     },
     "peers": {
@@ -5291,9 +5306,9 @@
       "copiedPeerAddress": "已将 {{address}} 复制到剪贴板",
       "copiedToClipboard": "已将{{label}}复制到剪贴板",
       "copyFailed": "复制到剪贴板失败",
+      "deleteFailed": "删除失败：{{message}}",
       "deletedCurrentTorrent": "已删除种子：{{name}}",
       "deletedTorrents": "已删除 {{count}}{{noun}}",
-      "deleteFailed": "删除失败：{{message}}",
       "filePriorityUpdateFailed": "更新文件优先级失败",
       "fileRenamed": "文件重命名成功",
       "folderRenamed": "文件夹重命名成功",
@@ -5301,8 +5316,8 @@
       "peersAdded": "已成功添加对等端",
       "renameFileFailed": "文件重命名失败",
       "renameFolderFailed": "文件夹重命名失败",
-      "trackerUpdated": "追踪器 URL 更新成功",
       "trackerUpdateFailedTitle": "更新追踪器失败",
+      "trackerUpdated": "追踪器 URL 更新成功",
       "urlCopied": "URL 已复制到剪贴板"
     },
     "trackers": {
@@ -5431,18 +5446,6 @@
       "selectedSummary": "已选标签：{{tags}}",
       "title": "设置 {{count}} 个种子的标签"
     },
-    "shared": {
-      "availableTags": "可用标签",
-      "cancel": "取消",
-      "deselectAll": "取消全选",
-      "enterNewTagPlaceholder": "输入新标签",
-      "loading": "加载中...",
-      "loadingTags": "正在加载标签...",
-      "locationLabel": "位置",
-      "newTagSuffix": "（新建）",
-      "rename": "重命名",
-      "setting": "设置中..."
-    },
     "shareLimits": {
       "confirm": "应用限制",
       "description": "配置所选种子的做种限制。以下三项会一起应用。",
@@ -5477,6 +5480,18 @@
       "seedTimePlaceholder": "例如 1440",
       "setAllToGlobal": "全部设为全局",
       "title": "设置 {{count}} 个种子的分享限制"
+    },
+    "shared": {
+      "availableTags": "可用标签",
+      "cancel": "取消",
+      "deselectAll": "取消全选",
+      "enterNewTagPlaceholder": "输入新标签",
+      "loading": "加载中...",
+      "loadingTags": "正在加载标签...",
+      "locationLabel": "位置",
+      "newTagSuffix": "（新建）",
+      "rename": "重命名",
+      "setting": "设置中..."
     },
     "speedLimits": {
       "confirm": "应用限制",
@@ -5600,16 +5615,16 @@
       "completed": "完成时间",
       "created": "创建时间",
       "createdBy": "创建者",
-      "downloaded": "已下载",
       "downloadLimit": "下载限制",
       "downloadShort": "下载",
+      "downloaded": "已下载",
       "hashV1": "哈希 v1",
       "hashV2": "哈希 v2",
       "inactiveLimit": "非活跃限制",
       "name": "名称",
       "peers": "节点",
-      "pieces": "分片",
       "pieceSize": "分片大小",
+      "pieces": "分片",
       "priority": "优先级",
       "ratio": "分享率",
       "ratioLimit": "分享率限制",
@@ -5620,9 +5635,9 @@
       "sequentialDownload": "顺序下载",
       "size": "大小",
       "tempPath": "临时路径",
-      "uploaded": "已上传",
       "uploadLimit": "上传限制",
       "uploadShort": "上传",
+      "uploaded": "已上传",
       "wasted": "浪费"
     },
     "sections": {
@@ -5694,11 +5709,6 @@
       "tmmMixed": "TMM（混合）"
     }
   },
-  "torrentsPage": {
-    "detailsTitle": "种子详情",
-    "detailsTitleWithName": "种子详情：{{name}}",
-    "filtersTitle": "筛选器"
-  },
   "torrentTableColumns": {
     "headers": {
       "added": "添加时间",
@@ -5707,8 +5717,8 @@
       "completed": "已完成",
       "completedOn": "完成时间",
       "downLimit": "下载限速",
-      "downloaded": "已下载",
       "downSpeed": "下载速度",
+      "downloaded": "已下载",
       "eta": "剩余时间",
       "infoHashV1": "Info Hash v1",
       "infoHashV2": "Info Hash v2",
@@ -5740,8 +5750,8 @@
       "tracker": "Tracker",
       "trackerIcon": "Tracker 图标",
       "upLimit": "上传限速",
-      "uploaded": "已上传",
-      "upSpeed": "上传速度"
+      "upSpeed": "上传速度",
+      "uploaded": "已上传"
     },
     "priority": {
       "tooltip": "优先级"
@@ -5797,6 +5807,11 @@
     "table": {
       "ariaLabel": "种子表格"
     }
+  },
+  "torrentsPage": {
+    "detailsTitle": "种子详情",
+    "detailsTitleWithName": "种子详情：{{name}}",
+    "filtersTitle": "筛选器"
   },
   "trackerReannounceForm": {
     "actions": {
@@ -5976,10 +5991,10 @@
       "description": "{{timestamp}} - {{total}} 个种子 - 仅临时保存在内存中",
       "dryRunNote": "演练模式：未应用任何实际变更。",
       "failedLoad": "加载运行详情失败。",
-      "loading": "加载中...",
       "loadMore": "加载更多",
-      "notAvailable": "运行详情不可用（仅内存保留）。",
+      "loading": "加载中...",
       "noTorrents": "本次运行没有记录任何种子。",
+      "notAvailable": "运行详情不可用（仅内存保留）。",
       "originalTracker": "原始值：{{tracker}}",
       "showing": "已显示 {{shown}} / {{total}}",
       "table": {
@@ -6088,11 +6103,11 @@
     "dryRun": {
       "actions": {
         "categoryChanged": "分类",
+        "deleteFailed": "删除失败",
         "deletedCondition": "删除（条件）",
         "deletedRatio": "删除（分享率）",
         "deletedSeeding": "删除（做种）",
         "deletedUnregistered": "删除（未注册）",
-        "deleteFailed": "删除失败",
         "externalProgram": "外部程序",
         "limitFailed": "限速失败",
         "moved": "移动",
@@ -6228,11 +6243,11 @@
       "activity": {
         "actionValues": {
           "categoryChanged": "Category",
+          "deleteFailed": "Delete",
           "deletedCondition": "Condition",
           "deletedRatio": "Ratio limit",
           "deletedSeeding": "Seeding time",
           "deletedUnregistered": "Unregistered",
-          "deleteFailed": "Delete",
           "dryRunNoMatch": "Dry-run",
           "externalProgram": "External program",
           "limitFailed": "Set limits",
@@ -6528,8 +6543,8 @@
         "outsideQbittorrent": "qBittorrent 外部（媒体库/导入）",
         "torrentsOnly": "仅其他种子"
       },
-      "loadingInitial": "正在加载预览，可能需要一些时间...",
       "loadMore": "加载更多",
+      "loadingInitial": "正在加载预览，可能需要一些时间...",
       "moreTorrents": "… 以及另外 {{count}} 个种子",
       "stateValues": {
         "active": "活跃",
@@ -6680,11 +6695,11 @@
     "activity": {
       "actionValues": {
         "categoryChanged": "分类",
+        "deleteFailed": "删除",
         "deletedCondition": "按条件删除",
         "deletedRatio": "按分享率删除",
         "deletedSeeding": "按做种时长删除",
         "deletedUnregistered": "未注册删除",
-        "deleteFailed": "删除",
         "dryRunNoMatch": "演练",
         "externalProgram": "外部程序",
         "limitFailed": "设置限制",
