@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+/// <reference lib="WebWorker" />
+
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import path from "node:path"
@@ -153,12 +155,26 @@ export default defineConfig(() => ({
     },
   },
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          "react-vendor": ["react", "react-dom", "react-hook-form"],
-          "tanstack": ["@tanstack/react-router", "@tanstack/react-query", "@tanstack/react-table", "@tanstack/react-virtual"],
-          "ui-vendor": ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "lucide-react"],
+        codeSplitting: {
+          groups: [
+            {
+              name: "react-vendor",
+              test: /node_modules[\\/](react|react-dom|react-hook-form)([\\/]|$)/,
+              priority: 30,
+            },
+            {
+              name: "tanstack",
+              test: /node_modules[\\/]@tanstack[\\/]/,
+              priority: 20,
+            },
+            {
+              name: "ui-vendor",
+              test: /node_modules[\\/](@radix-ui|lucide-react)([\\/]|$)/,
+              priority: 10,
+            },
+          ],
         },
       },
     },

@@ -39,6 +39,49 @@ type TreePlan struct {
 	Files   []FilePlan // Files to hardlink
 }
 
+// LinkPlanErrorKind identifies a file-matching failure when building a plan.
+type LinkPlanErrorKind string
+
+const (
+	LinkPlanErrorNoMatchingFile  LinkPlanErrorKind = "no_matching_file"
+	LinkPlanErrorNoAvailableFile LinkPlanErrorKind = "no_available_file"
+	LinkPlanErrorCouldNotMatch   LinkPlanErrorKind = "could_not_match"
+)
+
+// LinkPlanError describes a file-specific plan-building failure.
+type LinkPlanError struct {
+	Kind LinkPlanErrorKind
+	File string
+}
+
+func (e *LinkPlanError) Error() string {
+	if e == nil {
+		return ""
+	}
+
+	switch e.Kind {
+	case LinkPlanErrorNoMatchingFile:
+		return "no matching file for: " + e.File
+	case LinkPlanErrorNoAvailableFile:
+		return "no available match for: " + e.File
+	case LinkPlanErrorCouldNotMatch:
+		return "could not match file: " + e.File
+	default:
+		return "link plan error"
+	}
+}
+
+func (e *LinkPlanError) Is(target error) bool {
+	t, ok := target.(*LinkPlanError)
+	return ok && e != nil && e.Kind == t.Kind
+}
+
+var (
+	ErrNoMatchingFile  = &LinkPlanError{Kind: LinkPlanErrorNoMatchingFile}
+	ErrNoAvailableFile = &LinkPlanError{Kind: LinkPlanErrorNoAvailableFile}
+	ErrCouldNotMatch   = &LinkPlanError{Kind: LinkPlanErrorCouldNotMatch}
+)
+
 // ContentLayout describes how qBittorrent organizes torrent content.
 type ContentLayout string
 
@@ -103,7 +146,7 @@ func BuildPlan(
 	for _, cf := range candidateFiles {
 		bucket := existingBySize[cf.Size]
 		if len(bucket) == 0 {
-			return nil, errors.New("no matching file for: " + cf.Path)
+			return nil, &LinkPlanError{Kind: LinkPlanErrorNoMatchingFile, File: cf.Path}
 		}
 
 		candidateBase := strings.ToLower(fileBaseName(cf.Path))
@@ -117,7 +160,7 @@ func BuildPlan(
 		}
 
 		if len(available) == 0 {
-			return nil, errors.New("no available match for: " + cf.Path)
+			return nil, &LinkPlanError{Kind: LinkPlanErrorNoAvailableFile, File: cf.Path}
 		}
 
 		var match *existingEntry
@@ -162,7 +205,7 @@ func BuildPlan(
 		}
 
 		if match == nil {
-			return nil, errors.New("could not match file: " + cf.Path)
+			return nil, &LinkPlanError{Kind: LinkPlanErrorCouldNotMatch, File: cf.Path}
 		}
 
 		match.used = true

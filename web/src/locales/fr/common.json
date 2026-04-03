@@ -2517,11 +2517,13 @@
         "goToInstances": "Aller aux instances"
       },
       "heading": {
+        "checkingCompatibility": "Vérification de la compatibilité",
         "connectInstance": "Connectez une instance qBittorrent",
         "noCompatibleInstances": "Aucune instance compatible trouvée",
         "selectInstance": "Sélectionnez une instance pour gérer les sauvegardes"
       },
       "message": {
+        "checkingCompatibility": "Vérification des instances compatibles avec les sauvegardes de torrents.",
         "chooseFromDropdown": "Choisissez une instance qBittorrent dans la liste ci-dessus pour consulter et gérer ses sauvegardes.",
         "noInstancesConfigured": "Aucune instance qBittorrent configurée. Ajoutez d'abord une instance pour utiliser la sauvegarde.",
         "noSupportedInstances": "Aucune de vos instances qBittorrent ne prend encore en charge les sauvegardes de torrents. Mettez à niveau vers qBittorrent 4.5.0+ (Web API 2.8.11+) pour activer cette fonctionnalité."
@@ -2532,7 +2534,8 @@
       "actions": {
         "importBackup": "Importer une sauvegarde",
         "runManualBackup": "Lancer une sauvegarde manuelle",
-        "saveChanges": "Enregistrer les changements"
+        "saveChanges": "Enregistrer les changements",
+        "saveChangesToAll": "Appliquer à toutes les instances"
       },
       "cadences": {
         "daily": {
@@ -2572,6 +2575,7 @@
       },
       "validation": {
         "changesApply": "Les changements s'appliquent aux prochaines sauvegardes dès l'enregistrement.",
+        "saveAllWaitTitle": "Les vérifications doivent se terminer avant d'appliquer partout.",
         "selectCadenceBody": "Sélectionnez au moins une cadence (horaire, quotidienne, hebdomadaire ou mensuelle) avant d'enregistrer.",
         "selectCadenceTitle": "Sélectionnez au moins une cadence pour activer les sauvegardes automatiques."
       }

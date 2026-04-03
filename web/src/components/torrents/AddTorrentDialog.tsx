@@ -225,7 +225,6 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
   const checkForDuplicates = useCallback(async (files: File[] | null, urls: string) => {
     duplicateCheckRequestRef.current += 1
     const requestId = duplicateCheckRequestRef.current
-    setDuplicateSummary(createEmptyDuplicateSummary())
     setDuplicateCheckStatus("pending")
     if (duplicateCheckIndicatorTimeoutRef.current !== null) {
       window.clearTimeout(duplicateCheckIndicatorTimeoutRef.current)
@@ -679,7 +678,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
 
     // Check for duplicates when files are dropped
     if (allFiles.length > 0) {
-      checkForDuplicates(allFiles, "")
+      checkForDuplicates(allFiles, form.getFieldValue("urls"))
     }
   }, [checkForDuplicates, form, tr])
 
@@ -969,7 +968,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                         {showFileList && field.state.value && field.state.value.length > 0 && (
                           <div className="max-h-24 overflow-y-auto border rounded-md p-2">
                             <div className="space-y-1 text-xs">
-                              {field.state.value.map((file, index) => {
+                              {Array.isArray(field.state.value) && field.state.value.map((file, index) => {
                                 const fileKey = createFileKey(file)
                                 const duplicateInfo = duplicateFileEntries[fileKey]
                                 const isDuplicate = Boolean(duplicateInfo)
@@ -1032,7 +1031,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
                           onChange={(e) => {
                             field.handleChange(e.target.value)
                             // Check for duplicates when URLs are entered
-                            checkForDuplicates(null, e.target.value)
+                            checkForDuplicates(form.getFieldValue("torrentFiles"), e.target.value)
                           }}
                         />
                         {duplicateUrlKeys.length > 0 && (

@@ -61,6 +61,14 @@ export const CONDITION_FIELDS = {
   COMPLETION_ON_AGE: { label: "Completed Age (legacy)", type: "duration" as const, description: "Legacy alias for Completed Age" },
   LAST_ACTIVITY_AGE: { label: "Inactive Time (legacy)", type: "duration" as const, description: "Legacy alias for Inactive Time" },
 
+  // System Time fields
+  SYSTEM_HOUR: { label: "System Hour", type: "integer" as const, description: "Current system hour (0-23)" },
+  SYSTEM_MINUTE: { label: "System Minute", type: "integer" as const, description: "Current system minute (0-59)" },
+  SYSTEM_DAY_OF_WEEK: { label: "System Day of Week", type: "integer" as const, description: "Current system day of week (0=Sun to 6=Sat)" },
+  SYSTEM_DAY: { label: "System Day", type: "integer" as const, description: "Current system day of month (1-31)" },
+  SYSTEM_MONTH: { label: "System Month", type: "integer" as const, description: "Current system month (1-12)" },
+  SYSTEM_YEAR: { label: "System Year", type: "integer" as const, description: "Current system year" },
+
   // Float fields
   RATIO: { label: "Ratio", type: "float" as const, description: "Upload/download ratio" },
   RATIO_LIMIT: { label: "Ratio Limit", type: "float" as const, description: "Configured ratio limit" },
@@ -94,6 +102,10 @@ export const CONDITION_FIELDS = {
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
   HAS_MISSING_FILES: { label: "Has Missing Files", type: "boolean" as const, description: "Completed torrent has files missing on disk. Requires Local Filesystem Access." },
   IS_GROUPED: { label: "Is Grouped", type: "boolean" as const, description: "True when group size > 1 for the selected group in this condition" },
+  EXISTS_ON_OTHER_INSTANCE: { label: "Exists on Other Instance", type: "boolean" as const, description: "A matching torrent exists on at least one other active instance" },
+  SEEDING_ON_OTHER_INSTANCE: { label: "Seeding on Other Instance", type: "boolean" as const, description: "A matching torrent is actively seeding on at least one other active instance" },
+  EXISTS_ON_SAME_INSTANCE: { label: "Cross-seed Exists on Same Instance", type: "boolean" as const, description: "A cross-seed (same content, different hash) exists on this instance" },
+  SEEDING_ON_SAME_INSTANCE: { label: "Cross-seed Seeding on Same Instance", type: "boolean" as const, description: "A cross-seed is actively seeding on this instance" },
 
   // Enum-like fields
   HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },
@@ -245,6 +257,10 @@ export const FIELD_GROUPS = [
     fields: ["ADDED_ON", "COMPLETION_ON", "LAST_ACTIVITY", "SEEN_COMPLETE", "ETA", "REANNOUNCE", "SEEDING_TIME", "TIME_ACTIVE", "MAX_SEEDING_TIME", "MAX_INACTIVE_SEEDING_TIME", "SEEDING_TIME_LIMIT", "INACTIVE_SEEDING_TIME_LIMIT"],
   },
   {
+    label: "System Time",
+    fields: ["SYSTEM_HOUR", "SYSTEM_MINUTE", "SYSTEM_DAY_OF_WEEK", "SYSTEM_DAY", "SYSTEM_MONTH", "SYSTEM_YEAR"],
+  },
+  {
     label: "Progress",
     fields: ["RATIO", "RATIO_LIMIT", "MAX_RATIO", "PROGRESS", "AVAILABILITY", "POPULARITY"],
   },
@@ -259,6 +275,10 @@ export const FIELD_GROUPS = [
   {
     label: "Tracker",
     fields: ["TRACKER", "TRACKERS", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "COMMENT"],
+  },
+  {
+    label: "Cross-Seed",
+    fields: ["EXISTS_ON_OTHER_INSTANCE", "SEEDING_ON_OTHER_INSTANCE", "EXISTS_ON_SAME_INSTANCE", "SEEDING_ON_SAME_INSTANCE"],
   },
   {
     label: "Mode",

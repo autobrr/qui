@@ -2517,11 +2517,13 @@
         "goToInstances": "Ir a Instancias"
       },
       "heading": {
+        "checkingCompatibility": "Verificando compatibilidad de instancias",
         "connectInstance": "Conecta una instancia de qBittorrent",
         "noCompatibleInstances": "No se encontraron instancias compatibles",
         "selectInstance": "Selecciona una instancia para administrar respaldos"
       },
       "message": {
+        "checkingCompatibility": "Comprobando qué instancias admiten respaldos de torrents.",
         "chooseFromDropdown": "Elige una instancia de qBittorrent en el selector de arriba para ver y administrar sus respaldos.",
         "noInstancesConfigured": "No hay instancias de qBittorrent configuradas. Agrega una instancia para usar la función de respaldo.",
         "noSupportedInstances": "Ninguna de tus instancias de qBittorrent admite todavía respaldos de torrents. Actualiza a qBittorrent 4.5.0+ (Web API 2.8.11+) para habilitar esta función."
@@ -2532,7 +2534,8 @@
       "actions": {
         "importBackup": "Importar respaldo",
         "runManualBackup": "Ejecutar respaldo manual",
-        "saveChanges": "Guardar cambios"
+        "saveChanges": "Guardar cambios",
+        "saveChangesToAll": "Guardar en todas las instancias"
       },
       "cadences": {
         "daily": {
@@ -2572,6 +2575,7 @@
       },
       "validation": {
         "changesApply": "Los cambios se aplican a futuros respaldos en cuanto guardes.",
+        "saveAllWaitTitle": "Las verificaciones deben terminar antes de guardar en todas.",
         "selectCadenceBody": "Selecciona al menos una frecuencia (por hora, diaria, semanal o mensual) antes de guardar.",
         "selectCadenceTitle": "Selecciona al menos una frecuencia para habilitar respaldos automáticos."
       }

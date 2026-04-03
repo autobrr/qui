@@ -2517,11 +2517,13 @@
         "goToInstances": "Go to Instances"
       },
       "heading": {
+        "checkingCompatibility": "Checking instance compatibility",
         "connectInstance": "Connect a qBittorrent instance",
         "noCompatibleInstances": "No compatible instances found",
         "selectInstance": "Select an instance to manage backups"
       },
       "message": {
+        "checkingCompatibility": "Checking which instances support torrent backups.",
         "chooseFromDropdown": "Choose a qBittorrent instance from the dropdown above to view and manage its backups.",
         "noInstancesConfigured": "No qBittorrent instances configured. Add an instance first to use the backup feature.",
         "noSupportedInstances": "None of your qBittorrent instances support torrent backups yet. Upgrade to qBittorrent 4.5.0+ (Web API 2.8.11+) to enable this feature."
@@ -2532,7 +2534,8 @@
       "actions": {
         "importBackup": "Import backup",
         "runManualBackup": "Run manual backup",
-        "saveChanges": "Save changes"
+        "saveChanges": "Save changes",
+        "saveChangesToAll": "Save to all instances"
       },
       "cadences": {
         "daily": {
@@ -2572,6 +2575,8 @@
       },
       "validation": {
         "changesApply": "Changes apply to future backups as soon as you save.",
+        "saveAllWaitTitle": "Instance checks must finish before saving to all.",
+
         "selectCadenceBody": "Select at least one cadence (hourly, daily, weekly, or monthly) before saving.",
         "selectCadenceTitle": "Select at least one cadence to enable automatic backups."
       }

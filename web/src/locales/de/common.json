@@ -2517,11 +2517,13 @@
         "goToInstances": "Zu Instanzen"
       },
       "heading": {
+        "checkingCompatibility": "Instanzkompatibilität wird geprüft",
         "connectInstance": "Eine qBittorrent-Instanz verbinden",
         "noCompatibleInstances": "Keine kompatiblen Instanzen gefunden",
         "selectInstance": "Wähle eine Instanz zur Backup-Verwaltung"
       },
       "message": {
+        "checkingCompatibility": "Es wird geprüft, welche Instanzen Torrent-Backups unterstützen.",
         "chooseFromDropdown": "Wähle oben eine qBittorrent-Instanz aus, um Backups anzuzeigen und zu verwalten.",
         "noInstancesConfigured": "Keine qBittorrent-Instanzen konfiguriert. Füge zuerst eine Instanz hinzu, um die Backup-Funktion zu nutzen.",
         "noSupportedInstances": "Keine deiner qBittorrent-Instanzen unterstützt derzeit Torrent-Backups. Aktualisiere auf qBittorrent 4.5.0+ (Web API 2.8.11+), um diese Funktion zu aktivieren."
@@ -2532,7 +2534,8 @@
       "actions": {
         "importBackup": "Backup importieren",
         "runManualBackup": "Manuelles Backup ausführen",
-        "saveChanges": "Änderungen speichern"
+        "saveChanges": "Änderungen speichern",
+        "saveChangesToAll": "Für alle Instanzen speichern"
       },
       "cadences": {
         "daily": {
@@ -2572,6 +2575,7 @@
       },
       "validation": {
         "changesApply": "Änderungen gelten für zukünftige Backups sofort nach dem Speichern.",
+        "saveAllWaitTitle": "Instanzprüfung muss abgeschlossen sein.",
         "selectCadenceBody": "Wähle vor dem Speichern mindestens einen Rhythmus (stündlich, täglich, wöchentlich oder monatlich).",
         "selectCadenceTitle": "Wähle mindestens einen Rhythmus, um automatische Backups zu aktivieren."
       }

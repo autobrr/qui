@@ -101,7 +101,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const hasActionScope = typeof instanceId === "number" && instanceId >= 0
   const actionInstanceId = hasActionScope ? instanceId : -1
   const metadataInstanceId = actionInstanceId > 0 ? actionInstanceId : 0
-  const supportsCrossSeedDeleteTools = actionInstanceId > 0
+  const supportsCrossSeedDeleteTools = actionInstanceId >= 0
   const supportsCrossSeedBlocklist = actionInstanceId >= 0
 
   // Use shared metadata hook to leverage cache from table and filter sidebar

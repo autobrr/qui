@@ -39,6 +39,7 @@ import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
+import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag } from "@/lib/torrent-utils"
@@ -327,7 +328,7 @@ interface TorrentCardsMobileProps {
   onTorrentSelect?: (torrent: Torrent | null) => void
   addTorrentModalOpen?: boolean
   onAddTorrentModalChange?: (open: boolean) => void
-  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[], useSubcategories?: boolean) => void
+  onFilteredDataUpdate?: (torrents: Torrent[], total: number, counts?: TorrentCounts, categories?: Record<string, Category>, tags?: string[], useSubcategories?: boolean, supportsTrackerHealth?: boolean) => void
   onFilterChange?: (filters: TorrentFilters) => void
   canCrossSeedSearch?: boolean
   onCrossSeedSearch?: (torrent: Torrent) => void
@@ -1249,6 +1250,7 @@ export function TorrentCardsMobile({
     tags,
     stats,
     useSubcategories: subcategoriesFromData,
+    trackerHealthSupported,
 
     isLoading,
     isLoadingMore,
@@ -1264,7 +1266,11 @@ export function TorrentCardsMobile({
   })
 
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: instanceId > 0 })
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
+  const supportsTrackerHealth = resolveTrackerHealthSupport({
+    isUnifiedView: isAllInstancesView,
+    capabilitySupport: capabilities?.supportsTrackerHealth,
+    responseSupport: trackerHealthSupported,
+  })
   const supportsTorrentCreation = isAllInstancesView ? false : (capabilities?.supportsTorrentCreation ?? true)
   const supportsSubcategories = isAllInstancesView
     ? Boolean(subcategoriesFromData)
@@ -1317,10 +1323,10 @@ export function TorrentCardsMobile({
   // Call the callback when filtered data updates
   useEffect(() => {
     if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
-      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags, subcategoriesFromData)
+      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags, subcategoriesFromData, supportsTrackerHealth)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalCount, isLoading, torrents.length, counts, categories, tags, subcategoriesFromData, onFilteredDataUpdate]) // Update when data changes
+  }, [totalCount, isLoading, torrents.length, counts, categories, tags, subcategoriesFromData, onFilteredDataUpdate, supportsTrackerHealth]) // Update when data changes
 
   // Calculate the effective selection count for display
   const effectiveSelectionCount = useMemo(() => {

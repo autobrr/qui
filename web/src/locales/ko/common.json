@@ -1054,8 +1054,8 @@
       "na": "—",
       "noInstanceSelected": "선택된 인스턴스 없음",
       "noMessageProvided": "제공된 메시지가 없습니다",
-      "none": "없음",
       "noRunsYet": "아직 실행 없음",
+      "none": "없음",
       "off": "꺼짐",
       "on": "켜짐",
       "ready": "준비됨",
@@ -1393,9 +1393,9 @@
       },
       "tooltips": {
         "addToMerge": "병합 목록에 추가",
-        "mergedFrom": "병합 출처: {{domains}}",
         "mergeIntoGroup": "그룹으로 병합",
         "mergeIntoThisGroup": "선택한 트래커를 이 그룹으로 병합",
+        "mergedFrom": "병합 출처: {{domains}}",
         "original": "원본: {{domain}}",
         "rename": "이름 변경",
         "seededHelp": "업로드 ÷ 콘텐츠 크기 — 콘텐츠를 몇 배 시딩했는지"
@@ -1532,9 +1532,9 @@
     },
     "directoryDialog": {
       "addDescription": "cross-seed 가능한 콘텐츠를 스캔할 새 디렉터리를 추가합니다.",
-      "additionalTagsLabel": "추가 태그",
       "addTagsPlaceholder": "태그 추가(선택)",
       "addTitle": "디렉터리 추가",
+      "additionalTagsLabel": "추가 태그",
       "categoryHelp": "선택 사항. 설정하면 이 디렉터리에 전역 기본 카테고리 대신 적용됩니다.",
       "categoryLoadError": "qBittorrent에서 카테고리를 불러오지 못했습니다. 사용자 지정 값은 직접 입력할 수 있습니다.",
       "categoryOverrideLabel": "카테고리 덮어쓰기",
@@ -1697,10 +1697,10 @@
       "resetScanProgressFailed": "스캔 진행 상태 초기화 실패: {{message}}",
       "saveSettingsFailed": "설정 저장 실패: {{message}}",
       "scanCanceled": "스캔 취소됨",
-      "scannerDisabled": "디렉터리 스캐너 비활성화됨",
-      "scannerEnabled": "디렉터리 스캐너 활성화됨",
       "scanProgressReset": "스캔 진행 상태 초기화됨",
       "scanStarted": "스캔 시작됨",
+      "scannerDisabled": "디렉터리 스캐너 비활성화됨",
+      "scannerEnabled": "디렉터리 스캐너 활성화됨",
       "settingsSaved": "설정 저장됨",
       "startScanFailed": "스캔 시작 실패: {{message}}",
       "updateDirectoryFailed": "디렉터리 업데이트 실패: {{message}}",
@@ -2064,8 +2064,8 @@
     "disconnected": "연결 끊김",
     "globPlaceholder": "Glob 패턴...",
     "hideFilters": "필터 숨기기",
-    "instances": "인스턴스",
     "instanceSettings": "인스턴스 설정",
+    "instances": "인스턴스",
     "noActiveInstances": "활성 인스턴스가 없습니다",
     "noInstancesConfigured": "구성된 인스턴스가 없습니다",
     "rssEnabled": "RSS 활성화됨",
@@ -2182,42 +2182,6 @@
       "updatedWithWarnings": "인덱서를 경고와 함께 업데이트했습니다: {{warnings}}"
     }
   },
-  "indexersPage": {
-    "actions": {
-      "addSingle": "단일 추가",
-      "cancel": "취소",
-      "delete": "삭제",
-      "deleteAll": "모두 삭제",
-      "discover": "탐색"
-    },
-    "deleteAllDialog": {
-      "description": "이 작업은 되돌릴 수 없습니다. {{count}}개 인덱서가 모두 영구적으로 삭제됩니다.",
-      "title": "모든 인덱서를 삭제할까요?"
-    },
-    "deleteDialog": {
-      "description": "이 작업은 되돌릴 수 없습니다. 인덱서가 영구적으로 삭제됩니다.",
-      "title": "인덱서를 삭제할까요?"
-    },
-    "description": "Jackett, Prowlarr 또는 네이티브 트래커 엔드포인트 기반 Torznab 인덱서를 관리합니다",
-    "summary": "{{enabled}}개 활성화, {{capabilities}}개 기능 지원",
-    "title": "Torznab 인덱서",
-    "toasts": {
-      "connectionFailed": "연결 테스트에 실패했습니다",
-      "connectionSuccess": "연결 테스트에 성공했습니다",
-      "deleted": "인덱서를 삭제했습니다",
-      "deletedAll": "{{count}}개 인덱서를 모두 삭제했습니다",
-      "deletedSome": "{{success}}개 삭제, {{failed}}개 실패: {{failedNames}}",
-      "deleteFailed": "인덱서 삭제에 실패했습니다",
-      "failedIndexers": "실패한 인덱서: {{failedNames}}",
-      "loadFailed": "인덱서를 불러오지 못했습니다",
-      "noIndexersToTest": "테스트할 인덱서가 없습니다",
-      "syncCapsFailed": "기능 정보 동기화에 실패했습니다",
-      "syncCapsSuccess": "백엔드에서 기능 정보를 동기화했습니다",
-      "testedAllSuccess": "{{count}}개 인덱서 테스트를 모두 통과했습니다",
-      "testedMixed": "{{success}}개 성공, {{failed}}개 실패",
-      "testingAll": "{{count}}개 인덱서 테스트 중..."
-    }
-  },
   "indexerTable": {
     "actions": {
       "clearFilters": "필터 초기화",
@@ -2286,6 +2250,42 @@
     },
     "units": {
       "seconds": "{{value}}초"
+    }
+  },
+  "indexersPage": {
+    "actions": {
+      "addSingle": "단일 추가",
+      "cancel": "취소",
+      "delete": "삭제",
+      "deleteAll": "모두 삭제",
+      "discover": "탐색"
+    },
+    "deleteAllDialog": {
+      "description": "이 작업은 되돌릴 수 없습니다. {{count}}개 인덱서가 모두 영구적으로 삭제됩니다.",
+      "title": "모든 인덱서를 삭제할까요?"
+    },
+    "deleteDialog": {
+      "description": "이 작업은 되돌릴 수 없습니다. 인덱서가 영구적으로 삭제됩니다.",
+      "title": "인덱서를 삭제할까요?"
+    },
+    "description": "Jackett, Prowlarr 또는 네이티브 트래커 엔드포인트 기반 Torznab 인덱서를 관리합니다",
+    "summary": "{{enabled}}개 활성화, {{capabilities}}개 기능 지원",
+    "title": "Torznab 인덱서",
+    "toasts": {
+      "connectionFailed": "연결 테스트에 실패했습니다",
+      "connectionSuccess": "연결 테스트에 성공했습니다",
+      "deleteFailed": "인덱서 삭제에 실패했습니다",
+      "deleted": "인덱서를 삭제했습니다",
+      "deletedAll": "{{count}}개 인덱서를 모두 삭제했습니다",
+      "deletedSome": "{{success}}개 삭제, {{failed}}개 실패: {{failedNames}}",
+      "failedIndexers": "실패한 인덱서: {{failedNames}}",
+      "loadFailed": "인덱서를 불러오지 못했습니다",
+      "noIndexersToTest": "테스트할 인덱서가 없습니다",
+      "syncCapsFailed": "기능 정보 동기화에 실패했습니다",
+      "syncCapsSuccess": "백엔드에서 기능 정보를 동기화했습니다",
+      "testedAllSuccess": "{{count}}개 인덱서 테스트를 모두 통과했습니다",
+      "testedMixed": "{{success}}개 성공, {{failed}}개 실패",
+      "testingAll": "{{count}}개 인덱서 테스트 중..."
     }
   },
   "instanceBackups": {
@@ -2517,11 +2517,13 @@
         "goToInstances": "인스턴스로 이동"
       },
       "heading": {
+        "checkingCompatibility": "인스턴스 호환성 확인 중",
         "connectInstance": "qBittorrent 인스턴스를 연결하세요",
         "noCompatibleInstances": "호환되는 인스턴스를 찾을 수 없습니다",
         "selectInstance": "백업을 관리할 인스턴스를 선택하세요"
       },
       "message": {
+        "checkingCompatibility": "토렌트 백업을 지원하는 인스턴스를 확인하고 있습니다.",
         "chooseFromDropdown": "위 드롭다운에서 qBittorrent 인스턴스를 선택해 백업을 확인하고 관리하세요.",
         "noInstancesConfigured": "구성된 qBittorrent 인스턴스가 없습니다. 백업 기능을 사용하려면 먼저 인스턴스를 추가하세요.",
         "noSupportedInstances": "현재 사용 중인 qBittorrent 인스턴스 중 토렌트 백업을 지원하는 인스턴스가 없습니다. 이 기능을 사용하려면 qBittorrent 4.5.0+ (Web API 2.8.11+)로 업그레이드하세요."
@@ -2532,7 +2534,8 @@
       "actions": {
         "importBackup": "백업 가져오기",
         "runManualBackup": "수동 백업 실행",
-        "saveChanges": "변경사항 저장"
+        "saveChanges": "변경사항 저장",
+        "saveChangesToAll": "모든 인스턴스에 저장"
       },
       "cadences": {
         "daily": {
@@ -2572,6 +2575,7 @@
       },
       "validation": {
         "changesApply": "변경사항은 저장 즉시 이후 백업에 적용됩니다.",
+        "saveAllWaitTitle": "모든 인스턴스에 저장하려면 호환성 확인이 먼저 완료되어야 합니다.",
         "selectCadenceBody": "저장하기 전에 주기(시간/일/주/월) 중 하나 이상을 선택하세요.",
         "selectCadenceTitle": "자동 백업을 켜려면 주기를 하나 이상 선택하세요."
       }
@@ -2703,14 +2707,14 @@
       "username": "qBittorrent 사용자 이름(보통 admin)"
     },
     "toasts": {
-      "createdDescription": "인스턴스를 성공적으로 생성했습니다. 백그라운드에서 연결을 테스트 중입니다...",
-      "createdTitle": "인스턴스 생성 완료",
       "createFailedDescription": "인스턴스를 생성하지 못했습니다",
       "createFailedTitle": "생성 실패",
-      "updatedDescription": "인스턴스를 성공적으로 업데이트했습니다. 백그라운드에서 연결을 테스트 중입니다...",
-      "updatedTitle": "인스턴스 업데이트 완료",
+      "createdDescription": "인스턴스를 성공적으로 생성했습니다. 백그라운드에서 연결을 테스트 중입니다...",
+      "createdTitle": "인스턴스 생성 완료",
       "updateFailedDescription": "인스턴스를 업데이트하지 못했습니다",
-      "updateFailedTitle": "업데이트 실패"
+      "updateFailedTitle": "업데이트 실패",
+      "updatedDescription": "인스턴스를 성공적으로 업데이트했습니다. 백그라운드에서 연결을 테스트 중입니다...",
+      "updatedTitle": "인스턴스 업데이트 완료"
     },
     "validation": {
       "basicAuthPasswordRequired": "Basic Auth가 활성화되어 있으면 Basic Auth 비밀번호가 필요합니다",
@@ -3087,8 +3091,8 @@
     "panel": {
       "changesAppliedImmediately": "변경 사항은 즉시 적용됩니다.",
       "logConfigurationTitle": "로그 구성",
-      "logsDescription": "실시간 애플리케이션 로그입니다. 레벨 배지를 클릭하면 유사 항목을 음소거할 수 있습니다.",
       "logSettingsSrOnly": "로그 설정",
+      "logsDescription": "실시간 애플리케이션 로그입니다. 레벨 배지를 클릭하면 유사 항목을 음소거할 수 있습니다.",
       "logsTitle": "로그"
     },
     "search": {
@@ -3459,8 +3463,8 @@
     "toasts": {
       "settingsSaved": "설정을 저장했습니다",
       "unableToUpdate": "설정을 업데이트할 수 없습니다",
-      "updated": "고아 스캔이 업데이트되었습니다",
-      "updateFailed": "업데이트 실패"
+      "updateFailed": "업데이트 실패",
+      "updated": "고아 스캔이 업데이트되었습니다"
     },
     "units": {
       "files": "파일",
@@ -3506,12 +3510,12 @@
     "columns": {
       "address": "IP:포트",
       "client": "클라이언트",
-      "downloaded": "다운로드됨",
       "downloadSpeed": "DL 속도",
+      "downloaded": "다운로드됨",
       "flags": "플래그",
       "progress": "진행률",
-      "uploaded": "업로드됨",
-      "uploadSpeed": "UL 속도"
+      "uploadSpeed": "UL 속도",
+      "uploaded": "업로드됨"
     },
     "empty": {
       "noPeersConnected": "연결된 피어가 없습니다"
@@ -3866,8 +3870,8 @@
       "ruleDisabled": "규칙이 비활성화되었습니다",
       "ruleEnabled": "규칙이 활성화되었습니다",
       "ruleRemoved": "규칙을 제거했습니다",
-      "rulesReprocessed": "규칙을 재처리했습니다. 읽지 않은 글을 모든 규칙과 다시 확인합니다",
       "ruleUpdated": "규칙을 업데이트했습니다",
+      "rulesReprocessed": "규칙을 재처리했습니다. 읽지 않은 글을 모든 규칙과 다시 확인합니다",
       "saveRssSettingsFailed": "RSS 설정 저장에 실패했습니다",
       "updateFeedUrlFailed": "피드 URL 업데이트에 실패했습니다",
       "updateRuleFailed": "규칙 업데이트에 실패했습니다"
@@ -3924,12 +3928,12 @@
     "params": {
       "categories": {
         "audio": "오디오",
-        "audiobook": "오디오북",
         "audioForeign": "해외 오디오",
         "audioLossless": "무손실 오디오",
         "audioMp3": "MP3 오디오",
         "audioOther": "기타 오디오",
         "audioVideo": "비디오 오디오",
+        "audiobook": "오디오북",
         "books": "도서",
         "booksComics": "만화",
         "booksEbook": "전자책",
@@ -4032,8 +4036,8 @@
     },
     "addTorrentDialog": {
       "actions": {
-        "adding": "추가 중...",
         "addTorrent": "토렌트 추가",
+        "adding": "추가 중...",
         "cancel": "취소",
         "clearAll": "모두 지우기",
         "hideFiles": "파일 숨기기",
@@ -4195,8 +4199,8 @@
     },
     "crossSeedDialog": {
       "actions": {
-        "adding": "추가 중...",
         "addSelected": "선택 항목 추가",
+        "adding": "추가 중...",
         "block": "차단",
         "blocking": "차단 중...",
         "clear": "지우기",
@@ -4264,15 +4268,15 @@
         "capabilityNoteTitle": "기능 안내",
         "enabledIndexers": "활성 인덱서 {{count}}개",
         "filtering": "필터링 중...",
-        "noneSelected": "선택 없음",
         "noTorznabIndexers": "사용 가능한 Torznab 인덱서가 없습니다",
         "noTorznabIndexersHint": "크로스시드를 검색하려면 설정에서 Torznab 인덱서를 추가하거나 활성화하세요.",
+        "noneSelected": "선택 없음",
         "searchIndexers": "검색 대상 인덱서 {{count}}개",
         "searching": "검색 중",
         "selectCustom": "사용자 지정 선택",
+        "selectIndexers": "인덱서 선택",
         "selectedCount": "{{count}}개 선택됨",
         "selectedOfTotal": "{{total}}개 중 {{selected}}개 선택",
-        "selectIndexers": "인덱서 선택",
         "title": "검색 범위"
       },
       "searchingIndexers": "인덱서 검색 중...",
@@ -4520,8 +4524,8 @@
         "commit": "Commit",
         "configDir": "Config dir",
         "currentSessionAuth": "Current session auth",
-        "database": "Database",
         "dataDir": "Data dir",
+        "database": "Database",
         "oidcEnabled": "OIDC enabled",
         "oidcIssuerHost": "OIDC issuer host",
         "runtime": "Runtime",
@@ -4575,9 +4579,9 @@
         "lastChecked": "Last checked: {{value}}",
         "notChecked": "Not checked yet",
         "unknown": "Unknown",
-        "updateAvailable": "Update available",
         "upToDate": "Up to date",
         "upToDateDetail": "No newer release is currently cached.",
+        "updateAvailable": "Update available",
         "waiting": "Waiting for application metadata."
       },
       "values": {
@@ -4627,8 +4631,8 @@
     "instances": {
       "actions": {
         "addFirstInstance": "첫 인스턴스 추가",
-        "adding": "추가 중...",
         "addInstance": "인스턴스 추가",
+        "adding": "추가 중...",
         "cancel": "취소"
       },
       "dialogs": {
@@ -5001,12 +5005,12 @@
       "sortBy": "정렬 기준"
     },
     "stats": {
+      "loadMore": "더 불러오기",
       "loadedOfTotal": "{{total}}개 중 {{loaded}}개 토렌트 로드됨",
       "loadedSimple": "{{count}}개 토렌트",
       "loading": "불러오는 중...",
       "loadingMoreTorrents": "토렌트를 더 불러오는 중...",
       "loadingTorrents": "토렌트 불러오는 중...",
-      "loadMore": "더 불러오기",
       "noTorrentsFound": "토렌트를 찾을 수 없음"
     },
     "units": {
@@ -5067,10 +5071,10 @@
       "loading": "프로그램 로딩 중...",
       "title": "외부 프로그램",
       "toasts": {
+        "executeFailed": "외부 프로그램 실행 실패: {{message}}",
         "executedAllFailed": "{{failureCount}}개 토렌트 모두 실행 실패",
         "executedAllSuccess": "{{successCount}}개 토렌트에 외부 프로그램 실행 완료",
-        "executedPartial": "{{successCount}}개 실행, {{failureCount}}개 실패",
-        "executeFailed": "외부 프로그램 실행 실패: {{message}}"
+        "executedPartial": "{{successCount}}개 실행, {{failureCount}}개 실패"
       }
     },
     "filterCrossSeeds": {
@@ -5116,8 +5120,8 @@
       "running": "실행 중"
     },
     "toasts": {
-      "deleted": "토렌트 생성 작업을 삭제했습니다",
       "deleteFailed": "토렌트 생성 작업 삭제에 실패했습니다",
+      "deleted": "토렌트 생성 작업을 삭제했습니다",
       "downloadFailed": "토렌트 파일 다운로드에 실패했습니다",
       "downloadStarted": "토렌트 파일 다운로드를 시작했습니다"
     }
@@ -5161,8 +5165,6 @@
       "checkingMoreInstances": "추가 인스턴스 확인 중...",
       "hardlinkTooltip": "파일이 hardlink 디렉터리에 저장됨(원본과 분리)",
       "instanceLabel": "인스턴스: {{value}}",
-      "matchingFoundAcrossInstances": "모든 인스턴스에서 {{count}} {{noun}} 발견",
-      "matchingFoundChecking": "{{count}} {{noun}} 발견, 추가 인스턴스 확인 중...",
       "matchLabel": "일치: {{value}}",
       "matchType": {
         "contentPath": "콘텐츠 경로",
@@ -5176,6 +5178,8 @@
         "name": "동일한 토렌트 이름",
         "savePath": "동일한 저장 디렉터리와 파일명"
       },
+      "matchingFoundAcrossInstances": "모든 인스턴스에서 {{count}} {{noun}} 발견",
+      "matchingFoundChecking": "{{count}} {{noun}} 발견, 추가 인스턴스 확인 중...",
       "selectedCount": "{{total}}개 중 {{selected}}개 선택됨",
       "tagsLabel": "태그: {{value}}",
       "trackerLabel": "트래커: {{value}}"
@@ -5228,9 +5232,9 @@
       "countryLabel": "국가:",
       "created": "생성됨",
       "createdBy": "생성자",
-      "downloaded": "다운로드됨",
       "downloadPath": "다운로드 경로",
       "downloadSpeed": "다운로드 속도",
+      "downloaded": "다운로드됨",
       "flagsLabel": "플래그:",
       "infoHashV1": "Info Hash v1",
       "infoHashV2": "Info Hash v2",
@@ -5242,8 +5246,8 @@
       "maxUploads": "최대 업로드",
       "peerProgress": "피어 진행률",
       "peers": "피어",
-      "pieces": "조각",
       "pieceSizeEach": "(각 {{size}})",
+      "pieces": "조각",
       "priority": "우선순위",
       "savePath": "저장 경로",
       "seedingTime": "시딩 시간",
@@ -5252,8 +5256,8 @@
       "timeActive": "활성 시간",
       "torrentName": "토렌트 이름",
       "totalSize": "전체 크기",
-      "uploaded": "업로드됨",
       "uploadSpeed": "업로드 속도",
+      "uploaded": "업로드됨",
       "wasted": "낭비됨"
     },
     "peers": {
@@ -5287,9 +5291,9 @@
       "copiedPeerAddress": "{{address}}을(를) 클립보드에 복사했습니다",
       "copiedToClipboard": "{{label}}을(를) 클립보드에 복사했습니다",
       "copyFailed": "클립보드 복사에 실패했습니다",
+      "deleteFailed": "삭제 실패: {{message}}",
       "deletedCurrentTorrent": "토렌트 삭제됨: {{name}}",
       "deletedTorrents": "{{count}} {{noun}} 삭제됨",
-      "deleteFailed": "삭제 실패: {{message}}",
       "filePriorityUpdateFailed": "파일 우선순위 업데이트에 실패했습니다",
       "fileRenamed": "파일 이름을 변경했습니다",
       "folderRenamed": "폴더 이름을 변경했습니다",
@@ -5297,8 +5301,8 @@
       "peersAdded": "피어를 추가했습니다",
       "renameFileFailed": "파일 이름 변경 실패",
       "renameFolderFailed": "폴더 이름 변경 실패",
-      "trackerUpdated": "트래커 URL을 업데이트했습니다",
       "trackerUpdateFailedTitle": "트래커 업데이트 실패",
+      "trackerUpdated": "트래커 URL을 업데이트했습니다",
       "urlCopied": "URL을 클립보드에 복사했습니다"
     },
     "trackers": {
@@ -5427,18 +5431,6 @@
       "selectedSummary": "선택한 태그: {{tags}}",
       "title": "{{count}}개 토렌트 태그 설정"
     },
-    "shared": {
-      "availableTags": "사용 가능한 태그",
-      "cancel": "취소",
-      "deselectAll": "전체 해제",
-      "enterNewTagPlaceholder": "새 태그 입력",
-      "loading": "불러오는 중...",
-      "loadingTags": "태그 불러오는 중...",
-      "locationLabel": "위치",
-      "newTagSuffix": "(새 항목)",
-      "rename": "이름 변경",
-      "setting": "적용 중..."
-    },
     "shareLimits": {
       "confirm": "제한 적용",
       "description": "선택한 토렌트의 시딩 제한을 설정합니다. 세 필드가 모두 적용됩니다.",
@@ -5473,6 +5465,18 @@
       "seedTimePlaceholder": "예: 1440",
       "setAllToGlobal": "모두 전역값으로 설정",
       "title": "{{count}}개 토렌트 공유 제한 설정"
+    },
+    "shared": {
+      "availableTags": "사용 가능한 태그",
+      "cancel": "취소",
+      "deselectAll": "전체 해제",
+      "enterNewTagPlaceholder": "새 태그 입력",
+      "loading": "불러오는 중...",
+      "loadingTags": "태그 불러오는 중...",
+      "locationLabel": "위치",
+      "newTagSuffix": "(새 항목)",
+      "rename": "이름 변경",
+      "setting": "적용 중..."
     },
     "speedLimits": {
       "confirm": "제한 적용",
@@ -5596,16 +5600,16 @@
       "completed": "완료됨",
       "created": "생성됨",
       "createdBy": "생성자",
-      "downloaded": "다운로드",
       "downloadLimit": "DL 제한",
       "downloadShort": "DL",
+      "downloaded": "다운로드",
       "hashV1": "해시 v1",
       "hashV2": "해시 v2",
       "inactiveLimit": "비활성 제한",
       "name": "이름",
       "peers": "피어",
-      "pieces": "피스",
       "pieceSize": "피스 크기",
+      "pieces": "피스",
       "priority": "우선순위",
       "ratio": "비율",
       "ratioLimit": "비율 제한",
@@ -5616,9 +5620,9 @@
       "sequentialDownload": "순차 다운로드",
       "size": "크기",
       "tempPath": "임시 경로",
-      "uploaded": "업로드",
       "uploadLimit": "UL 제한",
       "uploadShort": "UL",
+      "uploaded": "업로드",
       "wasted": "낭비됨"
     },
     "sections": {
@@ -5690,11 +5694,6 @@
       "tmmMixed": "TMM (혼합)"
     }
   },
-  "torrentsPage": {
-    "detailsTitle": "토렌트 상세",
-    "detailsTitleWithName": "토렌트 상세: {{name}}",
-    "filtersTitle": "필터"
-  },
   "torrentTableColumns": {
     "headers": {
       "added": "추가됨",
@@ -5703,8 +5702,8 @@
       "completed": "완료됨",
       "completedOn": "완료 시각",
       "downLimit": "다운로드 제한",
-      "downloaded": "다운로드됨",
       "downSpeed": "다운로드 속도",
+      "downloaded": "다운로드됨",
       "eta": "남은 시간",
       "infoHashV1": "정보 해시 v1",
       "infoHashV2": "정보 해시 v2",
@@ -5736,8 +5735,8 @@
       "tracker": "트래커",
       "trackerIcon": "트래커 아이콘",
       "upLimit": "업로드 제한",
-      "uploaded": "업로드됨",
-      "upSpeed": "업로드 속도"
+      "upSpeed": "업로드 속도",
+      "uploaded": "업로드됨"
     },
     "priority": {
       "tooltip": "우선순위"
@@ -5793,6 +5792,11 @@
     "table": {
       "ariaLabel": "토렌트 테이블"
     }
+  },
+  "torrentsPage": {
+    "detailsTitle": "토렌트 상세",
+    "detailsTitleWithName": "토렌트 상세: {{name}}",
+    "filtersTitle": "필터"
   },
   "trackerReannounceForm": {
     "actions": {
@@ -5972,10 +5976,10 @@
       "description": "{{timestamp}} - {{total}}개 토렌트 - 메모리에 임시 저장",
       "dryRunNote": "시뮬레이션: 변경 사항은 적용되지 않았습니다.",
       "failedLoad": "실행 상세 정보를 불러오지 못했습니다.",
-      "loading": "불러오는 중...",
       "loadMore": "더 불러오기",
-      "notAvailable": "실행 상세 정보가 없습니다 (메모리 전용).",
+      "loading": "불러오는 중...",
       "noTorrents": "이 실행에 기록된 토렌트가 없습니다.",
+      "notAvailable": "실행 상세 정보가 없습니다 (메모리 전용).",
       "originalTracker": "원본: {{tracker}}",
       "showing": "{{total}}개 중 {{shown}}개 표시",
       "table": {
@@ -6084,11 +6088,11 @@
     "dryRun": {
       "actions": {
         "categoryChanged": "카테고리",
+        "deleteFailed": "삭제 실패",
         "deletedCondition": "삭제 (조건)",
         "deletedRatio": "삭제 (비율)",
         "deletedSeeding": "삭제 (시딩)",
         "deletedUnregistered": "삭제 (미등록)",
-        "deleteFailed": "삭제 실패",
         "externalProgram": "외부 프로그램",
         "limitFailed": "제한 적용 실패",
         "moved": "이동",
@@ -6224,11 +6228,11 @@
       "activity": {
         "actionValues": {
           "categoryChanged": "카테고리",
+          "deleteFailed": "삭제",
           "deletedCondition": "조건",
           "deletedRatio": "비율 제한",
           "deletedSeeding": "시딩 시간",
           "deletedUnregistered": "미등록",
-          "deleteFailed": "삭제",
           "dryRunNoMatch": "시뮬레이션",
           "externalProgram": "외부 프로그램",
           "limitFailed": "제한 설정",
@@ -6524,8 +6528,8 @@
         "outsideQbittorrent": "qBittorrent 외부 (라이브러리/임포트)",
         "torrentsOnly": "다른 토렌트만"
       },
-      "loadingInitial": "미리보기를 불러오는 중입니다. 시간이 걸릴 수 있습니다...",
       "loadMore": "더 불러오기",
+      "loadingInitial": "미리보기를 불러오는 중입니다. 시간이 걸릴 수 있습니다...",
       "moreTorrents": "... 외 {{count}}개 토렌트",
       "stateValues": {
         "active": "활성",
@@ -6676,11 +6680,11 @@
     "activity": {
       "actionValues": {
         "categoryChanged": "카테고리",
+        "deleteFailed": "삭제",
         "deletedCondition": "조건",
         "deletedRatio": "비율 제한",
         "deletedSeeding": "시딩 시간",
         "deletedUnregistered": "미등록",
-        "deleteFailed": "삭제",
         "dryRunNoMatch": "시뮬레이션",
         "externalProgram": "외부 프로그램",
         "limitFailed": "제한 설정",

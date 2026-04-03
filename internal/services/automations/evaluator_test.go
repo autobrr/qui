@@ -5,8 +5,10 @@ package automations
 
 import (
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/qui/internal/models"
 )
 
 func TestEvaluateCondition_StringFields(t *testing.T) {
@@ -555,6 +557,91 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.evalCtx, 0)
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestEvaluateCondition_SystemTimeFields(t *testing.T) {
+	evalTime := time.Date(2025, time.August, 15, 14, 30, 0, 0, time.Local) // Friday (5)
+	ctx := &EvalContext{
+		NowUnix: evalTime.Unix(),
+	}
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		expected bool
+	}{
+		{
+			name:     "system hour equals",
+			cond:     &RuleCondition{Field: models.FieldSystemHour, Operator: OperatorEqual, Value: "14"},
+			expected: true,
+		},
+		{
+			name:     "system minute greater than",
+			cond:     &RuleCondition{Field: models.FieldSystemMinute, Operator: OperatorGreaterThan, Value: "20"},
+			expected: true,
+		},
+		{
+			name:     "system day of week equals Friday (5)",
+			cond:     &RuleCondition{Field: models.FieldSystemDayOfWeek, Operator: OperatorEqual, Value: "5"},
+			expected: true,
+		},
+		{
+			name:     "system day equals 15",
+			cond:     &RuleCondition{Field: models.FieldSystemDay, Operator: OperatorEqual, Value: "15"},
+			expected: true,
+		},
+		{
+			name:     "system month equals 8",
+			cond:     &RuleCondition{Field: models.FieldSystemMonth, Operator: OperatorEqual, Value: "8"},
+			expected: true,
+		},
+		{
+			name:     "system year equals 2025",
+			cond:     &RuleCondition{Field: models.FieldSystemYear, Operator: OperatorEqual, Value: "2025"},
+			expected: true,
+		},
+		// False cases: verify non-matching values are rejected
+		{
+			name:     "system hour not equal",
+			cond:     &RuleCondition{Field: models.FieldSystemHour, Operator: OperatorEqual, Value: "9"},
+			expected: false,
+		},
+		{
+			name:     "system minute not greater than",
+			cond:     &RuleCondition{Field: models.FieldSystemMinute, Operator: OperatorGreaterThan, Value: "45"},
+			expected: false,
+		},
+		{
+			name:     "system day of week not Saturday",
+			cond:     &RuleCondition{Field: models.FieldSystemDayOfWeek, Operator: OperatorEqual, Value: "6"},
+			expected: false,
+		},
+		{
+			name:     "system day less than actual",
+			cond:     &RuleCondition{Field: models.FieldSystemDay, Operator: OperatorLessThan, Value: "10"},
+			expected: false,
+		},
+		{
+			name:     "system month not equal",
+			cond:     &RuleCondition{Field: models.FieldSystemMonth, Operator: OperatorEqual, Value: "3"},
+			expected: false,
+		},
+		{
+			name:     "system year not equal",
+			cond:     &RuleCondition{Field: models.FieldSystemYear, Operator: OperatorEqual, Value: "2024"},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, ctx, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -2603,4 +2690,430 @@ func TestEvaluateCondition_GoQBitTorrentAdditionalFields(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEvaluateCondition_CrossInstanceFields(t *testing.T) {
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		ctx      *EvalContext
+		expected bool
+	}{
+		// EXISTS_ON_OTHER_INSTANCE
+		{
+			name: "exists on other instance - hash present in set",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				CrossInstanceHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: true,
+		},
+		{
+			name: "exists on other instance - hash not in set",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "xyz789"},
+			ctx: &EvalContext{
+				CrossInstanceHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: false,
+		},
+		{
+			name: "exists on other instance - equals false when not present",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "false",
+			},
+			torrent: qbt.Torrent{Hash: "xyz789"},
+			ctx: &EvalContext{
+				CrossInstanceHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: true,
+		},
+		{
+			name: "exists on other instance - not equals true when not present",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorNotEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "xyz789"},
+			ctx: &EvalContext{
+				CrossInstanceHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: true,
+		},
+		{
+			name: "exists on other instance - nil context returns false",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent:  qbt.Torrent{Hash: "abc123"},
+			ctx:      nil,
+			expected: false,
+		},
+		{
+			name: "exists on other instance - nil hash set returns false",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent:  qbt.Torrent{Hash: "abc123"},
+			ctx:      &EvalContext{},
+			expected: false,
+		},
+		{
+			name: "exists on other instance - empty hash set returns false",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				CrossInstanceHashSet: map[string]struct{}{},
+			},
+			expected: false,
+		},
+		{
+			name: "exists on other instance - negated equals true inverts result",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+				Negate:   true,
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				CrossInstanceHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: false,
+		},
+		// SEEDING_ON_OTHER_INSTANCE
+		{
+			name: "seeding on other instance - hash present in seeding set",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				CrossInstanceSeedingHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: true,
+		},
+		{
+			name: "seeding on other instance - hash not in seeding set",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				CrossInstanceSeedingHashSet: map[string]struct{}{"other": {}},
+			},
+			expected: false,
+		},
+		{
+			name: "seeding on other instance - nil context returns false",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent:  qbt.Torrent{Hash: "abc123"},
+			ctx:      nil,
+			expected: false,
+		},
+		{
+			name: "seeding on other instance - equals false when not seeding",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "false",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				CrossInstanceSeedingHashSet: map[string]struct{}{},
+			},
+			expected: true,
+		},
+		// EXISTS_ON_SAME_INSTANCE
+		{
+			name: "exists on same instance - cross-seed present",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: true,
+		},
+		{
+			name: "exists on same instance - no cross-seed",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedHashSet: map[string]struct{}{},
+			},
+			expected: false,
+		},
+		{
+			name: "exists on same instance - equals false when no cross-seed",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "false",
+			},
+			torrent: qbt.Torrent{Hash: "lone_torrent"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: true,
+		},
+		{
+			name: "exists on same instance - not equals true when no cross-seed",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorNotEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "lone_torrent"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedHashSet: map[string]struct{}{},
+			},
+			expected: true,
+		},
+		{
+			name: "exists on same instance - nil context returns false",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent:  qbt.Torrent{Hash: "abc123"},
+			ctx:      nil,
+			expected: false,
+		},
+		{
+			name: "exists on same instance - nil hash set returns false",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent:  qbt.Torrent{Hash: "abc123"},
+			ctx:      &EvalContext{},
+			expected: false,
+		},
+		{
+			name: "exists on same instance - negated equals true inverts result",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+				Negate:   true,
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: false,
+		},
+		// SEEDING_ON_SAME_INSTANCE
+		{
+			name: "seeding on same instance - cross-seed seeding",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedSeedingHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: true,
+		},
+		{
+			name: "seeding on same instance - cross-seed not seeding",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedSeedingHashSet: map[string]struct{}{},
+			},
+			expected: false,
+		},
+		{
+			name: "seeding on same instance - equals false when not seeding",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "false",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedSeedingHashSet: map[string]struct{}{},
+			},
+			expected: true,
+		},
+		{
+			name: "seeding on same instance - nil context returns false",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent:  qbt.Torrent{Hash: "abc123"},
+			ctx:      nil,
+			expected: false,
+		},
+		{
+			name: "seeding on same instance - nil hash set returns false",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent:  qbt.Torrent{Hash: "abc123"},
+			ctx:      &EvalContext{},
+			expected: false,
+		},
+		{
+			name: "seeding on same instance - negated equals true inverts result",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+				Negate:   true,
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedSeedingHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.ctx, 0)
+			if got != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestEvaluateCondition_CrossSeedCompositeConditions(t *testing.T) {
+	ctx := &EvalContext{
+		CrossInstanceHashSet:                map[string]struct{}{"abc123": {}},
+		SameInstanceCrossSeedHashSet:        map[string]struct{}{"abc123": {}},
+		SameInstanceCrossSeedSeedingHashSet: map[string]struct{}{"abc123": {}},
+	}
+
+	t.Run("AND - exists on other AND seeding on same", func(t *testing.T) {
+		cond := &RuleCondition{
+			Operator: OperatorAnd,
+			Conditions: []*RuleCondition{
+				{Field: FieldExistsOnOtherInstance, Operator: OperatorEqual, Value: "true"},
+				{Field: FieldSeedingOnSameInstance, Operator: OperatorEqual, Value: "true"},
+			},
+		}
+		torrent := qbt.Torrent{Hash: "abc123"}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); !got {
+			t.Error("expected AND condition to match when both are true")
+		}
+	})
+
+	t.Run("AND - exists on other AND seeding on same - one false", func(t *testing.T) {
+		cond := &RuleCondition{
+			Operator: OperatorAnd,
+			Conditions: []*RuleCondition{
+				{Field: FieldExistsOnOtherInstance, Operator: OperatorEqual, Value: "true"},
+				{Field: FieldSeedingOnSameInstance, Operator: OperatorEqual, Value: "true"},
+			},
+		}
+		torrent := qbt.Torrent{Hash: "not_in_set"}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got {
+			t.Error("expected AND condition to not match when hash not in sets")
+		}
+	})
+
+	t.Run("OR - exists on same OR exists on other", func(t *testing.T) {
+		ctxOnlyOther := &EvalContext{
+			CrossInstanceHashSet:         map[string]struct{}{"abc123": {}},
+			SameInstanceCrossSeedHashSet: map[string]struct{}{},
+		}
+		cond := &RuleCondition{
+			Operator: OperatorOr,
+			Conditions: []*RuleCondition{
+				{Field: FieldExistsOnSameInstance, Operator: OperatorEqual, Value: "true"},
+				{Field: FieldExistsOnOtherInstance, Operator: OperatorEqual, Value: "true"},
+			},
+		}
+		torrent := qbt.Torrent{Hash: "abc123"}
+		if got := EvaluateConditionWithContext(cond, torrent, ctxOnlyOther, 0); !got {
+			t.Error("expected OR condition to match when one child is true")
+		}
+	})
+
+	t.Run("OR - neither matches", func(t *testing.T) {
+		cond := &RuleCondition{
+			Operator: OperatorOr,
+			Conditions: []*RuleCondition{
+				{Field: FieldExistsOnSameInstance, Operator: OperatorEqual, Value: "true"},
+				{Field: FieldExistsOnOtherInstance, Operator: OperatorEqual, Value: "true"},
+			},
+		}
+		torrent := qbt.Torrent{Hash: "not_in_any_set"}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got {
+			t.Error("expected OR condition to not match when neither child matches")
+		}
+	})
+
+	t.Run("nested - same instance AND (ratio > 2 OR seeding on same)", func(t *testing.T) {
+		cond := &RuleCondition{
+			Operator: OperatorAnd,
+			Conditions: []*RuleCondition{
+				{Field: FieldExistsOnSameInstance, Operator: OperatorEqual, Value: "true"},
+				{
+					Operator: OperatorOr,
+					Conditions: []*RuleCondition{
+						{Field: FieldRatio, Operator: OperatorGreaterThan, Value: "2"},
+						{Field: FieldSeedingOnSameInstance, Operator: OperatorEqual, Value: "true"},
+					},
+				},
+			},
+		}
+		torrent := qbt.Torrent{Hash: "abc123", Ratio: 1.5}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); !got {
+			t.Error("expected nested condition to match (exists=true, ratio<2 but seeding=true)")
+		}
+	})
 }

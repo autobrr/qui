@@ -1054,8 +1054,8 @@
       "na": "—",
       "noInstanceSelected": "インスタンス未選択",
       "noMessageProvided": "メッセージなし",
-      "none": "なし",
       "noRunsYet": "まだ実行なし",
+      "none": "なし",
       "off": "オフ",
       "on": "オン",
       "ready": "準備完了",
@@ -1393,9 +1393,9 @@
       },
       "tooltips": {
         "addToMerge": "結合対象に追加",
-        "mergedFrom": "結合元: {{domains}}",
         "mergeIntoGroup": "グループへ結合",
         "mergeIntoThisGroup": "選択中 tracker をこのグループに結合",
+        "mergedFrom": "結合元: {{domains}}",
         "original": "元のドメイン: {{domain}}",
         "rename": "名前変更",
         "seededHelp": "アップロード量 ÷ コンテンツサイズ（何倍シードしたか）"
@@ -1532,9 +1532,9 @@
     },
     "directoryDialog": {
       "addDescription": "クロスシード可能なコンテンツをスキャンする新しいディレクトリを追加します。",
-      "additionalTagsLabel": "追加タグ",
       "addTagsPlaceholder": "タグを追加（任意）",
       "addTitle": "ディレクトリを追加",
+      "additionalTagsLabel": "追加タグ",
       "categoryHelp": "任意です。設定するとこのディレクトリではグローバル既定カテゴリを上書きします。",
       "categoryLoadError": "qBittorrent からカテゴリを読み込めませんでした。カスタム値は入力できます。",
       "categoryOverrideLabel": "カテゴリ上書き",
@@ -1697,10 +1697,10 @@
       "resetScanProgressFailed": "スキャン進捗のリセットに失敗しました: {{message}}",
       "saveSettingsFailed": "設定の保存に失敗しました: {{message}}",
       "scanCanceled": "スキャンをキャンセルしました",
-      "scannerDisabled": "ディレクトリスキャナーを無効化しました",
-      "scannerEnabled": "ディレクトリスキャナーを有効化しました",
       "scanProgressReset": "スキャン進捗をリセットしました",
       "scanStarted": "スキャンを開始しました",
+      "scannerDisabled": "ディレクトリスキャナーを無効化しました",
+      "scannerEnabled": "ディレクトリスキャナーを有効化しました",
       "settingsSaved": "設定を保存しました",
       "startScanFailed": "スキャン開始に失敗しました: {{message}}",
       "updateDirectoryFailed": "ディレクトリの更新に失敗しました: {{message}}",
@@ -2064,8 +2064,8 @@
     "disconnected": "未接続",
     "globPlaceholder": "Glob パターン...",
     "hideFilters": "フィルターを非表示",
-    "instances": "インスタンス",
     "instanceSettings": "インスタンス設定",
+    "instances": "インスタンス",
     "noActiveInstances": "稼働中のインスタンスはありません",
     "noInstancesConfigured": "インスタンスが設定されていません",
     "rssEnabled": "RSS 有効",
@@ -2182,42 +2182,6 @@
       "updatedWithWarnings": "インデクサーは更新されましたが警告があります: {{warnings}}"
     }
   },
-  "indexersPage": {
-    "actions": {
-      "addSingle": "単体追加",
-      "cancel": "キャンセル",
-      "delete": "削除",
-      "deleteAll": "すべて削除",
-      "discover": "検出"
-    },
-    "deleteAllDialog": {
-      "description": "この操作は元に戻せません。{{count}} 件のインデクサーがすべて削除されます。",
-      "title": "すべてのインデクサーを削除しますか？"
-    },
-    "deleteDialog": {
-      "description": "この操作は元に戻せません。インデクサーは完全に削除されます。",
-      "title": "インデクサーを削除しますか？"
-    },
-    "description": "Jackett、Prowlarr、またはネイティブ tracker エンドポイントで動作する Torznab インデクサーを管理します",
-    "summary": "有効 {{enabled}} 件、機能あり {{capabilities}} 件",
-    "title": "Torznab インデクサー",
-    "toasts": {
-      "connectionFailed": "接続テストに失敗しました",
-      "connectionSuccess": "接続テストに成功しました",
-      "deleted": "インデクサーを削除しました",
-      "deletedAll": "{{count}} 件すべてのインデクサーを削除しました",
-      "deletedSome": "{{success}} 件削除、{{failed}} 件失敗: {{failedNames}}",
-      "deleteFailed": "インデクサーの削除に失敗しました",
-      "failedIndexers": "失敗したインデクサー: {{failedNames}}",
-      "loadFailed": "インデクサーの読み込みに失敗しました",
-      "noIndexersToTest": "テスト対象のインデクサーがありません",
-      "syncCapsFailed": "機能の同期に失敗しました",
-      "syncCapsSuccess": "バックエンドから機能を同期しました",
-      "testedAllSuccess": "{{count}} 件すべてのインデクサーのテストに成功しました",
-      "testedMixed": "成功 {{success}}、失敗 {{failed}}",
-      "testingAll": "{{count}} 件のインデクサーをテスト中..."
-    }
-  },
   "indexerTable": {
     "actions": {
       "clearFilters": "フィルターをクリア",
@@ -2286,6 +2250,42 @@
     },
     "units": {
       "seconds": "{{value}}秒"
+    }
+  },
+  "indexersPage": {
+    "actions": {
+      "addSingle": "単体追加",
+      "cancel": "キャンセル",
+      "delete": "削除",
+      "deleteAll": "すべて削除",
+      "discover": "検出"
+    },
+    "deleteAllDialog": {
+      "description": "この操作は元に戻せません。{{count}} 件のインデクサーがすべて削除されます。",
+      "title": "すべてのインデクサーを削除しますか？"
+    },
+    "deleteDialog": {
+      "description": "この操作は元に戻せません。インデクサーは完全に削除されます。",
+      "title": "インデクサーを削除しますか？"
+    },
+    "description": "Jackett、Prowlarr、またはネイティブ tracker エンドポイントで動作する Torznab インデクサーを管理します",
+    "summary": "有効 {{enabled}} 件、機能あり {{capabilities}} 件",
+    "title": "Torznab インデクサー",
+    "toasts": {
+      "connectionFailed": "接続テストに失敗しました",
+      "connectionSuccess": "接続テストに成功しました",
+      "deleteFailed": "インデクサーの削除に失敗しました",
+      "deleted": "インデクサーを削除しました",
+      "deletedAll": "{{count}} 件すべてのインデクサーを削除しました",
+      "deletedSome": "{{success}} 件削除、{{failed}} 件失敗: {{failedNames}}",
+      "failedIndexers": "失敗したインデクサー: {{failedNames}}",
+      "loadFailed": "インデクサーの読み込みに失敗しました",
+      "noIndexersToTest": "テスト対象のインデクサーがありません",
+      "syncCapsFailed": "機能の同期に失敗しました",
+      "syncCapsSuccess": "バックエンドから機能を同期しました",
+      "testedAllSuccess": "{{count}} 件すべてのインデクサーのテストに成功しました",
+      "testedMixed": "成功 {{success}}、失敗 {{failed}}",
+      "testingAll": "{{count}} 件のインデクサーをテスト中..."
     }
   },
   "instanceBackups": {
@@ -2517,11 +2517,13 @@
         "goToInstances": "インスタンスへ移動"
       },
       "heading": {
+        "checkingCompatibility": "インスタンスの互換性を確認中",
         "connectInstance": "qBittorrent インスタンスを接続",
         "noCompatibleInstances": "互換性のあるインスタンスがありません",
         "selectInstance": "バックアップを管理するインスタンスを選択"
       },
       "message": {
+        "checkingCompatibility": "トレントバックアップに対応するインスタンスを確認しています。",
         "chooseFromDropdown": "上のドロップダウンから qBittorrent インスタンスを選んで、バックアップを確認・管理してください。",
         "noInstancesConfigured": "qBittorrent インスタンスが未設定です。バックアップ機能を使うには先にインスタンスを追加してください。",
         "noSupportedInstances": "現在の qBittorrent インスタンスはトレントバックアップに未対応です。qBittorrent 4.5.0+（Web API 2.8.11+）へ更新してください。"
@@ -2532,7 +2534,8 @@
       "actions": {
         "importBackup": "バックアップをインポート",
         "runManualBackup": "手動バックアップを実行",
-        "saveChanges": "変更を保存"
+        "saveChanges": "変更を保存",
+        "saveChangesToAll": "全インスタンスに保存"
       },
       "cadences": {
         "daily": {
@@ -2572,6 +2575,7 @@
       },
       "validation": {
         "changesApply": "保存すると、以降のバックアップにすぐ適用されます。",
+        "saveAllWaitTitle": "全インスタンスへの保存はチェック完了後に行えます。",
         "selectCadenceBody": "保存前に少なくとも1つの頻度（毎時・毎日・毎週・毎月）を選択してください。",
         "selectCadenceTitle": "自動バックアップを有効にするには少なくとも1つの頻度を選択してください。"
       }
@@ -2703,14 +2707,14 @@
       "username": "qBittorrent のユーザー名（通常は admin）"
     },
     "toasts": {
-      "createdDescription": "インスタンスの作成に成功しました。接続テストをバックグラウンドで実行中です...",
-      "createdTitle": "インスタンスを作成しました",
       "createFailedDescription": "インスタンスの作成に失敗しました",
       "createFailedTitle": "作成失敗",
-      "updatedDescription": "インスタンスの更新に成功しました。接続テストをバックグラウンドで実行中です...",
-      "updatedTitle": "インスタンスを更新しました",
+      "createdDescription": "インスタンスの作成に成功しました。接続テストをバックグラウンドで実行中です...",
+      "createdTitle": "インスタンスを作成しました",
       "updateFailedDescription": "インスタンスの更新に失敗しました",
-      "updateFailedTitle": "更新失敗"
+      "updateFailedTitle": "更新失敗",
+      "updatedDescription": "インスタンスの更新に成功しました。接続テストをバックグラウンドで実行中です...",
+      "updatedTitle": "インスタンスを更新しました"
     },
     "validation": {
       "basicAuthPasswordRequired": "Basic Auth を有効にする場合、Basic Auth パスワードは必須です",
@@ -3087,8 +3091,8 @@
     "panel": {
       "changesAppliedImmediately": "変更はすぐに反映されます。",
       "logConfigurationTitle": "ログ設定",
-      "logsDescription": "リアルタイムのアプリログです。レベルバッジをクリックすると類似エントリをミュートします。",
       "logSettingsSrOnly": "ログ設定",
+      "logsDescription": "リアルタイムのアプリログです。レベルバッジをクリックすると類似エントリをミュートします。",
       "logsTitle": "ログ"
     },
     "search": {
@@ -3459,8 +3463,8 @@
     "toasts": {
       "settingsSaved": "設定を保存しました",
       "unableToUpdate": "設定を更新できませんでした",
-      "updated": "孤立スキャン設定を更新しました",
-      "updateFailed": "更新に失敗しました"
+      "updateFailed": "更新に失敗しました",
+      "updated": "孤立スキャン設定を更新しました"
     },
     "units": {
       "files": "ファイル",
@@ -3506,12 +3510,12 @@
     "columns": {
       "address": "IP:ポート",
       "client": "クライアント",
-      "downloaded": "ダウンロード済み",
       "downloadSpeed": "DL 速度",
+      "downloaded": "ダウンロード済み",
       "flags": "フラグ",
       "progress": "進捗",
-      "uploaded": "アップロード済み",
-      "uploadSpeed": "UL 速度"
+      "uploadSpeed": "UL 速度",
+      "uploaded": "アップロード済み"
     },
     "empty": {
       "noPeersConnected": "接続中のピアはいません"
@@ -3866,8 +3870,8 @@
       "ruleDisabled": "ルールを無効化しました",
       "ruleEnabled": "ルールを有効化しました",
       "ruleRemoved": "ルールを削除しました",
-      "rulesReprocessed": "ルールを再処理しました。未読記事をすべてのルールで再チェックします",
       "ruleUpdated": "ルールを更新しました",
+      "rulesReprocessed": "ルールを再処理しました。未読記事をすべてのルールで再チェックします",
       "saveRssSettingsFailed": "RSS 設定の保存に失敗しました",
       "updateFeedUrlFailed": "フィード URL 更新に失敗しました",
       "updateRuleFailed": "ルール更新に失敗しました"
@@ -3924,12 +3928,12 @@
     "params": {
       "categories": {
         "audio": "オーディオ",
-        "audiobook": "オーディオブック",
         "audioForeign": "海外オーディオ",
         "audioLossless": "ロスレス音源",
         "audioMp3": "MP3オーディオ",
         "audioOther": "その他のオーディオ",
         "audioVideo": "音楽ビデオ",
+        "audiobook": "オーディオブック",
         "books": "書籍",
         "booksComics": "コミック",
         "booksEbook": "電子書籍",
@@ -4032,8 +4036,8 @@
     },
     "addTorrentDialog": {
       "actions": {
-        "adding": "追加中...",
         "addTorrent": "トレントを追加",
+        "adding": "追加中...",
         "cancel": "キャンセル",
         "clearAll": "すべてクリア",
         "hideFiles": "ファイルを非表示",
@@ -4195,8 +4199,8 @@
     },
     "crossSeedDialog": {
       "actions": {
-        "adding": "追加中...",
         "addSelected": "選択分を追加",
+        "adding": "追加中...",
         "block": "ブロック",
         "blocking": "ブロック中...",
         "clear": "クリア",
@@ -4264,15 +4268,15 @@
         "capabilityNoteTitle": "対応状況",
         "enabledIndexers": "有効なインデクサー {{count}} 件",
         "filtering": "フィルタ中...",
-        "noneSelected": "未選択",
         "noTorznabIndexers": "利用可能な Torznab インデクサーがありません",
         "noTorznabIndexersHint": "クロスシード検索を行うには、設定で Torznab インデクサーを追加または有効化してください。",
+        "noneSelected": "未選択",
         "searchIndexers": "検索対象 {{count}} 件",
         "searching": "検索中",
         "selectCustom": "カスタム選択",
+        "selectIndexers": "インデクサーを選択",
         "selectedCount": "{{count}} 件選択中",
         "selectedOfTotal": "{{selected}} / {{total}} を選択",
-        "selectIndexers": "インデクサーを選択",
         "title": "検索範囲"
       },
       "searchingIndexers": "インデクサーを検索中...",
@@ -4520,8 +4524,8 @@
         "commit": "Commit",
         "configDir": "Config dir",
         "currentSessionAuth": "Current session auth",
-        "database": "Database",
         "dataDir": "Data dir",
+        "database": "Database",
         "oidcEnabled": "OIDC enabled",
         "oidcIssuerHost": "OIDC issuer host",
         "runtime": "Runtime",
@@ -4575,9 +4579,9 @@
         "lastChecked": "Last checked: {{value}}",
         "notChecked": "Not checked yet",
         "unknown": "Unknown",
-        "updateAvailable": "Update available",
         "upToDate": "Up to date",
         "upToDateDetail": "No newer release is currently cached.",
+        "updateAvailable": "Update available",
         "waiting": "Waiting for application metadata."
       },
       "values": {
@@ -4627,8 +4631,8 @@
     "instances": {
       "actions": {
         "addFirstInstance": "最初のインスタンスを追加",
-        "adding": "追加中...",
         "addInstance": "インスタンスを追加",
+        "adding": "追加中...",
         "cancel": "キャンセル"
       },
       "dialogs": {
@@ -5001,12 +5005,12 @@
       "sortBy": "並び替え項目"
     },
     "stats": {
+      "loadMore": "さらに読み込む",
       "loadedOfTotal": "{{total}} 件中 {{loaded}} 件を読み込み済み",
       "loadedSimple": "{{count}} 件のトレント",
       "loading": "読み込み中...",
       "loadingMoreTorrents": "さらにトレントを読み込み中...",
       "loadingTorrents": "トレントを読み込み中...",
-      "loadMore": "さらに読み込む",
       "noTorrentsFound": "トレントが見つかりません"
     },
     "units": {
@@ -5067,10 +5071,10 @@
       "loading": "プログラムを読み込み中...",
       "title": "外部プログラム",
       "toasts": {
+        "executeFailed": "外部プログラムの実行に失敗しました: {{message}}",
         "executedAllFailed": "{{failureCount}} 件すべてのトレントで外部プログラムの実行に失敗しました",
         "executedAllSuccess": "{{successCount}} 件のトレントで外部プログラムを正常に実行しました",
-        "executedPartial": "{{successCount}} 件で実行し、{{failureCount}} 件で失敗しました",
-        "executeFailed": "外部プログラムの実行に失敗しました: {{message}}"
+        "executedPartial": "{{successCount}} 件で実行し、{{failureCount}} 件で失敗しました"
       }
     },
     "filterCrossSeeds": {
@@ -5116,8 +5120,8 @@
       "running": "実行中"
     },
     "toasts": {
-      "deleted": "トレント作成タスクを削除しました",
       "deleteFailed": "トレント作成タスクの削除に失敗しました",
+      "deleted": "トレント作成タスクを削除しました",
       "downloadFailed": "トレントファイルのダウンロードに失敗しました",
       "downloadStarted": "トレントファイルのダウンロードを開始しました"
     }
@@ -5161,8 +5165,6 @@
       "checkingMoreInstances": "さらにインスタンスを確認中...",
       "hardlinkTooltip": "ファイルはハードリンク用ディレクトリに保存されています（元ディレクトリとは別）",
       "instanceLabel": "インスタンス: {{value}}",
-      "matchingFoundAcrossInstances": "全インスタンスで {{count}} {{noun}} が見つかりました",
-      "matchingFoundChecking": "{{count}} {{noun}} が見つかりました。さらにインスタンスを確認中...",
       "matchLabel": "一致条件: {{value}}",
       "matchType": {
         "contentPath": "コンテンツパス",
@@ -5176,6 +5178,8 @@
         "name": "トレント名が同じ",
         "savePath": "保存先ディレクトリとファイル名が同じ"
       },
+      "matchingFoundAcrossInstances": "全インスタンスで {{count}} {{noun}} が見つかりました",
+      "matchingFoundChecking": "{{count}} {{noun}} が見つかりました。さらにインスタンスを確認中...",
       "selectedCount": "{{total}} 件中 {{selected}} 件を選択",
       "tagsLabel": "タグ: {{value}}",
       "trackerLabel": "トラッカー: {{value}}"
@@ -5228,9 +5232,9 @@
       "countryLabel": "国:",
       "created": "作成日時",
       "createdBy": "作成者",
-      "downloaded": "ダウンロード済み",
       "downloadPath": "ダウンロードパス",
       "downloadSpeed": "ダウンロード速度",
+      "downloaded": "ダウンロード済み",
       "flagsLabel": "フラグ:",
       "infoHashV1": "Info Hash v1",
       "infoHashV2": "Info Hash v2",
@@ -5242,8 +5246,8 @@
       "maxUploads": "最大アップロード数",
       "peerProgress": "ピア進捗",
       "peers": "ピア",
-      "pieces": "ピース",
       "pieceSizeEach": "（{{size}} ごと）",
+      "pieces": "ピース",
       "priority": "優先度",
       "savePath": "保存先パス",
       "seedingTime": "シード時間",
@@ -5252,8 +5256,8 @@
       "timeActive": "稼働時間",
       "torrentName": "トレント名",
       "totalSize": "合計サイズ",
-      "uploaded": "アップロード済み",
       "uploadSpeed": "アップロード速度",
+      "uploaded": "アップロード済み",
       "wasted": "破棄データ"
     },
     "peers": {
@@ -5287,9 +5291,9 @@
       "copiedPeerAddress": "{{address}} をクリップボードにコピーしました",
       "copiedToClipboard": "{{label}} をクリップボードにコピーしました",
       "copyFailed": "クリップボードへのコピーに失敗しました",
+      "deleteFailed": "削除に失敗しました: {{message}}",
       "deletedCurrentTorrent": "トレントを削除しました: {{name}}",
       "deletedTorrents": "{{count}} {{noun}} を削除しました",
-      "deleteFailed": "削除に失敗しました: {{message}}",
       "filePriorityUpdateFailed": "ファイル優先度の更新に失敗しました",
       "fileRenamed": "ファイル名を変更しました",
       "folderRenamed": "フォルダ名を変更しました",
@@ -5297,8 +5301,8 @@
       "peersAdded": "ピアを追加しました",
       "renameFileFailed": "ファイル名の変更に失敗しました",
       "renameFolderFailed": "フォルダ名の変更に失敗しました",
-      "trackerUpdated": "トラッカーURLを更新しました",
       "trackerUpdateFailedTitle": "トラッカーの更新に失敗しました",
+      "trackerUpdated": "トラッカーURLを更新しました",
       "urlCopied": "URLをクリップボードにコピーしました"
     },
     "trackers": {
@@ -5427,18 +5431,6 @@
       "selectedSummary": "選択中のタグ: {{tags}}",
       "title": "{{count}} 件のトレントのタグを設定"
     },
-    "shared": {
-      "availableTags": "利用可能なタグ",
-      "cancel": "キャンセル",
-      "deselectAll": "すべて解除",
-      "enterNewTagPlaceholder": "新しいタグを入力",
-      "loading": "読み込み中...",
-      "loadingTags": "タグを読み込み中...",
-      "locationLabel": "保存先",
-      "newTagSuffix": "（新規）",
-      "rename": "名前を変更",
-      "setting": "設定中..."
-    },
     "shareLimits": {
       "confirm": "制限を適用",
       "description": "選択したトレントのシード制限を設定します。3 項目すべてが適用されます。",
@@ -5473,6 +5465,18 @@
       "seedTimePlaceholder": "例: 1440",
       "setAllToGlobal": "すべてグローバルに設定",
       "title": "{{count}} 件のトレントの共有制限を設定"
+    },
+    "shared": {
+      "availableTags": "利用可能なタグ",
+      "cancel": "キャンセル",
+      "deselectAll": "すべて解除",
+      "enterNewTagPlaceholder": "新しいタグを入力",
+      "loading": "読み込み中...",
+      "loadingTags": "タグを読み込み中...",
+      "locationLabel": "保存先",
+      "newTagSuffix": "（新規）",
+      "rename": "名前を変更",
+      "setting": "設定中..."
     },
     "speedLimits": {
       "confirm": "制限を適用",
@@ -5596,16 +5600,16 @@
       "completed": "完了日時",
       "created": "作成日時",
       "createdBy": "作成者",
-      "downloaded": "ダウンロード済み",
       "downloadLimit": "DL 制限",
       "downloadShort": "DL",
+      "downloaded": "ダウンロード済み",
       "hashV1": "ハッシュ v1",
       "hashV2": "ハッシュ v2",
       "inactiveLimit": "非アクティブ制限",
       "name": "名前",
       "peers": "ピア",
-      "pieces": "ピース",
       "pieceSize": "ピースサイズ",
+      "pieces": "ピース",
       "priority": "優先度",
       "ratio": "比率",
       "ratioLimit": "比率制限",
@@ -5616,9 +5620,9 @@
       "sequentialDownload": "順次ダウンロード",
       "size": "サイズ",
       "tempPath": "一時パス",
-      "uploaded": "アップロード済み",
       "uploadLimit": "UL 制限",
       "uploadShort": "UL",
+      "uploaded": "アップロード済み",
       "wasted": "無駄"
     },
     "sections": {
@@ -5690,11 +5694,6 @@
       "tmmMixed": "TMM（混在）"
     }
   },
-  "torrentsPage": {
-    "detailsTitle": "トレント詳細",
-    "detailsTitleWithName": "トレント詳細: {{name}}",
-    "filtersTitle": "フィルター"
-  },
   "torrentTableColumns": {
     "headers": {
       "added": "追加日時",
@@ -5703,8 +5702,8 @@
       "completed": "完了済み",
       "completedOn": "完了日時",
       "downLimit": "ダウンロード上限",
-      "downloaded": "ダウンロード済み",
       "downSpeed": "ダウンロード速度",
+      "downloaded": "ダウンロード済み",
       "eta": "残り時間",
       "infoHashV1": "Info Hash v1",
       "infoHashV2": "Info Hash v2",
@@ -5736,8 +5735,8 @@
       "tracker": "トラッカー",
       "trackerIcon": "トラッカーアイコン",
       "upLimit": "アップロード上限",
-      "uploaded": "アップロード済み",
-      "upSpeed": "アップロード速度"
+      "upSpeed": "アップロード速度",
+      "uploaded": "アップロード済み"
     },
     "priority": {
       "tooltip": "優先度"
@@ -5793,6 +5792,11 @@
     "table": {
       "ariaLabel": "トレントテーブル"
     }
+  },
+  "torrentsPage": {
+    "detailsTitle": "トレント詳細",
+    "detailsTitleWithName": "トレント詳細: {{name}}",
+    "filtersTitle": "フィルター"
   },
   "trackerReannounceForm": {
     "actions": {
@@ -5972,10 +5976,10 @@
       "description": "{{timestamp}} - {{total}} 件のトレント - 一時的にメモリ上へ保持",
       "dryRunNote": "ドライラン: 変更は適用されていません。",
       "failedLoad": "実行詳細の読み込みに失敗しました。",
-      "loading": "読み込み中...",
       "loadMore": "さらに読み込む",
-      "notAvailable": "実行詳細は利用できません（メモリ保持のみ）。",
+      "loading": "読み込み中...",
       "noTorrents": "この実行で記録されたトレントはありません。",
+      "notAvailable": "実行詳細は利用できません（メモリ保持のみ）。",
       "originalTracker": "元の値: {{tracker}}",
       "showing": "{{total}} 件中 {{shown}} 件を表示",
       "table": {
@@ -6084,11 +6088,11 @@
     "dryRun": {
       "actions": {
         "categoryChanged": "カテゴリ",
+        "deleteFailed": "削除失敗",
         "deletedCondition": "削除（条件）",
         "deletedRatio": "削除（比率）",
         "deletedSeeding": "削除（シード）",
         "deletedUnregistered": "削除（未登録）",
-        "deleteFailed": "削除失敗",
         "externalProgram": "外部プログラム",
         "limitFailed": "制限適用失敗",
         "moved": "移動",
@@ -6224,11 +6228,11 @@
       "activity": {
         "actionValues": {
           "categoryChanged": "Category",
+          "deleteFailed": "Delete",
           "deletedCondition": "Condition",
           "deletedRatio": "Ratio limit",
           "deletedSeeding": "Seeding time",
           "deletedUnregistered": "Unregistered",
-          "deleteFailed": "Delete",
           "dryRunNoMatch": "Dry-run",
           "externalProgram": "External program",
           "limitFailed": "Set limits",
@@ -6524,8 +6528,8 @@
         "outsideQbittorrent": "qBittorrent 外（ライブラリ/取り込み）",
         "torrentsOnly": "他トレントのみ"
       },
-      "loadingInitial": "プレビューを読み込み中です。少し時間がかかる場合があります...",
       "loadMore": "さらに読み込む",
+      "loadingInitial": "プレビューを読み込み中です。少し時間がかかる場合があります...",
       "moreTorrents": "… さらに {{count}} 件のトレント",
       "stateValues": {
         "active": "アクティブ",
@@ -6676,11 +6680,11 @@
     "activity": {
       "actionValues": {
         "categoryChanged": "カテゴリ",
+        "deleteFailed": "削除",
         "deletedCondition": "条件",
         "deletedRatio": "比率上限",
         "deletedSeeding": "シード時間",
         "deletedUnregistered": "未登録",
-        "deleteFailed": "削除",
         "dryRunNoMatch": "ドライラン",
         "externalProgram": "外部プログラム",
         "limitFailed": "制限設定",

@@ -22,6 +22,7 @@ import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
+import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { formatBytes, getRatioColor } from "@/lib/utils"
 import {
@@ -564,7 +565,8 @@ interface TorrentTableOptimizedProps {
     counts?: TorrentCounts,
     categories?: Record<string, Category>,
     tags?: string[],
-    useSubcategories?: boolean
+    useSubcategories?: boolean,
+    supportsTrackerHealth?: boolean
   ) => void
   onSelectionChange?: (
     selectedHashes: string[],
@@ -698,6 +700,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     torrentsLength?: number
     useSubcategories?: boolean
     supportsSubcategories?: boolean
+    supportsTrackerHealth?: boolean
   }>({})
   const serverStateRef = useRef<{ instanceId: number, state: ServerState | null }>({
     instanceId,
@@ -996,6 +999,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     counts,
     categories,
     tags,
+    trackerHealthSupported,
     serverState,
     capabilities,
     useSubcategories: subcategoriesFromData,
@@ -1029,7 +1033,11 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     order: activeSortOrder,
   })
 
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
+  const supportsTrackerHealth = resolveTrackerHealthSupport({
+    isUnifiedView: isAllInstancesView,
+    capabilitySupport: capabilities?.supportsTrackerHealth,
+    responseSupport: trackerHealthSupported,
+  })
   const supportsSubcategories = isAllInstancesView
     ? Boolean(subcategoriesFromData)
     : (capabilities?.supportsSubcategories ?? false)
@@ -1131,8 +1139,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     const nextTags = tags ?? lastMetadataRef.current.tags
     const prevSupportsSubcategories = lastMetadataRef.current.supportsSubcategories ?? false
     const previousUseSubcategories = lastMetadataRef.current.useSubcategories ?? false
+    const previousSupportsTrackerHealth = lastMetadataRef.current.supportsTrackerHealth ?? false
     const nextSupportsSubcategories = supportsSubcategories
     const nextUseSubcategories = nextSupportsSubcategories ? (subcategoriesFromData ?? previousUseSubcategories) : false
+    const nextSupportsTrackerHealth = supportsTrackerHealth
     const nextTotalCount = totalCount
 
     const hasAnyMetadata =
@@ -1152,6 +1162,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       nextTags !== lastMetadataRef.current.tags ||
       nextSupportsSubcategories !== prevSupportsSubcategories ||
       nextUseSubcategories !== previousUseSubcategories ||
+      nextSupportsTrackerHealth !== previousSupportsTrackerHealth ||
       nextTotalCount !== lastMetadataRef.current.totalCount
 
     const torrentsLengthChanged = torrents.length !== (lastMetadataRef.current.torrentsLength ?? -1)
@@ -1166,7 +1177,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       nextCounts,
       nextCategories,
       nextTags,
-      nextUseSubcategories
+      nextUseSubcategories,
+      nextSupportsTrackerHealth
     )
 
     lastMetadataRef.current = {
@@ -1177,8 +1189,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       torrentsLength: torrents.length,
       useSubcategories: nextUseSubcategories,
       supportsSubcategories: nextSupportsSubcategories,
+      supportsTrackerHealth: nextSupportsTrackerHealth,
     }
-  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData, supportsSubcategories])
+  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData, supportsSubcategories, supportsTrackerHealth])
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents

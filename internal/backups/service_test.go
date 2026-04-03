@@ -7,10 +7,14 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"maps"
+	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
@@ -230,6 +234,177 @@ func TestUpdateSettingsNormalizesRetention(t *testing.T) {
 	require.Equal(t, 1, reloaded.KeepHourly)
 	require.Equal(t, 1, reloaded.KeepDaily)
 	require.Equal(t, 1, reloaded.KeepMonthly)
+}
+
+func TestShouldSkipLiveExportForBackup(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		torrent       qbt.Torrent
+		cacheErr      error
+		hasCachedBlob bool
+		want          bool
+	}{
+		{
+			name: "skip uncached hybrid torrent",
+			torrent: qbt.Torrent{
+				Hash:       "hybrid-id",
+				InfohashV1: "v1-hash",
+				InfohashV2: "v2-hash",
+			},
+			want: true,
+		},
+		{
+			name: "allow cached hybrid torrent",
+			torrent: qbt.Torrent{
+				Hash:       "hybrid-id",
+				InfohashV1: "v1-hash",
+				InfohashV2: "v2-hash",
+			},
+			hasCachedBlob: true,
+			want:          false,
+		},
+		{
+			name: "allow legacy torrent",
+			torrent: qbt.Torrent{
+				Hash:       "v1-hash",
+				InfohashV1: "v1-hash",
+			},
+			want: false,
+		},
+		{
+			name: "allow v2-only torrent",
+			torrent: qbt.Torrent{
+				Hash:       "v2-id",
+				InfohashV2: "full-v2-hash",
+			},
+			want: false,
+		},
+		{
+			name: "allow hybrid torrent when cache lookup failed",
+			torrent: qbt.Torrent{
+				Hash:       "hybrid-id",
+				InfohashV1: "v1-hash",
+				InfohashV2: "v2-hash",
+			},
+			cacheErr: errors.New("db unavailable"),
+			want:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, shouldSkipLiveExportForBackup(tt.torrent, tt.hasCachedBlob, tt.cacheErr))
+		})
+	}
+}
+
+func TestExecuteBackupSkipsUncachedHybridBeforeExport(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "hybrid-skip")
+	store := models.NewBackupStore(db)
+
+	require.NoError(t, store.UpsertSettings(ctx, &models.BackupSettings{
+		InstanceID:    instanceID,
+		Enabled:       true,
+		HourlyEnabled: true,
+		KeepHourly:    1,
+	}))
+
+	sm := &stubBackupSyncManager{
+		torrents: []qbt.Torrent{{
+			Hash:       "hybrid-id",
+			Name:       "Hybrid Torrent",
+			InfohashV1: "v1-hash",
+			InfohashV2: "v2-hash",
+			TotalSize:  123,
+		}},
+	}
+
+	svc := NewService(store, sm, nil, Config{WorkerCount: 1, DataDir: t.TempDir()}, nil)
+	svc.now = func() time.Time { return time.Unix(0, 0).UTC() }
+
+	result, err := svc.executeBackup(ctx, job{runID: 42, instanceID: instanceID, kind: models.BackupRunKindManual})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 0, result.torrentCount)
+	require.Empty(t, result.items)
+	require.Equal(t, 0, sm.exportCalls)
+
+	svc.progressMu.RLock()
+	progress := svc.progress[42]
+	svc.progressMu.RUnlock()
+	require.NotNil(t, progress)
+	require.Equal(t, 1, progress.Current)
+	require.Equal(t, 1, progress.Total)
+}
+
+func TestExecuteBackupUsesCachedBlobForHybridTorrent(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "hybrid-cache")
+	store := models.NewBackupStore(db)
+
+	require.NoError(t, store.UpsertSettings(ctx, &models.BackupSettings{
+		InstanceID:    instanceID,
+		Enabled:       true,
+		HourlyEnabled: true,
+		KeepHourly:    1,
+	}))
+
+	dataDir := t.TempDir()
+	blobRelPath := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "cc", "cached.torrent"))
+	blobAbsPath := filepath.Join(dataDir, blobRelPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbsPath), 0o755))
+	require.NoError(t, os.WriteFile(blobAbsPath, []byte("cached"), 0o600))
+
+	now := time.Unix(0, 0).UTC()
+	run := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindManual,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "tester",
+		RequestedAt: now,
+		StartedAt:   &now,
+		CompletedAt: &now,
+	}
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.InsertItems(ctx, run.ID, []models.BackupItem{{
+		RunID:           run.ID,
+		TorrentHash:     "hybrid-id",
+		Name:            "Hybrid Torrent",
+		SizeBytes:       123,
+		TorrentBlobPath: &blobRelPath,
+	}}))
+
+	sm := &stubBackupSyncManager{
+		torrents: []qbt.Torrent{{
+			Hash:       "hybrid-id",
+			Name:       "Hybrid Torrent",
+			InfohashV1: "v1-hash",
+			InfohashV2: "v2-hash",
+			TotalSize:  123,
+		}},
+	}
+
+	svc := NewService(store, sm, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+	svc.now = func() time.Time { return now }
+
+	result, err := svc.executeBackup(ctx, job{runID: 43, instanceID: instanceID, kind: models.BackupRunKindManual})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.torrentCount)
+	require.Len(t, result.items, 1)
+	require.Equal(t, 0, sm.exportCalls)
+	require.NotNil(t, result.items[0].TorrentBlobPath)
+	require.Equal(t, blobRelPath, *result.items[0].TorrentBlobPath)
 }
 
 func TestNormalizeAndPersistSettingsRepairsLegacyValues(t *testing.T) {
@@ -943,26 +1118,286 @@ func TestIsBackupMissedFailedRunOutsideCooldownIsMissed(t *testing.T) {
 	require.True(t, missed)
 }
 
-func TestWaitForExportThrottleNoopWithoutThrottle(t *testing.T) {
-	require.NoError(t, waitForExportThrottle(context.Background(), nil))
+func TestAdaptiveExportDelayNoopWithoutMinDelay(t *testing.T) {
+	require.NoError(t, adaptiveExportDelay(context.Background(), 0, 0))
+	require.NoError(t, adaptiveExportDelay(context.Background(), -1, 0))
 }
 
-func TestWaitForExportThrottleReturnsOnTick(t *testing.T) {
+func TestAdaptiveExportDelayUsesMinDelay(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	throttle := make(chan time.Time, 1)
-	throttle <- time.Now()
+	start := time.Now()
+	require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 0))
+	elapsed := time.Since(start)
 
-	require.NoError(t, waitForExportThrottle(ctx, throttle))
+	require.GreaterOrEqual(t, elapsed, 50*time.Millisecond)
 }
 
-func TestWaitForExportThrottleRespectsContextCancellation(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+func TestAdaptiveExportDelayExtendsWhenExportSlow(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	throttle := make(chan time.Time)
+	start := time.Now()
+	// Simulate an export that took 200ms with a 50ms minimum — should wait 200ms.
+	require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 200*time.Millisecond))
+	elapsed := time.Since(start)
 
-	err := waitForExportThrottle(ctx, throttle)
+	require.GreaterOrEqual(t, elapsed, 200*time.Millisecond)
+}
+
+func TestAdaptiveExportDelayRespectsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	err := adaptiveExportDelay(ctx, time.Second, 0)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestDeleteFilesParallelStopsWhenContextCanceled(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var (
+		mu      sync.Mutex
+		removed []string
+	)
+
+	originalRemoveFile := removeFile
+	removeFile = func(path string) error {
+		mu.Lock()
+		removed = append(removed, path)
+		callCount := len(removed)
+		mu.Unlock()
+
+		if callCount == 1 {
+			cancel()
+		}
+
+		return nil
+	}
+	t.Cleanup(func() { removeFile = originalRemoveFile })
+
+	svc.deleteFilesParallel(ctx, []string{"one", "two", "three"})
+
+	require.Equal(t, []string{"one"}, removed)
+}
+
+func TestDeleteRunRemovesFilesAndCleansState(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "delete-run")
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	manifestRelPath := filepath.ToSlash(filepath.Join("backups", "runs", "manifest.json"))
+	archiveRelPath := filepath.ToSlash(filepath.Join("backups", "runs", "archive.zip"))
+	blobRelPath := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "blob.torrent"))
+
+	for _, rel := range []string{manifestRelPath, archiveRelPath, blobRelPath} {
+		abs := filepath.Join(dataDir, rel)
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+		require.NoError(t, os.WriteFile(abs, []byte(rel), 0o600))
+	}
+
+	now := time.Unix(0, 0).UTC()
+	run := &models.BackupRun{
+		InstanceID:   instanceID,
+		Kind:         models.BackupRunKindManual,
+		Status:       models.BackupRunStatusSuccess,
+		RequestedBy:  "tester",
+		RequestedAt:  now,
+		StartedAt:    &now,
+		CompletedAt:  &now,
+		ManifestPath: &manifestRelPath,
+		ArchivePath:  &archiveRelPath,
+	}
+	require.NoError(t, store.CreateRun(ctx, run))
+	require.NoError(t, store.InsertItems(ctx, run.ID, []models.BackupItem{{
+		RunID:           run.ID,
+		TorrentHash:     "hash-a",
+		Name:            "Torrent A",
+		SizeBytes:       123,
+		TorrentBlobPath: &blobRelPath,
+	}}))
+
+	require.NoError(t, svc.DeleteRun(ctx, run.ID))
+
+	for _, rel := range []string{manifestRelPath, archiveRelPath, blobRelPath} {
+		_, err := os.Stat(filepath.Join(dataDir, rel))
+		require.ErrorIs(t, err, os.ErrNotExist)
+	}
+
+	_, err := store.GetRun(ctx, run.ID)
+	require.ErrorIs(t, err, sql.ErrNoRows)
+
+	items, err := store.ListItems(ctx, run.ID)
+	require.NoError(t, err)
+	require.Empty(t, items)
+}
+
+func TestDeleteAllRunsRemovesFilesAndToleratesMissingOnes(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "delete-all")
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	now := time.Unix(0, 0).UTC()
+	manifestA := filepath.ToSlash(filepath.Join("backups", "runs", "run-a-manifest.json"))
+	archiveA := filepath.ToSlash(filepath.Join("backups", "runs", "run-a.zip"))
+	manifestB := filepath.ToSlash(filepath.Join("backups", "runs", "run-b-manifest.json"))
+	archiveB := filepath.ToSlash(filepath.Join("backups", "runs", "run-b.zip"))
+
+	runA := &models.BackupRun{
+		InstanceID:   instanceID,
+		Kind:         models.BackupRunKindManual,
+		Status:       models.BackupRunStatusSuccess,
+		RequestedBy:  "tester",
+		RequestedAt:  now,
+		StartedAt:    &now,
+		CompletedAt:  &now,
+		ManifestPath: &manifestA,
+		ArchivePath:  &archiveA,
+	}
+	runB := &models.BackupRun{
+		InstanceID:   instanceID,
+		Kind:         models.BackupRunKindHourly,
+		Status:       models.BackupRunStatusSuccess,
+		RequestedBy:  "tester",
+		RequestedAt:  now,
+		StartedAt:    &now,
+		CompletedAt:  &now,
+		ManifestPath: &manifestB,
+		ArchivePath:  &archiveB,
+	}
+	require.NoError(t, store.CreateRun(ctx, runA))
+	require.NoError(t, store.CreateRun(ctx, runB))
+
+	for _, rel := range []string{manifestA, archiveA, manifestB} {
+		abs := filepath.Join(dataDir, rel)
+		require.NoError(t, os.MkdirAll(filepath.Dir(abs), 0o755))
+		require.NoError(t, os.WriteFile(abs, []byte(rel), 0o600))
+	}
+
+	require.NoError(t, svc.DeleteAllRuns(ctx, instanceID))
+
+	for _, rel := range []string{manifestA, archiveA, manifestB, archiveB} {
+		_, err := os.Stat(filepath.Join(dataDir, rel))
+		require.ErrorIs(t, err, os.ErrNotExist)
+	}
+
+	runIDs, err := store.ListRunIDs(ctx, instanceID)
+	require.NoError(t, err)
+	require.Empty(t, runIDs)
+}
+
+func TestCleanupTorrentBlobsKeepsReferencedBlobs(t *testing.T) {
+	t.Parallel()
+
+	db := setupTestBackupDB(t)
+	ctx := context.Background()
+	instanceID := insertTestInstance(t, db, "blob-refs")
+	store := models.NewBackupStore(db)
+	dataDir := t.TempDir()
+	svc := NewService(store, nil, nil, Config{WorkerCount: 1, DataDir: dataDir}, nil)
+
+	now := time.Unix(0, 0).UTC()
+	blobRelPath := filepath.ToSlash(filepath.Join("backups", "torrents", "aa", "bb", "shared.torrent"))
+	blobAbsPath := filepath.Join(dataDir, blobRelPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(blobAbsPath), 0o755))
+	require.NoError(t, os.WriteFile(blobAbsPath, []byte("blob"), 0o600))
+
+	runA := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindManual,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "tester",
+		RequestedAt: now,
+		StartedAt:   &now,
+		CompletedAt: &now,
+	}
+	runB := &models.BackupRun{
+		InstanceID:  instanceID,
+		Kind:        models.BackupRunKindHourly,
+		Status:      models.BackupRunStatusSuccess,
+		RequestedBy: "tester",
+		RequestedAt: now,
+		StartedAt:   &now,
+		CompletedAt: &now,
+	}
+	require.NoError(t, store.CreateRun(ctx, runA))
+	require.NoError(t, store.CreateRun(ctx, runB))
+	require.NoError(t, store.InsertItems(ctx, runA.ID, []models.BackupItem{{
+		RunID:           runA.ID,
+		TorrentHash:     "hash-a",
+		Name:            "Torrent A",
+		SizeBytes:       1,
+		TorrentBlobPath: &blobRelPath,
+	}}))
+	require.NoError(t, store.InsertItems(ctx, runB.ID, []models.BackupItem{{
+		RunID:           runB.ID,
+		TorrentHash:     "hash-b",
+		Name:            "Torrent B",
+		SizeBytes:       1,
+		TorrentBlobPath: &blobRelPath,
+	}}))
+
+	items, err := store.ListItems(ctx, runA.ID)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+
+	require.NoError(t, store.CleanupRun(ctx, runA.ID))
+	svc.cleanupTorrentBlobs(ctx, items)
+
+	_, err = os.Stat(blobAbsPath)
+	require.NoError(t, err)
+}
+
+type stubBackupSyncManager struct {
+	torrents    []qbt.Torrent
+	categories  map[string]qbt.Category
+	tags        []string
+	webAPIVer   string
+	exportData  []byte
+	exportName  string
+	exportTrack string
+	exportErr   error
+	exportCalls int
+}
+
+func (s *stubBackupSyncManager) GetAllTorrents(context.Context, int) ([]qbt.Torrent, error) {
+	return append([]qbt.Torrent(nil), s.torrents...), nil
+}
+
+func (s *stubBackupSyncManager) GetCategories(context.Context, int) (map[string]qbt.Category, error) {
+	if s.categories == nil {
+		return nil, nil
+	}
+
+	out := make(map[string]qbt.Category, len(s.categories))
+	maps.Copy(out, s.categories)
+	return out, nil
+}
+
+func (s *stubBackupSyncManager) GetTags(context.Context, int) ([]string, error) {
+	return append([]string(nil), s.tags...), nil
+}
+
+func (s *stubBackupSyncManager) GetInstanceWebAPIVersion(context.Context, int) (string, error) {
+	return s.webAPIVer, nil
+}
+
+func (s *stubBackupSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
+	s.exportCalls++
+	return append([]byte(nil), s.exportData...), s.exportName, s.exportTrack, s.exportErr
 }

@@ -312,6 +312,7 @@ type FormState = {
   applyToAllTrackers: boolean
   enabled: boolean
   dryRun: boolean
+  notify: boolean
   sortOrder?: number
   intervalSeconds: number | null // null = use global default (15m)
   // Shared condition for all actions
@@ -371,6 +372,7 @@ const emptyFormState: FormState = {
   applyToAllTrackers: false,
   enabled: false,
   dryRun: false,
+  notify: true,
   intervalSeconds: null,
   actionCondition: null,
   exprGrouping: undefined,
@@ -558,6 +560,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     const selectedId = formState.exprExternalProgramId
     return allExternalPrograms.filter(p => p.enabled || p.id === selectedId)
   }, [allExternalPrograms, formState.exprExternalProgramId])
+  const { data: notificationTargets } = useQuery({
+    queryKey: ["notificationTargets"],
+    queryFn: () => api.listNotificationTargets(),
+    enabled: open,
+    staleTime: 30 * 1000,
+  })
+  const hasNotificationTargets = (notificationTargets ?? []).length > 0
+
   const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
   const supportsFreeSpacePathSource = capabilities?.supportsFreeSpacePathSource ?? false
   const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
@@ -916,6 +926,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           applyToAllTrackers: isAllTrackers,
           enabled: rule.enabled,
           dryRun: rule.dryRun ?? false,
+          notify: rule.notify ?? true,
           sortOrder: rule.sortOrder,
           intervalSeconds: rule.intervalSeconds ?? null,
           actionCondition,
@@ -1247,6 +1258,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       trackerPattern: input.applyToAllTrackers ? "*" : trackerDomains.join(","),
       enabled: input.enabled,
       dryRun: input.dryRun,
+      notify: input.notify,
       sortOrder: input.sortOrder,
       intervalSeconds: input.intervalSeconds,
       conditions,
@@ -3164,6 +3176,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   />
                   <Label htmlFor="rule-dry-run" className="text-sm font-normal cursor-pointer">{tr("workflowDialog.fields.dryRun")}</Label>
                 </div>
+                {hasNotificationTargets && (
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="rule-notify"
+                      checked={formState.notify}
+                      onCheckedChange={(checked) => setFormState(prev => ({ ...prev, notify: checked }))}
+                    />
+                    <Label htmlFor="rule-notify" className="text-sm font-normal cursor-pointer">Notify</Label>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <Label htmlFor="rule-interval" className="text-sm font-normal text-muted-foreground whitespace-nowrap">{tr("workflowDialog.fields.runEvery")}</Label>
                   <Select

@@ -2517,11 +2517,13 @@
         "goToInstances": "前往实例页面"
       },
       "heading": {
+        "checkingCompatibility": "正在检查实例兼容性",
         "connectInstance": "连接一个 qBittorrent 实例",
         "noCompatibleInstances": "未找到兼容实例",
         "selectInstance": "选择要管理备份的实例"
       },
       "message": {
+        "checkingCompatibility": "正在检查哪些实例支持种子备份。",
         "chooseFromDropdown": "请从上方下拉框选择一个 qBittorrent 实例来查看和管理备份。",
         "noInstancesConfigured": "尚未配置 qBittorrent 实例。请先添加实例再使用备份功能。",
         "noSupportedInstances": "当前所有 qBittorrent 实例都不支持种子备份。请升级到 qBittorrent 4.5.0+（Web API 2.8.11+）以启用此功能。"
@@ -2532,7 +2534,8 @@
       "actions": {
         "importBackup": "导入备份",
         "runManualBackup": "立即手动备份",
-        "saveChanges": "保存更改"
+        "saveChanges": "保存更改",
+        "saveChangesToAll": "保存到所有实例"
       },
       "cadences": {
         "daily": {
@@ -2571,7 +2574,8 @@
         }
       },
       "validation": {
-        "changesApply": "保存后，新设置会立即应用于后续备份。",
+        "changesApply": "保存后，新设置���立即应用于后续备份。",
+        "saveAllWaitTitle": "需等待实例检查完成后才能保存到所有实例。",
         "selectCadenceBody": "保存前请至少选择一个频率（每小时、每天、每周或每月）。",
         "selectCadenceTitle": "启用自动备份前请至少选择一个频率。"
       }

@@ -4,7 +4,7 @@
  */
 
 import { Link } from "@tanstack/react-router"
-import { ArrowDownToLine, ChevronLeft, ChevronRight, CircleHelp, CircleX, Clock, Download, FileText, HardDrive, ListChecks, RefreshCw, Trash, Undo2 } from "lucide-react"
+import { ArrowDownToLine, ChevronLeft, ChevronRight, CircleHelp, CircleX, Clock, Download, FileText, HardDrive, ListChecks, RefreshCw, Save, Trash, Undo2 } from "lucide-react"
 import type { ChangeEvent } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -166,13 +166,15 @@ export function InstanceBackups() {
     })),
   })
 
+  const instanceCapabilitiesPending = (instances?.length ?? 0) > 0
+    && instanceCapabilitiesQueries.some(query => query.isPending)
+
   // Filter instances to only show those that support backups
   const supportedInstances = useMemo(() => {
     if (!instances) return []
     return instances.filter((_inst, index) => {
       const capabilitiesData = instanceCapabilitiesQueries[index]?.data
-      // If capabilities haven't loaded yet, assume supported to avoid flickering
-      return capabilitiesData?.supportsTorrentExport ?? true
+      return capabilitiesData?.supportsTorrentExport === true
     })
   }, [instances, instanceCapabilitiesQueries])
 
@@ -186,12 +188,15 @@ export function InstanceBackups() {
     if (!instances) {
       return
     }
+    if (instanceCapabilitiesPending) {
+      return
+    }
 
     const stillSupported = supportedInstances.some(inst => inst.id === selectedInstanceId)
     if (!stillSupported) {
       setSelectedInstanceId(undefined)
     }
-  }, [selectedInstanceId, setSelectedInstanceId, supportedInstances, instances])
+  }, [selectedInstanceId, setSelectedInstanceId, supportedInstances, instances, instanceCapabilitiesPending])
 
   const instanceId = selectedInstanceId
 
@@ -226,7 +231,7 @@ export function InstanceBackups() {
     offset: backupsOffset,
     enabled: shouldLoadData,
   })
-  const runs = runsResponse?.runs ?? []
+  const runs = useMemo(() => runsResponse?.runs ?? [], [runsResponse?.runs])
   const queryClient = useQueryClient()
   const { data: firstPageResponse } = useBackupRuns(instanceId ?? 0, {
     limit: BACKUPS_PER_PAGE,
@@ -593,6 +598,27 @@ export function InstanceBackups() {
     }
   }
 
+  const [savingAll, setSavingAll] = useState(false)
+  const saveAllDisabled = saveDisabled || savingAll || instanceCapabilitiesPending
+
+  const handleSaveAll = async () => {
+    if (!formState) return
+    setSavingAll(true)
+    const results = await Promise.allSettled(
+      (supportedInstances ?? []).map(inst => api.updateBackupSettings(inst.id, formState))
+    )
+    const failed = results.filter((result): result is PromiseRejectedResult => result.status === "rejected")
+
+    await queryClient.invalidateQueries({ queryKey: ["instance-backups"] })
+
+    if (failed.length === 0) {
+      toast.success("Settings applied to all instances")
+    } else {
+      toast.error(`Applied to ${results.length - failed.length}/${results.length} instances`)
+    }
+    setSavingAll(false)
+  }
+
   const handleTrigger = async (kind: BackupRunKind = "manual") => {
     try {
       await triggerBackup.mutateAsync({ kind, requestedBy: "ui" })
@@ -752,9 +778,9 @@ export function InstanceBackups() {
 
   // Show instance selector when no instance is selected
   if (!instanceId) {
-    const selectionHeading = hasSupportedInstances? tr("instanceBackups.selection.heading.selectInstance"): hasInstances? tr("instanceBackups.selection.heading.noCompatibleInstances"): tr("instanceBackups.selection.heading.connectInstance")
+    const selectionHeading = instanceCapabilitiesPending? tr("instanceBackups.selection.heading.checkingCompatibility"): hasSupportedInstances? tr("instanceBackups.selection.heading.selectInstance"): hasInstances? tr("instanceBackups.selection.heading.noCompatibleInstances"): tr("instanceBackups.selection.heading.connectInstance")
 
-    const selectionMessage = !hasInstances? tr("instanceBackups.selection.message.noInstancesConfigured"): hasSupportedInstances? tr("instanceBackups.selection.message.chooseFromDropdown"): tr("instanceBackups.selection.message.noSupportedInstances")
+    const selectionMessage = !hasInstances? tr("instanceBackups.selection.message.noInstancesConfigured"): instanceCapabilitiesPending? tr("instanceBackups.selection.message.checkingCompatibility"): hasSupportedInstances? tr("instanceBackups.selection.message.chooseFromDropdown"): tr("instanceBackups.selection.message.noSupportedInstances")
 
     return (
       <TooltipProvider>
@@ -805,7 +831,7 @@ export function InstanceBackups() {
                 <p className="text-lg font-medium">{selectionHeading}</p>
                 <p className="text-sm text-muted-foreground max-w-md">{selectionMessage}</p>
               </div>
-              {!hasSupportedInstances && (
+              {!hasSupportedInstances && !instanceCapabilitiesPending && (
                 <Button variant="outline" asChild>
                   <Link to="/instances">
                     {tr("instanceBackups.selection.actions.goToInstances")}
@@ -1059,20 +1085,30 @@ export function InstanceBackups() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    <Button onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
-                      <ArrowDownToLine className="mr-2 h-4 w-4" /> {tr("instanceBackups.settings.actions.runManualBackup")}
-                    </Button>
-                    <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-                      <FileText className="mr-2 h-4 w-4" /> {tr("instanceBackups.settings.actions.importBackup")}
-                    </Button>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      <Button onClick={() => handleTrigger("manual")} disabled={triggerBackup.isPending}>
+                        <ArrowDownToLine className="mr-2 h-4 w-4" /> {tr("instanceBackups.settings.actions.runManualBackup")}
+                      </Button>
+                      <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+                        <FileText className="mr-2 h-4 w-4" /> {tr("instanceBackups.settings.actions.importBackup")}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleSave}
+                        disabled={saveDisabled || savingAll}
+                        title={requiresCadenceSelection ? tr("instanceBackups.settings.validation.selectCadenceTitle") : undefined}
+                      >
+                        <Save className="mr-2 h-4 w-4" /> {tr("instanceBackups.settings.actions.saveChanges")}
+                      </Button>
+                    </div>
                     <Button
                       variant="outline"
-                      onClick={handleSave}
-                      disabled={saveDisabled}
-                      title={requiresCadenceSelection ? tr("instanceBackups.settings.validation.selectCadenceTitle") : undefined}
+                      onClick={handleSaveAll}
+                      disabled={saveAllDisabled}
+                      title={instanceCapabilitiesPending ? tr("instanceBackups.settings.validation.saveAllWaitTitle") : undefined}
                     >
-                      {tr("instanceBackups.settings.actions.saveChanges")}
+                      <Save className="mr-2 h-4 w-4" /> {tr("instanceBackups.settings.actions.saveChangesToAll")}
                     </Button>
                   </div>
                   {requiresCadenceSelection ? (
