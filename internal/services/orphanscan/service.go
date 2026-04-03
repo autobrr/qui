@@ -1364,3 +1364,4 @@ func findScanRoot(path string, scanRoots []string) string {
 	}
 	return longest
 }
+
