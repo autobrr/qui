@@ -317,8 +317,9 @@ type Service struct {
 	// categoryCreationGroup deduplicates concurrent category creation calls.
 	// Key format: "instanceID:categoryName"
 	categoryCreationGroup singleflight.Group
-	// createdCategories tracks categories we've successfully created in this session
-	// to avoid relying on potentially stale GetCategories responses.
+	// createdCategories tracks categories we've successfully created or verified in this
+	// session, keyed by "instanceID:categoryName" with the normalized actual save path as
+	// the value. The cache is only valid for callers requesting the same save path.
 	createdCategories sync.Map
 
 	// Cached torrent file metadata for repeated analyze/search calls.
@@ -10031,9 +10032,22 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 	}
 
 	key := fmt.Sprintf("%d:%s", instanceID, crossCategory)
+	requestedSavePath := normalizePath(savePath)
 
-	// Fast path: we already created this category in this session
-	if _, ok := s.createdCategories.Load(key); ok {
+	cacheMatches := func(cached any) bool {
+		cachedSavePath, ok := cached.(string)
+		if !ok {
+			return false
+		}
+		if requestedSavePath == "" {
+			return true
+		}
+		return cachedSavePath == requestedSavePath
+	}
+
+	// Fast path: we already created or verified this category in this session
+	// for the same requested save path.
+	if cached, ok := s.createdCategories.Load(key); ok && cacheMatches(cached) {
 		return nil
 	}
 
@@ -10041,7 +10055,8 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 	// Multiple goroutines trying to create the same category will share a single execution.
 	_, err, _ := s.categoryCreationGroup.Do(key, func() (any, error) {
 		// Double-check inside singleflight (another goroutine might have completed just before us)
-		if _, ok := s.createdCategories.Load(key); ok {
+		// for the same requested save path.
+		if cached, ok := s.createdCategories.Load(key); ok && cacheMatches(cached) {
 			return nil, nil
 		}
 
@@ -10053,8 +10068,10 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 
 		// Check if category already exists
 		if existing, exists := categories[crossCategory]; exists {
+			actualSavePath := normalizePath(existing.SavePath)
+
 			// Category exists - check if save_path differs (informational warning only)
-			if savePath != "" && existing.SavePath != "" && normalizePath(existing.SavePath) != normalizePath(savePath) {
+			if savePath != "" && existing.SavePath != "" && actualSavePath != requestedSavePath {
 				log.Warn().
 					Int("instanceID", instanceID).
 					Str("category", crossCategory).
@@ -10062,7 +10079,7 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 					Str("actualSavePath", existing.SavePath).
 					Msg("[CROSSSEED] Cross-seed category exists with different save path")
 			}
-			s.createdCategories.Store(key, true)
+			s.createdCategories.Store(key, actualSavePath)
 			return nil, nil
 		}
 
@@ -10071,7 +10088,7 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 			return nil, fmt.Errorf("create category: %w", err)
 		}
 
-		s.createdCategories.Store(key, true)
+		s.createdCategories.Store(key, requestedSavePath)
 		log.Debug().
 			Int("instanceID", instanceID).
 			Str("category", crossCategory).
