@@ -124,7 +124,7 @@ export function useCrossSeedWarning({
           if (match.instanceId !== torrentInstanceId) continue
           // Skip torrents being deleted
           if (hashesBeingDeleted.has(match.hash)) continue
-          // Only include matches that share the same on-disk location
+          // Only include matches that share the same on-disk bytes
           if (match.matchType !== "content_path") continue
           // Skip duplicates (instance-aware to handle same hash on multiple instances)
           const dedupeKey = isUnified ? `${match.instanceId}:${match.hash}` : match.hash
