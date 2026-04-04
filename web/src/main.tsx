@@ -12,10 +12,18 @@ import "./index.css"
 
 setupLaunchQueueConsumer()
 
-void i18nReady.then(() => {
-  createRoot(document.getElementById("root")!).render(
+const root = createRoot(document.getElementById("root")!)
+
+function renderApp() {
+  root.render(
     <StrictMode>
       <App />
     </StrictMode>
   )
-})
+}
+
+void i18nReady
+  .catch((error) => {
+    console.error("Failed to initialize i18n during app bootstrap", error)
+  })
+  .finally(renderApp)

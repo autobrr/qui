@@ -69,6 +69,18 @@ test("i18n boot loads locale files lazily instead of bundling them all up front"
   assert.doesNotMatch(source, /from "\.\/locales"/, "expected i18n bootstrap to stop importing all locale JSON eagerly")
 })
 
+test("app bootstrap still renders when i18n initialization rejects", () => {
+  const source = readFileSync(path.join(webDir, "src", "main.tsx"), "utf8")
+
+  assert.match(source, /i18nReady[\s\S]*\.catch\(/, "expected bootstrap to handle i18n startup failures")
+  assert.match(source, /i18nReady[\s\S]*\.finally\(/, "expected bootstrap to render after i18n startup settles")
+  assert.doesNotMatch(
+    source,
+    /i18nReady\.then\(\(\)\s*=>\s*\{\s*createRoot/,
+    "expected app mount to stop depending on successful i18n startup",
+  )
+})
+
 test("relative-time helpers avoid hardcoded English phrasing", () => {
   const dateTimeUtils = readFileSync(path.join(webDir, "src", "lib", "dateTimeUtils.ts"), "utf8")
   const utils = readFileSync(path.join(webDir, "src", "lib", "utils.ts"), "utf8")

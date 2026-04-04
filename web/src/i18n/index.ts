@@ -5,6 +5,7 @@ import { fallbackLanguage, normalizeLanguage, supportedLanguages, type AppLangua
 const namespaces = ["common", "auth", "footer"] as const
 type AppNamespace = (typeof namespaces)[number]
 type LocaleNamespaceModule = { default: Record<string, unknown> }
+type LanguageResources = Record<AppNamespace, Record<string, unknown>>
 
 const localeModules = import.meta.glob<LocaleNamespaceModule>("../locales/*/*.json")
 
@@ -65,7 +66,38 @@ async function loadLanguageResources(language: AppLanguage) {
     namespaces.map(async (namespace) => [namespace, await loadNamespace(language, namespace)] as const)
   )
 
-  return Object.fromEntries(loadedNamespaces)
+  return Object.fromEntries(loadedNamespaces) as LanguageResources
+}
+
+async function getInitialResources(initialLanguage: AppLanguage) {
+  const resources: Partial<Record<AppLanguage, LanguageResources>> = {}
+
+  try {
+    resources[fallbackLanguage] = await loadLanguageResources(fallbackLanguage)
+  } catch (error) {
+    console.error("Failed to load fallback locale resources; continuing without preloaded translations.", error)
+  }
+
+  if (initialLanguage === fallbackLanguage) {
+    return {
+      initialLanguage: fallbackLanguage,
+      resources,
+    }
+  }
+
+  try {
+    resources[initialLanguage] = await loadLanguageResources(initialLanguage)
+    return {
+      initialLanguage,
+      resources,
+    }
+  } catch (error) {
+    console.error(`Failed to load locale resources for ${initialLanguage}; falling back to ${fallbackLanguage}.`, error)
+    return {
+      initialLanguage: fallbackLanguage,
+      resources,
+    }
+  }
 }
 
 export async function ensureLanguageResources(language: string): Promise<AppLanguage> {
@@ -86,19 +118,12 @@ export async function ensureLanguageResources(language: string): Promise<AppLang
 }
 
 async function initializeI18n() {
-  const initialLanguage = detectInitialLanguage()
-  const fallbackResources = await loadLanguageResources(fallbackLanguage)
-  const initialResources = initialLanguage === fallbackLanguage ? {
-    [fallbackLanguage]: fallbackResources,
-  } : {
-    [fallbackLanguage]: fallbackResources,
-    [initialLanguage]: await loadLanguageResources(initialLanguage),
-  }
+  const { initialLanguage, resources } = await getInitialResources(detectInitialLanguage())
 
   await i18n
     .use(initReactI18next)
     .init({
-      resources: initialResources,
+      resources,
       lng: initialLanguage,
       fallbackLng: fallbackLanguage,
       supportedLngs: supportedLanguages,
