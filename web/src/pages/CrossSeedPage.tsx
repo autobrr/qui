@@ -632,7 +632,7 @@ function HardlinkModeSettings() {
 
 export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useCallback((key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)), [t])
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
 
@@ -1157,7 +1157,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       })
     }
     return undefined
-  }, [automationRunning, enforcedRunIntervalMinutes, hasAutomationTargets, hasEnabledIndexers, manualCooldownActive, manualCooldownDisplay])
+  }, [automationRunning, enforcedRunIntervalMinutes, hasAutomationTargets, hasEnabledIndexers, manualCooldownActive, manualCooldownDisplay, tr])
 
   const handleTriggerAutomationRun = () => {
     if (!hasEnabledIndexers) {
@@ -1228,7 +1228,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       return tr("crossSeedPage.validation.configureTorznabOrGazelleBeforeSeededRun")
     }
     return undefined
-  }, [gazelleSavedConfigured, hasEnabledIndexers, seededSearchTorznabEffectiveEnabled])
+  }, [gazelleSavedConfigured, hasEnabledIndexers, seededSearchTorznabEffectiveEnabled, tr])
   const seededSearchIntervalMinimum = useMemo(() => {
     if (!seededSearchTorznabEffectiveEnabled && gazelleSavedConfigured) {
       return MIN_GAZELLE_ONLY_SEARCH_INTERVAL_SECONDS
@@ -1306,7 +1306,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       return tr("crossSeedPage.seededSearch.placeholders.onlyOpsRedEnabled")
     }
     return tr("crossSeedPage.seededSearch.placeholders.noTorznabConfigured")
-  }, [gazelleSavedConfigured, gazelleSavedFullyConfigured, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled])
+  }, [gazelleSavedConfigured, gazelleSavedFullyConfigured, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled, tr])
 
   const seededSearchEffectiveIndexerIds = useMemo(() => {
     const allAllowed = enabledIndexers
@@ -1368,7 +1368,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     return tr("crossSeedPage.seededSearch.help.onlySelectedIndexerQueried", {
       count: seededSearchEffectiveIndexerIds.length,
     })
-  }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled])
+  }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled, tr])
 
   const seededSearchGazelleStatus = useMemo(() => {
     if (!settings) {
@@ -1383,7 +1383,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     if (ops) return tr("crossSeedPage.seededSearch.gazelleStatus.enabledOpsOnly")
     if (red) return tr("crossSeedPage.seededSearch.gazelleStatus.enabledRedOnly")
     return tr("crossSeedPage.seededSearch.gazelleStatus.enabledMissingKeys")
-  }, [settings])
+  }, [settings, tr])
 
   const seededSearchGazelleOnlyMode = !seededSearchTorznabEffectiveEnabled && gazelleSavedConfigured
 

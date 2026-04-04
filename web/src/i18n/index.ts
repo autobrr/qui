@@ -1,6 +1,6 @@
 import i18n from "i18next"
 import { initReactI18next } from "react-i18next"
-import { fallbackLanguage, normalizeLanguage, supportedLanguages, type AppLanguage } from "./config"
+import { fallbackLanguage, normalizeLanguage, resolveSupportedLanguage, supportedLanguages, type AppLanguage } from "./config"
 
 const namespaces = ["common", "auth", "footer"] as const
 type AppNamespace = (typeof namespaces)[number]
@@ -42,8 +42,8 @@ function detectInitialLanguage(): AppLanguage {
   ]
 
   for (const candidate of candidates) {
-    const normalized = normalizeLanguage(candidate)
-    if (supportedLanguages.includes(normalized)) {
+    const normalized = resolveSupportedLanguage(candidate)
+    if (normalized) {
       return normalized
     }
   }

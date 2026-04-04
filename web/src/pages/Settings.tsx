@@ -50,6 +50,7 @@ import { Switch } from "@/components/ui/switch"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
+import i18n, { normalizeLanguage } from "@/i18n"
 import { api } from "@/lib/api"
 
 import { withBasePath } from "@/lib/base-url"
@@ -68,6 +69,18 @@ import { toast } from "sonner"
 type SettingsTab = NonNullable<SettingsSearch["tab"]>
 
 const TORZNAB_CACHE_MIN_TTL_MINUTES = 1440
+
+function getApplicationInfoLocale(): string {
+  if (i18n.resolvedLanguage || i18n.language) {
+    return normalizeLanguage(i18n.resolvedLanguage || i18n.language)
+  }
+
+  if (typeof navigator !== "undefined") {
+    return normalizeLanguage(navigator.language)
+  }
+
+  return "en"
+}
 
 function ChangePasswordForm() {
   const tr = useCommonTr()
@@ -773,7 +786,7 @@ function formatApplicationDate(value?: string): string {
     return value
   }
 
-  return date.toLocaleString(undefined, {
+  return date.toLocaleString(getApplicationInfoLocale(), {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -808,7 +821,7 @@ function formatRelativeDate(
     { unit: "minute", seconds: 60 },
     { unit: "second", seconds: 1 },
   ] as const
-  const formatter = new Intl.RelativeTimeFormat(undefined, {
+  const formatter = new Intl.RelativeTimeFormat(getApplicationInfoLocale(), {
     numeric: "always",
     style: "short",
   })

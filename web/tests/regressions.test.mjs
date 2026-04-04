@@ -90,6 +90,15 @@ test("i18n boot loads locale files lazily instead of bundling them all up front"
   assert.doesNotMatch(source, /from "\.\/locales"/, "expected i18n bootstrap to stop importing all locale JSON eagerly")
 })
 
+test("initial language detection skips unsupported browser locales before falling back", () => {
+  const config = readFileSync(path.join(webDir, "src", "i18n", "config.ts"), "utf8")
+  const source = readFileSync(path.join(webDir, "src", "i18n", "index.ts"), "utf8")
+
+  assert.match(config, /export function resolveSupportedLanguage\(/, "expected i18n config to expose a non-fallback locale resolver")
+  assert.match(source, /const normalized = resolveSupportedLanguage\(candidate\)/, "expected initial language detection to distinguish unsupported candidates from fallback english")
+  assert.doesNotMatch(source, /const normalized = normalizeLanguage\(candidate\)/, "expected initial language detection to stop normalizing browser candidates straight to fallback english")
+})
+
 test("app bootstrap still renders when i18n initialization rejects", () => {
   const source = readFileSync(path.join(webDir, "src", "main.tsx"), "utf8")
 
@@ -111,6 +120,34 @@ test("relative-time helpers avoid hardcoded English phrasing", () => {
   assert.doesNotMatch(dateTimeUtils, /return "Just now"|return "Today"|return "Yesterday"/, "expected dateTimeUtils to stop hardcoding English relative labels")
   assert.match(settings, /Intl\.RelativeTimeFormat/, "expected settings relative-time formatting to use Intl.RelativeTimeFormat")
   assert.doesNotMatch(settings, /formatDuration\(Math\.abs\(secondsDiff\)\)/, "expected settings relative-time formatting to stop using english duration abbreviations")
+})
+
+test("settings application-info dates use the active i18n locale", () => {
+  const settings = readFileSync(path.join(webDir, "src", "pages", "Settings.tsx"), "utf8")
+
+  assert.match(settings, /function getApplicationInfoLocale\(\): string/, "expected settings to centralize the active app locale for application-info formatting")
+  assert.match(settings, /toLocaleString\(getApplicationInfoLocale\(\), \{/, "expected application-info absolute dates to use the selected app locale")
+  assert.match(settings, /new Intl\.RelativeTimeFormat\(getApplicationInfoLocale\(\), \{/, "expected application-info relative dates to use the selected app locale")
+  assert.doesNotMatch(settings, /toLocaleString\(undefined, \{/, "expected settings to stop delegating application-info dates to the browser locale")
+  assert.doesNotMatch(settings, /new Intl\.RelativeTimeFormat\(undefined, \{/, "expected settings to stop delegating relative times to the browser locale")
+})
+
+test("cross-seed memoized helper text depends on the translator", () => {
+  const crossSeedPage = readFileSync(path.join(webDir, "src", "pages", "CrossSeedPage.tsx"), "utf8")
+
+  for (const memoName of [
+    "runButtonDisabledReason",
+    "startSearchRunDisabledReason",
+    "seededSearchIndexerPlaceholder",
+    "seededSearchIndexerHelpText",
+    "seededSearchGazelleStatus",
+  ]) {
+    assert.match(
+      crossSeedPage,
+      new RegExp(`${memoName} = useMemo\\([\\s\\S]*?\\}, \\[[^\\]]*\\btr\\b[^\\]]*\\]\\)`),
+      `expected ${memoName} memo deps to include tr so helper text updates after language changes`,
+    )
+  }
 })
 
 test("query builder uses translation keys for field and operator labels", () => {

@@ -56,9 +56,9 @@ export const languageOptions: ReadonlyArray<LanguageOption> = [
   { code: "ko", labelKey: "languageSwitcher.option.ko", nativeName: "한국어", locale: "ko" },
 ]
 
-export function normalizeLanguage(language?: string | null): AppLanguage {
+export function resolveSupportedLanguage(language?: string | null): AppLanguage | null {
   if (!language) {
-    return fallbackLanguage
+    return null
   }
 
   const normalizedLanguage = language.toLowerCase()
@@ -99,5 +99,9 @@ export function normalizeLanguage(language?: string | null): AppLanguage {
     return "en"
   }
 
-  return fallbackLanguage
+  return null
+}
+
+export function normalizeLanguage(language?: string | null): AppLanguage {
+  return resolveSupportedLanguage(language) ?? fallbackLanguage
 }
