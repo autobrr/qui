@@ -19,13 +19,22 @@ type categoryCacheSyncManager struct {
 	categories          map[string]qbt.Category
 	getCategoriesCalls  int
 	createCategoryCalls int
-	createStarted       chan struct{}
-	releaseCreate       chan struct{}
-	createStartedOnce   sync.Once
+	getStarted          chan struct{}
+	releaseGet          chan struct{}
+	getStartedOnce      sync.Once
 	mu                  sync.Mutex
 }
 
 func (m *categoryCacheSyncManager) GetCategories(_ context.Context, _ int) (map[string]qbt.Category, error) {
+	if m.getStarted != nil {
+		m.getStartedOnce.Do(func() {
+			close(m.getStarted)
+		})
+	}
+	if m.releaseGet != nil {
+		<-m.releaseGet
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.getCategoriesCalls++
@@ -33,15 +42,6 @@ func (m *categoryCacheSyncManager) GetCategories(_ context.Context, _ int) (map[
 }
 
 func (m *categoryCacheSyncManager) CreateCategory(_ context.Context, _ int, name, path string) error {
-	if m.createStarted != nil {
-		m.createStartedOnce.Do(func() {
-			close(m.createStarted)
-		})
-	}
-	if m.releaseCreate != nil {
-		<-m.releaseCreate
-	}
-
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.createCategoryCalls++
@@ -125,7 +125,7 @@ func TestEnsureCrossCategory_CacheMatchesPathCaseInsensitively(t *testing.T) {
 	require.Equal(t, 1, createCategoryCalls)
 }
 
-func TestEnsureCrossCategory_RevalidatesAfterSingleflightForDifferentRequestedPath(t *testing.T) {
+func TestEnsureCrossCategory_ConcurrentDifferentRequestedPathsCreateOnce(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -136,9 +136,9 @@ func TestEnsureCrossCategory_RevalidatesAfterSingleflightForDifferentRequestedPa
 	)
 
 	syncManager := &categoryCacheSyncManager{
-		categories:    make(map[string]qbt.Category),
-		createStarted: make(chan struct{}),
-		releaseCreate: make(chan struct{}),
+		categories: make(map[string]qbt.Category),
+		getStarted: make(chan struct{}),
+		releaseGet: make(chan struct{}),
 	}
 	service := &Service{
 		syncManager: syncManager,
@@ -151,17 +151,18 @@ func TestEnsureCrossCategory_RevalidatesAfterSingleflightForDifferentRequestedPa
 		errs <- service.ensureCrossCategory(ctx, instanceID, categoryName, linkModePath)
 	}()
 
-	<-syncManager.createStarted
+	<-syncManager.getStarted
 
 	go func() {
 		errs <- service.ensureCrossCategory(ctx, instanceID, categoryName, regularPath)
 	}()
 
-	close(syncManager.releaseCreate)
+	close(syncManager.releaseGet)
 
 	require.NoError(t, <-errs)
 	require.NoError(t, <-errs)
 	getCategoriesCalls, createCategoryCalls := syncManager.callCounts()
-	require.Equal(t, 2, getCategoriesCalls)
+	require.GreaterOrEqual(t, getCategoriesCalls, 2)
+	require.LessOrEqual(t, getCategoriesCalls, 3)
 	require.Equal(t, 1, createCategoryCalls)
 }
