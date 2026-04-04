@@ -95,12 +95,17 @@ func NewService(store *models.NotificationTargetStore, instanceStore *models.Ins
 }
 
 func ValidateURL(rawURL string) error {
-	if targetScheme(rawURL) == "notifiarrapi" {
+	switch targetScheme(rawURL) {
+	case "notifiarrapi":
 		_, err := parseNotifiarrAPIConfig(rawURL)
 		return err
+	case "webhook":
+		_, err := parseWebhookURL(rawURL)
+		return err
+	default:
+		_, err := router.New(nil, rawURL)
+		return err
 	}
-	_, err := router.New(nil, rawURL)
-	return err
 }
 
 func (s *Service) Start(ctx context.Context) {
@@ -175,7 +180,8 @@ func (s *Service) dispatch(ctx context.Context, event Event) {
 			continue
 		}
 
-		title, message := s.formatEvent(ctx, event, targetScheme(target.URL) != "notifiarrapi")
+		scheme := targetScheme(target.URL)
+		title, message := s.formatEvent(ctx, event, scheme != "notifiarrapi" && scheme != "webhook")
 		if strings.TrimSpace(message) == "" {
 			continue
 		}
@@ -198,6 +204,8 @@ func (s *Service) send(ctx context.Context, target *models.NotificationTarget, e
 		return s.sendNotifiarr(target.URL, event, title, message)
 	case "notifiarrapi":
 		return s.sendNotifiarrAPI(ctx, target.URL, event, title, message)
+	case "webhook":
+		return s.sendWebhook(ctx, target.URL, event, title, message)
 	default:
 		return s.sendDefault(target.URL, title, message)
 	}
