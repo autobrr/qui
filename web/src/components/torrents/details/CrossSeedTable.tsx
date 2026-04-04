@@ -346,7 +346,6 @@ export const CrossSeedTable = memo(function CrossSeedTable({
 
   let toolbarCountLabel = tr("crossSeedTable.toolbar.matchCount", {
     count: matches.length,
-    plural: matches.length === 1 ? "" : "es",
   })
   if (selectedTorrents.size > 0) {
     toolbarCountLabel = tr("crossSeedTable.toolbar.selectedCount", {

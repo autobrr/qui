@@ -668,16 +668,20 @@
         "allEnabledIndexersEligible": "有効な Torznab インデクサはすべて RSS 自動化の対象です。",
         "allTagsIncluded": "すべてのタグを対象にします。",
         "categoriesSkipped": "{{count}} カテゴリをスキップします。",
-        "instancesSelected": "{{count}} インスタンス選択中。",
+        "instancesSelected_one": "{{count}} インスタンス選択中。",
+        "instancesSelected_other": "{{count}} インスタンス選択中。",
         "noCategoriesExcluded": "除外カテゴリはありません。",
         "noInstancesAvailable": "利用可能なインスタンスがありません。",
         "noTagsExcluded": "除外タグはありません。",
         "noTorznabIndexersConfigured": "Torznab インデクサが設定されていません。",
         "onlySelectedCategoriesMatched": "選択した {{count}} カテゴリのみを照合します。",
-        "onlySelectedIndexersPolled": "選択した {{count}} インデクサのみをポーリングします。",
-        "onlySelectedTagsMatched": "選択した {{count}} タグのみを照合します。",
+        "onlySelectedIndexersPolled_one": "選択した {{count}} インデクサのみをポーリングします。",
+        "onlySelectedIndexersPolled_other": "選択した {{count}} インデクサのみをポーリングします。",
+        "onlySelectedTagsMatched_one": "選択した {{count}} タグのみを照合します。",
+        "onlySelectedTagsMatched_other": "選択した {{count}} タグのみを照合します。",
         "pickAtLeastOneInstance": "cross-seed の受け取り先として少なくとも 1 つ選択してください。",
-        "tagsSkipped": "{{count}} タグをスキップします。"
+        "tagsSkipped_one": "{{count}} タグをスキップします。",
+        "tagsSkipped_other": "{{count}} タグをスキップします。"
       },
       "placeholders": {
         "allCategories": "すべてのカテゴリ（空欄で全件）",
@@ -931,7 +935,8 @@
         "gazelleOnlyRecommendation": " Gazelle 専用時は 10 秒以上推奨。torrent ごとに複数 API 呼び出しが発生するためです。",
         "intervalMinimum": "次のシード済み torrent をスキャンするまでの待機時間です。最小 {{seconds}} 秒。",
         "onlySelectedCategoriesScanned": "選択した {{count}} カテゴリのみをスキャンします。",
-        "onlySelectedTagsScanned": "選択した {{count}} タグのみをスキャンします。",
+        "onlySelectedTagsScanned_one": "選択した {{count}} タグのみをスキャンします。",
+        "onlySelectedTagsScanned_other": "選択した {{count}} タグのみをスキャンします。",
         "tagsLoadAfterInstance": "インスタンス選択後にタグが読み込まれます。タグの手入力も可能です。"
       },
       "placeholders": {
@@ -991,8 +996,10 @@
         "noNonOpsRedTorznab": "非 OPS/RED の Torznab インデクサがありません。Gazelle キー両方設定時は意図的に除外されます。",
         "noTorznabConfigured": "Torznab インデクサが設定されていません。",
         "onlyOpsRedEnabled": "OPS/RED Torznab インデクサのみが有効です。これらは Gazelle API で照合します。",
-        "onlySelectedIndexerQueried": "選択した {{count}} インデクサのみ照会します。",
-        "onlySelectedTorznabQueriedWithGazelle": "選択した {{count}} 件の Torznab のみ照会し、Gazelle も並行実行します。",
+        "onlySelectedIndexerQueried_one": "選択した {{count}} インデクサのみ照会します。",
+        "onlySelectedIndexerQueried_other": "選択した {{count}} インデクサのみ照会します。",
+        "onlySelectedTorznabQueriedWithGazelle_one": "選択した {{count}} 件の Torznab のみ照会し、Gazelle も並行実行します。",
+        "onlySelectedTorznabQueriedWithGazelle_other": "選択した {{count}} 件の Torznab のみ照会し、Gazelle も並行実行します。",
         "selectedGazelleOnly": "選択したインデクサは OPS/RED 専用です。Torznab をスキップし Gazelle のみで照合します。",
         "torznabDisabledEnableGazelle": "Torznab は無効です。Gazelle を有効化するか Torznab を再有効化してください。",
         "torznabDisabledGazelleChecks": "Torznab は無効です。Gazelle API 照合のみを実行します。"
@@ -1090,8 +1097,10 @@
         "noCategoriesExcluded": "除外カテゴリはありません。",
         "noTagsExcluded": "除外タグはありません。",
         "onlySelectedCategoriesMatched": "選択した {{count}} カテゴリのみ一致対象です。",
-        "onlySelectedTagsMatched": "選択した {{count}} タグのみ一致対象です。",
-        "tagsSkipped": "{{count}} タグをスキップします。"
+        "onlySelectedTagsMatched_one": "選択した {{count}} タグのみ一致対象です。",
+        "onlySelectedTagsMatched_other": "選択した {{count}} タグのみ一致対象です。",
+        "tagsSkipped_one": "{{count}} タグをスキップします。",
+        "tagsSkipped_other": "{{count}} タグをスキップします。"
       },
       "placeholders": {
         "allCategories": "すべてのカテゴリ（空欄で全件）",
@@ -1148,7 +1157,8 @@
       "savePathCopied": "保存先パスをコピーしました"
     },
     "toolbar": {
-      "matchCount": "一致 {{count}} 件",
+      "matchCount_one": "一致 {{count}} 件",
+      "matchCount_other": "一致 {{count}} 件",
       "selectedCount": "{{total}} 件中 {{selected}} 件を選択"
     },
     "tooltips": {
@@ -2024,7 +2034,8 @@
       "allSelected": "すべて",
       "cmdKey": "Cmd",
       "ctrlKey": "Ctrl",
-      "loadedCount": "{{count}} 件のトレント",
+      "loadedCount_one": "{{count}} 件のトレント",
+      "loadedCount_other": "{{count}} 件のトレント",
       "loadedOfTotal": "{{total}} 件中 {{loaded}} 件を読み込み",
       "loading": "読み込み中...",
       "loadingMore": "さらにトレントを読み込み中...",
@@ -5691,7 +5702,8 @@
       "setSpeedLimit": "速度制限を設定",
       "topPriority": "最優先"
     },
-    "toolbarAria": "{{count}} 件のトレントを選択中 - 一括操作が利用可能",
+    "toolbarAria_one": "{{count}} 件のトレントを選択中 - 一括操作が利用可能",
+    "toolbarAria_other": "{{count}} 件のトレントを選択中 - 一括操作が利用可能",
     "tooltips": {
       "delete": "削除",
       "disableTmm": "TMM を無効化",
@@ -5958,7 +5970,8 @@
     },
     "toolbar": {
       "filteredCount": "{{total}} 件中 {{filtered}} 件",
-      "totalCount": "HTTP ソース {{count}} 件"
+      "totalCount_one": "HTTP ソース {{count}} 件",
+      "totalCount_other": "HTTP ソース {{count}} 件"
     }
   },
   "workflowDialog": {
@@ -6580,6 +6593,7 @@
         "name": "名前",
         "path": "パス",
         "ratio": "比率",
+        "score": "スコア",
         "seedTime": "シード時間",
         "size": "サイズ",
         "tracker": "トラッカー"
@@ -6610,6 +6624,25 @@
       },
       "ratioLimit": "比率上限",
       "seedTimeMinutes": "シード時間（分）"
+    },
+    "sorting": {
+      "addBonus": "ボーナスを追加",
+      "addFieldMultiplier": "フィールド乗数を追加",
+      "addScore": "スコアを追加:",
+      "asc": "昇順",
+      "desc": "降順",
+      "fieldMultiplier": "フィールド乗数",
+      "highToLow": "高い順",
+      "label": "Torrent 優先順位",
+      "lowToHigh": "低い順",
+      "scoreRulesLabel": "スコアルール",
+      "sortBy": "並べ替え",
+      "tooltip": "Torrent が処理される順序を制御します。",
+      "types": {
+        "default": "古い順（デフォルト）",
+        "score": "カスタムスコア",
+        "simple": "シンプルソート"
+      }
     },
     "speedLimits": {
       "downloadLimit": "ダウンロード上限",
@@ -6669,10 +6702,13 @@
       "customLabel": "{{name}}（カスタム）"
     },
     "validation": {
+      "addScoreRule": "スコアソートにはスコアルールを1つ以上追加してください。",
       "addTagAction": "タグアクションを1つ以上追加してください。",
+      "conditionalScoreInvalid": "条件付きスコアは有効な数値でなければなりません。",
       "deleteConditionRequired": "削除には少なくとも1つの条件が必要です。",
       "downloadSpeedPositive": "ダウンロード速度は 0 より大きい値を指定してください（無制限は Unlimited）。",
       "enableAction": "アクションを1つ以上有効にしてください。",
+      "fieldMultiplierInvalid": "フィールド乗数は有効な数値でなければなりません。",
       "invalidRegex": "正規表現が無効です。Go/RE2 は Perl 形式の先読み/後読みをサポートしません。",
       "invalidRegexHint": "Go/RE2 は lookahead (?=)、lookbehind (?<=)、および否定形 (?!), (?<!) などの Perl 機能をサポートしません。",
       "invalidRegexTitle": "正規表現が無効です",
@@ -6779,10 +6815,10 @@
         "programExecuted": "{{name}} を実行済み",
         "programFailed": "{{name}} が失敗",
         "programWouldRun": "{{name}} を実行予定",
-        "tagsChangedAdd": "+{{count}} 件タグ追加",
-        "tagsChangedAddRemove": "+{{added}} 件タグ追加、-{{removed}} 件タグ解除",
+        "tagsChangedAdd": "+{{count}} 件{{prefix}}タグ追加",
+        "tagsChangedAddRemove": "+{{added}} 件{{prefix}}タグ追加、-{{removed}} 件{{prefix}}タグ解除",
         "tagsChangedFallback": "タグ操作",
-        "tagsChangedRemove": "-{{count}} 件タグ解除",
+        "tagsChangedRemove": "-{{count}} 件{{prefix}}タグ解除",
         "verbs": {
           "failedToMove": "の移動に失敗",
           "limited": "制限適用済み",

@@ -88,7 +88,6 @@ export const WebSeedsTable = memo(function WebSeedsTable({
   const totalCount = webseeds?.length ?? 0
   let countLabel = tr("webSeedsTable.toolbar.totalCount", {
     count: totalCount,
-    plural: totalCount === 1 ? "" : "s",
   })
   if (searchQuery) {
     countLabel = tr("webSeedsTable.toolbar.filteredCount", {

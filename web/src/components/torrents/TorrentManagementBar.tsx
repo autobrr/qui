@@ -510,7 +510,6 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         role="toolbar"
         aria-label={tr("torrentManagementBar.toolbarAria", {
           count: selectionCount,
-          plural: selectionCount !== 1 ? "s" : "",
         })}
       >
         <div className="flex items-center gap-3 flex-shrink-0 min-w-0">

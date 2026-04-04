@@ -668,16 +668,20 @@
         "allEnabledIndexersEligible": "Tous les indexeurs Torznab activés sont éligibles pour l'automatisation RSS.",
         "allTagsIncluded": "Tous les tags seront inclus.",
         "categoriesSkipped": "{{count}} catégor{{suffix}} seront ignorée{{suffix}}.",
-        "instancesSelected": "{{count}} instance{{plural}} sélectionnée{{plural}}.",
+        "instancesSelected_one": "{{count}} instance sélectionnée.",
+        "instancesSelected_other": "{{count}} instances sélectionnées.",
         "noCategoriesExcluded": "Aucune catégorie exclue.",
         "noInstancesAvailable": "Aucune instance disponible.",
         "noTagsExcluded": "Aucun tag exclu.",
         "noTorznabIndexersConfigured": "Aucun indexeur Torznab configuré.",
         "onlySelectedCategoriesMatched": "Seules {{count}} catégor{{suffix}} sélectionnée{{suffix}} seront prises en compte.",
-        "onlySelectedIndexersPolled": "Seuls {{count}} indexeur{{plural}} sélectionné{{plural}} seront interrogés.",
-        "onlySelectedTagsMatched": "Seuls {{count}} tag{{plural}} sélectionné{{plural}} seront pris en compte.",
+        "onlySelectedIndexersPolled_one": "Seul {{count}} indexeur sélectionné sera interrogé.",
+        "onlySelectedIndexersPolled_other": "Seuls {{count}} indexeurs sélectionnés seront interrogés.",
+        "onlySelectedTagsMatched_one": "Seul {{count}} tag sélectionné sera pris en compte.",
+        "onlySelectedTagsMatched_other": "Seuls {{count}} tags sélectionnés seront pris en compte.",
         "pickAtLeastOneInstance": "Sélectionnez au moins une instance pour recevoir des cross-seeds.",
-        "tagsSkipped": "{{count}} tag{{plural}} seront ignoré{{plural}}."
+        "tagsSkipped_one": "{{count}} tag sera ignoré.",
+        "tagsSkipped_other": "{{count}} tags seront ignorés."
       },
       "placeholders": {
         "allCategories": "Toutes les catégories (laisser vide pour toutes)",
@@ -931,7 +935,8 @@
         "gazelleOnlyRecommendation": " Recommandé : 10 s ou plus ; ce rythme est par torrent et chaque torrent peut déclencher plusieurs appels API Gazelle.",
         "intervalMinimum": "Temps d'attente avant le scan du torrent seedé suivant. Minimum {{seconds}} secondes.",
         "onlySelectedCategoriesScanned": "Seules {{count}} catégor{{suffix}} sélectionnée{{suffix}} seront scannées.",
-        "onlySelectedTagsScanned": "Seuls {{count}} tag{{plural}} sélectionné{{plural}} seront scannés.",
+        "onlySelectedTagsScanned_one": "Seul {{count}} tag sélectionné sera scanné.",
+        "onlySelectedTagsScanned_other": "Seuls {{count}} tags sélectionnés seront scannés.",
         "tagsLoadAfterInstance": "Les tags se chargent après sélection d'une instance ; vous pouvez aussi saisir un tag."
       },
       "placeholders": {
@@ -991,8 +996,10 @@
         "noNonOpsRedTorznab": "Aucun indexeur Torznab hors OPS/RED disponible. La liste Torznab est volontairement vide quand les deux clés Gazelle sont configurées.",
         "noTorznabConfigured": "Aucun indexeur Torznab configuré.",
         "onlyOpsRedEnabled": "Seuls les indexeurs Torznab OPS/RED sont activés ; utilisez les API Gazelle pour ces trackers.",
-        "onlySelectedIndexerQueried": "Seuls {{count}} indexeur{{plural}} sélectionné{{plural}} seront interrogés.",
-        "onlySelectedTorznabQueriedWithGazelle": "Seuls {{count}} indexeur{{plural}} Torznab sélectionné{{plural}} sont interrogés ; les vérifications Gazelle restent parallèles.",
+        "onlySelectedIndexerQueried_one": "Seul {{count}} indexeur sélectionné sera interrogé.",
+        "onlySelectedIndexerQueried_other": "Seuls {{count}} indexeurs sélectionnés seront interrogés.",
+        "onlySelectedTorznabQueriedWithGazelle_one": "Seul {{count}} indexeur Torznab sélectionné est interrogé ; les vérifications Gazelle restent parallèles.",
+        "onlySelectedTorznabQueriedWithGazelle_other": "Seuls {{count}} indexeurs Torznab sélectionnés sont interrogés ; les vérifications Gazelle restent parallèles.",
         "selectedGazelleOnly": "Les indexeurs sélectionnés sont OPS/RED uniquement ; Torznab est ignoré et la correspondance se fait uniquement via Gazelle.",
         "torznabDisabledEnableGazelle": "Torznab est désactivé. Activez Gazelle ou réactivez Torznab.",
         "torznabDisabledGazelleChecks": "Torznab est désactivé. La correspondance passera uniquement par les vérifications API Gazelle."
@@ -1090,8 +1097,10 @@
         "noCategoriesExcluded": "Aucune catégorie exclue.",
         "noTagsExcluded": "Aucun tag exclu.",
         "onlySelectedCategoriesMatched": "Seules {{count}} catégor{{suffix}} sélectionnée{{suffix}} seront prises en compte.",
-        "onlySelectedTagsMatched": "Seuls {{count}} tag{{plural}} sélectionné{{plural}} seront pris en compte.",
-        "tagsSkipped": "{{count}} tag{{plural}} seront ignoré{{plural}}."
+        "onlySelectedTagsMatched_one": "Seul {{count}} tag sélectionné sera pris en compte.",
+        "onlySelectedTagsMatched_other": "Seuls {{count}} tags sélectionnés seront pris en compte.",
+        "tagsSkipped_one": "{{count}} tag sera ignoré.",
+        "tagsSkipped_other": "{{count}} tags seront ignorés."
       },
       "placeholders": {
         "allCategories": "Toutes les catégories (laisser vide pour toutes)",
@@ -1148,7 +1157,8 @@
       "savePathCopied": "Chemin d'enregistrement copié"
     },
     "toolbar": {
-      "matchCount": "{{count}} correspondance{{plural}}",
+      "matchCount_one": "{{count}} correspondance",
+      "matchCount_other": "{{count}} correspondances",
       "selectedCount": "{{selected}} sur {{total}} sélectionnés"
     },
     "tooltips": {
@@ -2024,7 +2034,8 @@
       "allSelected": "Tous",
       "cmdKey": "Cmd",
       "ctrlKey": "Ctrl",
-      "loadedCount": "{{count}} torrent{{plural}}",
+      "loadedCount_one": "{{count}} torrent",
+      "loadedCount_other": "{{count}} torrents",
       "loadedOfTotal": "{{loaded}} sur {{total}} torrents chargés",
       "loading": "Chargement...",
       "loadingMore": "Chargement de torrents supplémentaires...",
@@ -5691,7 +5702,8 @@
       "setSpeedLimit": "Définir la limite de vitesse",
       "topPriority": "Priorité maximale"
     },
-    "toolbarAria": "{{count}} torrent{{plural}} sélectionné{{plural}} - Actions de masse disponibles",
+    "toolbarAria_one": "{{count}} torrent sélectionné - Actions de masse disponibles",
+    "toolbarAria_other": "{{count}} torrents sélectionnés - Actions de masse disponibles",
     "tooltips": {
       "delete": "Supprimer",
       "disableTmm": "Désactiver TMM",
@@ -5958,7 +5970,8 @@
     },
     "toolbar": {
       "filteredCount": "{{filtered}} sur {{total}}",
-      "totalCount": "{{count}} source{{plural}} HTTP"
+      "totalCount_one": "{{count}} source HTTP",
+      "totalCount_other": "{{count}} sources HTTP"
     }
   },
   "workflowDialog": {
@@ -6580,6 +6593,7 @@
         "name": "Nom",
         "path": "Chemin",
         "ratio": "Ratio",
+        "score": "Score",
         "seedTime": "Temps de seed",
         "size": "Taille",
         "tracker": "Tracker"
@@ -6610,6 +6624,25 @@
       },
       "ratioLimit": "Limite de ratio",
       "seedTimeMinutes": "Temps de seed (minutes)"
+    },
+    "sorting": {
+      "addBonus": "Ajouter un bonus",
+      "addFieldMultiplier": "Ajouter un multiplicateur de champ",
+      "addScore": "Ajouter un score :",
+      "asc": "Croissant",
+      "desc": "Décroissant",
+      "fieldMultiplier": "Multiplicateur de champ",
+      "highToLow": "Du plus élevé au plus bas",
+      "label": "Priorité des torrents",
+      "lowToHigh": "Du plus bas au plus élevé",
+      "scoreRulesLabel": "Règles de score",
+      "sortBy": "Trier par",
+      "tooltip": "Contrôle l'ordre dans lequel les torrents sont traités.",
+      "types": {
+        "default": "Plus anciens d'abord (par défaut)",
+        "score": "Score personnalisé",
+        "simple": "Tri simple"
+      }
     },
     "speedLimits": {
       "downloadLimit": "Limite de téléchargement",
@@ -6669,10 +6702,13 @@
       "customLabel": "{{name}} (Personnalisé)"
     },
     "validation": {
+      "addScoreRule": "Ajoutez au moins une règle de score pour le tri par score.",
       "addTagAction": "Add at least one tag action.",
+      "conditionalScoreInvalid": "Le score conditionnel doit être un nombre valide.",
       "deleteConditionRequired": "La suppression requiert au moins une condition.",
       "downloadSpeedPositive": "Download speed must be greater than 0 (use Unlimited for no limit).",
       "enableAction": "Activez au moins une action.",
+      "fieldMultiplierInvalid": "Le multiplicateur de champ doit être un nombre valide.",
       "invalidRegex": "Invalid regex pattern. Go/RE2 does not support Perl features like lookahead/lookbehind.",
       "invalidRegexHint": "Go/RE2 does not support Perl features like lookahead (?=), lookbehind (?<=), or negative variants (?!), (?<!).",
       "invalidRegexTitle": "Invalid regex pattern",

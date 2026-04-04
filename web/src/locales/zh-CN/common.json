@@ -668,16 +668,20 @@
         "allEnabledIndexersEligible": "所有已启用的 Torznab 索引器都可用于 RSS 自动化。",
         "allTagsIncluded": "将包含所有标签。",
         "categoriesSkipped": "将跳过 {{count}} 个分类。",
-        "instancesSelected": "已选择 {{count}} 个实例。",
+        "instancesSelected_one": "已选择 {{count}} 个实例。",
+        "instancesSelected_other": "已选择 {{count}} 个实例。",
         "noCategoriesExcluded": "未排除任何分类。",
         "noInstancesAvailable": "暂无可用实例。",
         "noTagsExcluded": "未排除任何标签。",
         "noTorznabIndexersConfigured": "未配置 Torznab 索引器。",
         "onlySelectedCategoriesMatched": "仅匹配已选择的 {{count}} 个分类。",
-        "onlySelectedIndexersPolled": "仅轮询已选择的 {{count}} 个索引器。",
-        "onlySelectedTagsMatched": "仅匹配已选择的 {{count}} 个标签。",
+        "onlySelectedIndexersPolled_one": "仅轮询已选择的 {{count}} 个索引器。",
+        "onlySelectedIndexersPolled_other": "仅轮询已选择的 {{count}} 个索引器。",
+        "onlySelectedTagsMatched_one": "仅匹配已选择的 {{count}} 个标签。",
+        "onlySelectedTagsMatched_other": "仅匹配已选择的 {{count}} 个标签。",
         "pickAtLeastOneInstance": "请至少选择一个接收 cross-seed 的实例。",
-        "tagsSkipped": "将跳过 {{count}} 个标签。"
+        "tagsSkipped_one": "将跳过 {{count}} 个标签。",
+        "tagsSkipped_other": "将跳过 {{count}} 个标签。"
       },
       "placeholders": {
         "allCategories": "全部分类（留空表示全部）",
@@ -931,7 +935,8 @@
         "gazelleOnlyRecommendation": " 建议至少 10 秒；该间隔按“每个种子”计算，每个种子可能触发多次 Gazelle API 调用。",
         "intervalMinimum": "扫描下一个已做种任务前的等待时间。最小 {{seconds}} 秒。",
         "onlySelectedCategoriesScanned": "仅扫描已选择的 {{count}} 个分类。",
-        "onlySelectedTagsScanned": "仅扫描已选择的 {{count}} 个标签。",
+        "onlySelectedTagsScanned_one": "仅扫描已选择的 {{count}} 个标签。",
+        "onlySelectedTagsScanned_other": "仅扫描已选择的 {{count}} 个标签。",
         "tagsLoadAfterInstance": "选择实例后会加载标签；你也可以手动输入标签。"
       },
       "placeholders": {
@@ -991,8 +996,10 @@
         "noNonOpsRedTorznab": "没有可用的非 OPS/RED Torznab 索引器。配置完整 Gazelle key 后，此列表会被有意过滤。",
         "noTorznabConfigured": "未配置 Torznab 索引器。",
         "onlyOpsRedEnabled": "当前仅启用了 OPS/RED Torznab 索引器；这些站点建议通过 Gazelle API 匹配。",
-        "onlySelectedIndexerQueried": "仅查询已选择的 {{count}} 个索引器。",
-        "onlySelectedTorznabQueriedWithGazelle": "仅查询已选择的 {{count}} 个 Torznab 索引器；Gazelle 检查仍会并行执行。",
+        "onlySelectedIndexerQueried_one": "仅查询已选择的 {{count}} 个索引器。",
+        "onlySelectedIndexerQueried_other": "仅查询已选择的 {{count}} 个索引器。",
+        "onlySelectedTorznabQueriedWithGazelle_one": "仅查询已选择的 {{count}} 个 Torznab 索引器；Gazelle 检查仍会并行执行。",
+        "onlySelectedTorznabQueriedWithGazelle_other": "仅查询已选择的 {{count}} 个 Torznab 索引器；Gazelle 检查仍会并行执行。",
         "selectedGazelleOnly": "你选择的索引器均为 OPS/RED 类型；会跳过 Torznab，仅执行 Gazelle 匹配。",
         "torznabDisabledEnableGazelle": "Torznab 已禁用。请启用 Gazelle 或重新开启 Torznab。",
         "torznabDisabledGazelleChecks": "Torznab 已禁用，将仅执行 Gazelle API 匹配。"
@@ -1090,8 +1097,10 @@
         "noCategoriesExcluded": "未排除任何分类。",
         "noTagsExcluded": "未排除任何标签。",
         "onlySelectedCategoriesMatched": "仅匹配已选择的 {{count}} 个分类。",
-        "onlySelectedTagsMatched": "仅匹配已选择的 {{count}} 个标签。",
-        "tagsSkipped": "将跳过 {{count}} 个标签。"
+        "onlySelectedTagsMatched_one": "仅匹配已选择的 {{count}} 个标签。",
+        "onlySelectedTagsMatched_other": "仅匹配已选择的 {{count}} 个标签。",
+        "tagsSkipped_one": "将跳过 {{count}} 个标签。",
+        "tagsSkipped_other": "将跳过 {{count}} 个标签。"
       },
       "placeholders": {
         "allCategories": "全部分类（留空表示全部）",
@@ -1148,7 +1157,8 @@
       "savePathCopied": "保存路径已复制"
     },
     "toolbar": {
-      "matchCount": "{{count}} 个匹配",
+      "matchCount_one": "{{count}} 个匹配",
+      "matchCount_other": "{{count}} 个匹配",
       "selectedCount": "已选择 {{selected}} / {{total}}"
     },
     "tooltips": {
@@ -2024,7 +2034,8 @@
       "allSelected": "全部",
       "cmdKey": "Cmd",
       "ctrlKey": "Ctrl",
-      "loadedCount": "{{count}} 个种子",
+      "loadedCount_one": "{{count}} 个种子",
+      "loadedCount_other": "{{count}} 个种子",
       "loadedOfTotal": "已加载 {{loaded}} / {{total}} 个种子",
       "loading": "加载中...",
       "loadingMore": "正在加载更多种子...",
@@ -5691,7 +5702,8 @@
       "setSpeedLimit": "设置速度限制",
       "topPriority": "最高优先级"
     },
-    "toolbarAria": "已选择 {{count}} 个种子 - 可执行批量操作",
+    "toolbarAria_one": "已选择 {{count}} 个种子 - 可执行批量操作",
+    "toolbarAria_other": "已选择 {{count}} 个种子 - 可执行批量操作",
     "tooltips": {
       "delete": "删除",
       "disableTmm": "禁用 TMM",
@@ -5958,7 +5970,8 @@
     },
     "toolbar": {
       "filteredCount": "{{total}} 条中 {{filtered}} 条",
-      "totalCount": "{{count}} 个 HTTP 来源"
+      "totalCount_one": "{{count}} 个 HTTP 来源",
+      "totalCount_other": "{{count}} 个 HTTP 来源"
     }
   },
   "workflowDialog": {
@@ -6580,6 +6593,7 @@
         "name": "名称",
         "path": "路径",
         "ratio": "分享率",
+        "score": "评分",
         "seedTime": "做种时长",
         "size": "大小",
         "tracker": "Tracker"
@@ -6610,6 +6624,25 @@
       },
       "ratioLimit": "分享率上限",
       "seedTimeMinutes": "做种时长（分钟）"
+    },
+    "sorting": {
+      "addBonus": "添加奖励",
+      "addFieldMultiplier": "添加字段乘数",
+      "addScore": "添加分数:",
+      "asc": "升序",
+      "desc": "降序",
+      "fieldMultiplier": "字段乘数",
+      "highToLow": "从高到低",
+      "label": "种子优先级",
+      "lowToHigh": "从低到高",
+      "scoreRulesLabel": "评分规则",
+      "sortBy": "排序方式",
+      "tooltip": "控制种子的处理顺序。",
+      "types": {
+        "default": "最旧优先（默认）",
+        "score": "自定义评分",
+        "simple": "简单排序"
+      }
     },
     "speedLimits": {
       "downloadLimit": "下载限速",
@@ -6669,10 +6702,13 @@
       "customLabel": "{{name}}（自定义）"
     },
     "validation": {
+      "addScoreRule": "评分排序至少需要一条评分规则。",
       "addTagAction": "请至少添加一个标签动作。",
+      "conditionalScoreInvalid": "条件分数必须是有效的数字。",
       "deleteConditionRequired": "删除动作至少需要一个条件。",
       "downloadSpeedPositive": "下载速度必须大于 0（不限速请选“Unlimited”）。",
       "enableAction": "请至少启用一个动作。",
+      "fieldMultiplierInvalid": "字段乘数必须是有效的数字。",
       "invalidRegex": "正则表达式无效。Go/RE2 不支持 Perl 风格前瞻/后顾。",
       "invalidRegexHint": "Go/RE2 不支持 Perl 特性，例如 lookahead (?=)、lookbehind (?<=) 及其否定形式 (?!), (?<!)。",
       "invalidRegexTitle": "正则表达式无效",

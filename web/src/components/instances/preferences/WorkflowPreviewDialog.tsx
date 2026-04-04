@@ -101,6 +101,8 @@ interface WorkflowPreviewDialogProps {
   isExporting?: boolean
   /** Whether the initial preview is loading (dialog just opened, waiting for first results) */
   isInitialLoading?: boolean
+  /** Show score column for score-based sorting previews */
+  showScore?: boolean
 }
 
 // Extract all field names from a condition tree
@@ -287,12 +289,14 @@ export function WorkflowPreviewDialog({
   onExport,
   isExporting = false,
   isInitialLoading = false,
+  showScore = false,
 }: WorkflowPreviewDialogProps) {
   const { t } = useTranslation("common")
   const tr = (key: string, options?: Record<string, unknown>) => t(key as never, options as never) as unknown as string
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const hasMore = !!preview && preview.examples.length < preview.totalMatches
+  const showScoreColumn = showScore && !!preview?.examples.some(t => t.score !== undefined && t.score !== null)
 
   const visibleDynamicColumns = useMemo(() => {
     const fields = extractConditionFields(condition)
@@ -368,6 +372,7 @@ export function WorkflowPreviewDialog({
                     <th className="text-right p-2 font-medium bg-muted">{tr("workflowDialog.preview.table.size")}</th>
                     <th className="text-right p-2 font-medium bg-muted">{tr("workflowDialog.preview.table.ratio")}</th>
                     <th className="text-right p-2 font-medium bg-muted">{tr("workflowDialog.preview.table.seedTime")}</th>
+                    {showScoreColumn && <th className="text-right p-2 font-medium bg-muted">{tr("workflowDialog.preview.table.score")}</th>}
                     {visibleDynamicColumns.map(col => (
                       <th
                         key={col.key}
@@ -428,6 +433,11 @@ export function WorkflowPreviewDialog({
                         <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
                           {formatDurationCompact(t.seedingTime)}
                         </td>
+                        {showScoreColumn && (
+                          <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
+                            {t.score ?? "—"}
+                          </td>
+                        )}
                         {visibleDynamicColumns.map(col => (
                           <td key={col.key} className={`p-2 text-${col.align}`}>
                             {col.render(t, tr)}

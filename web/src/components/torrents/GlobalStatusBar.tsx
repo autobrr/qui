@@ -247,7 +247,6 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
                   {selectionInfo.hasLoadedAll ? (
                     tr("globalStatusBar.selection.loadedCount", {
                       count: selectionInfo.torrentsLength,
-                      plural: selectionInfo.torrentsLength !== 1 ? "s" : "",
                     })
                   ) : selectionInfo.isLoadingMore ? (
                     tr("globalStatusBar.selection.loadingMore")

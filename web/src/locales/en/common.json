@@ -668,16 +668,20 @@
         "allEnabledIndexersEligible": "All enabled Torznab indexers are eligible for RSS automation.",
         "allTagsIncluded": "All tags will be included.",
         "categoriesSkipped": "{{count}} categor{{suffix}} will be skipped.",
-        "instancesSelected": "{{count}} instance{{plural}} selected.",
+        "instancesSelected_one": "{{count}} instance selected.",
+        "instancesSelected_other": "{{count}} instances selected.",
         "noCategoriesExcluded": "No categories excluded.",
         "noInstancesAvailable": "No instances available.",
         "noTagsExcluded": "No tags excluded.",
         "noTorznabIndexersConfigured": "No Torznab indexers configured.",
         "onlySelectedCategoriesMatched": "Only {{count}} selected categor{{suffix}} will be matched.",
-        "onlySelectedIndexersPolled": "Only {{count}} selected indexer{{plural}} will be polled.",
-        "onlySelectedTagsMatched": "Only {{count}} selected tag{{plural}} will be matched.",
+        "onlySelectedIndexersPolled_one": "Only {{count}} selected indexer will be polled.",
+        "onlySelectedIndexersPolled_other": "Only {{count}} selected indexers will be polled.",
+        "onlySelectedTagsMatched_one": "Only {{count}} selected tag will be matched.",
+        "onlySelectedTagsMatched_other": "Only {{count}} selected tags will be matched.",
         "pickAtLeastOneInstance": "Pick at least one instance to receive cross-seeds.",
-        "tagsSkipped": "{{count}} tag{{plural}} will be skipped."
+        "tagsSkipped_one": "{{count}} tag will be skipped.",
+        "tagsSkipped_other": "{{count}} tags will be skipped."
       },
       "placeholders": {
         "allCategories": "All categories (leave empty for all)",
@@ -931,7 +935,8 @@
         "gazelleOnlyRecommendation": " Recommended 10s+; this is per-torrent pacing, and each torrent can trigger multiple Gazelle API calls.",
         "intervalMinimum": "Wait time before scanning the next seeded torrent. Minimum {{seconds}} seconds.",
         "onlySelectedCategoriesScanned": "Only {{count}} selected categor{{suffix}} will be scanned.",
-        "onlySelectedTagsScanned": "Only {{count}} selected tag{{plural}} will be scanned.",
+        "onlySelectedTagsScanned_one": "Only {{count}} selected tag will be scanned.",
+        "onlySelectedTagsScanned_other": "Only {{count}} selected tags will be scanned.",
         "tagsLoadAfterInstance": "Tags load after selecting an instance; you can still type a tag."
       },
       "placeholders": {
@@ -991,8 +996,10 @@
         "noNonOpsRedTorznab": "No non-OPS/RED Torznab indexers available. Torznab list is intentionally empty when both Gazelle keys are configured.",
         "noTorznabConfigured": "No Torznab indexers configured.",
         "onlyOpsRedEnabled": "Only OPS/RED Torznab indexers are enabled; use Gazelle APIs for these trackers.",
-        "onlySelectedIndexerQueried": "Only {{count}} selected indexer{{plural}} will be queried.",
-        "onlySelectedTorznabQueriedWithGazelle": "Only {{count}} selected Torznab indexer{{plural}} are queried; Gazelle checks still run in parallel.",
+        "onlySelectedIndexerQueried_one": "Only {{count}} selected indexer will be queried.",
+        "onlySelectedIndexerQueried_other": "Only {{count}} selected indexers will be queried.",
+        "onlySelectedTorznabQueriedWithGazelle_one": "Only {{count}} selected Torznab indexer is queried; Gazelle checks still run in parallel.",
+        "onlySelectedTorznabQueriedWithGazelle_other": "Only {{count}} selected Torznab indexers are queried; Gazelle checks still run in parallel.",
         "selectedGazelleOnly": "Selected indexers are OPS/RED-only; Torznab is skipped and Gazelle-only matching is used.",
         "torznabDisabledEnableGazelle": "Torznab is disabled. Enable Gazelle or turn Torznab back on.",
         "torznabDisabledGazelleChecks": "Torznab is disabled. Matching will run through Gazelle API checks only."
@@ -1090,8 +1097,10 @@
         "noCategoriesExcluded": "No categories excluded.",
         "noTagsExcluded": "No tags excluded.",
         "onlySelectedCategoriesMatched": "Only {{count}} selected categor{{suffix}} will be matched.",
-        "onlySelectedTagsMatched": "Only {{count}} selected tag{{plural}} will be matched.",
-        "tagsSkipped": "{{count}} tag{{plural}} will be skipped."
+        "onlySelectedTagsMatched_one": "Only {{count}} selected tag will be matched.",
+        "onlySelectedTagsMatched_other": "Only {{count}} selected tags will be matched.",
+        "tagsSkipped_one": "{{count}} tag will be skipped.",
+        "tagsSkipped_other": "{{count}} tags will be skipped."
       },
       "placeholders": {
         "allCategories": "All categories (leave empty for all)",
@@ -1148,7 +1157,8 @@
       "savePathCopied": "Save path copied"
     },
     "toolbar": {
-      "matchCount": "{{count}} match{{plural}}",
+      "matchCount_one": "{{count}} match",
+      "matchCount_other": "{{count}} matches",
       "selectedCount": "{{selected}} of {{total}} selected"
     },
     "tooltips": {
@@ -2024,7 +2034,8 @@
       "allSelected": "All",
       "cmdKey": "Cmd",
       "ctrlKey": "Ctrl",
-      "loadedCount": "{{count}} torrent{{plural}}",
+      "loadedCount_one": "{{count}} torrent",
+      "loadedCount_other": "{{count}} torrents",
       "loadedOfTotal": "{{loaded}} of {{total}} torrents loaded",
       "loading": "Loading...",
       "loadingMore": "Loading more torrents...",
@@ -5691,7 +5702,8 @@
       "setSpeedLimit": "Set Speed Limit",
       "topPriority": "Top Priority"
     },
-    "toolbarAria": "{{count}} torrent{{plural}} selected - Bulk actions available",
+    "toolbarAria_one": "{{count}} torrent selected - Bulk actions available",
+    "toolbarAria_other": "{{count}} torrents selected - Bulk actions available",
     "tooltips": {
       "delete": "Delete",
       "disableTmm": "Disable TMM",
@@ -5958,7 +5970,8 @@
     },
     "toolbar": {
       "filteredCount": "{{filtered}} of {{total}}",
-      "totalCount": "{{count}} HTTP source{{plural}}"
+      "totalCount_one": "{{count}} HTTP source",
+      "totalCount_other": "{{count}} HTTP sources"
     }
   },
   "workflowDialog": {
@@ -6580,6 +6593,7 @@
         "name": "Name",
         "path": "Path",
         "ratio": "Ratio",
+        "score": "Score",
         "seedTime": "Seed time",
         "size": "Size",
         "tracker": "Tracker"
@@ -6610,6 +6624,25 @@
       },
       "ratioLimit": "Ratio limit",
       "seedTimeMinutes": "Seed time (minutes)"
+    },
+    "sorting": {
+      "addBonus": "Add Bonus",
+      "addFieldMultiplier": "Add Field Multiplier",
+      "addScore": "Add Score:",
+      "asc": "Asc",
+      "desc": "Desc",
+      "fieldMultiplier": "Field Multiplier",
+      "highToLow": "High to Low",
+      "label": "Torrent Priority",
+      "lowToHigh": "Low to High",
+      "scoreRulesLabel": "Score Rules",
+      "sortBy": "Sort by",
+      "tooltip": "Controls the order in which torrents are processed.",
+      "types": {
+        "default": "Oldest First (Default)",
+        "score": "Custom Score",
+        "simple": "Simple Sort"
+      }
     },
     "speedLimits": {
       "downloadLimit": "Download limit",
@@ -6669,10 +6702,13 @@
       "customLabel": "{{name}} (Custom)"
     },
     "validation": {
+      "addScoreRule": "Add at least one score rule for Score sorting.",
       "addTagAction": "Add at least one tag action.",
+      "conditionalScoreInvalid": "Conditional score must be a valid number.",
       "deleteConditionRequired": "Delete requires at least one condition.",
       "downloadSpeedPositive": "Download speed must be greater than 0 (use Unlimited for no limit).",
       "enableAction": "Enable at least one action.",
+      "fieldMultiplierInvalid": "Field multiplier must be a valid number.",
       "invalidRegex": "Invalid regex pattern. Go/RE2 does not support Perl features like lookahead/lookbehind.",
       "invalidRegexHint": "Go/RE2 does not support Perl features like lookahead (?=), lookbehind (?<=), or negative variants (?!), (?<!).",
       "invalidRegexTitle": "Invalid regex pattern",

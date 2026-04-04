@@ -1363,12 +1363,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     if (gazelleSavedConfigured) {
       return tr("crossSeedPage.seededSearch.help.onlySelectedTorznabQueriedWithGazelle", {
         count: seededSearchEffectiveIndexerIds.length,
-        plural: seededSearchEffectiveIndexerIds.length === 1 ? "" : "s",
       })
     }
     return tr("crossSeedPage.seededSearch.help.onlySelectedIndexerQueried", {
       count: seededSearchEffectiveIndexerIds.length,
-      plural: seededSearchEffectiveIndexerIds.length === 1 ? "" : "s",
     })
   }, [gazelleSavedConfigured, seededSearchEffectiveIndexerIds.length, seededSearchForceGazelleOnly, seededSearchHasOnlyGazelleIndexers, seededSearchIndexerOptions.length, seededSearchTorznabEffectiveEnabled])
 
@@ -1872,7 +1870,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                         ? tr("crossSeedPage.auto.helper.pickAtLeastOneInstance")
                         : tr("crossSeedPage.auto.helper.instancesSelected", {
                           count: automationForm.targetInstanceIds.length,
-                          plural: automationForm.targetInstanceIds.length === 1 ? "" : "s",
                         })}
                   </p>
                   {validationErrors.targetInstanceIds && (
@@ -1899,7 +1896,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                         ? tr("crossSeedPage.auto.helper.allEnabledIndexersEligible")
                         : tr("crossSeedPage.auto.helper.onlySelectedIndexersPolled", {
                           count: automationForm.targetIndexerIds.length,
-                          plural: automationForm.targetIndexerIds.length === 1 ? "" : "s",
                         })}
                   </p>
                 </div>
@@ -1953,7 +1949,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       ? tr("crossSeedPage.auto.helper.allTagsIncluded")
                       : tr("crossSeedPage.auto.helper.onlySelectedTagsMatched", {
                         count: automationForm.rssSourceTags.length,
-                        plural: automationForm.rssSourceTags.length === 1 ? "" : "s",
                       })}
                   </p>
                 </div>
@@ -2003,7 +1998,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       ? tr("crossSeedPage.auto.helper.noTagsExcluded")
                       : tr("crossSeedPage.auto.helper.tagsSkipped", {
                         count: automationForm.rssSourceExcludeTags.length,
-                        plural: automationForm.rssSourceExcludeTags.length === 1 ? "" : "s",
                       })}
                   </p>
                 </div>
@@ -2198,7 +2192,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       ? tr("crossSeedPage.webhook.helper.allTagsIncluded")
                       : tr("crossSeedPage.webhook.helper.onlySelectedTagsMatched", {
                         count: globalSettings.webhookSourceTags.length,
-                        plural: globalSettings.webhookSourceTags.length === 1 ? "" : "s",
                       })}
                   </p>
                 </div>
@@ -2238,7 +2231,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       ? tr("crossSeedPage.webhook.helper.noTagsExcluded")
                       : tr("crossSeedPage.webhook.helper.tagsSkipped", {
                         count: globalSettings.webhookSourceExcludeTags.length,
-                        plural: globalSettings.webhookSourceExcludeTags.length === 1 ? "" : "s",
                       })}
                   </p>
                 </div>
@@ -2392,7 +2384,6 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                         ? tr("crossSeedPage.scan.helper.allTagsIncluded")
                         : tr("crossSeedPage.scan.helper.onlySelectedTagsScanned", {
                           count: searchTags.length,
-                          plural: searchTags.length === 1 ? "" : "s",
                         })}
                   </p>
                 </div>

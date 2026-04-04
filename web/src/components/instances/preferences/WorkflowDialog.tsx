@@ -3,8 +3,11 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { FieldCombobox } from "@/components/query-builder/FieldCombobox"
+import { Badge } from "@/components/ui/badge"
 import { QueryBuilder, type GroupOption } from "@/components/query-builder"
 import {
+  CONDITION_FIELDS,
   CATEGORY_UNCATEGORIZED_VALUE,
   CAPABILITY_REASONS,
   FIELD_REQUIREMENTS,
@@ -72,16 +75,21 @@ import type {
   GroupingConfig,
   PreviewView,
   RegexValidationError,
-  RuleCondition
+  RuleCondition,
+  ScoreRule,
+  ConditionField,
+  SortingConfig
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Folder, Info, Loader2, Plus, X } from "lucide-react"
+import { ArrowDown, ArrowUp, Folder, Info, Loader2, Plus, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
+
+let ruleIdCounter = 0
 
 interface WorkflowDialogProps {
   open: boolean
@@ -222,6 +230,84 @@ function getDisabledStateValues(capabilities: Capabilities): DisabledStateValue[
     .map(([value, capability]) => ({ value, reason: CAPABILITY_REASONS[capability] }))
 }
 
+const SIMPLE_SORT_FIELD_SET = new Set<ConditionField>([
+  "SIZE",
+  "TOTAL_SIZE",
+  "DOWNLOADED",
+  "UPLOADED",
+  "AMOUNT_LEFT",
+  "FREE_SPACE",
+  "ADDED_ON",
+  "COMPLETION_ON",
+  "LAST_ACTIVITY",
+  "SEEDING_TIME",
+  "TIME_ACTIVE",
+  "ADDED_ON_AGE",
+  "COMPLETION_ON_AGE",
+  "LAST_ACTIVITY_AGE",
+  "RATIO",
+  "PROGRESS",
+  "AVAILABILITY",
+  "DL_SPEED",
+  "UP_SPEED",
+  "NUM_SEEDS",
+  "NUM_LEECHS",
+  "NUM_COMPLETE",
+  "NUM_INCOMPLETE",
+  "TRACKERS_COUNT",
+  "NAME",
+  "CATEGORY",
+  "TAGS",
+  "TRACKER",
+  "STATE",
+  "SAVE_PATH",
+  "CONTENT_PATH",
+  "COMMENT",
+])
+
+const SCORE_MULTIPLIER_FIELD_SET = new Set<ConditionField>([
+  "SIZE",
+  "TOTAL_SIZE",
+  "DOWNLOADED",
+  "UPLOADED",
+  "AMOUNT_LEFT",
+  "FREE_SPACE",
+  "ADDED_ON",
+  "COMPLETION_ON",
+  "LAST_ACTIVITY",
+  "SEEDING_TIME",
+  "TIME_ACTIVE",
+  "ADDED_ON_AGE",
+  "COMPLETION_ON_AGE",
+  "LAST_ACTIVITY_AGE",
+  "RATIO",
+  "PROGRESS",
+  "AVAILABILITY",
+  "DL_SPEED",
+  "UP_SPEED",
+  "NUM_SEEDS",
+  "NUM_LEECHS",
+  "NUM_COMPLETE",
+  "NUM_INCOMPLETE",
+  "TRACKERS_COUNT",
+])
+
+const SIMPLE_SORT_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
+  .filter(field => !SIMPLE_SORT_FIELD_SET.has(field as ConditionField))
+  .map(field => ({ field, reason: "Not supported for simple sorting" }))
+
+const SCORE_MULTIPLIER_DISABLED_FIELDS = Object.keys(CONDITION_FIELDS)
+  .filter(field => !SCORE_MULTIPLIER_FIELD_SET.has(field as ConditionField))
+  .map(field => ({ field, reason: "Not supported for score multipliers" }))
+
+function isSupportedSimpleSortField(field: string): field is ConditionField {
+  return SIMPLE_SORT_FIELD_SET.has(field as ConditionField)
+}
+
+function isSupportedScoreMultiplierField(field: string): field is ConditionField {
+  return SCORE_MULTIPLIER_FIELD_SET.has(field as ConditionField)
+}
+
 /**
  * Recursively checks if a condition tree uses a specific field.
  * Used to validate that FREE_SPACE conditions aren't paired with keep-files mode.
@@ -289,6 +375,26 @@ const AMBIGUOUS_POLICY_NONE_VALUE = "__none__"
 
 // Speed limit mode: no_change = omit, unlimited = 0, custom = user value (>0)
 type SpeedLimitMode = "no_change" | "unlimited" | "custom"
+
+// Local form types that allow strings for intermediate input states (e.g. during typing "-")
+interface FormFieldMultiplierScoreRule {
+  field: ConditionField
+  multiplier: number | string
+}
+
+interface FormConditionalScoreRule {
+  condition?: RuleCondition
+  score: number | string
+}
+
+type ScoreRuleType = "field_multiplier" | "conditional"
+
+interface FormScoreRule {
+  id: number
+  type: ScoreRuleType
+  fieldMultiplier?: FormFieldMultiplierScoreRule
+  conditional?: FormConditionalScoreRule
+}
 
 type TagActionForm = {
   tags: string[]
@@ -361,6 +467,11 @@ type FormState = {
   exprIncludeCrossSeeds: boolean
   exprCategoryGroupId: string
   exprBlockIfCrossSeedInCategories: string[]
+  // Sorting/Scoring
+  sortingType: "default" | "simple" | "score"
+  simpleSortField: ConditionField
+  sortDirection: "ASC" | "DESC"
+  scoreRules: FormScoreRule[]
   // Move action settings
   exprMovePath: string
   exprMoveBlockIfCrossSeed: boolean
@@ -413,6 +524,10 @@ const emptyFormState: FormState = {
   exprIncludeCrossSeeds: false,
   exprCategoryGroupId: "",
   exprBlockIfCrossSeedInCategories: [],
+  sortingType: "default",
+  simpleSortField: "ADDED_ON",
+  sortDirection: "ASC",
+  scoreRules: [],
   exprMovePath: "",
   exprMoveBlockIfCrossSeed: false,
   exprMoveGroupId: "",
@@ -818,6 +933,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprCategory = ""
         let exprIncludeCrossSeeds = false
         let exprBlockIfCrossSeedInCategories: string[] = []
+        let sortingType: FormState["sortingType"] = "default"
+        let simpleSortField: ConditionField = "ADDED_ON"
+        let sortDirection: "ASC" | "DESC" = "ASC"
+        let scoreRules: FormScoreRule[] = []
         let exprMovePath = ""
         let exprMoveBlockIfCrossSeed = false
         let exprExternalProgramId: number | null = null
@@ -827,6 +946,26 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprCategoryGroupId = ""
         let exprMoveGroupId = ""
         let exprMoveAtomic: FormState["exprMoveAtomic"] = ""
+
+        if (rule.sortingConfig) {
+          if (rule.sortingConfig.type === "simple") {
+            sortingType = "simple"
+            if (rule.sortingConfig.field) simpleSortField = rule.sortingConfig.field
+            if (rule.sortingConfig.direction) sortDirection = rule.sortingConfig.direction
+          } else if (rule.sortingConfig.type === "score") {
+            sortingType = "score"
+            if (rule.sortingConfig.direction) sortDirection = rule.sortingConfig.direction
+            scoreRules = (rule.sortingConfig.scoreRules || []).flatMap<FormScoreRule>(r => {
+              if (r.type === "field_multiplier") {
+                return [{ id: ++ruleIdCounter, type: r.type, fieldMultiplier: { ...r.fieldMultiplier } }]
+              }
+              if (r.type === "conditional") {
+                return [{ id: ++ruleIdCounter, type: r.type, conditional: { ...r.conditional } }]
+              }
+              return []
+            })
+          }
+        }
 
         // Hydrate freeSpaceSource from rule
         if (rule.freeSpaceSource) {
@@ -978,6 +1117,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprIncludeCrossSeeds,
           exprCategoryGroupId,
           exprBlockIfCrossSeedInCategories,
+          sortingType,
+          simpleSortField,
+          sortDirection,
+          scoreRules,
           exprMoveGroupId,
           exprMoveAtomic,
           exprExternalProgramId,
@@ -1271,6 +1414,49 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       freeSpaceSource = { type: "path", path: trimmedFreeSpacePath }
     }
 
+    let sortingConfig: SortingConfig | undefined
+    if (input.sortingType === "simple") {
+      if (!isSupportedSimpleSortField(input.simpleSortField)) {
+        throw new Error("Invalid sort field: not supported for simple sorting")
+      }
+      sortingConfig = {
+        schemaVersion: "1",
+        type: "simple",
+        field: input.simpleSortField!,
+        direction: input.sortDirection!,
+      }
+    } else if (input.sortingType === "score") {
+      sortingConfig = {
+        schemaVersion: "1",
+        type: "score",
+        direction: input.sortDirection!,
+        scoreRules: input.scoreRules.flatMap((r): ScoreRule[] => {
+          if (r.type === "field_multiplier" && r.fieldMultiplier) {
+            if (!isSupportedScoreMultiplierField(r.fieldMultiplier.field)) {
+              throw new Error("Invalid score rule: field is not supported for multipliers")
+            }
+            const val = r.fieldMultiplier.multiplier
+            const multiplier = typeof val === "string" ? parseFloat(val) : val
+            if (Number.isFinite(multiplier)) {
+              return [{ type: "field_multiplier", fieldMultiplier: { ...r.fieldMultiplier, multiplier } }]
+            } else {
+              throw new Error("Invalid score rule: Field multiplier must be a valid number")
+            }
+          }
+          if (r.type === "conditional" && r.conditional && r.conditional.condition) {
+            const val = r.conditional.score
+            const score = typeof val === "string" ? parseFloat(val) : val
+            if (Number.isFinite(score)) {
+              return [{ type: "conditional", conditional: { ...r.conditional, score, condition: r.conditional.condition } }]
+            } else {
+              throw new Error("Invalid score rule: Conditional score must be a valid number")
+            }
+          }
+          return []
+        }),
+      }
+    }
+
     const trackerDomains = input.applyToAllTrackers ? [] : normalizeTrackerDomains(input.trackerDomains)
 
     return {
@@ -1284,6 +1470,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       intervalSeconds: input.intervalSeconds,
       conditions,
       freeSpaceSource,
+      sortingConfig,
     }
   }, [])
 
@@ -1697,6 +1884,35 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return
     }
 
+    // Validate score sorting configuration
+    if (submitState.sortingType === "score") {
+      if (submitState.scoreRules.length === 0) {
+        toast.error(tr("workflowDialog.validation.addScoreRule"))
+        return
+      }
+
+      // Validate individual rules for valid numeric inputs
+      for (const rule of submitState.scoreRules) {
+        if (rule.type === "field_multiplier") {
+          if (!rule.fieldMultiplier) continue
+          const val = rule.fieldMultiplier.multiplier
+          const multiplier = typeof val === "string" ? parseFloat(val) : val
+          if (!Number.isFinite(multiplier)) {
+            toast.error(tr("workflowDialog.validation.fieldMultiplierInvalid"))
+            return
+          }
+        } else if (rule.type === "conditional") {
+          if (!rule.conditional) continue
+          const val = rule.conditional.score
+          const score = typeof val === "string" ? parseFloat(val) : val
+          if (!Number.isFinite(score)) {
+            toast.error(tr("workflowDialog.validation.conditionalScoreInvalid"))
+            return
+          }
+        }
+      }
+    }
+
     // Action-specific validation for enabled actions
     if (submitState.speedLimitsEnabled) {
       // At least one field must be set to something other than "no_change"
@@ -1855,6 +2071,238 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   />
                 </div>
               )}
+
+              {/* Torrent Priority */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Label>{tr("workflowDialog.sorting.label")}</Label>
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-4 w-4 text-muted-foreground hover:text-foreground cursor-help transition-colors" />
+                        </TooltipTrigger>
+                        <TooltipContent side="right" className="max-w-[300px]">
+                          <p>{tr("workflowDialog.sorting.tooltip")}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <Select
+                    value={formState.sortingType}
+                    onValueChange={(val: "default" | "simple" | "score") => setFormState(prev => ({ ...prev, sortingType: val }))}
+                  >
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">{tr("workflowDialog.sorting.types.default")}</SelectItem>
+                      <SelectItem value="simple">{tr("workflowDialog.sorting.types.simple")}</SelectItem>
+                      <SelectItem value="score">{tr("workflowDialog.sorting.types.score")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {formState.sortingType === "simple" && (
+                  <div className="flex gap-2 items-center rounded-lg border p-3">
+                    <span className="text-sm text-muted-foreground">{tr("workflowDialog.sorting.sortBy")}</span>
+                    <FieldCombobox
+                      value={formState.simpleSortField}
+                      onChange={(val) => setFormState(prev => ({ ...prev, simpleSortField: val as ConditionField }))}
+                      disabledFields={SIMPLE_SORT_DISABLED_FIELDS}
+                    />
+                    <div className="flex items-center border rounded-md">
+                      <Button
+                        type="button"
+                        variant={formState.sortDirection === "ASC" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="px-2 h-8 rounded-r-none"
+                        onClick={() => setFormState(prev => ({ ...prev, sortDirection: "ASC" }))}
+                      >
+                        <ArrowUp className="h-3.5 w-3.5 mr-1" />
+                        {tr("workflowDialog.sorting.asc")}
+                      </Button>
+                      <div className="w-[1px] bg-border h-4" />
+                      <Button
+                        type="button"
+                        variant={formState.sortDirection === "DESC" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="px-2 h-8 rounded-l-none"
+                        onClick={() => setFormState(prev => ({ ...prev, sortDirection: "DESC" }))}
+                      >
+                        <ArrowDown className="h-3.5 w-3.5 mr-1" />
+                        {tr("workflowDialog.sorting.desc")}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {formState.sortingType === "score" && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs text-muted-foreground uppercase tracking-wider">{tr("workflowDialog.sorting.scoreRulesLabel")}</Label>
+                      <div className="flex items-center border rounded-md">
+                        <Button
+                          type="button"
+                          variant={formState.sortDirection === "ASC" ? "secondary" : "ghost"}
+                          size="sm"
+                          className="px-2 h-7 rounded-r-none text-xs"
+                          onClick={() => setFormState(prev => ({ ...prev, sortDirection: "ASC" }))}
+                        >
+                          <ArrowUp className="h-3 w-3 mr-1" />
+                          {tr("workflowDialog.sorting.lowToHigh")}
+                        </Button>
+                        <div className="w-[1px] bg-border h-4" />
+                        <Button
+                          type="button"
+                          variant={formState.sortDirection === "DESC" ? "secondary" : "ghost"}
+                          size="sm"
+                          className="px-2 h-7 rounded-l-none text-xs"
+                          onClick={() => setFormState(prev => ({ ...prev, sortDirection: "DESC" }))}
+                        >
+                          <ArrowDown className="h-3 w-3 mr-1" />
+                          {tr("workflowDialog.sorting.highToLow")}
+                        </Button>
+                      </div>
+                    </div>
+                    {formState.scoreRules.map((rule, idx) => (
+                      <div key={rule.id} className="p-3 border rounded-md relative group">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => setFormState(prev => ({
+                            ...prev,
+                            scoreRules: prev.scoreRules.filter((_, i) => i !== idx),
+                          }))}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+
+                        <div className="mb-2">
+                          <Badge variant="secondary" className="text-xs uppercase tracking-wider font-mono">
+                            {rule.type === "field_multiplier" ? tr("workflowDialog.sorting.fieldMultiplier") : rule.type}
+                          </Badge>
+                        </div>
+
+                        {rule.type === "field_multiplier" && rule.fieldMultiplier ? (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <FieldCombobox
+                              value={rule.fieldMultiplier.field}
+                              onChange={(val) => {
+                                const newRules = [...formState.scoreRules]
+                                if (newRules[idx].type === "field_multiplier" && newRules[idx].fieldMultiplier) {
+                                  newRules[idx] = {
+                                    ...newRules[idx],
+                                    fieldMultiplier: { ...newRules[idx].fieldMultiplier!, field: val as ConditionField },
+                                  }
+                                  setFormState(prev => ({ ...prev, scoreRules: newRules }))
+                                }
+                              }}
+                              disabledFields={SCORE_MULTIPLIER_DISABLED_FIELDS}
+                            />
+
+                            <span className="text-sm text-muted-foreground">x</span>
+
+                            <Input
+                              type="number"
+                              className="w-24"
+                              value={rule.fieldMultiplier.multiplier}
+                              onChange={(e) => {
+                                const newRules = [...formState.scoreRules]
+                                if (newRules[idx].type === "field_multiplier" && newRules[idx].fieldMultiplier) {
+                                  newRules[idx] = {
+                                    ...newRules[idx],
+                                    fieldMultiplier: { ...newRules[idx].fieldMultiplier!, multiplier: e.target.value },
+                                  }
+                                  setFormState(prev => ({ ...prev, scoreRules: newRules }))
+                                }
+                              }}
+                            />
+                          </div>
+                        ) : rule.type === "conditional" && rule.conditional ? (
+                          <div className="space-y-2">
+                            <QueryBuilder
+                              condition={rule.conditional.condition ?? null}
+                              onChange={(cond) => {
+                                const newRules = [...formState.scoreRules]
+                                if (newRules[idx].type === "conditional" && newRules[idx].conditional) {
+                                  newRules[idx] = {
+                                    ...newRules[idx],
+                                    conditional: { ...newRules[idx].conditional!, condition: cond ?? undefined },
+                                  }
+                                  setFormState(prev => ({ ...prev, scoreRules: newRules }))
+                                }
+                              }}
+                              categoryOptions={categoryOptions}
+                              disabledFields={getDisabledFields(fieldCapabilities)}
+                              disabledStateValues={getDisabledStateValues(fieldCapabilities)}
+                            />
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-muted-foreground">{tr("workflowDialog.sorting.addScore")}</span>
+                              <Input
+                                type="number"
+                                className="w-24"
+                                value={rule.conditional.score}
+                                onChange={(e) => {
+                                  const newRules = [...formState.scoreRules]
+                                  if (newRules[idx].type === "conditional" && newRules[idx].conditional) {
+                                    newRules[idx] = {
+                                      ...newRules[idx],
+                                      conditional: { ...newRules[idx].conditional!, score: e.target.value },
+                                    }
+                                    setFormState(prev => ({ ...prev, scoreRules: newRules }))
+                                  }
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setFormState(prev => ({
+                          ...prev,
+                          scoreRules: [...prev.scoreRules, {
+                            id: ++ruleIdCounter,
+                            type: "field_multiplier",
+                            fieldMultiplier: { field: "SIZE", multiplier: 1 },
+                          }],
+                        }))}
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-1" />
+                        {tr("workflowDialog.sorting.addFieldMultiplier")}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setFormState(prev => ({
+                          ...prev,
+                          scoreRules: [...prev.scoreRules, {
+                            id: ++ruleIdCounter,
+                            type: "conditional",
+                            conditional: {
+                              condition: { field: "NAME", operator: "CONTAINS", value: "" },
+                              score: 100,
+                            },
+                          }],
+                        }))}
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-1" />
+                        {tr("workflowDialog.sorting.addBonus")}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+              </div>
 
               {/* Condition and Action */}
               <div className="space-y-3">
@@ -3393,6 +3841,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         onExport={handleExport}
         isExporting={isExporting}
         isInitialLoading={isInitialLoading}
+        showScore={(previewInput?.sortingType ?? formState.sortingType) === "score"}
       />
 
       {activityRunDialog && (
