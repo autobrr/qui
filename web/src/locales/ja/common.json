@@ -4544,80 +4544,80 @@
     },
     "applicationInfo": {
       "actions": {
-        "copyField": "Copy {{field}}",
-        "refresh": "Refresh"
+        "copyField": "{{field}}をコピー",
+        "refresh": "再読み込み"
       },
       "fields": {
-        "bind": "Bind",
-        "buildDate": "Build date",
-        "builtInLoginEnabled": "Built-in login enabled",
-        "commit": "Commit",
-        "configDir": "Config dir",
-        "currentSessionAuth": "Current session auth",
-        "dataDir": "Data dir",
-        "database": "Database",
-        "oidcEnabled": "OIDC enabled",
-        "oidcIssuerHost": "OIDC issuer host",
-        "runtime": "Runtime",
-        "updateStatus": "Update status",
-        "uptime": "Uptime",
-        "version": "Version"
+        "bind": "バインド先",
+        "buildDate": "ビルド日時",
+        "builtInLoginEnabled": "組み込みログイン有効",
+        "commit": "コミット",
+        "configDir": "設定ディレクトリ",
+        "currentSessionAuth": "現在のセッション認証",
+        "dataDir": "データディレクトリ",
+        "database": "データベース",
+        "oidcEnabled": "OIDC有効",
+        "oidcIssuerHost": "OIDC Issuer ホスト",
+        "runtime": "ランタイム",
+        "updateStatus": "更新状態",
+        "uptime": "稼働時間",
+        "version": "バージョン"
       },
       "relative": {
-        "ago": "ago",
-        "inPrefix": "in",
-        "justNow": "just now"
+        "ago": "前",
+        "inPrefix": "あと",
+        "justNow": "たった今"
       },
       "sections": {
         "authentication": {
-          "description": "Authentication settings and current session.",
-          "title": "Authentication"
+          "description": "認証設定と現在のセッションです。",
+          "title": "認証"
         },
         "build": {
-          "description": "Build identity and traceability.",
-          "title": "Build"
+          "description": "ビルドの識別情報と追跡情報です。",
+          "title": "ビルド"
         },
         "runtime": {
-          "description": "Process runtime and host platform.",
-          "title": "Runtime"
+          "description": "プロセスの稼働状況とホスト環境です。",
+          "title": "ランタイム"
         },
         "storageAndNetwork": {
-          "description": "Active paths, bind target, and database endpoint.",
-          "title": "Storage & Network"
+          "description": "使用中のパス、バインド先、データベース接続先です。",
+          "title": "ストレージとネットワーク"
         }
       },
       "states": {
-        "loadFailed": "Failed to load application info",
-        "loading": "Loading application info..."
+        "loadFailed": "アプリケーション情報の読み込みに失敗しました",
+        "loading": "アプリケーション情報を読み込み中..."
       },
       "status": {
-        "builtin": "builtin",
-        "loading": "Loading...",
-        "unavailable": "Unavailable",
-        "unknown": "Unknown"
+        "builtin": "組み込み",
+        "loading": "読み込み中...",
+        "unavailable": "利用不可",
+        "unknown": "不明"
       },
       "toasts": {
-        "copied": "{{label}} copied",
-        "copyFailed": "Failed to copy {{label}}"
+        "copied": "{{label}}をコピーしました",
+        "copyFailed": "{{label}}のコピーに失敗しました"
       },
       "updateStatus": {
-        "checking": "Checking",
-        "checkingDetail": "Checking GitHub release cache.",
-        "devBuild": "Dev build",
-        "disabled": "Disabled",
-        "disabledDetail": "Update checks are disabled in config.",
-        "lastChecked": "Last checked: {{value}}",
-        "notChecked": "Not checked yet",
-        "unknown": "Unknown",
-        "upToDate": "Up to date",
-        "upToDateDetail": "No newer release is currently cached.",
-        "updateAvailable": "Update available",
-        "waiting": "Waiting for application metadata."
+        "checking": "確認中",
+        "checkingDetail": "GitHub リリースキャッシュを確認しています。",
+        "devBuild": "開発ビルド",
+        "disabled": "無効",
+        "disabledDetail": "設定で更新チェックが無効になっています。",
+        "lastChecked": "最終確認: {{value}}",
+        "notChecked": "まだ確認していません",
+        "unknown": "不明",
+        "upToDate": "最新",
+        "upToDateDetail": "現在、新しいリリースはキャッシュされていません。",
+        "updateAvailable": "更新あり",
+        "waiting": "アプリケーションのメタデータを待機しています。"
       },
       "values": {
-        "no": "No",
-        "notAvailable": "N/A",
-        "yes": "Yes"
+        "no": "いいえ",
+        "notAvailable": "該当なし",
+        "yes": "はい"
       }
     },
     "changePassword": {

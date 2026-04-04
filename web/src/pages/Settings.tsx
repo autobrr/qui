@@ -786,7 +786,7 @@ function formatApplicationDate(value?: string): string {
 
 function formatRelativeDate(
   value: string | undefined,
-  labels: { notAvailable: string; justNow: string; ago: string; inPrefix: string }
+  labels: { notAvailable: string; justNow: string }
 ): string {
   if (!value || value.trim() === "") {
     return labels.notAvailable
@@ -802,12 +802,24 @@ function formatRelativeDate(
     return labels.justNow
   }
 
-  const duration = formatDuration(Math.abs(secondsDiff))
-  if (secondsDiff >= 0) {
-    return `${duration} ${labels.ago}`
+  const divisions = [
+    { unit: "day", seconds: 86400 },
+    { unit: "hour", seconds: 3600 },
+    { unit: "minute", seconds: 60 },
+    { unit: "second", seconds: 1 },
+  ] as const
+  const formatter = new Intl.RelativeTimeFormat(undefined, {
+    numeric: "always",
+    style: "short",
+  })
+
+  for (const division of divisions) {
+    if (Math.abs(secondsDiff) >= division.seconds || division.unit === "second") {
+      return formatter.format(-Math.round(secondsDiff / division.seconds), division.unit)
+    }
   }
 
-  return `${labels.inPrefix} ${duration}`
+  return labels.justNow
 }
 
 function formatCurrentSessionAuth(user: User | undefined, labels: { unknown: string; builtin: string }): string {
@@ -954,7 +966,7 @@ function ApplicationInfoPanel() {
 
   const notAvailable = tr("settingsPage.applicationInfo.values.notAvailable")
 
-  let currentSessionAuth = tr("settingsPage.applicationInfo.status.unknown")
+  let currentSessionAuth: string
   if (currentUserQuery.isLoading) {
     currentSessionAuth = tr("settingsPage.applicationInfo.status.loading")
   } else if (currentUserQuery.isError) {
@@ -1008,8 +1020,6 @@ function ApplicationInfoPanel() {
       secondary: formatRelativeDate(info.buildDate, {
         notAvailable,
         justNow: tr("settingsPage.applicationInfo.relative.justNow"),
-        ago: tr("settingsPage.applicationInfo.relative.ago"),
-        inPrefix: tr("settingsPage.applicationInfo.relative.inPrefix"),
       }),
     },
     {

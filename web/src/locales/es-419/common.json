@@ -4544,80 +4544,80 @@
     },
     "applicationInfo": {
       "actions": {
-        "copyField": "Copy {{field}}",
-        "refresh": "Refresh"
+        "copyField": "Copiar {{field}}",
+        "refresh": "Actualizar"
       },
       "fields": {
-        "bind": "Bind",
-        "buildDate": "Build date",
-        "builtInLoginEnabled": "Built-in login enabled",
+        "bind": "Dirección de enlace",
+        "buildDate": "Fecha de compilación",
+        "builtInLoginEnabled": "Inicio de sesión integrado habilitado",
         "commit": "Commit",
-        "configDir": "Config dir",
-        "currentSessionAuth": "Current session auth",
-        "dataDir": "Data dir",
-        "database": "Database",
-        "oidcEnabled": "OIDC enabled",
-        "oidcIssuerHost": "OIDC issuer host",
-        "runtime": "Runtime",
-        "updateStatus": "Update status",
-        "uptime": "Uptime",
-        "version": "Version"
+        "configDir": "Directorio de configuración",
+        "currentSessionAuth": "Autenticación de la sesión actual",
+        "dataDir": "Directorio de datos",
+        "database": "Base de datos",
+        "oidcEnabled": "OIDC habilitado",
+        "oidcIssuerHost": "Host del emisor OIDC",
+        "runtime": "Entorno de ejecución",
+        "updateStatus": "Estado de actualización",
+        "uptime": "Tiempo activo",
+        "version": "Versión"
       },
       "relative": {
-        "ago": "ago",
-        "inPrefix": "in",
-        "justNow": "just now"
+        "ago": "hace",
+        "inPrefix": "en",
+        "justNow": "ahora mismo"
       },
       "sections": {
         "authentication": {
-          "description": "Authentication settings and current session.",
-          "title": "Authentication"
+          "description": "Configuración de autenticación y sesión actual.",
+          "title": "Autenticación"
         },
         "build": {
-          "description": "Build identity and traceability.",
-          "title": "Build"
+          "description": "Identidad de compilación y trazabilidad.",
+          "title": "Compilación"
         },
         "runtime": {
-          "description": "Process runtime and host platform.",
-          "title": "Runtime"
+          "description": "Tiempo de ejecución del proceso y plataforma host.",
+          "title": "Ejecución"
         },
         "storageAndNetwork": {
-          "description": "Active paths, bind target, and database endpoint.",
-          "title": "Storage & Network"
+          "description": "Rutas activas, destino de enlace y endpoint de la base de datos.",
+          "title": "Almacenamiento y red"
         }
       },
       "states": {
-        "loadFailed": "Failed to load application info",
-        "loading": "Loading application info..."
+        "loadFailed": "Error al cargar la información de la aplicación",
+        "loading": "Cargando información de la aplicación..."
       },
       "status": {
-        "builtin": "builtin",
-        "loading": "Loading...",
-        "unavailable": "Unavailable",
-        "unknown": "Unknown"
+        "builtin": "integrado",
+        "loading": "Cargando...",
+        "unavailable": "No disponible",
+        "unknown": "Desconocido"
       },
       "toasts": {
-        "copied": "{{label}} copied",
-        "copyFailed": "Failed to copy {{label}}"
+        "copied": "{{label}} copiado",
+        "copyFailed": "No se pudo copiar {{label}}"
       },
       "updateStatus": {
-        "checking": "Checking",
-        "checkingDetail": "Checking GitHub release cache.",
-        "devBuild": "Dev build",
-        "disabled": "Disabled",
-        "disabledDetail": "Update checks are disabled in config.",
-        "lastChecked": "Last checked: {{value}}",
-        "notChecked": "Not checked yet",
-        "unknown": "Unknown",
-        "upToDate": "Up to date",
-        "upToDateDetail": "No newer release is currently cached.",
-        "updateAvailable": "Update available",
-        "waiting": "Waiting for application metadata."
+        "checking": "Verificando",
+        "checkingDetail": "Verificando la caché de releases de GitHub.",
+        "devBuild": "Build de desarrollo",
+        "disabled": "Deshabilitado",
+        "disabledDetail": "Las comprobaciones de actualización están deshabilitadas en la configuración.",
+        "lastChecked": "Última revisión: {{value}}",
+        "notChecked": "Aún no se verificó",
+        "unknown": "Desconocido",
+        "upToDate": "Actualizado",
+        "upToDateDetail": "No hay una release más nueva en caché en este momento.",
+        "updateAvailable": "Actualización disponible",
+        "waiting": "Esperando metadatos de la aplicación."
       },
       "values": {
         "no": "No",
-        "notAvailable": "N/A",
-        "yes": "Yes"
+        "notAvailable": "N/D",
+        "yes": "Sí"
       }
     },
     "changePassword": {

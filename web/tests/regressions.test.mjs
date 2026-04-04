@@ -49,6 +49,27 @@ test("required common translation keys exist in every locale", () => {
   }
 })
 
+test("application info locale bundles are not copied verbatim from english", () => {
+  const englishCommon = JSON.parse(readFileSync(path.join(localesDir, "en", "common.json"), "utf8"))
+  const englishApplicationInfo = englishCommon.settingsPage?.applicationInfo
+
+  assert.ok(englishApplicationInfo, "expected english applicationInfo translations to exist")
+
+  const localeDirs = readdirSync(localesDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name !== "en")
+    .map((entry) => entry.name)
+
+  for (const locale of localeDirs) {
+    const common = JSON.parse(readFileSync(path.join(localesDir, locale, "common.json"), "utf8"))
+
+    assert.notDeepEqual(
+      common.settingsPage?.applicationInfo,
+      englishApplicationInfo,
+      `expected ${locale}/common.json applicationInfo translations to differ from english`,
+    )
+  }
+})
+
 test("service worker precaches the built app entry bundle", () => {
   const indexHtml = readFileSync(path.join(webDir, "dist", "index.html"), "utf8")
   const serviceWorker = readFileSync(path.join(webDir, "dist", "sw.js"), "utf8")
@@ -84,9 +105,12 @@ test("app bootstrap still renders when i18n initialization rejects", () => {
 test("relative-time helpers avoid hardcoded English phrasing", () => {
   const dateTimeUtils = readFileSync(path.join(webDir, "src", "lib", "dateTimeUtils.ts"), "utf8")
   const utils = readFileSync(path.join(webDir, "src", "lib", "utils.ts"), "utf8")
+  const settings = readFileSync(path.join(webDir, "src", "pages", "Settings.tsx"), "utf8")
 
   assert.match(`${dateTimeUtils}\n${utils}`, /Intl\.RelativeTimeFormat/, "expected locale-aware relative-time formatting")
   assert.doesNotMatch(dateTimeUtils, /return "Just now"|return "Today"|return "Yesterday"/, "expected dateTimeUtils to stop hardcoding English relative labels")
+  assert.match(settings, /Intl\.RelativeTimeFormat/, "expected settings relative-time formatting to use Intl.RelativeTimeFormat")
+  assert.doesNotMatch(settings, /formatDuration\(Math\.abs\(secondsDiff\)\)/, "expected settings relative-time formatting to stop using english duration abbreviations")
 })
 
 test("query builder uses translation keys for field and operator labels", () => {

@@ -4544,80 +4544,80 @@
     },
     "applicationInfo": {
       "actions": {
-        "copyField": "Copy {{field}}",
-        "refresh": "Refresh"
+        "copyField": "{{field}} 복사",
+        "refresh": "새로고침"
       },
       "fields": {
-        "bind": "Bind",
-        "buildDate": "Build date",
-        "builtInLoginEnabled": "Built-in login enabled",
-        "commit": "Commit",
-        "configDir": "Config dir",
-        "currentSessionAuth": "Current session auth",
-        "dataDir": "Data dir",
-        "database": "Database",
-        "oidcEnabled": "OIDC enabled",
-        "oidcIssuerHost": "OIDC issuer host",
-        "runtime": "Runtime",
-        "updateStatus": "Update status",
-        "uptime": "Uptime",
-        "version": "Version"
+        "bind": "바인드 주소",
+        "buildDate": "빌드 날짜",
+        "builtInLoginEnabled": "내장 로그인 활성화",
+        "commit": "커밋",
+        "configDir": "구성 디렉터리",
+        "currentSessionAuth": "현재 세션 인증",
+        "dataDir": "데이터 디렉터리",
+        "database": "데이터베이스",
+        "oidcEnabled": "OIDC 활성화",
+        "oidcIssuerHost": "OIDC 발급자 호스트",
+        "runtime": "런타임",
+        "updateStatus": "업데이트 상태",
+        "uptime": "가동 시간",
+        "version": "버전"
       },
       "relative": {
-        "ago": "ago",
-        "inPrefix": "in",
-        "justNow": "just now"
+        "ago": "전",
+        "inPrefix": "후",
+        "justNow": "방금 전"
       },
       "sections": {
         "authentication": {
-          "description": "Authentication settings and current session.",
-          "title": "Authentication"
+          "description": "인증 설정과 현재 세션입니다.",
+          "title": "인증"
         },
         "build": {
-          "description": "Build identity and traceability.",
-          "title": "Build"
+          "description": "빌드 식별 정보와 추적 정보입니다.",
+          "title": "빌드"
         },
         "runtime": {
-          "description": "Process runtime and host platform.",
-          "title": "Runtime"
+          "description": "프로세스 실행 상태와 호스트 플랫폼입니다.",
+          "title": "런타임"
         },
         "storageAndNetwork": {
-          "description": "Active paths, bind target, and database endpoint.",
-          "title": "Storage & Network"
+          "description": "사용 중인 경로, 바인드 대상, 데이터베이스 엔드포인트입니다.",
+          "title": "스토리지 및 네트워크"
         }
       },
       "states": {
-        "loadFailed": "Failed to load application info",
-        "loading": "Loading application info..."
+        "loadFailed": "애플리케이션 정보를 불러오지 못했습니다",
+        "loading": "애플리케이션 정보를 불러오는 중..."
       },
       "status": {
-        "builtin": "builtin",
-        "loading": "Loading...",
-        "unavailable": "Unavailable",
-        "unknown": "Unknown"
+        "builtin": "내장",
+        "loading": "불러오는 중...",
+        "unavailable": "사용할 수 없음",
+        "unknown": "알 수 없음"
       },
       "toasts": {
-        "copied": "{{label}} copied",
-        "copyFailed": "Failed to copy {{label}}"
+        "copied": "{{label}} 복사됨",
+        "copyFailed": "{{label}} 복사 실패"
       },
       "updateStatus": {
-        "checking": "Checking",
-        "checkingDetail": "Checking GitHub release cache.",
-        "devBuild": "Dev build",
-        "disabled": "Disabled",
-        "disabledDetail": "Update checks are disabled in config.",
-        "lastChecked": "Last checked: {{value}}",
-        "notChecked": "Not checked yet",
-        "unknown": "Unknown",
-        "upToDate": "Up to date",
-        "upToDateDetail": "No newer release is currently cached.",
-        "updateAvailable": "Update available",
-        "waiting": "Waiting for application metadata."
+        "checking": "확인 중",
+        "checkingDetail": "GitHub 릴리스 캐시를 확인하는 중입니다.",
+        "devBuild": "개발 빌드",
+        "disabled": "비활성화됨",
+        "disabledDetail": "설정에서 업데이트 확인이 비활성화되어 있습니다.",
+        "lastChecked": "마지막 확인: {{value}}",
+        "notChecked": "아직 확인하지 않음",
+        "unknown": "알 수 없음",
+        "upToDate": "최신 상태",
+        "upToDateDetail": "현재 더 새로운 릴리스가 캐시되어 있지 않습니다.",
+        "updateAvailable": "업데이트 가능",
+        "waiting": "애플리케이션 메타데이터를 기다리는 중입니다."
       },
       "values": {
-        "no": "No",
-        "notAvailable": "N/A",
-        "yes": "Yes"
+        "no": "아니오",
+        "notAvailable": "해당 없음",
+        "yes": "예"
       }
     },
     "changePassword": {

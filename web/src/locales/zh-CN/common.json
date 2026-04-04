@@ -4544,80 +4544,80 @@
     },
     "applicationInfo": {
       "actions": {
-        "copyField": "Copy {{field}}",
-        "refresh": "Refresh"
+        "copyField": "复制{{field}}",
+        "refresh": "刷新"
       },
       "fields": {
-        "bind": "Bind",
-        "buildDate": "Build date",
-        "builtInLoginEnabled": "Built-in login enabled",
-        "commit": "Commit",
-        "configDir": "Config dir",
-        "currentSessionAuth": "Current session auth",
-        "dataDir": "Data dir",
-        "database": "Database",
-        "oidcEnabled": "OIDC enabled",
-        "oidcIssuerHost": "OIDC issuer host",
-        "runtime": "Runtime",
-        "updateStatus": "Update status",
-        "uptime": "Uptime",
-        "version": "Version"
+        "bind": "绑定地址",
+        "buildDate": "构建日期",
+        "builtInLoginEnabled": "已启用内置登录",
+        "commit": "提交",
+        "configDir": "配置目录",
+        "currentSessionAuth": "当前会话认证",
+        "dataDir": "数据目录",
+        "database": "数据库",
+        "oidcEnabled": "已启用 OIDC",
+        "oidcIssuerHost": "OIDC 签发方主机",
+        "runtime": "运行时",
+        "updateStatus": "更新状态",
+        "uptime": "运行时长",
+        "version": "版本"
       },
       "relative": {
-        "ago": "ago",
-        "inPrefix": "in",
-        "justNow": "just now"
+        "ago": "前",
+        "inPrefix": "后",
+        "justNow": "刚刚"
       },
       "sections": {
         "authentication": {
-          "description": "Authentication settings and current session.",
-          "title": "Authentication"
+          "description": "认证设置和当前会话。",
+          "title": "认证"
         },
         "build": {
-          "description": "Build identity and traceability.",
-          "title": "Build"
+          "description": "构建标识与可追溯性。",
+          "title": "构建"
         },
         "runtime": {
-          "description": "Process runtime and host platform.",
-          "title": "Runtime"
+          "description": "进程运行状态和宿主平台。",
+          "title": "运行时"
         },
         "storageAndNetwork": {
-          "description": "Active paths, bind target, and database endpoint.",
-          "title": "Storage & Network"
+          "description": "当前路径、绑定目标和数据库端点。",
+          "title": "存储与网络"
         }
       },
       "states": {
-        "loadFailed": "Failed to load application info",
-        "loading": "Loading application info..."
+        "loadFailed": "加载应用信息失败",
+        "loading": "正在加载应用信息..."
       },
       "status": {
-        "builtin": "builtin",
-        "loading": "Loading...",
-        "unavailable": "Unavailable",
-        "unknown": "Unknown"
+        "builtin": "内置",
+        "loading": "加载中...",
+        "unavailable": "不可用",
+        "unknown": "未知"
       },
       "toasts": {
-        "copied": "{{label}} copied",
-        "copyFailed": "Failed to copy {{label}}"
+        "copied": "已复制{{label}}",
+        "copyFailed": "复制{{label}}失败"
       },
       "updateStatus": {
-        "checking": "Checking",
-        "checkingDetail": "Checking GitHub release cache.",
-        "devBuild": "Dev build",
-        "disabled": "Disabled",
-        "disabledDetail": "Update checks are disabled in config.",
-        "lastChecked": "Last checked: {{value}}",
-        "notChecked": "Not checked yet",
-        "unknown": "Unknown",
-        "upToDate": "Up to date",
-        "upToDateDetail": "No newer release is currently cached.",
-        "updateAvailable": "Update available",
-        "waiting": "Waiting for application metadata."
+        "checking": "检查中",
+        "checkingDetail": "正在检查 GitHub 发布缓存。",
+        "devBuild": "开发构建",
+        "disabled": "已禁用",
+        "disabledDetail": "配置中已禁用更新检查。",
+        "lastChecked": "上次检查：{{value}}",
+        "notChecked": "尚未检查",
+        "unknown": "未知",
+        "upToDate": "已是最新",
+        "upToDateDetail": "当前缓存中没有更新的版本。",
+        "updateAvailable": "有可用更新",
+        "waiting": "正在等待应用元数据。"
       },
       "values": {
-        "no": "No",
-        "notAvailable": "N/A",
-        "yes": "Yes"
+        "no": "否",
+        "notAvailable": "不适用",
+        "yes": "是"
       }
     },
     "changePassword": {
