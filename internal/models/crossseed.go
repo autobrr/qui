@@ -84,6 +84,13 @@ type CrossSeedAutomationSettings struct {
 	SkipRecheck                  bool `json:"skipRecheck"`                  // Skip cross-seed matches that require a recheck
 	SkipPieceBoundarySafetyCheck bool `json:"skipPieceBoundarySafetyCheck"` // Skip piece boundary safety check (risky: may corrupt existing seeded data)
 
+	// Season pack settings
+	SeasonPackEnabled           bool     `json:"seasonPackEnabled"`           // Enable season pack webhook flow
+	SeasonPackCoverageThreshold float64  `json:"seasonPackCoverageThreshold"` // Minimum episode coverage to trigger (0..1, default 0.75)
+	SeasonPackTags              []string `json:"seasonPackTags"`              // Tags for season pack results
+	SeasonPackTVDBAPIKey        string   `json:"seasonPackTvdbApiKey,omitempty"`
+	SeasonPackTVDBPIN           string   `json:"seasonPackTvdbPin,omitempty"`
+
 	// Gazelle (OPS/RED) cross-seed settings.
 	// When enabled, qui uses the tracker JSON APIs to find matches for OPS/RED torrents
 	// instead of Torznab. Keys are stored encrypted and are redacted in API responses.
@@ -149,11 +156,15 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		SkipAutoResumeWebhook:        false,
 		SkipRecheck:                  false,
 		SkipPieceBoundarySafetyCheck: true, // Skip by default to maximize matches
-		GazelleEnabled:               false,
-		RedactedAPIKey:               "",
-		OrpheusAPIKey:                "",
-		CreatedAt:                    time.Now().UTC(),
-		UpdatedAt:                    time.Now().UTC(),
+		// Season pack defaults
+		SeasonPackEnabled:           false,
+		SeasonPackCoverageThreshold: 0.75,
+		SeasonPackTags:              []string{"cross-seed"},
+		GazelleEnabled:              false,
+		RedactedAPIKey:              "",
+		OrpheusAPIKey:               "",
+		CreatedAt:                   time.Now().UTC(),
+		UpdatedAt:                   time.Now().UTC(),
 	}
 }
 
@@ -387,6 +398,8 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
 		       skip_recheck, skip_piece_boundary_safety_check,
+		       season_pack_enabled, season_pack_coverage_threshold, season_pack_tags,
+		       season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted,
 		       gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted,
 		       created_at, updated_at
 		FROM cross_seed_settings
@@ -407,6 +420,9 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var inheritSourceTags, useCrossCategoryAffix, useCustomCategory int
 	var skipAutoResumeRSS, skipAutoResumeSeededSearch, skipAutoResumeCompletion, skipAutoResumeWebhook int
 	var skipRecheck, skipPieceBoundarySafetyCheck int
+	var seasonPackEnabled int
+	var seasonPackTags sql.NullString
+	var seasonPackTVDBAPIKeyEncrypted, seasonPackTVDBPINEncrypted sql.NullString
 	var gazelleEnabled int
 	var redactedAPIKeyEncrypted, orpheusAPIKeyEncrypted sql.NullString
 	var createdAt, updatedAt sql.NullTime
@@ -447,6 +463,11 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&skipAutoResumeWebhook,
 		&skipRecheck,
 		&skipPieceBoundarySafetyCheck,
+		&seasonPackEnabled,
+		&settings.SeasonPackCoverageThreshold,
+		&seasonPackTags,
+		&seasonPackTVDBAPIKeyEncrypted,
+		&seasonPackTVDBPINEncrypted,
 		&gazelleEnabled,
 		&redactedAPIKeyEncrypted,
 		&orpheusAPIKeyEncrypted,
@@ -518,6 +539,9 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	if err := decodeStringSliceWithDefault(webhookTags, &settings.WebhookTags, defaults.WebhookTags); err != nil {
 		return nil, fmt.Errorf("decode webhook tags: %w", err)
 	}
+	if err := decodeStringSliceWithDefault(seasonPackTags, &settings.SeasonPackTags, defaults.SeasonPackTags); err != nil {
+		return nil, fmt.Errorf("decode season pack tags: %w", err)
+	}
 
 	if createdAt.Valid {
 		settings.CreatedAt = createdAt.Time
@@ -539,12 +563,19 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	settings.SkipAutoResumeWebhook = SQLiteIntToBool(skipAutoResumeWebhook)
 	settings.SkipRecheck = SQLiteIntToBool(skipRecheck)
 	settings.SkipPieceBoundarySafetyCheck = SQLiteIntToBool(skipPieceBoundarySafetyCheck)
+	settings.SeasonPackEnabled = SQLiteIntToBool(seasonPackEnabled)
 	settings.GazelleEnabled = SQLiteIntToBool(gazelleEnabled)
 	if redactedAPIKeyEncrypted.Valid {
 		settings.RedactedAPIKey = s.apiKeyRedacted(redactedAPIKeyEncrypted.String)
 	}
 	if orpheusAPIKeyEncrypted.Valid {
 		settings.OrpheusAPIKey = s.apiKeyRedacted(orpheusAPIKeyEncrypted.String)
+	}
+	if seasonPackTVDBAPIKeyEncrypted.Valid {
+		settings.SeasonPackTVDBAPIKey = s.apiKeyRedacted(seasonPackTVDBAPIKeyEncrypted.String)
+	}
+	if seasonPackTVDBPINEncrypted.Valid {
+		settings.SeasonPackTVDBPIN = s.apiKeyRedacted(seasonPackTVDBPINEncrypted.String)
 	}
 
 	return &settings, nil
@@ -585,6 +616,35 @@ func (s *CrossSeedStore) GetDecryptedGazelleAPIKey(ctx context.Context, host str
 		return "", false, err
 	}
 	return plain, true, nil
+}
+
+// GetDecryptedSeasonPackTVDBCredentials returns the decrypted TVDB API key and PIN
+// for season pack metadata resolution.
+func (s *CrossSeedStore) GetDecryptedSeasonPackTVDBCredentials(ctx context.Context) (apiKey, pin string, err error) {
+	var keyEnc, pinEnc sql.NullString
+	err = s.db.QueryRowContext(ctx, `
+		SELECT season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted
+		FROM cross_seed_settings WHERE id = 1
+	`).Scan(&keyEnc, &pinEnc)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "", nil
+		}
+		return "", "", err
+	}
+	if keyEnc.Valid && strings.TrimSpace(keyEnc.String) != "" {
+		apiKey, err = s.decrypt(keyEnc.String)
+		if err != nil {
+			return "", "", fmt.Errorf("decrypt tvdb api key: %w", err)
+		}
+	}
+	if pinEnc.Valid && strings.TrimSpace(pinEnc.String) != "" {
+		pin, err = s.decrypt(pinEnc.String)
+		if err != nil {
+			return "", "", fmt.Errorf("decrypt tvdb pin: %w", err)
+		}
+	}
+	return apiKey, pin, nil
 }
 
 // UpsertSettings saves automation settings and returns the updated value.
@@ -655,21 +715,29 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 	if err != nil {
 		return nil, fmt.Errorf("encode webhook tags: %w", err)
 	}
+	seasonPackTags, err := encodeStringSlice(settings.SeasonPackTags)
+	if err != nil {
+		return nil, fmt.Errorf("encode season pack tags: %w", err)
+	}
 
 	var existingRedactedEncrypted string
 	var existingOrpheusEncrypted string
+	var existingTVDBAPIKeyEncrypted string
+	var existingTVDBPINEncrypted string
 	{
-		var red, ops sql.NullString
+		var red, ops, tvdbKey, tvdbPin sql.NullString
 		queryErr := s.db.QueryRowContext(ctx, `
-				SELECT redacted_api_key_encrypted, orpheus_api_key_encrypted
+				SELECT redacted_api_key_encrypted, orpheus_api_key_encrypted,
+				       season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted
 				FROM cross_seed_settings
 				WHERE id = 1
-			`).Scan(&red, &ops)
+			`).Scan(&red, &ops, &tvdbKey, &tvdbPin)
 		// Only required when the caller is explicitly requesting "preserve" behavior.
 		// If we can't read the existing encrypted values, fail the update rather than silently clearing secrets.
 		if queryErr != nil && !errors.Is(queryErr, sql.ErrNoRows) {
-			if strings.TrimSpace(settings.RedactedAPIKey) == domain.RedactedStr || strings.TrimSpace(settings.OrpheusAPIKey) == domain.RedactedStr {
-				return nil, fmt.Errorf("load existing gazelle api keys: %w", queryErr)
+			if strings.TrimSpace(settings.RedactedAPIKey) == domain.RedactedStr || strings.TrimSpace(settings.OrpheusAPIKey) == domain.RedactedStr ||
+				strings.TrimSpace(settings.SeasonPackTVDBAPIKey) == domain.RedactedStr || strings.TrimSpace(settings.SeasonPackTVDBPIN) == domain.RedactedStr {
+				return nil, fmt.Errorf("load existing encrypted keys: %w", queryErr)
 			}
 		}
 		if red.Valid {
@@ -677,6 +745,12 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		}
 		if ops.Valid {
 			existingOrpheusEncrypted = ops.String
+		}
+		if tvdbKey.Valid {
+			existingTVDBAPIKeyEncrypted = tvdbKey.String
+		}
+		if tvdbPin.Valid {
+			existingTVDBPINEncrypted = tvdbPin.String
 		}
 	}
 
@@ -712,6 +786,38 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		orpheusAPIKeyEncrypted = enc
 	}
 
+	seasonPackTVDBAPIKeyEncrypted := ""
+	v = strings.TrimSpace(settings.SeasonPackTVDBAPIKey)
+	switch v {
+	case "":
+		// Clear
+	case domain.RedactedStr:
+		// Preserve existing value
+		seasonPackTVDBAPIKeyEncrypted = existingTVDBAPIKeyEncrypted
+	default:
+		enc, encErr := s.encrypt(v)
+		if encErr != nil {
+			return nil, fmt.Errorf("encrypt tvdb api key: %w", encErr)
+		}
+		seasonPackTVDBAPIKeyEncrypted = enc
+	}
+
+	seasonPackTVDBPINEncrypted := ""
+	v = strings.TrimSpace(settings.SeasonPackTVDBPIN)
+	switch v {
+	case "":
+		// Clear
+	case domain.RedactedStr:
+		// Preserve existing value
+		seasonPackTVDBPINEncrypted = existingTVDBPINEncrypted
+	default:
+		enc, encErr := s.encrypt(v)
+		if encErr != nil {
+			return nil, fmt.Errorf("encrypt tvdb pin: %w", encErr)
+		}
+		seasonPackTVDBPINEncrypted = enc
+	}
+
 	query := `
 		INSERT INTO cross_seed_settings (
 			id, enabled, run_interval_minutes, start_paused, category,
@@ -730,9 +836,11 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook,
 			skip_recheck, skip_piece_boundary_safety_check,
+			season_pack_enabled, season_pack_coverage_threshold, season_pack_tags,
+			season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted,
 			gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -770,6 +878,11 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_webhook = excluded.skip_auto_resume_webhook,
 			skip_recheck = excluded.skip_recheck,
 			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check,
+			season_pack_enabled = excluded.season_pack_enabled,
+			season_pack_coverage_threshold = excluded.season_pack_coverage_threshold,
+			season_pack_tags = excluded.season_pack_tags,
+			season_pack_tvdb_api_key_encrypted = excluded.season_pack_tvdb_api_key_encrypted,
+			season_pack_tvdb_pin_encrypted = excluded.season_pack_tvdb_pin_encrypted,
 			gazelle_enabled = excluded.gazelle_enabled,
 			redacted_api_key_encrypted = excluded.redacted_api_key_encrypted,
 			orpheus_api_key_encrypted = excluded.orpheus_api_key_encrypted
@@ -823,6 +936,11 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		BoolToSQLite(settings.SkipAutoResumeWebhook),
 		BoolToSQLite(settings.SkipRecheck),
 		BoolToSQLite(settings.SkipPieceBoundarySafetyCheck),
+		BoolToSQLite(settings.SeasonPackEnabled),
+		settings.SeasonPackCoverageThreshold,
+		seasonPackTags,
+		seasonPackTVDBAPIKeyEncrypted,
+		seasonPackTVDBPINEncrypted,
 		BoolToSQLite(settings.GazelleEnabled),
 		redactedAPIKeyEncrypted,
 		orpheusAPIKeyEncrypted,

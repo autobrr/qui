@@ -18,6 +18,10 @@ Configure matching behavior in the **Rules** tab on the Cross-Seed page.
 Disc layouts (`BDMV`/`VIDEO_TS`) are treated more strictly: they only auto-resume after a full recheck reaches 100%.
 :::
 
+## Season Pack Threshold
+
+The season-pack webhook uses a separate coverage threshold (default 75%) to decide whether enough local data exists to inject a pack. Season episode totals are sourced from Sonarr, TVDB, or TVMaze (in that order) when available; otherwise qui falls back to the playable files in the pack torrent. Incomplete packs are added paused, rechecked, then resumed automatically. This is configured in the **Season Packs** tab, not in Rules. Instances must have local filesystem access and hardlink or reflink mode enabled to qualify. See [Season Packs](season-packs) for details.
+
 ## Categories
 
 Choose one of three mutually exclusive category modes:

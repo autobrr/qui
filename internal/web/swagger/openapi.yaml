@@ -3942,6 +3942,115 @@ paths:
         '503':
           description: Completion settings store not configured
 
+  /api/cross-seed/season-pack/check:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Check whether a season pack can be assembled from existing episodes
+      description: |
+        Checks if enough local episode data exists to inject a season pack using hardlinks or reflinks.
+        `torrentData` (base64-encoded torrent file) is optional. When provided, coverage uses the larger of the playable episode count in the pack and the episode total from metadata providers (Sonarr, TVDB, TVMaze).
+        When omitted, episode coverage is computed using metadata providers only. If no metadata source is available, the check only verifies that matching episodes exist and skips the coverage threshold.
+        * `200 OK` - coverage meets threshold; ready to apply
+        * `404 Not Found` - not enough episodes or not eligible
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+        - ApiKeyQuery: []
+      parameters:
+        - name: apikey
+          in: query
+          required: false
+          schema:
+            type: string
+          description: API key (prefer X-API-Key header; query supported for autobrr webhook).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeasonPackCheckRequest'
+      responses:
+        '200':
+          description: Season pack is ready to be assembled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeasonPackCheckResponse'
+        '400':
+          description: Invalid request body
+        '404':
+          description: Not enough episodes or not eligible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeasonPackCheckResponse'
+        '500':
+          description: Internal error during check
+
+  /api/cross-seed/season-pack/apply:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Apply a season pack torrent using linked episode data
+      description: Links the matched local episodes, adds the season pack torrent to the best matching instance, and queues a recheck when episodes or extras are still missing.
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+        - ApiKeyQuery: []
+      parameters:
+        - name: apikey
+          in: query
+          required: false
+          schema:
+            type: string
+          description: API key (prefer X-API-Key header; query supported for autobrr webhook).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeasonPackApplyRequest'
+      responses:
+        '200':
+          description: Season pack apply result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeasonPackApplyResponse'
+        '400':
+          description: Invalid request body
+        '500':
+          description: Internal error during apply
+
+  /api/cross-seed/season-pack/runs:
+    get:
+      tags:
+        - Cross-Seed
+      summary: List recent season-pack processing activity
+      description: Returns recent season-pack check and apply runs ordered by most recent first.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
+          description: Maximum number of runs to return
+      responses:
+        '200':
+          description: List of season pack runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SeasonPackRun'
+        '500':
+          description: Failed to list season pack runs
+
   /api/cross-seed/webhook/check:
     post:
       tags:
@@ -6345,6 +6454,26 @@ components:
           type: string
           enum: [flat, by-tracker, by-instance]
           description: Directory organization preset for hardlink trees
+        seasonPackEnabled:
+          type: boolean
+          description: Enable season pack webhook flow
+        seasonPackCoverageThreshold:
+          type: number
+          format: double
+          exclusiveMinimum: 0
+          maximum: 1
+          description: Minimum local coverage ratio (0..1, default 0.75) before injecting a season pack. Uses episode totals from Sonarr, TVDB, or TVMaze when available, otherwise playable files in the pack.
+        seasonPackTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to season-pack injections
+        seasonPackTvdbApiKey:
+          type: string
+          description: TVDB API key for season pack metadata resolution. Redacted in API responses.
+        seasonPackTvdbPin:
+          type: string
+          description: TVDB subscriber PIN for season pack metadata resolution. Redacted in API responses.
 
     CrossSeedAutomationSettings:
       type: object
@@ -6442,6 +6571,26 @@ components:
           type: string
           enum: [flat, by-tracker, by-instance]
           description: Directory organization preset for hardlink trees
+        seasonPackEnabled:
+          type: boolean
+          description: Enable season pack webhook flow
+        seasonPackCoverageThreshold:
+          type: number
+          format: double
+          exclusiveMinimum: 0
+          maximum: 1
+          description: Minimum local coverage ratio (0..1, default 0.75) before injecting a season pack. Uses episode totals from Sonarr, TVDB, or TVMaze when available, otherwise playable files in the pack.
+        seasonPackTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to season-pack injections
+        seasonPackTvdbApiKey:
+          type: string
+          description: TVDB API key for season pack metadata resolution. Redacted in API responses.
+        seasonPackTvdbPin:
+          type: string
+          description: TVDB subscriber PIN for season pack metadata resolution. Redacted in API responses.
         createdAt:
           type: string
           format: date-time
@@ -6463,6 +6612,142 @@ components:
           nullable: true
         running:
           type: boolean
+
+    SeasonPackCheckRequest:
+      type: object
+      required:
+        - torrentName
+      properties:
+        torrentName:
+          type: string
+          description: Season pack release name
+        torrentData:
+          type: string
+          description: Optional base64-encoded torrent file. When omitted, coverage uses metadata providers (TVDB/TVMaze) instead of the torrent file contents.
+        instanceIds:
+          type: array
+          items:
+            type: integer
+          description: Optional list of instance IDs to check (empty means all)
+        indexer:
+          type: string
+          description: Optional indexer identifier
+
+    SeasonPackCheckResponse:
+      type: object
+      properties:
+        ready:
+          type: boolean
+          description: Whether enough local data exists to inject the season pack
+        reason:
+          type: string
+          description: Machine-readable reason code
+        message:
+          type: string
+          description: Human-readable explanation
+        thresholdSkipped:
+          type: boolean
+          description: "True when coverage threshold was not enforced because no episode total was available. The check only verified that matching episodes exist."
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeasonPackCheckMatch'
+
+    SeasonPackCheckMatch:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+        matchedEpisodes:
+          type: integer
+        totalEpisodes:
+          type: integer
+          description: "Coverage denominator: episode total from Sonarr, TVDB, or TVMaze when available, otherwise playable files in the pack"
+        coverage:
+          type: number
+          format: double
+
+    SeasonPackApplyRequest:
+      type: object
+      required:
+        - torrentName
+        - torrentData
+      properties:
+        torrentName:
+          type: string
+          description: Season pack release name
+        torrentData:
+          type: string
+          description: Base64-encoded torrent file
+        instanceIds:
+          type: array
+          items:
+            type: integer
+          description: Optional list of instance IDs to target (empty means all)
+        indexer:
+          type: string
+          description: Optional indexer identifier
+
+    SeasonPackApplyResponse:
+      type: object
+      properties:
+        applied:
+          type: boolean
+          description: Whether the season pack was added to qBittorrent
+        reason:
+          type: string
+          description: Machine-readable reason code
+        message:
+          type: string
+          description: Human-readable explanation
+        instanceId:
+          type: integer
+          description: Instance the torrent was added to
+        matchedEpisodes:
+          type: integer
+        totalEpisodes:
+          type: integer
+          description: Coverage denominator used for the winning match
+        coverage:
+          type: number
+          format: double
+        linkMode:
+          type: string
+          description: Link strategy used (hardlink, reflink, etc.)
+
+    SeasonPackRun:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        torrentName:
+          type: string
+        phase:
+          type: string
+          description: Processing phase (check or apply)
+        status:
+          type: string
+          description: Outcome status
+        reason:
+          type: string
+        message:
+          type: string
+        instanceId:
+          type: integer
+          nullable: true
+        matchedEpisodes:
+          type: integer
+        totalEpisodes:
+          type: integer
+        coverage:
+          type: number
+          format: double
+        linkMode:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
 
     CrossSeedSearchSettingsPatch:
       type: object

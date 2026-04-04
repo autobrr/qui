@@ -44,6 +44,13 @@ type SonarrSeries struct {
 	IMDbID   string `json:"imdbId"`
 }
 
+// SonarrEpisodeResource represents the subset of Sonarr episode fields needed for season counts.
+type SonarrEpisodeResource struct {
+	ID            int `json:"id"`
+	SeasonNumber  int `json:"seasonNumber"`
+	EpisodeNumber int `json:"episodeNumber"`
+}
+
 // RadarrParseResponse represents the response from Radarr's /api/v3/parse endpoint
 type RadarrParseResponse struct {
 	Title           string                 `json:"title"`
