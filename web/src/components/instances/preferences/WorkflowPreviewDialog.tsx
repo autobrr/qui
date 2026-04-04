@@ -12,7 +12,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { PathCell } from "@/components/ui/path-cell"
@@ -59,7 +59,7 @@ function getLabelFromValues(
   values: Array<{ value: string; label: string }>,
   value: string,
   tr: TranslateFn,
-  labelKeys?: Record<string, string>,
+  labelKeys?: Record<string, string>
 ): string {
   const labelKey = labelKeys?.[value]
   if (labelKey) return tr(labelKey)
@@ -199,9 +199,7 @@ const DYNAMIC_COLUMNS: ColumnDef[] = [
     triggerFields: ["COMPLETION_ON", "COMPLETION_ON_AGE"],
     render: (torrent, tr) => (
       <span className="font-mono text-muted-foreground whitespace-nowrap">
-        {torrent.completionOn > 0
-          ? formatDurationCompact(Math.floor(Date.now() / 1000) - torrent.completionOn)
-          : tr("workflowDialog.activityRun.values.none")}
+        {torrent.completionOn > 0? formatDurationCompact(Math.floor(Date.now() / 1000) - torrent.completionOn): tr("workflowDialog.activityRun.values.none")}
       </span>
     ),
   },
@@ -212,9 +210,7 @@ const DYNAMIC_COLUMNS: ColumnDef[] = [
     triggerFields: ["LAST_ACTIVITY", "LAST_ACTIVITY_AGE"],
     render: (torrent, tr) => (
       <span className="font-mono text-muted-foreground whitespace-nowrap">
-        {torrent.lastActivity > 0
-          ? formatDurationCompact(Math.floor(Date.now() / 1000) - torrent.lastActivity)
-          : tr("workflowDialog.activityRun.values.none")}
+        {torrent.lastActivity > 0? formatDurationCompact(Math.floor(Date.now() / 1000) - torrent.lastActivity): tr("workflowDialog.activityRun.values.none")}
       </span>
     ),
   },
@@ -346,9 +342,7 @@ export function WorkflowPreviewDialog({
                     </TabsList>
                   </Tabs>
                   <p className="text-xs text-muted-foreground">
-                    {previewView === "needed"
-                      ? tr("workflowDialog.preview.tabDescriptions.needed")
-                      : tr("workflowDialog.preview.tabDescriptions.eligible")}
+                    {previewView === "needed"? tr("workflowDialog.preview.tabDescriptions.needed"): tr("workflowDialog.preview.tabDescriptions.eligible")}
                   </p>
                 </div>
               )}
@@ -410,13 +404,9 @@ export function WorkflowPreviewDialog({
                             </TruncatedText>
                             {(t.isCrossSeed || t.isHardlinkCopy) && (
                               <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded ${
-                                t.isHardlinkCopy
-                                  ? "bg-violet-500/10 text-violet-600"
-                                  : "bg-blue-500/10 text-blue-600"
+                                t.isHardlinkCopy? "bg-violet-500/10 text-violet-600": "bg-blue-500/10 text-blue-600"
                               }`}>
-                                {t.isHardlinkCopy
-                                  ? tr("workflowDialog.preview.badges.crossSeedHardlinked")
-                                  : tr("workflowDialog.preview.badges.crossSeedSameFiles")}
+                                {t.isHardlinkCopy? tr("workflowDialog.preview.badges.crossSeedHardlinked"): tr("workflowDialog.preview.badges.crossSeedSameFiles")}
                               </span>
                             )}
                           </div>
@@ -435,7 +425,7 @@ export function WorkflowPreviewDialog({
                         </td>
                         {showScoreColumn && (
                           <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
-                            {t.score ?? "—"}
+                            {t.score != null ? t.score.toFixed(2) : "-"}
                           </td>
                         )}
                         {visibleDynamicColumns.map(col => (
@@ -501,11 +491,7 @@ export function WorkflowPreviewDialog({
               onClick={onConfirm}
               disabled={isConfirming}
               className={
-                destructive
-                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  : warning
-                    ? "bg-amber-600 text-white hover:bg-amber-700"
-                    : ""
+                destructive? "bg-destructive text-destructive-foreground hover:bg-destructive/90": warning? "bg-amber-600 text-white hover:bg-amber-700": ""
               }
             >
               {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

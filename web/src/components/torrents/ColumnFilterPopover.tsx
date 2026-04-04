@@ -22,12 +22,7 @@ import { type ColumnFilter, getDefaultOperation, getOperations } from "@/lib/col
 import { cn } from "@/lib/utils"
 import { CaseSensitive, Check, Filter, X } from "lucide-react"
 import { type KeyboardEvent, useEffect, useRef, useState } from "react"
-import { useTranslation } from "react-i18next"
-
-function useCommonTr() {
-  const { t } = useTranslation("common")
-  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
-}
+import { useCommonTr } from "@/hooks/useCommonTr"
 
 interface ColumnFilterPopoverProps {
   columnId: string

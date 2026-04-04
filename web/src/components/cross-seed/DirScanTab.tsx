@@ -101,15 +101,11 @@ import type {
   Instance
 } from "@/types"
 import { useQueries } from "@tanstack/react-query"
-import { Trans, useTranslation } from "react-i18next"
+import { Trans } from "react-i18next"
+import { useCommonTr } from "@/hooks/useCommonTr"
 
 interface DirScanTabProps {
   instances: Instance[]
-}
-
-function useCommonTr() {
-  const { t } = useTranslation("common")
-  return useCallback((key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)), [t])
 }
 
 // Helper to format relative time from a string or Date

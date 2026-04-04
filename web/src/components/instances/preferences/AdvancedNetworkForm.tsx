@@ -16,6 +16,8 @@ import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
+import { PreferencesFormShell } from "./PreferencesFormShell"
+
 interface AdvancedNetworkFormProps {
   instanceId: number
   onSuccess?: () => void
@@ -216,12 +218,26 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
   }
 
   return (
-    <form
+    <PreferencesFormShell
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()
       }}
-      className="space-y-6"
+      footer={(
+        <form.Subscribe
+          selector={(state) => [state.canSubmit, state.isSubmitting]}
+        >
+          {([canSubmit, isSubmitting]) => (
+            <Button
+              type="submit"
+              disabled={!canSubmit || isSubmitting || isUpdating}
+              className="min-w-32"
+            >
+              {isSubmitting || isUpdating ? tr("advancedNetworkForm.actions.saving") : tr("advancedNetworkForm.actions.saveChanges")}
+            </Button>
+          )}
+        </form.Subscribe>
+      )}
     >
       {fieldVisibility.isUnknown && (
         <Alert className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-400/70 dark:bg-amber-950/50">
@@ -695,21 +711,6 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
         </div>
       </div>
 
-      <div className="flex justify-end pt-4">
-        <form.Subscribe
-          selector={(state) => [state.canSubmit, state.isSubmitting]}
-        >
-          {([canSubmit, isSubmitting]) => (
-            <Button
-              type="submit"
-              disabled={!canSubmit || isSubmitting || isUpdating}
-              className="min-w-32"
-            >
-              {isSubmitting || isUpdating ? tr("advancedNetworkForm.actions.saving") : tr("advancedNetworkForm.actions.saveChanges")}
-            </Button>
-          )}
-        </form.Subscribe>
-      </div>
-    </form>
+    </PreferencesFormShell>
   )
 }

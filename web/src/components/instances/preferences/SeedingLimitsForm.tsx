@@ -13,6 +13,8 @@ import { toast } from "sonner"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 import { useTranslation } from "react-i18next"
 
+import { PreferencesFormShell } from "./PreferencesFormShell"
+
 
 function SwitchSetting({
   label,
@@ -95,12 +97,26 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
   }
 
   return (
-    <form
+    <PreferencesFormShell
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()
       }}
-      className="space-y-6"
+      footer={(
+        <form.Subscribe
+          selector={(state) => [state.canSubmit, state.isSubmitting]}
+        >
+          {([canSubmit, isSubmitting]) => (
+            <Button
+              type="submit"
+              disabled={!canSubmit || isSubmitting || isUpdating}
+              className="min-w-32"
+            >
+              {isSubmitting || isUpdating ? tr("seedingLimitsForm.actions.saving") : tr("seedingLimitsForm.actions.saveChanges")}
+            </Button>
+          )}
+        </form.Subscribe>
+      )}
     >
       <div className="space-y-6">
         <form.Field name="max_ratio_enabled">
@@ -165,21 +181,6 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
         </form.Field>
       </div>
 
-      <div className="flex justify-end pt-4">
-        <form.Subscribe
-          selector={(state) => [state.canSubmit, state.isSubmitting]}
-        >
-          {([canSubmit, isSubmitting]) => (
-            <Button
-              type="submit"
-              disabled={!canSubmit || isSubmitting || isUpdating}
-              className="min-w-32"
-            >
-              {isSubmitting || isUpdating ? tr("seedingLimitsForm.actions.saving") : tr("seedingLimitsForm.actions.saveChanges")}
-            </Button>
-          )}
-        </form.Subscribe>
-      </div>
-    </form>
+    </PreferencesFormShell>
   )
 }

@@ -9,9 +9,9 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { useSearchHistory } from "@/hooks/useSearchHistory"
 import { formatRelativeTime, formatSearchDuration, formatTimeHMS } from "@/lib/dateTimeUtils"
 import type { SearchHistoryEntry } from "@/types"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { AlertCircle, CheckCircle2, ChevronDown, Clock, History, Loader2, Plus, XCircle } from "lucide-react"
-import { type ReactNode, useCallback, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { type ReactNode, useState } from "react"
 
 // Torznab standard category mappings (synced with pkg/gojackett/constants.go)
 const CATEGORY_KEY_MAP: Record<string, string> = {
@@ -88,11 +88,6 @@ const PRIORITY_LABEL_KEYS: Record<string, string> = {
   rss: "searchHistoryPanel.priority.rss",
   completion: "searchHistoryPanel.priority.completion",
   background: "searchHistoryPanel.priority.background",
-}
-
-function useCommonTr(): TranslateFn {
-  const { t } = useTranslation("common")
-  return useCallback((key, options) => String(t(key as never, options as never)), [t])
 }
 
 interface ParamBadge {

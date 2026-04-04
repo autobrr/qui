@@ -20,7 +20,7 @@ import { getTorrentTaskPollInterval } from "@/lib/torrent-task-polling"
 import type { TorrentCreationStatus, TorrentCreationTask } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckCircle2, Clock, Download, Loader2, Trash2, XCircle } from "lucide-react"
-import { useTranslation } from "react-i18next"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { toast } from "sonner"
 
 interface TorrentCreationTasksProps {
@@ -39,11 +39,6 @@ const STATUS_ICONS: Record<TorrentCreationStatus, React.ReactNode> = {
   Running: <Loader2 className="h-4 w-4 animate-spin" />,
   Finished: <CheckCircle2 className="h-4 w-4" />,
   Failed: <XCircle className="h-4 w-4" />,
-}
-
-function useCommonTr() {
-  const { t } = useTranslation("common")
-  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
 }
 
 export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) {

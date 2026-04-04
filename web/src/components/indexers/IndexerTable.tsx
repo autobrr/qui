@@ -29,13 +29,8 @@ import {
 } from "@/components/ui/tooltip"
 import type { TorznabIndexer } from "@/types"
 import { Check, Edit2, Filter, RefreshCw, TestTube, Trash2, X } from "lucide-react"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
-
-function useCommonTr() {
-  const { t } = useTranslation("common")
-  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
-}
 
 type SortField = "name" | "backend" | "priority" | "status"
 type SortDirection = "asc" | "desc"

@@ -6823,7 +6823,7 @@
       "programWithId": "プログラム {{id}}",
       "searchPlaceholder": "名前、ハッシュ、ルールで絞り込み...",
       "summary": {
-        "countWithVerb": "{{count}}{{noun}}{{verb}}",
+        "countWithVerb": "{{count}}{{verb}}",
         "countWithVerb_one": "{{count}} トレント{{verb}}",
         "countWithVerb_other": "{{count}} トレント{{verb}}",
         "deleteDryRun": "{{count}}{{noun}}を削除予定（{{reason}}）",

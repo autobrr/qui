@@ -14,6 +14,8 @@ import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
+import { PreferencesFormShell } from "./PreferencesFormShell"
+
 interface NetworkDiscoveryFormProps {
   instanceId: number
   onSuccess?: () => void
@@ -116,12 +118,26 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
   }
 
   return (
-    <form
+    <PreferencesFormShell
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()
       }}
-      className="space-y-6"
+      footer={(
+        <form.Subscribe
+          selector={(state) => [state.canSubmit, state.isSubmitting]}
+        >
+          {([canSubmit, isSubmitting]) => (
+            <Button
+              type="submit"
+              disabled={!canSubmit || isSubmitting || isUpdating}
+              className="min-w-32"
+            >
+              {isSubmitting || isUpdating? tr("networkDiscoveryForm.actions.saving"): tr("networkDiscoveryForm.actions.saveChanges")}
+            </Button>
+          )}
+        </form.Subscribe>
+      )}
     >
       {/* Peer Discovery Section */}
       <div className="space-y-4">
@@ -254,23 +270,6 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
         </div>
       </div>
 
-      <div className="flex justify-end pt-4">
-        <form.Subscribe
-          selector={(state) => [state.canSubmit, state.isSubmitting]}
-        >
-          {([canSubmit, isSubmitting]) => (
-            <Button
-              type="submit"
-              disabled={!canSubmit || isSubmitting || isUpdating}
-              className="min-w-32"
-            >
-              {isSubmitting || isUpdating
-                ? tr("networkDiscoveryForm.actions.saving")
-                : tr("networkDiscoveryForm.actions.saveChanges")}
-            </Button>
-          )}
-        </form.Subscribe>
-      </div>
-    </form>
+    </PreferencesFormShell>
   )
 }

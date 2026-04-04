@@ -24,6 +24,8 @@ import React from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
+import { PreferencesFormShell } from "./PreferencesFormShell"
+
 const LEGACY_AUTORUN_PLACEHOLDERS = ["%N", "%L", "%G", "%F", "%R", "%D", "%C", "%Z", "%T", "%I"] as const
 const MODERN_AUTORUN_PLACEHOLDERS = ["%N", "%L", "%G", "%F", "%R", "%D", "%C", "%Z", "%T", "%I", "%J", "%K"] as const
 
@@ -100,9 +102,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   const webAPIVersion = capabilities?.webAPIVersion?.trim() ?? ""
   const supportsAutorunOnTorrentAdded = isWebAPIVersionAtLeast(webAPIVersion, AUTORUN_ON_ADDED_MIN_WEBAPI_VERSION)
   const autorunPlaceholders = supportsAutorunOnTorrentAdded ? MODERN_AUTORUN_PLACEHOLDERS : LEGACY_AUTORUN_PLACEHOLDERS
-  const autorunProgramPlaceholder = supportsAutorunOnTorrentAdded
-    ? tr("fileManagementForm.autorun.programPlaceholderModern", { defaultValue: MODERN_AUTORUN_PROGRAM_PLACEHOLDER })
-    : tr("fileManagementForm.autorun.programPlaceholderLegacy", { defaultValue: LEGACY_AUTORUN_PROGRAM_PLACEHOLDER })
+  const autorunProgramPlaceholder = supportsAutorunOnTorrentAdded? tr("fileManagementForm.autorun.programPlaceholderModern", { defaultValue: MODERN_AUTORUN_PROGRAM_PLACEHOLDER }): tr("fileManagementForm.autorun.programPlaceholderLegacy", { defaultValue: LEGACY_AUTORUN_PROGRAM_PLACEHOLDER })
   const autorunPlaceholderLabels = {
     "%N": tr("fileManagementForm.autorun.placeholderLabels.torrentName"),
     "%L": tr("fileManagementForm.autorun.placeholderLabels.category"),
@@ -113,9 +113,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
     "%C": tr("fileManagementForm.autorun.placeholderLabels.fileCount"),
     "%Z": tr("fileManagementForm.autorun.placeholderLabels.torrentSize"),
     "%T": tr("fileManagementForm.autorun.placeholderLabels.currentTracker"),
-    "%I": supportsAutorunOnTorrentAdded
-      ? tr("fileManagementForm.autorun.placeholderLabels.infoHashV1OrDash")
-      : tr("fileManagementForm.autorun.placeholderLabels.infoHashV1"),
+    "%I": supportsAutorunOnTorrentAdded? tr("fileManagementForm.autorun.placeholderLabels.infoHashV1OrDash"): tr("fileManagementForm.autorun.placeholderLabels.infoHashV1"),
     "%J": tr("fileManagementForm.autorun.placeholderLabels.infoHashV2OrDash"),
     "%K": tr("fileManagementForm.autorun.placeholderLabels.torrentId"),
   } as const
@@ -217,12 +215,26 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   }
 
   return (
-    <form
+    <PreferencesFormShell
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()
       }}
-      className="space-y-6"
+      footer={(
+        <form.Subscribe
+          selector={(state) => [state.canSubmit, state.isSubmitting]}
+        >
+          {([canSubmit, isSubmitting]) => (
+            <Button
+              type="submit"
+              disabled={!canSubmit || isSubmitting || isUpdating}
+              className="min-w-32"
+            >
+              {isSubmitting || isUpdating ? tr("fileManagementForm.actions.saving") : tr("fileManagementForm.actions.saveChanges")}
+            </Button>
+          )}
+        </form.Subscribe>
+      )}
     >
       <div className="space-y-6">
         <form.Field name="auto_tmm_enabled">
@@ -471,21 +483,6 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
         </Card>
       </div>
 
-      <div className="flex justify-end pt-4">
-        <form.Subscribe
-          selector={(state) => [state.canSubmit, state.isSubmitting]}
-        >
-          {([canSubmit, isSubmitting]) => (
-            <Button
-              type="submit"
-              disabled={!canSubmit || isSubmitting || isUpdating}
-              className="min-w-32"
-            >
-              {isSubmitting || isUpdating ? tr("fileManagementForm.actions.saving") : tr("fileManagementForm.actions.saveChanges")}
-            </Button>
-          )}
-        </form.Subscribe>
-      </div>
-    </form>
+    </PreferencesFormShell>
   )
 }

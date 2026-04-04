@@ -93,16 +93,8 @@ import { getStateLabel } from "@/lib/torrent-state-utils"
 import { cn, formatBytes, getRatioColor } from "@/lib/utils"
 import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useQuery } from "@tanstack/react-query"
-import { useTranslation } from "react-i18next"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { getDefaultSortOrder, TORRENT_SORT_OPTIONS, type TorrentSortOptionValue } from "./torrentSortOptions"
-
-function useCommonTr() {
-  const { t } = useTranslation("common")
-  return useCallback(
-    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
-    [t]
-  )
-}
 
 // Mobile-friendly Share Limits Dialog
 function MobileShareLimitsDialog({
@@ -1272,14 +1264,10 @@ export function TorrentCardsMobile({
     responseSupport: trackerHealthSupported,
   })
   const supportsTorrentCreation = isAllInstancesView ? false : (capabilities?.supportsTorrentCreation ?? true)
-  const supportsSubcategories = isAllInstancesView
-    ? Boolean(subcategoriesFromData)
-    : (capabilities?.supportsSubcategories ?? false)
+  const supportsSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (capabilities?.supportsSubcategories ?? false)
   // subcategoriesFromData reflects backend/server state; allowSubcategories
   // additionally respects user preferences for UI surfaces like dialogs.
-  const allowSubcategories = isAllInstancesView
-    ? Boolean(subcategoriesFromData)
-    : (supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false))
+  const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false))
 
   const getSelectionIdentity = useCallback((torrent: Torrent): string => {
     if (!isAllInstancesView) {
@@ -1677,9 +1665,7 @@ export function TorrentCardsMobile({
 
   const triggerSelectionAction = useCallback((action: TorrentAction, extra?: Parameters<typeof handleAction>[2]) => {
     const hashes = isAllSelected ? [] : selectedRequestHashes
-    const visibleHashes = isAllSelected
-      ? torrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t))).map(t => t.hash)
-      : selectedRequestHashes
+    const visibleHashes = isAllSelected? torrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t))).map(t => t.hash): selectedRequestHashes
     const clientCount = isAllSelected ? effectiveSelectionCount : selectedActionTargets.length || visibleHashes.length || 1
     const actionTargets = isAllSelected ? undefined : selectedActionTargets
     const excludedTargets = isAllSelected ? buildTorrentActionTargets(excludedTorrents, instanceId) : undefined
@@ -1703,9 +1689,7 @@ export function TorrentCardsMobile({
   }, [triggerSelectionAction])
 
   const handleDeleteWrapper = useCallback(async () => {
-    const deleteActionTargets = torrentToDelete
-      ? buildTorrentActionTargets([torrentToDelete], instanceId)
-      : (isAllSelected ? undefined : selectedActionTargets)
+    const deleteActionTargets = torrentToDelete? buildTorrentActionTargets([torrentToDelete], instanceId): (isAllSelected ? undefined : selectedActionTargets)
 
     const crossSeedTagHashesToBlock = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
 
@@ -1767,9 +1751,7 @@ export function TorrentCardsMobile({
         clientHashes: visibleHashesToDelete,
         totalSelected: totalToDelete,
         actionTargets: deleteActionTargets,
-        excludeTargets: !torrentToDelete && isAllSelected
-          ? buildTorrentActionTargets(excludedTorrents, instanceId)
-          : undefined,
+        excludeTargets: !torrentToDelete && isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
       }
     )
     setTorrentToDelete(null)
@@ -1810,9 +1792,7 @@ export function TorrentCardsMobile({
         clientHashes: visibleHashes,
         totalSelected,
         actionTargets: isAllSelected ? undefined : selectedActionTargets,
-        excludeTargets: isAllSelected
-          ? buildTorrentActionTargets(excludedTorrents, instanceId)
-          : undefined,
+        excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
       }
     )
     setActionTorrents([])
@@ -1833,9 +1813,7 @@ export function TorrentCardsMobile({
         clientHashes: visibleHashes,
         totalSelected,
         actionTargets: isAllSelected ? undefined : selectedActionTargets,
-        excludeTargets: isAllSelected
-          ? buildTorrentActionTargets(excludedTorrents, instanceId)
-          : undefined,
+        excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
       }
     )
     setActionTorrents([])
@@ -1856,9 +1834,7 @@ export function TorrentCardsMobile({
         clientHashes: visibleHashes,
         totalSelected,
         actionTargets: isAllSelected ? undefined : selectedActionTargets,
-        excludeTargets: isAllSelected
-          ? buildTorrentActionTargets(excludedTorrents, instanceId)
-          : undefined,
+        excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
       }
     )
     setActionTorrents([])
@@ -1877,9 +1853,7 @@ export function TorrentCardsMobile({
         clientHashes: visibleHashes,
         totalSelected,
         actionTargets: isAllSelected ? undefined : selectedActionTargets,
-        excludeTargets: isAllSelected
-          ? buildTorrentActionTargets(excludedTorrents, instanceId)
-          : undefined,
+        excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
       }
     )
   }, [isAllSelected, selectedRequestHashes, handleTmmConfirm, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount, instanceId, getSelectionIdentity, excludeHashesForRequest, excludedTorrents, selectedActionTargets])
@@ -1972,14 +1946,10 @@ export function TorrentCardsMobile({
               onClick={toggleSortOrder}
               className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground md:hidden"
               aria-label={tr("torrentCardsMobile.sort.directionAria", {
-                direction: sortOrder === "desc"
-                  ? tr("torrentCardsMobile.sort.directionDescending")
-                  : tr("torrentCardsMobile.sort.directionAscending"),
+                direction: sortOrder === "desc"? tr("torrentCardsMobile.sort.directionDescending"): tr("torrentCardsMobile.sort.directionAscending"),
               })}
               title={tr("torrentCardsMobile.sort.directionAria", {
-                direction: sortOrder === "desc"
-                  ? tr("torrentCardsMobile.sort.directionDescending")
-                  : tr("torrentCardsMobile.sort.directionAscending"),
+                direction: sortOrder === "desc"? tr("torrentCardsMobile.sort.directionDescending"): tr("torrentCardsMobile.sort.directionAscending"),
               })}
             >
               {sortOrder === "desc" ? (
@@ -1994,9 +1964,7 @@ export function TorrentCardsMobile({
             >
               <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">
-                {speedUnit === "bytes"
-                  ? tr("torrentCardsMobile.units.mibPerSecond")
-                  : tr("torrentCardsMobile.units.mbps")}
+                {speedUnit === "bytes"? tr("torrentCardsMobile.units.mibPerSecond"): tr("torrentCardsMobile.units.mbps")}
               </span>
             </button>
           </div>
@@ -2040,9 +2008,7 @@ export function TorrentCardsMobile({
                 <X className="h-4 w-4" />
               </button>
               <span className="text-sm font-medium flex items-center gap-2">
-                {isAllSelected
-                  ? tr("torrentCardsMobile.selection.allSelected", { count: effectiveSelectionCount })
-                  : tr("torrentCardsMobile.selection.selectedCount", { count: effectiveSelectionCount })}
+                {isAllSelected? tr("torrentCardsMobile.selection.allSelected", { count: effectiveSelectionCount }): tr("torrentCardsMobile.selection.selectedCount", { count: effectiveSelectionCount })}
                 {selectedTotalSize > 0 && (
                   <span className="text-xs text-primary-foreground/80">
                     • {selectedFormattedSize}
@@ -2054,9 +2020,7 @@ export function TorrentCardsMobile({
               onClick={handleSelectAll}
               className="text-sm font-medium"
             >
-              {effectiveSelectionCount === totalCount
-                ? tr("torrentCardsMobile.selection.deselectAll")
-                : tr("torrentCardsMobile.selection.selectAll")}
+              {effectiveSelectionCount === totalCount? tr("torrentCardsMobile.selection.deselectAll"): tr("torrentCardsMobile.selection.selectAll")}
             </button>
           </div>
         )}
@@ -2122,9 +2086,7 @@ export function TorrentCardsMobile({
               disabled={isLoadingMoreRows}
               className="text-muted-foreground"
             >
-              {isLoadingMoreRows
-                ? tr("torrentCardsMobile.stats.loading")
-                : tr("torrentCardsMobile.stats.loadMore")}
+              {isLoadingMoreRows? tr("torrentCardsMobile.stats.loading"): tr("torrentCardsMobile.stats.loadMore")}
             </Button>
           </div>
         )}
@@ -2202,9 +2164,7 @@ export function TorrentCardsMobile({
         <SheetContent side="bottom" className="h-auto pb-8">
           <SheetHeader>
             <SheetTitle>
-              {isAllSelected
-                ? tr("torrentCardsMobile.actionsSheet.titleAll", { count: effectiveSelectionCount })
-                : tr("torrentCardsMobile.actionsSheet.title", { count: effectiveSelectionCount })}
+              {isAllSelected? tr("torrentCardsMobile.actionsSheet.titleAll", { count: effectiveSelectionCount }): tr("torrentCardsMobile.actionsSheet.title", { count: effectiveSelectionCount })}
             </SheetTitle>
           </SheetHeader>
           <div className="grid gap-2 py-4 px-4">
@@ -2234,9 +2194,7 @@ export function TorrentCardsMobile({
                   className="justify-start"
                 >
                   <Blocks className="mr-2 h-4 w-4" />
-                  {allSeqDlEnabled
-                    ? tr("torrentCardsMobile.actionsSheet.disableSequential")
-                    : tr("torrentCardsMobile.actionsSheet.enableSequential")}
+                  {allSeqDlEnabled? tr("torrentCardsMobile.actionsSheet.disableSequential"): tr("torrentCardsMobile.actionsSheet.enableSequential")}
                 </Button>
               )
             })()}
@@ -2462,9 +2420,7 @@ export function TorrentCardsMobile({
           filters: isAllSelected ? effectiveFilters : undefined,
           search: isAllSelected ? effectiveSearch : undefined,
           excludeHashes: isAllSelected ? excludeHashesForRequest : undefined,
-          excludeTargets: isAllSelected
-            ? buildTorrentActionTargets(excludedTorrents, instanceId)
-            : undefined,
+          excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
         }}
         onConfirm={handleTagsWrapper}
         isPending={isPending}
@@ -2504,9 +2460,7 @@ export function TorrentCardsMobile({
               clientHashes: visibleHashes,
               totalSelected,
               actionTargets: isAllSelected ? undefined : selectedActionTargets,
-              excludeTargets: isAllSelected
-                ? buildTorrentActionTargets(excludedTorrents, instanceId)
-                : undefined,
+              excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
             }
           )
           setShowShareLimitDialog(false)
@@ -2535,9 +2489,7 @@ export function TorrentCardsMobile({
               clientHashes: visibleHashes,
               totalSelected,
               actionTargets: isAllSelected ? undefined : selectedActionTargets,
-              excludeTargets: isAllSelected
-                ? buildTorrentActionTargets(excludedTorrents, instanceId)
-                : undefined,
+              excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
             }
           )
           setShowSpeedLimitDialog(false)

@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,19 +20,12 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Switch } from "@/components/ui/switch"
 import type { JackettIndexer, TorznabIndexer, TorznabIndexerFormData, TorznabIndexerUpdate } from "@/types"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { api } from "@/lib/api"
 
 interface AutodiscoveryDialogProps {
   open: boolean
   onClose: () => void
-}
-
-function useCommonTr() {
-  const { t } = useTranslation("common")
-  return useCallback(
-    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
-    [t]
-  )
 }
 
 export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps) {
@@ -82,7 +74,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
           normalizedBaseUrl,
           apiKey,
           showBasicAuth ? trimmedBasicUser : undefined,
-          showBasicAuth ? trimmedBasicPass : undefined,
+          showBasicAuth ? trimmedBasicPass : undefined
         ),
         api.listTorznabIndexers(),
       ])
@@ -282,9 +274,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
         <DialogHeader className="flex-shrink-0">
           <DialogTitle>{tr("autodiscoveryDialog.title")}</DialogTitle>
           <DialogDescription>
-            {step === "input"
-              ? tr("autodiscoveryDialog.description.input")
-              : tr("autodiscoveryDialog.description.select")}
+            {step === "input"? tr("autodiscoveryDialog.description.input"): tr("autodiscoveryDialog.description.select")}
           </DialogDescription>
         </DialogHeader>
 
@@ -477,11 +467,9 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                 onClick={handleImport}
                 disabled={loading || selectedIndexers.size === 0}
               >
-                {loading
-                  ? tr("autodiscoveryDialog.actions.importing")
-                  : tr("autodiscoveryDialog.actions.import", {
-                    count: selectedIndexers.size,
-                  })}
+                {loading? tr("autodiscoveryDialog.actions.importing"): tr("autodiscoveryDialog.actions.import", {
+                  count: selectedIndexers.size,
+                })}
               </Button>
             </DialogFooter>
           </div>

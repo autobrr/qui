@@ -137,31 +137,31 @@ export function InstancePreferencesDialog({
 
   const SpeedLimitsForm = useMemo(
     () => lazy(() => import("./SpeedLimitsForm").then(m => ({ default: m.SpeedLimitsForm }))),
-    [lazyRetryKey],
+    [lazyRetryKey]
   )
   const QueueManagementForm = useMemo(
     () => lazy(() => import("./QueueManagementForm").then(m => ({ default: m.QueueManagementForm }))),
-    [lazyRetryKey],
+    [lazyRetryKey]
   )
   const FileManagementForm = useMemo(
     () => lazy(() => import("./FileManagementForm").then(m => ({ default: m.FileManagementForm }))),
-    [lazyRetryKey],
+    [lazyRetryKey]
   )
   const SeedingLimitsForm = useMemo(
     () => lazy(() => import("./SeedingLimitsForm").then(m => ({ default: m.SeedingLimitsForm }))),
-    [lazyRetryKey],
+    [lazyRetryKey]
   )
   const ConnectionSettingsForm = useMemo(
     () => lazy(() => import("./ConnectionSettingsForm").then(m => ({ default: m.ConnectionSettingsForm }))),
-    [lazyRetryKey],
+    [lazyRetryKey]
   )
   const NetworkDiscoveryForm = useMemo(
     () => lazy(() => import("./NetworkDiscoveryForm").then(m => ({ default: m.NetworkDiscoveryForm }))),
-    [lazyRetryKey],
+    [lazyRetryKey]
   )
   const AdvancedNetworkForm = useMemo(
     () => lazy(() => import("./AdvancedNetworkForm").then(m => ({ default: m.AdvancedNetworkForm }))),
-    [lazyRetryKey],
+    [lazyRetryKey]
   )
 
   const handleSuccess = () => {
@@ -180,9 +180,7 @@ export function InstancePreferencesDialog({
     setInstanceStatus({ id: currentInstance.id, isActive: nextState }, {
       onSuccess: () => {
         toast.success(nextState ? tr("instancePreferencesDialog.toasts.instanceEnabled") : tr("instancePreferencesDialog.toasts.instanceDisabled"), {
-          description: nextState
-            ? tr("instancePreferencesDialog.toasts.instanceEnabledDescription")
-            : tr("instancePreferencesDialog.toasts.instanceDisabledDescription"),
+          description: nextState? tr("instancePreferencesDialog.toasts.instanceEnabledDescription"): tr("instancePreferencesDialog.toasts.instanceDisabledDescription"),
         })
       },
       onError: (error) => {
@@ -217,8 +215,8 @@ export function InstancePreferencesDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-y-auto top-[5%] left-[50%] translate-x-[-50%] translate-y-0">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-6xl max-h-[90vh] flex flex-col overflow-hidden top-[5%] left-[50%] translate-x-[-50%] translate-y-0">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Cog className="h-5 w-5" />
               <span>{tr("instancePreferencesDialog.title")}</span>
@@ -240,11 +238,7 @@ export function InstancePreferencesDialog({
                       disabled={isStatusUpdating}
                     >
                       <Power className={cn("mr-2 h-4 w-4", !currentInstance.isActive && "text-destructive")} />
-                      {isStatusUpdating
-                        ? tr("instancePreferencesDialog.actions.updating")
-                        : currentInstance.isActive
-                          ? tr("instancePreferencesDialog.actions.disableInstance")
-                          : tr("instancePreferencesDialog.actions.enableInstance")}
+                      {isStatusUpdating? tr("instancePreferencesDialog.actions.updating"): currentInstance.isActive? tr("instancePreferencesDialog.actions.disableInstance"): tr("instancePreferencesDialog.actions.enableInstance")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -271,15 +265,9 @@ export function InstancePreferencesDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs defaultValue={defaultTab ?? "instance"} className="w-full">
-            {/* Scrollable container with fade indicators */}
-            <div className="relative">
-              {/* Left fade indicator */}
-              <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none sm:hidden" />
-              {/* Right fade indicator */}
-              <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none sm:hidden" />
-
-              <TabsList className="flex w-full overflow-x-auto -mx-1 px-1 h-11 sm:h-9">
+          <Tabs defaultValue={defaultTab ?? "instance"} className="flex w-full min-h-0 flex-1 flex-col">
+            <div className="relative shrink-0">
+              <TabsList className="flex w-full justify-start overflow-x-auto h-11 sm:h-9">
                 <TabsTrigger value="instance" className="flex items-center gap-1.5 shrink-0">
                   <Server className="h-4 w-4" />
                   <span className="text-xs sm:text-sm">{tr("instancePreferencesDialog.tabs.instance")}</span>
@@ -316,118 +304,134 @@ export function InstancePreferencesDialog({
               </TabsList>
             </div>
 
-            <TabsContent value="instance" className="mt-6">
-              <div className="space-y-1 mb-6">
+            <TabsContent value="instance" className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="space-y-1 mb-6 shrink-0">
                 <h3 className="text-lg font-medium">{tr("instancePreferencesDialog.sections.instance.title")}</h3>
                 <p className="text-sm text-muted-foreground">
                   {tr("instancePreferencesDialog.sections.instance.description")}
                 </p>
               </div>
-              {currentInstance ? (
-                <InstanceSettingsPanel instance={currentInstance} onSuccess={handleSuccess} />
-              ) : (
-                <p className="text-sm text-muted-foreground py-8 text-center">
-                  {tr("instancePreferencesDialog.instanceDataUnavailable")}
-                </p>
-              )}
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                {currentInstance ? (
+                  <InstanceSettingsPanel instance={currentInstance} onSuccess={handleSuccess} />
+                ) : (
+                  <p className="text-sm text-muted-foreground py-8 text-center">
+                    {tr("instancePreferencesDialog.instanceDataUnavailable")}
+                  </p>
+                )}
+              </div>
             </TabsContent>
 
-            <TabsContent value="speed" className="mt-6">
-              <div className="space-y-1 mb-6">
+            <TabsContent value="speed" className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="space-y-1 mb-6 shrink-0">
                 <h3 className="text-lg font-medium">{tr("instancePreferencesDialog.sections.speed.title")}</h3>
                 <p className="text-sm text-muted-foreground">
                   {tr("instancePreferencesDialog.sections.speed.description")}
                 </p>
               </div>
-              <TabErrorBoundary onRetry={handleLazyRetry}>
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <SpeedLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
-                </Suspense>
-              </TabErrorBoundary>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <TabErrorBoundary onRetry={handleLazyRetry}>
+                  <Suspense fallback={<TabLoadingFallback />}>
+                    <SpeedLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
+                  </Suspense>
+                </TabErrorBoundary>
+              </div>
             </TabsContent>
 
-            <TabsContent value="queue" className="mt-6">
-              <div className="space-y-1 mb-6">
+            <TabsContent value="queue" className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="space-y-1 mb-6 shrink-0">
                 <h3 className="text-lg font-medium">{tr("instancePreferencesDialog.sections.queue.title")}</h3>
                 <p className="text-sm text-muted-foreground">
                   {tr("instancePreferencesDialog.sections.queue.description")}
                 </p>
               </div>
-              <TabErrorBoundary onRetry={handleLazyRetry}>
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <QueueManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
-                </Suspense>
-              </TabErrorBoundary>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <TabErrorBoundary onRetry={handleLazyRetry}>
+                  <Suspense fallback={<TabLoadingFallback />}>
+                    <QueueManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
+                  </Suspense>
+                </TabErrorBoundary>
+              </div>
             </TabsContent>
 
-            <TabsContent value="files" className="mt-6">
-              <div className="space-y-1 mb-6">
+            <TabsContent value="files" className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="space-y-1 mb-6 shrink-0">
                 <h3 className="text-lg font-medium">{tr("instancePreferencesDialog.sections.files.title")}</h3>
                 <p className="text-sm text-muted-foreground">
                   {tr("instancePreferencesDialog.sections.files.description")}
                 </p>
               </div>
-              <TabErrorBoundary onRetry={handleLazyRetry}>
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <FileManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
-                </Suspense>
-              </TabErrorBoundary>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <TabErrorBoundary onRetry={handleLazyRetry}>
+                  <Suspense fallback={<TabLoadingFallback />}>
+                    <FileManagementForm instanceId={instanceId} onSuccess={handleSuccess} />
+                  </Suspense>
+                </TabErrorBoundary>
+              </div>
             </TabsContent>
 
-            <TabsContent value="seeding" className="mt-6">
-              <div className="space-y-1 mb-6">
+            <TabsContent value="seeding" className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="space-y-1 mb-6 shrink-0">
                 <h3 className="text-lg font-medium">{tr("instancePreferencesDialog.sections.seeding.title")}</h3>
                 <p className="text-sm text-muted-foreground">
                   {tr("instancePreferencesDialog.sections.seeding.description")}
                 </p>
               </div>
-              <TabErrorBoundary onRetry={handleLazyRetry}>
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <SeedingLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
-                </Suspense>
-              </TabErrorBoundary>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <TabErrorBoundary onRetry={handleLazyRetry}>
+                  <Suspense fallback={<TabLoadingFallback />}>
+                    <SeedingLimitsForm instanceId={instanceId} onSuccess={handleSuccess} />
+                  </Suspense>
+                </TabErrorBoundary>
+              </div>
             </TabsContent>
 
-            <TabsContent value="connection" className="mt-6">
-              <div className="space-y-1 mb-6">
+            <TabsContent value="connection" className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="space-y-1 mb-6 shrink-0">
                 <h3 className="text-lg font-medium">{tr("instancePreferencesDialog.sections.connection.title")}</h3>
                 <p className="text-sm text-muted-foreground">
                   {tr("instancePreferencesDialog.sections.connection.description")}
                 </p>
               </div>
-              <TabErrorBoundary onRetry={handleLazyRetry}>
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <ConnectionSettingsForm instanceId={instanceId} onSuccess={handleSuccess} />
-                </Suspense>
-              </TabErrorBoundary>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <TabErrorBoundary onRetry={handleLazyRetry}>
+                  <Suspense fallback={<TabLoadingFallback />}>
+                    <ConnectionSettingsForm instanceId={instanceId} onSuccess={handleSuccess} />
+                  </Suspense>
+                </TabErrorBoundary>
+              </div>
             </TabsContent>
 
-            <TabsContent value="discovery" className="mt-6">
-              <div className="space-y-1 mb-6">
+            <TabsContent value="discovery" className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="space-y-1 mb-6 shrink-0">
                 <h3 className="text-lg font-medium">{tr("instancePreferencesDialog.sections.discovery.title")}</h3>
                 <p className="text-sm text-muted-foreground">
                   {tr("instancePreferencesDialog.sections.discovery.description")}
                 </p>
               </div>
-              <TabErrorBoundary onRetry={handleLazyRetry}>
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <NetworkDiscoveryForm instanceId={instanceId} onSuccess={handleSuccess} />
-                </Suspense>
-              </TabErrorBoundary>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <TabErrorBoundary onRetry={handleLazyRetry}>
+                  <Suspense fallback={<TabLoadingFallback />}>
+                    <NetworkDiscoveryForm instanceId={instanceId} onSuccess={handleSuccess} />
+                  </Suspense>
+                </TabErrorBoundary>
+              </div>
             </TabsContent>
 
-            <TabsContent value="advanced" className="mt-6">
-              <div className="space-y-1 mb-6">
+            <TabsContent value="advanced" className="mt-6 flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="space-y-1 mb-6 shrink-0">
                 <h3 className="text-lg font-medium">{tr("instancePreferencesDialog.sections.advanced.title")}</h3>
                 <p className="text-sm text-muted-foreground">
                   {tr("instancePreferencesDialog.sections.advanced.description")}
                 </p>
               </div>
-              <TabErrorBoundary onRetry={handleLazyRetry}>
-                <Suspense fallback={<TabLoadingFallback />}>
-                  <AdvancedNetworkForm instanceId={instanceId} onSuccess={handleSuccess} />
-                </Suspense>
-              </TabErrorBoundary>
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <TabErrorBoundary onRetry={handleLazyRetry}>
+                  <Suspense fallback={<TabLoadingFallback />}>
+                    <AdvancedNetworkForm instanceId={instanceId} onSuccess={handleSuccess} />
+                  </Suspense>
+                </TabErrorBoundary>
+              </div>
             </TabsContent>
 
           </Tabs>

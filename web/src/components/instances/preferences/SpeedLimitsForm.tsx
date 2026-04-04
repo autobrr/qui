@@ -15,6 +15,8 @@ import React from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
+import { PreferencesFormShell } from "./PreferencesFormShell"
+
 // Convert bytes/s to MiB/s for display
 function bytesToMiB(bytes: number): number {
   return bytes === 0 ? 0 : bytes / (1024 * 1024)
@@ -233,12 +235,26 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
   }
 
   return (
-    <form
+    <PreferencesFormShell
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()
       }}
-      className="space-y-6"
+      footer={(
+        <form.Subscribe
+          selector={(state) => [state.canSubmit, state.isSubmitting]}
+        >
+          {([canSubmit, isSubmitting]) => (
+            <Button
+              type="submit"
+              disabled={!canSubmit || isSubmitting || isUpdating}
+              className="min-w-32"
+            >
+              {isSubmitting || isUpdating? tr("speedLimitsForm.actions.saving"): tr("speedLimitsForm.actions.saveChanges")}
+            </Button>
+          )}
+        </form.Subscribe>
+      )}
     >
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <form.Field
@@ -483,23 +499,6 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
         </form.Subscribe>
       </div>
 
-      <div className="flex justify-end pt-4">
-        <form.Subscribe
-          selector={(state) => [state.canSubmit, state.isSubmitting]}
-        >
-          {([canSubmit, isSubmitting]) => (
-            <Button
-              type="submit"
-              disabled={!canSubmit || isSubmitting || isUpdating}
-              className="min-w-32"
-            >
-              {isSubmitting || isUpdating
-                ? tr("speedLimitsForm.actions.saving")
-                : tr("speedLimitsForm.actions.saveChanges")}
-            </Button>
-          )}
-        </form.Subscribe>
-      </div>
-    </form>
+    </PreferencesFormShell>
   )
 }

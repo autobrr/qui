@@ -6823,7 +6823,7 @@
       "programWithId": "程序 {{id}}",
       "searchPlaceholder": "按名称、Hash 或规则筛选...",
       "summary": {
-        "countWithVerb": "{{count}}{{noun}}{{verb}}",
+        "countWithVerb": "{{count}}{{verb}}",
         "countWithVerb_one": "{{count}} 个种子{{verb}}",
         "countWithVerb_other": "{{count}} 个种子{{verb}}",
         "deleteDryRun": "{{count}}{{noun}}将被删除（{{reason}}）",

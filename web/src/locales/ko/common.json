@@ -6823,7 +6823,7 @@
       "programWithId": "프로그램 {{id}}",
       "searchPlaceholder": "이름, 해시, 규칙으로 필터링...",
       "summary": {
-        "countWithVerb": "{{count}} {{noun}} {{verb}}",
+        "countWithVerb": "{{count}} {{verb}}",
         "countWithVerb_one": "{{count}}개 토렌트 {{verb}}",
         "countWithVerb_other": "{{count}}개 토렌트 {{verb}}",
         "deleteDryRun": "{{count}} {{noun}} 삭제 예정 ({{reason}})",

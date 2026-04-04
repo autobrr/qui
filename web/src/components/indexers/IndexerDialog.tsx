@@ -16,10 +16,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { api } from "@/lib/api"
 import type { TorznabIndexer, TorznabIndexerFormData } from "@/types"
 import { useEffect, useState } from "react"
-import { Trans, useTranslation } from "react-i18next"
+import { Trans } from "react-i18next"
 import { toast } from "sonner"
 
 interface IndexerDialogProps {
@@ -44,20 +45,13 @@ const DEFAULT_FORM: TorznabIndexerFormData = {
 
 const REDACTED_TOKEN = "<redacted>"
 
-function useCommonTr() {
-  const { t } = useTranslation("common")
-  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
-}
-
 export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogProps) {
   const tr = useCommonTr()
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState<TorznabIndexerFormData>(DEFAULT_FORM)
   const [showBasicAuth, setShowBasicAuth] = useState(false)
   const backend = formData.backend ?? "jackett"
-  const baseUrlPlaceholder = backend === "prowlarr"
-    ? tr("indexerDialog.placeholders.baseUrlProwlarr")
-    : tr("indexerDialog.placeholders.baseUrlJackett")
+  const baseUrlPlaceholder = backend === "prowlarr"? tr("indexerDialog.placeholders.baseUrlProwlarr"): tr("indexerDialog.placeholders.baseUrlJackett")
   const requiresIndexerId = backend === "prowlarr"
 
   useEffect(() => {
@@ -185,9 +179,7 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
             {mode === "create" ? tr("indexerDialog.titles.add") : tr("indexerDialog.titles.edit")}
           </DialogTitle>
           <DialogDescription>
-            {mode === "create"
-              ? tr("indexerDialog.descriptions.add")
-              : tr("indexerDialog.descriptions.edit")}
+            {mode === "create"? tr("indexerDialog.descriptions.add"): tr("indexerDialog.descriptions.edit")}
           </DialogDescription>
         </DialogHeader>
         <form id="indexer-form" onSubmit={handleSubmit} autoComplete="off" data-1p-ignore className="flex-1 overflow-y-auto min-h-0">
@@ -254,17 +246,13 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                   onChange={(e) =>
                     setFormData({ ...formData, indexer_id: e.target.value })
                   }
-                  placeholder={backend === "prowlarr"
-                    ? tr("indexerDialog.placeholders.prowlarrIndexerId")
-                    : tr("indexerDialog.placeholders.jackettIndexerId")}
+                  placeholder={backend === "prowlarr"? tr("indexerDialog.placeholders.prowlarrIndexerId"): tr("indexerDialog.placeholders.jackettIndexerId")}
                   autoComplete="off"
                   data-1p-ignore
                   required={requiresIndexerId}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {backend === "prowlarr"
-                    ? tr("indexerDialog.help.prowlarrIndexerId")
-                    : tr("indexerDialog.help.jackettIndexerId")}
+                  {backend === "prowlarr"? tr("indexerDialog.help.prowlarrIndexerId"): tr("indexerDialog.help.jackettIndexerId")}
                 </p>
               </div>
             )}
@@ -277,9 +265,7 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
                 onChange={(e) =>
                   setFormData({ ...formData, api_key: e.target.value })
                 }
-                placeholder={mode === "edit"
-                  ? tr("indexerDialog.placeholders.apiKeyKeepExisting")
-                  : tr("indexerDialog.placeholders.apiKey")}
+                placeholder={mode === "edit"? tr("indexerDialog.placeholders.apiKeyKeepExisting"): tr("indexerDialog.placeholders.apiKey")}
                 autoComplete="off"
                 data-1p-ignore
                 required={mode === "create"}
@@ -398,11 +384,7 @@ export function IndexerDialog({ open, onClose, mode, indexer }: IndexerDialogPro
             {tr("indexerDialog.actions.cancel")}
           </Button>
           <Button type="submit" form="indexer-form" disabled={loading}>
-            {loading
-              ? tr("indexerDialog.actions.saving")
-              : mode === "create"
-                ? tr("indexerDialog.actions.add")
-                : tr("indexerDialog.actions.save")}
+            {loading? tr("indexerDialog.actions.saving"): mode === "create"? tr("indexerDialog.actions.add"): tr("indexerDialog.actions.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

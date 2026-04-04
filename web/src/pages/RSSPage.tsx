@@ -106,7 +106,7 @@ import type {
 } from "@/types"
 import { isRSSFeed } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
-import { useTranslation } from "react-i18next"
+import { useCommonTr } from "@/hooks/useCommonTr"
 
 import { AddTorrentDialog, type AddTorrentDropPayload } from "@/components/torrents/AddTorrentDialog"
 
@@ -117,11 +117,6 @@ interface RSSPageProps {
   onTabChange: (tab: "feeds" | "rules") => void
   onFeedSelect: (feedPath: string | undefined) => void
   onRuleSelect: (ruleName: string | undefined) => void
-}
-
-function useCommonTr() {
-  const { t } = useTranslation("common")
-  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
 }
 
 export function RSSPage({
@@ -402,15 +397,7 @@ export function RSSPage({
                   {sseStatus === "live" && <span className="h-2 w-2 rounded-full bg-green-500" />}
                   {sseStatus === "disconnected" && <span className="h-2 w-2 rounded-full bg-red-500" />}
                   <span className="text-xs">
-                    {sseStatus === "live"
-                      ? tr("rssPage.sse.live")
-                      : sseStatus === "connecting"
-                        ? tr("rssPage.sse.connecting")
-                        : sseStatus === "reconnecting"
-                          ? sseReconnectAttempt > 0
-                            ? tr("rssPage.sse.reconnectingWithAttempt", { attempt: sseReconnectAttempt, max: 5 })
-                            : tr("rssPage.sse.reconnecting")
-                          : tr("rssPage.sse.disconnected")}
+                    {sseStatus === "live"? tr("rssPage.sse.live"): sseStatus === "connecting"? tr("rssPage.sse.connecting"): sseStatus === "reconnecting"? sseReconnectAttempt > 0? tr("rssPage.sse.reconnectingWithAttempt", { attempt: sseReconnectAttempt, max: 5 }): tr("rssPage.sse.reconnecting"): tr("rssPage.sse.disconnected")}
                   </span>
                 </Badge>
               )}

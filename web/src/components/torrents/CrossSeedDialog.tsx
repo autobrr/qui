@@ -40,6 +40,7 @@ import type {
 import { ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { toast } from "sonner"
 
 type CrossSeedSearchResult = CrossSeedTorrentSearchResponse["results"][number]
@@ -133,23 +134,21 @@ const CrossSeedDialogComponent = ({
   refreshCooldownLabel,
   onForceRefresh,
 }: CrossSeedDialogProps) => {
-  const { t, i18n } = useTranslation("common")
-  const tr = useCallback((key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)), [t])
+  const { i18n } = useTranslation("common")
+  const tr = useCommonTr()
   const relativeTimeFormatter = useMemo(
     () => new Intl.RelativeTimeFormat(i18n.resolvedLanguage ?? i18n.language ?? undefined, { numeric: "auto", style: "short" }),
-    [i18n.language, i18n.resolvedLanguage],
+    [i18n.language, i18n.resolvedLanguage]
   )
   const formatLocalizedRelativeTime = useCallback((value?: string | number | Date | null) => {
     if (value === undefined || value === null) {
-      return "—"
+      return "-"
     }
 
-    const date = value instanceof Date
-      ? value
-      : new Date(typeof value === "number" ? value * 1000 : value)
+    const date = value instanceof Date? value: new Date(typeof value === "number" ? value * 1000 : value)
 
     if (Number.isNaN(date.getTime())) {
-      return "—"
+      return "-"
     }
 
     const diffMs = date.getTime() - Date.now()
@@ -716,8 +715,7 @@ const CrossSeedScopeSelector = memo(({
   onScopeSearch,
   isSearching,
 }: CrossSeedScopeSelectorProps) => {
-  const { t } = useTranslation("common")
-  const tr = useCallback((key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)), [t])
+  const tr = useCommonTr()
   const total = indexerOptions.length
   const selectedCount = selectedIndexerIds.length
   const excludedCount = excludedIndexerIds.length
@@ -825,9 +823,7 @@ const CrossSeedScopeSelector = memo(({
                   disabled={isSearching}
                   className="h-7 text-xs"
                 >
-                  {selectedCount > 0
-                    ? tr("searchPage.crossSeedDialog.scope.selectedCount", { count: selectedCount })
-                    : tr("searchPage.crossSeedDialog.scope.selectIndexers")}
+                  {selectedCount > 0? tr("searchPage.crossSeedDialog.scope.selectedCount", { count: selectedCount }): tr("searchPage.crossSeedDialog.scope.selectIndexers")}
                   <ChevronDown className="ml-1.5 h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>

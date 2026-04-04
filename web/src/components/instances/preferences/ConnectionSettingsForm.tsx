@@ -20,6 +20,8 @@ import React from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
+import { PreferencesFormShell } from "./PreferencesFormShell"
+
 const sanitizeBtProtocol = (value: unknown): 0 | 1 | 2 => {
   const numeric = typeof value === "number" ? value : parseInt(String(value), 10)
 
@@ -227,12 +229,26 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
 
   return (
-    <form
+    <PreferencesFormShell
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()
       }}
-      className="space-y-6"
+      footer={(
+        <form.Subscribe
+          selector={(state) => [state.canSubmit, state.isSubmitting]}
+        >
+          {([canSubmit, isSubmitting]) => (
+            <Button
+              type="submit"
+              disabled={!canSubmit || isSubmitting || isUpdating}
+              className="min-w-32"
+            >
+              {isSubmitting || isUpdating ? tr("connectionSettingsForm.actions.saving") : tr("connectionSettingsForm.actions.saveChanges")}
+            </Button>
+          )}
+        </form.Subscribe>
+      )}
     >
       {fieldVisibility.isUnknown && (
         <Alert className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-400/70 dark:bg-amber-950/50">
@@ -717,21 +733,6 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
         </div>
       </div>
 
-      <div className="flex justify-end pt-4">
-        <form.Subscribe
-          selector={(state) => [state.canSubmit, state.isSubmitting]}
-        >
-          {([canSubmit, isSubmitting]) => (
-            <Button
-              type="submit"
-              disabled={!canSubmit || isSubmitting || isUpdating}
-              className="min-w-32"
-            >
-              {isSubmitting || isUpdating ? tr("connectionSettingsForm.actions.saving") : tr("connectionSettingsForm.actions.saveChanges")}
-            </Button>
-          )}
-        </form.Subscribe>
-      </div>
-    </form>
+    </PreferencesFormShell>
   )
 }

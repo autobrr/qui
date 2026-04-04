@@ -6823,7 +6823,7 @@
       "programWithId": "Programme {{id}}",
       "searchPlaceholder": "Filtrer par nom, hash ou règle...",
       "summary": {
-        "countWithVerb": "{{count}} {{noun}} {{verb}}",
+        "countWithVerb": "{{count}} {{verb}}",
         "countWithVerb_one": "{{count}} torrent {{verb}}",
         "countWithVerb_other": "{{count}} torrents {{verb}}",
         "deleteDryRun": "{{count}} {{noun}} seraient supprimés ({{reason}})",

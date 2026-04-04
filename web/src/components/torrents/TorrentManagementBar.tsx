@@ -50,7 +50,7 @@ import {
   Trash2
 } from "lucide-react"
 import { memo, useCallback, useMemo } from "react"
-import { useTranslation } from "react-i18next"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import {
   LocationWarningDialog,
@@ -61,11 +61,6 @@ import {
   TagEditorDialog,
   TmmConfirmDialog
 } from "./TorrentDialogs"
-
-function useCommonTr() {
-  const { t } = useTranslation("common")
-  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
-}
 
 interface TorrentManagementBarProps {
   instanceId?: number

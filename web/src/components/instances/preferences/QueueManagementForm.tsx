@@ -12,6 +12,8 @@ import { toast } from "sonner"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 import { useTranslation } from "react-i18next"
 
+import { PreferencesFormShell } from "./PreferencesFormShell"
+
 
 function SwitchSetting({
   label,
@@ -107,12 +109,26 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
   }
 
   return (
-    <form
+    <PreferencesFormShell
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()
       }}
-      className="space-y-6"
+      footer={(
+        <form.Subscribe
+          selector={(state) => [state.canSubmit, state.isSubmitting]}
+        >
+          {([canSubmit, isSubmitting]) => (
+            <Button
+              type="submit"
+              disabled={!canSubmit || isSubmitting || isUpdating}
+              className="min-w-32"
+            >
+              {isSubmitting || isUpdating ? tr("queueManagementForm.actions.saving") : tr("queueManagementForm.actions.saveChanges")}
+            </Button>
+          )}
+        </form.Subscribe>
+      )}
     >
       <div className="space-y-6">
         <form.Field name="queueing_enabled">
@@ -135,7 +151,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
                   return tr("queueManagementForm.errors.maxActiveDownloadsMin")
                 }
                 return undefined
-              }
+              },
             }}
           >
             {(field) => (
@@ -163,7 +179,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
                   return tr("queueManagementForm.errors.maxActiveUploadsMin")
                 }
                 return undefined
-              }
+              },
             }}
           >
             {(field) => (
@@ -191,7 +207,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
                   return tr("queueManagementForm.errors.maxActiveTorrentsMin")
                 }
                 return undefined
-              }
+              },
             }}
           >
             {(field) => (
@@ -226,21 +242,6 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
         </div>
       </div>
 
-      <div className="flex justify-end pt-4">
-        <form.Subscribe
-          selector={(state) => [state.canSubmit, state.isSubmitting]}
-        >
-          {([canSubmit, isSubmitting]) => (
-            <Button
-              type="submit"
-              disabled={!canSubmit || isSubmitting || isUpdating}
-              className="min-w-32"
-            >
-              {isSubmitting || isUpdating ? tr("queueManagementForm.actions.saving") : tr("queueManagementForm.actions.saveChanges")}
-            </Button>
-          )}
-        </form.Subscribe>
-      </div>
-    </form>
+    </PreferencesFormShell>
   )
 }
