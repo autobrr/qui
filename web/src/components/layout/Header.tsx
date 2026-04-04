@@ -4,6 +4,7 @@
  */
 
 import { InstancePreferencesDialog } from "@/components/instances/preferences/InstancePreferencesDialog"
+import { UnifiedActionMenuSection } from "@/components/layout/UnifiedActionMenuSection"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { AddTorrentDialog } from "@/components/torrents/AddTorrentDialog"
 import { TorrentCreationTasks } from "@/components/torrents/TorrentCreationTasks"
@@ -12,7 +13,7 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog"
 import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar"
 import { Badge } from "@/components/ui/badge"
@@ -45,6 +46,7 @@ import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewSta
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { useTheme } from "@/hooks/useTheme"
+import { useUnifiedActionInstances } from "@/hooks/useUnifiedActionInstances"
 import { api } from "@/lib/api"
 import {
   ALL_INSTANCES_ID,
@@ -53,7 +55,7 @@ import {
 } from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
-import { useQueries, useQuery } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { Archive, ChevronsUpDown, Cog, Download, FileEdit, FileText, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -106,7 +108,7 @@ function UnifiedActionDropdown({ icon, tooltip, label, instances, onSelectInstan
             <span
               className={cn(
                 "ml-2 h-2 w-2 rounded-full flex-shrink-0",
-                instance.connected ? "bg-green-500" : "bg-red-500",
+                instance.connected ? "bg-green-500" : "bg-red-500"
               )}
             />
           </DropdownMenuItem>
@@ -162,28 +164,11 @@ export function Header({
     [persistedUnifiedFilter, activeInstanceIds]
   )
   const effectiveUnifiedInstanceIds = normalizedUnifiedInstanceIds.length > 0? normalizedUnifiedInstanceIds: activeInstanceIds
-  const unifiedScopeInstances = useMemo(
-    () => activeInstances.filter(instance => effectiveUnifiedInstanceIds.includes(instance.id)),
-    [activeInstances, effectiveUnifiedInstanceIds]
-  )
-  const unifiedManageableInstances = useMemo(
-    () => unifiedScopeInstances.filter((instance) => instance.id > 0),
-    [unifiedScopeInstances],
-  )
-  const unifiedCapabilitiesResults = useQueries({
-    queries: unifiedManageableInstances.map((instance) => ({
-      queryKey: ["instance-capabilities", instance.id],
-      queryFn: () => api.getInstanceCapabilities(instance.id),
-      staleTime: 60_000,
-      enabled: isAllInstancesRoute,
-    })),
+  const { unifiedManageableInstances, unifiedTorrentCreationInstances } = useUnifiedActionInstances({
+    activeInstances,
+    effectiveUnifiedInstanceIds,
+    enabled: isAllInstancesRoute,
   })
-  const unifiedTorrentCreationInstances = useMemo(
-    () => unifiedManageableInstances.filter((_instance, i) =>
-      unifiedCapabilitiesResults[i]?.data?.supportsTorrentCreation === true
-    ),
-    [unifiedManageableInstances, unifiedCapabilitiesResults],
-  )
   const applyUnifiedScope = useCallback((nextIds: number[]) => {
     const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
     saveUnifiedFilter(normalizedIds)
@@ -308,11 +293,11 @@ export function Header({
   // Derived at render time — avoids a cleanup Effect for stale IDs
   const validUnifiedIds = useMemo(
     () => new Set(unifiedManageableInstances.map((instance) => instance.id)),
-    [unifiedManageableInstances],
+    [unifiedManageableInstances]
   )
   const validUnifiedTorrentCreationIds = useMemo(
     () => new Set(unifiedTorrentCreationInstances.map((instance) => instance.id)),
-    [unifiedTorrentCreationInstances],
+    [unifiedTorrentCreationInstances]
   )
 
   useEffect(() => {
@@ -859,6 +844,14 @@ export function Header({
                       </DropdownMenuItem>
                     )
                   })}
+                  <UnifiedActionMenuSection
+                    manageableInstances={unifiedManageableInstances}
+                    torrentCreationInstances={unifiedTorrentCreationInstances}
+                    onSelectAddTorrentInstance={setUnifiedAddTorrentInstanceId}
+                    onSelectCreateTorrentInstance={setUnifiedCreateTorrentInstanceId}
+                    onSelectTasksInstance={setUnifiedTasksInstanceId}
+                    onSelectSettingsInstance={setUnifiedSettingsInstanceId}
+                  />
                 </>
               ) : (
                 <DropdownMenuItem disabled className="text-xs text-muted-foreground">

@@ -3,7 +3,12 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { InstancePreferencesDialog } from "@/components/instances/preferences/InstancePreferencesDialog"
+import { UnifiedActionMenuSection } from "@/components/layout/UnifiedActionMenuSection"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
+import { AddTorrentDialog } from "@/components/torrents/AddTorrentDialog"
+import { TorrentCreationTasks } from "@/components/torrents/TorrentCreationTasks"
+import { TorrentCreatorDialog } from "@/components/torrents/TorrentCreatorDialog"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -26,6 +31,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
+import { useUnifiedActionInstances } from "@/hooks/useUnifiedActionInstances"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
@@ -140,6 +146,11 @@ export function MobileFooterNav() {
     [persistedUnifiedFilter, activeInstanceIds]
   )
   const effectiveUnifiedInstanceIds = normalizedUnifiedInstanceIds.length > 0? normalizedUnifiedInstanceIds: activeInstanceIds
+  const { unifiedManageableInstances, unifiedTorrentCreationInstances } = useUnifiedActionInstances({
+    activeInstances,
+    effectiveUnifiedInstanceIds,
+    enabled: isOnAllInstancesPage,
+  })
   const hasMultipleActiveInstances = activeInstances.length > 1
   const applyUnifiedScope = useCallback((nextIds: number[]) => {
     const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
@@ -170,6 +181,18 @@ export function MobileFooterNav() {
   const currentInstanceId = !isOnAllInstancesPage && location.pathname.startsWith("/instances/") ? location.pathname.split("/")[2] : null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
   const currentInstanceLabel = isOnAllInstancesPage? (hasMultipleActiveInstances ? "Unified" : (activeInstances[0]?.name ?? null)): (currentInstance && currentInstance.isActive ? currentInstance.name : null)
+  const [unifiedAddTorrentInstanceId, setUnifiedAddTorrentInstanceId] = useState<number | null>(null)
+  const [unifiedCreateTorrentInstanceId, setUnifiedCreateTorrentInstanceId] = useState<number | null>(null)
+  const [unifiedTasksInstanceId, setUnifiedTasksInstanceId] = useState<number | null>(null)
+  const [unifiedSettingsInstanceId, setUnifiedSettingsInstanceId] = useState<number | null>(null)
+  const validUnifiedIds = useMemo(
+    () => new Set(unifiedManageableInstances.map((instance) => instance.id)),
+    [unifiedManageableInstances]
+  )
+  const validUnifiedTorrentCreationIds = useMemo(
+    () => new Set(unifiedTorrentCreationInstances.map((instance) => instance.id)),
+    [unifiedTorrentCreationInstances]
+  )
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode)
@@ -351,6 +374,14 @@ export function MobileFooterNav() {
                       </DropdownMenuItem>
                     )
                   })}
+                  <UnifiedActionMenuSection
+                    manageableInstances={unifiedManageableInstances}
+                    torrentCreationInstances={unifiedTorrentCreationInstances}
+                    onSelectAddTorrentInstance={setUnifiedAddTorrentInstanceId}
+                    onSelectCreateTorrentInstance={setUnifiedCreateTorrentInstanceId}
+                    onSelectTasksInstance={setUnifiedTasksInstanceId}
+                    onSelectSettingsInstance={setUnifiedSettingsInstanceId}
+                  />
                 </>
               ) : (
                 <DropdownMenuItem disabled className="text-xs text-muted-foreground">
@@ -692,6 +723,53 @@ export function MobileFooterNav() {
           </div>
         </DialogContent>
       </Dialog>
+      {unifiedAddTorrentInstanceId !== null && validUnifiedIds.has(unifiedAddTorrentInstanceId) && (
+        <AddTorrentDialog
+          instanceId={unifiedAddTorrentInstanceId}
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) setUnifiedAddTorrentInstanceId(null)
+          }}
+        />
+      )}
+      {unifiedCreateTorrentInstanceId !== null && validUnifiedTorrentCreationIds.has(unifiedCreateTorrentInstanceId) && (
+        <TorrentCreatorDialog
+          instanceId={unifiedCreateTorrentInstanceId}
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) setUnifiedCreateTorrentInstanceId(null)
+          }}
+        />
+      )}
+      {unifiedTasksInstanceId !== null && validUnifiedTorrentCreationIds.has(unifiedTasksInstanceId) && (() => {
+        const instance = activeInstances.find(i => i.id === unifiedTasksInstanceId)
+        if (!instance) return null
+        return (
+          <Dialog open={true} onOpenChange={(open) => { if (!open) setUnifiedTasksInstanceId(null) }}>
+            <DialogContent className="w-full sm:max-w-screen-sm md:max-w-screen-md lg:max-w-screen-xl xl:max-w-screen-xl max-h-[85vh] overflow-hidden flex flex-col">
+              <DialogHeader>
+                <DialogTitle>Torrent Creation Tasks{instance ? ` — ${instance.name}` : ""}</DialogTitle>
+              </DialogHeader>
+              <div className="flex-1 overflow-auto">
+                <TorrentCreationTasks instanceId={unifiedTasksInstanceId} />
+              </div>
+            </DialogContent>
+          </Dialog>
+        )
+      })()}
+      {unifiedSettingsInstanceId !== null && validUnifiedIds.has(unifiedSettingsInstanceId) && (() => {
+        const instance = activeInstances.find(i => i.id === unifiedSettingsInstanceId)
+        if (!instance) return null
+        return (
+          <InstancePreferencesDialog
+            open={true}
+            onOpenChange={(open) => { if (!open) setUnifiedSettingsInstanceId(null) }}
+            instanceId={unifiedSettingsInstanceId}
+            instanceName={instance.name}
+            instance={instance}
+          />
+        )
+      })()}
     </nav>
   )
 }
