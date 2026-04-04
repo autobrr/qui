@@ -184,6 +184,8 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Recheck"
     case "reannounced":
       return "Reannounce"
+    case "auto_managed":
+      return "Auto management"
     case "moved":
       return "Move"
     case "external_program":
@@ -297,6 +299,7 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
   "resumed",
   "rechecked",
   "reannounced",
+  "auto_managed",
   "moved",
 ])
 
@@ -802,6 +805,7 @@ export function WorkflowsOverview({
     reannounced: "bg-fuchsia-500/10 text-fuchsia-500 border-fuchsia-500/20",
     moved: "bg-green-500/10 text-green-500 border-green-500/20",
     external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
+    auto_managed: "bg-rose-500/10 text-rose-500 border-rose-500/20",
     dry_run_no_match: "bg-slate-500/10 text-slate-500 border-slate-500/20",
   }
 

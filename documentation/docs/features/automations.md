@@ -570,6 +570,19 @@ The move path is evaluated as a **Go template** for each torrent. You can use a 
 - By isolation folder: `/data/{{.IsolationFolderName}}`
 - By tracker: `/data/{{.Tracker}}` (when tracker display name is configured)
 
+### Auto Management
+
+Enable or disable qBittorrent's Automatic Torrent Management (AutoTMM) on matching torrents.
+
+| Mode      | Description                                      |
+| --------- | ------------------------------------------------ |
+| `enable`  | Enable automatic torrent management on matches   |
+| `disable` | Disable automatic torrent management on matches  |
+
+When AutoTMM is enabled, qBittorrent automatically moves torrents to the save path configured for their category. Disabling it allows manual control of save paths.
+
+If multiple rules match the same torrent with Auto Management actions, the **last matching rule** (by sort order) wins.
+
 ### External Program
 
 Run a pre-configured external program when torrents match the automation rule. Uses the same programs configured in **Settings → External Programs**.

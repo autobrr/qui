@@ -133,6 +133,8 @@ Dir Scan maintains a FileID index (inode + device on Unix) to track files alread
 
 This avoids redundant searches and duplicate additions.
 
+If a torrent is removed from qBittorrent (for example, by an automation rule that removes torrents with missing files), its files are no longer tracked in the index. The next scan of whichever directory contains those files will treat them as new searchees and search indexers for them again.
+
 ### Recheck Behavior
 
 - **Full matches**: Torrent is added with "skip hash check" enabled. Seeding starts immediately.

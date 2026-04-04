@@ -153,7 +153,7 @@ func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, 
 		cfg.FailureCooldown = 10 * time.Minute
 	}
 	if cfg.ExportThrottle <= 0 {
-		cfg.ExportThrottle = 200 * time.Millisecond
+		cfg.ExportThrottle = 100 * time.Millisecond
 	}
 
 	cacheDir := ""
@@ -641,15 +641,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		return nil, fmt.Errorf("failed to prepare backup directory: %w", err)
 	}
 
-	var exportTicker *time.Ticker
-	var exportThrottle <-chan time.Time
-	if s.cfg.ExportThrottle > 0 {
-		exportTicker = time.NewTicker(s.cfg.ExportThrottle)
-		exportThrottle = exportTicker.C
-	}
-	if exportTicker != nil {
-		defer exportTicker.Stop()
-	}
+	var lastExportElapsed time.Duration
 
 	var snapshotCategories map[string]models.CategorySnapshot
 	if settings.IncludeCategories {
@@ -755,11 +747,13 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 				s.updateProgress(j.runID, idx+1)
 				continue
 			}
-			if err := waitForExportThrottle(ctx, exportThrottle); err != nil {
+			if err := adaptiveExportDelay(ctx, s.cfg.ExportThrottle, lastExportElapsed); err != nil {
 				return nil, err
 			}
+			exportStart := time.Now()
 			var tracker string
 			data, suggestedName, tracker, err = s.reader.ExportTorrent(ctx, j.instanceID, torrent.Hash)
+			lastExportElapsed = time.Since(exportStart)
 			if err != nil {
 				if isExportMetadataUnavailable(err) {
 					log.Warn().
@@ -927,15 +921,23 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}, nil
 }
 
-func waitForExportThrottle(ctx context.Context, throttle <-chan time.Time) error {
-	if throttle == nil {
+// adaptiveExportDelay waits between export API calls with back-pressure.
+// The delay is at least minDelay, but extends to match the previous export's
+// response time when qBittorrent is under load. This prevents overwhelming
+// qBittorrent during large backup operations.
+func adaptiveExportDelay(ctx context.Context, minDelay, lastExportDuration time.Duration) error {
+	if minDelay <= 0 {
 		return nil
 	}
+
+	delay := max(minDelay, lastExportDuration)
+	t := time.NewTimer(delay)
+	defer t.Stop()
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-throttle:
+	case <-t.C:
 		return nil
 	}
 }

@@ -745,6 +745,14 @@ const (
 	FieldExistsOnSameInstance   ConditionField = "EXISTS_ON_SAME_INSTANCE"
 	FieldSeedingOnSameInstance  ConditionField = "SEEDING_ON_SAME_INSTANCE"
 
+	// System time fields
+	FieldSystemHour      ConditionField = "SYSTEM_HOUR"
+	FieldSystemMinute    ConditionField = "SYSTEM_MINUTE"
+	FieldSystemDayOfWeek ConditionField = "SYSTEM_DAY_OF_WEEK"
+	FieldSystemDay       ConditionField = "SYSTEM_DAY"
+	FieldSystemMonth     ConditionField = "SYSTEM_MONTH"
+	FieldSystemYear      ConditionField = "SYSTEM_YEAR"
+
 	// Enum-like fields
 	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"
 )
@@ -757,7 +765,8 @@ func (f ConditionField) IsNumeric() bool {
 		FieldAddedOnAge, FieldCompletionOnAge, FieldLastActivityAge,
 		FieldRatio, FieldProgress, FieldAvailability,
 		FieldDlSpeed, FieldUpSpeed,
-		FieldNumSeeds, FieldNumLeechs, FieldNumComplete, FieldNumIncomplete, FieldTrackersCount:
+		FieldNumSeeds, FieldNumLeechs, FieldNumComplete, FieldNumIncomplete, FieldTrackersCount,
+		FieldSystemHour, FieldSystemMinute, FieldSystemDayOfWeek, FieldSystemDay, FieldSystemMonth, FieldSystemYear:
 		return true
 	default:
 		return false
@@ -857,6 +866,7 @@ type ActionConditions struct {
 	Category        *CategoryAction        `json:"category,omitempty"`
 	Move            *MoveAction            `json:"move,omitempty"`
 	ExternalProgram *ExternalProgramAction `json:"externalProgram,omitempty"`
+	AutoManagement  *AutoManagementAction  `json:"autoManagement,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -895,6 +905,12 @@ type RecheckAction struct {
 
 // ReannounceAction configures force reannounce action with optional conditions.
 type ReannounceAction struct {
+	Enabled   bool           `json:"enabled"`
+	Condition *RuleCondition `json:"condition,omitempty"`
+}
+
+// AutoManagementAction configures automatic torrent management (ATM) with optional conditions.
+type AutoManagementAction struct {
 	Enabled   bool           `json:"enabled"`
 	Condition *RuleCondition `json:"condition,omitempty"`
 }
@@ -995,7 +1011,8 @@ func (ac *ActionConditions) IsEmpty() bool {
 		len(ac.TagActions()) == 0 &&
 		ac.Category == nil &&
 		ac.Move == nil &&
-		ac.ExternalProgram == nil
+		ac.ExternalProgram == nil &&
+		ac.AutoManagement == nil
 }
 
 // Normalize normalizes legacy/new action fields for in-memory use.

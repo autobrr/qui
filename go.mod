@@ -8,8 +8,8 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/anacrolix/torrent v1.61.0
-	github.com/andybalholm/brotli v1.2.0
-	github.com/autobrr/autobrr v1.75.0
+	github.com/andybalholm/brotli v1.2.1
+	github.com/autobrr/autobrr v1.75.1
 	github.com/autobrr/go-mediainfo v0.3.0
 	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20260221205148-5cc22ac80d42
 	github.com/avast/retry-go v3.0.0+incompatible
@@ -69,7 +69,7 @@ require (
 	github.com/davidmz/go-pageant v1.0.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-fed/httpsig v1.1.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.3 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/google/go-github/v74 v74.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
@@ -88,8 +88,8 @@ require (
 	github.com/multiformats/go-varint v0.0.6 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
-	github.com/nicholas-fedor/shoutrrr v0.14.0
-	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
+	github.com/nicholas-fedor/shoutrrr v0.14.1
+	github.com/pelletier/go-toml/v2 v2.3.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.67.2 // indirect

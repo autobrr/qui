@@ -1118,27 +1118,39 @@ func TestIsBackupMissedFailedRunOutsideCooldownIsMissed(t *testing.T) {
 	require.True(t, missed)
 }
 
-func TestWaitForExportThrottleNoopWithoutThrottle(t *testing.T) {
-	require.NoError(t, waitForExportThrottle(context.Background(), nil))
+func TestAdaptiveExportDelayNoopWithoutMinDelay(t *testing.T) {
+	require.NoError(t, adaptiveExportDelay(context.Background(), 0, 0))
+	require.NoError(t, adaptiveExportDelay(context.Background(), -1, 0))
 }
 
-func TestWaitForExportThrottleReturnsOnTick(t *testing.T) {
+func TestAdaptiveExportDelayUsesMinDelay(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	throttle := make(chan time.Time, 1)
-	throttle <- time.Now()
+	start := time.Now()
+	require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 0))
+	elapsed := time.Since(start)
 
-	require.NoError(t, waitForExportThrottle(ctx, throttle))
+	require.GreaterOrEqual(t, elapsed, 50*time.Millisecond)
 }
 
-func TestWaitForExportThrottleRespectsContextCancellation(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+func TestAdaptiveExportDelayExtendsWhenExportSlow(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	throttle := make(chan time.Time)
+	start := time.Now()
+	// Simulate an export that took 200ms with a 50ms minimum — should wait 200ms.
+	require.NoError(t, adaptiveExportDelay(ctx, 50*time.Millisecond, 200*time.Millisecond))
+	elapsed := time.Since(start)
 
-	err := waitForExportThrottle(ctx, throttle)
+	require.GreaterOrEqual(t, elapsed, 200*time.Millisecond)
+}
+
+func TestAdaptiveExportDelayRespectsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	err := adaptiveExportDelay(ctx, time.Second, 0)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
