@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils"
 import { Check, ChevronsUpDown, X } from "lucide-react"
 import * as React from "react"
+import { useTranslation } from "react-i18next"
 
 export interface Option {
   label: string
@@ -45,16 +46,20 @@ export function MultiSelect({
   options,
   selected,
   onChange,
-  placeholder = "Select items...",
+  placeholder,
   className,
   creatable = false,
   onCreateOption,
   disabled = false,
   hideCheckIcon = false,
-  title = "Select",
+  title,
 }: MultiSelectProps) {
+  const { t } = useTranslation()
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const [open, setOpen] = React.useState(false)
   const [inputValue, setInputValue] = React.useState("")
+  const resolvedPlaceholder = placeholder ?? tr("multiSelect.trigger.selectItems")
+  const resolvedTitle = title ?? tr("multiSelect.trigger.title")
 
   const selectedSet = React.useMemo(() => new Set(selected), [selected])
 
@@ -131,7 +136,7 @@ export function MultiSelect({
             )
           })
         ) : (
-          <span className="text-muted-foreground font-normal">{placeholder}</span>
+          <span className="text-muted-foreground font-normal">{resolvedPlaceholder}</span>
         )}
       </div>
       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -143,7 +148,7 @@ export function MultiSelect({
       open={open}
       onOpenChange={setOpen}
       trigger={triggerButton}
-      title={title}
+      title={resolvedTitle}
       popoverWidth="100%"
       popoverAlign="start"
     >
@@ -156,6 +161,7 @@ export function MultiSelect({
         handleCreate={handleCreate}
         creatable={creatable}
         hideCheckIcon={hideCheckIcon}
+        tr={tr}
       />
     </ResponsiveCommandPopover>
   )
@@ -170,6 +176,7 @@ function MultiSelectContent({
   handleCreate,
   creatable,
   hideCheckIcon,
+  tr,
 }: {
   options: Option[]
   selectedSet: Set<string>
@@ -179,6 +186,7 @@ function MultiSelectContent({
   handleCreate: () => void
   creatable: boolean
   hideCheckIcon: boolean
+  tr: (key: string, options?: Record<string, unknown>) => string
 }) {
   const isMobile = useResponsiveMobile()
 
@@ -187,7 +195,7 @@ function MultiSelectContent({
   return (
     <ResponsiveCommand>
       <ResponsiveCommandInput
-        placeholder="Search..."
+        placeholder={tr("multiSelect.searchPlaceholder")}
         value={inputValue}
         onValueChange={setInputValue}
       />
@@ -201,10 +209,10 @@ function MultiSelectContent({
               )}
               onClick={handleCreate}
             >
-              Create "{inputValue}"
+              {tr("multiSelect.empty.create", { value: inputValue })}
             </div>
           ) : (
-            "No results found."
+            tr("multiSelect.empty.noResults")
           )}
 
         </ResponsiveCommandEmpty>

@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { cn } from '@/lib/utils'
-import type { InstanceResponse, TorznabSearchResult } from '@/types'
-import { Download, ExternalLink, MoreVertical, Plus } from 'lucide-react'
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { cn } from "@/lib/utils"
+import type { InstanceResponse, TorznabSearchResult } from "@/types"
+import { Download, ExternalLink, MoreVertical, Plus } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 type SearchResultCardProps = {
   result: TorznabSearchResult
@@ -40,22 +41,25 @@ export function SearchResultCard({
   hasInstances,
   targetInstanceName
 }: SearchResultCardProps) {
-  const primaryAddLabel = targetInstanceName ? `Add to ${targetInstanceName}` : 'Add to instance'
+  const { t } = useTranslation("common")
+  const primaryAddLabel = targetInstanceName
+    ? t("searchPage.actions.addToInstance", { name: targetInstanceName })
+    : t("searchPage.actions.addToInstanceGeneric")
 
   return (
     <Card
       className={cn(
-        'p-3 transition-colors cursor-pointer',
+        "p-3 transition-colors cursor-pointer",
         isSelected
-          ? 'bg-accent text-accent-foreground ring-2 ring-accent'
-          : 'hover:bg-muted/60'
+          ? "bg-accent text-accent-foreground ring-2 ring-accent"
+          : "hover:bg-muted/60"
       )}
       role="button"
       tabIndex={0}
       aria-selected={isSelected}
       onClick={onSelect}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
+        if (event.key === "Enter" || event.key === " ") {
           event.preventDefault()
           onSelect()
         }
@@ -77,7 +81,7 @@ export function SearchResultCard({
                 onClick={(e) => e.stopPropagation()}
               >
                 <MoreVertical className="h-4 w-4" />
-                <span className="sr-only">Actions</span>
+                <span className="sr-only">{t("searchPage.actions.actions")}</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -93,20 +97,26 @@ export function SearchResultCard({
               {hasInstances && instances && instances.length > 1 && (
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger>
-                    Quick add to...
+                    {t("searchPage.actions.quickAddTo")}
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent>
-                    {instances.map(instance => (
-                      <DropdownMenuItem
-                        key={instance.id}
-                        onSelect={(event) => {
-                          event.preventDefault()
-                          onAddTorrent(instance.id)
-                        }}
-                      >
-                        {instance.name}{!instance.connected ? ' (offline)' : ''}
-                      </DropdownMenuItem>
-                    ))}
+                    {instances.map((instance) => {
+                      const instanceLabel = instance.connected
+                        ? t("searchPage.instances.labelConnected", { name: instance.name })
+                        : t("searchPage.instances.labelOffline", { name: instance.name })
+
+                      return (
+                        <DropdownMenuItem
+                          key={instance.id}
+                          onSelect={(event) => {
+                            event.preventDefault()
+                            onAddTorrent(instance.id)
+                          }}
+                        >
+                          {instanceLabel}
+                        </DropdownMenuItem>
+                      )
+                    })}
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
               )}
@@ -117,7 +127,7 @@ export function SearchResultCard({
                 }}
                 disabled={!result.downloadUrl}
               >
-                <Download className="mr-2 h-4 w-4" /> Download
+                <Download className="mr-2 h-4 w-4" /> {t("searchPage.actions.download")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={(event) => {
@@ -126,7 +136,7 @@ export function SearchResultCard({
                 }}
                 disabled={!result.infoUrl}
               >
-                <ExternalLink className="mr-2 h-4 w-4" /> View details
+                <ExternalLink className="mr-2 h-4 w-4" /> {t("searchPage.actions.viewDetails")}
               </DropdownMenuItem>
               {isSelected && (
                 <>
@@ -137,7 +147,7 @@ export function SearchResultCard({
                       onSelect()
                     }}
                   >
-                    Clear selection
+                    {t("searchPage.actions.clearSelection")}
                   </DropdownMenuItem>
                 </>
               )}
@@ -149,8 +159,8 @@ export function SearchResultCard({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">{result.indexer}</span>
           <span>{formatSize(result.size)}</span>
-          <Badge variant={result.seeders > 0 ? 'default' : 'secondary'} className="text-[10px]">
-            {result.seeders} seeders
+          <Badge variant={result.seeders > 0 ? "default" : "secondary"} className="text-[10px]">
+            {t("searchPage.resultCard.seeders", { count: result.seeders })}
           </Badge>
         </div>
 
@@ -170,7 +180,7 @@ export function SearchResultCard({
             </Badge>
           )}
           {result.downloadVolumeFactor === 0 && (
-            <Badge variant="default" className="text-[10px]">Free</Badge>
+            <Badge variant="default" className="text-[10px]">{t("searchPage.freeleech.free")}</Badge>
           )}
           {result.downloadVolumeFactor > 0 && result.downloadVolumeFactor < 1 && (
             <Badge variant="secondary" className="text-[10px]">{result.downloadVolumeFactor * 100}%</Badge>
@@ -179,7 +189,7 @@ export function SearchResultCard({
 
         {/* Published Date */}
         <div className="text-xs text-muted-foreground">
-          Published {formatDate(result.publishDate)}
+          {t("searchPage.resultCard.published", { time: formatDate(result.publishDate) })}
         </div>
       </div>
     </Card>

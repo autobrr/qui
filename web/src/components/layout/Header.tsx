@@ -4,7 +4,6 @@
  */
 
 import { InstancePreferencesDialog } from "@/components/instances/preferences/InstancePreferencesDialog"
-import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { AddTorrentDialog } from "@/components/torrents/AddTorrentDialog"
 import { TorrentCreationTasks } from "@/components/torrents/TorrentCreationTasks"
 import { TorrentCreatorDialog } from "@/components/torrents/TorrentCreatorDialog"
@@ -18,6 +17,7 @@ import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  DropdownMenuCheckboxItem,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -58,6 +58,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { Archive, ChevronsUpDown, Cog, Download, FileEdit, FileText, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
+import { useTranslation } from "react-i18next"
 
 interface HeaderProps {
   children?: ReactNode
@@ -120,6 +121,7 @@ export function Header({
   children,
   sidebarCollapsed = false,
 }: HeaderProps) {
+  const { t } = useTranslation("common")
   const { logout } = useAuth()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string;[key: string]: unknown }
@@ -161,7 +163,9 @@ export function Header({
     () => normalizeUnifiedInstanceIds(persistedUnifiedFilter, activeInstanceIds),
     [persistedUnifiedFilter, activeInstanceIds]
   )
-  const effectiveUnifiedInstanceIds = normalizedUnifiedInstanceIds.length > 0? normalizedUnifiedInstanceIds: activeInstanceIds
+  const effectiveUnifiedInstanceIds = normalizedUnifiedInstanceIds.length > 0 ? normalizedUnifiedInstanceIds : activeInstanceIds
+  const hasCustomUnifiedScope = normalizedUnifiedInstanceIds.length > 0
+  const unifiedScopeSummary = `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}`
   const unifiedScopeInstances = useMemo(
     () => activeInstances.filter(instance => effectiveUnifiedInstanceIds.includes(instance.id)),
     [activeInstances, effectiveUnifiedInstanceIds]
@@ -215,7 +219,7 @@ export function Header({
     return instances?.find(i => i.id === selectedInstanceId)
   }, [isInstanceRoute, instances, selectedInstanceId])
   const hasMultipleActiveInstances = activeInstances.length > 1
-  const instanceName = isAllInstancesRoute? (hasMultipleActiveInstances ? "Unified" : (activeInstances[0]?.name ?? null)): (currentInstance?.name ?? null)
+  const instanceName = isAllInstancesRoute? (hasMultipleActiveInstances ? t("header.unified") : (activeInstances[0]?.name ?? null)): (currentInstance?.name ?? null)
 
   // Keep local state in sync with URL when navigating between instances/routes
   useEffect(() => {
@@ -340,7 +344,7 @@ export function Header({
                   sidebarCollapsed && "lg:flex", // Visible on desktop when sidebar collapsed
                   !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
                 )}
-                aria-label={`Current instance: ${instanceName}. Click to switch instances.`}
+                aria-label={t("header.currentInstanceAria", { instanceName })}
                 aria-haspopup="menu"
               >
                 {theme === "swizzin" ? (
@@ -358,19 +362,70 @@ export function Header({
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-64 mt-2" side="bottom" align="start">
               <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Instances
+                {t("header.switchScope")}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               {hasMultipleActiveInstances && (
                 <>
-                  <UnifiedScopeDropdownSection
-                    activeInstances={activeInstances}
-                    effectiveUnifiedInstanceIds={effectiveUnifiedInstanceIds}
-                    isAllInstancesRoute={isAllInstancesRoute}
-                    onResetUnifiedScope={resetUnifiedScope}
-                    onToggleUnifiedScopeInstance={toggleUnifiedScopeInstance}
-                    scopeKeyPrefix="header-switch-scope"
-                  />
+                  <DropdownMenuItem asChild>
+                    <Link
+                      to="/instances"
+                      className={cn(
+                        "flex items-center gap-2 cursor-pointer rounded-sm px-2 py-1.5 text-sm focus-visible:outline-none",
+                        isAllInstancesRoute ? "bg-accent text-accent-foreground font-medium" : "hover:bg-accent/80 data-[highlighted]:bg-accent/80 text-foreground"
+                      )}
+                    >
+                      <HardDrive className="h-4 w-4 flex-shrink-0" />
+                      <span className="flex-1 truncate">{t("header.unified")}</span>
+                      <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+                        {t("header.activeCount", { count: activeInstances.length })}
+                      </span>
+                      {hasCustomUnifiedScope && (
+                        <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
+                          {unifiedScopeSummary}
+                        </span>
+                      )}
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
+                    {t("header.unifiedScope")}
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      resetUnifiedScope()
+                    }}
+                    className="cursor-pointer text-xs"
+                  >
+                    {t("header.allActive", { count: activeInstances.length })}
+                  </DropdownMenuItem>
+                  {activeInstances.map((instance) => {
+                    const checked = effectiveUnifiedInstanceIds.includes(instance.id)
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={`scope-${instance.id}`}
+                        checked={checked}
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          toggleUnifiedScopeInstance(instance.id)
+                        }}
+                        className="cursor-pointer"
+                      >
+                        <span className="flex w-full items-center justify-between gap-2">
+                          <span className="truncate">{instance.name}</span>
+                          <span
+                            className={cn(
+                              "h-2 w-2 rounded-full flex-shrink-0",
+                              instance.connected ? "bg-green-500" : "bg-red-500"
+                            )}
+                            aria-hidden="true"
+                          />
+                        </span>
+                      </DropdownMenuCheckboxItem>
+                    )
+                  })}
+                  <DropdownMenuSeparator />
                 </>
               )}
               <div className="max-h-64 overflow-y-auto space-y-1">
@@ -392,13 +447,13 @@ export function Header({
                             "h-2 w-2 rounded-full flex-shrink-0",
                             instance.connected ? "bg-green-500" : "bg-red-500"
                           )}
-                          aria-label={instance.connected ? "Connected" : "Disconnected"}
+                          aria-label={instance.connected ? t("header.connected") : t("header.disconnected")}
                         />
                       </Link>
                     </DropdownMenuItem>
                   ))
                 ) : (
-                  <p className="px-2 py-1.5 text-xs text-muted-foreground">No active instances</p>
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("header.noActiveInstances")}</p>
                 )}
               </div>
             </DropdownMenuContent>
@@ -448,7 +503,7 @@ export function Header({
                   )}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
+              <TooltipContent>{filterSidebarCollapsed ? t("header.showFilters") : t("header.hideFilters")}</TooltipContent>
             </Tooltip>
             {isAllInstancesRoute && unifiedManageableInstances.length > 0 && (
               <>
@@ -503,7 +558,7 @@ export function Header({
                       <Plus className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Add torrent</TooltipContent>
+                  <TooltipContent>{t("header.addTorrent")}</TooltipContent>
                 </Tooltip>
                 {/* Create Torrent button - only show if instance supports it */}
                 {supportsTorrentCreation && (
@@ -521,7 +576,7 @@ export function Header({
                         <FileEdit className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Create torrent</TooltipContent>
+                    <TooltipContent>{t("header.createTorrent")}</TooltipContent>
                   </Tooltip>
                 )}
                 {/* Tasks button - only show on instance routes if torrent creation is supported */}
@@ -545,7 +600,7 @@ export function Header({
                         )}
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Torrent creation tasks</TooltipContent>
+                    <TooltipContent>{t("header.torrentCreationTasks")}</TooltipContent>
                   </Tooltip>
                 )}
                 {/* Instance settings button */}
@@ -557,12 +612,12 @@ export function Header({
                         size="icon"
                         className="hidden md:inline-flex"
                         onClick={() => setInstanceSettingsOpen(true)}
-                        aria-label="Instance settings"
+                        aria-label={t("header.instanceSettings")}
                       >
                         <Cog className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Instance settings</TooltipContent>
+                    <TooltipContent>{t("header.instanceSettings")}</TooltipContent>
                   </Tooltip>
                 )}
               </>
@@ -600,7 +655,7 @@ export function Header({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none transition-opacity duration-300" />
               <Input
                 ref={searchInputRef}
-                placeholder={isGlobSearch ? "Glob pattern..." : `Search torrents... (${shortcutKey})`}
+                placeholder={isGlobSearch ? t("header.globPlaceholder") : t("header.searchPlaceholder", { shortcut: shortcutKey })}
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 onKeyDown={(e) => {
@@ -644,7 +699,7 @@ export function Header({
                         <X className="h-3.5 w-3.5 text-muted-foreground" />
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent>Clear search</TooltipContent>
+                    <TooltipContent>{t("header.clearSearch")}</TooltipContent>
                   </Tooltip>
                 )}
                 {/* Info tooltip */}
@@ -660,14 +715,14 @@ export function Header({
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <div className="space-y-2 text-xs">
-                      <p className="font-semibold">Smart Search Features:</p>
+                      <p className="font-semibold">{t("header.smartSearchTitle")}</p>
                       <ul className="space-y-1 ml-2">
-                        <li>• <strong>Glob patterns:</strong> *.mkv, *1080p*, *S??E??*</li>
-                        <li>• <strong>Fuzzy matching:</strong> "breaking bad" finds "Breaking.Bad"</li>
-                        <li>• Handles dots, underscores, and brackets</li>
-                        <li>• Searches name, category, and tags</li>
-                        <li>• Press Enter for instant search</li>
-                        <li>• Auto-searches after 500ms pause</li>
+                        <li>{t("header.smartSearchGlob")}</li>
+                        <li>{t("header.smartSearchFuzzy")}</li>
+                        <li>{t("header.smartSearchNormalize")}</li>
+                        <li>{t("header.smartSearchFields")}</li>
+                        <li>{t("header.smartSearchEnter")}</li>
+                        <li>{t("header.smartSearchAuto")}</li>
                       </ul>
                     </div>
                   </TooltipContent>
@@ -707,8 +762,8 @@ export function Header({
                     >
                       <Download className="mr-2 h-4 w-4" />
                       <div className="flex flex-col">
-                        <span className="font-medium">Update Available</span>
-                        <span className="text-[10px] opacity-80">Version {updateInfo.tag_name}</span>
+                        <span className="font-medium">{t("update.available")}</span>
+                        <span className="text-[10px] opacity-80">{t("update.version", { version: updateInfo.tag_name })}</span>
                       </div>
                     </a>
                   </DropdownMenuItem>
@@ -721,7 +776,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Home className="mr-2 h-4 w-4" />
-                  Dashboard
+                  {t("nav.dashboard")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -730,7 +785,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Search className="mr-2 h-4 w-4" />
-                  Search
+                  {t("nav.search")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -739,7 +794,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <GitBranch className="mr-2 h-4 w-4" />
-                  Cross-Seed
+                  {t("nav.crossSeed")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -748,7 +803,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Zap className="mr-2 h-4 w-4" />
-                  Automations
+                  {t("nav.automations")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -757,7 +812,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Archive className="mr-2 h-4 w-4" />
-                  Backups
+                  {t("nav.backups")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -766,7 +821,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Rss className="mr-2 h-4 w-4" />
-                  RSS
+                  {t("nav.rss")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -776,7 +831,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Server className="mr-2 h-4 w-4" />
-                  Instances
+                  {t("header.instances")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -786,25 +841,79 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <FileText className="mr-2 h-4 w-4" />
-                  Logs
+                  {t("nav.logs")}
                 </Link>
               </DropdownMenuItem>
-              {activeInstances.length > 0 && <DropdownMenuSeparator />}
+              {hasMultipleActiveInstances && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link
+                      to="/instances"
+                      className={cn(
+                        "flex cursor-pointer",
+                        isAllInstancesRoute && "bg-accent text-accent-foreground font-medium"
+                      )}
+                    >
+                      <HardDrive className="mr-2 h-4 w-4" />
+                      <span className="truncate">{t("header.unified")}</span>
+                      <span className="ml-auto rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+                        {t("header.activeCount", { count: activeInstances.length })}
+                      </span>
+                      {hasCustomUnifiedScope && (
+                        <span className="rounded border border-primary/40 px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary">
+                          {unifiedScopeSummary}
+                        </span>
+                      )}
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
+                    {t("header.unifiedScope")}
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      resetUnifiedScope()
+                    }}
+                    className="cursor-pointer text-xs"
+                  >
+                    {t("header.allActive", { count: activeInstances.length })}
+                  </DropdownMenuItem>
+                  {activeInstances.map((instance) => {
+                    const checked = effectiveUnifiedInstanceIds.includes(instance.id)
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={`menu-scope-${instance.id}`}
+                        checked={checked}
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          toggleUnifiedScopeInstance(instance.id)
+                        }}
+                        className="cursor-pointer"
+                      >
+                        <span className="flex w-full items-center justify-between gap-2">
+                          <span className="truncate">{instance.name}</span>
+                          <span
+                            className={cn(
+                              "h-2 w-2 rounded-full flex-shrink-0",
+                              instance.connected ? "bg-green-500" : "bg-red-500"
+                            )}
+                            aria-hidden="true"
+                          />
+                        </span>
+                      </DropdownMenuCheckboxItem>
+                    )
+                  })}
+                  <DropdownMenuSeparator />
+                </>
+              )}
               {activeInstances.length > 0 ? (
                 <>
+                  {!hasMultipleActiveInstances && <DropdownMenuSeparator />}
                   <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
-                    Instances
+                    {t("header.instances")}
                   </DropdownMenuLabel>
-                  {hasMultipleActiveInstances && (
-                    <UnifiedScopeDropdownSection
-                      activeInstances={activeInstances}
-                      effectiveUnifiedInstanceIds={effectiveUnifiedInstanceIds}
-                      isAllInstancesRoute={isAllInstancesRoute}
-                      onResetUnifiedScope={resetUnifiedScope}
-                      onToggleUnifiedScopeInstance={toggleUnifiedScopeInstance}
-                      scopeKeyPrefix="header-menu-scope"
-                    />
-                  )}
                   {activeInstances.map((instance) => {
                     const csState = crossSeedInstanceState[instance.id]
                     const hasRss = csState?.rssEnabled || csState?.rssRunning
@@ -815,7 +924,7 @@ export function Header({
                         <Link
                           to="/instances/$instanceId"
                           params={{ instanceId: instance.id.toString() }}
-                          className="flex cursor-pointer"
+                          className="flex cursor-pointer pl-6"
                         >
                           <HardDrive className="mr-2 h-4 w-4" />
                           <span className="truncate">{instance.name}</span>
@@ -832,7 +941,7 @@ export function Header({
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent side="left" className="text-xs">
-                                  RSS {csState?.rssRunning ? "running" : "enabled"}
+                                  {csState?.rssRunning ? t("header.rssRunning") : t("header.rssEnabled")}
                                 </TooltipContent>
                               </Tooltip>
                             )}
@@ -844,7 +953,7 @@ export function Header({
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent side="left" className="text-xs">
-                                  Scan running
+                                  {t("header.scanRunning")}
                                 </TooltipContent>
                               </Tooltip>
                             )}
@@ -862,7 +971,7 @@ export function Header({
                 </>
               ) : (
                 <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-                  No active instances
+                  {t("header.noActiveInstances")}
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
@@ -872,13 +981,13 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Settings className="mr-2 h-4 w-4" />
-                  Settings
+                  {t("nav.settings")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => logout()}>
                 <LogOut className="mr-2 h-4 w-4" />
-                Logout
+                {t("actions.logout")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

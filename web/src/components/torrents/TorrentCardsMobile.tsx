@@ -93,6 +93,7 @@ import { getStateLabel } from "@/lib/torrent-state-utils"
 import { cn, formatBytes, getRatioColor } from "@/lib/utils"
 import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useQuery } from "@tanstack/react-query"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { getDefaultSortOrder, TORRENT_SORT_OPTIONS, type TorrentSortOptionValue } from "./torrentSortOptions"
 
 // Mobile-friendly Share Limits Dialog
@@ -109,6 +110,7 @@ function MobileShareLimitsDialog({
   onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => void
   isPending: boolean
 }) {
+  const tr = useCommonTr()
   const [ratioEnabled, setRatioEnabled] = useState(false)
   const [ratioLimit, setRatioLimit] = useState(1.5)
   const [seedingTimeEnabled, setSeedingTimeEnabled] = useState(false)
@@ -135,9 +137,9 @@ function MobileShareLimitsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Set Share Limits for {hashCount} torrent(s)</DialogTitle>
+          <DialogTitle>{tr("torrentCardsMobile.mobileShareLimits.title", { count: hashCount })}</DialogTitle>
           <DialogDescription>
-            Configure seeding limits. Use -1 or disable to remove limits.
+            {tr("torrentCardsMobile.mobileShareLimits.description")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -148,7 +150,7 @@ function MobileShareLimitsDialog({
                 checked={ratioEnabled}
                 onCheckedChange={setRatioEnabled}
               />
-              <Label htmlFor="ratioEnabled">Set ratio limit</Label>
+              <Label htmlFor="ratioEnabled">{tr("torrentCardsMobile.mobileShareLimits.ratioLabel")}</Label>
             </div>
             {ratioEnabled && (
               <Input
@@ -157,7 +159,7 @@ function MobileShareLimitsDialog({
                 step="0.1"
                 value={ratioLimit}
                 onChange={(e) => setRatioLimit(parseFloat(e.target.value) || 0)}
-                placeholder="1.5"
+                placeholder={tr("torrentCardsMobile.mobileShareLimits.ratioPlaceholder")}
               />
             )}
           </div>
@@ -169,7 +171,7 @@ function MobileShareLimitsDialog({
                 checked={seedingTimeEnabled}
                 onCheckedChange={setSeedingTimeEnabled}
               />
-              <Label htmlFor="seedingTimeEnabled">Set seeding time limit (minutes)</Label>
+              <Label htmlFor="seedingTimeEnabled">{tr("torrentCardsMobile.mobileShareLimits.seedTimeLabel")}</Label>
             </div>
             {seedingTimeEnabled && (
               <Input
@@ -177,7 +179,7 @@ function MobileShareLimitsDialog({
                 min="0"
                 value={seedingTimeLimit}
                 onChange={(e) => setSeedingTimeLimit(parseInt(e.target.value) || 0)}
-                placeholder="1440"
+                placeholder={tr("torrentCardsMobile.mobileShareLimits.seedTimePlaceholder")}
               />
             )}
           </div>
@@ -189,7 +191,7 @@ function MobileShareLimitsDialog({
                 checked={inactiveSeedingTimeEnabled}
                 onCheckedChange={setInactiveSeedingTimeEnabled}
               />
-              <Label htmlFor="inactiveSeedingTimeEnabled">Set inactive seeding limit (minutes)</Label>
+              <Label htmlFor="inactiveSeedingTimeEnabled">{tr("torrentCardsMobile.mobileShareLimits.inactiveLabel")}</Label>
             </div>
             {inactiveSeedingTimeEnabled && (
               <Input
@@ -197,17 +199,17 @@ function MobileShareLimitsDialog({
                 min="0"
                 value={inactiveSeedingTimeLimit}
                 onChange={(e) => setInactiveSeedingTimeLimit(parseInt(e.target.value) || 0)}
-                placeholder="10080"
+                placeholder={tr("torrentCardsMobile.mobileShareLimits.inactivePlaceholder")}
               />
             )}
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {tr("torrentCardsMobile.shared.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={isPending}>
-            {isPending ? "Setting..." : "Apply Limits"}
+            {isPending ? tr("torrentCardsMobile.shared.setting") : tr("torrentCardsMobile.mobileShareLimits.confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -229,6 +231,7 @@ function MobileSpeedLimitsDialog({
   onConfirm: (uploadLimit: number, downloadLimit: number) => void
   isPending: boolean
 }) {
+  const tr = useCommonTr()
   const [uploadEnabled, setUploadEnabled] = useState(false)
   const [uploadLimit, setUploadLimit] = useState(1024)
   const [downloadEnabled, setDownloadEnabled] = useState(false)
@@ -250,9 +253,9 @@ function MobileSpeedLimitsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Set Speed Limits for {hashCount} torrent(s)</DialogTitle>
+          <DialogTitle>{tr("torrentCardsMobile.mobileSpeedLimits.title", { count: hashCount })}</DialogTitle>
           <DialogDescription>
-            Set upload and download speed limits in KB/s. Use -1 or disable to remove limits.
+            {tr("torrentCardsMobile.mobileSpeedLimits.description")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -263,7 +266,7 @@ function MobileSpeedLimitsDialog({
                 checked={uploadEnabled}
                 onCheckedChange={setUploadEnabled}
               />
-              <Label htmlFor="uploadEnabled">Set upload limit (KB/s)</Label>
+              <Label htmlFor="uploadEnabled">{tr("torrentCardsMobile.mobileSpeedLimits.uploadLabel")}</Label>
             </div>
             {uploadEnabled && (
               <Input
@@ -271,7 +274,7 @@ function MobileSpeedLimitsDialog({
                 min="0"
                 value={uploadLimit}
                 onChange={(e) => setUploadLimit(parseInt(e.target.value) || 0)}
-                placeholder="1024"
+                placeholder={tr("torrentCardsMobile.mobileSpeedLimits.uploadPlaceholder")}
               />
             )}
           </div>
@@ -283,7 +286,7 @@ function MobileSpeedLimitsDialog({
                 checked={downloadEnabled}
                 onCheckedChange={setDownloadEnabled}
               />
-              <Label htmlFor="downloadEnabled">Set download limit (KB/s)</Label>
+              <Label htmlFor="downloadEnabled">{tr("torrentCardsMobile.mobileSpeedLimits.downloadLabel")}</Label>
             </div>
             {downloadEnabled && (
               <Input
@@ -291,17 +294,17 @@ function MobileSpeedLimitsDialog({
                 min="0"
                 value={downloadLimit}
                 onChange={(e) => setDownloadLimit(parseInt(e.target.value) || 0)}
-                placeholder="1024"
+                placeholder={tr("torrentCardsMobile.mobileSpeedLimits.downloadPlaceholder")}
               />
             )}
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {tr("torrentCardsMobile.shared.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={isPending}>
-            {isPending ? "Setting..." : "Apply Limits"}
+            {isPending ? tr("torrentCardsMobile.shared.setting") : tr("torrentCardsMobile.mobileSpeedLimits.confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -324,8 +327,11 @@ interface TorrentCardsMobileProps {
   isCrossSeedSearching?: boolean
 }
 
-function formatEta(seconds: number): string {
-  if (seconds === 8640000) return "∞"
+function formatEta(
+  seconds: number,
+  tr: (key: string, options?: Record<string, unknown>) => string
+): string {
+  if (seconds === 8640000) return tr("torrentCardsMobile.values.infinity")
   if (seconds < 0) return ""
 
   const hours = Math.floor(seconds / 3600)
@@ -333,14 +339,14 @@ function formatEta(seconds: number): string {
 
   if (hours > 24) {
     const days = Math.floor(hours / 24)
-    return `${days}d`
+    return tr("torrentCardsMobile.values.daysShort", { days })
   }
 
   if (hours > 0) {
-    return `${hours}h ${minutes}m`
+    return tr("torrentCardsMobile.values.hoursMinutesShort", { hours, minutes })
   }
 
-  return `${minutes}m`
+  return tr("torrentCardsMobile.values.minutesShort", { minutes })
 }
 
 function getStatusBadgeVariant(state: string): "default" | "secondary" | "destructive" | "outline" {
@@ -364,7 +370,11 @@ function getStatusBadgeVariant(state: string): "default" | "secondary" | "destru
   }
 }
 
-function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean): {
+function getStatusBadgeProps(
+  torrent: Torrent,
+  supportsTrackerHealth: boolean,
+  tr: (key: string, options?: Record<string, unknown>) => string
+): {
   variant: "default" | "secondary" | "destructive" | "outline"
   label: string
   className: string
@@ -377,11 +387,11 @@ function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean): 
   if (supportsTrackerHealth) {
     const trackerHealth = torrent.tracker_health ?? null
     if (trackerHealth === "tracker_down") {
-      label = "Tracker Down"
+      label = tr("torrentCardsMobile.values.trackerDown")
       variant = "outline"
       className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
     } else if (trackerHealth === "unregistered") {
-      label = "Unregistered"
+      label = tr("torrentCardsMobile.values.unregistered")
       variant = "outline"
       className = "text-destructive border-destructive/40 bg-destructive/10"
     }
@@ -529,6 +539,7 @@ function SwipeableCard({
   trackerIcons?: Record<string, string>
   trackerCustomizationLookup?: TrackerCustomizationLookup
 }) {
+  const tr = useCommonTr()
 
   // Use number for timeoutId in browser
   const [longPressTimer, setLongPressTimer] = useState<number | null>(null)
@@ -585,8 +596,8 @@ function SwipeableCard({
   const displayTags = incognitoMode ? getLinuxTags(torrent.hash) : torrent.tags
   const displayRatio = incognitoMode ? getLinuxRatio(torrent.hash) : torrent.ratio
   const { variant: statusBadgeVariant, label: statusBadgeLabel, className: statusBadgeClass } = useMemo(
-    () => getStatusBadgeProps(torrent, supportsTrackerHealth),
-    [torrent, supportsTrackerHealth]
+    () => getStatusBadgeProps(torrent, supportsTrackerHealth, tr),
+    [torrent, supportsTrackerHealth, tr]
   )
   const trackerValue = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
   const trackerMeta = useMemo(() => getTrackerDisplayMeta(trackerValue), [trackerValue])
@@ -720,12 +731,12 @@ function SwipeableCard({
               {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
             </span>
             <div className="flex items-center gap-1">
-              <span className="text-muted-foreground">Ratio:</span>
+              <span className="text-muted-foreground">{tr("torrentCardsMobile.labels.ratio")}</span>
               <span
                 className="font-medium"
                 style={{ color: getRatioColor(displayRatio) }}
               >
-                {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
+                {displayRatio === -1 ? tr("torrentCardsMobile.values.infinity") : displayRatio.toFixed(2)}
               </span>
             </div>
           </div>
@@ -754,7 +765,7 @@ function SwipeableCard({
                 {torrent.eta > 0 && torrent.eta !== 8640000 && (
                   <div className="flex items-center gap-1">
                     <Clock className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">{formatEta(torrent.eta)}</span>
+                    <span className="text-xs text-muted-foreground">{formatEta(torrent.eta, tr)}</span>
                   </div>
                 )}
                 <span className="text-xs font-medium">
@@ -774,12 +785,12 @@ function SwipeableCard({
             <div className="flex items-center gap-3">
               {/* Ratio on the left */}
               <div className="flex items-center gap-1">
-                <span className="text-muted-foreground">Ratio:</span>
+                <span className="text-muted-foreground">{tr("torrentCardsMobile.labels.ratio")}</span>
                 <span
                   className="font-medium"
                   style={{ color: getRatioColor(displayRatio) }}
                 >
-                  {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
+                  {displayRatio === -1 ? tr("torrentCardsMobile.values.infinity") : displayRatio.toFixed(2)}
                 </span>
               </div>
 
@@ -921,6 +932,7 @@ export function TorrentCardsMobile({
   onCrossSeedSearch,
   isCrossSeedSearching,
 }: TorrentCardsMobileProps) {
+  const tr = useCommonTr()
   const isAllInstancesView = isAllInstancesScope(instanceId)
   // State
   const [sortState, setSortState] = useState<MobileSortState>(() => {
@@ -1252,14 +1264,10 @@ export function TorrentCardsMobile({
     responseSupport: trackerHealthSupported,
   })
   const supportsTorrentCreation = isAllInstancesView ? false : (capabilities?.supportsTorrentCreation ?? true)
-  const supportsSubcategories = isAllInstancesView
-    ? Boolean(subcategoriesFromData)
-    : (capabilities?.supportsSubcategories ?? false)
+  const supportsSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (capabilities?.supportsSubcategories ?? false)
   // subcategoriesFromData reflects backend/server state; allowSubcategories
   // additionally respects user preferences for UI surfaces like dialogs.
-  const allowSubcategories = isAllInstancesView
-    ? Boolean(subcategoriesFromData)
-    : (supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false))
+  const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false))
 
   const getSelectionIdentity = useCallback((torrent: Torrent): string => {
     if (!isAllInstancesView) {
@@ -1657,9 +1665,7 @@ export function TorrentCardsMobile({
 
   const triggerSelectionAction = useCallback((action: TorrentAction, extra?: Parameters<typeof handleAction>[2]) => {
     const hashes = isAllSelected ? [] : selectedRequestHashes
-    const visibleHashes = isAllSelected
-      ? torrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t))).map(t => t.hash)
-      : selectedRequestHashes
+    const visibleHashes = isAllSelected? torrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t))).map(t => t.hash): selectedRequestHashes
     const clientCount = isAllSelected ? effectiveSelectionCount : selectedActionTargets.length || visibleHashes.length || 1
     const actionTargets = isAllSelected ? undefined : selectedActionTargets
     const excludedTargets = isAllSelected ? buildTorrentActionTargets(excludedTorrents, instanceId) : undefined
@@ -1683,9 +1689,7 @@ export function TorrentCardsMobile({
   }, [triggerSelectionAction])
 
   const handleDeleteWrapper = useCallback(async () => {
-    const deleteActionTargets = torrentToDelete
-      ? buildTorrentActionTargets([torrentToDelete], instanceId)
-      : (isAllSelected ? undefined : selectedActionTargets)
+    const deleteActionTargets = torrentToDelete? buildTorrentActionTargets([torrentToDelete], instanceId): (isAllSelected ? undefined : selectedActionTargets)
 
     const crossSeedTagHashesToBlock = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
 
@@ -1747,9 +1751,7 @@ export function TorrentCardsMobile({
         clientHashes: visibleHashesToDelete,
         totalSelected: totalToDelete,
         actionTargets: deleteActionTargets,
-        excludeTargets: !torrentToDelete && isAllSelected
-          ? buildTorrentActionTargets(excludedTorrents, instanceId)
-          : undefined,
+        excludeTargets: !torrentToDelete && isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
       }
     )
     setTorrentToDelete(null)
@@ -1790,9 +1792,7 @@ export function TorrentCardsMobile({
         clientHashes: visibleHashes,
         totalSelected,
         actionTargets: isAllSelected ? undefined : selectedActionTargets,
-        excludeTargets: isAllSelected
-          ? buildTorrentActionTargets(excludedTorrents, instanceId)
-          : undefined,
+        excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
       }
     )
     setActionTorrents([])
@@ -1813,9 +1813,7 @@ export function TorrentCardsMobile({
         clientHashes: visibleHashes,
         totalSelected,
         actionTargets: isAllSelected ? undefined : selectedActionTargets,
-        excludeTargets: isAllSelected
-          ? buildTorrentActionTargets(excludedTorrents, instanceId)
-          : undefined,
+        excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
       }
     )
     setActionTorrents([])
@@ -1836,9 +1834,7 @@ export function TorrentCardsMobile({
         clientHashes: visibleHashes,
         totalSelected,
         actionTargets: isAllSelected ? undefined : selectedActionTargets,
-        excludeTargets: isAllSelected
-          ? buildTorrentActionTargets(excludedTorrents, instanceId)
-          : undefined,
+        excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
       }
     )
     setActionTorrents([])
@@ -1857,9 +1853,7 @@ export function TorrentCardsMobile({
         clientHashes: visibleHashes,
         totalSelected,
         actionTargets: isAllSelected ? undefined : selectedActionTargets,
-        excludeTargets: isAllSelected
-          ? buildTorrentActionTargets(excludedTorrents, instanceId)
-          : undefined,
+        excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
       }
     )
   }, [isAllSelected, selectedRequestHashes, handleTmmConfirm, filters, effectiveSearch, excludedFromSelectAll, torrents, effectiveSelectionCount, instanceId, getSelectionIdentity, excludeHashesForRequest, excludedTorrents, selectedActionTargets])
@@ -1904,17 +1898,17 @@ export function TorrentCardsMobile({
         <div className="flex items-center justify-between text-xs mb-3">
           <div className="text-muted-foreground">
             {torrents.length === 0 && isLoading ? (
-              "Loading torrents..."
+              tr("torrentCardsMobile.stats.loadingTorrents")
             ) : totalCount === 0 ? (
-              "No torrents found"
+              tr("torrentCardsMobile.stats.noTorrentsFound")
             ) : (
               <>
                 {hasLoadedAll ? (
-                  `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
+                  tr("torrentCardsMobile.stats.loadedSimple", { count: torrents.length })
                 ) : isLoadingMore ? (
-                  "Loading more torrents..."
+                  tr("torrentCardsMobile.stats.loadingMoreTorrents")
                 ) : (
-                  `${safeLoadedRows} of ${totalCount} torrents loaded`
+                  tr("torrentCardsMobile.stats.loadedOfTotal", { loaded: safeLoadedRows, total: totalCount })
                 )}
               </>
             )}
@@ -1927,18 +1921,20 @@ export function TorrentCardsMobile({
                   size="sm"
                   className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
                 >
-                  Sort: {currentSortOption.label}
+                  {tr("torrentCardsMobile.sort.currentSort", {
+                    label: tr(currentSortOption.labelKey, { defaultValue: currentSortOption.fallbackLabel }),
+                  })}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48 max-h-100 overflow-y-auto">
-                <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                <DropdownMenuLabel>{tr("torrentCardsMobile.sort.sortBy")}</DropdownMenuLabel>
                 <DropdownMenuRadioGroup
                   value={sortField}
                   onValueChange={(value) => handleSortFieldChange(value as TorrentSortOptionValue)}
                 >
                   {TORRENT_SORT_OPTIONS.map(option => (
                     <DropdownMenuRadioItem key={option.value} value={option.value} className="text-xs">
-                      {option.label}
+                      {tr(option.labelKey, { defaultValue: option.fallbackLabel })}
                     </DropdownMenuRadioItem>
                   ))}
                 </DropdownMenuRadioGroup>
@@ -1949,8 +1945,12 @@ export function TorrentCardsMobile({
               size="sm"
               onClick={toggleSortOrder}
               className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground md:hidden"
-              aria-label={`Sort ${sortOrder === "desc" ? "descending" : "ascending"}`}
-              title={`Sort ${sortOrder === "desc" ? "descending" : "ascending"}`}
+              aria-label={tr("torrentCardsMobile.sort.directionAria", {
+                direction: sortOrder === "desc"? tr("torrentCardsMobile.sort.directionDescending"): tr("torrentCardsMobile.sort.directionAscending"),
+              })}
+              title={tr("torrentCardsMobile.sort.directionAria", {
+                direction: sortOrder === "desc"? tr("torrentCardsMobile.sort.directionDescending"): tr("torrentCardsMobile.sort.directionAscending"),
+              })}
             >
               {sortOrder === "desc" ? (
                 <ChevronDown className="h-3.5 w-3.5" />
@@ -1964,7 +1964,7 @@ export function TorrentCardsMobile({
             >
               <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">
-                {speedUnit === "bytes" ? "MiB/s" : "Mbps"}
+                {speedUnit === "bytes"? tr("torrentCardsMobile.units.mibPerSecond"): tr("torrentCardsMobile.units.mbps")}
               </span>
             </button>
           </div>
@@ -1983,9 +1983,9 @@ export function TorrentCardsMobile({
               size="sm"
               onClick={handleClearSearch}
               className="h-7 px-2 text-xs font-medium text-primary hover:text-primary"
-              aria-label="Clear search filter"
+              aria-label={tr("torrentCardsMobile.search.clearFilterAria")}
             >
-              Clear
+              {tr("torrentCardsMobile.search.clear")}
               <X className="ml-1 h-3 w-3" aria-hidden="true" />
             </Button>
           </div>
@@ -2008,7 +2008,7 @@ export function TorrentCardsMobile({
                 <X className="h-4 w-4" />
               </button>
               <span className="text-sm font-medium flex items-center gap-2">
-                {isAllSelected ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected
+                {isAllSelected? tr("torrentCardsMobile.selection.allSelected", { count: effectiveSelectionCount }): tr("torrentCardsMobile.selection.selectedCount", { count: effectiveSelectionCount })}
                 {selectedTotalSize > 0 && (
                   <span className="text-xs text-primary-foreground/80">
                     • {selectedFormattedSize}
@@ -2020,7 +2020,7 @@ export function TorrentCardsMobile({
               onClick={handleSelectAll}
               className="text-sm font-medium"
             >
-              {effectiveSelectionCount === totalCount ? "Deselect All" : "Select All"}
+              {effectiveSelectionCount === totalCount? tr("torrentCardsMobile.selection.deselectAll"): tr("torrentCardsMobile.selection.selectAll")}
             </button>
           </div>
         )}
@@ -2086,7 +2086,7 @@ export function TorrentCardsMobile({
               disabled={isLoadingMoreRows}
               className="text-muted-foreground"
             >
-              {isLoadingMoreRows ? "Loading..." : "Load More"}
+              {isLoadingMoreRows? tr("torrentCardsMobile.stats.loading"): tr("torrentCardsMobile.stats.loadMore")}
             </Button>
           </div>
         )}
@@ -2094,7 +2094,7 @@ export function TorrentCardsMobile({
         {isLoadingMore && (
           <div className="p-4 text-center text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
-            <p className="text-sm">Loading more torrents...</p>
+            <p className="text-sm">{tr("torrentCardsMobile.stats.loadingMoreTorrents")}</p>
           </div>
         )}
       </div>
@@ -2115,7 +2115,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Play className="h-5 w-5" />
-              <span className="truncate">Resume</span>
+              <span className="truncate">{tr("torrentCardsMobile.bottomActions.resume")}</span>
             </button>
 
             <button
@@ -2123,7 +2123,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Pause className="h-5 w-5" />
-              <span className="truncate">Pause</span>
+              <span className="truncate">{tr("torrentCardsMobile.bottomActions.pause")}</span>
             </button>
 
             <button
@@ -2134,7 +2134,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Folder className="h-5 w-5" />
-              <span className="truncate">Category</span>
+              <span className="truncate">{tr("torrentCardsMobile.bottomActions.category")}</span>
             </button>
 
             <button
@@ -2145,7 +2145,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Tag className="h-5 w-5" />
-              <span className="truncate">Tags</span>
+              <span className="truncate">{tr("torrentCardsMobile.bottomActions.tags")}</span>
             </button>
 
             <button
@@ -2153,7 +2153,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <MoreVertical className="h-5 w-5" />
-              <span className="truncate">More</span>
+              <span className="truncate">{tr("torrentCardsMobile.bottomActions.more")}</span>
             </button>
           </div>
         </div>
@@ -2163,8 +2163,9 @@ export function TorrentCardsMobile({
       <Sheet open={showActionsSheet} onOpenChange={setShowActionsSheet}>
         <SheetContent side="bottom" className="h-auto pb-8">
           <SheetHeader>
-            <SheetTitle>Actions
-              for {isAllSelected ? `all ${effectiveSelectionCount}` : effectiveSelectionCount} torrent(s)</SheetTitle>
+            <SheetTitle>
+              {isAllSelected? tr("torrentCardsMobile.actionsSheet.titleAll", { count: effectiveSelectionCount }): tr("torrentCardsMobile.actionsSheet.title", { count: effectiveSelectionCount })}
+            </SheetTitle>
           </SheetHeader>
           <div className="grid gap-2 py-4 px-4">
             <Button
@@ -2173,7 +2174,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <CheckCircle2 className="mr-2 h-4 w-4" />
-              Force Recheck
+              {tr("torrentCardsMobile.actionsSheet.forceRecheck")}
             </Button>
             <Button
               variant="outline"
@@ -2181,7 +2182,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <Radio className="mr-2 h-4 w-4" />
-              Reannounce
+              {tr("torrentCardsMobile.actionsSheet.reannounce")}
             </Button>
             {(() => {
               const seqDlStates = getSelectedTorrents?.map(t => t.seq_dl) ?? []
@@ -2193,7 +2194,7 @@ export function TorrentCardsMobile({
                   className="justify-start"
                 >
                   <Blocks className="mr-2 h-4 w-4" />
-                  {allSeqDlEnabled ? "Disable" : "Enable"} Sequential Download
+                  {allSeqDlEnabled? tr("torrentCardsMobile.actionsSheet.disableSequential"): tr("torrentCardsMobile.actionsSheet.enableSequential")}
                 </Button>
               )
             })()}
@@ -2208,7 +2209,7 @@ export function TorrentCardsMobile({
                 className="justify-start"
               >
                 <GitBranch className="mr-2 h-4 w-4" />
-                Filter Cross-Seeds
+                {tr("torrentCardsMobile.actionsSheet.filterCrossSeeds")}
               </Button>
             )}
             {canCrossSeedSearch && onCrossSeedSearch && (
@@ -2225,7 +2226,7 @@ export function TorrentCardsMobile({
                 className="justify-start"
               >
                 <Search className="mr-2 h-4 w-4" />
-                Search Cross-Seeds
+                {tr("torrentCardsMobile.actionsSheet.searchCrossSeeds")}
               </Button>
             )}
             <Button
@@ -2234,7 +2235,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <ChevronUp className="mr-2 h-4 w-4" />
-              Increase Priority
+              {tr("torrentCardsMobile.actionsSheet.increasePriority")}
             </Button>
             <Button
               variant="outline"
@@ -2242,7 +2243,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <ChevronDown className="mr-2 h-4 w-4" />
-              Decrease Priority
+              {tr("torrentCardsMobile.actionsSheet.decreasePriority")}
             </Button>
             <Button
               variant="outline"
@@ -2250,7 +2251,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <ChevronUp className="mr-2 h-4 w-4" />
-              Top Priority
+              {tr("torrentCardsMobile.actionsSheet.topPriority")}
             </Button>
             <Button
               variant="outline"
@@ -2258,7 +2259,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <ChevronDown className="mr-2 h-4 w-4" />
-              Bottom Priority
+              {tr("torrentCardsMobile.actionsSheet.bottomPriority")}
             </Button>
             {(() => {
               // Check TMM state across selected torrents
@@ -2280,7 +2281,7 @@ export function TorrentCardsMobile({
                       className="justify-start"
                     >
                       <Settings2 className="mr-2 h-4 w-4" />
-                      Enable TMM (Mixed)
+                      {tr("torrentCardsMobile.actionsSheet.enableTmmMixed")}
                     </Button>
                     <Button
                       variant="outline"
@@ -2292,7 +2293,7 @@ export function TorrentCardsMobile({
                       className="justify-start"
                     >
                       <Settings2 className="mr-2 h-4 w-4" />
-                      Disable TMM (Mixed)
+                      {tr("torrentCardsMobile.actionsSheet.disableTmmMixed")}
                     </Button>
                   </>
                 )
@@ -2311,12 +2312,12 @@ export function TorrentCardsMobile({
                   {allEnabled ? (
                     <>
                       <Settings2 className="mr-2 h-4 w-4" />
-                      Disable TMM
+                      {tr("torrentCardsMobile.actionsSheet.disableTmm")}
                     </>
                   ) : (
                     <>
                       <Settings2 className="mr-2 h-4 w-4" />
-                      Enable TMM
+                      {tr("torrentCardsMobile.actionsSheet.enableTmm")}
                     </>
                   )}
                 </Button>
@@ -2331,7 +2332,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <Sprout className="mr-2 h-4 w-4" />
-              Set Share Limits
+              {tr("torrentCardsMobile.actionsSheet.setShareLimits")}
             </Button>
             <Button
               variant="outline"
@@ -2342,7 +2343,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <Gauge className="mr-2 h-4 w-4" />
-              Set Speed Limits
+              {tr("torrentCardsMobile.actionsSheet.setSpeedLimits")}
             </Button>
             <Button
               variant="outline"
@@ -2357,7 +2358,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <FolderOpen className="mr-2 h-4 w-4" />
-              Set Location
+              {tr("torrentCardsMobile.actionsSheet.setLocation")}
             </Button>
             <Button
               variant="destructive"
@@ -2371,7 +2372,7 @@ export function TorrentCardsMobile({
               className="justify-start !bg-destructive !text-destructive-foreground"
             >
               <Trash2 className="mr-2 h-4 w-4" />
-              Delete
+              {tr("torrentCardsMobile.shared.delete")}
             </Button>
           </div>
         </SheetContent>
@@ -2419,9 +2420,7 @@ export function TorrentCardsMobile({
           filters: isAllSelected ? effectiveFilters : undefined,
           search: isAllSelected ? effectiveSearch : undefined,
           excludeHashes: isAllSelected ? excludeHashesForRequest : undefined,
-          excludeTargets: isAllSelected
-            ? buildTorrentActionTargets(excludedTorrents, instanceId)
-            : undefined,
+          excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
         }}
         onConfirm={handleTagsWrapper}
         isPending={isPending}
@@ -2461,9 +2460,7 @@ export function TorrentCardsMobile({
               clientHashes: visibleHashes,
               totalSelected,
               actionTargets: isAllSelected ? undefined : selectedActionTargets,
-              excludeTargets: isAllSelected
-                ? buildTorrentActionTargets(excludedTorrents, instanceId)
-                : undefined,
+              excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
             }
           )
           setShowShareLimitDialog(false)
@@ -2492,9 +2489,7 @@ export function TorrentCardsMobile({
               clientHashes: visibleHashes,
               totalSelected,
               actionTargets: isAllSelected ? undefined : selectedActionTargets,
-              excludeTargets: isAllSelected
-                ? buildTorrentActionTargets(excludedTorrents, instanceId)
-                : undefined,
+              excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
             }
           )
           setShowSpeedLimitDialog(false)
@@ -2537,16 +2532,16 @@ export function TorrentCardsMobile({
       <Dialog open={showSearchModal} onOpenChange={setShowSearchModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Search Torrents</DialogTitle>
+            <DialogTitle>{tr("torrentCardsMobile.searchModal.title")}</DialogTitle>
             <DialogDescription>
-              Search by name, category, or tags. Supports glob patterns like *.mkv or *1080p*.
+              {tr("torrentCardsMobile.searchModal.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
-                placeholder="Search torrents..."
+                placeholder={tr("torrentCardsMobile.searchModal.placeholder")}
                 value={globalFilter}
                 onChange={(e) => setGlobalFilter(e.target.value)}
                 onKeyDown={(e) => {
@@ -2566,7 +2561,7 @@ export function TorrentCardsMobile({
                   type="button"
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-muted rounded-sm transition-colors"
                   onClick={handleClearSearch}
-                  aria-label="Clear search"
+                  aria-label={tr("torrentCardsMobile.search.clearFilterAria")}
                 >
                   <X className="h-3.5 w-3.5 text-muted-foreground" />
                 </button>
@@ -2577,12 +2572,12 @@ export function TorrentCardsMobile({
               <div className="flex items-start gap-2">
                 <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <p className="font-semibold">Search Features:</p>
+                  <p className="font-semibold">{tr("torrentCardsMobile.searchModal.featuresTitle")}</p>
                   <ul className="space-y-1 ml-2">
-                    <li>• <strong>Glob patterns:</strong> *.mkv, *1080p*, S??E??</li>
-                    <li>• <strong>Fuzzy matching:</strong> "breaking bad" finds "Breaking.Bad"</li>
-                    <li>• Searches name, category, and tags</li>
-                    <li>• Auto-searches after typing</li>
+                    <li>• <strong>{tr("torrentCardsMobile.searchModal.features.globLabel")}</strong> {tr("torrentCardsMobile.searchModal.features.globValue")}</li>
+                    <li>• <strong>{tr("torrentCardsMobile.searchModal.features.fuzzyLabel")}</strong> {tr("torrentCardsMobile.searchModal.features.fuzzyValue")}</li>
+                    <li>• {tr("torrentCardsMobile.searchModal.features.searchFields")}</li>
+                    <li>• {tr("torrentCardsMobile.searchModal.features.autoSearch")}</li>
                   </ul>
                 </div>
               </div>
@@ -2590,10 +2585,10 @@ export function TorrentCardsMobile({
           </div>
           <DialogFooter className="sm:justify-between">
             <Button variant="outline" onClick={handleClearSearchAndClose}>
-              Clear
+              {tr("torrentCardsMobile.search.clear")}
             </Button>
             <Button onClick={() => setShowSearchModal(false)}>
-              Done
+              {tr("torrentCardsMobile.searchModal.done")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2622,7 +2617,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
             >
               <Search className="h-5 w-5" />
-              <span className="truncate text-[10px]">Search</span>
+              <span className="truncate text-[10px]">{tr("torrentCardsMobile.nav.search")}</span>
             </button>
 
             <button
@@ -2630,7 +2625,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
             >
               {incognitoMode ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-              <span className="truncate text-[10px]">Incognito</span>
+              <span className="truncate text-[10px]">{tr("torrentCardsMobile.nav.incognito")}</span>
             </button>
 
             <button
@@ -2638,7 +2633,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
             >
               <Filter className="h-5 w-5" />
-              <span className="truncate text-[10px]">Filters</span>
+              <span className="truncate text-[10px]">{tr("torrentCardsMobile.nav.filters")}</span>
             </button>
 
             {!isAllInstancesView && (
@@ -2647,7 +2642,7 @@ export function TorrentCardsMobile({
                 className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
               >
                 <Plus className="h-5 w-5" />
-                <span className="truncate text-[10px]">Add</span>
+                <span className="truncate text-[10px]">{tr("torrentCardsMobile.nav.add")}</span>
               </button>
             )}
 
@@ -2660,7 +2655,7 @@ export function TorrentCardsMobile({
                 className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
               >
                 <FileEdit className="h-5 w-5" />
-                <span className="truncate text-[10px]">Create</span>
+                <span className="truncate text-[10px]">{tr("torrentCardsMobile.nav.create")}</span>
               </button>
             )}
 
@@ -2678,7 +2673,7 @@ export function TorrentCardsMobile({
                     {activeTaskCount}
                   </Badge>
                 )}
-                <span className="truncate text-[10px]">Tasks</span>
+                <span className="truncate text-[10px]">{tr("torrentCardsMobile.nav.tasks")}</span>
               </button>
             )}
           </div>

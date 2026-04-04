@@ -21,6 +21,8 @@ function isChromium(): boolean {
   return /(chrome|chromium|crios)/i.test(ua) && !/(edg|opr|opera)/i.test(ua)
 }
 
+export type MagnetHandlerGuidanceVariant = "standalone" | "firefox" | "chromium" | "default"
+
 /**
  * Check if the browser supports registerProtocolHandler and we're in a secure context.
  * Secure contexts include HTTPS and localhost (even over HTTP).
@@ -31,20 +33,20 @@ export function canRegisterProtocolHandler(): boolean {
     && window.isSecureContext
 }
 
-export function getMagnetHandlerRegistrationGuidance(): string {
+export function getMagnetHandlerRegistrationGuidanceVariant(): MagnetHandlerGuidanceVariant {
   if (isStandaloneDisplayMode()) {
-    return "Open qui in a regular browser tab to register (the prompt may appear in the address bar, which PWAs don’t show)."
+    return "standalone"
   }
 
   if (isFirefox()) {
-    return "If prompted by your browser, please accept to complete registration."
+    return "firefox"
   }
 
   if (isChromium()) {
-    return "Chrome often shows this as a small protocol-handler icon in the address bar; if nothing appears, enable protocol handlers at chrome://settings/handlers."
+    return "chromium"
   }
 
-  return "If prompted by your browser, please accept to complete registration."
+  return "default"
 }
 
 /**

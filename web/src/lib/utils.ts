@@ -4,6 +4,7 @@
  */
 
 import type { Automation } from "@/types"
+import { formatLocalizedRelativeTime } from "@/lib/dateTimeUtils"
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -35,20 +36,7 @@ export function formatRelativeTime(value?: string | number | Date | null): strin
     return "—"
   }
 
-  const diffMs = date.getTime() - Date.now()
-  const absDiff = Math.abs(diffMs)
-
-  const units = [
-    { label: "d", ms: 86_400_000 },
-    { label: "h", ms: 3_600_000 },
-    { label: "m", ms: 60_000 },
-    { label: "s", ms: 1_000 },
-  ]
-
-  const unit = units.find(u => absDiff >= u.ms) ?? units[units.length - 1]
-  const valueAbs = Math.max(1, Math.round(absDiff / unit.ms))
-
-  return diffMs < 0 ? `${valueAbs}${unit.label} ago` : `in ${valueAbs}${unit.label}`
+  return formatLocalizedRelativeTime(date, { style: "short" })
 }
 
 const SECOND_FACTOR = 1000

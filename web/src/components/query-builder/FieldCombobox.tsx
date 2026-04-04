@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CONDITION_FIELDS, FIELD_GROUPS, type DisabledField } from "./constants";
 import { DisabledOption } from "./DisabledOption";
 
@@ -27,9 +28,14 @@ interface FieldComboboxProps {
 }
 
 export function FieldCombobox({ value, onChange, disabledFields }: FieldComboboxProps) {
+  const { t } = useTranslation("common");
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never));
   const [open, setOpen] = useState(false);
 
   const selectedField = value ? CONDITION_FIELDS[value as keyof typeof CONDITION_FIELDS] : null;
+  const selectedFieldLabel = selectedField ? tr(selectedField.labelKey, {
+    defaultValue: selectedField.label,
+  }) : tr("fieldCombobox.trigger.selectField")
 
   // Check if a field is disabled and get its reason
   const getDisabledReason = (field: string): string | null => {
@@ -45,7 +51,7 @@ export function FieldCombobox({ value, onChange, disabledFields }: FieldCombobox
       aria-expanded={open}
       className="h-8 w-fit min-w-[120px] justify-between px-2 text-xs font-normal"
     >
-      <span>{selectedField?.label ?? "Select field"}</span>
+      <span>{selectedFieldLabel}</span>
       <ChevronsUpDown className="ml-1 size-3 shrink-0 opacity-50" />
     </Button>
   );
@@ -55,7 +61,7 @@ export function FieldCombobox({ value, onChange, disabledFields }: FieldCombobox
       open={open}
       onOpenChange={setOpen}
       trigger={triggerButton}
-      title="Select Field"
+      title={tr("fieldCombobox.title")}
       popoverWidth="200px"
     >
       <FieldComboboxContent
@@ -79,25 +85,30 @@ function FieldComboboxContent({
   setOpen: (open: boolean) => void;
   getDisabledReason: (field: string) => string | null;
 }) {
+  const { t } = useTranslation("common");
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never));
   const isMobile = useResponsiveMobile();
 
   return (
     <ResponsiveCommand>
-      <ResponsiveCommandInput placeholder="Search fields..." />
+      <ResponsiveCommandInput placeholder={tr("fieldCombobox.searchPlaceholder")} />
       <ResponsiveCommandList>
-        <ResponsiveCommandEmpty>No field found.</ResponsiveCommandEmpty>
+        <ResponsiveCommandEmpty>{tr("fieldCombobox.empty")}</ResponsiveCommandEmpty>
         {FIELD_GROUPS.map((group) => (
-          <ResponsiveCommandGroup key={group.label} heading={group.label}>
+          <ResponsiveCommandGroup key={group.labelKey} heading={tr(group.labelKey, { defaultValue: group.label })}>
             {group.fields.map((field) => {
               const fieldDef = CONDITION_FIELDS[field as keyof typeof CONDITION_FIELDS];
               const disabledReason = getDisabledReason(field);
               const isDisabled = disabledReason !== null;
+              const fieldLabel = fieldDef ? tr(fieldDef.labelKey, { defaultValue: fieldDef.label }) : field;
+              const groupLabel = tr(group.labelKey, { defaultValue: group.label });
+              const fieldTypeLabel = fieldDef ? tr(`fieldCombobox.fieldTypes.${fieldDef.type}`, { defaultValue: fieldDef.type }) : "";
 
               if (isDisabled) {
                 return (
                   <DisabledOption key={field} reason={disabledReason} inline={isMobile}>
                     <ResponsiveCommandItem
-                      value={`${fieldDef?.label ?? field} ${group.label}`}
+                      value={`${fieldLabel} ${groupLabel}`}
                       disableHighlight={isMobile}
                     >
                       <Check
@@ -106,12 +117,12 @@ function FieldComboboxContent({
                           value === field ? "opacity-100" : "opacity-0"
                         )}
                       />
-                      <span>{fieldDef?.label ?? field}</span>
+                      <span>{fieldLabel}</span>
                       <span className={cn(
                         "ml-auto text-muted-foreground",
                         isMobile ? "text-xs" : "text-[10px]"
                       )}>
-                        {fieldDef?.type}
+                        {fieldTypeLabel}
                       </span>
                     </ResponsiveCommandItem>
                   </DisabledOption>
@@ -122,7 +133,7 @@ function FieldComboboxContent({
               return (
                 <ResponsiveCommandItem
                   key={field}
-                  value={`${fieldDef?.label ?? field} ${group.label}`}
+                  value={`${fieldLabel} ${groupLabel}`}
                   disableHighlight={isMobile}
                   className={isSelected ? "text-primary" : undefined}
                   onSelect={() => {
@@ -136,13 +147,13 @@ function FieldComboboxContent({
                       isSelected ? "opacity-100 text-primary" : "opacity-0"
                     )}
                   />
-                  <span>{fieldDef?.label ?? field}</span>
+                  <span>{fieldLabel}</span>
                   <span className={cn(
                     "ml-auto",
                     isSelected ? "text-primary/70" : "text-muted-foreground",
                     isMobile ? "text-xs" : "text-[10px]"
                   )}>
-                    {fieldDef?.type}
+                    {fieldTypeLabel}
                   </span>
                 </ResponsiveCommandItem>
               );

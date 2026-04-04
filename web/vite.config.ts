@@ -46,8 +46,8 @@ export default defineConfig(() => ({
         mode: workboxMode,
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
         disableDevLogs: true,
-        // VitePWA defaults to 2 MiB; our main bundle can exceed that, which breaks CI builds.
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        // Keep the offline shell complete, including the current entry bundle.
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         sourcemap: true,
         // Avoid serving the SPA shell for backend proxy routes and SSO callback paths
         // (also under custom base URLs). /cdn-cgi/ is used by Cloudflare Access for its

@@ -4,7 +4,15 @@
  */
 
 import { Button } from "@/components/ui/button"
-import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { Logo } from "@/components/ui/Logo"
 import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { Separator } from "@/components/ui/separator"
@@ -35,13 +43,15 @@ import {
   Search,
   SearchCode,
   Settings,
+  SlidersHorizontal,
   Zap
 } from "lucide-react"
 import { useCallback, useMemo } from "react"
+import { useTranslation } from "react-i18next"
 
 interface NavItem {
   id: string
-  title: string
+  labelKey: "nav.dashboard" | "nav.search" | "nav.crossSeed" | "nav.automations" | "nav.backups" | "nav.rss" | "nav.settings" | "nav.logs"
   href: string
   icon: React.ComponentType<{ className?: string }>
   params?: Record<string, string>
@@ -52,51 +62,51 @@ interface NavItem {
 const navigation: NavItem[] = [
   {
     id: "dashboard",
-    title: "Dashboard",
+    labelKey: "nav.dashboard",
     href: "/dashboard",
     icon: Home,
   },
   {
     id: "search",
-    title: "Search",
+    labelKey: "nav.search",
     href: "/search",
     icon: Search,
   },
   {
     id: "cross-seed",
-    title: "Cross-Seed",
+    labelKey: "nav.crossSeed",
     href: "/cross-seed",
     icon: GitBranch,
     params: {},
   },
   {
     id: "automations",
-    title: "Automations",
+    labelKey: "nav.automations",
     href: "/automations",
     icon: Zap,
   },
   {
     id: "backups",
-    title: "Backups",
+    labelKey: "nav.backups",
     href: "/backups",
     icon: Archive,
   },
   {
     id: "rss",
-    title: "RSS",
+    labelKey: "nav.rss",
     href: "/rss",
     icon: Rss,
   },
   {
     id: "settings",
-    title: "Settings",
+    labelKey: "nav.settings",
     href: "/settings",
     icon: Settings,
     isActive: (pathname, search) => pathname === "/settings" && search?.tab !== "logs",
   },
   {
     id: "logs",
-    title: "Logs",
+    labelKey: "nav.logs",
     href: "/settings",
     icon: FileText,
     search: { tab: "logs" },
@@ -105,6 +115,7 @@ const navigation: NavItem[] = [
 ]
 
 export function Sidebar() {
+  const { t } = useTranslation(["common", "footer"])
   const location = useLocation()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
@@ -128,8 +139,10 @@ export function Sidebar() {
     () => normalizeUnifiedInstanceIds(persistedUnifiedFilter, activeInstanceIds),
     [persistedUnifiedFilter, activeInstanceIds]
   )
-  const effectiveUnifiedInstanceIds = normalizedUnifiedInstanceIds.length > 0? normalizedUnifiedInstanceIds: activeInstanceIds
+  const effectiveUnifiedInstanceIds = normalizedUnifiedInstanceIds.length > 0 ? normalizedUnifiedInstanceIds : activeInstanceIds
   const isAllInstancesActive = location.pathname === "/instances" || location.pathname === "/instances/"
+  const hasCustomUnifiedScope = normalizedUnifiedInstanceIds.length > 0
+  const unifiedScopeSummary = `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}`
   const hasMultipleActiveInstances = activeInstances.length > 1
   const applyUnifiedScope = useCallback((nextIds: number[]) => {
     const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
@@ -191,7 +204,7 @@ export function Sidebar() {
                 )}
               >
                 <Icon className="h-4 w-4" />
-                {item.title}
+                {t(item.labelKey)}
               </Link>
             )
           })}
@@ -202,20 +215,97 @@ export function Sidebar() {
         <div className="flex-1 min-h-0">
           <div className="flex h-full min-h-0 flex-col">
             <p className="px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/70">
-              Instances
+              {t("header.instances")}
             </p>
             <div className="mt-1 flex-1 overflow-y-auto space-y-1 pr-1">
               {hasMultipleActiveInstances && (
                 <>
-                  <UnifiedScopeDropdownSection
-                    activeInstances={activeInstances}
-                    effectiveUnifiedInstanceIds={effectiveUnifiedInstanceIds}
-                    isAllInstancesRoute={isAllInstancesActive}
-                    onResetUnifiedScope={() => applyUnifiedScope(activeInstanceIds)}
-                    onToggleUnifiedScopeInstance={toggleUnifiedScopeInstance}
-                    scopeKeyPrefix="sidebar-scope"
-                    variant="sidebar"
-                  />
+                  <Link
+                    to="/instances"
+                    className={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
+                      isAllInstancesActive ? "bg-sidebar-primary text-sidebar-primary-foreground" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    )}
+                  >
+                    <HardDrive className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate max-w-36">{t("header.unified")}</span>
+                    <span
+                      className={cn(
+                        "ml-auto rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none flex-shrink-0",
+                        isAllInstancesActive ? "border-sidebar-primary-foreground/35 text-sidebar-primary-foreground/90" : "border-sidebar-border text-sidebar-foreground/70"
+                      )}
+                    >
+                      {t("header.activeCount", { count: activeInstances.length })}
+                    </span>
+                    {hasCustomUnifiedScope && (
+                      <span
+                        className={cn(
+                          "rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none flex-shrink-0",
+                          isAllInstancesActive ? "border-sidebar-primary-foreground/35 text-sidebar-primary-foreground/90" : "border-sidebar-border text-sidebar-foreground/70"
+                        )}
+                      >
+                        {unifiedScopeSummary}
+                      </span>
+                    )}
+                  </Link>
+                  <div className="px-3">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className={cn(
+                            "mt-1 w-full rounded-md border border-sidebar-border/70 px-2 py-1 text-xs",
+                            "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                            "inline-flex items-center gap-1.5"
+                          )}
+                        >
+                          <SlidersHorizontal className="h-3 w-3" />
+                          {t("header.scope")}
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="right" align="start" className="w-56">
+                        <DropdownMenuLabel className="text-xs uppercase tracking-wide text-muted-foreground">
+                          {t("header.unifiedScope")}
+                        </DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onSelect={(event) => {
+                            event.preventDefault()
+                            applyUnifiedScope(activeInstanceIds)
+                          }}
+                          className="cursor-pointer text-xs"
+                        >
+                          {t("header.allActive", { count: activeInstances.length })}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {activeInstances.map((instance) => {
+                          const checked = effectiveUnifiedInstanceIds.includes(instance.id)
+                          return (
+                            <DropdownMenuCheckboxItem
+                              key={`sidebar-scope-${instance.id}`}
+                              checked={checked}
+                              onSelect={(event) => {
+                                event.preventDefault()
+                                toggleUnifiedScopeInstance(instance.id)
+                              }}
+                              className="cursor-pointer"
+                            >
+                              <span className="flex w-full items-center justify-between gap-2">
+                                <span className="truncate">{instance.name}</span>
+                                <span
+                                  className={cn(
+                                    "h-2 w-2 rounded-full flex-shrink-0",
+                                    instance.connected ? "bg-green-500" : "bg-red-500"
+                                  )}
+                                  aria-hidden="true"
+                                />
+                              </span>
+                            </DropdownMenuCheckboxItem>
+                          )
+                        })}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                   <Separator className="my-2" />
                 </>
               )}
@@ -257,7 +347,7 @@ export function Sidebar() {
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="right" className="text-xs">
-                            RSS {csState?.rssRunning ? "running" : "enabled"}
+                            {csState?.rssRunning ? t("header.rssRunning") : t("header.rssEnabled")}
                           </TooltipContent>
                         </Tooltip>
                       )}
@@ -272,7 +362,7 @@ export function Sidebar() {
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="right" className="text-xs">
-                            Scan running
+                            {t("header.scanRunning")}
                           </TooltipContent>
                         </Tooltip>
                       )}
@@ -288,7 +378,7 @@ export function Sidebar() {
               })}
               {activeInstances.length === 0 && (
                 <p className="px-3 py-2 text-sm text-sidebar-foreground/50">
-                  {hasConfiguredInstances ? "All instances are disabled" : "No instances configured"}
+                  {hasConfiguredInstances ? t("header.allInstancesDisabled") : t("header.noInstancesConfigured")}
                 </p>
               )}
             </div>
@@ -305,14 +395,14 @@ export function Sidebar() {
           onClick={() => logout()}
         >
           <LogOut className="mr-2 h-4 w-4" />
-          Logout
+          {t("actions.logout")}
         </Button>
 
         <Separator className="mx-3 mb-3" />
 
         <div className="flex items-center justify-between px-3 pb-3">
           <div className="flex flex-col gap-1 text-[10px] text-sidebar-foreground/40 select-none">
-            <span className="font-medium text-sidebar-foreground/50">Version {appVersion}</span>
+            <span className="font-medium text-sidebar-foreground/50">{t("update.version", { version: appVersion })}</span>
             <div className="flex items-center gap-1">
               <Copyright className="h-2.5 w-2.5" />
               <span>{new Date().getFullYear()} autobrr</span>
@@ -328,7 +418,7 @@ export function Sidebar() {
               href="https://github.com/autobrr/qui"
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="View on GitHub"
+              aria-label={t("footer:githubAriaLabel")}
             >
               <Github className="h-3.5 w-3.5" />
             </a>

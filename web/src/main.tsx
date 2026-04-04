@@ -7,11 +7,23 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import App from "./App.tsx"
 import { setupLaunchQueueConsumer } from "@/lib/launch-queue"
+import { i18nReady } from "@/i18n"
 import "./index.css"
 
 setupLaunchQueueConsumer()
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-)
+
+const root = createRoot(document.getElementById("root")!)
+
+function renderApp() {
+  root.render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  )
+}
+
+void i18nReady
+  .catch((error) => {
+    console.error("Failed to initialize i18n during app bootstrap", error)
+  })
+  .finally(renderApp)

@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useTranslation } from "react-i18next"
 import { OrphanScanSettingsForm } from "./OrphanScanSettingsForm"
 
 const FORM_ID = "orphan-scan-settings-dialog-form"
@@ -29,12 +30,15 @@ export function OrphanScanSettingsDialog({
   instanceId,
   instanceName,
 }: OrphanScanSettingsDialogProps) {
+  const { t } = useTranslation("common")
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90dvh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Configure Orphan Scan</DialogTitle>
-          <DialogDescription>{instanceName ?? "Instance"}</DialogDescription>
+          <DialogTitle>{tr("orphanScanSettingsDialog.title")}</DialogTitle>
+          <DialogDescription>{instanceName ?? tr("orphanScanSettingsDialog.instanceFallback")}</DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto pr-1">
@@ -47,7 +51,7 @@ export function OrphanScanSettingsDialog({
 
         <DialogFooter className="border-t pt-4">
           <Button type="submit" form={FORM_ID}>
-            Save Changes
+            {tr("orphanScanSettingsDialog.actions.saveChanges")}
           </Button>
         </DialogFooter>
       </DialogContent>

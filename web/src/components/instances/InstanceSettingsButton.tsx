@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { Instance } from "@/types"
 import { Cog } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "./preferences/InstancePreferencesDialog"
 
 interface InstanceSettingsButtonProps {
@@ -30,6 +31,8 @@ export function InstanceSettingsButton({
   defaultTab,
   asButton = false,
 }: InstanceSettingsButtonProps) {
+  const { t } = useTranslation()
+  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
   const [preferencesOpen, setPreferencesOpen] = useState(false)
 
   const handleClick = (e: React.MouseEvent) => {
@@ -50,13 +53,13 @@ export function InstanceSettingsButton({
                 size="icon"
                 className="h-7 w-7 p-0"
                 onClick={handleClick}
-                aria-label="Instance settings"
+                aria-label={tr("header.instanceSettings")}
               >
                 <Cog className="h-4 w-4" />
               </Button>
             ) : (
               <span
-                aria-label="Instance settings"
+                aria-label={tr("header.instanceSettings")}
                 role="button"
                 tabIndex={0}
                 className="cursor-pointer"
@@ -73,7 +76,7 @@ export function InstanceSettingsButton({
             )}
           </TooltipTrigger>
           <TooltipContent>
-            Instance Settings
+            {tr("header.instanceSettings")}
           </TooltipContent>
         </Tooltip>
       )}
