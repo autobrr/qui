@@ -781,6 +781,7 @@ function buildSettingsFormState(settings: SettingsDialogProps["settings"]) {
     maxSearcheesPerRun: settings?.maxSearcheesPerRun ?? 0,
     maxSearcheeAgeDays: settings?.maxSearcheeAgeDays ?? 0,
     allowPartial: settings?.allowPartial ?? false,
+    downloadMissingFiles: settings?.downloadMissingFiles ?? true,
     skipPieceBoundarySafetyCheck: settings?.skipPieceBoundarySafetyCheck ?? true,
     startPaused: settings?.startPaused ?? false,
     category: settings?.category ?? "",
@@ -1068,15 +1069,43 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                     <Info className="size-3.5 text-muted-foreground" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
-                    Allows adding torrents even when the torrent has extra/missing files compared to what’s on disk. qBittorrent may download missing files into the save path.
+                    Matches torrents even when not all files are found on disk. Covers season packs, extras, and partial releases.
                   </TooltipContent>
                 </Tooltip>
               </Label>
             </div>
             <p className="text-xs text-muted-foreground">
-              Useful for packs/extras; be careful if scanning your *arr library folders.
+              Matches torrents even when not all files are found on disk. Covers season packs, extras, and partial releases.
             </p>
           </div>
+
+          {form.allowPartial && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="download-missing-files"
+                  checked={form.downloadMissingFiles}
+                  onCheckedChange={(checked) =>
+                    setForm((prev) => ({ ...prev, downloadMissingFiles: checked }))
+                  }
+                />
+                <Label htmlFor="download-missing-files" className="flex items-center gap-1">
+                  Download missing files
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Info className="size-3.5 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      Downloads files not found on disk for partial matches. Needed for season packs in hardlink/reflink mode.
+                    </TooltipContent>
+                  </Tooltip>
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Downloads files not found on disk for partial matches. Needed for season packs in hardlink/reflink mode.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-1">
             <div className="flex items-center gap-2">

@@ -46,6 +46,7 @@ type DirScanSettingsPayload struct {
 	AllowPartial                 *bool    `json:"allowPartial"`
 	SkipPieceBoundarySafetyCheck *bool    `json:"skipPieceBoundarySafetyCheck"`
 	StartPaused                  *bool    `json:"startPaused"`
+	DownloadMissingFiles         *bool    `json:"downloadMissingFiles"`
 	Category                     *string  `json:"category"`
 	Tags                         []string `json:"tags"`
 }
@@ -70,6 +71,7 @@ func (h *DirScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
 			AllowPartial:                 false,
 			SkipPieceBoundarySafetyCheck: true,
 			StartPaused:                  true,
+			DownloadMissingFiles:         true,
 			Tags:                         []string{},
 		}
 	}
@@ -139,6 +141,9 @@ func (h *DirScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 	}
 	if payload.StartPaused != nil {
 		settings.StartPaused = *payload.StartPaused
+	}
+	if payload.DownloadMissingFiles != nil {
+		settings.DownloadMissingFiles = *payload.DownloadMissingFiles
 	}
 	if payload.Category != nil {
 		settings.Category = *payload.Category
