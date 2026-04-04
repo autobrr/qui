@@ -54,6 +54,11 @@ type torrentDesiredState struct {
 	shouldReannounce bool
 	reannounceRule   ruleRef
 
+	// Auto management (last rule wins)
+	shouldAutoManage bool
+	autoManageValue  bool // true = enable ATM, false = disable ATM
+	autoManageRule   ruleRef
+
 	// Tags (accumulated, last action per tag wins)
 	currentTags  map[string]struct{}
 	tagActions   map[string]string // tag -> "add" | "remove"
@@ -112,6 +117,8 @@ type ruleRunStats struct {
 	RecheckConditionNotMet           int
 	ReannounceApplied                int
 	ReannounceConditionNotMet        int
+	AutoManageApplied                int
+	AutoManageConditionNotMet        int
 	TagConditionMet                  int
 	TagConditionNotMet               int
 	TagSkippedMissingUnregisteredSet int
@@ -131,7 +138,7 @@ func (s *ruleRunStats) totalApplied() int {
 	if s == nil {
 		return 0
 	}
-	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.RecheckApplied + s.ReannounceApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied
+	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.RecheckApplied + s.ReannounceApplied + s.AutoManageApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied
 }
 
 func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *ruleRunStats {
@@ -380,6 +387,26 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			state.reannounceRule = ruleRef{id: rule.ID, name: rule.Name}
 		} else if stats != nil {
 			stats.ReannounceConditionNotMet++
+		}
+	}
+
+	// Auto management (last rule wins)
+	if conditions.AutoManagement != nil {
+		shouldApply := conditions.AutoManagement.Condition == nil ||
+			EvaluateConditionWithContext(conditions.AutoManagement.Condition, torrent, evalCtx, 0)
+
+		if shouldApply {
+			if stats != nil {
+				stats.AutoManageApplied++
+			}
+			// Always record the last matching rule's desired state so later
+			// rules can override earlier ones (last rule wins). The actual
+			// API call is skipped when the torrent already has the desired state.
+			state.autoManageValue = conditions.AutoManagement.Enabled
+			state.autoManageRule = ruleRef{id: rule.ID, name: rule.Name}
+			state.shouldAutoManage = torrent.AutoManaged != state.autoManageValue
+		} else if stats != nil {
+			stats.AutoManageConditionNotMet++
 		}
 	}
 
@@ -757,6 +784,7 @@ func hasActions(state *torrentDesiredState) bool {
 		state.shouldResume ||
 		state.shouldRecheck ||
 		state.shouldReannounce ||
+		state.shouldAutoManage ||
 		len(state.tagActions) > 0 ||
 		state.category != nil ||
 		state.shouldDelete ||
