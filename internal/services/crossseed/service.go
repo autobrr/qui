@@ -10053,11 +10053,12 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 
 	// Use singleflight to deduplicate concurrent calls for the same category.
 	// Multiple goroutines trying to create the same category will share a single execution.
-	_, err, _ := s.categoryCreationGroup.Do(key, func() (any, error) {
+	actualSavePathValue, err, _ := s.categoryCreationGroup.Do(key, func() (any, error) {
 		// Double-check inside singleflight (another goroutine might have completed just before us)
 		// for the same requested save path.
 		if cached, ok := s.createdCategories.Load(key); ok && cacheMatches(cached) {
-			return nil, nil
+			cachedSavePath, _ := cached.(string)
+			return cachedSavePath, nil
 		}
 
 		// Get existing categories from qBittorrent
@@ -10080,7 +10081,7 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 					Msg("[CROSSSEED] Cross-seed category exists with different save path")
 			}
 			s.createdCategories.Store(key, actualSavePath)
-			return nil, nil
+			return actualSavePath, nil
 		}
 
 		// Create the category with the save_path
@@ -10095,10 +10096,49 @@ func (s *Service) ensureCrossCategory(ctx context.Context, instanceID int, cross
 			Str("savePath", savePath).
 			Msg("[CROSSSEED] Created category for cross-seed")
 
-		return nil, nil
+		return requestedSavePath, nil
 	})
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	actualSavePath, _ := actualSavePathValue.(string)
+	if requestedSavePath == "" || actualSavePath == requestedSavePath {
+		return nil
+	}
+
+	categories, err := s.syncManager.GetCategories(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("get categories after singleflight: %w", err)
+	}
+
+	if existing, exists := categories[crossCategory]; exists {
+		actualSavePath = normalizePathForComparison(existing.SavePath)
+		if savePath != "" && existing.SavePath != "" && actualSavePath != requestedSavePath {
+			log.Warn().
+				Int("instanceID", instanceID).
+				Str("category", crossCategory).
+				Str("expectedSavePath", savePath).
+				Str("actualSavePath", existing.SavePath).
+				Msg("[CROSSSEED] Cross-seed category exists with different save path")
+		}
+		s.createdCategories.Store(key, actualSavePath)
+		return nil
+	}
+
+	if err := s.syncManager.CreateCategory(ctx, instanceID, crossCategory, savePath); err != nil {
+		return fmt.Errorf("create category after singleflight: %w", err)
+	}
+
+	s.createdCategories.Store(key, requestedSavePath)
+	log.Debug().
+		Int("instanceID", instanceID).
+		Str("category", crossCategory).
+		Str("savePath", savePath).
+		Msg("[CROSSSEED] Created category for cross-seed after singleflight revalidation")
+
+	return nil
 }
 
 // determineCrossSeedCategory selects the category to apply to a cross-seeded torrent.
