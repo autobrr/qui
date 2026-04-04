@@ -73,8 +73,11 @@ ENV HOME="/config" \
     XDG_CONFIG_HOME="/config" \
     XDG_DATA_HOME="/config"
 
-# Install runtime dependencies
-RUN apk --no-cache add ca-certificates curl tzdata bash
+# Install only what the binary actually needs at runtime.
+# The Go binary is statically linked (CGO_ENABLED=0) so no libc/openssl/curl needed.
+# ca-certificates: TLS connections to qBittorrent, trackers, update checks
+# tzdata: timezone display in logs and UI
+RUN apk --no-cache add ca-certificates tzdata
 
 WORKDIR /config
 
