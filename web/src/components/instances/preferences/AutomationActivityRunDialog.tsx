@@ -47,6 +47,7 @@ const actionLabelKeys: Record<AutomationActivity["action"], string> = {
   resumed: "workflowDialog.dryRun.actions.resumed",
   rechecked: "workflowDialog.dryRun.actions.rechecked",
   reannounced: "workflowDialog.dryRun.actions.reannounced",
+  auto_managed: "workflowDialog.dryRun.actions.autoManaged",
   moved: "workflowDialog.dryRun.actions.moved",
   external_program: "workflowDialog.dryRun.actions.externalProgram",
   dry_run_no_match: "workflowDialog.dryRun.actions.noMatches",

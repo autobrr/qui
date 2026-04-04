@@ -5964,11 +5964,16 @@
   "workflowDialog": {
     "actions": {
       "addAction": "Adicionar ação",
+      "autoManagement": {
+        "disable": "Desativar gerenciamento automático de torrents",
+        "enable": "Ativar gerenciamento automático de torrents"
+      },
       "cancel": "Cancelar",
       "clear": "Limpar",
       "create": "Criar",
       "dryRunNow": "Rodar simulação",
       "labels": {
+        "autoManagement": "Gerenciamento automático",
         "category": "Categoria",
         "delete": "Excluir",
         "deleteStandalone": "Excluir (somente isolado)",
@@ -6102,6 +6107,7 @@
     },
     "dryRun": {
       "actions": {
+        "autoManaged": "Gerenciamento automático",
         "categoryChanged": "Categoria",
         "deleteFailed": "Falha ao excluir",
         "deletedCondition": "Excluir (condição)",
@@ -6242,6 +6248,7 @@
       },
       "activity": {
         "actionValues": {
+          "autoManaged": "Gerenciamento automático",
           "categoryChanged": "Category",
           "deleteFailed": "Delete",
           "deletedCondition": "Condition",
@@ -6694,6 +6701,7 @@
     },
     "activity": {
       "actionValues": {
+        "autoManaged": "Gerenciamento automático",
         "categoryChanged": "Categoria",
         "deleteFailed": "Excluir",
         "deletedCondition": "Condição",

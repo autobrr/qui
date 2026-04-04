@@ -98,11 +98,11 @@ const SPEED_LIMIT_UNITS = [
   { value: 1024, label: "MiB/s" },
 ]
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "delete" | "tag" | "category" | "move" | "externalProgram"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "autoManagement" | "delete" | "tag" | "category" | "move" | "externalProgram"
 type TranslateFn = (key: string, options?: Record<string, unknown>) => string
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "tag", "category", "move", "externalProgram"]
+const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "autoManagement", "tag", "category", "move", "externalProgram"]
 
 const ACTION_LABEL_KEYS: Record<ActionType, string> = {
   speedLimits: "workflowDialog.actions.labels.speedLimits",
@@ -111,6 +111,7 @@ const ACTION_LABEL_KEYS: Record<ActionType, string> = {
   resume: "workflowDialog.actions.labels.resume",
   recheck: "workflowDialog.actions.labels.recheck",
   reannounce: "workflowDialog.actions.labels.reannounce",
+  autoManagement: "workflowDialog.actions.labels.autoManagement",
   delete: "workflowDialog.actions.labels.delete",
   tag: "workflowDialog.actions.labels.tag",
   category: "workflowDialog.actions.labels.category",
@@ -133,6 +134,7 @@ const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = 
   resumed: "workflowDialog.dryRun.actions.resumed",
   rechecked: "workflowDialog.dryRun.actions.rechecked",
   reannounced: "workflowDialog.dryRun.actions.reannounced",
+  auto_managed: "workflowDialog.dryRun.actions.autoManaged",
   moved: "workflowDialog.dryRun.actions.moved",
   external_program: "workflowDialog.dryRun.actions.externalProgram",
   dry_run_no_match: "workflowDialog.dryRun.actions.noMatches",
@@ -194,6 +196,7 @@ function formatDryRunEventSummary(event: AutomationActivity, tr: TranslateFn): s
     case "resumed":
     case "rechecked":
     case "reannounced":
+    case "auto_managed":
     case "external_program":
     case "deleted_ratio":
     case "deleted_seeding":
@@ -326,6 +329,8 @@ type FormState = {
   resumeEnabled: boolean
   recheckEnabled: boolean
   reannounceEnabled: boolean
+  autoManagementEnabled: boolean
+  autoManageMode: "enable" | "disable"
   deleteEnabled: boolean
   tagEnabled: boolean
   categoryEnabled: boolean
@@ -382,6 +387,8 @@ const emptyFormState: FormState = {
   resumeEnabled: false,
   recheckEnabled: false,
   reannounceEnabled: false,
+  autoManagementEnabled: false,
+  autoManageMode: "enable",
   deleteEnabled: false,
   tagEnabled: false,
   categoryEnabled: false,
@@ -422,6 +429,7 @@ function getEnabledActions(state: FormState): ActionType[] {
   if (state.resumeEnabled) actions.push("resume")
   if (state.recheckEnabled) actions.push("recheck")
   if (state.reannounceEnabled) actions.push("reannounce")
+  if (state.autoManagementEnabled) actions.push("autoManagement")
   if (state.deleteEnabled) actions.push("delete")
   if (state.tagEnabled) actions.push("tag")
   if (state.categoryEnabled) actions.push("category")
@@ -788,6 +796,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let resumeEnabled = false
         let recheckEnabled = false
         let reannounceEnabled = false
+        let autoManagementEnabled = false
         let deleteEnabled = false
         let tagEnabled = false
         let categoryEnabled = false
@@ -836,6 +845,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             ?? conditions.resume?.condition
             ?? conditions.recheck?.condition
             ?? conditions.reannounce?.condition
+            ?? conditions.autoManagement?.condition
             ?? conditions.delete?.condition
             ?? conditions.tags?.[0]?.condition
             ?? conditions.tag?.condition
@@ -877,6 +887,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           }
           if (conditions.reannounce?.enabled) {
             reannounceEnabled = true
+          }
+          if (conditions.autoManagement != null) {
+            autoManagementEnabled = true
           }
           if (conditions.delete?.enabled) {
             deleteEnabled = true
@@ -937,6 +950,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           resumeEnabled,
           recheckEnabled,
           reannounceEnabled,
+          autoManagementEnabled,
+          autoManageMode: conditions?.autoManagement?.enabled !== false ? "enable" : "disable",
           deleteEnabled,
           tagEnabled,
           categoryEnabled,
@@ -1180,6 +1195,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
+    if (input.autoManagementEnabled) {
+      conditions.autoManagement = {
+        enabled: input.autoManageMode === "enable",
+        condition: input.actionCondition ?? undefined,
+      }
+    }
     if (input.deleteEnabled) {
       conditions.delete = {
         enabled: true,
@@ -1286,6 +1307,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.resumeEnabled,
     formState.recheckEnabled,
     formState.reannounceEnabled,
+    formState.autoManagementEnabled,
     formState.deleteEnabled,
     formState.tagEnabled,
     formState.categoryEnabled,
@@ -2064,6 +2086,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             resumeEnabled: false,
                             recheckEnabled: false,
                             reannounceEnabled: false,
+                            autoManagementEnabled: false,
                             deleteEnabled: true,
                             tagEnabled: false,
                             categoryEnabled: false,
@@ -2097,6 +2120,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="category">{tr("workflowDialog.actions.labels.category")}</SelectItem>
                         <SelectItem value="move">{tr("workflowDialog.actions.labels.move")}</SelectItem>
                         <SelectItem value="externalProgram">{tr("workflowDialog.actions.labels.externalProgram")}</SelectItem>
+                        <SelectItem value="autoManagement">{tr("workflowDialog.actions.labels.autoManagement")}</SelectItem>
                         <SelectItem value="delete" className="text-destructive focus:text-destructive">{tr("workflowDialog.actions.labels.deleteStandalone")}</SelectItem>
                       </SelectContent>
                     </Select>
@@ -2441,6 +2465,35 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <X className="h-3.5 w-3.5" />
                           </Button>
                         </div>
+                      </div>
+                    )}
+                    {/* Auto management */}
+                    {formState.autoManagementEnabled && (
+                      <div className="rounded-lg border p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">{tr("workflowDialog.actions.labels.autoManagement")}</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, autoManagementEnabled: false }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <Select
+                          value={formState.autoManageMode}
+                          onValueChange={(v) => setFormState(prev => ({ ...prev, autoManageMode: v as "enable" | "disable" }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="enable">{tr("workflowDialog.actions.autoManagement.enable")}</SelectItem>
+                            <SelectItem value="disable">{tr("workflowDialog.actions.autoManagement.disable")}</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     )}
                     {/* Tag */}

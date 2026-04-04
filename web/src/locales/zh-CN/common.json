@@ -5964,11 +5964,16 @@
   "workflowDialog": {
     "actions": {
       "addAction": "添加动作",
+      "autoManagement": {
+        "disable": "禁用自动种子管理",
+        "enable": "启用自动种子管理"
+      },
       "cancel": "取消",
       "clear": "清除",
       "create": "创建",
       "dryRunNow": "立即演练",
       "labels": {
+        "autoManagement": "自动管理",
         "category": "分类",
         "delete": "删除",
         "deleteStandalone": "删除（仅可单独使用）",
@@ -6102,6 +6107,7 @@
     },
     "dryRun": {
       "actions": {
+        "autoManaged": "自动管理",
         "categoryChanged": "分类",
         "deleteFailed": "删除失败",
         "deletedCondition": "删除（条件）",
@@ -6242,6 +6248,7 @@
       },
       "activity": {
         "actionValues": {
+          "autoManaged": "自动管理",
           "categoryChanged": "Category",
           "deleteFailed": "Delete",
           "deletedCondition": "Condition",
@@ -6694,6 +6701,7 @@
     },
     "activity": {
       "actionValues": {
+        "autoManaged": "自动管理",
         "categoryChanged": "分类",
         "deleteFailed": "删除",
         "deletedCondition": "按条件删除",

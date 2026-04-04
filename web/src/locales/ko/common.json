@@ -5964,11 +5964,16 @@
   "workflowDialog": {
     "actions": {
       "addAction": "동작 추가",
+      "autoManagement": {
+        "disable": "자동 토렌트 관리 비활성화",
+        "enable": "자동 토렌트 관리 활성화"
+      },
       "cancel": "취소",
       "clear": "지우기",
       "create": "생성",
       "dryRunNow": "지금 시뮬레이션",
       "labels": {
+        "autoManagement": "자동 관리",
         "category": "카테고리",
         "delete": "삭제",
         "deleteStandalone": "삭제 (단독 동작 전용)",
@@ -6102,6 +6107,7 @@
     },
     "dryRun": {
       "actions": {
+        "autoManaged": "자동 관리",
         "categoryChanged": "카테고리",
         "deleteFailed": "삭제 실패",
         "deletedCondition": "삭제 (조건)",
@@ -6242,6 +6248,7 @@
       },
       "activity": {
         "actionValues": {
+          "autoManaged": "자동 관리",
           "categoryChanged": "카테고리",
           "deleteFailed": "삭제",
           "deletedCondition": "조건",
@@ -6694,6 +6701,7 @@
     },
     "activity": {
       "actionValues": {
+        "autoManaged": "자동 관리",
         "categoryChanged": "카테고리",
         "deleteFailed": "삭제",
         "deletedCondition": "조건",

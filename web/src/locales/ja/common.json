@@ -5964,11 +5964,16 @@
   "workflowDialog": {
     "actions": {
       "addAction": "アクションを追加",
+      "autoManagement": {
+        "disable": "自動トレント管理を無効にする",
+        "enable": "自動トレント管理を有効にする"
+      },
       "cancel": "キャンセル",
       "clear": "クリア",
       "create": "作成",
       "dryRunNow": "今すぐドライラン",
       "labels": {
+        "autoManagement": "自動管理",
         "category": "カテゴリ",
         "delete": "削除",
         "deleteStandalone": "削除（単独のみ）",
@@ -6102,6 +6107,7 @@
     },
     "dryRun": {
       "actions": {
+        "autoManaged": "自動管理",
         "categoryChanged": "カテゴリ",
         "deleteFailed": "削除失敗",
         "deletedCondition": "削除（条件）",
@@ -6242,6 +6248,7 @@
       },
       "activity": {
         "actionValues": {
+          "autoManaged": "自動管理",
           "categoryChanged": "Category",
           "deleteFailed": "Delete",
           "deletedCondition": "Condition",
@@ -6694,6 +6701,7 @@
     },
     "activity": {
       "actionValues": {
+        "autoManaged": "自動管理",
         "categoryChanged": "カテゴリ",
         "deleteFailed": "削除",
         "deletedCondition": "条件",

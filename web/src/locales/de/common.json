@@ -5964,11 +5964,16 @@
   "workflowDialog": {
     "actions": {
       "addAction": "Aktion hinzufügen",
+      "autoManagement": {
+        "disable": "Automatische Torrent-Verwaltung deaktivieren",
+        "enable": "Automatische Torrent-Verwaltung aktivieren"
+      },
       "cancel": "Abbrechen",
       "clear": "Leeren",
       "create": "Erstellen",
       "dryRunNow": "Trockenlauf starten",
       "labels": {
+        "autoManagement": "Automatische Verwaltung",
         "category": "Kategorie",
         "delete": "Löschen",
         "deleteStandalone": "Löschen (nur einzeln)",
@@ -6102,6 +6107,7 @@
     },
     "dryRun": {
       "actions": {
+        "autoManaged": "Automatische Verwaltung",
         "categoryChanged": "Kategorie",
         "deleteFailed": "Löschen fehlgeschlagen",
         "deletedCondition": "Löschen (Bedingung)",
@@ -6242,6 +6248,7 @@
       },
       "activity": {
         "actionValues": {
+          "autoManaged": "Automatische Verwaltung",
           "categoryChanged": "Category",
           "deleteFailed": "Delete",
           "deletedCondition": "Condition",
@@ -6694,6 +6701,7 @@
     },
     "activity": {
       "actionValues": {
+        "autoManaged": "Automatische Verwaltung",
         "categoryChanged": "Kategorie",
         "deleteFailed": "Löschen",
         "deletedCondition": "Bedingung",

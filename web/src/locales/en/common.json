@@ -5964,11 +5964,16 @@
   "workflowDialog": {
     "actions": {
       "addAction": "Add action",
+      "autoManagement": {
+        "disable": "Disable automatic torrent management",
+        "enable": "Enable automatic torrent management"
+      },
       "cancel": "Cancel",
       "clear": "Clear",
       "create": "Create",
       "dryRunNow": "Dry-run now",
       "labels": {
+        "autoManagement": "Auto management",
         "category": "Category",
         "delete": "Delete",
         "deleteStandalone": "Delete (standalone only)",
@@ -6102,6 +6107,7 @@
     },
     "dryRun": {
       "actions": {
+        "autoManaged": "Auto management",
         "categoryChanged": "Category",
         "deleteFailed": "Delete failed",
         "deletedCondition": "Delete (condition)",
@@ -6242,6 +6248,7 @@
       },
       "activity": {
         "actionValues": {
+          "autoManaged": "Auto management",
           "categoryChanged": "Category",
           "deleteFailed": "Delete",
           "deletedCondition": "Condition",
@@ -6694,6 +6701,7 @@
     },
     "activity": {
       "actionValues": {
+        "autoManaged": "Auto management",
         "categoryChanged": "Category",
         "deleteFailed": "Delete",
         "deletedCondition": "Condition",
