@@ -34,7 +34,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { toast } from "sonner"
 import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackerContextMenu, TrackersTable, WebSeedsTable } from "./details"
 import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
@@ -63,14 +63,8 @@ function isTabValue(value: string): value is TabValue {
 
 
 export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed, layout = "vertical", onClose, onNavigateToTorrent }: TorrentDetailsPanelProps) {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useCommonTr()
   const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : tr("torrentDetailsPanel.errors.unknown")
-  const countWithNoun = (count: number, singularKey: string, pluralKey: string) =>
-    tr("torrentDetailsPanel.count.withNoun", {
-      count,
-      noun: count === 1 ? tr(singularKey) : tr(pluralKey),
-    })
   const [activeTab, setActiveTab] = usePersistedTabState<TabValue>(TAB_STORAGE_KEY, DEFAULT_TAB, isTabValue)
 
   // Apply initialTab override when provided
@@ -1143,7 +1137,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     <div className="space-y-3">
                       <div className="flex items-center justify-between mb-1">
                         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{tr("torrentDetailsPanel.sections.activeTrackers")}</h3>
-                        <span className="text-xs text-muted-foreground">{countWithNoun(trackers.length, "torrentDetailsPanel.words.tracker", "torrentDetailsPanel.words.trackers")}</span>
+                        <span className="text-xs text-muted-foreground">{tr("torrentDetailsPanel.count.trackers", { count: trackers.length })}</span>
                       </div>
                       <div className="space-y-2">
                         {trackers
@@ -1486,7 +1480,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     <div className="space-y-3">
                       <div>
                         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{tr("torrentDetailsPanel.sections.httpSources")}</h3>
-                        <p className="text-xs text-muted-foreground mt-1">{countWithNoun(webseedsData.length, "torrentDetailsPanel.words.source", "torrentDetailsPanel.words.sources")}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{tr("torrentDetailsPanel.count.sources", { count: webseedsData.length })}</p>
                       </div>
                       <div className="space-y-2 mt-4">
                         {webseedsData.map((webseed, index) => (
@@ -1554,7 +1548,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     <span className="text-xs text-muted-foreground">
                       {supportsFilePriority
                         ? tr("torrentDetailsPanel.content.selectedCount", { selected: selectedFileCount, total: totalFiles })
-                        : countWithNoun(files.length, "torrentDetailsPanel.words.file", "torrentDetailsPanel.words.files")}
+                        : tr("torrentDetailsPanel.count.files", { count: files.length })}
                     </span>
                   </div>
                   <div className="flex items-center gap-1">

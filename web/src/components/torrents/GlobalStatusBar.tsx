@@ -40,14 +40,9 @@ import { isAllInstancesScope } from "@/lib/instances"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { cn, formatBytes } from "@/lib/utils"
 import type { Instance, ServerState } from "@/types"
-import { useTranslation } from "react-i18next"
+import { useCommonTr } from "@/hooks/useCommonTr"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
-
-function useCommonTr() {
-  const { t } = useTranslation("common")
-  return (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
-}
 
 export interface SelectionInfo {
   effectiveSelectionCount: number

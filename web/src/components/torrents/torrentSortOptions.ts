@@ -6,7 +6,7 @@
 import { getColumnType } from "@/lib/column-filter-utils"
 
 export const TORRENT_SORT_OPTIONS = [
-  { value: "added_on", labelKey: "torrentTableColumns.headers.added", fallbackLabel: "Recently Added" },
+  { value: "added_on", labelKey: "torrentSortOptions.labels.recentlyAdded", fallbackLabel: "Recently Added" },
   { value: "name", labelKey: "torrentTableColumns.headers.name", fallbackLabel: "Name" },
   { value: "size", labelKey: "torrentTableColumns.headers.size", fallbackLabel: "Size" },
   // { value: "total_size", labelKey: "torrentTableColumns.headers.totalSize", fallbackLabel: "Total Size" },
@@ -14,9 +14,9 @@ export const TORRENT_SORT_OPTIONS = [
   { value: "state", labelKey: "torrentTableColumns.headers.status", fallbackLabel: "Status" },
   { value: "priority", labelKey: "torrentTableColumns.headers.priority", fallbackLabel: "Priority" },
   { value: "num_seeds", labelKey: "torrentTableColumns.headers.seeds", fallbackLabel: "Seeds" },
-  { value: "num_leechs", labelKey: "torrentTableColumns.headers.peers", fallbackLabel: "Leechers" },
-  { value: "dlspeed", labelKey: "torrentTableColumns.headers.downSpeed", fallbackLabel: "Download Speed" },
-  { value: "upspeed", labelKey: "torrentTableColumns.headers.upSpeed", fallbackLabel: "Upload Speed" },
+  { value: "num_leechs", labelKey: "torrentSortOptions.labels.leechers", fallbackLabel: "Leechers" },
+  { value: "dlspeed", labelKey: "torrentSortOptions.labels.downloadSpeed", fallbackLabel: "Download Speed" },
+  { value: "upspeed", labelKey: "torrentSortOptions.labels.uploadSpeed", fallbackLabel: "Upload Speed" },
   { value: "eta", labelKey: "torrentTableColumns.headers.eta", fallbackLabel: "ETA" },
   { value: "ratio", labelKey: "torrentTableColumns.headers.ratio", fallbackLabel: "Ratio" },
   { value: "popularity", labelKey: "torrentTableColumns.headers.popularity", fallbackLabel: "Popularity" },
@@ -24,8 +24,8 @@ export const TORRENT_SORT_OPTIONS = [
   { value: "tags", labelKey: "torrentTableColumns.headers.tags", fallbackLabel: "Tags" },
   { value: "completion_on", labelKey: "torrentTableColumns.headers.completedOn", fallbackLabel: "Completed On" },
   { value: "tracker", labelKey: "torrentTableColumns.headers.tracker", fallbackLabel: "Tracker" },
-  { value: "dl_limit", labelKey: "torrentTableColumns.headers.downLimit", fallbackLabel: "Download Limit" },
-  { value: "up_limit", labelKey: "torrentTableColumns.headers.upLimit", fallbackLabel: "Upload Limit" },
+  { value: "dl_limit", labelKey: "torrentSortOptions.labels.downloadLimit", fallbackLabel: "Download Limit" },
+  { value: "up_limit", labelKey: "torrentSortOptions.labels.uploadLimit", fallbackLabel: "Upload Limit" },
   { value: "downloaded", labelKey: "torrentTableColumns.headers.downloaded", fallbackLabel: "Downloaded" },
   { value: "uploaded", labelKey: "torrentTableColumns.headers.uploaded", fallbackLabel: "Uploaded" },
   { value: "downloaded_session", labelKey: "torrentTableColumns.headers.sessionDownloaded", fallbackLabel: "Session Downloaded" },

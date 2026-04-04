@@ -320,7 +320,7 @@
       "selectInstance": "インスタンスを選択してください"
     },
     "values": {
-      "empty": "—"
+      "empty": "-"
     }
   },
   "categorySubmenu": {
@@ -1058,7 +1058,7 @@
       "disabled": "無効",
       "idle": "待機中",
       "instanceWithId": "インスタンス {{id}}",
-      "na": "—",
+      "na": "N/A",
       "noInstanceSelected": "インスタンス未選択",
       "noMessageProvided": "メッセージなし",
       "noRunsYet": "まだ実行なし",
@@ -1408,7 +1408,7 @@
         "mergedFrom": "結合元: {{domains}}",
         "original": "元のドメイン: {{domain}}",
         "rename": "名前変更",
-        "seededHelp": "アップロード量 ÷ コンテンツサイズ（何倍シードしたか）"
+        "seededHelp": "アップロード量 ÷ コンテンツサイズ: 何倍シードしたか"
       },
       "trackersCount": "{{count}} trackers"
     }
@@ -3226,6 +3226,10 @@
       "updated": "ネットワーク探索設定を更新しました"
     }
   },
+  "numberInput": {
+    "unlimitedHint": " (無制限は-1を使用)",
+    "unlimitedPlaceholder": "無制限"
+  },
   "notFound": {
     "bugLink": "GitHub で報告してください",
     "bugPrefix": "リンク切れではなく不具合だと思う場合は、",
@@ -4612,7 +4616,7 @@
       },
       "values": {
         "no": "No",
-        "notAvailable": "—",
+        "notAvailable": "N/A",
         "yes": "Yes"
       }
     },
@@ -4746,7 +4750,7 @@
       },
       "values": {
         "minutes": "{{count}} 分",
-        "notAvailable": "—"
+        "notAvailable": "N/A"
       }
     }
   },
@@ -5184,6 +5188,12 @@
       "torrentName": "トレント名"
     },
     "count": {
+      "files_one": "{{count}} ファイル",
+      "files_other": "{{count}} ファイル",
+      "sources_one": "{{count}} ソース",
+      "sources_other": "{{count}} ソース",
+      "trackers_one": "{{count}} トラッカー",
+      "trackers_other": "{{count}} トラッカー",
       "withNoun": "{{count}} {{noun}}"
     },
     "crossSeed": {
@@ -5667,7 +5677,7 @@
       "na": "N/A",
       "noData": "データがありません",
       "normal": "通常",
-      "notAvailable": "—",
+      "notAvailable": "N/A",
       "unlimited": "無制限",
       "useGlobal": "グローバル設定を使用"
     }
@@ -5719,6 +5729,16 @@
       "setLocation": "保存先設定",
       "tagActions": "タグ操作",
       "tmmMixed": "TMM（混在）"
+    }
+  },
+  "torrentSortOptions": {
+    "labels": {
+      "downloadLimit": "ダウンロード制限",
+      "downloadSpeed": "ダウンロード速度",
+      "leechers": "リーチャー",
+      "recentlyAdded": "最近追加",
+      "uploadLimit": "アップロード制限",
+      "uploadSpeed": "アップロード速度"
     }
   },
   "torrentTableColumns": {
@@ -5784,7 +5804,9 @@
   "torrentTableOptimized": {
     "compactRow": {
       "ratioLabel": "比率:",
-      "selectTorrentAria": "トレントを選択"
+      "selectTorrentAria": "トレントを選択",
+      "trackerDown": "トラッカー停止",
+      "unregistered": "未登録"
     },
     "controls": {
       "columns": {
@@ -6802,6 +6824,8 @@
       "searchPlaceholder": "名前、ハッシュ、ルールで絞り込み...",
       "summary": {
         "countWithVerb": "{{count}}{{noun}}{{verb}}",
+        "countWithVerb_one": "{{count}} トレント{{verb}}",
+        "countWithVerb_other": "{{count}} トレント{{verb}}",
         "deleteDryRun": "{{count}}{{noun}}を削除予定（{{reason}}）",
         "deleteReasons": {
           "condition": "条件一致",

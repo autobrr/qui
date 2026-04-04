@@ -320,7 +320,7 @@
       "selectInstance": "Selecciona una instancia"
     },
     "values": {
-      "empty": "—"
+      "empty": "-"
     }
   },
   "categorySubmenu": {
@@ -1058,7 +1058,7 @@
       "disabled": "Deshabilitado",
       "idle": "Inactivo",
       "instanceWithId": "Instancia {{id}}",
-      "na": "—",
+      "na": "N/A",
       "noInstanceSelected": "Sin instancia seleccionada",
       "noMessageProvided": "No se proporcionó ningún mensaje",
       "noRunsYet": "Aún sin ejecuciones",
@@ -1408,7 +1408,7 @@
         "mergedFrom": "Combinado desde: {{domains}}",
         "original": "Original: {{domain}}",
         "rename": "Renombrar",
-        "seededHelp": "Subido ÷ tamaño del contenido — cuántas veces has sembrado tu contenido"
+        "seededHelp": "Subido ÷ tamaño del contenido: cuántas veces has sembrado tu contenido"
       },
       "trackersCount": "{{count}} trackers"
     }
@@ -3313,6 +3313,10 @@
       "unknown": "Desconocido"
     }
   },
+  "numberInput": {
+    "unlimitedHint": " (usa -1 para ilimitado)",
+    "unlimitedPlaceholder": "Ilimitado"
+  },
   "orphanScanOverview": {
     "actions": {
       "cancel": "Cancelar",
@@ -4612,7 +4616,7 @@
       },
       "values": {
         "no": "No",
-        "notAvailable": "—",
+        "notAvailable": "N/A",
         "yes": "Yes"
       }
     },
@@ -4746,7 +4750,7 @@
       },
       "values": {
         "minutes": "{{count}} minutos",
-        "notAvailable": "—"
+        "notAvailable": "N/A"
       }
     }
   },
@@ -5184,6 +5188,12 @@
       "torrentName": "nombre del torrent"
     },
     "count": {
+      "files_one": "{{count}} archivo",
+      "files_other": "{{count}} archivos",
+      "sources_one": "{{count}} fuente",
+      "sources_other": "{{count}} fuentes",
+      "trackers_one": "{{count}} tracker",
+      "trackers_other": "{{count}} trackers",
       "withNoun": "{{count}} {{noun}}"
     },
     "crossSeed": {
@@ -5667,7 +5677,7 @@
       "na": "N/D",
       "noData": "No hay datos disponibles",
       "normal": "Normal",
-      "notAvailable": "—",
+      "notAvailable": "N/A",
       "unlimited": "Ilimitado",
       "useGlobal": "Usar global"
     }
@@ -5719,6 +5729,16 @@
       "setLocation": "Establecer ubicación",
       "tagActions": "Acciones de etiquetas",
       "tmmMixed": "TMM (mixto)"
+    }
+  },
+  "torrentSortOptions": {
+    "labels": {
+      "downloadLimit": "Límite de descarga",
+      "downloadSpeed": "Velocidad de descarga",
+      "leechers": "Leechers",
+      "recentlyAdded": "Agregados recientemente",
+      "uploadLimit": "Límite de subida",
+      "uploadSpeed": "Velocidad de subida"
     }
   },
   "torrentTableColumns": {
@@ -5784,7 +5804,9 @@
   "torrentTableOptimized": {
     "compactRow": {
       "ratioLabel": "Ratio:",
-      "selectTorrentAria": "Seleccionar torrent"
+      "selectTorrentAria": "Seleccionar torrent",
+      "trackerDown": "Tracker caído",
+      "unregistered": "No registrado"
     },
     "controls": {
       "columns": {
@@ -6802,6 +6824,8 @@
       "searchPlaceholder": "Filtrar por nombre, hash o regla...",
       "summary": {
         "countWithVerb": "{{count}} {{noun}} {{verb}}",
+        "countWithVerb_one": "{{count}} torrent {{verb}}",
+        "countWithVerb_other": "{{count}} torrents {{verb}}",
         "deleteDryRun": "{{count}} {{noun}} se eliminarían ({{reason}})",
         "deleteReasons": {
           "condition": "condición",

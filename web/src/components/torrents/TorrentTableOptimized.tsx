@@ -49,6 +49,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
 import { TORRENT_SORT_OPTIONS, getDefaultSortOrder, type TorrentSortOptionValue } from "./torrentSortOptions"
@@ -377,15 +378,14 @@ const CompactRow = memo(({
   trackerCustomizationLookup,
   style,
 }: CompactRowProps) => {
-  const { t } = useTranslation()
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useCommonTr()
   const displayName = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
   const displayCategory = incognitoMode ? getLinuxCategory(torrent.hash) : torrent.category
   const displayTags = incognitoMode ? getLinuxTags(torrent.hash) : torrent.tags
   const displayRatio = incognitoMode ? getLinuxRatio(torrent.hash) : torrent.ratio
   const trackerHealthLabels = {
-    trackerDown: tr("torrentTable.values.trackerDown"),
-    unregistered: tr("torrentTable.values.unregistered"),
+    trackerDown: tr("torrentTableOptimized.compactRow.trackerDown"),
+    unregistered: tr("torrentTableOptimized.compactRow.unregistered"),
   }
 
   const { variant: statusBadgeVariant, label: statusBadgeLabel, className: statusBadgeClass } = getStatusBadgeProps(torrent, supportsTrackerHealth, trackerHealthLabels)

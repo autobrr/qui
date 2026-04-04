@@ -209,9 +209,6 @@ function sumRecordValues(values: Record<string, number> | undefined): number {
 function formatCountWithVerb(count: number, verbKey: string, tr: TranslateFn): string {
   return tr("workflowOverview.activity.summary.countWithVerb", {
     count,
-    noun: count === 1
-      ? tr("workflowOverview.activity.summary.nounSingular")
-      : tr("workflowOverview.activity.summary.nounPlural"),
     verb: tr(verbKey),
   })
 }

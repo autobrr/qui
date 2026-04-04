@@ -6,6 +6,7 @@
 import React from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useCommonTr } from "@/hooks/useCommonTr"
 
 interface NumberInputWithUnlimitedProps {
   label: string
@@ -36,11 +37,13 @@ export function NumberInputWithUnlimited({
   unlimitedHint,
   disabled = false,
 }: NumberInputWithUnlimitedProps) {
+  const tr = useCommonTr()
+
   // Display value: show empty string for -1 when unlimited is allowed
   const displayValue = allowUnlimited && value === -1 ? "" : value.toString()
 
   // Default placeholder based on unlimited support
-  const defaultPlaceholder = allowUnlimited ? (unlimitedPlaceholder ?? "Unlimited") : undefined
+  const defaultPlaceholder = allowUnlimited ? (unlimitedPlaceholder ?? tr("numberInput.unlimitedPlaceholder")) : undefined
   const actualPlaceholder = placeholder ?? defaultPlaceholder
 
   // Track previous value to detect when we hit 0 and should transition to unlimited
@@ -79,7 +82,7 @@ export function NumberInputWithUnlimited({
         {description && (
           <p className="text-xs text-muted-foreground">
             {description}
-            {allowUnlimited && (unlimitedHint ?? " (use -1 for unlimited)")}
+            {allowUnlimited && (unlimitedHint ?? tr("numberInput.unlimitedHint"))}
           </p>
         )}
       </div>

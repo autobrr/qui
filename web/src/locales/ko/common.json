@@ -320,7 +320,7 @@
       "selectInstance": "인스턴스를 선택하세요"
     },
     "values": {
-      "empty": "—"
+      "empty": "-"
     }
   },
   "categorySubmenu": {
@@ -1058,7 +1058,7 @@
       "disabled": "비활성화",
       "idle": "대기",
       "instanceWithId": "인스턴스 {{id}}",
-      "na": "—",
+      "na": "N/A",
       "noInstanceSelected": "선택된 인스턴스 없음",
       "noMessageProvided": "제공된 메시지가 없습니다",
       "noRunsYet": "아직 실행 없음",
@@ -1408,7 +1408,7 @@
         "mergedFrom": "병합 출처: {{domains}}",
         "original": "원본: {{domain}}",
         "rename": "이름 변경",
-        "seededHelp": "업로드 ÷ 콘텐츠 크기 — 콘텐츠를 몇 배 시딩했는지"
+        "seededHelp": "업로드 ÷ 콘텐츠 크기: 콘텐츠를 몇 배 시딩했는지"
       },
       "trackersCount": "{{count}}개 트래커"
     }
@@ -3187,6 +3187,10 @@
     "settings": "설정",
     "torrents": "토렌트"
   },
+  "numberInput": {
+    "unlimitedHint": " (무제한은 -1 사용)",
+    "unlimitedPlaceholder": "무제한"
+  },
   "networkDiscoveryForm": {
     "actions": {
       "saveChanges": "변경 사항 저장",
@@ -4612,7 +4616,7 @@
       },
       "values": {
         "no": "No",
-        "notAvailable": "—",
+        "notAvailable": "N/A",
         "yes": "Yes"
       }
     },
@@ -4746,7 +4750,7 @@
       },
       "values": {
         "minutes": "{{count}}분",
-        "notAvailable": "—"
+        "notAvailable": "N/A"
       }
     }
   },
@@ -5184,6 +5188,12 @@
       "torrentName": "토렌트 이름"
     },
     "count": {
+      "files_one": "{{count}}개 파일",
+      "files_other": "{{count}}개 파일",
+      "sources_one": "{{count}}개 소스",
+      "sources_other": "{{count}}개 소스",
+      "trackers_one": "{{count}}개 트래커",
+      "trackers_other": "{{count}}개 트래커",
       "withNoun": "{{count}} {{noun}}"
     },
     "crossSeed": {
@@ -5359,6 +5369,16 @@
       "torrents": "토렌트",
       "tracker": "트래커",
       "trackers": "트래커"
+    }
+  },
+  "torrentSortOptions": {
+    "labels": {
+      "downloadLimit": "다운로드 제한",
+      "downloadSpeed": "다운로드 속도",
+      "leechers": "리처",
+      "recentlyAdded": "최근 추가",
+      "uploadLimit": "업로드 제한",
+      "uploadSpeed": "업로드 속도"
     }
   },
   "torrentDialogs": {
@@ -5667,7 +5687,7 @@
       "na": "해당 없음",
       "noData": "사용 가능한 데이터가 없습니다",
       "normal": "일반",
-      "notAvailable": "—",
+      "notAvailable": "N/A",
       "unlimited": "무제한",
       "useGlobal": "전역값 사용"
     }
@@ -5784,7 +5804,9 @@
   "torrentTableOptimized": {
     "compactRow": {
       "ratioLabel": "비율:",
-      "selectTorrentAria": "토렌트 선택"
+      "selectTorrentAria": "토렌트 선택",
+      "trackerDown": "트래커 다운",
+      "unregistered": "미등록"
     },
     "controls": {
       "columns": {
@@ -6802,6 +6824,8 @@
       "searchPlaceholder": "이름, 해시, 규칙으로 필터링...",
       "summary": {
         "countWithVerb": "{{count}} {{noun}} {{verb}}",
+        "countWithVerb_one": "{{count}}개 토렌트 {{verb}}",
+        "countWithVerb_other": "{{count}}개 토렌트 {{verb}}",
         "deleteDryRun": "{{count}} {{noun}} 삭제 예정 ({{reason}})",
         "deleteReasons": {
           "condition": "조건",

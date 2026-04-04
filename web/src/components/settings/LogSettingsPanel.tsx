@@ -30,6 +30,7 @@ import {
   SelectValue
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { useCommonTr } from "@/hooks/useCommonTr"
 import { usePersistedLogExclusions } from "@/hooks/usePersistedLogExclusions"
 import { api } from "@/lib/api"
 import { copyTextToClipboard } from "@/lib/utils"
@@ -52,8 +53,7 @@ function normalizeLogLevel(level: string | undefined): (typeof LOG_LEVELS)[numbe
 }
 
 function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<ReturnType<typeof api.getLogSettings>>> }) {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useCommonTr()
   const queryClient = useQueryClient()
 
   const updateMutation = useMutation({
@@ -464,8 +464,7 @@ function LogEntryDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useCommonTr()
   // Memoize JSON stringification and highlighting to avoid re-tokenizing on unrelated renders
   const { prettyJson, highlightedJson } = useMemo(() => {
     if (!entry) return { prettyJson: "", highlightedJson: [] as React.ReactNode[] }
@@ -899,8 +898,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
 }
 
 export function LogSettingsPanel() {
-  const { t } = useTranslation("common")
-  const tr = (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never))
+  const tr = useCommonTr()
   const { data: settings } = useQuery({
     queryKey: ["log-settings"],
     queryFn: () => api.getLogSettings(),

@@ -320,7 +320,7 @@
       "selectInstance": "请选择一个实例"
     },
     "values": {
-      "empty": "—"
+      "empty": "-"
     }
   },
   "categorySubmenu": {
@@ -1058,7 +1058,7 @@
       "disabled": "已禁用",
       "idle": "空闲",
       "instanceWithId": "实例 {{id}}",
-      "na": "—",
+      "na": "N/A",
       "noInstanceSelected": "未选择实例",
       "noMessageProvided": "未提供信息",
       "noRunsYet": "暂无运行",
@@ -3187,6 +3187,10 @@
     "settings": "设置",
     "torrents": "种子"
   },
+  "numberInput": {
+    "unlimitedHint": " (使用-1表示无限制)",
+    "unlimitedPlaceholder": "无限制"
+  },
   "networkDiscoveryForm": {
     "actions": {
       "saveChanges": "保存更改",
@@ -4612,7 +4616,7 @@
       },
       "values": {
         "no": "No",
-        "notAvailable": "—",
+        "notAvailable": "N/A",
         "yes": "Yes"
       }
     },
@@ -4746,7 +4750,7 @@
       },
       "values": {
         "minutes": "{{count}} 分钟",
-        "notAvailable": "—"
+        "notAvailable": "N/A"
       }
     }
   },
@@ -5184,6 +5188,12 @@
       "torrentName": "种子名称"
     },
     "count": {
+      "files_one": "{{count}} 个文件",
+      "files_other": "{{count}} 个文件",
+      "sources_one": "{{count}} 个来源",
+      "sources_other": "{{count}} 个来源",
+      "trackers_one": "{{count}} 个Tracker",
+      "trackers_other": "{{count}} 个Tracker",
       "withNoun": "{{count}}{{noun}}"
     },
     "crossSeed": {
@@ -5667,7 +5677,7 @@
       "na": "无",
       "noData": "暂无数据",
       "normal": "普通",
-      "notAvailable": "—",
+      "notAvailable": "N/A",
       "unlimited": "不限",
       "useGlobal": "使用全局设置"
     }
@@ -5781,10 +5791,22 @@
       "tooltip": "Tracker 图标"
     }
   },
+  "torrentSortOptions": {
+    "labels": {
+      "downloadLimit": "下载限制",
+      "downloadSpeed": "下载速度",
+      "leechers": "下载者",
+      "recentlyAdded": "最近添加",
+      "uploadLimit": "上传限制",
+      "uploadSpeed": "上传速度"
+    }
+  },
   "torrentTableOptimized": {
     "compactRow": {
       "ratioLabel": "分享率：",
-      "selectTorrentAria": "选择种子"
+      "selectTorrentAria": "选择种子",
+      "trackerDown": "Tracker 不可用",
+      "unregistered": "未注册"
     },
     "controls": {
       "columns": {
@@ -6802,6 +6824,8 @@
       "searchPlaceholder": "按名称、Hash 或规则筛选...",
       "summary": {
         "countWithVerb": "{{count}}{{noun}}{{verb}}",
+        "countWithVerb_one": "{{count}} 个种子{{verb}}",
+        "countWithVerb_other": "{{count}} 个种子{{verb}}",
         "deleteDryRun": "{{count}}{{noun}}将被删除（{{reason}}）",
         "deleteReasons": {
           "condition": "条件匹配",
