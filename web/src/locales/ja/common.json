@@ -2094,6 +2094,12 @@
     "smartSearchTitle": "スマート検索機能：",
     "switchScope": "スコープ切替",
     "torrentCreationTasks": "トレント作成タスク",
+    "unifiedActions": {
+      "addTorrentLabel": "インスタンスに追加",
+      "createTorrentLabel": "インスタンスで作成",
+      "instanceSettingsLabel": "インスタンス設定",
+      "torrentCreationTasksLabel": "インスタンスのタスク"
+    },
     "unified": "統合表示",
     "unifiedScope": "統合スコープ"
   },

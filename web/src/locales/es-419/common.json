@@ -2094,6 +2094,12 @@
     "smartSearchTitle": "Funciones de búsqueda inteligente:",
     "switchScope": "Cambiar alcance",
     "torrentCreationTasks": "Tareas de creación de torrents",
+    "unifiedActions": {
+      "addTorrentLabel": "Agregar a la instancia",
+      "createTorrentLabel": "Crear en la instancia",
+      "instanceSettingsLabel": "Configuración de la instancia",
+      "torrentCreationTasksLabel": "Tareas de la instancia"
+    },
     "unified": "Unificado",
     "unifiedScope": "Alcance unificado"
   },

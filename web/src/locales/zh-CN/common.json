@@ -2094,6 +2094,12 @@
     "smartSearchTitle": "智能搜索功能：",
     "switchScope": "切换范围",
     "torrentCreationTasks": "种子创建任务",
+    "unifiedActions": {
+      "addTorrentLabel": "添加到实例",
+      "createTorrentLabel": "在实例上创建",
+      "instanceSettingsLabel": "实例设置",
+      "torrentCreationTasksLabel": "实例任务"
+    },
     "unified": "统一视图",
     "unifiedScope": "统一范围"
   },

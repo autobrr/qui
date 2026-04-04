@@ -2209,6 +2209,12 @@
     "smartSearchTitle": "Smart Search Features:",
     "switchScope": "Switch Scope",
     "torrentCreationTasks": "Torrent creation tasks",
+    "unifiedActions": {
+      "addTorrentLabel": "Add to instance",
+      "createTorrentLabel": "Create on instance",
+      "instanceSettingsLabel": "Settings for instance",
+      "torrentCreationTasksLabel": "Tasks for instance"
+    },
     "unified": "Unified",
     "unifiedScope": "Unified Scope"
   },

@@ -2094,6 +2094,12 @@
     "smartSearchTitle": "Fonctions de recherche intelligente :",
     "switchScope": "Changer la portée",
     "torrentCreationTasks": "Tâches de création de torrent",
+    "unifiedActions": {
+      "addTorrentLabel": "Ajouter à l'instance",
+      "createTorrentLabel": "Créer sur l'instance",
+      "instanceSettingsLabel": "Paramètres de l'instance",
+      "torrentCreationTasksLabel": "Tâches de l'instance"
+    },
     "unified": "Unifié",
     "unifiedScope": "Portée unifiée"
   },

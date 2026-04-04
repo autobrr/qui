@@ -162,11 +162,14 @@ export function Search() {
   // Cleanup timeouts and RAF on unmount
   useEffect(() => {
     return () => {
-      if (blurTimeoutRef.current !== null) {
-        window.clearTimeout(blurTimeoutRef.current)
+      const blurTimeoutId = blurTimeoutRef.current
+      const rafId = rafIdRef.current
+
+      if (blurTimeoutId !== null) {
+        window.clearTimeout(blurTimeoutId)
       }
-      if (rafIdRef.current !== null) {
-        cancelAnimationFrame(rafIdRef.current)
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId)
       }
     }
   }, [])
@@ -245,7 +248,7 @@ export function Search() {
     }
 
     return true
-  }, [indexers.length, query, selectedIndexers, hasAdvancedParams])
+  }, [hasAdvancedParams, indexers.length, query, selectedIndexers, tr])
 
   const refreshRecentSearches = useCallback(async () => {
     try {
@@ -255,7 +258,7 @@ export function Search() {
       console.error("Load recent searches error:", error)
       setRecentSearches([])
     }
-  }, [api])
+  }, [])
 
   const latestReqIdRef = useRef(0)
   const runSearch = useCallback(
@@ -367,7 +370,7 @@ export function Search() {
         if (reqId === latestReqIdRef.current) setLoading(false)
       }
     },
-    [advancedParams, api, query, selectedIndexers, refreshRecentSearches, searchType]
+    [advancedParams, query, selectedIndexers, refreshRecentSearches, searchType, tr]
   )
 
   // Build a category ID to name map from all indexers
@@ -451,7 +454,7 @@ export function Search() {
       }
     }
     loadIndexers()
-  }, [])
+  }, [tr])
 
   useEffect(() => {
     refreshRecentSearches()

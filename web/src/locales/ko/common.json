@@ -2094,6 +2094,12 @@
     "smartSearchTitle": "스마트 검색 기능:",
     "switchScope": "범위 전환",
     "torrentCreationTasks": "토렌트 생성 작업",
+    "unifiedActions": {
+      "addTorrentLabel": "인스턴스에 추가",
+      "createTorrentLabel": "인스턴스에서 생성",
+      "instanceSettingsLabel": "인스턴스 설정",
+      "torrentCreationTasksLabel": "인스턴스 작업"
+    },
     "unified": "통합",
     "unifiedScope": "통합 범위"
   },

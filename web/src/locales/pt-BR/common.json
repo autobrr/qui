@@ -2094,6 +2094,12 @@
     "smartSearchTitle": "Recursos da busca inteligente:",
     "switchScope": "Trocar escopo",
     "torrentCreationTasks": "Tarefas de criação de torrent",
+    "unifiedActions": {
+      "addTorrentLabel": "Adicionar na instância",
+      "createTorrentLabel": "Criar na instância",
+      "instanceSettingsLabel": "Configurações da instância",
+      "torrentCreationTasksLabel": "Tarefas da instância"
+    },
     "unified": "Unificado",
     "unifiedScope": "Escopo unificado"
   },

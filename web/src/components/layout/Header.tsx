@@ -509,8 +509,8 @@ export function Header({
               <>
                 <UnifiedActionDropdown
                   icon={<Plus className="h-4 w-4" />}
-                  tooltip="Add torrent"
-                  label="Add to instance"
+                  tooltip={t("header.addTorrent")}
+                  label={t("header.unifiedActions.addTorrentLabel")}
                   instances={unifiedManageableInstances}
                   onSelectInstance={setUnifiedAddTorrentInstanceId}
                 />
@@ -518,15 +518,15 @@ export function Header({
                   <>
                     <UnifiedActionDropdown
                       icon={<FileEdit className="h-4 w-4" />}
-                      tooltip="Create torrent"
-                      label="Create for instance"
+                      tooltip={t("header.createTorrent")}
+                      label={t("header.unifiedActions.createTorrentLabel")}
                       instances={unifiedTorrentCreationInstances}
                       onSelectInstance={setUnifiedCreateTorrentInstanceId}
                     />
                     <UnifiedActionDropdown
                       icon={<ListTodo className="h-4 w-4" />}
-                      tooltip="Torrent creation tasks"
-                      label="Tasks for instance"
+                      tooltip={t("header.torrentCreationTasks")}
+                      label={t("header.unifiedActions.torrentCreationTasksLabel")}
                       instances={unifiedTorrentCreationInstances}
                       onSelectInstance={setUnifiedTasksInstanceId}
                     />
@@ -534,8 +534,8 @@ export function Header({
                 )}
                 <UnifiedActionDropdown
                   icon={<Cog className="h-4 w-4" />}
-                  tooltip="Instance settings"
-                  label="Settings for instance"
+                  tooltip={t("header.instanceSettings")}
+                  label={t("header.unifiedActions.instanceSettingsLabel")}
                   instances={unifiedManageableInstances}
                   onSelectInstance={setUnifiedSettingsInstanceId}
                 />
