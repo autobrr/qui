@@ -7,12 +7,15 @@ import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import App from "./App.tsx"
 import { setupLaunchQueueConsumer } from "@/lib/launch-queue"
-import "@/i18n"
+import { i18nReady } from "@/i18n"
 import "./index.css"
 
 setupLaunchQueueConsumer()
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-)
+
+void i18nReady.then(() => {
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  )
+})

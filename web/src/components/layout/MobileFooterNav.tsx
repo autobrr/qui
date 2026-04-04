@@ -31,7 +31,7 @@ import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedIn
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
-import i18n, { languageOptions, normalizeLanguage, type AppLanguage } from "@/i18n"
+import i18n, { languageOptions, normalizeLanguage, setAppLanguage, type AppLanguage } from "@/i18n"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import {
@@ -183,9 +183,9 @@ export function MobileFooterNav() {
   const hasClientScopeEntry = isOnAllInstancesPage || hasActiveInstances
   const currentInstanceId = !isOnAllInstancesPage && location.pathname.startsWith("/instances/") ? location.pathname.split("/")[2] : null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
-  const currentInstanceLabel = isOnAllInstancesPage
-    ? (hasMultipleActiveInstances ? t("header.unified") : (activeInstances[0]?.name ?? null))
-    : (currentInstance && currentInstance.isActive ? currentInstance.name : null)
+  const currentInstanceLabel = isOnAllInstancesPage ? (
+    hasMultipleActiveInstances ? t("header.unified") : (activeInstances[0]?.name ?? null)
+  ) : (currentInstance && currentInstance.isActive ? currentInstance.name : null)
   const activeInstancesSummary = t("header.activeInstancesSummary", { count: activeInstances.length })
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
@@ -240,7 +240,7 @@ export function MobileFooterNav() {
     if (language === activeLanguage) {
       return
     }
-    await i18n.changeLanguage(language)
+    await setAppLanguage(language)
   }, [activeLanguage])
 
   if (isSelectionMode) {

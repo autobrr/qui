@@ -61,3 +61,29 @@ test("service worker precaches the built app entry bundle", () => {
     `service worker precache is missing ${entryMatch[1]}`,
   )
 })
+
+test("i18n boot loads locale files lazily instead of bundling them all up front", () => {
+  const source = readFileSync(path.join(webDir, "src", "i18n", "index.ts"), "utf8")
+
+  assert.match(source, /import\.meta\.glob(?:<[^>]+>)?\(/, "expected import.meta.glob-based locale loading")
+  assert.doesNotMatch(source, /from "\.\/locales"/, "expected i18n bootstrap to stop importing all locale JSON eagerly")
+})
+
+test("relative-time helpers avoid hardcoded English phrasing", () => {
+  const dateTimeUtils = readFileSync(path.join(webDir, "src", "lib", "dateTimeUtils.ts"), "utf8")
+  const utils = readFileSync(path.join(webDir, "src", "lib", "utils.ts"), "utf8")
+
+  assert.match(`${dateTimeUtils}\n${utils}`, /Intl\.RelativeTimeFormat/, "expected locale-aware relative-time formatting")
+  assert.doesNotMatch(dateTimeUtils, /return "Just now"|return "Today"|return "Yesterday"/, "expected dateTimeUtils to stop hardcoding English relative labels")
+})
+
+test("query builder uses translation keys for field and operator labels", () => {
+  const constants = readFileSync(path.join(webDir, "src", "components", "query-builder", "constants.ts"), "utf8")
+  const fieldCombobox = readFileSync(path.join(webDir, "src", "components", "query-builder", "FieldCombobox.tsx"), "utf8")
+  const leafCondition = readFileSync(path.join(webDir, "src", "components", "query-builder", "LeafCondition.tsx"), "utf8")
+
+  assert.match(constants, /NAME:\s*\{\s*labelKey:/, "expected query-builder field metadata to define translation keys")
+  assert.match(constants, /string:\s*\[\s*\{\s*value:\s*"EQUAL",\s*labelKey:/, "expected query-builder operator metadata to define translation keys")
+  assert.doesNotMatch(fieldCombobox, /selectedField\?\.label|fieldDef\?\.label \?\? field|heading=\{group\.label\}/, "expected field combobox to render translated labels")
+  assert.doesNotMatch(leafCondition, /\{op\.label\}/, "expected operator dropdown to render translated labels")
+})

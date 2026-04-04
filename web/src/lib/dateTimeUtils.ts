@@ -4,6 +4,103 @@
  */
 
 import type { DateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
+import i18n, { normalizeLanguage } from "@/i18n"
+
+const SECOND_MS = 1000
+const MINUTE_MS = 60 * SECOND_MS
+const HOUR_MS = 60 * MINUTE_MS
+const DAY_MS = 24 * HOUR_MS
+const WEEK_MS = 7 * DAY_MS
+const MONTH_MS = 30 * DAY_MS
+const YEAR_MS = 365 * DAY_MS
+
+type RelativeFormatterStyle = "long" | "short"
+type RelativeUnit = Intl.RelativeTimeFormatUnit
+
+function getRelativeLocale(): string {
+  if (i18n.resolvedLanguage || i18n.language) {
+    return normalizeLanguage(i18n.resolvedLanguage || i18n.language)
+  }
+
+  if (typeof navigator !== "undefined") {
+    return normalizeLanguage(navigator.language)
+  }
+
+  return "en"
+}
+
+function getRelativeParts(diffMs: number): { value: number; unit: RelativeUnit } {
+  const absDiffMs = Math.abs(diffMs)
+
+  if (absDiffMs < MINUTE_MS) {
+    return { value: Math.round(diffMs / SECOND_MS), unit: "second" }
+  }
+
+  if (absDiffMs < HOUR_MS) {
+    return { value: Math.round(diffMs / MINUTE_MS), unit: "minute" }
+  }
+
+  if (absDiffMs < DAY_MS) {
+    return { value: Math.round(diffMs / HOUR_MS), unit: "hour" }
+  }
+
+  if (absDiffMs < WEEK_MS) {
+    return { value: Math.round(diffMs / DAY_MS), unit: "day" }
+  }
+
+  if (absDiffMs < MONTH_MS) {
+    return { value: Math.round(diffMs / WEEK_MS), unit: "week" }
+  }
+
+  if (absDiffMs < YEAR_MS) {
+    return { value: Math.round(diffMs / MONTH_MS), unit: "month" }
+  }
+
+  return { value: Math.round(diffMs / YEAR_MS), unit: "year" }
+}
+
+function formatRelativeParts(
+  value: number,
+  unit: RelativeUnit,
+  {
+    locale = getRelativeLocale(),
+    style = "long",
+    withDirection = true,
+  }: {
+    locale?: string
+    style?: RelativeFormatterStyle
+    withDirection?: boolean
+  } = {}
+): string {
+  if (withDirection) {
+    return new Intl.RelativeTimeFormat(locale, {
+      numeric: "auto",
+      style,
+    }).format(value, unit)
+  }
+
+  return new Intl.NumberFormat(locale, {
+    style: "unit",
+    unit,
+    unitDisplay: style === "short" ? "short" : "long",
+  }).format(Math.abs(value))
+}
+
+export function formatLocalizedRelativeTime(
+  date: Date,
+  {
+    locale = getRelativeLocale(),
+    style = "long",
+    withDirection = true,
+  }: {
+    locale?: string
+    style?: RelativeFormatterStyle
+    withDirection?: boolean
+  } = {}
+): string {
+  const { value, unit } = getRelativeParts(date.getTime() - Date.now())
+  return formatRelativeParts(value, unit, { locale, style, withDirection })
+}
 
 // Get stored preferences from localStorage
 function getStoredPreferences(): DateTimePreferences {
@@ -14,7 +111,7 @@ function getStoredPreferences(): DateTimePreferences {
       return {
         timezone: parsed.timezone || "UTC",
         timeFormat: parsed.timeFormat || "24h",
-        dateFormat: parsed.dateFormat || "iso"
+        dateFormat: parsed.dateFormat || "iso",
       }
     }
   } catch (error) {
@@ -25,34 +122,8 @@ function getStoredPreferences(): DateTimePreferences {
   return {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     timeFormat: "24h",
-    dateFormat: "iso"
+    dateFormat: "iso",
   }
-}
-
-// Calculate relative time display
-function getRelativeTime(date: Date): string {
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffSec = Math.floor(diffMs / 1000)
-  const diffMin = Math.floor(diffSec / 60)
-  const diffHour = Math.floor(diffMin / 60)
-  const diffDay = Math.floor(diffHour / 24)
-  const diffWeek = Math.floor(diffDay / 7)
-  const diffMonth = Math.floor(diffDay / 30)
-  const diffYear = Math.floor(diffDay / 365)
-
-  if (diffSec < 60) return "Just now"
-  if (diffMin < 60) return `${diffMin} minute${diffMin !== 1 ? "s" : ""} ago`
-  if (diffHour < 24) return `${diffHour} hour${diffHour !== 1 ? "s" : ""} ago`
-  if (diffDay < 7) return `${diffDay} day${diffDay !== 1 ? "s" : ""} ago`
-  if (diffWeek < 4) return `${diffWeek} week${diffWeek !== 1 ? "s" : ""} ago`
-  if (diffMonth < 12 && diffMonth > 0) return `${diffMonth} month${diffMonth !== 1 ? "s" : ""} ago`
-  if (diffYear > 0) return `${diffYear} year${diffYear !== 1 ? "s" : ""} ago`
-
-  // Fallback for edge cases (like exactly 0 months but some weeks)
-  if (diffWeek > 0) return `${diffWeek} week${diffWeek !== 1 ? "s" : ""} ago`
-  if (diffDay > 0) return `${diffDay} day${diffDay !== 1 ? "s" : ""} ago`
-  return "Just now"
 }
 
 /**
@@ -69,7 +140,7 @@ export function formatTimestamp(timestamp: number, preferences?: DateTimePrefere
 
   // For relative format, return relative time
   if (prefs.dateFormat === "relative") {
-    return getRelativeTime(date)
+    return formatLocalizedRelativeTime(date)
   }
 
   try {
@@ -103,7 +174,7 @@ export function formatTimestamp(timestamp: number, preferences?: DateTimePrefere
           year: "numeric",
           hour: "2-digit",
           minute: "2-digit",
-          hour12
+          hour12,
         })
       }
 
@@ -116,7 +187,7 @@ export function formatTimestamp(timestamp: number, preferences?: DateTimePrefere
           year: "numeric",
           hour: "2-digit",
           minute: "2-digit",
-          hour12
+          hour12,
         })
       }
 
@@ -158,15 +229,7 @@ export function formatDateOnly(timestamp: number, preferences?: DateTimePreferen
 
   // For relative format, return relative date
   if (prefs.dateFormat === "relative") {
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffDay = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-    if (diffDay === 0) return "Today"
-    if (diffDay === 1) return "Yesterday"
-    if (diffDay < 7) return `${diffDay} days ago`
-
-    return getRelativeTime(date)
+    return formatLocalizedRelativeTime(date)
   }
 
   try {
@@ -188,7 +251,7 @@ export function formatDateOnly(timestamp: number, preferences?: DateTimePreferen
           timeZone,
           month: "2-digit",
           day: "2-digit",
-          year: "numeric"
+          year: "numeric",
         })
 
       case "eu":
@@ -196,7 +259,7 @@ export function formatDateOnly(timestamp: number, preferences?: DateTimePreferen
           timeZone,
           day: "2-digit",
           month: "2-digit",
-          year: "numeric"
+          year: "numeric",
         })
 
       default: {
@@ -232,7 +295,7 @@ export function formatTimeOnly(timestamp: number, preferences?: DateTimePreferen
       timeZone: prefs.timezone,
       hour: "2-digit",
       minute: "2-digit",
-      hour12: prefs.timeFormat === "12h"
+      hour12: prefs.timeFormat === "12h",
     })
   } catch (error) {
     console.error("Error formatting time:", error)
@@ -292,33 +355,7 @@ export function formatISOTimestamp(isoTimestamp: string, preferences?: DateTimeP
  * @returns Relative time string
  */
 export function formatRelativeTime(date: Date, addSuffix = true): string {
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const isFuture = diffMs < 0
-  const absDiffMs = Math.abs(diffMs)
-
-  const diffSec = Math.floor(absDiffMs / 1000)
-  const diffMin = Math.floor(diffSec / 60)
-  const diffHour = Math.floor(diffMin / 60)
-  const diffDay = Math.floor(diffHour / 24)
-  const diffWeek = Math.floor(diffDay / 7)
-  const diffMonth = Math.floor(diffDay / 30)
-  const diffYear = Math.floor(diffDay / 365)
-
-  let value: string
-  if (diffSec < 60) value = "just now"
-  else if (diffMin < 60) value = `${diffMin} minute${diffMin !== 1 ? "s" : ""}`
-  else if (diffHour < 24) value = `${diffHour} hour${diffHour !== 1 ? "s" : ""}`
-  else if (diffDay < 7) value = `${diffDay} day${diffDay !== 1 ? "s" : ""}`
-  else if (diffWeek < 4) value = `${diffWeek} week${diffWeek !== 1 ? "s" : ""}`
-  else if (diffMonth < 12 && diffMonth > 0) value = `${diffMonth} month${diffMonth !== 1 ? "s" : ""}`
-  else if (diffYear > 0) value = `${diffYear} year${diffYear !== 1 ? "s" : ""}`
-  else if (diffWeek > 0) value = `${diffWeek} week${diffWeek !== 1 ? "s" : ""}`
-  else if (diffDay > 0) value = `${diffDay} day${diffDay !== 1 ? "s" : ""}`
-  else value = "just now"
-
-  if (!addSuffix || value === "just now") return value
-  return isFuture ? `in ${value}` : `${value} ago`
+  return formatLocalizedRelativeTime(date, { withDirection: addSuffix })
 }
 
 export function formatSearchDuration(durationMs: number, secondsPrecision: number): string {

@@ -34,7 +34,7 @@ import { cn } from "@/lib/utils";
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts";
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement";
 import { useTranslation } from "react-i18next";
-import i18n, { languageOptions, normalizeLanguage, type AppLanguage } from "@/i18n";
+import i18n, { languageOptions, normalizeLanguage, setAppLanguage, type AppLanguage } from "@/i18n";
 
 // Constants
 const THEME_CHANGE_EVENT = "themechange";
@@ -198,7 +198,7 @@ export const ThemeToggle: React.FC = () => {
     if (language === activeLanguage) {
       return;
     }
-    await i18n.changeLanguage(language);
+    await setAppLanguage(language);
     setOpen(false);
   }, [activeLanguage]);
 

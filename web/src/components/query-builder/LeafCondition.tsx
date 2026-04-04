@@ -492,7 +492,7 @@ export function LeafCondition({
           <SelectContent>
             {operators.map((op) => (
               <SelectItem key={op.value} value={op.value}>
-                {op.label}
+                {tr(op.labelKey, { defaultValue: op.label })}
               </SelectItem>
             ))}
           </SelectContent>
