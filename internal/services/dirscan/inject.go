@@ -297,7 +297,6 @@ func (i *Injector) resumeAfterRecheck(instanceID int, hash string) {
 
 	go func() {
 		const (
-			gracePeriod  = 3 * time.Second
 			pollInterval = 5 * time.Second
 			timeout      = 10 * time.Minute
 		)
@@ -305,32 +304,47 @@ func (i *Injector) resumeAfterRecheck(instanceID int, hash string) {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
-		// Give qBit time to start the recheck before we begin polling.
-		// Without this, the first poll can see a stale paused/stopped state
-		// and resume prematurely.
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(gracePeriod):
-		}
-
 		ticker := time.NewTicker(pollInterval)
 		defer ticker.Stop()
 
-		for {
-			torrent, found, err := i.torrentChecker.HasTorrentByAnyHash(ctx, instanceID, []string{hash})
-			if err == nil && found && torrent != nil && !isCheckingState(torrent.State) {
-				break
-			}
+		// Wait for the sync cache to show a checking state, proving qBit
+		// actually started the recheck, then wait for it to leave that state.
+		// Without this two-phase check the first poll can see a stale
+		// stopped/paused state (cache not yet refreshed) and resume before
+		// the recheck runs. qBit's StopCondition::FilesChecked would then
+		// re-stop the torrent after checking, leaving it stuck.
+		sawChecking := false
 
+		for {
 			select {
 			case <-ctx.Done():
 				log.Debug().
 					Int("instanceID", instanceID).
 					Str("hash", hash).
+					Bool("sawChecking", sawChecking).
 					Msg("dirscan: resumeAfterRecheck timed out")
 				return
 			case <-ticker.C:
+			}
+
+			torrent, found, err := i.torrentChecker.HasTorrentByAnyHash(ctx, instanceID, []string{hash})
+			if err != nil || !found || torrent == nil {
+				continue
+			}
+
+			if isCheckingState(torrent.State) {
+				sawChecking = true
+				continue
+			}
+
+			// Two ways to know the recheck finished:
+			// 1. We observed a checking state and it transitioned out.
+			// 2. We never caught the checking state (fast disk / small
+			//    torrent) but Completed > 0 proves qBit verified data.
+			//    A freshly added paused torrent has Completed == 0 until
+			//    the recheck runs.
+			if sawChecking || torrent.Completed > 0 {
+				break
 			}
 		}
 

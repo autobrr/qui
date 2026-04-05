@@ -443,10 +443,11 @@ func TestInjector_Inject_PausedPerfect_DoesNotTriggerRecheck(t *testing.T) {
 // list in order, staying on the last state once exhausted. This lets tests
 // model the recheck flow: checking -> paused/downloading.
 type fakeTorrentChecker struct {
-	mu     sync.Mutex
-	hash   string
-	states []qbt.TorrentState
-	idx    int
+	mu        sync.Mutex
+	hash      string
+	states    []qbt.TorrentState
+	completed []int64 // parallel to states; if shorter, defaults to 0
+	idx       int
 }
 
 func (c *fakeTorrentChecker) HasTorrentByAnyHash(_ context.Context, _ int, _ []string) (*qbt.Torrent, bool, error) {
@@ -456,10 +457,14 @@ func (c *fakeTorrentChecker) HasTorrentByAnyHash(_ context.Context, _ int, _ []s
 		return nil, false, nil
 	}
 	state := c.states[c.idx]
+	var comp int64
+	if c.idx < len(c.completed) {
+		comp = c.completed[c.idx]
+	}
 	if c.idx < len(c.states)-1 {
 		c.idx++
 	}
-	return &qbt.Torrent{Hash: c.hash, State: state}, true, nil
+	return &qbt.Torrent{Hash: c.hash, State: state, Completed: comp}, true, nil
 }
 
 // safeRecordingManager is a thread-safe version of recordingTorrentManager for tests
@@ -543,8 +548,10 @@ func TestInjector_PartialLinkTree_DownloadMissingEnabled_NotPaused(t *testing.T)
 
 	checker := &fakeTorrentChecker{
 		hash: "deadbeef",
-		// Return non-checking state: simulates recheck completing quickly.
-		states: []qbt.TorrentState{qbt.TorrentStatePausedDl},
+		// Return non-checking state with Completed > 0: simulates recheck
+		// completing quickly (data already verified on disk).
+		states:    []qbt.TorrentState{qbt.TorrentStatePausedDl},
+		completed: []int64{4},
 	}
 
 	manager := &safeRecordingManager{}
@@ -603,7 +610,7 @@ func TestInjector_PartialLinkTree_DownloadMissingEnabled_NotPaused(t *testing.T)
 			opts["paused"], opts["stopped"])
 	}
 
-	// Wait for the async resume goroutine: 3s grace + first poll.
+	// Wait for the async resume goroutine: first poll at 5s interval.
 	deadline := time.After(15 * time.Second)
 	for {
 		calls := manager.getBulkCalls()
