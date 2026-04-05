@@ -486,7 +486,8 @@ func conditionsUseField(conditions *models.ActionConditions, field automations.C
 		anyEnabledTagActionUsesField(c.TagActions(), field) ||
 		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition)) ||
 		(c.Move != nil && check(c.Move.Enabled, c.Move.Condition)) ||
-		(c.ExternalProgram != nil && check(c.ExternalProgram.Enabled, c.ExternalProgram.Condition))
+		(c.ExternalProgram != nil && check(c.ExternalProgram.Enabled, c.ExternalProgram.Condition)) ||
+		(c.AutoManagement != nil && check(c.AutoManagement.Enabled, c.AutoManagement.Condition))
 }
 
 func anyEnabledTagActionUsesField(actions []*models.TagAction, field automations.ConditionField) bool {
@@ -629,6 +630,9 @@ func conditionTreesForValidation(conditions *models.ActionConditions) []*models.
 	}
 	if conditions.ExternalProgram != nil && conditions.ExternalProgram.Enabled {
 		trees = append(trees, conditions.ExternalProgram.Condition)
+	}
+	if conditions.AutoManagement != nil && conditions.AutoManagement.Enabled {
+		trees = append(trees, conditions.AutoManagement.Condition)
 	}
 	return trees
 }
@@ -1034,6 +1038,9 @@ func collectConditionRegexErrors(conditions *models.ActionConditions) []RegexVal
 	}
 	if conditions.ExternalProgram != nil {
 		validateConditionRegex(conditions.ExternalProgram.Condition, "/conditions/externalProgram/condition", &result)
+	}
+	if conditions.AutoManagement != nil {
+		validateConditionRegex(conditions.AutoManagement.Condition, "/conditions/autoManagement/condition", &result)
 	}
 
 	return result
