@@ -6115,6 +6115,20 @@
     "version": "版本 {{version}}",
     "viewRelease": "查看发布"
   },
+  "trackersTable": {
+    "columns": {
+      "downloads": "完成数",
+      "leeches": "下载者",
+      "message": "消息",
+      "peers": "对等端",
+      "seeds": "做种者",
+      "status": "状态",
+      "tracker": "追踪器"
+    },
+    "empty": {
+      "noTrackers": "未找到追踪器"
+    }
+  },
   "webSeedsTable": {
     "actions": {
       "copyUrl": "复制 URL"
@@ -6346,6 +6360,7 @@
       "dryRun": "演练模式",
       "enabled": "启用",
       "name": "名称",
+      "notify": "发送通知",
       "runEvery": "运行间隔",
       "trackers": "Tracker"
     },

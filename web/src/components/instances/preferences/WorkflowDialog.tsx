@@ -3684,7 +3684,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       checked={formState.notify}
                       onCheckedChange={(checked) => setFormState(prev => ({ ...prev, notify: checked }))}
                     />
-                    <Label htmlFor="rule-notify" className="text-sm font-normal cursor-pointer">Notify</Label>
+                    <Label htmlFor="rule-notify" className="text-sm font-normal cursor-pointer">{tr("workflowDialog.fields.notify")}</Label>
                   </div>
                 )}
                 <div className="flex items-center gap-2">

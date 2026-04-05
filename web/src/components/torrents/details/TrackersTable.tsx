@@ -50,7 +50,7 @@ export const TrackersTable = memo(function TrackersTable({
 
   const columns = useMemo(() => [
     columnHelper.accessor("status", {
-      header: "Status",
+      header: tr("trackersTable.columns.status"),
       cell: (info) => getTrackerStatusBadge(info.getValue(), tr, true),
       size: 90,
       // Custom sort: disabled (0) always at bottom
@@ -63,25 +63,32 @@ export const TrackersTable = memo(function TrackersTable({
       },
     }),
     columnHelper.accessor("url", {
-      header: "Tracker",
+      header: tr("trackersTable.columns.tracker"),
       cell: (info) => {
         const url = info.getValue()
         const fullUrl = incognitoMode ? "https://tracker.example.com/announce" : url
 
         // Extract hostname for display, fall back to full value for non-URLs (DHT, PeX, LSD)
-        let hostname = ""
-        let isValidUrl = false
-        if (incognitoMode) {
-          hostname = "tracker.example.com"
-          isValidUrl = true
-        } else {
-          try {
-            hostname = new URL(url).hostname
-            isValidUrl = true
-          } catch {
-            hostname = url
+        const { hostname, isValidUrl } = (() => {
+          if (incognitoMode) {
+            return {
+              hostname: "tracker.example.com",
+              isValidUrl: true,
+            }
           }
-        }
+
+          try {
+            return {
+              hostname: new URL(url).hostname,
+              isValidUrl: true,
+            }
+          } catch {
+            return {
+              hostname: url,
+              isValidUrl: false,
+            }
+          }
+        })()
 
         return (
           <div className="flex items-center gap-1.5 whitespace-nowrap">
@@ -105,7 +112,7 @@ export const TrackersTable = memo(function TrackersTable({
       },
     }),
     columnHelper.accessor("msg", {
-      header: "Message",
+      header: tr("trackersTable.columns.message"),
       meta: { fullWidth: true },
       cell: (info) => {
         const msg = info.getValue()
@@ -122,22 +129,22 @@ export const TrackersTable = memo(function TrackersTable({
       },
     }),
     columnHelper.accessor("num_seeds", {
-      header: "Seeds",
+      header: tr("trackersTable.columns.seeds"),
       cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
       size: 70,
     }),
     columnHelper.accessor("num_peers", {
-      header: "Peers",
+      header: tr("trackersTable.columns.peers"),
       cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
       size: 70,
     }),
     columnHelper.accessor("num_leeches", {
-      header: "Leeches",
+      header: tr("trackersTable.columns.leeches"),
       cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
       size: 80,
     }),
     columnHelper.accessor("num_downloaded", {
-      header: "DLs",
+      header: tr("trackersTable.columns.downloads"),
       cell: (info) => <span className="tabular-nums">{info.getValue()}</span>,
       size: 60,
     }),
@@ -165,7 +172,7 @@ export const TrackersTable = memo(function TrackersTable({
   if (!trackers || trackers.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        No trackers found
+        {tr("trackersTable.empty.noTrackers")}
       </div>
     )
   }

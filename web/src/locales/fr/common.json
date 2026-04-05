@@ -6115,6 +6115,20 @@
     "version": "Version {{version}}",
     "viewRelease": "Voir la version"
   },
+  "trackersTable": {
+    "columns": {
+      "downloads": "Téléchargements",
+      "leeches": "Leechers",
+      "message": "Message",
+      "peers": "Peers",
+      "seeds": "Seeders",
+      "status": "Statut",
+      "tracker": "Tracker"
+    },
+    "empty": {
+      "noTrackers": "Aucun tracker trouvé"
+    }
+  },
   "webSeedsTable": {
     "actions": {
       "copyUrl": "Copier l'URL"
@@ -6346,6 +6360,7 @@
       "dryRun": "Simulation",
       "enabled": "Activé",
       "name": "Nom",
+      "notify": "Notifier",
       "runEvery": "Exécuter toutes les",
       "trackers": "Trackers"
     },

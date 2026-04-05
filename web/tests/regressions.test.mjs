@@ -16,10 +16,19 @@ const requiredCommonKeys = [
   "crossSeedPage.seededSearch.help.onlySelectedTorznabQueriedWithGazelle",
   "crossSeedPage.webhook.helper.onlySelectedTagsMatched",
   "globalStatusBar.selection.loadedCount",
+  "trackersTable.columns.downloads",
+  "trackersTable.columns.leeches",
+  "trackersTable.columns.message",
+  "trackersTable.columns.peers",
+  "trackersTable.columns.seeds",
+  "trackersTable.columns.status",
+  "trackersTable.columns.tracker",
+  "trackersTable.empty.noTrackers",
   "torrentDetailsPanel.count.files",
   "torrentDetailsPanel.count.sources",
   "torrentDetailsPanel.count.trackers",
   "torrentManagementBar.toolbarAria",
+  "workflowDialog.fields.notify",
 ]
 
 const requiredQueryBuilderTranslationKeys = [
@@ -256,6 +265,34 @@ test("app bootstrap still renders when i18n initialization rejects", () => {
     /i18nReady\.then\(\(\)\s*=>\s*\{\s*createRoot/,
     "expected app mount to stop depending on successful i18n startup",
   )
+})
+
+test("workflow dialog notify toggle uses i18n instead of hardcoded english", () => {
+  const source = readFileSync(path.join(webDir, "src", "components", "instances", "preferences", "WorkflowDialog.tsx"), "utf8")
+
+  assert.match(source, /tr\("workflowDialog\.fields\.notify"\)/, "expected workflow dialog notify label to use workflowDialog.fields.notify")
+  assert.doesNotMatch(source, />Notify</, "expected workflow dialog to stop hardcoding Notify")
+})
+
+test("trackers table headers and empty state use i18n keys instead of hardcoded english", () => {
+  const source = readFileSync(path.join(webDir, "src", "components", "torrents", "details", "TrackersTable.tsx"), "utf8")
+
+  for (const key of [
+    "trackersTable.columns.status",
+    "trackersTable.columns.tracker",
+    "trackersTable.columns.message",
+    "trackersTable.columns.seeds",
+    "trackersTable.columns.peers",
+    "trackersTable.columns.leeches",
+    "trackersTable.columns.downloads",
+    "trackersTable.empty.noTrackers",
+  ]) {
+    assert.match(source, new RegExp(`tr\\("${key.replaceAll(".", "\\.")}"\\)`), `expected trackers table to use ${key}`)
+  }
+
+  for (const label of ["Status", "Tracker", "Message", "Seeds", "Peers", "Leeches", "DLs", "No trackers found"]) {
+    assert.doesNotMatch(source, new RegExp(`"${label.replace(/[.*+?^${}()|[\]\\\\]/g, "\\$&")}"`), `expected trackers table to stop hardcoding ${label}`)
+  }
 })
 
 test("relative-time helpers avoid hardcoded English phrasing", () => {

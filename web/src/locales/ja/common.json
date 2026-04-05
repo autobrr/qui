@@ -6115,6 +6115,20 @@
     "version": "バージョン {{version}}",
     "viewRelease": "リリースを見る"
   },
+  "trackersTable": {
+    "columns": {
+      "downloads": "完了数",
+      "leeches": "リーチャー",
+      "message": "メッセージ",
+      "peers": "ピア",
+      "seeds": "シーダー",
+      "status": "状態",
+      "tracker": "トラッカー"
+    },
+    "empty": {
+      "noTrackers": "トラッカーが見つかりません"
+    }
+  },
   "webSeedsTable": {
     "actions": {
       "copyUrl": "URL をコピー"
@@ -6346,6 +6360,7 @@
       "dryRun": "ドライラン",
       "enabled": "有効",
       "name": "名前",
+      "notify": "通知する",
       "runEvery": "実行間隔",
       "trackers": "トラッカー"
     },

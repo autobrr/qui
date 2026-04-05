@@ -6115,6 +6115,20 @@
     "version": "버전 {{version}}",
     "viewRelease": "릴리스 보기"
   },
+  "trackersTable": {
+    "columns": {
+      "downloads": "완료 수",
+      "leeches": "리처",
+      "message": "메시지",
+      "peers": "피어",
+      "seeds": "시더",
+      "status": "상태",
+      "tracker": "트래커"
+    },
+    "empty": {
+      "noTrackers": "트래커를 찾을 수 없습니다"
+    }
+  },
   "webSeedsTable": {
     "actions": {
       "copyUrl": "URL 복사"
@@ -6346,6 +6360,7 @@
       "dryRun": "시뮬레이션",
       "enabled": "활성화",
       "name": "이름",
+      "notify": "알림 보내기",
       "runEvery": "실행 주기",
       "trackers": "트래커"
     },
