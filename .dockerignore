@@ -3,8 +3,6 @@
 documentation
 scripts
 web/node_modules
-web/src
-web/public
 **/*_test.go
 **/*.md
 !go.md
