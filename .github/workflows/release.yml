@@ -299,7 +299,7 @@ jobs:
   docker:
     name: Build Docker images
     runs-on: ubuntu-latest
-    needs: [test, web, docker-matrix]
+    needs: [web, docker-matrix]
     strategy:
       fail-fast: true
       matrix:
@@ -379,7 +379,7 @@ jobs:
     name: Publish Docker multi-arch manifest
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
-    needs: [docker]
+    needs: [docker, test]
     steps:
       - name: Download image digests
         uses: actions/download-artifact@v8
