@@ -37,15 +37,16 @@ import (
 
 // Handler manages reverse proxy requests to qBittorrent instances
 type Handler struct {
-	basePath          string
-	clientPool        *qbittorrent.ClientPool
-	clientAPIKeyStore *models.ClientAPIKeyStore
-	instanceStore     *models.InstanceStore
-	syncManager       *qbittorrent.SyncManager
-	reannounceCache   *reannounce.SettingsCache
-	reannounceService *reannounce.Service
-	bufferPool        *BufferPool
-	proxy             *httputil.ReverseProxy
+	basePath             string
+	clientPool           *qbittorrent.ClientPool
+	clientAPIKeyStore    *models.ClientAPIKeyStore
+	instanceStore        *models.InstanceStore
+	syncManager          *qbittorrent.SyncManager
+	reannounceCache      *reannounce.SettingsCache
+	reannounceService    *reannounce.Service
+	indexerCategoryStore *models.CrossSeedIndexerCategoryStore
+	bufferPool           *BufferPool
+	proxy                *httputil.ReverseProxy
 }
 
 const (
@@ -106,19 +107,20 @@ type proxyContentPathMediaInfoResponse struct {
 }
 
 // NewHandler creates a new proxy handler
-func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.ClientAPIKeyStore, instanceStore *models.InstanceStore, syncManager *qbittorrent.SyncManager, cache *reannounce.SettingsCache, svc *reannounce.Service, baseURL string) *Handler {
+func NewHandler(clientPool *qbittorrent.ClientPool, clientAPIKeyStore *models.ClientAPIKeyStore, instanceStore *models.InstanceStore, syncManager *qbittorrent.SyncManager, cache *reannounce.SettingsCache, svc *reannounce.Service, indexerCategoryStore *models.CrossSeedIndexerCategoryStore, baseURL string) *Handler {
 	bufferPool := NewBufferPool()
 	basePath := httphelpers.NormalizeBasePath(baseURL)
 
 	h := &Handler{
-		basePath:          basePath,
-		clientPool:        clientPool,
-		clientAPIKeyStore: clientAPIKeyStore,
-		instanceStore:     instanceStore,
-		syncManager:       syncManager,
-		reannounceCache:   cache,
-		reannounceService: svc,
-		bufferPool:        bufferPool,
+		basePath:             basePath,
+		clientPool:           clientPool,
+		clientAPIKeyStore:    clientAPIKeyStore,
+		instanceStore:        instanceStore,
+		syncManager:          syncManager,
+		reannounceCache:      cache,
+		reannounceService:    svc,
+		indexerCategoryStore: indexerCategoryStore,
+		bufferPool:           bufferPool,
 	}
 
 	// Configure the reverse proxy with retry logic for transient network errors
@@ -405,6 +407,14 @@ func (h *Handler) Routes(r chi.Router) {
 	// Proxy route with API key parameter
 	proxyRoute := httphelpers.JoinBasePath(h.basePath, "/proxy/{api-key}")
 	proxyRouter := r.With(ClientAPIKeyMiddleware(h.clientAPIKeyStore))
+
+	// cross-seed extension: needs only the instance ID from ClientAPIKeyMiddleware,
+	// not a live qBittorrent client — register outside prepareProxyContextMiddleware
+	// so it works even when qBittorrent is unreachable or the instance is disabled.
+	proxyRouter.Get(
+		httphelpers.JoinBasePath(h.basePath, "/proxy/{api-key}/api/v2/cross-seed/indexer-categories"),
+		h.handleCrossSeedIndexerCategories,
+	)
 
 	// Scoped proxy routes retain API key middleware and prepare proxy context
 	proxyRouter.Route(proxyRoute, func(pr chi.Router) {
@@ -2114,4 +2124,34 @@ func (h *Handler) handleDeleteTorrents(w http.ResponseWriter, r *http.Request) {
 
 	// Forward to qBittorrent
 	h.proxy.ServeHTTP(w, r)
+}
+
+// handleCrossSeedIndexerCategories serves per-indexer category mappings for the instance
+// associated with the proxy key. This is a qui extension — not forwarded to qBittorrent.
+func (h *Handler) handleCrossSeedIndexerCategories(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	instanceID := GetInstanceIDFromContext(ctx)
+
+	if instanceID == 0 {
+		writeJSONError(w, http.StatusInternalServerError, "missing instance context")
+		return
+	}
+
+	if h.indexerCategoryStore == nil {
+		writeJSONError(w, http.StatusServiceUnavailable, "indexer category store not available")
+		return
+	}
+
+	mappings, err := h.indexerCategoryStore.List(ctx, instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Msg("Failed to list indexer categories for proxy request")
+		writeJSONError(w, http.StatusInternalServerError, "failed to load indexer categories")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(mappings); err != nil {
+		log.Error().Err(err).Int("instanceId", instanceID).Msg("Failed to encode indexer categories response")
+	}
 }

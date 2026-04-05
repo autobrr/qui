@@ -63,7 +63,9 @@ type Service struct {
 	arrService     *arr.Service // ARR service for external ID lookup (optional)
 	// Optional store for tracker display-name resolution (shared with cross-seed).
 	trackerCustomizationStore *models.TrackerCustomizationStore
-	notifier                  notifications.Notifier
+	// Per-instance indexer category mappings for the "by-tracker" preset (optional).
+	indexerCategoryStore *models.CrossSeedIndexerCategoryStore
+	notifier             notifications.Notifier
 
 	// Components for search/match/inject
 	parser   *Parser
@@ -118,6 +120,7 @@ func NewService(
 	jackettService *jackett.Service,
 	arrService *arr.Service, // optional, for external ID lookup
 	trackerCustomizationStore *models.TrackerCustomizationStore, // optional, for display-name resolution
+	indexerCategoryStore *models.CrossSeedIndexerCategoryStore, // optional, for by-tracker category mapping
 	notifier notifications.Notifier,
 ) *Service {
 	if cfg.SchedulerInterval <= 0 {
@@ -145,6 +148,7 @@ func NewService(
 		jackettService:            jackettService,
 		arrService:                arrService,
 		trackerCustomizationStore: trackerCustomizationStore,
+		indexerCategoryStore:      indexerCategoryStore,
 		notifier:                  notifier,
 		parser:                    parser,
 		searcher:                  searcher,
@@ -1778,23 +1782,75 @@ func (s *Service) tryMatchAndInject(
 		category = dir.Category
 	}
 
+	// "By-tracker" preset: resolve the per-indexer category from the candidate
+	// torrent's announce domain and look up its save path in qBittorrent.
+	// When successful, override the global category and carry the save path so
+	// the injector can hardlink into the category directory and enable AutoTMM.
+	announceDomain := crossseed.ParseTorrentAnnounceDomain(torrentData)
+	var trackerCategorySavePath string
+	failMatch := func() *searcheeMatch {
+		return &searcheeMatch{
+			searchee:        searchee,
+			torrentData:     torrentData,
+			parsedTorrent:   parsed,
+			matchResult:     matchResult,
+			searchResult:    result,
+			injectionFailed: true,
+		}
+	}
+	if s.indexerCategoryStore != nil {
+		instance, instanceErr := s.instanceStore.Get(ctx, dir.TargetInstanceID)
+		if instanceErr != nil {
+			l.Warn().Err(instanceErr).Int("instanceID", dir.TargetInstanceID).Msg("dirscan: failed to load instance for by-tracker preset check")
+			return failMatch()
+		}
+		if (instance.UseHardlinks || instance.UseReflinks) && instance.HardlinkDirPreset == "by-tracker" {
+			trackerCat, found, resolveErr := crossseed.ResolveTrackerCategory(ctx, dir.TargetInstanceID, result.Indexer, announceDomain, s.indexerCategoryStore)
+			if resolveErr != nil {
+				l.Warn().Err(resolveErr).Msg("dirscan: context error resolving tracker category, aborting match")
+				return failMatch()
+			}
+			if found {
+				category = trackerCat
+				if s.syncManager == nil {
+					l.Warn().Str("trackerCategory", trackerCat).Msg("dirscan: sync manager unavailable, continuing without AutoTMM")
+				} else {
+					qbitCats, catErr := s.syncManager.GetCategories(ctx, dir.TargetInstanceID)
+					if catErr != nil {
+						l.Warn().Err(catErr).Str("trackerCategory", trackerCat).Msg("dirscan: failed to look up category save path, continuing without AutoTMM")
+					} else {
+						if cat, ok := qbitCats[trackerCat]; ok {
+							trackerCategorySavePath = cat.SavePath
+						}
+						l.Info().
+							Str("announceDomain", announceDomain).
+							Str("trackerCategory", trackerCat).
+							Str("categorySavePath", trackerCategorySavePath).
+							Msg("dirscan: resolved by-tracker category")
+					}
+				}
+			}
+		}
+	}
+
 	tags := mergeStringLists(settings.Tags, dir.Tags)
 
 	injectReq := &InjectRequest{
-		InstanceID:           dir.TargetInstanceID,
-		TorrentBytes:         torrentData,
-		ParsedTorrent:        parsed,
-		Searchee:             searchee,
-		MatchResult:          matchResult,
-		SearchResult:         result,
-		QbitPathPrefix:       dir.QbitPathPrefix,
-		Category:             category,
-		Tags:                 tags,
-		StartPaused:          settings.StartPaused,
-		DownloadMissingFiles: settings.DownloadMissingFiles,
+		InstanceID:              dir.TargetInstanceID,
+		TorrentBytes:            torrentData,
+		ParsedTorrent:           parsed,
+		Searchee:                searchee,
+		MatchResult:             matchResult,
+		SearchResult:            result,
+		QbitPathPrefix:          dir.QbitPathPrefix,
+		Category:                category,
+		TrackerCategorySavePath: trackerCategorySavePath,
+		Tags:                    tags,
+		StartPaused:             settings.StartPaused,
+		DownloadMissingFiles:    settings.DownloadMissingFiles,
 	}
 
-	trackerDomain := crossseed.ParseTorrentAnnounceDomain(torrentData)
+	trackerDomain := announceDomain
 
 	// Once we are about to inject, reflect that in run status so the UI can distinguish
 	// pure searching from active injection attempts.

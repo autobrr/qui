@@ -1653,7 +1653,7 @@ func TestCrossSeed_CategoryAndTagPreservation(t *testing.T) {
 				settings = defaultSettings
 			}
 
-			baseCategory, crossCategory := svc.determineCrossSeedCategory(context.Background(), tt.request, &tt.matched, settings)
+			baseCategory, crossCategory, _ := svc.determineCrossSeedCategory(context.Background(), nil, tt.request, &tt.matched, settings, "")
 			assert.Equal(t, tt.expectedBaseCategory, baseCategory)
 			assert.Equal(t, tt.expectedCrossCategory, crossCategory)
 
