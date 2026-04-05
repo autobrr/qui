@@ -465,9 +465,9 @@ func TestConditionTreesForValidation_AutoManagement(t *testing.T) {
 
 func TestCollectConditionRegexErrors_AutoManagement(t *testing.T) {
 	tests := []struct {
-		name      string
+		name       string
 		conditions *models.ActionConditions
-		wantErrs  int
+		wantErrs   int
 	}{
 		{
 			name: "autoManagement with invalid regex returns error",
