@@ -104,42 +104,6 @@ jobs:
           name: web-dist
           path: web/dist
 
-  test:
-    name: Run tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Create placeholder web dist for embed
-        run: mkdir -p web/dist && touch web/dist/.gitkeep
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Install dependencies
-        run: go mod download
-
-      - name: Run tests
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            go test -v -coverprofile=coverage.out ./...
-          else
-            go test -v -race -coverprofile=coverage.out ./...
-          fi
-          go tool cover -html=coverage.out -o coverage.html
-
-      - name: Upload coverage reports
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-report
-          path: |
-            coverage.out
-            coverage.html
-
   goreleaserbuild:
     name: Build distribution binaries
     if: github.event_name != 'pull_request'
@@ -420,3 +384,39 @@ jobs:
       - name: Inspect image
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
+
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Create placeholder web dist for embed
+        run: mkdir -p web/dist && touch web/dist/.gitkeep
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            go test -v -coverprofile=coverage.out ./...
+          else
+            go test -v -race -coverprofile=coverage.out ./...
+          fi
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.html
