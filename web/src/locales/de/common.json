@@ -1605,13 +1605,15 @@
     },
     "runs": {
       "description": "Verlauf der letzten Scans für dieses Verzeichnis.",
+      "filesDiscoveredSkipped": "{{discovered}} entdeckt, {{skipped}} übersprungen",
+      "filesEligible": "{{count}} passend",
       "injectionsTitle": "Hinzugefügt / Fehlgeschlagen",
       "noInjections": "In diesem Lauf wurden keine Torrents hinzugefügt oder fehlgeschlagen.",
       "showError": "Fehler anzeigen",
       "table": {
         "added": "Hinzugefügt",
         "duration": "Dauer",
-        "files": "Dateien",
+        "files": "Passend",
         "matches": "Treffer",
         "mode": "Modus",
         "release": "Release",
@@ -1695,6 +1697,7 @@
       "scanning": "Scannen",
       "searching": "Suchen",
       "stats": "({{files}} Dateien, {{matches}} Treffer, {{added}} hinzugefügt)",
+      "statsWithSkipped": "({{files}} passend, {{skipped}} übersprungen, {{matches}} Treffer, {{added}} hinzugefügt)",
       "success": "Erfolg"
     },
     "toasts": {

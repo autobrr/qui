@@ -1605,13 +1605,15 @@
     },
     "runs": {
       "description": "이 디렉터리의 최근 스캔 기록입니다.",
+      "filesDiscoveredSkipped": "{{discovered}}개 발견, {{skipped}}개 건너뜀",
+      "filesEligible": "대상 {{count}}개",
       "injectionsTitle": "추가됨 / 실패",
       "noInjections": "이 실행에서는 추가되거나 실패한 토렌트가 없습니다.",
       "showError": "오류 보기",
       "table": {
         "added": "추가됨",
         "duration": "소요 시간",
-        "files": "파일",
+        "files": "대상",
         "matches": "일치",
         "mode": "모드",
         "release": "릴리스",
@@ -1695,6 +1697,7 @@
       "scanning": "스캔 중",
       "searching": "검색 중",
       "stats": "({{files}}개 파일, {{matches}}개 일치, {{added}}개 추가)",
+      "statsWithSkipped": "(대상 {{files}}개, 건너뜀 {{skipped}}개, 일치 {{matches}}개, 추가 {{added}}개)",
       "success": "성공"
     },
     "toasts": {

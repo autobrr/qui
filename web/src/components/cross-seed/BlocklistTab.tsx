@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Loader2, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
@@ -37,6 +37,7 @@ import { useCommonTr } from "@/hooks/useCommonTr"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { api } from "@/lib/api"
 import type { CrossSeedBlocklistEntry, Instance } from "@/types"
+import { getNextBlocklistInstanceId } from "./crossSeedUiState"
 
 interface BlocklistTabProps {
   instances: Instance[]
@@ -60,20 +61,18 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
   const [instanceId, setInstanceId] = useState<number | null>(null)
   const [infoHash, setInfoHash] = useState("")
   const [note, setNote] = useState("")
-  const effectiveInstanceId = useMemo(() => {
-    if (instances.length === 0) {
-      return null
+
+  useEffect(() => {
+    const nextInstanceId = getNextBlocklistInstanceId(instances, instanceId)
+    if (nextInstanceId !== instanceId) {
+      setInstanceId(nextInstanceId)
     }
-    if (instanceId !== null && instances.some((instance) => instance.id === instanceId)) {
-      return instanceId
-    }
-    return instances[0].id
   }, [instanceId, instances])
 
   const { data: blocklistData, isLoading } = useQuery({
-    queryKey: ["cross-seed", "blocklist", effectiveInstanceId],
-    queryFn: () => effectiveInstanceId !== null ? api.listCrossSeedBlocklist(effectiveInstanceId) : Promise.resolve([]),
-    enabled: effectiveInstanceId !== null,
+    queryKey: ["cross-seed", "blocklist", instanceId],
+    queryFn: () => instanceId !== null ? api.listCrossSeedBlocklist(instanceId) : Promise.resolve([]),
+    enabled: instanceId !== null,
   })
   const blocklist = blocklistData ?? []
 
@@ -102,7 +101,7 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
   })
 
   const handleAdd = useCallback(() => {
-    if (effectiveInstanceId === null) {
+    if (instanceId === null) {
       toast.error(tr("blocklistTab.toasts.selectInstance"))
       return
     }
@@ -114,11 +113,11 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
     }
 
     addMutation.mutate({
-      instanceId: effectiveInstanceId,
+      instanceId,
       infoHash: normalized,
       note: note.trim() || undefined,
     })
-  }, [addMutation, effectiveInstanceId, infoHash, note, tr])
+  }, [addMutation, infoHash, instanceId, note, tr])
 
   const formatDateValue = useCallback((value?: string) => {
     if (!value) return tr("blocklistTab.values.empty")
@@ -154,7 +153,7 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
             <div className="space-y-2">
               <Label htmlFor="blocklist-instance">{tr("blocklistTab.labels.instance")}</Label>
               <Select
-                value={effectiveInstanceId !== null ? effectiveInstanceId.toString() : ""}
+                value={instanceId !== null ? instanceId.toString() : ""}
                 onValueChange={(value) => setInstanceId(Number(value))}
               >
                 <SelectTrigger id="blocklist-instance">

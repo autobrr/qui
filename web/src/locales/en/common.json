@@ -1605,13 +1605,15 @@
     },
     "runs": {
       "description": "History of recent scans for this directory.",
+      "filesDiscoveredSkipped": "{{discovered}} discovered, {{skipped}} skipped",
+      "filesEligible": "{{count}} eligible",
       "injectionsTitle": "Added / Failed",
       "noInjections": "No torrents were added or failed in this run.",
       "showError": "Show error",
       "table": {
         "added": "Added",
         "duration": "Duration",
-        "files": "Files",
+        "files": "Eligible",
         "matches": "Matches",
         "mode": "Mode",
         "release": "Release",
@@ -1695,6 +1697,7 @@
       "scanning": "Scanning",
       "searching": "Searching",
       "stats": "({{files}} files, {{matches}} matches, {{added}} added)",
+      "statsWithSkipped": "({{files}} eligible, {{skipped}} skipped, {{matches}} matches, {{added}} added)",
       "success": "Success"
     },
     "toasts": {

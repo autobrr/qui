@@ -1605,13 +1605,15 @@
     },
     "runs": {
       "description": "Historial de escaneos recientes para este directorio.",
+      "filesDiscoveredSkipped": "{{discovered}} detectados, {{skipped}} omitidos",
+      "filesEligible": "{{count}} elegibles",
       "injectionsTitle": "Agregados / Fallidos",
       "noInjections": "No se agregaron ni fallaron torrents en esta ejecución.",
       "showError": "Mostrar error",
       "table": {
         "added": "Agregados",
         "duration": "Duración",
-        "files": "Archivos",
+        "files": "Elegibles",
         "matches": "Coincidencias",
         "mode": "Modo",
         "release": "Release",
@@ -1695,6 +1697,7 @@
       "scanning": "Escaneando",
       "searching": "Buscando",
       "stats": "({{files}} archivos, {{matches}} coincidencias, {{added}} agregados)",
+      "statsWithSkipped": "({{files}} elegibles, {{skipped}} omitidos, {{matches}} coincidencias, {{added}} agregados)",
       "success": "Éxito"
     },
     "toasts": {

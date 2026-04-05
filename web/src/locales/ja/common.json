@@ -1605,13 +1605,15 @@
     },
     "runs": {
       "description": "このディレクトリの最近のスキャン履歴です。",
+      "filesDiscoveredSkipped": "{{discovered}} 件検出、{{skipped}} 件スキップ",
+      "filesEligible": "対象 {{count}} 件",
       "injectionsTitle": "追加 / 失敗",
       "noInjections": "この実行では追加または失敗したトレントはありません。",
       "showError": "エラーを表示",
       "table": {
         "added": "追加",
         "duration": "所要時間",
-        "files": "ファイル",
+        "files": "対象",
         "matches": "一致",
         "mode": "モード",
         "release": "リリース",
@@ -1695,6 +1697,7 @@
       "scanning": "スキャン中",
       "searching": "検索中",
       "stats": "（{{files}} ファイル、{{matches}} 件一致、{{added}} 件追加）",
+      "statsWithSkipped": "（対象 {{files}} 件、スキップ {{skipped}} 件、一致 {{matches}} 件、追加 {{added}} 件）",
       "success": "成功"
     },
     "toasts": {

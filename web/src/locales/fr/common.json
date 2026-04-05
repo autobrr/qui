@@ -1605,13 +1605,15 @@
     },
     "runs": {
       "description": "Historique des scans récents pour ce répertoire.",
+      "filesDiscoveredSkipped": "{{discovered}} détectés, {{skipped}} ignorés",
+      "filesEligible": "{{count}} éligibles",
       "injectionsTitle": "Ajoutés / Échecs",
       "noInjections": "Aucun torrent n'a été ajouté ou n'a échoué sur cette exécution.",
       "showError": "Afficher l'erreur",
       "table": {
         "added": "Ajoutés",
         "duration": "Durée",
-        "files": "Fichiers",
+        "files": "Éligibles",
         "matches": "Correspondances",
         "mode": "Mode",
         "release": "Release",
@@ -1695,6 +1697,7 @@
       "scanning": "Scan en cours",
       "searching": "Recherche",
       "stats": "({{files}} fichiers, {{matches}} correspondances, {{added}} ajoutés)",
+      "statsWithSkipped": "({{files}} éligibles, {{skipped}} ignorés, {{matches}} correspondances, {{added}} ajoutés)",
       "success": "Succès"
     },
     "toasts": {

@@ -103,6 +103,11 @@ import type {
 import { useQueries } from "@tanstack/react-query"
 import { Trans } from "react-i18next"
 import { useCommonTr } from "@/hooks/useCommonTr"
+import {
+  getRunDiscoveredFiles,
+  hasDirScanStatusStats,
+  shouldShowRunFileDetails
+} from "./crossSeedUiState"
 
 interface DirScanTabProps {
   instances: Instance[]
@@ -111,6 +116,28 @@ interface DirScanTabProps {
 // Helper to format relative time from a string or Date
 function formatRelativeTimeStr(date: string | Date): string {
   return formatRelativeTime(typeof date === "string" ? new Date(date) : date)
+}
+
+function RunFilesBadge({ run }: { run: DirScanRun }) {
+  const tr = useCommonTr()
+
+  if (!shouldShowRunFileDetails(run)) {
+    return <span className="text-muted-foreground">{tr("dirScanTab.runs.filesEligible", { count: run.filesFound })}</span>
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger className="cursor-default text-muted-foreground">
+        {tr("dirScanTab.runs.filesEligible", { count: run.filesFound })}
+      </TooltipTrigger>
+      <TooltipContent>
+        {tr("dirScanTab.runs.filesDiscoveredSkipped", {
+          discovered: getRunDiscoveredFiles(run),
+          skipped: run.filesSkipped,
+        })}
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 export function DirScanTab({ instances }: DirScanTabProps) {
@@ -435,7 +462,17 @@ function DirectoryStatusBadge({ run }: { run: DirScanRun }) {
   }
 
   const config = statusConfig[run.status]
-  const hasStats = run.filesFound > 0 || run.matchesFound > 0 || run.torrentsAdded > 0
+  const hasStats = hasDirScanStatusStats(run)
+  const statsLabel = run.filesSkipped > 0 ? tr("dirScanTab.status.statsWithSkipped", {
+    files: run.filesFound,
+    skipped: run.filesSkipped,
+    matches: run.matchesFound,
+    added: run.torrentsAdded,
+  }) : tr("dirScanTab.status.stats", {
+    files: run.filesFound,
+    matches: run.matchesFound,
+    added: run.torrentsAdded,
+  })
 
   return (
     <div className={`flex items-center gap-1.5 text-xs ${config.color}`}>
@@ -443,11 +480,7 @@ function DirectoryStatusBadge({ run }: { run: DirScanRun }) {
       <span>{config.label}</span>
       {hasStats && (
         <span className="text-muted-foreground">
-          {tr("dirScanTab.status.stats", {
-            files: run.filesFound,
-            matches: run.matchesFound,
-            added: run.torrentsAdded,
-          })}
+          {statsLabel}
         </span>
       )}
     </div>
@@ -534,7 +567,9 @@ function RunRow({
             )}
           </div>
         </TableCell>
-        <TableCell>{run.filesFound}</TableCell>
+        <TableCell>
+          <RunFilesBadge run={run} />
+        </TableCell>
         <TableCell>{run.matchesFound}</TableCell>
         <TableCell>{run.torrentsAdded}</TableCell>
         <TableCell>
