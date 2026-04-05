@@ -76,11 +76,7 @@ export function useTitleBarSpeeds({
   )
   const backgroundSpeeds = backgroundSpeedsOverride ?? backgroundSpeedsQuery
   const cachedBackgroundSpeeds = lastBackgroundSpeedsRef.current
-  const effectiveSpeeds = isHiddenDelayed
-    ? (backgroundSpeeds ?? cachedBackgroundSpeeds)
-    : (isForegroundStale
-      ? (cachedBackgroundSpeeds ?? backgroundSpeeds)
-      : (foregroundSpeeds ?? cachedBackgroundSpeeds ?? backgroundSpeeds))
+  const effectiveSpeeds = isHiddenDelayed? backgroundSpeeds ?? cachedBackgroundSpeeds: isForegroundStale? cachedBackgroundSpeeds ?? backgroundSpeeds: foregroundSpeeds ?? cachedBackgroundSpeeds ?? backgroundSpeeds
   const shouldSetTitle = enabled && (isHiddenDelayed || isVisible)
 
   useEffect(() => {
@@ -132,15 +128,9 @@ export function useTitleBarSpeeds({
     const uploadSpeed = effectiveSpeeds.up ?? 0
     const speedTitle = `D: ${formatSpeedWithUnit(downloadSpeed, speedUnit)} U: ${formatSpeedWithUnit(uploadSpeed, speedUnit)}`
 
-    if (mode === "dashboard") {
-      const nextTitle = `${speedTitle} | Dashboard`
-      document.title = nextTitle
-      lastSpeedTitleRef.current = nextTitle
-    } else {
-      const instanceSuffix = ` | ${instanceName || baseTitle}`
-      const nextTitle = `${speedTitle}${instanceSuffix}`
-      document.title = nextTitle
-      lastSpeedTitleRef.current = nextTitle
-    }
+    const titleSuffix = mode === "dashboard" ? baseTitle : (instanceName || baseTitle)
+    const nextTitle = `${speedTitle} | ${titleSuffix}`
+    document.title = nextTitle
+    lastSpeedTitleRef.current = nextTitle
   }, [baseTitle, effectiveSpeeds, enabled, instanceName, mode, shouldSetTitle, speedUnit])
 }

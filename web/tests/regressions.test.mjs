@@ -2,8 +2,9 @@ import assert from "node:assert/strict"
 import { readFileSync, readdirSync } from "node:fs"
 import path from "node:path"
 import test from "node:test"
+import { fileURLToPath } from "node:url"
 
-const webDir = process.cwd()
+const webDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const localesDir = path.join(webDir, "src", "locales")
 
 const requiredCommonKeys = [
@@ -343,4 +344,15 @@ test("query builder uses translation keys for field and operator labels", () => 
   assert.match(constants, /string:\s*\[\s*\{\s*value:\s*"EQUAL",\s*labelKey:/, "expected query-builder operator metadata to define translation keys")
   assert.doesNotMatch(fieldCombobox, /selectedField\?\.label|fieldDef\?\.label \?\? field|heading=\{group\.label\}/, "expected field combobox to render translated labels")
   assert.doesNotMatch(leafCondition, /\{op\.label\}/, "expected operator dropdown to render translated labels")
+})
+
+test("dashboard title bar speeds reuse the localized route title", () => {
+  const source = readFileSync(path.join(webDir, "src", "hooks", "useTitleBarSpeeds.ts"), "utf8")
+
+  assert.match(
+    source,
+    /const titleSuffix = mode === "dashboard" \? baseTitle : \(instanceName \|\| baseTitle\)/,
+    "expected dashboard title-bar speeds to derive the dashboard suffix from the localized route title",
+  )
+  assert.doesNotMatch(source, /\| Dashboard/, "expected dashboard title-bar speeds to stop hardcoding English")
 })
