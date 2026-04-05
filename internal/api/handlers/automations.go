@@ -487,7 +487,7 @@ func conditionsUseField(conditions *models.ActionConditions, field automations.C
 		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition)) ||
 		(c.Move != nil && check(c.Move.Enabled, c.Move.Condition)) ||
 		(c.ExternalProgram != nil && check(c.ExternalProgram.Enabled, c.ExternalProgram.Condition)) ||
-		(c.AutoManagement != nil && check(c.AutoManagement.Enabled, c.AutoManagement.Condition))
+		(c.AutoManagement != nil && automations.ConditionUsesField(c.AutoManagement.Condition, field))
 }
 
 func anyEnabledTagActionUsesField(actions []*models.TagAction, field automations.ConditionField) bool {
@@ -631,7 +631,7 @@ func conditionTreesForValidation(conditions *models.ActionConditions) []*models.
 	if conditions.ExternalProgram != nil && conditions.ExternalProgram.Enabled {
 		trees = append(trees, conditions.ExternalProgram.Condition)
 	}
-	if conditions.AutoManagement != nil && conditions.AutoManagement.Enabled {
+	if conditions.AutoManagement != nil {
 		trees = append(trees, conditions.AutoManagement.Condition)
 	}
 	return trees
