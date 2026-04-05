@@ -146,6 +146,15 @@ Note: if you have **Settings → Tracker Customizations** configured, the **Trac
 | Group Size         | Size of the selected group for this condition (requires grouping; see [Grouping](#grouping)) |
 | Is Grouped         | Boolean - true when selected group size > 1 (requires grouping; see [Grouping](#grouping)) |
 
+#### Cross-Seed Fields
+
+| Field                              | Description                                                                      |
+| ---------------------------------- | -------------------------------------------------------------------------------- |
+| Exists on Other Instance           | Boolean - a matching torrent exists on at least one other active instance       |
+| Seeding on Other Instance          | Boolean - a matching torrent is actively seeding on at least one other active instance |
+| Cross-seed Exists on Same Instance | Boolean - another matching torrent exists on this instance                      |
+| Cross-seed Seeding on Same Instance | Boolean - another matching torrent is actively seeding on this instance        |
+
 #### Filesystem Fields
 
 | Field             | Description                                                                                |
@@ -561,6 +570,19 @@ The move path is evaluated as a **Go template** for each torrent. You can use a 
 - By isolation folder: `/data/{{.IsolationFolderName}}`
 - By tracker: `/data/{{.Tracker}}` (when tracker display name is configured)
 
+### Auto Management
+
+Enable or disable qBittorrent's Automatic Torrent Management (AutoTMM) on matching torrents.
+
+| Mode      | Description                                      |
+| --------- | ------------------------------------------------ |
+| `enable`  | Enable automatic torrent management on matches   |
+| `disable` | Disable automatic torrent management on matches  |
+
+When AutoTMM is enabled, qBittorrent automatically moves torrents to the save path configured for their category. Disabling it allows manual control of save paths.
+
+If multiple rules match the same torrent with Auto Management actions, the **last matching rule** (by sort order) wins.
+
 ### External Program
 
 Run a pre-configured external program when torrents match the automation rule. Uses the same programs configured in **Settings → External Programs**.
@@ -600,7 +622,7 @@ The program's executable path must be present in the application's allowlist. Pr
 
 Automations detect cross-seeded torrents (same content/files) and can handle them specially:
 
-- **Detection** - Matches via ContentPath (and SavePath for category moves)
+- **Detection** - Cross-seed condition fields use the same matching logic as **Filter Cross-Seeds**: content path, exact name, and release metadata. Same-instance checks exclude the current torrent itself.
 - **Delete Rules**:
   - Use `deleteWithFilesPreserveCrossSeeds` to keep files if cross-seeds exist
   - Use `deleteWithFilesIncludeCrossSeeds` to delete matching torrents and all their cross-seeds together

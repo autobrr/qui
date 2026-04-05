@@ -48,6 +48,7 @@ const actionLabels: Record<AutomationActivity["action"], string> = {
   reannounced: "Reannounced",
   moved: "Moved",
   external_program: "External program",
+  auto_managed: "Auto managed",
   dry_run_no_match: "Dry-run (no match)",
 }
 
