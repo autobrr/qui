@@ -503,7 +503,7 @@ const CrossSeedDialogComponent = ({
                                   const infoHash = result.infoHash
                                   const pendingKey = infoHash ? getBlocklistPendingKey(instance.instanceId, infoHash) : null
                                   const isBlocking = pendingKey ? blocklistPendingKeys.has(pendingKey) : false
-                                  const statusDisplay = getInstanceStatusDisplay(instance.status, instance.success)
+                                  const statusDisplay = getInstanceStatusDisplay(t, instance.status, instance.success)
                                   return (
                                     <li key={`${result.indexer}-${instance.instanceId}-${instance.status}`} className="flex flex-col gap-0.5">
                                       <div className="flex items-center gap-1.5">
@@ -588,34 +588,38 @@ function formatCrossSeedPublishDate(value: string): string {
 }
 
 // Maps instance status codes to user-friendly display information
-function getInstanceStatusDisplay(status: string, success: boolean): { text: string; variant: "default" | "success" | "warning" | "destructive" } {
+function getInstanceStatusDisplay(
+  t: ReturnType<typeof useTranslation<"torrents">>["t"],
+  status: string,
+  success: boolean,
+): { text: string; variant: "default" | "success" | "warning" | "destructive" } {
   switch (status) {
     case "added":
-      return { text: "Added", variant: "success" }
+      return { text: t("crossSeedDialog.status.added"), variant: "success" }
     case "added_hardlink":
-      return { text: "Added (hardlink)", variant: "success" }
+      return { text: t("crossSeedDialog.status.addedHardlink"), variant: "success" }
     case "added_reflink":
-      return { text: "Added (reflink)", variant: "success" }
+      return { text: t("crossSeedDialog.status.addedReflink"), variant: "success" }
     case "exists":
-      return { text: "Already exists", variant: "warning" }
+      return { text: t("crossSeedDialog.status.exists"), variant: "warning" }
     case "blocked":
-      return { text: "Blocked", variant: "warning" }
+      return { text: t("crossSeedDialog.status.blocked"), variant: "warning" }
     case "no_match":
-      return { text: "No match", variant: "destructive" }
+      return { text: t("crossSeedDialog.status.noMatch"), variant: "destructive" }
     case "rejected":
-      return { text: "Size mismatch", variant: "destructive" }
+      return { text: t("crossSeedDialog.status.rejected"), variant: "destructive" }
     case "no_save_path":
-      return { text: "No save path", variant: "destructive" }
+      return { text: t("crossSeedDialog.status.noSavePath"), variant: "destructive" }
     case "invalid_content_path":
-      return { text: "Invalid path", variant: "destructive" }
+      return { text: t("crossSeedDialog.status.invalidContentPath"), variant: "destructive" }
     case "skipped_recheck":
-      return { text: "Skipped - recheck required", variant: "destructive" }
+      return { text: t("crossSeedDialog.status.skippedRecheck"), variant: "destructive" }
     case "skipped_unsafe_pieces":
-      return { text: "Skipped - unsafe pieces", variant: "destructive" }
+      return { text: t("crossSeedDialog.status.skippedUnsafePieces"), variant: "destructive" }
     case "requires_hardlink_reflink":
-      return { text: "Skipped - Requires Hardlink/Reflink Mode", variant: "destructive" }
+      return { text: t("crossSeedDialog.status.requiresHardlinkReflink"), variant: "destructive" }
     case "error":
-      return { text: "Error", variant: "destructive" }
+      return { text: t("crossSeedDialog.status.error"), variant: "destructive" }
     default:
       // For unknown status, use success flag to determine variant
       return { text: status, variant: success ? "success" : "destructive" }

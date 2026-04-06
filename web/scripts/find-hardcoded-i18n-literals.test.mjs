@@ -63,3 +63,25 @@ test("ignores translation calls, non-UI attributes, and code spans", () => {
 
   assert.deepEqual(matches, [])
 })
+
+test("flags UI copy assigned through interesting variable names", () => {
+  const source = `
+    export function Example() {
+      const title = "Create backup"
+      const helperText = "Runs every night"
+      const slug = "nightly-job"
+
+      return <section aria-label={title}>{helperText}</section>
+    }
+  `
+
+  const matches = detectorModule.findHardcodedStringsInSource(source, "src/example.tsx")
+
+  assert.deepEqual(
+    matches.map((match) => [match.kind, match.text]),
+    [
+      ["variable", "Create backup"],
+      ["variable", "Runs every night"],
+    ],
+  )
+})

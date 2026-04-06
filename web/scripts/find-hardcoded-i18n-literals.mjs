@@ -24,6 +24,33 @@ const interestingPropertyNames = new Set([
   "helperText",
   "tooltip",
   "message",
+  "text",
+  "heading",
+  "subheading",
+  "buttonLabel",
+  "ctaLabel",
+  "confirmText",
+  "cancelText",
+])
+
+const interestingVariableNames = new Set([
+  "title",
+  "subtitle",
+  "description",
+  "label",
+  "placeholder",
+  "emptyText",
+  "helperText",
+  "tooltip",
+  "message",
+  "heading",
+  "subheading",
+  "buttonLabel",
+  "ctaLabel",
+  "confirmText",
+  "cancelText",
+  "successMessage",
+  "errorMessage",
 ])
 
 const ignoredJsxTags = new Set([
@@ -119,6 +146,14 @@ function isInterestingPropertyString(node, sourceFile) {
   return interestingPropertyNames.has(propertyName)
 }
 
+function isInterestingVariableString(node, sourceFile) {
+  if (!/\.[jt]sx$/i.test(sourceFile.fileName)) return false
+  if (!ts.isVariableDeclaration(node.parent)) return false
+  if (!ts.isIdentifier(node.parent.name)) return false
+
+  return interestingVariableNames.has(node.parent.name.text)
+}
+
 function isToastCallString(node) {
   if (!ts.isCallExpression(node.parent)) return false
   const { expression } = node.parent
@@ -185,6 +220,8 @@ export function findHardcodedStringsInSource(source, filePath = "source.tsx") {
           addMatch(matches, seen, sourceFile, node, text, "jsx-attribute")
         } else if (isInterestingPropertyString(node, sourceFile)) {
           addMatch(matches, seen, sourceFile, node, text, "object-property")
+        } else if (isInterestingVariableString(node, sourceFile)) {
+          addMatch(matches, seen, sourceFile, node, text, "variable")
         } else if (isToastCallString(node)) {
           addMatch(matches, seen, sourceFile, node, text, "toast-call")
         } else if (isJsxChildExpressionString(node)) {
