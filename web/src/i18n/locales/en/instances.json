@@ -681,6 +681,13 @@
       "original": "Original: {{domain}}",
       "programLabel": "Program: {{name}}",
       "ruleLabel": "Rule: {{name}}",
+      "trackers": "{{count}} tracker",
+      "trackers_other": "{{count}} trackers",
+      "limit": "Limit",
+      "ratioLabel": "Ratio: {{ratio}}",
+      "seedingLabel": "Seed time: {{minutes}}m",
+      "unknownError": "Unknown error",
+      "noDryRunMatches": "No dry-run matches",
       "torrentOnly": "Torrent only",
       "filesKeptDueToCrossSeeds": "Files kept due to cross-seeds",
       "withFilesPlusCrossSeeds": "With files + cross-seeds",
@@ -715,6 +722,9 @@
       "importDialog": {
         "title": "Import Workflow",
         "description": "Paste a workflow JSON to import. The workflow will be created disabled and appended to the end.",
+        "placeholder": "Paste workflow JSON...",
+        "invalidImportData": "Invalid import data",
+        "importFailed": "Failed to import workflow",
         "cancel": "Cancel",
         "importing": "Importing...",
         "import": "Import"

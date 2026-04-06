@@ -67,7 +67,7 @@ function InstanceTorrents() {
   }
 
   if (isLoading) {
-    return <div className="p-6">{t("loading", { ns: "settings" })}</div>
+    return <div className="p-6">{t("routes.instanceTorrents.loadingInstances", { ns: "torrents" })}</div>
   }
 
   if (!instance) {

@@ -1,32 +1,9 @@
 import fs from "node:fs"
 import path from "node:path"
+import { collectMissingKeysForSource } from "./check-i18n-keys-lib.mjs"
 
 const webRoot = path.resolve(import.meta.dirname, "..")
 const srcRoot = path.join(webRoot, "src")
-
-function parseNamespaces(source) {
-  const namespaces = []
-
-  for (const match of source.matchAll(/useTranslation\(\s*(?:"([^"]+)"|\[([^\]]+)\])\s*\)/g)) {
-    const singleNamespace = match[1]
-    const namespaceList = match[2]
-
-    if (singleNamespace) {
-      namespaces.push(singleNamespace)
-      continue
-    }
-
-    if (!namespaceList) {
-      continue
-    }
-
-    for (const namespaceMatch of namespaceList.matchAll(/"([^"]+)"/g)) {
-      namespaces.push(namespaceMatch[1])
-    }
-  }
-
-  return [...new Set(namespaces)]
-}
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true })
@@ -52,16 +29,6 @@ function walk(dir) {
   return files
 }
 
-function getNestedValue(obj, key) {
-  return key.split(".").reduce((current, part) => {
-    if (current && Object.prototype.hasOwnProperty.call(current, part)) {
-      return current[part]
-    }
-
-    return undefined
-  }, obj)
-}
-
 function loadLocale(namespace) {
   const localePath = path.join(srcRoot, "i18n", "locales", "en", `${namespace}.json`)
   if (!fs.existsSync(localePath)) {
@@ -71,19 +38,7 @@ function loadLocale(namespace) {
   return JSON.parse(fs.readFileSync(localePath, "utf8"))
 }
 
-function hasLocaleKey(locale, key) {
-  if (getNestedValue(locale, key) !== undefined) {
-    return true
-  }
-
-  return (
-    getNestedValue(locale, `${key}_one`) !== undefined ||
-    getNestedValue(locale, `${key}_other`) !== undefined
-  )
-}
-
 const files = walk(srcRoot)
-const localeCache = new Map()
 const missingKeys = []
 const hardcodedStringErrors = []
 
@@ -523,43 +478,11 @@ const hardcodedStringChecks = [
 
 for (const file of files) {
   const source = fs.readFileSync(file, "utf8")
-  const namespaces = parseNamespaces(source)
-  const defaultNamespace = namespaces[0]
-
-  if (!defaultNamespace) {
-    continue
-  }
-
-  if (!localeCache.has(defaultNamespace)) {
-    localeCache.set(defaultNamespace, loadLocale(defaultNamespace))
-  }
-
-  const locale = localeCache.get(defaultNamespace)
-  if (!locale) {
-    missingKeys.push(`${path.relative(webRoot, file)}: missing locale file for namespace "${defaultNamespace}"`)
-    continue
-  }
-
-  for (const match of source.matchAll(/\bt\("([^"]+)"/g)) {
-    const key = match[1]
-    if (!hasLocaleKey(locale, key)) {
-      missingKeys.push(`${path.relative(webRoot, file)}: ${defaultNamespace}.${key}`)
-    }
-  }
-
-  for (const match of source.matchAll(/\bi18n\.t\("([^"]+)",\s*\{[\s\S]*?ns:\s*"([^"]+)"/g)) {
-    const key = match[1]
-    const namespace = match[2]
-
-    if (!localeCache.has(namespace)) {
-      localeCache.set(namespace, loadLocale(namespace))
-    }
-
-    const namespacedLocale = localeCache.get(namespace)
-    if (!namespacedLocale || !hasLocaleKey(namespacedLocale, key)) {
-      missingKeys.push(`${path.relative(webRoot, file)}: ${namespace}.${key}`)
-    }
-  }
+  missingKeys.push(...collectMissingKeysForSource({
+    source,
+    relativePath: path.relative(webRoot, file),
+    loadLocale,
+  }))
 }
 
 for (const check of hardcodedStringChecks) {

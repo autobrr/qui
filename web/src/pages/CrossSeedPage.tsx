@@ -2420,7 +2420,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                         </div>
                       ) : (
                         <div className="text-center py-2 text-xs text-muted-foreground">
-                          {t("automation.noSearchRunsRecorded")}
+                          {t("scan.noSearchRunsRecorded")}
                         </div>
                       )}
                     </div>

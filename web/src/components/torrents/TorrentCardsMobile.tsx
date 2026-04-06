@@ -2624,7 +2624,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
             >
               <Filter className="h-5 w-5" />
-              <span className="truncate text-[10px]">{t("filtersPanel.title")}</span>
+              <span className="truncate text-[10px]">{t("filterSidebar.title")}</span>
             </button>
 
             {!isAllInstancesView && (

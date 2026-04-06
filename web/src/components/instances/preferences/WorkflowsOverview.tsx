@@ -1266,8 +1266,8 @@ export function WorkflowsOverview({
                                             {event.outcome === "dry-run"
                                               ? t("preferences.workflowsOverview.dryRun")
                                               : event.action === "external_program"
-                                                ? (event.outcome === "success" ? t("preferences.workflowsOverview.executed") : t("preferences.workflowsOverview.failedStatus"))
-                                                : (event.outcome === "success" ? t("preferences.workflowsOverview.removed") : t("preferences.workflowsOverview.failedStatus"))}
+                                                ? (event.outcome === "success" ? t("preferences.workflowsOverview.executed") : t("preferences.workflowsOverview.failed"))
+                                                : (event.outcome === "success" ? t("preferences.workflowsOverview.removed") : t("preferences.workflowsOverview.failed"))}
                                           </Badge>
                                         )}
                                       </div>
@@ -1573,19 +1573,19 @@ export function WorkflowsOverview({
             enableConfirm && isCategoryRule(enableConfirm.rule) ? (
               <>
                 <p>
-                  {t("preferences.workflowsOverview.preview.enableCategoryPrefix", { name: enableConfirm.rule.name })}{" "}
-                  <strong>{(enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0)}</strong> {t("preferences.workflowsOverview.preview.torrents", { count: (enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0) })}
+                  {t("preferences.workflowDialog.preview.categoryPrefix", { name: enableConfirm.rule.name })}{" "}
+                  <strong>{(enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0)}</strong> {t("preferences.workflowDialog.preview.torrents", { count: (enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0) })}
                   {enableConfirm.preview.crossSeedCount ? (
-                    <> {t("preferences.workflowsOverview.preview.and")} <strong>{enableConfirm.preview.crossSeedCount}</strong> {t("preferences.workflowsOverview.preview.crossSeeds", { count: enableConfirm.preview.crossSeedCount })}</>
+                    <> {t("preferences.workflowDialog.preview.and")} <strong>{enableConfirm.preview.crossSeedCount}</strong> {t("preferences.workflowDialog.preview.crossSeeds", { count: enableConfirm.preview.crossSeedCount })}</>
                   ) : null}
-                  {" "}{t("preferences.workflowsOverview.preview.toCategory")} <strong>"{enableConfirm.rule.conditions?.category?.category}"</strong>.
+                  {" "}{t("preferences.workflowDialog.preview.toCategory")} <strong>"{enableConfirm.rule.conditions?.category?.category}"</strong>.
                 </p>
                 <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
               </>
             ) : (
               <>
                 <p className="text-destructive font-medium">
-                  {t("preferences.workflowsOverview.preview.enableDeleteSummary", { name: enableConfirm.rule.name, count: enableConfirm.preview.totalMatches })}
+                  {t("preferences.workflowDialog.preview.deleteEnabledSummary", { name: enableConfirm.rule.name, count: enableConfirm.preview.totalMatches })}
                 </p>
                 <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
               </>
@@ -1804,7 +1804,7 @@ function RulePreview({
       <div className="flex items-center gap-1.5 shrink-0">
         {isAllTrackers ? (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-default">
-            {t("preferences.workflowsOverview.allTrackers")}
+            {t("preferences.workflows.allTrackers")}
           </Badge>
         ) : trackers.length > 0 && (
           <Tooltip>
@@ -1844,13 +1844,13 @@ function RulePreview({
         {rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.seedingTimeMinutes !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Clock className="h-3 w-3" />
-            {formatShareLimit(rule.conditions.shareLimits.seedingTimeMinutes, false)}{rule.conditions.shareLimits.seedingTimeMinutes >= 0 ? t("preferences.workflowsOverview.minutesSuffix") : ""}
+            {formatShareLimit(rule.conditions.shareLimits.seedingTimeMinutes, false)}{rule.conditions.shareLimits.seedingTimeMinutes >= 0 ? t("preferences.workflows.minuteSuffix") : ""}
           </Badge>
         )}
         {rule.conditions?.pause?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Pause className="h-3 w-3" />
-            {t("preferences.workflowsOverview.pause")}
+            {t("preferences.workflows.pause")}
           </Badge>
         )}
         {rule.conditions?.resume?.enabled && (
@@ -1862,13 +1862,13 @@ function RulePreview({
         {rule.conditions?.recheck?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <RefreshCcw className="h-3 w-3" />
-            {t("preferences.workflowsOverview.recheck")}
+            {t("preferences.workflows.recheck")}
           </Badge>
         )}
         {rule.conditions?.reannounce?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <RefreshCcw className="h-3 w-3" />
-            {t("preferences.workflowsOverview.reannounce")}
+            {t("preferences.workflows.reannounce")}
           </Badge>
         )}
         {rule.conditions?.delete?.enabled && (
