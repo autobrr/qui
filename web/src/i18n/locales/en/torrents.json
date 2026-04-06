@@ -697,7 +697,8 @@
     "seeds": "Seeds",
     "leeches": "Leeches",
     "downloaded": "DLs",
-    "message": "Message"
+    "message": "Message",
+    "noTrackersFound": "No trackers found"
   },
   "trackerContextMenu": {
     "editTrackerUrl": "Edit Tracker URL"

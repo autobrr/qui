@@ -373,6 +373,7 @@
       "injecting": "Injecting",
       "success": "Success",
       "failed": "Failed",
+      "added": "Added",
       "canceled": "Canceled"
     },
     "table": {
@@ -395,6 +396,11 @@
       "selectDefaultInstance": "Select default instance",
       "defaultIntervalLabel": "Default Scan Interval (minutes)",
       "defaultToleranceLabel": "Default Size Tolerance (%)",
+      "noLocalInstances": "No qBittorrent instances with local access",
+      "typeToAddCategory": "Type to add a category",
+      "noCategory": "No category",
+      "typeToAddTags": "Type to add tags",
+      "noTags": "No tags",
       "cancel": "Cancel",
       "save": "Save"
     },
@@ -419,6 +425,14 @@
       "matchModeSearchDescription": "Search indexers using Torznab for each eligible file.",
       "matchModeLink": "Link Tree",
       "matchModeLinkDescription": "Skip Torznab. Build file tree from local data and inject directly. Best for re-importing known content.",
+      "categoryOverrideLabel": "Category Override",
+      "useGlobalCategory": "Use global default category",
+      "typeToAddCategory": "Type to add a category",
+      "categoryLoadError": "Could not load categories from qBittorrent. You can still type a custom value.",
+      "categoryOverrideHelp": "Optional. When set, overrides the global default category for this directory.",
+      "additionalTagsLabel": "Additional Tags",
+      "addTagsOptional": "Add tags (optional)",
+      "typeToAddTags": "Type to add tags",
       "cancel": "Cancel",
       "addButton": "Add Directory",
       "saveButton": "Save Changes"

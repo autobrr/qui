@@ -52,7 +52,7 @@ export function Login() {
       sessionStorage.removeItem("qui_sso_recovered")
       toast.info(t("login.ssoRecovered"))
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     // Redirect to homepage if user is already authenticated
@@ -82,7 +82,7 @@ export function Login() {
         toast.error(error.message || t("login.oidcFailed"))
       })
     }
-  }, [setupRequired, navigate, setIsAuthenticated, isAuthenticated, isLoading])
+  }, [setupRequired, navigate, setIsAuthenticated, isAuthenticated, isLoading, t])
 
   const form = useForm({
     defaultValues: {

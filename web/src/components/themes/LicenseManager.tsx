@@ -118,7 +118,7 @@ export function LicenseManager({
     }
 
     onCheckoutConsumed?.()
-  }, [checkoutPaymentStatus, checkoutStatus, onCheckoutConsumed, openAddLicenseDialog])
+  }, [checkoutPaymentStatus, checkoutStatus, onCheckoutConsumed, openAddLicenseDialog, t])
 
   const form = useForm({
     defaultValues: {

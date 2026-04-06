@@ -223,5 +223,94 @@
         "episode": "Episode"
       }
     }
+  },
+  "searchCache": {
+    "title": "Search Cache",
+    "description": "Cached search results from Torznab indexers.",
+    "refreshStats": "Refresh",
+    "configTitle": "Cache Configuration",
+    "configDescription": "Adjust how long search results are cached.",
+    "cacheTTL": "Cache TTL (minutes)",
+    "saving": "Saving...",
+    "saveTTL": "Save",
+    "ttlHelper": "Minimum {{min}} minutes. Higher values reduce indexer load.",
+    "entries": "Entries",
+    "hitCount": "Hit Count",
+    "approxSize": "Approx. Size",
+    "ttl": "TTL",
+    "newestEntry": "Newest Entry",
+    "lastUsed": "Last Used",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "ttlValue": "{{minutes}} minutes",
+    "timestamps": {
+      "justNow": "just now",
+      "ago": "{{duration}} ago",
+      "inFuture": "in {{duration}}"
+    },
+    "toasts": {
+      "ttlUpdated": "Cache TTL updated to {{minutes}} minutes",
+      "ttlUpdateFailed": "Failed to update cache TTL",
+      "invalidNumber": "Please enter a valid number",
+      "ttlMinimum": "TTL must be at least {{min}} minutes"
+    }
+  },
+  "application": {
+    "loading": "Loading...",
+    "loadFailed": "Failed to load application info",
+    "build": {
+      "title": "Build",
+      "description": "Version and build details.",
+      "refresh": "Refresh",
+      "version": "Version",
+      "commit": "Commit",
+      "buildDate": "Build Date",
+      "updateStatus": "Update Status",
+      "statuses": {
+        "unknown": "Unknown",
+        "unknownDetail": "Unable to determine update status",
+        "disabled": "Disabled",
+        "disabledDetail": "Update checking is disabled",
+        "devBuild": "Dev Build",
+        "checking": "Checking...",
+        "checkingDetail": "Checking for updates",
+        "updateAvailable": "Update Available",
+        "upToDate": "Up to Date",
+        "upToDateDetail": "Running the latest version",
+        "notCheckedYet": "Not checked yet",
+        "lastChecked": "Last checked {{date}}"
+      }
+    },
+    "runtime": {
+      "title": "Runtime",
+      "description": "Server runtime information.",
+      "uptime": "Uptime",
+      "runtime": "Runtime"
+    },
+    "auth": {
+      "title": "Authentication",
+      "description": "Authentication configuration.",
+      "currentSessionAuth": "Current Session",
+      "unknown": "Unknown",
+      "loading": "Loading...",
+      "unavailable": "Unavailable",
+      "yes": "Yes",
+      "no": "No",
+      "oidcEnabled": "OIDC Enabled",
+      "builtInLoginEnabled": "Built-in Login",
+      "oidcIssuerHost": "OIDC Issuer"
+    },
+    "storage": {
+      "title": "Storage",
+      "description": "Database and file system paths.",
+      "database": "Database",
+      "bind": "Bind Address",
+      "configDir": "Config Directory",
+      "dataDir": "Data Directory"
+    },
+    "toasts": {
+      "copied": "{{label}} copied to clipboard",
+      "copyFailed": "Failed to copy {{label}}"
+    }
   }
 }

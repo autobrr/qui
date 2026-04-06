@@ -1484,7 +1484,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     } catch {
       return { valid: false, entries: [], error: t("trackerBreakdown.importDialog.invalidJson") }
     }
-  }, [importJson, customizations])
+  }, [importJson, customizations, t])
 
   // Handle import
   const handleImport = async () => {

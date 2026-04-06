@@ -244,7 +244,7 @@ export function Search() {
     }
 
     return true
-  }, [indexers.length, query, selectedIndexers, hasAdvancedParams])
+  }, [t, indexers.length, query, selectedIndexers, hasAdvancedParams])
 
   const refreshRecentSearches = useCallback(async () => {
     try {
@@ -366,7 +366,7 @@ export function Search() {
         if (reqId === latestReqIdRef.current) setLoading(false)
       }
     },
-    [advancedParams, api, query, selectedIndexers, refreshRecentSearches, searchType]
+    [advancedParams, api, query, selectedIndexers, refreshRecentSearches, searchType, t]
   )
 
   // Build a category ID to name map from all indexers
@@ -450,7 +450,7 @@ export function Search() {
       }
     }
     loadIndexers()
-  }, [])
+  }, [api, t])
 
   useEffect(() => {
     refreshRecentSearches()
@@ -746,7 +746,7 @@ export function Search() {
     persistSelectedInstanceId(targetId)
     setAddDialogPayload({ type: "url", urls: [result.downloadUrl], indexerId: result.indexerId })
     setAddDialogOpen(true)
-  }, [hasInstances, persistSelectedInstanceId, selectedInstanceId, setInstanceMenuOpen])
+  }, [hasInstances, persistSelectedInstanceId, selectedInstanceId, setInstanceMenuOpen, t])
 
   const handleViewDetails = (result: TorznabSearchResult) => {
     if (!result.infoUrl) {

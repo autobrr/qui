@@ -174,7 +174,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
         }
       )
     },
-    [updateSettings]
+    [t, updateSettings]
   )
 
   const handleAddDirectory = useCallback(() => {
@@ -226,7 +226,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
                   onCheckedChange={handleToggleEnabled}
                   disabled={updateSettings.isPending}
                 />
-                {settings?.enabled ? "Enabled" : "Disabled"}
+                {settings?.enabled ? t("dirScan.enabled") : t("dirScan.disabled")}
               </Label>
             </div>
           </div>
@@ -363,14 +363,14 @@ function DirectoryCard({
       onSuccess: () => toast.success(t("dirScan.toast.scanStarted")),
       onError: (error) => toast.error(t("dirScan.toast.scanStartFailed", { error: error.message })),
     })
-  }, [triggerScan])
+  }, [t, triggerScan])
 
   const handleCancel = useCallback(() => {
     cancelScan.mutate(undefined, {
       onSuccess: () => toast.success(t("dirScan.toast.scanCanceled")),
       onError: (error) => toast.error(t("dirScan.toast.scanCancelFailed", { error: error.message })),
     })
-  }, [cancelScan])
+  }, [t, cancelScan])
 
   return (
     <div
@@ -385,16 +385,16 @@ function DirectoryCard({
             <span className="font-mono text-sm truncate">{directory.path}</span>
             {!directory.enabled && (
               <Badge variant="secondary" className="text-xs">
-                Disabled
+                {t("dirScan.disabled")}
               </Badge>
             )}
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span>Target: {targetInstance?.name ?? "Unknown"}</span>
-            <span>Interval: {directory.scanIntervalMinutes}m</span>
-            {directory.category && <span>Category: {directory.category}</span>}
+            <span>{targetInstance?.name ? t("dirScan.target", { name: targetInstance.name }) : t("dirScan.targetUnknown")}</span>
+            <span>{t("dirScan.interval", { minutes: directory.scanIntervalMinutes })}</span>
+            {directory.category && <span>{t("dirScan.category", { category: directory.category })}</span>}
             {directory.lastScanAt && (
-              <span>Last scan: {formatRelativeTime(directory.lastScanAt)}</span>
+              <span>{t("dirScan.lastScan", { time: formatRelativeTime(directory.lastScanAt) })}</span>
             )}
           </div>
           {status && !("status" in status && status.status === "idle") && (
@@ -451,14 +451,15 @@ function DirectoryCard({
 
 // Status Badge Component
 function DirectoryStatusBadge({ run }: { run: DirScanRun }) {
+  const { t } = useTranslation("crossseed")
   const statusConfig: Record<DirScanRunStatus, { icon: React.ReactNode; color: string; label: string }> = {
-    queued: { icon: <Clock className="size-3" />, color: "text-blue-500", label: "Queued" },
-    scanning: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-blue-500", label: "Scanning" },
-    searching: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-blue-500", label: "Searching" },
-    injecting: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-blue-500", label: "Injecting" },
-    success: { icon: <CheckCircle2 className="size-3" />, color: "text-green-500", label: "Success" },
-    failed: { icon: <XCircle className="size-3" />, color: "text-red-500", label: "Failed" },
-    canceled: { icon: <Clock className="size-3" />, color: "text-yellow-500", label: "Canceled" },
+    queued: { icon: <Clock className="size-3" />, color: "text-blue-500", label: t("dirScan.statusLabels.queued") },
+    scanning: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-blue-500", label: t("dirScan.statusLabels.scanning") },
+    searching: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-blue-500", label: t("dirScan.statusLabels.searching") },
+    injecting: { icon: <Loader2 className="size-3 animate-spin" />, color: "text-blue-500", label: t("dirScan.statusLabels.injecting") },
+    success: { icon: <CheckCircle2 className="size-3" />, color: "text-green-500", label: t("dirScan.statusLabels.success") },
+    failed: { icon: <XCircle className="size-3" />, color: "text-red-500", label: t("dirScan.statusLabels.failed") },
+    canceled: { icon: <Clock className="size-3" />, color: "text-yellow-500", label: t("dirScan.statusLabels.canceled") },
   }
 
   const config = statusConfig[run.status]
@@ -499,11 +500,12 @@ function formatTrackerName(injection: DirScanRunInjection): string {
 }
 
 function InjectionStatusBadge({ injection }: { injection: DirScanRunInjection }) {
+  const { t } = useTranslation("crossseed")
   const isFailed = injection.status === "failed"
   return (
     <span className={`inline-flex items-center gap-1 text-xs ${isFailed ? "text-red-500" : "text-green-500"}`}>
       {isFailed ? <XCircle className="size-3" /> : <CheckCircle2 className="size-3" />}
-      <span>{isFailed ? "Failed" : "Added"}</span>
+      <span>{isFailed ? t("dirScan.statusLabels.failed") : t("dirScan.statusLabels.added")}</span>
     </span>
   )
 }
@@ -665,10 +667,10 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
         setShowResetDialog(false)
       },
       onError: (error) => {
-        toast.error(`Failed to reset scan progress: ${error.message}`)
+        toast.error(t("dirScan.toast.resetFailed", { error: error.message }))
       },
     })
-  }, [resetFiles])
+  }, [t, resetFiles])
 
   if (isLoading) {
     return (
@@ -858,23 +860,23 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
 
   const defaultCategoryPlaceholder = useMemo(() => {
     if (instanceIds.length === 0) {
-      return "No qBittorrent instances with local access"
+      return t("dirScan.settingsDialog.noLocalInstances")
     }
     if (categorySelectOptions.length === 0) {
-      return "Type to add a category"
+      return t("dirScan.settingsDialog.typeToAddCategory")
     }
-    return "No category"
-  }, [instanceIds.length, categorySelectOptions.length])
+    return t("dirScan.settingsDialog.noCategory")
+  }, [t, instanceIds.length, categorySelectOptions.length])
 
   const tagPlaceholder = useMemo(() => {
     if (instanceIds.length === 0) {
-      return "No qBittorrent instances with local access"
+      return t("dirScan.settingsDialog.noLocalInstances")
     }
     if (tagSelectOptions.length === 0) {
-      return "Type to add tags"
+      return t("dirScan.settingsDialog.typeToAddTags")
     }
-    return "No tags"
-  }, [instanceIds.length, tagSelectOptions.length])
+    return t("dirScan.settingsDialog.noTags")
+  }, [t, instanceIds.length, tagSelectOptions.length])
 
   const ageFilterEnabled = form.maxSearcheeAgeDays > 0
   const ageFilterCutoffPreview = useMemo(() => {
@@ -893,10 +895,10 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
         onOpenChange(false)
       },
       onError: (error) => {
-        toast.error(`Failed to save settings: ${error.message}`)
+        toast.error(t("dirScan.toast.settingsSaveFailed", { error: error.message }))
       },
     })
-  }, [form, updateSettings, onOpenChange])
+  }, [t, form, updateSettings, onOpenChange])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -904,7 +906,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
         <DialogHeader className="flex-shrink-0">
           <DialogTitle>{t("dirScan.settingsDialog.title")}</DialogTitle>
           <DialogDescription>
-            Configure global settings for directory scanning.
+            {t("dirScan.settingsDialog.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -1297,21 +1299,21 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
           onOpenChange(false)
         },
         onError: (error) => {
-          toast.error(`Failed to update directory: ${error.message}`)
+          toast.error(t("dirScan.toast.directoryUpdateFailed", { error: error.message }))
         },
       })
     } else {
       createDirectory.mutate(clampedForm, {
         onSuccess: () => {
-          toast.success("Directory created")
+          toast.success(t("dirScan.toast.directoryCreated"))
           onOpenChange(false)
         },
         onError: (error) => {
-          toast.error(`Failed to create directory: ${error.message}`)
+          toast.error(t("dirScan.toast.directoryCreateFailed", { error: error.message }))
         },
       })
     }
-  }, [isEditing, form, createDirectory, updateDirectory, onOpenChange])
+  }, [t, isEditing, form, createDirectory, updateDirectory, onOpenChange])
 
   const isPending = createDirectory.isPending || updateDirectory.isPending
 
@@ -1368,7 +1370,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
               }
             >
               <SelectTrigger id="target-instance">
-                <SelectValue placeholder="Select instance" />
+                <SelectValue placeholder={t("dirScan.directoryDialog.selectInstance")} />
               </SelectTrigger>
               <SelectContent>
                 {instances.map((instance) => (
@@ -1381,7 +1383,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
           </div>
 
           <div className="space-y-2">
-            <Label>Category Override</Label>
+            <Label>{t("dirScan.directoryDialog.categoryOverrideLabel")}</Label>
             <MultiSelect
               options={directoryCategoryOptions}
               selected={form.category ? [form.category] : []}
@@ -1389,29 +1391,29 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
                 setForm((prev) => ({ ...prev, category: values.at(-1) ?? "" }))
               }
               placeholder={
-                directoryCategoryOptions.length ? "Use global default category" : "Type to add a category"
+                directoryCategoryOptions.length ? t("dirScan.directoryDialog.useGlobalCategory") : t("dirScan.directoryDialog.typeToAddCategory")
               }
               creatable
               disabled={isPending}
             />
             {targetInstanceMetadataError && (
               <p className="text-xs text-muted-foreground">
-                Could not load categories from qBittorrent. You can still type a custom value.
+                {t("dirScan.directoryDialog.categoryLoadError")}
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Optional. When set, overrides the global default category for this directory.
+              {t("dirScan.directoryDialog.categoryOverrideHelp")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label>Additional Tags</Label>
+            <Label>{t("dirScan.directoryDialog.additionalTagsLabel")}</Label>
             <MultiSelect
               options={directoryTagOptions}
               selected={form.tags ?? []}
               onChange={(values) => setForm((prev) => ({ ...prev, tags: values }))}
               placeholder={
-                directoryTagOptions.length ? "Add tags (optional)" : "Type to add tags"
+                directoryTagOptions.length ? t("dirScan.directoryDialog.addTagsOptional") : t("dirScan.directoryDialog.typeToAddTags")
               }
               creatable
               disabled={isPending}
@@ -1529,7 +1531,7 @@ function DeleteDirectoryDialog({ directoryId, onOpenChange }: DeleteDirectoryDia
         toast.error(t("dirScan.toast.directoryDeleteFailed", { error: error.message }))
       },
     })
-  }, [directoryId, deleteDirectory, onOpenChange])
+  }, [t, directoryId, deleteDirectory, onOpenChange])
 
   return (
     <AlertDialog open={directoryId !== null} onOpenChange={onOpenChange}>
@@ -1537,12 +1539,11 @@ function DeleteDirectoryDialog({ directoryId, onOpenChange }: DeleteDirectoryDia
         <AlertDialogHeader>
           <AlertDialogTitle>{t("dirScan.deleteDialog.title")}</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete this directory configuration? This will also remove all
-            tracked files and scan history for this directory.
+            {t("dirScan.deleteDialog.description")}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("dirScan.deleteDialog.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleDelete}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"

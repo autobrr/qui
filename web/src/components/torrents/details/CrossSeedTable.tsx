@@ -298,7 +298,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       },
       size: 130,
     }),
-  ], [incognitoMode, selectedTorrents, onToggleSelection, trackerDisplayNames, trackerIcons, instanceById])
+  ], [incognitoMode, selectedTorrents, onToggleSelection, trackerDisplayNames, trackerIcons, instanceById, t])
 
   const table = useReactTable({
     data: matches,

@@ -325,7 +325,7 @@ export const TagEditorDialog = memo(function TagEditorDialog({
         </span>
       </button>
     )
-  }, [knownTagSet, toggleTag])
+  }, [knownTagSet, toggleTag, t])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

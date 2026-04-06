@@ -203,7 +203,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     }
 
     void copyToClipboard(values.join("\n"), "name", values.length)
-  }, [copyToClipboard, incognitoMode, torrents, isAllSelected, effectiveSelectionCount, onFetchAllField])
+  }, [copyToClipboard, incognitoMode, torrents, isAllSelected, effectiveSelectionCount, onFetchAllField, t])
 
   const handleCopyHashes = useCallback(async () => {
     if (isAllSelected && onFetchAllField && torrents.length < effectiveSelectionCount) {
@@ -228,7 +228,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
       return
     }
     void copyToClipboard(values.join("\n"), "hash", values.length)
-  }, [copyToClipboard, torrents, isAllSelected, effectiveSelectionCount, onFetchAllField])
+  }, [copyToClipboard, torrents, isAllSelected, effectiveSelectionCount, onFetchAllField, t])
 
   const handleCopyFullPaths = useCallback(async () => {
     if (isAllSelected && onFetchAllField && torrents.length < effectiveSelectionCount) {
@@ -271,7 +271,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     }
 
     void copyToClipboard(values.join("\n"), "full path", values.length)
-  }, [copyToClipboard, incognitoMode, torrents, isAllSelected, effectiveSelectionCount, onFetchAllField])
+  }, [copyToClipboard, incognitoMode, torrents, isAllSelected, effectiveSelectionCount, onFetchAllField, t])
 
   const handleExport = useCallback(() => {
     if (!onExport) {

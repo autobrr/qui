@@ -478,7 +478,7 @@ function LogEntryDialog({
     } catch {
       toast.error(t("logs.toasts.copyFailed"))
     }
-  }, [prettyJson])
+  }, [prettyJson, t])
 
   const handleCopyRaw = useCallback(async () => {
     if (!entry) return
@@ -488,7 +488,7 @@ function LogEntryDialog({
     } catch {
       toast.error(t("logs.toasts.copyFailed"))
     }
-  }, [entry])
+  }, [entry, t])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

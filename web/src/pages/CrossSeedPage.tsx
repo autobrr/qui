@@ -706,7 +706,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     toast.error(t("toast.noIndexersConfigured"), {
       description: `${context} Add at least one enabled indexer in Settings → Indexers.`,
     })
-  }, [])
+  }, [t])
 
   const handleIndexerError = useCallback((error: Error, context: string) => {
     const normalized = error.message?.toLowerCase?.() ?? ""

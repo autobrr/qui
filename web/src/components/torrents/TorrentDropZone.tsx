@@ -214,7 +214,7 @@ export const TorrentDropZone = forwardRef<HTMLDivElement, TorrentDropZoneProps>(
     if (combinedText.trim().length > 0 || types.length > 0) {
       toast.error(t("dropZone.unsupportedDrop"))
     }
-  }, [onDropPayload, resetDropState])
+  }, [onDropPayload, resetDropState, t])
 
   useEffect(() => {
     return () => {

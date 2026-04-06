@@ -123,7 +123,7 @@ export function BlocklistTab({ instances }: BlocklistTabProps) {
       infoHash: normalized,
       note: note.trim() || undefined,
     })
-  }, [addMutation, infoHash, instanceId, note])
+  }, [t, addMutation, infoHash, instanceId, note])
 
   const formatDateValue = useCallback((value?: string) => {
     if (!value) return "—"

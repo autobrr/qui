@@ -197,7 +197,7 @@ const CrossSeedDialogComponent = ({
         return next
       })
     }
-  }, [])
+  }, [t])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -701,12 +701,12 @@ const CrossSeedScopeSelector = memo(function CrossSeedScopeSelector({
       return t("crossSeedDialog.scope.noneSelected")
     }
     return t("crossSeedDialog.scope.selectedOfTotal", { selected: selectedCount, total })
-  }, [indexerMode, total, selectedCount])
+  }, [t, indexerMode, total, selectedCount])
 
   const searchText = useMemo(() => {
     const suffix = searchIndexerCount === 1 ? "indexer" : "indexers"
     return t("crossSeedDialog.scope.indexersForSearch", { count: searchIndexerCount, suffix })
-  }, [searchIndexerCount])
+  }, [t, searchIndexerCount])
 
   // Memoize the dropdown items to prevent recreation on each render
   const indexerItems = useMemo(

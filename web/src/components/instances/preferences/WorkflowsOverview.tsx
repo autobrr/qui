@@ -556,7 +556,7 @@ export function WorkflowsOverview({
     } catch {
       toast.error(t("preferences.workflowsOverview.toast.copyFailed"))
     }
-  }, [])
+  }, [t])
 
   // Duplicate workflow in the same instance
   const handleDuplicate = useCallback((instanceId: number, rule: Automation) => {

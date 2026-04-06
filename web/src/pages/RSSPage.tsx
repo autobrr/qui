@@ -216,7 +216,7 @@ export function RSSPage({
       toast.error(t("toast.liveRssDisconnected"))
       sseDisconnectToastShownRef.current = true
     }
-  }, [sseStatus, sseReconnectAttempt])
+  }, [sseStatus, sseReconnectAttempt, t])
 
   // Mutations
   const reprocessRules = useReprocessRSSRules(instanceId)

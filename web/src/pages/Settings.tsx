@@ -700,18 +700,18 @@ function TorznabSearchCachePanel() {
   const ttlMinutes = stats?.ttlMinutes ?? 0
   const approxSize = stats?.approxSizeBytes ?? 0
 
-  const cacheStatusText = stats?.enabled ? "Enabled" : "Disabled"
+  const cacheStatusText = stats?.enabled ? t("searchCache.enabled") : t("searchCache.disabled")
 
   const rows = useMemo(
     () => [
       { label: t("searchCache.entries"), value: stats?.entries?.toLocaleString() ?? "0" },
       { label: t("searchCache.hitCount"), value: stats?.totalHits?.toLocaleString() ?? "0" },
       { label: t("searchCache.approxSize"), value: approxSize > 0 ? formatBytes(approxSize) : "—" },
-      { label: t("searchCache.ttl"), value: ttlMinutes > 0 ? `${ttlMinutes} minutes` : "—" },
+      { label: t("searchCache.ttl"), value: ttlMinutes > 0 ? t("searchCache.ttlValue", { minutes: ttlMinutes }) : "—" },
       { label: t("searchCache.newestEntry"), value: formatCacheTimestamp(stats?.newestCachedAt) },
       { label: t("searchCache.lastUsed"), value: formatCacheTimestamp(stats?.lastUsedAt) },
     ],
-    [approxSize, formatCacheTimestamp, stats?.entries, stats?.lastUsedAt, stats?.newestCachedAt, stats?.totalHits, ttlMinutes]
+    [t, approxSize, formatCacheTimestamp, stats?.entries, stats?.lastUsedAt, stats?.newestCachedAt, stats?.totalHits, ttlMinutes]
   )
 
   return (
@@ -806,7 +806,7 @@ function formatApplicationDate(value?: string): string {
   })
 }
 
-function formatRelativeDate(value?: string): string {
+function formatRelativeDate(value: string | undefined, t: (key: string, options?: Record<string, string>) => string): string {
   if (!value || value.trim() === "") {
     return "—"
   }
@@ -818,20 +818,20 @@ function formatRelativeDate(value?: string): string {
 
   const secondsDiff = Math.floor((Date.now() - date.getTime()) / 1000)
   if (Math.abs(secondsDiff) < 1) {
-    return "just now"
+    return t("searchCache.timestamps.justNow")
   }
 
   const duration = formatDuration(Math.abs(secondsDiff))
   if (secondsDiff >= 0) {
-    return `${duration} ago`
+    return t("searchCache.timestamps.ago", { duration })
   }
 
-  return `in ${duration}`
+  return t("searchCache.timestamps.inFuture", { duration })
 }
 
-function formatCurrentSessionAuth(user?: User): string {
+function formatCurrentSessionAuth(user: User | undefined, t: (key: string) => string): string {
   if (!user) {
-    return "Unknown"
+    return t("application.auth.unknown")
   }
 
   const methodRaw = user.auth_method?.trim() || ""
@@ -968,14 +968,11 @@ function ApplicationInfoPanel() {
     }
   }, [info])
 
-  let currentSessionAuth = t("application.auth.unknown")
-  if (currentUserQuery.isLoading) {
-    currentSessionAuth = t("application.auth.loading")
-  } else if (currentUserQuery.isError) {
-    currentSessionAuth = t("application.auth.unavailable")
-  } else {
-    currentSessionAuth = formatCurrentSessionAuth(user)
-  }
+  const currentSessionAuth = currentUserQuery.isLoading
+    ? t("application.auth.loading")
+    : currentUserQuery.isError
+      ? t("application.auth.unavailable")
+      : formatCurrentSessionAuth(user, t)
 
   const updateStatus = useMemo(() => {
     if (!info) {
@@ -994,7 +991,7 @@ function ApplicationInfoPanel() {
       return { label: t("application.build.statuses.updateAvailable"), detail: latestVersionQuery.data.tag_name }
     }
     return { label: t("application.build.statuses.upToDate"), detail: t("application.build.statuses.upToDateDetail") }
-  }, [info, latestVersionQuery.data, latestVersionQuery.isFetching, latestVersionQuery.isLoading])
+  }, [t, info, latestVersionQuery.data, latestVersionQuery.isFetching, latestVersionQuery.isLoading])
 
   const updateCheckedAt = latestVersionQuery.dataUpdatedAt > 0 ? formatApplicationDate(new Date(latestVersionQuery.dataUpdatedAt).toISOString()) : t("application.build.statuses.notCheckedYet")
 
@@ -1004,7 +1001,7 @@ function ApplicationInfoPanel() {
     {
       label: t("application.build.buildDate"),
       value: formatApplicationDate(info.buildDate),
-      secondary: formatRelativeDate(info.buildDate),
+      secondary: formatRelativeDate(info.buildDate, t),
     },
     {
       label: t("application.build.updateStatus"),
@@ -1047,7 +1044,7 @@ function ApplicationInfoPanel() {
     } catch {
       toast.error(t("application.toasts.copyFailed", { label: label.toLowerCase() }))
     }
-  }, [])
+  }, [t])
 
   return (
     <div className="space-y-4">
