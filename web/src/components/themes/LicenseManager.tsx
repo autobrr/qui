@@ -82,14 +82,14 @@ export function LicenseManager({
 
   // Check if we have an invalid license (exists but not active)
   const hasInvalidLicense = primaryLicense ? primaryLicense.status !== "active" : false
-  let accessTitle = "Unlock Premium Themes"
-  let accessDescription = "Pay what you want (min $4.99) • Lifetime license • All themes"
+  let accessTitle = t("themes.license.status.unlockTitle")
+  let accessDescription = t("themes.license.status.unlockDescription")
   if (hasPremiumAccess) {
-    accessTitle = "Premium Access Active"
-    accessDescription = "You have access to all current and future premium themes"
+    accessTitle = t("themes.license.status.activeTitle")
+    accessDescription = t("themes.license.status.activeDescription")
   } else if (hasInvalidLicense) {
-    accessTitle = "License Activation Required"
-    accessDescription = "Your license needs to be activated on this machine"
+    accessTitle = t("themes.license.status.activationRequiredTitle")
+    accessDescription = t("themes.license.status.activationRequiredDescription")
   }
   const checkoutUrl = useMemo(() => {
     const returnPath = withBasePath("settings?tab=themes&checkout=success")
@@ -151,9 +151,9 @@ export function LicenseManager({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Key className="h-5 w-5" />
-            License Management
+            {t("themes.license.loadingTitle")}
           </CardTitle>
-          <CardDescription>Loading theme licenses...</CardDescription>
+          <CardDescription>{t("themes.license.loadingDescription")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="animate-pulse space-y-2">
@@ -173,10 +173,10 @@ export function LicenseManager({
             <div>
               <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Key className="h-4 w-4 sm:h-5 sm:w-5" />
-                License Management
+                {t("themes.license.managementTitle")}
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm mt-1">
-                Manage your theme license and premium access
+                {t("themes.license.managementDescription")}
               </CardDescription>
             </div>
             <div className="flex gap-2">

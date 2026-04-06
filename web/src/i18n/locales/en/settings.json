@@ -1,9 +1,288 @@
 {
+  "title": "Settings",
+  "description": "Manage your application preferences and security",
+  "tabs": {
+    "application": "Application",
+    "instances": "Instances",
+    "indexers": "Indexers",
+    "searchCache": "Search Cache",
+    "integrations": "Integrations",
+    "clientProxy": "Client Proxy",
+    "apiKeys": "API Keys",
+    "externalPrograms": "External Programs",
+    "notifications": "Notifications",
+    "dateTime": "Date & Time",
+    "premiumThemes": "Premium Themes",
+    "security": "Security",
+    "logs": "Logs"
+  },
   "language": {
     "cardTitle": "Language",
     "cardDescription": "Choose your preferred display language",
     "label": "Display Language",
     "description": "Select the language used throughout the application"
+  },
+  "changePassword": {
+    "currentPassword": "Current Password",
+    "newPassword": "New Password",
+    "confirmPassword": "Confirm New Password",
+    "submit": "Change Password",
+    "submitting": "Changing...",
+    "toasts": {
+      "success": "Password changed successfully",
+      "error": "Failed to change password. Please check your current password."
+    },
+    "validation": {
+      "currentRequired": "Current password is required",
+      "newRequired": "New password is required",
+      "minLength": "Password must be at least 8 characters",
+      "confirmRequired": "Please confirm your password",
+      "mismatch": "Passwords do not match"
+    }
+  },
+  "instances": {
+    "title": "Instances",
+    "description": "Manage your qBittorrent connection settings",
+    "addButton": "Add Instance",
+    "loading": "Loading instances...",
+    "empty": "No instances configured yet",
+    "addFirst": "Add Your First Instance",
+    "titleBarSpeeds": {
+      "label": "Title Bar Speeds",
+      "description": "Show download/upload speeds in the browser tab title"
+    },
+    "addDialog": {
+      "title": "Add Instance",
+      "description": "Configure a new qBittorrent instance",
+      "cancel": "Cancel",
+      "submit": "Add Instance",
+      "adding": "Adding..."
+    },
+    "toasts": {
+      "reorderFailed": "Failed to reorder instances"
+    }
+  },
+  "integrations": {
+    "title": "ARR Integrations",
+    "description": "Configure Sonarr and Radarr instances for enhanced cross-seed searches using external IDs"
+  },
+  "clientApiKeys": {
+    "cardTitle": "Client Proxy API Keys",
+    "cardDescription": "Manage API keys for external applications to connect to qBittorrent instances through qui",
+    "toasts": {
+      "created": "Client API key created successfully",
+      "createFailed": "Failed to create client API key",
+      "deleted": "Client API key deleted successfully",
+      "deleteFailed": "Failed to delete client API key: {{error}}",
+      "clientNameRequired": "Client name is required",
+      "selectInstance": "Please select a qBittorrent instance",
+      "proxyCopied": "Proxy URL copied to clipboard",
+      "copyFailed": "Failed to copy to clipboard"
+    }
+  },
+  "apiKeys": {
+    "cardTitle": "API Keys",
+    "cardDescription": "Manage API keys for external access",
+    "apiDocs": "API Docs",
+    "description": "API keys allow external applications to access your qBittorrent instances.",
+    "createButton": "Create API Key",
+    "loading": "Loading API keys...",
+    "empty": "No API keys created yet",
+    "createDialog": {
+      "title": "Create API Key",
+      "description": "Give your API key a descriptive name to remember its purpose.",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g., Automation Script",
+      "nameRequired": "Name is required",
+      "submit": "Create API Key",
+      "creating": "Creating..."
+    },
+    "newKey": {
+      "label": "Your new API key",
+      "warning": "Save this key now. You won't be able to see it again.",
+      "done": "Done"
+    },
+    "deleteDialog": {
+      "title": "Delete API Key?",
+      "description": "This action cannot be undone. Any applications using this key will lose access.",
+      "cancel": "Cancel",
+      "delete": "Delete"
+    },
+    "toasts": {
+      "created": "API key created successfully",
+      "createFailed": "Failed to create API key",
+      "deleted": "API key deleted successfully",
+      "deleteFailed": "Failed to delete API key",
+      "copied": "API key copied to clipboard",
+      "copyFailed": "Failed to copy to clipboard"
+    }
+  },
+  "externalPrograms": {
+    "cardTitle": "External Programs",
+    "cardDescription": "Configure external programs or scripts that can be executed from the torrent context menu",
+    "toasts": {
+      "created": "External program created successfully",
+      "createFailed": "Failed to create external program: {{error}}",
+      "updated": "External program updated successfully",
+      "updateFailed": "Failed to update external program: {{error}}",
+      "deleted": "External program deleted successfully",
+      "deleteFailed": "Failed to delete external program: {{error}}"
+    },
+    "validation": {
+      "nameRequired": "Program name is required",
+      "pathRequired": "Program path is required"
+    }
+  },
+  "notifications": {
+    "cardTitle": "Notifications",
+    "cardDescription": "Send alerts and status updates via any Shoutrrr-supported service",
+    "validation": {
+      "nameRequired": "Name is required",
+      "urlRequired": "Notification URL is required",
+      "selectEvent": "Select at least one event"
+    },
+    "toasts": {
+      "created": "Notification target created successfully",
+      "createFailed": "Failed to create notification target",
+      "updated": "Notification target updated successfully",
+      "updateFailed": "Failed to update notification target",
+      "deleted": "Notification target deleted successfully",
+      "deleteFailed": "Failed to delete notification target",
+      "testSent": "Test notification sent successfully",
+      "testFailed": "Failed to send test notification"
+    }
+  },
+  "dateTime": {
+    "cardTitle": "Date & Time Preferences",
+    "cardDescription": "Configure timezone, date format, and time display preferences",
+    "toasts": {
+      "success": "Date and time preferences saved",
+      "error": "Failed to save date and time preferences"
+    }
+  },
+  "security": {
+    "changePassword": {
+      "title": "Change Password",
+      "description": "Update your account password"
+    },
+    "browserIntegration": {
+      "title": "Browser Integration",
+      "description": "Configure how your browser handles magnet links",
+      "registerDescription": "Register qui as your browser's handler for magnet links. This allows you to open magnet links directly in qui.",
+      "registerButton": "Register as Handler",
+      "toasts": {
+        "requested": "Magnet handler registration requested",
+        "failed": "Failed to register magnet handler"
+      }
+    }
+  },
+  "logs": {
+    "title": "Logs",
+    "description": "View live logs and configure log settings",
+    "settingsSrOnly": "Open log settings",
+    "configuration": {
+      "title": "Configuration",
+      "description": "Adjust log level, output path, and rotation settings."
+    },
+    "viewer": {
+      "connected": "Connected",
+      "disconnected": "Disconnected"
+    },
+    "toasts": {
+      "settingsUpdated": "Log settings updated",
+      "settingsFailed": "Failed to update log settings",
+      "jsonCopied": "JSON log entry copied",
+      "rawCopied": "Raw log entry copied",
+      "copyFailed": "Failed to copy log entry"
+    }
+  },
+  "themes": {
+    "selector": {
+      "title": "Theme Selection",
+      "loadingDescription": "Loading available themes...",
+      "description": "Choose from available themes. Premium themes require a valid license.",
+      "verificationUnavailable": "License verification unavailable. Premium theme switching is temporarily disabled.",
+      "freeBadge": "Free",
+      "freeThemes": "Free Themes",
+      "premiumBadge": "Premium",
+      "premiumThemes": "Premium Themes",
+      "notLoaded": "Premium themes not loaded",
+      "notLoadedDescription": "Configure",
+      "notLoadedAnd": "and run",
+      "premium": "Premium",
+      "pro": "Pro",
+      "free": "Free",
+      "locked": "Locked",
+      "lock": "Lock"
+    },
+    "toasts": {
+      "verifyFailed": "License verification unavailable",
+      "verifyFailedDescription": "Premium theme switching is temporarily disabled.",
+      "premiumRequired": "Premium license required",
+      "premiumRequiredDescription": "Unlock premium themes by adding a valid premium license."
+    },
+    "license": {
+      "loadingTitle": "License Management",
+      "loadingDescription": "Loading theme licenses...",
+      "managementTitle": "License Management",
+      "managementDescription": "Manage your theme license and premium access",
+      "status": {
+        "unlockTitle": "Unlock Premium Themes",
+        "unlockDescription": "Pay what you want (min $4.99) • Lifetime license • All themes",
+        "activeTitle": "Premium Access Active",
+        "activeDescription": "You have access to all current and future premium themes",
+        "activationRequiredTitle": "License Activation Required",
+        "activationRequiredDescription": "Your license needs to be activated on this machine"
+      },
+      "copiedVerify": "Verification command copied",
+      "failedCopyVerify": "Failed to copy verification command",
+      "toasts": {
+        "paymentCompleted": "Payment completed. Add your premium license key to finish setup.",
+        "paymentNotCompleted": "Payment did not complete successfully.",
+        "returnedFromCheckout": "Returned from checkout. Add your premium license key when ready.",
+        "keyCopied": "License key copied to clipboard",
+        "copyFailed": "Failed to copy license key"
+      }
+    }
+  },
+  "arrInstances": {
+    "addDialog": {
+      "title": "Add ARR Instance"
+    },
+    "editDialog": {
+      "title": "Edit ARR Instance"
+    },
+    "deleteDialog": {
+      "title": "Delete ARR Instance?"
+    },
+    "badges": {
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "created": "Created {{date}}",
+    "sonarrInstances": "Sonarr Instances",
+    "radarrInstances": "Radarr Instances",
+    "validation": {
+      "nameRequired": "Name is required",
+      "baseUrlRequired": "Base URL is required",
+      "apiKeyRequired": "API key is required",
+      "baseUrlAndApiKeyRequired": "Base URL and API key are required to test the connection",
+      "basicUsernameRequired": "Basic auth username is required",
+      "basicPasswordRequired": "Basic auth password is required to test the connection",
+      "basicPasswordRequiredSubmit": "Basic auth password is required",
+      "basicPasswordKeepOrEnter": "Enter a new basic auth password or keep the existing one"
+    },
+    "toasts": {
+      "created": "ARR instance created successfully",
+      "createFailed": "Failed to create ARR instance: {{error}}",
+      "updated": "ARR instance updated successfully",
+      "updateFailed": "Failed to update ARR instance: {{error}}",
+      "deleted": "ARR instance deleted successfully",
+      "deleteFailed": "Failed to delete ARR instance: {{error}}",
+      "connectionSuccess": "Connection successful",
+      "connectionFailed": "Connection failed: {{error}}",
+      "testFailed": "Failed to test connection: {{error}}"
+    }
   },
   "indexers": {
     "title": "Torznab Indexers",

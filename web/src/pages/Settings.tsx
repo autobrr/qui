@@ -968,11 +968,12 @@ function ApplicationInfoPanel() {
     }
   }, [info])
 
-  const currentSessionAuth = currentUserQuery.isLoading
-    ? t("application.auth.loading")
-    : currentUserQuery.isError
-      ? t("application.auth.unavailable")
-      : formatCurrentSessionAuth(user, t)
+  let currentSessionAuth = formatCurrentSessionAuth(user, t)
+  if (currentUserQuery.isLoading) {
+    currentSessionAuth = t("application.auth.loading")
+  } else if (currentUserQuery.isError) {
+    currentSessionAuth = t("application.auth.unavailable")
+  }
 
   const updateStatus = useMemo(() => {
     if (!info) {
@@ -1313,7 +1314,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               }`}
             >
               <Server className="w-4 h-4 mr-2" />
-              Instances
+              {t("tabs.instances")}
             </button>
             <button
               onClick={() => handleTabChange("indexers")}
@@ -1501,7 +1502,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                      title="View API documentation"
+                      title={t("apiKeys.apiDocs")}
                     >
                       <span className="hidden sm:inline">{t("apiKeys.apiDocs")}</span>
                       <ExternalLink className="h-3.5 w-3.5" />
