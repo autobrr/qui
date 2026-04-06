@@ -131,6 +131,42 @@ Load secrets such as `THEMES_REPO_TOKEN` via `.env` so the Makefile can fetch pr
 - API contract changes must update OpenAPI content under `internal/web/swagger` and pass `make test-openapi`.
 - Prefer minimal, reviewable diffs in high-churn areas (`internal/services/crossseed`, `internal/qbittorrent`, `internal/models`).
 
+## Internationalization (i18n)
+
+The frontend uses `i18next` + `react-i18next` with 10 feature-based namespaces under `web/src/i18n/locales/<lang>/`:
+
+`common`, `auth`, `settings`, `torrents`, `dashboard`, `crossseed`, `rss`, `search`, `instances`, `automations`
+
+Languages are registered in `web/src/i18n/index.ts` with static imports. Currently supported: `en`, `zh-CN`.
+
+### i18n Validation Scripts
+
+```bash
+pnpm check:i18n              # Run all i18n checks (keys, implementation, hardcoded strings, zh-CN coverage)
+pnpm check:i18n:hardcoded    # AST-based detector for UI strings not yet wrapped in t()
+pnpm check:i18n:zh-cn        # zh-CN translation coverage and quality checks
+```
+
+| Script | Purpose |
+|--------|---------|
+| `check-i18n-keys.mjs` | Validates every `t("key")` call in source has a matching entry in the English locale JSON |
+| `check-i18n-implementation.mjs` | Guards i18n bootstrap patterns (guarded localStorage, memoized formatters) |
+| `find-hardcoded-i18n-literals.mjs` | TypeScript AST scan for hardcoded UI strings that should use `t()` |
+| `check-zh-cn-coverage.mjs` | Validates zh-CN files against English: missing/extra keys, interpolation, plural forms, encoding, punctuation |
+
+### Adding a New Language
+
+1. Create `web/src/i18n/locales/<lang>/` with all 10 namespace JSON files
+2. Import all files in `web/src/i18n/index.ts` and add to `resources`, `supportedLanguages`, and `languageNames`
+3. Run `pnpm check:i18n` to validate
+
+### i18n Conventions
+
+- **Plural forms:** English uses `_one`/`_other` (i18next v4 CLDR). Chinese has no plural -- zh-CN only needs `_other`. Legacy `_plural` keys are manually dispatched in code and must exist in all locales.
+- **Technical terms:** Torrent ecosystem terms (DHT, PEX, TMM, Tracker, etc.) and brand names (qBittorrent, Prowlarr) stay in English across all locales.
+- **Interpolation:** All `{{variable}}` placeholders must be preserved. `{{plural}}` is English-specific and can be omitted in non-English locales.
+- **Chinese punctuation:** Use full-width `，。：；！？` in Chinese text. Half-width is correct inside URLs, IPs, file paths, and technical notation.
+
 ## Architecture Quick Reference
 
 ```text
