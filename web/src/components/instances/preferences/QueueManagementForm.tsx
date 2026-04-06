@@ -121,7 +121,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
               disabled={!canSubmit || isSubmitting || isUpdating}
               className="min-w-32"
             >
-              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+              {isSubmitting || isUpdating ? t("preferences.common.saving") : t("preferences.common.saveChanges")}
             </Button>
           )}
         </form.Subscribe>
@@ -132,10 +132,10 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
           <form.Field name="queueing_enabled">
             {(field) => (
               <SwitchSetting
-                label="Enable Queueing"
+                label={t("preferences.queueManagement.enableQueueing")}
                 checked={(field.state.value as boolean) ?? false}
                 onCheckedChange={field.handleChange}
-                description="Limit the number of active torrents"
+                description={t("preferences.queueManagement.enableQueueingDescription")}
               />
             )}
           </form.Field>
@@ -146,7 +146,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
               validators={{
                 onChange: ({ value }) => {
                   if (value < -1) {
-                    return "Maximum active downloads must be greater than -1"
+                    return t("preferences.queueManagement.validation.maxActiveDownloads")
                   }
                   return undefined
                 },
@@ -155,11 +155,11 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
               {(field) => (
                 <div className="space-y-2">
                   <NumberInputWithUnlimited
-                    label="Max Active Downloads"
+                    label={t("preferences.queueManagement.maxActiveDownloads")}
                     value={(field.state.value as number) ?? 3}
                     onChange={field.handleChange}
                     max={99999}
-                    description="Maximum number of downloading torrents"
+                    description={t("preferences.queueManagement.maxActiveDownloadsDescription")}
                     allowUnlimited={true}
                   />
                   {field.state.meta.errors.length > 0 && (
@@ -174,7 +174,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
               validators={{
                 onChange: ({ value }) => {
                   if (value < -1) {
-                    return "Maximum active uploads must be greater than -1"
+                    return t("preferences.queueManagement.validation.maxActiveUploads")
                   }
                   return undefined
                 },
@@ -183,11 +183,11 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
               {(field) => (
                 <div className="space-y-2">
                   <NumberInputWithUnlimited
-                    label="Max Active Uploads"
+                    label={t("preferences.queueManagement.maxActiveUploads")}
                     value={(field.state.value as number) ?? 3}
                     onChange={field.handleChange}
                     max={99999}
-                    description="Maximum number of uploading torrents"
+                    description={t("preferences.queueManagement.maxActiveUploadsDescription")}
                     allowUnlimited={true}
                   />
                   {field.state.meta.errors.length > 0 && (
@@ -202,7 +202,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
               validators={{
                 onChange: ({ value }) => {
                   if (value < -1) {
-                    return "Maximum active torrents must be greater than -1"
+                    return t("preferences.queueManagement.validation.maxActiveTorrents")
                   }
                   return undefined
                 },
@@ -211,11 +211,11 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
               {(field) => (
                 <div className="space-y-2">
                   <NumberInputWithUnlimited
-                    label="Max Active Torrents"
+                    label={t("preferences.queueManagement.maxActiveTorrents")}
                     value={(field.state.value as number) ?? 5}
                     onChange={field.handleChange}
                     max={99999}
-                    description="Total maximum active torrents"
+                    description={t("preferences.queueManagement.maxActiveTorrentsDescription")}
                     allowUnlimited={true}
                   />
                   {field.state.meta.errors.length > 0 && (
@@ -228,11 +228,11 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
             <form.Field name="max_active_checking_torrents">
               {(field) => (
                 <NumberInputWithUnlimited
-                  label="Max Checking Torrents"
+                  label={t("preferences.queueManagement.maxCheckingTorrents")}
                   value={(field.state.value as number) ?? 1}
                   onChange={field.handleChange}
                   max={99999}
-                  description="Maximum torrents checking simultaneously"
+                  description={t("preferences.queueManagement.maxCheckingTorrentsDescription")}
                   allowUnlimited={true}
                 />
               )}

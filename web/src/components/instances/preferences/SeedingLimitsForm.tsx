@@ -109,7 +109,7 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
               disabled={!canSubmit || isSubmitting || isUpdating}
               className="min-w-32"
             >
-              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+              {isSubmitting || isUpdating ? t("preferences.common.saving") : t("preferences.common.saveChanges")}
             </Button>
           )}
         </form.Subscribe>
@@ -120,10 +120,10 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
           <form.Field name="max_ratio_enabled">
             {(field) => (
               <SwitchSetting
-                label="Enable Share Ratio Limit"
+                label={t("preferences.seedingLimits.enableShareRatioLimit")}
                 checked={(field.state.value as boolean) ?? false}
                 onCheckedChange={field.handleChange}
-                description="Stop seeding when ratio is reached"
+                description={t("preferences.seedingLimits.enableShareRatioLimitDescription")}
               />
             )}
           </form.Field>
@@ -133,13 +133,13 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
               <form.Field name="max_ratio">
                 {(field) => (
                   <NumberInputWithUnlimited
-                    label="Maximum Share Ratio"
+                    label={t("preferences.seedingLimits.maxShareRatio")}
                     value={(field.state.value as number) ?? 2.0}
                     onChange={field.handleChange}
                     min={-1}
                     max={10}
                     step="0.05"
-                    description="Stop seeding at this upload/download ratio"
+                    description={t("preferences.seedingLimits.maxShareRatioDescription")}
                     allowUnlimited={true}
                     disabled={!(enabledField.state.value as boolean)}
                   />
@@ -151,10 +151,10 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
           <form.Field name="max_seeding_time_enabled">
             {(field) => (
               <SwitchSetting
-                label="Enable Seeding Time Limit"
+                label={t("preferences.seedingLimits.enableSeedingTimeLimit")}
                 checked={(field.state.value as boolean) ?? false}
                 onCheckedChange={field.handleChange}
-                description="Stop seeding after specified time"
+                description={t("preferences.seedingLimits.enableSeedingTimeLimitDescription")}
               />
             )}
           </form.Field>
@@ -164,12 +164,12 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
               <form.Field name="max_seeding_time">
                 {(field) => (
                   <NumberInputWithUnlimited
-                    label="Maximum Seeding Time (minutes)"
+                    label={t("preferences.seedingLimits.maxSeedingTime")}
                     value={(field.state.value as number) ?? 1440}
                     onChange={field.handleChange}
                     min={-1}
                     max={525600} // 1 year in minutes
-                    description="Stop seeding after this many minutes"
+                    description={t("preferences.seedingLimits.maxSeedingTimeDescription")}
                     allowUnlimited={true}
                     disabled={!(enabledField.state.value as boolean)}
                   />

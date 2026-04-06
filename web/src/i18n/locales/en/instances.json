@@ -212,6 +212,10 @@
         "updateFailedDescription": "Failed to update instance"
       }
     },
+    "common": {
+      "saveChanges": "Save Changes",
+      "saving": "Saving..."
+    },
     "speedLimits": {
       "loading": "Loading speed limits...",
       "loadFailed": "Failed to load preferences",
@@ -223,6 +227,30 @@
       "from": "From:",
       "to": "To:",
       "when": "When:",
+      "everyDay": "Every day",
+      "everyWeekday": "Every weekday",
+      "everyWeekend": "Every weekend",
+      "monday": "Monday",
+      "tuesday": "Tuesday",
+      "wednesday": "Wednesday",
+      "thursday": "Thursday",
+      "friday": "Friday",
+      "saturday": "Saturday",
+      "sunday": "Sunday",
+      "schedule": "Schedule",
+      "start": "Start",
+      "end": "End",
+      "timeLabel": "{{label}} time",
+      "hourLabel": "{{label}} hour (0-23)",
+      "minuteLabel": "{{label}} minute (0-59)",
+      "unlimitedPlaceholder": "0 (Unlimited)",
+      "rateUnit": "MiB/s",
+      "validation": {
+        "downloadLimit": "Global download rate limit must be greater than 0 or disabled",
+        "uploadLimit": "Global upload rate limit must be greater than 0 or disabled",
+        "altDownloadLimit": "Alternative download rate limit must be greater than 0 or disabled",
+        "altUploadLimit": "Alternative upload rate limit must be greater than 0 or disabled"
+      },
       "toast": {
         "success": "Speed limits updated successfully",
         "error": "Failed to update speed limits"
@@ -234,9 +262,18 @@
       "enableQueueing": "Enable Queueing",
       "enableQueueingDescription": "Limit the number of active torrents",
       "maxActiveDownloads": "Max Active Downloads",
+      "maxActiveDownloadsDescription": "Maximum number of downloading torrents",
       "maxActiveUploads": "Max Active Uploads",
+      "maxActiveUploadsDescription": "Maximum number of uploading torrents",
       "maxActiveTorrents": "Max Active Torrents",
+      "maxActiveTorrentsDescription": "Total maximum active torrents",
       "maxCheckingTorrents": "Max Checking Torrents",
+      "maxCheckingTorrentsDescription": "Maximum torrents checking simultaneously",
+      "validation": {
+        "maxActiveDownloads": "Maximum active downloads must be greater than -1",
+        "maxActiveUploads": "Maximum active uploads must be greater than -1",
+        "maxActiveTorrents": "Maximum active torrents must be greater than -1"
+      },
       "toast": {
         "success": "Queue settings updated successfully",
         "error": "Failed to update queue settings"
@@ -317,6 +354,7 @@
       "protocolTcp": "TCP",
       "protocolUtp": "\u03bcTP",
       "utpTcpMixedMode": "\u03bcTP-TCP Mixed Mode",
+      "selectMode": "Select mode",
       "utpTcpMixedModeDescription": "How to handle mixed \u03bcTP/TCP connections",
       "preferTcp": "Prefer TCP",
       "peerProportional": "Peer proportional",
@@ -348,11 +386,22 @@
       "enableIpFiltering": "Enable IP filtering",
       "enableIpFilteringDescription": "Filter specific IP addresses from connecting",
       "ipFilterPath": "IP filter file path",
+      "ipFilterPathPlaceholder": "/path/to/filter.dat",
       "ipFilterPathDescription": "Path to IP filter file (.dat, .p2p, .p2b formats)",
       "applyIpFilterToTrackers": "Apply IP filter to trackers",
       "applyIpFilterToTrackersDescription": "Also filter tracker connections based on IP filter rules",
       "bannedIps": "Manually banned IP addresses",
+      "bannedIpsPlaceholder": "Enter IP addresses to ban (one per line):\n192.168.1.100\n10.0.0.50\n2001:db8::1",
       "bannedIpsDescription": "Add IP addresses to permanently ban from connecting (one per line)",
+      "validation": {
+        "listenPort": "The port used for incoming connections must be between 0 and 65535",
+        "maxConnections": "Maximum number of connections limit must be greater than 0 or disabled",
+        "maxConnectionsPerTorrent": "Maximum number of connections per torrent limit must be greater than 0 or disabled",
+        "maxUploadSlots": "Global number of upload slots limit must be greater than 0 or disabled",
+        "maxUploadSlotsPerTorrent": "Maximum number of upload slots per torrent limit must be greater than 0 or disabled",
+        "outgoingPortsMin": "Outgoing port range minimum must be between 0 and 65535",
+        "outgoingPortsMax": "Outgoing port range maximum must be between 0 and 65535"
+      },
       "toast": {
         "success": "Connection settings updated successfully",
         "error": "Failed to update connection settings"
@@ -446,6 +495,12 @@
       "securityIpFiltering": "Security & IP Filtering",
       "blockPrivilegedPorts": "Block peers on privileged ports",
       "blockPrivilegedPortsDescription": "Block connections from peers using ports below 1024",
+      "validation": {
+        "checkingMemoryUse": "Outstanding memory when checking torrents must be greater than 0 and less than 1024",
+        "peerTurnover": "Peer turnover must be between 0 and 100",
+        "peerTurnoverCutoff": "Peer turnover cutoff must be between 0 and 100",
+        "peerTurnoverInterval": "Peer turnover interval must be greater than or equal to 0 and less than 3600 seconds"
+      },
       "toast": {
         "success": "Advanced network settings updated successfully",
         "error": "Failed to update advanced network settings"
