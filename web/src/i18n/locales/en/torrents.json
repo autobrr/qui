@@ -133,6 +133,8 @@
     "tagEditor": {
       "title": "Set Tags for {{count}} torrent(s)",
       "description": "Mixed tags stay unchanged until clicked. Click a row to cycle Mixed to On, On to Off, and Off to On.",
+      "baselineError": "Could not build the full tag baseline for this selection",
+      "loadFailed": "Failed to load selected torrent tags",
       "availableTags": "Available Tags",
       "loadingTags": "Loading tags...",
       "noTags": "No tags available yet. Add one below.",
@@ -160,11 +162,21 @@
     },
     "setCategory": {
       "title": "Set Category for {{count}} torrent(s)",
+      "description": "Select a category from the list or create a new one",
+      "searchCategories": "Search Categories",
+      "searchPlaceholder": "Type to search...",
+      "selectCategory": "Select Category",
+      "loadingCategories": "Loading categories...",
+      "noCategory": "(No category)",
+      "noCategoriesFound": "No categories found matching \"{{query}}\"",
+      "createNew": "Or create new category",
+      "createPlaceholder": "Enter new category name",
       "setCategory": "Set Category"
     },
     "locationWarning": {
       "title": "Set Location for {{count}} torrent(s)?",
-      "description": "Changing the save location will move files on disk. This may affect cross-seeded torrents sharing the same data."
+      "description": "Changing the save location will move files on disk. This may affect cross-seeded torrents sharing the same data.",
+      "continue": "Continue"
     },
     "tmm": {
       "enableTitle": "Enable TMM for {{count}} torrent(s)?",
@@ -176,25 +188,100 @@
       "disable": "Disable TMM"
     },
     "renameTorrent": {
-      "title": "Rename Torrent"
+      "title": "Rename Torrent",
+      "description": "Update the display name for this torrent. This changes how it appears in qBittorrent and qui.",
+      "nameLabel": "Torrent Name",
+      "placeholder": "Enter new torrent name",
+      "cancel": "Cancel",
+      "confirm": "Rename"
     },
     "renameFile": {
-      "title": "Rename File"
+      "title": "Rename File",
+      "loading": "Loading...",
+      "noFileSelected": "No file selected.",
+      "location": "Location",
+      "fileName": "File Name",
+      "placeholder": "Enter file name",
+      "cancel": "Cancel",
+      "confirm": "Rename"
     },
     "renameFolder": {
-      "title": "Rename Folder"
+      "title": "Rename Folder",
+      "loading": "Loading...",
+      "noFoldersAvailable": "No folders available to rename.",
+      "selectFolder": "Select Folder",
+      "chooseFolder": "Choose a folder...",
+      "location": "Location",
+      "folderName": "Folder Name",
+      "placeholder": "Enter folder name",
+      "moveWarning": "All files inside this folder will be moved to the new location.",
+      "cancel": "Cancel",
+      "confirm": "Rename"
     },
     "editTracker": {
-      "title": "Edit Tracker URL"
+      "title": "Edit Tracker URL",
+      "description": "Update the tracker URL for all torrents using {{tracker}}. This is useful for updating passkeys or changing tracker addresses.",
+      "currentUrl": "Current Full Tracker URL",
+      "loadingUrls": "Loading tracker URLs...",
+      "multipleUrlsHelp": "Multiple tracker URLs found. Select the one you want to update.",
+      "currentUrlPlaceholder": "e.g., http://{{tracker}}:6969/announce",
+      "currentUrlNoDetectedHelp": "Enter the complete tracker URL including the announce path",
+      "currentUrlDetectedHelp": "Pre-populated from detected URL. Edit if needed (e.g., different scheme).",
+      "newUrl": "New Full Tracker URL",
+      "newUrlPlaceholder": "e.g., http://{{tracker}}:6969/announce?passkey=new_key",
+      "newUrlHelp": "Enter the new complete URL (typically with updated passkey)",
+      "filteredModeNote": "Note: This will update all torrents that have the exact matching tracker URL.",
+      "converting": "Converting...",
+      "convertHttpToHttps": "Convert all HTTP to HTTPS",
+      "convertHttpToHttpsHelp": "Upgrades all http:// tracker URLs to https:// for this domain",
+      "cancel": "Cancel",
+      "confirm": "Update Tracker"
     },
     "shareLimit": {
-      "title": "Set Share Limits for {{count}} torrent(s)"
+      "title": "Set Share Limits for {{count}} torrent(s)",
+      "description": "Configure seeding limits for selected torrents. All three fields will be applied.",
+      "setAllGlobal": "Set all to Global",
+      "ratioLimit": "Ratio limit",
+      "seedingTimeLimit": "Seeding time limit",
+      "inactiveSeedingLimit": "Inactive seeding limit",
+      "selectValue": "Select a value",
+      "wasMixed": "(was mixed)",
+      "useGlobal": "Use global",
+      "unlimited": "Unlimited",
+      "custom": "Custom",
+      "ratioPlaceholder": "e.g. 2.0",
+      "seedTimePlaceholder": "e.g. 1440",
+      "inactivePlaceholder": "e.g. 10080",
+      "ratioGlobalHelp": "Follow qBittorrent global settings",
+      "ratioUnlimitedHelp": "No ratio limit",
+      "ratioCustomHelp": "Stop seeding when ratio reaches this value",
+      "seedTimeGlobalHelp": "Follow qBittorrent global settings",
+      "seedTimeUnlimitedHelp": "No time limit",
+      "seedTimeCustomHelp": "Minutes (1440 = 24 hours)",
+      "inactiveGlobalHelp": "Follow qBittorrent global settings",
+      "inactiveUnlimitedHelp": "No inactive limit",
+      "inactiveCustomHelp": "Minutes (10080 = 7 days)",
+      "unresolvedMixed": "Select values for all mixed fields before applying",
+      "cancel": "Cancel",
+      "setting": "Setting...",
+      "confirm": "Apply Limits"
     },
     "speedLimits": {
-      "title": "Set Speed Limits for {{count}} torrent(s)"
+      "title": "Set Speed Limits for {{count}} torrent(s)",
+      "description": "Set upload and download speed limits in KB/s. Disable to use global limits.",
+      "uploadLimit": "Set upload limit (KB/s)",
+      "downloadLimit": "Set download limit (KB/s)",
+      "cancel": "Cancel",
+      "setting": "Setting...",
+      "confirm": "Apply Limits"
     },
     "createAndAssignCategory": {
-      "title": "Create & Assign Category"
+      "title": "Create & Assign Category",
+      "description": "Enter a name for the new category. It will be created and assigned to {{count}} torrent(s).",
+      "categoryName": "Category Name",
+      "placeholder": "Enter category name",
+      "cancel": "Cancel",
+      "confirm": "Create and Assign"
     }
   },
   "dropZone": {

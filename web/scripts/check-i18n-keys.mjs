@@ -79,6 +79,18 @@ const hardcodedStringChecks = [
       "\"N/A\"",
     ],
   },
+  {
+    file: "src/components/torrents/TorrentDialogs.tsx",
+    literals: [
+      "\"Failed to load selected torrent tags\"",
+      "\"Update the display name for this torrent. This changes how it appears in qBittorrent and qui.\"",
+      "\"Loading categories...\"",
+      "\"Set all to Global\"",
+      "\"Set upload limit (KB/s)\"",
+      "\"Update Tracker\"",
+      "\"Continue\"",
+    ],
+  },
 ]
 
 for (const file of files) {

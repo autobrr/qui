@@ -19,13 +19,36 @@ import automations from "./locales/en/automations.json"
 
 export const supportedLanguages = ["en"] as const
 export type AppLanguage = (typeof supportedLanguages)[number]
+const LANGUAGE_STORAGE_KEY = "qui.language"
 
 export const languageNames: Record<AppLanguage, string> = {
   en: "English",
 }
 
+function isAppLanguage(value: string | null): value is AppLanguage {
+  return value !== null && supportedLanguages.includes(value as AppLanguage)
+}
+
+function getStoredLanguage(): AppLanguage | null {
+  try {
+    const storedLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY)
+    return isAppLanguage(storedLanguage) ? storedLanguage : null
+  } catch (error) {
+    console.error("Failed to read language preference from localStorage:", error)
+    return null
+  }
+}
+
+function persistLanguage(lng: AppLanguage) {
+  try {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, lng)
+  } catch (error) {
+    console.error("Failed to save language preference to localStorage:", error)
+  }
+}
+
 export function changeLanguage(lng: AppLanguage) {
-  localStorage.setItem("qui.language", lng)
+  persistLanguage(lng)
   return i18n.changeLanguage(lng)
 }
 
@@ -57,7 +80,7 @@ i18n.use(initReactI18next).init({
       automations,
     },
   },
-  lng: localStorage.getItem("qui.language") ?? "en",
+  lng: getStoredLanguage() ?? "en",
   fallbackLng: "en",
   defaultNS: "common",
   ns: [...namespaces],
