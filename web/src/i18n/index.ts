@@ -20,6 +20,15 @@ import automations from "./locales/en/automations.json"
 export const supportedLanguages = ["en"] as const
 export type AppLanguage = (typeof supportedLanguages)[number]
 
+export const languageNames: Record<AppLanguage, string> = {
+  en: "English",
+}
+
+export function changeLanguage(lng: AppLanguage) {
+  localStorage.setItem("qui.language", lng)
+  return i18n.changeLanguage(lng)
+}
+
 export const namespaces = [
   "common",
   "auth",

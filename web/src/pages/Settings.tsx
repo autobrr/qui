@@ -11,6 +11,7 @@ import { InstancePreferencesDialog } from "@/components/instances/preferences/In
 import { ArrInstancesManager } from "@/components/settings/ArrInstancesManager"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
+import { supportedLanguages, languageNames, changeLanguage, type AppLanguage } from "@/i18n"
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
 import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
 import { NotificationsManager } from "@/components/settings/NotificationsManager"
@@ -69,6 +70,32 @@ import { toast } from "sonner"
 type SettingsTab = NonNullable<SettingsSearch["tab"]>
 
 const TORZNAB_CACHE_MIN_TTL_MINUTES = 1440
+
+function LanguageSelector() {
+  const { t, i18n } = useTranslation("settings")
+
+  return (
+    <div className="space-y-2">
+      <Label>{t("language.label")}</Label>
+      <p className="text-sm text-muted-foreground">{t("language.description")}</p>
+      <Select
+        value={i18n.language}
+        onValueChange={(value) => changeLanguage(value as AppLanguage)}
+      >
+        <SelectTrigger className="w-[200px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {supportedLanguages.map((lng) => (
+            <SelectItem key={lng} value={lng}>
+              {languageNames[lng]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
 
 function ChangePasswordForm() {
   const { t } = useTranslation("settings")
@@ -1525,6 +1552,17 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
 
           {activeTab === "datetime" && (
             <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t("language.cardTitle")}</CardTitle>
+                  <CardDescription>
+                    {t("language.cardDescription")}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <LanguageSelector />
+                </CardContent>
+              </Card>
               <Card>
                 <CardHeader>
                   <CardTitle>{t("dateTime.cardTitle")}</CardTitle>

@@ -1,4 +1,10 @@
 {
+  "language": {
+    "cardTitle": "Language",
+    "cardDescription": "Choose your preferred display language",
+    "label": "Display Language",
+    "description": "Select the language used throughout the application"
+  },
   "indexers": {
     "title": "Torznab Indexers",
     "addIndexer": "Add Indexer",
