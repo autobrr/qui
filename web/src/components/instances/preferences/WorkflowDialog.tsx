@@ -84,6 +84,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Folder, Info, Loader2, Plus, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { WorkflowPreviewDialog } from "./WorkflowPreviewDialog"
@@ -608,6 +609,7 @@ function hydrateShareLimit(storedValue: number | undefined): ShareLimitHydration
 }
 
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
+  const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
   const [formState, setFormState] = useState<FormState>(emptyFormState)
   const [previewResult, setPreviewResult] = useState<AutomationPreviewResult | null>(null)
@@ -1570,7 +1572,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       })
     },
     onSuccess: async (result) => {
-      toast.success("Dry-run completed")
+      toast.success(t("preferences.workflowDialog.toast.dryRunCompleted"))
       void queryClient.invalidateQueries({ queryKey: ["automation-activity", instanceId] })
 
       if (result.activities && result.activities.length > 0) {
@@ -1844,7 +1846,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       return api.createAutomation(instanceId, payload)
     },
     onSuccess: () => {
-      toast.success(`Workflow ${rule ? "updated" : "created"}`)
+      toast.success(t("preferences.workflowDialog.toast.workflowSaved", { action: rule ? "updated" : "created" }))
       setShowConfirmDialog(false)
       setPreviewResult(null)
       setPreviewInput(null)
@@ -1853,7 +1855,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       onSuccess?.()
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to save automation")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.saveFailed"))
     },
   })
 
@@ -1868,18 +1870,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
 
     if (!submitState.name) {
-      toast.error("Name is required")
+      toast.error(t("preferences.workflowDialog.toast.nameRequired"))
       return
     }
     const selectedTrackers = submitState.trackerDomains.filter(Boolean)
     if (!submitState.applyToAllTrackers && selectedTrackers.length === 0) {
-      toast.error("Select at least one tracker")
+      toast.error(t("preferences.workflowDialog.toast.selectTracker"))
       return
     }
 
     // At least one action must be enabled
     if (enabledActionsCount === 0) {
-      toast.error("Enable at least one action")
+      toast.error(t("preferences.workflowDialog.toast.enableAction"))
       return
     }
 
@@ -2022,7 +2024,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             {/* Dropdown portals render here */}
           </div>
           <DialogHeader>
-            <DialogTitle>{rule ? "Edit Workflow" : "Add Workflow"}</DialogTitle>
+            <DialogTitle>{rule ? t("preferences.workflowDialog.editWorkflow") : t("preferences.workflowDialog.addWorkflow")}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
             <div className="flex-1 overflow-y-auto space-y-3 sm:pr-1">
@@ -3750,7 +3752,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 </Button>
                 <Button type="submit" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" disabled={createOrUpdate.isPending || previewMutation.isPending}>
                   {(createOrUpdate.isPending || previewMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  {rule ? "Save" : "Create"}
+                  {rule ? t("preferences.workflowDialog.save") : t("preferences.workflowDialog.create")}
                 </Button>
               </div>
             </div>
@@ -3819,7 +3821,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         onConfirm={handleConfirmSave}
         onLoadMore={handleLoadMore}
         isLoadingMore={loadMorePreview.isPending}
-        confirmLabel="Save Rule"
+        confirmLabel={t("preferences.workflowDialog.saveRule")}
         isConfirming={createOrUpdate.isPending}
         destructive={isDeleteRule && formState.enabled}
         warning={isCategoryRule}

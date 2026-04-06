@@ -16,6 +16,7 @@ import { useOrphanScanSettings, useUpdateOrphanScanSettings } from "@/hooks/useO
 import type { OrphanScanSettings, OrphanScanSettingsUpdate } from "@/types"
 import { AlertTriangle, Info, Loader2 } from "lucide-react"
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface OrphanScanSettingsFormProps {
@@ -41,6 +42,7 @@ export function OrphanScanSettingsForm({
   onSuccess,
   formId,
 }: OrphanScanSettingsFormProps) {
+  const { t } = useTranslation("instances")
   const settingsQuery = useOrphanScanSettings(instanceId)
   const updateMutation = useUpdateOrphanScanSettings(instanceId)
 
@@ -85,7 +87,7 @@ export function OrphanScanSettingsForm({
   // Check if we need acknowledgment for saving
   const needsAutoCleanupAcknowledgment = settings.autoCleanupEnabled && !initialAutoCleanupEnabled && !autoCleanupAcknowledged
 
-  const persistSettings = (nextSettings: typeof DEFAULT_SETTINGS, successMessage = "Settings saved") => {
+  const persistSettings = (nextSettings: typeof DEFAULT_SETTINGS, successMessage?: string) => {
     const payload: OrphanScanSettingsUpdate = {
       enabled: nextSettings.enabled,
       gracePeriodMinutes: Math.max(1, nextSettings.gracePeriodMinutes),
@@ -99,12 +101,12 @@ export function OrphanScanSettingsForm({
 
     updateMutation.mutate(payload, {
       onSuccess: () => {
-        toast.success("Orphan scan updated", { description: successMessage })
+        toast.success(t("preferences.orphanScanSettings.toast.settingsSaved"), { description: successMessage })
         onSuccess?.()
       },
       onError: (error) => {
-        toast.error("Update failed", {
-          description: error instanceof Error ? error.message : "Unable to update settings",
+        toast.error(t("preferences.orphanScanSettings.toast.updateFailed"), {
+          description: error instanceof Error ? error.message : t("preferences.orphanScanSettings.toast.updateFailedDescription"),
         })
       },
     })
@@ -131,9 +133,9 @@ export function OrphanScanSettingsForm({
   if (settingsQuery.isError) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center space-y-2">
-        <p className="text-sm text-destructive">Failed to load settings</p>
+        <p className="text-sm text-destructive">{t("preferences.orphanScanSettings.failedToLoadSettings")}</p>
         <Button variant="outline" size="sm" onClick={() => settingsQuery.refetch()}>
-          Retry
+          {t("preferences.orphanScanSettings.retry")}
         </Button>
       </div>
     )
@@ -143,12 +145,12 @@ export function OrphanScanSettingsForm({
     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <h3 className="text-base font-medium">Settings</h3>
+          <h3 className="text-base font-medium">{t("preferences.orphanScanSettings.settingsTitle")}</h3>
         </div>
       </div>
       <div className="flex items-center gap-2 bg-muted/50 p-2 rounded-lg border shrink-0">
         <Label htmlFor="orphan-scan-enabled" className="font-medium text-sm cursor-pointer">
-          {settings.enabled ? "Enabled" : "Disabled"}
+          {settings.enabled ? t("preferences.orphanScanSettings.enabled") : t("preferences.orphanScanSettings.disabled")}
         </Label>
         <Switch
           id="orphan-scan-enabled"
@@ -164,20 +166,20 @@ export function OrphanScanSettingsForm({
     <div className="space-y-6">
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Schedule</h3>
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">{t("preferences.orphanScanSettings.schedule")}</h3>
           <Separator className="flex-1" />
         </div>
 
         <div className="grid gap-6 sm:grid-cols-3">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Label htmlFor="scan-interval" className="text-sm font-medium">Scan Interval</Label>
+              <Label htmlFor="scan-interval" className="text-sm font-medium">{t("preferences.orphanScanSettings.scanInterval")}</Label>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-[250px]">
-                  <p>How often to automatically scan for orphan files when scheduled scanning is enabled.</p>
+                  <p>{t("preferences.orphanScanSettings.scanIntervalTooltip")}</p>
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -192,24 +194,24 @@ export function OrphanScanSettingsForm({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="1">Every hour</SelectItem>
-                <SelectItem value="2">Every 2 hours</SelectItem>
-                <SelectItem value="6">Every 6 hours</SelectItem>
-                <SelectItem value="12">Every 12 hours</SelectItem>
-                <SelectItem value="24">Every 24 hours</SelectItem>
+                <SelectItem value="1">{t("preferences.orphanScanSettings.everyHour")}</SelectItem>
+                <SelectItem value="2">{t("preferences.orphanScanSettings.every2Hours")}</SelectItem>
+                <SelectItem value="6">{t("preferences.orphanScanSettings.every6Hours")}</SelectItem>
+                <SelectItem value="12">{t("preferences.orphanScanSettings.every12Hours")}</SelectItem>
+                <SelectItem value="24">{t("preferences.orphanScanSettings.every24Hours")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Label htmlFor="grace-period" className="text-sm font-medium">Grace Period</Label>
+              <Label htmlFor="grace-period" className="text-sm font-medium">{t("preferences.orphanScanSettings.gracePeriod")}</Label>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-[250px]">
-                  <p>Files modified within this time window will be skipped. Prevents deleting files that are still being written or processed.</p>
+                  <p>{t("preferences.orphanScanSettings.gracePeriodTooltip")}</p>
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -222,19 +224,19 @@ export function OrphanScanSettingsForm({
                 onChange={(e) => setSettings(prev => ({ ...prev, gracePeriodMinutes: Number(e.target.value) || 1 }))}
                 className="h-9"
               />
-              <span className="text-sm text-muted-foreground shrink-0">minutes</span>
+              <span className="text-sm text-muted-foreground shrink-0">{t("preferences.orphanScanSettings.minutes")}</span>
             </div>
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Label htmlFor="max-files" className="text-sm font-medium">Max Files</Label>
+              <Label htmlFor="max-files" className="text-sm font-medium">{t("preferences.orphanScanSettings.maxFiles")}</Label>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-[250px]">
-                  <p>Safety limit on the maximum number of files to process per scan. Prevents accidentally deleting too many files at once.</p>
+                  <p>{t("preferences.orphanScanSettings.maxFilesTooltip")}</p>
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -248,20 +250,20 @@ export function OrphanScanSettingsForm({
                 onChange={(e) => setSettings(prev => ({ ...prev, maxFilesPerRun: Number(e.target.value) || 1 }))}
                 className="h-9"
               />
-              <span className="text-sm text-muted-foreground shrink-0">per run</span>
+              <span className="text-sm text-muted-foreground shrink-0">{t("preferences.orphanScanSettings.perRun")}</span>
             </div>
           </div>
         </div>
 
         <div className="space-y-2 sm:max-w-sm">
           <div className="flex items-center gap-2">
-            <Label htmlFor="preview-sort" className="text-sm font-medium">Preview Sort</Label>
+            <Label htmlFor="preview-sort" className="text-sm font-medium">{t("preferences.orphanScanSettings.previewSort")}</Label>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
               </TooltipTrigger>
               <TooltipContent className="max-w-[300px]">
-                <p>Controls how orphan preview results are ordered. The Max Files limit is applied after this sorting.</p>
+                <p>{t("preferences.orphanScanSettings.previewSortTooltip")}</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -276,8 +278,8 @@ export function OrphanScanSettingsForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="size_desc">Size (largest first)</SelectItem>
-              <SelectItem value="directory_size_desc">Directory, then size</SelectItem>
+              <SelectItem value="size_desc">{t("preferences.orphanScanSettings.sizeLargestFirst")}</SelectItem>
+              <SelectItem value="directory_size_desc">{t("preferences.orphanScanSettings.directorySizeThenSize")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -285,7 +287,7 @@ export function OrphanScanSettingsForm({
 
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Auto-Cleanup</h3>
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">{t("preferences.orphanScanSettings.autoCleanup")}</h3>
           <Separator className="flex-1" />
         </div>
 
@@ -294,19 +296,19 @@ export function OrphanScanSettingsForm({
             <div className="space-y-0.5">
               <div className="flex items-center gap-2">
                 <Label htmlFor="auto-cleanup-enabled" className="text-sm font-medium cursor-pointer">
-                  Auto-Cleanup for Scheduled Scans
+                  {t("preferences.orphanScanSettings.autoCleanupLabel")}
                 </Label>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-[300px]">
-                    <p>When enabled, scheduled scans will automatically delete orphan files without requiring manual confirmation. Manual scans will always show a preview first.</p>
+                    <p>{t("preferences.orphanScanSettings.autoCleanupTooltip")}</p>
                   </TooltipContent>
                 </Tooltip>
               </div>
               <p className="text-xs text-muted-foreground">
-                Automatically delete orphan files after scheduled scans complete
+                {t("preferences.orphanScanSettings.autoCleanupDescription")}
               </p>
             </div>
             <Switch
@@ -325,7 +327,7 @@ export function OrphanScanSettingsForm({
                     <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-foreground">
-                        Auto-delete will permanently remove files
+                        {t("preferences.orphanScanSettings.autoDeleteWarningTitle")}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         Files flagged as orphans will be deleted automatically without manual review. If dir scan is configured in regular mode, any files in scanned directories that <span className="font-medium">are not matched by a torrent will be flagged as orphans</span> and deleted.
@@ -345,7 +347,7 @@ export function OrphanScanSettingsForm({
                       htmlFor="auto-cleanup-acknowledged"
                       className="text-sm text-muted-foreground cursor-pointer leading-tight"
                     >
-                      I have reviewed my settings and understand files will be permanently deleted
+                      {t("preferences.orphanScanSettings.autoDeleteAcknowledge")}
                     </Label>
                   </div>
                 </div>
@@ -353,13 +355,13 @@ export function OrphanScanSettingsForm({
 
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="auto-cleanup-max-files" className="text-sm font-medium">Max Files Threshold</Label>
+                  <Label htmlFor="auto-cleanup-max-files" className="text-sm font-medium">{t("preferences.orphanScanSettings.maxFilesThreshold")}</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent className="max-w-[300px]">
-                      <p>Safety limit: if a scan finds more files than this threshold, it will skip auto-cleanup and require manual review. This catches anomalies like misconfigured ignore paths.</p>
+                      <p>{t("preferences.orphanScanSettings.maxFilesThresholdTooltip")}</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
@@ -372,10 +374,10 @@ export function OrphanScanSettingsForm({
                     onChange={(e) => setSettings(prev => ({ ...prev, autoCleanupMaxFiles: Number(e.target.value) || 1 }))}
                     className="h-9 w-24"
                   />
-                  <span className="text-sm text-muted-foreground">files</span>
+                  <span className="text-sm text-muted-foreground">{t("preferences.orphanScanSettings.files")}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  If more files are found, manual review will be required instead
+                  {t("preferences.orphanScanSettings.maxFilesThresholdDescription")}
                 </p>
               </div>
             </div>
@@ -385,19 +387,19 @@ export function OrphanScanSettingsForm({
 
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Exclusions</h3>
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">{t("preferences.orphanScanSettings.exclusions")}</h3>
           <Separator className="flex-1" />
         </div>
 
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Label htmlFor="ignore-paths" className="text-sm font-medium">Ignore Paths</Label>
+            <Label htmlFor="ignore-paths" className="text-sm font-medium">{t("preferences.orphanScanSettings.ignorePaths")}</Label>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
               </TooltipTrigger>
               <TooltipContent className="max-w-[300px]">
-                <p>Paths to exclude from scanning. Files in these directories will never be flagged as orphans. Enter one path per line.</p>
+                <p>{t("preferences.orphanScanSettings.ignorePathsTooltip")}</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -410,7 +412,7 @@ export function OrphanScanSettingsForm({
             className="font-mono text-sm"
           />
           <p className="text-xs text-muted-foreground">
-            One path per line. Paths are matched as prefixes.
+            {t("preferences.orphanScanSettings.ignorePathsDescription")}
           </p>
         </div>
       </div>
@@ -418,7 +420,7 @@ export function OrphanScanSettingsForm({
       {!formId && (
         <div className="flex justify-end pt-4">
           <Button type="submit" disabled={updateMutation.isPending || needsAutoCleanupAcknowledgment}>
-            {updateMutation.isPending ? "Saving..." : "Save Changes"}
+            {updateMutation.isPending ? t("preferences.orphanScanSettings.saving") : t("preferences.orphanScanSettings.saveChanges")}
           </Button>
         </div>
       )}

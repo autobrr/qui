@@ -22,6 +22,7 @@ import type { Category } from "@/types"
 import { ChevronDown, ChevronRight, Edit, FolderPlus, Trash2 } from "lucide-react"
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react"
 import { memo, useCallback, useMemo } from "react"
+import { useTranslation } from "react-i18next"
 
 export interface CategoryNode {
   name: string
@@ -155,6 +156,7 @@ const CategoryTreeNode = memo(({
   viewMode?: ViewMode
   readOnly?: boolean
 }) => {
+  const { t } = useTranslation("torrents")
   const hasChildren = node.children.length > 0
   const isCollapsed = collapsedCategories.has(node.name)
   const categoryState = getCategoryState(node.name)
@@ -220,7 +222,7 @@ const CategoryTreeNode = memo(({
                   onPointerDown={(event) => event.stopPropagation()}
                   className="size-4 flex items-center justify-center"
                   type="button"
-                  aria-label={isCollapsed ? "Expand category" : "Collapse category"}
+                  aria-label={isCollapsed ? t("categoryTree.expandCategory") : t("categoryTree.collapseCategory")}
                 >
                   {isCollapsed ? (
                     <ChevronRight className="size-3" />
@@ -269,19 +271,19 @@ const CategoryTreeNode = memo(({
             <>
               <ContextMenuItem onClick={handleCreateSubcategory} disabled={!node.name || readOnly}>
                 <FolderPlus className="mr-2 size-4" />
-                Create subcategory
+                {t("categoryTree.createSubcategory")}
               </ContextMenuItem>
               <ContextMenuSeparator />
             </>
           )}
           <ContextMenuItem onClick={handleEditCategory} disabled={isSynthetic || readOnly}>
             <Edit className="mr-2 size-4" />
-            Edit category
+            {t("categoryTree.editCategory")}
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem onClick={handleDeleteCategory} disabled={isSynthetic || readOnly} className="text-destructive">
             <Trash2 className="mr-2 size-4" />
-            Delete category
+            {t("categoryTree.deleteCategory")}
           </ContextMenuItem>
           {onRemoveEmptyCategories && (
             <ContextMenuItem
@@ -290,7 +292,7 @@ const CategoryTreeNode = memo(({
               className="text-destructive"
             >
               <Trash2 className="mr-2 size-4" />
-              Remove Empty Categories
+              {t("categoryTree.removeEmptyCategories")}
             </ContextMenuItem>
           )}
         </ContextMenuContent>
@@ -353,6 +355,7 @@ export const CategoryTree = memo(({
   viewMode = "normal",
   readOnly = false,
 }: CategoryTreeProps) => {
+  const { t } = useTranslation("torrents")
   const itemPadding = viewMode === "dense" ? "px-1 py-0.5" : "px-1.5 py-1.5"
   const itemGap = viewMode === "dense" ? "gap-1.5" : "gap-2"
   const uncategorizedColumns = "grid-cols-[auto_minmax(0,1fr)_auto]"
@@ -400,7 +403,7 @@ export const CategoryTree = memo(({
           className="size-4"
         />
         <span className={cn("flex-1 min-w-0 truncate text-sm italic", uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground")}>
-          Uncategorized
+          {t("categoryTree.uncategorized")}
         </span>
         <Tooltip>
           <TooltipTrigger asChild>

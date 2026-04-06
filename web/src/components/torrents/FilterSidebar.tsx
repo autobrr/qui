@@ -68,6 +68,7 @@ import {
   type LucideIcon
 } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { CategoryTree } from "./CategoryTree"
 import {
   CreateCategoryDialog,
@@ -193,6 +194,7 @@ const FilterSidebarComponent = ({
   isLoading = false,
   isMobile = false,
 }: FilterSidebarProps) => {
+  const { t } = useTranslation("torrents")
   const isReadOnly = readOnly || instanceId <= 0
   const isConcreteInstanceScope = instanceId > 0
   const { instances } = useInstances()
@@ -1827,7 +1829,7 @@ const FilterSidebarComponent = ({
   if (isConcreteInstanceScope && !isInstanceActive) {
     return (
       <div className={cn("flex h-full items-center justify-center text-center text-sm text-muted-foreground px-4", className)}>
-        This instance is disabled. Enable it from Settings → Instances to use filters.
+        {t("filterSidebar.instanceDisabled")}
       </div>
     )
   }
@@ -1846,23 +1848,23 @@ const FilterSidebarComponent = ({
         <div className={viewMode === "dense" ? "px-3 py-2" : "p-4"}>
           <div className={cn("flex items-center justify-between", viewMode === "dense" ? "mb-2" : "mb-4")}>
             <div className="flex items-center gap-2 min-w-0">
-              <h3 className="font-semibold">Filters</h3>
+              <h3 className="font-semibold">{t("filterSidebar.title")}</h3>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
                     className="text-muted-foreground hover:text-foreground"
-                    aria-label="Filter selection tips"
+                    aria-label={t("filterSidebar.filterSelectionTips")}
                   >
                     <Info className="h-4 w-4" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="start" className="max-w-[220px]">
-                  Left click cycles include and neutral. Cmd/Ctrl + click or a long press toggles exclusion.
+                  {t("filterSidebar.filterTips")}
                 </TooltipContent>
               </Tooltip>
               {(isLoading || isStaleData) && (
-                <span className="text-xs text-muted-foreground animate-pulse">Loading...</span>
+                <span className="text-xs text-muted-foreground animate-pulse">{t("filterSidebar.loading")}</span>
               )}
             </div>
             {hasActiveFilters && (
@@ -1870,7 +1872,7 @@ const FilterSidebarComponent = ({
                 onClick={clearFilters}
                 className="text-xs text-muted-foreground hover:text-foreground shrink-0"
               >
-                Clear all
+                {t("filterSidebar.clearAll")}
               </button>
             )}
           </div>
@@ -1879,16 +1881,16 @@ const FilterSidebarComponent = ({
           {isMobile && (
             <div className="flex items-center justify-between p-3 mb-4 bg-muted/20 rounded-lg">
               <div className="flex flex-col gap-1">
-                <span className="text-sm font-medium">View Mode</span>
+                <span className="text-sm font-medium">{t("filterSidebar.viewMode")}</span>
                 <span className="text-xs text-muted-foreground">
-                  {viewMode === "normal" ? "Full torrent cards" : viewMode === "compact" ? "Compact cards" : "Ultra compact"}
+                  {viewMode === "normal" ? t("filterSidebar.viewModeFullCards") : viewMode === "compact" ? t("filterSidebar.viewModeCompactCards") : t("filterSidebar.viewModeUltraCompact")}
                 </span>
               </div>
               <button
                 onClick={cycleViewMode}
                 className="px-3 py-1 text-xs font-medium rounded border bg-background hover:bg-muted"
               >
-                {viewMode === "normal" ? "Normal" : viewMode === "compact" ? "Compact" : "Ultra"}
+                {viewMode === "normal" ? t("filterSidebar.viewModeNormal") : viewMode === "compact" ? t("filterSidebar.viewModeCompact") : t("filterSidebar.viewModeUltra")}
               </button>
             </div>
           )}
@@ -1929,7 +1931,7 @@ const FilterSidebarComponent = ({
             <AccordionItem value="status" className="border rounded-lg">
               <AccordionTrigger className={cn(accordionTriggerClass, "hover:no-underline")}>
                 <div className="flex items-center justify-between w-full">
-                  <span className="text-sm font-medium">Status</span>
+                  <span className="text-sm font-medium">{t("filterSidebar.status")}</span>
                   {selectedFilters.status.length + selectedFilters.excludeStatus.length > 0 && (
                     <FilterBadge
                       count={selectedFilters.status.length + selectedFilters.excludeStatus.length}
@@ -2032,7 +2034,7 @@ const FilterSidebarComponent = ({
             <AccordionItem value="categories" className="border rounded-lg">
               <AccordionTrigger className={cn(accordionTriggerClass, "hover:no-underline")}>
                 <div className="flex items-center justify-between w-full">
-                  <span className="text-sm font-medium">Categories</span>
+                  <span className="text-sm font-medium">{t("filterSidebar.categories")}</span>
                   {selectedFilters.categories.length + selectedFilters.excludeCategories.length > 0 && (
                     <FilterBadge
                       count={selectedFilters.categories.length + selectedFilters.excludeCategories.length}
@@ -2443,7 +2445,7 @@ const FilterSidebarComponent = ({
             <AccordionItem value="tags" className="border rounded-lg">
               <AccordionTrigger className={cn(accordionTriggerClass, "hover:no-underline")}>
                 <div className="flex items-center justify-between w-full">
-                  <span className="text-sm font-medium">Tags</span>
+                  <span className="text-sm font-medium">{t("filterSidebar.tags")}</span>
                   {selectedFilters.tags.length + selectedFilters.excludeTags.length > 0 && (
                     <FilterBadge
                       count={selectedFilters.tags.length + selectedFilters.excludeTags.length}
@@ -2771,7 +2773,7 @@ const FilterSidebarComponent = ({
             <AccordionItem value="trackers" className="border rounded-lg last:border-b">
               <AccordionTrigger className={cn(accordionTriggerClass, "hover:no-underline")}>
                 <div className="flex items-center justify-between w-full">
-                  <span className="text-sm font-medium">Trackers</span>
+                  <span className="text-sm font-medium">{t("filterSidebar.trackers")}</span>
                   {selectedFilters.trackers.length + selectedFilters.excludeTrackers.length > 0 && (
                     <FilterBadge
                       count={selectedFilters.trackers.length + selectedFilters.excludeTrackers.length}

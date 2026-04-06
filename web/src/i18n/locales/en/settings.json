@@ -24,55 +24,204 @@
     },
     "dialog": {
       "addTitle": "Add Indexer",
-      "addDescription": "Add a Torznab-compatible indexer (Jackett, Prowlarr, etc.)",
       "editTitle": "Edit Indexer",
-      "editDescription": "Update indexer configuration",
+      "addDescription": "Add a new Torznab indexer for cross-seed discovery",
+      "editDescription": "Update indexer settings",
       "labels": {
         "name": "Name",
-        "backend": "Backend Type",
+        "backend": "Backend",
         "baseUrl": "Base URL",
         "indexerId": "Indexer ID",
         "apiKey": "API Key",
         "priority": "Priority",
         "timeout": "Timeout (seconds)",
         "enabled": "Enabled",
-        "basicAuth": "HTTP Basic Auth"
+        "basicAuth": "Basic Auth",
+        "basicAuthDescription": "Use HTTP basic authentication for Torznab behind a reverse proxy.",
+        "basicUsername": "Basic Username",
+        "basicPassword": "Basic Password"
+      },
+      "placeholders": {
+        "name": "My Indexer",
+        "selectBackend": "Select backend",
+        "apiKeyEdit": "Leave blank to keep existing",
+        "apiKeyCreate": "Your API key",
+        "indexerIdProwlarr": "Prowlarr indexer ID (e.g., 1)",
+        "indexerIdJackett": "Optional Jackett indexer ID (e.g., aither)",
+        "username": "Username",
+        "password": "Password"
+      },
+      "hints": {
+        "indexerIdProwlarr": "Enter the numeric ID from the indexer details page in Prowlarr.",
+        "indexerIdJackett": "Optional for Jackett. Leave blank to let qui derive it automatically.",
+        "basicPasswordKeep": "Leave as <redacted> to keep existing password."
+      },
+      "backends": {
+        "jackett": "Jackett",
+        "prowlarr": "Prowlarr",
+        "native": "Native Torznab"
       },
       "buttons": {
         "save": "Save",
+        "add": "Add",
         "saving": "Saving...",
         "cancel": "Cancel"
+      },
+      "toast": {
+        "createdSuccess": "Indexer created successfully",
+        "createdWithWarnings": "Indexer created with warnings: {{warnings}}",
+        "updatedSuccess": "Indexer updated successfully",
+        "updatedWithWarnings": "Indexer updated with warnings: {{warnings}}",
+        "failedCreate": "Failed to create indexer",
+        "failedEdit": "Failed to edit indexer",
+        "basicUsernameRequired": "Basic auth username is required",
+        "basicPasswordRequired": "Basic auth password is required",
+        "basicPasswordRequiredOrKeep": "Basic auth password is required (or keep <redacted>)"
       }
     },
     "autodiscovery": {
-      "title": "Autodiscover Indexers",
-      "description": "Connect to Prowlarr/Jackett to discover and import indexers automatically."
+      "title": "Discover Indexers",
+      "descriptionInput": "Connect to Jackett or Prowlarr to discover configured indexers",
+      "descriptionSelect": "Select indexers to import",
+      "labels": {
+        "indexerUrl": "Indexer URL",
+        "apiKey": "API Key",
+        "basicAuth": "Basic Auth",
+        "basicAuthDescription": "Use HTTP basic authentication for Jackett/Prowlarr behind a reverse proxy.",
+        "basicUsername": "Basic Username",
+        "basicPassword": "Basic Password"
+      },
+      "placeholders": {
+        "indexerUrl": "http://localhost:9696",
+        "apiKey": "Your indexer API key",
+        "username": "Username",
+        "password": "Password"
+      },
+      "hints": {
+        "indexerUrl": "Prowlarr defaults to http://localhost:9696, Jackett to http://localhost:9117."
+      },
+      "buttons": {
+        "cancel": "Cancel",
+        "discover": "Discover",
+        "discovering": "Discovering...",
+        "back": "Back",
+        "importing": "Importing...",
+        "import": "Import {{count}} indexer",
+        "importPlural": "Import {{count}} indexers",
+        "selectAll": "Select All",
+        "deselectAll": "Deselect All"
+      },
+      "selectionCount": "{{selected}} of {{total}} selected",
+      "noIndexersFound": "No indexers found",
+      "willUpdate": "Will Update",
+      "typeLabel": "Type:",
+      "backendLabel": "Backend:",
+      "notConfigured": "(Not configured)",
+      "toast": {
+        "urlRequired": "Indexer URL is required",
+        "basicAuthRequired": "Basic auth requires username and password",
+        "urlRequiredBeforeImport": "Provide an indexer URL before importing",
+        "discoveredWithExisting": "Found {{total}} indexers ({{existing}} already exist)",
+        "discovered": "Found {{count}} indexers",
+        "discoverFailed": "Failed to discover indexers: {{error}}",
+        "importSuccess": "Success: {{details}}",
+        "importWithWarnings": "{{details}} ({{warningCount}} with warnings)",
+        "moreWarnings": "...and {{count}} more warnings",
+        "importErrors": "{{details}}",
+        "moreErrors": "...and {{count}} more errors",
+        "created": "{{count}} created",
+        "updated": "{{count}} updated",
+        "failed": "{{count}} failed"
+      }
     },
     "table": {
       "name": "Name",
       "backend": "Backend",
       "priority": "Priority",
       "status": "Status",
+      "testStatus": "Test Status",
       "capabilities": "Capabilities",
+      "timeout": "Timeout",
       "actions": "Actions",
       "enabled": "Enabled",
       "disabled": "Disabled",
-      "ok": "OK",
-      "error": "Error",
+      "working": "Working",
+      "failed": "Failed",
       "untested": "Untested",
       "testAll": "Test All",
-      "filter": "Filter",
-      "columns": "Columns"
+      "filters": "Filters",
+      "clearFilters": "Clear filters",
+      "showingCount": "Showing {{shown}} of {{total}} indexers",
+      "loading": "Loading...",
+      "noIndexers": "No indexers configured. Add one to get started.",
+      "noMatch": "No indexers match the current filters",
+      "noCapabilities": "No capabilities",
+      "sync": "Sync",
+      "collapse": "Collapse",
+      "filterStatus": "Status",
+      "filterTestStatus": "Test Status",
+      "filterBackend": "Backend",
+      "filterAll": "All",
+      "filterEnabledOnly": "Enabled only",
+      "filterDisabledOnly": "Disabled only",
+      "filterWorkingOnly": "Working only",
+      "filterFailedOnly": "Failed only",
+      "filterUntestedOnly": "Untested only",
+      "filterJackett": "Jackett",
+      "filterProwlarr": "Prowlarr",
+      "filterNative": "Native",
+      "tooltipTest": "Test connection",
+      "tooltipSyncCaps": "Sync capabilities",
+      "tooltipEdit": "Edit",
+      "tooltipDelete": "Delete",
+      "tooltipSyncCapsFromBackend": "Sync capabilities from backend"
     },
     "activity": {
       "title": "Scheduler Activity",
       "idle": "Idle",
       "queueLength": "Queue",
       "workers": "Workers",
-      "cooldown": "Cooldown"
+      "cooldown": "Cooldown",
+      "running": "Running",
+      "queued": "Queued",
+      "rateLimited": "Rate Limited",
+      "noActiveTasks": "No active tasks or rate limits",
+      "andMore": "...and {{count}} more",
+      "workersStatus": "{{used}}/{{total}} workers",
+      "runningCount": "{{count}} running",
+      "queuedCount": "{{count}} queued",
+      "cooldownCount": "{{count}} cooldown",
+      "ready": "Ready",
+      "left": "{{time}} left"
     },
     "searchHistory": {
-      "title": "Recent Searches"
+      "title": "Search History",
+      "searches": "{{count}} searches",
+      "searchesWithErrors": "{{count}} searches, {{errors}} errors",
+      "noSearchesYet": "No searches yet",
+      "successful": "{{count}} successful",
+      "failed": "{{count}} failed",
+      "source": "Source: {{source}}",
+      "results": "{{count}} results",
+      "detail": {
+        "release": "Release",
+        "results": "Results",
+        "duration": "Duration",
+        "priority": "Priority",
+        "crossSeed": "Cross-seed",
+        "added": "Added {{count}}",
+        "error": "Error",
+        "searchParameters": "Search Parameters",
+        "mode": "Mode:",
+        "type": "Type:",
+        "job": "Job {{id}}",
+        "statusSuccess": "Success",
+        "statusFailed": "Failed",
+        "statusSkipped": "Skipped",
+        "statusRateLimited": "Rate Limited",
+        "season": "Season",
+        "episode": "Episode"
+      }
     }
   }
 }

@@ -77,6 +77,7 @@ import {
   X
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import { LocationWarningDialog, SetCategoryDialog, SetLocationDialog, TagEditorDialog, TmmConfirmDialog } from "./TorrentDialogs"
@@ -109,6 +110,7 @@ function MobileShareLimitsDialog({
   onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => void
   isPending: boolean
 }) {
+  const { t } = useTranslation("torrents")
   const [ratioEnabled, setRatioEnabled] = useState(false)
   const [ratioLimit, setRatioLimit] = useState(1.5)
   const [seedingTimeEnabled, setSeedingTimeEnabled] = useState(false)
@@ -135,9 +137,9 @@ function MobileShareLimitsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Set Share Limits for {hashCount} torrent(s)</DialogTitle>
+          <DialogTitle>{t("mobileCards.shareLimit.title", { count: hashCount })}</DialogTitle>
           <DialogDescription>
-            Configure seeding limits. Use -1 or disable to remove limits.
+            {t("mobileCards.shareLimit.description")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -148,7 +150,7 @@ function MobileShareLimitsDialog({
                 checked={ratioEnabled}
                 onCheckedChange={setRatioEnabled}
               />
-              <Label htmlFor="ratioEnabled">Set ratio limit</Label>
+              <Label htmlFor="ratioEnabled">{t("mobileCards.shareLimit.setRatioLimit")}</Label>
             </div>
             {ratioEnabled && (
               <Input
@@ -169,7 +171,7 @@ function MobileShareLimitsDialog({
                 checked={seedingTimeEnabled}
                 onCheckedChange={setSeedingTimeEnabled}
               />
-              <Label htmlFor="seedingTimeEnabled">Set seeding time limit (minutes)</Label>
+              <Label htmlFor="seedingTimeEnabled">{t("mobileCards.shareLimit.setSeedingTimeLimit")}</Label>
             </div>
             {seedingTimeEnabled && (
               <Input
@@ -189,7 +191,7 @@ function MobileShareLimitsDialog({
                 checked={inactiveSeedingTimeEnabled}
                 onCheckedChange={setInactiveSeedingTimeEnabled}
               />
-              <Label htmlFor="inactiveSeedingTimeEnabled">Set inactive seeding limit (minutes)</Label>
+              <Label htmlFor="inactiveSeedingTimeEnabled">{t("mobileCards.shareLimit.setInactiveSeedingLimit")}</Label>
             </div>
             {inactiveSeedingTimeEnabled && (
               <Input
@@ -204,10 +206,10 @@ function MobileShareLimitsDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("mobileCards.shareLimit.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={isPending}>
-            {isPending ? "Setting..." : "Apply Limits"}
+            {isPending ? t("mobileCards.shareLimit.setting") : t("mobileCards.shareLimit.applyLimits")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -229,6 +231,7 @@ function MobileSpeedLimitsDialog({
   onConfirm: (uploadLimit: number, downloadLimit: number) => void
   isPending: boolean
 }) {
+  const { t } = useTranslation("torrents")
   const [uploadEnabled, setUploadEnabled] = useState(false)
   const [uploadLimit, setUploadLimit] = useState(1024)
   const [downloadEnabled, setDownloadEnabled] = useState(false)
@@ -250,9 +253,9 @@ function MobileSpeedLimitsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Set Speed Limits for {hashCount} torrent(s)</DialogTitle>
+          <DialogTitle>{t("mobileCards.speedLimit.title", { count: hashCount })}</DialogTitle>
           <DialogDescription>
-            Set upload and download speed limits in KB/s. Use -1 or disable to remove limits.
+            {t("mobileCards.speedLimit.description")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -263,7 +266,7 @@ function MobileSpeedLimitsDialog({
                 checked={uploadEnabled}
                 onCheckedChange={setUploadEnabled}
               />
-              <Label htmlFor="uploadEnabled">Set upload limit (KB/s)</Label>
+              <Label htmlFor="uploadEnabled">{t("mobileCards.speedLimit.setUploadLimit")}</Label>
             </div>
             {uploadEnabled && (
               <Input
@@ -283,7 +286,7 @@ function MobileSpeedLimitsDialog({
                 checked={downloadEnabled}
                 onCheckedChange={setDownloadEnabled}
               />
-              <Label htmlFor="downloadEnabled">Set download limit (KB/s)</Label>
+              <Label htmlFor="downloadEnabled">{t("mobileCards.speedLimit.setDownloadLimit")}</Label>
             </div>
             {downloadEnabled && (
               <Input
@@ -298,10 +301,10 @@ function MobileSpeedLimitsDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("mobileCards.speedLimit.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={isPending}>
-            {isPending ? "Setting..." : "Apply Limits"}
+            {isPending ? t("mobileCards.speedLimit.setting") : t("mobileCards.speedLimit.applyLimits")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -529,6 +532,7 @@ function SwipeableCard({
   trackerIcons?: Record<string, string>
   trackerCustomizationLookup?: TrackerCustomizationLookup
 }) {
+  const { t } = useTranslation("torrents")
 
   // Use number for timeoutId in browser
   const [longPressTimer, setLongPressTimer] = useState<number | null>(null)
@@ -720,7 +724,7 @@ function SwipeableCard({
               {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
             </span>
             <div className="flex items-center gap-1">
-              <span className="text-muted-foreground">Ratio:</span>
+              <span className="text-muted-foreground">{t("mobileCards.ratio")}</span>
               <span
                 className="font-medium"
                 style={{ color: getRatioColor(displayRatio) }}
@@ -774,7 +778,7 @@ function SwipeableCard({
             <div className="flex items-center gap-3">
               {/* Ratio on the left */}
               <div className="flex items-center gap-1">
-                <span className="text-muted-foreground">Ratio:</span>
+                <span className="text-muted-foreground">{t("mobileCards.ratio")}</span>
                 <span
                   className="font-medium"
                   style={{ color: getRatioColor(displayRatio) }}

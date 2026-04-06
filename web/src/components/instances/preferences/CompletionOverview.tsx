@@ -18,6 +18,7 @@ import type { Instance, InstanceCrossSeedCompletionSettings } from "@/types"
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Info, Loader2 } from "lucide-react"
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface CompletionFormState {
@@ -78,6 +79,7 @@ function normalizeNumberList(values: Array<string | number>): number[] {
 }
 
 export function CompletionOverview() {
+  const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
   const { instances } = useInstances()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
@@ -143,12 +145,12 @@ export function CompletionOverview() {
         ...prev,
         [variables.instanceId]: false,
       }))
-      toast.success("Settings saved", {
+      toast.success(t("preferences.completionOverview.toast.settingsSaved"), {
         description: activeInstances.find((i) => i.id === variables.instanceId)?.name,
       })
     },
     onError: (error) => {
-      toast.error("Failed to save settings", {
+      toast.error(t("preferences.completionOverview.toast.saveFailed"), {
         description: error instanceof Error ? error.message : "Unknown error",
       })
     },
@@ -158,7 +160,7 @@ export function CompletionOverview() {
     const query = settingsQueries[queryIndex]
     // Don't allow toggle if settings haven't loaded successfully
     if (query?.isError || (!query?.data && !formMap[instance.id])) {
-      toast.error("Cannot toggle - settings failed to load")
+      toast.error(t("preferences.completionOverview.cannotToggle"))
       return
     }
 
@@ -192,7 +194,7 @@ export function CompletionOverview() {
     const query = settingsQueries[queryIndex]
     // Don't allow save if settings haven't loaded successfully
     if (query?.isError || (!query?.data && !formMap[instance.id])) {
-      toast.error("Cannot save - settings failed to load")
+      toast.error(t("preferences.completionOverview.cannotSave"))
       return
     }
 
@@ -207,9 +209,9 @@ export function CompletionOverview() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Auto-search on completion</CardTitle>
+          <CardTitle className="text-lg font-semibold">{t("preferences.completionOverview.title")}</CardTitle>
           <CardDescription>
-            No instances configured. Add one in Settings to use this feature.
+            {t("preferences.completionOverview.noInstancesDescription")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -220,9 +222,9 @@ export function CompletionOverview() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Auto-search on completion</CardTitle>
+          <CardTitle className="text-lg font-semibold">{t("preferences.completionOverview.title")}</CardTitle>
           <CardDescription>
-            No active instances. Enable an instance in Settings to use this feature.
+            {t("preferences.completionOverview.noActiveInstances")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -233,7 +235,7 @@ export function CompletionOverview() {
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">Auto-search on completion</CardTitle>
+          <CardTitle className="text-lg font-semibold">{t("preferences.completionOverview.title")}</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -247,7 +249,7 @@ export function CompletionOverview() {
           </Tooltip>
         </div>
         <CardDescription>
-          Kick off a cross-seed search the moment a torrent finishes.
+          {t("preferences.completionOverview.description")}
         </CardDescription>
       </CardHeader>
 
@@ -303,7 +305,7 @@ export function CompletionOverview() {
                           "text-xs font-medium",
                           isEnabled ? "text-emerald-500" : "text-muted-foreground"
                         )}>
-                          {isEnabled ? "On" : "Off"}
+                          {isEnabled ? t("preferences.completionOverview.on") : t("preferences.completionOverview.off")}
                         </span>
                         <Switch
                           checked={isEnabled}
@@ -323,7 +325,7 @@ export function CompletionOverview() {
                       <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/30 bg-destructive/10">
                         <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
                         <p className="text-sm text-destructive">
-                          Failed to load settings. Please try refreshing the page.
+                          {t("preferences.completionOverview.failedToLoadSettings")}
                         </p>
                       </div>
                     )}
@@ -453,7 +455,7 @@ export function CompletionOverview() {
                             size="sm"
                           >
                             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {isDirty ? "Save changes" : "Saved"}
+                            {isDirty ? t("preferences.completionOverview.saveChanges") : t("preferences.completionOverview.saved")}
                           </Button>
                         </div>
                       </>
@@ -463,7 +465,7 @@ export function CompletionOverview() {
                     {!isError && !isEnabled && (
                       <div className="flex flex-col items-center justify-center py-6 text-center space-y-2 border border-dashed rounded-lg">
                         <p className="text-sm text-muted-foreground">
-                          Enable auto-search to configure filters for this instance.
+                          {t("preferences.completionOverview.enableAutoSearchMessage")}
                         </p>
                       </div>
                     )}

@@ -10,8 +10,10 @@ import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import type { IndexerActivityStatus, IndexerCooldownStatus, SchedulerTaskStatus } from "@/types"
 import { Activity, ChevronDown, Clock, Loader2, Pause, Zap } from "lucide-react"
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 export function IndexerActivityPanel() {
+  const { t } = useTranslation("settings")
   const [activity, setActivity] = useState<IndexerActivityStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [isOpen, setIsOpen] = useState(true)
@@ -55,19 +57,19 @@ export function IndexerActivityPanel() {
         <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
           <div className="flex items-center gap-2">
             <Activity className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Scheduler Activity</span>
+            <span className="text-sm font-medium">{t("indexers.activity.title")}</span>
             {loading ? (
               <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
             ) : hasActivity ? (
               <Badge variant="secondary" className="text-xs">
-                {workersInUse > 0 && `${workersInUse} running`}
+                {workersInUse > 0 && t("indexers.activity.runningCount", { count: workersInUse })}
                 {workersInUse > 0 && queueLength > 0 && ", "}
-                {queueLength > 0 && `${queueLength} queued`}
+                {queueLength > 0 && t("indexers.activity.queuedCount", { count: queueLength })}
                 {(workersInUse > 0 || queueLength > 0) && cooldownCount > 0 && ", "}
-                {cooldownCount > 0 && `${cooldownCount} cooldown`}
+                {cooldownCount > 0 && t("indexers.activity.cooldownCount", { count: cooldownCount })}
               </Badge>
             ) : (
-              <span className="text-xs text-muted-foreground">{workersInUse}/{workerCount} workers</span>
+              <span className="text-xs text-muted-foreground">{t("indexers.activity.workersStatus", { used: workersInUse, total: workerCount })}</span>
             )}
           </div>
           <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -80,7 +82,7 @@ export function IndexerActivityPanel() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <Zap className="h-4 w-4 text-yellow-500" />
-                  Running ({activity.scheduler.inFlightTasks.length})
+                  {t("indexers.activity.running")} ({activity.scheduler.inFlightTasks.length})
                 </div>
                 <div className="space-y-1">
                   {activity.scheduler.inFlightTasks.map((task) => (
@@ -95,7 +97,7 @@ export function IndexerActivityPanel() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <Clock className="h-4 w-4 text-blue-500" />
-                  Queued ({activity.scheduler.queuedTasks.length})
+                  {t("indexers.activity.queued")} ({activity.scheduler.queuedTasks.length})
                 </div>
                 <div className="space-y-1">
                   {activity.scheduler.queuedTasks.slice(0, 10).map((task) => (
@@ -103,7 +105,7 @@ export function IndexerActivityPanel() {
                   ))}
                   {activity.scheduler.queuedTasks.length > 10 && (
                     <div className="text-xs text-muted-foreground pl-2">
-                      ...and {activity.scheduler.queuedTasks.length - 10} more
+                      {t("indexers.activity.andMore", { count: activity.scheduler.queuedTasks.length - 10 })}
                     </div>
                   )}
                 </div>
@@ -115,7 +117,7 @@ export function IndexerActivityPanel() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <Pause className="h-4 w-4 text-orange-500" />
-                  Rate Limited ({activity.cooldownIndexers.length})
+                  {t("indexers.activity.rateLimited")} ({activity.cooldownIndexers.length})
                 </div>
                 <div className="space-y-1">
                   {activity.cooldownIndexers.map((cooldown) => (
@@ -128,7 +130,7 @@ export function IndexerActivityPanel() {
             {/* Empty state */}
             {!hasActivity && !loading && (
               <div className="text-center py-2 text-xs text-muted-foreground">
-                No active tasks or rate limits
+                {t("indexers.activity.noActiveTasks")}
               </div>
             )}
           </div>
@@ -172,6 +174,7 @@ function TaskRow({ task, status }: { task: SchedulerTaskStatus; status: "running
 }
 
 function CooldownRow({ cooldown }: { cooldown: IndexerCooldownStatus }) {
+  const { t } = useTranslation("settings")
   const cooldownEnd = new Date(cooldown.cooldownEnd)
   const remaining = cooldownEnd.getTime() - Date.now()
   const isExpired = remaining <= 0
@@ -184,10 +187,10 @@ function CooldownRow({ cooldown }: { cooldown: IndexerCooldownStatus }) {
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {isExpired ? (
-          <span className="text-xs text-green-500">Ready</span>
+          <span className="text-xs text-green-500">{t("indexers.activity.ready")}</span>
         ) : (
           <span className="text-xs text-orange-500">
-            {formatRelativeTime(cooldownEnd, false)} left
+            {t("indexers.activity.left", { time: formatRelativeTime(cooldownEnd, false) })}
           </span>
         )}
       </div>

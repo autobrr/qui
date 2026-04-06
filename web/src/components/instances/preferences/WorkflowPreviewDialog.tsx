@@ -24,6 +24,7 @@ import { formatBytes, formatDurationCompact, getRatioColor } from "@/lib/utils"
 import type { AutomationPreviewResult, AutomationPreviewTorrent, PreviewView, RuleCondition } from "@/types"
 import { Download, Loader2 } from "lucide-react"
 import { useMemo } from "react"
+import { useTranslation } from "react-i18next"
 import { AnimatedLogo } from "@/components/ui/AnimatedLogo"
 
 // Tabs component for needed/eligible toggle
@@ -255,6 +256,7 @@ export function WorkflowPreviewDialog({
   isInitialLoading = false,
   showScore = false,
 }: WorkflowPreviewDialogProps) {
+  const { t } = useTranslation("instances")
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const hasMore = !!preview && preview.examples.length < preview.totalMatches
@@ -275,10 +277,10 @@ export function WorkflowPreviewDialog({
         <AlertDialogContent className="sm:max-w-md">
           <div className="flex flex-col items-center justify-center py-12 gap-4">
             <AnimatedLogo className="h-16 w-16" />
-            <p className="text-sm text-muted-foreground">Loading preview. This might take a while...</p>
+            <p className="text-sm text-muted-foreground">{t("preferences.workflowPreview.loadingPreview")}</p>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("preferences.workflowPreview.cancel")}</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -302,15 +304,15 @@ export function WorkflowPreviewDialog({
                   >
                     <TabsList className="grid w-full grid-cols-2">
                       <TabsTrigger value="needed" disabled={isLoadingPreview}>
-                        Needed to reach target
+                        {t("preferences.workflowPreview.neededToReachTarget")}
                       </TabsTrigger>
                       <TabsTrigger value="eligible" disabled={isLoadingPreview}>
-                        All eligible
+                        {t("preferences.workflowPreview.allEligible")}
                       </TabsTrigger>
                     </TabsList>
                   </Tabs>
                   <p className="text-xs text-muted-foreground">
-                    {previewView === "needed"? "These are the torrents that would be removed now to reach your free-space target.": "These are all torrents this rule could remove while free space is low."}
+                    {previewView === "needed"? t("preferences.workflowPreview.neededDescription"): t("preferences.workflowPreview.eligibleDescription")}
                   </p>
                 </div>
               )}
@@ -329,12 +331,12 @@ export function WorkflowPreviewDialog({
               <table className="w-full text-sm">
                 <thead className="sticky top-0">
                   <tr className="border-b">
-                    <th className="text-left p-2 font-medium bg-muted">Tracker</th>
-                    <th className="text-left p-2 font-medium bg-muted">Name</th>
-                    <th className="text-right p-2 font-medium bg-muted">Size</th>
-                    <th className="text-right p-2 font-medium bg-muted">Ratio</th>
-                    <th className="text-right p-2 font-medium bg-muted">Seed Time</th>
-                    {showScoreColumn && <th className="text-right p-2 font-medium bg-muted">Score</th>}
+                    <th className="text-left p-2 font-medium bg-muted">{t("preferences.workflowPreview.tracker")}</th>
+                    <th className="text-left p-2 font-medium bg-muted">{t("preferences.workflowPreview.name")}</th>
+                    <th className="text-right p-2 font-medium bg-muted">{t("preferences.workflowPreview.size")}</th>
+                    <th className="text-right p-2 font-medium bg-muted">{t("preferences.workflowPreview.ratio")}</th>
+                    <th className="text-right p-2 font-medium bg-muted">{t("preferences.workflowPreview.seedTime")}</th>
+                    {showScoreColumn && <th className="text-right p-2 font-medium bg-muted">{t("preferences.workflowPreview.score")}</th>}
                     {visibleDynamicColumns.map(col => (
                       <th
                         key={col.key}
@@ -343,72 +345,72 @@ export function WorkflowPreviewDialog({
                         {col.header}
                       </th>
                     ))}
-                    <th className="text-left p-2 font-medium bg-muted">Category</th>
-                    <th className="text-left p-2 font-medium bg-muted">Path</th>
+                    <th className="text-left p-2 font-medium bg-muted">{t("preferences.workflowPreview.category")}</th>
+                    <th className="text-left p-2 font-medium bg-muted">{t("preferences.workflowPreview.path")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {preview.examples.map((t) => {
+                  {preview.examples.map((torrent) => {
                     const trackerCustom = trackerCustomizations?.find(c =>
-                      c.domains.some(d => d.toLowerCase() === t.tracker.toLowerCase())
+                      c.domains.some(d => d.toLowerCase() === torrent.tracker.toLowerCase())
                     )
                     return (
-                      <tr key={t.hash} className="border-b last:border-0 hover:bg-muted/30">
+                      <tr key={torrent.hash} className="border-b last:border-0 hover:bg-muted/30">
                         <td className="p-2">
                           <div className="flex items-center gap-1.5">
                             <TrackerIconImage
-                              tracker={t.tracker}
+                              tracker={torrent.tracker}
                               trackerIcons={trackerIcons}
                             />
-                            <span className="truncate max-w-[100px]" title={t.tracker}>
-                              {trackerCustom?.displayName ?? t.tracker}
+                            <span className="truncate max-w-[100px]" title={torrent.tracker}>
+                              {trackerCustom?.displayName ?? torrent.tracker}
                             </span>
                           </div>
                         </td>
                         <td className="p-2 max-w-[280px]">
                           <div className="flex items-center gap-1.5">
                             <TruncatedText className="block flex-1 min-w-0">
-                              {t.name}
+                              {torrent.name}
                             </TruncatedText>
                             {/* Single cross-seed badge with appropriate variant based on expansion type */}
-                            {(t.isCrossSeed || t.isHardlinkCopy) && (
+                            {(torrent.isCrossSeed || torrent.isHardlinkCopy) && (
                               <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded ${
-                                t.isHardlinkCopy? "bg-violet-500/10 text-violet-600": "bg-blue-500/10 text-blue-600"
+                                torrent.isHardlinkCopy? "bg-violet-500/10 text-violet-600": "bg-blue-500/10 text-blue-600"
                               }`}>
-                                {t.isHardlinkCopy ? "Cross-seed (hardlinked)" : "Cross-seed (same files)"}
+                                {torrent.isHardlinkCopy ? t("preferences.workflowPreview.crossSeedHardlinked") : t("preferences.workflowPreview.crossSeedSameFiles")}
                               </span>
                             )}
                           </div>
                         </td>
                         <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
-                          {formatBytes(t.size)}
+                          {formatBytes(torrent.size)}
                         </td>
                         <td
                           className="p-2 text-right font-mono whitespace-nowrap font-medium"
-                          style={{ color: getRatioColor(t.ratio) }}
+                          style={{ color: getRatioColor(torrent.ratio) }}
                         >
-                          {t.ratio === -1 ? "∞" : t.ratio.toFixed(2)}
+                          {torrent.ratio === -1 ? "∞" : torrent.ratio.toFixed(2)}
                         </td>
                         <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
-                          {formatDurationCompact(t.seedingTime)}
+                          {formatDurationCompact(torrent.seedingTime)}
                         </td>
                         {showScoreColumn && (
                           <td className="p-2 text-right font-mono text-muted-foreground whitespace-nowrap">
-                            {t.score !== undefined && t.score !== null ? t.score.toFixed(2) : "-"}
+                            {torrent.score !== undefined && torrent.score !== null ? torrent.score.toFixed(2) : "-"}
                           </td>
                         )}
                         {visibleDynamicColumns.map(col => (
                           <td key={col.key} className={`p-2 text-${col.align}`}>
-                            {col.render(t)}
+                            {col.render(torrent)}
                           </td>
                         ))}
                         <td className="p-2">
                           <TruncatedText className="block max-w-[80px] text-muted-foreground">
-                            {t.category || "-"}
+                            {torrent.category || "-"}
                           </TruncatedText>
                         </td>
                         <td className="p-2 max-w-[200px]">
-                          <PathCell path={t.contentPath} />
+                          <PathCell path={torrent.contentPath} />
                         </td>
                       </tr>
                     )
@@ -418,7 +420,7 @@ export function WorkflowPreviewDialog({
             </div>
             {hasMore && (
               <div className="flex items-center justify-between gap-3 p-2 text-xs text-muted-foreground border-t bg-muted/30">
-                <span>... and {preview.totalMatches - preview.examples.length} more torrents</span>
+                <span>{t("preferences.workflowPreview.andMoreTorrents", { count: preview.totalMatches - preview.examples.length })}</span>
                 {onLoadMore && (
                   <Button
                     size="sm"
@@ -427,7 +429,7 @@ export function WorkflowPreviewDialog({
                     disabled={isLoadingMore}
                   >
                     {isLoadingMore && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                    Load more
+                    {t("preferences.workflowPreview.loadMore")}
                   </Button>
                 )}
               </div>
@@ -450,12 +452,12 @@ export function WorkflowPreviewDialog({
                 ) : (
                   <Download className="h-4 w-4 mr-2" />
                 )}
-                Export CSV
+                {t("preferences.workflowPreview.exportCSV")}
               </Button>
             )}
           </div>
           <div className="flex gap-2">
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("preferences.workflowPreview.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={onConfirm}
               disabled={isConfirming}

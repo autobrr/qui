@@ -19,6 +19,7 @@ import type { AutomationActivity, AutomationActivityRunItem } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { Copy, Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 const PAGE_SIZE = 200
@@ -31,25 +32,25 @@ function isNotFoundError(error: unknown): boolean {
   )
 }
 
-const actionLabels: Record<AutomationActivity["action"], string> = {
-  deleted_ratio: "Deleted (ratio)",
-  deleted_seeding: "Deleted (seeding)",
-  deleted_unregistered: "Deleted (unregistered)",
-  deleted_condition: "Deleted (condition)",
-  delete_failed: "Delete failed",
-  limit_failed: "Limit failed",
-  tags_changed: "Tags changed",
-  category_changed: "Category changed",
-  speed_limits_changed: "Speed limits changed",
-  share_limits_changed: "Share limits changed",
-  paused: "Paused",
-  resumed: "Resumed",
-  rechecked: "Rechecked",
-  reannounced: "Reannounced",
-  moved: "Moved",
-  external_program: "External program",
-  auto_managed: "Auto managed",
-  dry_run_no_match: "Dry-run (no match)",
+const ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = {
+  deleted_ratio: "preferences.activityRunDialog.actionLabels.deleted_ratio",
+  deleted_seeding: "preferences.activityRunDialog.actionLabels.deleted_seeding",
+  deleted_unregistered: "preferences.activityRunDialog.actionLabels.deleted_unregistered",
+  deleted_condition: "preferences.activityRunDialog.actionLabels.deleted_condition",
+  delete_failed: "preferences.activityRunDialog.actionLabels.delete_failed",
+  limit_failed: "preferences.activityRunDialog.actionLabels.limit_failed",
+  tags_changed: "preferences.activityRunDialog.actionLabels.tags_changed",
+  category_changed: "preferences.activityRunDialog.actionLabels.category_changed",
+  speed_limits_changed: "preferences.activityRunDialog.actionLabels.speed_limits_changed",
+  share_limits_changed: "preferences.activityRunDialog.actionLabels.share_limits_changed",
+  paused: "preferences.activityRunDialog.actionLabels.paused",
+  resumed: "preferences.activityRunDialog.actionLabels.resumed",
+  rechecked: "preferences.activityRunDialog.actionLabels.rechecked",
+  reannounced: "preferences.activityRunDialog.actionLabels.reannounced",
+  moved: "preferences.activityRunDialog.actionLabels.moved",
+  external_program: "preferences.activityRunDialog.actionLabels.external_program",
+  auto_managed: "preferences.activityRunDialog.actionLabels.auto_managed",
+  dry_run_no_match: "preferences.activityRunDialog.actionLabels.dry_run_no_match",
 }
 
 interface AutomationActivityRunDialogProps {
@@ -65,6 +66,7 @@ export function AutomationActivityRunDialog({
   instanceId,
   activity,
 }: AutomationActivityRunDialogProps) {
+  const { t } = useTranslation("instances")
   const [offset, setOffset] = useState(0)
   const [items, setItems] = useState<AutomationActivityRunItem[]>([])
   const [total, setTotal] = useState(0)
@@ -136,8 +138,8 @@ export function AutomationActivityRunDialog({
 
   const notAvailable = runQuery.isError && isNotFoundError(runQuery.error)
   const hasMore = items.length < total && !notAvailable
-  const title = actionLabels[activity.action] ?? "Automation run"
-  const displayTitle = activity.outcome === "dry-run" ? `${title} (dry run)` : title
+  const title = t(ACTION_LABEL_KEYS[activity.action]) ?? activity.action
+  const displayTitle = activity.outcome === "dry-run" ? `${title} (${t("preferences.workflowsOverview.dryRun").toLowerCase()})` : title
 
   const handleLoadMore = () => {
     setOffset((prev) => prev + PAGE_SIZE)
@@ -147,11 +149,11 @@ export function AutomationActivityRunDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-5xl max-h-[85dvh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>{displayTitle} run</DialogTitle>
+          <DialogTitle>{displayTitle} {t("preferences.activityRunDialog.run")}</DialogTitle>
           <DialogDescription>
-            {formatISOTimestamp(activity.createdAt)} - {total} torrent{total === 1 ? "" : "s"} - stored temporarily in memory
+            {formatISOTimestamp(activity.createdAt)} - {total} torrent{total === 1 ? "" : "s"} - {t("preferences.activityRunDialog.storedInMemory")}
             {activity.outcome === "dry-run" && (
-              <span className="block text-xs text-muted-foreground mt-1">Dry run: no changes were applied.</span>
+              <span className="block text-xs text-muted-foreground mt-1">{t("preferences.activityRunDialog.dryRunNote")}</span>
             )}
           </DialogDescription>
         </DialogHeader>
@@ -161,14 +163,14 @@ export function AutomationActivityRunDialog({
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-muted">
                 <tr className="border-b">
-                  <th className="text-left p-2 font-medium">Name</th>
-                  <th className="text-left p-2 font-medium">Hash</th>
-                  <th className="text-left p-2 font-medium">Tracker</th>
-                  <th className="text-left p-2 font-medium">Tags added</th>
-                  <th className="text-left p-2 font-medium">Tags removed</th>
-                  <th className="text-right p-2 font-medium">Size</th>
-                  <th className="text-right p-2 font-medium">Ratio</th>
-                  <th className="text-right p-2 font-medium">Added</th>
+                  <th className="text-left p-2 font-medium">{t("preferences.activityRunDialog.name")}</th>
+                  <th className="text-left p-2 font-medium">{t("preferences.activityRunDialog.hash")}</th>
+                  <th className="text-left p-2 font-medium">{t("preferences.activityRunDialog.tracker")}</th>
+                  <th className="text-left p-2 font-medium">{t("preferences.activityRunDialog.tagsAdded")}</th>
+                  <th className="text-left p-2 font-medium">{t("preferences.activityRunDialog.tagsRemoved")}</th>
+                  <th className="text-right p-2 font-medium">{t("preferences.activityRunDialog.size")}</th>
+                  <th className="text-right p-2 font-medium">{t("preferences.activityRunDialog.ratio")}</th>
+                  <th className="text-right p-2 font-medium">{t("preferences.activityRunDialog.added")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -187,9 +189,9 @@ export function AutomationActivityRunDialog({
                           className="text-muted-foreground hover:text-foreground transition-colors"
                           onClick={() => {
                             copyTextToClipboard(item.hash)
-                            toast.success("Hash copied")
+                            toast.success(t("preferences.activityRunDialog.hashCopied"))
                           }}
-                          title="Copy hash"
+                          title={t("preferences.activityRunDialog.copyHash")}
                         >
                           <Copy className="h-3 w-3" />
                         </button>
@@ -207,7 +209,7 @@ export function AutomationActivityRunDialog({
                                   <span className="text-xs font-medium cursor-default">{tracker.displayName}</span>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  <p className="text-xs">Original: {item.trackerDomain}</p>
+                                  <p className="text-xs">{t("preferences.activityRunDialog.original", { domain: item.trackerDomain })}</p>
                                 </TooltipContent>
                               </Tooltip>
                             ) : (
@@ -259,7 +261,7 @@ export function AutomationActivityRunDialog({
                   <tr>
                     <td colSpan={8} className="p-6 text-center text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin inline-block mr-2" />
-                      Loading...
+                      {t("preferences.activityRunDialog.loading")}
                     </td>
                   </tr>
                 )}
@@ -267,7 +269,7 @@ export function AutomationActivityRunDialog({
                 {notAvailable && (
                   <tr>
                     <td colSpan={8} className="p-6 text-center text-muted-foreground">
-                      Run details not available (in-memory only).
+                      {t("preferences.activityRunDialog.notAvailable")}
                     </td>
                   </tr>
                 )}
@@ -275,7 +277,7 @@ export function AutomationActivityRunDialog({
                 {!runQuery.isLoading && !notAvailable && runQuery.isError && (
                   <tr>
                     <td colSpan={8} className="p-6 text-center text-muted-foreground">
-                      Failed to load run details.
+                      {t("preferences.activityRunDialog.failedToLoad")}
                     </td>
                   </tr>
                 )}
@@ -283,7 +285,7 @@ export function AutomationActivityRunDialog({
                 {!runQuery.isLoading && !notAvailable && !runQuery.isError && items.length === 0 && (
                   <tr>
                     <td colSpan={8} className="p-6 text-center text-muted-foreground">
-                      No torrents recorded for this run.
+                      {t("preferences.activityRunDialog.noTorrents")}
                     </td>
                   </tr>
                 )}
@@ -293,7 +295,7 @@ export function AutomationActivityRunDialog({
 
           {hasMore && (
             <div className="flex items-center justify-between gap-3 p-2 text-xs text-muted-foreground border-t bg-muted/30">
-              <span>Showing {items.length} of {total}</span>
+              <span>{t("preferences.activityRunDialog.showing", { shown: items.length, total })}</span>
               <Button
                 size="sm"
                 variant="secondary"
@@ -301,7 +303,7 @@ export function AutomationActivityRunDialog({
                 disabled={runQuery.isFetching}
               >
                 {runQuery.isFetching && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Load more
+                {t("preferences.activityRunDialog.loadMore")}
               </Button>
             </div>
           )}

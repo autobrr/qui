@@ -28,6 +28,7 @@ import {
 } from "@tanstack/react-table"
 import { Copy, Loader2, Trash2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface CrossSeedTableProps {
@@ -102,6 +103,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
   instanceById,
   onNavigateToTorrent,
 }: CrossSeedTableProps) {
+  const { t } = useTranslation("torrents")
   const [sorting, setSorting] = useState<SortingState>([])
   const { data: trackerIcons } = useTrackerIcons()
   const { data: trackerCustomizations } = useTrackerCustomizations()
@@ -133,7 +135,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       size: 30,
     }),
     columnHelper.accessor("name", {
-      header: "Name",
+      header: t("crossSeedTable.name"),
       cell: (info) => {
         const name = incognitoMode? getLinuxFileName(info.row.original.hash, 0): info.getValue()
         const isHardlink = isHardlinkManaged(info.row.original, instanceById.get(info.row.original.instanceId))
@@ -151,11 +153,11 @@ export const CrossSeedTable = memo(function CrossSeedTable({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0 text-blue-500 border-blue-500/40">
-                    Hardlink
+                    {t("crossSeedTable.hardlink")}
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="text-xs">Files stored in hardlink directory (separate from source)</p>
+                  <p className="text-xs">{t("crossSeedTable.hardlinkTooltip")}</p>
                 </TooltipContent>
               </Tooltip>
             )}
@@ -165,14 +167,14 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       size: 300,
     }),
     columnHelper.accessor("instanceName", {
-      header: "Instance",
+      header: t("crossSeedTable.instance"),
       cell: (info) => (
         <span className="truncate block">{info.getValue()}</span>
       ),
       size: 70,
     }),
     columnHelper.accessor("matchType", {
-      header: "Match",
+      header: t("crossSeedTable.match"),
       cell: (info) => {
         const { label, description } = getMatchTypeLabel(info.getValue() as string)
         return (
@@ -189,7 +191,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       size: 70,
     }),
     columnHelper.accessor("tracker", {
-      header: "Tracker",
+      header: t("crossSeedTable.tracker"),
       cell: (info) => {
         const tracker = info.getValue()
         if (!tracker) return <span className="text-muted-foreground">-</span>
@@ -225,7 +227,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       size: 130,
     }),
     columnHelper.accessor("state", {
-      header: "Status",
+      header: t("crossSeedTable.status"),
       cell: (info) => {
         const { label, variant, className } = getStatusInfo(info.row.original)
         return (
@@ -237,7 +239,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       size: 90,
     }),
     columnHelper.accessor("progress", {
-      header: "Progress",
+      header: t("crossSeedTable.progress"),
       cell: (info) => {
         const progress = info.getValue() * 100
         const isComplete = progress === 100
@@ -253,14 +255,14 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       size: 85,
     }),
     columnHelper.accessor("size", {
-      header: "Size",
+      header: t("crossSeedTable.size"),
       cell: (info) => (
         <span className="tabular-nums">{formatBytes(info.getValue())}</span>
       ),
       size: 80,
     }),
     columnHelper.accessor("save_path", {
-      header: "Save Path",
+      header: t("crossSeedTable.savePath"),
       cell: (info) => {
         const path = info.getValue()
         if (!path) return <span className="text-muted-foreground">-</span>
@@ -283,9 +285,9 @@ export const CrossSeedTable = memo(function CrossSeedTable({
               onClick={(e) => {
                 e.stopPropagation()
                 copyTextToClipboard(path).then(() => {
-                  toast.success("Save path copied")
+                  toast.success(t("crossSeedTable.toast.savePathCopied"))
                 }).catch(() => {
-                  toast.error("Failed to copy")
+                  toast.error(t("crossSeedTable.toast.copyFailed"))
                 })
               }}
             >
@@ -318,7 +320,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
   if (matches.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        No matching torrents found on other instances
+        {t("crossSeedTable.noMatches", { defaultValue: "No matching torrents found on other instances" })}
       </div>
     )
   }
@@ -329,7 +331,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       <div className="flex items-center justify-between px-3 py-1.5 border-b text-xs gap-2">
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">
-            {selectedTorrents.size > 0? `${selectedTorrents.size} of ${matches.length} selected`: `${matches.length} match${matches.length !== 1 ? "es" : ""}`}
+            {selectedTorrents.size > 0 ? `${selectedTorrents.size} of ${matches.length} selected` : `${matches.length} match${matches.length !== 1 ? "es" : ""}`}
           </span>
           {loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
         </div>
@@ -342,7 +344,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
                 className="h-6 text-xs"
                 onClick={onDeselectAll}
               >
-                Deselect
+                {t("detailsPanel.deselectAll")}
               </Button>
               <Button
                 variant="destructive"
@@ -361,7 +363,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
               className="h-6 text-xs"
               onClick={onSelectAll}
             >
-              Select All
+              {t("detailsPanel.selectAll")}
             </Button>
           )}
           <Button

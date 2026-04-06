@@ -529,6 +529,35 @@
     }
   },
   "filterSidebar": {
+    "title": "Filters",
+    "clearAll": "Clear all",
+    "loading": "Loading...",
+    "filterTips": "Left click cycles include and neutral. Cmd/Ctrl + click or a long press toggles exclusion.",
+    "filterSelectionTips": "Filter selection tips",
+    "instanceDisabled": "This instance is disabled. Enable it from Settings \u2192 Instances to use filters.",
+    "viewMode": "View Mode",
+    "viewModeNormal": "Normal",
+    "viewModeCompact": "Compact",
+    "viewModeUltra": "Ultra",
+    "viewModeFullCards": "Full torrent cards",
+    "viewModeCompactCards": "Compact cards",
+    "viewModeUltraCompact": "Ultra compact",
+    "status": "Status",
+    "categories": "Categories",
+    "tags": "Tags",
+    "trackers": "Trackers",
+    "customExpression": "Custom Expression",
+    "untagged": "Untagged",
+    "noTracker": "No tracker",
+    "showHidden": "Show {{count}} hidden",
+    "searchCategories": "Search categories",
+    "searchTags": "Search tags",
+    "searchTrackers": "Search trackers",
+    "hiddenMatchSearch": "{{count}} hidden match search",
+    "createTag": "Create tag",
+    "createCategory": "Create category",
+    "deleteUnusedTags": "Delete unused tags",
+    "editTracker": "Edit tracker URL",
     "states": {
       "downloading": "Downloading",
       "uploading": "Seeding",
@@ -737,6 +766,7 @@
         "description": "Same release (matched by metadata)"
       }
     },
+    "noMatches": "No matching torrents found on other instances",
     "toast": {
       "savePathCopied": "Save path copied",
       "copyFailed": "Failed to copy"

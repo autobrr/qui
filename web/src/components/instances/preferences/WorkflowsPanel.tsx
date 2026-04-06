@@ -24,6 +24,7 @@ import type { Automation } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Folder, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Tag, Terminal, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { WorkflowDialog } from "./WorkflowDialog"
 
@@ -61,6 +62,7 @@ function getTagActions(rule: Automation) {
 }
 
 export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelProps) {
+  const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<Automation | null>(null)
@@ -74,11 +76,11 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
   const deleteRule = useMutation({
     mutationFn: (ruleId: number) => api.deleteAutomation(instanceId, ruleId),
     onSuccess: () => {
-      toast.success("Workflow deleted")
+      toast.success(t("preferences.workflows.toast.workflowDeleted"))
       void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to delete automation")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflows.toast.deleteAutomationFailed"))
     },
   })
 
@@ -95,17 +97,17 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
       void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to toggle rule")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflows.toast.toggleRuleFailed"))
     },
   })
 
   const applyRules = useMutation({
     mutationFn: () => api.applyAutomations(instanceId),
     onSuccess: () => {
-      toast.success("Workflows applied")
+      toast.success(t("preferences.workflows.toast.workflowsApplied"))
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to apply automations")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflows.toast.applyAutomationsFailed"))
     },
   })
 
@@ -141,18 +143,18 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       {variant === "card" && (
         <div className="space-y-1">
-          <h3 className="text-lg font-semibold">Workflows</h3>
-          <p className="text-sm text-muted-foreground">Automatic limits and deletion.</p>
+          <h3 className="text-lg font-semibold">{t("preferences.workflows.title")}</h3>
+          <p className="text-sm text-muted-foreground">{t("preferences.workflows.description")}</p>
         </div>
       )}
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" size="sm" onClick={() => applyRules.mutate()} disabled={applyRules.isPending}>
           {applyRules.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-          Apply now
+          {t("preferences.workflows.applyNow")}
         </Button>
         <Button size="sm" onClick={openForCreate}>
           <Plus className="h-4 w-4 mr-2" />
-          Add rule
+          {t("preferences.workflows.addRule")}
         </Button>
       </div>
     </div>
@@ -163,10 +165,10 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
       {rulesQuery.isLoading ? (
         <div className="flex items-center gap-2 text-muted-foreground text-sm">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Loading rules...
+          {t("preferences.workflows.loadingRules")}
         </div>
       ) : (sortedRules?.length ?? 0) === 0 ? (
-        <p className="text-muted-foreground text-sm">No automations yet. Add one to start enforcing per-tracker limits.</p>
+        <p className="text-muted-foreground text-sm">{t("preferences.workflows.noAutomations")}</p>
       ) : (
         <div className="space-y-2">
           {sortedRules.map((rule) => {
@@ -231,7 +233,7 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
                       <span className={cn("font-medium truncate", !rule.enabled && "text-muted-foreground")}>{rule.name}</span>
                       {!rule.enabled && (
                         <Badge variant="outline" className="shrink-0 text-muted-foreground">
-                          Disabled
+                          {t("preferences.workflows.disabled")}
                         </Badge>
                       )}
                     </div>
@@ -257,13 +259,13 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
     <AlertDialog open={!!deleteConfirmRule} onOpenChange={(open) => !open && setDeleteConfirmRule(null)}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete Rule</AlertDialogTitle>
+          <AlertDialogTitle>{t("preferences.workflows.deleteDialog.title")}</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete "{deleteConfirmRule?.name}"? This action cannot be undone.
+            {t("preferences.workflows.deleteDialog.description", { name: deleteConfirmRule?.name })}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("preferences.workflows.deleteDialog.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => {
               if (deleteConfirmRule) {
@@ -273,7 +275,7 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
             }}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            Delete
+            {t("preferences.workflows.deleteDialog.delete")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -318,6 +320,7 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
 }
 
 function RuleSummary({ rule }: { rule: Automation }) {
+  const { t } = useTranslation("instances")
   const trackers = parseTrackerDomains(rule)
   const isAllTrackers = rule.trackerPattern === "*"
   const conditions = rule.conditions
@@ -332,13 +335,13 @@ function RuleSummary({ rule }: { rule: Automation }) {
     conditions?.externalProgram?.enabled
 
   if (!hasActions && !isAllTrackers && trackers.length === 0) {
-    return <span className="text-xs text-muted-foreground">No actions set</span>
+    return <span className="text-xs text-muted-foreground">{t("preferences.workflows.noActionsSet")}</span>
   }
 
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
       {isAllTrackers ? (
-        <Badge variant="outline" className="text-[11px] cursor-default">All trackers</Badge>
+        <Badge variant="outline" className="text-[11px] cursor-default">{t("preferences.workflows.allTrackers")}</Badge>
       ) : trackers.length > 0 && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -366,7 +369,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-help">
               <ArrowUp className="h-3 w-3 text-muted-foreground/70" />
-              Speed limits
+              {t("preferences.workflows.speedLimits")}
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
@@ -388,7 +391,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal cursor-help">
               <Scale className="h-3 w-3 text-muted-foreground/70" />
-              Share limits
+              {t("preferences.workflows.shareLimits")}
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
@@ -408,7 +411,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
       {conditions?.pause?.enabled && (
         <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-yellow-600 border-yellow-600/50 cursor-default">
           <Pause className="h-3 w-3" />
-          Pause
+          {t("preferences.workflows.pause")}
         </Badge>
       )}
 
@@ -416,7 +419,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
       {conditions?.recheck?.enabled && (
         <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-orange-600 border-orange-600/50 cursor-default">
           <RefreshCw className="h-3 w-3" />
-          Recheck
+          {t("preferences.workflows.recheck")}
         </Badge>
       )}
 
@@ -424,7 +427,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
       {conditions?.reannounce?.enabled && (
         <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-fuchsia-600 border-fuchsia-600/50 cursor-default">
           <RefreshCw className="h-3 w-3" />
-          Reannounce
+          {t("preferences.workflows.reannounce")}
         </Badge>
       )}
 
@@ -432,7 +435,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
       {conditions?.autoManagement != null && (
         <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-cyan-600 border-cyan-600/50 cursor-default">
           <Folder className="h-3 w-3" />
-          {conditions.autoManagement.enabled ? "AutoTMM on" : "AutoTMM off"}
+          {conditions.autoManagement.enabled ? t("preferences.workflows.autoTmmOn") : t("preferences.workflows.autoTmmOff")}
         </Badge>
       )}
 
@@ -442,16 +445,16 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-destructive border-destructive/50 cursor-help">
               <Trash2 className="h-3 w-3" />
-              Delete
+              {t("preferences.workflows.delete")}
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
             <p>{
               {
-                deleteWithFilesPreserveCrossSeeds: "Delete with files (preserve cross-seeds)",
-                deleteWithFilesIncludeCrossSeeds: "Delete with files (include cross-seeds)",
-                deleteWithFiles: "Delete with files",
-              }[conditions.delete.mode as string] ?? "Delete (keep files)"
+                deleteWithFilesPreserveCrossSeeds: t("preferences.workflows.deleteWithFilesPreserveCrossSeeds"),
+                deleteWithFilesIncludeCrossSeeds: t("preferences.workflows.deleteWithFilesIncludeCrossSeeds"),
+                deleteWithFiles: t("preferences.workflows.deleteWithFiles"),
+              }[conditions.delete.mode as string] ?? t("preferences.workflows.deleteKeepFiles")
             }</p>
           </TooltipContent>
         </Tooltip>
@@ -469,9 +472,9 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipContent>
             {getTagActions(rule).map((action, index) => (
               <p key={index}>
-                #{index + 1}: {action.useTrackerAsTag ? "Tracker-derived tag" : (action.tags?.join(", ") || "No tags")}
+                #{index + 1}: {action.useTrackerAsTag ? t("preferences.workflows.trackerDerivedTag") : (action.tags?.join(", ") || t("preferences.workflows.noTags"))}
                 {" "}
-                ({action.mode === "full" ? "Full sync" : action.mode === "add" ? "Add only" : "Remove only"})
+                ({action.mode === "full" ? t("preferences.workflows.fullSync") : action.mode === "add" ? t("preferences.workflows.addOnly") : t("preferences.workflows.removeOnly")})
               </p>
             ))}
           </TooltipContent>
@@ -488,7 +491,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Move to category: {conditions.category.category}</p>
+            <p>{t("preferences.workflows.moveToCategory", { category: conditions.category.category })}</p>
           </TooltipContent>
         </Tooltip>
       )}
@@ -499,11 +502,11 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-teal-600 border-teal-600/50 cursor-help">
               <Terminal className="h-3 w-3" />
-              External program
+              {t("preferences.workflows.externalProgram")}
             </Badge>
           </TooltipTrigger>
           <TooltipContent>
-            <p>Program ID: {conditions.externalProgram.programId ?? "-"}</p>
+            <p>{t("preferences.workflows.programId", { id: conditions.externalProgram.programId ?? "-" })}</p>
           </TooltipContent>
         </Tooltip>
       )}

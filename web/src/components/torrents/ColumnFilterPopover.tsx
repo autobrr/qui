@@ -22,6 +22,7 @@ import { type ColumnFilter, getDefaultOperation, getOperations } from "@/lib/col
 import { cn } from "@/lib/utils"
 import { CaseSensitive, Check, Filter, X } from "lucide-react"
 import { type KeyboardEvent, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 interface ColumnFilterPopoverProps {
   columnId: string
@@ -118,6 +119,7 @@ function ValueInput({
   options,
   multiSelect,
 }: ValueInputProps) {
+  const { t } = useTranslation("torrents")
   const isSizeColumn = columnType === "size"
   const isSpeedColumn = columnType === "speed"
   const isDurationColumn = columnType === "duration"
@@ -133,7 +135,7 @@ function ValueInput({
           type="number"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Enter size..."
+          placeholder={t("columnFilter.enterSize")}
           onKeyDown={onKeyDown}
           className="flex-1"
         />
@@ -163,7 +165,7 @@ function ValueInput({
           type="number"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Enter speed..."
+          placeholder={t("columnFilter.enterSpeed")}
           onKeyDown={onKeyDown}
           className="flex-1"
         />
@@ -193,7 +195,7 @@ function ValueInput({
           type="number"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Enter duration..."
+          placeholder={t("columnFilter.enterDuration")}
           onKeyDown={onKeyDown}
           className="flex-1"
         />
@@ -223,7 +225,7 @@ function ValueInput({
           type="number"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Enter percentage..."
+          placeholder={t("columnFilter.enterPercentage")}
           onKeyDown={onKeyDown}
           className="pr-8"
         />
@@ -241,11 +243,11 @@ function ValueInput({
         onValueChange={onChange}
       >
         <SelectTrigger>
-          <SelectValue placeholder="Select value" />
+          <SelectValue placeholder={t("columnFilter.selectValue")} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="true">True</SelectItem>
-          <SelectItem value="false">False</SelectItem>
+          <SelectItem value="true">{t("columnFilter.true")}</SelectItem>
+          <SelectItem value="false">{t("columnFilter.false")}</SelectItem>
         </SelectContent>
       </Select>
     )
@@ -267,7 +269,7 @@ function ValueInput({
           <Command className="border rounded-md">
             <CommandInput placeholder="Search..." className="h-8" />
             <CommandList className="max-h-[200px]">
-              <CommandEmpty>No results found.</CommandEmpty>
+              <CommandEmpty>{t("columnFilter.noResults")}</CommandEmpty>
               <CommandGroup>
                 {enumOptions.map((option) => {
                   const isSelected = selectedValues.includes(option.value)
@@ -299,7 +301,7 @@ function ValueInput({
               onClick={() => onChange("")}
               className="h-8 w-full"
             >
-              Clear filters
+              {t("columnFilter.clearFilters")}
             </Button>
           )}
         </div>
@@ -312,7 +314,7 @@ function ValueInput({
         onValueChange={onChange}
       >
         <SelectTrigger>
-          <SelectValue placeholder="Select status" />
+          <SelectValue placeholder={t("columnFilter.selectStatus")} />
         </SelectTrigger>
         <SelectContent>
           {enumOptions.map((option) => (
@@ -332,7 +334,7 @@ function ValueInput({
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Enter value..."
+          placeholder={t("columnFilter.enterValue")}
           onKeyDown={onKeyDown}
           className="flex-1"
         />
@@ -348,7 +350,7 @@ function ValueInput({
               <CaseSensitive className="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{caseSensitive ? "Match case (click to ignore)" : "Ignore case (click to match)"}</TooltipContent>
+          <TooltipContent>{caseSensitive ? t("columnFilter.matchCase") : t("columnFilter.ignoreCase")}</TooltipContent>
         </Tooltip>
       </div>
     )
@@ -359,7 +361,7 @@ function ValueInput({
       type={columnType === "number" ? "number" : columnType === "date" ? "date" : "text"}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      placeholder={`Enter ${columnType === "number" ? "number" : "value"}...`}
+      placeholder={columnType === "number" ? t("columnFilter.enterNumber") : t("columnFilter.enterValue")}
       onKeyDown={onKeyDown}
     />
   )
@@ -374,6 +376,7 @@ export function ColumnFilterPopover({
   options,
   multiSelect,
 }: ColumnFilterPopoverProps) {
+  const { t } = useTranslation("torrents")
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const lastScrollPosition = useRef({ left: 0, top: 0 })
 
@@ -547,20 +550,20 @@ export function ColumnFilterPopover({
       >
         <div className="grid gap-4">
           <div className="space-y-2">
-            <h4 className="font-medium leading-none">Filter {columnName}</h4>
+            <h4 className="font-medium leading-none">{t("columnFilter.filterColumn", { column: columnName })}</h4>
             <p className="text-sm text-muted-foreground">
-              Set conditions to filter this column
+              {t("columnFilter.setConditions")}
             </p>
           </div>
           {!multiSelect && (
             <div className="grid gap-2">
-              <Label htmlFor="operation">Operation</Label>
+              <Label htmlFor="operation">{t("columnFilter.operation")}</Label>
               <Select
                 value={operation}
                 onValueChange={(value) => setOperation(value as FilterOperation)}
               >
                 <SelectTrigger id="operation">
-                  <SelectValue placeholder="Select operation" />
+                  <SelectValue placeholder={t("columnFilter.selectOperation")} />
                 </SelectTrigger>
                 <SelectContent>
                   {operations.map((op) => (
@@ -573,7 +576,7 @@ export function ColumnFilterPopover({
             </div>
           )}
           <div className="grid gap-2">
-            <Label htmlFor="value">{isBetweenOperation ? "From" : "Value"}</Label>
+            <Label htmlFor="value">{isBetweenOperation ? t("columnFilter.from") : t("columnFilter.value")}</Label>
             <ValueInput
               columnType={columnType}
               value={value}
@@ -599,7 +602,7 @@ export function ColumnFilterPopover({
           </div>
           {isBetweenOperation && (
             <div className="grid gap-2">
-              <Label htmlFor="value2">To</Label>
+              <Label htmlFor="value2">{t("columnFilter.to")}</Label>
               <ValueInput
                 columnType={columnType}
                 value={value2}
@@ -625,7 +628,7 @@ export function ColumnFilterPopover({
           )}
           <div className="flex gap-2">
             <Button onClick={handleApply} className="flex-1">
-              Apply Filter
+              {t("columnFilter.applyFilter")}
             </Button>
             {hasActiveFilter && (
               <Button onClick={handleClear} variant="outline" size="icon">

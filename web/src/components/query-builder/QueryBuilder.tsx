@@ -19,6 +19,7 @@ import {
   sortableKeyboardCoordinates
 } from "@dnd-kit/sortable";
 import { useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { ConditionGroup, parseDropZoneID } from "./ConditionGroup";
 import type { DisabledField, DisabledStateValue } from "./constants";
 
@@ -54,6 +55,7 @@ export function QueryBuilder({
   disabledStateValues,
   groupOptions,
 }: QueryBuilderProps) {
+  const { t } = useTranslation("automations");
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -221,13 +223,13 @@ export function QueryBuilder({
       <div className={className}>
         <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-4 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium">No conditions</p>
+            <p className="text-sm font-medium">{t("queryBuilder.noConditions")}</p>
             <p className="text-xs text-muted-foreground">
-              Matches all torrents (subject to tracker selection).
+              {t("queryBuilder.matchesAllTorrents")}
             </p>
           </div>
           <Button type="button" variant="outline" size="sm" onClick={addFirstCondition}>
-            Add condition
+            {t("queryBuilder.addCondition")}
           </Button>
         </div>
       </div>

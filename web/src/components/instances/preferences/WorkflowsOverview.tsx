@@ -79,6 +79,7 @@ import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { WorkflowDialog } from "./WorkflowDialog"
@@ -313,6 +314,7 @@ export function WorkflowsOverview({
   expandedInstances: controlledExpanded,
   onExpandedInstancesChange,
 }: WorkflowsOverviewProps) {
+  const { t } = useTranslation("instances")
   const { instances } = useInstances()
   const queryClient = useQueryClient()
 
@@ -378,7 +380,7 @@ export function WorkflowsOverview({
       if (context?.previousRules) {
         queryClient.setQueryData<Automation[]>(["automations", instanceId], context.previousRules)
       }
-      toast.error(error instanceof Error ? error.message : "Failed to reorder workflows")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.reorderFailed"))
     },
     onSettled: (_, __, { instanceId }) => {
       void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
@@ -436,11 +438,11 @@ export function WorkflowsOverview({
     mutationFn: ({ instanceId, ruleId }: { instanceId: number; ruleId: number }) =>
       api.deleteAutomation(instanceId, ruleId),
     onSuccess: (_, { instanceId }) => {
-      toast.success("Workflow deleted")
+      toast.success(t("preferences.workflowsOverview.toast.workflowDeleted"))
       void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to delete automation")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.deleteAutomationFailed"))
     },
   })
 
@@ -451,7 +453,7 @@ export function WorkflowsOverview({
       void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to toggle rule")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.toggleRuleFailed"))
     },
   })
 
@@ -471,11 +473,11 @@ export function WorkflowsOverview({
       return api.dryRunAutomation(instanceId, payload)
     },
     onSuccess: (_, { instanceId, rule }) => {
-      toast.success(`Dry-run completed for "${rule.name}"`)
+      toast.success(t("preferences.workflowsOverview.toast.dryRunCompleted", { name: rule.name }))
       void queryClient.invalidateQueries({ queryKey: ["automation-activity", instanceId] })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to run dry-run")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.dryRunFailed"))
     },
   })
 
@@ -550,9 +552,9 @@ export function WorkflowsOverview({
     const json = toExportJSON(exportData)
     try {
       await copyTextToClipboard(json)
-      toast.success("Workflow copied to clipboard")
+      toast.success(t("preferences.workflowsOverview.toast.workflowCopied"))
     } catch {
-      toast.error("Failed to copy to clipboard")
+      toast.error(t("preferences.workflowsOverview.toast.copyFailed"))
     }
   }, [])
 
@@ -819,9 +821,9 @@ export function WorkflowsOverview({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Workflows</CardTitle>
+          <CardTitle className="text-lg font-semibold">{t("preferences.workflowsOverview.title")}</CardTitle>
           <CardDescription>
-            No instances configured. Add one in Settings to use this service.
+            {t("preferences.workflowsOverview.noInstancesDescription")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -832,7 +834,7 @@ export function WorkflowsOverview({
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">Workflows</CardTitle>
+          <CardTitle className="text-lg font-semibold">{t("preferences.workflowsOverview.title")}</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -847,7 +849,7 @@ export function WorkflowsOverview({
           </Tooltip>
         </div>
         <CardDescription>
-          Automate torrent management with conditional rules.
+          {t("preferences.workflowsOverview.description")}
         </CardDescription>
       </CardHeader>
 
@@ -1532,13 +1534,13 @@ export function WorkflowsOverview({
       <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Rule</AlertDialogTitle>
+            <AlertDialogTitle>{t("preferences.workflowsOverview.deleteDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteConfirm?.rule.name}"? This action cannot be undone.
+              {t("preferences.workflowsOverview.deleteDialog.description", { name: deleteConfirm?.rule.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("preferences.workflowsOverview.deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (deleteConfirm) {
@@ -1548,7 +1550,7 @@ export function WorkflowsOverview({
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("preferences.workflowsOverview.deleteDialog.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1610,9 +1612,9 @@ export function WorkflowsOverview({
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Import Workflow</DialogTitle>
+            <DialogTitle>{t("preferences.workflowsOverview.importDialog.title")}</DialogTitle>
             <DialogDescription>
-              Paste a workflow JSON to import. The workflow will be created disabled and appended to the end.
+              {t("preferences.workflowsOverview.importDialog.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
