@@ -50,6 +50,36 @@ function loadLocale(namespace) {
 const files = walk(srcRoot)
 const localeCache = new Map()
 const missingKeys = []
+const hardcodedStringErrors = []
+
+const hardcodedStringChecks = [
+  {
+    file: "src/pages/Search.tsx",
+    literals: [
+      "Try: \"Sample Movie 2024\"",
+      "\"IMDb ID\"",
+      "\"Prowlarr\"",
+      "\"No enabled indexers available. Please add and enable indexers in the\"",
+    ],
+  },
+  {
+    file: "src/components/instances/preferences/WorkflowPreviewDialog.tsx",
+    literals: [
+      "\"Seeders\"",
+      "\"Hardlinks\"",
+      "\"Unregistered\"",
+    ],
+  },
+  {
+    file: "src/lib/dateTimeUtils.ts",
+    literals: [
+      "\"Just now\"",
+      "\"Today\"",
+      "\"Yesterday\"",
+      "\"N/A\"",
+    ],
+  },
+]
 
 for (const file of files) {
   const source = fs.readFileSync(file, "utf8")
@@ -78,10 +108,29 @@ for (const file of files) {
   }
 }
 
+for (const check of hardcodedStringChecks) {
+  const filePath = path.join(webRoot, check.file)
+  const source = fs.readFileSync(filePath, "utf8")
+
+  for (const literal of check.literals) {
+    if (source.includes(literal)) {
+      hardcodedStringErrors.push(`${check.file}: contains hardcoded UI string ${literal}`)
+    }
+  }
+}
+
 if (missingKeys.length > 0) {
   console.error("Missing translation keys:\n")
   for (const key of missingKeys.sort()) {
     console.error(`- ${key}`)
+  }
+  process.exit(1)
+}
+
+if (hardcodedStringErrors.length > 0) {
+  console.error("Hardcoded UI strings:\n")
+  for (const error of hardcodedStringErrors.sort()) {
+    console.error(`- ${error}`)
   }
   process.exit(1)
 }

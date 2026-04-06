@@ -124,5 +124,29 @@
   "numberInput": {
     "unlimited": "Unlimited",
     "useUnlimited": " (use -1 for unlimited)"
+  },
+  "dateTime": {
+    "na": "N/A",
+    "justNow": "Just now",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "past": "{{value}} ago",
+    "future": "in {{value}}",
+    "units": {
+      "second_one": "{{count}} second",
+      "second_other": "{{count}} seconds",
+      "minute_one": "{{count}} minute",
+      "minute_other": "{{count}} minutes",
+      "hour_one": "{{count}} hour",
+      "hour_other": "{{count}} hours",
+      "day_one": "{{count}} day",
+      "day_other": "{{count}} days",
+      "week_one": "{{count}} week",
+      "week_other": "{{count}} weeks",
+      "month_one": "{{count}} month",
+      "month_other": "{{count}} months",
+      "year_one": "{{count}} year",
+      "year_other": "{{count}} years"
+    }
   }
 }

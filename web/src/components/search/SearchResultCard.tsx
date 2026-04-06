@@ -104,7 +104,7 @@ export function SearchResultCard({
                           onAddTorrent(instance.id)
                         }}
                       >
-                        {instance.name}{!instance.connected ? " (offline)" : ""}
+                        {instance.connected ? instance.name : t("card.addToNamedOffline", { name: instance.name })}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuSubContent>

@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { TFunction } from "i18next"
+
 // Shared helpers for deriving Torznab parameters from UI selections
 // Mirrors backend category groupings in internal/services/jackett.
 
@@ -34,22 +36,44 @@ const PARENT_CATEGORY_TO_TYPE: Record<number, NonAutoSearchType> = {
   7000: "books",
 }
 
-export const SEARCH_TYPE_OPTIONS: SearchTypeOption[] = [
-  { value: "auto", label: "Auto detect", description: "Automatically infer the right categories" },
-  { value: "movies", label: "Movies" },
-  { value: "tv", label: "TV" },
-  { value: "music", label: "Music" },
-  { value: "books", label: "Books & comics" },
-  { value: "apps", label: "Apps & games" },
-  { value: "xxx", label: "Adult" },
-]
+const SEARCH_TYPE_KEYS: Record<SearchType, { label: string; description?: string }> = {
+  auto: {
+    label: "searchTypes.auto.label",
+    description: "searchTypes.auto.description",
+  },
+  movies: {
+    label: "searchTypes.movies.label",
+  },
+  tv: {
+    label: "searchTypes.tv.label",
+  },
+  music: {
+    label: "searchTypes.music.label",
+  },
+  books: {
+    label: "searchTypes.books.label",
+  },
+  apps: {
+    label: "searchTypes.apps.label",
+  },
+  xxx: {
+    label: "searchTypes.xxx.label",
+  },
+}
+
+export function getSearchTypeOptions(t: TFunction): SearchTypeOption[] {
+  return (Object.keys(SEARCH_TYPE_KEYS) as SearchType[]).map((value) => ({
+    value,
+    label: t(SEARCH_TYPE_KEYS[value].label),
+    description: SEARCH_TYPE_KEYS[value].description ? t(SEARCH_TYPE_KEYS[value].description) : undefined,
+  }))
+}
 
 export function getCategoriesForSearchType(type: SearchType): number[] | undefined {
   if (type === "auto") {
     return undefined
   }
 
-  // Return a new array so callers can mutate safely.
   return [...SEARCH_TYPE_CATEGORY_MAP[type]]
 }
 
@@ -72,7 +96,7 @@ export function inferSearchTypeFromCategories(categories?: number[]): SearchType
   return allSameFamily ? firstType : null
 }
 
-export function getSearchTypeLabel(type: SearchType): string {
-  const match = SEARCH_TYPE_OPTIONS.find((option) => option.value === type)
-  return match?.label ?? "Auto detect"
+export function getSearchTypeLabel(type: SearchType, t: TFunction): string {
+  const key = SEARCH_TYPE_KEYS[type]
+  return key ? t(key.label) : t("searchTypes.auto.label")
 }

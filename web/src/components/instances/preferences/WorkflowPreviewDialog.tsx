@@ -103,135 +103,141 @@ type ColumnDef = {
   render: (t: AutomationPreviewTorrent) => React.ReactNode
 }
 
-const DYNAMIC_COLUMNS: ColumnDef[] = [
-  {
-    key: "numComplete",
-    header: "Seeders",
-    align: "right",
-    triggerFields: ["NUM_COMPLETE", "NUM_SEEDS"],
-    render: (t) => (
-      <span className="font-mono text-muted-foreground">
-        {t.numComplete}
-        {t.numSeeds > 0 && <span className="text-xs ml-1">({t.numSeeds})</span>}
-      </span>
-    ),
-  },
-  {
-    key: "numIncomplete",
-    header: "Leechers",
-    align: "right",
-    triggerFields: ["NUM_INCOMPLETE", "NUM_LEECHS"],
-    render: (t) => (
-      <span className="font-mono text-muted-foreground">
-        {t.numIncomplete}
-        {t.numLeechs > 0 && <span className="text-xs ml-1">({t.numLeechs})</span>}
-      </span>
-    ),
-  },
-  {
-    key: "progress",
-    header: "Progress",
-    align: "right",
-    triggerFields: ["PROGRESS"],
-    render: (t) => (
-      <span className="font-mono text-muted-foreground">
-        {(t.progress * 100).toFixed(1)}%
-      </span>
-    ),
-  },
-  {
-    key: "availability",
-    header: "Avail",
-    align: "right",
-    triggerFields: ["AVAILABILITY"],
-    render: (t) => (
-      <span className="font-mono text-muted-foreground">
-        {t.availability.toFixed(2)}
-      </span>
-    ),
-  },
-  {
-    key: "addedAge",
-    header: "Added",
-    align: "right",
-    triggerFields: ["ADDED_ON", "ADDED_ON_AGE"],
-    render: (t) => (
-      <span className="font-mono text-muted-foreground whitespace-nowrap">
-        {formatDurationCompact(Math.floor(Date.now() / 1000) - t.addedOn)}
-      </span>
-    ),
-  },
-  {
-    key: "completedAge",
-    header: "Completed",
-    align: "right",
-    triggerFields: ["COMPLETION_ON", "COMPLETION_ON_AGE"],
-    render: (t) => (
-      <span className="font-mono text-muted-foreground whitespace-nowrap">
-        {t.completionOn > 0? formatDurationCompact(Math.floor(Date.now() / 1000) - t.completionOn): "-"}
-      </span>
-    ),
-  },
-  {
-    key: "lastActivityAge",
-    header: "Inactive",
-    align: "right",
-    triggerFields: ["LAST_ACTIVITY", "LAST_ACTIVITY_AGE"],
-    render: (t) => (
-      <span className="font-mono text-muted-foreground whitespace-nowrap">
-        {t.lastActivity > 0? formatDurationCompact(Math.floor(Date.now() / 1000) - t.lastActivity): "-"}
-      </span>
-    ),
-  },
-  {
-    key: "timeActive",
-    header: "Active",
-    align: "right",
-    triggerFields: ["TIME_ACTIVE"],
-    render: (t) => (
-      <span className="font-mono text-muted-foreground whitespace-nowrap">
-        {formatDurationCompact(t.timeActive)}
-      </span>
-    ),
-  },
-  {
-    key: "state",
-    header: "State",
-    align: "center",
-    triggerFields: ["STATE"],
-    render: (t) => (
-      <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-        {getLabelFromValues(TORRENT_STATES, t.state)}
-      </span>
-    ),
-  },
-  {
-    key: "hardlinkScope",
-    header: "Hardlinks",
-    align: "center",
-    triggerFields: ["HARDLINK_SCOPE"],
-    render: (t) => (
-      t.hardlinkScope ? (
+function createDynamicColumns(
+  t: ReturnType<typeof useTranslation>["t"],
+  translateTorrentState: (value: string) => string,
+  translateHardlinkScope: (value: string) => string
+): ColumnDef[] {
+  return [
+    {
+      key: "numComplete",
+      header: t("preferences.workflowPreview.seeders"),
+      align: "right",
+      triggerFields: ["NUM_COMPLETE", "NUM_SEEDS"],
+      render: (torrent) => (
+        <span className="font-mono text-muted-foreground">
+          {torrent.numComplete}
+          {torrent.numSeeds > 0 && <span className="text-xs ml-1">({torrent.numSeeds})</span>}
+        </span>
+      ),
+    },
+    {
+      key: "numIncomplete",
+      header: t("preferences.workflowPreview.leechers"),
+      align: "right",
+      triggerFields: ["NUM_INCOMPLETE", "NUM_LEECHS"],
+      render: (torrent) => (
+        <span className="font-mono text-muted-foreground">
+          {torrent.numIncomplete}
+          {torrent.numLeechs > 0 && <span className="text-xs ml-1">({torrent.numLeechs})</span>}
+        </span>
+      ),
+    },
+    {
+      key: "progress",
+      header: t("preferences.workflowPreview.progress"),
+      align: "right",
+      triggerFields: ["PROGRESS"],
+      render: (torrent) => (
+        <span className="font-mono text-muted-foreground">
+          {(torrent.progress * 100).toFixed(1)}%
+        </span>
+      ),
+    },
+    {
+      key: "availability",
+      header: t("preferences.workflowPreview.availability"),
+      align: "right",
+      triggerFields: ["AVAILABILITY"],
+      render: (torrent) => (
+        <span className="font-mono text-muted-foreground">
+          {torrent.availability.toFixed(2)}
+        </span>
+      ),
+    },
+    {
+      key: "addedAge",
+      header: t("preferences.workflowPreview.added"),
+      align: "right",
+      triggerFields: ["ADDED_ON", "ADDED_ON_AGE"],
+      render: (torrent) => (
+        <span className="font-mono text-muted-foreground whitespace-nowrap">
+          {formatDurationCompact(Math.floor(Date.now() / 1000) - torrent.addedOn)}
+        </span>
+      ),
+    },
+    {
+      key: "completedAge",
+      header: t("preferences.workflowPreview.completed"),
+      align: "right",
+      triggerFields: ["COMPLETION_ON", "COMPLETION_ON_AGE"],
+      render: (torrent) => (
+        <span className="font-mono text-muted-foreground whitespace-nowrap">
+          {torrent.completionOn > 0 ? formatDurationCompact(Math.floor(Date.now() / 1000) - torrent.completionOn) : "-"}
+        </span>
+      ),
+    },
+    {
+      key: "lastActivityAge",
+      header: t("preferences.workflowPreview.inactive"),
+      align: "right",
+      triggerFields: ["LAST_ACTIVITY", "LAST_ACTIVITY_AGE"],
+      render: (torrent) => (
+        <span className="font-mono text-muted-foreground whitespace-nowrap">
+          {torrent.lastActivity > 0 ? formatDurationCompact(Math.floor(Date.now() / 1000) - torrent.lastActivity) : "-"}
+        </span>
+      ),
+    },
+    {
+      key: "timeActive",
+      header: t("preferences.workflowPreview.active"),
+      align: "right",
+      triggerFields: ["TIME_ACTIVE"],
+      render: (torrent) => (
+        <span className="font-mono text-muted-foreground whitespace-nowrap">
+          {formatDurationCompact(torrent.timeActive)}
+        </span>
+      ),
+    },
+    {
+      key: "state",
+      header: t("preferences.workflowPreview.state"),
+      align: "center",
+      triggerFields: ["STATE"],
+      render: (torrent) => (
         <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-          {getLabelFromValues(HARDLINK_SCOPE_VALUES, t.hardlinkScope)}
+          {translateTorrentState(torrent.state)}
         </span>
-      ) : null
-    ),
-  },
-  {
-    key: "status",
-    header: "Status",
-    align: "center",
-    triggerFields: ["IS_UNREGISTERED"],
-    render: (t) => (
-      t.isUnregistered ? (
-        <span className="text-xs px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">
-          Unregistered
-        </span>
-      ) : null
-    ),
-  },
-]
+      ),
+    },
+    {
+      key: "hardlinkScope",
+      header: t("preferences.workflowPreview.hardlinks"),
+      align: "center",
+      triggerFields: ["HARDLINK_SCOPE"],
+      render: (torrent) => (
+        torrent.hardlinkScope ? (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+            {translateHardlinkScope(torrent.hardlinkScope)}
+          </span>
+        ) : null
+      ),
+    },
+    {
+      key: "status",
+      header: t("preferences.workflowPreview.status"),
+      align: "center",
+      triggerFields: ["IS_UNREGISTERED"],
+      render: (torrent) => (
+        torrent.isUnregistered ? (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-destructive/10 text-destructive">
+            {t("preferences.workflowPreview.unregistered")}
+          </span>
+        ) : null
+      ),
+    },
+  ]
+}
 
 export function WorkflowPreviewDialog({
   open,
@@ -256,19 +262,33 @@ export function WorkflowPreviewDialog({
   isInitialLoading = false,
   showScore = false,
 }: WorkflowPreviewDialogProps) {
-  const { t } = useTranslation("instances")
+  const { t, i18n } = useTranslation(["instances", "automations"])
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const hasMore = !!preview && preview.examples.length < preview.totalMatches
   const showScoreColumn = showScore && !!preview?.examples.some(t => t.score !== undefined && t.score !== null)
+  const dynamicColumns = useMemo(
+    () => createDynamicColumns(
+      t,
+      (value: string) => i18n.t(`queryBuilder.torrentStates.${value}`, {
+        ns: "automations",
+        defaultValue: getLabelFromValues(TORRENT_STATES, value),
+      }),
+      (value: string) => i18n.t(`queryBuilder.hardlinkScopes.${value}`, {
+        ns: "automations",
+        defaultValue: getLabelFromValues(HARDLINK_SCOPE_VALUES, value),
+      })
+    ),
+    [i18n, t]
+  )
 
   // Determine which dynamic columns to show based on condition fields
   const visibleDynamicColumns = useMemo(() => {
     const fields = extractConditionFields(condition)
-    return DYNAMIC_COLUMNS.filter(col =>
+    return dynamicColumns.filter(col =>
       col.triggerFields.some(f => fields.has(f))
     )
-  }, [condition])
+  }, [condition, dynamicColumns])
 
   // Show loading state when initial preview is being fetched
   if (isInitialLoading) {
