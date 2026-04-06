@@ -261,7 +261,6 @@ func computeAutomationSearchTimeout(indexerCount int) time.Duration {
 	return timeouts.AdaptiveSearchTimeout(indexerCount)
 }
 
-
 // Service provides cross-seed functionality
 type Service struct {
 	instanceStore             instanceProvider
@@ -11145,20 +11144,21 @@ func (s *Service) processHardlinkMode(
 	}
 
 	var destDir string
-	if effectiveCategorySavePath != "" {
+	switch {
+	case effectiveCategorySavePath != "":
 		selectedBaseDir = effectiveCategorySavePath
 		if isTrackerCategoryMode || hardlinktree.HasCommonRootFolder(candidateTorrentFilesAll) {
 			destDir = selectedBaseDir
 		} else {
 			destDir = filepath.Join(selectedBaseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
 		}
-	} else if isTrackerCategoryMode {
+	case isTrackerCategoryMode:
 		// Category exists in qBittorrent but has no configured save path (warned above).
 		// Use buildCategorySavePath so rootless/single-file releases land at a consistent
 		// path (e.g. baseDir/TrackerName/) rather than per-hash isolation subfolders —
 		// matching the no-isolation-folder behaviour of the effectiveCategorySavePath branch.
 		destDir = s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
-	} else {
+	default:
 		destDir = s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
 	}
 

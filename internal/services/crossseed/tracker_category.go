@@ -7,8 +7,9 @@ import (
 	"context"
 	"strings"
 
-	"github.com/autobrr/qui/internal/models"
 	"github.com/rs/zerolog/log"
+
+	"github.com/autobrr/qui/internal/models"
 )
 
 // normalizeTrackerIndexerName normalizes an indexer name for domain comparison.

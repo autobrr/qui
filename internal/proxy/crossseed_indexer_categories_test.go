@@ -81,7 +81,7 @@ func insertProxyTestIndexer(t *testing.T, db *database.DB, name string) int {
 func TestHandleCrossSeedIndexerCategories_MissingInstanceID(t *testing.T) {
 	h := NewHandler(nil, nil, nil, nil, nil, nil, nil, "/")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v2/cross-seed/indexer-categories", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v2/cross-seed/indexer-categories", nil)
 	// instanceID = 0 (not set in context)
 	ctx := context.WithValue(req.Context(), InstanceIDContextKey, 0)
 	req = req.WithContext(ctx)
@@ -99,7 +99,7 @@ func TestHandleCrossSeedIndexerCategories_MissingInstanceID(t *testing.T) {
 func TestHandleCrossSeedIndexerCategories_NilStore(t *testing.T) {
 	h := NewHandler(nil, nil, nil, nil, nil, nil, nil, "/")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v2/cross-seed/indexer-categories", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v2/cross-seed/indexer-categories", nil)
 	ctx := context.WithValue(req.Context(), InstanceIDContextKey, 1)
 	req = req.WithContext(ctx)
 
@@ -118,7 +118,7 @@ func TestHandleCrossSeedIndexerCategories_ReturnsEmptySlice(t *testing.T) {
 	store := models.NewCrossSeedIndexerCategoryStore(db)
 	h := NewHandler(nil, nil, nil, nil, nil, nil, store, "/")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v2/cross-seed/indexer-categories", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v2/cross-seed/indexer-categories", nil)
 	ctx := context.WithValue(req.Context(), InstanceIDContextKey, 999)
 	req = req.WithContext(ctx)
 
@@ -145,7 +145,7 @@ func TestHandleCrossSeedIndexerCategories_ReturnsMappings(t *testing.T) {
 
 	h := NewHandler(nil, nil, nil, nil, nil, nil, store, "/")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v2/cross-seed/indexer-categories", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v2/cross-seed/indexer-categories", nil)
 	reqCtx := context.WithValue(req.Context(), InstanceIDContextKey, instanceID)
 	req = req.WithContext(reqCtx)
 

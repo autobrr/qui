@@ -5,7 +5,6 @@ package models_test
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 	"testing"
 
@@ -225,12 +224,12 @@ func TestCrossSeedIndexerCategoryStore_SetForeignKeyError(t *testing.T) {
 	// Invalid instanceID — referential integrity violation.
 	err := store.Set(ctx, 99999, indexerID, "some-category")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, models.ErrIndexerCategoryForeignKey), "expected ErrIndexerCategoryForeignKey for missing instance, got: %v", err)
+	require.ErrorIs(t, err, models.ErrIndexerCategoryForeignKey, "expected ErrIndexerCategoryForeignKey for missing instance, got: %v", err)
 
 	// Invalid indexerID — referential integrity violation.
 	err = store.Set(ctx, instanceID, 99999, "some-category")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, models.ErrIndexerCategoryForeignKey), "expected ErrIndexerCategoryForeignKey for missing indexer, got: %v", err)
+	require.ErrorIs(t, err, models.ErrIndexerCategoryForeignKey, "expected ErrIndexerCategoryForeignKey for missing indexer, got: %v", err)
 }
 
 func TestCrossSeedIndexerCategoryStore_SetRejectsBlankCategory(t *testing.T) {

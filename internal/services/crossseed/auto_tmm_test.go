@@ -181,12 +181,12 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 			wantPathsMatch:         false,
 		},
 		{
-			name:                   "tracker category mode with no category - disabled",
-			crossCategory:          "",
-			matchedAutoManaged:     true,
-			isTrackerCategoryMode:  true,
-			wantEnabled:            false,
-			wantPathsMatch:         false,
+			name:                  "tracker category mode with no category - disabled",
+			crossCategory:         "",
+			matchedAutoManaged:    true,
+			isTrackerCategoryMode: true,
+			wantEnabled:           false,
+			wantPathsMatch:        false,
 		},
 		{
 			name:                   "tracker category mode auto tmm enabled but category has no save path - disabled",
