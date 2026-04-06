@@ -12,7 +12,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { PathCell } from "@/components/ui/path-cell"
@@ -167,9 +167,7 @@ const DYNAMIC_COLUMNS: ColumnDef[] = [
     triggerFields: ["COMPLETION_ON", "COMPLETION_ON_AGE"],
     render: (t) => (
       <span className="font-mono text-muted-foreground whitespace-nowrap">
-        {t.completionOn > 0
-          ? formatDurationCompact(Math.floor(Date.now() / 1000) - t.completionOn)
-          : "-"}
+        {t.completionOn > 0? formatDurationCompact(Math.floor(Date.now() / 1000) - t.completionOn): "-"}
       </span>
     ),
   },
@@ -180,9 +178,7 @@ const DYNAMIC_COLUMNS: ColumnDef[] = [
     triggerFields: ["LAST_ACTIVITY", "LAST_ACTIVITY_AGE"],
     render: (t) => (
       <span className="font-mono text-muted-foreground whitespace-nowrap">
-        {t.lastActivity > 0
-          ? formatDurationCompact(Math.floor(Date.now() / 1000) - t.lastActivity)
-          : "-"}
+        {t.lastActivity > 0? formatDurationCompact(Math.floor(Date.now() / 1000) - t.lastActivity): "-"}
       </span>
     ),
   },
@@ -314,9 +310,7 @@ export function WorkflowPreviewDialog({
                     </TabsList>
                   </Tabs>
                   <p className="text-xs text-muted-foreground">
-                    {previewView === "needed"
-                      ? "These are the torrents that would be removed now to reach your free-space target."
-                      : "These are all torrents this rule could remove while free space is low."}
+                    {previewView === "needed"? "These are the torrents that would be removed now to reach your free-space target.": "These are all torrents this rule could remove while free space is low."}
                   </p>
                 </div>
               )}
@@ -379,9 +373,7 @@ export function WorkflowPreviewDialog({
                             {/* Single cross-seed badge with appropriate variant based on expansion type */}
                             {(t.isCrossSeed || t.isHardlinkCopy) && (
                               <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded ${
-                                t.isHardlinkCopy
-                                  ? "bg-violet-500/10 text-violet-600"
-                                  : "bg-blue-500/10 text-blue-600"
+                                t.isHardlinkCopy? "bg-violet-500/10 text-violet-600": "bg-blue-500/10 text-blue-600"
                               }`}>
                                 {t.isHardlinkCopy ? "Cross-seed (hardlinked)" : "Cross-seed (same files)"}
                               </span>
@@ -468,11 +460,7 @@ export function WorkflowPreviewDialog({
               onClick={onConfirm}
               disabled={isConfirming}
               className={
-                destructive
-                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  : warning
-                    ? "bg-amber-600 text-white hover:bg-amber-700"
-                    : ""
+                destructive? "bg-destructive text-destructive-foreground hover:bg-destructive/90": warning? "bg-amber-600 text-white hover:bg-amber-700": ""
               }
             >
               {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

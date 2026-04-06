@@ -10,7 +10,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog"
 import { useInstances } from "@/hooks/useInstances"
 import { useTranslation } from "react-i18next"

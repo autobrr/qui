@@ -12,11 +12,11 @@ import {
   PointerSensor,
   closestCenter,
   useSensor,
-  useSensors,
+  useSensors
 } from "@dnd-kit/core";
 import {
   arrayMove,
-  sortableKeyboardCoordinates,
+  sortableKeyboardCoordinates
 } from "@dnd-kit/sortable";
 import { useCallback, useMemo } from "react";
 import { ConditionGroup, parseDropZoneID } from "./ConditionGroup";

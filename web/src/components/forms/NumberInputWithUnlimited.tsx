@@ -63,9 +63,9 @@ export function NumberInputWithUnlimited({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!allowUnlimited) return
 
-    if (e.key === 'ArrowUp' && value === -1) {
+    if (e.key === "ArrowUp" && value === -1) {
       e.preventDefault()
-      const stepValue = typeof step === 'string' ? parseFloat(step) : (step || 1)
+      const stepValue = typeof step === "string" ? parseFloat(step) : (step || 1)
       const minPositive = stepValue // Use the step value as the starting point
       onChange(minPositive)
     }

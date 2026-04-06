@@ -10,7 +10,7 @@ import type {
   OrphanScanRun,
   OrphanScanRunWithFiles,
   OrphanScanSettings,
-  OrphanScanSettingsUpdate,
+  OrphanScanSettingsUpdate
 } from "@/types"
 
 export function useOrphanScanSettings(instanceId: number, options?: { enabled?: boolean }) {

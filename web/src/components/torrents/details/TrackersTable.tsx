@@ -17,7 +17,7 @@ import {
   getCoreRowModel,
   getSortedRowModel,
   type SortingState,
-  useReactTable,
+  useReactTable
 } from "@tanstack/react-table"
 import { SortIcon } from "@/components/ui/sort-icon"
 import { Loader2 } from "lucide-react"
@@ -184,11 +184,7 @@ export const TrackersTable = memo(function TrackersTable({
                       header.column.getCanSort() && "cursor-pointer hover:bg-muted/50"
                     )}
                     style={
-                      (header.column.columnDef.meta as { fullWidth?: boolean })?.fullWidth
-                        ? { width: "100%" }
-                        : header.column.columnDef.size
-                          ? { width: header.getSize() }
-                          : undefined
+                      (header.column.columnDef.meta as { fullWidth?: boolean })?.fullWidth? { width: "100%" }: header.column.columnDef.size? { width: header.getSize() }: undefined
                     }
                     onClick={header.column.getToggleSortingHandler()}
                   >
@@ -220,11 +216,7 @@ export const TrackersTable = memo(function TrackersTable({
                         key={cell.id}
                         className="px-3 py-2"
                         style={
-                          (cell.column.columnDef.meta as { fullWidth?: boolean })?.fullWidth
-                            ? { width: "100%" }
-                            : cell.column.columnDef.size
-                              ? { width: cell.column.getSize() }
-                              : undefined
+                          (cell.column.columnDef.meta as { fullWidth?: boolean })?.fullWidth? { width: "100%" }: cell.column.columnDef.size? { width: cell.column.getSize() }: undefined
                         }
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}

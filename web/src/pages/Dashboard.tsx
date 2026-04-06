@@ -458,7 +458,7 @@ function InstanceCard({
                       try {
                         localStorage.setItem("qui-filters-global", JSON.stringify({
                           status: ["unregistered"],
-                          excludeStatus: []
+                          excludeStatus: [],
                         }))
                       } catch (error) {
                         console.error("Failed to set filter state:", error)
@@ -479,7 +479,7 @@ function InstanceCard({
                       try {
                         localStorage.setItem("qui-filters-global", JSON.stringify({
                           status: ["tracker_down"],
-                          excludeStatus: []
+                          excludeStatus: [],
                         }))
                       } catch (error) {
                         console.error("Failed to set filter state:", error)
@@ -500,7 +500,7 @@ function InstanceCard({
                       try {
                         localStorage.setItem("qui-filters-global", JSON.stringify({
                           status: ["errored"],
-                          excludeStatus: []
+                          excludeStatus: [],
                         }))
                       } catch (error) {
                         console.error("Failed to set filter state:", error)
@@ -2417,18 +2417,14 @@ export function Dashboard() {
     },
     { dl: 0, up: 0, hasData: false }
   )
-  const backgroundSpeeds = backgroundSpeedsState.hasData
-    ? { dl: backgroundSpeedsState.dl, up: backgroundSpeedsState.up }
-    : undefined
+  const backgroundSpeeds = backgroundSpeedsState.hasData? { dl: backgroundSpeedsState.dl, up: backgroundSpeedsState.up }: undefined
   useTitleBarSpeeds({
     mode: "dashboard",
     enabled: titleBarSpeedsEnabled && hasActiveInstances,
-    foregroundSpeeds: hasActiveInstances
-      ? {
-        dl: globalStats.totalDownload ?? 0,
-        up: globalStats.totalUpload ?? 0,
-      }
-      : undefined,
+    foregroundSpeeds: hasActiveInstances? {
+      dl: globalStats.totalDownload ?? 0,
+      up: globalStats.totalUpload ?? 0,
+    }: undefined,
     backgroundSpeeds: isHiddenDelayed && hasActiveInstances ? backgroundSpeeds : undefined,
   })
 

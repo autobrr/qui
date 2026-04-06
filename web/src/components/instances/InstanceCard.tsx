@@ -83,11 +83,7 @@ export function InstanceCard({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const displayUrl = instance.host
 
-  const statusBadge = !instance.isActive
-    ? { label: t("card.status.disabled"), variant: "secondary" as const }
-    : instance.connected
-      ? { label: t("card.status.connected"), variant: "default" as const }
-      : { label: t("card.status.disconnected"), variant: "destructive" as const }
+  const statusBadge = !instance.isActive? { label: t("card.status.disabled"), variant: "secondary" as const }: instance.connected? { label: t("card.status.connected"), variant: "default" as const }: { label: t("card.status.disconnected"), variant: "destructive" as const }
 
   const handleTest = async () => {
     if (!instance.isActive) {
@@ -128,9 +124,7 @@ export function InstanceCard({
       onSuccess: () => {
         setTestResult(null)
         toast.success(nextState ? t("card.toast.instanceEnabledTitle") : t("card.toast.instanceDisabledTitle"), {
-          description: nextState
-            ? t("card.toast.instanceEnabledDescription")
-            : t("card.toast.instanceDisabledDescription"),
+          description: nextState? t("card.toast.instanceEnabledDescription"): t("card.toast.instanceDisabledDescription"),
         })
       },
       onError: (error) => {

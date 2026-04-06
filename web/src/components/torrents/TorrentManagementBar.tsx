@@ -243,15 +243,13 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       }
 
       const separatorIndex = trimmed.indexOf(":")
-      const target = separatorIndex > 0
-        ? {
-            instanceId: Number(trimmed.slice(0, separatorIndex)),
-            hash: trimmed.slice(separatorIndex + 1),
-          }
-        : {
-            instanceId: actionInstanceId,
-            hash: trimmed,
-          }
+      const target = separatorIndex > 0? {
+        instanceId: Number(trimmed.slice(0, separatorIndex)),
+        hash: trimmed.slice(separatorIndex + 1),
+      }: {
+        instanceId: actionInstanceId,
+        hash: trimmed,
+      }
 
       if (target.instanceId <= 0 || !target.hash) {
         continue

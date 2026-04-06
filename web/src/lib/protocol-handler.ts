@@ -56,7 +56,7 @@ export function registerMagnetHandler(): boolean {
   try {
     const handlerUrl = `${window.location.origin}${withBasePath("/add")}?url=%s`
     // Some browsers support a third title argument but TypeScript only knows about the first two.
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+
     // @ts-expect-error registerProtocolHandler accepts an optional title argument in practice
     navigator.registerProtocolHandler("magnet", handlerUrl, "qui")
     return true

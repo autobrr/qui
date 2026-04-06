@@ -99,16 +99,16 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
       )
     )
 
-    const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length
+    const successCount = results.filter(r => r.status === "fulfilled" && r.value.success).length
     const failCount = indexers.length - successCount
 
     if (failCount === 0) {
       toast.success(`Deleted all ${indexers.length} indexers`)
     } else {
       const failedNames = results
-        .filter(r => r.status === 'fulfilled' && !r.value.success)
-        .map(r => r.status === 'fulfilled' ? r.value.name : '')
-        .join(', ')
+        .filter(r => r.status === "fulfilled" && !r.value.success)
+        .map(r => r.status === "fulfilled" ? r.value.name : "")
+        .join(", ")
       toast.warning(`Deleted ${successCount} indexers, ${failCount} failed: ${failedNames}`)
     }
 
@@ -177,7 +177,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
           ...idx,
           last_test_status: status,
           last_test_error: errorMsg,
-          last_test_at: now
+          last_test_at: now,
         }
       })
     )

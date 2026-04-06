@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { useTranslation } from 'react-i18next'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { cn } from '@/lib/utils'
-import type { InstanceResponse, TorznabSearchResult } from '@/types'
-import { Download, ExternalLink, MoreVertical, Plus } from 'lucide-react'
+import { useTranslation } from "react-i18next"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { cn } from "@/lib/utils"
+import type { InstanceResponse, TorznabSearchResult } from "@/types"
+import { Download, ExternalLink, MoreVertical, Plus } from "lucide-react"
 
 type SearchResultCardProps = {
   result: TorznabSearchResult
@@ -39,7 +39,7 @@ export function SearchResultCard({
   formatDate,
   instances,
   hasInstances,
-  targetInstanceName
+  targetInstanceName,
 }: SearchResultCardProps) {
   const { t } = useTranslation("search")
   const primaryAddLabel = targetInstanceName ? t("card.addToNamed", { name: targetInstanceName }) : t("card.addToInstance")
@@ -47,17 +47,15 @@ export function SearchResultCard({
   return (
     <Card
       className={cn(
-        'p-3 transition-colors cursor-pointer',
-        isSelected
-          ? 'bg-accent text-accent-foreground ring-2 ring-accent'
-          : 'hover:bg-muted/60'
+        "p-3 transition-colors cursor-pointer",
+        isSelected? "bg-accent text-accent-foreground ring-2 ring-accent": "hover:bg-muted/60"
       )}
       role="button"
       tabIndex={0}
       aria-selected={isSelected}
       onClick={onSelect}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
+        if (event.key === "Enter" || event.key === " ") {
           event.preventDefault()
           onSelect()
         }
@@ -106,7 +104,7 @@ export function SearchResultCard({
                           onAddTorrent(instance.id)
                         }}
                       >
-                        {instance.name}{!instance.connected ? ' (offline)' : ''}
+                        {instance.name}{!instance.connected ? " (offline)" : ""}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuSubContent>
@@ -151,8 +149,8 @@ export function SearchResultCard({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">{result.indexer}</span>
           <span>{formatSize(result.size)}</span>
-          <Badge variant={result.seeders > 0 ? 'default' : 'secondary'} className="text-[10px]">
-            {t('card.seeders', { count: result.seeders })}
+          <Badge variant={result.seeders > 0 ? "default" : "secondary"} className="text-[10px]">
+            {t("card.seeders", { count: result.seeders })}
           </Badge>
         </div>
 
@@ -181,7 +179,7 @@ export function SearchResultCard({
 
         {/* Published Date */}
         <div className="text-xs text-muted-foreground">
-          {t('card.published', { date: formatDate(result.publishDate) })}
+          {t("card.published", { date: formatDate(result.publishDate) })}
         </div>
       </div>
     </Card>

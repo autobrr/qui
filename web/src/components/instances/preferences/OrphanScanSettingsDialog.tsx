@@ -10,7 +10,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog"
 import { useTranslation } from "react-i18next"
 import { OrphanScanSettingsForm } from "./OrphanScanSettingsForm"

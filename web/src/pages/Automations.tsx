@@ -32,7 +32,7 @@ export function Automations() {
   // Extract expanded instances for a specific card
   const getExpandedForCard = (cardPrefix: string): string[] => {
     if (!expandedAccordion) return []
-    const [prefix, instanceId] = expandedAccordion.split(':')
+    const [prefix, instanceId] = expandedAccordion.split(":")
     return prefix === cardPrefix ? [instanceId] : []
   }
 
@@ -53,18 +53,18 @@ export function Automations() {
       {/* Workflows full width, then Reannounce + Orphan Scan side by side */}
       <div className="space-y-6">
         <WorkflowsOverview
-          expandedInstances={getExpandedForCard('workflows')}
-          onExpandedInstancesChange={handleAccordionChange('workflows')}
+          expandedInstances={getExpandedForCard("workflows")}
+          onExpandedInstancesChange={handleAccordionChange("workflows")}
         />
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
           <ReannounceOverview
-            expandedInstances={getExpandedForCard('reannounce')}
-            onExpandedInstancesChange={handleAccordionChange('reannounce')}
+            expandedInstances={getExpandedForCard("reannounce")}
+            onExpandedInstancesChange={handleAccordionChange("reannounce")}
             onConfigureInstance={setConfigureInstanceId}
           />
           <OrphanScanOverview
-            expandedInstances={getExpandedForCard('orphan')}
-            onExpandedInstancesChange={handleAccordionChange('orphan')}
+            expandedInstances={getExpandedForCard("orphan")}
+            onExpandedInstancesChange={handleAccordionChange("orphan")}
             onConfigureInstance={setConfigureOrphanScanId}
           />
         </div>

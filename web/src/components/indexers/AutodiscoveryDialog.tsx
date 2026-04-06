@@ -71,7 +71,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
           normalizedBaseUrl,
           apiKey,
           showBasicAuth ? trimmedBasicUser : undefined,
-          showBasicAuth ? trimmedBasicPass : undefined,
+          showBasicAuth ? trimmedBasicPass : undefined
         ),
         api.listTorznabIndexers(),
       ])

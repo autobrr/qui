@@ -13,7 +13,7 @@ import {
   dismissProtocolHandlerBanner,
   getMagnetHandlerRegistrationGuidance,
   isProtocolHandlerBannerDismissed,
-  registerMagnetHandler,
+  registerMagnetHandler
 } from "@/lib/protocol-handler"
 
 export function MagnetHandlerBanner() {

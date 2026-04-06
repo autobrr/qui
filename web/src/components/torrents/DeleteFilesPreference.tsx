@@ -48,9 +48,7 @@ export function DeleteFilesPreference({
               onClick={onToggleLock}
               aria-pressed={isLocked}
               aria-label={
-                isLocked
-                  ? t("deleteFilesPreference.lockAriaLabel.stop")
-                  : t("deleteFilesPreference.lockAriaLabel.remember")
+                isLocked? t("deleteFilesPreference.lockAriaLabel.stop"): t("deleteFilesPreference.lockAriaLabel.remember")
               }
               className={cn(
                 "h-8 w-8 text-muted-foreground hover:text-accent-foreground",

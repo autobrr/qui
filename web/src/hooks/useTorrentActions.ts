@@ -389,12 +389,8 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
         setContextTorrents([])
         const succeeded = error.results.filter(result => result.status === "success").map(result => result.action)
         const failed = error.results.filter(result => result.status === "failed")
-        const succeededLabel = succeeded.length > 0
-          ? `${succeeded.join(" and ")} ${succeeded.length === 1 ? "succeeded" : "succeeded"}`
-          : ""
-        const failedLabel = failed.length > 0
-          ? `${failed.map(result => result.action).join(" and ")} failed`
-          : "tag update failed"
+        const succeededLabel = succeeded.length > 0? `${succeeded.join(" and ")} ${succeeded.length === 1 ? "succeeded" : "succeeded"}`: ""
+        const failedLabel = failed.length > 0? `${failed.map(result => result.action).join(" and ")} failed`: "tag update failed"
         const description = failed
           .map(result => result.error?.message)
           .filter((message): message is string => Boolean(message))

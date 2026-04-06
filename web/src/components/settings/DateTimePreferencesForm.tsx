@@ -141,7 +141,7 @@ const TIMEZONES_BY_REGION = {
     "Pacific/Honolulu",      // Hawaii (also in Americas)
     "Pacific/Guam",          // Guam
     "Pacific/Port_Moresby",  // Papua New Guinea
-  ]
+  ],
 }
 
 // Flatten all timezones into a single array

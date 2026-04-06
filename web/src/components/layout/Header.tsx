@@ -12,7 +12,7 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog"
 import { TorrentManagementBar } from "@/components/torrents/TorrentManagementBar"
 import { Badge } from "@/components/ui/badge"
@@ -107,7 +107,7 @@ function UnifiedActionDropdown({ icon, tooltip, label, instances, onSelectInstan
             <span
               className={cn(
                 "ml-2 h-2 w-2 rounded-full flex-shrink-0",
-                instance.connected ? "bg-green-500" : "bg-red-500",
+                instance.connected ? "bg-green-500" : "bg-red-500"
               )}
             />
           </DropdownMenuItem>
@@ -170,7 +170,7 @@ export function Header({
   )
   const unifiedManageableInstances = useMemo(
     () => unifiedScopeInstances.filter((instance) => instance.id > 0),
-    [unifiedScopeInstances],
+    [unifiedScopeInstances]
   )
   const unifiedCapabilitiesResults = useQueries({
     queries: unifiedManageableInstances.map((instance) => ({
@@ -184,7 +184,7 @@ export function Header({
     () => unifiedManageableInstances.filter((_instance, i) =>
       unifiedCapabilitiesResults[i]?.data?.supportsTorrentCreation === true
     ),
-    [unifiedManageableInstances, unifiedCapabilitiesResults],
+    [unifiedManageableInstances, unifiedCapabilitiesResults]
   )
   const applyUnifiedScope = useCallback((nextIds: number[]) => {
     const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
@@ -310,11 +310,11 @@ export function Header({
   // Derived at render time — avoids a cleanup Effect for stale IDs
   const validUnifiedIds = useMemo(
     () => new Set(unifiedManageableInstances.map((instance) => instance.id)),
-    [unifiedManageableInstances],
+    [unifiedManageableInstances]
   )
   const validUnifiedTorrentCreationIds = useMemo(
     () => new Set(unifiedTorrentCreationInstances.map((instance) => instance.id)),
-    [unifiedTorrentCreationInstances],
+    [unifiedTorrentCreationInstances]
   )
 
   useEffect(() => {

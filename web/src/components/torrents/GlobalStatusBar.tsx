@@ -22,7 +22,7 @@ import {
   RefreshCcw,
   Rows3,
   Table as TableIcon,
-  Turtle,
+  Turtle
 } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 
@@ -31,7 +31,7 @@ import { Button } from "@/components/ui/button"
 import {
   Tooltip,
   TooltipContent,
-  TooltipTrigger,
+  TooltipTrigger
 } from "@/components/ui/tooltip"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { api } from "@/lib/api"
@@ -191,9 +191,7 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
   const isConnectable = normalizedConnectionStatus === "connected"
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : hasConnectionStatus ? Ban : Globe
-  const connectionStatusTooltip = hasConnectionStatus
-    ? `${isConnectable ? "Connectable" : connectionStatusDisplay}${listenPort ? `. Port: ${listenPort}` : ""}`
-    : "Connection status unknown"
+  const connectionStatusTooltip = hasConnectionStatus? `${isConnectable ? "Connectable" : connectionStatusDisplay}${listenPort ? `. Port: ${listenPort}` : ""}`: "Connection status unknown"
   const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
   const connectionStatusAriaLabel = hasConnectionStatus ? `qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}` : "qBittorrent connection status unknown"
 

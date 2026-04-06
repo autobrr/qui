@@ -13,14 +13,14 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Popover,
   PopoverContent,
-  PopoverTrigger,
+  PopoverTrigger
 } from "@/components/ui/popover"
 import {
   Select,
@@ -379,9 +379,7 @@ function LogEntry({
               <span className="text-muted-foreground/70">{key}</span>
               <span className="text-muted-foreground/40">=</span>
               <span className="text-muted-foreground/60">
-                {typeof entry.extra[key] === "string"
-                  ? entry.extra[key] as string
-                  : JSON.stringify(entry.extra[key])}
+                {typeof entry.extra[key] === "string"? entry.extra[key] as string: JSON.stringify(entry.extra[key])}
               </span>
             </span>
           ))}
@@ -724,11 +722,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
               <Button variant="outline" size="sm" className="h-8 gap-1">
                 <Filter className="h-3.5 w-3.5" />
                 <span className="text-xs">
-                  {selectedLevels.size === ALL_LOG_LEVELS.length
-                    ? "All Levels"
-                    : selectedLevels.size === 0
-                      ? "None"
-                      : `${selectedLevels.size} Level${selectedLevels.size > 1 ? "s" : ""}`}
+                  {selectedLevels.size === ALL_LOG_LEVELS.length? "All Levels": selectedLevels.size === 0? "None": `${selectedLevels.size} Level${selectedLevels.size > 1 ? "s" : ""}`}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 opacity-50" />
               </Button>
@@ -847,9 +841,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
             ))
           ) : (
             <span className="text-muted-foreground">
-              {lines.length > 0
-                ? "No entries match the current filter"
-                : "Waiting for log entries..."}
+              {lines.length > 0? "No entries match the current filter": "Waiting for log entries..."}
             </span>
           )}
         </div>

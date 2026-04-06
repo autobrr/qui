@@ -46,11 +46,9 @@ export function PreferencesFormShell({
 
     updateFades()
 
-    const resizeObserver = typeof ResizeObserver === "undefined"
-      ? null
-      : new ResizeObserver(() => {
-          updateFades()
-        })
+    const resizeObserver = typeof ResizeObserver === "undefined"? null: new ResizeObserver(() => {
+      updateFades()
+    })
 
     scrollElement.addEventListener("scroll", updateFades, { passive: true })
     window.addEventListener("resize", updateFades)
@@ -72,13 +70,13 @@ export function PreferencesFormShell({
         <div
           className={cn(
             "pointer-events-none absolute inset-x-0 top-0 z-10 h-8 bg-linear-to-b from-background via-background/50 to-transparent transition-opacity duration-150",
-            showTopFade ? "opacity-100" : "opacity-0",
+            showTopFade ? "opacity-100" : "opacity-0"
           )}
         />
         <div
           className={cn(
             "pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8 bg-linear-to-t from-background via-background/50 to-transparent transition-opacity duration-150",
-            showBottomFade ? "opacity-100" : "opacity-0",
+            showBottomFade ? "opacity-100" : "opacity-0"
           )}
         />
         <div ref={scrollRef} className={cn("min-h-0 flex-1 overflow-y-auto md:pr-4 pb-8", contentClassName)}>
@@ -90,7 +88,7 @@ export function PreferencesFormShell({
       <div
         className={cn(
           "shrink-0 border-t pt-5 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] backdrop-blur supports-backdrop-filter:bg-background/80",
-          footerClassName,
+          footerClassName
         )}
       >
         <div className="flex justify-end">

@@ -18,7 +18,7 @@ import {
   getSortedRowModel,
   type SortingFn,
   type SortingState,
-  useReactTable,
+  useReactTable
 } from "@tanstack/react-table"
 import { SortIcon } from "@/components/ui/sort-icon"
 import "flag-icons/css/flag-icons.min.css"

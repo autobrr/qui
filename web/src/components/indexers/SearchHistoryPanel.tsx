@@ -8,7 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import {
   Dialog,
   DialogContent,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog"
 import { useSearchHistory } from "@/hooks/useSearchHistory"
 import { formatRelativeTime, formatTimeHMS } from "@/lib/dateTimeUtils"
@@ -253,9 +253,7 @@ function HistoryRow({ entry, onClick }: HistoryRowProps) {
     rate_limited: <AlertCircle className="h-3 w-3 text-destructive shrink-0" />,
   }
 
-  const durationStr = entry.durationMs < 1000
-    ? `${entry.durationMs}ms`
-    : `${(entry.durationMs / 1000).toFixed(1)}s`
+  const durationStr = entry.durationMs < 1000? `${entry.durationMs}ms`: `${(entry.durationMs / 1000).toFixed(1)}s`
 
   // Hide "unknown" content type - it's noise for RSS searches
   const showContentType = entry.contentType && entry.contentType !== "unknown"
@@ -330,9 +328,7 @@ function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
   const isSuccess = entry.status === "success"
   const isError = entry.status === "error" || entry.status === "rate_limited"
 
-  const durationStr = entry.durationMs < 1000
-    ? `${entry.durationMs}ms`
-    : `${(entry.durationMs / 1000).toFixed(2)}s`
+  const durationStr = entry.durationMs < 1000? `${entry.durationMs}ms`: `${(entry.durationMs / 1000).toFixed(2)}s`
 
   // Transform params into semantic badges
   const paramBadges = entry.params ? transformParams(entry.params) : []
