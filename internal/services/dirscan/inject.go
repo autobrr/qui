@@ -598,6 +598,20 @@ func applyInversePathMapping(qbitPath, searcheePath, qbitPrefix string) (string,
 	return filepath.Join(cleanHostBase, rel), true
 }
 
+func mapTrackerCategorySavePathToHost(qbitPath, qbitPrefix, hardlinkBaseDir, existingFilePath string) (string, error) {
+	hostBaseDir, err := crossseed.FindMatchingBaseDir(hardlinkBaseDir, existingFilePath)
+	if err != nil {
+		return "", fmt.Errorf("select hardlink base dir for tracker category path: %w", err)
+	}
+
+	mapped, ok := applyInversePathMapping(qbitPath, hostBaseDir, qbitPrefix)
+	if !ok {
+		return "", fmt.Errorf("tracker category save path %q cannot be mapped to host filesystem: QbitPathPrefix %q does not match", qbitPath, qbitPrefix)
+	}
+
+	return mapped, nil
+}
+
 // Example:
 //
 //	original: /data/usenet/completed/Movie.Name/
@@ -654,26 +668,6 @@ func (i *Injector) buildAddOptions(req *InjectRequest, savePath string) map[stri
 }
 
 func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Instance, req *InjectRequest) (*hardlinktree.TreePlan, string, error) {
-	// Determine the effective base directory.
-	// When a per-tracker category save path is available, translate it to a host
-	// filesystem path (QbitPathPrefix maps qBittorrent container paths to host
-	// paths) and use it so hardlinks land inside the qBittorrent category
-	// directory.  Otherwise fall back to the configured HardlinkBaseDir.
-	effectiveBaseDir := req.TrackerCategorySavePath
-	if effectiveBaseDir != "" && req.QbitPathPrefix != "" && req.Searchee != nil {
-		mapped, ok := applyInversePathMapping(effectiveBaseDir, filepath.Dir(req.Searchee.Path), req.QbitPathPrefix)
-		if !ok {
-			return nil, "", fmt.Errorf("tracker category save path %q cannot be mapped to host filesystem: QbitPathPrefix %q does not match", effectiveBaseDir, req.QbitPathPrefix)
-		}
-		effectiveBaseDir = mapped
-	}
-	if effectiveBaseDir == "" {
-		effectiveBaseDir = instance.HardlinkBaseDir
-	}
-
-	if err := validateLinkTreeInstance(instance, effectiveBaseDir); err != nil {
-		return nil, "", err
-	}
 	if req == nil || req.ParsedTorrent == nil || req.MatchResult == nil {
 		return nil, "", errors.New("link-tree request is missing required data")
 	}
@@ -683,6 +677,27 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 
 	linkableFiles, existingFiles, err := buildLinkTreeMatchedFiles(req.MatchResult)
 	if err != nil {
+		return nil, "", err
+	}
+
+	effectiveBaseDir := instance.HardlinkBaseDir
+	if req.TrackerCategorySavePath != "" {
+		if req.QbitPathPrefix != "" {
+			effectiveBaseDir, err = mapTrackerCategorySavePathToHost(
+				req.TrackerCategorySavePath,
+				req.QbitPathPrefix,
+				instance.HardlinkBaseDir,
+				existingFiles[0].AbsPath,
+			)
+			if err != nil {
+				return nil, "", err
+			}
+		} else {
+			effectiveBaseDir = req.TrackerCategorySavePath
+		}
+	}
+
+	if err := validateLinkTreeInstance(instance, effectiveBaseDir); err != nil {
 		return nil, "", err
 	}
 

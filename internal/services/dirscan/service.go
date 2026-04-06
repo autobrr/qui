@@ -110,6 +110,10 @@ func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, ins
 	return torrent, exists, nil
 }
 
+type dirscanCategoryGetter interface {
+	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
+}
+
 // NewService creates a new directory scanner service.
 func NewService(
 	cfg Config,
@@ -1804,32 +1808,22 @@ func (s *Service) tryMatchAndInject(
 			l.Warn().Err(instanceErr).Int("instanceID", dir.TargetInstanceID).Msg("dirscan: failed to load instance for by-tracker preset check")
 			return failMatch()
 		}
-		if (instance.UseHardlinks || instance.UseReflinks) && instance.HardlinkDirPreset == "by-tracker" {
-			trackerCat, found, resolveErr := crossseed.ResolveTrackerCategory(ctx, dir.TargetInstanceID, result.Indexer, announceDomain, s.indexerCategoryStore)
-			if resolveErr != nil {
-				l.Warn().Err(resolveErr).Msg("dirscan: context error resolving tracker category, aborting match")
-				return failMatch()
-			}
-			if found {
-				category = trackerCat
-				if s.syncManager == nil {
-					l.Warn().Str("trackerCategory", trackerCat).Msg("dirscan: sync manager unavailable, continuing without AutoTMM")
-				} else {
-					qbitCats, catErr := s.syncManager.GetCategories(ctx, dir.TargetInstanceID)
-					if catErr != nil {
-						l.Warn().Err(catErr).Str("trackerCategory", trackerCat).Msg("dirscan: failed to look up category save path, continuing without AutoTMM")
-					} else {
-						if cat, ok := qbitCats[trackerCat]; ok {
-							trackerCategorySavePath = cat.SavePath
-						}
-						l.Info().
-							Str("announceDomain", announceDomain).
-							Str("trackerCategory", trackerCat).
-							Str("categorySavePath", trackerCategorySavePath).
-							Msg("dirscan: resolved by-tracker category")
-					}
-				}
-			}
+		trackerCat, trackerSavePath, fatal := resolveDirscanTrackerCategory(
+			ctx,
+			dir.TargetInstanceID,
+			result.Indexer,
+			announceDomain,
+			instance,
+			s.indexerCategoryStore,
+			s.syncManager,
+			l,
+		)
+		if fatal {
+			return failMatch()
+		}
+		if trackerCat != "" {
+			category = trackerCat
+			trackerCategorySavePath = trackerSavePath
 		}
 	}
 
@@ -1878,6 +1872,69 @@ func (s *Service) tryMatchAndInject(
 		injected:        injected,
 		injectionFailed: injectionFailed,
 	}
+}
+
+func resolveDirscanTrackerCategory(
+	ctx context.Context,
+	instanceID int,
+	indexerName string,
+	announceDomain string,
+	instance *models.Instance,
+	store *models.CrossSeedIndexerCategoryStore,
+	categoryGetter dirscanCategoryGetter,
+	l *zerolog.Logger,
+) (category, savePath string, fatal bool) {
+	if store == nil || instance == nil {
+		return "", "", false
+	}
+	if !instance.UseHardlinks && !instance.UseReflinks || instance.HardlinkDirPreset != "by-tracker" {
+		return "", "", false
+	}
+
+	trackerCat, found, resolveErr := crossseed.ResolveTrackerCategory(ctx, instanceID, indexerName, announceDomain, store)
+	if resolveErr != nil {
+		if ctx.Err() != nil {
+			if l != nil {
+				l.Warn().Err(resolveErr).Msg("dirscan: context error resolving tracker category, aborting match")
+			}
+			return "", "", true
+		}
+		if l != nil {
+			l.Warn().Err(resolveErr).Msg("dirscan: failed to resolve tracker category, falling back to standard category logic")
+		}
+		return "", "", false
+	}
+	if !found {
+		return "", "", false
+	}
+
+	if categoryGetter == nil {
+		if l != nil {
+			l.Warn().Str("trackerCategory", trackerCat).Msg("dirscan: sync manager unavailable, continuing without AutoTMM")
+		}
+		return trackerCat, "", false
+	}
+
+	qbitCats, catErr := categoryGetter.GetCategories(ctx, instanceID)
+	if catErr != nil {
+		if l != nil {
+			l.Warn().Err(catErr).Str("trackerCategory", trackerCat).Msg("dirscan: failed to look up category save path, continuing without AutoTMM")
+		}
+		return trackerCat, "", false
+	}
+
+	if cat, ok := qbitCats[trackerCat]; ok {
+		savePath = cat.SavePath
+	}
+	if l != nil {
+		l.Info().
+			Str("announceDomain", announceDomain).
+			Str("trackerCategory", trackerCat).
+			Str("categorySavePath", savePath).
+			Msg("dirscan: resolved by-tracker category")
+	}
+
+	return trackerCat, savePath, false
 }
 
 func logDirScanMatchRejection(

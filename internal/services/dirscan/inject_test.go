@@ -15,6 +15,7 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
 	qbsync "github.com/autobrr/qui/internal/qbittorrent"
@@ -1050,4 +1051,25 @@ func TestApplyInversePathMapping(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMapTrackerCategorySavePathToHost_UsesMatchingHardlinkBaseDir(t *testing.T) {
+	tmp := t.TempDir()
+	sourceBase := filepath.Join(tmp, "source")
+	hardlinkBase := filepath.Join(tmp, "cross-seed")
+
+	require.NoError(t, os.MkdirAll(sourceBase, 0o755))
+	require.NoError(t, os.MkdirAll(hardlinkBase, 0o755))
+
+	existingFilePath := filepath.Join(sourceBase, "Show.Name.S01E01.mkv")
+	require.NoError(t, os.WriteFile(existingFilePath, []byte("data"), 0o600))
+
+	got, err := mapTrackerCategorySavePathToHost(
+		"/downloads/Aither",
+		"/downloads",
+		hardlinkBase,
+		existingFilePath,
+	)
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(hardlinkBase, "Aither"), got)
 }
