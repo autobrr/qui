@@ -221,7 +221,7 @@ export function Header({
     return instances?.find(i => i.id === selectedInstanceId)
   }, [isInstanceRoute, instances, selectedInstanceId])
   const hasMultipleActiveInstances = activeInstances.length > 1
-  const instanceName = isAllInstancesRoute? (hasMultipleActiveInstances ? "Unified" : (activeInstances[0]?.name ?? null)): (currentInstance?.name ?? null)
+  const instanceName = isAllInstancesRoute? (hasMultipleActiveInstances ? t("header.unified") : (activeInstances[0]?.name ?? null)): (currentInstance?.name ?? null)
 
   // Keep local state in sync with URL when navigating between instances/routes
   useEffect(() => {
@@ -885,7 +885,7 @@ export function Header({
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   <Globe className="h-4 w-4" />
-                  {languageNames[i18n.language as keyof typeof languageNames] ?? i18n.language}
+                  {languageNames[i18n.resolvedLanguage as keyof typeof languageNames] ?? i18n.resolvedLanguage}
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
                   {supportedLanguages.map((lng) => (
@@ -895,7 +895,7 @@ export function Header({
                       className="flex items-center justify-between gap-4"
                     >
                       {languageNames[lng]}
-                      {i18n.language === lng && <Check className="h-3.5 w-3.5" />}
+                      {i18n.resolvedLanguage === lng && <Check className="h-3.5 w-3.5" />}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuSubContent>

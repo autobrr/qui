@@ -194,18 +194,18 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
   const allSelected = eventDefinitions.length > 0 && eventTypes.length === eventDefinitions.length
   const groupedEvents = useMemo(() => {
     const groups = new Map<string, NotificationEventDefinition[]>()
-    const addToGroup = (label: string, event: NotificationEventDefinition) => {
-      const existing = groups.get(label)
+    const addToGroup = (id: string, event: NotificationEventDefinition) => {
+      const existing = groups.get(id)
       if (existing) {
         existing.push(event)
       } else {
-        groups.set(label, [event])
+        groups.set(id, [event])
       }
     }
 
     for (const event of eventDefinitions) {
       if (event.type.startsWith("torrent_")) {
-        addToGroup(t("notifications.groups.torrent"), event)
+        addToGroup("torrent", event)
       } else if (
         event.type === "backup_succeeded" ||
         event.type === "backup_failed" ||
@@ -214,25 +214,19 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
         event.type === "orphan_scan_completed" ||
         event.type === "orphan_scan_failed"
       ) {
-        addToGroup(t("notifications.groups.maintenance"), event)
+        addToGroup("maintenance", event)
       } else if (event.type.startsWith("cross_seed_")) {
-        addToGroup(t("notifications.groups.crossSeed"), event)
+        addToGroup("crossSeed", event)
       } else if (event.type.startsWith("automations_")) {
-        addToGroup(t("notifications.groups.automations"), event)
+        addToGroup("automations", event)
       } else {
-        addToGroup(t("notifications.groups.other"), event)
+        addToGroup("other", event)
       }
     }
 
-    const ordered = [
-      t("notifications.groups.torrent"),
-      t("notifications.groups.maintenance"),
-      t("notifications.groups.crossSeed"),
-      t("notifications.groups.automations"),
-      t("notifications.groups.other"),
-    ]
+    const ordered = ["torrent", "maintenance", "crossSeed", "automations", "other"]
     return ordered
-      .map((label) => ({ label, events: groups.get(label) ?? [] }))
+      .map((id) => ({ label: t(`notifications.groups.${id}`), events: groups.get(id) ?? [] }))
       .filter((group) => group.events.length > 0)
   }, [eventDefinitions, t])
 
@@ -472,18 +466,18 @@ export function NotificationsManager() {
 
   const groupedSelectedEvents = useMemo(() => {
     const groups = new Map<string, string[]>()
-    const addToGroup = (label: string, eventType: string) => {
-      const existing = groups.get(label)
+    const addToGroup = (id: string, eventType: string) => {
+      const existing = groups.get(id)
       if (existing) {
         existing.push(eventType)
       } else {
-        groups.set(label, [eventType])
+        groups.set(id, [eventType])
       }
     }
 
-    const categorize = (eventType: string) => {
+    const categorize = (eventType: string): string => {
       if (eventType.startsWith("torrent_")) {
-        return t("notifications.groups.torrent")
+        return "torrent"
       }
       if (
         eventType === "backup_succeeded" ||
@@ -493,15 +487,15 @@ export function NotificationsManager() {
         eventType === "orphan_scan_completed" ||
         eventType === "orphan_scan_failed"
       ) {
-        return t("notifications.groups.maintenance")
+        return "maintenance"
       }
       if (eventType.startsWith("cross_seed_")) {
-        return t("notifications.groups.crossSeed")
+        return "crossSeed"
       }
       if (eventType.startsWith("automations_")) {
-        return t("notifications.groups.automations")
+        return "automations"
       }
-      return t("notifications.groups.other")
+      return "other"
     }
 
     const known = new Set(eventDefinitions.map((event) => event.type))
@@ -511,15 +505,9 @@ export function NotificationsManager() {
       }
     }
 
-    const ordered = [
-      t("notifications.groups.torrent"),
-      t("notifications.groups.maintenance"),
-      t("notifications.groups.crossSeed"),
-      t("notifications.groups.automations"),
-      t("notifications.groups.other"),
-    ]
+    const ordered = ["torrent", "maintenance", "crossSeed", "automations", "other"]
     return ordered
-      .map((label) => ({ label, events: groups.get(label) ?? [] }))
+      .map((id) => ({ label: t(`notifications.groups.${id}`), events: groups.get(id) ?? [] }))
       .filter((group) => group.events.length > 0)
   }, [eventDefinitions, t])
 
@@ -673,7 +661,7 @@ export function NotificationsManager() {
                       variant="ghost"
                       size="sm"
                       onClick={() => testMutation.mutate(target.id)}
-                      aria-label={`Send test to ${target.name}`}
+                      aria-label={t("notifications.ariaLabels.sendTest", { name: target.name })}
                       disabled={testMutation.isPending}
                     >
                       <Send className="h-4 w-4" />
@@ -682,7 +670,7 @@ export function NotificationsManager() {
                       variant="ghost"
                       size="sm"
                       onClick={() => setEditTarget(target)}
-                      aria-label={`Edit ${target.name}`}
+                      aria-label={t("notifications.ariaLabels.edit", { name: target.name })}
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -695,7 +683,7 @@ export function NotificationsManager() {
                         }
                         setDeleteTarget(target)
                       }}
-                      aria-label={`Delete ${target.name}`}
+                      aria-label={t("notifications.ariaLabels.delete", { name: target.name })}
                       disabled={deleteMutation.isPending}
                       aria-disabled={deleteMutation.isPending}
                     >

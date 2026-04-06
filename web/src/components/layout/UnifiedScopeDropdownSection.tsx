@@ -34,7 +34,7 @@ export function UnifiedScopeDropdownSection({
   const { t } = useTranslation("common")
   const [isExpanded, setIsExpanded] = useState(false)
   const hasCustomUnifiedScope = effectiveUnifiedInstanceIds.length !== activeInstances.length
-  const scopeSummary = hasCustomUnifiedScope ? `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}` : "ALL"
+  const scopeSummary = hasCustomUnifiedScope ? `${effectiveUnifiedInstanceIds.length}/${activeInstances.length}` : t("header.allScope")
   const isSidebar = variant === "sidebar"
 
   const rowContainerClassName = isSidebar ? cn(

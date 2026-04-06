@@ -118,7 +118,7 @@ function getRunDiscoveredFiles(run: DirScanRun): number {
 }
 
 function getRunFilesLabel(run: DirScanRun): string {
-  return `${run.filesFound} eligible`
+  return i18n.t("dirScan.eligible", { ns: "crossseed", count: run.filesFound })
 }
 
 function RunFilesBadge({ run }: { run: DirScanRun }) {

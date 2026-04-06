@@ -50,28 +50,28 @@ export const QueueSubmenu = memo(function QueueSubmenu({
           disabled={isPending}
         >
           <ChevronsUp className="mr-2 h-4 w-4" />
-          {t("queueSubmenu.topPriority")} {hashCount > 1 ? `(${hashCount})` : ""}
+          {hashCount > 1 ? t("queueSubmenu.topPriorityBatch", { count: hashCount }) : t("queueSubmenu.topPriority")}
         </MenuItem>
         <MenuItem
           onClick={() => onQueueAction("increasePriority")}
           disabled={isPending}
         >
           <ArrowUp className="mr-2 h-4 w-4" />
-          {t("queueSubmenu.increasePriority")} {hashCount > 1 ? `(${hashCount})` : ""}
+          {hashCount > 1 ? t("queueSubmenu.increasePriorityBatch", { count: hashCount }) : t("queueSubmenu.increasePriority")}
         </MenuItem>
         <MenuItem
           onClick={() => onQueueAction("decreasePriority")}
           disabled={isPending}
         >
           <ArrowDown className="mr-2 h-4 w-4" />
-          {t("queueSubmenu.decreasePriority")} {hashCount > 1 ? `(${hashCount})` : ""}
+          {hashCount > 1 ? t("queueSubmenu.decreasePriorityBatch", { count: hashCount }) : t("queueSubmenu.decreasePriority")}
         </MenuItem>
         <MenuItem
           onClick={() => onQueueAction("bottomPriority")}
           disabled={isPending}
         >
           <ChevronsDown className="mr-2 h-4 w-4" />
-          {t("queueSubmenu.bottomPriority")} {hashCount > 1 ? `(${hashCount})` : ""}
+          {hashCount > 1 ? t("queueSubmenu.bottomPriorityBatch", { count: hashCount }) : t("queueSubmenu.bottomPriority")}
         </MenuItem>
       </SubContent>
     </Sub>

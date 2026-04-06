@@ -24,6 +24,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Info, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import {
   CATEGORY_UNCATEGORIZED_VALUE,
   getFieldType,
@@ -38,11 +39,13 @@ import { DisabledOption } from "./DisabledOption";
 import { FieldCombobox } from "./FieldCombobox";
 import type { GroupOption } from "./QueryBuilder";
 
-const DURATION_INPUT_UNITS = [
-  { value: 60, label: "minutes" },
-  { value: 3600, label: "hours" },
-  { value: 86400, label: "days" },
-];
+function getDurationInputUnits() {
+  return [
+    { value: 60, label: i18n.t("queryBuilder.durationUnits.minutes", { ns: "automations" }) },
+    { value: 3600, label: i18n.t("queryBuilder.durationUnits.hours", { ns: "automations" }) },
+    { value: 86400, label: i18n.t("queryBuilder.durationUnits.days", { ns: "automations" }) },
+  ];
+}
 
 // Detect best duration unit from seconds value
 function detectDurationUnit(secs: number): number {
@@ -563,7 +566,7 @@ export function LeafCondition({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {DURATION_INPUT_UNITS.map((u) => (
+                {getDurationInputUnits().map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
                     {u.label}
                   </SelectItem>
@@ -713,7 +716,7 @@ export function LeafCondition({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {DURATION_INPUT_UNITS.map((u) => (
+                {getDurationInputUnits().map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
                     {u.label}
                   </SelectItem>

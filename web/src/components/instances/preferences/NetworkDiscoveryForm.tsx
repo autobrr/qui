@@ -107,7 +107,6 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
 
   const getEncryptionLabel = (value: number) => {
     switch (value) {
-      case 0: return t("preferences.networkDiscovery.preferEncryption")
       case 1: return t("preferences.networkDiscovery.requireEncryption")
       case 2: return t("preferences.networkDiscovery.disableEncryption")
       default: return t("preferences.networkDiscovery.preferEncryption")

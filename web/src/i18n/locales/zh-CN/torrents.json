@@ -486,15 +486,20 @@
   "categorySubmenu": {
     "setCategory": "设置分类",
     "noCategory": "（无分类）",
+    "noCategoryBatch": "无分类 ({{count}})",
     "searchCategories": "搜索分类...",
     "noCategoriesFound": "未找到分类"
   },
   "queueSubmenu": {
     "queue": "队列",
     "topPriority": "最高优先级",
+    "topPriorityBatch": "最高优先级 ({{count}})",
     "increasePriority": "提高优先级",
+    "increasePriorityBatch": "提高优先级 ({{count}})",
     "decreasePriority": "降低优先级",
-    "bottomPriority": "最低优先级"
+    "decreasePriorityBatch": "降低优先级 ({{count}})",
+    "bottomPriority": "最低优先级",
+    "bottomPriorityBatch": "最低优先级 ({{count}})"
   },
   "renameSubmenu": {
     "rename": "重命名",
@@ -824,7 +829,12 @@
       "stacked": "堆叠"
     },
     "incognitoOn": "隐身模式开",
-    "incognitoOff": "隐身模式关"
+    "incognitoOff": "隐身模式关",
+    "connectionConnectable": "可连接",
+    "connectionUnknown": "连接状态未知",
+    "connectionPort": "端口：{{port}}",
+    "connectionAriaLabel": "qBittorrent 连接状态：{{status}}",
+    "connectionAriaLabelUnknown": "qBittorrent 连接状态未知"
   },
   "detailsPanel": {
     "tabs": {

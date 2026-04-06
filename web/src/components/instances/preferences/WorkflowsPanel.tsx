@@ -466,7 +466,7 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-1 font-normal text-blue-600 border-blue-600/50 cursor-help">
               <Tag className="h-3 w-3" />
-              {getTagActions(rule).length} action{getTagActions(rule).length !== 1 ? "s" : ""}
+              {t("preferences.workflows.actionCount", { count: getTagActions(rule).length })}
             </Badge>
           </TooltipTrigger>
           <TooltipContent>

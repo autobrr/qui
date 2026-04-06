@@ -58,7 +58,9 @@
     "updateVersion": "版本 {{version}}",
     "rssRunning": "RSS 运行中",
     "rssEnabled": "RSS 已启用",
-    "scanRunning": "扫描运行中"
+    "scanRunning": "扫描运行中",
+    "allScope": "全部",
+    "unified": "统一视图"
   },
   "unifiedScope": {
     "unified": "统一视图",

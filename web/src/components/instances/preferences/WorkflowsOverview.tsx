@@ -80,6 +80,7 @@ import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
+import i18n from "../../../i18n"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { WorkflowDialog } from "./WorkflowDialog"
@@ -133,9 +134,8 @@ function computeActivityStats(events: AutomationActivity[]): ActivityStats {
 /** Format share limit value for display: -2 = "Global", -1 = "Unlimited", >= 0 = number with optional precision */
 function formatShareLimit(value: number | undefined, isRatio: boolean): string | null {
   if (value === undefined) return null
-  if (value === -2) return "Global"
-  if (value === -1) return "Unlimited"
-  // For ratio, show 2 decimal places; for time, show whole number
+  if (value === -2) return i18n.t("preferences.workflowsOverview.shareLimit.global", { ns: "instances" })
+  if (value === -1) return i18n.t("preferences.workflowsOverview.shareLimit.unlimited", { ns: "instances" })
   return isRatio ? value.toFixed(2) : String(value)
 }
 
@@ -156,46 +156,28 @@ function getRuleTagActions(rule: Automation) {
 }
 
 function formatAction(action: AutomationActivity["action"]): string {
-  switch (action) {
-    case "deleted_ratio":
-      return "Ratio limit"
-    case "deleted_seeding":
-      return "Seeding time"
-    case "deleted_unregistered":
-      return "Unregistered"
-    case "deleted_condition":
-      return "Condition"
-    case "delete_failed":
-      return "Delete"
-    case "limit_failed":
-      return "Set limits"
-    case "tags_changed":
-      return "Tags"
-    case "category_changed":
-      return "Category"
-    case "speed_limits_changed":
-      return "Speed"
-    case "share_limits_changed":
-      return "Share"
-    case "paused":
-      return "Pause"
-    case "resumed":
-      return "Resume"
-    case "rechecked":
-      return "Recheck"
-    case "reannounced":
-      return "Reannounce"
-    case "auto_managed":
-      return "Auto management"
-    case "moved":
-      return "Move"
-    case "external_program":
-      return "External program"
-    case "dry_run_no_match":
-      return "Dry-run"
-    default:
-      return action
+  const actionKeys: Record<string, string> = {
+    deleted_ratio: "ratioLimit",
+    deleted_seeding: "seedingTime",
+    deleted_unregistered: "unregistered",
+    deleted_condition: "condition",
+    delete_failed: "delete",
+    limit_failed: "setLimits",
+    tags_changed: "tags",
+    category_changed: "category",
+    speed_limits_changed: "speed",
+    share_limits_changed: "share",
+    paused: "pause",
+    resumed: "resume",
+    rechecked: "recheck",
+    reannounced: "reannounce",
+    auto_managed: "autoManagement",
+    moved: "move",
+    external_program: "externalProgram",
+    dry_run_no_match: "dryRun",
   }
+  const key = actionKeys[action]
+  return key ? i18n.t(`preferences.workflowsOverview.actions.${key}`, { ns: "instances" }) : action
 }
 
 function sumRecordValues(values: Record<string, number> | undefined): number {
@@ -205,84 +187,90 @@ function sumRecordValues(values: Record<string, number> | undefined): number {
   }, 0)
 }
 
-function formatCountWithVerb(count: number, noun: string, verb: string): string {
-  return `${count} ${noun}${count !== 1 ? "s" : ""} ${verb}`
-}
-
 function formatTagsChangedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const addedTotal = sumRecordValues(details?.added)
   const removedTotal = sumRecordValues(details?.removed)
   const parts: string[] = []
-  const prefix = outcome === "dry-run" ? "would be " : ""
-  if (addedTotal > 0) parts.push(`+${addedTotal} ${prefix}tagged`)
-  if (removedTotal > 0) parts.push(`-${removedTotal} ${prefix}untagged`)
-  return parts.join(", ") || "Tag operation"
+  const s = "preferences.workflowsOverview.summary"
+  const ns = "instances"
+  if (addedTotal > 0) parts.push(i18n.t(outcome === "dry-run" ? `${s}.taggedDryRun` : `${s}.tagged`, { ns, count: addedTotal }))
+  if (removedTotal > 0) parts.push(i18n.t(outcome === "dry-run" ? `${s}.untaggedDryRun` : `${s}.untagged`, { ns, count: removedTotal }))
+  return parts.join(", ") || i18n.t(`${s}.tagOperation`, { ns })
 }
 
 function formatCategoryChangedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const total = sumRecordValues(details?.categories)
-  const verb = outcome === "dry-run" ? "would be moved" : "moved"
-  return formatCountWithVerb(total, "torrent", verb)
+  const s = "preferences.workflowsOverview.summary"
+  return i18n.t(outcome === "dry-run" ? `${s}.movedDryRun` : `${s}.moved`, { ns: "instances", count: total })
 }
 
 function formatSpeedLimitsSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const total = sumRecordValues(details?.limits)
-  const verb = outcome === "dry-run" ? "would be limited" : "limited"
-  return formatCountWithVerb(total, "torrent", verb)
+  const s = "preferences.workflowsOverview.summary"
+  return i18n.t(outcome === "dry-run" ? `${s}.limitedDryRun` : `${s}.limited`, { ns: "instances", count: total })
 }
 
 function formatShareLimitsSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const total = sumRecordValues(details?.limits)
-  const verb = outcome === "dry-run" ? "would be limited" : "limited"
-  return formatCountWithVerb(total, "torrent", verb)
+  const s = "preferences.workflowsOverview.summary"
+  return i18n.t(outcome === "dry-run" ? `${s}.limitedDryRun` : `${s}.limited`, { ns: "instances", count: total })
 }
 
 function formatPausedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = details?.count ?? 0
-  const verb = outcome === "dry-run" ? "would be paused" : "paused"
-  return formatCountWithVerb(count, "torrent", verb)
+  const s = "preferences.workflowsOverview.summary"
+  return i18n.t(outcome === "dry-run" ? `${s}.pausedDryRun` : `${s}.paused`, { ns: "instances", count })
 }
 
 function formatResumedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = details?.count ?? 0
-  const verb = outcome === "dry-run" ? "would be resumed" : "resumed"
-  return formatCountWithVerb(count, "torrent", verb)
+  const s = "preferences.workflowsOverview.summary"
+  return i18n.t(outcome === "dry-run" ? `${s}.resumedDryRun` : `${s}.resumed`, { ns: "instances", count })
 }
 
 function formatRecheckedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = details?.count ?? 0
-  const verb = outcome === "dry-run" ? "would be rechecked" : "rechecked"
-  return formatCountWithVerb(count, "torrent", verb)
+  const s = "preferences.workflowsOverview.summary"
+  return i18n.t(outcome === "dry-run" ? `${s}.recheckedDryRun` : `${s}.rechecked`, { ns: "instances", count })
 }
 
 function formatReannouncedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = details?.count ?? 0
-  const verb = outcome === "dry-run" ? "would be reannounced" : "reannounced"
-  return formatCountWithVerb(count, "torrent", verb)
+  const s = "preferences.workflowsOverview.summary"
+  return i18n.t(outcome === "dry-run" ? `${s}.reannouncedDryRun` : `${s}.reannounced`, { ns: "instances", count })
 }
 
 function formatMovedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = sumRecordValues(details?.paths)
+  const s = "preferences.workflowsOverview.summary"
   if (outcome === "failed") {
-    return formatCountWithVerb(count, "torrent", "failed to move")
+    return i18n.t(`${s}.moveFailed`, { ns: "instances", count })
   }
-  const verb = outcome === "dry-run" ? "would be moved" : "moved"
-  return formatCountWithVerb(count, "torrent", verb)
+  return i18n.t(outcome === "dry-run" ? `${s}.movedDryRun` : `${s}.moved`, { ns: "instances", count })
 }
 
 function formatExternalProgramSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const s = "preferences.workflowsOverview.summary"
+  const ns = "instances"
   const programName = details?.programName
-    ?? (typeof details?.programId === "number" ? `Program ${details.programId}` : "External program")
+    ?? (typeof details?.programId === "number" ? i18n.t(`${s}.programFallback`, { ns, id: details.programId }) : i18n.t("preferences.workflowsOverview.actions.externalProgram", { ns }))
   if (outcome === "dry-run") {
-    return `${programName} would run`
+    return i18n.t(`${s}.programWouldRun`, { ns, name: programName })
   }
-  return outcome === "failed" ? `${programName} failed` : `${programName} executed`
+  return outcome === "failed" ? i18n.t(`${s}.programFailed`, { ns, name: programName }) : i18n.t(`${s}.programExecuted`, { ns, name: programName })
 }
 
 function formatDeleteDryRunSummary(details: AutomationActivity["details"], action: AutomationActivity["action"]): string {
   const count = details?.count ?? 0
-  const label = action === "deleted_ratio"? "ratio limit": action === "deleted_seeding"? "seeding limit": action === "deleted_unregistered"? "unregistered": "condition"
-  return `${count} torrent${count !== 1 ? "s" : ""} would be deleted (${label})`
+  const s = "preferences.workflowsOverview.summary"
+  const ns = "instances"
+  const labelKeys: Record<string, string> = {
+    deleted_ratio: "deleteLabelRatio",
+    deleted_seeding: "deleteLabelSeeding",
+    deleted_unregistered: "deleteLabelUnregistered",
+  }
+  const label = i18n.t(`${s}.${labelKeys[action] ?? "deleteLabelCondition"}`, { ns })
+  return i18n.t(`${s}.deleteDryRun`, { ns, count, label })
 }
 
 const runSummaryActions = new Set<AutomationActivity["action"]>([
@@ -570,7 +558,7 @@ export function WorkflowsOverview({
         },
       }
     )
-  }, [getExistingNames, createWorkflow])
+  }, [getExistingNames, createWorkflow, t])
 
   // Copy workflow to another instance
   const handleCopyToInstance = useCallback((sourceRule: Automation, targetInstanceId: number) => {
@@ -588,7 +576,7 @@ export function WorkflowsOverview({
         },
       }
     )
-  }, [getExistingNames, createWorkflow, instances])
+  }, [getExistingNames, createWorkflow, instances, t])
 
   // Open import dialog
   const openImportDialog = (instanceId: number) => {

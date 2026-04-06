@@ -294,6 +294,11 @@
       "deleteFailed": "删除通知目标失败",
       "testSent": "测试通知发送成功",
       "testFailed": "发送测试通知失败"
+    },
+    "ariaLabels": {
+      "sendTest": "发送测试到 {{name}}",
+      "edit": "编辑 {{name}}",
+      "delete": "删除 {{name}}"
     }
   },
   "dateTime": {

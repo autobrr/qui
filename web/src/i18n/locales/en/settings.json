@@ -294,6 +294,11 @@
       "deleteFailed": "Failed to delete notification target",
       "testSent": "Test notification sent successfully",
       "testFailed": "Failed to send test notification"
+    },
+    "ariaLabels": {
+      "sendTest": "Send test to {{name}}",
+      "edit": "Edit {{name}}",
+      "delete": "Delete {{name}}"
     }
   },
   "dateTime": {

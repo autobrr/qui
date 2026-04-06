@@ -134,7 +134,6 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
     // Handle both number and string values for compatibility
     const numValue = typeof value === "string" ? parseInt(value) : value
     switch (numValue) {
-      case 0: return t("proxySettings.types.none")
       case 1: return t("proxySettings.types.socks4")
       case 2: return t("proxySettings.types.socks5")
       case 3: return t("proxySettings.types.http")

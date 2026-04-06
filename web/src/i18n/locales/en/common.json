@@ -58,7 +58,9 @@
     "updateVersion": "Version {{version}}",
     "rssRunning": "RSS running",
     "rssEnabled": "RSS enabled",
-    "scanRunning": "Scan running"
+    "scanRunning": "Scan running",
+    "allScope": "ALL",
+    "unified": "Unified"
   },
   "unifiedScope": {
     "unified": "Unified",

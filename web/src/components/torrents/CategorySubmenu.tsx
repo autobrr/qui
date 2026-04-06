@@ -181,7 +181,7 @@ export const CategorySubmenu = memo(function CategorySubmenu({
         >
           <X className="mr-2 h-4 w-4" />
           <span className="text-muted-foreground italic">
-            {t("categorySubmenu.noCategory")} {hashCount > 1 ? `(${hashCount})` : ""}
+            {hashCount > 1 ? t("categorySubmenu.noCategoryBatch", { count: hashCount }) : t("categorySubmenu.noCategory")}
           </span>
         </MenuItem>
 

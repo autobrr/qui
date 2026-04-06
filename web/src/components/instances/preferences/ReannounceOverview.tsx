@@ -152,10 +152,10 @@ export function ReannounceOverview({
   const getSettingsSummary = (settings: InstanceReannounceSettings | undefined): string => {
     if (!settings) return t("preferences.reannounceOverview.notConfigured")
     const parts: string[] = []
-    parts.push(`Wait ${settings.initialWaitSeconds}s`)
-    parts.push(`Retry ${settings.reannounceIntervalSeconds}s`)
-    parts.push(`Max ${settings.maxRetries}x`)
-    if (settings.aggressive) parts.push("Quick")
+    parts.push(t("preferences.reannounceOverview.summaryWait", { seconds: settings.initialWaitSeconds }))
+    parts.push(t("preferences.reannounceOverview.summaryRetry", { seconds: settings.reannounceIntervalSeconds }))
+    parts.push(t("preferences.reannounceOverview.summaryMax", { count: settings.maxRetries }))
+    if (settings.aggressive) parts.push(t("preferences.reannounceOverview.summaryQuick"))
     return parts.join(" · ")
   }
 
@@ -327,7 +327,7 @@ export function ReannounceOverview({
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <span className="text-xs text-muted-foreground cursor-help">
-                                    {filteredEvents.length === events.length? `${events.length} events`: `${filteredEvents.length} of ${events.length}`}
+                                    {filteredEvents.length === events.length ? t("preferences.reannounceOverview.eventCount", { count: events.length }) : t("preferences.reannounceOverview.eventCountFiltered", { filtered: filteredEvents.length, total: events.length })}
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent>

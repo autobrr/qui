@@ -533,15 +533,20 @@
   "categorySubmenu": {
     "setCategory": "Set Category",
     "noCategory": "(No category)",
+    "noCategoryBatch": "No Category ({{count}})",
     "searchCategories": "Search categories...",
     "noCategoriesFound": "No categories found"
   },
   "queueSubmenu": {
     "queue": "Queue",
     "topPriority": "Top Priority",
+    "topPriorityBatch": "Top Priority ({{count}})",
     "increasePriority": "Increase Priority",
+    "increasePriorityBatch": "Increase Priority ({{count}})",
     "decreasePriority": "Decrease Priority",
-    "bottomPriority": "Bottom Priority"
+    "decreasePriorityBatch": "Decrease Priority ({{count}})",
+    "bottomPriority": "Bottom Priority",
+    "bottomPriorityBatch": "Bottom Priority ({{count}})"
   },
   "renameSubmenu": {
     "rename": "Rename",
@@ -873,7 +878,12 @@
       "stacked": "Stacked"
     },
     "incognitoOn": "Incognito on",
-    "incognitoOff": "Incognito off"
+    "incognitoOff": "Incognito off",
+    "connectionConnectable": "Connectable",
+    "connectionUnknown": "Connection status unknown",
+    "connectionPort": "Port: {{port}}",
+    "connectionAriaLabel": "qBittorrent connection status: {{status}}",
+    "connectionAriaLabelUnknown": "qBittorrent connection status unknown"
   },
   "detailsPanel": {
     "tabs": {

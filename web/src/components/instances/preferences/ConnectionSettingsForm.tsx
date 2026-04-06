@@ -205,7 +205,6 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
   const getBittorrentProtocolLabel = (value: number) => {
     switch (value) {
-      case 0: return t("preferences.connectionSettings.protocolTcpUtp")
       case 1: return t("preferences.connectionSettings.protocolTcp")
       case 2: return t("preferences.connectionSettings.protocolUtp")
       default: return t("preferences.connectionSettings.protocolTcpUtp")
@@ -214,7 +213,6 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
 
   const getUtpTcpMixedModeLabel = (value: number) => {
     switch (value) {
-      case 0: return t("preferences.connectionSettings.preferTcp")
       case 1: return t("preferences.connectionSettings.peerProportional")
       default: return t("preferences.connectionSettings.preferTcp")
     }

@@ -683,7 +683,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
     if (allFiles.length > 0) {
       checkForDuplicates(allFiles, form.getFieldValue("urls"))
     }
-  }, [form, checkForDuplicates])
+  }, [form, checkForDuplicates, t])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
