@@ -1,4 +1,8 @@
 {
+  "page": {
+    "torrentDetails": "Torrent Details",
+    "torrentDetailsWithName": "Torrent Details: {{name}}"
+  },
   "managementBar": {
     "ariaLabel": "{{count}} torrent{{plural}} selected - Bulk actions available",
     "resume": "Resume",
@@ -332,6 +336,7 @@
     }
   },
   "creationTasks": {
+    "dialogTitle": "Torrent Creation Tasks",
     "loadingTasks": "Loading tasks...",
     "noTasks": "No torrent creation tasks found",
     "tableHeaders": {

@@ -86,7 +86,12 @@
     "cancel": "Cancel",
     "runNow": "Run now",
     "saveSettings": "Save RSS automation settings",
-    "reset": "Reset"
+    "reset": "Reset",
+    "requiresTorznabIndexer": "RSS automation runs require at least one Torznab indexer.",
+    "items": "{{count}} items",
+    "failedCount": "{{count}} failed",
+    "runSummary": "{{runs}} runs • +{{added}}",
+    "runSummaryWithFailures": "{{runs}} runs • +{{added}} • {{failed}} failed"
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -130,12 +135,18 @@
     "resultsDetail": "{{added}} added / {{skipped}} skipped / {{failed}} failed",
     "started": "Started:",
     "estCompletion": "Est. completion:",
+    "etaDetail": "≈ {{remaining}} torrents remaining @ {{interval}}s intervals",
     "recentRuns": "Recent runs",
     "noRunsYet": "No runs yet",
     "noSearchRunsRecorded": "No search runs recorded yet.",
     "noResultsWithDetails": "No results with details",
     "failed": "Failed:",
-    "startRun": "Start run"
+    "startRun": "Start run",
+    "runningUpper": "RUNNING",
+    "idleUpper": "IDLE",
+    "runSummary": "{{runs}} runs • +{{added}}",
+    "runSummaryWithFailures": "{{runs}} runs • +{{added}} • {{failed}} failed",
+    "searchNeedsTorznabUnlessGazelle": "Seeded Torrent Search needs Torznab indexers (unless you are only scanning OPS/RED via Gazelle)."
   },
   "rules": {
     "title": "Cross-Seed Rules",
@@ -248,12 +259,16 @@
       "selectExternalProgram": "Select external program (optional)",
       "noneOption": "None",
       "externalProgramDescription": "Optionally run an external program after successfully injecting a cross-seed torrent. Only enabled programs are shown.",
-      "configureExternalPrograms": "Configure external programs"
+      "configureExternalPrograms": "Configure external programs",
+      "configureExternalProgramsSuffix": "to use this feature."
     },
     "cache": {
       "cacheEnabled": "Cache enabled",
       "cacheDisabled": "Cache disabled",
-      "manageCacheSettings": "Manage cache settings"
+      "manageCacheSettings": "Manage cache settings",
+      "ttlMinutes": "TTL {{ttl}} min",
+      "cachedSearches": "{{count}} cached searches",
+      "lastUsed": "Last used {{timestamp}}"
     },
     "saveGlobalSettings": "Save global cross-seed settings"
   },
@@ -277,6 +292,7 @@
     "unknownError": "Unknown error",
     "noIndexersConfigured": "No Torznab indexers configured",
     "pickInstanceBeforeRunning": "Pick at least one instance to receive cross-seeds before running RSS automation.",
+    "enableAutomationAfterIndexers": "Enable RSS automation only after configuring Torznab indexers.",
     "saveSettingsFirst": "Save RSS automation settings to apply the updated target instances before running.",
     "selectInstanceToRun": "Select an instance to run against",
     "seededSearchNeedsGazelle": "Seeded Torrent Search needs Gazelle",

@@ -4,6 +4,30 @@ import path from "node:path"
 const webRoot = path.resolve(import.meta.dirname, "..")
 const srcRoot = path.join(webRoot, "src")
 
+function parseNamespaces(source) {
+  const namespaces = []
+
+  for (const match of source.matchAll(/useTranslation\(\s*(?:"([^"]+)"|\[([^\]]+)\])\s*\)/g)) {
+    const singleNamespace = match[1]
+    const namespaceList = match[2]
+
+    if (singleNamespace) {
+      namespaces.push(singleNamespace)
+      continue
+    }
+
+    if (!namespaceList) {
+      continue
+    }
+
+    for (const namespaceMatch of namespaceList.matchAll(/"([^"]+)"/g)) {
+      namespaces.push(namespaceMatch[1])
+    }
+  }
+
+  return [...new Set(namespaces)]
+}
+
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true })
   const files = []
@@ -91,12 +115,106 @@ const hardcodedStringChecks = [
       "\"Continue\"",
     ],
   },
+  {
+    file: "src/pages/CrossSeedPage.tsx",
+    literals: [
+      "\"No active instances. Add instances first.\"",
+      "\"Cross-seed mode\"",
+      "\"Regular\"",
+      "\"Hardlink\"",
+      "\"Reflink (copy-on-write)\"",
+      "\"Target instances\"",
+      "\"Target indexers\"",
+      "\"Settings that apply to all cross-seed operations.\"",
+      "\"Fallback to regular mode on error\"",
+    ],
+    patterns: [
+      /fall back to regular mode using existing files\./,
+    ],
+  },
+  {
+    file: "src/pages/InstanceBackups.tsx",
+    literals: [
+      "\"Backup settings updated\"",
+      "\"Settings applied to all instances\"",
+      "\"Backup queued\"",
+      "\"Select instance\"",
+      "\"Loading instance capabilities...\"",
+      "\"Backups unavailable for this instance\"",
+      "\"Last backup\"",
+      "\"Next scheduled backup\"",
+      "\"Backup settings\"",
+      "\"Restore backup\"",
+      "\"Backup run deleted\"",
+      "\"Failed to delete backup run\"",
+      "\"Deleted all backups\"",
+      "\"Failed to delete backups\"",
+      "\"Failed to load restore plan\"",
+      "\"Included all torrents\"",
+      "\"Restore dry-run completed\"",
+      "\"Restore executed\"",
+      "\"Failed to execute restore\"",
+    ],
+    patterns: [
+      /Excluded \$\{label\} from restore/,
+      /Included \$\{label\}/,
+    ],
+  },
+  {
+    file: "src/pages/RSSPage.tsx",
+    literals: [
+      "\"Select instance\"",
+      "\"Enable RSS\"",
+      "\"Enable Auto-Download\"",
+      "\"Feed name\"",
+      "\"https://example.com/rss\"",
+      "\"Download torrent\"",
+      "\"Open link\"",
+      "\"Mark as read\"",
+      "\"Toggle details\"",
+      "\"No filters\"",
+      "\"Retry\"",
+      "\"Failed to remove feed\"",
+      "\"Failed to refresh feed\"",
+      "\"Failed to mark all as read\"",
+      "\"Failed to rename feed\"",
+      "\"Failed to update feed URL\"",
+      "\"Failed to mark as read\"",
+      "\"Failed to update rule\"",
+      "\"Failed to remove rule\"",
+      "\"Failed to add feed\"",
+      "\"Failed to create folder\"",
+      "\"Failed to create rule\"",
+    ],
+  },
+  {
+    file: "src/pages/Torrents.tsx",
+    literals: [
+      "\">Filters<\"",
+      "\"Torrent Details\"",
+      "\"Torrent Creation Tasks\"",
+    ],
+  },
+  {
+    file: "src/components/dashboard-settings-dialog.tsx",
+    literals: [
+      "\"Layout Settings\"",
+      "\"Dashboard Settings\"",
+      "\"Sections\"",
+      "\"Tracker Breakdown Defaults\"",
+      "\"Default Sort\"",
+      "\"Direction\"",
+      "\"Descending\"",
+      "\"Ascending\"",
+      "\"Items Per Page\"",
+    ],
+  },
 ]
 
 for (const file of files) {
   const source = fs.readFileSync(file, "utf8")
-  const namespaceMatches = [...source.matchAll(/useTranslation\("([^"]+)"\)/g)]
-  const defaultNamespace = namespaceMatches[0]?.[1]
+  const namespaces = parseNamespaces(source)
+  const defaultNamespace = namespaces[0]
 
   if (!defaultNamespace) {
     continue
@@ -118,6 +236,20 @@ for (const file of files) {
       missingKeys.push(`${path.relative(webRoot, file)}: ${defaultNamespace}.${key}`)
     }
   }
+
+  for (const match of source.matchAll(/\bi18n\.t\("([^"]+)",\s*\{[\s\S]*?ns:\s*"([^"]+)"/g)) {
+    const key = match[1]
+    const namespace = match[2]
+
+    if (!localeCache.has(namespace)) {
+      localeCache.set(namespace, loadLocale(namespace))
+    }
+
+    const namespacedLocale = localeCache.get(namespace)
+    if (!namespacedLocale || getNestedValue(namespacedLocale, key) === undefined) {
+      missingKeys.push(`${path.relative(webRoot, file)}: ${namespace}.${key}`)
+    }
+  }
 }
 
 for (const check of hardcodedStringChecks) {
@@ -127,6 +259,12 @@ for (const check of hardcodedStringChecks) {
   for (const literal of check.literals) {
     if (source.includes(literal)) {
       hardcodedStringErrors.push(`${check.file}: contains hardcoded UI string ${literal}`)
+    }
+  }
+
+  for (const pattern of check.patterns ?? []) {
+    if (pattern.test(source)) {
+      hardcodedStringErrors.push(`${check.file}: contains hardcoded UI string matching ${pattern}`)
     }
   }
 }

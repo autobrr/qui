@@ -56,6 +56,7 @@
     "failedToLoadRules": "Failed to load RSS rules",
     "retry": "Retry",
     "noFilters": "No filters",
+    "smartBadge": "Smart",
     "previewMatches": "Preview matches",
     "editRule": "Edit rule",
     "removeRule": "Remove rule"
@@ -181,6 +182,8 @@
     "failedToUpdateUrl": "Failed to update feed URL",
     "failedToMarkSingleAsRead": "Failed to mark as read",
     "ruleToggled": "Rule {{state}}",
+    "ruleStateEnabled": "enabled",
+    "ruleStateDisabled": "disabled",
     "failedToUpdateRule": "Failed to update rule",
     "ruleRemoved": "Rule removed successfully",
     "failedToRemoveRule": "Failed to remove rule",
