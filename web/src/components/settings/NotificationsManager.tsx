@@ -205,7 +205,7 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
 
     for (const event of eventDefinitions) {
       if (event.type.startsWith("torrent_")) {
-        addToGroup("Torrent", event)
+        addToGroup(t("notifications.groups.torrent"), event)
       } else if (
         event.type === "backup_succeeded" ||
         event.type === "backup_failed" ||
@@ -214,29 +214,35 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
         event.type === "orphan_scan_completed" ||
         event.type === "orphan_scan_failed"
       ) {
-        addToGroup("Maintenance", event)
+        addToGroup(t("notifications.groups.maintenance"), event)
       } else if (event.type.startsWith("cross_seed_")) {
-        addToGroup("Cross-seed", event)
+        addToGroup(t("notifications.groups.crossSeed"), event)
       } else if (event.type.startsWith("automations_")) {
-        addToGroup("Automations", event)
+        addToGroup(t("notifications.groups.automations"), event)
       } else {
-        addToGroup("Other", event)
+        addToGroup(t("notifications.groups.other"), event)
       }
     }
 
-    const ordered = ["Torrent", "Maintenance", "Cross-seed", "Automations", "Other"]
+    const ordered = [
+      t("notifications.groups.torrent"),
+      t("notifications.groups.maintenance"),
+      t("notifications.groups.crossSeed"),
+      t("notifications.groups.automations"),
+      t("notifications.groups.other"),
+    ]
     return ordered
       .map((label) => ({ label, events: groups.get(label) ?? [] }))
       .filter((group) => group.events.length > 0)
-  }, [eventDefinitions])
+  }, [eventDefinitions, t])
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
-        <Label htmlFor="notification-name">Name</Label>
+        <Label htmlFor="notification-name">{t("notifications.form.name")}</Label>
         <Input
           id="notification-name"
-          placeholder="My Discord"
+          placeholder={t("notifications.form.namePlaceholder")}
           value={name}
           onChange={(e) => setName(e.target.value)}
           data-1p-ignore
@@ -245,30 +251,31 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="notification-url">Shoutrrr URL</Label>
+        <Label htmlFor="notification-url">{t("notifications.form.url")}</Label>
         <Input
           id="notification-url"
-          placeholder="discord://token@id or notifiarrapi://apikey"
+          placeholder={t("notifications.form.urlPlaceholder")}
           value={url}
           onChange={(e) => setUrl(normalizeNotificationUrl(e.target.value))}
         />
         <p className="text-xs text-muted-foreground">
-          Use any Shoutrrr-supported URL scheme. Notifiarr API uses <span className="font-mono">notifiarrapi://apikey</span>.
-          Discord webhook URLs auto-convert to <span className="font-mono">discord://token@id</span>.
+          {t("notifications.form.urlDescriptionPrefix")} <span className="font-mono">notifiarrapi://apikey</span>.
+          {" "}
+          {t("notifications.form.urlDescriptionSuffix")} <span className="font-mono">discord://token@id</span>.
         </p>
       </div>
 
       <div className="flex items-center justify-between rounded-md border px-3 py-2">
         <div>
-          <Label className="text-sm">Enabled</Label>
-          <p className="text-xs text-muted-foreground">Toggle delivery for this target.</p>
+          <Label className="text-sm">{t("notifications.form.enabled")}</Label>
+          <p className="text-xs text-muted-foreground">{t("notifications.form.enabledDescription")}</p>
         </div>
         <Switch checked={enabled} onCheckedChange={setEnabled} />
       </div>
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <Label className="text-sm">Events</Label>
+          <Label className="text-sm">{t("notifications.form.events")}</Label>
           <div className="flex gap-2">
             <Button
               type="button"
@@ -277,7 +284,7 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
               onClick={() => setEventTypes(eventDefinitions.map((event) => event.type))}
               disabled={eventDefinitions.length === 0 || allSelected}
             >
-              Select all
+              {t("notifications.form.selectAll")}
             </Button>
             <Button
               type="button"
@@ -286,13 +293,13 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
               onClick={() => setEventTypes([])}
               disabled={eventTypes.length === 0}
             >
-              Clear
+              {t("notifications.form.clear")}
             </Button>
           </div>
         </div>
         <div className="space-y-4 rounded-md border p-3">
           {eventDefinitions.length === 0 && (
-            <p className="text-sm text-muted-foreground">Loading event types…</p>
+            <p className="text-sm text-muted-foreground">{t("notifications.form.loadingEventTypes")}</p>
           )}
           <Accordion type="multiple" className="space-y-2">
             {groupedEvents.map((group) => {
@@ -323,7 +330,7 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
                           }}
                           disabled={group.events.length === 0 || allGroupSelected}
                         >
-                          Select
+                          {t("notifications.form.select")}
                         </Button>
                         <Button
                           type="button"
@@ -336,7 +343,7 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
                           }}
                           disabled={!anyGroupSelected}
                         >
-                          Clear
+                          {t("notifications.form.clear")}
                         </Button>
                       </div>
                     </div>
@@ -364,16 +371,16 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
 
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>
-          Cancel
+          {t("notifications.dialog.cancel")}
         </Button>
         <Button type="submit" disabled={isPending}>
           {isPending ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Saving…
+              {t("notifications.dialog.saving")}
             </>
           ) : (
-            "Save"
+            t("notifications.dialog.save")
           )}
         </Button>
       </div>
@@ -476,7 +483,7 @@ export function NotificationsManager() {
 
     const categorize = (eventType: string) => {
       if (eventType.startsWith("torrent_")) {
-        return "Torrent"
+        return t("notifications.groups.torrent")
       }
       if (
         eventType === "backup_succeeded" ||
@@ -486,15 +493,15 @@ export function NotificationsManager() {
         eventType === "orphan_scan_completed" ||
         eventType === "orphan_scan_failed"
       ) {
-        return "Maintenance"
+        return t("notifications.groups.maintenance")
       }
       if (eventType.startsWith("cross_seed_")) {
-        return "Cross-seed"
+        return t("notifications.groups.crossSeed")
       }
       if (eventType.startsWith("automations_")) {
-        return "Automations"
+        return t("notifications.groups.automations")
       }
-      return "Other"
+      return t("notifications.groups.other")
     }
 
     const known = new Set(eventDefinitions.map((event) => event.type))
@@ -504,15 +511,21 @@ export function NotificationsManager() {
       }
     }
 
-    const ordered = ["Torrent", "Maintenance", "Cross-seed", "Automations", "Other"]
+    const ordered = [
+      t("notifications.groups.torrent"),
+      t("notifications.groups.maintenance"),
+      t("notifications.groups.crossSeed"),
+      t("notifications.groups.automations"),
+      t("notifications.groups.other"),
+    ]
     return ordered
       .map((label) => ({ label, events: groups.get(label) ?? [] }))
       .filter((group) => group.events.length > 0)
-  }, [eventDefinitions])
+  }, [eventDefinitions, t])
 
   const renderEventBadges = (events: string[], targetId: number) => {
     if (events.length === 0) {
-      return <Badge variant="secondary">All events</Badge>
+      return <Badge variant="secondary">{t("notifications.allEvents")}</Badge>
     }
     const selected = new Set(events)
     const unknownEvents = events.filter((event) => !eventLabelMap.has(event))
@@ -522,7 +535,7 @@ export function NotificationsManager() {
       count: group.events.filter((event) => selected.has(event)).length,
     }))
     if (unknownEvents.length > 0) {
-      counts.push({ label: "Unknown", count: unknownEvents.length })
+      counts.push({ label: t("notifications.groups.unknown"), count: unknownEvents.length })
     }
     const summary = counts
       .filter((group) => group.count > 0)
@@ -542,7 +555,7 @@ export function NotificationsManager() {
               )
             }
           >
-            {isExpanded ? "Hide list" : "Show list"}
+            {isExpanded ? t("notifications.hideList") : t("notifications.showList")}
           </Button>
         </div>
         {isExpanded && (
@@ -570,7 +583,7 @@ export function NotificationsManager() {
             {unknownEvents.length > 0 && (
               <div className="space-y-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Unknown
+                  {t("notifications.groups.unknown")}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {unknownEvents.map((event) => (
@@ -594,14 +607,14 @@ export function NotificationsManager() {
           <DialogTrigger asChild>
             <Button size="sm" className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
-              Add Notification Target
+              {t("notifications.addButton")}
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-2xl max-w-full max-h-[90dvh] flex flex-col">
             <DialogHeader>
-              <DialogTitle>New Notification Target</DialogTitle>
+              <DialogTitle>{t("notifications.dialog.newTitle")}</DialogTitle>
               <DialogDescription>
-                Configure where qui should send alerts and status updates.
+                {t("notifications.dialog.newDescription")}
               </DialogDescription>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto min-h-0">
@@ -616,11 +629,11 @@ export function NotificationsManager() {
         </Dialog>
       </div>
 
-      {isLoading && <div className="text-center py-8">Loading notification targets…</div>}
+      {isLoading && <div className="text-center py-8">{t("notifications.loading")}</div>}
       {error && (
         <Card>
           <CardContent className="pt-6">
-            <div className="text-destructive">Failed to load notification targets</div>
+            <div className="text-destructive">{t("notifications.loadFailed")}</div>
           </CardContent>
         </Card>
       )}
@@ -629,7 +642,7 @@ export function NotificationsManager() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-center text-muted-foreground">
-              No notification targets configured. Add one to start receiving alerts.
+              {t("notifications.empty")}
             </div>
           </CardContent>
         </Card>
@@ -648,7 +661,7 @@ export function NotificationsManager() {
                         {target.name}
                       </CardTitle>
                       <Badge variant={target.enabled ? "default" : "secondary"}>
-                        {target.enabled ? "Enabled" : "Disabled"}
+                        {target.enabled ? t("notifications.badges.enabled") : t("notifications.badges.disabled")}
                       </Badge>
                     </div>
                     <CardDescription className="text-xs break-all">
@@ -693,7 +706,7 @@ export function NotificationsManager() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div>
-                  <p className="text-muted-foreground text-xs mb-2">Events</p>
+                  <p className="text-muted-foreground text-xs mb-2">{t("notifications.form.events")}</p>
                   {renderEventBadges(target.eventTypes, target.id)}
                 </div>
               </CardContent>
@@ -705,8 +718,8 @@ export function NotificationsManager() {
       <Dialog open={!!editTarget} onOpenChange={(open) => !open && setEditTarget(null)}>
         <DialogContent className="sm:max-w-2xl max-w-full max-h-[90dvh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Edit Notification Target</DialogTitle>
-            <DialogDescription>Update delivery settings for this target.</DialogDescription>
+            <DialogTitle>{t("notifications.dialog.editTitle")}</DialogTitle>
+            <DialogDescription>{t("notifications.dialog.editDescription")}</DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto min-h-0">
             {editTarget && (
@@ -725,20 +738,20 @@ export function NotificationsManager() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete notification target?</AlertDialogTitle>
+            <AlertDialogTitle>{t("notifications.dialog.deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove {deleteTarget?.name}. You can re-add it later if needed.
+              {t("notifications.dialog.deleteDescription", { name: deleteTarget?.name ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("notifications.dialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={deleteMutation.isPending}
               aria-busy={deleteMutation.isPending}
             >
-              Delete
+              {t("notifications.dialog.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

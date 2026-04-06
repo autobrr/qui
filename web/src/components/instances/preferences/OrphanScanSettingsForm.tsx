@@ -16,7 +16,7 @@ import { useOrphanScanSettings, useUpdateOrphanScanSettings } from "@/hooks/useO
 import type { OrphanScanSettings, OrphanScanSettingsUpdate } from "@/types"
 import { AlertTriangle, Info, Loader2 } from "lucide-react"
 import { useEffect, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface OrphanScanSettingsFormProps {
@@ -330,10 +330,18 @@ export function OrphanScanSettingsForm({
                         {t("preferences.orphanScanSettings.autoDeleteWarningTitle")}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Files flagged as orphans will be deleted automatically without manual review. If dir scan is configured in regular mode, any files in scanned directories that <span className="font-medium">are not matched by a torrent will be flagged as orphans</span> and deleted.
+                        <Trans
+                          ns="instances"
+                          i18nKey="preferences.orphanScanSettings.autoDeleteWarningBody"
+                          components={{ span: <span className="font-medium" /> }}
+                        />
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Ensure your <span className="font-medium">Ignore Paths</span> are correctly configured or use hardlink/reflink mode for dir scan.
+                        <Trans
+                          ns="instances"
+                          i18nKey="preferences.orphanScanSettings.autoDeleteWarningPaths"
+                          components={{ span: <span className="font-medium" /> }}
+                        />
                       </p>
                     </div>
                   </div>

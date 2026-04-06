@@ -69,6 +69,45 @@
   "clientApiKeys": {
     "cardTitle": "Client Proxy API Keys",
     "cardDescription": "Manage API keys for external applications to connect to qBittorrent instances through qui",
+    "createButton": "Create Client API Key",
+    "loading": "Loading client API keys...",
+    "loadFailed": "Unable to load client API keys",
+    "featureUnavailable": "Feature may not be available in this version",
+    "unknownError": "An error occurred",
+    "instanceDeleted": "Instance Deleted",
+    "empty": "No client API keys created yet",
+    "labels": {
+      "created": "Created:",
+      "lastUsed": "Last used:",
+      "host": "Host:",
+      "showHost": "Show host",
+      "hideHost": "Hide host"
+    },
+    "createDialog": {
+      "title": "Create Client API Key",
+      "description": "Create an API key for a specific client to connect to a qBittorrent instance.",
+      "clientNameLabel": "Client Name",
+      "clientNamePlaceholder": "e.g., autobrr, tqm, sonarr, radarr, cross-seed",
+      "instanceLabel": "qBittorrent Instance",
+      "instancePlaceholder": "Select an instance",
+      "creating": "Creating..."
+    },
+    "newKey": {
+      "title": "API Key Created",
+      "warning": "This information is shown only once. Store it in your password manager before closing the dialog.",
+      "proxyUrl": "Proxy URL",
+      "showProxyUrl": "Show proxy URL",
+      "hideProxyUrl": "Hide proxy URL",
+      "copyProxyUrl": "Copy proxy URL",
+      "done": "Done"
+    },
+    "deleteDialog": {
+      "title": "Delete Client API Key?",
+      "description": "This action cannot be undone. Any applications using this key will lose access to the qBittorrent instance.",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "deleteLabel": "Delete API key {{name}}"
+    },
     "toasts": {
       "created": "Client API key created successfully",
       "createFailed": "Failed to create client API key",
@@ -190,6 +229,52 @@
   "notifications": {
     "cardTitle": "Notifications",
     "cardDescription": "Send alerts and status updates via any Shoutrrr-supported service",
+    "addButton": "Add Notification Target",
+    "loading": "Loading notification targets…",
+    "loadFailed": "Failed to load notification targets",
+    "empty": "No notification targets configured. Add one to start receiving alerts.",
+    "allEvents": "All events",
+    "showList": "Show list",
+    "hideList": "Hide list",
+    "badges": {
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "groups": {
+      "torrent": "Torrent",
+      "maintenance": "Maintenance",
+      "crossSeed": "Cross-seed",
+      "automations": "Automations",
+      "other": "Other",
+      "unknown": "Unknown"
+    },
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "My Discord",
+      "url": "Shoutrrr URL",
+      "urlPlaceholder": "discord://token@id or notifiarrapi://apikey",
+      "urlDescriptionPrefix": "Use any Shoutrrr-supported URL scheme. Notifiarr API uses",
+      "urlDescriptionSuffix": "Discord webhook URLs auto-convert to",
+      "enabled": "Enabled",
+      "enabledDescription": "Toggle delivery for this target.",
+      "events": "Events",
+      "selectAll": "Select all",
+      "select": "Select",
+      "clear": "Clear",
+      "loadingEventTypes": "Loading event types…"
+    },
+    "dialog": {
+      "newTitle": "New Notification Target",
+      "newDescription": "Configure where qui should send alerts and status updates.",
+      "editTitle": "Edit Notification Target",
+      "editDescription": "Update delivery settings for this target.",
+      "deleteTitle": "Delete notification target?",
+      "deleteDescription": "This will remove {{name}}. You can re-add it later if needed.",
+      "cancel": "Cancel",
+      "saving": "Saving…",
+      "save": "Save",
+      "delete": "Delete"
+    },
     "validation": {
       "nameRequired": "Name is required",
       "urlRequired": "Notification URL is required",
@@ -261,11 +346,25 @@
     "settingsSrOnly": "Open log settings",
     "configuration": {
       "title": "Configuration",
-      "description": "Adjust log level, output path, and rotation settings."
+      "description": "Adjust log level, output path, and rotation settings.",
+      "level": "Log Level",
+      "levelPlaceholder": "Select log level",
+      "path": "Log File Path",
+      "pathPlaceholder": "Leave empty for stdout only",
+      "maxSize": "Max Size (MB)",
+      "maxBackups": "Max Backups",
+      "saving": "Saving...",
+      "saveSettings": "Save Settings"
     },
     "viewer": {
       "connected": "Connected",
-      "disconnected": "Disconnected"
+      "disconnected": "Disconnected",
+      "searchPlaceholder": "Search logs...",
+      "allLevels": "All Levels",
+      "all": "All",
+      "none": "None",
+      "levelCount_one": "{{count}} Level",
+      "levelCount_other": "{{count}} Levels"
     },
     "toasts": {
       "settingsUpdated": "Log settings updated",
@@ -326,21 +425,67 @@
   },
   "arrInstances": {
     "addDialog": {
-      "title": "Add ARR Instance"
+      "title": "Add ARR Instance",
+      "description": "Configure a Sonarr or Radarr instance for ID lookups during cross-seed searches."
     },
     "editDialog": {
       "title": "Edit ARR Instance"
     },
     "deleteDialog": {
-      "title": "Delete ARR Instance?"
+      "title": "Delete ARR Instance?",
+      "description": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone."
     },
     "badges": {
       "enabled": "Enabled",
       "disabled": "Disabled"
     },
+    "loading": "Loading ARR instances...",
+    "loadFailed": "Failed to load ARR instances",
+    "empty": "No ARR instances configured. Add a Sonarr or Radarr instance to enable ID-based cross-seed searches.",
     "created": "Created {{date}}",
     "sonarrInstances": "Sonarr Instances",
     "radarrInstances": "Radarr Instances",
+    "unknownError": "Unknown error",
+    "actions": {
+      "testConnection": "Test Connection",
+      "testing": "Testing...",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "create": "Create",
+      "update": "Update",
+      "saving": "Saving..."
+    },
+    "form": {
+      "type": "Type *",
+      "selectType": "Select type",
+      "name": "Name *",
+      "namePlaceholder": "My {{type}}",
+      "baseUrl": "Base URL *",
+      "baseUrlDescription": "The base URL of your {{type}} instance",
+      "apiKey": "API Key *",
+      "apiKeyOptional": "API Key (leave empty to keep current)",
+      "apiKeyPlaceholder": "Enter API key",
+      "apiKeyPlaceholderEdit": "••••••••",
+      "apiKeyDescription": "Found in Settings > General in {{type}}",
+      "basicAuth": "Basic Auth",
+      "basicAuthDescription": "Use HTTP basic authentication for ARR behind a reverse proxy.",
+      "basicUsername": "Basic Username",
+      "basicUsernamePlaceholder": "Username",
+      "basicPassword": "Basic Password",
+      "basicPasswordPlaceholder": "Password",
+      "basicPasswordPlaceholderEdit": "<redacted>",
+      "basicPasswordKeep": "Leave as <redacted> to keep existing password.",
+      "priority": "Priority",
+      "priorityDescription": "Higher priority instances are queried first",
+      "timeoutSeconds": "Timeout (seconds)",
+      "enabled": "Enable this instance",
+      "types": {
+        "sonarr": "Sonarr (TV Shows)",
+        "radarr": "Radarr (Movies)",
+        "sonarrShort": "Sonarr",
+        "radarrShort": "Radarr"
+      }
+    },
     "validation": {
       "nameRequired": "Name is required",
       "baseUrlRequired": "Base URL is required",

@@ -930,8 +930,8 @@ export function WorkflowsOverview({
                     {/* Rules list */}
                     {rulesQuery?.isError ? (
                       <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
-                        <p className="text-sm text-destructive">Failed to load rules</p>
-                        <p className="text-xs text-destructive/70 mt-1">Check connection to the instance.</p>
+                        <p className="text-sm text-destructive">{t("preferences.workflowsOverview.failedToLoadRules")}</p>
+                        <p className="text-xs text-destructive/70 mt-1">{t("preferences.workflowsOverview.checkConnection")}</p>
                       </div>
                     ) : rulesQuery?.isLoading ? (
                       <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
@@ -1047,9 +1047,9 @@ export function WorkflowsOverview({
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="all">All</SelectItem>
-                              <SelectItem value="success">Success</SelectItem>
-                              <SelectItem value="errors">Errors</SelectItem>
+                              <SelectItem value="all">{t("preferences.workflowsOverview.all")}</SelectItem>
+                              <SelectItem value="success">{t("preferences.workflowsOverview.success")}</SelectItem>
+                              <SelectItem value="errors">{t("preferences.workflowsOverview.errors")}</SelectItem>
                             </SelectContent>
                           </Select>
                           <Button
@@ -1080,15 +1080,14 @@ export function WorkflowsOverview({
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Clear Activity History</AlertDialogTitle>
+                                <AlertDialogTitle>{t("preferences.workflowsOverview.clearActivityTitle")}</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Delete activity history older than the selected period.
-                                  This action cannot be undone.
+                                  {t("preferences.workflowsOverview.clearActivityDescription")}
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <div className="py-4">
                                 <label className="text-sm font-medium mb-2 block">
-                                  Keep activity from the last:
+                                  {t("preferences.workflowsOverview.keepActivityLabel")}
                                 </label>
                                 <Select
                                   value={clearDaysMap[instance.id] ?? "7"}
@@ -1100,17 +1099,17 @@ export function WorkflowsOverview({
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="1">1 day</SelectItem>
-                                    <SelectItem value="3">3 days</SelectItem>
-                                    <SelectItem value="7">7 days</SelectItem>
-                                    <SelectItem value="14">14 days</SelectItem>
-                                    <SelectItem value="30">30 days</SelectItem>
-                                    <SelectItem value="0">Delete all</SelectItem>
+                                    <SelectItem value="1">{t("preferences.workflowsOverview.oneDay")}</SelectItem>
+                                    <SelectItem value="3">{t("preferences.workflowsOverview.threeDays")}</SelectItem>
+                                    <SelectItem value="7">{t("preferences.workflowsOverview.sevenDays")}</SelectItem>
+                                    <SelectItem value="14">{t("preferences.workflowsOverview.fourteenDays")}</SelectItem>
+                                    <SelectItem value="30">{t("preferences.workflowsOverview.thirtyDays")}</SelectItem>
+                                    <SelectItem value="0">{t("preferences.workflowsOverview.deleteAll")}</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
                               <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogCancel>{t("preferences.workflowsOverview.cancel")}</AlertDialogCancel>
                                 <AlertDialogAction
                                   onClick={() => handleDeleteOldActivity(
                                     instance.id,
@@ -1130,7 +1129,7 @@ export function WorkflowsOverview({
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           type="text"
-                          placeholder="Filter by name, hash, or rule..."
+                          placeholder={t("preferences.workflowsOverview.filterPlaceholder")}
                           value={activitySearchMap[instance.id] ?? ""}
                           onChange={(e) => setActivitySearchMap((prev) => ({
                             ...prev,
@@ -1143,22 +1142,22 @@ export function WorkflowsOverview({
                       {/* Activity list */}
                       {activityQuery?.isError ? (
                         <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
-                          <p className="text-sm text-destructive">Failed to load activity</p>
+                          <p className="text-sm text-destructive">{t("preferences.workflowsOverview.failedToLoadActivity")}</p>
                           <p className="text-xs text-destructive/70 mt-1">
-                            Check connection to the instance.
+                            {t("preferences.workflowsOverview.checkConnection")}
                           </p>
                         </div>
                       ) : activityQuery?.isLoading ? (
                         <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/40">
-                          <p className="text-sm text-muted-foreground">Loading activity...</p>
+                          <p className="text-sm text-muted-foreground">{t("preferences.workflowsOverview.loadingActivity")}</p>
                         </div>
                       ) : filteredEvents.length === 0 ? (
                         <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/40 text-center p-4">
                           <p className="text-sm text-muted-foreground">
-                            {activitySearchTerm ? "No matching events found." : "No activity recorded yet."}
+                            {activitySearchTerm ? t("preferences.workflowsOverview.noMatchingEvents") : t("preferences.workflowsOverview.noActivityYet")}
                           </p>
                           <p className="text-xs text-muted-foreground/60 mt-1">
-                            {activitySearchTerm? "Try a different search term or clear the filter.": "Events will appear here when automations delete torrents."}
+                            {activitySearchTerm ? t("preferences.workflowsOverview.tryDifferentSearch") : t("preferences.workflowsOverview.eventsWillAppear")}
                           </p>
                         </div>
                       ) : (
@@ -1574,20 +1573,20 @@ export function WorkflowsOverview({
                   ) : null}
                   {" "}to category <strong>"{enableConfirm.rule.conditions?.category?.category}"</strong>.
                 </p>
-                <p className="text-muted-foreground text-sm">Confirming will enable this rule immediately.</p>
+                <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
               </>
             ) : (
               <>
                 <p className="text-destructive font-medium">
                   Enabling "{enableConfirm.rule.name}" will affect {enableConfirm.preview.totalMatches} torrent{enableConfirm.preview.totalMatches !== 1 ? "s" : ""} that currently match.
                 </p>
-                <p className="text-muted-foreground text-sm">Confirming will enable this rule immediately.</p>
+                <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
               </>
             )
           ) : (
             <>
               <p>No torrents currently match "{enableConfirm?.rule.name}".</p>
-              <p className="text-muted-foreground text-sm">Confirming will enable this rule immediately.</p>
+              <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
             </>
           )
         }

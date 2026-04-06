@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import i18n from "@/i18n"
 import { withBasePath } from "./base-url"
 
 const DISMISSED_KEY = "qui-protocol-handler-dismissed"
@@ -33,18 +34,18 @@ export function canRegisterProtocolHandler(): boolean {
 
 export function getMagnetHandlerRegistrationGuidance(): string {
   if (isStandaloneDisplayMode()) {
-    return "Open qui in a regular browser tab to register (the prompt may appear in the address bar, which PWAs don’t show)."
+    return i18n.t("magnetHandler.guidance.standalone")
   }
 
   if (isFirefox()) {
-    return "If prompted by your browser, please accept to complete registration."
+    return i18n.t("magnetHandler.guidance.default")
   }
 
   if (isChromium()) {
-    return "Chrome often shows this as a small protocol-handler icon in the address bar; if nothing appears, enable protocol handlers at chrome://settings/handlers."
+    return i18n.t("magnetHandler.guidance.chromium")
   }
 
-  return "If prompted by your browser, please accept to complete registration."
+  return i18n.t("magnetHandler.guidance.default")
 }
 
 /**

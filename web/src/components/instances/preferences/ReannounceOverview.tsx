@@ -19,7 +19,7 @@ import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceRe
 import { useQueries, useQueryClient } from "@tanstack/react-query"
 import { ChevronDown, Copy, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
 import { useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface ReannounceOverviewProps {
@@ -190,7 +190,11 @@ export function ReannounceOverview({
             </Tooltip>
           </div>
           <CardDescription>
-            Monitors <strong>stalled</strong> torrents and reannounces them when no tracker is healthy.
+            <Trans
+              ns="instances"
+              i18nKey="preferences.reannounceOverview.description"
+              components={{ strong: <strong /> }}
+            />
           </CardDescription>
         </CardHeader>
 

@@ -21,7 +21,7 @@ import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { useIncognitoMode } from "@/lib/incognito"
 import { useForm } from "@tanstack/react-form"
 import React from "react"
-import { useTranslation } from "react-i18next"
+import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
@@ -328,9 +328,9 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
           <form.Field name="save_path">
             {(field) => (
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Default Save Path</Label>
+                <Label className="text-sm font-medium">{t("preferences.fileManagement.defaultSavePath")}</Label>
                 <p className="text-xs text-muted-foreground">
-                  Default directory for downloading files
+                  {t("preferences.fileManagement.defaultSavePathDescription")}
                 </p>
                 <Input
                   value={field.state.value as string}
@@ -358,9 +358,9 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
               <form.Subscribe selector={(state) => state.values.temp_path_enabled}>
                 {(tempPathEnabled) => (
                   <div className="space-y-2">
-                    <Label className="text-sm font-medium">Temporary Download Path</Label>
+                    <Label className="text-sm font-medium">{t("preferences.fileManagement.tempDownloadPath")}</Label>
                     <p className="text-xs text-muted-foreground">
-                      Directory where torrents are downloaded before moving to save path
+                      {t("preferences.fileManagement.tempDownloadPathDescription")}
                     </p>
                     <Input
                       value={field.state.value as string}
@@ -378,9 +378,9 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
           <form.Field name="torrent_content_layout">
             {(field) => (
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Default Content Layout</Label>
+                <Label className="text-sm font-medium">{t("preferences.fileManagement.defaultContentLayout")}</Label>
                 <p className="text-xs text-muted-foreground">
-                  How torrent files are organized within the save directory
+                  {t("preferences.fileManagement.defaultContentLayoutDescription")}
                 </p>
                 <Select
                   value={field.state.value as string}
@@ -390,9 +390,9 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                     <SelectValue placeholder="Select content layout" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Original">Original</SelectItem>
-                    <SelectItem value="Subfolder">Create subfolder</SelectItem>
-                    <SelectItem value="NoSubfolder">Don't create subfolder</SelectItem>
+                    <SelectItem value="Original">{t("preferences.fileManagement.contentLayoutOriginal")}</SelectItem>
+                    <SelectItem value="Subfolder">{t("preferences.fileManagement.contentLayoutSubfolder")}</SelectItem>
+                    <SelectItem value="NoSubfolder">{t("preferences.fileManagement.contentLayoutNoSubfolder")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -401,9 +401,13 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
 
           <Card className="bg-muted/20 border-muted/60">
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Run External Program</CardTitle>
+              <CardTitle className="text-base">{t("preferences.fileManagement.runExternalProgram")}</CardTitle>
               <CardDescription>
-                Run a command when a torrent finishes. Some instances also support running on torrent added. qBittorrent will expand placeholders like <code className="font-mono">%N</code>.
+                <Trans
+                  ns="instances"
+                  i18nKey="preferences.fileManagement.runExternalProgramDescription"
+                  components={{ code: <code className="font-mono" /> }}
+                />
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -412,7 +416,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                   {(enabledField) => (
                     <div className="space-y-3">
                       <SwitchSetting
-                        label="Run on Torrent Added"
+                        label={t("preferences.fileManagement.runOnTorrentAdded")}
                         checked={enabledField.state.value as boolean}
                         onCheckedChange={enabledField.handleChange}
                         description="Triggered right after a torrent is added to the client"
@@ -421,7 +425,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                       <form.Field name="autorun_on_torrent_added_program">
                         {(programField) => (
                           <div className="space-y-2 ml-6 pl-4 border-l-2 border-muted">
-                            <Label className="text-sm font-medium">Command</Label>
+                            <Label className="text-sm font-medium">{t("preferences.fileManagement.command")}</Label>
                             <Input
                               value={programField.state.value as string}
                               onChange={(e) => programField.handleChange(e.target.value)}
@@ -440,7 +444,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                 </form.Field>
               ) : (
                 <div className="space-y-1 rounded-md border border-muted bg-background/40 p-3">
-                  <p className="text-sm font-medium">Run on Torrent Added</p>
+                  <p className="text-sm font-medium">{t("preferences.fileManagement.runOnTorrentAdded")}</p>
                   <p className="text-xs text-muted-foreground">
                     Requires qBittorrent 4.5.0+ (Web API {AUTORUN_ON_ADDED_MIN_WEBAPI_VERSION}+). This instance reports {webAPIVersion || "no Web API version"}.
                   </p>
@@ -460,7 +464,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                     <form.Field name="autorun_program">
                       {(programField) => (
                         <div className="space-y-2 ml-6 pl-4 border-l-2 border-muted">
-                          <Label className="text-sm font-medium">Command</Label>
+                          <Label className="text-sm font-medium">{t("preferences.fileManagement.command")}</Label>
                           <Input
                             value={programField.state.value as string}
                             onChange={(e) => programField.handleChange(e.target.value)}
@@ -479,7 +483,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
               </form.Field>
 
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Supported Placeholders (case sensitive)</Label>
+                <Label className="text-sm font-medium">{t("preferences.fileManagement.supportedPlaceholders")}</Label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs text-muted-foreground">
                   {autorunPlaceholders.map((item) => (
                     <div key={item.token}>

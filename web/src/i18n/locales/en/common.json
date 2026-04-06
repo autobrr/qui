@@ -119,7 +119,12 @@
     "register": "Register",
     "dismiss": "Dismiss",
     "registrationRequested": "Magnet handler registration requested",
-    "registrationFailed": "Failed to register magnet handler"
+    "registrationFailed": "Failed to register magnet handler",
+    "guidance": {
+      "standalone": "Open qui in a regular browser tab to register (the prompt may appear in the address bar, which PWAs don’t show).",
+      "chromium": "Chrome often shows this as a small protocol-handler icon in the address bar; if nothing appears, enable protocol handlers at chrome://settings/handlers.",
+      "default": "If prompted by your browser, please accept to complete registration."
+    }
   },
   "numberInput": {
     "unlimited": "Unlimited",

@@ -1966,7 +1966,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
     }
     if (submitState.deleteEnabled && !submitState.actionCondition) {
-      toast.error("Delete requires at least one condition")
+      toast.error(t("preferences.workflowDialog.toast.deleteRequiresCondition"))
       return
     }
     const trimmedSubmitMovePath = submitState.exprMovePath?.trim()
@@ -1982,7 +1982,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         const validation = await api.validateAutomationRegex(instanceId, payload)
         if (!validation.valid && validation.errors.length > 0) {
           setRegexErrors(validation.errors)
-          toast.error("Invalid regex pattern - Go/RE2 does not support Perl features like lookahead/lookbehind")
+          toast.error(t("preferences.workflowDialog.toast.invalidRegexPatternUnsupported"))
           return
         }
       } catch {
@@ -2325,31 +2325,29 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   />
                   {formState.deleteEnabled && !formState.actionCondition && (
                     <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
-                      <p className="font-medium text-destructive">Delete requires at least one condition.</p>
+                      <p className="font-medium text-destructive">{t("preferences.workflowDialog.toast.deleteRequiresCondition")}</p>
                     </div>
                   )}
                   {regexErrors.length > 0 && (
                     <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
-                      <p className="font-medium text-destructive mb-1">Invalid regex pattern</p>
+                      <p className="font-medium text-destructive mb-1">{t("preferences.workflowDialog.invalidRegexPattern")}</p>
                       {regexErrors.map((err, i) => (
                         <p key={i} className="text-destructive/80 text-xs">
                           <span className="font-mono">{err.pattern}</span>: {err.message}
                         </p>
                       ))}
-                      <p className="text-muted-foreground text-xs mt-2">
-                        Go/RE2 does not support Perl features like lookahead (?=), lookbehind (?&lt;=), or negative variants (?!), (?&lt;!).
-                      </p>
+                      <p className="text-muted-foreground text-xs mt-2">{t("preferences.workflowDialog.regexHelp")}</p>
                     </div>
                   )}
 
                   {(isDeleteRule || isCategoryRule) && (
                     <div className="rounded-md border bg-muted/20 p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium">Live impact preview</p>
+                        <p className="text-sm font-medium">{t("preferences.workflowDialog.liveImpactPreview")}</p>
                         {isLivePreviewLoading && (
                           <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            Updating...
+                            {t("preferences.workflowDialog.updating")}
                           </span>
                         )}
                       </div>
@@ -2357,7 +2355,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <p className="text-xs text-destructive">{livePreviewError}</p>
                       ) : !livePreviewResult ? (
                         <p className="text-xs text-muted-foreground">
-                          Add conditions to preview impacted torrents.
+                          {t("preferences.workflowDialog.addConditionsToPreview")}
                         </p>
                       ) : (
                         <>
@@ -2373,7 +2371,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               ))}
                             </div>
                           ) : (
-                            <p className="text-xs text-muted-foreground">No current matches.</p>
+                            <p className="text-xs text-muted-foreground">{t("preferences.workflowDialog.noCurrentMatches")}</p>
                           )}
                         </>
                       )}
@@ -3786,14 +3784,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   <p className="text-destructive font-medium">
                     This rule will affect {previewResult.totalMatches} torrent{previewResult.totalMatches !== 1 ? "s" : ""} that currently match.
                   </p>
-                  <p className="text-muted-foreground text-sm">Confirming will save and enable this rule.</p>
+                  <p className="text-muted-foreground text-sm">{t("preferences.workflowDialog.confirmSaveAndEnable")}</p>
                 </>
               ) : (
                 <>
                   <p className="text-muted-foreground">
                     {previewResult.totalMatches} torrent{previewResult.totalMatches !== 1 ? "s" : ""} would match this rule if enabled.
                   </p>
-                  <p className="text-muted-foreground text-sm">Confirming will save this rule.</p>
+                  <p className="text-muted-foreground text-sm">{t("preferences.workflowDialog.confirmSave")}</p>
                 </>
               )
             ) : (
@@ -3806,13 +3804,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   ) : null}
                   {" "}to category <strong>"{previewInput?.exprCategory ?? formState.exprCategory}"</strong>.
                 </p>
-                <p className="text-muted-foreground text-sm">Confirming will save and enable this rule.</p>
+                <p className="text-muted-foreground text-sm">{t("preferences.workflowDialog.confirmSaveAndEnable")}</p>
               </>
             )
           ) : (
             <>
-              <p>No torrents currently match this rule.</p>
-              <p className="text-muted-foreground text-sm">Confirming will save this rule.</p>
+              <p>{t("preferences.workflowDialog.noTorrentsCurrentlyMatch")}</p>
+              <p className="text-muted-foreground text-sm">{t("preferences.workflowDialog.confirmSave")}</p>
             </>
           )
         }

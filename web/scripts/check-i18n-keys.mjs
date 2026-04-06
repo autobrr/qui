@@ -71,6 +71,17 @@ function loadLocale(namespace) {
   return JSON.parse(fs.readFileSync(localePath, "utf8"))
 }
 
+function hasLocaleKey(locale, key) {
+  if (getNestedValue(locale, key) !== undefined) {
+    return true
+  }
+
+  return (
+    getNestedValue(locale, `${key}_one`) !== undefined ||
+    getNestedValue(locale, `${key}_other`) !== undefined
+  )
+}
+
 const files = walk(srcRoot)
 const localeCache = new Map()
 const missingKeys = []
@@ -233,6 +244,197 @@ const hardcodedStringChecks = [
     ],
   },
   {
+    file: "src/components/cross-seed/DirScanTab.tsx",
+    literals: [
+      "\"No directories configured yet.\"",
+      "\"Recent Scan Runs\"",
+      "\"Reset scan progress?\"",
+      "\"Match Mode\"",
+      "\"Default Category\"",
+      "\"Directory Path\"",
+      "\"Target qBittorrent Instance\"",
+      "\"Scan Interval (minutes)\"",
+    ],
+    patterns: [
+      /Add a directory to start scanning\./,
+      /Added on top of the global Dir Scan tags\./,
+      /Any files not matched by a torrent will be flagged as orphans/,
+    ],
+  },
+  {
+    file: "src/components/instances/preferences/CompletionOverview.tsx",
+    literals: [
+      "\"Bypass Torznab cache\"",
+      "\"Include filters\"",
+      "\"Exclude filters\"",
+      "\"Categories\"",
+      "\"Tags\"",
+      "\"Indexers\"",
+    ],
+    patterns: [
+      /Torrents already tagged .*cross-seed.* are skipped\./,
+      /Skip torrents in these categories\./,
+      /Skip torrents with these tags\./,
+    ],
+  },
+  {
+    file: "src/components/instances/preferences/FileManagementForm.tsx",
+    literals: [
+      "\"Default Save Path\"",
+      "\"Temporary Download Path\"",
+      "\"Default Content Layout\"",
+      "\"Create subfolder\"",
+      "\"Don't create subfolder\"",
+      "\"Run External Program\"",
+      "\"Supported Placeholders (case sensitive)\"",
+    ],
+  },
+  {
+    file: "src/components/instances/preferences/OrphanScanSettingsForm.tsx",
+    patterns: [
+      /Files flagged as orphans will be deleted automatically without manual review\./,
+      /Ensure your .*Ignore Paths.* are correctly configured or use hardlink\/reflink mode for dir scan\./,
+    ],
+  },
+  {
+    file: "src/components/instances/preferences/ReannounceOverview.tsx",
+    patterns: [
+      /Monitors .*stalled.* torrents and reannounces them when no tracker is healthy\./,
+    ],
+  },
+  {
+    file: "src/components/instances/preferences/WorkflowDialog.tsx",
+    literals: [
+      "\"Conditions (optional)\"",
+      "\"Live impact preview\"",
+      "\"Grouped condition groups\"",
+      "\"Action\"",
+      "\"Dry-run results\"",
+      "\"Enable dry run?\"",
+      "\"Add custom group\"",
+      "\"Group ID\"",
+      "\"Keys (select at least one)\"",
+      "\"Ambiguous policy (advanced)\"",
+    ],
+    patterns: [
+      /Delete requires at least one condition\./,
+      /Invalid regex pattern/,
+      /No current matches\./,
+      /No torrents currently match this rule\./,
+      /Confirming will save and enable this rule\./,
+      /Confirming will save this rule\./,
+    ],
+  },
+  {
+    file: "src/components/instances/preferences/WorkflowsOverview.tsx",
+    literals: [
+      "\"Failed to load rules\"",
+      "\"Clear Activity History\"",
+      "\"Delete all\"",
+      "\"Failed to load activity\"",
+      "\"Loading activity...\"",
+    ],
+    patterns: [
+      /Check connection to the instance\./,
+      /Confirming will enable this rule immediately\./,
+    ],
+  },
+  {
+    file: "src/components/settings/ArrInstancesManager.tsx",
+    literals: [
+      "\"Loading ARR instances...\"",
+      "\"Failed to load ARR instances\"",
+      "\"Type *\"",
+      "\"Name *\"",
+      "\"Base URL *\"",
+      "\"Basic Auth\"",
+      "\"Basic Username\"",
+      "\"Basic Password\"",
+      "\"Priority\"",
+      "\"Timeout (seconds)\"",
+    ],
+    patterns: [
+      /No ARR instances configured\./,
+      /Are you sure you want to delete/,
+    ],
+  },
+  {
+    file: "src/components/settings/ClientApiKeysManager.tsx",
+    literals: [
+      "\"Create Client API Key\"",
+      "\"API Key Created\"",
+      "\"Proxy URL\"",
+      "\"Client Name\"",
+      "\"qBittorrent Instance\"",
+      "\"Delete Client API Key?\"",
+    ],
+    patterns: [
+      /Created:/,
+      /Last used:/,
+      /Host:/,
+    ],
+  },
+  {
+    file: "src/components/settings/LogSettingsPanel.tsx",
+    literals: [
+      "\"Log Level\"",
+      "\"Select log level\"",
+      "\"Log File Path\"",
+      "\"Leave empty for stdout only\"",
+      "\"Max Size (MB)\"",
+      "\"Max Backups\"",
+      "\"Saving...\"",
+      "\"Save Settings\"",
+      "\"Search logs...\"",
+      "\"Muted Messages\"",
+    ],
+  },
+  {
+    file: "src/components/settings/NotificationsManager.tsx",
+    literals: [
+      "\"Name\"",
+      "\"Shoutrrr URL\"",
+      "\"Enabled\"",
+      "\"Events\"",
+      "\"All events\"",
+      "\"New Notification Target\"",
+      "\"Edit Notification Target\"",
+      "\"Delete notification target?\"",
+    ],
+    patterns: [
+      /Use any Shoutrrr-supported URL scheme\./,
+      /Toggle delivery for this target\./,
+      /Loading event types…/,
+      /Loading notification targets…/,
+      /Failed to load notification targets/,
+      /Update delivery settings for this target\./,
+    ],
+  },
+  {
+    file: "src/hooks/useTorrentActions.ts",
+    literals: [
+      "\"Torrent name cannot be empty\"",
+      "\"Both original and new file paths are required\"",
+      "\"File name unchanged\"",
+      "\"Both original and new folder paths are required\"",
+      "\"Folder name unchanged\"",
+    ],
+    patterns: [
+      /Added tags to \$\{count\} \$\{torrentText\}/,
+      /Removed tags from \$\{count\} \$\{torrentText\}/,
+      /Enabled.*Auto TMM for \$\{count\} \$\{torrentText\}/,
+      /Disabled.*sequential download for \$\{count\} \$\{torrentText\}/,
+    ],
+  },
+  {
+    file: "src/lib/protocol-handler.ts",
+    literals: [
+      "\"Open qui in a regular browser tab to register (the prompt may appear in the address bar, which PWAs don’t show).\"",
+      "\"If prompted by your browser, please accept to complete registration.\"",
+      "\"Chrome often shows this as a small protocol-handler icon in the address bar; if nothing appears, enable protocol handlers at chrome://settings/handlers.\"",
+    ],
+  },
+  {
     file: "src/components/instances/preferences/NetworkDiscoveryForm.tsx",
     literals: [
       "\"Peer Discovery\"",
@@ -340,7 +542,7 @@ for (const file of files) {
 
   for (const match of source.matchAll(/\bt\("([^"]+)"/g)) {
     const key = match[1]
-    if (getNestedValue(locale, key) === undefined) {
+    if (!hasLocaleKey(locale, key)) {
       missingKeys.push(`${path.relative(webRoot, file)}: ${defaultNamespace}.${key}`)
     }
   }
@@ -354,7 +556,7 @@ for (const file of files) {
     }
 
     const namespacedLocale = localeCache.get(namespace)
-    if (!namespacedLocale || getNestedValue(namespacedLocale, key) === undefined) {
+    if (!namespacedLocale || !hasLocaleKey(namespacedLocale, key)) {
       missingKeys.push(`${path.relative(webRoot, file)}: ${namespace}.${key}`)
     }
   }
@@ -364,7 +566,7 @@ for (const check of hardcodedStringChecks) {
   const filePath = path.join(webRoot, check.file)
   const source = fs.readFileSync(filePath, "utf8")
 
-  for (const literal of check.literals) {
+  for (const literal of check.literals ?? []) {
     if (source.includes(literal)) {
       hardcodedStringErrors.push(`${check.file}: contains hardcoded UI string ${literal}`)
     }

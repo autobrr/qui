@@ -18,7 +18,7 @@ import type { Instance, InstanceCrossSeedCompletionSettings } from "@/types"
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Info, Loader2 } from "lucide-react"
 import { useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface CompletionFormState {
@@ -242,8 +242,11 @@ export function CompletionOverview() {
             </TooltipTrigger>
             <TooltipContent className="max-w-[300px]">
               <p>
-                Automatically trigger a cross-seed search when torrents complete downloading.
-                Torrents already tagged <span className="font-semibold">cross-seed</span> are skipped.
+                <Trans
+                  ns="instances"
+                  i18nKey="preferences.completionOverview.tooltip"
+                  components={{ strong: <span className="font-semibold" /> }}
+                />
               </p>
             </TooltipContent>
           </Tooltip>
@@ -338,7 +341,7 @@ export function CompletionOverview() {
                           <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
                             <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
                             <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                              Could not load categories and tags from qBittorrent. You can still type custom values.
+                              {t("preferences.completionOverview.metadataWarning")}
                             </p>
                           </div>
                         )}
@@ -346,7 +349,7 @@ export function CompletionOverview() {
                           <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
                             <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
                             <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                              Could not load Torznab indexers. Completion searches will use all available indexers.
+                              {t("preferences.completionOverview.indexerWarning")}
                             </p>
                           </div>
                         )}
@@ -354,16 +357,16 @@ export function CompletionOverview() {
                           <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
                             <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
                             <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                              No enabled Torznab indexers found. Enable at least one in Settings → Indexers.
+                              {t("preferences.completionOverview.noIndexersWarning")}
                             </p>
                           </div>
                         )}
 
                         <div className="flex items-center justify-between rounded-md border border-border/50 bg-muted/30 p-3">
                           <div className="space-y-0.5">
-                            <Label className="text-sm font-medium">Bypass Torznab cache</Label>
+                            <Label className="text-sm font-medium">{t("preferences.completionOverview.bypassTorznabCache")}</Label>
                             <p className="text-xs text-muted-foreground">
-                              When on, completion searches for this instance always hit indexers (no cached results). Default off.
+                              {t("preferences.completionOverview.bypassTorznabCacheDescription")}
                             </p>
                           </div>
                           <Switch
@@ -375,54 +378,60 @@ export function CompletionOverview() {
 
                         <div className="grid gap-4 md:grid-cols-2">
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">
-                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Include filters</p>
+                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("preferences.completionOverview.includeFilters")}</p>
                             <div className="space-y-2">
-                              <Label className="text-xs">Categories</Label>
+                              <Label className="text-xs">{t("preferences.completionOverview.categories")}</Label>
                               <MultiSelect
                                 options={categoryOptions}
                                 selected={form.categories}
                                 onChange={(values) => handleFormChange(instance.id, "categories", values, form)}
-                                placeholder="All categories"
+                                placeholder={t("preferences.completionOverview.allCategories")}
                                 creatable
                                 disabled={isSaving}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.categories.length === 0? "All categories will be included.": `Only ${form.categories.length} selected ${form.categories.length === 1 ? "category" : "categories"} will be matched.`}
+                                {form.categories.length === 0
+                                  ? t("preferences.completionOverview.allCategoriesIncluded")
+                                  : t("preferences.completionOverview.selectedCategories", { count: form.categories.length })}
                               </p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">Tags</Label>
+                              <Label className="text-xs">{t("preferences.completionOverview.tags")}</Label>
                               <MultiSelect
                                 options={tagOptions}
                                 selected={form.tags}
                                 onChange={(values) => handleFormChange(instance.id, "tags", values, form)}
-                                placeholder="All tags"
+                                placeholder={t("preferences.completionOverview.allTags")}
                                 creatable
                                 disabled={isSaving}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.tags.length === 0? "All tags will be included.": `Only ${form.tags.length} selected ${form.tags.length === 1 ? "tag" : "tags"} will be matched.`}
+                                {form.tags.length === 0
+                                  ? t("preferences.completionOverview.allTagsIncluded")
+                                  : t("preferences.completionOverview.selectedTags", { count: form.tags.length })}
                               </p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">Indexers</Label>
+                              <Label className="text-xs">{t("preferences.completionOverview.indexers")}</Label>
                               <MultiSelect
                                 options={indexerOptions}
                                 selected={form.indexerIds.map(String)}
                                 onChange={(values) => handleFormChange(instance.id, "indexerIds", normalizeNumberList(values), form)}
-                                placeholder="All indexers"
+                                placeholder={t("preferences.completionOverview.allIndexers")}
                                 disabled={isSaving || indexersQuery.isPending || (!hasEnabledIndexers && !indexersQuery.isPending)}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.indexerIds.length === 0? "All enabled indexers will be searched.": `Only ${form.indexerIds.length} selected ${form.indexerIds.length === 1 ? "indexer" : "indexers"} will be queried.`}
+                                {form.indexerIds.length === 0
+                                  ? t("preferences.completionOverview.allIndexersSearched")
+                                  : t("preferences.completionOverview.selectedIndexers", { count: form.indexerIds.length })}
                               </p>
                             </div>
                           </div>
 
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">
-                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Exclude filters</p>
+                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("preferences.completionOverview.excludeFilters")}</p>
                             <div className="space-y-2">
-                              <Label className="text-xs">Categories</Label>
+                              <Label className="text-xs">{t("preferences.completionOverview.categories")}</Label>
                               <MultiSelect
                                 options={categoryOptions}
                                 selected={form.excludeCategories}
@@ -431,10 +440,10 @@ export function CompletionOverview() {
                                 creatable
                                 disabled={isSaving}
                               />
-                              <p className="text-xs text-muted-foreground">Skip torrents in these categories.</p>
+                              <p className="text-xs text-muted-foreground">{t("preferences.completionOverview.skipCategoriesDescription")}</p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">Tags</Label>
+                              <Label className="text-xs">{t("preferences.completionOverview.tags")}</Label>
                               <MultiSelect
                                 options={tagOptions}
                                 selected={form.excludeTags}
@@ -443,7 +452,7 @@ export function CompletionOverview() {
                                 creatable
                                 disabled={isSaving}
                               />
-                              <p className="text-xs text-muted-foreground">Skip torrents with these tags.</p>
+                              <p className="text-xs text-muted-foreground">{t("preferences.completionOverview.skipTagsDescription")}</p>
                             </div>
                           </div>
                         </div>

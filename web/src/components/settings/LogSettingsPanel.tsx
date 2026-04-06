@@ -112,7 +112,7 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
         {(field) => (
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <Label htmlFor="level" className="text-sm">Log Level</Label>
+              <Label htmlFor="level" className="text-sm">{t("logs.configuration.level")}</Label>
               {isLocked("level") && (
                 <Badge variant="outline" className="gap-1 text-xs">
                   <Lock className="h-3 w-3" />
@@ -126,7 +126,7 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
               disabled={isLocked("level")}
             >
               <SelectTrigger id="level" className="h-9">
-                <SelectValue placeholder="Select log level" />
+                <SelectValue placeholder={t("logs.configuration.levelPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
                 {LOG_LEVELS.map((level) => (
@@ -144,7 +144,7 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
         {(field) => (
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <Label htmlFor="path" className="text-sm">Log File Path</Label>
+              <Label htmlFor="path" className="text-sm">{t("logs.configuration.path")}</Label>
               {isLocked("path") && (
                 <Badge variant="outline" className="gap-1 text-xs">
                   <Lock className="h-3 w-3" />
@@ -155,7 +155,7 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
             <Input
               id="path"
               className="h-9"
-              placeholder="Leave empty for stdout only"
+              placeholder={t("logs.configuration.pathPlaceholder")}
               value={field.state.value}
               onChange={(e) => field.handleChange(e.target.value)}
               disabled={isLocked("path")}
@@ -169,7 +169,7 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
           {(field) => (
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <Label htmlFor="maxSize" className="text-sm">Max Size (MB)</Label>
+                <Label htmlFor="maxSize" className="text-sm">{t("logs.configuration.maxSize")}</Label>
                 {isLocked("maxSize") && (
                   <Badge variant="outline" className="gap-1 text-xs">
                     <Lock className="h-3 w-3" />
@@ -193,7 +193,7 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
           {(field) => (
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <Label htmlFor="maxBackups" className="text-sm">Max Backups</Label>
+                <Label htmlFor="maxBackups" className="text-sm">{t("logs.configuration.maxBackups")}</Label>
                 {isLocked("maxBackups") && (
                   <Badge variant="outline" className="gap-1 text-xs">
                     <Lock className="h-3 w-3" />
@@ -220,10 +220,10 @@ function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<Retu
             {isSubmitting || updateMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {t("logs.configuration.saving")}
               </>
             ) : (
-              "Save Settings"
+              t("logs.configuration.saveSettings")
             )}
           </Button>
         )}
@@ -702,7 +702,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
             <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="text"
-              placeholder="Search logs..."
+              placeholder={t("logs.viewer.searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-8 w-40 pl-7 pr-7 text-xs"
@@ -722,7 +722,11 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
               <Button variant="outline" size="sm" className="h-8 gap-1">
                 <Filter className="h-3.5 w-3.5" />
                 <span className="text-xs">
-                  {selectedLevels.size === ALL_LOG_LEVELS.length? "All Levels": selectedLevels.size === 0? "None": `${selectedLevels.size} Level${selectedLevels.size > 1 ? "s" : ""}`}
+                  {selectedLevels.size === ALL_LOG_LEVELS.length
+                    ? t("logs.viewer.allLevels")
+                    : selectedLevels.size === 0
+                      ? t("logs.viewer.none")
+                      : t("logs.viewer.levelCount", { count: selectedLevels.size })}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 opacity-50" />
               </Button>
@@ -735,7 +739,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
                   className="h-6 px-2 text-xs"
                   onClick={selectAll}
                 >
-                  All
+                  {t("logs.viewer.all")}
                 </Button>
                 <Button
                   variant="ghost"
@@ -743,7 +747,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
                   className="h-6 px-2 text-xs"
                   onClick={selectNone}
                 >
-                  None
+                  {t("logs.viewer.none")}
                 </Button>
               </div>
               <div className="space-y-1">

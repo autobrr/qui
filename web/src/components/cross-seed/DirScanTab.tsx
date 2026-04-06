@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
+import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import {
   AlertTriangle,
@@ -74,6 +74,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import i18n from "@/i18n"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
@@ -267,8 +268,8 @@ export function DirScanTab({ instances }: DirScanTabProps) {
           {directories.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
               <FolderSearch className="size-12 mb-4 opacity-50" />
-              <p>No directories configured yet.</p>
-              <p className="text-sm">Add a directory to start scanning.</p>
+              <p>{t("dirScan.noDirectories")}</p>
+              <p className="text-sm">{t("dirScan.addDirectoryToStart")}</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -495,7 +496,7 @@ function formatTrackerName(injection: DirScanRunInjection): string {
     injection.trackerDisplayName ||
     injection.indexerName ||
     injection.trackerDomain ||
-    "Unknown"
+    i18n.t("dirScan.unknown", { ns: "crossseed" })
   )
 }
 
@@ -525,6 +526,7 @@ function RunRow({
   formatDateTime: (date: string) => string
   formatRelativeTime: (date: string | Date) => string
 }) {
+  const { t } = useTranslation("crossseed")
   const { data: injections = [], isLoading } = useDirScanRunInjections(directoryId, run.id, {
     enabled: expanded,
     active: expanded && isRunActive(run),
@@ -593,16 +595,16 @@ function RunRow({
               </p>
             ) : (
               <div className="space-y-2">
-                <div className="text-sm font-medium">Added / Failed</div>
+                <div className="text-sm font-medium">{t("dirScan.addedOrFailed")}</div>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Release</TableHead>
-                      <TableHead>Tracker</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Mode</TableHead>
-                      <TableHead>Time</TableHead>
+                      <TableHead>{t("dirScan.table.statusHead")}</TableHead>
+                      <TableHead>{t("dirScan.table.release")}</TableHead>
+                      <TableHead>{t("dirScan.table.tracker")}</TableHead>
+                      <TableHead>{t("dirScan.table.type")}</TableHead>
+                      <TableHead>{t("dirScan.table.mode")}</TableHead>
+                      <TableHead>{t("dirScan.table.time")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -621,7 +623,7 @@ function RunRow({
                           {inj.status === "failed" && inj.errorMessage && (
                             <details className="mt-1">
                               <summary className="text-xs text-muted-foreground cursor-pointer">
-                                Show error
+                                {t("dirScan.showError")}
                               </summary>
                               <pre className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
                                 {inj.errorMessage}
@@ -686,8 +688,8 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
     <Card>
       <CardHeader className="flex flex-row items-start justify-between">
         <div>
-          <CardTitle>Recent Scan Runs</CardTitle>
-          <CardDescription>Last 10 runs retained for this directory.</CardDescription>
+          <CardTitle>{t("dirScan.recentScanRuns")}</CardTitle>
+          <CardDescription>{t("dirScan.recentScanRunsDescription")}</CardDescription>
         </div>
         <Button
           variant="outline"
@@ -700,24 +702,24 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
           ) : (
             <RotateCcw className="size-4 mr-2" />
           )}
-          Reset Scan Progress
+          {t("dirScan.resetScanProgress")}
         </Button>
       </CardHeader>
       <CardContent>
         {runs.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">
-            No scan runs yet.
+            {t("dirScan.noScanRunsYet")}
           </p>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Started</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Eligible</TableHead>
-                <TableHead>Matches</TableHead>
-                <TableHead>Added</TableHead>
-                <TableHead>Duration</TableHead>
+                <TableHead>{t("dirScan.table.started")}</TableHead>
+                <TableHead>{t("dirScan.table.status")}</TableHead>
+                <TableHead>{t("dirScan.table.files")}</TableHead>
+                <TableHead>{t("dirScan.table.matchesHead")}</TableHead>
+                <TableHead>{t("dirScan.table.addedHead")}</TableHead>
+                <TableHead>{t("dirScan.table.duration")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -746,14 +748,13 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Reset scan progress?</AlertDialogTitle>
+            <AlertDialogTitle>{t("dirScan.resetScanProgressTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This deletes tracked dir-scan progress for this directory. The next scan will
-              recheck the directory and retry all items, including ones that were already finished.
+              {t("dirScan.resetScanProgressDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={resetFiles.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={resetFiles.isPending}>{t("dirScan.deleteDialog.cancel")}</AlertDialogCancel>
             <Button
               variant="destructive"
               onClick={handleReset}
@@ -1424,7 +1425,14 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Added on top of the global Dir Scan tags. Suggested: <span className="font-mono">dirscan</span>, <span className="font-mono">needs-review</span>.
+              <Trans
+                ns="crossseed"
+                i18nKey="dirScan.tagsDescription"
+                components={{
+                  dirscan: <span className="font-mono" />,
+                  needsReview: <span className="font-mono" />,
+                }}
+              />
             </p>
           </div>
 
@@ -1469,7 +1477,11 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
                     Regular mode is enabled for this instance
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    In regular mode, torrents point to your original files. This causes the orphan scanner to treat this directory as a scan root. <span className="font-medium">Any files not matched by a torrent will be flagged as orphans</span> and could be deleted if auto-cleanup is enabled.
+                    <Trans
+                      ns="crossseed"
+                      i18nKey="dirScan.orphanWarning"
+                      components={{ strong: <span className="font-medium" /> }}
+                    />
                   </p>
                   <p className="text-sm text-muted-foreground">
                     Use <span className="font-medium">hardlink</span> or <span className="font-medium">reflink</span> mode in instance settings to avoid this risk.
