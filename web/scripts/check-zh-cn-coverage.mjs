@@ -93,11 +93,6 @@ function getPluralSuffix(key) {
   return null
 }
 
-function getPluralBase(key) {
-  const suffix = getPluralSuffix(key)
-  return suffix ? key.slice(0, -suffix.length) : key
-}
-
 function containsCJK(str) {
   return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(str)
 }
@@ -310,7 +305,7 @@ function checkUntranslated(enFlat, zhFlat, namespace) {
   return { explained, unexplained }
 }
 
-function checkPluralForms(enFlat, zhFlat, namespace) {
+function checkPluralForms(zhFlat, namespace) {
   const warnings = []
 
   for (const key of zhFlat.keys()) {
@@ -412,8 +407,14 @@ for (const ns of namespaces) {
 
   errors.encoding.push(...checkEncoding(zhPath))
 
-  const enData = JSON.parse(fs.readFileSync(enPath, "utf8"))
-  const zhData = JSON.parse(fs.readFileSync(zhPath, "utf8"))
+  let enData, zhData
+  try {
+    enData = JSON.parse(fs.readFileSync(enPath, "utf8"))
+    zhData = JSON.parse(fs.readFileSync(zhPath, "utf8"))
+  } catch {
+    errors.encoding.push(`${ns}: failed to parse JSON, skipping checks`)
+    continue
+  }
 
   const enFlat = flattenKeys(enData)
   const zhFlat = flattenKeys(zhData)
@@ -427,7 +428,7 @@ for (const ns of namespaces) {
   const untranslated = checkUntranslated(enFlat, zhFlat, ns)
   warnings.untranslatedUnexplained.push(...untranslated.unexplained)
   warnings.untranslatedExplained.push(...untranslated.explained)
-  warnings.pluralForms.push(...checkPluralForms(enFlat, zhFlat, ns))
+  warnings.pluralForms.push(...checkPluralForms(zhFlat, ns))
   warnings.textLength.push(...checkTextLength(enFlat, zhFlat, ns))
   warnings.punctuation.push(...checkPunctuation(zhFlat, ns))
 }
@@ -467,8 +468,8 @@ if (totalErrors > 0) {
 
 if (totalWarnings > 0) {
   console.log("WARNINGS:\n")
-  printSection("Untranslated (kept intentionally - technical/community terms)", warnings.untranslatedUnexplained, "warning")
-  printSection("Untranslated (kept intentionally - paths, URLs, patterns, examples)", warnings.untranslatedExplained, "warning")
+  printSection("Untranslated (needs review)", warnings.untranslatedUnexplained, "warning")
+  printSection("Untranslated (kept intentionally - paths, URLs, patterns, examples, technical/community terms)", warnings.untranslatedExplained, "warning")
   printSection("Plural Forms", warnings.pluralForms, "warning")
   printSection("Text Length", warnings.textLength, "warning")
   printSection("Punctuation", warnings.punctuation, "warning")
