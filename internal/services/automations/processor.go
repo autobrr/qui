@@ -96,6 +96,11 @@ type torrentDesiredState struct {
 	externalProgramID *int
 	programRuleID     int
 	programRuleName   string
+
+	// Webhook (last rule wins)
+	webhookAction   *models.WebhookAction
+	webhookRuleID   int
+	webhookRuleName string
 }
 
 type ruleRef struct {
@@ -132,13 +137,15 @@ type ruleRunStats struct {
 	MoveBlockedByCrossSeed           int
 	ExternalProgramApplied           int
 	ExternalProgramConditionNotMet   int
+	WebhookApplied                   int
+	WebhookConditionNotMet           int
 }
 
 func (s *ruleRunStats) totalApplied() int {
 	if s == nil {
 		return 0
 	}
-	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.RecheckApplied + s.ReannounceApplied + s.AutoManageApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied
+	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.RecheckApplied + s.ReannounceApplied + s.AutoManageApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied + s.WebhookApplied
 }
 
 func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *ruleRunStats {
@@ -475,6 +482,23 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 	}
 
+	// Webhook (last rule wins)
+	if conditions.Webhook != nil && conditions.Webhook.Enabled && conditions.Webhook.URL != "" {
+		shouldApply := conditions.Webhook.Condition == nil ||
+			EvaluateConditionWithContext(conditions.Webhook.Condition, torrent, evalCtx, 0)
+
+		if shouldApply {
+			if stats != nil {
+				stats.WebhookApplied++
+			}
+			state.webhookAction = conditions.Webhook
+			state.webhookRuleID = rule.ID
+			state.webhookRuleName = rule.Name
+		} else if stats != nil {
+			stats.WebhookConditionNotMet++
+		}
+	}
+
 	// Delete
 	if conditions.Delete != nil && conditions.Delete.Enabled {
 		// Safety: delete must always have an explicit condition.
@@ -789,7 +813,8 @@ func hasActions(state *torrentDesiredState) bool {
 		state.category != nil ||
 		state.shouldDelete ||
 		state.shouldMove ||
-		state.externalProgramID != nil
+		state.externalProgramID != nil ||
+		state.webhookAction != nil
 }
 
 // selectTrackerTag picks the best tracker domain to use as a tag.

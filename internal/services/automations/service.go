@@ -5,10 +5,13 @@
 package automations
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
+	"net/http"
 	"path"
 	"path/filepath"
 	"slices"
@@ -25,6 +28,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/httphelpers"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -66,6 +70,7 @@ var automationActionLabels = map[string]string{
 	models.ActivityActionRechecked:           "Rechecked torrents",
 	models.ActivityActionReannounced:         "Reannounced torrents",
 	models.ActivityActionMoved:               "Moved torrents",
+	models.ActivityActionWebhook:             "Webhook called",
 	models.ActivityActionDryRunNoMatch:       "Dry-run: no matches",
 }
 
@@ -522,6 +527,7 @@ type Service struct {
 	syncManager               *qbittorrent.SyncManager
 	notifier                  notifications.Notifier
 	externalProgramService    *externalprograms.Service // for executing external programs
+	webhookClient             *http.Client              // shared HTTP client for webhook actions
 	crossMatcher              CrossMatcher
 	activityRuns              *activityRunStore
 	releaseParser             *releases.Parser
@@ -562,6 +568,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		syncManager:               syncManager,
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
+		webhookClient:             &http.Client{Timeout: 30 * time.Second},
 		crossMatcher:              crossMatcher,
 		activityRuns:              newActivityRunStore(cfg.ActivityRunRetention, cfg.ActivityRunMax),
 		releaseParser:             releases.NewDefaultParser(),
@@ -2186,8 +2193,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	categoryBatches := make(map[string][]string) // category name -> hashes
 	moveBatches := make(map[string][]string)     // path -> hashes
 
-	// External program execution tracking
+	// External program and webhook execution tracking
 	var programExecutions []pendingProgramExec
+	var webhookExecutions []pendingWebhookExec
 	deleteHashesByMode := make(map[string][]string)
 	pendingByHash := make(map[string]pendingDeletion)
 
@@ -2608,6 +2616,17 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			})
 		}
 
+		// Webhook execution
+		if state.webhookAction != nil {
+			webhookExecutions = append(webhookExecutions, pendingWebhookExec{
+				hash:     hash,
+				torrent:  torrent,
+				action:   state.webhookAction,
+				ruleID:   state.webhookRuleID,
+				ruleName: state.webhookRuleName,
+			})
+		}
+
 	}
 
 	if dryRun {
@@ -2627,6 +2646,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			moveBatches,
 			pendingByHash,
 			programExecutions,
+			webhookExecutions,
 			torrentByHash,
 			torrents,
 			states,
@@ -3638,6 +3658,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// Execute external programs (async, fire-and-forget)
 	s.executeExternalProgramsFromAutomation(ctx, instanceID, programExecutions)
 
+	// Execute webhooks (async, fire-and-forget)
+	s.executeWebhooksFromAutomation(ctx, instanceID, webhookExecutions)
+
 	// Execute deletions
 	//
 	// Note on tracker announces: No explicit pause/reannounce step is needed before
@@ -4643,6 +4666,9 @@ func actionConditionsUseField(ac *models.ActionConditions, field ConditionField)
 	if ac.ExternalProgram != nil && ac.ExternalProgram.Enabled {
 		conds = append(conds, ac.ExternalProgram.Condition)
 	}
+	if ac.Webhook != nil && ac.Webhook.Enabled {
+		conds = append(conds, ac.Webhook.Condition)
+	}
 	for _, cond := range conds {
 		if conditionTreeUsesField(cond, field) {
 			return true
@@ -4957,6 +4983,7 @@ func (s *Service) recordDryRunActivities(
 	moveBatches map[string][]string,
 	pendingByHash map[string]pendingDeletion,
 	programExecutions []pendingProgramExec,
+	webhookExecutions []pendingWebhookExec,
 	torrentByHash map[string]qbt.Torrent,
 	torrents []qbt.Torrent,
 	states map[string]*torrentDesiredState,
@@ -5443,6 +5470,18 @@ func (s *Service) recordDryRunActivities(
 		}
 	}
 
+	// Webhooks
+	if len(webhookExecutions) > 0 {
+		var allHashes []string
+		for _, exec := range webhookExecutions {
+			allHashes = append(allHashes, exec.hash)
+		}
+		uniqueHashes := dedupeHashes(allHashes)
+		createActivity(models.ActivityActionWebhook, map[string]any{"count": len(uniqueHashes)}, func() []ActivityRunTorrent {
+			return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
+		})
+	}
+
 	// Deletes
 	if len(pendingByHash) > 0 {
 		hashesByAction := make(map[string][]string)
@@ -5715,6 +5754,14 @@ type pendingProgramExec struct {
 	programID int
 	ruleID    int
 	ruleName  string
+}
+
+type pendingWebhookExec struct {
+	hash     string
+	torrent  qbt.Torrent
+	action   *models.WebhookAction
+	ruleID   int
+	ruleName string
 }
 
 // executeExternalProgramsFromAutomation executes external programs for matching torrents.
@@ -5992,4 +6039,191 @@ func conditionEqual(a, b *models.RuleCondition) bool {
 		}
 	}
 	return true
+}
+
+// webhookPayload is the standard JSON payload sent to webhook endpoints.
+type webhookPayload struct {
+	Source    string          `json:"source"`
+	Event     string          `json:"event"`
+	Rule      webhookRule     `json:"rule"`
+	Torrent   webhookTorrent  `json:"torrent"`
+	Instance  webhookInstance `json:"instance"`
+	Timestamp time.Time       `json:"timestamp"`
+}
+
+type webhookRule struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+type webhookTorrent struct {
+	Name        string   `json:"name"`
+	Hash        string   `json:"hash"`
+	Category    string   `json:"category"`
+	Tags        []string `json:"tags"`
+	Tracker     string   `json:"tracker"`
+	SavePath    string   `json:"savePath"`
+	ContentPath string   `json:"contentPath"`
+	Size        int64    `json:"size"`
+	Ratio       float64  `json:"ratio"`
+	State       string   `json:"state"`
+	Progress    float64  `json:"progress"`
+	AddedOn     int64    `json:"addedOn"`
+	SeedingTime int64    `json:"seedingTime"`
+	Uploaded    int64    `json:"uploaded"`
+	Downloaded  int64    `json:"downloaded"`
+	NumSeeds    int64    `json:"numSeeds"`
+	NumLeechs   int64    `json:"numLeechs"`
+}
+
+type webhookInstance struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// maxWebhooksPerRun caps the number of webhook calls per automation run.
+const maxWebhooksPerRun = 50
+
+// executeWebhooksFromAutomation executes webhooks for matching torrents.
+// Webhooks are executed asynchronously (fire-and-forget) to avoid blocking the automation run.
+func (s *Service) executeWebhooksFromAutomation(_ context.Context, instanceID int, executions []pendingWebhookExec) {
+	if len(executions) == 0 {
+		return
+	}
+
+	if len(executions) > maxWebhooksPerRun {
+		log.Warn().
+			Int("instanceID", instanceID).
+			Int("total", len(executions)).
+			Int("max", maxWebhooksPerRun).
+			Msg("automations: webhook execution count exceeds per-run limit, truncating")
+		executions = executions[:maxWebhooksPerRun]
+	}
+
+	log.Debug().
+		Int("instanceID", instanceID).
+		Int("executions", len(executions)).
+		Msg("automations: executing webhooks")
+
+	// Look up instance name
+	instanceName := ""
+	if s.instanceStore != nil {
+		if inst, err := s.instanceStore.Get(context.Background(), instanceID); err == nil {
+			instanceName = inst.Name
+		}
+	}
+
+	for _, exec := range executions {
+		torrent := exec.torrent
+		action := exec.action
+		ruleID := exec.ruleID
+		ruleName := exec.ruleName
+
+		go s.executeWebhook(instanceID, instanceName, torrent, action, ruleID, ruleName) //nolint:gosec // fire-and-forget; parent context may be cancelled before execution completes
+	}
+}
+
+func (s *Service) executeWebhook(instanceID int, instanceName string, torrent qbt.Torrent, action *models.WebhookAction, ruleID int, ruleName string) {
+	tags := splitAndTrim(torrent.Tags)
+
+	// Collect tracker domain
+	tracker := ""
+	if s.syncManager != nil {
+		if domains := collectTrackerDomains(torrent, s.syncManager); len(domains) > 0 {
+			tracker = domains[0]
+		}
+	}
+
+	payload := webhookPayload{
+		Source: "qui",
+		Event:  "automation_matched",
+		Rule:   webhookRule{ID: ruleID, Name: ruleName},
+		Torrent: webhookTorrent{
+			Name:        torrent.Name,
+			Hash:        torrent.Hash,
+			Category:    torrent.Category,
+			Tags:        tags,
+			Tracker:     tracker,
+			SavePath:    torrent.SavePath,
+			ContentPath: torrent.ContentPath,
+			Size:        torrent.Size,
+			Ratio:       torrent.Ratio,
+			State:       string(torrent.State),
+			Progress:    torrent.Progress,
+			AddedOn:     torrent.AddedOn,
+			SeedingTime: torrent.SeedingTime,
+			Uploaded:    torrent.Uploaded,
+			Downloaded:  torrent.Downloaded,
+			NumSeeds:    torrent.NumSeeds,
+			NumLeechs:   torrent.NumLeechs,
+		},
+		Instance:  webhookInstance{ID: instanceID, Name: instanceName},
+		Timestamp: time.Now().UTC(),
+	}
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		s.logWebhookActivity(instanceID, torrent, ruleID, ruleName, models.ActivityOutcomeFailed, fmt.Sprintf("failed to marshal payload: %v", err))
+		return
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, action.URL, bytes.NewReader(encoded))
+	if err != nil {
+		s.logWebhookActivity(instanceID, torrent, ruleID, ruleName, models.ActivityOutcomeFailed, fmt.Sprintf("failed to create request: %v", err))
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "qui")
+	for _, h := range action.Headers {
+		req.Header.Set(h.Key, h.Value)
+	}
+
+	resp, err := s.webhookClient.Do(req)
+	if err != nil {
+		s.logWebhookActivity(instanceID, torrent, ruleID, ruleName, models.ActivityOutcomeFailed, fmt.Sprintf("request failed: %v", err))
+		return
+	}
+	defer httphelpers.DrainAndClose(resp)
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		s.logWebhookActivity(instanceID, torrent, ruleID, ruleName, models.ActivityOutcomeSuccess, fmt.Sprintf("HTTP %d", resp.StatusCode))
+	} else {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		s.logWebhookActivity(instanceID, torrent, ruleID, ruleName, models.ActivityOutcomeFailed, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body))))
+	}
+}
+
+func (s *Service) logWebhookActivity(instanceID int, torrent qbt.Torrent, ruleID int, ruleName string, outcome string, reason string) {
+	if s.activityStore == nil {
+		return
+	}
+	rid := ruleID
+	if err := s.activityStore.Create(context.Background(), &models.AutomationActivity{
+		InstanceID:  instanceID,
+		Hash:        torrent.Hash,
+		TorrentName: torrent.Name,
+		Action:      models.ActivityActionWebhook,
+		RuleID:      &rid,
+		RuleName:    ruleName,
+		Outcome:     outcome,
+		Reason:      reason,
+	}); err != nil {
+		log.Warn().Err(err).Str("hash", torrent.Hash).Msg("automations: failed to log webhook activity")
+	}
+}
+
+func splitAndTrim(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }

@@ -355,7 +355,8 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 			(len(payload.Conditions.TagActions()) > 0) ||
 			(payload.Conditions.Category != nil && payload.Conditions.Category.Enabled) ||
 			(payload.Conditions.Move != nil && payload.Conditions.Move.Enabled) ||
-			(payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled)
+			(payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled) ||
+			(payload.Conditions.Webhook != nil && payload.Conditions.Webhook.Enabled)
 		if hasOtherAction {
 			return http.StatusBadRequest, "Delete action cannot be combined with other actions", errors.New("delete must be standalone")
 		}
@@ -464,6 +465,11 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		}
 	}
 
+	// Validate Webhook action
+	if err := payload.Conditions.Webhook.Validate(); err != nil {
+		return http.StatusBadRequest, "Webhook action configuration is invalid: " + err.Error(), err
+	}
+
 	return 0, "", nil
 }
 
@@ -487,6 +493,7 @@ func conditionsUseField(conditions *models.ActionConditions, field automations.C
 		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition)) ||
 		(c.Move != nil && check(c.Move.Enabled, c.Move.Condition)) ||
 		(c.ExternalProgram != nil && check(c.ExternalProgram.Enabled, c.ExternalProgram.Condition)) ||
+		(c.Webhook != nil && check(c.Webhook.Enabled, c.Webhook.Condition)) ||
 		(c.AutoManagement != nil && automations.ConditionUsesField(c.AutoManagement.Condition, field))
 }
 
@@ -630,6 +637,9 @@ func conditionTreesForValidation(conditions *models.ActionConditions) []*models.
 	}
 	if conditions.ExternalProgram != nil && conditions.ExternalProgram.Enabled {
 		trees = append(trees, conditions.ExternalProgram.Condition)
+	}
+	if conditions.Webhook != nil && conditions.Webhook.Enabled {
+		trees = append(trees, conditions.Webhook.Condition)
 	}
 	if conditions.AutoManagement != nil {
 		trees = append(trees, conditions.AutoManagement.Condition)
@@ -1038,6 +1048,9 @@ func collectConditionRegexErrors(conditions *models.ActionConditions) []RegexVal
 	}
 	if conditions.ExternalProgram != nil {
 		validateConditionRegex(conditions.ExternalProgram.Condition, "/conditions/externalProgram/condition", &result)
+	}
+	if conditions.Webhook != nil {
+		validateConditionRegex(conditions.Webhook.Condition, "/conditions/webhook/condition", &result)
 	}
 	if conditions.AutoManagement != nil {
 		validateConditionRegex(conditions.AutoManagement.Condition, "/conditions/autoManagement/condition", &result)

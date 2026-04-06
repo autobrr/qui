@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -866,6 +867,7 @@ type ActionConditions struct {
 	Category        *CategoryAction        `json:"category,omitempty"`
 	Move            *MoveAction            `json:"move,omitempty"`
 	ExternalProgram *ExternalProgramAction `json:"externalProgram,omitempty"`
+	Webhook         *WebhookAction         `json:"webhook,omitempty"`
 	AutoManagement  *AutoManagementAction  `json:"autoManagement,omitempty"`
 }
 
@@ -996,6 +998,58 @@ func (a *ExternalProgramAction) Validate() error {
 	return nil
 }
 
+// WebhookHeader is a single HTTP header key-value pair.
+type WebhookHeader struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// WebhookAction configures an outbound HTTP webhook with optional conditions.
+type WebhookAction struct {
+	Enabled   bool            `json:"enabled"`
+	URL       string          `json:"url"`
+	Headers   []WebhookHeader `json:"headers,omitempty"`
+	Condition *RuleCondition  `json:"condition,omitempty"`
+}
+
+// Validate checks that the WebhookAction has valid configuration.
+func (a *WebhookAction) Validate() error {
+	if a == nil {
+		return nil
+	}
+	if !a.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(a.URL) == "" {
+		return errors.New("enabled webhook action requires a URL")
+	}
+	parsed, err := parseHTTPURL(a.URL)
+	if err != nil {
+		return err
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return errors.New("webhook URL must use http or https scheme")
+	}
+	if strings.TrimSpace(parsed.Host) == "" {
+		return errors.New("webhook URL must have a host")
+	}
+	for i, h := range a.Headers {
+		if strings.TrimSpace(h.Key) == "" {
+			return fmt.Errorf("webhook header %d has an empty key", i)
+		}
+	}
+	return nil
+}
+
+// parseHTTPURL is a helper that parses a URL for webhook validation.
+func parseHTTPURL(rawURL string) (*url.URL, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid webhook URL: %w", err)
+	}
+	return parsed, nil
+}
+
 // IsEmpty returns true if no actions are configured.
 func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {
@@ -1012,6 +1066,7 @@ func (ac *ActionConditions) IsEmpty() bool {
 		ac.Category == nil &&
 		ac.Move == nil &&
 		ac.ExternalProgram == nil &&
+		ac.Webhook == nil &&
 		ac.AutoManagement == nil
 }
 

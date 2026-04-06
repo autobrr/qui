@@ -2282,3 +2282,158 @@ func TestHasActions_ExternalProgram(t *testing.T) {
 		require.True(t, hasActions(state))
 	})
 }
+
+func TestProcessTorrents_Webhook_ConditionMet(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:     "abc123",
+			Name:     "Test Torrent",
+			Ratio:    2.5,
+			Category: "movies",
+		},
+	}
+
+	webhookAction := &models.WebhookAction{
+		Enabled: true,
+		URL:     "https://example.com/webhook",
+		Condition: &models.RuleCondition{
+			Field:    models.FieldRatio,
+			Operator: models.OperatorGreaterThan,
+			Value:    "2.0",
+		},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		Name:           "Webhook Rule",
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Webhook:       webhookAction,
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+
+	state, ok := states["abc123"]
+	require.True(t, ok, "expected state to be recorded for torrent")
+	require.NotNil(t, state.webhookAction, "expected webhook action to be set")
+	require.Equal(t, "https://example.com/webhook", state.webhookAction.URL)
+	require.Equal(t, 1, state.webhookRuleID)
+	require.Equal(t, "Webhook Rule", state.webhookRuleName)
+}
+
+func TestProcessTorrents_Webhook_ConditionNotMet(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:     "abc123",
+			Name:     "Test Torrent",
+			Ratio:    1.0,
+			Category: "movies",
+		},
+	}
+
+	rule := &models.Automation{
+		ID:             1,
+		Enabled:        true,
+		Name:           "Webhook Rule",
+		TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Webhook: &models.WebhookAction{
+				Enabled: true,
+				URL:     "https://example.com/webhook",
+				Condition: &models.RuleCondition{
+					Field:    models.FieldRatio,
+					Operator: models.OperatorGreaterThan,
+					Value:    "2.0",
+				},
+			},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+
+	state := states["abc123"]
+	if state != nil {
+		require.Nil(t, state.webhookAction, "expected webhook action to be nil when condition not met")
+	}
+	// If state is nil, no actions were recorded at all — also correct
+}
+
+func TestProcessTorrents_Webhook_LastRuleWins(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "abc123", Name: "Test Torrent"},
+	}
+
+	rule1 := &models.Automation{
+		ID: 1, Enabled: true, Name: "Rule 1", TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Webhook:       &models.WebhookAction{Enabled: true, URL: "https://first.example.com"},
+		},
+	}
+	rule2 := &models.Automation{
+		ID: 2, Enabled: true, Name: "Rule 2", TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Webhook:       &models.WebhookAction{Enabled: true, URL: "https://second.example.com"},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule1, rule2}, nil, sm, nil, nil, nil)
+
+	state := states["abc123"]
+	require.NotNil(t, state.webhookAction)
+	require.Equal(t, "https://second.example.com", state.webhookAction.URL)
+	require.Equal(t, 2, state.webhookRuleID)
+}
+
+func TestProcessTorrents_Webhook_Disabled(t *testing.T) {
+	sm := qbittorrent.NewSyncManager(nil, nil)
+
+	torrents := []qbt.Torrent{
+		{Hash: "abc123", Name: "Test Torrent"},
+	}
+
+	rule := &models.Automation{
+		ID: 1, Enabled: true, Name: "Rule", TrackerPattern: "*",
+		Conditions: &models.ActionConditions{
+			SchemaVersion: "1",
+			Webhook:       &models.WebhookAction{Enabled: false, URL: "https://example.com"},
+		},
+	}
+
+	states := processTorrents(torrents, []*models.Automation{rule}, nil, sm, nil, nil, nil)
+
+	state := states["abc123"]
+	if state != nil {
+		require.Nil(t, state.webhookAction, "expected webhook action to be nil when disabled")
+	}
+	// If state is nil, no actions were recorded — also correct for disabled action
+}
+
+func TestHasActions_Webhook(t *testing.T) {
+	t.Run("returns true when webhook action is set", func(t *testing.T) {
+		state := &torrentDesiredState{
+			hash:          "abc123",
+			webhookAction: &models.WebhookAction{Enabled: true, URL: "https://example.com"},
+		}
+		require.True(t, hasActions(state))
+	})
+
+	t.Run("returns false when webhook action is nil", func(t *testing.T) {
+		state := &torrentDesiredState{
+			hash:          "abc123",
+			webhookAction: nil,
+		}
+		require.False(t, hasActions(state))
+	})
+}

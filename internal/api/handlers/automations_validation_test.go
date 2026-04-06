@@ -522,3 +522,93 @@ func TestCollectConditionRegexErrors_AutoManagement(t *testing.T) {
 		})
 	}
 }
+
+func TestWebhookActionValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		action  *models.WebhookAction
+		wantErr bool
+	}{
+		{
+			name:    "nil action is valid",
+			action:  nil,
+			wantErr: false,
+		},
+		{
+			name:    "disabled action is valid",
+			action:  &models.WebhookAction{Enabled: false},
+			wantErr: false,
+		},
+		{
+			name:    "enabled with valid https URL",
+			action:  &models.WebhookAction{Enabled: true, URL: "https://example.com/webhook"},
+			wantErr: false,
+		},
+		{
+			name:    "enabled with valid http URL",
+			action:  &models.WebhookAction{Enabled: true, URL: "http://localhost:8080/hook"},
+			wantErr: false,
+		},
+		{
+			name:    "enabled with empty URL is invalid",
+			action:  &models.WebhookAction{Enabled: true, URL: ""},
+			wantErr: true,
+		},
+		{
+			name:    "enabled with invalid scheme",
+			action:  &models.WebhookAction{Enabled: true, URL: "ftp://example.com/hook"},
+			wantErr: true,
+		},
+		{
+			name:    "enabled with empty header key is invalid",
+			action:  &models.WebhookAction{Enabled: true, URL: "https://example.com", Headers: []models.WebhookHeader{{Key: "", Value: "val"}}},
+			wantErr: true,
+		},
+		{
+			name:    "enabled with valid headers",
+			action:  &models.WebhookAction{Enabled: true, URL: "https://example.com", Headers: []models.WebhookHeader{{Key: "Authorization", Value: "Bearer tok123"}}},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.action.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("WebhookAction.Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestDeleteStandaloneWithWebhook(t *testing.T) {
+	conditions := &models.ActionConditions{
+		SchemaVersion: "1",
+		Delete: &models.DeleteAction{
+			Enabled: true,
+			Mode:    "deleteWithFiles",
+			Condition: &models.RuleCondition{
+				Field:    "RATIO",
+				Operator: "GREATER_THAN",
+				Value:    "2",
+			},
+		},
+		Webhook: &models.WebhookAction{
+			Enabled: true,
+			URL:     "https://example.com/webhook",
+		},
+	}
+	payload := &AutomationPayload{
+		Name:           "test",
+		TrackerPattern: "*",
+		Conditions:     conditions,
+	}
+	h := &AutomationHandler{}
+	status, _, err := h.validatePayload(t.Context(), 1, payload)
+	if err == nil {
+		t.Error("expected error for delete + webhook combination")
+	}
+	if status != 400 {
+		t.Errorf("expected status 400, got %d", status)
+	}
+}

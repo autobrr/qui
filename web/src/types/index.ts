@@ -405,6 +405,18 @@ export interface ExternalProgramAction {
   condition?: RuleCondition
 }
 
+export interface WebhookHeader {
+  key: string
+  value: string
+}
+
+export interface WebhookAction {
+  enabled: boolean
+  url: string
+  headers?: WebhookHeader[]
+  condition?: RuleCondition
+}
+
 export interface ActionConditions {
   schemaVersion: string
   grouping?: GroupingConfig
@@ -422,6 +434,7 @@ export interface ActionConditions {
   category?: CategoryAction
   move?: MoveAction
   externalProgram?: ExternalProgramAction
+  webhook?: WebhookAction
   autoManagement?: AutoManagementAction
 }
 
@@ -513,7 +526,7 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "auto_managed" | "moved" | "external_program" | "dry_run_no_match"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "auto_managed" | "moved" | "external_program" | "webhook" | "dry_run_no_match"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed" | "dry-run"

@@ -242,6 +242,7 @@ func conditionTreesForRule(rule *models.Automation) []*models.RuleCondition {
 		conditionFromCategoryAction(conditions.Category),
 		conditionFromMoveAction(conditions.Move),
 		conditionFromExternalProgramAction(conditions.ExternalProgram),
+		conditionFromWebhookAction(conditions.Webhook),
 	)
 	for _, action := range conditions.TagActions() {
 		trees = append(trees, conditionFromTagAction(action))
@@ -336,6 +337,13 @@ func conditionFromMoveAction(action *models.MoveAction) *models.RuleCondition {
 }
 
 func conditionFromExternalProgramAction(action *models.ExternalProgramAction) *models.RuleCondition {
+	if action == nil || !action.Enabled {
+		return nil
+	}
+	return action.Condition
+}
+
+func conditionFromWebhookAction(action *models.WebhookAction) *models.RuleCondition {
 	if action == nil || !action.Enabled {
 		return nil
 	}

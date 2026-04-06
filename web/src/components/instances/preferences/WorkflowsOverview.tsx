@@ -77,7 +77,7 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
-import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
+import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, Globe, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
@@ -190,6 +190,8 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Move"
     case "external_program":
       return "External program"
+    case "webhook":
+      return "Webhook"
     case "dry_run_no_match":
       return "Dry-run"
     default:
@@ -805,6 +807,7 @@ export function WorkflowsOverview({
     reannounced: "bg-fuchsia-500/10 text-fuchsia-500 border-fuchsia-500/20",
     moved: "bg-green-500/10 text-green-500 border-green-500/20",
     external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
+    webhook: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
     auto_managed: "bg-rose-500/10 text-rose-500 border-rose-500/20",
     dry_run_no_match: "bg-slate-500/10 text-slate-500 border-slate-500/20",
   }
@@ -1778,7 +1781,8 @@ function RulePreview({
     tagActions.some((action) => action.enabled && action.condition) ||
     (rule.conditions?.category?.enabled && rule.conditions.category.condition) ||
     (rule.conditions?.move?.enabled && rule.conditions.move.condition) ||
-    (rule.conditions?.externalProgram?.enabled && rule.conditions.externalProgram.condition)
+    (rule.conditions?.externalProgram?.enabled && rule.conditions.externalProgram.condition) ||
+    (rule.conditions?.webhook?.enabled && rule.conditions.webhook.condition)
   )
 
   return (
@@ -1899,6 +1903,12 @@ function RulePreview({
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Terminal className="h-3 w-3" />
             Program
+          </Badge>
+        )}
+        {rule.conditions?.webhook?.enabled && (
+          <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
+            <Globe className="h-3 w-3" />
+            Webhook
           </Badge>
         )}
         <Button

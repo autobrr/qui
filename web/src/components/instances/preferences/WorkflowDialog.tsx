@@ -105,10 +105,10 @@ const SPEED_LIMIT_UNITS = [
   { value: 1024, label: "MiB/s" },
 ]
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "autoManagement" | "delete" | "tag" | "category" | "move" | "externalProgram"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "autoManagement" | "delete" | "tag" | "category" | "move" | "externalProgram" | "webhook"
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "autoManagement", "tag", "category", "move", "externalProgram"]
+const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "autoManagement", "tag", "category", "move", "externalProgram", "webhook"]
 
 const ACTION_LABELS: Record<ActionType, string> = {
   speedLimits: "Speed limits",
@@ -123,6 +123,7 @@ const ACTION_LABELS: Record<ActionType, string> = {
   category: "Category",
   move: "Move",
   externalProgram: "Run external program",
+  webhook: "Webhook",
 }
 
 const DRY_RUN_ACTION_LABELS: Record<AutomationActivity["action"], string> = {
@@ -143,6 +144,7 @@ const DRY_RUN_ACTION_LABELS: Record<AutomationActivity["action"], string> = {
   auto_managed: "Auto management",
   moved: "Move",
   external_program: "External program",
+  webhook: "Webhook",
   dry_run_no_match: "No matches",
 }
 
@@ -442,6 +444,7 @@ type FormState = {
   categoryEnabled: boolean
   moveEnabled: boolean
   externalProgramEnabled: boolean
+  webhookEnabled: boolean
   // Speed limits settings (mode-based)
   exprUploadMode: SpeedLimitMode
   exprUploadValue?: number // KiB/s, only used when mode is "custom"
@@ -479,6 +482,9 @@ type FormState = {
   exprMoveAtomic: "all" | ""
   // External program action settings
   exprExternalProgramId: number | null
+  // Webhook action settings
+  exprWebhookUrl: string
+  exprWebhookHeaders: { key: string; value: string }[]
 }
 
 const emptyFormState: FormState = {
@@ -505,6 +511,7 @@ const emptyFormState: FormState = {
   categoryEnabled: false,
   moveEnabled: false,
   externalProgramEnabled: false,
+  webhookEnabled: false,
   exprUploadMode: "no_change",
   exprUploadValue: undefined,
   exprDownloadMode: "no_change",
@@ -533,6 +540,8 @@ const emptyFormState: FormState = {
   exprMoveGroupId: "",
   exprMoveAtomic: "",
   exprExternalProgramId: null,
+  exprWebhookUrl: "",
+  exprWebhookHeaders: [],
 }
 
 // Helper to get enabled actions from form state
@@ -550,6 +559,7 @@ function getEnabledActions(state: FormState): ActionType[] {
   if (state.categoryEnabled) actions.push("category")
   if (state.moveEnabled) actions.push("move")
   if (state.externalProgramEnabled) actions.push("externalProgram")
+  if (state.webhookEnabled) actions.push("webhook")
   return actions
 }
 
@@ -913,6 +923,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let categoryEnabled = false
         let moveEnabled = false
         let externalProgramEnabled = false
+        let webhookEnabled = false
         let exprUploadMode: SpeedLimitMode = "no_change"
         let exprUploadValue: number | undefined
         let exprDownloadMode: SpeedLimitMode = "no_change"
@@ -936,6 +947,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprMovePath = ""
         let exprMoveBlockIfCrossSeed = false
         let exprExternalProgramId: number | null = null
+        let exprWebhookUrl = ""
+        let exprWebhookHeaders: { key: string; value: string }[] = []
         let exprGrouping: GroupingConfig | undefined
         let exprDeleteGroupId = ""
         let exprDeleteAtomic: FormState["exprDeleteAtomic"] = ""
@@ -1063,6 +1076,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             externalProgramEnabled = true
             exprExternalProgramId = conditions.externalProgram.programId ?? null
           }
+          if (conditions.webhook?.enabled) {
+            webhookEnabled = true
+            exprWebhookUrl = conditions.webhook.url ?? ""
+            exprWebhookHeaders = conditions.webhook.headers ?? []
+          }
         }
 
         const newState: FormState = {
@@ -1118,6 +1136,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprMoveGroupId,
           exprMoveAtomic,
           exprExternalProgramId,
+          webhookEnabled,
+          exprWebhookUrl,
+          exprWebhookHeaders,
         }
         setFormState(newState)
       } else {
@@ -1393,6 +1414,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       conditions.externalProgram = {
         enabled: true,
         programId: input.exprExternalProgramId,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
+    if (input.webhookEnabled && input.exprWebhookUrl.trim()) {
+      conditions.webhook = {
+        enabled: true,
+        url: input.exprWebhookUrl.trim(),
+        headers: input.exprWebhookHeaders.filter(h => h.key.trim()),
         condition: input.actionCondition ?? undefined,
       }
     }
@@ -1706,6 +1735,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       toast.error("Select an external program")
       return
     }
+    if (dryRunInput.webhookEnabled && !dryRunInput.exprWebhookUrl.trim()) {
+      toast.error("Webhook requires a URL")
+      return
+    }
     if (dryRunInput.tagEnabled) {
       const validationError = validateTagActions(dryRunInput.exprTagActions)
       if (validationError) {
@@ -1960,6 +1993,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (submitState.externalProgramEnabled) {
       if (!submitState.exprExternalProgramId) {
         toast.error("Select an external program")
+        return
+      }
+    }
+    if (submitState.webhookEnabled) {
+      if (!submitState.exprWebhookUrl.trim()) {
+        toast.error("Webhook requires a URL")
+        return
+      }
+      try {
+        new URL(submitState.exprWebhookUrl.trim())
+      } catch {
+        toast.error("Webhook URL is invalid")
         return
       }
     }
@@ -2532,6 +2577,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             categoryEnabled: false,
                             moveEnabled: false,
                             externalProgramEnabled: false,
+                            webhookEnabled: false,
                             // Safety: when selecting delete in "create new" mode, start disabled
                             enabled: !rule ? false : prev.enabled,
                           }))
@@ -2560,6 +2606,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <SelectItem value="category">Category</SelectItem>
                         <SelectItem value="move">Move</SelectItem>
                         <SelectItem value="externalProgram">Run external program</SelectItem>
+                        <SelectItem value="webhook">Webhook</SelectItem>
                         <SelectItem value="autoManagement">Auto management</SelectItem>
                         <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete (standalone only)</SelectItem>
                       </SelectContent>
@@ -3258,6 +3305,89 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               </a>
                             </div>
                           )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Webhook */}
+                    {formState.webhookEnabled && (
+                      <div className="rounded-lg border p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Webhook</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({ ...prev, webhookEnabled: false, exprWebhookUrl: "", exprWebhookHeaders: [] }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">URL</Label>
+                          <Input
+                            type="url"
+                            placeholder="https://example.com/webhook"
+                            value={formState.exprWebhookUrl}
+                            onChange={(e) => setFormState(prev => ({ ...prev, exprWebhookUrl: e.target.value }))}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            POST request with JSON payload containing torrent details
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">Headers (optional)</Label>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-6 text-xs"
+                              onClick={() => setFormState(prev => ({
+                                ...prev,
+                                exprWebhookHeaders: [...prev.exprWebhookHeaders, { key: "", value: "" }],
+                              }))}
+                            >
+                              + Add
+                            </Button>
+                          </div>
+                          {formState.exprWebhookHeaders.map((header, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              <Input
+                                placeholder="Header name"
+                                className="flex-1 h-8 text-xs"
+                                value={header.key}
+                                onChange={(e) => {
+                                  const updated = [...formState.exprWebhookHeaders]
+                                  updated[idx] = { ...updated[idx], key: e.target.value }
+                                  setFormState(prev => ({ ...prev, exprWebhookHeaders: updated }))
+                                }}
+                              />
+                              <Input
+                                placeholder="Value"
+                                className="flex-1 h-8 text-xs"
+                                value={header.value}
+                                onChange={(e) => {
+                                  const updated = [...formState.exprWebhookHeaders]
+                                  updated[idx] = { ...updated[idx], value: e.target.value }
+                                  setFormState(prev => ({ ...prev, exprWebhookHeaders: updated }))
+                                }}
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 shrink-0"
+                                onClick={() => {
+                                  const updated = formState.exprWebhookHeaders.filter((_, i) => i !== idx)
+                                  setFormState(prev => ({ ...prev, exprWebhookHeaders: updated }))
+                                }}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
