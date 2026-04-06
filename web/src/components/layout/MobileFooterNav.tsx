@@ -17,6 +17,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -28,6 +31,7 @@ import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
+import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
@@ -55,6 +59,7 @@ import {
   HardDrive,
   Home,
   Loader2,
+  Globe,
   LogOut,
   Monitor,
   Moon,
@@ -97,7 +102,7 @@ const useThemeChange = () => {
 }
 
 export function MobileFooterNav() {
-  const { t } = useTranslation("common")
+  const { t, i18n } = useTranslation("common")
   const location = useLocation()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
@@ -530,6 +535,25 @@ export function MobileFooterNav() {
                 <Github className="h-3.5 w-3.5" />
               </a>
             </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Globe className="h-4 w-4" />
+                {languageNames[i18n.language as keyof typeof languageNames] ?? i18n.language}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {supportedLanguages.map((lng) => (
+                  <DropdownMenuItem
+                    key={lng}
+                    onClick={() => changeLanguage(lng)}
+                    className="flex items-center justify-between gap-4"
+                  >
+                    {languageNames[lng]}
+                    {i18n.language === lng && <Check className="h-3.5 w-3.5" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => logout()}

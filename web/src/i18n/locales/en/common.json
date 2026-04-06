@@ -20,6 +20,7 @@
     "noInstancesConfigured": "No instances configured",
     "logout": "Logout",
     "version": "Version {{version}}",
+    "language": "Language",
     "viewOnGitHub": "View on GitHub",
     "rssRunning": "RSS running",
     "rssEnabled": "RSS enabled",

@@ -23,6 +23,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
@@ -55,7 +58,8 @@ import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQueries, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
-import { Archive, ChevronsUpDown, Cog, Download, FileEdit, FileText, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
+import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
+import { Archive, Check, ChevronsUpDown, Cog, Download, FileEdit, FileText, FunnelPlus, FunnelX, GitBranch, Globe, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 import { useTranslation } from "react-i18next"
@@ -121,7 +125,7 @@ export function Header({
   children,
   sidebarCollapsed = false,
 }: HeaderProps) {
-  const { t } = useTranslation("common")
+  const { t, i18n } = useTranslation("common")
   const { logout } = useAuth()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string;[key: string]: unknown }
@@ -877,6 +881,25 @@ export function Header({
                   {t("nav.settings")}
                 </Link>
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Globe className="h-4 w-4" />
+                  {languageNames[i18n.language as keyof typeof languageNames] ?? i18n.language}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {supportedLanguages.map((lng) => (
+                    <DropdownMenuItem
+                      key={lng}
+                      onClick={() => changeLanguage(lng)}
+                      className="flex items-center justify-between gap-4"
+                    >
+                      {languageNames[lng]}
+                      {i18n.language === lng && <Check className="h-3.5 w-3.5" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => logout()}>
                 <LogOut className="mr-2 h-4 w-4" />

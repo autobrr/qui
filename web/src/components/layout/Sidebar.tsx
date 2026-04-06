@@ -115,7 +115,7 @@ const navigation: NavItem[] = [
 ]
 
 export function Sidebar() {
-  const { t } = useTranslation("common")
+  const { t, i18n } = useTranslation("common")
   const location = useLocation()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
@@ -329,21 +329,53 @@ export function Sidebar() {
               <span>{new Date().getFullYear()} autobrr</span>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-sidebar-foreground/40 hover:text-sidebar-foreground"
-            asChild
-          >
-            <a
-              href="https://github.com/autobrr/qui"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={t("sidebar.viewOnGitHub")}
+          <div className="flex items-center gap-0.5">
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-sidebar-foreground/40 hover:text-sidebar-foreground"
+                    >
+                      <Globe className="h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {t("sidebar.language")}
+                </TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" side="top">
+                {supportedLanguages.map((lng) => (
+                  <DropdownMenuItem
+                    key={lng}
+                    onClick={() => changeLanguage(lng)}
+                    className="flex items-center justify-between gap-4"
+                  >
+                    {languageNames[lng]}
+                    {i18n.language === lng && <Check className="h-3.5 w-3.5" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-sidebar-foreground/40 hover:text-sidebar-foreground"
+              asChild
             >
-              <Github className="h-3.5 w-3.5" />
-            </a>
-          </Button>
+              <a
+                href="https://github.com/autobrr/qui"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={t("sidebar.viewOnGitHub")}
+              >
+                <Github className="h-3.5 w-3.5" />
+              </a>
+            </Button>
+          </div>
         </div>
       </div>
     </div>
