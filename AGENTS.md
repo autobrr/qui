@@ -142,30 +142,53 @@ Languages are registered in `web/src/i18n/index.ts` with static imports. Current
 ### i18n Validation Scripts
 
 ```bash
-pnpm check:i18n              # Run all i18n checks (keys, implementation, hardcoded strings, zh-CN coverage)
+pnpm check:i18n              # Run all i18n checks; fails on errors, zh-CN warnings allowed
 pnpm check:i18n:hardcoded    # AST-based detector for UI strings not yet wrapped in t()
 pnpm check:i18n:zh-cn        # zh-CN translation coverage and quality checks
 ```
 
 | Script | Purpose |
 |--------|---------|
-| `check-i18n-keys.mjs` | Validates every `t("key")` call in source has a matching entry in the English locale JSON |
-| `check-i18n-implementation.mjs` | Guards i18n bootstrap patterns (guarded localStorage, memoized formatters) |
+| `check-i18n-keys.mjs` | Validates literal `t("key")` / `i18n.t("key")` calls against English locale JSON when the file namespace can be resolved from `useTranslation(...)` or `ns:` |
+| `check-i18n-implementation.mjs` | Guards a small set of bootstrap invariants in `src/i18n/index.ts` and formatter-hook patterns in `src/hooks/useDateTimeFormatters.ts` |
 | `find-hardcoded-i18n-literals.mjs` | TypeScript AST scan for hardcoded UI strings that should use `t()` |
-| `check-zh-cn-coverage.mjs` | Validates zh-CN files against English: missing/extra keys, interpolation, plural forms, encoding, punctuation |
+| `check-zh-cn-coverage.mjs` | Validates zh-CN files against English for errors (missing/extra keys, interpolation, HTML tags, empty strings, encoding) and reports warnings for punctuation, untranslated strings, and plural-form cleanup |
 
 ### Adding a New Language
 
 1. Create `web/src/i18n/locales/<lang>/` with all 10 namespace JSON files
 2. Import all files in `web/src/i18n/index.ts` and add to `resources`, `supportedLanguages`, and `languageNames`
-3. Run `pnpm check:i18n` to validate
+3. Run `pnpm check:i18n` to validate English-key usage plus shared guards; if the new locale is not `zh-CN`, add or adapt a locale-coverage script because the current diff checker is zh-CN-specific
+
+### Translation Workflow
+
+Before translating or reviewing a new locale:
+
+1. Read the English namespace JSON and the relevant UI/components first so strings are translated in product context, not in isolation
+2. Research language-specific gotchas up front: plural rules, punctuation, formality/register, date/time wording, capitalization, technical-term handling, and any script/encoding concerns
+3. Keep a small glossary for product names, torrent/domain terms, and words that should stay in English vs be translated
+4. Preserve placeholders, HTML tags, and key structure exactly unless the locale checker explicitly allows a locale-specific exception
+5. Treat examples, paths, URLs, commands, and technical notation separately from user-facing copy; many should stay as-is
+6. Before calling the locale complete, add or adapt a `<lang>` coverage script against English and run it
+
+Locale coverage is not optional for new languages. The checker must compare every namespace file against English for:
+
+- missing keys
+- extra keys
+- interpolation placeholders
+- HTML tag parity
+- plural-form handling
+- empty strings
+- encoding / JSON validity
+
+Locale-specific quality rules such as punctuation, untranslated technical terms, or style consistency can be warnings, but key coverage and structural parity should fail the check.
 
 ### i18n Conventions
 
 - **Plural forms:** English uses `_one`/`_other` (i18next v4 CLDR). Chinese has no plural -- zh-CN only needs `_other`. Legacy `_plural` keys are manually dispatched in code and must exist in all locales.
-- **Technical terms:** Torrent ecosystem terms (DHT, PEX, TMM, Tracker, etc.) and brand names (qBittorrent, Prowlarr) stay in English across all locales.
+- **Technical terms:** Product names and many torrent ecosystem terms are intentionally left in English where that reads better (`qBittorrent`, `Prowlarr`, `DHT`, `PEX`, etc.). Treat this as a translation guideline, not a blanket rule.
 - **Interpolation:** All `{{variable}}` placeholders must be preserved. `{{plural}}` is English-specific and can be omitted in non-English locales.
-- **Chinese punctuation:** Use full-width `，。：；！？` in Chinese text. Half-width is correct inside URLs, IPs, file paths, and technical notation.
+- **Chinese punctuation:** Prefer full-width `，。：；！？` in Chinese text. Half-width is still correct inside URLs, IPs, file paths, and technical notation, and the current checker reports punctuation issues as warnings rather than hard failures.
 
 ## Architecture Quick Reference
 
