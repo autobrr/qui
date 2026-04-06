@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Radar, Users, Shield } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
@@ -56,6 +57,7 @@ function SwitchSetting({
 }
 
 export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscoveryFormProps) {
+  const { t } = useTranslation("instances")
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
 
   const form = useForm({
@@ -72,10 +74,10 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
     onSubmit: async ({ value }) => {
       try {
         await updatePreferences(value)
-        toast.success("Network discovery settings updated successfully")
+        toast.success(t("preferences.networkDiscovery.toast.success"))
         onSuccess?.()
       } catch (error) {
-        toast.error("Failed to update network discovery settings")
+        toast.error(t("preferences.networkDiscovery.toast.error"))
         console.error("Failed to update network discovery settings:", error)
       }
     },
@@ -98,7 +100,7 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
   if (isLoading || !preferences) {
     return (
       <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">Loading network discovery settings...</p>
+        <p className="text-sm text-muted-foreground">{t("preferences.networkDiscovery.loading")}</p>
       </div>
     )
   }

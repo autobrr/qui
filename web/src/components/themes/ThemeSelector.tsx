@@ -12,6 +12,7 @@ import { useTheme } from "@/hooks/useTheme"
 import { getThemeColors, getThemeVariation } from "@/utils/theme"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
 import { Sparkles, Lock, Check, Palette, AlertTriangle, WifiOff } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface ThemeCardProps {
@@ -140,6 +141,7 @@ function ThemeCard({ theme, isSelected, isLocked, onSelect, onVariationSelect }:
 }
 
 export function ThemeSelector() {
+  const { t } = useTranslation("settings")
   const { theme: currentTheme, setTheme, setVariation } = useTheme()
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
 
@@ -159,14 +161,14 @@ export function ThemeSelector() {
 
   const showThemeLockedToast = () => {
     if (isError) {
-      toast.error("Unable to verify license", {
-        description: "License check failed. Premium theme switching is temporarily unavailable.",
+      toast.error(t("themes.toasts.verifyFailed"), {
+        description: t("themes.toasts.verifyFailedDescription"),
       })
       return
     }
 
-    toast.error("This theme requires a premium license", {
-      description: "Open Settings → Themes to see payment options and redeem your discount code.",
+    toast.error(t("themes.toasts.premiumRequired"), {
+      description: t("themes.toasts.premiumRequiredDescription"),
     })
   }
 

@@ -8,6 +8,7 @@ import { useForm } from "@tanstack/react-form"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 
@@ -55,6 +56,7 @@ interface QueueManagementFormProps {
 }
 
 export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFormProps) {
+  const { t } = useTranslation("instances")
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
 
   const form = useForm({
@@ -68,10 +70,10 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
     onSubmit: async ({ value }) => {
       try {
         updatePreferences(value)
-        toast.success("Queue settings updated successfully")
+        toast.success(t("preferences.queueManagement.toast.success"))
         onSuccess?.()
       } catch {
-        toast.error("Failed to update queue settings")
+        toast.error(t("preferences.queueManagement.toast.error"))
       }
     },
   })
@@ -90,7 +92,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">Loading queue settings...</p>
+        <p className="text-sm text-muted-foreground">{t("preferences.queueManagement.loading")}</p>
       </div>
     )
   }
@@ -98,7 +100,7 @@ export function QueueManagementForm({ instanceId, onSuccess }: QueueManagementFo
   if (!preferences) {
     return (
       <div className="flex items-center justify-center py-8" role="alert">
-        <p className="text-sm text-muted-foreground">Failed to load preferences</p>
+        <p className="text-sm text-muted-foreground">{t("preferences.queueManagement.loadFailed")}</p>
       </div>
     )
   }

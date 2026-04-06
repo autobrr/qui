@@ -31,6 +31,7 @@ import type { TorznabIndexer, TorznabRecentSearch, TorznabSearchRequest, Torznab
 import { Link } from "@tanstack/react-router"
 import { Check, ChevronDown, ChevronUp, Download, ExternalLink, Plus, RefreshCw, Search as SearchIcon, SlidersHorizontal, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 type AdvancedParamsState = {
@@ -90,6 +91,7 @@ const ADVANCED_PARAM_CONFIG: AdvancedParamConfig[] = [
 const LAST_USED_INSTANCE_KEY = "qui:search:lastInstanceId"
 
 export function Search() {
+  const { t } = useTranslation("search")
   const SUGGESTION_BLUR_DELAY_MS = 100
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
@@ -227,17 +229,17 @@ export function Search() {
 
     // Allow search with either query or advanced parameters
     if (!normalizedQuery && !hasAdvancedParams) {
-      toast.error("Please enter a search query or fill in advanced parameters")
+      toast.error(t("toast.enterSearchQuery"))
       return false
     }
 
     if (selectedIndexers.size === 0) {
-      toast.error("Please select at least one indexer")
+      toast.error(t("toast.selectIndexer"))
       return false
     }
 
     if (indexers.length === 0) {
-      toast.error("No enabled indexers available. Please add and enable indexers first.")
+      toast.error(t("toast.noEnabledIndexers"))
       return false
     }
 
@@ -350,15 +352,15 @@ export function Search() {
         setCacheMetadata(response.cache ?? null)
 
         if (response.results.length === 0) {
-          toast.info("No results found")
+          toast.info(t("toast.noResults"))
         } else {
-          const cacheSuffix = response.cache?.hit ? " (cached)" : ""
-          toast.success(`Found ${response.total} results${cacheSuffix}`)
+          const cacheSuffix = response.cache?.hit ? t("toast.cached") : ""
+          toast.success(t("toast.foundResults", { total: response.total, suffix: cacheSuffix }))
         }
         void refreshRecentSearches()
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : "Unknown error"
-        toast.error(`Search failed: ${errorMsg}`)
+        toast.error(t("toast.searchFailed", { error: errorMsg }))
         console.error("Search error:", error)
       } finally {
         if (reqId === latestReqIdRef.current) setLoading(false)
@@ -441,7 +443,7 @@ export function Search() {
         // Select all enabled indexers by default
         setSelectedIndexers(new Set(enabledIndexers.map(idx => idx.id)))
       } catch (error) {
-        toast.error("Failed to load indexers")
+        toast.error(t("toast.failedToLoadIndexers"))
         console.error("Load indexers error:", error)
       } finally {
         setLoadingIndexers(false)
@@ -728,16 +730,16 @@ export function Search() {
 
     if (!targetId) {
       if (!hasInstances) {
-        toast.error("Add a download instance under Settings -> Instances")
+        toast.error(t("toast.addInstanceFirst"))
       } else {
-        toast.error("Choose an instance to add torrents")
+        toast.error(t("toast.chooseInstance"))
         setInstanceMenuOpen(true)
       }
       return
     }
 
     if (!result.downloadUrl) {
-      toast.error("No download URL available for this result")
+      toast.error(t("toast.noDownloadUrl"))
       return
     }
 
@@ -748,17 +750,17 @@ export function Search() {
 
   const handleViewDetails = (result: TorznabSearchResult) => {
     if (!result.infoUrl) {
-      toast.error("No additional info available for this result")
+      toast.error(t("toast.noInfoUrl"))
       return
     }
     try {
       const url = new URL(result.infoUrl)
       if (!["http:", "https:"].includes(url.protocol)) {
-        toast.error("Invalid URL protocol")
+        toast.error(t("toast.invalidProtocol"))
         return
       }
     } catch {
-      toast.error("Invalid URL format")
+      toast.error(t("toast.invalidUrl"))
       return
     }
 
@@ -788,9 +790,9 @@ export function Search() {
     <TooltipProvider>
       <div className="space-y-6 p-4 lg:p-6">
         <div className="flex-1 space-y-2">
-          <h1 className="text-2xl font-semibold">Search Indexers</h1>
+          <h1 className="text-2xl font-semibold">{t("pageTitle")}</h1>
           <p className="text-sm text-muted-foreground">
-            Search across all enabled indexers. Pick a query type or leave Auto to have categories detected automatically.
+            {t("pageDescription")}
           </p>
         </div>
 
@@ -806,14 +808,14 @@ export function Search() {
 
               <SheetContent side="right" className="flex h-full max-h-[100dvh] max-w-xl flex-col overflow-hidden p-0">
                 <SheetHeader>
-                  <SheetTitle>Indexer selection</SheetTitle>
-                  <SheetDescription>Pick which indexers to include in searches.</SheetDescription>
+                  <SheetTitle>{t("indexerSheet.title")}</SheetTitle>
+                  <SheetDescription>{t("indexerSheet.description")}</SheetDescription>
                 </SheetHeader>
 
                 <div className="flex flex-1 min-h-0 flex-col gap-4 overflow-hidden px-4 pb-4">
                   <div className="flex flex-wrap gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={handleSelectAll}>
-                      Select all
+                      {t("indexerSheet.selectAll")}
                     </Button>
                     <Button type="button" variant="ghost" size="sm" onClick={handleDeselectAll}>
                       Clear selection
@@ -876,7 +878,7 @@ export function Search() {
                   </p>
                   <SheetClose asChild>
                     <Button type="button" size="sm">
-                      Done
+                      {t("indexerSheet.done")}
                     </Button>
                   </SheetClose>
                 </SheetFooter>
@@ -978,7 +980,7 @@ export function Search() {
                       onClick={() => setShowAdvancedParams(prev => !prev)}
                     >
                       <SlidersHorizontal className="mr-2 h-4 w-4" />
-                      Advanced
+                      {t("searchForm.advanced")}
                     </Button>
                     {hasAdvancedParams && (
                       <>
@@ -1059,7 +1061,7 @@ export function Search() {
                     className="flex-shrink-0"
                   >
                     <SearchIcon className="mr-2 h-4 w-4" />
-                    {loading ? "Searching..." : "Search"}
+                    {loading ? t("searchForm.searching") : t("searchForm.search")}
                   </Button>
                 </div>
               </div>
@@ -1111,7 +1113,7 @@ export function Search() {
                   <div className="w-full sm:min-w-[200px] sm:flex-1 min-w-0 relative">
                     <Input
                       type="text"
-                      placeholder="Filter results..."
+                      placeholder={t("results.filterPlaceholder")}
                       value={resultsFilter}
                       onChange={(e) => setResultsFilter(e.target.value)}
                       className="pr-8"
@@ -1691,7 +1693,7 @@ export function Search() {
 
             {!loading && !query && results.length == 0 && (
               <div className="mt-6 text-center text-muted-foreground">
-                Enter a search query to get started
+                {t("results.enterQuery")}
               </div>
             )}
           </CardContent>
@@ -1710,7 +1712,7 @@ export function Search() {
         <AlertDialog open={refreshConfirmOpen} onOpenChange={setRefreshConfirmOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Bypass the cache?</AlertDialogTitle>
+              <AlertDialogTitle>{t("refreshDialog.title")}</AlertDialogTitle>
               <AlertDialogDescription>
                 This will send the request directly to every selected indexer. Use sparingly to avoid rate limits. You can refresh again after a short cooldown.
               </AlertDialogDescription>
@@ -1721,7 +1723,7 @@ export function Search() {
                 onClick={handleForceRefreshConfirm}
                 disabled={!canForceRefresh || loading}
               >
-                Refresh now
+                {t("refreshDialog.refreshNow")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

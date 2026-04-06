@@ -17,6 +17,7 @@ import { useIncognitoMode } from "@/lib/incognito"
 import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Globe, Server, Shield, Wifi } from "lucide-react"
 import React from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
@@ -128,6 +129,7 @@ function NumberInput({
 }
 
 export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSettingsFormProps) {
+  const { t } = useTranslation("instances")
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const fieldVisibility = useQBittorrentFieldVisibility(instanceId)
   const [incognitoMode] = useIncognitoMode()
@@ -158,10 +160,10 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
     onSubmit: async ({ value }) => {
       try {
         await updatePreferences(value)
-        toast.success("Connection settings updated successfully")
+        toast.success(t("preferences.connectionSettings.toast.success"))
         onSuccess?.()
       } catch (error) {
-        toast.error("Failed to update connection settings")
+        toast.error(t("preferences.connectionSettings.toast.error"))
         console.error("Failed to update connection settings:", error)
       }
     },
@@ -196,7 +198,7 @@ export function ConnectionSettingsForm({ instanceId, onSuccess }: ConnectionSett
   if (isLoading || !preferences) {
     return (
       <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">Loading connection settings...</p>
+        <p className="text-sm text-muted-foreground">{t("preferences.connectionSettings.loading")}</p>
       </div>
     )
   }

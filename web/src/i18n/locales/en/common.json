@@ -11,55 +11,63 @@
     "instances": "Instances",
     "generalSettings": "General Settings",
     "manageInstances": "Manage Instances",
-    "instanceBackups": "Instance Backups",
-    "appearance": "Appearance"
+    "appearance": "Appearance",
+    "instanceBackups": "Instance Backups"
   },
   "sidebar": {
-    "qui": "qui",
     "instances": "Instances",
+    "allInstancesDisabled": "All instances are disabled",
+    "noInstancesConfigured": "No instances configured",
     "logout": "Logout",
     "version": "Version {{version}}",
-    "autobrr": "autobrr",
     "viewOnGitHub": "View on GitHub",
     "rssRunning": "RSS running",
     "rssEnabled": "RSS enabled",
-    "scanRunning": "Scan running",
-    "allInstancesDisabled": "All instances are disabled",
-    "noInstancesConfigured": "No instances configured"
+    "scanRunning": "Scan running"
   },
   "header": {
     "currentInstance": "Current instance: {{name}}. Click to switch instances.",
     "connected": "Connected",
     "disconnected": "Disconnected",
+    "noActiveInstances": "No active instances",
     "showFilters": "Show filters",
     "hideFilters": "Hide filters",
     "addTorrent": "Add torrent",
-    "addToInstance": "Add to instance",
     "createTorrent": "Create torrent",
-    "createForInstance": "Create for instance",
     "torrentCreationTasks": "Torrent creation tasks",
-    "tasksForInstance": "Tasks for instance",
     "instanceSettings": "Instance settings",
+    "addToInstance": "Add to instance",
+    "createForInstance": "Create for instance",
+    "tasksForInstance": "Tasks for instance",
     "settingsForInstance": "Settings for instance",
     "clearSearch": "Clear search",
     "searchTorrents": "Search torrents... ({{shortcutKey}})",
     "globPattern": "Glob pattern...",
     "smartSearchTitle": "Smart Search Features:",
-    "smartSearchGlob": "Glob patterns: *.mkv, *1080p*, *S??E??*",
-    "smartSearchFuzzy": "Fuzzy matching: \"breaking bad\" finds \"Breaking.Bad\"",
+    "smartSearchGlob": "Glob patterns:",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchFuzzy": "Fuzzy matching:",
+    "smartSearchFuzzyExample": "\"breaking bad\" finds \"Breaking.Bad\"",
     "smartSearchDots": "Handles dots, underscores, and brackets",
     "smartSearchFields": "Searches name, category, and tags",
     "smartSearchEnter": "Press Enter for instant search",
     "smartSearchAuto": "Auto-searches after 500ms pause",
-    "noActiveInstances": "No active instances",
+    "torrentCreationTasksTitle": "Torrent Creation Tasks",
     "updateAvailable": "Update Available",
     "updateVersion": "Version {{version}}",
-    "torrentCreationTasksDialog": "Torrent Creation Tasks"
+    "rssRunning": "RSS running",
+    "rssEnabled": "RSS enabled",
+    "scanRunning": "Scan running"
   },
-  "mobileFooter": {
+  "unifiedScope": {
+    "unified": "Unified",
+    "collapseScope": "Collapse unified scope",
+    "expandScope": "Expand unified scope",
+    "allActive": "All active ({{count}})"
+  },
+  "mobileNav": {
     "dashboard": "Dashboard",
     "clients": "Clients",
-    "unified": "Unified",
     "settings": "Settings",
     "qbittorrentClients": "qBittorrent Clients",
     "instances": "Instances",
@@ -68,46 +76,12 @@
     "noActiveClients": "No active clients",
     "updateAvailable": "Update Available",
     "updateVersion": "Version {{version}}",
-    "search": "Search",
-    "crossSeed": "Cross-Seed",
-    "automations": "Automations",
-    "instanceBackups": "Instance Backups",
-    "rss": "RSS",
-    "generalSettings": "General Settings",
-    "manageInstances": "Manage Instances",
-    "logs": "Logs",
-    "appearance": "Appearance",
-    "logout": "Logout",
-    "version": "Version {{version}}",
-    "autobrr": "autobrr",
-    "viewOnGitHub": "View on GitHub",
     "rssRunning": "RSS running",
     "rssEnabled": "RSS enabled",
-    "scanRunning": "Scan running"
-  },
-  "unifiedScope": {
-    "unified": "Unified",
-    "collapseUnifiedScope": "Collapse unified scope",
-    "expandUnifiedScope": "Expand unified scope",
-    "allActive": "All active ({{count}})"
-  },
-  "footer": {
+    "scanRunning": "Scan running",
+    "logout": "Logout",
+    "version": "Version {{version}}",
     "viewOnGitHub": "View on GitHub"
-  },
-  "notFound": {
-    "title": "Oops! Lost in the swarm?",
-    "description": "Looks like you've ventured into the unknown.",
-    "bugReport1": "In case you think this is a bug rather than a missing link,",
-    "bugReport2": "feel free to report this to our",
-    "githubRepository": "GitHub repository",
-    "getBackOnTrack": "Otherwise, let us help you get back on track!",
-    "returnToDashboard": "Return to dashboard"
-  },
-  "updateBanner": {
-    "updateAvailable": "Update Available",
-    "versionAvailable": "Version {{version}} is now available",
-    "viewRelease": "View Release",
-    "dismiss": "Dismiss"
   },
   "themeToggle": {
     "changeTheme": "Change theme",
@@ -125,8 +99,23 @@
     "licenseCheckFailed": "License check failed. Premium theme switching is temporarily unavailable.",
     "premiumThemeError": "This is a premium theme. Open Settings \u2192 Themes to activate a license."
   },
+  "updateBanner": {
+    "updateAvailable": "Update Available",
+    "versionAvailable": "Version {{version}} is now available",
+    "viewRelease": "View Release",
+    "dismiss": "Dismiss"
+  },
+  "notFound": {
+    "title": "Oops! Lost in the swarm?",
+    "subtitle": "Looks like you've ventured into the unknown.",
+    "bugReport": "In case you think this is a bug rather than a missing link,",
+    "reportTo": "feel free to report this to our",
+    "githubRepository": "GitHub repository",
+    "getBackOnTrack": "Otherwise, let us help you get back on track!",
+    "returnToDashboard": "Return to dashboard"
+  },
   "magnetHandler": {
-    "registerDescription": "Register qui as your magnet link handler",
+    "registerPrompt": "Register qui as your magnet link handler",
     "register": "Register",
     "dismiss": "Dismiss",
     "registrationRequested": "Magnet handler registration requested",
@@ -134,6 +123,6 @@
   },
   "numberInput": {
     "unlimited": "Unlimited",
-    "unlimitedHint": " (use -1 for unlimited)"
+    "useUnlimited": " (use -1 for unlimited)"
   }
 }

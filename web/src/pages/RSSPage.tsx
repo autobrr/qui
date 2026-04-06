@@ -26,6 +26,7 @@ import {
   Trash2
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -126,6 +127,7 @@ export function RSSPage({
   onFeedSelect,
   onRuleSelect,
 }: RSSPageProps) {
+  const { t } = useTranslation("rss")
   const { instances } = useInstances()
   const [selectedInstanceId, setSelectedInstanceId] = usePersistedInstanceSelection("rss")
 
@@ -211,7 +213,7 @@ export function RSSPage({
       return
     }
     if (sseStatus === "disconnected" && sseReconnectAttempt > 0 && !sseDisconnectToastShownRef.current) {
-      toast.error("Live RSS updates disconnected")
+      toast.error(t("toast.liveRssDisconnected"))
       sseDisconnectToastShownRef.current = true
     }
   }, [sseStatus, sseReconnectAttempt])
@@ -259,9 +261,9 @@ export function RSSPage({
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <Rss className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
-            <CardTitle>No Instances Available</CardTitle>
+            <CardTitle>{t("noInstances.title")}</CardTitle>
             <CardDescription>
-              Add a qBittorrent instance to manage RSS feeds and auto-download rules.
+              {t("noInstances.description")}
             </CardDescription>
           </CardHeader>
         </Card>
@@ -276,7 +278,7 @@ export function RSSPage({
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <Rss className="h-6 w-6" />
-            <h1 className="text-2xl font-semibold">RSS</h1>
+            <h1 className="text-2xl font-semibold">{t("pageTitle")}</h1>
           </div>
           {renderInstanceSelector()}
         </div>
@@ -284,9 +286,9 @@ export function RSSPage({
           <Card className="w-full max-w-md">
             <CardHeader className="text-center">
               <HardDrive className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
-              <CardTitle>Select an Instance</CardTitle>
+              <CardTitle>{t("selectInstance.title")}</CardTitle>
               <CardDescription>
-                Choose a qBittorrent instance to manage its RSS feeds and auto-download rules.
+                {t("selectInstance.description")}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -300,9 +302,9 @@ export function RSSPage({
       {/* Header */}
       <div className="flex items-center justify-between mb-4 shrink-0">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold">RSS</h1>
+          <h1 className="text-2xl font-semibold">{t("pageTitle")}</h1>
           <p className="text-sm text-muted-foreground">
-            Manage qBittorrent's native RSS feeds and auto-download rules
+            {t("pageDescription")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -330,8 +332,8 @@ export function RSSPage({
               updatePreferences(
                 { rss_processing_enabled: true },
                 {
-                  onSuccess: () => toast.success("RSS processing enabled"),
-                  onError: () => toast.error("Failed to enable RSS processing"),
+                  onSuccess: () => toast.success(t("toast.rssProcessingEnabled")),
+                  onError: () => toast.error(t("toast.failedToEnableProcessing")),
                 }
               )
             }}
@@ -356,8 +358,8 @@ export function RSSPage({
               updatePreferences(
                 { rss_auto_downloading_enabled: true },
                 {
-                  onSuccess: () => toast.success("RSS auto-downloading enabled"),
-                  onError: () => toast.error("Failed to enable RSS auto-downloading"),
+                  onSuccess: () => toast.success(t("toast.rssAutoDownloadEnabled")),
+                  onError: () => toast.error(t("toast.failedToEnableAutoDownload")),
                 }
               )
             }}
@@ -406,8 +408,8 @@ export function RSSPage({
                   refreshAllFeeds.mutate(
                     { itemPath: "" },
                     {
-                      onSuccess: () => toast.success("Refreshing all feeds..."),
-                      onError: () => toast.error("Failed to refresh feeds"),
+                      onSuccess: () => toast.success(t("toast.refreshingAllFeeds")),
+                      onError: () => toast.error(t("toast.failedToRefreshFeeds")),
                     }
                   )
                 }}
@@ -418,15 +420,15 @@ export function RSSPage({
                 ) : (
                   <RefreshCw className="h-4 w-4 mr-2" />
                 )}
-                Refresh All
+                {t("feeds.refreshAll")}
               </Button>
               <Button variant="outline" size="sm" onClick={() => setAddFolderOpen(true)}>
                 <Folder className="h-4 w-4 mr-2" />
-                Add Folder
+                {t("addFolderDialog.title")}
               </Button>
               <Button size="sm" onClick={() => setAddFeedOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Feed
+                {t("addFeedDialog.addFeed")}
               </Button>
             </div>
           )}
@@ -441,10 +443,10 @@ export function RSSPage({
                     onClick={() => {
                       reprocessRules.mutate(undefined, {
                         onSuccess: () => {
-                          toast.success("Rules reprocessed - unread articles will be checked against all rules")
+                          toast.success(t("toast.rulesReprocessed"))
                         },
                         onError: () => {
-                          toast.error("Failed to reprocess rules")
+                          toast.error(t("toast.failedToReprocessRules"))
                         },
                       })
                     }}
@@ -455,7 +457,7 @@ export function RSSPage({
                     ) : (
                       <RefreshCw className="h-4 w-4 mr-2" />
                     )}
-                    Reprocess
+                    {t("rules.reprocess")}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -464,7 +466,7 @@ export function RSSPage({
               </Tooltip>
               <Button size="sm" onClick={() => setAddRuleOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Rule
+                {t("rules.addRule")}
               </Button>
             </div>
           )}
@@ -549,6 +551,7 @@ function FeedsTab({
   selectedFeedPath,
   onFeedSelect,
 }: FeedsTabProps) {
+  const { t } = useTranslation("rss")
   const queryClient = useQueryClient()
   const removeFeed = useRemoveRSSItem(instanceId)
   const refreshFeed = useRefreshRSSFeed(instanceId)
@@ -631,7 +634,7 @@ function FeedsTab({
         <CardContent className="flex flex-col items-center justify-center py-12">
           <Rss className="h-12 w-12 text-muted-foreground mb-4" />
           <p className="text-muted-foreground text-center">
-            No RSS feeds configured. Add a feed to get started.
+            {t("feeds.noFeeds")}
           </p>
         </CardContent>
       </Card>
@@ -641,7 +644,7 @@ function FeedsTab({
   const handleRemoveFeed = async (path: string) => {
     try {
       await removeFeed.mutateAsync({ path })
-      toast.success("Feed removed successfully")
+      toast.success(t("toast.feedRemoved"))
       if (selectedFeedPath === path) {
         onFeedSelect(undefined)
       }
@@ -654,7 +657,7 @@ function FeedsTab({
   const handleRefreshFeed = async (path: string) => {
     try {
       await refreshFeed.mutateAsync({ itemPath: path })
-      toast.success("Feed refresh triggered")
+      toast.success(t("toast.feedRefreshed"))
       // Invalidate to pick up changes
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: rssKeys.feeds(instanceId) })
@@ -668,7 +671,7 @@ function FeedsTab({
   const handleMarkAllAsRead = async (feedPath: string) => {
     try {
       await markAsRead.mutateAsync({ itemPath: feedPath })
-      toast.success("Marked all articles as read")
+      toast.success(t("toast.markedAllAsRead"))
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to mark all as read"
       toast.error(message)
@@ -696,7 +699,7 @@ function FeedsTab({
       const destPath = segments.join("\\")
 
       await moveFeed.mutateAsync({ itemPath: renameDialog.path, destPath })
-      toast.success("Feed renamed successfully")
+      toast.success(t("toast.feedRenamed"))
 
       // Update selection if the renamed feed was selected
       if (selectedFeedPath === renameDialog.path) {
@@ -723,7 +726,7 @@ function FeedsTab({
 
     try {
       await setFeedURL.mutateAsync({ path: editURLDialog.path, url: newURL.trim() })
-      toast.success("Feed URL updated successfully")
+      toast.success(t("toast.feedUrlUpdated"))
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update feed URL"
       toast.error(message)
@@ -746,7 +749,7 @@ function FeedsTab({
       {/* Feed Tree - Narrow sidebar */}
       <Card className="flex flex-col min-h-0">
         <CardHeader className="shrink-0 flex flex-row items-center justify-between space-y-0 py-0">
-          <CardTitle className="text-sm font-medium">Feeds</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("feeds.title")}</CardTitle>
           {unreadCount > 0 && (
             <span className="text-xs text-muted-foreground">{unreadCount}</span>
           )}
@@ -770,8 +773,8 @@ function FeedsTab({
       <Dialog open={renameDialog.open} onOpenChange={(open) => !open && setRenameDialog({ open: false, path: "", currentName: "" })}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Rename Feed</DialogTitle>
-            <DialogDescription>Enter a new name for this feed.</DialogDescription>
+            <DialogTitle>{t("renameDialog.title")}</DialogTitle>
+            <DialogDescription>{t("renameDialog.description")}</DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <Input
@@ -796,8 +799,8 @@ function FeedsTab({
       <Dialog open={editURLDialog.open} onOpenChange={(open) => !open && setEditURLDialog({ open: false, path: "", currentURL: "" })}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Feed URL</DialogTitle>
-            <DialogDescription>Enter a new URL for this feed.</DialogDescription>
+            <DialogTitle>{t("editUrlDialog.title")}</DialogTitle>
+            <DialogDescription>{t("editUrlDialog.description")}</DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <Input
@@ -850,7 +853,7 @@ function FeedsTab({
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
               <Rss className="h-8 w-8 mb-3 opacity-50" />
-              <p className="text-sm">Select a feed to view articles</p>
+              <p className="text-sm">{t("feeds.selectFeed")}</p>
             </div>
           )}
         </CardContent>
@@ -876,6 +879,7 @@ interface FeedTreeProps {
 }
 
 function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, onRename, onEditURL, supportsEditURL }: FeedTreeProps) {
+  const { t } = useTranslation("rss")
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
 
   // Auto-expand parent folders when selectedPath changes (e.g., on page load)
@@ -956,11 +960,11 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, on
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => onRefresh(itemPath)}>
                     <RefreshCw className="h-4 w-4 mr-2" />
-                    Refresh
+                    {t("feeds.refresh")}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => onRename(itemPath)}>
                     <Pencil className="h-4 w-4 mr-2" />
-                    Rename
+                    {t("feeds.rename")}
                   </DropdownMenuItem>
                   {supportsEditURL && feed.url && (
                     <DropdownMenuItem onClick={() => onEditURL(itemPath, feed.url)}>
@@ -972,14 +976,14 @@ function FeedTree({ items, path, selectedPath, onSelect, onRemove, onRefresh, on
                     <DropdownMenuItem asChild>
                       <a href={feed.url} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="h-4 w-4 mr-2" />
-                        Open URL
+                        {t("feeds.openUrl")}
                       </a>
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem className="text-destructive" onClick={() => onRemove(itemPath)}>
                     <Trash2 className="h-4 w-4 mr-2" />
-                    Remove
+                    {t("feeds.remove")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1067,6 +1071,7 @@ interface ArticlesPanelProps {
 }
 
 function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanelProps) {
+  const { t } = useTranslation("rss")
   const { formatDate } = useDateTimeFormatters()
   const markAsRead = useMarkRSSAsRead(instanceId)
   const [search, setSearch] = useState("")
@@ -1118,7 +1123,7 @@ function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanel
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
         <Rss className="h-8 w-8 mb-3 opacity-50" />
-        <p className="text-sm">No articles in this feed</p>
+        <p className="text-sm">{t("feeds.noArticles")}</p>
       </div>
     )
   }
@@ -1128,7 +1133,7 @@ function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanel
       <div className="relative mb-2">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search articles..."
+          placeholder={t("feeds.searchArticles")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-8 h-8"
@@ -1137,7 +1142,7 @@ function ArticlesPanel({ instanceId, feed, feedPath, onDownload }: ArticlesPanel
       <div className="flex-1 min-h-0 overflow-y-auto">
         {filteredArticles.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
-            <p className="text-sm">No matching articles</p>
+            <p className="text-sm">{t("feeds.noMatchingArticles")}</p>
           </div>
         ) : (
           <div className="space-y-1 pr-1">
@@ -1284,6 +1289,7 @@ function RulesTab({
   categories,
   tags,
 }: RulesTabProps) {
+  const { t } = useTranslation("rss")
   const setRule = useSetRSSRule(instanceId)
   const removeRule = useRemoveRSSRule(instanceId)
   const queryClient = useQueryClient()
@@ -1335,7 +1341,7 @@ function RulesTab({
         <CardContent className="flex flex-col items-center justify-center py-12">
           <FileText className="h-12 w-12 text-muted-foreground mb-4" />
           <p className="text-muted-foreground text-center">
-            No auto-download rules configured. Add a rule to automatically download torrents from feeds.
+            {t("rules.noRules")}
           </p>
         </CardContent>
       </Card>
@@ -1348,7 +1354,7 @@ function RulesTab({
         name,
         rule: { ...rule, enabled: !rule.enabled },
       })
-      toast.success(`Rule ${rule.enabled ? "disabled" : "enabled"}`)
+      toast.success(t("toast.ruleToggled", { state: rule.enabled ? "disabled" : "enabled" }))
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update rule"
       toast.error(message)
@@ -1358,7 +1364,7 @@ function RulesTab({
   const handleRemoveRule = async (name: string) => {
     try {
       await removeRule.mutateAsync(name)
-      toast.success("Rule removed successfully")
+      toast.success(t("toast.ruleRemoved"))
       if (selectedRuleName === name) {
         onRuleSelect(undefined)
       }
@@ -1591,6 +1597,7 @@ interface AddFeedDialogProps {
 const ROOT_FOLDER_VALUE = "__root__"
 
 function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDialogProps) {
+  const { t } = useTranslation("rss")
   const [url, setUrl] = useState("")
   const [path, setPath] = useState(ROOT_FOLDER_VALUE)
   const addFeed = useAddRSSFeed(instanceId)
@@ -1599,7 +1606,7 @@ function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDia
 
   const handleSubmit = async () => {
     if (!url.trim()) {
-      toast.error("URL is required")
+      toast.error(t("toast.urlRequired"))
       return
     }
 
@@ -1611,7 +1618,7 @@ function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDia
       if (result?.warning) {
         toast.warning(result.warning)
       } else {
-        toast.success("Feed added successfully")
+        toast.success(t("toast.feedAdded"))
       }
       setUrl("")
       setPath(ROOT_FOLDER_VALUE)
@@ -1626,7 +1633,7 @@ function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDia
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add RSS Feed</DialogTitle>
+          <DialogTitle>{t("addFeedDialog.title")}</DialogTitle>
           <DialogDescription>Add a new RSS feed to monitor for torrents.</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -1662,7 +1669,7 @@ function AddFeedDialog({ instanceId, open, onOpenChange, feedsData }: AddFeedDia
           </Button>
           <Button onClick={handleSubmit} disabled={addFeed.isPending}>
             {addFeed.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Add Feed
+            {t("addFeedDialog.addFeed")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1681,18 +1688,19 @@ interface AddFolderDialogProps {
 }
 
 function AddFolderDialog({ instanceId, open, onOpenChange }: AddFolderDialogProps) {
+  const { t } = useTranslation("rss")
   const [path, setPath] = useState("")
   const addFolder = useAddRSSFolder(instanceId)
 
   const handleSubmit = async () => {
     if (!path.trim()) {
-      toast.error("Folder name is required")
+      toast.error(t("toast.folderNameRequired"))
       return
     }
 
     try {
       await addFolder.mutateAsync({ path: path.trim() })
-      toast.success("Folder created successfully")
+      toast.success(t("toast.folderCreated"))
       setPath("")
       onOpenChange(false)
     } catch (err) {
@@ -1727,7 +1735,7 @@ function AddFolderDialog({ instanceId, open, onOpenChange }: AddFolderDialogProp
           </Button>
           <Button onClick={handleSubmit} disabled={addFolder.isPending}>
             {addFolder.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Create Folder
+            {t("addFolderDialog.createFolder")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1993,6 +2001,7 @@ function AddRuleDialog({
   categories,
   tags: availableTags,
 }: AddRuleDialogProps) {
+  const { t } = useTranslation("rss")
   const [name, setName] = useState("")
   const [formState, setFormState] = useState<RuleFormState>(DEFAULT_RULE_FORM_STATE)
 
@@ -2005,7 +2014,7 @@ function AddRuleDialog({
 
   const handleSubmit = async () => {
     if (!name.trim()) {
-      toast.error("Rule name is required")
+      toast.error(t("toast.ruleNameRequired"))
       return
     }
 
@@ -2032,7 +2041,7 @@ function AddRuleDialog({
           },
         },
       })
-      toast.success("Rule created successfully")
+      toast.success(t("toast.ruleCreated"))
       setName("")
       setFormState(DEFAULT_RULE_FORM_STATE)
       onOpenChange(false)
@@ -2046,7 +2055,7 @@ function AddRuleDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add Auto-Download Rule</DialogTitle>
+          <DialogTitle>{t("addRuleDialog.title")}</DialogTitle>
           <DialogDescription>
             Create a rule to automatically download torrents matching your criteria.
           </DialogDescription>
@@ -2079,7 +2088,7 @@ function AddRuleDialog({
           </Button>
           <Button onClick={handleSubmit} disabled={setRule.isPending}>
             {setRule.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Create Rule
+            {t("addRuleDialog.createRule")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -2112,6 +2121,7 @@ function EditRuleDialog({
   categories,
   tags: availableTags,
 }: EditRuleDialogProps) {
+  const { t } = useTranslation("rss")
   const [formState, setFormState] = useState<RuleFormState>(DEFAULT_RULE_FORM_STATE)
   const { formatDate } = useDateTimeFormatters()
 
@@ -2172,7 +2182,7 @@ function EditRuleDialog({
           },
         },
       })
-      toast.success("Rule updated successfully")
+      toast.success(t("toast.ruleUpdated"))
       onOpenChange(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update rule"
@@ -2212,7 +2222,7 @@ function EditRuleDialog({
           </Button>
           <Button onClick={handleSubmit} disabled={setRuleMutation.isPending}>
             {setRuleMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Save Changes
+            {t("editRuleDialog.saveChanges")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -2303,6 +2313,7 @@ function RssSettingsPopover({
   updatePreferences: ReturnType<typeof useInstancePreferences>["updatePreferences"]
   isUpdating: boolean
 }) {
+  const { t } = useTranslation("rss")
   const [refreshInterval, setRefreshInterval] = useState(preferences?.rss_refresh_interval ?? 30)
   const [maxArticles, setMaxArticles] = useState(preferences?.rss_max_articles_per_feed ?? 50)
   const [downloadRepack, setDownloadRepack] = useState(preferences?.rss_download_repack_proper_episodes ?? false)
@@ -2320,8 +2331,8 @@ function RssSettingsPopover({
       rss_max_articles_per_feed: maxArticles,
       rss_download_repack_proper_episodes: downloadRepack,
     }, {
-      onSuccess: () => toast.success("RSS settings saved"),
-      onError: () => toast.error("Failed to save RSS settings"),
+      onSuccess: () => toast.success(t("toast.rssSettingsSaved")),
+      onError: () => toast.error(t("toast.failedToSaveRssSettings")),
     })
   }
 
@@ -2339,7 +2350,7 @@ function RssSettingsPopover({
       </Tooltip>
       <PopoverContent className="w-72" align="end">
         <div className="space-y-4">
-          <h4 className="font-medium">RSS Settings</h4>
+          <h4 className="font-medium">{t("settingsPopover.title")}</h4>
 
           <div className="space-y-3">
             <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">

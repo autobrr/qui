@@ -21,6 +21,7 @@ import { usePersistedStartPaused } from "@/hooks/usePersistedStartPaused"
 import { useIncognitoMode } from "@/lib/incognito"
 import { useForm } from "@tanstack/react-form"
 import React from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
@@ -117,6 +118,7 @@ interface FileManagementFormProps {
 }
 
 export function FileManagementForm({ instanceId, onSuccess }: FileManagementFormProps) {
+  const { t } = useTranslation("instances")
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const [startPausedEnabled, setStartPausedEnabled] = usePersistedStartPaused(instanceId, false)
   const { data: capabilities } = useInstanceCapabilities(instanceId)
@@ -171,10 +173,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
           qbittorrentPrefs.use_subcategories = Boolean(value.use_subcategories)
         }
         updatePreferences(qbittorrentPrefs)
-        toast.success("File management settings updated successfully")
+        toast.success(t("preferences.fileManagement.toast.success"))
         onSuccess?.()
       } catch {
-        toast.error("Failed to update file management settings")
+        toast.error(t("preferences.fileManagement.toast.error"))
       }
     },
   })
@@ -210,7 +212,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   if (isLoading) {
     return (
       <div className="text-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">Loading file management settings...</p>
+        <p className="text-sm text-muted-foreground">{t("preferences.fileManagement.loading")}</p>
       </div>
     )
   }
@@ -218,7 +220,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   if (!preferences) {
     return (
       <div className="text-center py-8" role="alert">
-        <p className="text-sm text-muted-foreground">Failed to load preferences</p>
+        <p className="text-sm text-muted-foreground">{t("preferences.fileManagement.loadFailed")}</p>
       </div>
     )
   }

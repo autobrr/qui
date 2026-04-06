@@ -48,6 +48,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Copy, Eye, EyeOff, Plus, Server, Trash2 } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface NewClientAPIKey {
@@ -73,6 +74,7 @@ function truncateInstanceName(name: string, maxLength = 20): string {
 }
 
 export function ClientApiKeysManager() {
+  const { t } = useTranslation("settings")
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
   const [newKey, setNewKey] = useState<NewClientAPIKey | null>(null)
@@ -137,10 +139,10 @@ export function ClientApiKeysManager() {
     onSuccess: (data) => {
       setNewKey(data)
       queryClient.invalidateQueries({ queryKey: ["clientApiKeys"] })
-      toast.success("Client API key created successfully")
+      toast.success(t("clientApiKeys.toasts.created"))
     },
     onError: () => {
-      toast.error("Failed to create client API key")
+      toast.error(t("clientApiKeys.toasts.createFailed"))
     },
   })
 
@@ -151,11 +153,11 @@ export function ClientApiKeysManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clientApiKeys"] })
       setDeleteKeyId(null)
-      toast.success("Client API key deleted successfully")
+      toast.success(t("clientApiKeys.toasts.deleted"))
     },
     onError: (error) => {
       console.error("Delete client API key error:", error)
-      toast.error(`Failed to delete client API key: ${error.message || "Unknown error"}`)
+      toast.error(t("clientApiKeys.toasts.deleteFailed", { error: error.message || "Unknown error" }))
     },
   })
 
@@ -167,13 +169,13 @@ export function ClientApiKeysManager() {
     onSubmit: async ({ value }) => {
       const clientName = value.clientName.trim()
       if (clientName === "") {
-        toast.error("Client name is required")
+        toast.error(t("clientApiKeys.toasts.clientNameRequired"))
         return
       }
 
       const instanceId = parseInt(value.instanceId, 10)
       if (!instanceId) {
-        toast.error("Please select an instance")
+        toast.error(t("clientApiKeys.toasts.selectInstance"))
         return
       }
 
@@ -248,9 +250,9 @@ export function ClientApiKeysManager() {
                               onClick={async () => {
                                 try {
                                   await copyTextToClipboard(getFullProxyUrl(newKey.proxyUrl))
-                                  toast.success("Proxy URL copied to clipboard")
+                                  toast.success(t("clientApiKeys.toasts.proxyCopied"))
                                 } catch {
-                                  toast.error("Failed to copy to clipboard")
+                                  toast.error(t("clientApiKeys.toasts.copyFailed"))
                                 }
                               }}
                               title="Copy proxy URL"

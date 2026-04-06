@@ -38,6 +38,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, ChevronDown, Copy, FileText, Filter, Loader2, Lock, Search, Settings, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 const LOG_LEVELS = ["TRACE", "DEBUG", "INFO", "WARN", "ERROR"] as const
@@ -51,16 +52,17 @@ function normalizeLogLevel(level: string | undefined): (typeof LOG_LEVELS)[numbe
 }
 
 function LogSettingsFormInner({ settings }: { settings: NonNullable<Awaited<ReturnType<typeof api.getLogSettings>>> }) {
+  const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
 
   const updateMutation = useMutation({
     mutationFn: (update: LogSettingsUpdate) => api.updateLogSettings(update),
     onSuccess: (data) => {
       queryClient.setQueryData(["log-settings"], data)
-      toast.success("Log settings updated")
+      toast.success(t("logs.toasts.settingsUpdated"))
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to update log settings")
+      toast.error(error instanceof Error ? error.message : t("logs.toasts.settingsFailed"))
     },
   })
 
@@ -456,6 +458,7 @@ function LogEntryDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const { t } = useTranslation("settings")
   // Memoize JSON stringification and highlighting to avoid re-tokenizing on unrelated renders
   const { prettyJson, highlightedJson } = useMemo(() => {
     if (!entry) return { prettyJson: "", highlightedJson: [] as React.ReactNode[] }
@@ -473,9 +476,9 @@ function LogEntryDialog({
     if (!prettyJson) return
     try {
       await copyTextToClipboard(prettyJson)
-      toast.success("JSON copied to clipboard")
+      toast.success(t("logs.toasts.jsonCopied"))
     } catch {
-      toast.error("Failed to copy to clipboard")
+      toast.error(t("logs.toasts.copyFailed"))
     }
   }, [prettyJson])
 
@@ -483,9 +486,9 @@ function LogEntryDialog({
     if (!entry) return
     try {
       await copyTextToClipboard(entry.raw)
-      toast.success("Raw line copied to clipboard")
+      toast.success(t("logs.toasts.rawCopied"))
     } catch {
-      toast.error("Failed to copy to clipboard")
+      toast.error(t("logs.toasts.copyFailed"))
     }
   }, [entry])
 
@@ -533,6 +536,7 @@ const LOG_SOFT_CAP = 1000
 const LOG_HARD_CAP = 10000
 
 function LiveLogViewer({ configPath }: { configPath?: string }) {
+  const { t } = useTranslation("settings")
   const [lines, setLines] = useState<RawLogLine[]>([])
   const [autoScroll, setAutoScroll] = useState(true)
   const [isConnected, setIsConnected] = useState(false)
@@ -686,7 +690,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
             className={`h-2 w-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}
           />
           <span className="text-sm text-muted-foreground">
-            {isConnected ? "Connected" : "Disconnected"}
+            {isConnected ? t("logs.viewer.connected") : t("logs.viewer.disconnected")}
           </span>
           {error && (
             <span className="flex items-center gap-1 text-sm text-yellow-500">
@@ -879,6 +883,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
 }
 
 export function LogSettingsPanel() {
+  const { t } = useTranslation("settings")
   const { data: settings } = useQuery({
     queryKey: ["log-settings"],
     queryFn: () => api.getLogSettings(),
@@ -889,24 +894,24 @@ export function LogSettingsPanel() {
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
-            <CardTitle>Logs</CardTitle>
+            <CardTitle>{t("logs.title")}</CardTitle>
             <CardDescription>
-              Real-time application logs. Click a level badge to mute similar entries.
+              {t("logs.description")}
             </CardDescription>
           </div>
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="icon" className="h-8 w-8 shrink-0">
                 <Settings className="h-4 w-4" />
-                <span className="sr-only">Log settings</span>
+                <span className="sr-only">{t("logs.settingsSrOnly")}</span>
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80" align="end">
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <h4 className="font-medium text-sm">Log Configuration</h4>
+                  <h4 className="font-medium text-sm">{t("logs.configuration.title")}</h4>
                   <p className="text-xs text-muted-foreground">
-                    Changes are applied immediately.
+                    {t("logs.configuration.description")}
                   </p>
                 </div>
                 <LogSettingsForm />

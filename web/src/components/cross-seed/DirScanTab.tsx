@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import {
   AlertTriangle,
@@ -140,6 +141,7 @@ function RunFilesBadge({ run }: { run: DirScanRun }) {
 }
 
 export function DirScanTab({ instances }: DirScanTabProps) {
+  const { t } = useTranslation("crossseed")
   const { formatISOTimestamp } = useDateTimeFormatters()
   const [selectedDirectoryId, setSelectedDirectoryId] = useState<number | null>(null)
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
@@ -164,10 +166,10 @@ export function DirScanTab({ instances }: DirScanTabProps) {
         { enabled },
         {
           onSuccess: () => {
-            toast.success(enabled ? "Directory Scanner enabled" : "Directory Scanner disabled")
+            toast.success(enabled ? t("dirScan.toast.scannerEnabled") : t("dirScan.toast.scannerDisabled"))
           },
           onError: (error) => {
-            toast.error(`Failed to update settings: ${error.message}`)
+            toast.error(t("dirScan.toast.failedToUpdateSettings", { error: error.message }))
           },
         }
       )
@@ -202,7 +204,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <FolderSearch className="size-5" />
-                Directory Scanner
+                {t("dirScan.title")}
               </CardTitle>
               <CardDescription>
                 Scan local directories for completed downloads and automatically cross-seed them.
@@ -248,7 +250,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Scan Directories</CardTitle>
+            <CardTitle>{t("dirScan.scanDirectories")}</CardTitle>
             <CardDescription>
               Configure directories to scan for cross-seedable content.
             </CardDescription>
@@ -258,7 +260,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
             disabled={directoryWithLocalFs.length === 0}
           >
             <Plus className="size-4 mr-2" />
-            Add Directory
+            {t("dirScan.addDirectory")}
           </Button>
         </CardHeader>
         <CardContent>
@@ -341,6 +343,7 @@ function DirectoryCard({
   isSelected,
   formatRelativeTime,
 }: DirectoryCardProps) {
+  const { t } = useTranslation("crossseed")
   const { data: status } = useDirScanStatus(directory.id)
   const triggerScan = useTriggerDirScan(directory.id)
   const cancelScan = useCancelDirScan(directory.id)
@@ -357,15 +360,15 @@ function DirectoryCard({
 
   const handleTrigger = useCallback(() => {
     triggerScan.mutate(undefined, {
-      onSuccess: () => toast.success("Scan started"),
-      onError: (error) => toast.error(`Failed to start scan: ${error.message}`),
+      onSuccess: () => toast.success(t("dirScan.toast.scanStarted")),
+      onError: (error) => toast.error(t("dirScan.toast.scanStartFailed", { error: error.message })),
     })
   }, [triggerScan])
 
   const handleCancel = useCallback(() => {
     cancelScan.mutate(undefined, {
-      onSuccess: () => toast.success("Scan canceled. Next run will recheck the directory and retry unfinished items."),
-      onError: (error) => toast.error(`Failed to cancel scan: ${error.message}`),
+      onSuccess: () => toast.success(t("dirScan.toast.scanCanceled")),
+      onError: (error) => toast.error(t("dirScan.toast.scanCancelFailed", { error: error.message })),
     })
   }, [cancelScan])
 
@@ -649,6 +652,7 @@ function RunRow({
 }
 
 function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: DirectoryDetailsProps) {
+  const { t } = useTranslation("crossseed")
   const { data: runs = [], isLoading } = useDirScanRuns(directoryId, { limit: 10 })
   const resetFiles = useResetDirScanFiles(directoryId)
   const [expandedRunId, setExpandedRunId] = useState<number | null>(null)
@@ -657,7 +661,7 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
   const handleReset = useCallback(() => {
     resetFiles.mutate(undefined, {
       onSuccess: () => {
-        toast.success("Scan progress reset")
+        toast.success(t("dirScan.resetFilesSuccess"))
         setShowResetDialog(false)
       },
       onError: (error) => {
@@ -790,6 +794,7 @@ function buildSettingsFormState(settings: SettingsDialogProps["settings"]) {
 }
 
 function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDialogProps) {
+  const { t } = useTranslation("crossseed")
   const updateSettings = useUpdateDirScanSettings()
   const [form, setForm] = useState(() => buildSettingsFormState(settings))
 
@@ -884,7 +889,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
   const handleSave = useCallback(() => {
     updateSettings.mutate(form, {
       onSuccess: () => {
-        toast.success("Settings saved")
+        toast.success(t("dirScan.toast.settingsSaved"))
         onOpenChange(false)
       },
       onError: (error) => {
@@ -897,7 +902,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90dvh] flex flex-col">
         <DialogHeader className="flex-shrink-0">
-          <DialogTitle>Directory Scanner Settings</DialogTitle>
+          <DialogTitle>{t("dirScan.settingsDialog.title")}</DialogTitle>
           <DialogDescription>
             Configure global settings for directory scanning.
           </DialogDescription>
@@ -1204,6 +1209,7 @@ interface DirectoryDialogProps {
 }
 
 function DirectoryDialog({ open, onOpenChange, directory, instances }: DirectoryDialogProps) {
+  const { t } = useTranslation("crossseed")
   const createDirectory = useCreateDirScanDirectory()
   const updateDirectory = useUpdateDirScanDirectory(directory?.id ?? 0)
   const isEditing = directory !== null
@@ -1287,7 +1293,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
     if (isEditing) {
       updateDirectory.mutate(clampedForm, {
         onSuccess: () => {
-          toast.success("Directory updated")
+          toast.success(t("dirScan.toast.directoryUpdated"))
           onOpenChange(false)
         },
         onError: (error) => {
@@ -1313,7 +1319,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90dvh] flex flex-col">
         <DialogHeader className="flex-shrink-0">
-          <DialogTitle>{isEditing ? "Edit Directory" : "Add Directory"}</DialogTitle>
+          <DialogTitle>{isEditing ? t("dirScan.directoryDialog.editTitle") : t("dirScan.directoryDialog.addTitle")}</DialogTitle>
           <DialogDescription>
             {isEditing ? "Update the directory configuration." : "Add a new directory to scan for cross-seedable content."}
           </DialogDescription>
@@ -1509,17 +1515,18 @@ interface DeleteDirectoryDialogProps {
 }
 
 function DeleteDirectoryDialog({ directoryId, onOpenChange }: DeleteDirectoryDialogProps) {
+  const { t } = useTranslation("crossseed")
   const deleteDirectory = useDeleteDirScanDirectory()
 
   const handleDelete = useCallback(() => {
     if (!directoryId) return
     deleteDirectory.mutate(directoryId, {
       onSuccess: () => {
-        toast.success("Directory deleted")
+        toast.success(t("dirScan.toast.directoryDeleted"))
         onOpenChange(false)
       },
       onError: (error) => {
-        toast.error(`Failed to delete directory: ${error.message}`)
+        toast.error(t("dirScan.toast.directoryDeleteFailed", { error: error.message }))
       },
     })
   }, [directoryId, deleteDirectory, onOpenChange])
@@ -1528,7 +1535,7 @@ function DeleteDirectoryDialog({ directoryId, onOpenChange }: DeleteDirectoryDia
     <AlertDialog open={directoryId !== null} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete Directory</AlertDialogTitle>
+          <AlertDialogTitle>{t("dirScan.deleteDialog.title")}</AlertDialogTitle>
           <AlertDialogDescription>
             Are you sure you want to delete this directory configuration? This will also remove all
             tracked files and scan history for this directory.

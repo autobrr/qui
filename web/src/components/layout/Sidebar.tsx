@@ -38,10 +38,11 @@ import {
   Zap
 } from "lucide-react"
 import { useCallback, useMemo } from "react"
+import { useTranslation } from "react-i18next"
 
 interface NavItem {
   id: string
-  title: string
+  titleKey: string
   href: string
   icon: React.ComponentType<{ className?: string }>
   params?: Record<string, string>
@@ -52,51 +53,51 @@ interface NavItem {
 const navigation: NavItem[] = [
   {
     id: "dashboard",
-    title: "Dashboard",
+    titleKey: "nav.dashboard",
     href: "/dashboard",
     icon: Home,
   },
   {
     id: "search",
-    title: "Search",
+    titleKey: "nav.search",
     href: "/search",
     icon: Search,
   },
   {
     id: "cross-seed",
-    title: "Cross-Seed",
+    titleKey: "nav.crossSeed",
     href: "/cross-seed",
     icon: GitBranch,
     params: {},
   },
   {
     id: "automations",
-    title: "Automations",
+    titleKey: "nav.automations",
     href: "/automations",
     icon: Zap,
   },
   {
     id: "backups",
-    title: "Backups",
+    titleKey: "nav.backups",
     href: "/backups",
     icon: Archive,
   },
   {
     id: "rss",
-    title: "RSS",
+    titleKey: "nav.rss",
     href: "/rss",
     icon: Rss,
   },
   {
     id: "settings",
-    title: "Settings",
+    titleKey: "nav.settings",
     href: "/settings",
     icon: Settings,
     isActive: (pathname, search) => pathname === "/settings" && search?.tab !== "logs",
   },
   {
     id: "logs",
-    title: "Logs",
+    titleKey: "nav.logs",
     href: "/settings",
     icon: FileText,
     search: { tab: "logs" },
@@ -105,6 +106,7 @@ const navigation: NavItem[] = [
 ]
 
 export function Sidebar() {
+  const { t } = useTranslation("common")
   const location = useLocation()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
@@ -191,7 +193,7 @@ export function Sidebar() {
                 )}
               >
                 <Icon className="h-4 w-4" />
-                {item.title}
+                {t(item.titleKey)}
               </Link>
             )
           })}
@@ -202,7 +204,7 @@ export function Sidebar() {
         <div className="flex-1 min-h-0">
           <div className="flex h-full min-h-0 flex-col">
             <p className="px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/70">
-              Instances
+              {t("sidebar.instances")}
             </p>
             <div className="mt-1 flex-1 overflow-y-auto space-y-1 pr-1">
               {hasMultipleActiveInstances && (
@@ -257,7 +259,7 @@ export function Sidebar() {
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="right" className="text-xs">
-                            RSS {csState?.rssRunning ? "running" : "enabled"}
+                            {csState?.rssRunning ? t("sidebar.rssRunning") : t("sidebar.rssEnabled")}
                           </TooltipContent>
                         </Tooltip>
                       )}
@@ -272,7 +274,7 @@ export function Sidebar() {
                             </span>
                           </TooltipTrigger>
                           <TooltipContent side="right" className="text-xs">
-                            Scan running
+                            {t("sidebar.scanRunning")}
                           </TooltipContent>
                         </Tooltip>
                       )}
@@ -288,7 +290,7 @@ export function Sidebar() {
               })}
               {activeInstances.length === 0 && (
                 <p className="px-3 py-2 text-sm text-sidebar-foreground/50">
-                  {hasConfiguredInstances ? "All instances are disabled" : "No instances configured"}
+                  {hasConfiguredInstances ? t("sidebar.allInstancesDisabled") : t("sidebar.noInstancesConfigured")}
                 </p>
               )}
             </div>
@@ -305,14 +307,14 @@ export function Sidebar() {
           onClick={() => logout()}
         >
           <LogOut className="mr-2 h-4 w-4" />
-          Logout
+          {t("sidebar.logout")}
         </Button>
 
         <Separator className="mx-3 mb-3" />
 
         <div className="flex items-center justify-between px-3 pb-3">
           <div className="flex flex-col gap-1 text-[10px] text-sidebar-foreground/40 select-none">
-            <span className="font-medium text-sidebar-foreground/50">Version {appVersion}</span>
+            <span className="font-medium text-sidebar-foreground/50">{t("sidebar.version", { version: appVersion })}</span>
             <div className="flex items-center gap-1">
               <Copyright className="h-2.5 w-2.5" />
               <span>{new Date().getFullYear()} autobrr</span>
@@ -328,7 +330,7 @@ export function Sidebar() {
               href="https://github.com/autobrr/qui"
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="View on GitHub"
+              aria-label={t("sidebar.viewOnGitHub")}
             >
               <Github className="h-3.5 w-3.5" />
             </a>

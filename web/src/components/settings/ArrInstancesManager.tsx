@@ -45,9 +45,11 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { CheckCircle, Edit, Loader2, Plus, Trash2, XCircle, Zap } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 export function ArrInstancesManager() {
+  const { t } = useTranslation("settings")
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editInstance, setEditInstance] = useState<ArrInstance | null>(null)
   const [deleteInstance, setDeleteInstance] = useState<ArrInstance | null>(null)
@@ -68,10 +70,10 @@ export function ArrInstancesManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["arrInstances"] })
       setShowCreateDialog(false)
-      toast.success("ARR instance created successfully")
+      toast.success(t("arrInstances.toasts.created"))
     },
     onError: (error: Error) => {
-      toast.error(`Failed to create ARR instance: ${error.message || "Unknown error"}`)
+      toast.error(t("arrInstances.toasts.createFailed", { error: error.message || "Unknown error" }))
     },
   })
 
@@ -82,10 +84,10 @@ export function ArrInstancesManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["arrInstances"] })
       setEditInstance(null)
-      toast.success("ARR instance updated successfully")
+      toast.success(t("arrInstances.toasts.updated"))
     },
     onError: (error: Error) => {
-      toast.error(`Failed to update ARR instance: ${error.message || "Unknown error"}`)
+      toast.error(t("arrInstances.toasts.updateFailed", { error: error.message || "Unknown error" }))
     },
   })
 
@@ -96,10 +98,10 @@ export function ArrInstancesManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["arrInstances"] })
       setDeleteInstance(null)
-      toast.success("ARR instance deleted successfully")
+      toast.success(t("arrInstances.toasts.deleted"))
     },
     onError: (error: Error) => {
-      toast.error(`Failed to delete ARR instance: ${error.message || "Unknown error"}`)
+      toast.error(t("arrInstances.toasts.deleteFailed", { error: error.message || "Unknown error" }))
     },
   })
 
@@ -111,13 +113,13 @@ export function ArrInstancesManager() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["arrInstances"] })
       if (result.success) {
-        toast.success("Connection successful")
+        toast.success(t("arrInstances.toasts.connectionSuccess"))
       } else {
-        toast.error(`Connection failed: ${result.error || "Unknown error"}`)
+        toast.error(t("arrInstances.toasts.connectionFailed", { error: result.error || "Unknown error" }))
       }
     },
     onError: (error: Error) => {
-      toast.error(`Connection test failed: ${error.message || "Unknown error"}`)
+      toast.error(t("arrInstances.toasts.testFailed", { error: error.message || "Unknown error" }))
     },
     onSettled: () => {
       setTestingId(null)
@@ -136,7 +138,7 @@ export function ArrInstancesManager() {
             <div className="flex items-center gap-2 flex-wrap">
               <CardTitle className="text-lg truncate">{instance.name}</CardTitle>
               <Badge variant={instance.enabled ? "default" : "secondary"}>
-                {instance.enabled ? "Enabled" : "Disabled"}
+                {instance.enabled ? t("arrInstances.badges.enabled") : t("arrInstances.badges.disabled")}
               </Badge>
               {instance.last_test_status === "ok" && (
                 <Badge variant="outline" className="text-green-500 border-green-500/50">
@@ -155,7 +157,7 @@ export function ArrInstancesManager() {
               {instance.base_url}
             </CardDescription>
             <CardDescription className="text-xs">
-              Created {formatDate(new Date(instance.created_at))}
+              {t("arrInstances.created", { date: formatDate(new Date(instance.created_at)) })}
               {instance.last_test_at && ` • Tested ${formatDate(new Date(instance.last_test_at))}`}
             </CardDescription>
           </div>
@@ -214,7 +216,7 @@ export function ArrInstancesManager() {
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg max-w-full max-h-[90dvh] flex flex-col">
             <DialogHeader className="flex-shrink-0">
-              <DialogTitle>Add ARR Instance</DialogTitle>
+              <DialogTitle>{t("arrInstances.addDialog.title")}</DialogTitle>
               <DialogDescription>
                 Configure a Sonarr or Radarr instance for ID lookups during cross-seed searches.
               </DialogDescription>
@@ -251,7 +253,7 @@ export function ArrInstancesManager() {
 
       {sonarrInstances.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-sm font-medium text-muted-foreground">Sonarr Instances</h3>
+          <h3 className="text-sm font-medium text-muted-foreground">{t("arrInstances.sonarrInstances")}</h3>
           <div className="grid gap-3">
             {sonarrInstances.map(renderInstanceCard)}
           </div>
@@ -260,7 +262,7 @@ export function ArrInstancesManager() {
 
       {radarrInstances.length > 0 && (
         <div className="space-y-3">
-          <h3 className="text-sm font-medium text-muted-foreground">Radarr Instances</h3>
+          <h3 className="text-sm font-medium text-muted-foreground">{t("arrInstances.radarrInstances")}</h3>
           <div className="grid gap-3">
             {radarrInstances.map(renderInstanceCard)}
           </div>
@@ -272,7 +274,7 @@ export function ArrInstancesManager() {
         <Dialog open={true} onOpenChange={() => setEditInstance(null)}>
           <DialogContent className="sm:max-w-lg max-w-full max-h-[90dvh] flex flex-col">
             <DialogHeader className="flex-shrink-0">
-              <DialogTitle>Edit ARR Instance</DialogTitle>
+              <DialogTitle>{t("arrInstances.editDialog.title")}</DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto min-h-0">
               <ArrInstanceForm
@@ -290,7 +292,7 @@ export function ArrInstancesManager() {
       <AlertDialog open={deleteInstance !== null} onOpenChange={() => setDeleteInstance(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete ARR Instance</AlertDialogTitle>
+            <AlertDialogTitle>{t("arrInstances.deleteDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
               Are you sure you want to delete "{deleteInstance?.name}"? This action cannot be undone.
             </AlertDialogDescription>
@@ -318,6 +320,7 @@ interface ArrInstanceFormProps {
 }
 
 function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanceFormProps) {
+  const { t } = useTranslation("settings")
   const [type, setType] = useState<ArrInstanceType>(instance?.type || "sonarr")
   const [name, setName] = useState(instance?.name || "")
   const [baseUrl, setBaseUrl] = useState(instance?.base_url || "")
@@ -335,7 +338,7 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
 
   const handleTestConnection = async () => {
     if (!baseUrl.trim() || !apiKey.trim()) {
-      toast.error("Base URL and API Key are required to test connection")
+      toast.error(t("arrInstances.validation.baseUrlAndApiKeyRequired"))
       return
     }
 
@@ -343,11 +346,11 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
     const trimmedBasicPass = basicPassword
     if (showBasicAuth) {
       if (!trimmedBasicUser) {
-        toast.error("Basic auth username is required")
+        toast.error(t("arrInstances.validation.basicUsernameRequired"))
         return
       }
       if (!trimmedBasicPass || trimmedBasicPass === "<redacted>") {
-        toast.error("Enter the basic auth password to test connection")
+        toast.error(t("arrInstances.validation.basicPasswordRequired"))
         return
       }
     }
@@ -365,14 +368,14 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
       })
       setTestResult(result)
       if (result.success) {
-        toast.success("Connection successful")
+        toast.success(t("arrInstances.toasts.connectionSuccess"))
       } else {
-        toast.error(`Connection failed: ${result.error || "Unknown error"}`)
+        toast.error(t("arrInstances.toasts.connectionFailed", { error: result.error || "Unknown error" }))
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error"
       setTestResult({ success: false, error: message })
-      toast.error(`Connection test failed: ${message}`)
+      toast.error(t("arrInstances.toasts.testFailed", { error: message }))
     } finally {
       setIsTesting(false)
     }
@@ -382,12 +385,12 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
     e.preventDefault()
 
     if (!name.trim()) {
-      toast.error("Name is required")
+      toast.error(t("arrInstances.validation.nameRequired"))
       return
     }
 
     if (!baseUrl.trim()) {
-      toast.error("Base URL is required")
+      toast.error(t("arrInstances.validation.baseUrlRequired"))
       return
     }
 
@@ -395,21 +398,21 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
     const trimmedBasicPass = basicPassword
     if (showBasicAuth) {
       if (!trimmedBasicUser) {
-        toast.error("Basic auth username is required")
+        toast.error(t("arrInstances.validation.basicUsernameRequired"))
         return
       }
       if (!isEdit && !trimmedBasicPass) {
-        toast.error("Basic auth password is required")
+        toast.error(t("arrInstances.validation.basicPasswordRequiredSubmit"))
         return
       }
       if (isEdit && trimmedBasicPass === "") {
-        toast.error("Basic auth password is required (or keep <redacted>)")
+        toast.error(t("arrInstances.validation.basicPasswordKeepOrEnter"))
         return
       }
     }
 
     if (!isEdit && !apiKey.trim()) {
-      toast.error("API Key is required")
+      toast.error(t("arrInstances.validation.apiKeyRequired"))
       return
     }
 

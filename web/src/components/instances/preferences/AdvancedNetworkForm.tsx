@@ -13,6 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Settings, HardDrive, Zap, Ban, Radio, AlertTriangle } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useQBittorrentFieldVisibility } from "@/hooks/useQBittorrentAppInfo"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
@@ -106,6 +107,7 @@ function NumberInput({
 }
 
 export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFormProps) {
+  const { t } = useTranslation("instances")
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const fieldVisibility = useQBittorrentFieldVisibility(instanceId)
 
@@ -152,10 +154,10 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
     onSubmit: async ({ value }) => {
       try {
         await updatePreferences(value)
-        toast.success("Advanced network settings updated successfully")
+        toast.success(t("preferences.advancedNetwork.toast.success"))
         onSuccess?.()
       } catch (error) {
-        toast.error("Failed to update advanced network settings")
+        toast.error(t("preferences.advancedNetwork.toast.error"))
         console.error("Failed to update advanced network settings:", error)
       }
     },
@@ -207,7 +209,7 @@ export function AdvancedNetworkForm({ instanceId, onSuccess }: AdvancedNetworkFo
   if (isLoading || !preferences) {
     return (
       <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">Loading advanced network settings...</p>
+        <p className="text-sm text-muted-foreground">{t("preferences.advancedNetwork.loading")}</p>
       </div>
     )
   }

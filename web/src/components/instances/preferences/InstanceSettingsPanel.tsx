@@ -14,6 +14,7 @@ import { formatErrorMessage } from "@/lib/utils"
 import type { Instance, InstanceFormData } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
@@ -24,6 +25,7 @@ interface InstanceSettingsPanelProps {
 }
 
 export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsPanelProps) {
+  const { t } = useTranslation("instances")
   const { updateInstance, isUpdating } = useInstances()
   const [incognitoMode] = useIncognitoMode()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
@@ -71,14 +73,14 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
 
     updateInstance({ id: instance.id, data: submitData }, {
       onSuccess: () => {
-        toast.success("Instance Updated", {
-          description: "Instance settings updated successfully.",
+        toast.success(t("preferences.settingsPanel.toast.updatedTitle"), {
+          description: t("preferences.settingsPanel.toast.updatedDescription"),
         })
         onSuccess?.()
       },
       onError: (error) => {
-        toast.error("Update Failed", {
-          description: error instanceof Error ? formatErrorMessage(error.message) : "Failed to update instance",
+        toast.error(t("preferences.settingsPanel.toast.updateFailedTitle"), {
+          description: error instanceof Error ? formatErrorMessage(error.message) : t("preferences.settingsPanel.toast.updateFailedDescription"),
         })
       },
     })

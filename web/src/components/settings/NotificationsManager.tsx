@@ -34,6 +34,7 @@ import type { NotificationEventDefinition, NotificationTarget, NotificationTarge
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Bell, Edit, Loader2, Plus, Send, Trash2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 const getErrorMessage = (error: unknown, fallback: string) => {
@@ -122,6 +123,7 @@ interface NotificationTargetFormProps {
 }
 
 function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel, isPending }: NotificationTargetFormProps) {
+  const { t } = useTranslation("settings")
   const [name, setName] = useState(initial?.name ?? "")
   const [url, setUrl] = useState(initial?.url ?? "")
   const [enabled, setEnabled] = useState(initial?.enabled ?? true)
@@ -169,15 +171,15 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
     const trimmedUrl = normalizeNotificationUrl(url).trim()
 
     if (!trimmedName) {
-      toast.error("Name is required")
+      toast.error(t("notifications.validation.nameRequired"))
       return
     }
     if (!trimmedUrl) {
-      toast.error("URL is required")
+      toast.error(t("notifications.validation.urlRequired"))
       return
     }
     if (eventTypes.length === 0) {
-      toast.error("Select at least one event")
+      toast.error(t("notifications.validation.selectEvent"))
       return
     }
 
@@ -380,6 +382,7 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
 }
 
 export function NotificationsManager() {
+  const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editTarget, setEditTarget] = useState<NotificationTarget | null>(null)
@@ -417,10 +420,10 @@ export function NotificationsManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notificationTargets"] })
       setShowCreateDialog(false)
-      toast.success("Notification target created")
+      toast.success(t("notifications.toasts.created"))
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to create notification target"))
+      toast.error(getErrorMessage(error, t("notifications.toasts.createFailed")))
     },
   })
 
@@ -429,10 +432,10 @@ export function NotificationsManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notificationTargets"] })
       setEditTarget(null)
-      toast.success("Notification target updated")
+      toast.success(t("notifications.toasts.updated"))
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to update notification target"))
+      toast.error(getErrorMessage(error, t("notifications.toasts.updateFailed")))
     },
   })
 
@@ -441,20 +444,20 @@ export function NotificationsManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notificationTargets"] })
       setDeleteTarget(null)
-      toast.success("Notification target deleted")
+      toast.success(t("notifications.toasts.deleted"))
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to delete notification target"))
+      toast.error(getErrorMessage(error, t("notifications.toasts.deleteFailed")))
     },
   })
 
   const testMutation = useMutation({
     mutationFn: (id: number) => api.testNotificationTarget(id),
     onSuccess: () => {
-      toast.success("Test notification sent")
+      toast.success(t("notifications.toasts.testSent"))
     },
     onError: (error: unknown) => {
-      toast.error(getErrorMessage(error, "Failed to send test notification"))
+      toast.error(getErrorMessage(error, t("notifications.toasts.testFailed")))
     },
   })
 

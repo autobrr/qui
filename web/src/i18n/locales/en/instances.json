@@ -1,41 +1,19 @@
 {
-  "instanceCard": {
+  "card": {
     "status": {
       "disabled": "Disabled",
+      "enabled": "Enabled",
       "connected": "Connected",
       "disconnected": "Disconnected"
     },
-    "toast": {
-      "instanceDisabledTitle": "Instance Disabled",
-      "instanceDisabledDescription": "Enable the instance before testing the connection.",
-      "testSuccessTitle": "Test Connection Successful",
-      "testSuccessDescription": "Successfully connected to qBittorrent instance",
-      "testFailedTitle": "Test Connection Failed",
-      "testFailedDescription": "Could not connect to qBittorrent instance",
-      "instanceEnabledTitle": "Instance Enabled",
-      "instanceEnabledDescription": "qui will resume connecting to this qBittorrent instance.",
-      "instanceDisabledToastTitle": "Instance Disabled",
-      "instanceDisabledToastDescription": "qui will stop attempting to reach this qBittorrent instance.",
-      "statusUpdateFailedTitle": "Status Update Failed",
-      "statusUpdateFailedDescription": "Failed to update instance status",
-      "instanceDeletedTitle": "Instance Deleted",
-      "instanceDeletedDescription": "Successfully deleted \"{{name}}\"",
-      "deleteFailedTitle": "Delete Failed",
-      "deleteFailedDescription": "Failed to delete instance"
-    },
-    "tooltip": {
+    "tooltips": {
       "disableInstance": "Disable instance",
       "enableInstance": "Enable instance",
       "moveUp": "Move up",
-      "moveDown": "Move down"
+      "moveDown": "Move down",
+      "instanceSettings": "Instance Settings"
     },
-    "aria": {
-      "disableInstance": "Disable instance",
-      "enableInstance": "Enable instance",
-      "moveInstanceUp": "Move instance up",
-      "moveInstanceDown": "Move instance down"
-    },
-    "menu": {
+    "actions": {
       "edit": "Edit",
       "testConnection": "Test Connection",
       "delete": "Delete"
@@ -44,27 +22,78 @@
       "username": "Username:",
       "basicAuth": "Basic Auth:",
       "tlsVerification": "TLS Verification:",
+      "tlsSkipped": "Skipped",
+      "tlsStrict": "Strict",
       "localFileAccess": "Local File Access:",
-      "skipped": "Skipped",
-      "strict": "Strict",
-      "enabled": "Enabled",
-      "disabled": "Disabled"
+      "testingConnection": "Testing connection..."
     },
-    "testing": "Testing connection...",
     "deleteDialog": {
       "title": "Delete Instance",
       "description": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
       "cancel": "Cancel",
-      "delete": "Delete"
+      "confirm": "Delete"
+    },
+    "toast": {
+      "instanceDisabledTitle": "Instance Disabled",
+      "testDisabledDescription": "Enable the instance before testing the connection.",
+      "testSuccessTitle": "Test Connection Successful",
+      "testSuccessDescription": "Successfully connected to qBittorrent instance",
+      "testFailedTitle": "Test Connection Failed",
+      "testFailedDescription": "Could not connect to qBittorrent instance",
+      "connectionFailed": "Connection failed",
+      "instanceEnabledTitle": "Instance Enabled",
+      "instanceEnabledDescription": "qui will resume connecting to this qBittorrent instance.",
+      "instanceDisabledDescription": "qui will stop attempting to reach this qBittorrent instance.",
+      "statusUpdateFailedTitle": "Status Update Failed",
+      "statusUpdateFailedDescription": "Failed to update instance status",
+      "instanceDeletedTitle": "Instance Deleted",
+      "instanceDeletedDescription": "Successfully deleted \"{{name}}\"",
+      "deleteFailedTitle": "Delete Failed",
+      "deleteFailedDescription": "Failed to delete instance"
     }
   },
-  "instanceErrorDisplay": {
+  "errorDisplay": {
     "passwordRequired": "Password Required",
-    "passwordRequiredDescription": "Unable to decrypt saved password. This usually happens when the session secret has changed.",
-    "reEnterPassword": "Re-enter Password",
+    "decryptionDescription": "Unable to decrypt saved password. This usually happens when the session secret has changed.",
+    "reenterPassword": "Re-enter Password",
     "recentErrors": "Recent Errors ({{count}})"
   },
-  "instanceForm": {
+  "form": {
+    "labels": {
+      "instanceName": "Instance Name",
+      "url": "URL",
+      "skipTlsVerification": "Skip TLS Certificate Verification",
+      "skipTlsDescription": "Allow connections to qBittorrent instances that use self-signed or otherwise untrusted certificates.",
+      "localFilesystemAccess": "Local Filesystem Access",
+      "localFilesystemDescription": "Enable if qui can access this instance's download paths (required for hardlink detection in automations).",
+      "authBypass": "Authentication Bypass",
+      "authBypassDescription": "Enable when qBittorrent bypasses authentication for localhost or whitelisted IPs",
+      "username": "Username",
+      "password": "Password",
+      "httpBasicAuth": "HTTP Basic Authentication",
+      "httpBasicAuthDescription": "Enable if your qBittorrent is behind a reverse proxy with Basic Auth",
+      "basicAuthUsername": "Basic Auth Username",
+      "basicAuthPassword": "Basic Auth Password"
+    },
+    "placeholders": {
+      "instanceName": "e.g., Main Server or Home qBittorrent",
+      "url": "http://localhost:8080 or 192.168.1.100:8080",
+      "username": "qBittorrent username (usually admin)",
+      "passwordNew": "qBittorrent password",
+      "passwordExisting": "Leave empty to keep current password",
+      "basicAuthUsername": "Basic auth username",
+      "basicAuthPassword": "Enter basic auth password (required)"
+    },
+    "validation": {
+      "nameRequired": "Instance name is required",
+      "basicAuthPasswordRequired": "Basic auth password is required when basic auth is enabled"
+    },
+    "buttons": {
+      "saving": "Saving...",
+      "updateInstance": "Update Instance",
+      "addInstance": "Add Instance",
+      "cancel": "Cancel"
+    },
     "toast": {
       "instanceUpdatedTitle": "Instance Updated",
       "instanceUpdatedDescription": "Instance updated successfully. Connection testing in background...",
@@ -74,196 +103,376 @@
       "instanceCreatedDescription": "Instance created successfully. Connection testing in background...",
       "createFailedTitle": "Create Failed",
       "createFailedDescription": "Failed to create instance"
-    },
-    "validation": {
-      "nameRequired": "Instance name is required",
-      "basicAuthPasswordRequired": "Basic auth password is required when basic auth is enabled"
-    },
-    "labels": {
-      "instanceName": "Instance Name",
-      "url": "URL",
-      "skipTlsCertificateVerification": "Skip TLS Certificate Verification",
-      "skipTlsDescription": "Allow connections to qBittorrent instances that use self-signed or otherwise untrusted certificates.",
-      "localFilesystemAccess": "Local Filesystem Access",
-      "localFilesystemDescription": "Enable if qui can access this instance's download paths (required for hardlink detection in automations).",
-      "authenticationBypass": "Authentication Bypass",
-      "authBypassDescription": "Enable when qBittorrent bypasses authentication for localhost or whitelisted IPs",
-      "username": "Username",
-      "password": "Password",
-      "httpBasicAuthentication": "HTTP Basic Authentication",
-      "httpBasicDescription": "Enable if your qBittorrent is behind a reverse proxy with Basic Auth",
-      "basicAuthUsername": "Basic Auth Username",
-      "basicAuthPassword": "Basic Auth Password"
-    },
-    "placeholder": {
-      "instanceName": "e.g., Main Server or Home qBittorrent",
-      "url": "http://localhost:8080 or 192.168.1.100:8080",
-      "username": "qBittorrent username (usually admin)",
-      "passwordEdit": "Leave empty to keep current password",
-      "passwordNew": "qBittorrent password",
-      "basicAuthUsername": "Basic auth username",
-      "basicAuthPassword": "Enter basic auth password (required)"
-    },
-    "buttons": {
-      "saving": "Saving...",
-      "updateInstance": "Update Instance",
-      "addInstance": "Add Instance",
-      "cancel": "Cancel"
     }
   },
-  "instanceSettingsButton": {
-    "tooltip": "Instance Settings",
-    "aria": "Instance settings"
+  "settingsButton": {
+    "tooltip": "Instance Settings"
   },
-  "passwordIssuesBanner": {
+  "passwordBanner": {
     "title": "Password Issues Detected",
     "description": "Some instances cannot decrypt their saved passwords, likely due to a configuration change. Check the affected instances below to resolve this issue."
   },
-  "backups": {
-    "pageTitle": "Backups",
-    "pageDescription": "Manage torrent backups for your instances",
-    "selectInstance": "Select instance",
-    "noInstances": {
-      "heading": "Connect a qBittorrent instance",
-      "message": "No qBittorrent instances configured. Add an instance first to use the backup feature."
+  "preferences": {
+    "dialog": {
+      "title": "Instance Settings",
+      "configureDescription": "Configure all settings and preferences for",
+      "instanceNotAvailable": "Instance data not available. Please close and reopen this dialog.",
+      "loadingFallback": "Loading...",
+      "errorFallback": "Failed to load settings. Please try again.",
+      "retry": "Retry",
+      "deleteDialog": {
+        "title": "Delete Instance",
+        "description": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
+        "cancel": "Cancel",
+        "confirm": "Delete"
+      },
+      "actions": {
+        "disableInstance": "Disable Instance",
+        "enableInstance": "Enable Instance",
+        "deleteInstance": "Delete Instance",
+        "instanceActions": "Instance actions",
+        "updating": "Updating..."
+      },
+      "tabs": {
+        "instance": "Instance",
+        "speed": "Speed",
+        "queue": "Queue",
+        "files": "Files",
+        "seeding": "Seeding",
+        "connection": "Connect",
+        "discovery": "Discovery",
+        "advanced": "Advanced"
+      },
+      "sections": {
+        "instanceConfig": {
+          "title": "Instance Configuration",
+          "description": "Configure connection settings, authentication, and access options"
+        },
+        "speedLimits": {
+          "title": "Speed Limits",
+          "description": "Configure download and upload speed limits"
+        },
+        "queueManagement": {
+          "title": "Queue Management",
+          "description": "Configure torrent queue settings and active torrent limits"
+        },
+        "fileManagement": {
+          "title": "File Management",
+          "description": "Configure file paths and torrent management settings"
+        },
+        "seedingLimits": {
+          "title": "Seeding Limits",
+          "description": "Configure share ratio and seeding time limits"
+        },
+        "connectionSettings": {
+          "title": "Connection Settings",
+          "description": "Configure listening port, protocol settings, and connection limits"
+        },
+        "networkDiscovery": {
+          "title": "Network Discovery",
+          "description": "Configure peer discovery protocols and tracker settings"
+        },
+        "advancedSettings": {
+          "title": "Advanced Settings",
+          "description": "Performance tuning, disk I/O, peer management, and security settings"
+        }
+      }
     },
-    "checkingCompatibility": {
-      "heading": "Checking instance compatibility",
-      "message": "Checking which instances support torrent backups."
+    "settingsPanel": {
+      "labels": {
+        "instanceName": "Instance Name",
+        "url": "URL",
+        "skipTlsVerification": "Skip TLS Verification",
+        "skipTlsDescription": "Allow connections to qBittorrent instances that use self-signed or otherwise untrusted certificates.",
+        "localFilesystemAccess": "Local Filesystem Access",
+        "localFilesystemDescription": "Enable if qui can access this instance's download paths (required for hardlink detection in automations).",
+        "qbittorrentLogin": "qBittorrent Login",
+        "qbittorrentLoginDescription": "Disable if qBittorrent bypasses authentication for localhost or whitelisted IPs.",
+        "httpBasicAuth": "HTTP Basic Authentication",
+        "httpBasicAuthDescription": "Enable if your qBittorrent is behind a reverse proxy with Basic Auth",
+        "username": "Username",
+        "password": "Password"
+      },
+      "placeholders": {
+        "instanceName": "e.g., Main Server",
+        "url": "http://localhost:8080",
+        "username": "admin",
+        "passwordKeepCurrent": "Leave empty to keep current",
+        "basicUsername": "Username",
+        "basicPassword": "Password"
+      },
+      "validation": {
+        "nameRequired": "Instance name is required",
+        "passwordRequired": "Password required"
+      },
+      "toast": {
+        "updatedTitle": "Instance Updated",
+        "updatedDescription": "Instance settings updated successfully.",
+        "updateFailedTitle": "Update Failed",
+        "updateFailedDescription": "Failed to update instance"
+      }
     },
-    "selectInstancePrompt": {
-      "heading": "Select an instance to manage backups",
-      "message": "Choose a qBittorrent instance from the dropdown above to view and manage its backups."
+    "speedLimits": {
+      "loading": "Loading speed limits...",
+      "loadFailed": "Failed to load preferences",
+      "downloadLimit": "Download Limit",
+      "uploadLimit": "Upload Limit",
+      "altDownloadLimit": "Alternative Download Limit",
+      "altUploadLimit": "Alternative Upload Limit",
+      "scheduleAltLimits": "Schedule the use of alternative rate limits",
+      "from": "From:",
+      "to": "To:",
+      "when": "When:",
+      "toast": {
+        "success": "Speed limits updated successfully",
+        "error": "Failed to update speed limits"
+      }
     },
-    "noCompatible": {
-      "heading": "No compatible instances found",
-      "message": "None of your qBittorrent instances support torrent backups yet. Upgrade to qBittorrent 4.5.0+ (Web API 2.8.11+) to enable this feature."
+    "queueManagement": {
+      "loading": "Loading queue settings...",
+      "loadFailed": "Failed to load preferences",
+      "enableQueueing": "Enable Queueing",
+      "enableQueueingDescription": "Limit the number of active torrents",
+      "maxActiveDownloads": "Max Active Downloads",
+      "maxActiveUploads": "Max Active Uploads",
+      "maxActiveTorrents": "Max Active Torrents",
+      "maxCheckingTorrents": "Max Checking Torrents",
+      "toast": {
+        "success": "Queue settings updated successfully",
+        "error": "Failed to update queue settings"
+      }
     },
-    "goToInstances": "Go to Instances",
-    "backToTorrents": "Back to Torrents",
-    "loadingCapabilities": "Loading instance capabilities...",
-    "unavailable": {
-      "title": "Backups unavailable for this instance",
-      "description": "qBittorrent Web API 2.8.11+ (qBittorrent 4.5.0+) is required to export .torrent files for backups. This instance reports {{version}}, so torrent exports are disabled."
+    "fileManagement": {
+      "loading": "Loading file management settings...",
+      "loadFailed": "Failed to load preferences",
+      "autoTorrentManagement": "Automatic Torrent Management",
+      "autoTorrentManagementDescription": "Use category-based paths for downloads",
+      "relocateOnCategoryChange": "Relocate on Category Change",
+      "relocateOnCategoryChangeDescription": "Relocate torrent when its category changes (disable to switch to Manual Mode instead)",
+      "relocateOnDefaultSavePath": "Relocate on Default Save Path Change",
+      "relocateOnDefaultSavePathDescription": "Relocate affected torrents when default save path changes (disable to switch to Manual Mode instead)",
+      "relocateOnCategorySavePath": "Relocate on Category Save Path Change",
+      "relocateOnCategorySavePathDescription": "Relocate affected torrents when category save path changes (disable to switch to Manual Mode instead)",
+      "enableSubcategories": "Enable Subcategories",
+      "enableSubcategoriesDescription": "Allow creating nested categories using slash separator (e.g., Movies/4K)",
+      "startTorrentsPaused": "Start Torrents Paused",
+      "startTorrentsPausedDescription": "New torrents start in paused state",
+      "defaultSavePath": "Default Save Path",
+      "defaultSavePathDescription": "Default directory for downloading files",
+      "useTempPath": "Use Temporary Path",
+      "useTempPathDescription": "Download to temporary path before moving to final location",
+      "tempDownloadPath": "Temporary Download Path",
+      "tempDownloadPathDescription": "Directory where torrents are downloaded before moving to save path",
+      "defaultContentLayout": "Default Content Layout",
+      "defaultContentLayoutDescription": "How torrent files are organized within the save directory",
+      "contentLayoutOriginal": "Original",
+      "contentLayoutSubfolder": "Create subfolder",
+      "contentLayoutNoSubfolder": "Don't create subfolder",
+      "runExternalProgram": "Run External Program",
+      "runExternalProgramDescription": "Run a command when a torrent finishes. Some instances also support running on torrent added. qBittorrent will expand placeholders like <code>%N</code>.",
+      "runOnTorrentAdded": "Run on Torrent Added",
+      "runOnTorrentAddedDescription": "Triggered right after a torrent is added to the client",
+      "runOnTorrentFinished": "Run on Torrent Finished",
+      "runOnTorrentFinishedDescription": "Triggered when a torrent completes",
+      "command": "Command",
+      "supportedPlaceholders": "Supported Placeholders (case sensitive)",
+      "toast": {
+        "success": "File management settings updated successfully",
+        "error": "Failed to update file management settings"
+      }
     },
-    "returnToInstance": "Return to instance overview",
-    "cards": {
-      "lastBackup": "Last backup",
-      "nextScheduledBackup": "Next scheduled backup",
-      "instance": "Instance",
-      "noBackupsYet": "No backups yet",
-      "loading": "Loading...",
-      "loadingSchedule": "Loading schedule...",
-      "status": "Status: {{status}}"
+    "seedingLimits": {
+      "loading": "Loading seeding limits...",
+      "loadFailed": "Failed to load preferences",
+      "enableShareRatioLimit": "Enable Share Ratio Limit",
+      "enableShareRatioLimitDescription": "Stop seeding when ratio is reached",
+      "maxShareRatio": "Maximum Share Ratio",
+      "maxShareRatioDescription": "Stop seeding at this upload/download ratio",
+      "enableSeedingTimeLimit": "Enable Seeding Time Limit",
+      "enableSeedingTimeLimitDescription": "Stop seeding after specified time",
+      "maxSeedingTime": "Maximum Seeding Time (minutes)",
+      "maxSeedingTimeDescription": "Stop seeding after this many minutes",
+      "toast": {
+        "success": "Seeding limits updated successfully",
+        "error": "Failed to update seeding limits"
+      }
     },
-    "progress": "{{current}} of {{total}} torrents ({{percentage}}%)",
-    "settings": {
-      "title": "Backup settings",
-      "loadingSettings": "Loading settings...",
-      "enableBackups": "Enable backups",
-      "enableBackupsDescription": "Turn on automatic backups for this instance. Pick at least one cadence below; leave this off for manual-only backups.",
-      "includeCategories": "Include categories",
-      "includeCategoriesDescription": "Group torrents inside the archive by their category",
-      "includeTags": "Include tags",
-      "includeTagsDescription": "Store torrent tags in the manifest",
-      "automaticCadences": "Automatic cadences",
-      "automaticCadencesDescription": "Hourly, daily, weekly, and monthly runs start after the previous backup finishes and their interval has elapsed. Leave them all off if you only trigger backups manually.",
-      "hourly": "Hourly",
-      "daily": "Daily",
-      "weekly": "Weekly",
-      "monthly": "Monthly",
-      "keepHourlyDescription": "How many hourly snapshots to keep before older ones are pruned.",
-      "keepDailyDescription": "How many daily snapshots to keep before rotation.",
-      "keepWeeklyDescription": "How many weekly snapshots to keep before rotation.",
-      "keepMonthlyDescription": "How many monthly snapshots to keep before rotation.",
-      "hourlyTooltip": "Runs roughly once per hour when backups are enabled and at least an hour has passed since the last run.",
-      "dailyTooltip": "Runs about once every 24 hours after the previous job finishes.",
-      "weeklyTooltip": "Runs once the last backup is at least seven days old.",
-      "monthlyTooltip": "Runs when the previous run is from an earlier calendar month."
+    "connectionSettings": {
+      "loading": "Loading connection settings...",
+      "versionWarningTitle": "Limited version details",
+      "versionWarningDescription": "We couldn't confirm this instance's qBittorrent build details, so all connection options are visible. Double-check applicability before applying changes.",
+      "listeningPort": "Listening Port",
+      "portForIncoming": "Port for incoming connections",
+      "portDescription": "Port used for incoming BitTorrent connections",
+      "upnpLeaseDuration": "UPnP lease duration (0 = permanent)",
+      "upnpLeaseDurationDescription": "Duration in minutes for UPnP lease (0 for permanent, libtorrent 2.x only)",
+      "useRandomPort": "Use random port on each startup",
+      "useRandomPortDescription": "Randomly select a port when qBittorrent starts",
+      "enableUpnp": "Enable UPnP/NAT-PMP port forwarding",
+      "enableUpnpDescription": "Automatically forward port through your router",
+      "protocolSettings": "Protocol Settings",
+      "bittorrentProtocol": "BitTorrent Protocol",
+      "protocolDescription": "Protocol to use for peer connections",
+      "protocolTcpUtp": "TCP and \u03bcTP",
+      "protocolTcp": "TCP",
+      "protocolUtp": "\u03bcTP",
+      "utpTcpMixedMode": "\u03bcTP-TCP Mixed Mode",
+      "utpTcpMixedModeDescription": "How to handle mixed \u03bcTP/TCP connections",
+      "preferTcp": "Prefer TCP",
+      "peerProportional": "Peer proportional",
+      "networkInterface": "Network Interface",
+      "networkInterfaceReadOnly": "Network Interface (Read-Only)",
+      "networkInterfaceDescription": "Currently active network interface. Configuration requires missing API endpoints.",
+      "interfaceIpAddress": "Interface IP Address (Read-Only)",
+      "interfaceIpAddressDescription": "IP address of the current interface. Configuration requires missing API endpoints.",
+      "autoDetect": "Auto-detect",
+      "reannounceOnIpChange": "Re-announce to trackers when IP address changes",
+      "reannounceOnIpChangeDescription": "Automatically re-announce when your IP address changes",
+      "connectionLimits": "Connection Limits",
+      "globalMaxConnections": "Global maximum connections",
+      "globalMaxConnectionsDescription": "Maximum connections across all torrents",
+      "maxConnectionsPerTorrent": "Maximum connections per torrent",
+      "maxConnectionsPerTorrentDescription": "Maximum connections per individual torrent",
+      "globalMaxUploadSlots": "Global maximum upload slots",
+      "globalMaxUploadSlotsDescription": "Maximum upload slots across all torrents",
+      "maxUploadSlotsPerTorrent": "Maximum upload slots per torrent",
+      "maxUploadSlotsPerTorrentDescription": "Maximum upload slots per individual torrent",
+      "allowMultiConnections": "Allow multiple connections from the same IP address",
+      "allowMultiConnectionsDescription": "Enable connections from multiple peers behind the same NAT",
+      "outgoingPorts": "Outgoing Ports",
+      "outgoingPortsMin": "Outgoing ports (Min)",
+      "outgoingPortsMinDescription": "Minimum port for outgoing connections (0 = no limit)",
+      "outgoingPortsMax": "Outgoing ports (Max)",
+      "outgoingPortsMaxDescription": "Maximum port for outgoing connections (0 = no limit)",
+      "ipFiltering": "IP Filtering",
+      "enableIpFiltering": "Enable IP filtering",
+      "enableIpFilteringDescription": "Filter specific IP addresses from connecting",
+      "ipFilterPath": "IP filter file path",
+      "ipFilterPathDescription": "Path to IP filter file (.dat, .p2p, .p2b formats)",
+      "applyIpFilterToTrackers": "Apply IP filter to trackers",
+      "applyIpFilterToTrackersDescription": "Also filter tracker connections based on IP filter rules",
+      "bannedIps": "Manually banned IP addresses",
+      "bannedIpsDescription": "Add IP addresses to permanently ban from connecting (one per line)",
+      "toast": {
+        "success": "Connection settings updated successfully",
+        "error": "Failed to update connection settings"
+      }
     },
-    "actions": {
-      "runManualBackup": "Run manual backup",
-      "importBackup": "Import backup",
-      "saveChanges": "Save changes",
-      "saveChangesToAllInstances": "Save changes to all instances"
+    "networkDiscovery": {
+      "loading": "Loading network discovery settings...",
+      "peerDiscovery": "Peer Discovery",
+      "enableDht": "Enable DHT (decentralized network)",
+      "enableDhtDescription": "Distributed Hash Table for finding peers without trackers",
+      "enablePex": "Enable PeX (Peer Exchange)",
+      "enablePexDescription": "Exchange peer lists with other peers",
+      "enableLsd": "Enable LSD (Local Service Discovery)",
+      "enableLsdDescription": "Find peers on your local network",
+      "trackerSettings": "Tracker Settings",
+      "announceToAllTiers": "Always announce to all tiers",
+      "announceToAllTiersDescription": "Announce to all tracker tiers simultaneously",
+      "announceToAllTrackers": "Always announce to all trackers in a tier",
+      "announceToAllTrackersDescription": "Announce to all trackers in a tier simultaneously",
+      "securityPrivacy": "Security & Privacy",
+      "protocolEncryption": "Protocol Encryption",
+      "preferEncryption": "Prefer encryption",
+      "requireEncryption": "Require encryption",
+      "disableEncryption": "Disable encryption",
+      "encryptionDescription": "Protocol encryption helps bypass ISP traffic shaping",
+      "enableAnonymousMode": "Enable anonymous mode",
+      "enableAnonymousModeDescription": "Hide your client identification and version",
+      "resolvePeerCountries": "Resolve peer countries",
+      "resolvePeerCountriesDescription": "Show country flags for peers (requires additional bandwidth)",
+      "toast": {
+        "success": "Network discovery settings updated successfully",
+        "error": "Failed to update network discovery settings"
+      }
     },
-    "validation": {
-      "selectCadence": "Select at least one cadence (hourly, daily, weekly, or monthly) before saving.",
-      "changesApply": "Changes apply to future backups as soon as you save."
+    "advancedNetwork": {
+      "loading": "Loading advanced network settings...",
+      "versionWarningTitle": "Showing all advanced options",
+      "versionWarningDescription": "We couldn't determine this instance's qBittorrent version, so every advanced setting is displayed. Some options might not apply to your environment.",
+      "trackerSettings": "Tracker Settings",
+      "announceIp": "IP address reported to trackers (requires restart)",
+      "announceIpDescription": "IP address to announce to trackers (leave empty for auto-detect)",
+      "performanceOptimization": "Performance Optimization",
+      "limitUtpProtocol": "Apply rate limit to \u03bcTP protocol",
+      "limitUtpProtocolDescription": "Limit \u03bcTP connections to prevent flooding LAN peers",
+      "limitTcpOverhead": "Apply rate limit to transport overhead",
+      "limitTcpOverheadDescription": "Include protocol overhead in rate limiting calculations",
+      "limitUtpConnections": "Apply rate limit to \u03bcTP connections",
+      "limitUtpConnectionsDescription": "Apply upload/download limits to \u03bcTP connections",
+      "peerTosByte": "Peer ToS Byte",
+      "peerTosDescription": "Type of Service byte for peer connections",
+      "maxHttpAnnounces": "Max HTTP Announces",
+      "maxHttpAnnouncesDescription": "Maximum concurrent HTTP tracker announces",
+      "stopTrackerTimeout": "Stop Tracker Timeout",
+      "stopTrackerTimeoutDescription": "Timeout for tracker stop announcements",
+      "socketBacklogSize": "Socket Backlog Size",
+      "socketBacklogSizeDescription": "Number of pending connections in socket backlog",
+      "requestQueueSize": "Request Queue Size",
+      "requestQueueSizeDescription": "Maximum number of queued piece requests",
+      "sendBufferWatermark": "Send Buffer Watermark",
+      "sendBufferWatermarkDescription": "Upper watermark for socket send buffer",
+      "sendBufferLowWatermark": "Send Buffer Low Watermark",
+      "sendBufferLowWatermarkDescription": "Lower watermark for socket send buffer",
+      "watermarkFactor": "Watermark Factor",
+      "watermarkFactorDescription": "Send buffer watermark factor percentage",
+      "diskIoMemory": "Disk I/O & Memory",
+      "coalesceReadsWrites": "Coalesce reads & writes",
+      "coalesceReadsWritesDescription": "Combine adjacent disk reads and writes for better performance",
+      "asyncIoThreads": "Async I/O Threads",
+      "asyncIoThreadsDescription": "Number of threads for asynchronous I/O operations",
+      "filePoolSize": "File Pool Size",
+      "filePoolSizeDescription": "Maximum number of open file handles in pool",
+      "diskQueueSize": "Disk Queue Size",
+      "diskQueueSizeDescription": "Maximum bytes queued for disk I/O",
+      "checkingMemoryUse": "Checking Memory Use",
+      "checkingMemoryUseDescription": "Maximum memory used for piece checking",
+      "hashingThreads": "Hashing Threads",
+      "hashingThreadsDescription": "Number of threads for piece hash checking",
+      "diskCacheSize": "Disk Cache Size",
+      "diskCacheSizeDescription": "Disk cache size (-1 = auto, 0 = disabled)",
+      "diskCacheTtl": "Disk Cache TTL",
+      "diskCacheTtlDescription": "How long to keep cached data in memory",
+      "workingSetLimit": "Working Set Limit",
+      "workingSetLimitDescription": "Physical memory working set size limit",
+      "peerManagement": "Peer Management",
+      "peerTurnover": "Peer Turnover",
+      "peerTurnoverDescription": "Percentage of peers to disconnect/reconnect",
+      "turnoverCutoff": "Turnover Cutoff",
+      "turnoverCutoffDescription": "Peer turnover threshold percentage",
+      "turnoverInterval": "Turnover Interval",
+      "turnoverIntervalDescription": "How often to perform peer turnover",
+      "securityIpFiltering": "Security & IP Filtering",
+      "blockPrivilegedPorts": "Block peers on privileged ports",
+      "blockPrivilegedPortsDescription": "Block connections from peers using ports below 1024",
+      "toast": {
+        "success": "Advanced network settings updated successfully",
+        "error": "Failed to update advanced network settings"
+      }
     },
-    "toast": {
-      "backupSettingsUpdated": "Backup settings updated",
-      "settingsAppliedToAll": "Settings applied to all instances",
-      "settingsPartialApply": "Applied to {{success}}/{{total}} instances",
-      "backupQueued": "Backup queued",
-      "backupRunDeleted": "Backup run deleted",
-      "deletedAllBackups": "Deleted all backups"
+    "reannounce": {
+      "title": "Configure Reannounce",
+      "saveChanges": "Save Changes",
+      "saving": "Saving..."
     },
-    "restore": {
-      "title": "Restore backup",
-      "runDescription": "Run #{{id}} ({{kind}})",
-      "selectBackup": "Select a backup to restore",
-      "mode": "Mode",
-      "selectRestoreMode": "Select restore mode",
-      "incremental": "Incremental",
-      "overwrite": "Overwrite",
-      "complete": "Complete",
-      "incrementalDescription": "Adds missing categories, tags, and torrents without touching existing data.",
-      "overwriteDescription": "Adds missing items and updates existing categories/torrents to match the snapshot.",
-      "completeDescription": "Same as overwrite, then removes anything not recorded in the backup.",
-      "dryRun": "Dry run",
-      "startPaused": "Start paused",
-      "skipRecheck": "Skip recheck",
-      "autoResumeCompletedTorrents": "Auto-resume completed torrents",
-      "autoResumeTooltip": "When enabled, torrents resume automatically if qBittorrent reports the restored data as fully checked. In other words; no data is missing.",
-      "autoResumeOnInfo": "Torrents will resume automatically once qBittorrent reports the restored data as fully checked.",
-      "autoResumeOffInfo": "Auto resume is off. Torrents stay paused until you start them manually.",
-      "skipRecheckInfo": "Enable skip recheck to allow automatic resume after verification.",
-      "reIncludeAll": "Re-include all",
-      "refreshPlan": "Refresh plan",
-      "loadingRestorePlan": "Loading restore plan...",
-      "runDryRun": "Run dry-run",
-      "executeRestore": "Execute restore",
-      "executing": "Executing...",
-      "categories": "Categories",
-      "tags": "Tags",
-      "torrents": "Torrents",
-      "create": "Create",
-      "update": "Update",
-      "delete": "Delete",
-      "add": "Add",
-      "noCategoryChanges": "No category changes.",
-      "noTagChanges": "No tag changes.",
-      "noTorrentChanges": "No torrent changes.",
-      "noChangesRequired": "No changes are required for this restore mode.",
-      "manualFollowUp": "Manual follow-up required",
-      "currentCategory": "Current category: {{category}}",
-      "excluded": "excluded",
-      "excludedCount": "{{count}} torrent{{plural}} excluded from this restore.",
-      "refreshingPlan": "Refreshing plan...",
-      "include": "Include",
-      "exclude": "Exclude",
-      "lastExecution": "Last execution",
-      "dryRunBadge": "Dry run",
-      "appliedBadge": "Applied"
+    "orphanScan": {
+      "configureTitle": "Configure Orphan Scan",
+      "saveChanges": "Save Changes"
     },
-    "schedule": {
-      "automaticBackupsOff": "Automatic backups are turned off for this instance.",
-      "enableCadence": "Enable at least one automatic cadence to schedule backups.",
-      "backupRunning": "Backup is currently running.",
-      "backupQueued": "Backup is queued and will start shortly.",
-      "waitingScheduler": "Waiting for the scheduler to pick up the next backup.",
-      "waitingFirstBackup": "Waiting for the first backup; scheduler will run ASAP.",
-      "waitingSchedulerInfo": "Waiting for scheduler information.",
-      "overdueRetry": "Should have already run; scheduler will retry automatically."
-    },
-    "runKind": {
-      "manual": "Manual",
-      "hourly": "Hourly",
-      "daily": "Daily",
-      "weekly": "Weekly",
-      "monthly": "Monthly",
-      "import": "Import"
+    "reannounceWarning": {
+      "alertTitle": "Leave this off unless you need it",
+      "alertDescription1": "This only helps with a small subset of trackers that are slow to register new uploads.",
+      "alertDescription2": "If you are not seeing stalled torrents, do not enable it.",
+      "dialogTitle": "Enable automatic reannounce?",
+      "dialogDescription1": "Use this only if stalled torrents are a real problem on this instance.",
+      "dialogDescription2": "It helps with only a handful of trackers that are slow to register new uploads.",
+      "dialogDescription3": "If torrents are behaving normally, leave it off.",
+      "enabling": "Enabling...",
+      "enable": "Enable"
     }
+  },
+  "backups": {
+    "pageTitle": "Backups"
   }
 }

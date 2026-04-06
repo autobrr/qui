@@ -34,6 +34,7 @@ import type { ExternalProgram, ExternalProgramCreate, ExternalProgramUpdate, Pat
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Edit, Plus, Trash2, X } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 // Type for automation references in delete conflict response
@@ -50,6 +51,7 @@ function getErrorMessage(error: unknown): string {
 }
 
 export function ExternalProgramsManager() {
+  const { t } = useTranslation("settings")
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editProgram, setEditProgram] = useState<ExternalProgram | null>(null)
   const [deleteProgram, setDeleteProgram] = useState<ExternalProgram | null>(null)
@@ -71,10 +73,10 @@ export function ExternalProgramsManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["externalPrograms"] })
       setShowCreateDialog(false)
-      toast.success("External program created successfully")
+      toast.success(t("externalPrograms.toasts.created"))
     },
     onError: (error: unknown) => {
-      toast.error(`Failed to create external program: ${getErrorMessage(error)}`)
+      toast.error(t("externalPrograms.toasts.createFailed", { error: getErrorMessage(error) }))
     },
   })
 
@@ -85,10 +87,10 @@ export function ExternalProgramsManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["externalPrograms"] })
       setEditProgram(null)
-      toast.success("External program updated successfully")
+      toast.success(t("externalPrograms.toasts.updated"))
     },
     onError: (error: unknown) => {
-      toast.error(`Failed to update external program: ${getErrorMessage(error)}`)
+      toast.error(t("externalPrograms.toasts.updateFailed", { error: getErrorMessage(error) }))
     },
   })
 
@@ -102,7 +104,7 @@ export function ExternalProgramsManager() {
       queryClient.invalidateQueries({ queryKey: ["automations"] })
       setDeleteProgram(null)
       setDeleteConflict(null)
-      toast.success("External program deleted successfully")
+      toast.success(t("externalPrograms.toasts.deleted"))
     },
     onError: (error: unknown) => {
       if (error instanceof APIError && error.status === 409) {
@@ -112,7 +114,7 @@ export function ExternalProgramsManager() {
           return
         }
       }
-      toast.error(`Failed to delete external program: ${getErrorMessage(error)}`)
+      toast.error(t("externalPrograms.toasts.deleteFailed", { error: getErrorMessage(error) }))
     },
   })
 
@@ -298,6 +300,7 @@ interface ProgramFormProps {
 }
 
 function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProps) {
+  const { t } = useTranslation("settings")
   const [name, setName] = useState(program?.name || "")
   const [path, setPath] = useState(program?.path || "")
   const [argsTemplate, setArgsTemplate] = useState(program?.args_template || "")
@@ -309,12 +312,12 @@ function ProgramForm({ program, onSubmit, onCancel, isPending }: ProgramFormProp
     e.preventDefault()
 
     if (!name.trim()) {
-      toast.error("Name is required")
+      toast.error(t("externalPrograms.validation.nameRequired"))
       return
     }
 
     if (!path.trim()) {
-      toast.error("Program path is required")
+      toast.error(t("externalPrograms.validation.pathRequired"))
       return
     }
 

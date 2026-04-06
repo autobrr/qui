@@ -12,6 +12,7 @@ import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useForm } from "@tanstack/react-form"
 import { Clock, Download, Upload } from "lucide-react"
 import React from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
@@ -153,6 +154,7 @@ interface SpeedLimitsFormProps {
 }
 
 export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps) {
+  const { t } = useTranslation("instances")
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
 
 
@@ -181,10 +183,10 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
       try {
         updatePreferences(value)
         setIsFormDirty(false) // Reset dirty flag after successful save
-        toast.success("Speed limits updated successfully")
+        toast.success(t("preferences.speedLimits.toast.success"))
         onSuccess?.()
       } catch {
-        toast.error("Failed to update speed limits")
+        toast.error(t("preferences.speedLimits.toast.error"))
       }
     },
   })
@@ -210,7 +212,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">Loading speed limits...</p>
+        <p className="text-sm text-muted-foreground">{t("preferences.speedLimits.loading")}</p>
       </div>
     )
   }
@@ -218,7 +220,7 @@ export function SpeedLimitsForm({ instanceId, onSuccess }: SpeedLimitsFormProps)
   if (!memoizedPreferences) {
     return (
       <div className="flex items-center justify-center py-8" role="alert">
-        <p className="text-sm text-muted-foreground">Failed to load preferences</p>
+        <p className="text-sm text-muted-foreground">{t("preferences.speedLimits.loadFailed")}</p>
       </div>
     )
   }

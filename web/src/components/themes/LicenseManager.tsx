@@ -30,6 +30,7 @@ import { copyTextToClipboard } from "@/lib/utils"
 import { useForm } from "@tanstack/react-form"
 import { AlertTriangle, Bitcoin, Copy, ExternalLink, Heart, Key, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { DODO_CHECKOUT_URL, DODO_PORTAL_URL } from "@/lib/dodo-constants"
 
@@ -58,7 +59,9 @@ function buildCheckoutUrlWithReturn(returnUrl: string): string {
   }
 }
 
-export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onCheckoutConsumed }: LicenseManagerProps) {
+export function LicenseManager({
+  checkoutStatus, checkoutPaymentStatus, onCheckoutConsumed }: LicenseManagerProps) {
+  const { t } = useTranslation("settings")
   const [showAddLicense, setShowAddLicense] = useState(false)
   const [showPaymentDialog, setShowPaymentDialog] = useState(false)
   const { formatDate } = useDateTimeFormatters()
@@ -107,11 +110,11 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
 
     if (normalizedPaymentStatus === "succeeded" || normalizedPaymentStatus === "success") {
       openAddLicenseDialog()
-      toast.success("Payment completed. Enter your license key to activate premium.")
+      toast.success(t("themes.license.toasts.paymentCompleted"))
     } else if (normalizedPaymentStatus) {
-      toast.error("Payment was not completed. Try checkout again.")
+      toast.error(t("themes.license.toasts.paymentNotCompleted"))
     } else {
-      toast.success("Returned from checkout. Enter your license key if payment succeeded.")
+      toast.success(t("themes.license.toasts.returnedFromCheckout"))
     }
 
     onCheckoutConsumed?.()
@@ -261,9 +264,9 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
                     onClick={async () => {
                       try {
                         await copyTextToClipboard("/verify")
-                        toast.success("Copied /verify")
+                        toast.success(t("themes.license.copiedVerify"))
                       } catch {
-                        toast.error("Failed to copy /verify")
+                        toast.error(t("themes.license.failedCopyVerify"))
                       }
                     }}
                     className="inline-flex items-center rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] font-semibold tracking-[-0.01em] text-foreground shadow-sm transition-colors hover:bg-muted cursor-pointer"
@@ -356,9 +359,9 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
                 onClick={async () => {
                   try {
                     await copyTextToClipboard(selectedLicenseKey)
-                    toast.success("License key copied to clipboard")
+                    toast.success(t("themes.license.toasts.keyCopied"))
                   } catch {
-                    toast.error("Failed to copy to clipboard")
+                    toast.error(t("themes.license.toasts.copyFailed"))
                   }
                 }}
               >

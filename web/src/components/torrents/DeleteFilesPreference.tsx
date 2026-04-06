@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { Lock, Unlock } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 type DeleteFilesPreferenceProps = {
   id: string
@@ -26,6 +27,7 @@ export function DeleteFilesPreference({
   onToggleLock,
   className,
 }: DeleteFilesPreferenceProps) {
+  const { t } = useTranslation("torrents")
   return (
     <div className={cn("flex items-center gap-2", className)}>
       <Checkbox
@@ -35,7 +37,7 @@ export function DeleteFilesPreference({
       />
       <div className="flex items-center gap-2">
         <label htmlFor={id} className="text-sm font-medium">
-          Also delete files from disk
+          {t("deleteFilesPreference.label")}
         </label>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -47,8 +49,8 @@ export function DeleteFilesPreference({
               aria-pressed={isLocked}
               aria-label={
                 isLocked
-                  ? "Stop remembering delete files preference"
-                  : "Remember delete files preference"
+                  ? t("deleteFilesPreference.lockAriaLabel.stop")
+                  : t("deleteFilesPreference.lockAriaLabel.remember")
               }
               className={cn(
                 "h-8 w-8 text-muted-foreground hover:text-accent-foreground",
@@ -63,7 +65,7 @@ export function DeleteFilesPreference({
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            {isLocked ? "Stop remembering this choice" : "Remember this choice"}
+            {isLocked ? t("deleteFilesPreference.lockTooltip.stop") : t("deleteFilesPreference.lockTooltip.remember")}
           </TooltipContent>
         </Tooltip>
       </div>

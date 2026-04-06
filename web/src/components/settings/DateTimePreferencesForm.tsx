@@ -19,6 +19,7 @@ import { Clock, Calendar, Globe } from "lucide-react"
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import type { DateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import { formatTimestamp } from "@/lib/dateTimeUtils"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 // Comprehensive worldwide timezone list organized by region
@@ -26,7 +27,7 @@ const TIMEZONES_BY_REGION = {
   "UTC": ["UTC"],
   "Americas": [
     "America/New_York",      // Eastern Time
-    "America/Chicago",       // Central Time  
+    "America/Chicago",       // Central Time
     "America/Denver",        // Mountain Time
     "America/Los_Angeles",   // Pacific Time
     "America/Anchorage",     // Alaska Time
@@ -174,6 +175,7 @@ function SwitchSetting({
 }
 
 export function DateTimePreferencesForm() {
+  const { t } = useTranslation("settings")
   const { preferences, setPreferences } = usePersistedDateTimePreferences()
   const [previewKey, setPreviewKey] = React.useState(0) // Force preview updates
 
@@ -182,9 +184,9 @@ export function DateTimePreferencesForm() {
     onSubmit: async ({ value }) => {
       try {
         setPreferences(value)
-        toast.success("Date & time preferences updated successfully")
+        toast.success(t("dateTime.toasts.success"))
       } catch (error) {
-        toast.error("Failed to update date & time preferences")
+        toast.error(t("dateTime.toasts.error"))
         console.error("Failed to update date & time preferences:", error)
       }
     },
@@ -260,7 +262,7 @@ export function DateTimePreferencesForm() {
                       <div className="border-t my-1" />
                     </>
                   )}
-                  
+
                   {/* Group timezones by region */}
                   {Object.entries(TIMEZONES_BY_REGION).map(([region, timezones]) => (
                     <div key={region}>

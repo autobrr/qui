@@ -17,6 +17,7 @@ import {
   DropdownMenuItem
 } from "@/components/ui/dropdown-menu"
 import { List, ChevronsUp, ArrowUp, ArrowDown, ChevronsDown } from "lucide-react"
+import { useTranslation } from "react-i18next"
 
 interface QueueSubmenuProps {
   type: "context" | "dropdown"
@@ -31,6 +32,7 @@ export const QueueSubmenu = memo(function QueueSubmenu({
   onQueueAction,
   isPending = false,
 }: QueueSubmenuProps) {
+  const { t } = useTranslation("torrents")
   const SubTrigger = type === "context" ? ContextMenuSubTrigger : DropdownMenuSubTrigger
   const Sub = type === "context" ? ContextMenuSub : DropdownMenuSub
   const SubContent = type === "context" ? ContextMenuSubContent : DropdownMenuSubContent
@@ -40,7 +42,7 @@ export const QueueSubmenu = memo(function QueueSubmenu({
     <Sub>
       <SubTrigger disabled={isPending}>
         <List className="mr-4 h-4 w-4" />
-        Queue
+        {t("queueSubmenu.queue")}
       </SubTrigger>
       <SubContent>
         <MenuItem
@@ -48,28 +50,28 @@ export const QueueSubmenu = memo(function QueueSubmenu({
           disabled={isPending}
         >
           <ChevronsUp className="mr-2 h-4 w-4" />
-          Top Priority {hashCount > 1 ? `(${hashCount})` : ""}
+          {t("queueSubmenu.topPriority")} {hashCount > 1 ? `(${hashCount})` : ""}
         </MenuItem>
         <MenuItem
           onClick={() => onQueueAction("increasePriority")}
           disabled={isPending}
         >
           <ArrowUp className="mr-2 h-4 w-4" />
-          Increase Priority {hashCount > 1 ? `(${hashCount})` : ""}
+          {t("queueSubmenu.increasePriority")} {hashCount > 1 ? `(${hashCount})` : ""}
         </MenuItem>
         <MenuItem
           onClick={() => onQueueAction("decreasePriority")}
           disabled={isPending}
         >
           <ArrowDown className="mr-2 h-4 w-4" />
-          Decrease Priority {hashCount > 1 ? `(${hashCount})` : ""}
+          {t("queueSubmenu.decreasePriority")} {hashCount > 1 ? `(${hashCount})` : ""}
         </MenuItem>
         <MenuItem
           onClick={() => onQueueAction("bottomPriority")}
           disabled={isPending}
         >
           <ChevronsDown className="mr-2 h-4 w-4" />
-          Bottom Priority {hashCount > 1 ? `(${hashCount})` : ""}
+          {t("queueSubmenu.bottomPriority")} {hashCount > 1 ? `(${hashCount})` : ""}
         </MenuItem>
       </SubContent>
     </Sub>

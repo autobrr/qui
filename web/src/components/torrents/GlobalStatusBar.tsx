@@ -40,6 +40,7 @@ import { isAllInstancesScope } from "@/lib/instances"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { cn, formatBytes } from "@/lib/utils"
 import type { Instance, ServerState } from "@/types"
+import { useTranslation } from "react-i18next"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
 
@@ -113,6 +114,7 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
   listenPort,
   selectionInfo,
 }: GlobalStatusBarProps) {
+  const { t } = useTranslation("torrents")
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
@@ -177,8 +179,8 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
     }
   }, [altSpeedOverride, serverAltSpeedEnabled, toggleAltSpeedLimits, isTogglingAltSpeed])
 
-  const altSpeedTooltip = isAltSpeedKnown ? altSpeedEnabled ? "Alternative speed limits: On" : "Alternative speed limits: Off" : "Alternative speed limits status unknown"
-  const altSpeedAriaLabel = isAltSpeedKnown ? altSpeedEnabled ? "Disable alternative speed limits" : "Enable alternative speed limits" : "Alternative speed limits status unknown"
+  const altSpeedTooltip = isAltSpeedKnown ? altSpeedEnabled ? t("statusBar.altSpeedOn") : t("statusBar.altSpeedOff") : t("statusBar.altSpeedUnknown")
+  const altSpeedAriaLabel = isAltSpeedKnown ? altSpeedEnabled ? t("statusBar.disableAltSpeed") : t("statusBar.enableAltSpeed") : t("statusBar.altSpeedUnknown")
 
   // Connection status
   const rawConnectionStatus = serverState?.connection_status ?? ""
@@ -203,20 +205,20 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
           selectionInfo.effectiveSelectionCount > 0 ? (
             <>
               <span>
-                {selectionInfo.isAllSelected && selectionInfo.excludedFromSelectAllSize === 0 ? "All" : selectionInfo.effectiveSelectionCount} selected
+                {selectionInfo.isAllSelected && selectionInfo.excludedFromSelectAllSize === 0 ? t("statusBar.allSelected") : t("statusBar.selected", { count: selectionInfo.effectiveSelectionCount })}
                 {selectionInfo.selectedFormattedSize && <> • {selectionInfo.selectedFormattedSize}</>}
               </span>
               {/* Keyboard shortcuts helper - only show on desktop */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
-                    Selection shortcuts
+                    {t("statusBar.selectionShortcuts")}
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>
                   <div className="text-xs">
-                    <div>Shift+click for range</div>
-                    <div>{isMac ? "Cmd" : "Ctrl"}+click for multiple</div>
+                    <div>{t("statusBar.shiftClick")}</div>
+                    <div>{t("statusBar.ctrlClick", { modifier: isMac ? "Cmd" : "Ctrl" })}</div>
                   </div>
                 </TooltipContent>
               </Tooltip>
@@ -227,26 +229,26 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
               {selectionInfo.isLoading && !selectionInfo.isCachedData && !selectionInfo.isStaleData && selectionInfo.torrentsLength === 0 ? (
                 <>
                   <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
-                  Loading torrents...
+                  {t("statusBar.loadingTorrents")}
                 </>
               ) : selectionInfo.totalCount === 0 ? (
                 selectionInfo.emptyStateMessage
               ) : (
                 <>
                   {selectionInfo.hasLoadedAll ? (
-                    `${selectionInfo.torrentsLength} torrent${selectionInfo.torrentsLength !== 1 ? "s" : ""}`
+                    t("statusBar.torrentCount", { count: selectionInfo.torrentsLength, plural: selectionInfo.torrentsLength !== 1 ? "s" : "" })
                   ) : selectionInfo.isLoadingMore ? (
-                    "Loading more torrents..."
+                    t("statusBar.loadingMore")
                   ) : (
-                    `${selectionInfo.torrentsLength} of ${selectionInfo.totalCount} torrents loaded`
+                    t("statusBar.torrentsLoaded", { loaded: selectionInfo.torrentsLength, total: selectionInfo.totalCount })
                   )}
-                  {selectionInfo.hasLoadedAll && selectionInfo.safeLoadedRows < selectionInfo.rowsLength && " (scroll for more)"}
+                  {selectionInfo.hasLoadedAll && selectionInfo.safeLoadedRows < selectionInfo.rowsLength && ` ${t("statusBar.scrollForMore")}`}
                 </>
               )}
             </>
           )
         ) : (
-          <span className="opacity-50">Loading...</span>
+          <span className="opacity-50">{t("statusBar.loading")}</span>
         )}
       </div>
 
@@ -271,7 +273,7 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              {speedUnit === "bytes" ? "Switch to bits per second (bps)" : "Switch to bytes per second (B/s)"}
+              {speedUnit === "bytes" ? t("statusBar.switchToBits") : t("statusBar.switchToBytes")}
             </TooltipContent>
           </Tooltip>
           {!isUnifiedScope && (
@@ -318,7 +320,7 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
                   <RefreshCcw className="h-4 w-4 text-green-500" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Automatic tracker reannounce enabled - Click to configure</TooltipContent>
+              <TooltipContent>{t("statusBar.reannounceEnabled")}</TooltipContent>
             </Tooltip>
           )}
         </div>
@@ -342,7 +344,7 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
               <LayoutGrid className="h-3 w-3" />
             )}
             <span className="hidden sm:inline">
-              {desktopViewMode === "normal" ? "Table" : desktopViewMode === "dense" ? "Dense" : "Stacked"}
+              {desktopViewMode === "normal" ? t("statusBar.viewModes.table") : desktopViewMode === "dense" ? t("statusBar.viewModes.dense") : t("statusBar.viewModes.stacked")}
             </span>
           </Button>
           <Button
@@ -360,7 +362,7 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
               <Eye className="h-3 w-3" />
             )}
             <span className="hidden sm:inline">
-              {incognitoMode ? "Incognito on" : "Incognito off"}
+              {incognitoMode ? t("statusBar.incognitoOn") : t("statusBar.incognitoOff")}
             </span>
           </Button>
         </div>
@@ -375,7 +377,7 @@ export const GlobalStatusBar = memo(function GlobalStatusBar({
                   <span className="ml-auto font-medium truncate">{formatBytes(serverState.free_space_on_disk)}</span>
                 </span>
               </TooltipTrigger>
-              <TooltipContent>Free Space</TooltipContent>
+              <TooltipContent>{t("statusBar.freeSpace")}</TooltipContent>
             </Tooltip>
           </div>
         )}

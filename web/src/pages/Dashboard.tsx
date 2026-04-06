@@ -51,6 +51,7 @@ import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import {
@@ -192,6 +193,7 @@ function InstanceCard({
   isAdvancedMetricsOpen: boolean
   setIsAdvancedMetricsOpen: (open: boolean) => void
 }) {
+  const { t } = useTranslation("dashboard")
   const { instance, stats, serverState, torrentCounts, altSpeedEnabled, isLoading, error } = instanceData
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
 
@@ -280,7 +282,7 @@ function InstanceCard({
                     <RefreshCcw className="h-4 w-4 text-green-600" />
                   </TooltipTrigger>
                   <TooltipContent>
-                    Automatic tracker reannounce enabled
+                    {t("instanceCard.reannounceTooltip")}
                   </TooltipContent>
                 </Tooltip>
               )}
@@ -311,7 +313,7 @@ function InstanceCard({
                     </span>
                   </TooltipTrigger>
                   <TooltipContent>
-                    Alternative speed limits: {altSpeedEnabled ? "On" : "Off"}
+                    {t("instanceCard.altSpeedLimits", { status: altSpeedEnabled ? "On" : "Off" })}
                   </TooltipContent>
                 </Tooltip>
               )}
@@ -321,7 +323,7 @@ function InstanceCard({
                     <HardDrive className="h-4 w-4 text-primary" />
                   </TooltipTrigger>
                   <TooltipContent>
-                    Local file access enabled
+                    {t("instanceCard.localFileAccess")}
                   </TooltipContent>
                 </Tooltip>
               )}
@@ -338,21 +340,21 @@ function InstanceCard({
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>
-                  {altSpeedEnabled ? "Disable Alternative Speed Limits?" : "Enable Alternative Speed Limits?"}
+                  {altSpeedEnabled ? t("instanceCard.altSpeedDialog.disableTitle") : t("instanceCard.altSpeedDialog.enableTitle")}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  {altSpeedEnabled? `This will disable alternative speed limits for ${instance.name} and return to normal speed limits.`: `This will enable alternative speed limits for ${instance.name}, which will reduce transfer speeds based on your configured limits.`}
+                  {altSpeedEnabled? t("instanceCard.altSpeedDialog.disableDescription", { name: instance.name }): t("instanceCard.altSpeedDialog.enableDescription", { name: instance.name })}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t("instanceCard.altSpeedDialog.cancel")}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() => {
                     toggleAltSpeed()
                     setShowSpeedLimitDialog(false)
                   }}
                 >
-                  {altSpeedEnabled ? "Disable" : "Enable"}
+                  {altSpeedEnabled ? t("instanceCard.altSpeedDialog.disable") : t("instanceCard.altSpeedDialog.enable")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -421,8 +423,8 @@ function InstanceCard({
           {/* Show loading or error state */}
           {(isFirstLoad || hasError || isDisconnected) ? (
             <div className="text-sm text-muted-foreground text-center">
-              {isFirstLoad && <p className="animate-pulse">Loading stats...</p>}
-              {hasError && !isDisconnected && <p>Failed to load stats</p>}
+              {isFirstLoad && <p className="animate-pulse">{t("instanceCard.loadingStats")}</p>}
+              {hasError && !isDisconnected && <p>{t("instanceCard.failedToLoadStats")}</p>}
               <InstanceErrorDisplay instance={instance} compact />
             </div>
           ) : (
@@ -433,15 +435,15 @@ function InstanceCard({
                 <div className="flex items-center justify-around text-center">
                   <div>
                     <div className="text-base sm:text-lg font-semibold">{torrentCounts?.status?.downloading || 0}</div>
-                    <div className="text-xs text-muted-foreground">Downloading</div>
+                    <div className="text-xs text-muted-foreground">{t("instanceCard.downloading")}</div>
                   </div>
                   <div>
                     <div className="text-base sm:text-lg font-semibold">{torrentCounts?.status?.active || 0}</div>
-                    <div className="text-xs text-muted-foreground">Active</div>
+                    <div className="text-xs text-muted-foreground">{t("instanceCard.active")}</div>
                   </div>
                   <div>
                     <div className="text-base sm:text-lg font-semibold">{torrentCounts?.total || 0}</div>
-                    <div className="text-xs text-muted-foreground">Total</div>
+                    <div className="text-xs text-muted-foreground">{t("instanceCard.total")}</div>
                   </div>
                 </div>
               </div>
@@ -465,7 +467,7 @@ function InstanceCard({
                     className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-destructive/10 transition-colors"
                   >
                     <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
-                    <span className="text-destructive">Unregistered torrents</span>
+                    <span className="text-destructive">{t("instanceCard.unregisteredTorrents")}</span>
                     <span className="ml-auto font-medium text-destructive">{torrentCounts?.status?.unregistered}</span>
                   </Link>
                 )}
@@ -486,7 +488,7 @@ function InstanceCard({
                     className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-yellow-500/10 transition-colors"
                   >
                     <AlertCircle className="h-3 w-3 text-yellow-500 flex-shrink-0" />
-                    <span className="text-yellow-500">Tracker Down</span>
+                    <span className="text-yellow-500">{t("instanceCard.trackerDown")}</span>
                     <span className="ml-auto font-medium text-yellow-500">{torrentCounts?.status?.tracker_down}</span>
                   </Link>
                 )}
@@ -507,20 +509,20 @@ function InstanceCard({
                     className="flex items-center gap-2 text-xs w-full rounded px-1 -mx-1 hover:bg-destructive/10 transition-colors"
                   >
                     <AlertTriangle className="h-3 w-3 text-destructive flex-shrink-0" />
-                    <span className="text-destructive">Errors</span>
+                    <span className="text-destructive">{t("instanceCard.errors")}</span>
                     <span className="ml-auto font-medium text-destructive">{torrentCounts?.status?.errored}</span>
                   </Link>
                 )}
 
                 <div className="flex items-center gap-2 text-xs">
                   <Download className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                  <span className="text-muted-foreground">Download</span>
+                  <span className="text-muted-foreground">{t("instanceCard.download")}</span>
                   <span className="ml-auto font-medium truncate">{formatSpeedWithUnit(stats?.totalDownloadSpeed || 0, speedUnit)}</span>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs">
                   <Upload className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                  <span className="text-muted-foreground">Upload</span>
+                  <span className="text-muted-foreground">{t("instanceCard.upload")}</span>
                   <span className="ml-auto font-medium truncate">{formatSpeedWithUnit(stats?.totalUploadSpeed || 0, speedUnit)}</span>
                 </div>
 
@@ -529,11 +531,11 @@ function InstanceCard({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className="text-muted-foreground cursor-help inline-flex items-center gap-1">
-                        Total Size
+                        {t("instanceCard.totalSize")}
                       </span>
                     </TooltipTrigger>
                     <TooltipContent>
-                      Total size of all torrents, including cross-seeds
+                      {t("instanceCard.totalSizeTooltip")}
                     </TooltipContent>
                   </Tooltip>
                   <span className="ml-auto font-medium truncate">{formatBytes(stats?.totalSize || 0)}</span>
@@ -543,7 +545,7 @@ function InstanceCard({
               {serverState?.free_space_on_disk !== undefined && (
                 <div className="flex items-center gap-2 text-xs mt-1 sm:mt-2">
                   <HardDrive className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                  <span className="text-muted-foreground">Free Space</span>
+                  <span className="text-muted-foreground">{t("instanceCard.freeSpace")}</span>
                   <span className="ml-auto font-medium truncate">{formatBytes(serverState.free_space_on_disk)}</span>
                 </div>
               )}
@@ -555,13 +557,13 @@ function InstanceCard({
                   ) : (
                     <ChevronRight className="h-3 w-3" />
                   )}
-                  <span>{`Show ${isAdvancedMetricsOpen ? "less" : "more"}`}</span>
+                  <span>{isAdvancedMetricsOpen ? t("instanceCard.showLess") : t("instanceCard.showMore")}</span>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="space-y-2 mt-2">
                   {serverState?.total_peer_connections !== undefined && (
                     <div className="flex items-center gap-2 text-xs">
                       <Activity className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">Peer Connections</span>
+                      <span className="text-muted-foreground">{t("instanceCard.peerConnections")}</span>
                       <span className="ml-auto font-medium">{serverState.total_peer_connections || 0}</span>
                     </div>
                   )}
@@ -569,7 +571,7 @@ function InstanceCard({
                   {serverState?.queued_io_jobs !== undefined && (
                     <div className="flex items-center gap-2 text-xs">
                       <Zap className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">Queued I/O Jobs</span>
+                      <span className="text-muted-foreground">{t("instanceCard.queuedIOJobs")}</span>
                       <span className="ml-auto font-medium">{serverState.queued_io_jobs || 0}</span>
                     </div>
                   )}
@@ -577,7 +579,7 @@ function InstanceCard({
                   {serverState?.total_buffers_size !== undefined && (
                     <div className="flex items-center gap-2 text-xs">
                       <HardDrive className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">Buffer Size</span>
+                      <span className="text-muted-foreground">{t("instanceCard.bufferSize")}</span>
                       <span className="ml-auto font-medium">{formatBytes(serverState.total_buffers_size)}</span>
                     </div>
                   )}
@@ -585,7 +587,7 @@ function InstanceCard({
                   {serverState?.total_queued_size !== undefined && (
                     <div className="flex items-center gap-2 text-xs">
                       <Activity className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">Total Queued</span>
+                      <span className="text-muted-foreground">{t("instanceCard.totalQueued")}</span>
                       <span className="ml-auto font-medium">{formatBytes(serverState.total_queued_size)}</span>
                     </div>
                   )}
@@ -593,7 +595,7 @@ function InstanceCard({
                   {serverState?.average_time_queue !== undefined && (
                     <div className="flex items-center gap-2 text-xs">
                       <Zap className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">Avg Queue Time</span>
+                      <span className="text-muted-foreground">{t("instanceCard.avgQueueTime")}</span>
                       <span className="ml-auto font-medium">{serverState.average_time_queue}ms</span>
                     </div>
                   )}
@@ -601,7 +603,7 @@ function InstanceCard({
                   {serverState?.last_external_address_v4 && (
                     <div className="flex items-center gap-2 text-xs">
                       <ExternalLink className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">External IPv4</span>
+                      <span className="text-muted-foreground">{t("instanceCard.externalIPv4")}</span>
                       <span className={`ml-auto font-medium font-mono ${incognitoMode ? "blur-sm select-none" : ""}`} style={incognitoMode ? { filter: "blur(8px)" } : {}}>{serverState.last_external_address_v4}</span>
                     </div>
                   )}
@@ -609,7 +611,7 @@ function InstanceCard({
                   {serverState?.last_external_address_v6 && (
                     <div className="flex items-center gap-2 text-xs">
                       <ExternalLink className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-muted-foreground">External IPv6</span>
+                      <span className="text-muted-foreground">{t("instanceCard.externalIPv6")}</span>
                       <span className={`ml-auto font-medium font-mono text-[10px] ${incognitoMode ? "blur-sm select-none" : ""}`} style={incognitoMode ? { filter: "blur(8px)" } : {}}>{serverState.last_external_address_v6}</span>
                     </div>
                   )}
@@ -628,12 +630,13 @@ function InstanceCard({
 }
 
 function MobileGlobalStatsCard({ globalStats }: { globalStats: GlobalStats }) {
+  const { t } = useTranslation("dashboard")
   const [speedUnit] = useSpeedUnits()
 
   return (
     <Card className="sm:hidden">
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-medium">Overview</CardTitle>
+        <CardTitle className="text-sm font-medium">{t("mobileOverview.title")}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-3">
@@ -641,40 +644,40 @@ function MobileGlobalStatsCard({ globalStats }: { globalStats: GlobalStats }) {
           <div className="space-y-1">
             <div className="flex items-center gap-1.5">
               <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Instances</span>
+              <span className="text-xs text-muted-foreground">{t("mobileOverview.instances")}</span>
             </div>
             <div className="text-xl font-bold">{globalStats.connected}/{globalStats.total}</div>
-            <p className="text-[10px] text-muted-foreground">Connected</p>
+            <p className="text-[10px] text-muted-foreground">{t("mobileOverview.connected")}</p>
           </div>
 
           {/* Torrents */}
           <div className="space-y-1">
             <div className="flex items-center gap-1.5">
               <Activity className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Torrents</span>
+              <span className="text-xs text-muted-foreground">{t("mobileOverview.torrents")}</span>
             </div>
             <div className="text-xl font-bold">{globalStats.totalTorrents}</div>
-            <p className="text-[10px] text-muted-foreground">{globalStats.activeTorrents} active</p>
+            <p className="text-[10px] text-muted-foreground">{t("mobileOverview.activeCount", { count: globalStats.activeTorrents })}</p>
           </div>
 
           {/* Download */}
           <div className="space-y-1">
             <div className="flex items-center gap-1.5">
               <Download className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Download</span>
+              <span className="text-xs text-muted-foreground">{t("mobileOverview.download")}</span>
             </div>
             <div className="text-xl font-bold">{formatSpeedWithUnit(globalStats.totalDownload, speedUnit)}</div>
-            <p className="text-[10px] text-muted-foreground">{globalStats.downloadingTorrents} active</p>
+            <p className="text-[10px] text-muted-foreground">{t("mobileOverview.activeCount", { count: globalStats.downloadingTorrents })}</p>
           </div>
 
           {/* Upload */}
           <div className="space-y-1">
             <div className="flex items-center gap-1.5">
               <Upload className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">Upload</span>
+              <span className="text-xs text-muted-foreground">{t("mobileOverview.upload")}</span>
             </div>
             <div className="text-xl font-bold">{formatSpeedWithUnit(globalStats.totalUpload, speedUnit)}</div>
-            <p className="text-[10px] text-muted-foreground">{globalStats.seedingTorrents} active</p>
+            <p className="text-[10px] text-muted-foreground">{t("mobileOverview.activeCount", { count: globalStats.seedingTorrents })}</p>
           </div>
         </div>
       </CardContent>
@@ -685,58 +688,59 @@ function MobileGlobalStatsCard({ globalStats }: { globalStats: GlobalStats }) {
 type GlobalStats = ReturnType<typeof useGlobalStats>
 
 function GlobalStatsCards({ globalStats }: { globalStats: GlobalStats }) {
+  const { t } = useTranslation("dashboard")
   const [speedUnit] = useSpeedUnits()
 
   return (
     <>
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Instances</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("globalStats.instances")}</CardTitle>
           <HardDrive className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{globalStats.connected}/{globalStats.total}</div>
           <p className="text-xs text-muted-foreground">
-            Connected instances
+            {t("globalStats.connectedInstances")}
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Total Torrents</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("globalStats.totalTorrents")}</CardTitle>
           <Activity className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{globalStats.totalTorrents}</div>
           <p className="text-xs text-muted-foreground">
-            {globalStats.activeTorrents} active - <span className="text-xs">{formatBytes(globalStats.totalSize)} total size</span>
+            {t("globalStats.activeTotal", { active: globalStats.activeTorrents, size: formatBytes(globalStats.totalSize) })}
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Total Download</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("globalStats.totalDownload")}</CardTitle>
           <Download className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{formatSpeedWithUnit(globalStats.totalDownload, speedUnit)}</div>
           <p className="text-xs text-muted-foreground">
-            {globalStats.downloadingTorrents} active - <span className="text-xs">{formatBytes(globalStats.totalRemainingSize)} remaining</span>
+            {t("globalStats.downloadingActive", { count: globalStats.downloadingTorrents, size: formatBytes(globalStats.totalRemainingSize) })}
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Total Upload</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("globalStats.totalUpload")}</CardTitle>
           <Upload className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{formatSpeedWithUnit(globalStats.totalUpload, speedUnit)}</div>
           <p className="text-xs text-muted-foreground">
-            {globalStats.seedingTorrents} active - <span className="text-xs">{formatBytes(globalStats.totalSeedingSize)} seeding</span>
+            {t("globalStats.seedingActive", { count: globalStats.seedingTorrents, size: formatBytes(globalStats.totalSeedingSize) })}
           </p>
         </CardContent>
       </Card>
@@ -751,6 +755,7 @@ interface GlobalAllTimeStatsProps {
 }
 
 function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: GlobalAllTimeStatsProps) {
+  const { t } = useTranslation("dashboard")
   // Accordion value is "server-stats" when expanded, "" when collapsed
   const accordionValue = isCollapsed ? "" : "server-stats"
   const setAccordionValue = (value: string) => onCollapsedChange(value === "")
@@ -796,7 +801,7 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
               <div className="flex items-center gap-2">
                 <Plus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=open]:hidden" />
                 <Minus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=closed]:hidden" />
-                <h3 className="text-sm font-medium text-muted-foreground">Server Statistics</h3>
+                <h3 className="text-sm font-medium text-muted-foreground">{t("serverStats.title")}</h3>
               </div>
             </div>
             <div className="flex items-center justify-between">
@@ -812,14 +817,14 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
               </div>
               <div className="flex items-center gap-4 text-sm">
                 <div>
-                  <span className="text-xs text-muted-foreground">Ratio: </span>
+                  <span className="text-xs text-muted-foreground">{t("serverStats.ratio")} </span>
                   <span className="font-semibold" style={{ color: ratioColor }}>
                     {globalStats.globalRatio.toFixed(2)}
                   </span>
                 </div>
                 {globalStats.totalPeers > 0 && (
                   <div>
-                    <span className="text-xs text-muted-foreground">Peers: </span>
+                    <span className="text-xs text-muted-foreground">{t("serverStats.peers")} </span>
                     <span className="font-semibold">{globalStats.totalPeers}</span>
                   </div>
                 )}
@@ -832,7 +837,7 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
             <div className="flex items-center gap-2">
               <Plus className="h-4 w-4 text-muted-foreground group-data-[state=open]:hidden" />
               <Minus className="h-4 w-4 text-muted-foreground group-data-[state=closed]:hidden" />
-              <h3 className="text-base font-medium">Server Statistics</h3>
+              <h3 className="text-base font-medium">{t("serverStats.title")}</h3>
             </div>
             <div className="flex flex-wrap items-center gap-6 text-sm">
               <div className="flex items-center gap-2">
@@ -846,7 +851,7 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">Ratio:</span>
+                <span className="text-muted-foreground">{t("serverStats.ratio")}</span>
                 <span className="text-lg font-semibold" style={{ color: ratioColor }}>
                   {globalStats.globalRatio.toFixed(2)}
                 </span>
@@ -854,7 +859,7 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
 
               {globalStats.totalPeers > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Peers:</span>
+                  <span className="text-muted-foreground">{t("serverStats.peers")}</span>
                   <span className="text-lg font-semibold">{globalStats.totalPeers}</span>
                 </div>
               )}
@@ -865,19 +870,19 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead className="text-center">Instance</TableHead>
+                <TableHead className="text-center">{t("serverStats.tableHeaders.instance")}</TableHead>
                 <TableHead className="text-center">
                   <div className="flex items-center justify-center gap-1">
-                    <span>Downloaded</span>
+                    <span>{t("serverStats.tableHeaders.downloaded")}</span>
                   </div>
                 </TableHead>
                 <TableHead className="text-center">
                   <div className="flex items-center justify-center gap-1">
-                    <span>Uploaded</span>
+                    <span>{t("serverStats.tableHeaders.uploaded")}</span>
                   </div>
                 </TableHead>
-                <TableHead className="text-center">Ratio</TableHead>
-                <TableHead className="text-center hidden sm:table-cell">Peers</TableHead>
+                <TableHead className="text-center">{t("serverStats.tableHeaders.ratio")}</TableHead>
+                <TableHead className="text-center hidden sm:table-cell">{t("serverStats.tableHeaders.peers")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -949,6 +954,7 @@ interface TrackerBreakdownCardProps {
 }
 
 function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollapsed, onCollapsedChange }: TrackerBreakdownCardProps) {
+  const { t } = useTranslation("dashboard")
   // Accordion value is "tracker-breakdown" when expanded, "" when collapsed
   const accordionValue = isCollapsed ? "" : "tracker-breakdown"
   const setAccordionValue = (value: string) => onCollapsedChange(value === "")
@@ -1373,7 +1379,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
   // Export customizations to clipboard
   const handleExport = async () => {
     if (!customizations || customizations.length === 0) {
-      toast.error("No customizations to export")
+      toast.error(t("trackerBreakdown.toasts.noCustomizationsToExport"))
       return
     }
 
@@ -1397,10 +1403,10 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
     try {
       await copyTextToClipboard(exportText)
-      toast.success("Copied to clipboard")
+      toast.success(t("trackerBreakdown.toasts.copiedToClipboard"))
     } catch (error) {
       console.error("[Export] Failed to copy to clipboard:", error)
-      toast.error("Failed to copy to clipboard")
+      toast.error(t("trackerBreakdown.toasts.failedToCopy"))
     }
   }
 
@@ -1428,16 +1434,16 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
       const entries = parsed.trackerCustomizations
 
       if (!Array.isArray(entries)) {
-        return { valid: false, entries: [], error: "Invalid format: expected trackerCustomizations array" }
+        return { valid: false, entries: [], error: t("trackerBreakdown.importDialog.invalidFormat") }
       }
 
       // Validate each entry
       for (const entry of entries) {
         if (!entry.displayName || typeof entry.displayName !== "string") {
-          return { valid: false, entries: [], error: "Invalid entry: missing displayName" }
+          return { valid: false, entries: [], error: t("trackerBreakdown.importDialog.missingDisplayName") }
         }
         if (!Array.isArray(entry.domains) || entry.domains.length === 0) {
-          return { valid: false, entries: [], error: "Invalid entry: domains must be a non-empty array" }
+          return { valid: false, entries: [], error: t("trackerBreakdown.importDialog.invalidDomains") }
         }
       }
 
@@ -1476,7 +1482,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
       return { valid: true, entries: entriesWithConflicts, error: null }
     } catch {
-      return { valid: false, entries: [], error: "Invalid JSON" }
+      return { valid: false, entries: [], error: t("trackerBreakdown.importDialog.invalidJson") }
     }
   }, [importJson, customizations])
 
@@ -1537,13 +1543,13 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
     setImportConflicts(new Map())
 
     if (failed.length > 0) {
-      toast.error(`Failed to import: ${failed.join(", ")}`)
+      toast.error(t("trackerBreakdown.toasts.failedToImport", { names: failed.join(", ") }))
     } else if (imported > 0 && skipped > 0) {
-      toast.success(`Imported ${imported}, skipped ${skipped}`)
+      toast.success(t("trackerBreakdown.toasts.importedAndSkipped", { imported, skipped }))
     } else if (imported > 0) {
-      toast.success(`Imported ${imported} customization${imported !== 1 ? "s" : ""}`)
+      toast.success(t(imported !== 1 ? "trackerBreakdown.toasts.importedCount_plural" : "trackerBreakdown.toasts.importedCount", { count: imported }))
     } else {
-      toast.info("No customizations imported")
+      toast.info(t("trackerBreakdown.toasts.noCustomizationsImported"))
     }
   }
 
@@ -1610,9 +1616,9 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 <div className="flex items-center gap-2">
                   <Plus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=open]:hidden" />
                   <Minus className="h-3.5 w-3.5 text-muted-foreground group-data-[state=closed]:hidden" />
-                  <h3 className="text-sm font-medium text-muted-foreground">Tracker Breakdown</h3>
+                  <h3 className="text-sm font-medium text-muted-foreground">{t("trackerBreakdown.title")}</h3>
                 </div>
-                <span className="text-xs text-muted-foreground">{sortedTrackerStats.length} trackers</span>
+                <span className="text-xs text-muted-foreground">{t("trackerBreakdown.trackersCount", { count: sortedTrackerStats.length })}</span>
               </div>
             </div>
 
@@ -1621,7 +1627,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               <div className="flex items-center gap-2">
                 <Plus className="h-4 w-4 text-muted-foreground group-data-[state=open]:hidden" />
                 <Minus className="h-4 w-4 text-muted-foreground group-data-[state=closed]:hidden" />
-                <h3 className="text-base font-medium">Tracker Breakdown</h3>
+                <h3 className="text-base font-medium">{t("trackerBreakdown.title")}</h3>
               </div>
               <div className="flex items-center gap-1">
                 <Tooltip>
@@ -1636,7 +1642,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                       <Download className="h-3.5 w-3.5" />
                     </span>
                   </TooltipTrigger>
-                  <TooltipContent>Import customizations</TooltipContent>
+                  <TooltipContent>{t("trackerBreakdown.importTooltip")}</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1651,9 +1657,9 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                       <Upload className="h-3.5 w-3.5" />
                     </span>
                   </TooltipTrigger>
-                  <TooltipContent>Export customizations</TooltipContent>
+                  <TooltipContent>{t("trackerBreakdown.exportTooltip")}</TooltipContent>
                 </Tooltip>
-                <span className="text-muted-foreground ml-1">{sortedTrackerStats.length} trackers</span>
+                <span className="text-muted-foreground ml-1">{t("trackerBreakdown.trackersCount", { count: sortedTrackerStats.length })}</span>
               </div>
             </div>
           </AccordionTrigger>
@@ -1664,19 +1670,19 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="flex-1 justify-between">
                     <span className="flex items-center gap-2 text-xs">
-                      Sort: {sortColumn === "tracker" ? "Tracker" :sortColumn === "uploaded" ? "Uploaded" :sortColumn === "downloaded" ? "Downloaded" :sortColumn === "ratio" ? "Ratio" :sortColumn === "count" ? "Torrents" :sortColumn === "size" ? "Size" : "Seeded"}
+                      {t("trackerBreakdown.sort", { column: sortColumn === "tracker" ? t("trackerBreakdown.sortOptions.tracker") :sortColumn === "uploaded" ? t("trackerBreakdown.sortOptions.uploaded") :sortColumn === "downloaded" ? t("trackerBreakdown.sortOptions.downloaded") :sortColumn === "ratio" ? t("trackerBreakdown.sortOptions.ratio") :sortColumn === "count" ? t("trackerBreakdown.sortOptions.torrents") :sortColumn === "size" ? t("trackerBreakdown.sortOptions.size") : t("trackerBreakdown.sortOptions.seeded") })}
                     </span>
                     {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-full">
-                  <DropdownMenuItem onClick={() => handleSort("tracker")}>Tracker</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleSort("uploaded")}>Uploaded</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleSort("downloaded")}>Downloaded</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleSort("ratio")}>Ratio</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleSort("count")}>Torrents</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleSort("size")}>Size</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleSort("performance")}>Seeded</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("tracker")}>{t("trackerBreakdown.sortOptions.tracker")}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("uploaded")}>{t("trackerBreakdown.sortOptions.uploaded")}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("downloaded")}>{t("trackerBreakdown.sortOptions.downloaded")}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("ratio")}>{t("trackerBreakdown.sortOptions.ratio")}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("count")}>{t("trackerBreakdown.sortOptions.torrents")}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("size")}>{t("trackerBreakdown.sortOptions.size")}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSort("performance")}>{t("trackerBreakdown.sortOptions.seeded")}</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               <Button variant="ghost" size="sm" onClick={openImportDialog} className="h-8 px-2">
@@ -1737,7 +1743,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                             {(isMerged || (hasCustomization && displayName !== domain)) && (
                               <TooltipContent>
                                 <p className="text-xs">
-                                  {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
+                                  {isMerged ? t("trackerBreakdown.mergedFrom", { domains: originalDomains.join(", ") }) : t("trackerBreakdown.original", { domain })}
                                 </p>
                               </TooltipContent>
                             )}
@@ -1809,7 +1815,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                         <div className="space-y-1">
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <ChevronUp className="h-3 w-3" />
-                            <span>Uploaded</span>
+                            <span>{t("trackerBreakdown.tableHeaders.uploaded")}</span>
                           </div>
                           <div className="font-semibold text-sm">{formatBytes(uploaded)}</div>
                         </div>
@@ -1818,14 +1824,14 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                         <div className="space-y-1">
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <ChevronDown className="h-3 w-3" />
-                            <span>Downloaded</span>
+                            <span>{t("trackerBreakdown.tableHeaders.downloaded")}</span>
                           </div>
                           <div className="font-semibold text-sm">{formatBytes(downloaded)}</div>
                         </div>
 
                         {/* Ratio */}
                         <div className="space-y-1">
-                          <div className="text-xs text-muted-foreground">Ratio</div>
+                          <div className="text-xs text-muted-foreground">{t("trackerBreakdown.tableHeaders.ratio")}</div>
                           <div className="font-semibold text-sm" style={{ color: ratioColor }}>
                             {isInfinite ? "∞" : ratio.toFixed(2)}
                           </div>
@@ -1833,13 +1839,13 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 
                         {/* Size */}
                         <div className="space-y-1">
-                          <div className="text-xs text-muted-foreground">Size</div>
+                          <div className="text-xs text-muted-foreground">{t("trackerBreakdown.tableHeaders.size")}</div>
                           <div className="font-semibold text-sm">{formatBytes(totalSize)}</div>
                         </div>
 
                         {/* Seeded */}
                         <div className="space-y-1">
-                          <div className="text-xs text-muted-foreground">Seeded</div>
+                          <div className="text-xs text-muted-foreground">{t("trackerBreakdown.tableHeaders.seeded")}</div>
                           <div className="font-semibold text-sm">{formatEfficiency(uploaded, totalSize)}</div>
                         </div>
                       </div>
@@ -1860,7 +1866,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                       onClick={() => handleSort("tracker")}
                       className="flex items-center gap-1.5 hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                     >
-                      Tracker
+                      {t("trackerBreakdown.tableHeaders.tracker")}
                       <SortIcon column="tracker" sortColumn={sortColumn} sortDirection={sortDirection} />
                     </button>
                   </TableHead>
@@ -1870,7 +1876,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                       onClick={() => handleSort("uploaded")}
                       className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                     >
-                      Uploaded
+                      {t("trackerBreakdown.tableHeaders.uploaded")}
                       <SortIcon column="uploaded" sortColumn={sortColumn} sortDirection={sortDirection} />
                     </button>
                   </TableHead>
@@ -1880,7 +1886,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                       onClick={() => handleSort("downloaded")}
                       className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                     >
-                      Downloaded
+                      {t("trackerBreakdown.tableHeaders.downloaded")}
                       <SortIcon column="downloaded" sortColumn={sortColumn} sortDirection={sortDirection} />
                     </button>
                   </TableHead>
@@ -1890,7 +1896,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                       onClick={() => handleSort("ratio")}
                       className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                     >
-                      Ratio
+                      {t("trackerBreakdown.tableHeaders.ratio")}
                       <SortIcon column="ratio" sortColumn={sortColumn} sortDirection={sortDirection} />
                     </button>
                   </TableHead>
@@ -1900,7 +1906,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                       onClick={() => handleSort("buffer")}
                       className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                     >
-                      Buffer
+                      {t("trackerBreakdown.tableHeaders.buffer")}
                       <SortIcon column="buffer" sortColumn={sortColumn} sortDirection={sortDirection} />
                     </button>
                   </TableHead>
@@ -1910,7 +1916,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                       onClick={() => handleSort("count")}
                       className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                     >
-                      Torrents
+                      {t("trackerBreakdown.tableHeaders.torrents")}
                       <SortIcon column="count" sortColumn={sortColumn} sortDirection={sortDirection} />
                     </button>
                   </TableHead>
@@ -1920,7 +1926,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                       onClick={() => handleSort("size")}
                       className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors rounded px-1 py-0.5 -mx-1 -my-0.5"
                     >
-                      Size
+                      {t("trackerBreakdown.tableHeaders.size")}
                       <SortIcon column="size" sortColumn={sortColumn} sortDirection={sortDirection} />
                     </button>
                   </TableHead>
@@ -1932,13 +1938,13 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                           onClick={() => handleSort("performance")}
                           className="flex items-center gap-1.5 ml-auto hover:text-foreground transition-colors"
                         >
-                          Seeded
+                          {t("trackerBreakdown.tableHeaders.seeded")}
                           <Info className="h-3.5 w-3.5 text-muted-foreground" />
                           <SortIcon column="performance" sortColumn={sortColumn} sortDirection={sortDirection} />
                         </button>
                       </TooltipTrigger>
                       <TooltipContent side="top">
-                        <p className="text-xs">Uploaded ÷ Content Size — how many times you&apos;ve seeded your content</p>
+                        <p className="text-xs">{t("trackerBreakdown.seededTooltip")}</p>
                       </TooltipContent>
                     </Tooltip>
                   </TableHead>
@@ -1992,7 +1998,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                             {(isMerged || (hasCustomization && displayName !== domain)) && (
                               <TooltipContent>
                                 <p className="text-xs">
-                                  {isMerged ? `Merged from: ${originalDomains.join(", ")}` : `Original: ${domain}`}
+                                  {isMerged ? t("trackerBreakdown.mergedFrom", { domains: originalDomains.join(", ") }) : t("trackerBreakdown.original", { domain })}
                                 </p>
                               </TooltipContent>
                             )}
@@ -2013,7 +2019,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                                       <Link2 className="h-3 w-3 text-primary" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>Merge selected trackers into this group</TooltipContent>
+                                  <TooltipContent>{t("trackerBreakdown.mergeTooltip")}</TooltipContent>
                                 </Tooltip>
                               ) : (
                                 <>
@@ -2059,7 +2065,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                                   </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  {selectedGroupId ? "Merge into group" : selectedDomains.size > 0 ? "Add to merge" : "Rename"}
+                                  {selectedGroupId ? t("trackerBreakdown.mergeIntoGroup") : selectedDomains.size > 0 ? t("trackerBreakdown.addToMerge") : t("trackerBreakdown.rename")}
                                 </TooltipContent>
                               </Tooltip>
                             )}
@@ -2101,7 +2107,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
             {totalPages > 1 && (
               <div className="flex items-center justify-between px-4 py-3 border-t">
                 <span className="text-sm text-muted-foreground">
-                  {page * itemsPerPage + 1}-{Math.min((page + 1) * itemsPerPage, sortedTrackerStats.length)} of {sortedTrackerStats.length} trackers
+                  {t("trackerBreakdown.pagination.range", { start: page * itemsPerPage + 1, end: Math.min((page + 1) * itemsPerPage, sortedTrackerStats.length), total: sortedTrackerStats.length })}
                 </span>
                 <div className="flex items-center gap-2">
                   <Button
@@ -2111,7 +2117,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                     disabled={page === 0}
                   >
                     <ChevronLeft className="h-4 w-4" />
-                    <span className="hidden sm:inline ml-1">Previous</span>
+                    <span className="hidden sm:inline ml-1">{t("trackerBreakdown.pagination.previous")}</span>
                   </Button>
                   <Button
                     variant="outline"
@@ -2119,7 +2125,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                     onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
                     disabled={page >= totalPages - 1}
                   >
-                    <span className="hidden sm:inline mr-1">Next</span>
+                    <span className="hidden sm:inline mr-1">{t("trackerBreakdown.pagination.next")}</span>
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
@@ -2134,15 +2140,15 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
         <DialogContent className="max-h-[90dvh] flex flex-col">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle>
-              {editingCustomization? "Edit Tracker Name": selectedDomains.size === 1? "Rename Tracker": "Merge Trackers"}
+              {editingCustomization? t("trackerBreakdown.customizeDialog.editTitle"): selectedDomains.size === 1? t("trackerBreakdown.customizeDialog.renameTitle"): t("trackerBreakdown.customizeDialog.mergeTitle")}
             </DialogTitle>
             <DialogDescription>
-              {editingCustomization? "Update the display name for this tracker.": selectedDomains.size === 1? "Give this tracker a custom display name.": "Combine these trackers into a single entry with a custom name."}
+              {editingCustomization? t("trackerBreakdown.customizeDialog.editDescription"): selectedDomains.size === 1? t("trackerBreakdown.customizeDialog.renameDescription"): t("trackerBreakdown.customizeDialog.mergeDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4 min-h-0 flex-1 flex flex-col">
             <div className="space-y-2">
-              <Label htmlFor="customize-name">Display Name</Label>
+              <Label htmlFor="customize-name">{t("trackerBreakdown.customizeDialog.displayName")}</Label>
               <Input
                 id="customize-name"
                 value={customizeDisplayName}
@@ -2151,10 +2157,10 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
               />
             </div>
             <div className="space-y-2 min-h-0 flex-1 flex flex-col overflow-hidden">
-              <Label>{editingCustomization ? "Domain(s)" : "Selected Tracker(s)"}</Label>
+              <Label>{editingCustomization ? t("trackerBreakdown.customizeDialog.domains") : t("trackerBreakdown.customizeDialog.selectedTrackers")}</Label>
               {((editingCustomization && editingCustomization.domains.length > 1) || (!editingCustomization && selectedDomains.size > 1)) && (
                 <p className="text-xs text-muted-foreground">
-                  Uncheck duplicate tracker URLs to avoid counting the same torrents twice.
+                  {t("trackerBreakdown.customizeDialog.uncheckDuplicate")}
                 </p>
               )}
               <ScrollArea className="h-[300px]">
@@ -2181,7 +2187,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                         <span className={`truncate${isPrimary ? " font-medium" : ""}`} title={domain}>{domain}</span>
                         {hasMultiple && (
                           isPrimary ? (
-                            <Badge variant="secondary" className="text-[10px]">Primary</Badge>
+                            <Badge variant="secondary" className="text-[10px]">{t("trackerBreakdown.customizeDialog.primary")}</Badge>
                           ) : <span />
                         )}
                         {hasMultiple && (
@@ -2202,13 +2208,13 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           </div>
           <DialogFooter className="flex-shrink-0">
             <Button variant="outline" onClick={closeCustomizeDialog}>
-              Cancel
+              {t("trackerBreakdown.customizeDialog.cancel")}
             </Button>
             <Button
               onClick={handleSaveCustomization}
               disabled={!customizeDisplayName.trim() || createCustomization.isPending || updateCustomization.isPending}
             >
-              {(createCustomization.isPending || updateCustomization.isPending)? "Saving...": editingCustomization? "Save": selectedDomains.size === 1? "Rename": "Merge"}
+              {(createCustomization.isPending || updateCustomization.isPending)? t("trackerBreakdown.customizeDialog.saving"): editingCustomization? t("trackerBreakdown.customizeDialog.save"): selectedDomains.size === 1? t("trackerBreakdown.customizeDialog.renameAction"): t("trackerBreakdown.customizeDialog.mergeAction")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2218,14 +2224,14 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
         <DialogContent className="sm:max-w-lg max-h-[90dvh] flex flex-col">
           <DialogHeader className="flex-shrink-0">
-            <DialogTitle>Import Tracker Customizations</DialogTitle>
+            <DialogTitle>{t("trackerBreakdown.importDialog.title")}</DialogTitle>
             <DialogDescription>
-              Paste JSON to import tracker customizations (renames and merges).
+              {t("trackerBreakdown.importDialog.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto min-h-0 space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="import-json">JSON Data</Label>
+              <Label htmlFor="import-json">{t("trackerBreakdown.importDialog.jsonData")}</Label>
               <Textarea
                 id="import-json"
                 value={importJson}
@@ -2252,15 +2258,15 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                       return (
                         <>
                           <div className="text-sm text-muted-foreground">
-                            {newEntries.length > 0 && <span>{newEntries.length} new</span>}
+                            {newEntries.length > 0 && <span>{t("trackerBreakdown.importDialog.newCount", { count: newEntries.length })}</span>}
                             {newEntries.length > 0 && (conflicts.length > 0 || identicalEntries.length > 0) && <span>, </span>}
-                            {conflicts.length > 0 && <span className="text-yellow-600">{conflicts.length} conflict{conflicts.length !== 1 ? "s" : ""}</span>}
+                            {conflicts.length > 0 && <span className="text-yellow-600">{t(conflicts.length !== 1 ? "trackerBreakdown.importDialog.conflictCount_plural" : "trackerBreakdown.importDialog.conflictCount", { count: conflicts.length })}</span>}
                             {conflicts.length > 0 && identicalEntries.length > 0 && <span>, </span>}
-                            {identicalEntries.length > 0 && <span className="text-muted-foreground">{identicalEntries.length} unchanged</span>}
+                            {identicalEntries.length > 0 && <span className="text-muted-foreground">{t("trackerBreakdown.importDialog.unchangedCount", { count: identicalEntries.length })}</span>}
                           </div>
                           {conflicts.length > 0 && (
                             <>
-                              <Label>Resolve conflicts</Label>
+                              <Label>{t("trackerBreakdown.importDialog.resolveConflicts")}</Label>
                               <div className="border rounded-md max-h-48 overflow-y-auto">
                                 {conflicts.map((entry: { displayName: string; domains: string[]; index: number; conflict?: { id: number; displayName: string; domains: string[] } | null }) => (
                                   <div
@@ -2274,7 +2280,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                                           {entry.domains.join(", ")}
                                         </div>
                                         <div className="text-xs text-yellow-600 mt-1">
-                                          Conflicts with: {entry.conflict?.displayName}
+                                          {t("trackerBreakdown.importDialog.conflictsWith", { name: entry.conflict?.displayName })}
                                         </div>
                                       </div>
                                       <div className="flex items-center gap-1 shrink-0">
@@ -2284,7 +2290,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                                           className="h-6 px-2 text-xs"
                                           onClick={() => setImportConflicts(new Map(importConflicts).set(entry.index, "skip"))}
                                         >
-                                          Skip
+                                          {t("trackerBreakdown.importDialog.skip")}
                                         </Button>
                                         <Button
                                           variant={importConflicts.get(entry.index) === "overwrite" ? "secondary" : "ghost"}
@@ -2292,7 +2298,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                                           className="h-6 px-2 text-xs"
                                           onClick={() => setImportConflicts(new Map(importConflicts).set(entry.index, "overwrite"))}
                                         >
-                                          Overwrite
+                                          {t("trackerBreakdown.importDialog.overwrite")}
                                         </Button>
                                       </div>
                                     </div>
@@ -2311,13 +2317,13 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
           </div>
           <DialogFooter className="flex-shrink-0">
             <Button variant="outline" onClick={() => setShowImportDialog(false)}>
-              Cancel
+              {t("trackerBreakdown.importDialog.cancel")}
             </Button>
             <Button
               onClick={handleImport}
               disabled={!parseImportJson.valid || !allConflictsResolved || createCustomization.isPending || updateCustomization.isPending}
             >
-              {(createCustomization.isPending || updateCustomization.isPending) ? "Importing..." : "Import"}
+              {(createCustomization.isPending || updateCustomization.isPending) ? t("trackerBreakdown.importDialog.importing") : t("trackerBreakdown.importDialog.import")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2327,6 +2333,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
 }
 
 function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats[] }) {
+  const { t } = useTranslation("dashboard")
   const connectedInstances = statsData
     .filter(({ instance }) => instance?.connected)
     .map(({ instance }) => instance)
@@ -2340,12 +2347,12 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
-          Add Torrent
+          {t("quickActions.addTorrent")}
           <ChevronDown className="h-3 w-3 ml-1" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>Add Torrent</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("quickActions.addTorrent")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {connectedInstances.map(instance => (
           <Link
@@ -2356,7 +2363,7 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
           >
             <DropdownMenuItem className="cursor-pointer active:bg-accent focus:bg-accent">
               <Plus className="h-4 w-4 mr-2" />
-              <span>Add to {instance.name}</span>
+              <span>{t("quickActions.addTo", { name: instance.name })}</span>
             </DropdownMenuItem>
           </Link>
         ))}
@@ -2366,6 +2373,7 @@ function QuickActionsDropdown({ statsData }: { statsData: DashboardInstanceStats
 }
 
 export function Dashboard() {
+  const { t } = useTranslation("dashboard")
   const { instances, isLoading } = useInstances()
   const allInstances = instances || []
   const activeInstances = allInstances.filter(instance => instance.isActive)
@@ -2464,10 +2472,10 @@ export function Dashboard() {
     <div className="container mx-auto p-4 sm:p-6">
       {/* Header with Actions */}
       <div className="mb-6">
-        <h1 className="text-2xl sm:text-3xl font-bold">Dashboard</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">{t("title")}</h1>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-2">
           <p className="text-muted-foreground">
-            Overview of all your qBittorrent instances
+            {t("description")}
           </p>
           {instances && instances.length > 0 && (
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
@@ -2475,7 +2483,7 @@ export function Dashboard() {
               <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }} className="w-full sm:w-auto">
                 <Button variant="outline" size="sm" className="w-full sm:w-auto">
                   <HardDrive className="h-4 w-4 mr-2" />
-                  Add Instance
+                  {t("addInstance")}
                 </Button>
               </Link>
               <DashboardSettingsDialog />
@@ -2551,13 +2559,13 @@ export function Dashboard() {
           ) : (
             <Card className="p-8 text-center">
               <div className="space-y-3">
-                <h3 className="text-lg font-semibold">All instances are disabled</h3>
+                <h3 className="text-lg font-semibold">{t("emptyState.allDisabled")}</h3>
                 <p className="text-muted-foreground">
-                  Enable an instance from Settings → Instances to see dashboard stats.
+                  {t("emptyState.enableInstance")}
                 </p>
                 <Link to="/settings" search={{ tab: "instances" as const }}>
                   <Button variant="outline" size="sm">
-                    Manage Instances
+                    {t("emptyState.manageInstances")}
                   </Button>
                 </Link>
               </div>
@@ -2569,13 +2577,13 @@ export function Dashboard() {
           <div className="space-y-4">
             <HardDrive className="h-12 w-12 mx-auto text-muted-foreground" />
             <div>
-              <h3 className="text-lg font-semibold">No instances configured</h3>
-              <p className="text-muted-foreground">Get started by adding your first qBittorrent instance</p>
+              <h3 className="text-lg font-semibold">{t("emptyState.noInstances")}</h3>
+              <p className="text-muted-foreground">{t("emptyState.getStarted")}</p>
             </div>
             <Link to="/settings" search={{ tab: "instances" as const, modal: "add-instance" }}>
               <Button>
                 <HardDrive className="h-4 w-4 mr-2" />
-                Add Instance
+                {t("addInstance")}
               </Button>
             </Link>
           </div>

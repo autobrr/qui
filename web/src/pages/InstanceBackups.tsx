@@ -91,6 +91,7 @@ import type {
   RestoreResult
 } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 
 type SettingsFormState = {
   enabled: boolean
@@ -141,6 +142,7 @@ const statusVariants: Record<BackupRunStatus, "default" | "secondary" | "destruc
 }
 
 export function InstanceBackups() {
+  const { t } = useTranslation("instances")
   const { instances } = useInstances()
   const [selectedInstanceId, setSelectedInstanceId] = usePersistedInstanceSelection("backups")
 
@@ -774,7 +776,7 @@ export function InstanceBackups() {
         <div className="space-y-6 p-4 lg:p-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex-1 space-y-2">
-              <h1 className="text-2xl font-semibold">Backups</h1>
+              <h1 className="text-2xl font-semibold">{t("backups.pageTitle")}</h1>
               <p className="text-sm text-muted-foreground">
                 Manage torrent backups for your instances
               </p>
@@ -864,7 +866,7 @@ export function InstanceBackups() {
       <div className="space-y-6 p-4 lg:p-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex-1 space-y-2">
-            <h1 className="text-2xl font-semibold">Backups</h1>
+            <h1 className="text-2xl font-semibold">{t("backups.pageTitle")}</h1>
             <p className="text-sm text-muted-foreground">
               Manage torrent backups for your instances
             </p>

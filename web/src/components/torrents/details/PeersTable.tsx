@@ -24,6 +24,7 @@ import { SortIcon } from "@/components/ui/sort-icon"
 import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface PeersTableProps {
@@ -54,6 +55,7 @@ export const PeersTable = memo(function PeersTable({
   incognitoMode,
   onBanPeer,
 }: PeersTableProps) {
+  const { t } = useTranslation("torrents")
   const [sorting, setSorting] = useState<SortingState>([{ id: "progress", desc: true }])
 
   const columns = useMemo(() => [
@@ -78,7 +80,7 @@ export const PeersTable = memo(function PeersTable({
     }),
     columnHelper.accessor((row) => `${row.ip}:${row.port}`, {
       id: "address",
-      header: "IP:Port",
+      header: t("peersTable.address"),
       cell: (info) => {
         const displayIp = incognitoMode ? "192.168.x.x" : ( info.row.original.ip.match(/:/) ? `[${info.row.original.ip}]` : info.row.original.ip )
         const displayPort = incognitoMode ? "xxxxx" : info.row.original.port
@@ -91,7 +93,7 @@ export const PeersTable = memo(function PeersTable({
       size: 150,
     }),
     columnHelper.accessor("client", {
-      header: "Client",
+      header: t("peersTable.client"),
       cell: (info) => (
         <span className="truncate block max-w-[120px]" title={info.getValue()}>
           {info.getValue() || "-"}
@@ -100,7 +102,7 @@ export const PeersTable = memo(function PeersTable({
       size: 120,
     }),
     columnHelper.accessor("progress", {
-      header: "Progress",
+      header: t("peersTable.progress"),
       cell: (info) => {
         const progress = info.getValue() * 100
         return (
@@ -115,7 +117,7 @@ export const PeersTable = memo(function PeersTable({
       size: 110,
     }),
     columnHelper.accessor("dl_speed", {
-      header: "DL Speed",
+      header: t("peersTable.downSpeed"),
       cell: (info) => (
         <span className="tabular-nums text-green-500">
           {formatSpeedWithUnit(info.getValue() || 0, speedUnit)}
@@ -126,7 +128,7 @@ export const PeersTable = memo(function PeersTable({
       sortingFn: zeroLastSortingFn,
     }),
     columnHelper.accessor("up_speed", {
-      header: "UL Speed",
+      header: t("peersTable.upSpeed"),
       cell: (info) => (
         <span className="tabular-nums text-blue-500">
           {formatSpeedWithUnit(info.getValue() || 0, speedUnit)}
@@ -137,7 +139,7 @@ export const PeersTable = memo(function PeersTable({
       sortingFn: zeroLastSortingFn,
     }),
     columnHelper.accessor("downloaded", {
-      header: "Downloaded",
+      header: t("peersTable.downloaded"),
       cell: (info) => (
         <span className="tabular-nums">
           {formatBytes(info.getValue() || 0)}
@@ -148,7 +150,7 @@ export const PeersTable = memo(function PeersTable({
       sortingFn: zeroLastSortingFn,
     }),
     columnHelper.accessor("uploaded", {
-      header: "Uploaded",
+      header: t("peersTable.uploaded"),
       cell: (info) => (
         <span className="tabular-nums">
           {formatBytes(info.getValue() || 0)}
@@ -160,7 +162,7 @@ export const PeersTable = memo(function PeersTable({
     }),
     ...(showFlags ? [
       columnHelper.accessor("flags", {
-        header: "Flags",
+        header: t("peersTable.flags"),
         cell: (info) => {
           const flags = info.getValue()
           if (!flags) return <span className="text-muted-foreground">-</span>
@@ -187,7 +189,7 @@ export const PeersTable = memo(function PeersTable({
         size: 60,
       }),
     ] : []),
-  ], [speedUnit, showFlags, incognitoMode])
+  ], [speedUnit, showFlags, incognitoMode, t])
 
   const data = useMemo(() => peers || [], [peers])
 

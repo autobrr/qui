@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -40,7 +41,8 @@ export function SearchResultCard({
   hasInstances,
   targetInstanceName
 }: SearchResultCardProps) {
-  const primaryAddLabel = targetInstanceName ? `Add to ${targetInstanceName}` : 'Add to instance'
+  const { t } = useTranslation("search")
+  const primaryAddLabel = targetInstanceName ? t("card.addToNamed", { name: targetInstanceName }) : t("card.addToInstance")
 
   return (
     <Card
@@ -77,7 +79,7 @@ export function SearchResultCard({
                 onClick={(e) => e.stopPropagation()}
               >
                 <MoreVertical className="h-4 w-4" />
-                <span className="sr-only">Actions</span>
+                <span className="sr-only">{t("card.actions")}</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -93,7 +95,7 @@ export function SearchResultCard({
               {hasInstances && instances && instances.length > 1 && (
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger>
-                    Quick add to...
+                    {t("card.quickAddTo")}
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent>
                     {instances.map(instance => (
@@ -117,7 +119,7 @@ export function SearchResultCard({
                 }}
                 disabled={!result.downloadUrl}
               >
-                <Download className="mr-2 h-4 w-4" /> Download
+                <Download className="mr-2 h-4 w-4" /> {t("card.download")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={(event) => {
@@ -126,7 +128,7 @@ export function SearchResultCard({
                 }}
                 disabled={!result.infoUrl}
               >
-                <ExternalLink className="mr-2 h-4 w-4" /> View details
+                <ExternalLink className="mr-2 h-4 w-4" /> {t("card.viewDetails")}
               </DropdownMenuItem>
               {isSelected && (
                 <>
@@ -137,7 +139,7 @@ export function SearchResultCard({
                       onSelect()
                     }}
                   >
-                    Clear selection
+                    {t("card.clearSelection")}
                   </DropdownMenuItem>
                 </>
               )}
@@ -150,7 +152,7 @@ export function SearchResultCard({
           <span className="font-medium text-foreground">{result.indexer}</span>
           <span>{formatSize(result.size)}</span>
           <Badge variant={result.seeders > 0 ? 'default' : 'secondary'} className="text-[10px]">
-            {result.seeders} seeders
+            {t('card.seeders', { count: result.seeders })}
           </Badge>
         </div>
 
@@ -170,7 +172,7 @@ export function SearchResultCard({
             </Badge>
           )}
           {result.downloadVolumeFactor === 0 && (
-            <Badge variant="default" className="text-[10px]">Free</Badge>
+            <Badge variant="default" className="text-[10px]">{t("results.free")}</Badge>
           )}
           {result.downloadVolumeFactor > 0 && result.downloadVolumeFactor < 1 && (
             <Badge variant="secondary" className="text-[10px]">{result.downloadVolumeFactor * 100}%</Badge>
@@ -179,7 +181,7 @@ export function SearchResultCard({
 
         {/* Published Date */}
         <div className="text-xs text-muted-foreground">
-          Published {formatDate(result.publishDate)}
+          {t('card.published', { date: formatDate(result.publishDate) })}
         </div>
       </div>
     </Card>

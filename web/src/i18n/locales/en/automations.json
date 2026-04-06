@@ -1,50 +1,82 @@
 {
-  "pageTitle": "Automations",
-  "pageDescription": "Instance-level automation services managed by qui.",
-  "noInstances": "No instances configured yet. Add one in Settings to use services.",
-  "queryBuilder": {
-    "andDescription": "All conditions must match",
-    "orDescription": "Any condition must match",
-    "addCondition": "Condition",
-    "addGroup": "Group",
-    "dragGroup": "Drag group",
-    "units": {
-      "minutes": "minutes",
-      "hours": "hours",
-      "days": "days",
-      "bytesPerSecond": "B/s",
-      "kibibytesPerSecond": "KiB/s",
-      "mebibytesPerSecond": "MiB/s",
-      "mebibytes": "MiB",
-      "gibibytes": "GiB",
-      "tebibytes": "TiB"
-    },
-    "groupOption": {
-      "crossSeedDefault": "Cross-seed (content + save path)"
-    }
+  "page": {
+    "title": "Automations",
+    "description": "Instance-level automation services managed by qui.",
+    "noInstances": "No instances configured yet. Add one in Settings to use services."
   },
   "reannounce": {
+    "title": "Reannounce",
+    "noInstances": "No instances configured. Add one in Settings to use this service.",
+    "tooltip": "qBittorrent doesn't retry failed announces quickly. When a tracker is slow to register a new upload or returns an error, you may be stuck waiting. qui handles this automatically while never spamming trackers.",
+    "description": "Monitors <strong>stalled</strong> torrents and reannounces them when no tracker is healthy.",
+    "today": "{{count}} today",
+    "failed": "{{count}} failed",
+    "notConfigured": "Not configured",
+    "monitoringAll": "Monitoring all stalled torrents",
+    "filteredBy": "Filtered by categories/tags/trackers",
+    "noFilters": "No filters configured",
+    "recentActivity": "Recent Activity",
+    "retainInfo": "Retains last 100 succeeded, 100 failed, 50 skipped",
+    "events": "{{count}} events",
+    "eventsFiltered": "{{filtered}} of {{total}}",
+    "showSkipped": "Show skipped",
+    "hideSkipped": "Hide skipped",
+    "filterPlaceholder": "Filter by name or hash...",
+    "failedToLoad": "Failed to load activity",
+    "checkConnection": "Check connection to the instance.",
+    "loadingActivity": "Loading activity...",
+    "noMatchingEvents": "No matching events found.",
+    "noActivityYet": "No activity recorded yet.",
+    "tryDifferentSearch": "Try a different search term or clear the filter.",
+    "eventsAppearHere": "Events will appear here when stalled torrents are detected.",
+    "hashCopied": "Hash copied",
+    "enableMonitoring": "Enable monitoring to start tracking stalled torrents.",
     "toast": {
-      "scheduledScanningEnabled": "Scheduled scanning enabled",
-      "scheduledScanningDisabled": "Scheduled scanning disabled"
+      "monitoringEnabled": "Monitoring enabled",
+      "monitoringDisabled": "Monitoring disabled",
+      "updateFailed": "Update failed",
+      "updateFailedDescription": "Unable to update settings"
     }
   },
   "orphanScan": {
-    "status": {
-      "clean": "Clean",
-      "starting": "Starting...",
-      "scanning": "Scanning...",
-      "readyForReview": "Ready for Review",
-      "deleting": "Deleting...",
-      "completed": "Completed",
-      "failed": "Failed",
-      "canceled": "Canceled"
-    },
+    "title": "Orphan Scan",
+    "noInstances": "No instances configured. Add one in Settings to use this service.",
+    "tooltip": "Finds files on disk that are not associated with any torrent in qBittorrent. Requires local filesystem access to be enabled for each instance.",
+    "description": "Scans download directories and identifies orphan files for cleanup.",
+    "noLocalAccess": "No Local Access",
+    "localAccessTooltip": "qui and qBittorrent must run on the same machine. Enable \"Local Filesystem Access\" in instance settings to use orphan scanning.",
+    "autoCleanupEnabled": "Auto-cleanup enabled (\u2264{{maxFiles}} files)",
+    "autoCleanupDisabled": "Auto-cleanup disabled",
+    "pathsIgnored": "{{count}} path ignored",
+    "pathsIgnored_plural": "{{count}} paths ignored",
+    "scanNow": "Scan Now",
+    "orphanFilesFound": "{{count}} orphan file found",
+    "orphanFilesFound_plural": "{{count}} orphan files found",
+    "scanTruncated": "(scan was truncated, more files may exist)",
+    "viewPreview": "View Preview",
+    "recentScans": "Recent Scans",
+    "noScansYet": "No scans run yet. Click \"Scan Now\" to find orphan files.",
+    "partialFailure": "Partial failure - expand for details",
+    "partialFailureCheck": "Partial failure - check recent scans",
+    "copiedToClipboard": "Copied to clipboard",
+    "clean": "Clean",
+    "starting": "Starting...",
+    "scanning": "Scanning...",
+    "readyForReview": "Ready for Review",
+    "deleting": "Deleting...",
+    "completed": "Completed",
+    "failed": "Failed",
+    "canceled": "Canceled",
+    "zeroOrphans": "0 orphans",
     "toast": {
-      "scheduledScanningEnabled": "Scheduled scanning enabled",
-      "scheduledScanningDisabled": "Scheduled scanning disabled",
+      "scheduledEnabled": "Scheduled scanning enabled",
+      "scheduledDisabled": "Scheduled scanning disabled",
       "updateFailed": "Update failed",
-      "unableToUpdateSettings": "Unable to update settings"
+      "updateFailedDescription": "Unable to update settings",
+      "scanStarted": "Scan started",
+      "scanFailed": "Failed to start scan",
+      "scanCanceled": "Scan canceled",
+      "cancelFailed": "Failed to cancel"
     }
   }
 }

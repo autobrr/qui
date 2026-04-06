@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { NumberInputWithUnlimited } from "@/components/forms/NumberInputWithUnlimited"
 
@@ -45,6 +46,7 @@ interface SeedingLimitsFormProps {
 }
 
 export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormProps) {
+  const { t } = useTranslation("instances")
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
 
   const form = useForm({
@@ -57,10 +59,10 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
     onSubmit: async ({ value }) => {
       try {
         updatePreferences(value)
-        toast.success("Seeding limits updated successfully")
+        toast.success(t("preferences.seedingLimits.toast.success"))
         onSuccess?.()
       } catch {
-        toast.error("Failed to update seeding limits")
+        toast.error(t("preferences.seedingLimits.toast.error"))
       }
     },
   })
@@ -78,7 +80,7 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
   if (isLoading) {
     return (
       <div className="text-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">Loading seeding limits...</p>
+        <p className="text-sm text-muted-foreground">{t("preferences.seedingLimits.loading")}</p>
       </div>
     )
   }
@@ -86,7 +88,7 @@ export function SeedingLimitsForm({ instanceId, onSuccess }: SeedingLimitsFormPr
   if (!preferences) {
     return (
       <div className="text-center py-8" role="alert">
-        <p className="text-sm text-muted-foreground">Failed to load preferences</p>
+        <p className="text-sm text-muted-foreground">{t("preferences.seedingLimits.loadFailed")}</p>
       </div>
     )
   }

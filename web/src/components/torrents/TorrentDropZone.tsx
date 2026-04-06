@@ -6,6 +6,7 @@
 import { cn } from "@/lib/utils"
 import type { DragEvent, ReactNode } from "react"
 import { forwardRef, useCallback, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import type { AddTorrentDropPayload } from "./AddTorrentDialog"
 
@@ -78,9 +79,11 @@ interface TorrentDropZoneProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export const TorrentDropZone = forwardRef<HTMLDivElement, TorrentDropZoneProps>(function TorrentDropZone(
-  { children, onDropPayload, overlayMessage = "Drop .torrent files or magnet links to add", className, ...rest },
+  { children, onDropPayload, overlayMessage, className, ...rest },
   ref
 ) {
+  const { t } = useTranslation("torrents")
+  const effectiveOverlayMessage = overlayMessage ?? t("dropZone.overlayMessage")
   const [isDropTargetActive, setIsDropTargetActive] = useState(false)
   const dragDepthRef = useRef(0)
 
@@ -209,7 +212,7 @@ export const TorrentDropZone = forwardRef<HTMLDivElement, TorrentDropZoneProps>(
     }
 
     if (combinedText.trim().length > 0 || types.length > 0) {
-      toast.error("Drop a .torrent file or magnet link to add it")
+      toast.error(t("dropZone.unsupportedDrop"))
     }
   }, [onDropPayload, resetDropState])
 
@@ -232,7 +235,7 @@ export const TorrentDropZone = forwardRef<HTMLDivElement, TorrentDropZoneProps>(
       {isDropTargetActive && (
         <div className="pointer-events-none absolute inset-0 z-60 flex items-center justify-center rounded-md border border-dashed border-primary bg-background/80 backdrop-blur-md">
           <div className="text-center text-lg font-medium text-muted-foreground">
-            {overlayMessage}
+            {effectiveOverlayMessage}
           </div>
         </div>
       )}

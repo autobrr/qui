@@ -25,6 +25,7 @@ import { api } from "@/lib/api"
 import type { TorznabIndexer } from "@/types"
 import { ChevronDown, Database, Plus, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { AutodiscoveryDialog } from "./AutodiscoveryDialog"
 import { IndexerActivityPanel } from "./IndexerActivityPanel"
@@ -37,6 +38,7 @@ interface IndexersPageProps {
 }
 
 export function IndexersPage({ withContainer = true }: IndexersPageProps) {
+  const { t } = useTranslation("settings")
   const [indexers, setIndexers] = useState<TorznabIndexer[]>([])
   const [loading, setLoading] = useState(true)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -53,7 +55,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
       const data = await api.listTorznabIndexers()
       setIndexers(data || [])
     } catch (error) {
-      toast.error("Failed to load indexers")
+      toast.error(t("indexers.toast.loadFailed"))
       setIndexers([])
     } finally {
       setLoading(false)
@@ -78,11 +80,11 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
 
     try {
       await api.deleteTorznabIndexer(deleteIndexerId)
-      toast.success("Indexer deleted successfully")
+      toast.success(t("indexers.toast.deletedSuccess"))
       setDeleteIndexerId(null)
       loadIndexers()
     } catch (error) {
-      toast.error("Failed to delete indexer")
+      toast.error(t("indexers.toast.deleteFailed"))
     }
   }
 
@@ -201,7 +203,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
           <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
             <div className="flex items-center gap-2">
               <Database className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Torznab Indexers</span>
+              <span className="text-sm font-medium">{t("indexers.title")}</span>
               {indexers.length > 0 && (
                 <span className="text-xs text-muted-foreground">
                   {enabledCount} enabled, {capsCount} with capabilities
@@ -299,18 +301,18 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
       <AlertDialog open={!!deleteIndexerId} onOpenChange={() => setDeleteIndexerId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Indexer?</AlertDialogTitle>
+            <AlertDialogTitle>{t("indexers.deleteIndexer")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the indexer.
+              {t("indexers.deleteIndexerDescription", { name: indexers.find(i => i.id === deleteIndexerId)?.name ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("indexers.dialog.buttons.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("indexers.deleteIndexer")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -319,18 +321,18 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
       <AlertDialog open={showDeleteAllDialog} onOpenChange={setShowDeleteAllDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete All Indexers?</AlertDialogTitle>
+            <AlertDialogTitle>{t("indexers.deleteAllIndexers")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete all {indexers.length} indexers.
+              {t("indexers.deleteAllDescription", { count: indexers.length })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("indexers.dialog.buttons.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteAll}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete All
+              {t("indexers.deleteAllIndexers")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

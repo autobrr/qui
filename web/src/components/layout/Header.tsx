@@ -58,6 +58,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { Archive, ChevronsUpDown, Cog, Download, FileEdit, FileText, FunnelPlus, FunnelX, GitBranch, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
+import { useTranslation } from "react-i18next"
 
 interface HeaderProps {
   children?: ReactNode
@@ -120,6 +121,7 @@ export function Header({
   children,
   sidebarCollapsed = false,
 }: HeaderProps) {
+  const { t } = useTranslation("common")
   const { logout } = useAuth()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as { q?: string; modal?: string;[key: string]: unknown }
@@ -340,7 +342,7 @@ export function Header({
                   sidebarCollapsed && "lg:flex", // Visible on desktop when sidebar collapsed
                   !shouldShowQuiOnMobile && "hidden sm:flex" // Hide on mobile when on instance routes
                 )}
-                aria-label={`Current instance: ${instanceName}. Click to switch instances.`}
+                aria-label={t("header.currentInstance", { name: instanceName })}
                 aria-haspopup="menu"
               >
                 {theme === "swizzin" ? (
@@ -358,7 +360,7 @@ export function Header({
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-64 mt-2" side="bottom" align="start">
               <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Instances
+                {t("nav.instances")}
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               {hasMultipleActiveInstances && (
@@ -392,13 +394,13 @@ export function Header({
                             "h-2 w-2 rounded-full flex-shrink-0",
                             instance.connected ? "bg-green-500" : "bg-red-500"
                           )}
-                          aria-label={instance.connected ? "Connected" : "Disconnected"}
+                          aria-label={instance.connected ? t("header.connected") : t("header.disconnected")}
                         />
                       </Link>
                     </DropdownMenuItem>
                   ))
                 ) : (
-                  <p className="px-2 py-1.5 text-xs text-muted-foreground">No active instances</p>
+                  <p className="px-2 py-1.5 text-xs text-muted-foreground">{t("header.noActiveInstances")}</p>
                 )}
               </div>
             </DropdownMenuContent>
@@ -448,14 +450,14 @@ export function Header({
                   )}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{filterSidebarCollapsed ? "Show filters" : "Hide filters"}</TooltipContent>
+              <TooltipContent>{filterSidebarCollapsed ? t("header.showFilters") : t("header.hideFilters")}</TooltipContent>
             </Tooltip>
             {isAllInstancesRoute && unifiedManageableInstances.length > 0 && (
               <>
                 <UnifiedActionDropdown
                   icon={<Plus className="h-4 w-4" />}
-                  tooltip="Add torrent"
-                  label="Add to instance"
+                  tooltip={t("header.addTorrent")}
+                  label={t("header.addToInstance")}
                   instances={unifiedManageableInstances}
                   onSelectInstance={setUnifiedAddTorrentInstanceId}
                 />
@@ -463,15 +465,15 @@ export function Header({
                   <>
                     <UnifiedActionDropdown
                       icon={<FileEdit className="h-4 w-4" />}
-                      tooltip="Create torrent"
-                      label="Create for instance"
+                      tooltip={t("header.createTorrent")}
+                      label={t("header.createForInstance")}
                       instances={unifiedTorrentCreationInstances}
                       onSelectInstance={setUnifiedCreateTorrentInstanceId}
                     />
                     <UnifiedActionDropdown
                       icon={<ListTodo className="h-4 w-4" />}
-                      tooltip="Torrent creation tasks"
-                      label="Tasks for instance"
+                      tooltip={t("header.torrentCreationTasks")}
+                      label={t("header.tasksForInstance")}
                       instances={unifiedTorrentCreationInstances}
                       onSelectInstance={setUnifiedTasksInstanceId}
                     />
@@ -479,8 +481,8 @@ export function Header({
                 )}
                 <UnifiedActionDropdown
                   icon={<Cog className="h-4 w-4" />}
-                  tooltip="Instance settings"
-                  label="Settings for instance"
+                  tooltip={t("header.instanceSettings")}
+                  label={t("header.settingsForInstance")}
                   instances={unifiedManageableInstances}
                   onSelectInstance={setUnifiedSettingsInstanceId}
                 />
@@ -503,7 +505,7 @@ export function Header({
                       <Plus className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Add torrent</TooltipContent>
+                  <TooltipContent>{t("header.addTorrent")}</TooltipContent>
                 </Tooltip>
                 {/* Create Torrent button - only show if instance supports it */}
                 {supportsTorrentCreation && (
@@ -521,7 +523,7 @@ export function Header({
                         <FileEdit className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Create torrent</TooltipContent>
+                    <TooltipContent>{t("header.createTorrent")}</TooltipContent>
                   </Tooltip>
                 )}
                 {/* Tasks button - only show on instance routes if torrent creation is supported */}
@@ -545,7 +547,7 @@ export function Header({
                         )}
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Torrent creation tasks</TooltipContent>
+                    <TooltipContent>{t("header.torrentCreationTasks")}</TooltipContent>
                   </Tooltip>
                 )}
                 {/* Instance settings button */}
@@ -557,12 +559,12 @@ export function Header({
                         size="icon"
                         className="hidden md:inline-flex"
                         onClick={() => setInstanceSettingsOpen(true)}
-                        aria-label="Instance settings"
+                        aria-label={t("header.instanceSettings")}
                       >
                         <Cog className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>Instance settings</TooltipContent>
+                    <TooltipContent>{t("header.instanceSettings")}</TooltipContent>
                   </Tooltip>
                 )}
               </>
@@ -600,7 +602,7 @@ export function Header({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none transition-opacity duration-300" />
               <Input
                 ref={searchInputRef}
-                placeholder={isGlobSearch ? "Glob pattern..." : `Search torrents... (${shortcutKey})`}
+                placeholder={isGlobSearch ? t("header.globPattern") : t("header.searchTorrents", { shortcutKey })}
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 onKeyDown={(e) => {
@@ -644,7 +646,7 @@ export function Header({
                         <X className="h-3.5 w-3.5 text-muted-foreground" />
                       </button>
                     </TooltipTrigger>
-                    <TooltipContent>Clear search</TooltipContent>
+                    <TooltipContent>{t("header.clearSearch")}</TooltipContent>
                   </Tooltip>
                 )}
                 {/* Info tooltip */}
@@ -660,14 +662,14 @@ export function Header({
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <div className="space-y-2 text-xs">
-                      <p className="font-semibold">Smart Search Features:</p>
+                      <p className="font-semibold">{t("header.smartSearchTitle")}</p>
                       <ul className="space-y-1 ml-2">
-                        <li>• <strong>Glob patterns:</strong> *.mkv, *1080p*, *S??E??*</li>
-                        <li>• <strong>Fuzzy matching:</strong> "breaking bad" finds "Breaking.Bad"</li>
-                        <li>• Handles dots, underscores, and brackets</li>
-                        <li>• Searches name, category, and tags</li>
-                        <li>• Press Enter for instant search</li>
-                        <li>• Auto-searches after 500ms pause</li>
+                        <li>• <strong>{t("header.smartSearchGlob")}</strong> {t("header.smartSearchGlobExamples")}</li>
+                        <li>• <strong>{t("header.smartSearchFuzzy")}</strong> {t("header.smartSearchFuzzyExample")}</li>
+                        <li>• {t("header.smartSearchDots")}</li>
+                        <li>• {t("header.smartSearchFields")}</li>
+                        <li>• {t("header.smartSearchEnter")}</li>
+                        <li>• {t("header.smartSearchAuto")}</li>
                       </ul>
                     </div>
                   </TooltipContent>
@@ -707,8 +709,8 @@ export function Header({
                     >
                       <Download className="mr-2 h-4 w-4" />
                       <div className="flex flex-col">
-                        <span className="font-medium">Update Available</span>
-                        <span className="text-[10px] opacity-80">Version {updateInfo.tag_name}</span>
+                        <span className="font-medium">{t("header.updateAvailable")}</span>
+                        <span className="text-[10px] opacity-80">{t("header.updateVersion", { version: updateInfo.tag_name })}</span>
                       </div>
                     </a>
                   </DropdownMenuItem>
@@ -721,7 +723,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Home className="mr-2 h-4 w-4" />
-                  Dashboard
+                  {t("nav.dashboard")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -730,7 +732,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Search className="mr-2 h-4 w-4" />
-                  Search
+                  {t("nav.search")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -739,7 +741,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <GitBranch className="mr-2 h-4 w-4" />
-                  Cross-Seed
+                  {t("nav.crossSeed")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -748,7 +750,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Zap className="mr-2 h-4 w-4" />
-                  Automations
+                  {t("nav.automations")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -757,7 +759,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Archive className="mr-2 h-4 w-4" />
-                  Backups
+                  {t("nav.backups")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -766,7 +768,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Rss className="mr-2 h-4 w-4" />
-                  RSS
+                  {t("nav.rss")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -776,7 +778,7 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Server className="mr-2 h-4 w-4" />
-                  Instances
+                  {t("nav.instances")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -786,14 +788,14 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <FileText className="mr-2 h-4 w-4" />
-                  Logs
+                  {t("nav.logs")}
                 </Link>
               </DropdownMenuItem>
               {activeInstances.length > 0 && <DropdownMenuSeparator />}
               {activeInstances.length > 0 ? (
                 <>
                   <DropdownMenuLabel className="text-xs text-muted-foreground uppercase tracking-wide">
-                    Instances
+                    {t("nav.instances")}
                   </DropdownMenuLabel>
                   {hasMultipleActiveInstances && (
                     <UnifiedScopeDropdownSection
@@ -832,7 +834,7 @@ export function Header({
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent side="left" className="text-xs">
-                                  RSS {csState?.rssRunning ? "running" : "enabled"}
+                                  {csState?.rssRunning ? t("header.rssRunning") : t("header.rssEnabled")}
                                 </TooltipContent>
                               </Tooltip>
                             )}
@@ -844,7 +846,7 @@ export function Header({
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent side="left" className="text-xs">
-                                  Scan running
+                                  {t("header.scanRunning")}
                                 </TooltipContent>
                               </Tooltip>
                             )}
@@ -862,7 +864,7 @@ export function Header({
                 </>
               ) : (
                 <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-                  No active instances
+                  {t("header.noActiveInstances")}
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
@@ -872,13 +874,13 @@ export function Header({
                   className="flex cursor-pointer"
                 >
                   <Settings className="mr-2 h-4 w-4" />
-                  Settings
+                  {t("nav.settings")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => logout()}>
                 <LogOut className="mr-2 h-4 w-4" />
-                Logout
+                {t("sidebar.logout")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -926,7 +928,7 @@ export function Header({
           <Dialog open={true} onOpenChange={(open) => { if (!open) setUnifiedTasksInstanceId(null) }}>
             <DialogContent className="w-full sm:max-w-screen-sm md:max-w-screen-md lg:max-w-screen-xl xl:max-w-screen-xl max-h-[85vh] overflow-hidden flex flex-col">
               <DialogHeader>
-                <DialogTitle>Torrent Creation Tasks{inst ? ` — ${inst.name}` : ""}</DialogTitle>
+                <DialogTitle>{t("header.torrentCreationTasksTitle")}{inst ? ` — ${inst.name}` : ""}</DialogTitle>
               </DialogHeader>
               <div className="flex-1 overflow-auto">
                 <TorrentCreationTasks instanceId={unifiedTasksInstanceId} />

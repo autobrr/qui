@@ -47,6 +47,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Link, Loader2, Plus, Upload, X } from "lucide-react"
 import parseTorrent from "parse-torrent"
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useDropzone } from "react-dropzone"
 import { toast } from "sonner"
 
@@ -162,6 +163,7 @@ function createFileKey(file: File): string {
 }
 
 export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChange, dropPayload, onDropPayloadConsumed, torrents = [] }: AddTorrentDialogProps) {
+  const { t } = useTranslation("torrents")
   const [internalOpen, setInternalOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<TabValue>("file")
   const [selectedTags, setSelectedTags] = useState<string[]>([])
@@ -805,7 +807,7 @@ export function AddTorrentDialog({ instanceId, open: controlledOpen, onOpenChang
       )}
       <DialogContent className="flex flex-col w-full max-w-[95vw] sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] sm:max-h-[85vh] p-0 !translate-y-0 !top-[5vh] sm:!top-[7.5vh]">
         <DialogHeader className="px-6 pt-6 pb-4 flex-shrink-0">
-          <DialogTitle>Add New Torrent</DialogTitle>
+          <DialogTitle>{t("addTorrentDialog.title")}</DialogTitle>
           <DialogDescription>
             Add a torrent file or magnet link to start downloading
           </DialogDescription>

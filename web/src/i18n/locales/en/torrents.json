@@ -159,11 +159,12 @@
       "confirm": "Set Location"
     },
     "setCategory": {
+      "title": "Set Category for {{count}} torrent(s)",
       "setCategory": "Set Category"
     },
     "locationWarning": {
       "title": "Set Location for {{count}} torrent(s)?",
-      "description": "Some selected torrents have Auto TMM enabled. Setting a new location will disable Auto TMM for those torrents."
+      "description": "Changing the save location will move files on disk. This may affect cross-seeded torrents sharing the same data."
     },
     "tmm": {
       "enableTitle": "Enable TMM for {{count}} torrent(s)?",
@@ -666,19 +667,19 @@
     "tier": "Tier",
     "seeds": "Seeds",
     "leeches": "Leeches",
-    "downloaded": "Downloaded",
+    "downloaded": "DLs",
     "message": "Message"
   },
   "trackerContextMenu": {
     "editTrackerUrl": "Edit Tracker URL"
   },
   "peersTable": {
-    "address": "Address",
+    "address": "IP:Port",
     "client": "Client",
     "flags": "Flags",
     "progress": "Progress",
-    "downSpeed": "Down Speed",
-    "upSpeed": "Up Speed",
+    "downSpeed": "DL Speed",
+    "upSpeed": "UL Speed",
     "downloaded": "Downloaded",
     "uploaded": "Uploaded",
     "relevance": "Relevance"
@@ -742,7 +743,7 @@
     }
   },
   "addTorrentDialog": {
-    "title": "Add Torrent",
+    "title": "Add New Torrent",
     "file": "File",
     "url": "URL"
   },
