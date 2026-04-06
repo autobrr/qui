@@ -436,7 +436,7 @@ export function CompletionOverview() {
                                 options={categoryOptions}
                                 selected={form.excludeCategories}
                                 onChange={(values) => handleFormChange(instance.id, "excludeCategories", values, form)}
-                                placeholder="None"
+                                placeholder={t("preferences.completionOverview.none")}
                                 creatable
                                 disabled={isSaving}
                               />
@@ -448,7 +448,7 @@ export function CompletionOverview() {
                                 options={tagOptions}
                                 selected={form.excludeTags}
                                 onChange={(values) => handleFormChange(instance.id, "excludeTags", values, form)}
-                                placeholder="None"
+                                placeholder={t("preferences.completionOverview.none")}
                                 creatable
                                 disabled={isSaving}
                               />

@@ -135,6 +135,7 @@
     "freeNeutral": "Neutral",
     "noInfoUrlAvailable": "No info URL available"
   },
+  "historyMeta": "{{type}} · {{count}} results · {{timestamp}}",
   "table": {
     "title": "Title",
     "indexer": "Indexer",

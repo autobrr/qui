@@ -495,7 +495,7 @@ function LogEntryDialog({
       <DialogContent className="!max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            Log Entry
+            {t("logs.entryDialog.title")}
             {entry && (
               <span className={`text-xs font-medium uppercase px-1.5 py-0.5 rounded ${LEVEL_BADGE_COLORS[entry.level]}`}>
                 {entry.level}
@@ -503,7 +503,7 @@ function LogEntryDialog({
             )}
           </DialogTitle>
           <DialogDescription>
-            {entry?.time ? new Date(entry.time).toLocaleString() : "Raw log line"}
+            {entry?.time ? new Date(entry.time).toLocaleString() : t("logs.entryDialog.rawLine")}
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[400px] overflow-auto rounded-md border bg-muted/30 p-4">
@@ -512,14 +512,14 @@ function LogEntryDialog({
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" size="sm" onClick={handleCopyRaw}>
             <Copy className="mr-2 h-4 w-4" />
-            Copy Raw
+            {t("logs.entryDialog.copyRaw")}
           </Button>
           <Button variant="outline" size="sm" onClick={handleCopyJson}>
             <Copy className="mr-2 h-4 w-4" />
-            Copy JSON
+            {t("logs.entryDialog.copyJson")}
           </Button>
           <Button size="sm" onClick={() => onOpenChange(false)}>
-            Close
+            {t("logs.entryDialog.close")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -774,20 +774,20 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 gap-1">
-                  <span className="text-xs">{logExclusions.length} Muted</span>
+                  <span className="text-xs">{t("logs.viewer.mutedCount", { count: logExclusions.length })}</span>
                   <ChevronDown className="h-3.5 w-3.5 opacity-50" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-72 p-2" align="start">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs font-medium">Muted Messages</span>
+                  <span className="text-xs font-medium">{t("logs.viewer.mutedMessages")}</span>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-6 px-2 text-xs"
                     onClick={() => setLogExclusions([])}
                   >
-                    Clear all
+                    {t("logs.viewer.clearAll")}
                   </Button>
                 </div>
                 <div className="space-y-1 max-h-48 overflow-auto">
@@ -813,7 +813,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
             </Popover>
           )}
           <Button variant="outline" size="sm" onClick={handleClear}>
-            Clear
+            {t("logs.viewer.clear")}
           </Button>
           <div className="flex items-center gap-2">
             <Switch
@@ -822,7 +822,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
               onCheckedChange={setAutoScroll}
             />
             <Label htmlFor="autoscroll" className="text-sm">
-              Auto-scroll
+              {t("logs.viewer.autoScroll")}
             </Label>
           </div>
         </div>
@@ -845,7 +845,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
             ))
           ) : (
             <span className="text-muted-foreground">
-              {lines.length > 0? "No entries match the current filter": "Waiting for log entries..."}
+              {lines.length > 0 ? t("logs.viewer.noEntriesMatch") : t("logs.viewer.waiting")}
             </span>
           )}
         </div>
@@ -854,11 +854,15 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
       <div className="flex items-center justify-between gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-2">
           <span>
-            Showing {filteredEntries.length} of {lines.length} entries
-            {autoScroll ? ` (${LOG_SOFT_CAP.toLocaleString()} max)` : ` (${LOG_HARD_CAP.toLocaleString()} max while paused)`}
+            {t("logs.viewer.showing", {
+              shown: filteredEntries.length,
+              total: lines.length,
+              max: autoScroll ? LOG_SOFT_CAP.toLocaleString() : LOG_HARD_CAP.toLocaleString(),
+              mode: autoScroll ? t("logs.viewer.maxLive") : t("logs.viewer.maxPaused"),
+            })}
           </span>
           {droppedWhilePaused && (
-            <span className="text-yellow-500">• oldest entries dropped</span>
+            <span className="text-yellow-500">{t("logs.viewer.oldestEntriesDropped")}</span>
           )}
         </span>
         {configPath && (

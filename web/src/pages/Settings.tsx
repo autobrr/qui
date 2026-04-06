@@ -420,13 +420,13 @@ function ApiKeysManager() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{key.name}</span>
                     <Badge variant="outline" className="text-xs">
-                      ID: {key.id}
+                      {t("clientApiKeys.idLabel", { id: key.id })}
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Created: {formatDate(new Date(key.createdAt))}
+                    {t("clientApiKeys.labels.created")} {formatDate(new Date(key.createdAt))}
                     {key.lastUsedAt && (
-                      <> • Last used: {formatDate(new Date(key.lastUsedAt))}</>
+                      <> • {t("clientApiKeys.labels.lastUsed")} {formatDate(new Date(key.lastUsedAt))}</>
                     )}
                   </p>
                 </div>

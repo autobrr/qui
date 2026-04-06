@@ -415,7 +415,7 @@ export function OrphanScanSettingsForm({
             id="ignore-paths"
             value={ignorePathsText}
             onChange={(e) => setIgnorePathsText(e.target.value)}
-            placeholder="/downloads/preserve&#10;/downloads/manual&#10;/data/keep"
+            placeholder={t("preferences.orphanScanSettings.ignorePathsPlaceholder")}
             rows={4}
             className="font-mono text-sm"
           />

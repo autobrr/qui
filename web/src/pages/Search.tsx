@@ -1080,7 +1080,11 @@ export function Search() {
                                 {search.query}
                               </div>
                               <div className="text-xs text-muted-foreground">
-                                {suggestionTypeLabel} · {search.totalResults} results · {formatCacheTimestamp(search.lastUsedAt ?? search.cachedAt)}
+                                {t("historyMeta", {
+                                  type: suggestionTypeLabel,
+                                  count: search.totalResults,
+                                  timestamp: formatCacheTimestamp(search.lastUsedAt ?? search.cachedAt),
+                                })}
                               </div>
                             </button>
                           )

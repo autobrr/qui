@@ -143,13 +143,13 @@ export function ArrInstancesManager() {
               {instance.last_test_status === "ok" && (
                 <Badge variant="outline" className="text-green-500 border-green-500/50">
                   <CheckCircle className="h-3 w-3 mr-1" />
-                  Connected
+                  {t("arrInstances.badges.connected")}
                 </Badge>
               )}
               {instance.last_test_status === "error" && (
                 <Badge variant="outline" className="text-red-500 border-red-500/50">
                   <XCircle className="h-3 w-3 mr-1" />
-                  Failed
+                  {t("arrInstances.badges.failed")}
                 </Badge>
               )}
             </div>
@@ -211,7 +211,7 @@ export function ArrInstancesManager() {
           <DialogTrigger asChild>
             <Button size="sm" className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
-              Add ARR Instance
+              {t("arrInstances.addButton")}
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg max-w-full max-h-[90dvh] flex flex-col">

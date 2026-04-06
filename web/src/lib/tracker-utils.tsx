@@ -4,6 +4,7 @@
  */
 
 import { Badge } from "@/components/ui/badge"
+import i18n from "@/i18n"
 
 /**
  * Check if a tracker URL is a valid HTTP/HTTPS URL.
@@ -29,16 +30,16 @@ export function getTrackerStatusBadge(status: number, compact = false) {
 
   switch (status) {
     case 0:
-      return <Badge variant="secondary" className={compactClass}>Disabled</Badge>
+      return <Badge variant="secondary" className={compactClass}>{i18n.t("status.disabled", { ns: "common" })}</Badge>
     case 1:
-      return <Badge variant="secondary" className={compactClass}>Not contacted</Badge>
+      return <Badge variant="secondary" className={compactClass}>{i18n.t("status.notContacted", { ns: "common" })}</Badge>
     case 2:
-      return <Badge variant="default" className={workingClass}>Working</Badge>
+      return <Badge variant="default" className={workingClass}>{i18n.t("status.working", { ns: "common" })}</Badge>
     case 3:
-      return <Badge variant="default" className={compactClass}>Updating</Badge>
+      return <Badge variant="default" className={compactClass}>{i18n.t("status.updating", { ns: "common" })}</Badge>
     case 4:
-      return <Badge variant="destructive" className={compactClass}>Error</Badge>
+      return <Badge variant="destructive" className={compactClass}>{i18n.t("status.error", { ns: "common" })}</Badge>
     default:
-      return <Badge variant="outline" className={compactClass}>Unknown</Badge>
+      return <Badge variant="outline" className={compactClass}>{i18n.t("status.unknown", { ns: "common" })}</Badge>
   }
 }

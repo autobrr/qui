@@ -122,6 +122,7 @@ function getRunFilesLabel(run: DirScanRun): string {
 }
 
 function RunFilesBadge({ run }: { run: DirScanRun }) {
+  const { t } = useTranslation("crossseed")
   const discovered = getRunDiscoveredFiles(run)
   const showDetails = discovered > run.filesFound
 
@@ -135,7 +136,7 @@ function RunFilesBadge({ run }: { run: DirScanRun }) {
         {getRunFilesLabel(run)}
       </TooltipTrigger>
       <TooltipContent>
-        {discovered} discovered, {run.filesSkipped} skipped
+        {t("dirScan.discovered", { count: discovered, skipped: run.filesSkipped })}
       </TooltipContent>
     </Tooltip>
   )
@@ -208,7 +209,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
                 {t("dirScan.title")}
               </CardTitle>
               <CardDescription>
-                Scan local directories for completed downloads and automatically cross-seed them.
+                {t("dirScan.description")}
               </CardDescription>
             </div>
             <div className="flex items-center gap-4">
@@ -218,7 +219,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
                 onClick={() => setShowSettingsDialog(true)}
               >
                 <Settings2 className="size-4 mr-2" />
-                Settings
+                {t("dirScan.settings")}
               </Button>
               <Label htmlFor="dir-scan-enabled" className="flex items-center gap-2">
                 <Switch
@@ -240,8 +241,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
           <CardContent className="flex items-center gap-3 py-4">
             <AlertTriangle className="size-5 text-yellow-500" />
             <p className="text-sm text-muted-foreground">
-              No qBittorrent instances have local filesystem access enabled. Enable it in instance
-              settings to use the Directory Scanner.
+              {t("dirScan.noLocalAccessWarning")}
             </p>
           </CardContent>
         </Card>
@@ -253,7 +253,7 @@ export function DirScanTab({ instances }: DirScanTabProps) {
           <div>
             <CardTitle>{t("dirScan.scanDirectories")}</CardTitle>
             <CardDescription>
-              Configure directories to scan for cross-seedable content.
+              {t("dirScan.scanDirectoriesDescription")}
             </CardDescription>
           </div>
           <Button
@@ -475,8 +475,8 @@ function DirectoryStatusBadge({ run }: { run: DirScanRun }) {
           <span className="text-muted-foreground">(</span>
           <RunFilesBadge run={run} />
           <span className="text-muted-foreground">
-            {run.filesSkipped > 0 ? `, ${run.filesSkipped} skipped` : ""}
-            , {run.matchesFound} matches, {run.torrentsAdded} added)
+            {run.filesSkipped > 0 ? `, ${t("dirScan.skipped", { count: run.filesSkipped })}` : ""}
+            , {t("dirScan.matches", { count: run.matchesFound })}, {t("dirScan.added", { count: run.torrentsAdded })})
           </span>
         </span>
       )}
@@ -591,7 +591,7 @@ function RunRow({
               </div>
             ) : injections.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-2">
-                No torrents were added or failed in this run.
+                {t("dirScan.noTorrentsAddedOrFailed")}
               </p>
             ) : (
               <div className="space-y-2">
@@ -761,7 +761,7 @@ function DirectoryDetails({ directoryId, formatDateTime, formatRelativeTime }: D
               disabled={resetFiles.isPending}
             >
               {resetFiles.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}
-              Reset
+              {t("dirScan.resetFilesButton")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -913,7 +913,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
 
         <div className="space-y-4 flex-1 overflow-y-auto min-h-0">
           <div className="space-y-2">
-            <Label htmlFor="match-mode">Match Mode</Label>
+            <Label htmlFor="match-mode">{t("dirScan.settingsDialog.matchModeLabel")}</Label>
             <Select
               value={form.matchMode}
               onValueChange={(value: DirScanMatchMode) =>
@@ -924,17 +924,17 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="strict">Strict (name + size)</SelectItem>
-                <SelectItem value="flexible">Flexible (size only)</SelectItem>
+                <SelectItem value="strict">{t("dirScan.settingsDialog.matchModeStrict")}</SelectItem>
+                <SelectItem value="flexible">{t("dirScan.settingsDialog.matchModeFlexible")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Strict mode matches files by name and size. Flexible mode matches by size only.
+              {t("dirScan.settingsDialog.matchModeHelp")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="size-tolerance">Size Tolerance (%)</Label>
+            <Label htmlFor="size-tolerance">{t("dirScan.settingsDialog.sizeToleranceLabel")}</Label>
             <Input
               id="size-tolerance"
               type="number"
@@ -950,12 +950,12 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
               }
             />
             <p className="text-xs text-muted-foreground">
-              Allows small size differences when comparing files (useful for minor repacks). Keep low for best accuracy.
+              {t("dirScan.settingsDialog.sizeToleranceHelp")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="min-piece-ratio">Minimum Piece Ratio (%)</Label>
+            <Label htmlFor="min-piece-ratio">{t("dirScan.settingsDialog.minPieceRatioLabel")}</Label>
             <Input
               id="min-piece-ratio"
               type="number"
@@ -970,12 +970,12 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
               }
             />
             <p className="text-xs text-muted-foreground">
-              Only used for partial matches. Requires at least this % of the torrent’s data to already be on disk.
+              {t("dirScan.settingsDialog.minPieceRatioHelp")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="max-searchees-per-run">Max searchees per run</Label>
+            <Label htmlFor="max-searchees-per-run">{t("dirScan.settingsDialog.maxSearcheesPerRunLabel")}</Label>
             <Input
               id="max-searchees-per-run"
               type="number"
@@ -993,7 +993,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
               }
             />
             <p className="text-xs text-muted-foreground">
-              0 = unlimited. Useful when you want large directories to finish over multiple runs: each run rechecks the directory, skips finished items, and retries unfinished ones.
+              {t("dirScan.settingsDialog.maxSearcheesPerRunHelp")}
             </p>
           </div>
 
@@ -1009,7 +1009,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                   }))
                 }}
               />
-              <Label htmlFor="max-searchee-age-enabled">Only process items changed within the last</Label>
+              <Label htmlFor="max-searchee-age-enabled">{t("dirScan.settingsDialog.maxAgeEnabled")}</Label>
             </div>
 
             {ageFilterEnabled && (
@@ -1029,7 +1029,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                     }
                     className="w-28"
                   />
-                  <span className="text-sm text-muted-foreground">days</span>
+                  <span className="text-sm text-muted-foreground">{t("dirScan.settingsDialog.days")}</span>
                 </div>
 
                 <div className="flex flex-wrap gap-2">
@@ -1049,13 +1049,13 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                 </div>
 
                 <p className="text-xs text-muted-foreground">
-                  Uses video/audio file modified time (mtime). Fresh subtitles or extras do not keep old items in scope.
+                  {t("dirScan.settingsDialog.maxAgeHelp")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Webhook-triggered scans ignore this cutoff and trust the imported path instead.
+                  {t("dirScan.settingsDialog.maxAgeWebhookHelp")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Current cutoff: {ageFilterCutoffPreview}
+                  {t("dirScan.settingsDialog.currentCutoff", { cutoff: ageFilterCutoffPreview })}
                 </p>
               </>
             )}
@@ -1071,19 +1071,19 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                 }
               />
               <Label htmlFor="allow-partial" className="flex items-center gap-1">
-                Allow partial matches
+                {t("dirScan.settingsDialog.allowPartial")}
                 <Tooltip>
                   <TooltipTrigger>
                     <Info className="size-3.5 text-muted-foreground" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
-                    Matches torrents even when not all files are found on disk. Covers season packs, extras, and partial releases.
+                    {t("dirScan.settingsDialog.allowPartialHelp")}
                   </TooltipContent>
                 </Tooltip>
               </Label>
             </div>
             <p className="text-xs text-muted-foreground">
-              Matches torrents even when not all files are found on disk. Covers season packs, extras, and partial releases.
+              {t("dirScan.settingsDialog.allowPartialHelp")}
             </p>
           </div>
 
@@ -1098,19 +1098,19 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                   }
                 />
                 <Label htmlFor="download-missing-files" className="flex items-center gap-1">
-                  Download missing files
+                  {t("dirScan.settingsDialog.downloadMissingFiles")}
                   <Tooltip>
                     <TooltipTrigger>
                       <Info className="size-3.5 text-muted-foreground" />
                     </TooltipTrigger>
                     <TooltipContent className="max-w-xs">
-                      Downloads files not found on disk for partial matches. Needed for season packs in hardlink/reflink mode.
+                      {t("dirScan.settingsDialog.downloadMissingFilesHelp")}
                     </TooltipContent>
                   </Tooltip>
                 </Label>
               </div>
               <p className="text-xs text-muted-foreground">
-                Downloads files not found on disk for partial matches. Needed for season packs in hardlink/reflink mode.
+                {t("dirScan.settingsDialog.downloadMissingFilesHelp")}
               </p>
             </div>
           )}
@@ -1125,19 +1125,19 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                 }
               />
               <Label htmlFor="skip-piece-boundary" className="flex items-center gap-1">
-                Skip piece boundary safety check
+                {t("dirScan.settingsDialog.skipPieceBoundarySafetyCheck")}
                 <Tooltip>
                   <TooltipTrigger>
                     <Info className="size-3.5 text-muted-foreground" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
-                    When disabled, qui will block partial matches where downloading missing files could overlap pieces that include your already-present content.
+                    {t("dirScan.settingsDialog.skipPieceBoundarySafetyCheckHelp")}
                   </TooltipContent>
                 </Tooltip>
               </Label>
             </div>
             <p className="text-xs text-muted-foreground">
-              Only relevant for partial matches. Disable (recommended) for extra safety.
+              {t("dirScan.settingsDialog.skipPieceBoundarySafetyCheckDescription")}
             </p>
           </div>
 
@@ -1150,15 +1150,15 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
                   setForm((prev) => ({ ...prev, startPaused: checked }))
                 }
               />
-              <Label htmlFor="start-paused">Start torrents paused</Label>
+              <Label htmlFor="start-paused">{t("dirScan.settingsDialog.startPaused")}</Label>
             </div>
             <p className="text-xs text-muted-foreground">
-              Adds Dir Scan matches in a paused state (useful if you want to review before seeding).
+              {t("dirScan.settingsDialog.startPausedHelp")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label>Default Category</Label>
+            <Label>{t("dirScan.settingsDialog.defaultCategory")}</Label>
             <MultiSelect
               options={categorySelectOptions}
               selected={form.category ? [form.category] : []}
@@ -1170,12 +1170,12 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
               disabled={updateSettings.isPending}
             />
             <p className="text-xs text-muted-foreground">
-              Category for injected torrents when the scan directory doesn’t override it.
+              {t("dirScan.settingsDialog.defaultCategoryHelp")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label>Tags</Label>
+            <Label>{t("dirScan.settingsDialog.tags")}</Label>
             <MultiSelect
               options={tagSelectOptions}
               selected={form.tags}
@@ -1191,11 +1191,11 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
 
         <DialogFooter className="flex-shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("dirScan.settingsDialog.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={updateSettings.isPending}>
             {updateSettings.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}
-            Save
+            {t("dirScan.settingsDialog.save")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1324,16 +1324,16 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
         <DialogHeader className="flex-shrink-0">
           <DialogTitle>{isEditing ? t("dirScan.directoryDialog.editTitle") : t("dirScan.directoryDialog.addTitle")}</DialogTitle>
           <DialogDescription>
-            {isEditing ? "Update the directory configuration." : "Add a new directory to scan for cross-seedable content."}
+            {isEditing ? t("dirScan.directoryDialog.editDescription") : t("dirScan.directoryDialog.addDescription")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 flex-1 overflow-y-auto min-h-0">
           <div className="space-y-2">
-            <Label htmlFor="dir-path">Directory Path</Label>
+            <Label htmlFor="dir-path">{t("dirScan.directoryDialog.pathLabel")}</Label>
             <Input
               id="dir-path"
-              placeholder="/data/downloads/completed"
+              placeholder={t("dirScan.directoryDialog.pathPlaceholder")}
               value={form.path}
               onChange={(e) => setForm((prev) => ({ ...prev, path: e.target.value }))}
             />
@@ -1341,20 +1341,19 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
 
           <div className="space-y-2">
             <Label htmlFor="qbit-path-prefix" className="flex items-center gap-1">
-              qBittorrent Path Prefix
+              {t("dirScan.directoryDialog.qbitPathPrefixLabel")}
               <Tooltip>
                 <TooltipTrigger>
                   <Info className="size-3.5 text-muted-foreground" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
-                  Optional path mapping for container setups. If qui sees files at /data/downloads
-                  but qBittorrent sees them at /downloads, set this to /downloads.
+                  {t("dirScan.directoryDialog.qbitPathPrefixHelp")}
                 </TooltipContent>
               </Tooltip>
             </Label>
             <Input
               id="qbit-path-prefix"
-              placeholder="Optional: /downloads"
+              placeholder={t("dirScan.directoryDialog.qbitPathPrefixPlaceholder")}
               value={form.qbitPathPrefix}
               onChange={(e) =>
                 setForm((prev) => ({ ...prev, qbitPathPrefix: e.target.value }))
@@ -1363,7 +1362,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="target-instance">Target qBittorrent Instance</Label>
+            <Label htmlFor="target-instance">{t("dirScan.directoryDialog.instanceLabel")}</Label>
             <Select
               value={String(form.targetInstanceId)}
               onValueChange={(value) =>
@@ -1421,7 +1420,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
             />
             {targetInstanceMetadataError && (
               <p className="text-xs text-muted-foreground">
-                Could not load tags from qBittorrent. You can still type custom values.
+                {t("dirScan.directoryDialog.tagsLoadError")}
               </p>
             )}
             <p className="text-xs text-muted-foreground">
@@ -1437,7 +1436,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="scan-interval">Scan Interval (minutes)</Label>
+            <Label htmlFor="scan-interval">{t("dirScan.directoryDialog.intervalLabel")}</Label>
             <Input
               id="scan-interval"
               type="number"
@@ -1452,7 +1451,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
               }}
             />
             <p className="text-xs text-muted-foreground">
-              Minimum: 60 minutes (1 hour). Default: 1440 minutes (24 hours).
+              {t("dirScan.directoryDialog.intervalHelp")}
             </p>
           </div>
 
@@ -1464,7 +1463,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
                 setForm((prev) => ({ ...prev, enabled: checked }))
               }
             />
-            <Label htmlFor="dir-enabled">Enabled</Label>
+            <Label htmlFor="dir-enabled">{t("dirScan.directoryDialog.enabledLabel")}</Label>
           </div>
 
           {/* Regular mode warning */}
@@ -1474,7 +1473,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
                 <AlertTriangle className="size-5 text-yellow-500 shrink-0 mt-0.5" />
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-foreground">
-                    Regular mode is enabled for this instance
+                    {t("dirScan.directoryDialog.regularModeTitle")}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     <Trans
@@ -1484,7 +1483,11 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
                     />
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    Use <span className="font-medium">hardlink</span> or <span className="font-medium">reflink</span> mode in instance settings to avoid this risk.
+                    <Trans
+                      ns="crossseed"
+                      i18nKey="dirScan.directoryDialog.regularModeHelp"
+                      components={{ hardlink: <span className="font-medium" />, reflink: <span className="font-medium" /> }}
+                    />
                   </p>
                 </div>
               </div>
@@ -1498,7 +1501,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
                   htmlFor="regular-mode-acknowledged"
                   className="text-sm text-muted-foreground cursor-pointer leading-tight"
                 >
-                  I understand the risks of using regular mode with media directories
+                  {t("dirScan.directoryDialog.regularModeAcknowledge")}
                 </Label>
               </div>
             </div>
@@ -1507,14 +1510,14 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
 
         <DialogFooter className="flex-shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("dirScan.directoryDialog.cancel")}
           </Button>
           <Button
             onClick={handleSave}
             disabled={isPending || !form.path || !form.targetInstanceId || (isRegularMode && !regularModeAcknowledged)}
           >
             {isPending && <Loader2 className="size-4 mr-2 animate-spin" />}
-            {isEditing ? "Save" : "Create"}
+            {isEditing ? t("dirScan.directoryDialog.saveButton") : t("dirScan.directoryDialog.addButton")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1561,7 +1564,7 @@ function DeleteDirectoryDialog({ directoryId, onOpenChange }: DeleteDirectoryDia
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
             {deleteDirectory.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}
-            Delete
+            {t("dirScan.deleteDialog.delete")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

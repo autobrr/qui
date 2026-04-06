@@ -388,7 +388,7 @@ export function ClientApiKeysManager() {
                       <div className="flex flex-wrap items-center gap-2 text-sm">
                         <span className="font-medium text-base sm:text-lg">{key.clientName}</span>
                         <Badge variant="outline" className="text-xs">
-                          ID: {key.id}
+                          {t("clientApiKeys.idLabel", { id: key.id })}
                         </Badge>
                         {key.instance ? (
                           key.instance.name.length > 20 ? (

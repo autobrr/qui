@@ -196,7 +196,7 @@ export function WorkflowsPanel({ instanceId, variant = "card" }: WorkflowsPanelP
                   variant="ghost"
                   size="icon"
                   onClick={() => openForEdit(rule)}
-                  aria-label="Edit"
+                  aria-label={t("preferences.workflows.edit")}
                   className="h-8 w-8 sm:h-9 sm:w-9"
                 >
                   <Pencil className="h-4 w-4" />
@@ -375,10 +375,10 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipContent>
             <div className="space-y-1">
               {conditions.speedLimits.uploadKiB !== undefined && (
-                <p>Upload: {formatSpeedLimit(conditions.speedLimits.uploadKiB)}</p>
+                <p>{t("preferences.workflows.upload")}: {formatSpeedLimit(conditions.speedLimits.uploadKiB)}</p>
               )}
               {conditions.speedLimits.downloadKiB !== undefined && (
-                <p>Download: {formatSpeedLimit(conditions.speedLimits.downloadKiB)}</p>
+                <p>{t("preferences.workflows.download")}: {formatSpeedLimit(conditions.speedLimits.downloadKiB)}</p>
               )}
             </div>
           </TooltipContent>
@@ -397,10 +397,10 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipContent>
             <div className="space-y-1">
               {conditions.shareLimits.ratioLimit !== undefined && (
-                <p>Ratio: {formatShareLimit(conditions.shareLimits.ratioLimit, true)}</p>
+                <p>{t("preferences.workflows.ratio")}: {formatShareLimit(conditions.shareLimits.ratioLimit, true)}</p>
               )}
               {conditions.shareLimits.seedingTimeMinutes !== undefined && (
-                <p>Seed time: {formatShareLimit(conditions.shareLimits.seedingTimeMinutes, false)}{conditions.shareLimits.seedingTimeMinutes >= 0 ? "m" : ""}</p>
+                <p>{t("preferences.workflows.seedTime")}: {formatShareLimit(conditions.shareLimits.seedingTimeMinutes, false)}{conditions.shareLimits.seedingTimeMinutes >= 0 ? t("preferences.workflows.minuteSuffix") : ""}</p>
               )}
             </div>
           </TooltipContent>

@@ -20,6 +20,7 @@ import {
   type ReactNode,
   type SetStateAction
 } from "react"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -406,6 +407,8 @@ const CollapseButton = forwardRef<
     }
   }, [elements, expandAll, expandAllNodes])
 
+  const { t } = useTranslation("torrents")
+
   return (
     <Button
       variant="ghost"
@@ -421,7 +424,7 @@ const CollapseButton = forwardRef<
       {...props}
     >
       {children}
-      <span className="sr-only">Toggle</span>
+      <span className="sr-only">{t("fileTree.toggle")}</span>
     </Button>
   )
 })

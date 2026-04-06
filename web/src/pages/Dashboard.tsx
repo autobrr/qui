@@ -2153,7 +2153,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 id="customize-name"
                 value={customizeDisplayName}
                 onChange={(e) => setCustomizeDisplayName(e.target.value)}
-                placeholder="e.g., TorrentLeech"
+                placeholder={t("trackerBreakdown.customizeDialog.displayNamePlaceholder")}
               />
             </div>
             <div className="space-y-2 min-h-0 flex-1 flex flex-col overflow-hidden">

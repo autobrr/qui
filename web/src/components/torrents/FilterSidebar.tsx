@@ -157,23 +157,23 @@ const arraysEqual = (a?: string[], b?: string[]) => {
 
 
 // Define torrent states based on qBittorrent
-const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> = [
-  { value: "downloading", label: "Downloading", icon: Download },
-  { value: "uploading", label: "Seeding", icon: Upload },
-  { value: "completed", label: "Completed", icon: CheckCircle2 },
-  { value: "stopped", label: "Stopped", icon: StopCircle },
-  { value: "active", label: "Active", icon: PlayCircle },
-  { value: "inactive", label: "Inactive", icon: StopCircle },
-  { value: "running", label: "Running", icon: PlayCircle },
-  { value: "stalled", label: "Stalled", icon: AlertCircle },
-  { value: "stalled_uploading", label: "Stalled Up", icon: AlertCircle },
-  { value: "stalled_downloading", label: "Stalled Down", icon: AlertCircle },
-  { value: "errored", label: "Error", icon: XCircle },
-  { value: "checking", label: "Checking", icon: RotateCw },
-  { value: "moving", label: "Moving", icon: MoveRight },
-  { value: "unregistered", label: "Unregistered", icon: XCircle },
-  { value: "tracker_down", label: "Tracker Down", icon: AlertCircle },
-  { value: "cross-seeds", label: "Cross Seeds", icon: GitBranch },
+const TORRENT_STATES: Array<{ value: string; labelKey: string; icon: LucideIcon }> = [
+  { value: "downloading", labelKey: "filterSidebar.states.downloading", icon: Download },
+  { value: "uploading", labelKey: "filterSidebar.states.uploading", icon: Upload },
+  { value: "completed", labelKey: "filterSidebar.states.completed", icon: CheckCircle2 },
+  { value: "stopped", labelKey: "filterSidebar.states.stopped", icon: StopCircle },
+  { value: "active", labelKey: "filterSidebar.states.active", icon: PlayCircle },
+  { value: "inactive", labelKey: "filterSidebar.states.inactive", icon: StopCircle },
+  { value: "running", labelKey: "filterSidebar.states.running", icon: PlayCircle },
+  { value: "stalled", labelKey: "filterSidebar.states.stalled", icon: AlertCircle },
+  { value: "stalled_uploading", labelKey: "filterSidebar.states.stalledUp", icon: AlertCircle },
+  { value: "stalled_downloading", labelKey: "filterSidebar.states.stalledDown", icon: AlertCircle },
+  { value: "errored", labelKey: "filterSidebar.states.errored", icon: XCircle },
+  { value: "checking", labelKey: "filterSidebar.states.checking", icon: RotateCw },
+  { value: "moving", labelKey: "filterSidebar.states.moving", icon: MoveRight },
+  { value: "unregistered", labelKey: "filterSidebar.states.unregistered", icon: XCircle },
+  { value: "tracker_down", labelKey: "filterSidebar.states.trackerDown", icon: AlertCircle },
+  { value: "cross-seeds", labelKey: "filterSidebar.states.crossSeeds", icon: GitBranch },
 ]
 
 
@@ -394,11 +394,11 @@ const FilterSidebarComponent = ({
       }
     } catch (error) {
       console.error("Failed to fetch tracker URLs:", error)
-      toast.error("Failed to fetch tracker URLs")
+      toast.error(t("filterSidebar.toast.fetchTrackerUrlsFailed"))
     } finally {
       setLoadingTrackerURLs(false)
     }
-  }, [instanceId, supportsTrackerHealth])
+  }, [instanceId, supportsTrackerHealth, t])
 
   // Mutation for editing trackers
   const editTrackersMutation = useMutation({
@@ -424,12 +424,12 @@ const FilterSidebarComponent = ({
       })
     },
     onSuccess: () => {
-      toast.success("Updated tracker URL across all affected torrents")
+      toast.success(t("filterSidebar.toast.trackerUpdated"))
       setShowEditTrackerDialog(false)
       setTrackerFullURLs([])
     },
     onError: (error: Error) => {
-      toast.error("Failed to update tracker", {
+      toast.error(t("filterSidebar.toast.updateTrackerFailed"), {
         description: error.message,
       })
     },
@@ -441,7 +441,7 @@ const FilterSidebarComponent = ({
     if (httpUrls.length === 0) return
 
     if (!trackerToEdit) {
-      toast.error("No tracker selected for conversion")
+      toast.error(t("filterSidebar.toast.noTrackerSelected"))
       return
     }
 
@@ -520,16 +520,16 @@ const FilterSidebarComponent = ({
     setIsConvertingScheme(false)
 
     if (successCount > 0) {
-      toast.success(`Converted ${successCount} tracker URL${successCount > 1 ? "s" : ""} to HTTPS`)
+      toast.success(t("filterSidebar.toast.convertedTrackerUrls", { count: successCount }))
       // Refresh the tracker URLs to show updated state
       await fetchTrackerURLs(trackerToEdit)
     }
     if (failCount > 0) {
-      toast.error(`Failed to convert ${failCount} URL${failCount > 1 ? "s" : ""}`, {
+      toast.error(t("filterSidebar.toast.convertTrackerFailed", { count: failCount }), {
         description: firstError ?? undefined,
       })
     }
-  }, [trackerFullURLs, trackerToEdit, instanceId, fetchTrackerURLs])
+  }, [trackerFullURLs, trackerToEdit, instanceId, fetchTrackerURLs, t])
 
   // Debounce search terms for better performance
   const debouncedCategorySearch = useDebounce(categorySearch, 300)
@@ -1908,7 +1908,7 @@ const FilterSidebarComponent = ({
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-2">
                       <GitBranch className="h-4 w-4" />
-                      <span className="text-sm font-medium">Custom Filter</span>
+                      <span className="text-sm font-medium">{t("filterSidebar.customFilter")}</span>
                     </div>
                     <FilterBadge
                       count={1}
@@ -1921,7 +1921,7 @@ const FilterSidebarComponent = ({
                     {selectedFilters.expr}
                   </div>
                   <div className="text-xs text-muted-foreground mt-2">
-                    Active custom expression filter (e.g., cross-seed results)
+                    {t("filterSidebar.customFilterHelp")}
                   </div>
                 </AccordionContent>
               </AccordionItem>
@@ -1951,12 +1951,12 @@ const FilterSidebarComponent = ({
                       {showHiddenStatuses ? (
                         <>
                           <ListChevronsDownUp className="h-3.5 w-3.5" />
-                          <span>Hide empty</span>
+                          <span>{t("filterSidebar.hideEmpty")}</span>
                         </>
                       ) : (
                         <>
                           <ListChevronsUpDown className="h-3.5 w-3.5" />
-                          <span>Show empty</span>
+                          <span>{t("filterSidebar.showEmpty")}</span>
                         </>
                       )}
                     </button>
@@ -1964,7 +1964,7 @@ const FilterSidebarComponent = ({
 
                   {statusOptionsForDisplay.length === 0 && hiddenStatusCount > 0 && !showHiddenStatuses && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      All statuses are empty. Click above to show them.
+                      {t("filterSidebar.allStatusesEmpty")}
                     </div>
                   )}
 
@@ -1998,7 +1998,7 @@ const FilterSidebarComponent = ({
                           )}
                         >
                           <state.icon className="h-4 w-4 shrink-0" />
-                          <span className="truncate">{state.label}</span>
+                          <span className="truncate">{t(state.labelKey)}</span>
                         </span>
                         <span
                           className={cn(
@@ -2018,7 +2018,7 @@ const FilterSidebarComponent = ({
                             {statusItem}
                           </TooltipTrigger>
                           <TooltipContent side="right" className="max-w-[250px]">
-                            Cross-seed filter is active. Uncheck to clear the filter.
+                            {t("filterSidebar.crossSeedFilterActive")}
                           </TooltipContent>
                         </Tooltip>
                       )
@@ -2050,7 +2050,7 @@ const FilterSidebarComponent = ({
                     <button
                       className={cn("flex items-center gap-1.5 transition-colors", isReadOnly ? "cursor-not-allowed opacity-60" : "hover:text-foreground")}
                       disabled={isReadOnly}
-                      title={isReadOnly ? "Unavailable in unified view" : undefined}
+                      title={isReadOnly ? t("filterSidebar.unavailableUnifiedView") : undefined}
                       onClick={() => {
                         if (isReadOnly) {
                           return
@@ -2060,7 +2060,7 @@ const FilterSidebarComponent = ({
                       }}
                     >
                       <Plus className="h-3 w-3" />
-                      <span>Add category</span>
+                      <span>{t("filterSidebar.createCategory")}</span>
                     </button>
                     {hiddenCategoryCount > 0 && (
                       <>
@@ -2073,12 +2073,12 @@ const FilterSidebarComponent = ({
                           {showHiddenCategories ? (
                             <>
                               <ListChevronsDownUp className="h-3.5 w-3.5" />
-                              <span>Hide empty</span>
+                              <span>{t("filterSidebar.hideEmpty")}</span>
                             </>
                           ) : (
                             <>
                               <ListChevronsUpDown className="h-3.5 w-3.5" />
-                              <span>Show empty</span>
+                              <span>{t("filterSidebar.showEmpty")}</span>
                             </>
                           )}
                         </button>
@@ -2089,7 +2089,7 @@ const FilterSidebarComponent = ({
                   {/* Search input for categories */}
                   <div className={viewMode === "dense" ? "mb-1" : "mb-2"}>
                     <SearchInput
-                      placeholder="Search categories..."
+                      placeholder={t("filterSidebar.searchCategories")}
                       value={categorySearch}
                       onChange={(e) => setCategorySearch(e.target.value)}
                       onClear={() => setCategorySearch("")}
@@ -2120,7 +2120,7 @@ const FilterSidebarComponent = ({
                           uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                         )}
                       >
-                        Uncategorized
+                        {t("filterSidebar.uncategorized")}
                       </span>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -2145,28 +2145,30 @@ const FilterSidebarComponent = ({
                   {/* Loading message for categories */}
                   {!hasReceivedCategoriesData && !incognitoMode && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
-                      Loading categories...
+                      {t("filterSidebar.loadingCategories")}
                     </div>
                   )}
 
                   {/* No results message for categories */}
                   {hasReceivedCategoriesData && debouncedCategorySearch && filteredCategories.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      {!showHiddenCategories && hiddenCategorySearchMatches > 0? "All matching categories are empty. Click above to show them.": `No categories found matching "${debouncedCategorySearch}"`}
+                      {!showHiddenCategories && hiddenCategorySearchMatches > 0
+                        ? t("filterSidebar.allCategoriesEmpty")
+                        : t("filterSidebar.noCategoriesFound", { query: debouncedCategorySearch })}
                     </div>
                   )}
 
                   {/* Empty categories message */}
                   {hasReceivedCategoriesData && !debouncedCategorySearch && categoryEntries.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      No categories available
+                      {t("filterSidebar.noCategoriesAvailable")}
                     </div>
                   )}
 
                   {/* All categories hidden message */}
                   {hasReceivedCategoriesData && !debouncedCategorySearch && categoryEntries.length > 0 && filteredCategories.length === 0 && hiddenCategoryCount > 0 && !showHiddenCategories && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      All categories are empty. Click above to show them.
+                      {t("filterSidebar.allCategoriesEmpty")}
                     </div>
                   )}
 
@@ -2279,7 +2281,7 @@ const FilterSidebarComponent = ({
                                         onClick={() => handleCreateSubcategory(name)}
                                       >
                                         <FolderPlus className="mr-2 h-4 w-4" />
-                                        Create Subcategory
+                                        {t("filterSidebar.createSubcategory")}
                                       </ContextMenuItem>
                                       <ContextMenuSeparator />
                                     </>
@@ -2295,7 +2297,7 @@ const FilterSidebarComponent = ({
                                     }}
                                   >
                                     <Edit className="mr-2 h-4 w-4" />
-                                    Edit Category
+                                    {t("filterSidebar.editCategory")}
                                   </ContextMenuItem>
                                   <ContextMenuSeparator />
                                   <ContextMenuItem
@@ -2310,7 +2312,7 @@ const FilterSidebarComponent = ({
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
-                                    Delete Category
+                                    {t("filterSidebar.deleteCategory")}
                                   </ContextMenuItem>
                                   <ContextMenuItem
                                     onClick={handleRemoveEmptyCategories}
@@ -2318,7 +2320,7 @@ const FilterSidebarComponent = ({
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
-                                    Remove Empty Categories
+                                    {t("filterSidebar.removeEmptyCategories")}
                                   </ContextMenuItem>
                                 </ContextMenuContent>
                               </ContextMenu>
@@ -2391,7 +2393,7 @@ const FilterSidebarComponent = ({
                                   onClick={() => handleCreateSubcategory(name)}
                                 >
                                   <FolderPlus className="mr-2 h-4 w-4" />
-                                  Create Subcategory
+                                  {t("filterSidebar.createSubcategory")}
                                 </ContextMenuItem>
                                 <ContextMenuSeparator />
                               </>
@@ -2407,7 +2409,7 @@ const FilterSidebarComponent = ({
                               }}
                             >
                               <Edit className="mr-2 h-4 w-4" />
-                              Edit Category
+                              {t("filterSidebar.editCategory")}
                             </ContextMenuItem>
                             <ContextMenuSeparator />
                             <ContextMenuItem
@@ -2422,7 +2424,7 @@ const FilterSidebarComponent = ({
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Delete Category
+                              {t("filterSidebar.deleteCategory")}
                             </ContextMenuItem>
                             <ContextMenuItem
                               onClick={handleRemoveEmptyCategories}
@@ -2430,7 +2432,7 @@ const FilterSidebarComponent = ({
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Remove Empty Categories
+                              {t("filterSidebar.removeEmptyCategories")}
                             </ContextMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>
@@ -2461,7 +2463,7 @@ const FilterSidebarComponent = ({
                     <button
                       className={cn("flex items-center gap-1.5 transition-colors", isReadOnly ? "cursor-not-allowed opacity-60" : "hover:text-foreground")}
                       disabled={isReadOnly}
-                      title={isReadOnly ? "Unavailable in unified view" : undefined}
+                      title={isReadOnly ? t("filterSidebar.unavailableUnifiedView") : undefined}
                       onClick={() => {
                         if (isReadOnly) {
                           return
@@ -2470,7 +2472,7 @@ const FilterSidebarComponent = ({
                       }}
                     >
                       <Plus className="h-3 w-3" />
-                      <span>Add tag</span>
+                      <span>{t("filterSidebar.createTag")}</span>
                     </button>
                     {hiddenTagCount > 0 && (
                       <>
@@ -2483,12 +2485,12 @@ const FilterSidebarComponent = ({
                           {showHiddenTags ? (
                             <>
                               <ListChevronsDownUp className="h-3.5 w-3.5" />
-                              <span>Hide empty</span>
+                              <span>{t("filterSidebar.hideEmpty")}</span>
                             </>
                           ) : (
                             <>
                               <ListChevronsUpDown className="h-3.5 w-3.5" />
-                              <span>Show empty</span>
+                              <span>{t("filterSidebar.showEmpty")}</span>
                             </>
                           )}
                         </button>
@@ -2499,7 +2501,7 @@ const FilterSidebarComponent = ({
                   {/* Search input for tags */}
                   <div className={viewMode === "dense" ? "mb-1" : "mb-2"}>
                     <SearchInput
-                      placeholder="Search tags..."
+                      placeholder={t("filterSidebar.searchTags")}
                       value={tagSearch}
                       onChange={(e) => setTagSearch(e.target.value)}
                       onClear={() => setTagSearch("")}
@@ -2530,7 +2532,7 @@ const FilterSidebarComponent = ({
                           untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                         )}
                       >
-                        Untagged
+                        {t("filterSidebar.untagged")}
                       </span>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -2555,28 +2557,30 @@ const FilterSidebarComponent = ({
                   {/* Loading message for tags */}
                   {!hasReceivedTagsData && !incognitoMode && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
-                      Loading tags...
+                      {t("filterSidebar.loadingTags")}
                     </div>
                   )}
 
                   {/* No results message for tags */}
                   {hasReceivedTagsData && debouncedTagSearch && filteredTags.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      {!showHiddenTags && hiddenTagSearchMatches > 0? "All matching tags are empty. Click above to show them.": `No tags found matching "${debouncedTagSearch}"`}
+                      {!showHiddenTags && hiddenTagSearchMatches > 0
+                        ? t("filterSidebar.allTagsEmpty")
+                        : t("filterSidebar.noTagsFound", { query: debouncedTagSearch })}
                     </div>
                   )}
 
                   {/* Empty tags message */}
                   {hasReceivedTagsData && !debouncedTagSearch && tags.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      No tags available
+                      {t("filterSidebar.noTagsAvailable")}
                     </div>
                   )}
 
                   {/* All tags hidden message */}
                   {hasReceivedTagsData && !debouncedTagSearch && tags.length > 0 && filteredTags.length === 0 && hiddenTagCount > 0 && !showHiddenTags && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      All tags are empty. Click above to show them.
+                      {t("filterSidebar.allTagsEmpty")}
                     </div>
                   )}
 
@@ -2661,7 +2665,7 @@ const FilterSidebarComponent = ({
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
-                                    Delete Tag
+                                    {t("filterSidebar.deleteTag")}
                                   </ContextMenuItem>
                                   <ContextMenuSeparator />
                                   <ContextMenuItem
@@ -2675,7 +2679,7 @@ const FilterSidebarComponent = ({
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
-                                    Delete All Unused Tags
+                                    {t("filterSidebar.deleteUnusedTags")}
                                   </ContextMenuItem>
                                 </ContextMenuContent>
                               </ContextMenu>
@@ -2744,7 +2748,7 @@ const FilterSidebarComponent = ({
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Delete Tag
+                              {t("filterSidebar.deleteTag")}
                             </ContextMenuItem>
                             <ContextMenuSeparator />
                             <ContextMenuItem
@@ -2758,7 +2762,7 @@ const FilterSidebarComponent = ({
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Delete All Unused Tags
+                              {t("filterSidebar.deleteUnusedTags")}
                             </ContextMenuItem>
                           </ContextMenuContent>
                         </ContextMenu>
@@ -2787,7 +2791,7 @@ const FilterSidebarComponent = ({
                   {/* Search input for trackers */}
                   <div className={viewMode === "dense" ? "mb-1" : "mb-2"}>
                     <SearchInput
-                      placeholder="Search trackers..."
+                      placeholder={t("filterSidebar.searchTrackers")}
                       value={trackerSearch}
                       onChange={(e) => setTrackerSearch(e.target.value)}
                       onClear={() => setTrackerSearch("")}
@@ -2817,7 +2821,7 @@ const FilterSidebarComponent = ({
                         noTrackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                       )}
                     >
-                      No tracker
+                      {t("filterSidebar.noTracker")}
                     </span>
                     <span
                       className={cn(
@@ -2832,14 +2836,14 @@ const FilterSidebarComponent = ({
                   {/* Loading message for trackers */}
                   {!hasReceivedTrackersData && !incognitoMode && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic animate-pulse">
-                      Loading trackers...
+                      {t("filterSidebar.loadingTrackers")}
                     </div>
                   )}
 
                   {/* No results message for trackers */}
                   {hasReceivedTrackersData && debouncedTrackerSearch && nonEmptyFilteredProcessedTrackers.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      No trackers found matching "{debouncedTrackerSearch}"
+                      {t("filterSidebar.noTrackersFound", { query: debouncedTrackerSearch })}
                     </div>
                   )}
 
@@ -2918,13 +2922,13 @@ const FilterSidebarComponent = ({
                                       }}
                                     >
                                       <Edit className="mr-2 h-4 w-4" />
-                                      Edit Tracker URL
+                                      {t("filterSidebar.editTracker")}
                                     </ContextMenuItem>
                                   ) : (
                                     <ContextMenuSub>
                                       <ContextMenuSubTrigger disabled={!supportsTrackerEditing}>
                                         <Edit className="mr-2 h-4 w-4" />
-                                        Edit Tracker URL
+                                        {t("filterSidebar.editTracker")}
                                       </ContextMenuSubTrigger>
                                       <ContextMenuSubContent>
                                         {trackerGroup.domains.map((domain) => (
@@ -3006,13 +3010,13 @@ const FilterSidebarComponent = ({
                                 }}
                               >
                                 <Edit className="mr-2 h-4 w-4" />
-                                Edit Tracker URL
+                                {t("filterSidebar.editTracker")}
                               </ContextMenuItem>
                             ) : (
                               <ContextMenuSub>
                                 <ContextMenuSubTrigger disabled={!supportsTrackerEditing}>
                                   <Edit className="mr-2 h-4 w-4" />
-                                  Edit Tracker URL
+                                  {t("filterSidebar.editTracker")}
                                 </ContextMenuSubTrigger>
                                 <ContextMenuSubContent>
                                   {trackerGroup.domains.map((domain) => (

@@ -119,7 +119,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                   </Badge>
                   {task.private && (
                     <Badge variant="outline" className="text-xs">
-                      Private
+                      {t("creationTasks.private")}
                     </Badge>
                   )}
                 </div>
@@ -195,7 +195,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                     </div>
                     {task.private && (
                       <Badge variant="outline" className="text-xs">
-                        Private
+                        {t("creationTasks.private")}
                       </Badge>
                     )}
                     {task.errorMessage && (

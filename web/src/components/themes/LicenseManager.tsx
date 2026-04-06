@@ -78,7 +78,7 @@ export function LicenseManager({
   const portalUrl = provider === "polar" ? POLAR_PORTAL_URL : DODO_PORTAL_URL
   const selectedLicense = selectedLicenseKey ? licenses?.find((l) => l.licenseKey === selectedLicenseKey) : undefined
   const selectedPortalUrl = (selectedLicense?.provider ?? provider) === "polar" ? POLAR_PORTAL_URL : DODO_PORTAL_URL
-  const selectedPortalLabel = (selectedLicense?.provider ?? provider) === "polar" ? "Polar portal" : "Dodo portal"
+  const selectedPortalLabel = (selectedLicense?.provider ?? provider) === "polar"? t("themes.license.providers.polarPortal"): t("themes.license.providers.dodoPortal")
 
   // Check if we have an invalid license (exists but not active)
   const hasInvalidLicense = primaryLicense ? primaryLicense.status !== "active" : false
@@ -187,7 +187,7 @@ export function LicenseManager({
                   className="text-xs sm:text-sm"
                 >
                   <Key className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                  Add License
+                  {t("themes.license.actions.addLicense")}
                 </Button>
               )}
             </div>
@@ -205,16 +205,16 @@ export function LicenseManager({
                   <p className="text-sm text-muted-foreground">{accessDescription}</p>
                   {!hasPremiumAccess && !hasInvalidLicense && (
                     <p className="text-xs text-muted-foreground">
-                      Buy on DodoPayments, then enter your license key here. If you lose the key, recover it via the{" "}
+                      {t("themes.license.portalHelp.prefix")}{" "}
                       <a
                         href={DODO_PORTAL_URL}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary underline hover:no-underline"
                       >
-                        Dodo portal
+                        {t("themes.license.providers.dodoPortal")}
                       </a>
-                      .
+                      {t("themes.license.portalHelp.suffix")}
                     </p>
                   )}
                 </div>
@@ -228,14 +228,14 @@ export function LicenseManager({
                     className="text-destructive hover:text-destructive hover:bg-destructive/10"
                   >
                     <Trash2 className="h-4 w-4 mr-1" />
-                    Remove
+                    {t("themes.license.actions.remove")}
                   </Button>
                 )}
                 {!hasPremiumAccess && !hasInvalidLicense && (
                   <Button size="sm" onClick={() => setShowPaymentDialog(true)}>
                     <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
                     <Bitcoin className="h-3 w-3 sm:h-4 sm:w-4 -ml-1 mr-1 sm:mr-2" />
-                    Get Premium
+                    {t("themes.license.actions.getPremium")}
                   </Button>
                 )}
               </div>
@@ -245,20 +245,20 @@ export function LicenseManager({
             {hasPremiumAccess && (
               <div className="mt-4 border-t border-border/50 pt-4 animate-in fade-in duration-300 motion-reduce:animate-none">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Discord perk
+                  {t("themes.license.discord.title")}
                 </p>
                 <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-                  Claim the <span className="font-medium text-foreground">qui-premium</span> role for access to a private channel.{" "}
+                  {t("themes.license.discord.prefix")} <span className="font-medium text-foreground">qui-premium</span> {t("themes.license.discord.afterRole")}{" "}
                   <a
                     href={QUI_DISCORD_URL}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 font-medium text-primary transition-colors hover:text-primary/80"
                   >
-                    Open qui Discord
-                    <span className="sr-only">(opens in new tab)</span>
+                    {t("themes.license.discord.openDiscord")}
+                    <span className="sr-only">{t("themes.license.discord.opensInNewTab")}</span>
                   </a>
-                  , run{" "}
+                  {t("themes.license.discord.afterLink")}{" "}
                   <button
                     type="button"
                     onClick={async () => {
@@ -270,12 +270,12 @@ export function LicenseManager({
                       }
                     }}
                     className="inline-flex items-center rounded-full border border-border/70 bg-background px-2 py-1 text-[11px] font-semibold tracking-[-0.01em] text-foreground shadow-sm transition-colors hover:bg-muted cursor-pointer"
-                    aria-label="Copy /verify command"
-                    title="Click to copy"
+                    aria-label={t("themes.license.discord.copyVerifyAriaLabel")}
+                    title={t("themes.license.discord.copyVerifyTitle")}
                   >
-                    /verify
+                    {t("themes.license.discord.verifyCommand")}
                   </button>
-                  {" "}in <span className="font-medium text-foreground">#qui</span>, and sign in with your license email.
+                  {" "}{t("themes.license.discord.afterVerify")} <span className="font-medium text-foreground">{t("themes.license.discord.channel")}</span>{t("themes.license.discord.suffix")}
                 </p>
               </div>
             )}
@@ -287,7 +287,14 @@ export function LicenseManager({
                   {maskLicenseKey(primaryLicense.licenseKey)}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {primaryLicense.productName}{primaryLicense.status !== "active" && <> • Status: {primaryLicense.status}</>} • Added {formatDate(new Date(primaryLicense.createdAt))}
+                  {primaryLicense.status !== "active"? t("themes.license.details.productStatusAndAdded", {
+                    productName: primaryLicense.productName,
+                    status: primaryLicense.status,
+                    date: formatDate(new Date(primaryLicense.createdAt)),
+                  }): t("themes.license.details.productAdded", {
+                    productName: primaryLicense.productName,
+                    date: formatDate(new Date(primaryLicense.createdAt)),
+                  })}
                 </div>
                 {hasInvalidLicense && (
                   <div className="space-y-2">
@@ -295,7 +302,7 @@ export function LicenseManager({
                       <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
                       {provider === "polar" ? (
                         <span>
-                          This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s active, or manage activations via{" "}
+                          {t("themes.license.invalid.polarPrefix")}{" "}
                           <a
                             href={portalUrl}
                             target="_blank"
@@ -305,10 +312,10 @@ export function LicenseManager({
                             {portalUrl.replace("https://", "")}
                             <ExternalLink className="h-2.5 w-2.5" />
                           </a>
-                          .
+                          {t("themes.license.invalid.polarSuffix")}
                         </span>
                       ) : (
-                        <span>This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s currently active.</span>
+                        <span>{t("themes.license.invalid.dodo")}</span>
                       )}
                     </div>
                     <Button
@@ -323,7 +330,7 @@ export function LicenseManager({
                       className="h-7 text-xs"
                     >
                       <RefreshCw className={`h-3 w-3 mr-1 ${activateLicense.isPending ? "animate-spin" : ""}`} />
-                      {activateLicense.isPending ? "Activating..." : "Re-activate License"}
+                      {activateLicense.isPending ? t("themes.license.actions.activating") : t("themes.license.actions.reactivate")}
                     </Button>
                   </div>
                 )}
@@ -337,16 +344,16 @@ export function LicenseManager({
       <Dialog open={!!selectedLicenseKey} onOpenChange={(open) => !open && setSelectedLicenseKey(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove license?</DialogTitle>
+            <DialogTitle>{t("themes.license.deleteDialog.title")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove this license from this machine? This will deactivate it here to free up an activation slot.
+              {t("themes.license.deleteDialog.description")}
             </DialogDescription>
           </DialogHeader>
 
           {selectedLicenseKey && (
             <div className="my-4 space-y-3">
               <div>
-                <Label className="text-sm font-medium">License Key to Remove:</Label>
+                <Label className="text-sm font-medium">{t("themes.license.deleteDialog.keyLabel")}</Label>
                 <div className="mt-2 p-3 bg-muted rounded-lg font-mono text-sm break-all">
                   {selectedLicenseKey}
                 </div>
@@ -366,11 +373,11 @@ export function LicenseManager({
                 }}
               >
                 <Copy className="h-4 w-4 mr-2" />
-                Copy License Key
+                {t("themes.license.actions.copyLicenseKey")}
               </Button>
 
               <div className="text-sm text-muted-foreground">
-                If needed, you can recover it later from your{" "}
+                {t("themes.license.deleteDialog.recoverPrefix")}{" "}
                 <a
                   href={selectedPortalUrl}
                   target="_blank"
@@ -386,14 +393,14 @@ export function LicenseManager({
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setSelectedLicenseKey(null)}>
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button
               variant="destructive"
               onClick={confirmDeleteLicense}
               disabled={deleteLicense.isPending}
             >
-              {deleteLicense.isPending ? "Removing..." : "Remove"}
+              {deleteLicense.isPending ? t("themes.license.actions.removing") : t("themes.license.actions.remove")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -403,9 +410,9 @@ export function LicenseManager({
       <Dialog open={showAddLicense} onOpenChange={setShowAddLicense}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Premium License</DialogTitle>
+            <DialogTitle>{t("themes.license.addDialog.title")}</DialogTitle>
             <DialogDescription>
-              Enter your premium theme license key to unlock all premium themes.
+              {t("themes.license.addDialog.description")}
             </DialogDescription>
           </DialogHeader>
 
@@ -420,15 +427,15 @@ export function LicenseManager({
               name="licenseKey"
               validators={{
                 onChange: ({ value }) =>
-                  !value ? "License key is required" : undefined,
+                  !value ? t("themes.license.addDialog.validation.required") : undefined,
               }}
             >
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor="licenseKey">License Key</Label>
+                  <Label htmlFor="licenseKey">{t("themes.license.addDialog.label")}</Label>
                   <Input
                     id="licenseKey"
-                    placeholder="Enter your premium theme license key"
+                    placeholder={t("themes.license.addDialog.placeholder")}
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
@@ -450,7 +457,7 @@ export function LicenseManager({
             <DialogFooter className="flex flex-col sm:flex-row sm:items-center gap-3">
               <Button variant="outline" asChild className="sm:mr-auto">
                 <a href={DODO_PORTAL_URL} target="_blank" rel="noopener noreferrer">
-                  Recover key?
+                  {t("themes.license.addDialog.recoverKey")}
                 </a>
               </Button>
               <a
@@ -459,7 +466,7 @@ export function LicenseManager({
                 rel="noopener noreferrer"
                 className="text-xs text-muted-foreground hover:underline sm:mr-auto"
               >
-                Legacy Polar portal
+                {t("themes.license.providers.legacyPolarPortal")}
               </a>
 
               <div className="flex gap-2 w-full sm:w-auto">
@@ -469,7 +476,7 @@ export function LicenseManager({
                   onClick={() => setShowAddLicense(false)}
                   className="flex-1 sm:flex-none"
                 >
-                  Cancel
+                  {t("common:actions.cancel")}
                 </Button>
                 <form.Subscribe
                   selector={(state) => [state.canSubmit, state.isSubmitting]}
@@ -480,7 +487,7 @@ export function LicenseManager({
                       disabled={!canSubmit || isSubmitting || activateLicense.isPending}
                       className="flex-1 sm:flex-none"
                     >
-                      {isSubmitting || activateLicense.isPending ? "Validating..." : "Activate License"}
+                      {isSubmitting || activateLicense.isPending ? t("themes.license.actions.validating") : t("themes.license.actions.activate")}
                     </Button>
                   )}
                 </form.Subscribe>
@@ -496,10 +503,10 @@ export function LicenseManager({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5" />
-              Get Premium License
+              {t("themes.license.paymentDialog.title")}
             </DialogTitle>
             <DialogDescription>
-              Pay what you want (min $4.99) • Lifetime license • All themes
+              {t("themes.license.paymentDialog.description")}
             </DialogDescription>
           </DialogHeader>
 
@@ -508,35 +515,35 @@ export function LicenseManager({
             <div className="rounded-lg border bg-background p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">1</div>
-                <p className="text-sm font-semibold">Choose payment method</p>
+                <p className="text-sm font-semibold">{t("themes.license.paymentDialog.steps.choosePaymentMethod.title")}</p>
               </div>
               <ul className="pl-8 space-y-4">
                 <li className="space-y-2">
                   <p className="inline-flex items-center gap-2 text-sm font-medium">
-                    Card or local methods
+                    {t("themes.license.paymentDialog.steps.choosePaymentMethod.cardTitle")}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Pay directly in DodoPayments. You will return to qui after payment.
+                    {t("themes.license.paymentDialog.steps.choosePaymentMethod.cardDescription")}
                   </p>
                   <Button size="sm" variant="outline" asChild>
                     <a href={checkoutUrl}>
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      Open DodoPayments checkout
+                      {t("themes.license.actions.openDodoCheckout")}
                     </a>
                   </Button>
                 </li>
 
                 <li className="space-y-2">
                   <p className="inline-flex items-center gap-1 text-sm font-medium">
-                    Crypto
+                    {t("themes.license.paymentDialog.steps.choosePaymentMethod.cryptoTitle")}
                     <Bitcoin className="h-4 w-4 text-orange-500" />
                   </p>
                   <p className="text-xs font-medium text-muted-foreground">
-                    Crypto payment still completes in DodoPayments checkout.
+                    {t("themes.license.paymentDialog.steps.choosePaymentMethod.cryptoDescription")}
                   </p>
                   <ol className="space-y-1 text-xs text-muted-foreground list-decimal pl-5">
                     <li>
-                      Donate using the addresses in the{" "}
+                      {t("themes.license.paymentDialog.steps.choosePaymentMethod.cryptoSteps.readmePrefix")}{" "}
                       <a
                         href={SUPPORT_CRYPTOCURRENCY_URL}
                         target="_blank"
@@ -546,10 +553,10 @@ export function LicenseManager({
                         README
                         <ExternalLink className="h-3 w-3" />
                       </a>
-                      .
+                      {t("themes.license.paymentDialog.steps.choosePaymentMethod.cryptoSteps.readmeSuffix")}
                     </li>
                     <li>
-                      Verify at{" "}
+                      {t("themes.license.paymentDialog.steps.choosePaymentMethod.cryptoSteps.verifyPrefix")}{" "}
                       <a
                         href="https://crypto.getqui.com"
                         target="_blank"
@@ -558,20 +565,19 @@ export function LicenseManager({
                       >
                         crypto.getqui.com
                         <ExternalLink className="h-3 w-3" />
-                      </a>{" "}
-                      to get your discount code.
+                      </a>{" "}{t("themes.license.paymentDialog.steps.choosePaymentMethod.cryptoSteps.verifySuffix")}
                     </li>
-                    <li>Open DodoPayments checkout, paste the code in Discount code, then click Apply.</li>
-                    <li>Confirm total is $0.00, then complete checkout.</li>
+                    <li>{t("themes.license.paymentDialog.steps.choosePaymentMethod.cryptoSteps.applyCode")}</li>
+                    <li>{t("themes.license.paymentDialog.steps.choosePaymentMethod.cryptoSteps.completeCheckout")}</li>
                   </ol>
                   <Button size="sm" variant="outline" asChild>
                     <a href={checkoutUrl}>
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      Open DodoPayments checkout
+                      {t("themes.license.actions.openDodoCheckout")}
                     </a>
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    XMR is manual: reach out on Discord or email s0up4200@pm.me.
+                    {t("themes.license.paymentDialog.steps.choosePaymentMethod.xmrHelp")}
                   </p>
                 </li>
               </ul>
@@ -581,16 +587,16 @@ export function LicenseManager({
             <div className="rounded-lg border bg-background p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">2</div>
-                <p className="text-sm font-semibold">Find your license key</p>
+                <p className="text-sm font-semibold">{t("themes.license.paymentDialog.steps.findLicenseKey.title")}</p>
               </div>
               <div className="pl-8 space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  Your license key is shown after checkout. You can also recover it later from the Dodo customer portal.
+                  {t("themes.license.paymentDialog.steps.findLicenseKey.description")}
                 </p>
                 <Button size="sm" variant="outline" asChild>
                   <a href={DODO_PORTAL_URL} target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="h-4 w-4 mr-2" />
-                    Open Dodo portal
+                    {t("themes.license.actions.openDodoPortal")}
                   </a>
                 </Button>
               </div>
@@ -600,15 +606,15 @@ export function LicenseManager({
             <div className="rounded-lg border bg-background p-4">
               <div className="flex items-center gap-2">
                 <div className="flex items-center justify-center h-6 w-6 rounded-full bg-primary text-primary-foreground text-xs font-medium">3</div>
-                <p className="text-sm font-semibold">Activate your license</p>
+                <p className="text-sm font-semibold">{t("themes.license.paymentDialog.steps.activateLicense.title")}</p>
               </div>
               <div className="pl-8 mt-2 space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  After checkout returns here, use Add License to activate your key.
+                  {t("themes.license.paymentDialog.steps.activateLicense.description")}
                 </p>
                 <Button size="sm" variant="outline" onClick={openAddLicenseDialog}>
                   <Key className="h-4 w-4 mr-2" />
-                  Add License
+                  {t("themes.license.actions.addLicense")}
                 </Button>
               </div>
             </div>
@@ -616,7 +622,7 @@ export function LicenseManager({
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowPaymentDialog(false)}>
-              Close
+              {t("common:actions.close")}
             </Button>
           </DialogFooter>
         </DialogContent>

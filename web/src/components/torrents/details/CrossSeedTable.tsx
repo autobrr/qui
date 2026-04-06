@@ -47,16 +47,16 @@ interface CrossSeedTableProps {
 
 const columnHelper = createColumnHelper<CrossSeedTorrent>()
 
-function getStatusInfo(match: CrossSeedTorrent): { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string } {
+function getStatusInfo(match: CrossSeedTorrent, t: (key: string, options?: Record<string, unknown>) => string): { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string } {
   const trackerHealth = match.tracker_health ?? null
   const label = getStateLabel(match.state)
   let variant: "default" | "secondary" | "destructive" | "outline" = "outline"
   const className = ""
 
   if (trackerHealth === "unregistered") {
-    return { label: "Unregistered", variant: "outline", className: "text-destructive border-destructive/40 bg-destructive/10" }
+    return { label: t("crossSeedTable.statusLabels.unregistered"), variant: "outline", className: "text-destructive border-destructive/40 bg-destructive/10" }
   } else if (trackerHealth === "tracker_down") {
-    return { label: "Tracker Down", variant: "outline", className: "text-yellow-500 border-yellow-500/40 bg-yellow-500/10" }
+    return { label: t("crossSeedTable.statusLabels.trackerDown"), variant: "outline", className: "text-yellow-500 border-yellow-500/40 bg-yellow-500/10" }
   }
 
   if (match.state === "downloading" || match.state === "uploading") {
@@ -77,14 +77,23 @@ function getStatusInfo(match: CrossSeedTorrent): { label: string; variant: "defa
   return { label, variant, className }
 }
 
-function getMatchTypeLabel(matchType: string): { label: string; description: string } {
+function getMatchTypeLabel(matchType: string, t: (key: string, options?: Record<string, unknown>) => string): { label: string; description: string } {
   switch (matchType) {
     case "content_path":
-      return { label: "Content", description: "Same content location on disk" }
+      return {
+        label: t("crossSeedTable.matchTypes.contentPath.label"),
+        description: t("crossSeedTable.matchTypes.contentPath.description"),
+      }
     case "name":
-      return { label: "Name", description: "Same torrent name" }
+      return {
+        label: t("crossSeedTable.matchTypes.name.label"),
+        description: t("crossSeedTable.matchTypes.name.description"),
+      }
     case "release":
-      return { label: "Release", description: "Same release (matched by metadata)" }
+      return {
+        label: t("crossSeedTable.matchTypes.release.label"),
+        description: t("crossSeedTable.matchTypes.release.description"),
+      }
     default:
       return { label: matchType, description: matchType }
   }
@@ -176,7 +185,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
     columnHelper.accessor("matchType", {
       header: t("crossSeedTable.match"),
       cell: (info) => {
-        const { label, description } = getMatchTypeLabel(info.getValue() as string)
+        const { label, description } = getMatchTypeLabel(info.getValue() as string, t)
         return (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -229,7 +238,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
     columnHelper.accessor("state", {
       header: t("crossSeedTable.status"),
       cell: (info) => {
-        const { label, variant, className } = getStatusInfo(info.row.original)
+        const { label, variant, className } = getStatusInfo(info.row.original, t)
         return (
           <Badge variant={variant} className={cn("text-[10px] px-1.5 py-0", className)}>
             {label}
@@ -331,7 +340,9 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       <div className="flex items-center justify-between px-3 py-1.5 border-b text-xs gap-2">
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">
-            {selectedTorrents.size > 0 ? `${selectedTorrents.size} of ${matches.length} selected` : `${matches.length} match${matches.length !== 1 ? "es" : ""}`}
+            {selectedTorrents.size > 0
+              ? t("crossSeedTable.selectedCount", { selected: selectedTorrents.size, total: matches.length })
+              : t("crossSeedTable.matchCount", { count: matches.length })}
           </span>
           {loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
         </div>
@@ -353,7 +364,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
                 onClick={onDeleteMatches}
               >
                 <Trash2 className="h-3 w-3 mr-1" />
-                Delete ({selectedTorrents.size})
+                {t("crossSeedTable.deleteSelected", { count: selectedTorrents.size })}
               </Button>
             </>
           ) : (
@@ -373,7 +384,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
             onClick={onDeleteCurrent}
           >
             <Trash2 className="h-3 w-3 mr-1" />
-            Delete This
+            {t("crossSeedTable.deleteThis")}
           </Button>
         </div>
       </div>

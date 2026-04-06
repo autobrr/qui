@@ -205,7 +205,7 @@ export const PeersTable = memo(function PeersTable({
   const handleCopyIp = (peer: SortedPeer) => {
     if (incognitoMode) return
     copyTextToClipboard(`${peer.ip}`)
-    toast.success("IP address copied to clipboard")
+    toast.success(t("peersTable.toast.ipCopied"))
   }
 
   if (loading && !peers) {
@@ -219,7 +219,7 @@ export const PeersTable = memo(function PeersTable({
   if (!peers || peers.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        No peers connected
+        {t("peersTable.noPeersConnected")}
       </div>
     )
   }
@@ -274,7 +274,7 @@ export const PeersTable = memo(function PeersTable({
                     disabled={incognitoMode}
                   >
                     <Copy className="h-3.5 w-3.5 mr-2" />
-                    Copy IP Address
+                    {t("peersTable.copyIpAddress")}
                   </ContextMenuItem>
                   {onBanPeer && (
                     <>
@@ -284,7 +284,7 @@ export const PeersTable = memo(function PeersTable({
                         className="text-destructive focus:text-destructive"
                       >
                         <Ban className="h-3.5 w-3.5 mr-2" />
-                        Ban Peer
+                        {t("peersTable.banPeer")}
                       </ContextMenuItem>
                     </>
                   )}

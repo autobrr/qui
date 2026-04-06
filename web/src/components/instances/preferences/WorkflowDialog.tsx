@@ -111,40 +111,40 @@ type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck"
 // Actions that can be combined (Delete must be standalone)
 const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "autoManagement", "tag", "category", "move", "externalProgram"]
 
-const ACTION_LABELS: Record<ActionType, string> = {
-  speedLimits: "Speed limits",
-  shareLimits: "Share limits",
-  pause: "Pause",
-  resume: "Resume",
-  recheck: "Force recheck",
-  reannounce: "Force reannounce",
-  autoManagement: "Auto management",
-  delete: "Delete",
-  tag: "Tag",
-  category: "Category",
-  move: "Move",
-  externalProgram: "Run external program",
+const ACTION_LABEL_KEYS: Record<ActionType, string> = {
+  speedLimits: "preferences.workflowDialog.actions.speedLimits",
+  shareLimits: "preferences.workflowDialog.actions.shareLimits",
+  pause: "preferences.workflowDialog.actions.pause",
+  resume: "preferences.workflowDialog.actions.resume",
+  recheck: "preferences.workflowDialog.actions.recheck",
+  reannounce: "preferences.workflowDialog.actions.reannounce",
+  autoManagement: "preferences.workflowDialog.actions.autoManagement",
+  delete: "preferences.workflowDialog.actions.delete",
+  tag: "preferences.workflowDialog.actions.tag",
+  category: "preferences.workflowDialog.actions.category",
+  move: "preferences.workflowDialog.actions.move",
+  externalProgram: "preferences.workflowDialog.actions.externalProgram",
 }
 
-const DRY_RUN_ACTION_LABELS: Record<AutomationActivity["action"], string> = {
-  deleted_ratio: "Delete (ratio)",
-  deleted_seeding: "Delete (seeding)",
-  deleted_unregistered: "Delete (unregistered)",
-  deleted_condition: "Delete (condition)",
-  delete_failed: "Delete failed",
-  limit_failed: "Limit failed",
-  tags_changed: "Tag",
-  category_changed: "Category",
-  speed_limits_changed: "Speed limits",
-  share_limits_changed: "Share limits",
-  paused: "Pause",
-  resumed: "Resume",
-  rechecked: "Recheck",
-  reannounced: "Reannounce",
-  auto_managed: "Auto management",
-  moved: "Move",
-  external_program: "External program",
-  dry_run_no_match: "No matches",
+const DRY_RUN_ACTION_LABEL_KEYS: Record<AutomationActivity["action"], string> = {
+  deleted_ratio: "preferences.workflowDialog.dryRun.actions.deletedRatio",
+  deleted_seeding: "preferences.workflowDialog.dryRun.actions.deletedSeeding",
+  deleted_unregistered: "preferences.workflowDialog.dryRun.actions.deletedUnregistered",
+  deleted_condition: "preferences.workflowDialog.dryRun.actions.deletedCondition",
+  delete_failed: "preferences.workflowDialog.dryRun.actions.deleteFailed",
+  limit_failed: "preferences.workflowDialog.dryRun.actions.limitFailed",
+  tags_changed: "preferences.workflowDialog.dryRun.actions.tagsChanged",
+  category_changed: "preferences.workflowDialog.dryRun.actions.categoryChanged",
+  speed_limits_changed: "preferences.workflowDialog.dryRun.actions.speedLimitsChanged",
+  share_limits_changed: "preferences.workflowDialog.dryRun.actions.shareLimitsChanged",
+  paused: "preferences.workflowDialog.dryRun.actions.paused",
+  resumed: "preferences.workflowDialog.dryRun.actions.resumed",
+  rechecked: "preferences.workflowDialog.dryRun.actions.rechecked",
+  reannounced: "preferences.workflowDialog.dryRun.actions.reannounced",
+  auto_managed: "preferences.workflowDialog.dryRun.actions.autoManaged",
+  moved: "preferences.workflowDialog.dryRun.actions.moved",
+  external_program: "preferences.workflowDialog.dryRun.actions.externalProgram",
+  dry_run_no_match: "preferences.workflowDialog.dryRun.actions.noMatches",
 }
 
 function sumDetailsRecord(values: Record<string, number> | undefined): number {
@@ -173,32 +173,35 @@ function getDryRunImpactCount(event: AutomationActivity): number {
   }
 }
 
-function formatDryRunEventSummary(event: AutomationActivity): string {
+function formatDryRunEventSummary(
+  event: AutomationActivity,
+  t: ReturnType<typeof useTranslation<"instances">>["t"],
+): string {
   const details = event.details
   switch (event.action) {
     case "tags_changed": {
       const added = sumDetailsRecord(details?.added)
       const removed = sumDetailsRecord(details?.removed)
-      if (added > 0 && removed > 0) return `${added} would be tagged, ${removed} would be untagged`
-      if (added > 0) return `${added} would be tagged`
-      if (removed > 0) return `${removed} would be untagged`
-      return "No tag changes"
+      if (added > 0 && removed > 0) return t("preferences.workflowDialog.dryRun.summary.tagsChangedBoth", { added, removed })
+      if (added > 0) return t("preferences.workflowDialog.dryRun.summary.tagsAdded", { count: added })
+      if (removed > 0) return t("preferences.workflowDialog.dryRun.summary.tagsRemoved", { count: removed })
+      return t("preferences.workflowDialog.dryRun.summary.noTagChanges")
     }
     case "category_changed": {
       const moved = sumDetailsRecord(details?.categories)
-      return `${moved} torrent${moved === 1 ? "" : "s"} would change category`
+      return t("preferences.workflowDialog.dryRun.summary.categoryChanged", { count: moved })
     }
     case "speed_limits_changed":
     case "share_limits_changed": {
       const limited = sumDetailsRecord(details?.limits)
-      return `${limited} torrent${limited === 1 ? "" : "s"} would be updated`
+      return t("preferences.workflowDialog.dryRun.summary.updated", { count: limited })
     }
     case "moved": {
       const moved = sumDetailsRecord(details?.paths)
-      return `${moved} torrent${moved === 1 ? "" : "s"} would be moved`
+      return t("preferences.workflowDialog.dryRun.summary.moved", { count: moved })
     }
     case "dry_run_no_match":
-      return "No torrents matched this dry-run"
+      return t("preferences.workflowDialog.dryRun.summary.noMatches")
     case "paused":
     case "resumed":
     case "rechecked":
@@ -210,10 +213,10 @@ function formatDryRunEventSummary(event: AutomationActivity): string {
     case "deleted_unregistered":
     case "deleted_condition": {
       const count = typeof details?.count === "number" ? details.count : 0
-      return `${count} torrent${count === 1 ? "" : "s"} impacted`
+      return t("preferences.workflowDialog.dryRun.summary.impacted", { count })
     }
     default:
-      return "Dry-run completed"
+      return t("preferences.workflowDialog.dryRun.summary.completed")
   }
 }
 
@@ -347,28 +350,28 @@ const AVAILABLE_GROUP_KEYS = [
 const BUILTIN_GROUPS = [
   {
     id: "cross_seed_content_path",
-    label: "Cross-seed (content path)",
-    description: "Group torrents with the same content path",
+    labelKey: "preferences.workflowDialog.grouping.builtIn.crossSeedContentPath.label",
+    descriptionKey: "preferences.workflowDialog.grouping.builtIn.crossSeedContentPath.description",
   },
   {
     id: "cross_seed_content_save_path",
-    label: "Cross-seed (content + save path)",
-    description: "Group torrents with the same content path and save path",
+    labelKey: "preferences.workflowDialog.grouping.builtIn.crossSeedContentSavePath.label",
+    descriptionKey: "preferences.workflowDialog.grouping.builtIn.crossSeedContentSavePath.description",
   },
   {
     id: "release_item",
-    label: "Release item",
-    description: "Group torrents with the same content type and effective name",
+    labelKey: "preferences.workflowDialog.grouping.builtIn.releaseItem.label",
+    descriptionKey: "preferences.workflowDialog.grouping.builtIn.releaseItem.description",
   },
   {
     id: "tracker_release_item",
-    label: "Tracker release item",
-    description: "Group torrents from the same tracker with the same content type and effective name",
+    labelKey: "preferences.workflowDialog.grouping.builtIn.trackerReleaseItem.label",
+    descriptionKey: "preferences.workflowDialog.grouping.builtIn.trackerReleaseItem.description",
   },
   {
     id: "hardlink_signature",
-    label: "Hardlink signature",
-    description: "Group torrents that share the same physical files via hardlinks (requires local filesystem access)",
+    labelKey: "preferences.workflowDialog.grouping.builtIn.hardlinkSignature.label",
+    descriptionKey: "preferences.workflowDialog.grouping.builtIn.hardlinkSignature.description",
   },
 ] as const
 
@@ -560,16 +563,19 @@ function setActionEnabled(action: ActionType, enabled: boolean): Partial<FormSta
   return { [key]: enabled }
 }
 
-function validateTagActions(actions: TagActionForm[]): string | null {
+function validateTagActions(
+  actions: TagActionForm[],
+  t: ReturnType<typeof useTranslation<"instances">>["t"],
+): string | null {
   if (actions.length === 0) {
-    return "Add at least one tag action"
+    return t("preferences.workflowDialog.toast.addTagAction")
   }
   for (const action of actions) {
     if (action.deleteFromClient && action.useTrackerAsTag) {
-      return "Replace mode requires explicit tags (disable 'Use tracker name as tag')"
+      return t("preferences.workflowDialog.toast.replaceModeRequiresExplicitTags")
     }
     if (!action.useTrackerAsTag && action.tags.length === 0) {
-      return "Specify at least one tag or enable 'Use tracker name'"
+      return t("preferences.workflowDialog.toast.specifyTagOrTrackerName")
     }
   }
   return null
@@ -752,10 +758,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const categoryActionOptions = useMemo(() => {
     const filtered = categoryOptions.filter((opt) => opt.value !== "")
     return [
-      { label: "Uncategorized", value: CATEGORY_UNCATEGORIZED_VALUE },
+      { label: t("preferences.workflowDialog.uncategorized"), value: CATEGORY_UNCATEGORIZED_VALUE },
       ...filtered,
     ]
-  }, [categoryOptions])
+  }, [categoryOptions, t])
 
   const tagOptions = useMemo(() => {
     const selected = formState.exprTagActions.flatMap(action => action.tags)
@@ -793,7 +799,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
         const iconDomain = pickTrackerIconDomain(trackerIcons, customization.domains)
         processed.push({
-          label: `${customization.displayName} (Custom)`,
+          label: t("preferences.workflowDialog.customTrackerLabel", { name: customization.displayName }),
           value: mergedValue,
           icon: <TrackerIconImage tracker={iconDomain} trackerIcons={trackerIcons} />,
           isCustom: true,
@@ -872,8 +878,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const groupedConditionOptions = useMemo<GroupOption[]>(() => {
     const options: GroupOption[] = BUILTIN_GROUPS.map((group) => ({
       id: group.id,
-      label: group.label,
-      description: group.description,
+      label: t(group.labelKey),
+      description: t(group.descriptionKey),
     }))
     const seen = new Set(options.map((option) => option.id.toLowerCase()))
     for (const group of (formState.exprGrouping?.groups || [])) {
@@ -883,12 +889,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       seen.add(id.toLowerCase())
       options.push({
         id,
-        label: `${id} (custom)`,
-        description: group.keys.length > 0? `Custom keys: ${group.keys.join(", ")}`: "Custom group",
+        label: t("preferences.workflowDialog.grouping.customLabel", { id }),
+        description: group.keys.length > 0
+          ? t("preferences.workflowDialog.grouping.customDescription", { keys: group.keys.join(", ") })
+          : t("preferences.workflowDialog.grouping.customGroup"),
       })
     }
     return options
-  }, [formState.exprGrouping?.groups])
+  }, [formState.exprGrouping?.groups, t])
 
   // Initialize form state when dialog opens or rule changes
   useEffect(() => {
@@ -1171,11 +1179,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       if (conditionUsesField(formState.actionCondition, "FREE_SPACE")) {
         setFormState(prev => ({ ...prev, exprDeleteMode: "deleteWithFiles" }))
         if (!isHydrating.current) {
-          toast.info("Switched to 'Remove with files' because Free Space condition requires actual disk space to be freed")
+          toast.info(t("preferences.workflowDialog.toast.switchedDeleteModeForFreeSpace"))
         }
       }
     }
-  }, [formState.actionCondition, formState.deleteEnabled, formState.exprDeleteMode])
+  }, [formState.actionCondition, formState.deleteEnabled, formState.exprDeleteMode, t])
 
   // Auto-switch interval from 1 minute when FREE_SPACE delete condition is added
   // The backend has a ~5 minute cooldown, so 1 minute intervals would be ineffective
@@ -1185,10 +1193,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (formState.deleteEnabled && formState.intervalSeconds === 60) {
       if (conditionUsesField(formState.actionCondition, "FREE_SPACE")) {
         setFormState(prev => ({ ...prev, intervalSeconds: 300 })) // Switch to 5 minutes
-        toast.info("Switched to 5 minute interval because Free Space deletes have a ~5 minute cooldown")
+        toast.info(t("preferences.workflowDialog.toast.switchedIntervalForFreeSpace"))
       }
     }
-  }, [formState.actionCondition, formState.deleteEnabled, formState.intervalSeconds])
+  }, [formState.actionCondition, formState.deleteEnabled, formState.intervalSeconds, t])
 
   // Auto-switch free space source from "path" to "qbittorrent" on Windows (not supported)
   // This must run during hydration to handle legacy workflows opened on Windows.
@@ -1197,10 +1205,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (!supportsFreeSpacePathSource && formState.exprFreeSpaceSourceType === "path") {
       setFormState(prev => ({ ...prev, exprFreeSpaceSourceType: "qbittorrent" }))
       if (!isHydrating.current) {
-        toast.warning("Path-based free space source is not supported on Windows. Switched to qBittorrent default.")
+        toast.warning(t("preferences.workflowDialog.toast.pathSourceUnsupportedWindows"))
       }
     }
-  }, [supportsFreeSpacePathSource, formState.exprFreeSpaceSourceType])
+  }, [supportsFreeSpacePathSource, formState.exprFreeSpaceSourceType, t])
 
   const validateFreeSpaceSource = useCallback((state: FormState): boolean => {
     const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
@@ -1211,26 +1219,26 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     // Reject if path source is selected but not supported (safety net for edge cases)
     if (!supportsFreeSpacePathSource) {
-      setFreeSpaceSourcePathError("Path-based free space source is not supported on Windows.")
-      toast.error("Switch Free space source to Default (qBittorrent)")
+      setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.unsupportedWindows"))
+      toast.error(t("preferences.workflowDialog.toast.switchFreeSpaceSourceDefault"))
       return false
     }
     if (!hasLocalFilesystemAccess) {
-      setFreeSpaceSourcePathError("Path-based free space source requires Local Filesystem Access.")
-      toast.error("Enable Local Filesystem Access in instance settings, or use Default (qBittorrent)")
+      setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.localAccessRequired"))
+      toast.error(t("preferences.workflowDialog.toast.enableLocalAccessOrDefault"))
       return false
     }
 
     const trimmedPath = state.exprFreeSpaceSourcePath.trim()
     if (trimmedPath === "") {
-      setFreeSpaceSourcePathError("Path is required when using 'Path on server'.")
-      toast.error("Enter a path or switch Free space source back to Default (qBittorrent)")
+      setFreeSpaceSourcePathError(t("preferences.workflowDialog.freeSpace.errors.pathRequired"))
+      toast.error(t("preferences.workflowDialog.toast.enterPathOrDefault"))
       return false
     }
 
     setFreeSpaceSourcePathError(null)
     return true
-  }, [hasLocalFilesystemAccess, supportsFreeSpacePathSource])
+  }, [hasLocalFilesystemAccess, supportsFreeSpacePathSource, t])
 
   const hasValidFreeSpaceSourceForLivePreview = useCallback((state: FormState): boolean => {
     const usesFreeSpace = conditionUsesField(state.actionCondition, "FREE_SPACE")
@@ -1481,6 +1489,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   // Check if delete rule uses FREE_SPACE field (for preview view toggle - only for delete rules)
   const deleteUsesFreeSpace = formState.deleteEnabled && conditionUsesFreeSpace
+  const intervalOptions = useMemo(() => ([
+    { value: "default", label: t("preferences.workflowDialog.interval.default") },
+    { value: "60", label: t("preferences.workflowDialog.interval.oneMinute"), disabled: deleteUsesFreeSpace },
+    { value: "300", label: t("preferences.workflowDialog.interval.fiveMinutes") },
+    { value: "900", label: t("preferences.workflowDialog.interval.fifteenMinutes") },
+    { value: "1800", label: t("preferences.workflowDialog.interval.thirtyMinutes") },
+    { value: "3600", label: t("preferences.workflowDialog.interval.oneHour") },
+    { value: "7200", label: t("preferences.workflowDialog.interval.twoHours") },
+    { value: "14400", label: t("preferences.workflowDialog.interval.fourHours") },
+    { value: "21600", label: t("preferences.workflowDialog.interval.sixHours") },
+    { value: "43200", label: t("preferences.workflowDialog.interval.twelveHours") },
+    { value: "86400", label: t("preferences.workflowDialog.interval.twentyFourHours") },
+  ]), [deleteUsesFreeSpace, t])
 
   // Count enabled actions
   const enabledActionsCount = [
@@ -1528,7 +1549,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       setIsInitialLoading(false)
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to preview rule")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.previewFailed"))
       setIsInitialLoading(false)
       setShowConfirmDialog(false)
     },
@@ -1551,7 +1572,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       setPreviewResult(prev => prev ? { ...prev, examples: [...prev.examples, ...result.examples], totalMatches: result.totalMatches } : result)
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to load more previews")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.loadMoreFailed"))
     },
   })
 
@@ -1590,23 +1611,23 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             .filter((activity) => activityIDSet.has(activity.id))
             .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
           setLatestDryRunEvents(events)
-          setLatestDryRunError(events.length === 0 ? "Dry-run completed, but activity details are not available yet." : null)
+          setLatestDryRunError(events.length === 0 ? t("preferences.workflowDialog.dryRun.detailsUnavailable") : null)
           return
         } catch (error) {
           setLatestDryRunEvents([])
-          setLatestDryRunError(error instanceof Error ? error.message : "Failed to load dry-run summary")
+          setLatestDryRunError(error instanceof Error ? error.message : t("preferences.workflowDialog.dryRun.loadSummaryFailed"))
           return
         }
       }
 
       setLatestDryRunEvents([])
-      setLatestDryRunError("Dry-run completed, but no activity IDs were returned.")
+      setLatestDryRunError(t("preferences.workflowDialog.dryRun.noActivityIds"))
     },
     onError: (error) => {
       setLatestDryRunEvents([])
       setLatestDryRunError(null)
       setLatestDryRunStartedAt(null)
-      toast.error(error instanceof Error ? error.message : "Failed to run dry-run")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.dryRunFailed"))
     },
   })
 
@@ -1669,7 +1690,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       } catch (error) {
         if (livePreviewRequestRef.current !== requestID) return
         setLivePreviewResult(null)
-        setLivePreviewError(error instanceof Error ? error.message : "Failed to load live preview")
+        setLivePreviewError(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.loadLivePreviewFailed"))
       } finally {
         if (livePreviewRequestRef.current === requestID) {
           setIsLivePreviewLoading(false)
@@ -1685,31 +1706,31 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     if (!validateFreeSpaceSource(dryRunInput)) return
     if (!dryRunInput.name.trim()) {
-      toast.error("Name is required")
+      toast.error(t("preferences.workflowDialog.toast.nameRequired"))
       return
     }
     if (!dryRunInput.applyToAllTrackers && normalizeTrackerDomains(dryRunInput.trackerDomains).length === 0) {
-      toast.error("Select at least one tracker")
+      toast.error(t("preferences.workflowDialog.toast.selectTracker"))
       return
     }
     if (enabledActionsCount === 0) {
-      toast.error("Enable at least one action")
+      toast.error(t("preferences.workflowDialog.toast.enableAction"))
       return
     }
     if (dryRunInput.deleteEnabled && !dryRunInput.actionCondition) {
-      toast.error("Delete requires at least one condition")
+      toast.error(t("preferences.workflowDialog.toast.deleteRequiresCondition"))
       return
     }
     if (dryRunInput.moveEnabled && !dryRunInput.exprMovePath.trim()) {
-      toast.error("Move requires a path")
+      toast.error(t("preferences.workflowDialog.toast.moveRequiresPath"))
       return
     }
     if (dryRunInput.externalProgramEnabled && !dryRunInput.exprExternalProgramId) {
-      toast.error("Select an external program")
+      toast.error(t("preferences.workflowDialog.toast.selectExternalProgram"))
       return
     }
     if (dryRunInput.tagEnabled) {
-      const validationError = validateTagActions(dryRunInput.exprTagActions)
+      const validationError = validateTagActions(dryRunInput.exprTagActions, t)
       if (validationError) {
         toast.error(validationError)
         return
@@ -1725,7 +1746,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   const applyEnabledChange = useCallback((checked: boolean, options?: { forceDryRun?: boolean }) => {
     if (checked && isDeleteRule && !formState.actionCondition) {
-      toast.error("Delete requires at least one condition")
+      toast.error(t("preferences.workflowDialog.toast.deleteRequiresCondition"))
       return
     }
 
@@ -1755,7 +1776,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       enabled: checked,
       dryRun: options?.forceDryRun ? true : prev.dryRun,
     }))
-  }, [formState, isCategoryRule, isDeleteRule, previewMutation, validateFreeSpaceSource])
+  }, [formState, isCategoryRule, isDeleteRule, previewMutation, t, validateFreeSpaceSource])
 
   const handleEnabledToggle = useCallback((checked: boolean) => {
     if (checked && !formState.dryRun && !hasPromptedDryRun()) {
@@ -1780,7 +1801,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       const result = await api.previewAutomation(instanceId, payload)
       setPreviewResult(result)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to switch preview view")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.switchViewFailed"))
     } finally {
       setIsLoadingPreviewView(false)
     }
@@ -1788,18 +1809,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   // CSV columns for automation preview export
   const csvColumns: CsvColumn<AutomationPreviewTorrent>[] = [
-    { header: "Name", accessor: t => t.name },
-    { header: "Hash", accessor: t => t.hash },
-    { header: "Tracker", accessor: t => t.tracker },
-    { header: "Size", accessor: t => formatBytes(t.size) },
-    { header: "Ratio", accessor: t => t.ratio === -1 ? "Inf" : t.ratio.toFixed(2) },
-    { header: "Seeding Time (s)", accessor: t => t.seedingTime },
-    { header: "Category", accessor: t => t.category },
-    { header: "Tags", accessor: t => t.tags },
-    { header: "State", accessor: t => t.state },
-    { header: "Added On", accessor: t => t.addedOn },
-    { header: "Path", accessor: t => t.contentPath ?? "" },
-    { header: "Score", accessor: t => (t.score !== null && t.score !== undefined) ? t.score.toFixed(2) : "" },
+    { header: t("preferences.workflowDialog.csv.name"), accessor: t => t.name },
+    { header: t("preferences.workflowDialog.csv.hash"), accessor: t => t.hash },
+    { header: t("preferences.workflowDialog.csv.tracker"), accessor: t => t.tracker },
+    { header: t("preferences.workflowDialog.csv.size"), accessor: t => formatBytes(t.size) },
+    { header: t("preferences.workflowDialog.csv.ratio"), accessor: item => item.ratio === -1 ? t("preferences.workflowDialog.infinity") : item.ratio.toFixed(2) },
+    { header: t("preferences.workflowDialog.csv.seedingTimeSeconds"), accessor: t => t.seedingTime },
+    { header: t("preferences.workflowDialog.csv.category"), accessor: t => t.category },
+    { header: t("preferences.workflowDialog.csv.tags"), accessor: t => t.tags },
+    { header: t("preferences.workflowDialog.csv.state"), accessor: t => t.state },
+    { header: t("preferences.workflowDialog.csv.addedOn"), accessor: t => t.addedOn },
+    { header: t("preferences.workflowDialog.csv.path"), accessor: t => t.contentPath ?? "" },
+    { header: t("preferences.workflowDialog.csv.score"), accessor: t => (t.score !== null && t.score !== undefined) ? t.score.toFixed(2) : "" },
   ]
 
   const handleExport = async () => {
@@ -1827,11 +1848,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       }
 
       const csv = toCsv(allItems, csvColumns)
-      const ruleName = (formState.name || "automation").replace(/[^a-zA-Z0-9-_]/g, "_")
+      const ruleName = (formState.name || t("preferences.workflowDialog.automationFallbackName")).replace(/[^a-zA-Z0-9-_]/g, "_")
       downloadBlob(csv, `${ruleName}_preview.csv`)
-      toast.success(`Exported ${allItems.length} torrents to CSV`)
+      toast.success(t("preferences.workflowDialog.toast.exportedTorrents", { count: allItems.length }))
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to export preview")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowDialog.toast.exportFailed"))
     } finally {
       setIsExporting(false)
     }
@@ -1886,9 +1907,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
 
     // Validate score sorting configuration
-    if (submitState.sortingType === "score") {
+      if (submitState.sortingType === "score") {
       if (submitState.scoreRules.length === 0) {
-        toast.error("Add at least one score rule for Score sorting")
+        toast.error(t("preferences.workflowDialog.toast.addScoreRule"))
         return
       }
 
@@ -1899,7 +1920,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           const val = rule.fieldMultiplier.multiplier
           const multiplier = typeof val === "string" ? parseFloat(val) : val
           if (!Number.isFinite(multiplier)) {
-            toast.error("Field multiplier must be a valid number")
+            toast.error(t("preferences.workflowDialog.toast.fieldMultiplierInvalid"))
             return
           }
         } else if (rule.type === "conditional") {
@@ -1907,7 +1928,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           const val = rule.conditional.score
           const score = typeof val === "string" ? parseFloat(val) : val
           if (!Number.isFinite(score)) {
-            toast.error("Conditional score must be a valid number")
+            toast.error(t("preferences.workflowDialog.toast.conditionalScoreInvalid"))
             return
           }
         }
@@ -1922,16 +1943,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       const downloadIsSet = submitState.exprDownloadMode !== "no_change" &&
         (submitState.exprDownloadMode !== "custom" || (submitState.exprDownloadValue !== undefined && submitState.exprDownloadValue > 0))
       if (!uploadIsSet && !downloadIsSet) {
-        toast.error("Set at least one speed limit")
+        toast.error(t("preferences.workflowDialog.toast.setSpeedLimit"))
         return
       }
       // Validate custom values are > 0
       if (submitState.exprUploadMode === "custom" && (submitState.exprUploadValue === undefined || submitState.exprUploadValue <= 0)) {
-        toast.error("Upload speed must be greater than 0 (use Unlimited for no limit)")
+        toast.error(t("preferences.workflowDialog.toast.uploadSpeedInvalid"))
         return
       }
       if (submitState.exprDownloadMode === "custom" && (submitState.exprDownloadValue === undefined || submitState.exprDownloadValue <= 0)) {
-        toast.error("Download speed must be greater than 0 (use Unlimited for no limit)")
+        toast.error(t("preferences.workflowDialog.toast.downloadSpeedInvalid"))
         return
       }
     }
@@ -1942,12 +1963,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       const seedingTimeIsSet = submitState.exprSeedingTimeMode !== "no_change" &&
         (submitState.exprSeedingTimeMode !== "custom" || submitState.exprSeedingTimeValue !== undefined)
       if (!ratioIsSet && !seedingTimeIsSet) {
-        toast.error("Set ratio limit or seeding time")
+        toast.error(t("preferences.workflowDialog.toast.setShareLimit"))
         return
       }
     }
     if (submitState.tagEnabled) {
-      const validationError = validateTagActions(submitState.exprTagActions)
+      const validationError = validateTagActions(submitState.exprTagActions, t)
       if (validationError) {
         toast.error(validationError)
         return
@@ -1955,13 +1976,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
     if (submitState.categoryEnabled) {
       if (!submitState.exprCategory) {
-        toast.error("Select a category")
+        toast.error(t("preferences.workflowDialog.toast.selectCategory"))
         return
       }
     }
     if (submitState.externalProgramEnabled) {
       if (!submitState.exprExternalProgramId) {
-        toast.error("Select an external program")
+        toast.error(t("preferences.workflowDialog.toast.selectExternalProgram"))
         return
       }
     }
@@ -1971,7 +1992,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
     const trimmedSubmitMovePath = submitState.exprMovePath?.trim()
     if (submitState.moveEnabled && !trimmedSubmitMovePath) {
-      toast.error("Move requires a path")
+      toast.error(t("preferences.workflowDialog.toast.moveRequiresPath"))
       return
     }
 
@@ -2031,13 +2052,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               {/* Header row: Name + All Trackers toggle */}
               <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
                 <div className="space-y-1.5">
-                  <Label htmlFor="rule-name">Name</Label>
+                  <Label htmlFor="rule-name">{t("preferences.workflowDialog.nameLabel")}</Label>
                   <Input
                     id="rule-name"
                     value={formState.name}
                     onChange={(e) => setFormState(prev => ({ ...prev, name: e.target.value }))}
                     required
-                    placeholder="Workflow name"
+                    placeholder={t("preferences.workflowDialog.namePlaceholder")}
                     autoComplete="off"
                     data-1p-ignore
                   />
@@ -2052,19 +2073,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       trackerDomains: checked ? [] : prev.trackerDomains,
                     }))}
                   />
-                  <Label htmlFor="all-trackers" className="text-sm cursor-pointer whitespace-nowrap">All trackers</Label>
+                  <Label htmlFor="all-trackers" className="text-sm cursor-pointer whitespace-nowrap">{t("preferences.workflowDialog.allTrackers")}</Label>
                 </div>
               </div>
 
               {/* Trackers */}
               {!formState.applyToAllTrackers && (
                 <div className="space-y-1.5">
-                  <Label>Trackers</Label>
+                  <Label>{t("preferences.workflowDialog.trackersLabel")}</Label>
                   <MultiSelect
                     options={trackerOptions}
                     selected={formState.trackerDomains}
                     onChange={(next) => setFormState(prev => ({ ...prev, trackerDomains: next }))}
-                    placeholder="Select trackers..."
+                    placeholder={t("preferences.workflowDialog.trackersPlaceholder")}
                     creatable
                     onCreateOption={(value) => setFormState(prev => ({ ...prev, trackerDomains: [...prev.trackerDomains, value] }))}
                     disabled={trackersQuery.isLoading}
@@ -2077,14 +2098,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Label>Torrent Priority</Label>
+                    <Label>{t("preferences.workflowDialog.priority.title")}</Label>
                     <TooltipProvider delayDuration={300}>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Info className="h-4 w-4 text-muted-foreground hover:text-foreground cursor-help transition-colors" />
                         </TooltipTrigger>
                         <TooltipContent side="right" className="max-w-[300px]">
-                          <p>Controls the order in which torrents are processed.</p>
+                          <p>{t("preferences.workflowDialog.priority.description")}</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
@@ -2097,16 +2118,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="default">Oldest First (Default)</SelectItem>
-                      <SelectItem value="simple">Simple Sort</SelectItem>
-                      <SelectItem value="score">Custom Score</SelectItem>
+                      <SelectItem value="default">{t("preferences.workflowDialog.priority.types.default")}</SelectItem>
+                      <SelectItem value="simple">{t("preferences.workflowDialog.priority.types.simple")}</SelectItem>
+                      <SelectItem value="score">{t("preferences.workflowDialog.priority.types.score")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 {formState.sortingType === "simple" && (
                   <div className="flex gap-2 items-center rounded-lg border p-3">
-                    <span className="text-sm text-muted-foreground">Sort by</span>
+                    <span className="text-sm text-muted-foreground">{t("preferences.workflowDialog.priority.sortBy")}</span>
                     <FieldCombobox
                       value={formState.simpleSortField}
                       onChange={(val) => setFormState(prev => ({ ...prev, simpleSortField: val as ConditionField }))}
@@ -2121,7 +2142,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         onClick={() => setFormState(prev => ({ ...prev, sortDirection: "ASC" }))}
                       >
                         <ArrowUp className="h-3.5 w-3.5 mr-1" />
-                        Asc
+                        {t("preferences.workflowDialog.priority.asc")}
                       </Button>
                       <div className="w-[1px] bg-border h-4" />
                       <Button
@@ -2132,7 +2153,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         onClick={() => setFormState(prev => ({ ...prev, sortDirection: "DESC" }))}
                       >
                         <ArrowDown className="h-3.5 w-3.5 mr-1" />
-                        Desc
+                        {t("preferences.workflowDialog.priority.desc")}
                       </Button>
                     </div>
                   </div>
@@ -2141,7 +2162,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 {formState.sortingType === "score" && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label className="text-xs text-muted-foreground uppercase tracking-wider">Score Rules</Label>
+                      <Label className="text-xs text-muted-foreground uppercase tracking-wider">{t("preferences.workflowDialog.priority.scoreRules")}</Label>
                       <div className="flex items-center border rounded-md">
                         <Button
                           type="button"
@@ -2151,7 +2172,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           onClick={() => setFormState(prev => ({ ...prev, sortDirection: "ASC" }))}
                         >
                           <ArrowUp className="h-3 w-3 mr-1" />
-                          Low to High
+                          {t("preferences.workflowDialog.priority.lowToHigh")}
                         </Button>
                         <div className="w-[1px] bg-border h-4" />
                         <Button
@@ -2162,7 +2183,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           onClick={() => setFormState(prev => ({ ...prev, sortDirection: "DESC" }))}
                         >
                           <ArrowDown className="h-3 w-3 mr-1" />
-                          High to Low
+                          {t("preferences.workflowDialog.priority.highToLow")}
                         </Button>
                       </div>
                     </div>
@@ -2183,7 +2204,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
                         <div className="mb-2">
                           <Badge variant="secondary" className="text-xs uppercase tracking-wider font-mono">
-                            {rule.type === "field_multiplier" ? "Field Multiplier" : rule.type}
+                            {rule.type === "field_multiplier" ? t("preferences.workflowDialog.priority.fieldMultiplier") : t("preferences.workflowDialog.priority.conditional")}
                           </Badge>
                         </div>
 
@@ -2241,7 +2262,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               disabledStateValues={getDisabledStateValues(fieldCapabilities)}
                             />
                             <div className="flex items-center gap-2">
-                              <span className="text-sm text-muted-foreground">Add Score:</span>
+                              <span className="text-sm text-muted-foreground">{t("preferences.workflowDialog.priority.addScore")}</span>
                               <Input
                                 type="number"
                                 className="w-24"
@@ -2278,7 +2299,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         }))}
                       >
                         <Plus className="h-3.5 w-3.5 mr-1" />
-                        Add Field Multiplier
+                        {t("preferences.workflowDialog.priority.addFieldMultiplier")}
                       </Button>
                       <Button
                         type="button"
@@ -2297,7 +2318,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         }))}
                       >
                         <Plus className="h-3.5 w-3.5 mr-1" />
-                        Add Bonus
+                        {t("preferences.workflowDialog.priority.addBonus")}
                       </Button>
                     </div>
                   </div>
@@ -2310,7 +2331,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               <div className="space-y-3">
                 {/* Query Builder */}
                 <div className="space-y-1.5">
-                  <Label>Conditions (optional)</Label>
+                  <Label>{t("preferences.workflowDialog.conditionsLabel")}</Label>
                   <QueryBuilder
                     condition={formState.actionCondition}
                     onChange={(condition) => {
@@ -2381,42 +2402,38 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
                 {/* Grouping Configuration - shown when GROUP_SIZE or IS_GROUPED is used */}
                 {(conditionUsesField(formState.actionCondition, "GROUP_SIZE") || conditionUsesField(formState.actionCondition, "IS_GROUPED")) && (
-                  <div className="rounded-lg border p-3 space-y-3 bg-muted/30">
+                    <div className="rounded-lg border p-3 space-y-3 bg-muted/30">
                     <div className="flex items-center gap-2">
-                      <Label className="text-sm font-medium">Grouped condition groups</Label>
+                      <Label className="text-sm font-medium">{t("preferences.workflowDialog.grouping.title")}</Label>
                       <TooltipProvider delayDuration={150}>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
                               type="button"
                               className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                              aria-label="About grouping configuration"
+                              aria-label={t("preferences.workflowDialog.grouping.aria")}
                             >
                               <Info className="h-3.5 w-3.5" />
                             </button>
                           </TooltipTrigger>
                           <TooltipContent side="right" className="max-w-[340px]">
-                            <p>
-                              GROUP_SIZE and IS_GROUPED now select a grouping per condition row.
-                              Define optional custom groups here for those selectors.
-                            </p>
+                            <p>{t("preferences.workflowDialog.grouping.tooltip")}</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
                     </div>
 
                     <p className="text-xs text-muted-foreground">
-                      Choose the group directly on each GROUP_SIZE / IS_GROUPED condition row.
-                      Built-ins are always available; custom groups below are optional.
+                      {t("preferences.workflowDialog.grouping.description")}
                     </p>
 
                     <div className="rounded-sm border border-border/50 bg-background p-2 text-xs space-y-1.5">
-                      <p className="font-medium text-foreground">Built-in groups</p>
+                      <p className="font-medium text-foreground">{t("preferences.workflowDialog.grouping.builtInTitle")}</p>
                       <div className="space-y-1">
                         {BUILTIN_GROUPS.map((group) => (
                           <div key={group.id}>
-                            <p className="font-medium">{group.label}</p>
-                            <p className="text-muted-foreground">{group.description}</p>
+                            <p className="font-medium">{t(group.labelKey)}</p>
+                            <p className="text-muted-foreground">{t(group.descriptionKey)}</p>
                           </div>
                         ))}
                       </div>
@@ -2426,14 +2443,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {(formState.exprGrouping?.groups || []).length > 0 && (
                       <div className="space-y-2 border-t pt-3">
                         <p className="text-xs font-medium text-muted-foreground">
-                          Custom groups (available in grouped condition selectors and action group IDs)
+                          {t("preferences.workflowDialog.grouping.customGroupsTitle")}
                         </p>
                         {(formState.exprGrouping?.groups || []).map((group, idx) => (
                           <div key={group.id} className="border rounded-sm p-2 space-y-1.5 text-xs bg-background">
                             <div className="flex items-center justify-between gap-1">
                               <div className="flex-1 min-w-0">
                                 <p className="font-mono font-medium truncate">{group.id}</p>
-                                <p className="text-muted-foreground">Keys: {group.keys.join(", ")}</p>
+                                <p className="text-muted-foreground">{t("preferences.workflowDialog.grouping.keys", { keys: group.keys.join(", ") })}</p>
                               </div>
                               <Button
                                 type="button"
@@ -2470,7 +2487,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       }}
                     >
                       <Plus className="h-3 w-3 mr-1" />
-                      Add custom group
+                      {t("preferences.workflowDialog.grouping.addCustomGroup")}
                     </Button>
                   </div>
                 )}
@@ -2478,7 +2495,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 {/* Actions section */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <Label>Action</Label>
+                    <Label>{t("preferences.workflowDialog.actions.title")}</Label>
                     {/* Add action dropdown - only show if Delete is not enabled, at least one action exists, and there are available actions to add */}
                     {!formState.deleteEnabled && enabledActionsCount > 0 && (() => {
                       const enabledActions = getEnabledActions(formState)
@@ -2499,11 +2516,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         >
                           <SelectTrigger className="w-fit h-7 text-xs">
                             <Plus className="h-3 w-3 mr-1" />
-                            Add action
+                            {t("preferences.workflowDialog.actions.addAction")}
                           </SelectTrigger>
                           <SelectContent>
                             {availableActions.map(action => (
-                              <SelectItem key={action} value={action}>{ACTION_LABELS[action]}</SelectItem>
+                              <SelectItem key={action} value={action}>{t(ACTION_LABEL_KEYS[action])}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -2547,21 +2564,21 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       }}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select an action..." />
+                        <SelectValue placeholder={t("preferences.workflowDialog.actions.selectAction")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="speedLimits">Speed limits</SelectItem>
-                        <SelectItem value="shareLimits">Share limits</SelectItem>
-                        <SelectItem value="pause">Pause</SelectItem>
-                        <SelectItem value="resume">Resume</SelectItem>
-                        <SelectItem value="recheck">Force recheck</SelectItem>
-                        <SelectItem value="reannounce">Force reannounce</SelectItem>
-                        <SelectItem value="tag">Tag</SelectItem>
-                        <SelectItem value="category">Category</SelectItem>
-                        <SelectItem value="move">Move</SelectItem>
-                        <SelectItem value="externalProgram">Run external program</SelectItem>
-                        <SelectItem value="autoManagement">Auto management</SelectItem>
-                        <SelectItem value="delete" className="text-destructive focus:text-destructive">Delete (standalone only)</SelectItem>
+                        <SelectItem value="speedLimits">{t("preferences.workflowDialog.actions.speedLimits")}</SelectItem>
+                        <SelectItem value="shareLimits">{t("preferences.workflowDialog.actions.shareLimits")}</SelectItem>
+                        <SelectItem value="pause">{t("preferences.workflowDialog.actions.pause")}</SelectItem>
+                        <SelectItem value="resume">{t("preferences.workflowDialog.actions.resume")}</SelectItem>
+                        <SelectItem value="recheck">{t("preferences.workflowDialog.actions.recheck")}</SelectItem>
+                        <SelectItem value="reannounce">{t("preferences.workflowDialog.actions.reannounce")}</SelectItem>
+                        <SelectItem value="tag">{t("preferences.workflowDialog.actions.tag")}</SelectItem>
+                        <SelectItem value="category">{t("preferences.workflowDialog.actions.category")}</SelectItem>
+                        <SelectItem value="move">{t("preferences.workflowDialog.actions.move")}</SelectItem>
+                        <SelectItem value="externalProgram">{t("preferences.workflowDialog.actions.externalProgram")}</SelectItem>
+                        <SelectItem value="autoManagement">{t("preferences.workflowDialog.actions.autoManagement")}</SelectItem>
+                        <SelectItem value="delete" className="text-destructive focus:text-destructive">{t("preferences.workflowDialog.actions.deleteStandalone")}</SelectItem>
                       </SelectContent>
                     </Select>
                   )}
@@ -2572,7 +2589,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.speedLimitsEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Speed limits</Label>
+                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.actions.speedLimits")}</Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -2586,7 +2603,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <div className="space-y-3">
                           {/* Upload limit */}
                           <div className="space-y-1.5">
-                            <Label className="text-xs">Upload limit</Label>
+                            <Label className="text-xs">{t("preferences.workflowDialog.speedLimits.uploadLimit")}</Label>
                             <div className="flex gap-2">
                               <Select
                                 value={formState.exprUploadMode}
@@ -2600,9 +2617,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="no_change">No change</SelectItem>
-                                  <SelectItem value="unlimited">Unlimited</SelectItem>
-                                  <SelectItem value="custom">Custom</SelectItem>
+                                  <SelectItem value="no_change">{t("preferences.workflowDialog.option.noChange")}</SelectItem>
+                                  <SelectItem value="unlimited">{t("preferences.workflowDialog.option.unlimited")}</SelectItem>
+                                  <SelectItem value="custom">{t("preferences.workflowDialog.option.custom")}</SelectItem>
                                 </SelectContent>
                               </Select>
                               {formState.exprUploadMode === "custom" && (
@@ -2629,7 +2646,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                         exprUploadValue: Math.round(parsed * uploadSpeedUnit),
                                       }))
                                     }}
-                                    placeholder="e.g. 10"
+                                    placeholder={t("preferences.workflowDialog.speedLimits.placeholder")}
                                   />
                                   <Select
                                     value={String(uploadSpeedUnit)}
@@ -2660,7 +2677,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </div>
                           {/* Download limit */}
                           <div className="space-y-1.5">
-                            <Label className="text-xs">Download limit</Label>
+                            <Label className="text-xs">{t("preferences.workflowDialog.speedLimits.downloadLimit")}</Label>
                             <div className="flex gap-2">
                               <Select
                                 value={formState.exprDownloadMode}
@@ -2674,9 +2691,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="no_change">No change</SelectItem>
-                                  <SelectItem value="unlimited">Unlimited</SelectItem>
-                                  <SelectItem value="custom">Custom</SelectItem>
+                                  <SelectItem value="no_change">{t("preferences.workflowDialog.option.noChange")}</SelectItem>
+                                  <SelectItem value="unlimited">{t("preferences.workflowDialog.option.unlimited")}</SelectItem>
+                                  <SelectItem value="custom">{t("preferences.workflowDialog.option.custom")}</SelectItem>
                                 </SelectContent>
                               </Select>
                               {formState.exprDownloadMode === "custom" && (
@@ -2703,7 +2720,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                         exprDownloadValue: Math.round(parsed * downloadSpeedUnit),
                                       }))
                                     }}
-                                    placeholder="e.g. 10"
+                                    placeholder={t("preferences.workflowDialog.speedLimits.placeholder")}
                                   />
                                   <Select
                                     value={String(downloadSpeedUnit)}
@@ -2740,7 +2757,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.shareLimitsEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Share limits</Label>
+                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.actions.shareLimits")}</Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -2754,7 +2771,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <div className="space-y-3">
                           {/* Ratio limit */}
                           <div className="space-y-1.5">
-                            <Label className="text-xs">Ratio limit</Label>
+                            <Label className="text-xs">{t("preferences.workflowDialog.shareLimits.ratioLimit")}</Label>
                             <div className="flex gap-2">
                               <Select
                                 value={formState.exprRatioLimitMode}
@@ -2768,10 +2785,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="no_change">No change</SelectItem>
-                                  <SelectItem value="global">Use global</SelectItem>
-                                  <SelectItem value="unlimited">Unlimited</SelectItem>
-                                  <SelectItem value="custom">Custom</SelectItem>
+                                  <SelectItem value="no_change">{t("preferences.workflowDialog.option.noChange")}</SelectItem>
+                                  <SelectItem value="global">{t("preferences.workflowDialog.option.useGlobal")}</SelectItem>
+                                  <SelectItem value="unlimited">{t("preferences.workflowDialog.option.unlimited")}</SelectItem>
+                                  <SelectItem value="custom">{t("preferences.workflowDialog.option.custom")}</SelectItem>
                                 </SelectContent>
                               </Select>
                               {formState.exprRatioLimitMode === "custom" && (
@@ -2789,14 +2806,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       exprRatioLimitValue: val === "" ? undefined : (Number.isFinite(parsed) ? parsed : prev.exprRatioLimitValue),
                                     }))
                                   }}
-                                  placeholder="e.g. 2.0"
+                                  placeholder={t("preferences.workflowDialog.shareLimits.ratioPlaceholder")}
                                 />
                               )}
                             </div>
                           </div>
                           {/* Seed time */}
                           <div className="space-y-1.5">
-                            <Label className="text-xs">Seed time (minutes)</Label>
+                            <Label className="text-xs">{t("preferences.workflowDialog.shareLimits.seedTime")}</Label>
                             <div className="flex gap-2">
                               <Select
                                 value={formState.exprSeedingTimeMode}
@@ -2810,10 +2827,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="no_change">No change</SelectItem>
-                                  <SelectItem value="global">Use global</SelectItem>
-                                  <SelectItem value="unlimited">Unlimited</SelectItem>
-                                  <SelectItem value="custom">Custom</SelectItem>
+                                  <SelectItem value="no_change">{t("preferences.workflowDialog.option.noChange")}</SelectItem>
+                                  <SelectItem value="global">{t("preferences.workflowDialog.option.useGlobal")}</SelectItem>
+                                  <SelectItem value="unlimited">{t("preferences.workflowDialog.option.unlimited")}</SelectItem>
+                                  <SelectItem value="custom">{t("preferences.workflowDialog.option.custom")}</SelectItem>
                                 </SelectContent>
                               </Select>
                               {formState.exprSeedingTimeMode === "custom" && (
@@ -2830,7 +2847,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       exprSeedingTimeValue: val === "" ? undefined : (Number.isFinite(parsed) ? parsed : prev.exprSeedingTimeValue),
                                     }))
                                   }}
-                                  placeholder="e.g. 1440"
+                                  placeholder={t("preferences.workflowDialog.shareLimits.seedTimePlaceholder")}
                                 />
                               )}
                             </div>
@@ -2843,7 +2860,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.pauseEnabled && (
                       <div className="rounded-lg border p-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Pause</Label>
+                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.actions.pause")}</Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -2860,7 +2877,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.resumeEnabled && (
                       <div className="rounded-lg border p-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Resume</Label>
+                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.actions.resume")}</Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -2877,7 +2894,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.recheckEnabled && (
                       <div className="rounded-lg border p-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Force recheck</Label>
+                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.actions.recheck")}</Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -2894,7 +2911,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.reannounceEnabled && (
                       <div className="rounded-lg border p-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Force reannounce</Label>
+                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.actions.reannounce")}</Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -2911,7 +2928,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.autoManagementEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Auto management</Label>
+                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.actions.autoManagement")}</Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -2930,8 +2947,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="enable">Enable automatic torrent management</SelectItem>
-                            <SelectItem value="disable">Disable automatic torrent management</SelectItem>
+                            <SelectItem value="enable">{t("preferences.workflowDialog.autoManagement.enable")}</SelectItem>
+                            <SelectItem value="disable">{t("preferences.workflowDialog.autoManagement.disable")}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -2940,7 +2957,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.tagEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Tag actions</Label>
+                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.tag.title")}</Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -2955,7 +2972,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           {formState.exprTagActions.map((tagAction, index) => (
                             <div key={`tag-action-${index}`} className="rounded-md border bg-muted/20 p-3 space-y-3">
                               <div className="flex items-center justify-between">
-                                <Label className="text-xs font-medium">Tag action {index + 1}</Label>
+                                <Label className="text-xs font-medium">{t("preferences.workflowDialog.tag.actionN", { count: index + 1 })}</Label>
                                 {formState.exprTagActions.length > 1 && (
                                   <Button
                                     type="button"
@@ -2974,14 +2991,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-3 items-start">
                                 {tagAction.useTrackerAsTag ? (
                                   <div className="space-y-1">
-                                    <Label className="text-xs text-muted-foreground">Tags derived from tracker</Label>
+                                    <Label className="text-xs text-muted-foreground">{t("preferences.workflowDialog.tag.tagsDerivedFromTracker")}</Label>
                                     <div className="flex items-center gap-2 h-9 px-3 rounded-md border bg-muted/50 text-sm text-muted-foreground">
-                                      Torrents will be tagged with their tracker name
+                                      {t("preferences.workflowDialog.tag.tagsDerivedDescription")}
                                     </div>
                                   </div>
                                 ) : (
                                   <div className="space-y-1">
-                                    <Label className="text-xs">Tags</Label>
+                                    <Label className="text-xs">{t("preferences.workflowDialog.tag.tags")}</Label>
                                     <MultiSelect
                                       options={tagOptions}
                                       selected={tagAction.tags}
@@ -2989,7 +3006,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                         ...prev,
                                         exprTagActions: prev.exprTagActions.map((item, i) => i === index ? { ...item, tags: next } : item),
                                       }))}
-                                      placeholder="Select tags..."
+                                      placeholder={t("preferences.workflowDialog.tag.selectTags")}
                                       creatable
                                       onCreateOption={(value) => setFormState(prev => ({
                                         ...prev,
@@ -2999,7 +3016,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   </div>
                                 )}
                                 <div className="space-y-1">
-                                  <Label className="text-xs">Action mode</Label>
+                                  <Label className="text-xs">{t("preferences.workflowDialog.tag.actionMode")}</Label>
                                   <Select
                                     value={tagAction.mode}
                                     onValueChange={(value: TagActionForm["mode"]) => setFormState(prev => ({
@@ -3011,14 +3028,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="full">Full sync</SelectItem>
-                                      <SelectItem value="add">Add only</SelectItem>
-                                      <SelectItem value="remove">Remove only</SelectItem>
+                                      <SelectItem value="full">{t("preferences.workflowDialog.tag.fullSync")}</SelectItem>
+                                      <SelectItem value="add">{t("preferences.workflowDialog.tag.addOnly")}</SelectItem>
+                                      <SelectItem value="remove">{t("preferences.workflowDialog.tag.removeOnly")}</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
                                 <div className="space-y-1">
-                                  <Label className="text-xs">Tag strategy</Label>
+                                  <Label className="text-xs">{t("preferences.workflowDialog.tag.strategy")}</Label>
                                   <Select
                                     value={tagAction.deleteFromClient ? "replace" : "managed"}
                                     onValueChange={(value: "managed" | "replace") => {
@@ -3041,19 +3058,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="managed">Managed (default)</SelectItem>
-                                      <SelectItem value="replace">Replace in client</SelectItem>
+                                      <SelectItem value="managed">{t("preferences.workflowDialog.tag.strategyManaged")}</SelectItem>
+                                      <SelectItem value="replace">{t("preferences.workflowDialog.tag.strategyReplace")}</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
                               </div>
                               {tagAction.deleteFromClient ? (
                                 <div className="text-xs text-muted-foreground">
-                                  Replace mode forces a full client-wide reset of these tags before applying this rule.
+                                  {t("preferences.workflowDialog.tag.replaceDescription")}
                                 </div>
                               ) : (
                                 <div className="text-xs text-muted-foreground">
-                                  Managed mode keeps tags accurate with diff-based updates; Full sync adds tags to matches and removes them from non-matches.
+                                  {t("preferences.workflowDialog.tag.managedDescription")}
                                 </div>
                               )}
                               <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
@@ -3079,7 +3096,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                     htmlFor={`use-tracker-tag-${index}`}
                                     className={`text-sm cursor-pointer whitespace-nowrap ${tagAction.deleteFromClient ? "text-muted-foreground" : ""}`}
                                   >
-                                    Use tracker name as tag
+                                    {t("preferences.workflowDialog.tag.useTrackerName")}
                                   </Label>
                                 </div>
                                 {tagAction.useTrackerAsTag && (
@@ -3093,7 +3110,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       }))}
                                     />
                                     <Label htmlFor={`use-display-name-${index}`} className="text-sm cursor-pointer whitespace-nowrap">
-                                      Use display name
+                                      {t("preferences.workflowDialog.tag.useDisplayName")}
                                     </Label>
                                     <TooltipProvider delayDuration={150}>
                                       <Tooltip>
@@ -3101,13 +3118,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                           <button
                                             type="button"
                                             className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                                            aria-label="About display names"
+                                            aria-label={t("preferences.workflowDialog.tag.aboutDisplayNames")}
                                           >
                                             <Info className="h-3.5 w-3.5" />
                                           </button>
                                         </TooltipTrigger>
                                         <TooltipContent className="max-w-[280px]">
-                                          <p>Uses friendly names from Tracker Customizations instead of raw domains (e.g., "MyTracker" instead of "tracker.example.com").</p>
+                                          <p>{t("preferences.workflowDialog.tag.displayNameDescription")}</p>
                                         </TooltipContent>
                                       </Tooltip>
                                     </TooltipProvider>
@@ -3127,11 +3144,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             }))}
                           >
                             <Plus className="h-3.5 w-3.5 mr-1" />
-                            Add tag action
+                            {t("preferences.workflowDialog.tag.addAction")}
                           </Button>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          Use multiple tag actions when you need different modes (for example add one tag and remove another in the same workflow).
+                          {t("preferences.workflowDialog.tag.multipleActionsHelp")}
                         </p>
                       </div>
                     )}
@@ -3140,7 +3157,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.categoryEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Category</Label>
+                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.actions.category")}</Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -3153,7 +3170,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                         <div className="flex items-center gap-3">
                           <div className="space-y-1">
-                            <Label className="text-xs">Move to category</Label>
+                            <Label className="text-xs">{t("preferences.workflowDialog.category.moveToCategory")}</Label>
                             <Select
                               value={formState.exprCategory === "" ? CATEGORY_UNCATEGORIZED_VALUE : formState.exprCategory}
                               onValueChange={(value) => setFormState(prev => ({
@@ -3163,7 +3180,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             >
                               <SelectTrigger className="w-fit min-w-[160px]">
                                 <Folder className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
-                                <SelectValue placeholder="Select category" />
+                                <SelectValue placeholder={t("preferences.workflowDialog.category.selectCategory")} />
                               </SelectTrigger>
                               <SelectContent>
                                 {categoryActionOptions.map(opt => (
@@ -3186,7 +3203,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 onCheckedChange={(checked) => setFormState(prev => ({ ...prev, exprIncludeCrossSeeds: checked }))}
                               />
                               <Label htmlFor="include-crossseeds" className="text-sm cursor-pointer whitespace-nowrap">
-                                Include affected cross-seeds
+                                {t("preferences.workflowDialog.category.includeAffectedCrossSeeds")}
                               </Label>
                             </div>
                           )}
@@ -3198,7 +3215,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.externalProgramEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Run external program</Label>
+                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.actions.externalProgram")}</Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -3210,15 +3227,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </Button>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">Program</Label>
+                          <Label className="text-xs">{t("preferences.workflowDialog.externalProgram.program")}</Label>
                           {externalProgramsLoading ? (
                             <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50 flex items-center gap-2">
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              Loading external programs...
+                              {t("preferences.workflowDialog.externalProgram.loading")}
                             </div>
                           ) : externalProgramsError ? (
                             <div className="text-sm text-destructive p-2 border border-destructive/50 rounded-md bg-destructive/10">
-                              Failed to load external programs. Please try again.
+                              {t("preferences.workflowDialog.externalProgram.loadFailed")}
                             </div>
                           ) : externalPrograms && externalPrograms.length > 0 ? (
                             <Select
@@ -3229,7 +3246,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               }))}
                             >
                               <SelectTrigger>
-                                <SelectValue placeholder="Select a program..." />
+                                <SelectValue placeholder={t("preferences.workflowDialog.externalProgram.selectProgram")} />
                               </SelectTrigger>
                               <SelectContent>
                                 {externalPrograms.map(program => (
@@ -3239,7 +3256,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   >
                                     {program.name}
                                     {!program.enabled && (
-                                      <span className="ml-2 text-xs text-muted-foreground">(disabled)</span>
+                                      <span className="ml-2 text-xs text-muted-foreground">{t("preferences.workflowDialog.externalProgram.disabled")}</span>
                                     )}
                                   </SelectItem>
                                 ))}
@@ -3247,14 +3264,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             </Select>
                           ) : (
                             <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50">
-                              No external programs configured.{" "}
+                              {t("preferences.workflowDialog.externalProgram.noneConfigured")}{" "}
                               <a
                                 href={withBasePath("/settings?tab=external-programs")}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-primary hover:underline"
                               >
-                                Configure in Settings
+                                {t("preferences.workflowDialog.externalProgram.configureInSettings")}
                               </a>
                             </div>
                           )}
@@ -3266,7 +3283,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.deleteEnabled && (
                       <div className="rounded-lg border border-destructive/50 p-3 space-y-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium text-destructive">Delete</Label>
+                          <Label className="text-sm font-medium text-destructive">{t("preferences.workflowDialog.actions.delete")}</Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -3278,7 +3295,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </Button>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">Mode</Label>
+                          <Label className="text-xs">{t("preferences.workflowDialog.delete.mode")}</Label>
                           {(() => {
                             const usesFreeSpace = conditionUsesField(formState.actionCondition, "FREE_SPACE")
                             const keepFilesDisabled = usesFreeSpace
@@ -3300,20 +3317,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                             className="text-destructive focus:text-destructive"
                                             disabled={keepFilesDisabled}
                                           >
-                                            Remove (keep files)
+                                            {t("preferences.workflowDialog.delete.keepFiles")}
                                           </SelectItem>
                                         </div>
                                       </TooltipTrigger>
                                       {keepFilesDisabled && (
                                         <TooltipContent side="left" className="max-w-[280px]">
-                                          <p>Disabled when using Free Space condition. Keep-files mode cannot satisfy a free space target because no disk space is freed.</p>
+                                          <p>{t("preferences.workflowDialog.delete.keepFilesDisabledReason")}</p>
                                         </TooltipContent>
                                       )}
                                     </Tooltip>
                                   </TooltipProvider>
-                                  <SelectItem value="deleteWithFiles" className="text-destructive focus:text-destructive">Remove with files</SelectItem>
-                                  <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">Remove with files (preserve cross-seeds)</SelectItem>
-                                  <SelectItem value="deleteWithFilesIncludeCrossSeeds" className="text-destructive focus:text-destructive">Remove with files (include cross-seeds)</SelectItem>
+                                  <SelectItem value="deleteWithFiles" className="text-destructive focus:text-destructive">{t("preferences.workflowDialog.delete.withFiles")}</SelectItem>
+                                  <SelectItem value="deleteWithFilesPreserveCrossSeeds" className="text-destructive focus:text-destructive">{t("preferences.workflowDialog.delete.withFilesPreserveCrossSeeds")}</SelectItem>
+                                  <SelectItem value="deleteWithFilesIncludeCrossSeeds" className="text-destructive focus:text-destructive">{t("preferences.workflowDialog.delete.withFilesIncludeCrossSeeds")}</SelectItem>
                                 </SelectContent>
                               </Select>
                             )
@@ -3334,20 +3351,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                       className="h-3.5 w-3.5 rounded border-border disabled:opacity-50"
                                     />
                                     <span className={!hasLocalFilesystemAccess ? "opacity-50" : ""}>
-                                      Include hardlinked copies
+                                      {t("preferences.workflowDialog.delete.includeHardlinkedCopies")}
                                     </span>
                                   </label>
                                 </TooltipTrigger>
                                 <TooltipContent side="left" className="max-w-[320px]">
                                   {hasLocalFilesystemAccess ? (
-                                    <p>
-                                      Also delete torrents that share the same underlying files via hardlinks.
-                                      Only includes hardlinks fully inside qBittorrent; never follows hardlinks outside.
-                                    </p>
+                                    <p>{t("preferences.workflowDialog.delete.includeHardlinkedCopiesDescription")}</p>
                                   ) : (
-                                    <p>
-                                      Requires &quot;Local Filesystem Access&quot; to be enabled in instance settings.
-                                    </p>
+                                    <p>{t("preferences.workflowDialog.delete.localAccessRequired")}</p>
                                   )}
                                 </TooltipContent>
                               </Tooltip>
@@ -3360,7 +3372,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     {formState.moveEnabled && (
                       <div className="rounded-lg border p-3 space-y-3">
                         <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Move</Label>
+                          <Label className="text-sm font-medium">{t("preferences.workflowDialog.actions.move")}</Label>
                           <Button
                             type="button"
                             variant="ghost"
@@ -3372,12 +3384,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </Button>
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">New save path</Label>
+                          <Label className="text-xs">{t("preferences.workflowDialog.move.newSavePath")}</Label>
                           <Input
                             type="text"
                             value={formState.exprMovePath}
                             onChange={(e) => setFormState(prev => ({ ...prev, exprMovePath: e.target.value }))}
-                            placeholder="e.g., /data/torrents"
+                            placeholder={t("preferences.workflowDialog.move.placeholder")}
                           />
                         </div>
                         <div className="flex items-start gap-2">
@@ -3392,7 +3404,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           />
                           <div className="flex items-center gap-2">
                             <Label htmlFor="block-if-cross-seed" className="text-sm cursor-pointer">
-                              Skip if cross-seeds don't match the rule's conditions
+                              {t("preferences.workflowDialog.move.skipIfCrossSeedsDontMatch")}
                             </Label>
                             <TooltipProvider delayDuration={150}>
                               <Tooltip>
@@ -3400,15 +3412,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   <button
                                     type="button"
                                     className="shrink-0 inline-flex items-center text-muted-foreground hover:text-foreground"
-                                    aria-label="About skipping move if cross-seeds exist"
+                                    aria-label={t("preferences.workflowDialog.move.aboutSkipping")}
                                   >
                                     <Info className="h-3.5 w-3.5" />
                                   </button>
                                 </TooltipTrigger>
                                 <TooltipContent className="max-w-[320px]">
-                                  <p>
-                                    Skips the move if there are any other torrents in the same cross-seed group that do not match the rule's conditions. Otherwise, all cross-seeds will be moved, even if not matched by the rule's conditions.
-                                  </p>
+                                  <p>{t("preferences.workflowDialog.move.skipDescription")}</p>
                                 </TooltipContent>
                               </Tooltip>
                             </TooltipProvider>
@@ -3423,24 +3433,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 {conditionUsesFreeSpace && (
                   <div className="rounded-lg border p-3 space-y-2">
                     <div className="flex items-center gap-1.5">
-                      <Label className="text-sm font-medium">Free space source</Label>
+                      <Label className="text-sm font-medium">{t("preferences.workflowDialog.freeSpace.title")}</Label>
                       <TooltipProvider delayDuration={150}>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
-                              type="button"
-                              className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                              aria-label="About free space source"
-                            >
+                            type="button"
+                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                            aria-label={t("preferences.workflowDialog.freeSpace.aria")}
+                          >
                               <Info className="h-3.5 w-3.5" />
                             </button>
                           </TooltipTrigger>
                           <TooltipContent side="left" className="max-w-[320px]">
-                            <p>
-                              Choose where to read free space from. Default uses qBittorrent&apos;s
-                              reported free space. Use &quot;Path on server&quot; to check free space on
-                              a specific disk or mount point.
-                            </p>
+                            <p>{t("preferences.workflowDialog.freeSpace.description")}</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -3461,12 +3467,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       }}
                     >
                       <SelectTrigger className="h-8 text-xs">
-                        <SelectValue placeholder="Select source" />
+                        <SelectValue placeholder={t("preferences.workflowDialog.freeSpace.selectSource")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="qbittorrent">Default (qBittorrent)</SelectItem>
+                        <SelectItem value="qbittorrent">{t("preferences.workflowDialog.freeSpace.defaultSource")}</SelectItem>
                         <SelectItem value="path" disabled={!hasLocalFilesystemAccess || !supportsFreeSpacePathSource}>
-                          Path on server{!supportsFreeSpacePathSource ? " (not supported on Windows)" : !hasLocalFilesystemAccess ? " (requires Local Access)" : ""}
+                          {!supportsFreeSpacePathSource
+                            ? t("preferences.workflowDialog.freeSpace.pathSourceWindowsUnsupported")
+                            : !hasLocalFilesystemAccess
+                              ? t("preferences.workflowDialog.freeSpace.pathSourceLocalAccessRequired")
+                              : t("preferences.workflowDialog.freeSpace.pathSource")}
                         </SelectItem>
                       </SelectContent>
                     </Select>
@@ -3493,7 +3503,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 setFreeSpaceSourcePathError(null)
                               }
                             }}
-                            placeholder="/mnt/downloads"
+                            placeholder={t("preferences.workflowDialog.freeSpace.pathPlaceholder")}
                             className={cn("h-8 text-xs pl-7", freeSpaceSourcePathError && "border-destructive/50")}
                           />
                         </div>
@@ -3530,7 +3540,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           <p className="text-xs text-destructive">{freeSpaceSourcePathError}</p>
                         )}
                         <p className="text-xs text-muted-foreground">
-                          Enter the path to check free space on (e.g., a mount point)
+                          {t("preferences.workflowDialog.freeSpace.pathHelp")}
                         </p>
                       </div>
                     )}
@@ -3540,22 +3550,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 {formState.categoryEnabled && (formState.exprIncludeCrossSeeds || formState.exprBlockIfCrossSeedInCategories.length > 0) && (
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-1.5">
-                      <Label className="text-xs">Skip if cross-seed exists in categories</Label>
+                      <Label className="text-xs">{t("preferences.workflowDialog.category.skipIfCrossSeedExists")}</Label>
                       <TooltipProvider delayDuration={150}>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
-                              type="button"
-                              className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                              aria-label="About skipping when cross-seeds exist"
-                            >
+                            type="button"
+                            className="inline-flex items-center text-muted-foreground hover:text-foreground"
+                            aria-label={t("preferences.workflowDialog.category.aboutSkipping")}
+                          >
                               <Info className="h-3.5 w-3.5" />
                             </button>
                           </TooltipTrigger>
                           <TooltipContent className="max-w-[320px]">
-                            <p>
-                              Useful with *arr import queues: prevents automation from moving the torrents if at least one of them are in the *arr import queue.
-                            </p>
+                            <p>{t("preferences.workflowDialog.category.skipHelp")}</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -3564,7 +3572,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       options={categoryOptions}
                       selected={formState.exprBlockIfCrossSeedInCategories}
                       onChange={(next) => setFormState(prev => ({ ...prev, exprBlockIfCrossSeedInCategories: next }))}
-                      placeholder="Select categories..."
+                      placeholder={t("preferences.workflowDialog.category.selectCategories")}
                       creatable
                       onCreateOption={(value) => setFormState(prev => ({
                         ...prev,
@@ -3572,7 +3580,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       }))}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Skips the category change if another torrent pointing at the same on-disk content is already in one of these categories.
+                      {t("preferences.workflowDialog.category.skipDescription")}
                     </p>
                   </div>
                 )}
@@ -3583,8 +3591,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               <div className="rounded-lg border bg-muted/20 p-3 space-y-2 mt-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm font-medium">Dry-run results</p>
-                    <p className="text-xs text-muted-foreground">Latest run from this editor. No need to leave this dialog.</p>
+                    <p className="text-sm font-medium">{t("preferences.workflowDialog.dryRun.title")}</p>
+                    <p className="text-xs text-muted-foreground">{t("preferences.workflowDialog.dryRun.description")}</p>
                   </div>
                   {!dryRunNowMutation.isPending && (
                     <Button
@@ -3599,7 +3607,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         setActivityRunDialog(null)
                       }}
                     >
-                      Clear
+                      {t("preferences.workflowDialog.dryRun.clear")}
                     </Button>
                   )}
                 </div>
@@ -3607,25 +3615,26 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 {dryRunNowMutation.isPending ? (
                   <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Running dry-run...
+                    {t("preferences.workflowDialog.dryRun.running")}
                   </div>
                 ) : latestDryRunError ? (
                   <p className="text-xs text-destructive">{latestDryRunError}</p>
                 ) : latestDryRunEvents.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No dry-run activity rows available yet.</p>
+                  <p className="text-xs text-muted-foreground">{t("preferences.workflowDialog.dryRun.noRows")}</p>
                 ) : (
                   <>
                     <p className="text-xs text-muted-foreground">
-                      {latestDryRunEvents.length} action summar{latestDryRunEvents.length === 1 ? "y" : "ies"}.
-                      {" "}
-                      {latestDryRunOperationCount} planned operation{latestDryRunOperationCount === 1 ? "" : "s"}.
+                      {t("preferences.workflowDialog.dryRun.summaryLine", {
+                        summaries: latestDryRunEvents.length,
+                        operations: latestDryRunOperationCount,
+                      })}
                     </p>
                     <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
                       {latestDryRunEvents.map((event) => (
                         <div key={event.id} className="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1.5">
                           <div className="min-w-0">
-                            <p className="text-xs font-medium truncate">{DRY_RUN_ACTION_LABELS[event.action] ?? event.action}</p>
-                            <p className="text-xs text-muted-foreground truncate">{formatDryRunEventSummary(event)}</p>
+                            <p className="text-xs font-medium truncate">{t(DRY_RUN_ACTION_LABEL_KEYS[event.action] ?? "", { defaultValue: event.action })}</p>
+                            <p className="text-xs text-muted-foreground truncate">{formatDryRunEventSummary(event, t)}</p>
                           </div>
                           <div className="shrink-0 flex items-center gap-2">
                             <span className="text-[11px] text-muted-foreground">{getDryRunImpactCount(event)}</span>
@@ -3637,7 +3646,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 className="h-7 px-2 text-xs"
                                 onClick={() => setActivityRunDialog(event)}
                               >
-                                View items
+                                {t("preferences.workflowDialog.dryRun.viewItems")}
                               </Button>
                             )}
                           </div>
@@ -3657,7 +3666,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     checked={formState.enabled}
                     onCheckedChange={handleEnabledToggle}
                   />
-                  <Label htmlFor="rule-enabled" className="text-sm font-normal cursor-pointer">Enabled</Label>
+                  <Label htmlFor="rule-enabled" className="text-sm font-normal cursor-pointer">{t("preferences.workflowDialog.footer.enabled")}</Label>
                 </div>
                 <div className="flex items-center gap-2">
                   <Switch
@@ -3665,7 +3674,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     checked={formState.dryRun}
                     onCheckedChange={(checked) => setFormState(prev => ({ ...prev, dryRun: checked }))}
                   />
-                  <Label htmlFor="rule-dry-run" className="text-sm font-normal cursor-pointer">Dry run</Label>
+                  <Label htmlFor="rule-dry-run" className="text-sm font-normal cursor-pointer">{t("preferences.workflowDialog.footer.dryRun")}</Label>
                 </div>
                 {hasNotificationTargets && (
                   <div className="flex items-center gap-2">
@@ -3674,11 +3683,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       checked={formState.notify}
                       onCheckedChange={(checked) => setFormState(prev => ({ ...prev, notify: checked }))}
                     />
-                    <Label htmlFor="rule-notify" className="text-sm font-normal cursor-pointer">Notify</Label>
+                    <Label htmlFor="rule-notify" className="text-sm font-normal cursor-pointer">{t("preferences.workflowDialog.footer.notify")}</Label>
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="rule-interval" className="text-sm font-normal text-muted-foreground whitespace-nowrap">Run every</Label>
+                  <Label htmlFor="rule-interval" className="text-sm font-normal text-muted-foreground whitespace-nowrap">{t("preferences.workflowDialog.footer.runEvery")}</Label>
                   <Select
                     value={formState.intervalSeconds === null ? "default" : String(formState.intervalSeconds)}
                     onValueChange={(value) => {
@@ -3690,22 +3699,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="default">Default (15m)</SelectItem>
-                      <SelectItem value="60" disabled={deleteUsesFreeSpace}>1 minute</SelectItem>
-                      <SelectItem value="300">5 minutes</SelectItem>
-                      <SelectItem value="900">15 minutes</SelectItem>
-                      <SelectItem value="1800">30 minutes</SelectItem>
-                      <SelectItem value="3600">1 hour</SelectItem>
-                      <SelectItem value="7200">2 hours</SelectItem>
-                      <SelectItem value="14400">4 hours</SelectItem>
-                      <SelectItem value="21600">6 hours</SelectItem>
-                      <SelectItem value="43200">12 hours</SelectItem>
-                      <SelectItem value="86400">24 hours</SelectItem>
+                      {intervalOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value} disabled={option.disabled}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
                       {/* Show custom option if current value is non-preset */}
                       {formState.intervalSeconds !== null &&
                         ![60, 300, 900, 1800, 3600, 7200, 14400, 21600, 43200, 86400].includes(formState.intervalSeconds) && (
                         <SelectItem value={String(formState.intervalSeconds)}>
-                          Custom ({formState.intervalSeconds}s)
+                          {t("preferences.workflowDialog.interval.custom", { seconds: formState.intervalSeconds })}
                         </SelectItem>
                       )}
                     </SelectContent>
@@ -3717,25 +3720,25 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           <button
                             type="button"
                             className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                            aria-label="About Free Space cooldown"
+                            aria-label={t("preferences.workflowDialog.interval.cooldownAria")}
                           >
                             <Info className="h-3.5 w-3.5" />
                           </button>
                         </TooltipTrigger>
                         <TooltipContent className="max-w-[280px]">
-                          <p>After removing files, qui waits ~5 minutes before running Free Space deletes again to allow qBittorrent to refresh disk free space.</p>
+                          <p>{t("preferences.workflowDialog.interval.cooldownDescription")}</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   )}
                   {deleteUsesFreeSpace && formState.intervalSeconds === 60 && (
-                    <span className="text-xs text-yellow-500">Effective minimum ~5m due to cooldown</span>
+                    <span className="text-xs text-yellow-500">{t("preferences.workflowDialog.interval.cooldownWarning")}</span>
                   )}
                 </div>
               </div>
               <div className="flex gap-2 w-full sm:w-auto">
                 <Button type="button" variant="outline" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" onClick={() => onOpenChange(false)}>
-                  Cancel
+                  {t("preferences.workflowDialog.cancel")}
                 </Button>
                 <Button
                   type="button"
@@ -3746,7 +3749,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   disabled={dryRunNowMutation.isPending || createOrUpdate.isPending || previewMutation.isPending}
                 >
                   {dryRunNowMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  Dry-run now
+                  {t("preferences.workflowDialog.runDryRunNow")}
                 </Button>
                 <Button type="submit" size="sm" className="flex-1 sm:flex-initial h-10 sm:h-8" disabled={createOrUpdate.isPending || previewMutation.isPending}>
                   {(createOrUpdate.isPending || previewMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
@@ -3774,7 +3777,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           setShowConfirmDialog(open)
         }}
         title={
-          isDeleteRule ? (formState.enabled ? "Confirm Delete Rule" : "Preview Delete Rule") : `Confirm Category Change → ${previewInput?.exprCategory ?? formState.exprCategory}`
+          isDeleteRule
+            ? (formState.enabled
+              ? t("preferences.workflowDialog.preview.confirmDeleteRule")
+              : t("preferences.workflowDialog.preview.previewDeleteRule"))
+            : t("preferences.workflowDialog.preview.confirmCategoryChange", {
+              category: previewInput?.exprCategory ?? formState.exprCategory,
+            })
         }
         description={
           previewResult && previewResult.totalMatches > 0 ? (
@@ -3782,14 +3791,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               formState.enabled ? (
                 <>
                   <p className="text-destructive font-medium">
-                    This rule will affect {previewResult.totalMatches} torrent{previewResult.totalMatches !== 1 ? "s" : ""} that currently match.
+                    {t("preferences.workflowDialog.preview.deleteEnabledSummary", { count: previewResult.totalMatches })}
                   </p>
                   <p className="text-muted-foreground text-sm">{t("preferences.workflowDialog.confirmSaveAndEnable")}</p>
                 </>
               ) : (
                 <>
                   <p className="text-muted-foreground">
-                    {previewResult.totalMatches} torrent{previewResult.totalMatches !== 1 ? "s" : ""} would match this rule if enabled.
+                    {t("preferences.workflowDialog.preview.deleteDisabledSummary", { count: previewResult.totalMatches })}
                   </p>
                   <p className="text-muted-foreground text-sm">{t("preferences.workflowDialog.confirmSave")}</p>
                 </>
@@ -3797,12 +3806,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             ) : (
               <>
                 <p>
-                  This rule will move{" "}
-                  <strong>{(previewResult.totalMatches) - (previewResult.crossSeedCount ?? 0)}</strong> torrent{((previewResult.totalMatches) - (previewResult.crossSeedCount ?? 0)) !== 1 ? "s" : ""}
+                  {t("preferences.workflowDialog.preview.categoryPrefix")}{" "}
+                  <strong>{(previewResult.totalMatches) - (previewResult.crossSeedCount ?? 0)}</strong> {t("preferences.workflowDialog.preview.torrents", { count: (previewResult.totalMatches) - (previewResult.crossSeedCount ?? 0) })}
                   {previewResult.crossSeedCount ? (
-                    <> and <strong>{previewResult.crossSeedCount}</strong> cross-seed{previewResult.crossSeedCount !== 1 ? "s" : ""}</>
+                    <> {t("preferences.workflowDialog.preview.and")} <strong>{previewResult.crossSeedCount}</strong> {t("preferences.workflowDialog.preview.crossSeeds", { count: previewResult.crossSeedCount })}</>
                   ) : null}
-                  {" "}to category <strong>"{previewInput?.exprCategory ?? formState.exprCategory}"</strong>.
+                  {" "}{t("preferences.workflowDialog.preview.toCategory")} <strong>"{previewInput?.exprCategory ?? formState.exprCategory}"</strong>.
                 </p>
                 <p className="text-muted-foreground text-sm">{t("preferences.workflowDialog.confirmSaveAndEnable")}</p>
               </>
@@ -3849,13 +3858,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       <AlertDialog open={showDryRunPrompt} onOpenChange={setShowDryRunPrompt}>
         <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Enable dry run?</AlertDialogTitle>
+            <AlertDialogTitle>{t("preferences.workflowDialog.enableDryRunPrompt.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Dry run simulates all actions without changing anything. You can review affected torrents in the activity log.
+              {t("preferences.workflowDialog.enableDryRunPrompt.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("preferences.workflowDialog.cancel")}</AlertDialogCancel>
             <Button
               type="button"
               variant="outline"
@@ -3865,7 +3874,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 applyEnabledChange(true)
               }}
             >
-              Enable without dry run
+              {t("preferences.workflowDialog.enableDryRunPrompt.enableWithout")}
             </Button>
             <AlertDialogAction
               onClick={() => {
@@ -3874,7 +3883,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 applyEnabledChange(true, { forceDryRun: true })
               }}
             >
-              Enable with dry run
+              {t("preferences.workflowDialog.enableDryRunPrompt.enableWith")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -3883,26 +3892,26 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       <AlertDialog open={showAddCustomGroup} onOpenChange={setShowAddCustomGroup}>
         <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Add custom group</AlertDialogTitle>
+            <AlertDialogTitle>{t("preferences.workflowDialog.customGroup.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Combine multiple fields to create a custom grouping strategy
+              {t("preferences.workflowDialog.customGroup.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1">
-              <Label htmlFor="group-id" className="text-sm">Group ID</Label>
+              <Label htmlFor="group-id" className="text-sm">{t("preferences.workflowDialog.customGroup.groupId")}</Label>
               <Input
                 id="group-id"
                 value={newGroupId}
                 onChange={(e) => setNewGroupId(e.target.value)}
-                placeholder="e.g., my_custom_group"
+                placeholder={t("preferences.workflowDialog.customGroup.groupIdPlaceholder")}
                 className="h-8 text-xs"
               />
-              <p className="text-xs text-muted-foreground">Unique identifier for this group (alphanumeric, underscores)</p>
+              <p className="text-xs text-muted-foreground">{t("preferences.workflowDialog.customGroup.groupIdHelp")}</p>
             </div>
 
             <div className="space-y-1">
-              <Label className="text-sm">Keys (select at least one)</Label>
+              <Label className="text-sm">{t("preferences.workflowDialog.customGroup.keys")}</Label>
               <div className="grid grid-cols-2 gap-1">
                 {AVAILABLE_GROUP_KEYS.map(key => (
                   <label key={key} className="flex items-center gap-2 text-xs cursor-pointer">
@@ -3923,12 +3932,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 ))}
               </div>
               <p className="text-xs text-muted-foreground">
-                Torrents with the same combination of these fields will be grouped together
+                {t("preferences.workflowDialog.customGroup.keysHelp")}
               </p>
             </div>
 
             <div className="space-y-1">
-              <Label className="text-sm">Ambiguous policy (advanced)</Label>
+              <Label className="text-sm">{t("preferences.workflowDialog.customGroup.ambiguousPolicy")}</Label>
               <Select
                 value={newGroupAmbiguousPolicy || AMBIGUOUS_POLICY_NONE_VALUE}
                 onValueChange={(value) => setNewGroupAmbiguousPolicy(
@@ -3939,19 +3948,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={AMBIGUOUS_POLICY_NONE_VALUE}>None (default)</SelectItem>
-                  <SelectItem value="verify_overlap">Verify overlap</SelectItem>
-                  <SelectItem value="skip">Skip</SelectItem>
+                  <SelectItem value={AMBIGUOUS_POLICY_NONE_VALUE}>{t("preferences.workflowDialog.customGroup.none")}</SelectItem>
+                  <SelectItem value="verify_overlap">{t("preferences.workflowDialog.customGroup.verifyOverlap")}</SelectItem>
+                  <SelectItem value="skip">{t("preferences.workflowDialog.customGroup.skip")}</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                When content path equals save path, how to handle ambiguous cases
+                {t("preferences.workflowDialog.customGroup.ambiguousPolicyHelp")}
               </p>
             </div>
 
             {newGroupAmbiguousPolicy === "verify_overlap" && (
               <div className="space-y-1">
-                <Label htmlFor="min-overlap" className="text-sm">Min file overlap %</Label>
+                <Label htmlFor="min-overlap" className="text-sm">{t("preferences.workflowDialog.customGroup.minFileOverlap")}</Label>
                 <Input
                   id="min-overlap"
                   type="number"
@@ -3961,32 +3970,32 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   max="100"
                   className="h-8 text-xs"
                 />
-                <p className="text-xs text-muted-foreground">Default 90%</p>
+                <p className="text-xs text-muted-foreground">{t("preferences.workflowDialog.customGroup.defaultOverlap")}</p>
               </div>
             )}
           </div>
 
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("preferences.workflowDialog.cancel")}</AlertDialogCancel>
             <Button
               type="button"
               onClick={() => {
                 // Validate
                 if (!newGroupId.trim()) {
-                  toast.error("Group ID cannot be empty")
+                  toast.error(t("preferences.workflowDialog.toast.groupIdEmpty"))
                   return
                 }
                 if (!/^[a-zA-Z0-9_]+$/.test(newGroupId)) {
-                  toast.error("Group ID must contain only alphanumeric characters and underscores")
+                  toast.error(t("preferences.workflowDialog.toast.groupIdInvalid"))
                   return
                 }
                 if (newGroupKeys.length === 0) {
-                  toast.error("Select at least one key")
+                  toast.error(t("preferences.workflowDialog.toast.selectGroupKey"))
                   return
                 }
                 // Check for duplicates
                 if ((formState.exprGrouping?.groups || []).some(g => g.id === newGroupId)) {
-                  toast.error("A group with this ID already exists")
+                  toast.error(t("preferences.workflowDialog.toast.groupExists"))
                   return
                 }
 
@@ -4012,10 +4021,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                 setNewGroupKeys([])
                 setNewGroupAmbiguousPolicy("")
                 setNewGroupMinOverlap("90")
-                toast.success("Custom group added")
+                toast.success(t("preferences.workflowDialog.toast.customGroupAdded"))
               }}
             >
-              Add group
+              {t("preferences.workflowDialog.customGroup.addGroup")}
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

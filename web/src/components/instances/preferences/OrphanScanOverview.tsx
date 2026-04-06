@@ -167,7 +167,10 @@ function InstanceOrphanScanItem({
               )}
               {latestRun?.status === "preview_ready" && latestRun.filesFound > 0 && (
                 <Badge variant="outline" className="text-xs">
-                  {latestRun.filesFound} files ({formatBytes(latestRun.bytesReclaimed || 0)})
+                  {t("preferences.orphanScanOverview.filesSummary", {
+                    count: latestRun.filesFound,
+                    size: formatBytes(latestRun.bytesReclaimed || 0),
+                  })}
                 </Badge>
               )}
               {latestRun?.status === "completed" && latestRun.errorMessage && (
@@ -263,7 +266,7 @@ function InstanceOrphanScanItem({
                   ) : (
                     <>
                       <X className="h-4 w-4 mr-2" />
-                      Cancel
+                      {t("preferences.orphanScanOverview.cancel")}
                     </>
                   )}
                 </Button>
@@ -315,7 +318,7 @@ function InstanceOrphanScanItem({
                   className="h-8"
                 >
                   <X className="h-4 w-4 mr-2" />
-                  Cancel
+                  {t("preferences.orphanScanOverview.cancel")}
                 </Button>
               </div>
             </div>

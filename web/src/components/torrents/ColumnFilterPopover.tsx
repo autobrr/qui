@@ -72,29 +72,24 @@ const SPEED_UNITS: { value: SpeedUnit; label: string }[] = [
   { value: "TiB/s", label: "TiB/s" },
 ]
 
-const DURATION_UNITS: { value: DurationUnit; label: string }[] = [
-  { value: "seconds", label: "Seconds" },
-  { value: "minutes", label: "Minutes" },
-  { value: "hours", label: "Hours" },
-  { value: "days", label: "Days" },
-]
+const DURATION_UNITS: DurationUnit[] = ["seconds", "minutes", "hours", "days"]
 
 // Grouped torrent states matching FilterSidebar categories
 // These are expanded to individual qBittorrent states in columnFilterToExpr
-const TORRENT_STATES: { value: string; label: string }[] = [
-  { value: "downloading", label: "Downloading" },
-  { value: "uploading", label: "Seeding" },
-  { value: "completed", label: "Completed" },
-  { value: "stopped", label: "Stopped" },
-  { value: "paused", label: "Paused" },
-  { value: "active", label: "Active" },
-  { value: "stalled", label: "Stalled" },
-  { value: "stalled_uploading", label: "Stalled (Up)" },
-  { value: "stalled_downloading", label: "Stalled (Down)" },
-  { value: "errored", label: "Error" },
-  { value: "checking", label: "Checking" },
-  { value: "moving", label: "Moving" },
-]
+const TORRENT_STATES = [
+  "downloading",
+  "uploading",
+  "completed",
+  "stopped",
+  "paused",
+  "active",
+  "stalled",
+  "stalled_uploading",
+  "stalled_downloading",
+  "errored",
+  "checking",
+  "moving",
+] as const
 
 interface ValueInputProps {
   columnType: ColumnType
@@ -207,9 +202,9 @@ function ValueInput({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {DURATION_UNITS.map((u) => (
-              <SelectItem key={u.value} value={u.value}>
-                {u.label}
+            {DURATION_UNITS.map((durationUnit) => (
+              <SelectItem key={durationUnit} value={durationUnit}>
+                {t(`columnFilter.units.${durationUnit}`)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -254,7 +249,10 @@ function ValueInput({
   }
 
   if (isEnumColumn) {
-    const enumOptions = options || TORRENT_STATES
+    const enumOptions = options || TORRENT_STATES.map((state) => ({
+      value: state,
+      label: t(`columnFilter.states.${state === "stalled_uploading" ? "stalledUp" : state === "stalled_downloading" ? "stalledDown" : state}`),
+    }))
 
     if (multiSelect) {
       const selectedValues = value ? value.split(",") : []
@@ -267,7 +265,7 @@ function ValueInput({
       return (
         <div className="flex flex-col gap-1">
           <Command className="border rounded-md">
-            <CommandInput placeholder="Search..." className="h-8" />
+            <CommandInput placeholder={t("columnFilter.search")} className="h-8" />
             <CommandList className="max-h-[200px]">
               <CommandEmpty>{t("columnFilter.noResults")}</CommandEmpty>
               <CommandGroup>

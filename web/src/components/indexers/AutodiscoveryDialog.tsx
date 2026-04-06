@@ -286,7 +286,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
                       setBaseUrlError(null)
                     }
                   }}
-                  placeholder="http://localhost:9696"
+                  placeholder={t("indexers.autodiscovery.placeholders.indexerUrl")}
                   className={baseUrlError ? "border-destructive focus-visible:ring-destructive" : undefined}
                   aria-invalid={baseUrlError ? "true" : "false"}
                   autoComplete="off"

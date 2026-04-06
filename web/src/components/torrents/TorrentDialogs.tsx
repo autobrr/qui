@@ -1490,7 +1490,7 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
                   value={oldURL}
                   onChange={(e) => setOldURL(e.target.value)}
                 >
-                  <option value="">Select a tracker URL</option>
+                  <option value="">{t("dialogs.editTracker.selectTrackerUrl")}</option>
                   {trackerURLs.map((url) => (
                     <option key={url} value={url}>
                       {url}
@@ -1539,7 +1539,7 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
           {isFilteredMode && (
             <div className="bg-muted p-3 rounded-md">
               <p className="text-sm text-muted-foreground">
-                <strong>Note:</strong> {t("dialogs.editTracker.filteredModeNote")}
+                <strong>{t("dialogs.editTracker.noteLabel")}</strong> {t("dialogs.editTracker.filteredModeNote")}
               </p>
             </div>
           )}

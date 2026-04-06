@@ -83,6 +83,34 @@
     "version": "Version {{version}}",
     "viewOnGitHub": "View on GitHub"
   },
+  "footer": {
+    "copyright": "© {{years}} autobrr • GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "create": "Create",
+    "copyPath": "Copy path",
+    "scrollToTop": "Scroll to top",
+    "search": "Search",
+    "select": "Select",
+    "toggle": "Toggle"
+  },
+  "placeholders": {
+    "search": "Search...",
+    "selectItems": "Select items..."
+  },
+  "feedback": {
+    "noResultsFound": "No results found."
+  },
+  "status": {
+    "disabled": "Disabled",
+    "notContacted": "Not contacted",
+    "working": "Working",
+    "updating": "Updating",
+    "error": "Error",
+    "unknown": "Unknown"
+  },
   "themeToggle": {
     "changeTheme": "Change theme",
     "appearance": "Appearance",

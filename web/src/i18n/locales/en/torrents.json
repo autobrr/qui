@@ -1,7 +1,18 @@
 {
   "page": {
+    "routeTitle": "Torrents",
     "torrentDetails": "Torrent Details",
     "torrentDetailsWithName": "Torrent Details: {{name}}"
+  },
+  "addRoute": {
+    "invalidMagnetLink": "Invalid magnet link",
+    "noValidTorrentFiles": "No valid .torrent files found",
+    "openTorrentFileFailed": "Unable to open torrent file. Please try again.",
+    "waitingForTorrentData": "Waiting for torrent data...",
+    "selectInstance": {
+      "title": "Select Instance",
+      "description": "Choose which qBittorrent instance to add this torrent to"
+    }
   },
   "managementBar": {
     "ariaLabel": "{{count}} torrent{{plural}} selected - Bulk actions available",
@@ -66,6 +77,11 @@
       "nameNotAvailable": "Name not available",
       "hashNotAvailable": "Hash not available",
       "fullPathNotAvailable": "Full path not available",
+      "noTorrentsFoundToExport": "No torrents found to export",
+      "noTorrentsExported": "No torrents exported",
+      "torrentExported": "Torrent exported",
+      "torrentsExported": "{{count}} torrents exported",
+      "exportFailed": "Failed to export torrent",
       "failedToFetchNames": "Failed to fetch torrent names",
       "failedToFetchHashes": "Failed to fetch torrent hashes",
       "failedToFetchPaths": "Failed to fetch torrent paths",
@@ -348,6 +364,7 @@
       "title": "Edit Tracker URL",
       "description": "Update the tracker URL for all torrents using {{tracker}}. This is useful for updating passkeys or changing tracker addresses.",
       "currentUrl": "Current Full Tracker URL",
+      "selectTrackerUrl": "Select a tracker URL",
       "loadingUrls": "Loading tracker URLs...",
       "multipleUrlsHelp": "Multiple tracker URLs found. Select the one you want to update.",
       "currentUrlPlaceholder": "e.g., http://{{tracker}}:6969/announce",
@@ -356,7 +373,8 @@
       "newUrl": "New Full Tracker URL",
       "newUrlPlaceholder": "e.g., http://{{tracker}}:6969/announce?passkey=new_key",
       "newUrlHelp": "Enter the new complete URL (typically with updated passkey)",
-      "filteredModeNote": "Note: This will update all torrents that have the exact matching tracker URL.",
+      "noteLabel": "Note:",
+      "filteredModeNote": "This will update all torrents that have the exact matching tracker URL.",
       "converting": "Converting...",
       "convertHttpToHttps": "Convert all HTTP to HTTPS",
       "convertHttpToHttpsHelp": "Upgrades all http:// tracker URLs to https:// for this domain",
@@ -427,6 +445,7 @@
     "trackersSelectHelp": "Select from your active trackers or paste custom URLs below",
     "trackersSelectPlaceholder": "Add tracker from your active torrents",
     "trackersHelp": "One tracker URL per line",
+    "trackersPlaceholder": "https://tracker.example.com:443/announce\nudp://tracker.example2.com:6969/announce",
     "comment": "Comment",
     "commentPlaceholder": "Optional comment",
     "source": "Source",
@@ -449,6 +468,7 @@
     "saveTorrentToHelp": "Where to save the .torrent file on the server",
     "saveTorrentToTooltip": "qBittorrent needs write access to this directory. Best to leave blank and download the .torrent file from the tasks modal later.",
     "webSeeds": "Web Seeds (HTTP/HTTPS)",
+    "webSeedsPlaceholder": "https://mirror1.example.com/path\nhttps://mirror2.example.com/path",
     "webSeedsHelp": "HTTP/HTTPS URLs where the content can be downloaded. One URL per line.",
     "cancel": "Cancel",
     "createTorrent": "Create Torrent",
@@ -482,6 +502,7 @@
     "download": "Download",
     "mediaInfo": "MediaInfo",
     "rename": "Rename",
+    "toggle": "Toggle",
     "selectFileForDownload": "Select file for download",
     "skipFileDownload": "Skip file download",
     "selectAllFilesIn": "Select all files in {{name}}"
@@ -708,6 +729,7 @@
     "to": "To",
     "applyFilter": "Apply Filter",
     "clearFilters": "Clear filters",
+    "search": "Search...",
     "enterSize": "Enter size...",
     "enterSpeed": "Enter speed...",
     "enterDuration": "Enter duration...",
@@ -746,9 +768,12 @@
     "title": "Filters",
     "clearAll": "Clear all",
     "loading": "Loading...",
+    "customFilter": "Custom Filter",
+    "customFilterHelp": "Active custom expression filter (e.g., cross-seed results)",
     "filterTips": "Left click cycles include and neutral. Cmd/Ctrl + click or a long press toggles exclusion.",
     "filterSelectionTips": "Filter selection tips",
     "instanceDisabled": "This instance is disabled. Enable it from Settings \u2192 Instances to use filters.",
+    "unavailableUnifiedView": "Unavailable in unified view",
     "viewMode": "View Mode",
     "viewModeNormal": "Normal",
     "viewModeCompact": "Compact",
@@ -758,20 +783,50 @@
     "viewModeUltraCompact": "Ultra compact",
     "status": "Status",
     "categories": "Categories",
+    "uncategorized": "Uncategorized",
     "tags": "Tags",
     "trackers": "Trackers",
     "customExpression": "Custom Expression",
     "untagged": "Untagged",
     "noTracker": "No tracker",
+    "hideEmpty": "Hide empty",
+    "showEmpty": "Show empty",
     "showHidden": "Show {{count}} hidden",
     "searchCategories": "Search categories",
     "searchTags": "Search tags",
     "searchTrackers": "Search trackers",
+    "noCategoriesFound": "No categories found matching \"{{query}}\"",
+    "noTagsFound": "No tags found matching \"{{query}}\"",
     "hiddenMatchSearch": "{{count}} hidden match search",
     "createTag": "Create tag",
     "createCategory": "Create category",
+    "createSubcategory": "Create Subcategory",
+    "editCategory": "Edit Category",
+    "deleteCategory": "Delete Category",
+    "removeEmptyCategories": "Remove Empty Categories",
+    "deleteTag": "Delete Tag",
     "deleteUnusedTags": "Delete unused tags",
     "editTracker": "Edit tracker URL",
+    "allStatusesEmpty": "All statuses are empty. Click above to show them.",
+    "crossSeedFilterActive": "Cross-seed filter is active. Uncheck to clear the filter.",
+    "loadingCategories": "Loading categories...",
+    "noCategoriesAvailable": "No categories available",
+    "allCategoriesEmpty": "All categories are empty. Click above to show them.",
+    "loadingTags": "Loading tags...",
+    "noTagsAvailable": "No tags available",
+    "allTagsEmpty": "All tags are empty. Click above to show them.",
+    "loadingTrackers": "Loading trackers...",
+    "noTrackersFound": "No trackers found matching \"{{query}}\"",
+    "toast": {
+      "fetchTrackerUrlsFailed": "Failed to fetch tracker URLs",
+      "trackerUpdated": "Updated tracker URL across all affected torrents",
+      "updateTrackerFailed": "Failed to update tracker",
+      "noTrackerSelected": "No tracker selected for conversion",
+      "convertedTrackerUrls_one": "Converted {{count}} tracker URL to HTTPS",
+      "convertedTrackerUrls_other": "Converted {{count}} tracker URLs to HTTPS",
+      "convertTrackerFailed_one": "Failed to convert {{count}} URL",
+      "convertTrackerFailed_other": "Failed to convert {{count}} URLs"
+    },
     "states": {
       "downloading": "Downloading",
       "uploading": "Seeding",
@@ -830,6 +885,7 @@
       "crossSeed": "Cross-Seed"
     },
     "closePanel": "Close details panel",
+    "unknownError": "Unknown error",
     "toast": {
       "copied": "{{type}} copied to clipboard",
       "copyFailed": "Failed to copy to clipboard",
@@ -849,11 +905,118 @@
     },
     "addPeers": {
       "title": "Add Peers",
-      "description": "Enter peer addresses (IP:port), one per line or comma-separated"
+      "description": "Enter peer addresses (IP:port), one per line or comma-separated",
+      "label": "Peers",
+      "placeholder": "192.168.1.100:51413\n10.0.0.5:6881\ntracker.example.com:8080\n[2001:db8::1]:6881"
     },
     "banPeer": {
       "title": "Ban Peer",
       "description": "Are you sure you want to ban {{address}}?"
+    },
+    "banPeerPermanent": {
+      "title": "Ban Peer Permanently",
+      "description": "Are you sure you want to permanently ban this peer? This action cannot be undone.",
+      "ipAddress": "IP Address:",
+      "country": "Country:"
+    },
+    "deleteSelected": {
+      "title": "Delete Selected Torrents",
+      "description_one": "Are you sure you want to delete {{count}} torrent?",
+      "description_other": "Are you sure you want to delete {{count}} torrents?",
+      "confirm_one": "Delete {{count}} Torrent",
+      "confirm_other": "Delete {{count}} Torrents"
+    },
+    "deleteCurrent": {
+      "description": "Are you sure you want to delete \"{{name}}\"?",
+      "confirm": "Delete Torrent"
+    },
+    "deleteWarnings": {
+      "deleteFiles": "⚠️ This will permanently delete the torrent files from disk!",
+      "keepFilesPlural": "Torrents will be removed but files will remain on disk.",
+      "keepFilesSingle": "Torrent will be removed but files will remain on disk."
+    },
+    "crossSeed": {
+      "title": "Cross-Seed Matches",
+      "selectedSummary": "{{selected}} of {{total}} selected",
+      "loadingSummary_one": "{{count}} matching torrent found, checking more instances...",
+      "loadingSummary_other": "{{count}} matching torrents found, checking more instances...",
+      "loadedSummary_one": "{{count}} matching torrent found across all instances",
+      "loadedSummary_other": "{{count}} matching torrents found across all instances",
+      "deleteMatches": "Delete Matches ({{count}})",
+      "deleteThisTorrent": "Delete This Torrent",
+      "checkingMoreInstances": "Checking more instances...",
+      "infoHashMatch": "Info Hash",
+      "infoHashDescription": "Exact same torrent (same info hash)",
+      "savePathMatch": "Save Path",
+      "savePathDescription": "Same save directory and filename",
+      "selectTorrent": "Select {{name}}"
+    },
+    "sections": {
+      "generalInformation": "General Information",
+      "transferStatistics": "Transfer Statistics",
+      "speed": "Speed",
+      "queueManagement": "Queue Management",
+      "timeInformation": "Time Information",
+      "timestamps": "Timestamps",
+      "activeTrackers": "Active Trackers",
+      "connectedPeers": "Connected Peers",
+      "fileContents": "File Contents"
+    },
+    "labels": {
+      "torrentName": "Torrent Name",
+      "infoHashV1": "Info Hash v1",
+      "infoHashV2": "Info Hash v2",
+      "savePath": "Save Path",
+      "downloadPath": "Download Path",
+      "createdBy": "Created By",
+      "comment": "Comment",
+      "totalSize": "Total Size",
+      "shareRatio": "Share Ratio",
+      "pieceSizeEach": "({{size}} each)",
+      "downloadSpeed": "Download Speed",
+      "uploadSpeed": "Upload Speed",
+      "average": "avg: {{value}}",
+      "limit": "Limit: {{value}}",
+      "priority": "Priority",
+      "maxDownloads": "Max Downloads",
+      "maxUploads": "Max Uploads",
+      "maxActive": "Max Active",
+      "added": "Added",
+      "completed": "Completed",
+      "created": "Created",
+      "leechers": "Leechers",
+      "peerProgress": "Peer Progress",
+      "connection": "Connection:",
+      "flags": "Flags:"
+    },
+    "counts": {
+      "trackers_one": "{{count}} tracker",
+      "trackers_other": "{{count}} trackers",
+      "connectedPeers_one": "{{count}} peer connected",
+      "connectedPeers_other": "{{count}} peers connected",
+      "httpSources_one": "{{count}} source",
+      "httpSources_other": "{{count}} sources",
+      "selectedFiles": "{{selected}} of {{total}} selected",
+      "files_one": "{{count}} file",
+      "files_other": "{{count}} files"
+    },
+    "values": {
+      "normal": "Normal",
+      "queued": "Queued {{state}}",
+      "seeder": "Seeder",
+      "unknownClient": "Unknown client"
+    },
+    "actions": {
+      "copyIpPort": "Copy IP:port",
+      "banPeerPermanently": "Ban peer permanently",
+      "selectAll": "All",
+      "selectNone": "None"
+    },
+    "peer": {
+      "flagLabel": "Flag {{flag}}"
+    },
+    "emptyStates": {
+      "noFilesFound": "No files found"
     },
     "selectAll": "Select All",
     "deselectAll": "Deselect All"
@@ -926,7 +1089,23 @@
     "upSpeed": "UL Speed",
     "downloaded": "Downloaded",
     "uploaded": "Uploaded",
-    "relevance": "Relevance"
+    "relevance": "Relevance",
+    "copyIpAddress": "Copy IP Address",
+    "banPeer": "Ban Peer",
+    "noPeersConnected": "No peers connected",
+    "toast": {
+      "ipCopied": "IP address copied to clipboard"
+    }
+  },
+  "routes": {
+    "instanceTorrents": {
+      "loadingInstances": "Loading instances...",
+      "instanceNotFound": "Instance not found",
+      "instanceId": "Instance ID",
+      "availableInstances": "Available instances",
+      "instanceDisabled": "Instance disabled",
+      "instanceDisabledDescription": "{{name}} is currently disabled. Enable it from Settings > Instances to resume torrent management."
+    }
   },
   "webSeedsTable": {
     "url": "URL",
@@ -967,6 +1146,15 @@
     "savePath": "Save Path",
     "hardlink": "Hardlink",
     "hardlinkTooltip": "Files stored in hardlink directory (separate from source)",
+    "selectedCount": "{{selected}} of {{total}} selected",
+    "matchCount_one": "{{count}} match",
+    "matchCount_other": "{{count}} matches",
+    "deleteSelected": "Delete ({{count}})",
+    "deleteThis": "Delete This",
+    "statusLabels": {
+      "trackerDown": "Tracker Down",
+      "unregistered": "Unregistered"
+    },
     "matchTypes": {
       "contentPath": {
         "label": "Content",
@@ -989,10 +1177,135 @@
   },
   "addTorrentDialog": {
     "title": "Add New Torrent",
+    "trigger": "Add Torrent",
+    "description": "Add a torrent file or magnet link to start downloading",
     "file": "File",
-    "url": "URL"
+    "url": "URL",
+    "tabs": {
+      "basic": "Basic",
+      "advanced": "Advanced"
+    },
+    "validation": {
+      "selectTorrentFile": "Please select at least one torrent file",
+      "enterUrl": "Please enter at least one URL or magnet link"
+    },
+    "duplicate": {
+      "checking": "Checking for duplicates…",
+      "selectionDetected_one": "{{count}} duplicate selection detected",
+      "selectionDetected_other": "{{count}} duplicate selections detected",
+      "existingTorrents": "Existing torrents: {{names}}",
+      "highlightedBelow": "Duplicate selections are highlighted below.",
+      "remove": "Remove duplicates",
+      "matchesExisting": "Matches existing: {{names}}"
+    },
+    "fileInput": {
+      "label": "Torrent Files",
+      "dropActive": "Drop the torrent files here...",
+      "dragDrop": "Drag & drop torrent files here",
+      "browse": "or click to browse",
+      "selectedFiles_one": "{{count}} file selected",
+      "selectedFiles_other": "{{count}} files selected",
+      "duplicateFiles_one": "{{count}} duplicate file",
+      "duplicateFiles_other": "{{count}} duplicate files",
+      "showFiles": "Show files",
+      "hideFiles": "Hide files",
+      "moreFiles": "... and {{count}} more",
+      "removeFile": "Remove file"
+    },
+    "urlInput": {
+      "label": "URLs / Magnet Links",
+      "placeholder": "Enter URLs or magnet links (one per line)"
+    },
+    "options": {
+      "startPaused": "Start paused",
+      "skipHashCheck": "Skip hash check",
+      "category": "Category",
+      "searchCategories": "Search categories...",
+      "availableCategories": "Available Categories (click to select)",
+      "availableCategoriesFiltered": "Available Categories (click to select) - filtering: \"{{query}}\"",
+      "noCategoriesMatch": "No categories match \"{{query}}\"",
+      "tags": "Tags",
+      "tagsPlaceholder": "Create new tag or search available tags...",
+      "clearAll": "Clear All",
+      "availableTags": "Available Tags (click to select/deselect)",
+      "availableTagsFiltered": "Available Tags (click to select/deselect) - filtering: \"{{query}}\"",
+      "newTag": "(new)",
+      "noTagsMatch": "No tags match \"{{query}}\"",
+      "autoTmm": "Automatic Torrent Management",
+      "savePath": "Save Path",
+      "savePathPlaceholder": "Leave empty for default",
+      "manualSavePath": "Manual save path (TMM disabled)",
+      "useTemporaryPath": "Use Temporary Path",
+      "useTemporaryPathDescription": "Download to temporary path before moving to save path",
+      "tempPath": "Temporary Download Path",
+      "tempPathPlaceholder": "Leave empty for default",
+      "tempPathDescription": "Torrents will be downloaded here before moving to save path",
+      "autoTmmSavePathDescription": "Automatic Torrent Management is enabled. Save path will be determined by category settings.",
+      "advancedOptions": "Advanced Options",
+      "sequentialDownload": "Sequential download",
+      "sequentialDownloadDescription": "(useful for media files)",
+      "firstLastPiecePriority": "First/last piece priority",
+      "firstLastPiecePriorityDescription": "(start playback faster)",
+      "downloadLimit": "Download limit (KB/s)",
+      "uploadLimit": "Upload limit (KB/s)",
+      "unlimitedPlaceholder": "0 = unlimited",
+      "ratioLimit": "Ratio limit",
+      "useGlobalPlaceholder": "0 = use global",
+      "seedTimeLimit": "Seed time limit (minutes)",
+      "contentLayout": "Content layout",
+      "useGlobalSetting": "Use global setting",
+      "original": "Original",
+      "createSubfolder": "Create subfolder",
+      "noSubfolder": "Don't create subfolder",
+      "renameTorrent": "Rename torrent",
+      "renamePlaceholder": "Leave empty to use original name",
+      "autoAppliedTitle": "Auto-applied:",
+      "autoAddTrackers": "• Auto-add trackers",
+      "fileExclusions": "• File exclusions: {{value}}"
+    },
+    "footer": {
+      "adding": "Adding...",
+      "add": "Add Torrent",
+      "cancel": "Cancel"
+    },
+    "toast": {
+      "verifyInput": "Please verify the torrent file or URL and try again.",
+      "failedToAdd": "Failed to add torrent",
+      "addedOne": "Torrent added successfully",
+      "addedMany": "{{count}} torrents added successfully",
+      "failedMany": "Failed to add {{count}} torrent(s)",
+      "partialSuccess": "Added {{added}}, failed {{failed}}",
+      "rejectedOne": "1 file rejected (not a .torrent file)",
+      "rejectedMany": "{{count}} files rejected (not .torrent files)"
+    }
   },
   "mobileCards": {
+    "noTorrentsFound": "No torrents found",
+    "sort": "Sort",
+    "sortBy": "Sort by",
+    "clearSearchFilter": "Clear search filter",
+    "clear": "Clear",
+    "loadMore": "Load More",
+    "more": "More",
+    "enableTmmMixed": "Enable TMM (Mixed)",
+    "disableTmmMixed": "Disable TMM (Mixed)",
+    "incognito": "Incognito",
+    "add": "Add",
+    "tasks": "Tasks",
+    "done": "Done",
+    "actionsForCount": "Actions for {{count}} torrent(s)",
+    "actionsForAll": "Actions for all {{count}} torrent(s)",
+    "selection": {
+      "selectedCount": "{{count}} selected",
+      "allSelectedCount": "All {{count}} selected"
+    },
+    "searchModal": {
+      "title": "Search Torrents",
+      "description": "Search by name, category, or tags. Supports glob patterns like *.mkv or *1080p*.",
+      "placeholder": "Search torrents...",
+      "globExamples": "*.mkv, *1080p*, S??E??",
+      "autoSearches": "Auto-searches after typing"
+    },
     "shareLimit": {
       "title": "Set Share Limits for {{count}} torrent(s)",
       "description": "Configure seeding limits. Use -1 or disable to remove limits.",
@@ -1014,11 +1327,25 @@
     },
     "ratio": "Ratio:"
   },
+  "tableView": {
+    "ascending": "ascending",
+    "changeSortField": "Change sort field",
+    "clearAllColumnFilters": "Clear all column filters ({{count}})",
+    "descending": "descending",
+    "sortDirection": "Sort {{direction}}",
+    "toggleColumns": "Toggle columns",
+    "tableAriaLabel": "Torrents table"
+  },
   "tableColumns": {
     "selectAll": "Select torrent",
+    "selectAllRows": "Select all",
+    "selectRow": "Select row",
+    "selection": "Selection",
     "priority": "Priority",
     "status": "Status",
+    "statusIcon": "Status Icon",
     "tracker": "Tracker",
+    "trackerIcon": "Tracker Icon",
     "name": "Name",
     "size": "Size",
     "totalSize": "Total Size",

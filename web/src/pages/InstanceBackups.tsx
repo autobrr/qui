@@ -1800,7 +1800,11 @@ export function InstanceBackups() {
                             <div className="space-y-1 min-w-[200px]">
                               <Progress value={run.progressPercentage ?? 0} className="h-2" />
                               <p className="text-xs text-muted-foreground">
-                                {run.progressCurrent ?? 0} of {run.progressTotal} torrents ({(run.progressPercentage ?? 0).toFixed(1)}%)
+                                {t("backups.summary.progress", {
+                                  current: run.progressCurrent ?? 0,
+                                  total: run.progressTotal,
+                                  percentage: (run.progressPercentage ?? 0).toFixed(1),
+                                })}
                               </p>
                             </div>
                           ) : (

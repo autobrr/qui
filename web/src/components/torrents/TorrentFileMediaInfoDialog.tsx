@@ -65,14 +65,16 @@ function ErrorRetryBlock({
   error: unknown
   onRetry: () => void
 }) {
+  const { t } = useTranslation("torrents")
+
   return (
     <div className="flex flex-col items-start gap-3 py-8">
       <p className="text-sm text-muted-foreground">
-        {error instanceof Error ? error.message : "Failed to fetch MediaInfo"}
+        {error instanceof Error ? error.message : t("mediaInfoDialog.failedToFetch")}
       </p>
       <Button variant="outline" size="sm" onClick={onRetry}>
         <RotateCw className="h-4 w-4 mr-2" />
-        Retry
+        {t("mediaInfoDialog.retry")}
       </Button>
     </div>
   )
@@ -179,7 +181,7 @@ export function TorrentFileMediaInfoDialog({
                   await copyTextToClipboard(copyText)
                   toast.success(t("mediaInfoDialog.toast.copied", { label: copyLabel }))
                 } catch {
-                  toast.error("Failed to copy to clipboard")
+                  toast.error(t("mediaInfoDialog.toast.copyFailed"))
                 }
               }}
               disabled={!canCopy}
@@ -212,7 +214,7 @@ export function TorrentFileMediaInfoDialog({
                           </div>
 
                           {fields.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No fields</p>
+                            <p className="text-sm text-muted-foreground">{t("mediaInfoDialog.noFields")}</p>
                           ) : (
                             <div className="grid grid-cols-[minmax(10rem,1fr)_minmax(0,2fr)] gap-x-4 gap-y-1">
                               {fields.map((field, fieldIdx) => (

@@ -703,7 +703,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
 
   const notifyMissingIndexers = useCallback((context: string) => {
     toast.error(t("toast.noIndexersConfigured"), {
-      description: `${context} Add at least one enabled indexer in Settings → Indexers.`,
+      description: t("toast.noIndexersConfiguredDescription", { context }),
     })
   }, [t])
 
@@ -1622,7 +1622,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
               <Link to="/settings" search={{ tab: "indexers" }} className="font-medium text-primary underline-offset-4 hover:underline">
                 {t("indexersMissing.manageLink")}
               </Link>{" "}
-              to add or enable one.
+              {t("indexersMissing.linkSuffix")}
             </p>
           </AlertDescription>
         </Alert>
@@ -2420,7 +2420,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                         </div>
                       ) : (
                         <div className="text-center py-2 text-xs text-muted-foreground">
-                          No search runs recorded yet.
+                          {t("automation.noSearchRunsRecorded")}
                         </div>
                       )}
                     </div>
@@ -2444,7 +2444,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     ) : (
                       <>
                         <XCircle className="mr-2 h-4 w-4" />
-                        Cancel
+                        {t("common:actions.cancel")}
                       </>
                     )}
                   </Button>

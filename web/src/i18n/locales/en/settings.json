@@ -76,6 +76,7 @@
     "unknownError": "An error occurred",
     "instanceDeleted": "Instance Deleted",
     "empty": "No client API keys created yet",
+    "idLabel": "ID: {{id}}",
     "labels": {
       "created": "Created:",
       "lastUsed": "Last used:",
@@ -255,6 +256,10 @@
       "urlPlaceholder": "discord://token@id or notifiarrapi://apikey",
       "urlDescriptionPrefix": "Use any Shoutrrr-supported URL scheme. Notifiarr API uses",
       "urlDescriptionSuffix": "Discord webhook URLs auto-convert to",
+      "examples": {
+        "notifiarr": "notifiarrapi://apikey",
+        "discord": "discord://token@id"
+      },
       "enabled": "Enabled",
       "enabledDescription": "Toggle delivery for this target.",
       "events": "Events",
@@ -364,7 +369,26 @@
       "all": "All",
       "none": "None",
       "levelCount_one": "{{count}} Level",
-      "levelCount_other": "{{count}} Levels"
+      "levelCount_other": "{{count}} Levels",
+      "mutedCount_one": "{{count}} Muted",
+      "mutedCount_other": "{{count}} Muted",
+      "mutedMessages": "Muted Messages",
+      "clearAll": "Clear all",
+      "clear": "Clear",
+      "autoScroll": "Auto-scroll",
+      "noEntriesMatch": "No entries match the current filter",
+      "waiting": "Waiting for log entries...",
+      "showing": "Showing {{shown}} of {{total}} entries ({{max}} {{mode}})",
+      "maxLive": "max",
+      "maxPaused": "max while paused",
+      "oldestEntriesDropped": "• oldest entries dropped"
+    },
+    "entryDialog": {
+      "title": "Log Entry",
+      "rawLine": "Raw log line",
+      "copyRaw": "Copy Raw",
+      "copyJson": "Copy JSON",
+      "close": "Close"
     },
     "toasts": {
       "settingsUpdated": "Log settings updated",
@@ -404,6 +428,11 @@
       "loadingDescription": "Loading theme licenses...",
       "managementTitle": "License Management",
       "managementDescription": "Manage your theme license and premium access",
+      "providers": {
+        "dodoPortal": "Dodo portal",
+        "polarPortal": "Polar portal",
+        "legacyPolarPortal": "Legacy Polar portal"
+      },
       "status": {
         "unlockTitle": "Unlock Premium Themes",
         "unlockDescription": "Pay what you want (min $4.99) • Lifetime license • All themes",
@@ -412,18 +441,110 @@
         "activationRequiredTitle": "License Activation Required",
         "activationRequiredDescription": "Your license needs to be activated on this machine"
       },
+      "portalHelp": {
+        "prefix": "Buy on DodoPayments, then enter your license key here. If you lose the key, recover it via the",
+        "suffix": "."
+      },
+      "discord": {
+        "title": "Discord perk",
+        "prefix": "Claim the",
+        "afterRole": "role for access to a private channel.",
+        "openDiscord": "Open qui Discord",
+        "opensInNewTab": "(opens in new tab)",
+        "afterLink": ", run",
+        "copyVerifyAriaLabel": "Copy /verify command",
+        "copyVerifyTitle": "Click to copy",
+        "verifyCommand": "/verify",
+        "afterVerify": "in",
+        "channel": "#qui",
+        "suffix": ", and sign in with your license email."
+      },
+      "details": {
+        "productAdded": "{{productName}} • Added {{date}}",
+        "productStatusAndAdded": "{{productName}} • Status: {{status}} • Added {{date}}"
+      },
+      "invalid": {
+        "polarPrefix": "This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s active, or manage activations via",
+        "polarSuffix": ".",
+        "dodo": "This license is not active on this machine. Click re-activate to use it here. If you hit an activation limit, deactivate it on the other machine where it’s currently active."
+      },
+      "actions": {
+        "addLicense": "Add License",
+        "remove": "Remove",
+        "removing": "Removing...",
+        "getPremium": "Get Premium",
+        "reactivate": "Re-activate License",
+        "activating": "Activating...",
+        "copyLicenseKey": "Copy License Key",
+        "activate": "Activate License",
+        "validating": "Validating...",
+        "openDodoCheckout": "Open DodoPayments checkout",
+        "openDodoPortal": "Open Dodo portal"
+      },
+      "deleteDialog": {
+        "title": "Remove license?",
+        "description": "Are you sure you want to remove this license from this machine? This will deactivate it here to free up an activation slot.",
+        "keyLabel": "License Key to Remove:",
+        "recoverPrefix": "If needed, you can recover it later from your"
+      },
+      "addDialog": {
+        "title": "Add Premium License",
+        "description": "Enter your premium theme license key to unlock all premium themes.",
+        "label": "License Key",
+        "placeholder": "Enter your premium theme license key",
+        "recoverKey": "Recover key?",
+        "validation": {
+          "required": "License key is required"
+        }
+      },
+      "paymentDialog": {
+        "title": "Get Premium License",
+        "description": "Pay what you want (min $4.99) • Lifetime license • All themes",
+        "steps": {
+          "choosePaymentMethod": {
+            "title": "Choose payment method",
+            "cardTitle": "Card or local methods",
+            "cardDescription": "Pay directly in DodoPayments. You will return to qui after payment.",
+            "cryptoTitle": "Crypto",
+            "cryptoDescription": "Crypto payment still completes in DodoPayments checkout.",
+            "xmrHelp": "XMR is manual: reach out on Discord or email s0up4200@pm.me.",
+            "cryptoSteps": {
+              "readmePrefix": "Donate using the addresses in the",
+              "readmeSuffix": ".",
+              "verifyPrefix": "Verify at",
+              "verifySuffix": "to get your discount code.",
+              "applyCode": "Open DodoPayments checkout, paste the code in Discount code, then click Apply.",
+              "completeCheckout": "Confirm total is $0.00, then complete checkout."
+            }
+          },
+          "findLicenseKey": {
+            "title": "Find your license key",
+            "description": "Your license key is shown after checkout. You can also recover it later from the Dodo customer portal."
+          },
+          "activateLicense": {
+            "title": "Activate your license",
+            "description": "After checkout returns here, use Add License to activate your key."
+          }
+        }
+      },
       "copiedVerify": "Verification command copied",
       "failedCopyVerify": "Failed to copy verification command",
       "toasts": {
+        "activationSuccess": "License activated successfully!",
+        "activationSuccessPremium": "Premium access activated! Thank you!",
         "paymentCompleted": "Payment completed. Add your premium license key to finish setup.",
         "paymentNotCompleted": "Payment did not complete successfully.",
         "returnedFromCheckout": "Returned from checkout. Add your premium license key when ready.",
         "keyCopied": "License key copied to clipboard",
-        "copyFailed": "Failed to copy license key"
+        "copyFailed": "Failed to copy license key",
+        "removedFromMachine": "License removed from this machine",
+        "refreshedAll": "All licenses refreshed successfully",
+        "refreshFailed": "Failed to refresh licenses"
       }
     }
   },
   "arrInstances": {
+    "addButton": "Add ARR Instance",
     "addDialog": {
       "title": "Add ARR Instance",
       "description": "Configure a Sonarr or Radarr instance for ID lookups during cross-seed searches."
@@ -437,7 +558,9 @@
     },
     "badges": {
       "enabled": "Enabled",
-      "disabled": "Disabled"
+      "disabled": "Disabled",
+      "connected": "Connected",
+      "failed": "Failed"
     },
     "loading": "Loading ARR instances...",
     "loadFailed": "Failed to load ARR instances",
@@ -523,7 +646,23 @@
       "deletedSuccess": "Indexer deleted",
       "deleteFailed": "Failed to delete indexer",
       "allDeletedSuccess": "All indexers deleted",
-      "allDeletedFailed": "Failed to delete all indexers"
+      "allDeletedFailed": "Failed to delete all indexers",
+      "deleteAllSuccess": "Deleted all {{count}} indexers",
+      "deleteAllPartial": "Deleted {{success}} indexers, {{failed}} failed: {{names}}",
+      "testSuccess": "Connection test successful",
+      "noIndexersToTest": "No indexers to test",
+      "testing": "Testing {{count}} indexers...",
+      "testAllSuccess": "All {{count}} indexers tested successfully",
+      "testAllPartial": "{{success}} passed, {{failed}} failed",
+      "failedIndexers": "Failed indexers: {{names}}",
+      "capsSynced": "Capabilities synced from backend"
+    },
+    "page": {
+      "summary": "{{enabled}} enabled, {{capabilities}} with capabilities",
+      "description": "Manage Torznab indexers powered by Jackett, Prowlarr, or native tracker endpoints",
+      "deleteAll": "Delete All",
+      "discover": "Discover",
+      "addSingle": "Add single"
     },
     "dialog": {
       "addTitle": "Add Indexer",

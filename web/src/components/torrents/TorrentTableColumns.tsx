@@ -73,12 +73,12 @@ function formatEta(seconds: number): string {
   return `${secs}s`
 }
 
-function formatReannounce(seconds: number): string {
+function formatReannounce(seconds: number, t?: TFunction): string {
   // Negative values mean "never" or "not applicable"
   if (seconds < 0) return "-"
 
   // Zero means "now" (just announced or about to announce)
-  if (seconds === 0) return "now"
+  if (seconds === 0) return t?.("tableColumns.now") ?? "now"
 
   const minutes = Math.floor(seconds / 60)
   const hours = Math.floor(minutes / 60)
@@ -184,33 +184,33 @@ const STATUS_SORT_ORDER: Record<string, number> = {
   missingFiles: 81,
 }
 
-const getTrackerAwareStatusLabel = (torrent: Torrent, supportsTrackerHealth: boolean): string => {
+const getTrackerAwareStatusLabel = (torrent: Torrent, supportsTrackerHealth: boolean, t?: TFunction): string => {
   if (supportsTrackerHealth) {
     if (torrent.tracker_health === "unregistered") {
-      return "Unregistered"
+      return t?.("tableColumns.unregistered") ?? "Unregistered"
     }
     if (torrent.tracker_health === "tracker_down") {
-      return "Tracker Down"
+      return t?.("tableColumns.trackerDown") ?? "Tracker Down"
     }
   }
 
   return getStateLabel(torrent.state)
 }
 
-const getTrackerAwareStatusSortMeta = (torrent: Torrent, supportsTrackerHealth: boolean) => {
+const getTrackerAwareStatusSortMeta = (torrent: Torrent, supportsTrackerHealth: boolean, t?: TFunction) => {
   if (supportsTrackerHealth) {
     if (torrent.tracker_health === "unregistered") {
       return {
         priority: 0,
         statePriority: -1,
-        label: "Unregistered",
+        label: t?.("tableColumns.unregistered") ?? "Unregistered",
       }
     }
     if (torrent.tracker_health === "tracker_down") {
       return {
         priority: 1,
         statePriority: -1,
-        label: "Tracker Down",
+        label: t?.("tableColumns.trackerDown") ?? "Tracker Down",
       }
     }
   }
@@ -285,9 +285,9 @@ const getStatusIcon = (state: string, trackerHealth?: string | null, supportsTra
 
 type StatusBadgeVariant = "default" | "secondary" | "destructive" | "outline"
 
-const compareTrackerAwareStatus = (torrentA: Torrent, torrentB: Torrent, supportsTrackerHealth: boolean): number => {
-  const metaA = getTrackerAwareStatusSortMeta(torrentA, supportsTrackerHealth)
-  const metaB = getTrackerAwareStatusSortMeta(torrentB, supportsTrackerHealth)
+const compareTrackerAwareStatus = (torrentA: Torrent, torrentB: Torrent, supportsTrackerHealth: boolean, t?: TFunction): number => {
+  const metaA = getTrackerAwareStatusSortMeta(torrentA, supportsTrackerHealth, t)
+  const metaB = getTrackerAwareStatusSortMeta(torrentB, supportsTrackerHealth, t)
 
   if (metaA.priority !== metaB.priority) {
     return metaA.priority - metaB.priority
@@ -318,7 +318,8 @@ const compareTrackerAwareStatus = (torrentA: Torrent, torrentB: Torrent, support
 
 const getStatusBadgeMeta = (
   torrent: Torrent,
-  supportsTrackerHealth: boolean
+  supportsTrackerHealth: boolean,
+  t?: TFunction
 ): {
   label: string
   variant: StatusBadgeVariant
@@ -326,7 +327,7 @@ const getStatusBadgeMeta = (
   iconClass: string
 } => {
   const state = torrent.state
-  const baseLabel = getTrackerAwareStatusLabel(torrent, supportsTrackerHealth)
+  const baseLabel = getTrackerAwareStatusLabel(torrent, supportsTrackerHealth, t)
   const trackerHealth = torrent.tracker_health ?? null
 
   let badgeVariant: StatusBadgeVariant = "outline"
@@ -351,12 +352,12 @@ const getStatusBadgeMeta = (
 
   if (supportsTrackerHealth) {
     if (trackerHealth === "tracker_down") {
-      label = "Tracker Down"
+      label = t?.("tableColumns.trackerDown") ?? "Tracker Down"
       badgeVariant = "outline"
       badgeClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
       iconClass = "text-yellow-500"
     } else if (trackerHealth === "unregistered") {
-      label = "Unregistered"
+      label = t?.("tableColumns.unregistered") ?? "Unregistered"
       badgeVariant = "outline"
       badgeClass = "text-destructive border-destructive/40 bg-destructive/10"
       iconClass = "text-destructive"
@@ -420,11 +421,18 @@ export const createColumns = (
 ): ColumnDef<Torrent>[] => {
   // Badge padding classes based on view mode
   const badgePadding = viewMode === "dense" ? "px-1.5 py-0" : ""
+  const instanceLabel = t?.("tableColumns.instance") ?? "Instance"
+  const selectionLabel = t?.("tableColumns.selection") ?? "Selection"
+  const selectAllRowsLabel = t?.("tableColumns.selectAllRows") ?? "Select all"
+  const selectRowLabel = t?.("tableColumns.selectRow") ?? "Select row"
+  const priorityLabel = t?.("tableColumns.priority") ?? "Priority"
+  const statusIconLabel = t?.("tableColumns.statusIcon") ?? "Status Icon"
+  const trackerIconLabel = t?.("tableColumns.trackerIcon") ?? "Tracker Icon"
 
   const instanceColumn: ColumnDef<Torrent> = {
     id: "instance",
     accessorKey: "instanceName",
-    header: t?.("tableColumns.instance") ?? "Instance",
+    header: instanceLabel,
     cell: ({ row }) => {
       const instanceName = (row.original as CrossInstanceTorrent).instanceName ?? ""
       return (
@@ -435,7 +443,7 @@ export const createColumns = (
         </div>
       )
     },
-    size: calculateMinWidth("Instance"),
+    size: calculateMinWidth(instanceLabel),
   }
 
   return [
@@ -453,7 +461,7 @@ export const createColumns = (
                 table.toggleAllPageRowsSelected(!!checked)
               }
             }}
-            aria-label="Select all"
+            aria-label={selectAllRowsLabel}
             className="hover:border-ring cursor-pointer transition-colors"
           />
         </div>
@@ -528,7 +536,7 @@ export const createColumns = (
                   selectionEnhancers.shiftPressedRef.current = false
                 }
               }}
-              aria-label="Select row"
+              aria-label={selectRowLabel}
               className="hover:border-ring cursor-pointer transition-colors"
             />
           </div>
@@ -537,7 +545,7 @@ export const createColumns = (
       size: 40,
       enableResizing: false,
       meta: {
-        headerString: "Selection",
+        headerString: selectionLabel,
       },
     }] : []),
     {
@@ -549,11 +557,11 @@ export const createColumns = (
               <ListOrdered className="h-4 w-4" />
             </div>
           </TooltipTrigger>
-          <TooltipContent>Priority</TooltipContent>
+          <TooltipContent>{priorityLabel}</TooltipContent>
         </Tooltip>
       ),
       meta: {
-        headerString: "Priority",
+        headerString: priorityLabel,
       },
       cell: ({ row }) => {
         const priority = row.original.priority
@@ -630,21 +638,21 @@ export const createColumns = (
       header: () => (
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Status Icon">
+            <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label={statusIconLabel}>
               <PlayCircle className="h-4 w-4" aria-hidden="true" />
             </div>
           </TooltipTrigger>
-          <TooltipContent>Status Icon</TooltipContent>
+          <TooltipContent>{statusIconLabel}</TooltipContent>
         </Tooltip>
       ),
       meta: {
-        headerString: "Status Icon",
+        headerString: statusIconLabel,
       },
-      sortingFn: (rowA, rowB) => compareTrackerAwareStatus(rowA.original, rowB.original, supportsTrackerHealth),
+      sortingFn: (rowA, rowB) => compareTrackerAwareStatus(rowA.original, rowB.original, supportsTrackerHealth, t),
       cell: ({ row }) => {
         const torrent = row.original
         const StatusIcon = getStatusIcon(torrent.state, torrent.tracker_health ?? null, supportsTrackerHealth)
-        const { label: statusLabel, iconClass } = getStatusBadgeMeta(torrent, supportsTrackerHealth)
+        const { label: statusLabel, iconClass } = getStatusBadgeMeta(torrent, supportsTrackerHealth, t)
 
         return (
           <div
@@ -665,13 +673,13 @@ export const createColumns = (
     {
       accessorKey: "state",
       header: t?.("tableColumns.status") ?? "Status",
-      sortingFn: (rowA, rowB) => compareTrackerAwareStatus(rowA.original, rowB.original, supportsTrackerHealth),
+      sortingFn: (rowA, rowB) => compareTrackerAwareStatus(rowA.original, rowB.original, supportsTrackerHealth, t),
       cell: ({ row }) => {
         const torrent = row.original
         const state = torrent.state
         const priority = torrent.priority
         const isQueued = state === "queuedDL" || state === "queuedUP"
-        const { label: displayLabel, variant: badgeVariant, className: badgeClass } = getStatusBadgeMeta(torrent, supportsTrackerHealth)
+        const { label: displayLabel, variant: badgeVariant, className: badgeClass } = getStatusBadgeMeta(torrent, supportsTrackerHealth, t)
 
         if (isQueued && priority > 0) {
           return (
@@ -856,16 +864,16 @@ export const createColumns = (
         return (
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label="Tracker Icon">
+              <div className="flex h-full w-full items-center justify-center text-muted-foreground" aria-label={trackerIconLabel}>
                 <Icon className="h-4 w-4" aria-hidden="true" />
               </div>
             </TooltipTrigger>
-            <TooltipContent>Tracker Icon</TooltipContent>
+            <TooltipContent>{trackerIconLabel}</TooltipContent>
           </Tooltip>
         )
       },
       meta: {
-        headerString: "Tracker Icon",
+        headerString: trackerIconLabel,
       },
       cell: ({ row }) => {
         const tracker = incognitoMode ? getLinuxTracker(row.original.hash) : row.original.tracker
@@ -1156,7 +1164,7 @@ export const createColumns = (
       cell: ({ row }) => {
         return (
           <div className="overflow-hidden whitespace-nowrap text-sm">
-            {formatReannounce(row.original.reannounce)}
+            {formatReannounce(row.original.reannounce, t)}
           </div>
         )
       },

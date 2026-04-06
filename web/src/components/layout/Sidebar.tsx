@@ -4,6 +4,12 @@
  */
 
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { Logo } from "@/components/ui/Logo"
 import { NapsterLogo } from "@/components/ui/NapsterLogo"
@@ -15,6 +21,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { useTheme } from "@/hooks/useTheme"
+import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
@@ -23,10 +30,12 @@ import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
 import {
   Archive,
+  Check,
   Copyright,
   FileText,
   GitBranch,
   Github,
+  Globe,
   HardDrive,
   Home,
   Loader2,

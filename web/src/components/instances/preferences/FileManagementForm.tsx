@@ -26,37 +26,36 @@ import { toast } from "sonner"
 
 import { PreferencesFormShell } from "./PreferencesFormShell"
 
-const LEGACY_AUTORUN_PLACEHOLDERS: Array<{ token: string; label: string }> = [
-  { token: "%N", label: "Torrent name" },
-  { token: "%L", label: "Category" },
-  { token: "%G", label: "Tags (comma-separated)" },
-  { token: "%F", label: "Content path" },
-  { token: "%R", label: "Root path" },
-  { token: "%D", label: "Save path" },
-  { token: "%C", label: "Number of files" },
-  { token: "%Z", label: "Torrent size (bytes)" },
-  { token: "%T", label: "Current tracker" },
-  { token: "%I", label: "Info hash v1" },
+const LEGACY_AUTORUN_PLACEHOLDERS: Array<{ token: string; labelKey: string }> = [
+  { token: "%N", labelKey: "preferences.fileManagement.placeholderLabels.torrentName" },
+  { token: "%L", labelKey: "preferences.fileManagement.placeholderLabels.category" },
+  { token: "%G", labelKey: "preferences.fileManagement.placeholderLabels.tags" },
+  { token: "%F", labelKey: "preferences.fileManagement.placeholderLabels.contentPath" },
+  { token: "%R", labelKey: "preferences.fileManagement.placeholderLabels.rootPath" },
+  { token: "%D", labelKey: "preferences.fileManagement.placeholderLabels.savePath" },
+  { token: "%C", labelKey: "preferences.fileManagement.placeholderLabels.numberOfFiles" },
+  { token: "%Z", labelKey: "preferences.fileManagement.placeholderLabels.torrentSize" },
+  { token: "%T", labelKey: "preferences.fileManagement.placeholderLabels.currentTracker" },
+  { token: "%I", labelKey: "preferences.fileManagement.placeholderLabels.infoHashV1" },
 ]
 
-const MODERN_AUTORUN_PLACEHOLDERS: Array<{ token: string; label: string }> = [
-  { token: "%N", label: "Torrent name" },
-  { token: "%L", label: "Category" },
-  { token: "%G", label: "Tags (comma-separated)" },
-  { token: "%F", label: "Content path" },
-  { token: "%R", label: "Root path" },
-  { token: "%D", label: "Save path" },
-  { token: "%C", label: "Number of files" },
-  { token: "%Z", label: "Torrent size (bytes)" },
-  { token: "%T", label: "Current tracker" },
-  { token: "%I", label: "Info hash v1 (or \"-\")" },
-  { token: "%J", label: "Info hash v2 (or \"-\")" },
-  { token: "%K", label: "Torrent ID" },
+const MODERN_AUTORUN_PLACEHOLDERS: Array<{ token: string; labelKey: string }> = [
+  { token: "%N", labelKey: "preferences.fileManagement.placeholderLabels.torrentName" },
+  { token: "%L", labelKey: "preferences.fileManagement.placeholderLabels.category" },
+  { token: "%G", labelKey: "preferences.fileManagement.placeholderLabels.tags" },
+  { token: "%F", labelKey: "preferences.fileManagement.placeholderLabels.contentPath" },
+  { token: "%R", labelKey: "preferences.fileManagement.placeholderLabels.rootPath" },
+  { token: "%D", labelKey: "preferences.fileManagement.placeholderLabels.savePath" },
+  { token: "%C", labelKey: "preferences.fileManagement.placeholderLabels.numberOfFiles" },
+  { token: "%Z", labelKey: "preferences.fileManagement.placeholderLabels.torrentSize" },
+  { token: "%T", labelKey: "preferences.fileManagement.placeholderLabels.currentTracker" },
+  { token: "%I", labelKey: "preferences.fileManagement.placeholderLabels.infoHashV1Optional" },
+  { token: "%J", labelKey: "preferences.fileManagement.placeholderLabels.infoHashV2Optional" },
+  { token: "%K", labelKey: "preferences.fileManagement.placeholderLabels.torrentId" },
 ]
 
 const LEGACY_AUTORUN_PROGRAM_PLACEHOLDER = "/path/to/script \"%N\" \"%I\""
 const MODERN_AUTORUN_PROGRAM_PLACEHOLDER = "/path/to/script \"%N\" \"%K\""
-const AUTORUN_PROGRAM_TIP = "Tip: wrap placeholders in quotes, e.g. \"%N\", to preserve spaces."
 const AUTORUN_ON_ADDED_MIN_WEBAPI_VERSION = "2.8.18" // qBittorrent 4.5.0+
 
 function isWebAPIVersionAtLeast(version: string, minimum: string): boolean {
@@ -241,7 +240,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
               disabled={!canSubmit || isSubmitting || isUpdating}
               className="min-w-32"
             >
-              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+              {isSubmitting || isUpdating ? t("preferences.fileManagement.saving") : t("preferences.fileManagement.saveChanges")}
             </Button>
           )}
         </form.Subscribe>
@@ -252,10 +251,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
           <form.Field name="auto_tmm_enabled">
             {(field) => (
               <SwitchSetting
-                label="Automatic Torrent Management"
+                label={t("preferences.fileManagement.autoTorrentManagement")}
                 checked={field.state.value as boolean}
                 onCheckedChange={field.handleChange}
-                description="Use category-based paths for downloads"
+                description={t("preferences.fileManagement.autoTorrentManagementDescription")}
               />
             )}
           </form.Field>
@@ -267,10 +266,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                   <form.Field name="torrent_changed_tmm_enabled">
                     {(field) => (
                       <SwitchSetting
-                        label="Relocate on Category Change"
+                        label={t("preferences.fileManagement.relocateOnCategoryChange")}
                         checked={field.state.value as boolean}
                         onCheckedChange={field.handleChange}
-                        description="Relocate torrent when its category changes (disable to switch to Manual Mode instead)"
+                        description={t("preferences.fileManagement.relocateOnCategoryChangeDescription")}
                       />
                     )}
                   </form.Field>
@@ -278,10 +277,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                   <form.Field name="save_path_changed_tmm_enabled">
                     {(field) => (
                       <SwitchSetting
-                        label="Relocate on Default Save Path Change"
+                        label={t("preferences.fileManagement.relocateOnDefaultSavePath")}
                         checked={field.state.value as boolean}
                         onCheckedChange={field.handleChange}
-                        description="Relocate affected torrents when default save path changes (disable to switch to Manual Mode instead)"
+                        description={t("preferences.fileManagement.relocateOnDefaultSavePathDescription")}
                       />
                     )}
                   </form.Field>
@@ -289,10 +288,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                   <form.Field name="category_changed_tmm_enabled">
                     {(field) => (
                       <SwitchSetting
-                        label="Relocate on Category Save Path Change"
+                        label={t("preferences.fileManagement.relocateOnCategorySavePath")}
                         checked={field.state.value as boolean}
                         onCheckedChange={field.handleChange}
-                        description="Relocate affected torrents when category save path changes (disable to switch to Manual Mode instead)"
+                        description={t("preferences.fileManagement.relocateOnCategorySavePathDescription")}
                       />
                     )}
                   </form.Field>
@@ -305,10 +304,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
             <form.Field name="use_subcategories">
               {(field) => (
                 <SwitchSetting
-                  label="Enable Subcategories"
+                  label={t("preferences.fileManagement.enableSubcategories")}
                   checked={field.state.value as boolean}
                   onCheckedChange={field.handleChange}
-                  description="Allow creating nested categories using slash separator (e.g., Movies/4K)"
+                  description={t("preferences.fileManagement.enableSubcategoriesDescription")}
                 />
               )}
             </form.Field>
@@ -317,10 +316,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
           <form.Field name="start_paused_enabled">
             {(field) => (
               <SwitchSetting
-                label="Start Torrents Paused"
+                label={t("preferences.fileManagement.startTorrentsPaused")}
                 checked={field.state.value as boolean}
                 onCheckedChange={field.handleChange}
-                description="New torrents start in paused state"
+                description={t("preferences.fileManagement.startTorrentsPausedDescription")}
               />
             )}
           </form.Field>
@@ -335,7 +334,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                 <Input
                   value={field.state.value as string}
                   onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="/downloads"
+                  placeholder={t("preferences.fileManagement.defaultSavePathPlaceholder")}
                   className={incognitoMode ? "blur-sm select-none" : ""}
                 />
               </div>
@@ -345,10 +344,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
           <form.Field name="temp_path_enabled">
             {(field) => (
               <SwitchSetting
-                label="Use Temporary Path"
+                label={t("preferences.fileManagement.useTempPath")}
                 checked={field.state.value as boolean}
                 onCheckedChange={field.handleChange}
-                description="Download to temporary path before moving to final location"
+                description={t("preferences.fileManagement.useTempPathDescription")}
               />
             )}
           </form.Field>
@@ -365,7 +364,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                     <Input
                       value={field.state.value as string}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="/temp-downloads"
+                      placeholder={t("preferences.fileManagement.tempDownloadPathPlaceholder")}
                       disabled={!tempPathEnabled}
                       className={incognitoMode ? "blur-sm select-none" : ""}
                     />
@@ -387,7 +386,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                   onValueChange={field.handleChange}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select content layout" />
+                    <SelectValue placeholder={t("preferences.fileManagement.selectContentLayout")} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Original">{t("preferences.fileManagement.contentLayoutOriginal")}</SelectItem>
@@ -419,7 +418,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                         label={t("preferences.fileManagement.runOnTorrentAdded")}
                         checked={enabledField.state.value as boolean}
                         onCheckedChange={enabledField.handleChange}
-                        description="Triggered right after a torrent is added to the client"
+                        description={t("preferences.fileManagement.runOnTorrentAddedDescription")}
                       />
 
                       <form.Field name="autorun_on_torrent_added_program">
@@ -434,7 +433,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                               className={incognitoMode ? "blur-sm select-none" : ""}
                             />
                             <p className="text-xs text-muted-foreground">
-                              {AUTORUN_PROGRAM_TIP}
+                              {t("preferences.fileManagement.autorunProgramTip")}
                             </p>
                           </div>
                         )}
@@ -446,7 +445,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                 <div className="space-y-1 rounded-md border border-muted bg-background/40 p-3">
                   <p className="text-sm font-medium">{t("preferences.fileManagement.runOnTorrentAdded")}</p>
                   <p className="text-xs text-muted-foreground">
-                    Requires qBittorrent 4.5.0+ (Web API {AUTORUN_ON_ADDED_MIN_WEBAPI_VERSION}+). This instance reports {webAPIVersion || "no Web API version"}.
+                    {t("preferences.fileManagement.autorunUnsupported", {
+                      minimum: AUTORUN_ON_ADDED_MIN_WEBAPI_VERSION,
+                      version: webAPIVersion || "no Web API version",
+                    })}
                   </p>
                 </div>
               )}
@@ -455,10 +457,10 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                 {(enabledField) => (
                   <div className="space-y-3">
                     <SwitchSetting
-                      label="Run on Torrent Finished"
+                      label={t("preferences.fileManagement.runOnTorrentFinished")}
                       checked={enabledField.state.value as boolean}
                       onCheckedChange={enabledField.handleChange}
-                      description="Triggered when a torrent completes"
+                      description={t("preferences.fileManagement.runOnTorrentFinishedDescription")}
                     />
 
                     <form.Field name="autorun_program">
@@ -473,7 +475,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                             className={incognitoMode ? "blur-sm select-none" : ""}
                           />
                           <p className="text-xs text-muted-foreground">
-                            {AUTORUN_PROGRAM_TIP}
+                            {t("preferences.fileManagement.autorunProgramTip")}
                           </p>
                         </div>
                       )}
@@ -487,7 +489,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs text-muted-foreground">
                   {autorunPlaceholders.map((item) => (
                     <div key={item.token}>
-                      <code className="font-mono text-foreground">{item.token}</code> {item.label}
+                      <code className="font-mono text-foreground">{item.token}</code> {t(item.labelKey)}
                     </div>
                   ))}
                 </div>

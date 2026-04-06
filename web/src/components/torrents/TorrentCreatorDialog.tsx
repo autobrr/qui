@@ -248,7 +248,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                   <Input
                     id="sourcePath"
                     ref={supportsPathAutocomplete ? sourcePathInputRef : undefined}
-                    placeholder="/path/to/file/or/folder"
+                    placeholder={t("creatorDialog.sourcePathPlaceholder")}
                     autoComplete="off"
                     spellCheck={false}
                     value={field.state.value}
@@ -343,7 +343,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                   </p>
                   <Textarea
                     id="trackers"
-                    placeholder="https://tracker.example.com:443/announce&#10;udp://tracker.example2.com:6969/announce"
+                    placeholder={t("creatorDialog.trackersPlaceholder")}
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                     rows={4}
@@ -496,7 +496,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                       <Input
                         id="torrentFilePath"
                         ref={supportsPathAutocomplete ? torrentFilePathInputRef : undefined}
-                        placeholder="/path/to/save/file.torrent"
+                        placeholder={t("creatorDialog.saveTorrentToPlaceholder")}
                         autoComplete="off"
                         spellCheck={false}
                         value={field.state.value}
@@ -540,7 +540,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                       <Label htmlFor="urlSeeds">{t("creatorDialog.webSeeds")}</Label>
                       <Textarea
                         id="urlSeeds"
-                        placeholder="https://mirror1.example.com/path&#10;https://mirror2.example.com/path"
+                        placeholder={t("creatorDialog.webSeedsPlaceholder")}
                         value={field.state.value}
                         onChange={(e) => field.handleChange(e.target.value)}
                         rows={3}

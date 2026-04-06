@@ -443,7 +443,7 @@ export function ReannounceOverview({
                                               copyTextToClipboard(event.hash)
                                               toast.success(t("preferences.reannounceOverview.hashCopied"))
                                             }}
-                                            title="Copy hash"
+                                            title={t("preferences.reannounceOverview.copyHash")}
                                           >
                                             <Copy className="h-3 w-3" />
                                           </button>

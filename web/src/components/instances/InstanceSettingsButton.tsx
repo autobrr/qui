@@ -52,13 +52,13 @@ export function InstanceSettingsButton({
                 size="icon"
                 className="h-7 w-7 p-0"
                 onClick={handleClick}
-                aria-label="Instance settings"
+                aria-label={t("header.instanceSettings", { ns: "common" })}
               >
                 <Cog className="h-4 w-4" />
               </Button>
             ) : (
               <span
-                aria-label="Instance settings"
+                aria-label={t("header.instanceSettings", { ns: "common" })}
                 role="button"
                 tabIndex={0}
                 className="cursor-pointer"

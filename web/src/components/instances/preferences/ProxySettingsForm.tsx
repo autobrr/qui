@@ -5,6 +5,7 @@
 
 import React from "react"
 import { useForm } from "@tanstack/react-form"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
@@ -83,6 +84,7 @@ function NumberInput({
 }
 
 export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormProps) {
+  const { t } = useTranslation("instances")
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
   const [incognitoMode] = useIncognitoMode()
 
@@ -101,10 +103,10 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
     onSubmit: async ({ value }) => {
       try {
         await updatePreferences(value)
-        toast.success("Proxy settings updated successfully")
+        toast.success(t("proxySettings.toast.updated"))
         onSuccess?.()
       } catch (error) {
-        toast.error("Failed to update proxy settings")
+        toast.error(t("proxySettings.toast.failed"))
         console.error("Failed to update proxy settings:", error)
       }
     },
@@ -125,18 +127,18 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
   }, [preferences, form])
 
   if (isLoading || !preferences) {
-    return <div className="flex items-center justify-center py-8">Loading proxy settings...</div>
+    return <div className="flex items-center justify-center py-8">{t("proxySettings.loading")}</div>
   }
 
   const getProxyTypeLabel = (value: number | string) => {
     // Handle both number and string values for compatibility
     const numValue = typeof value === "string" ? parseInt(value) : value
     switch (numValue) {
-      case 0: return "None"
-      case 1: return "SOCKS4"
-      case 2: return "SOCKS5"
-      case 3: return "HTTP"
-      default: return "None"
+      case 0: return t("proxySettings.types.none")
+      case 1: return t("proxySettings.types.socks4")
+      case 2: return t("proxySettings.types.socks5")
+      case 3: return t("proxySettings.types.http")
+      default: return t("proxySettings.types.none")
     }
   }
 
@@ -166,13 +168,13 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <Shield className="h-4 w-4" />
-          <h3 className="text-lg font-medium">Proxy Configuration</h3>
+          <h3 className="text-lg font-medium">{t("proxySettings.title")}</h3>
         </div>
 
         <form.Field name="proxy_type">
           {(field) => (
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Proxy Type</Label>
+              <Label className="text-sm font-medium">{t("proxySettings.proxyType")}</Label>
               <Select
                 value={getProxyTypeValue()}
                 onValueChange={(value) => {
@@ -199,7 +201,7 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Select proxy type for routing connections
+                {t("proxySettings.proxyTypeDescription")}
               </p>
             </div>
           )}
@@ -211,23 +213,23 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Server className="h-4 w-4" />
-            <h3 className="text-lg font-medium">Proxy Server</h3>
+            <h3 className="text-lg font-medium">{t("proxySettings.serverTitle")}</h3>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <form.Field name="proxy_ip">
               {(field) => (
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="proxy_ip">Proxy Server</Label>
+                  <Label htmlFor="proxy_ip">{t("proxySettings.serverLabel")}</Label>
                   <Input
                     id="proxy_ip"
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="proxy.example.com"
+                    placeholder={t("proxySettings.serverPlaceholder")}
                     className={incognitoMode ? "blur-sm select-none" : ""}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Proxy server hostname or IP address
+                    {t("proxySettings.serverDescription")}
                   </p>
                 </div>
               )}
@@ -236,12 +238,12 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
             <form.Field name="proxy_port">
               {(field) => (
                 <NumberInput
-                  label="Port"
+                  label={t("proxySettings.port")}
                   value={field.state.value}
                   onChange={(value) => field.handleChange(value)}
                   min={1}
                   max={65535}
-                  description="Proxy server port"
+                  description={t("proxySettings.portDescription")}
                 />
               )}
             </form.Field>
@@ -254,14 +256,14 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
         <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Lock className="h-4 w-4" />
-            <h3 className="text-lg font-medium">Authentication</h3>
+            <h3 className="text-lg font-medium">{t("proxySettings.authTitle")}</h3>
           </div>
 
           <form.Field name="proxy_auth_enabled">
             {(field) => (
               <SwitchSetting
-                label="Use authentication"
-                description="Enable if your proxy server requires username/password"
+                label={t("proxySettings.useAuth")}
+                description={t("proxySettings.useAuthDescription")}
                 checked={field.state.value}
                 onChange={(checked) => {
                   field.handleChange(checked)
@@ -280,12 +282,12 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
               <form.Field name="proxy_username">
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor="proxy_username">Username</Label>
+                    <Label htmlFor="proxy_username">{t("proxySettings.username")}</Label>
                     <Input
                       id="proxy_username"
                       value={field.state.value}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Username"
+                      placeholder={t("proxySettings.username")}
                       autoComplete="username"
                       className={incognitoMode ? "blur-sm select-none" : ""}
                     />
@@ -296,13 +298,13 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
               <form.Field name="proxy_password">
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor="proxy_password">Password</Label>
+                    <Label htmlFor="proxy_password">{t("proxySettings.password")}</Label>
                     <Input
                       id="proxy_password"
                       type="password"
                       value={field.state.value}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Password"
+                      placeholder={t("proxySettings.password")}
                       autoComplete="current-password"
                     />
                   </div>
@@ -316,14 +318,14 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
       {/* Proxy Options */}
       {isProxyEnabled() && (
         <div className="space-y-4">
-          <h3 className="text-lg font-medium">Proxy Options</h3>
+          <h3 className="text-lg font-medium">{t("proxySettings.optionsTitle")}</h3>
 
           <div className="space-y-4">
             <form.Field name="proxy_peer_connections">
               {(field) => (
                 <SwitchSetting
-                  label="Use proxy for peer connections"
-                  description="Route BitTorrent peer connections through proxy"
+                  label={t("proxySettings.peerConnections")}
+                  description={t("proxySettings.peerConnectionsDescription")}
                   checked={field.state.value}
                   onChange={(checked) => field.handleChange(checked)}
                 />
@@ -333,8 +335,8 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
             <form.Field name="proxy_torrents_only">
               {(field) => (
                 <SwitchSetting
-                  label="Use proxy only for torrents"
-                  description="Only use proxy for BitTorrent traffic, not for other connections"
+                  label={t("proxySettings.torrentsOnly")}
+                  description={t("proxySettings.torrentsOnlyDescription")}
                   checked={field.state.value}
                   onChange={(checked) => field.handleChange(checked)}
                 />
@@ -344,8 +346,8 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
             <form.Field name="proxy_hostname_lookup">
               {(field) => (
                 <SwitchSetting
-                  label="Use proxy for hostname lookups"
-                  description="Resolve hostnames through the proxy server"
+                  label={t("proxySettings.hostnameLookup")}
+                  description={t("proxySettings.hostnameLookupDescription")}
                   checked={field.state.value}
                   onChange={(checked) => field.handleChange(checked)}
                 />
@@ -364,7 +366,7 @@ export function ProxySettingsForm({ instanceId, onSuccess }: ProxySettingsFormPr
             disabled={!canSubmit || isSubmitting || isUpdating}
             className="w-full"
           >
-            {isSubmitting || isUpdating ? "Updating..." : "Update Proxy Settings"}
+            {isSubmitting || isUpdating ? t("proxySettings.updating") : t("proxySettings.update")}
           </Button>
         )}
       </form.Subscribe>

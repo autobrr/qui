@@ -259,9 +259,9 @@ function NotificationTargetForm({ initial, eventDefinitions, onSubmit, onCancel,
           onChange={(e) => setUrl(normalizeNotificationUrl(e.target.value))}
         />
         <p className="text-xs text-muted-foreground">
-          {t("notifications.form.urlDescriptionPrefix")} <span className="font-mono">notifiarrapi://apikey</span>.
+          {t("notifications.form.urlDescriptionPrefix")} <span className="font-mono">{t("notifications.form.examples.notifiarr")}</span>.
           {" "}
-          {t("notifications.form.urlDescriptionSuffix")} <span className="font-mono">discord://token@id</span>.
+          {t("notifications.form.urlDescriptionSuffix")} <span className="font-mono">{t("notifications.form.examples.discord")}</span>.
         </p>
       </div>
 
