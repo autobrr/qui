@@ -53,6 +53,18 @@ const interestingVariableNames = new Set([
   "errorMessage",
 ])
 
+// Suffixes that indicate a variable holds user-facing text.
+// Matched case-insensitively against the end of compound variable names
+// so `connectionStatusTooltip` matches via "Tooltip".
+const interestingVariableSuffixes = [
+  "Tooltip", "Label", "AriaLabel", "Summary",
+  "Message", "Title", "Description", "Placeholder",
+  "Heading", "Text", "Caption",
+]
+
+// Functions whose return values are user-facing text.
+const formatFunctionPattern = /^(?:format|get\w*(?:Label|Summary|Text|Tooltip|Status|Display|Caption))/
+
 const ignoredJsxTags = new Set([
   "code",
   "pre",
@@ -64,12 +76,31 @@ function normalizeText(text) {
   return text.replace(/\s+/g, " ").trim()
 }
 
-function shouldTrackText(text) {
+// Check whether an AST node is "transparent" for context detection --
+// i.e. the string's UI purpose comes from whatever wraps this node.
+function isTransparentExpression(node) {
+  return ts.isConditionalExpression(node)
+    || ts.isParenthesizedExpression(node)
+    || ts.isTemplateSpan(node)
+    || ts.isTemplateExpression(node)
+}
+
+function shouldTrackText(text, relaxed = false) {
   if (!text) return false
   if (!/[A-Za-z]/.test(text)) return false
+  // Dotted identifiers like "foo.bar.baz"
   if (/^[a-z0-9-]+(?:\.[a-z0-9_-]+)+$/i.test(text)) return false
-  if (/^[A-Z0-9_]+$/.test(text)) return false
-  if (/^[a-z0-9-]+$/.test(text)) return false
+  // CSS/UI variant names and common non-UI return values (before the relaxed
+  // lowercase check so these are always filtered regardless of context)
+  if (/^(?:default|secondary|destructive|outline|ghost|link|muted|accent|primary)$/.test(text)) return false
+  // ALL_CAPS constants -- but in relaxed mode, flag short UI words like "ALL"
+  if (/^[A-Z0-9_]+$/.test(text)) {
+    return relaxed && text.length >= 3
+  }
+  // Single lowercase words -- in relaxed mode, flag longer ones like "action"
+  if (/^[a-z0-9-]+$/.test(text)) {
+    return relaxed && text.length >= 5
+  }
   if (/^(?:[KMGT]?i?B(?:\/s)?|B\/s|[dhms]|ms|lt|qBit|API v|IPv4|IPv6|Napster|Swizzin|\*\*\*masked\*\*\*|\/\/\*\*\*masked\*\*\*)$/u.test(text)) return false
   return true
 }
@@ -124,14 +155,41 @@ function hasTranslationCallAncestor(node) {
   return false
 }
 
+// Walk up through transparent expressions and JsxExpression wrappers
+// to find a JSX element/fragment parent -- meaning the string renders as
+// child content of a JSX element.
 function isJsxChildExpressionString(node) {
-  return ts.isJsxExpression(node.parent)
-    && (ts.isJsxElement(node.parent.parent) || ts.isJsxFragment(node.parent.parent))
+  let current = node.parent
+  while (current) {
+    if (ts.isJsxExpression(current)) {
+      const p = current.parent
+      return ts.isJsxElement(p) || ts.isJsxFragment(p)
+    }
+    if (isTransparentExpression(current)) {
+      current = current.parent
+      continue
+    }
+    return false
+  }
+  return false
 }
 
+// Walk up through transparent expressions and JsxExpression to find a
+// JSX attribute with an interesting name.  Catches template literals
+// inside `aria-label={`Send test to ${name}`}`.
 function isInterestingJsxAttributeString(node) {
-  return ts.isJsxAttribute(node.parent)
-    && interestingAttributeNames.has(node.parent.name.text)
+  let current = node.parent
+  while (current) {
+    if (ts.isJsxAttribute(current)) {
+      return interestingAttributeNames.has(current.name.text)
+    }
+    if (isTransparentExpression(current) || ts.isJsxExpression(current)) {
+      current = current.parent
+      continue
+    }
+    return false
+  }
+  return false
 }
 
 function isInterestingPropertyString(node, sourceFile) {
@@ -146,12 +204,28 @@ function isInterestingPropertyString(node, sourceFile) {
   return interestingPropertyNames.has(propertyName)
 }
 
+// Walk up through transparent expressions to find a variable declaration,
+// then check if the variable name is interesting (exact match or suffix).
 function isInterestingVariableString(node, sourceFile) {
   if (!/\.[jt]sx$/i.test(sourceFile.fileName)) return false
-  if (!ts.isVariableDeclaration(node.parent)) return false
-  if (!ts.isIdentifier(node.parent.name)) return false
 
-  return interestingVariableNames.has(node.parent.name.text)
+  let current = node.parent
+  while (current) {
+    if (ts.isVariableDeclaration(current)) {
+      if (!ts.isIdentifier(current.name)) return false
+      const name = current.name.text
+      if (interestingVariableNames.has(name)) return true
+      return interestingVariableSuffixes.some((suffix) =>
+        name.length > suffix.length && name.endsWith(suffix)
+      )
+    }
+    if (isTransparentExpression(current)) {
+      current = current.parent
+      continue
+    }
+    return false
+  }
+  return false
 }
 
 function isToastCallString(node) {
@@ -161,6 +235,53 @@ function isToastCallString(node) {
   return ts.isPropertyAccessExpression(expression)
     && ts.isIdentifier(expression.expression)
     && expression.expression.text === "toast"
+}
+
+// Detect string literals returned from functions whose names suggest they
+// produce user-facing text (formatAction, getProxyTypeLabel, etc.).
+function isFormatFunctionReturn(node, sourceFile) {
+  if (!/\.[jt]sx$/i.test(sourceFile.fileName)) return false
+
+  // Walk up to find a return statement (through transparent expressions).
+  let current = node.parent
+  while (current) {
+    if (ts.isReturnStatement(current)) break
+    if (isTransparentExpression(current)) {
+      current = current.parent
+      continue
+    }
+    return false
+  }
+  if (!current) return false
+
+  // Walk up from the return to find the enclosing named function.
+  current = current.parent
+  while (current) {
+    if (ts.isFunctionDeclaration(current) && current.name) {
+      return formatFunctionPattern.test(current.name.text)
+    }
+    if (ts.isArrowFunction(current) || ts.isFunctionExpression(current)) {
+      const p = current.parent
+      if (ts.isVariableDeclaration(p) && ts.isIdentifier(p.name)) {
+        return formatFunctionPattern.test(p.name.text)
+      }
+      return false
+    }
+    // Walk through blocks, switch/case structure, and if-else chains.
+    if (
+      ts.isBlock(current)
+      || ts.isCaseClause(current)
+      || ts.isDefaultClause(current)
+      || ts.isSwitchStatement(current)
+      || ts.isIfStatement(current)
+      || ts.isCaseBlock(current)
+    ) {
+      current = current.parent
+      continue
+    }
+    return false
+  }
+  return false
 }
 
 function readTemplateText(node) {
@@ -181,7 +302,14 @@ function readTemplateText(node) {
 
 function addMatch(matches, seen, sourceFile, node, text, kind) {
   const normalized = normalizeText(text)
-  if (!shouldTrackText(normalized)) return
+  // Use relaxed filtering for contexts where we're already confident the
+  // string is user-facing (JSX content, known attribute/property names,
+  // format function returns).
+  const relaxed = kind === "jsx-text"
+    || kind === "jsx-attribute"
+    || kind === "object-property"
+    || kind === "format-return"
+  if (!shouldTrackText(normalized, relaxed)) return
   if (hasIgnoredJsxAncestor(node)) return
 
   const { line, column } = getNodeLineAndColumn(sourceFile, node)
@@ -224,6 +352,8 @@ export function findHardcodedStringsInSource(source, filePath = "source.tsx") {
           addMatch(matches, seen, sourceFile, node, text, "variable")
         } else if (isToastCallString(node)) {
           addMatch(matches, seen, sourceFile, node, text, "toast-call")
+        } else if (isFormatFunctionReturn(node, sourceFile)) {
+          addMatch(matches, seen, sourceFile, node, text, "format-return")
         } else if (isJsxChildExpressionString(node)) {
           addMatch(matches, seen, sourceFile, node, text, "jsx-expression")
         }
