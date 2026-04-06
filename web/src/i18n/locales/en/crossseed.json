@@ -1,0 +1,184 @@
+{
+  "pageTitle": "Cross-Seed",
+  "pageDescription": "Identify compatible torrents and automate cross-seeding across your instances.",
+  "automationBadge": {
+    "on": "Automation on",
+    "off": "Automation off"
+  },
+  "indexersMissing": {
+    "title": "Torznab indexers missing",
+    "description": "RSS automation needs at least one enabled Torznab indexer. Seeded Torrent Search can still run OPS/RED matches via Gazelle if enabled.",
+    "manageIndexers": "Manage indexers in Settings"
+  },
+  "summaryCards": {
+    "rssAutomation": {
+      "title": "RSS automation",
+      "description": "Hands-free polling of tracker RSS feeds using your rules.",
+      "nextRun": "Next run",
+      "manualTrigger": "Manual trigger",
+      "lastRun": "Last run",
+      "disabled": "Disabled",
+      "cooldown": "Cooldown {{time}}",
+      "ready": "Ready",
+      "noRunsYet": "No runs yet"
+    },
+    "seededTorrentSearch": {
+      "title": "Seeded torrent search",
+      "description": "Deep scan the torrents you already seed to backfill gaps.",
+      "instance": "Instance",
+      "recentRuns": "Recent runs",
+      "now": "Now",
+      "running": "Running...",
+      "idle": "Idle"
+    }
+  },
+  "tabs": {
+    "auto": "Auto",
+    "scan": "Scan",
+    "dirScan": "Dir Scan",
+    "rules": "Rules",
+    "blocklist": "Blocklist"
+  },
+  "rssAutomation": {
+    "title": "RSS Automation",
+    "description": "Poll tracker RSS feeds on a fixed interval and add matching cross-seeds automatically.",
+    "enableRssAutomation": "Enable RSS automation",
+    "rssRunInterval": "RSS run interval (minutes)",
+    "rssIntervalTooltip": "Automation processes the full feed from every enabled Torznab indexer on each run. Minimum interval is {{min}} minutes to avoid hammering indexers.",
+    "targetInstances": "Target instances",
+    "targetIndexers": "Target indexers",
+    "includeCategories": "Include categories",
+    "includeTags": "Include tags",
+    "excludeCategories": "Exclude categories",
+    "excludeTags": "Exclude tags",
+    "recentRssRuns": "Recent RSS runs",
+    "noRunsRecorded": "No RSS automation runs recorded yet.",
+    "scheduled": "Scheduled",
+    "manual": "Manual",
+    "other": "Other",
+    "dryRun": "Dry run",
+    "runNow": "Run now",
+    "cancel": "Cancel",
+    "stopping": "Stopping...",
+    "saveAutomation": "Save RSS Automation",
+    "noResultsWithDetails": "No results with details",
+    "failed": "Failed:"
+  },
+  "hardlinkMode": {
+    "title": "Hardlink / Reflink Mode",
+    "noActiveInstances": "No active instances. Add instances first.",
+    "description": "Create hardlinked or reflinked (copy-on-write) file trees for cross-seeds. Each instance can be configured independently. The base directory must be on the same filesystem as the instance's download paths.",
+    "reflinkNote": "Reflink mode allows safe cross-seeding of torrents with extra/missing files. When extra files are present, qui triggers a recheck; if below threshold, the torrent stays paused for manual review.",
+    "hardlink": "Hardlink",
+    "reflink": "Reflink",
+    "noLocalAccess": "No local access",
+    "crossSeedMode": "Cross-seed mode",
+    "enableLocalAccess": "Enable \"Local filesystem access\" in Instance Settings to use hardlink or reflink modes.",
+    "regular": "Regular",
+    "regularDescription": "Reuse existing files in place. Fast, no extra disk space.",
+    "hardlinkLabel": "Hardlink",
+    "hardlinkDescription": "Create hardlinked file trees. No extra disk space, strict piece-boundary check.",
+    "reflinkLabel": "Reflink (copy-on-write)",
+    "reflinkDescription": "Create reflinked clones. Safer for extra/missing files, mitigates corruption best.",
+    "baseDirectories": "Base directories",
+    "baseDirectoriesPlaceholder": "/path/to/crossseed-data, /other/path/to/crossseed-data",
+    "baseDirectoriesDescription": "Comma-separated paths. The first directory on the same filesystem as the source will be used.",
+    "directoryOrganization": "Directory organization",
+    "flat": "Flat (all in base directory)",
+    "byTracker": "By Tracker",
+    "byInstance": "By Instance",
+    "fallbackToRegular": "Fallback to regular mode on error",
+    "fallbackDescription": "If {{mode}} fails (e.g., different filesystems), fall back to regular mode using existing files.",
+    "saveChanges": "Save Changes"
+  },
+  "toast": {
+    "settingsSaved": "Settings saved",
+    "failedToSaveSettings": "Failed to save settings",
+    "settingsUpdated": "Settings updated",
+    "cannotEnableMode": "Cannot enable {{mode}} mode",
+    "noLocalFilesystemAccess": "Instance \"{{name}}\" does not have local filesystem access enabled.",
+    "baseDirectoryRequired": "Base directory must be set first.",
+    "automationRunStarted": "Automation run started",
+    "rssAutomationRunCanceled": "RSS automation run canceled",
+    "searchRunStarted": "Search run started",
+    "searchRunCanceled": "Search run canceled",
+    "noTorznabIndexers": "No Torznab indexers configured"
+  },
+  "blocklist": {
+    "title": "Cross-Seed Blocklist",
+    "noInstancesDescription": "Add instances to manage blocked cross-seed infohashes.",
+    "description": "Prevent specific infohashes from being injected on a per-instance basis.",
+    "instance": "Instance",
+    "selectInstance": "Select instance",
+    "infohash": "Infohash",
+    "infohashPlaceholder": "e.g. 63e07ff523710ca268567dad344ce1e0e6b7e8a3",
+    "noteOptional": "Note (optional)",
+    "notePlaceholder": "Why is this hash blocked?",
+    "add": "Add",
+    "blockedHashes": "Blocked Hashes",
+    "entriesDescription": "Entries are applied only to the selected instance.",
+    "noBlockedInfohashes": "No blocked infohashes.",
+    "tableHeaders": {
+      "infohash": "Infohash",
+      "note": "Note",
+      "added": "Added"
+    },
+    "toast": {
+      "addedToBlocklist": "Added to blocklist",
+      "removedFromBlocklist": "Removed from blocklist",
+      "selectAnInstance": "Select an instance",
+      "invalidInfohash": "Infohash must be 40 or 64 hex characters"
+    }
+  },
+  "dirScan": {
+    "title": "Directory Scanner",
+    "description": "Scan local directories for completed downloads and automatically cross-seed them.",
+    "settings": "Settings",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "noLocalAccessWarning": "No qBittorrent instances have local filesystem access enabled. Enable it in instance settings to use the Directory Scanner.",
+    "scanDirectories": "Scan Directories",
+    "scanDirectoriesDescription": "Configure directories to scan for cross-seedable content.",
+    "addDirectory": "Add Directory",
+    "noDirectories": "No directories configured yet.",
+    "addDirectoryPrompt": "Add a directory to start scanning.",
+    "toast": {
+      "directoryScannerEnabled": "Directory Scanner enabled",
+      "directoryScannerDisabled": "Directory Scanner disabled",
+      "scanStarted": "Scan started",
+      "scanCanceled": "Scan canceled. Next run will recheck the directory and retry unfinished items."
+    },
+    "directoryCard": {
+      "target": "Target: {{name}}",
+      "interval": "Interval: {{minutes}}m",
+      "category": "Category: {{category}}",
+      "lastScan": "Last scan: {{time}}"
+    },
+    "status": {
+      "queued": "Queued",
+      "scanning": "Scanning",
+      "searching": "Searching",
+      "injecting": "Injecting",
+      "success": "Success",
+      "failed": "Failed",
+      "canceled": "Canceled"
+    },
+    "runDetails": {
+      "eligible": "{{count}} eligible",
+      "discovered": "{{count}} discovered, {{skipped}} skipped",
+      "noTorrentsAdded": "No torrents were added or failed in this run.",
+      "addedFailed": "Added / Failed",
+      "tableHeaders": {
+        "status": "Status",
+        "release": "Release",
+        "tracker": "Tracker",
+        "type": "Type",
+        "mode": "Mode"
+      }
+    },
+    "injectionStatus": {
+      "failed": "Failed",
+      "added": "Added"
+    }
+  }
+}

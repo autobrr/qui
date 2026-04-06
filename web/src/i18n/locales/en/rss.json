@@ -1,0 +1,107 @@
+{
+  "pageTitle": "RSS",
+  "pageDescription": "Manage qBittorrent's native RSS feeds and auto-download rules",
+  "noInstances": {
+    "title": "No Instances Available",
+    "description": "Add a qBittorrent instance to manage RSS feeds and auto-download rules."
+  },
+  "selectInstance": {
+    "title": "Select an Instance",
+    "description": "Choose a qBittorrent instance to manage its RSS feeds and auto-download rules.",
+    "placeholder": "Select instance"
+  },
+  "alerts": {
+    "rssFetchingDisabled": "RSS feed fetching is disabled. Feeds will not be refreshed automatically.",
+    "enableRss": "Enable RSS",
+    "rssProcessingEnabled": "RSS processing enabled",
+    "failedEnableRss": "Failed to enable RSS processing",
+    "autoDownloadingDisabled": "RSS auto-downloading is disabled. Rules will not automatically download torrents.",
+    "enableAutoDownload": "Enable Auto-Download",
+    "autoDownloadingEnabled": "RSS auto-downloading enabled",
+    "failedEnableAutoDownload": "Failed to enable RSS auto-downloading",
+    "liveUpdatesDisconnected": "Live RSS updates disconnected"
+  },
+  "tabs": {
+    "feeds": "Feeds",
+    "rules": "Rules"
+  },
+  "sse": {
+    "live": "SSE Live",
+    "connecting": "SSE Connecting",
+    "reconnecting": "Reconnecting{{attempt}}",
+    "disconnected": "Disconnected"
+  },
+  "feeds": {
+    "refreshAll": "Refresh All",
+    "addFolder": "Add Folder",
+    "addFeed": "Add Feed",
+    "title": "Feeds",
+    "noFeeds": "No RSS feeds configured. Add a feed to get started.",
+    "failedToLoadFeeds": "Failed to load RSS feeds",
+    "retry": "Retry",
+    "feedActions": {
+      "refresh": "Refresh",
+      "rename": "Rename",
+      "editUrl": "Edit URL",
+      "openUrl": "Open URL",
+      "remove": "Remove",
+      "removeFolder": "Remove Folder"
+    },
+    "toast": {
+      "feedRemoved": "Feed removed successfully",
+      "feedRefreshed": "Feed refresh triggered",
+      "feedRenamed": "Feed renamed successfully",
+      "feedUrlUpdated": "Feed URL updated successfully",
+      "refreshingAllFeeds": "Refreshing all feeds...",
+      "failedRefreshFeeds": "Failed to refresh feeds",
+      "rulesReprocessed": "Rules reprocessed - unread articles will be checked against all rules",
+      "failedReprocess": "Failed to reprocess rules"
+    },
+    "renameDialog": {
+      "title": "Rename Feed",
+      "description": "Enter a new name for this feed.",
+      "placeholder": "Feed name",
+      "cancel": "Cancel",
+      "rename": "Rename"
+    },
+    "editUrlDialog": {
+      "title": "Edit Feed URL",
+      "description": "Enter a new URL for this feed.",
+      "placeholder": "https://example.com/rss",
+      "cancel": "Cancel",
+      "save": "Save"
+    }
+  },
+  "articles": {
+    "title": "Articles",
+    "selectFeed": "Select a feed to view articles",
+    "noArticles": "No articles in this feed",
+    "searchPlaceholder": "Search articles...",
+    "noMatchingArticles": "No matching articles",
+    "unread": "{{count}} unread",
+    "markAllAsRead": "Mark all as read",
+    "by": "By {{author}}",
+    "toast": {
+      "markedAllAsRead": "Marked all articles as read"
+    },
+    "tooltips": {
+      "downloadTorrent": "Download torrent",
+      "openLink": "Open link",
+      "markAsRead": "Mark as read",
+      "toggleDetails": "Toggle details"
+    }
+  },
+  "rules": {
+    "reprocess": "Reprocess",
+    "reprocessTooltip": "Re-check all unread articles against rules",
+    "addRule": "Add Rule",
+    "noRules": "No auto-download rules configured. Add a rule to automatically download torrents from feeds.",
+    "failedToLoadRules": "Failed to load RSS rules",
+    "retry": "Retry",
+    "toast": {
+      "ruleEnabled": "Rule enabled",
+      "ruleDisabled": "Rule disabled",
+      "ruleRemoved": "Rule removed successfully"
+    }
+  }
+}

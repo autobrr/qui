@@ -1,0 +1,269 @@
+{
+  "instanceCard": {
+    "status": {
+      "disabled": "Disabled",
+      "connected": "Connected",
+      "disconnected": "Disconnected"
+    },
+    "toast": {
+      "instanceDisabledTitle": "Instance Disabled",
+      "instanceDisabledDescription": "Enable the instance before testing the connection.",
+      "testSuccessTitle": "Test Connection Successful",
+      "testSuccessDescription": "Successfully connected to qBittorrent instance",
+      "testFailedTitle": "Test Connection Failed",
+      "testFailedDescription": "Could not connect to qBittorrent instance",
+      "instanceEnabledTitle": "Instance Enabled",
+      "instanceEnabledDescription": "qui will resume connecting to this qBittorrent instance.",
+      "instanceDisabledToastTitle": "Instance Disabled",
+      "instanceDisabledToastDescription": "qui will stop attempting to reach this qBittorrent instance.",
+      "statusUpdateFailedTitle": "Status Update Failed",
+      "statusUpdateFailedDescription": "Failed to update instance status",
+      "instanceDeletedTitle": "Instance Deleted",
+      "instanceDeletedDescription": "Successfully deleted \"{{name}}\"",
+      "deleteFailedTitle": "Delete Failed",
+      "deleteFailedDescription": "Failed to delete instance"
+    },
+    "tooltip": {
+      "disableInstance": "Disable instance",
+      "enableInstance": "Enable instance",
+      "moveUp": "Move up",
+      "moveDown": "Move down"
+    },
+    "aria": {
+      "disableInstance": "Disable instance",
+      "enableInstance": "Enable instance",
+      "moveInstanceUp": "Move instance up",
+      "moveInstanceDown": "Move instance down"
+    },
+    "menu": {
+      "edit": "Edit",
+      "testConnection": "Test Connection",
+      "delete": "Delete"
+    },
+    "labels": {
+      "username": "Username:",
+      "basicAuth": "Basic Auth:",
+      "tlsVerification": "TLS Verification:",
+      "localFileAccess": "Local File Access:",
+      "skipped": "Skipped",
+      "strict": "Strict",
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "testing": "Testing connection...",
+    "deleteDialog": {
+      "title": "Delete Instance",
+      "description": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
+      "cancel": "Cancel",
+      "delete": "Delete"
+    }
+  },
+  "instanceErrorDisplay": {
+    "passwordRequired": "Password Required",
+    "passwordRequiredDescription": "Unable to decrypt saved password. This usually happens when the session secret has changed.",
+    "reEnterPassword": "Re-enter Password",
+    "recentErrors": "Recent Errors ({{count}})"
+  },
+  "instanceForm": {
+    "toast": {
+      "instanceUpdatedTitle": "Instance Updated",
+      "instanceUpdatedDescription": "Instance updated successfully. Connection testing in background...",
+      "updateFailedTitle": "Update Failed",
+      "updateFailedDescription": "Failed to update instance",
+      "instanceCreatedTitle": "Instance Created",
+      "instanceCreatedDescription": "Instance created successfully. Connection testing in background...",
+      "createFailedTitle": "Create Failed",
+      "createFailedDescription": "Failed to create instance"
+    },
+    "validation": {
+      "nameRequired": "Instance name is required",
+      "basicAuthPasswordRequired": "Basic auth password is required when basic auth is enabled"
+    },
+    "labels": {
+      "instanceName": "Instance Name",
+      "url": "URL",
+      "skipTlsCertificateVerification": "Skip TLS Certificate Verification",
+      "skipTlsDescription": "Allow connections to qBittorrent instances that use self-signed or otherwise untrusted certificates.",
+      "localFilesystemAccess": "Local Filesystem Access",
+      "localFilesystemDescription": "Enable if qui can access this instance's download paths (required for hardlink detection in automations).",
+      "authenticationBypass": "Authentication Bypass",
+      "authBypassDescription": "Enable when qBittorrent bypasses authentication for localhost or whitelisted IPs",
+      "username": "Username",
+      "password": "Password",
+      "httpBasicAuthentication": "HTTP Basic Authentication",
+      "httpBasicDescription": "Enable if your qBittorrent is behind a reverse proxy with Basic Auth",
+      "basicAuthUsername": "Basic Auth Username",
+      "basicAuthPassword": "Basic Auth Password"
+    },
+    "placeholder": {
+      "instanceName": "e.g., Main Server or Home qBittorrent",
+      "url": "http://localhost:8080 or 192.168.1.100:8080",
+      "username": "qBittorrent username (usually admin)",
+      "passwordEdit": "Leave empty to keep current password",
+      "passwordNew": "qBittorrent password",
+      "basicAuthUsername": "Basic auth username",
+      "basicAuthPassword": "Enter basic auth password (required)"
+    },
+    "buttons": {
+      "saving": "Saving...",
+      "updateInstance": "Update Instance",
+      "addInstance": "Add Instance",
+      "cancel": "Cancel"
+    }
+  },
+  "instanceSettingsButton": {
+    "tooltip": "Instance Settings",
+    "aria": "Instance settings"
+  },
+  "passwordIssuesBanner": {
+    "title": "Password Issues Detected",
+    "description": "Some instances cannot decrypt their saved passwords, likely due to a configuration change. Check the affected instances below to resolve this issue."
+  },
+  "backups": {
+    "pageTitle": "Backups",
+    "pageDescription": "Manage torrent backups for your instances",
+    "selectInstance": "Select instance",
+    "noInstances": {
+      "heading": "Connect a qBittorrent instance",
+      "message": "No qBittorrent instances configured. Add an instance first to use the backup feature."
+    },
+    "checkingCompatibility": {
+      "heading": "Checking instance compatibility",
+      "message": "Checking which instances support torrent backups."
+    },
+    "selectInstancePrompt": {
+      "heading": "Select an instance to manage backups",
+      "message": "Choose a qBittorrent instance from the dropdown above to view and manage its backups."
+    },
+    "noCompatible": {
+      "heading": "No compatible instances found",
+      "message": "None of your qBittorrent instances support torrent backups yet. Upgrade to qBittorrent 4.5.0+ (Web API 2.8.11+) to enable this feature."
+    },
+    "goToInstances": "Go to Instances",
+    "backToTorrents": "Back to Torrents",
+    "loadingCapabilities": "Loading instance capabilities...",
+    "unavailable": {
+      "title": "Backups unavailable for this instance",
+      "description": "qBittorrent Web API 2.8.11+ (qBittorrent 4.5.0+) is required to export .torrent files for backups. This instance reports {{version}}, so torrent exports are disabled."
+    },
+    "returnToInstance": "Return to instance overview",
+    "cards": {
+      "lastBackup": "Last backup",
+      "nextScheduledBackup": "Next scheduled backup",
+      "instance": "Instance",
+      "noBackupsYet": "No backups yet",
+      "loading": "Loading...",
+      "loadingSchedule": "Loading schedule...",
+      "status": "Status: {{status}}"
+    },
+    "progress": "{{current}} of {{total}} torrents ({{percentage}}%)",
+    "settings": {
+      "title": "Backup settings",
+      "loadingSettings": "Loading settings...",
+      "enableBackups": "Enable backups",
+      "enableBackupsDescription": "Turn on automatic backups for this instance. Pick at least one cadence below; leave this off for manual-only backups.",
+      "includeCategories": "Include categories",
+      "includeCategoriesDescription": "Group torrents inside the archive by their category",
+      "includeTags": "Include tags",
+      "includeTagsDescription": "Store torrent tags in the manifest",
+      "automaticCadences": "Automatic cadences",
+      "automaticCadencesDescription": "Hourly, daily, weekly, and monthly runs start after the previous backup finishes and their interval has elapsed. Leave them all off if you only trigger backups manually.",
+      "hourly": "Hourly",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "keepHourlyDescription": "How many hourly snapshots to keep before older ones are pruned.",
+      "keepDailyDescription": "How many daily snapshots to keep before rotation.",
+      "keepWeeklyDescription": "How many weekly snapshots to keep before rotation.",
+      "keepMonthlyDescription": "How many monthly snapshots to keep before rotation.",
+      "hourlyTooltip": "Runs roughly once per hour when backups are enabled and at least an hour has passed since the last run.",
+      "dailyTooltip": "Runs about once every 24 hours after the previous job finishes.",
+      "weeklyTooltip": "Runs once the last backup is at least seven days old.",
+      "monthlyTooltip": "Runs when the previous run is from an earlier calendar month."
+    },
+    "actions": {
+      "runManualBackup": "Run manual backup",
+      "importBackup": "Import backup",
+      "saveChanges": "Save changes",
+      "saveChangesToAllInstances": "Save changes to all instances"
+    },
+    "validation": {
+      "selectCadence": "Select at least one cadence (hourly, daily, weekly, or monthly) before saving.",
+      "changesApply": "Changes apply to future backups as soon as you save."
+    },
+    "toast": {
+      "backupSettingsUpdated": "Backup settings updated",
+      "settingsAppliedToAll": "Settings applied to all instances",
+      "settingsPartialApply": "Applied to {{success}}/{{total}} instances",
+      "backupQueued": "Backup queued",
+      "backupRunDeleted": "Backup run deleted",
+      "deletedAllBackups": "Deleted all backups"
+    },
+    "restore": {
+      "title": "Restore backup",
+      "runDescription": "Run #{{id}} ({{kind}})",
+      "selectBackup": "Select a backup to restore",
+      "mode": "Mode",
+      "selectRestoreMode": "Select restore mode",
+      "incremental": "Incremental",
+      "overwrite": "Overwrite",
+      "complete": "Complete",
+      "incrementalDescription": "Adds missing categories, tags, and torrents without touching existing data.",
+      "overwriteDescription": "Adds missing items and updates existing categories/torrents to match the snapshot.",
+      "completeDescription": "Same as overwrite, then removes anything not recorded in the backup.",
+      "dryRun": "Dry run",
+      "startPaused": "Start paused",
+      "skipRecheck": "Skip recheck",
+      "autoResumeCompletedTorrents": "Auto-resume completed torrents",
+      "autoResumeTooltip": "When enabled, torrents resume automatically if qBittorrent reports the restored data as fully checked. In other words; no data is missing.",
+      "autoResumeOnInfo": "Torrents will resume automatically once qBittorrent reports the restored data as fully checked.",
+      "autoResumeOffInfo": "Auto resume is off. Torrents stay paused until you start them manually.",
+      "skipRecheckInfo": "Enable skip recheck to allow automatic resume after verification.",
+      "reIncludeAll": "Re-include all",
+      "refreshPlan": "Refresh plan",
+      "loadingRestorePlan": "Loading restore plan...",
+      "runDryRun": "Run dry-run",
+      "executeRestore": "Execute restore",
+      "executing": "Executing...",
+      "categories": "Categories",
+      "tags": "Tags",
+      "torrents": "Torrents",
+      "create": "Create",
+      "update": "Update",
+      "delete": "Delete",
+      "add": "Add",
+      "noCategoryChanges": "No category changes.",
+      "noTagChanges": "No tag changes.",
+      "noTorrentChanges": "No torrent changes.",
+      "noChangesRequired": "No changes are required for this restore mode.",
+      "manualFollowUp": "Manual follow-up required",
+      "currentCategory": "Current category: {{category}}",
+      "excluded": "excluded",
+      "excludedCount": "{{count}} torrent{{plural}} excluded from this restore.",
+      "refreshingPlan": "Refreshing plan...",
+      "include": "Include",
+      "exclude": "Exclude",
+      "lastExecution": "Last execution",
+      "dryRunBadge": "Dry run",
+      "appliedBadge": "Applied"
+    },
+    "schedule": {
+      "automaticBackupsOff": "Automatic backups are turned off for this instance.",
+      "enableCadence": "Enable at least one automatic cadence to schedule backups.",
+      "backupRunning": "Backup is currently running.",
+      "backupQueued": "Backup is queued and will start shortly.",
+      "waitingScheduler": "Waiting for the scheduler to pick up the next backup.",
+      "waitingFirstBackup": "Waiting for the first backup; scheduler will run ASAP.",
+      "waitingSchedulerInfo": "Waiting for scheduler information.",
+      "overdueRetry": "Should have already run; scheduler will retry automatically."
+    },
+    "runKind": {
+      "manual": "Manual",
+      "hourly": "Hourly",
+      "daily": "Daily",
+      "weekly": "Weekly",
+      "monthly": "Monthly",
+      "import": "Import"
+    }
+  }
+}

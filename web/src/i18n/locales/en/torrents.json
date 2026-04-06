@@ -1,0 +1,817 @@
+{
+  "managementBar": {
+    "ariaLabel": "{{count}} torrent{{plural}} selected - Bulk actions available",
+    "resume": "Resume",
+    "pause": "Pause",
+    "forceRecheck": "Force Recheck",
+    "reannounce": "Reannounce",
+    "sequentialDownload": {
+      "enable": "Enable Sequential Download",
+      "disable": "Disable Sequential Download"
+    },
+    "setTags": "Set Tags",
+    "setCategory": "Set Category",
+    "setLocation": "Set Location",
+    "queuePriority": "Queue Priority",
+    "topPriority": "Top Priority",
+    "increasePriority": "Increase Priority",
+    "decreasePriority": "Decrease Priority",
+    "bottomPriority": "Bottom Priority",
+    "limits": "Limits",
+    "setShareLimit": "Set Share Limit",
+    "setSpeedLimit": "Set Speed Limit",
+    "tmm": {
+      "mixed": "TMM (Mixed)",
+      "disable": "Disable TMM",
+      "enable": "Enable TMM"
+    },
+    "delete": "Delete"
+  },
+  "contextMenu": {
+    "viewDetails": "View Details",
+    "resume": "Resume",
+    "forceStart": "Force Start",
+    "disableForceStart": "Disable Force Start",
+    "mixed": "(Mixed)",
+    "pause": "Pause",
+    "forceRecheck": "Force Recheck",
+    "reannounce": "Reannounce",
+    "enableSequentialDownload": "Enable Sequential Download",
+    "disableSequentialDownload": "Disable Sequential Download",
+    "searchCrossSeeds": "Search Cross-Seeds",
+    "filterCrossSeeds": "Filter Cross-Seeds",
+    "filterCrossSeedsSingleOnly": "Filter Cross-Seeds (single selection only)",
+    "setTags": "Set Tags",
+    "setLocation": "Set Location",
+    "setShareLimits": "Set Share Limits",
+    "setSpeedLimits": "Set Speed Limits",
+    "enableTmm": "Enable TMM",
+    "disableTmm": "Disable TMM",
+    "externalPrograms": "External Programs",
+    "exportTorrent": "Export Torrent",
+    "exportTorrents": "Export Torrents ({{count}})",
+    "copy": "Copy...",
+    "copyName": "Copy Name",
+    "copyHash": "Copy Hash",
+    "copyFullPath": "Copy Full Path",
+    "delete": "Delete",
+    "loadingPrograms": "Loading programs...",
+    "toast": {
+      "torrentCopied": "Torrent {{label}} copied to clipboard",
+      "failedToCopy": "Failed to copy to clipboard",
+      "nameNotAvailable": "Name not available",
+      "hashNotAvailable": "Hash not available",
+      "fullPathNotAvailable": "Full path not available",
+      "failedToFetchNames": "Failed to fetch torrent names",
+      "failedToFetchHashes": "Failed to fetch torrent hashes",
+      "failedToFetchPaths": "Failed to fetch torrent paths",
+      "externalProgramSuccess": "External program executed successfully for {{count}} torrent(s)",
+      "externalProgramAllFailed": "Failed to execute external program for all {{count}} torrent(s)",
+      "externalProgramPartial": "Executed for {{success}} torrent(s), failed for {{failure}}",
+      "externalProgramError": "Failed to execute external program: {{message}}"
+    }
+  },
+  "deleteDialog": {
+    "title": "Delete {{count}} torrent(s)?",
+    "description": "This action cannot be undone. The torrents will be removed from qBittorrent.",
+    "totalSize": "Total size: {{size}}",
+    "blockCrossSeeds": "Block cross-seed infohashes (prevent re-add)",
+    "cancel": "Cancel",
+    "delete": "Delete"
+  },
+  "deleteFilesPreference": {
+    "label": "Also delete files from disk",
+    "lockAriaLabel": {
+      "stop": "Stop remembering delete files preference",
+      "remember": "Remember delete files preference"
+    },
+    "lockTooltip": {
+      "stop": "Stop remembering this choice",
+      "remember": "Remember this choice"
+    }
+  },
+  "crossSeedWarning": {
+    "idle": {
+      "checkForCrossSeeds": "Check for cross-seeds",
+      "crossSeedsNotChecked": "Cross-seeds not checked",
+      "check": "Check"
+    },
+    "searching": "Checking for cross-seeds",
+    "searchingProgress": "Checking for cross-seeds ({{checked}}/{{total}})",
+    "error": "Failed to check for cross-seeds",
+    "retry": "Retry",
+    "noCrossSeeds": "No cross-seeds found",
+    "deleteCrossSeeds": "These cross-seeds will also be deleted",
+    "deletingFilesBreaks": "Deleting files will break these cross-seeds",
+    "dataPreserved": "Cross-seeds detected \u2014 data will be preserved",
+    "torrentShares": "{{count}} torrent shares these files",
+    "torrentsShare": "{{count}} torrents share these files",
+    "acrossInstances": "across {{count}} instances",
+    "onTracker": "on {{tracker}}",
+    "onTrackers": "on {{count}} trackers",
+    "willBeRemoved": "\u2014 will be removed along with selection",
+    "willNeedRedownload": "\u2014 they will need to redownload",
+    "unaffected": "\u2014 unaffected by this removal",
+    "alsoDeleteCrossSeeds": "Also delete these cross-seeded torrents",
+    "showAffected": "Show affected torrents",
+    "hideAffected": "Hide affected torrents",
+    "more": "+ {{count}} more"
+  },
+  "recheckDialog": {
+    "title": "Force Recheck {{count}} torrent(s)?",
+    "description": "This will force qBittorrent to recheck all pieces of the selected torrents. This process may take some time and will temporarily pause the torrents.",
+    "cancel": "Cancel",
+    "confirm": "Force Recheck"
+  },
+  "reannounceDialog": {
+    "title": "Reannounce {{count}} torrent(s)?",
+    "description": "This will force the selected torrents to reannounce to all their trackers. This is useful when trackers are not responding or you want to refresh your connection.",
+    "cancel": "Cancel",
+    "confirm": "Reannounce"
+  },
+  "dialogs": {
+    "tagEditor": {
+      "title": "Set Tags for {{count}} torrent(s)",
+      "description": "Mixed tags stay unchanged until clicked. Click a row to cycle Mixed to On, On to Off, and Off to On.",
+      "availableTags": "Available Tags",
+      "loadingTags": "Loading tags...",
+      "noTags": "No tags available yet. Add one below.",
+      "reset": "Reset",
+      "clearAll": "Clear All",
+      "new": "(new)",
+      "mixed": "Mixed",
+      "on": "On",
+      "off": "Off",
+      "addNewTag": "Add New Tag",
+      "enterNewTag": "Enter new tag",
+      "addEverywhere": "Add everywhere: {{tags}}",
+      "removeEverywhere": "Remove everywhere: {{tags}}",
+      "noTagChanges": "No tag changes.",
+      "cancel": "Cancel",
+      "apply": "Apply"
+    },
+    "setLocation": {
+      "title": "Set Location for {{count}} torrent(s)",
+      "description": "Enter the new save location for the selected torrents. This will disable Auto TMM and move the torrents to the specified location.",
+      "location": "Location",
+      "placeholder": "/path/to/save/location",
+      "cancel": "Cancel",
+      "confirm": "Set Location"
+    },
+    "setCategory": {
+      "setCategory": "Set Category"
+    },
+    "locationWarning": {
+      "title": "Set Location for {{count}} torrent(s)?",
+      "description": "Some selected torrents have Auto TMM enabled. Setting a new location will disable Auto TMM for those torrents."
+    },
+    "tmm": {
+      "enableTitle": "Enable TMM for {{count}} torrent(s)?",
+      "disableTitle": "Disable TMM for {{count}} torrent(s)?",
+      "enableDescription": "This will enable Automatic Torrent Management (TMM) for the selected torrents. qBittorrent will automatically move them to the category save path.",
+      "disableDescription": "This will disable Automatic Torrent Management (TMM) for the selected torrents. They will remain in their current location.",
+      "cancel": "Cancel",
+      "enable": "Enable TMM",
+      "disable": "Disable TMM"
+    },
+    "renameTorrent": {
+      "title": "Rename Torrent"
+    },
+    "renameFile": {
+      "title": "Rename File"
+    },
+    "renameFolder": {
+      "title": "Rename Folder"
+    },
+    "editTracker": {
+      "title": "Edit Tracker URL"
+    },
+    "shareLimit": {
+      "title": "Set Share Limits for {{count}} torrent(s)"
+    },
+    "speedLimits": {
+      "title": "Set Speed Limits for {{count}} torrent(s)"
+    },
+    "createAndAssignCategory": {
+      "title": "Create & Assign Category"
+    }
+  },
+  "dropZone": {
+    "overlayMessage": "Drop .torrent files or magnet links to add",
+    "unsupportedDrop": "Drop a .torrent file or magnet link to add it"
+  },
+  "creatorDialog": {
+    "title": "Create Torrent",
+    "description": "Create a new .torrent file from a file or folder on the server",
+    "sourcePath": "Source Path",
+    "sourcePathPlaceholder": "/path/to/file/or/folder",
+    "sourcePathHelp": "Full path on the server where qBittorrent is running",
+    "sourcePathTooltip": "Windows users: use double backslashes (e.g., C:\\\\Data\\\\folder)",
+    "privateTorrent": "Private torrent",
+    "privateDescription": "Disable DHT, PEX, and local peer discovery",
+    "trackers": "Trackers",
+    "trackersSelectHelp": "Select from your active trackers or paste custom URLs below",
+    "trackersSelectPlaceholder": "Add tracker from your active torrents",
+    "trackersHelp": "One tracker URL per line",
+    "comment": "Comment",
+    "commentPlaceholder": "Optional comment",
+    "source": "Source",
+    "sourcePlaceholder": "Optional source tag",
+    "addToQBittorrent": "Add to qBittorrent",
+    "addToQBittorrentDescription": "Add the created torrent to qBittorrent and start seeding. If disabled, only creates the .torrent file for download.",
+    "advancedOptions": "Advanced Options",
+    "torrentFormat": "Torrent Format",
+    "formatV1": "v1 (Compatible)",
+    "formatV2": "v2 (Modern)",
+    "formatHybrid": "Hybrid (v1 + v2)",
+    "formatHelp": "v1 for maximum compatibility, v2 for modern clients, hybrid for both",
+    "formatUnavailableTitle": "Hybrid and v2 torrents are unavailable",
+    "formatUnavailableDescription": "This qBittorrent build uses {{version}}, which only supports creating v1 torrents. Upgrade to a qBittorrent release built with libtorrent v2 to enable hybrid or v2 torrent creation.",
+    "pieceSize": "Piece Size",
+    "pieceSizePlaceholder": "Auto (recommended)",
+    "pieceSizeHelp": "Auto calculates optimal size based on content",
+    "saveTorrentTo": "Save .torrent to (optional)",
+    "saveTorrentToPlaceholder": "/path/to/save/file.torrent",
+    "saveTorrentToHelp": "Where to save the .torrent file on the server",
+    "saveTorrentToTooltip": "qBittorrent needs write access to this directory. Best to leave blank and download the .torrent file from the tasks modal later.",
+    "webSeeds": "Web Seeds (HTTP/HTTPS)",
+    "webSeedsHelp": "HTTP/HTTPS URLs where the content can be downloaded. One URL per line.",
+    "cancel": "Cancel",
+    "createTorrent": "Create Torrent",
+    "toast": {
+      "taskQueued": "Torrent creation task queued",
+      "taskFailed": "Failed to create torrent task"
+    }
+  },
+  "creationTasks": {
+    "loadingTasks": "Loading tasks...",
+    "noTasks": "No torrent creation tasks found",
+    "tableHeaders": {
+      "source": "Source",
+      "status": "Status",
+      "progress": "Progress",
+      "added": "Added",
+      "actions": "Actions"
+    },
+    "private": "Private",
+    "toast": {
+      "downloadStarted": "Torrent file download started",
+      "downloadFailed": "Failed to download torrent file",
+      "taskDeleted": "Torrent creation task deleted",
+      "taskDeleteFailed": "Failed to delete torrent creation task"
+    }
+  },
+  "fileTree": {
+    "renameFile": "Rename file",
+    "renameFolder": "Rename folder",
+    "download": "Download",
+    "mediaInfo": "MediaInfo",
+    "rename": "Rename",
+    "selectFileForDownload": "Select file for download",
+    "skipFileDownload": "Skip file download",
+    "selectAllFilesIn": "Select all files in {{name}}"
+  },
+  "mediaInfoDialog": {
+    "title": "MediaInfo",
+    "summary": "Summary",
+    "rawJson": "Raw JSON",
+    "copySummary": "Copy Summary",
+    "copyJson": "Copy JSON",
+    "noFields": "No fields",
+    "failedToFetch": "Failed to fetch MediaInfo",
+    "retry": "Retry",
+    "toast": {
+      "copied": "{{label}} copied to clipboard",
+      "copyFailed": "Failed to copy to clipboard"
+    }
+  },
+  "categoryTree": {
+    "uncategorized": "Uncategorized",
+    "expandCategory": "Expand category",
+    "collapseCategory": "Collapse category",
+    "createSubcategory": "Create subcategory",
+    "editCategory": "Edit category",
+    "deleteCategory": "Delete category",
+    "removeEmptyCategories": "Remove Empty Categories"
+  },
+  "categorySubmenu": {
+    "setCategory": "Set Category",
+    "noCategory": "(No category)",
+    "searchCategories": "Search categories...",
+    "noCategoriesFound": "No categories found"
+  },
+  "queueSubmenu": {
+    "queue": "Queue",
+    "topPriority": "Top Priority",
+    "increasePriority": "Increase Priority",
+    "decreasePriority": "Decrease Priority",
+    "bottomPriority": "Bottom Priority"
+  },
+  "renameSubmenu": {
+    "rename": "Rename",
+    "renameTorrent": "Rename Torrent",
+    "renameFile": "Rename File",
+    "renameFolder": "Rename Folder"
+  },
+  "tagCategoryManagement": {
+    "createTag": {
+      "title": "Create New Tag",
+      "description": "Enter a name for the new tag",
+      "tagName": "Tag Name",
+      "placeholder": "Enter tag name",
+      "cancel": "Cancel",
+      "create": "Create",
+      "toast": {
+        "success": "Tag created successfully",
+        "error": "Failed to create tag"
+      }
+    },
+    "deleteTag": {
+      "title": "Delete Tag",
+      "description": "Are you sure you want to delete the tag \"{{tag}}\"? This action cannot be undone.",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "toast": {
+        "success": "Tag deleted successfully",
+        "error": "Failed to delete tag"
+      }
+    },
+    "createCategory": {
+      "title": "Create New Category",
+      "createSubcategoryTitle": "Create Subcategory",
+      "description": "Enter details for the new category",
+      "subcategoryDescription": "Creating subcategory under \"{{parent}}\"",
+      "categoryName": "Category Name",
+      "subcategoryName": "Subcategory Name",
+      "placeholder": "Enter category name",
+      "savePath": "Save Path (optional)",
+      "savePathPlaceholder": "e.g. /downloads/movies",
+      "cancel": "Cancel",
+      "create": "Create",
+      "toast": {
+        "success": "Category created successfully",
+        "error": "Failed to create category"
+      }
+    },
+    "editCategory": {
+      "title": "Edit Category: {{name}}",
+      "description": "Update the save path for this category",
+      "currentSavePath": "Current Save Path",
+      "noSavePath": "No save path configured",
+      "newSavePath": "New Save Path",
+      "placeholder": "e.g. /downloads/movies",
+      "cancel": "Cancel",
+      "save": "Save",
+      "toast": {
+        "success": "Category updated successfully",
+        "error": "Failed to update category"
+      }
+    },
+    "deleteCategory": {
+      "title": "Delete Category",
+      "description": "Are you sure you want to delete the category \"{{name}}\"? Torrents in this category will become uncategorized.",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "toast": {
+        "success": "Category deleted successfully",
+        "error": "Failed to delete category"
+      }
+    },
+    "deleteEmptyCategories": {
+      "title": "Remove Empty Categories",
+      "noEmpty": "There are no empty categories to remove.",
+      "confirm": "Are you sure you want to remove {{count}} empty categor{{plural}}? This action cannot be undone.",
+      "cancel": "Cancel",
+      "remove": "Remove {{count}} Categor{{plural}}",
+      "toast": {
+        "success": "Removed {{count}} empty categor{{plural}}",
+        "error": "Failed to remove empty categories"
+      }
+    },
+    "deleteUnusedTags": {
+      "title": "Delete Unused Tags",
+      "noUnused": "There are no unused tags to delete.",
+      "confirm": "Are you sure you want to delete {{count}} unused tag{{plural}}? This action cannot be undone.",
+      "cancel": "Cancel",
+      "delete": "Delete {{count}} Tag{{plural}}",
+      "toast": {
+        "success": "Deleted {{count}} unused tag{{plural}}",
+        "error": "Failed to delete unused tags"
+      }
+    }
+  },
+  "crossSeedDialog": {
+    "title": "Search Cross-Seeds",
+    "torrentLabel": "Torrent",
+    "category": "Category: {{category}}",
+    "size": "Size: {{size}}",
+    "servedFromCache": "Served from cache",
+    "freshSearch": "Fresh search",
+    "cached": "Cached {{time}}",
+    "expires": "Expires {{time}}",
+    "refreshFromIndexers": "Refresh from indexers",
+    "searchScope": "Search Scope",
+    "noIndexers": "No Torznab indexers available",
+    "noIndexersHelp": "Add or enable Torznab indexers in Settings to search for cross-seeds.",
+    "capabilityNote": "Capability note",
+    "capabilityDescription": "These indexers lack the required capabilities/categories for this torrent and will be skipped by the server:",
+    "contentFilteringInProgress": "Content Filtering In Progress",
+    "analyzingContent": "Analyzing existing content...",
+    "smartFilteringActive": "Smart Filtering Active",
+    "indexersFiltered": "{{count}} indexer{{plural}} filtered",
+    "contentFilteringDescription": "Checking your existing torrents to find duplicates and exclude redundant trackers. This helps avoid downloading the same content multiple times.",
+    "excludedDescription": "You already seed this release from these trackers, so they're excluded from the search.",
+    "noContentDuplicates": "Content filtering completed. No duplicate content found on your enabled trackers.",
+    "searchingIndexers": "Searching indexers\u2026",
+    "noMatchesFound": "No matches found in your search.",
+    "selectReleasesToAdd": "Select the releases you want to add",
+    "selectAll": "Select All",
+    "clear": "Clear",
+    "tagAddedTorrents": "Tag added torrents",
+    "startPaused": "Start paused",
+    "latestAddAttempt": "Latest add attempt",
+    "close": "Close",
+    "addSelected": "Add Selected",
+    "adding": "Adding\u2026",
+    "retry": "Retry",
+    "seeders": "{{count}} seeders",
+    "match": "Match: {{reason}}",
+    "blocking": "Blocking...",
+    "block": "Block",
+    "addedToBlocklist": "Added to blocklist",
+    "missingInstance": "Missing instance for blocklist",
+    "scope": {
+      "allIndexers": "All indexers",
+      "selectCustom": "Select Custom",
+      "selectedCount": "{{count}} selected",
+      "selectIndexers": "Select indexers",
+      "availableIndexers": "Available Indexers",
+      "selectAllIndexers": "Select all",
+      "clearSelection": "Clear selection",
+      "search": "Search",
+      "filtering": "Filtering\u2026",
+      "searching": "Searching",
+      "noneSelected": "None selected",
+      "enabledIndexers": "{{count}} enabled {{suffix}}",
+      "selectedOfTotal": "{{selected}} of {{total}} selected",
+      "indexersForSearch": "{{count}} {{suffix}} for search"
+    },
+    "status": {
+      "added": "Added",
+      "addedHardlink": "Added (hardlink)",
+      "addedReflink": "Added (reflink)",
+      "exists": "Already exists",
+      "blocked": "Blocked",
+      "noMatch": "No match",
+      "rejected": "Size mismatch",
+      "noSavePath": "No save path",
+      "invalidContentPath": "Invalid path",
+      "skippedRecheck": "Skipped - recheck required",
+      "skippedUnsafePieces": "Skipped - unsafe pieces",
+      "requiresHardlinkReflink": "Skipped - Requires Hardlink/Reflink Mode",
+      "error": "Error",
+      "queued": "Queued",
+      "check": "Check"
+    },
+    "rateLimitHelp": {
+      "why": "Why this happens:",
+      "whyDescription": "Trackers limit request frequency to prevent abuse and bans.",
+      "whatYouCanDo": "What you can do:",
+      "wait": "Wait 30-60 minutes before trying again",
+      "fewerIndexers": "Try searching with fewer indexers selected",
+      "useRss": "Use the RSS automation feature for ongoing cross-seeding",
+      "checkIndexers": "Check the indexers page to see which ones are rate-limited"
+    }
+  },
+  "columnFilter": {
+    "filterColumn": "Filter {{column}}",
+    "setConditions": "Set conditions to filter this column",
+    "operation": "Operation",
+    "selectOperation": "Select operation",
+    "value": "Value",
+    "from": "From",
+    "to": "To",
+    "applyFilter": "Apply Filter",
+    "clearFilters": "Clear filters",
+    "enterSize": "Enter size...",
+    "enterSpeed": "Enter speed...",
+    "enterDuration": "Enter duration...",
+    "enterPercentage": "Enter percentage...",
+    "enterValue": "Enter value...",
+    "enterNumber": "Enter number...",
+    "selectValue": "Select value",
+    "selectStatus": "Select status",
+    "true": "True",
+    "false": "False",
+    "noResults": "No results found.",
+    "matchCase": "Match case (click to ignore)",
+    "ignoreCase": "Ignore case (click to match)",
+    "units": {
+      "seconds": "Seconds",
+      "minutes": "Minutes",
+      "hours": "Hours",
+      "days": "Days"
+    },
+    "states": {
+      "downloading": "Downloading",
+      "uploading": "Seeding",
+      "completed": "Completed",
+      "stopped": "Stopped",
+      "paused": "Paused",
+      "active": "Active",
+      "stalled": "Stalled",
+      "stalledUp": "Stalled (Up)",
+      "stalledDown": "Stalled (Down)",
+      "errored": "Error",
+      "checking": "Checking",
+      "moving": "Moving"
+    }
+  },
+  "filterSidebar": {
+    "states": {
+      "downloading": "Downloading",
+      "uploading": "Seeding",
+      "completed": "Completed",
+      "stopped": "Stopped",
+      "active": "Active",
+      "inactive": "Inactive",
+      "running": "Running",
+      "stalled": "Stalled",
+      "stalledUp": "Stalled Up",
+      "stalledDown": "Stalled Down",
+      "errored": "Error",
+      "checking": "Checking",
+      "moving": "Moving",
+      "unregistered": "Unregistered",
+      "trackerDown": "Tracker Down",
+      "crossSeeds": "Cross Seeds"
+    }
+  },
+  "statusBar": {
+    "selected": "{{count}} selected",
+    "allSelected": "All selected",
+    "selectionShortcuts": "Selection shortcuts",
+    "shiftClick": "Shift+click for range",
+    "ctrlClick": "{{modifier}}+click for multiple",
+    "loadingTorrents": "Loading torrents...",
+    "loadingMore": "Loading more torrents...",
+    "torrentCount": "{{count}} torrent{{plural}}",
+    "torrentsLoaded": "{{loaded}} of {{total}} torrents loaded",
+    "scrollForMore": "(scroll for more)",
+    "loading": "Loading...",
+    "freeSpace": "Free Space",
+    "switchToBits": "Switch to bits per second (bps)",
+    "switchToBytes": "Switch to bytes per second (B/s)",
+    "altSpeedOn": "Alternative speed limits: On",
+    "altSpeedOff": "Alternative speed limits: Off",
+    "altSpeedUnknown": "Alternative speed limits status unknown",
+    "disableAltSpeed": "Disable alternative speed limits",
+    "enableAltSpeed": "Enable alternative speed limits",
+    "reannounceEnabled": "Automatic tracker reannounce enabled - Click to configure",
+    "viewModes": {
+      "table": "Table",
+      "dense": "Dense",
+      "stacked": "Stacked"
+    },
+    "incognitoOn": "Incognito on",
+    "incognitoOff": "Incognito off"
+  },
+  "detailsPanel": {
+    "tabs": {
+      "general": "General",
+      "trackers": "Trackers",
+      "peers": "Peers",
+      "httpSources": "HTTP Sources",
+      "content": "Content",
+      "crossSeed": "Cross-Seed"
+    },
+    "closePanel": "Close details panel",
+    "toast": {
+      "copied": "{{type}} copied to clipboard",
+      "copyFailed": "Failed to copy to clipboard",
+      "peersAdded": "Peers added successfully",
+      "peersFailed": "Failed to add peers: {{error}}",
+      "peerBanned": "Peer banned successfully",
+      "peerBanFailed": "Failed to ban peer: {{error}}",
+      "trackerUpdated": "Tracker URL updated successfully",
+      "trackerUpdateFailed": "Failed to update tracker",
+      "fileRenamed": "File renamed successfully",
+      "fileRenameFailed": "Failed to rename file",
+      "folderRenamed": "Folder renamed successfully",
+      "folderRenameFailed": "Failed to rename folder",
+      "deletedTorrents": "Deleted {{count}} torrent{{plural}}",
+      "deletedTorrent": "Deleted torrent: {{name}}",
+      "deleteFailed": "Failed to delete: {{error}}"
+    },
+    "addPeers": {
+      "title": "Add Peers",
+      "description": "Enter peer addresses (IP:port), one per line or comma-separated"
+    },
+    "banPeer": {
+      "title": "Ban Peer",
+      "description": "Are you sure you want to ban {{address}}?"
+    },
+    "selectAll": "Select All",
+    "deselectAll": "Deselect All"
+  },
+  "generalTab": {
+    "name": "Name:",
+    "size": "Size:",
+    "hashV1": "Hash v1:",
+    "hashV2": "Hash v2:",
+    "savePath": "Save Path:",
+    "tempPath": "Temp Path:",
+    "comment": "Comment:",
+    "createdBy": "Created By:",
+    "na": "N/A",
+    "unlimited": "Unlimited",
+    "useGlobal": "Use Global",
+    "enabled": "Enabled",
+    "noDataAvailable": "No data available",
+    "transfer": "Transfer",
+    "downloaded": "Downloaded",
+    "uploaded": "Uploaded",
+    "ratio": "Ratio",
+    "wasted": "Wasted",
+    "sequentialDownload": "Sequential Download",
+    "network": "Network",
+    "seeds": "Seeds",
+    "peers": "Peers",
+    "downSpeed": "Down Speed",
+    "upSpeed": "Up Speed",
+    "downLimit": "Down Limit",
+    "upLimit": "Up Limit",
+    "connections": "Connections",
+    "time": "Time",
+    "addedOn": "Added On",
+    "completedOn": "Completed On",
+    "lastActivity": "Last Activity",
+    "lastSeen": "Last Seen",
+    "eta": "ETA",
+    "timeActive": "Time Active",
+    "seedingTime": "Seeding Time",
+    "limits": "Limits",
+    "ratioLimit": "Ratio Limit",
+    "seedingTimeLimit": "Seeding Time Limit",
+    "inactiveSeedingLimit": "Inactive Seeding Limit",
+    "info": "Info",
+    "pieceSize": "Piece Size",
+    "pieces": "Pieces",
+    "createdOn": "Created On",
+    "queue": "Queue"
+  },
+  "trackersTable": {
+    "status": "Status",
+    "tracker": "Tracker",
+    "tier": "Tier",
+    "seeds": "Seeds",
+    "leeches": "Leeches",
+    "downloaded": "Downloaded",
+    "message": "Message"
+  },
+  "trackerContextMenu": {
+    "editTrackerUrl": "Edit Tracker URL"
+  },
+  "peersTable": {
+    "address": "Address",
+    "client": "Client",
+    "flags": "Flags",
+    "progress": "Progress",
+    "downSpeed": "Down Speed",
+    "upSpeed": "Up Speed",
+    "downloaded": "Downloaded",
+    "uploaded": "Uploaded",
+    "relevance": "Relevance"
+  },
+  "webSeedsTable": {
+    "url": "URL",
+    "noHttpSources": "No HTTP sources",
+    "searchUrls": "Search URLs...",
+    "httpSources": "{{count}} HTTP source{{plural}}",
+    "filteredCount": "{{filtered}} of {{total}}",
+    "copyUrl": "Copy URL",
+    "toast": {
+      "urlCopied": "URL copied to clipboard"
+    }
+  },
+  "fileTable": {
+    "expandAll": "Expand All",
+    "collapseAll": "Collapse All",
+    "searchFiles": "Search files...",
+    "fileCount": "{{count}} file{{plural}}",
+    "filteredCount": "{{filtered}} of {{total}}",
+    "noFiles": "No files",
+    "headers": {
+      "name": "Name",
+      "progress": "Progress",
+      "size": "Size"
+    },
+    "download": "Download",
+    "mediaInfo": "MediaInfo",
+    "renameFile": "Rename File",
+    "renameFolder": "Rename Folder"
+  },
+  "crossSeedTable": {
+    "name": "Name",
+    "instance": "Instance",
+    "match": "Match",
+    "tracker": "Tracker",
+    "status": "Status",
+    "progress": "Progress",
+    "size": "Size",
+    "savePath": "Save Path",
+    "hardlink": "Hardlink",
+    "hardlinkTooltip": "Files stored in hardlink directory (separate from source)",
+    "matchTypes": {
+      "contentPath": {
+        "label": "Content",
+        "description": "Same content location on disk"
+      },
+      "name": {
+        "label": "Name",
+        "description": "Same torrent name"
+      },
+      "release": {
+        "label": "Release",
+        "description": "Same release (matched by metadata)"
+      }
+    },
+    "toast": {
+      "savePathCopied": "Save path copied",
+      "copyFailed": "Failed to copy"
+    }
+  },
+  "addTorrentDialog": {
+    "title": "Add Torrent",
+    "file": "File",
+    "url": "URL"
+  },
+  "mobileCards": {
+    "shareLimit": {
+      "title": "Set Share Limits for {{count}} torrent(s)",
+      "description": "Configure seeding limits. Use -1 or disable to remove limits.",
+      "setRatioLimit": "Set ratio limit",
+      "setSeedingTimeLimit": "Set seeding time limit (minutes)",
+      "setInactiveSeedingLimit": "Set inactive seeding limit (minutes)",
+      "cancel": "Cancel",
+      "setting": "Setting...",
+      "applyLimits": "Apply Limits"
+    },
+    "speedLimit": {
+      "title": "Set Speed Limits for {{count}} torrent(s)",
+      "description": "Set upload and download speed limits in KB/s. Use -1 or disable to remove limits.",
+      "setUploadLimit": "Set upload limit (KB/s)",
+      "setDownloadLimit": "Set download limit (KB/s)",
+      "cancel": "Cancel",
+      "setting": "Setting...",
+      "applyLimits": "Apply Limits"
+    },
+    "ratio": "Ratio:"
+  },
+  "tableColumns": {
+    "selectAll": "Select torrent",
+    "priority": "Priority",
+    "status": "Status",
+    "tracker": "Tracker",
+    "name": "Name",
+    "size": "Size",
+    "totalSize": "Total Size",
+    "progress": "Progress",
+    "state": "State",
+    "seeds": "Seeds",
+    "peers": "Peers",
+    "downSpeed": "Down Speed",
+    "upSpeed": "Up Speed",
+    "eta": "ETA",
+    "ratio": "Ratio",
+    "popularity": "Popularity",
+    "category": "Category",
+    "tags": "Tags",
+    "addedOn": "Added On",
+    "completedOn": "Completed On",
+    "trackerUrl": "Tracker URL",
+    "downLimit": "Down Limit",
+    "upLimit": "Up Limit",
+    "downloaded": "Downloaded",
+    "uploaded": "Uploaded",
+    "downloadedSession": "Down (Session)",
+    "uploadedSession": "Up (Session)",
+    "amountLeft": "Remaining",
+    "timeActive": "Time Active",
+    "seedingTime": "Seeding Time",
+    "savePath": "Save Path",
+    "completed": "Completed",
+    "ratioLimit": "Ratio Limit",
+    "seenComplete": "Seen Complete",
+    "lastActivity": "Last Activity",
+    "availability": "Availability",
+    "infohashV1": "Info Hash v1",
+    "infohashV2": "Info Hash v2",
+    "reannounce": "Reannounce",
+    "private": "Private",
+    "instance": "Instance",
+    "trackerDown": "Tracker Down",
+    "unregistered": "Unregistered",
+    "now": "now"
+  }
+}

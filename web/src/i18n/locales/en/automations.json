@@ -1,0 +1,50 @@
+{
+  "pageTitle": "Automations",
+  "pageDescription": "Instance-level automation services managed by qui.",
+  "noInstances": "No instances configured yet. Add one in Settings to use services.",
+  "queryBuilder": {
+    "andDescription": "All conditions must match",
+    "orDescription": "Any condition must match",
+    "addCondition": "Condition",
+    "addGroup": "Group",
+    "dragGroup": "Drag group",
+    "units": {
+      "minutes": "minutes",
+      "hours": "hours",
+      "days": "days",
+      "bytesPerSecond": "B/s",
+      "kibibytesPerSecond": "KiB/s",
+      "mebibytesPerSecond": "MiB/s",
+      "mebibytes": "MiB",
+      "gibibytes": "GiB",
+      "tebibytes": "TiB"
+    },
+    "groupOption": {
+      "crossSeedDefault": "Cross-seed (content + save path)"
+    }
+  },
+  "reannounce": {
+    "toast": {
+      "scheduledScanningEnabled": "Scheduled scanning enabled",
+      "scheduledScanningDisabled": "Scheduled scanning disabled"
+    }
+  },
+  "orphanScan": {
+    "status": {
+      "clean": "Clean",
+      "starting": "Starting...",
+      "scanning": "Scanning...",
+      "readyForReview": "Ready for Review",
+      "deleting": "Deleting...",
+      "completed": "Completed",
+      "failed": "Failed",
+      "canceled": "Canceled"
+    },
+    "toast": {
+      "scheduledScanningEnabled": "Scheduled scanning enabled",
+      "scheduledScanningDisabled": "Scheduled scanning disabled",
+      "updateFailed": "Update failed",
+      "unableToUpdateSettings": "Unable to update settings"
+    }
+  }
+}

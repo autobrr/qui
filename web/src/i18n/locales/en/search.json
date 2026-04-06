@@ -1,0 +1,133 @@
+{
+  "pageTitle": "Search Indexers",
+  "pageDescription": "Search across all enabled indexers. Pick a query type or leave Auto to have categories detected automatically.",
+  "indexers": {
+    "sheetTitle": "Indexer selection",
+    "sheetDescription": "Pick which indexers to include in searches.",
+    "selectAll": "Select all",
+    "clearSelection": "Clear selection",
+    "noCategories": "No categories",
+    "selectedCount": "{{selected}} of {{total}} enabled indexers selected",
+    "done": "Done",
+    "summaryNone": "No enabled indexers",
+    "summaryAll": "All enabled ({{total}})",
+    "summaryPartial": "{{selected}} of {{total}} selected",
+    "noEnabledIndexers": "No enabled indexers available. Please add and enable indexers in the",
+    "indexersPage": "Indexers page"
+  },
+  "instance": {
+    "targetLabel": "Target: {{name}}{{offline}}",
+    "chooseTarget": "Choose target instance",
+    "noInstances": "No instances",
+    "offline": "Offline",
+    "clearSelection": "Clear selection",
+    "noInstancesConfigured": "No instances configured",
+    "addInstanceHint": "Add a download instance under Settings > Instances."
+  },
+  "form": {
+    "searchTypeLabel": "Search type",
+    "autoDetect": "Auto detect",
+    "advanced": "Advanced",
+    "active": "Active",
+    "clear": "Clear",
+    "searchQueryLabel": "Search Query",
+    "searching": "Searching...",
+    "search": "Search",
+    "advancedParams": "Optional (but recommended) Torznab parameters."
+  },
+  "placeholders": {
+    "auto": "Try: \"Sample Movie 2024\", \"tt1234567\", \"tvdb 123456\", or \"Example Artist \u2013 Example Album\"",
+    "movies": "e.g., \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\"",
+    "tv": "e.g., \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\"",
+    "music": "e.g., \"Example Artist \u2013 Example Album\", \"Sample Band \u2013 Debut EP\"",
+    "books": "e.g., \"Example Book Title\", \"Fictional Series Book 1\"",
+    "apps": "e.g., \"Sample OS ISO\", \"Example App 2025\"",
+    "xxx": "Enter a specific adult release name"
+  },
+  "advancedParams": {
+    "imdbId": "IMDb ID",
+    "tvdbId": "TVDb ID",
+    "year": "Year",
+    "season": "Season",
+    "episode": "Episode",
+    "artist": "Artist",
+    "album": "Album",
+    "limit": "Limit",
+    "offset": "Offset"
+  },
+  "results": {
+    "showing": "Showing {{filtered}} of {{total}} results",
+    "filterPlaceholder": "Filter results...",
+    "clearSearch": "Clear search",
+    "clearAllColumnFilters": "Clear all column filters",
+    "clearSelection": "Clear selection",
+    "actions": "Actions",
+    "noResults": "No results found",
+    "foundResults": "Found {{total}} results{{cacheSuffix}}",
+    "cached": " (cached)"
+  },
+  "table": {
+    "title": "Title",
+    "indexer": "Indexer",
+    "size": "Size",
+    "seeders": "Seeders",
+    "category": "Category",
+    "published": "Published",
+    "source": "Source",
+    "collection": "Collection",
+    "group": "Group"
+  },
+  "actions": {
+    "addToInstance": "Add to instance",
+    "addToNamed": "Add to {{name}}",
+    "quickAddTo": "Quick add to...",
+    "download": "Download",
+    "viewDetails": "View details",
+    "pickInstance": "Pick instance"
+  },
+  "cache": {
+    "cacheHit": "Cache hit",
+    "cachePlusLive": "Cache + live",
+    "liveFetch": "Live fetch",
+    "cached": "Cached {{cachedAt}} \u00b7 Expires {{expiresAt}}",
+    "source": "Source: {{source}} \u00b7 Scope: {{scope}}"
+  },
+  "refresh": {
+    "title": "Refresh search results",
+    "description": "This will bypass the cache and query indexers directly. Use sparingly to avoid rate limiting.",
+    "cancel": "Cancel",
+    "confirm": "Refresh",
+    "readyIn": "Ready in {{seconds}}s",
+    "refreshFromIndexers": "Refresh from indexers"
+  },
+  "resultCard": {
+    "seeders": "{{count}} seeders",
+    "free": "Free",
+    "published": "Published {{date}}"
+  },
+  "toast": {
+    "enterQuery": "Please enter a search query or fill in advanced parameters",
+    "selectIndexer": "Please select at least one indexer",
+    "noIndexers": "No enabled indexers available. Please add and enable indexers first.",
+    "failedLoadIndexers": "Failed to load indexers",
+    "addInstance": "Add a download instance under Settings -> Instances",
+    "chooseInstance": "Choose an instance to add torrents",
+    "noDownloadUrl": "No download URL available for this result",
+    "noInfoUrl": "No additional info available for this result",
+    "invalidUrlProtocol": "Invalid URL protocol",
+    "invalidUrlFormat": "Invalid URL format",
+    "searchFailed": "Search failed: {{error}}"
+  },
+  "backend": {
+    "prowlarr": "Prowlarr",
+    "native": "Native",
+    "jackett": "Jackett"
+  },
+  "freeleech": {
+    "free": "Free",
+    "25": "25%",
+    "50": "50%",
+    "75": "75%",
+    "neutral": "Neutral"
+  }
+}
