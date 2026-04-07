@@ -2614,27 +2614,40 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 		// Export to instance
 		if state.exportToInstance != nil {
-			resolvedPath := state.exportToInstance.SavePath
-			if resolvedPath != "" {
-				if resolved, ok := resolveMovePath(resolvedPath, torrent, state, evalCtx); ok {
-					resolvedPath = resolved
-				} else {
-					log.Warn().
-						Str("hash", hash).
-						Str("rawPath", resolvedPath).
-						Str("rule", state.exportToInstanceRuleName).
-						Msg("automations: skipping export, save path template resolution failed")
-					continue
+			// Skip if the torrent already exists on the target instance
+			if _, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, state.exportToInstance.TargetInstanceID, []string{hash}); err != nil {
+				log.Warn().Err(err).
+					Str("hash", hash).
+					Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
+					Msg("automations: failed to check target instance for existing torrent, skipping export")
+			} else if exists {
+				log.Debug().
+					Str("hash", hash).
+					Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
+					Msg("automations: torrent already exists on target instance, skipping export")
+			} else {
+				resolvedPath := state.exportToInstance.SavePath
+				if resolvedPath != "" {
+					if resolved, ok := resolveMovePath(resolvedPath, torrent, state, evalCtx); ok {
+						resolvedPath = resolved
+					} else {
+						log.Warn().
+							Str("hash", hash).
+							Str("rawPath", resolvedPath).
+							Str("rule", state.exportToInstanceRuleName).
+							Msg("automations: skipping export, save path template resolution failed")
+						continue
+					}
 				}
+				exportExecutions = append(exportExecutions, pendingExportToInstance{
+					hash:             hash,
+					torrent:          torrent,
+					action:           state.exportToInstance,
+					resolvedSavePath: resolvedPath,
+					ruleID:           state.exportToInstanceRuleID,
+					ruleName:         state.exportToInstanceRuleName,
+				})
 			}
-			exportExecutions = append(exportExecutions, pendingExportToInstance{
-				hash:             hash,
-				torrent:          torrent,
-				action:           state.exportToInstance,
-				resolvedSavePath: resolvedPath,
-				ruleID:           state.exportToInstanceRuleID,
-				ruleName:         state.exportToInstanceRuleName,
-			})
 		}
 
 	}
@@ -5962,10 +5975,9 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 			}
 
 			// 2. Build options for AddTorrent on target
-			options := map[string]string{
-				"autoTMM": "false",
-			}
+			options := map[string]string{}
 			if exec.resolvedSavePath != "" {
+				options["autoTMM"] = "false"
 				options["savepath"] = exec.resolvedSavePath
 			}
 			if exec.action.Category != "" {
