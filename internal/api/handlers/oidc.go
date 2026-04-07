@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -57,6 +58,7 @@ type OIDCConfigResponse struct {
 	Enabled             bool   `json:"enabled"`
 	AuthorizationURL    string `json:"authorizationUrl"`
 	State               string `json:"state"`
+	PKCEVerifier        string `json:"pkceVerifier"`
 	DisableBuiltInLogin bool   `json:"disableBuiltInLogin"`
 	IssuerURL           string `json:"issuerUrl"`
 }
@@ -194,9 +196,12 @@ func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 	// Get the config first
 	config := h.GetConfigResponse()
 
-	// Store state in session for later validation
+	// Store state and PKCE verifier in session for later validation
 	// This is needed even if user is already authenticated, in case they're re-authenticating
 	h.sessionManager.Put(r.Context(), "oidc_state", config.State)
+	if config.PKCEVerifier != "" {
+		h.sessionManager.Put(r.Context(), "oidc_pkce_verifier", config.PKCEVerifier)
+	}
 
 	RespondJSON(w, http.StatusOK, config)
 }
@@ -225,6 +230,10 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// Clear the state from session after successful validation
 	h.sessionManager.Remove(r.Context(), "oidc_state")
 
+	// Retrieve and clear the PKCE verifier stored during the authorization request
+	pkceVerifier := h.sessionManager.GetString(r.Context(), "oidc_pkce_verifier")
+	h.sessionManager.Remove(r.Context(), "oidc_pkce_verifier")
+
 	code := r.URL.Query().Get("code")
 	if code == "" {
 		log.Error().Msg("authorization code is missing from callback request")
@@ -232,7 +241,12 @@ func (h *OIDCHandler) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	oauth2Token, err := h.oauthConfig.Exchange(r.Context(), code)
+	var exchangeOpts []oauth2.AuthCodeOption
+	if pkceVerifier != "" {
+		exchangeOpts = append(exchangeOpts, oauth2.VerifierOption(pkceVerifier))
+	}
+
+	oauth2Token, err := h.oauthConfig.Exchange(r.Context(), code, exchangeOpts...)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to exchange token")
 		RespondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to exchange token: %v", err))
@@ -421,14 +435,32 @@ func generateRandomState() string {
 	return hex.EncodeToString(b)
 }
 
+func (h *OIDCHandler) supportsPKCE() bool {
+	var claims struct {
+		CodeChallenges []string `json:"code_challenge_methods_supported"`
+	}
+	if err := h.provider.Claims(&claims); err != nil {
+		return false
+	}
+	return slices.Contains(claims.CodeChallenges, "S256")
+}
+
 func (h *OIDCHandler) GetConfigResponse() OIDCConfigResponse {
 	state := generateRandomState()
-	authURL := h.oauthConfig.AuthCodeURL(state)
+
+	var authURL, verifier string
+	if h.supportsPKCE() {
+		verifier = oauth2.GenerateVerifier()
+		authURL = h.oauthConfig.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
+	} else {
+		authURL = h.oauthConfig.AuthCodeURL(state)
+	}
 
 	return OIDCConfigResponse{
 		Enabled:             h.config.OIDCEnabled,
 		AuthorizationURL:    authURL,
 		State:               state,
+		PKCEVerifier:        verifier,
 		DisableBuiltInLogin: h.config.OIDCDisableBuiltInLogin,
 		IssuerURL:           h.config.OIDCIssuer,
 	}
