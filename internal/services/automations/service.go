@@ -532,6 +532,7 @@ type Service struct {
 	lastApplied           map[int]map[string]time.Time // instanceID -> hash -> timestamp
 	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
 	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
+	inFlightExports       map[string]struct{}           // "targetInstanceID:hash" -> in-progress export
 	mu                    sync.RWMutex
 }
 
@@ -569,6 +570,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		lastApplied:               make(map[int]map[string]time.Time),
 		lastRuleRun:               make(map[ruleKey]time.Time),
 		lastFreeSpaceDeleteAt:     make(map[int]time.Time),
+		inFlightExports:           make(map[string]struct{}),
 	}
 }
 
@@ -2622,6 +2624,19 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				ruleName: state.exportToInstanceRuleName,
 			}
 
+			// Skip if an export for this hash+target is already in-flight
+			flightKey := fmt.Sprintf("%d:%s", state.exportToInstance.TargetInstanceID, hash)
+			s.mu.RLock()
+			_, inFlight := s.inFlightExports[flightKey]
+			s.mu.RUnlock()
+			if inFlight {
+				log.Debug().
+					Str("hash", hash).
+					Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
+					Msg("automations: export already in-flight, skipping")
+				continue
+			}
+
 			// Skip if the torrent already exists on the target instance
 			if _, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, state.exportToInstance.TargetInstanceID, []string{hash}); err != nil {
 				log.Warn().Err(err).
@@ -2652,6 +2667,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					}
 				}
 				exportEntry.resolvedSavePath = resolvedPath
+				s.mu.Lock()
+				s.inFlightExports[flightKey] = struct{}{}
+				s.mu.Unlock()
 				exportExecutions = append(exportExecutions, exportEntry)
 			}
 		}
@@ -5501,13 +5519,24 @@ func (s *Service) recordDryRunActivities(
 
 	// Export to instance
 	if len(exportExecutions) > 0 {
-		hashesByTarget := make(map[int][]string)
+		successByTarget := make(map[int][]string)
+		failedByTarget := make(map[int][]string)
 		for _, exec := range exportExecutions {
-			hashesByTarget[exec.action.TargetInstanceID] = append(hashesByTarget[exec.action.TargetInstanceID], exec.hash)
+			if exec.failureReason != "" {
+				failedByTarget[exec.action.TargetInstanceID] = append(failedByTarget[exec.action.TargetInstanceID], exec.hash)
+			} else {
+				successByTarget[exec.action.TargetInstanceID] = append(successByTarget[exec.action.TargetInstanceID], exec.hash)
+			}
 		}
-		for targetID, hashes := range hashesByTarget {
+		for targetID, hashes := range successByTarget {
 			uniqueHashes := dedupeHashes(hashes)
 			createActivity(models.ActivityActionExportedToInstance, map[string]any{"targetInstanceId": targetID, "count": len(uniqueHashes)}, func() []ActivityRunTorrent {
+				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
+			})
+		}
+		for targetID, hashes := range failedByTarget {
+			uniqueHashes := dedupeHashes(hashes)
+			createActivity(models.ActivityActionExportedToInstance, map[string]any{"targetInstanceId": targetID, "count": len(uniqueHashes), "preflightFailed": true}, func() []ActivityRunTorrent {
 				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
 			})
 		}
@@ -5932,6 +5961,12 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 		go func() { //nolint:gosec // G118 - intentional: goroutine outlives request context
 			sem <- struct{}{}
 			defer func() { <-sem }()
+			defer func() {
+				flightKey := fmt.Sprintf("%d:%s", exec.action.TargetInstanceID, exec.hash)
+				s.mu.Lock()
+				delete(s.inFlightExports, flightKey)
+				s.mu.Unlock()
+			}()
 
 			ctx, cancel := context.WithTimeout(context.Background(), exportTimeout)
 			defer cancel()

@@ -348,6 +348,12 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		if payload.Conditions.ExportToInstance.TargetInstanceID == instanceID {
 			return http.StatusBadRequest, "Export target cannot be the same as the source instance", errors.New("self-export not allowed")
 		}
+		if _, err := h.instanceStore.Get(ctx, payload.Conditions.ExportToInstance.TargetInstanceID); err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				return http.StatusBadRequest, "Target instance not found", errors.New("target instance not found")
+			}
+			return http.StatusInternalServerError, "Failed to validate target instance", err
+		}
 	}
 
 	// Validate delete is standalone - it cannot be combined with any other action
