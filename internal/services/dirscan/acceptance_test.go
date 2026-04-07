@@ -114,12 +114,13 @@ func TestRefineDirScanMatchDecision_RejectsFlexibleSingleFilePerfectWithoutCorro
 		MatchMode:    models.MatchModeFlexible,
 		AllowPartial: false,
 	}
+	searcheeMeta := NewParser(nil).Parse(searchee.Name)
 	baseDecision := shouldAcceptDirScanMatch(match, parsed, settings)
 	if !baseDecision.Accept {
 		t.Fatalf("expected base decision to accept perfect match")
 	}
 
-	decision := refineDirScanMatchDecision(searchee, parsed, &jackett.SearchResult{
+	decision := refineDirScanMatchDecision(searchee, searcheeMeta, parsed, &jackett.SearchResult{
 		Title: "Totally Different Movie 2023 1080p BluRay x264-GROUP",
 	}, settings, match, baseDecision)
 
@@ -161,12 +162,13 @@ func TestRefineDirScanMatchDecision_AcceptsFlexibleSingleFilePerfectWithIMDbCorr
 		MatchMode:    models.MatchModeFlexible,
 		AllowPartial: false,
 	}
+	searcheeMeta := NewParser(nil).Parse(searchee.Name)
 	baseDecision := shouldAcceptDirScanMatch(match, parsed, settings)
 	if !baseDecision.Accept {
 		t.Fatalf("expected base decision to accept perfect match")
 	}
 
-	decision := refineDirScanMatchDecision(searchee, parsed, &jackett.SearchResult{
+	decision := refineDirScanMatchDecision(searchee, searcheeMeta, parsed, &jackett.SearchResult{
 		Title:  "John Wick Chapter 4 2023 1080p WEB-DL DDP5 1 Atmos H 264-WDYM",
 		IMDbID: "tt10366206",
 	}, settings, match, baseDecision)
@@ -178,7 +180,7 @@ func TestRefineDirScanMatchDecision_AcceptsFlexibleSingleFilePerfectWithIMDbCorr
 
 func TestRefineDirScanMatchDecision_AcceptsFlexibleSingleFilePerfectWithSearchIMDbContext(t *testing.T) {
 	searchee := &Searchee{
-		Name: "Le Comte de Monte-Cristo (2024) {imdb-tt26446278}",
+		Name: "Le Comte de Monte-Cristo (2024)",
 		Files: []*ScannedFile{{
 			Path:    "/media/movies/Le Comte de Monte-Cristo (2024)/Le Comte de Monte-Cristo (2024).mkv",
 			RelPath: "Le Comte de Monte-Cristo (2024).mkv",
@@ -206,8 +208,10 @@ func TestRefineDirScanMatchDecision_AcceptsFlexibleSingleFilePerfectWithSearchIM
 		MatchMode:    models.MatchModeFlexible,
 		AllowPartial: false,
 	}
+	searcheeMeta := NewParser(nil).Parse(searchee.Name)
+	searcheeMeta.SetExternalIDs("tt26446278", 0, 0)
 	baseDecision := shouldAcceptDirScanMatch(match, parsed, settings)
-	decision := refineDirScanMatchDecision(searchee, parsed, &jackett.SearchResult{
+	decision := refineDirScanMatchDecision(searchee, searcheeMeta, parsed, &jackett.SearchResult{
 		Title:        "The Count of Monte Cristo 2024 1080p WEB-DL x264-GROUP",
 		SearchIMDbID: "26446278",
 	}, settings, match, baseDecision)
@@ -247,8 +251,9 @@ func TestRefineDirScanMatchDecision_AcceptsFlexibleSingleFilePerfectWithTVDbCorr
 		MatchMode:    models.MatchModeFlexible,
 		AllowPartial: false,
 	}
+	searcheeMeta := NewParser(nil).Parse(searchee.Name)
 	baseDecision := shouldAcceptDirScanMatch(match, parsed, settings)
-	decision := refineDirScanMatchDecision(searchee, parsed, &jackett.SearchResult{
+	decision := refineDirScanMatchDecision(searchee, searcheeMeta, parsed, &jackett.SearchResult{
 		Title:        "The Bureau S01E01 1080p WEB-DL x264-GROUP",
 		SearchTVDbID: "295770",
 	}, settings, match, baseDecision)
@@ -288,14 +293,63 @@ func TestRefineDirScanMatchDecision_AcceptsFlexibleSingleFilePerfectWithTMDbCorr
 		MatchMode:    models.MatchModeFlexible,
 		AllowPartial: false,
 	}
+	searcheeMeta := NewParser(nil).Parse(searchee.Name)
 	baseDecision := shouldAcceptDirScanMatch(match, parsed, settings)
-	decision := refineDirScanMatchDecision(searchee, parsed, &jackett.SearchResult{
+	decision := refineDirScanMatchDecision(searchee, searcheeMeta, parsed, &jackett.SearchResult{
 		Title:        "Avatar Fire and Ash 2025 2160p WEB-DL x265-GROUP",
 		SearchTMDbID: 83533,
 	}, settings, match, baseDecision)
 
 	if !decision.Accept {
 		t.Fatalf("expected TMDb corroboration to be accepted, got reason %q", decision.Reason)
+	}
+}
+
+func TestRefineDirScanMatchDecision_RejectsFlexibleSingleFilePerfectForWrongEpisode(t *testing.T) {
+	searchee := &Searchee{
+		Name: "The Office S01E01",
+		Files: []*ScannedFile{{
+			Path:    "/media/tv/The Office/Season 01/The Office - S01E01.mkv",
+			RelPath: "The Office - S01E01.mkv",
+			Size:    1000,
+		}},
+	}
+	parsed := &ParsedTorrent{
+		Name:        "The.Office.S01E02.1080p.WEB-DL.x264-GROUP",
+		InfoHash:    "deadbeef",
+		PieceLength: 4,
+		Files: []TorrentFile{
+			{Path: "The.Office.S01E02.1080p.WEB-DL.x264-GROUP.mkv", Size: 1000, Offset: 0},
+		},
+		TotalSize: 1000,
+	}
+	match := &MatchResult{
+		MatchedFiles: []MatchedFilePair{{
+			SearcheeFile: searchee.Files[0],
+			TorrentFile:  parsed.Files[0],
+		}},
+		IsPerfectMatch: true,
+		IsMatch:        true,
+	}
+	settings := &models.DirScanSettings{
+		MatchMode:    models.MatchModeFlexible,
+		AllowPartial: false,
+	}
+	searcheeMeta := NewParser(nil).Parse(searchee.Name)
+	baseDecision := shouldAcceptDirScanMatch(match, parsed, settings)
+	if !baseDecision.Accept {
+		t.Fatalf("expected base decision to accept perfect match")
+	}
+
+	decision := refineDirScanMatchDecision(searchee, searcheeMeta, parsed, &jackett.SearchResult{
+		Title: "The Office S01E02 1080p WEB-DL x264-GROUP",
+	}, settings, match, baseDecision)
+
+	if decision.Accept {
+		t.Fatalf("expected wrong-episode title corroboration to be rejected")
+	}
+	if decision.Reason != "flexible size-only match lacks title or ID corroboration" {
+		t.Fatalf("unexpected reason: %q", decision.Reason)
 	}
 }
 

@@ -1499,7 +1499,7 @@ func (s *Service) processSearchee(
 		Msg("dirscan: got search results")
 
 	// Try to match and inject
-	return s.tryMatchResults(ctx, dir, searchee, response, minSize, maxSize, contentType, settings, matcher, runID, l), searcheeOutcome{searched: true}
+	return s.tryMatchResults(ctx, dir, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l), searcheeOutcome{searched: true}
 }
 
 func (s *Service) buildSearcheeMetadata(searchee *Searchee) (meta *SearcheeMetadata, arrLookupName string) {
@@ -1643,6 +1643,7 @@ func (s *Service) tryMatchResults(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
 	searchee *Searchee,
+	searcheeMeta *SearcheeMetadata,
 	response *jackett.SearchResponse,
 	minSize, maxSize int64,
 	contentType string,
@@ -1662,7 +1663,7 @@ func (s *Service) tryMatchResults(
 			return false
 		},
 		func(result *jackett.SearchResult) *searcheeMatch {
-			return s.tryMatchAndInject(ctx, dir, searchee, result, contentType, settings, matcher, runID, l)
+			return s.tryMatchAndInject(ctx, dir, searchee, searcheeMeta, result, contentType, settings, matcher, runID, l)
 		},
 	)
 
@@ -1728,6 +1729,7 @@ func (s *Service) tryMatchAndInject(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
 	searchee *Searchee,
+	searcheeMeta *SearcheeMetadata,
 	result *jackett.SearchResult,
 	contentType string,
 	settings *models.DirScanSettings,
@@ -1742,7 +1744,7 @@ func (s *Service) tryMatchAndInject(
 
 	matchResult := matcher.Match(searchee, parsed.Files)
 	decision := shouldAcceptDirScanMatch(matchResult, parsed, settings)
-	decision = refineDirScanMatchDecision(searchee, parsed, result, settings, matchResult, decision)
+	decision = refineDirScanMatchDecision(searchee, searcheeMeta, parsed, result, settings, matchResult, decision)
 	if !decision.Accept {
 		logDirScanMatchRejection(l, searchee, result, parsed, contentType, settings, matchResult, decision, matcher)
 		return nil
@@ -2021,6 +2023,7 @@ func shouldAcceptDirScanMatch(match *MatchResult, parsed *ParsedTorrent, setting
 
 func refineDirScanMatchDecision(
 	searchee *Searchee,
+	searcheeMeta *SearcheeMetadata,
 	parsed *ParsedTorrent,
 	result *jackett.SearchResult,
 	settings *models.DirScanSettings,
@@ -2046,7 +2049,6 @@ func refineDirScanMatchDecision(
 		return decision
 	}
 
-	searcheeMeta := NewParser(nil).Parse(searchee.Name)
 	candidateMetas := candidateMetadataVariants(parsed, result)
 
 	if hasCorroboratingExternalID(searcheeMeta, result) {
@@ -2198,7 +2200,35 @@ func titlesCorroborate(searcheeMeta, candidateMeta *SearcheeMetadata) bool {
 		return false
 	}
 
+	if episodicMarkersConflict(searcheeMeta, candidateMeta) {
+		return false
+	}
+
 	return searcheeTitle == candidateTitle
+}
+
+func episodicMarkersConflict(searcheeMeta, candidateMeta *SearcheeMetadata) bool {
+	if !hasEpisodicMarkers(searcheeMeta) || !hasEpisodicMarkers(candidateMeta) {
+		return false
+	}
+
+	if searcheeMeta.Season != nil && candidateMeta.Season != nil && *searcheeMeta.Season != *candidateMeta.Season {
+		return true
+	}
+
+	if searcheeMeta.Episode != nil && candidateMeta.Episode != nil && *searcheeMeta.Episode != *candidateMeta.Episode {
+		return true
+	}
+
+	return false
+}
+
+func hasEpisodicMarkers(meta *SearcheeMetadata) bool {
+	if meta == nil {
+		return false
+	}
+
+	return meta.Season != nil || meta.Episode != nil
 }
 
 func normalizedTitleIdentity(title string) string {

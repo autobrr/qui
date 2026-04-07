@@ -185,7 +185,7 @@ In practice:
 - **Strict** is best when filenames on disk are still close to the release layout.
 - **Flexible** is best for renamed libraries, but it still requires exact file-size matches for the files it pairs.
 - **Size Tolerance** only affects which search results are considered based on **total torrent size**. It does **not** allow per-file size mismatches.
-- Flexible single-file matches may still be rejected when the candidate lacks corroborating title or IMDb evidence. This prevents false positives when an indexer falls back from ID-based search to plain title search.
+- Flexible single-file matches may still be rejected when the candidate lacks corroborating title or external ID evidence. This prevents false positives when an indexer falls back from ID-based search to plain title search.
 
 ### "Max searchees per run" explained
 
