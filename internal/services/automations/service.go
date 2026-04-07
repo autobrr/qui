@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"maps"
 	"net/http"
 	"path"
@@ -568,7 +567,10 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		syncManager:               syncManager,
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
-		webhookClient:             &http.Client{Timeout: 30 * time.Second},
+		webhookClient: &http.Client{
+			Timeout:       30 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
 		crossMatcher:              crossMatcher,
 		activityRuns:              newActivityRunStore(cfg.ActivityRunRetention, cfg.ActivityRunMax),
 		releaseParser:             releases.NewDefaultParser(),
@@ -5470,8 +5472,14 @@ func (s *Service) recordDryRunActivities(
 		}
 	}
 
-	// Webhooks
+	// Webhooks — mirror live execution's sort + truncation
 	if len(webhookExecutions) > 0 {
+		sort.Slice(webhookExecutions, func(i, j int) bool {
+			return webhookExecutions[i].hash < webhookExecutions[j].hash
+		})
+		if len(webhookExecutions) > maxWebhooksPerRun {
+			webhookExecutions = webhookExecutions[:maxWebhooksPerRun]
+		}
 		var allHashes []string
 		for _, exec := range webhookExecutions {
 			allHashes = append(allHashes, exec.hash)
@@ -6194,8 +6202,7 @@ func (s *Service) executeWebhook(instanceID int, instanceName string, torrent qb
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		s.logWebhookActivity(instanceID, torrent, ruleID, ruleName, models.ActivityOutcomeSuccess, fmt.Sprintf("HTTP %d", resp.StatusCode))
 	} else {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		s.logWebhookActivity(instanceID, torrent, ruleID, ruleName, models.ActivityOutcomeFailed, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body))))
+		s.logWebhookActivity(instanceID, torrent, ruleID, ruleName, models.ActivityOutcomeFailed, fmt.Sprintf("HTTP %d", resp.StatusCode))
 	}
 }
 
