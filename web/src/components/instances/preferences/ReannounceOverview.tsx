@@ -236,12 +236,12 @@ export function ReannounceOverview({
                           <span className="font-medium truncate">{instance.name}</span>
                           {isEnabled && stats.successToday > 0 && (
                             <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
-                              {stats.successToday} today
+                              {t("preferences.reannounceOverview.today", { count: stats.successToday })}
                             </Badge>
                           )}
                           {isEnabled && stats.failedToday > 0 && (
                             <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
-                              {stats.failedToday} failed
+                              {t("preferences.reannounceOverview.failed", { count: stats.failedToday })}
                             </Badge>
                           )}
                         </div>
@@ -282,7 +282,7 @@ export function ReannounceOverview({
                           }
                         }}
                         aria-expanded={expandedInstances.includes(String(instance.id))}
-                        aria-label={expandedInstances.includes(String(instance.id)) ? "Collapse" : "Expand"}
+                        aria-label={expandedInstances.includes(String(instance.id)) ? t("preferences.reannounceOverview.collapse") : t("preferences.reannounceOverview.expand")}
                       >
                         <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/item:rotate-180" />
                       </button>

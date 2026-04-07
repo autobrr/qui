@@ -337,6 +337,7 @@ function LogEntry({
   onSelect?: () => void
   onMute?: () => void
 }) {
+  const { t } = useTranslation("settings")
   const extraKeys = Object.keys(entry.extra)
   const isClickable = onSelect && entry.isJson
 
@@ -365,7 +366,7 @@ function LogEntry({
         type="button"
         onClick={onMute ? handleMute : undefined}
         disabled={!onMute}
-        title={onMute ? "Mute similar entries" : undefined}
+        title={onMute ? t("logs.viewer.muteSimilarEntries") : undefined}
         className={`group/mute shrink-0 w-12 h-4 inline-flex items-center justify-center text-[10px] font-medium uppercase rounded ${LEVEL_BADGE_COLORS[entry.level]} ${onMute ? "cursor-pointer" : ""}`}
       >
         <span className={onMute ? "group-hover/mute:hidden" : ""}>{entry.level}</span>

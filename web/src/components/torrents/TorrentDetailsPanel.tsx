@@ -260,7 +260,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
     },
     onError: (error) => {
-      const message = error instanceof Error ? error.message : "Failed to update file priorities"
+      const message = error instanceof Error ? error.message : t("details.failedToUpdatePriorities")
       toast.error(message)
     },
     onSettled: (_, __, variables) => {
@@ -486,7 +486,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
     },
     onError: (error) => {
-      const message = error instanceof Error ? error.message : "Failed to rename file"
+      const message = error instanceof Error ? error.message : t("details.failedToRenameFile")
       toast.error(message)
     },
   })
@@ -510,7 +510,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
     },
     onError: (error) => {
-      const message = error instanceof Error ? error.message : "Failed to rename folder"
+      const message = error instanceof Error ? error.message : t("details.failedToRenameFolder")
       toast.error(message)
     },
   })

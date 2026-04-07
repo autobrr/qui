@@ -1368,7 +1368,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     return [60, 120, 300]
   }, [seededSearchGazelleOnlyMode])
 
-  const seededSearchFlowSummary = gazelleSavedConfigured ? (gazelleSavedFullyConfigured ? "Gazelle checks RED/OPS for every source torrent. Torznab queries selected non-OPS/RED indexers." : "Gazelle checks configured sites for every source torrent. Torznab queries selected indexers.") : "Without Gazelle, all matching relies on Torznab indexers."
+  const seededSearchFlowSummary = gazelleSavedConfigured ? (gazelleSavedFullyConfigured ? t("overview.seededSearch.gazelleFullDescription") : t("overview.seededSearch.gazellePartialDescription")) : t("overview.seededSearch.noGazelleDescription")
 
   const handleJumpToGazelleSettings = useCallback(() => {
     onTabChange("rules")
@@ -1679,7 +1679,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">{t("overview.seededSearch.now")}</span>
               <span className="font-medium">
-                {searchRunning ? activeSearchRun ? `${activeSearchRun.processed}/${activeSearchRun.totalTorrents ?? "?"} scanned` : t("overview.seededSearch.running") : t("overview.seededSearch.idle")}
+                {searchRunning ? activeSearchRun ? t("scan.scannedProgress", { processed: activeSearchRun.processed, total: activeSearchRun.totalTorrents ?? "?" }) : t("overview.seededSearch.running") : t("overview.seededSearch.idle")}
               </span>
             </div>
           </CardContent>
@@ -2372,13 +2372,13 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                       {run.status === "failed" && <XCircle className="h-3 w-3 text-destructive shrink-0" />}
                                       {run.status === "canceled" && <Clock className="h-3 w-3 text-muted-foreground shrink-0" />}
                                       <span className="text-xs text-muted-foreground">
-                                        {run.status === "running" ? `${run.processed}/${run.totalTorrents}` : run.totalTorrents} torrents
+                                        {t("scan.torrentsCount", { count: run.status === "running" ? `${run.processed}/${run.totalTorrents}` : run.totalTorrents })}
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
                                       <Badge variant="secondary" className="text-xs">+{run.torrentsAdded}</Badge>
                                       {run.torrentsFailed > 0 && (
-                                        <Badge variant="destructive" className="text-xs">{run.torrentsFailed} failed</Badge>
+                                        <Badge variant="destructive" className="text-xs">{t("scan.failedCount", { count: run.torrentsFailed })}</Badge>
                                       )}
                                       <span className="text-xs text-muted-foreground">{formatDateValue(run.startedAt)}</span>
                                       {hasResults && <ChevronDown className="h-3 w-3 text-muted-foreground" />}
@@ -2760,8 +2760,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     <Label htmlFor="rss-automation-tags">{t("rules.tagging.rssAutomationTags")}</Label>
                     <MultiSelect
                       options={[
-                        { label: "cross-seed", value: "cross-seed" },
-                        { label: "rss", value: "rss" },
+                        { label: t("rules.tagging.tagCrossSeed"), value: "cross-seed" },
+                        { label: t("rules.tagging.tagRss"), value: "rss" },
                       ]}
                       selected={globalSettings.rssAutomationTags}
                       onChange={values => setGlobalSettings(prev => ({ ...prev, rssAutomationTags: normalizeStringList(values) }))}
@@ -2776,8 +2776,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     <Label htmlFor="seeded-search-tags">{t("rules.tagging.seededSearchTags")}</Label>
                     <MultiSelect
                       options={[
-                        { label: "cross-seed", value: "cross-seed" },
-                        { label: "seeded-search", value: "seeded-search" },
+                        { label: t("rules.tagging.tagCrossSeed"), value: "cross-seed" },
+                        { label: t("rules.tagging.tagSeededSearch"), value: "seeded-search" },
                       ]}
                       selected={globalSettings.seededSearchTags}
                       onChange={values => setGlobalSettings(prev => ({ ...prev, seededSearchTags: normalizeStringList(values) }))}
@@ -2792,8 +2792,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     <Label htmlFor="completion-search-tags">{t("rules.tagging.completionSearchTags")}</Label>
                     <MultiSelect
                       options={[
-                        { label: "cross-seed", value: "cross-seed" },
-                        { label: "completion", value: "completion" },
+                        { label: t("rules.tagging.tagCrossSeed"), value: "cross-seed" },
+                        { label: t("rules.tagging.tagCompletion"), value: "completion" },
                       ]}
                       selected={globalSettings.completionSearchTags}
                       onChange={values => setGlobalSettings(prev => ({ ...prev, completionSearchTags: normalizeStringList(values) }))}
@@ -2808,9 +2808,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     <Label htmlFor="webhook-tags">{t("rules.tagging.webhookTags")}</Label>
                     <MultiSelect
                       options={[
-                        { label: "cross-seed", value: "cross-seed" },
-                        { label: "webhook", value: "webhook" },
-                        { label: "autobrr", value: "autobrr" },
+                        { label: t("rules.tagging.tagCrossSeed"), value: "cross-seed" },
+                        { label: t("rules.tagging.tagWebhook"), value: "webhook" },
+                        { label: t("rules.tagging.tagAutobrr"), value: "autobrr" },
                       ]}
                       selected={globalSettings.webhookTags}
                       onChange={values => setGlobalSettings(prev => ({ ...prev, webhookTags: normalizeStringList(values) }))}

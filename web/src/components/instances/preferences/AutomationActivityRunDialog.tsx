@@ -151,7 +151,7 @@ export function AutomationActivityRunDialog({
         <DialogHeader>
           <DialogTitle>{displayTitle} {t("preferences.activityRunDialog.run")}</DialogTitle>
           <DialogDescription>
-            {formatISOTimestamp(activity.createdAt)} - {total} torrent{total === 1 ? "" : "s"} - {t("preferences.activityRunDialog.storedInMemory")}
+            {formatISOTimestamp(activity.createdAt)} - {t("preferences.activityRunDialog.torrentCount", { count: total })} - {t("preferences.activityRunDialog.storedInMemory")}
             {activity.outcome === "dry-run" && (
               <span className="block text-xs text-muted-foreground mt-1">{t("preferences.activityRunDialog.dryRunNote")}</span>
             )}

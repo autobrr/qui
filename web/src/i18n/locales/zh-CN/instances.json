@@ -571,7 +571,9 @@
     },
     "orphanScan": {
       "configureTitle": "配置孤立文件扫描",
-      "saveChanges": "保存更改"
+      "saveChanges": "保存更改",
+      "collapse": "收起",
+      "expand": "展开"
     },
     "reannounceWarning": {
       "alertTitle": "除非确实需要，否则请保持关闭",
@@ -1026,6 +1028,8 @@
       "notAvailable": "运行详情不可用（仅存于内存中）。",
       "failedToLoad": "加载运行详情失败。",
       "noTorrents": "此次运行无种子记录。",
+      "torrentCount": "{{count}} 个种子",
+      "torrentCount_other": "{{count}} 个种子",
       "showing": "显示 {{shown}}/{{total}}",
       "loadMore": "加载更多",
       "actionLabels": {
@@ -1133,6 +1137,8 @@
         "activityTab": "活动日志",
         "settingsTab": "设置"
       },
+      "collapse": "收起",
+      "expand": "展开",
       "toast": {
         "monitoringEnabled": "监控已启用",
         "monitoringDisabled": "监控已禁用",
@@ -1163,6 +1169,8 @@
       "updating": "更新中...",
       "addConditionsToPreview": "添加条件以预览受影响的种子。",
       "noCurrentMatches": "当前无匹配。",
+      "torrentsImpactedWithCrossSeeds": "{{total}} 个种子受影响（{{direct}} 个直接 + {{crossSeeds}} 个交叉做种）。",
+      "torrentsImpacted": "{{total}} 个种子受影响。",
       "confirmSaveAndEnable": "确认后将保存并启用此规则。",
       "confirmSave": "确认后将保存此规则。",
       "noTorrentsCurrentlyMatch": "当前没有种子匹配此规则。",
@@ -1505,6 +1513,10 @@
         "groupExists": "已存在具有此 ID 的分组",
         "customGroupAdded": "已添加自定义分组"
       }
+    },
+    "shareLimit": {
+      "global": "全局",
+      "unlimited": "无限制"
     }
   },
   "backups": {

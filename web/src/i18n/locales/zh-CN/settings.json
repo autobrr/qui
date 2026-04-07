@@ -202,6 +202,10 @@
     "saving": "保存中...",
     "updateButton": "更新",
     "createSubmit": "创建",
+    "ariaLabels": {
+      "edit": "编辑 {{name}}",
+      "delete": "删除 {{name}}"
+    },
     "toasts": {
       "created": "外部程序创建成功",
       "createFailed": "创建外部程序失败：{{error}}",
@@ -384,7 +388,8 @@
       "showing": "显示 {{shown}} / {{total}} 条（最多 {{max}} 条，{{mode}}）",
       "maxLive": "实时最大值",
       "maxPaused": "暂停时最大值",
-      "oldestEntriesDropped": "· 最早的条目已丢弃"
+      "oldestEntriesDropped": "· 最早的条目已丢弃",
+      "muteSimilarEntries": "静音类似条目"
     },
     "entryDialog": {
       "title": "日志条目",
@@ -622,6 +627,11 @@
       "basicPasswordRequiredSubmit": "基本认证密码为必填项",
       "basicPasswordKeepOrEnter": "请输入新的基本认证密码或保留现有密码"
     },
+    "ariaLabels": {
+      "testConnection": "测试 {{name}} 的连接",
+      "edit": "编辑 {{name}}",
+      "delete": "删除 {{name}}"
+    },
     "toasts": {
       "created": "ARR 实例创建成功",
       "createFailed": "创建 ARR 实例失败：{{error}}",
@@ -658,7 +668,8 @@
       "testAllSuccess": "全部 {{count}} 个索引器测试成功",
       "testAllPartial": "{{success}} 个通过，{{failed}} 个失败",
       "failedIndexers": "失败的索引器：{{names}}",
-      "capsSynced": "已从后端同步功能信息"
+      "capsSynced": "已从后端同步功能信息",
+      "failedToSyncCaps": "同步功能信息失败"
     },
     "page": {
       "summary": "{{enabled}} 个已启用，{{capabilities}} 个有功能信息",
@@ -762,6 +773,7 @@
       "typeLabel": "类型：",
       "backendLabel": "后端：",
       "notConfigured": "（未配置）",
+      "unknownError": "未知错误",
       "toast": {
         "urlRequired": "索引器 URL 为必填项",
         "basicAuthRequired": "基本认证需要用户名和密码",
@@ -819,7 +831,9 @@
       "tooltipSyncCaps": "同步功能",
       "tooltipEdit": "编辑",
       "tooltipDelete": "删除",
-      "tooltipSyncCapsFromBackend": "从后端同步功能信息"
+      "tooltipSyncCapsFromBackend": "从后端同步功能信息",
+      "capability": "功能：{{name}}",
+      "clickToShowAllCapabilities": "点击显示全部 {{count}} 项功能"
     },
     "activity": {
       "title": "调度器活动",
@@ -953,6 +967,7 @@
       "configDir": "配置目录",
       "dataDir": "数据目录"
     },
+    "copyTitle": "复制 {{label}}",
     "toasts": {
       "copied": "{{label}} 已复制到剪贴板",
       "copyFailed": "复制 {{label}} 失败"

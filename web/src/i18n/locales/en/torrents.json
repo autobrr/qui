@@ -678,6 +678,8 @@
     "seeders": "{{count}} seeders",
     "match": "Match: {{reason}}",
     "blocking": "Blocking...",
+    "select": "Select",
+    "blockFor": "Block for",
     "block": "Block",
     "addedToBlocklist": "Added to blocklist",
     "missingInstance": "Missing instance for blocklist",
@@ -883,7 +885,8 @@
     "connectionUnknown": "Connection status unknown",
     "connectionPort": "Port: {{port}}",
     "connectionAriaLabel": "qBittorrent connection status: {{status}}",
-    "connectionAriaLabelUnknown": "qBittorrent connection status unknown"
+    "connectionAriaLabelUnknown": "qBittorrent connection status unknown",
+    "external": "External"
   },
   "detailsPanel": {
     "tabs": {
@@ -1346,6 +1349,11 @@
     "toggleColumns": "Toggle columns",
     "tableAriaLabel": "Torrents table"
   },
+  "sort": {
+    "label": "Sort",
+    "ascending": "ascending",
+    "descending": "descending"
+  },
   "tableColumns": {
     "selectAll": "Select torrent",
     "selectAllRows": "Select all",
@@ -1395,6 +1403,13 @@
     "instance": "Instance",
     "trackerDown": "Tracker Down",
     "unregistered": "Unregistered",
-    "now": "now"
+    "now": "now",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "details": {
+    "failedToUpdatePriorities": "Failed to update file priorities",
+    "failedToRenameFile": "Failed to rename file",
+    "failedToRenameFolder": "Failed to rename folder"
   }
 }

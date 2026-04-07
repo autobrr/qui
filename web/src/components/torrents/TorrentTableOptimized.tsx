@@ -2409,7 +2409,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               size="icon"
                               className="h-8 w-8"
                               onClick={handleCompactSortOrderToggle}
-                              aria-label={`Sort ${activeSortOrder === "desc" ? "ascending" : "descending"}`}
+                              aria-label={`${t("sort.label")} ${activeSortOrder === "desc" ? t("sort.ascending") : t("sort.descending")}`}
                             >
                               {activeSortOrder === "desc" ? (
                                 <ChevronDown className="h-4 w-4" />

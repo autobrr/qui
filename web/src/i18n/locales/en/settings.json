@@ -202,6 +202,10 @@
     "saving": "Saving...",
     "updateButton": "Update",
     "createSubmit": "Create",
+    "ariaLabels": {
+      "edit": "Edit {{name}}",
+      "delete": "Delete {{name}}"
+    },
     "toasts": {
       "created": "External program created successfully",
       "createFailed": "Failed to create external program: {{error}}",
@@ -386,7 +390,8 @@
       "showing": "Showing {{shown}} of {{total}} entries ({{max}} {{mode}})",
       "maxLive": "max",
       "maxPaused": "max while paused",
-      "oldestEntriesDropped": "• oldest entries dropped"
+      "oldestEntriesDropped": "• oldest entries dropped",
+      "muteSimilarEntries": "Mute similar entries"
     },
     "entryDialog": {
       "title": "Log Entry",
@@ -624,6 +629,11 @@
       "basicPasswordRequiredSubmit": "Basic auth password is required",
       "basicPasswordKeepOrEnter": "Enter a new basic auth password or keep the existing one"
     },
+    "ariaLabels": {
+      "testConnection": "Test connection for {{name}}",
+      "edit": "Edit {{name}}",
+      "delete": "Delete {{name}}"
+    },
     "toasts": {
       "created": "ARR instance created successfully",
       "createFailed": "Failed to create ARR instance: {{error}}",
@@ -660,7 +670,8 @@
       "testAllSuccess": "All {{count}} indexers tested successfully",
       "testAllPartial": "{{success}} passed, {{failed}} failed",
       "failedIndexers": "Failed indexers: {{names}}",
-      "capsSynced": "Capabilities synced from backend"
+      "capsSynced": "Capabilities synced from backend",
+      "failedToSyncCaps": "Failed to sync caps"
     },
     "page": {
       "summary": "{{enabled}} enabled, {{capabilities}} with capabilities",
@@ -764,6 +775,7 @@
       "typeLabel": "Type:",
       "backendLabel": "Backend:",
       "notConfigured": "(Not configured)",
+      "unknownError": "Unknown error",
       "toast": {
         "urlRequired": "Indexer URL is required",
         "basicAuthRequired": "Basic auth requires username and password",
@@ -821,7 +833,9 @@
       "tooltipSyncCaps": "Sync capabilities",
       "tooltipEdit": "Edit",
       "tooltipDelete": "Delete",
-      "tooltipSyncCapsFromBackend": "Sync capabilities from backend"
+      "tooltipSyncCapsFromBackend": "Sync capabilities from backend",
+      "capability": "Capability: {{name}}",
+      "clickToShowAllCapabilities": "Click to show all {{count}} capabilities"
     },
     "activity": {
       "title": "Scheduler Activity",
@@ -955,6 +969,7 @@
       "configDir": "Config Directory",
       "dataDir": "Data Directory"
     },
+    "copyTitle": "Copy {{label}}",
     "toasts": {
       "copied": "{{label}} copied to clipboard",
       "copyFailed": "Failed to copy {{label}}"

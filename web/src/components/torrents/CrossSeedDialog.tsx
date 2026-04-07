@@ -405,7 +405,7 @@ const CrossSeedDialogComponent = ({
                           <Checkbox
                             checked={checked}
                             onCheckedChange={() => onToggleSelection(result, index)}
-                            aria-label={`Select ${result.title}`}
+                            aria-label={`${t("crossSeedDialog.select")} ${result.title}`}
                             className="shrink-0 mt-0.5"
                           />
                           <div className="min-w-0 flex-1 space-y-1">
@@ -520,8 +520,8 @@ const CrossSeedDialogComponent = ({
                                             size="sm"
                                             onClick={() => handleBlockInfoHash(instance.instanceId, infoHash!)}
                                             disabled={isBlocking}
-                                            aria-label={`Block ${infoHash} for ${instance.instanceName}`}
-                                            title={`Block ${infoHash}`}
+                                            aria-label={`${t("crossSeedDialog.blockFor")} ${instance.instanceName}`}
+                                            title={`${t("crossSeedDialog.block")} ${infoHash}`}
                                             className="h-5 px-2 text-[10px]"
                                           >
                                             {isBlocking ? t("crossSeedDialog.blocking") : t("crossSeedDialog.block")}

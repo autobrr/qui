@@ -1176,7 +1176,7 @@ export const createColumns = (
       cell: ({ row }) => {
         return (
           <div className="overflow-hidden whitespace-nowrap text-sm">
-            {row.original.private ? "Yes" : "No"}
+            {row.original.private ? (t?.("tableColumns.yes") ?? "Yes") : (t?.("tableColumns.no") ?? "No")}
           </div>
         )
       },

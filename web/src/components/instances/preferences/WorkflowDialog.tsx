@@ -2381,7 +2381,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       ) : (
                         <>
                           <p className="text-xs text-muted-foreground">
-                            {isCategoryRule? `${livePreviewResult.totalMatches} torrents impacted (${(livePreviewResult.totalMatches) - (livePreviewResult.crossSeedCount ?? 0)} direct + ${livePreviewResult.crossSeedCount ?? 0} cross-seeds).`: `${livePreviewResult.totalMatches} torrents impacted.`}
+                            {isCategoryRule ? t("preferences.workflowDialog.torrentsImpactedWithCrossSeeds", { total: livePreviewResult.totalMatches, direct: (livePreviewResult.totalMatches) - (livePreviewResult.crossSeedCount ?? 0), crossSeeds: livePreviewResult.crossSeedCount ?? 0 }) : t("preferences.workflowDialog.torrentsImpacted", { total: livePreviewResult.totalMatches })}
                           </p>
                           {livePreviewResult.examples.length > 0 ? (
                             <div className="space-y-1">

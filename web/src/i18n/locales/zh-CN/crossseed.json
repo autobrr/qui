@@ -29,7 +29,10 @@
       "runsCount": "{{count}} 次运行",
       "now": "现在",
       "running": "运行中...",
-      "idle": "空闲"
+      "idle": "空闲",
+      "gazelleFullDescription": "Gazelle 会对每个源种子检查 RED/OPS。Torznab 查询已选择的非 OPS/RED 索引器。",
+      "gazellePartialDescription": "Gazelle 会对每个源种子检查已配置的站点。Torznab 查询已选择的索引器。",
+      "noGazelleDescription": "没有 Gazelle，所有匹配依赖 Torznab 索引器。"
     }
   },
   "tabs": {
@@ -147,7 +150,10 @@
     "idleUpper": "空闲",
     "runSummary": "{{runs}} 次运行 - +{{added}}",
     "runSummaryWithFailures": "{{runs}} 次运行 - +{{added}} - {{failed}} 次失败",
-    "searchNeedsTorznabUnlessGazelle": "做种搜索需要 Torznab 索引器（除非你仅通过 Gazelle 扫描 OPS/RED）。"
+    "searchNeedsTorznabUnlessGazelle": "做种搜索需要 Torznab 索引器（除非你仅通过 Gazelle 扫描 OPS/RED）。",
+    "scannedProgress": "已扫描 {{processed}}/{{total}}",
+    "torrentsCount": "{{count}} 个种子",
+    "failedCount": "{{count}} 个失败"
   },
   "rules": {
     "title": "辅种规则",
@@ -241,7 +247,13 @@
       "selectWebhookTags": "选择 Webhook/apply 的标签",
       "webhookTagsDescription": "通过 /apply Webhook（例如 autobrr）添加的种子所应用的标签。",
       "inheritSourceTags": "继承源种子标签",
-      "inheritSourceTagsDescription": "同时从 qBittorrent 中匹配的源种子复制标签。"
+      "inheritSourceTagsDescription": "同时从 qBittorrent 中匹配的源种子复制标签。",
+      "tagCrossSeed": "cross-seed",
+      "tagRss": "rss",
+      "tagSeededSearch": "seeded-search",
+      "tagCompletion": "completion",
+      "tagWebhook": "webhook",
+      "tagAutobrr": "autobrr"
     },
     "postInjection": {
       "title": "注入后行为",

@@ -191,7 +191,7 @@ export function ExternalProgramsManager() {
                       variant="ghost"
                       size="sm"
                       onClick={() => setEditProgram(program)}
-                      aria-label={`Edit ${program.name}`}
+                      aria-label={t("externalPrograms.ariaLabels.edit", { name: program.name })}
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -199,7 +199,7 @@ export function ExternalProgramsManager() {
                       variant="ghost"
                       size="sm"
                       onClick={() => setDeleteProgram(program)}
-                      aria-label={`Delete ${program.name}`}
+                      aria-label={t("externalPrograms.ariaLabels.delete", { name: program.name })}
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>

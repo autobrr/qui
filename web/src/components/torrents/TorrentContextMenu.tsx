@@ -463,7 +463,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
               <ContextMenuItem
                 onClick={handleFilterCrossSeeds}
                 disabled={isPending || isFilteringCrossSeeds || count > 1}
-                title={count > 1 ? "Cross-seed filtering only works with a single selected torrent" : undefined}
+                title={count > 1 ? t("crossseed:hooks.filter.singleSelectionOnly") : undefined}
               >
                 <GitBranch className="mr-2 h-4 w-4" />
                 {count > 1 ? (

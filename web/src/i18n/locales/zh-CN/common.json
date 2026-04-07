@@ -24,7 +24,9 @@
     "viewOnGitHub": "在 GitHub 上查看",
     "rssRunning": "RSS 运行中",
     "rssEnabled": "RSS 已启用",
-    "scanRunning": "扫描运行中"
+    "scanRunning": "扫描运行中",
+    "showSidebar": "显示侧边栏",
+    "hideSidebar": "隐藏侧边栏"
   },
   "header": {
     "currentInstance": "当前实例：{{name}}。点击切换实例。",

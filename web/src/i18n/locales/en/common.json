@@ -24,7 +24,9 @@
     "viewOnGitHub": "View on GitHub",
     "rssRunning": "RSS running",
     "rssEnabled": "RSS enabled",
-    "scanRunning": "Scan running"
+    "scanRunning": "Scan running",
+    "showSidebar": "Show sidebar",
+    "hideSidebar": "Hide sidebar"
   },
   "header": {
     "currentInstance": "Current instance: {{name}}. Click to switch instances.",

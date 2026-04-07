@@ -267,7 +267,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
                     toast.success(t("indexers.toast.capsSynced"))
                     setIndexers((prev) => prev.map((idx) => (idx.id === updated.id ? updated : idx)))
                   } catch (error) {
-                    const message = error instanceof Error ? error.message : "Failed to sync caps"
+                    const message = error instanceof Error ? error.message : t("indexers.toast.failedToSyncCaps")
                     toast.error(message)
                   }
                 }}

@@ -872,6 +872,7 @@ interface ApplicationSectionProps {
 }
 
 function ApplicationSection({ title, description, fields, onCopy, headerAction }: ApplicationSectionProps) {
+  const { t } = useTranslation("settings")
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -908,7 +909,7 @@ function ApplicationSection({ title, description, fields, onCopy, headerAction }
                         onClick={() => {
                           void onCopy(field.copyValue || "", field.label)
                         }}
-                        title={`Copy ${field.label}`}
+                        title={t("application.copyTitle", { label: field.label })}
                       >
                         <Copy className="h-3.5 w-3.5" />
                       </Button>

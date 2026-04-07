@@ -887,17 +887,17 @@ export function WorkflowsOverview({
                           "text-xs",
                           enabledRulesCount > 0 && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                         )}>
-                          {enabledRulesCount}/{rules.length} active
+                          {t("preferences.workflowsOverview.activeCount", { enabled: enabledRulesCount, total: rules.length })}
                         </Badge>
                       )}
                       {activityStats.deletionsToday > 0 && (
                         <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
-                          {activityStats.deletionsToday} today
+                          {t("preferences.workflowsOverview.today", { count: activityStats.deletionsToday })}
                         </Badge>
                       )}
                       {activityStats.failedToday > 0 && (
                         <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
-                          {activityStats.failedToday} failed
+                          {t("preferences.workflowsOverview.failed", { count: activityStats.failedToday })}
                         </Badge>
                       )}
                     </div>

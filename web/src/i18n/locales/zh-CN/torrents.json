@@ -631,6 +631,8 @@
     "seeders": "{{count}} 个做种者",
     "match": "匹配：{{reason}}",
     "blocking": "正在屏蔽...",
+    "select": "选择",
+    "blockFor": "屏蔽",
     "block": "屏蔽",
     "addedToBlocklist": "已添加到屏蔽列表",
     "missingInstance": "屏蔽列表缺少实例",
@@ -834,7 +836,8 @@
     "connectionUnknown": "连接状态未知",
     "connectionPort": "端口：{{port}}",
     "connectionAriaLabel": "qBittorrent 连接状态：{{status}}",
-    "connectionAriaLabelUnknown": "qBittorrent 连接状态未知"
+    "connectionAriaLabelUnknown": "qBittorrent 连接状态未知",
+    "external": "外部"
   },
   "detailsPanel": {
     "tabs": {
@@ -1334,6 +1337,18 @@
     "instance": "实例",
     "trackerDown": "Tracker 离线",
     "unregistered": "未注册",
-    "now": "现在"
+    "now": "现在",
+    "yes": "是",
+    "no": "否"
+  },
+  "sort": {
+    "label": "排序",
+    "ascending": "升序",
+    "descending": "降序"
+  },
+  "details": {
+    "failedToUpdatePriorities": "更新文件优先级失败",
+    "failedToRenameFile": "重命名文件失败",
+    "failedToRenameFolder": "重命名文件夹失败"
   }
 }

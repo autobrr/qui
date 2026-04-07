@@ -571,7 +571,9 @@
     },
     "orphanScan": {
       "configureTitle": "Configure Orphan Scan",
-      "saveChanges": "Save Changes"
+      "saveChanges": "Save Changes",
+      "collapse": "Collapse",
+      "expand": "Expand"
     },
     "reannounceWarning": {
       "alertTitle": "Leave this off unless you need it",
@@ -1041,6 +1043,8 @@
       "notAvailable": "Run details not available (in-memory only).",
       "failedToLoad": "Failed to load run details.",
       "noTorrents": "No torrents recorded for this run.",
+      "torrentCount": "{{count}} torrent",
+      "torrentCount_other": "{{count}} torrents",
       "showing": "Showing {{shown}} of {{total}}",
       "loadMore": "Load more",
       "actionLabels": {
@@ -1148,6 +1152,8 @@
         "activityTab": "Activity Log",
         "settingsTab": "Settings"
       },
+      "collapse": "Collapse",
+      "expand": "Expand",
       "toast": {
         "monitoringEnabled": "Monitoring enabled",
         "monitoringDisabled": "Monitoring disabled",
@@ -1178,6 +1184,8 @@
       "updating": "Updating...",
       "addConditionsToPreview": "Add conditions to preview impacted torrents.",
       "noCurrentMatches": "No current matches.",
+      "torrentsImpactedWithCrossSeeds": "{{total}} torrents impacted ({{direct}} direct + {{crossSeeds}} cross-seeds).",
+      "torrentsImpacted": "{{total}} torrents impacted.",
       "confirmSaveAndEnable": "Confirming will save and enable this rule.",
       "confirmSave": "Confirming will save this rule.",
       "noTorrentsCurrentlyMatch": "No torrents currently match this rule.",
@@ -1520,6 +1528,10 @@
         "groupExists": "A group with this ID already exists",
         "customGroupAdded": "Custom group added"
       }
+    },
+    "shareLimit": {
+      "global": "Global",
+      "unlimited": "Unlimited"
     }
   },
   "backups": {

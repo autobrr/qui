@@ -29,7 +29,10 @@
       "runsCount": "{{count}} runs",
       "now": "Now",
       "running": "Running...",
-      "idle": "Idle"
+      "idle": "Idle",
+      "gazelleFullDescription": "Gazelle checks RED/OPS for every source torrent. Torznab queries selected non-OPS/RED indexers.",
+      "gazellePartialDescription": "Gazelle checks configured sites for every source torrent. Torznab queries selected indexers.",
+      "noGazelleDescription": "Without Gazelle, all matching relies on Torznab indexers."
     }
   },
   "tabs": {
@@ -147,7 +150,10 @@
     "idleUpper": "IDLE",
     "runSummary": "{{runs}} runs • +{{added}}",
     "runSummaryWithFailures": "{{runs}} runs • +{{added}} • {{failed}} failed",
-    "searchNeedsTorznabUnlessGazelle": "Seeded Torrent Search needs Torznab indexers (unless you are only scanning OPS/RED via Gazelle)."
+    "searchNeedsTorznabUnlessGazelle": "Seeded Torrent Search needs Torznab indexers (unless you are only scanning OPS/RED via Gazelle).",
+    "scannedProgress": "{{processed}}/{{total}} scanned",
+    "torrentsCount": "{{count}} torrents",
+    "failedCount": "{{count}} failed"
   },
   "rules": {
     "title": "Cross-Seed Rules",
@@ -241,7 +247,13 @@
       "selectWebhookTags": "Select tags for webhook/apply",
       "webhookTagsDescription": "Tags applied to torrents added via /apply webhook (e.g., autobrr).",
       "inheritSourceTags": "Inherit source torrent tags",
-      "inheritSourceTagsDescription": "Also copy tags from the matched source torrent in qBittorrent."
+      "inheritSourceTagsDescription": "Also copy tags from the matched source torrent in qBittorrent.",
+      "tagCrossSeed": "cross-seed",
+      "tagRss": "rss",
+      "tagSeededSearch": "seeded-search",
+      "tagCompletion": "completion",
+      "tagWebhook": "webhook",
+      "tagAutobrr": "autobrr"
     },
     "postInjection": {
       "title": "Post-injection behavior",

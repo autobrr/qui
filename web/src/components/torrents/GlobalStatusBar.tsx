@@ -71,6 +71,7 @@ interface ExternalIPAddressProps {
 
 const ExternalIPAddress = memo(
   ({ address, incognitoMode, label }: ExternalIPAddressProps) => {
+    const { t } = useTranslation("torrents")
     if (!address) return null
 
     return (
@@ -79,7 +80,7 @@ const ExternalIPAddress = memo(
           <Badge
             variant="outline"
             className="gap-1 px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground"
-            aria-label={`External ${label}`}
+            aria-label={`${t("statusBar.external")} ${label}`}
           >
             <EthernetPort className="h-3.5 w-3.5 text-muted-foreground" />
             <span>{label}</span>

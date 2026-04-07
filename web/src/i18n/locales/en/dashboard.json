@@ -62,6 +62,9 @@
     "reannounceTooltip": "Automatic tracker reannounce enabled",
     "altSpeedLimits": "Alternative speed limits: {{status}}",
     "localFileAccess": "Local file access enabled",
+    "connectable": "Connectable",
+    "portInfo": ". Port: {{port}}",
+    "connectionStatus": "qBittorrent connection status: {{status}}",
     "altSpeedDialog": {
       "enableTitle": "Enable Alternative Speed Limits?",
       "disableTitle": "Disable Alternative Speed Limits?",

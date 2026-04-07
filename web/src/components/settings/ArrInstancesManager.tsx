@@ -73,7 +73,7 @@ export function ArrInstancesManager() {
       toast.success(t("arrInstances.toasts.created"))
     },
     onError: (error: Error) => {
-      toast.error(t("arrInstances.toasts.createFailed", { error: error.message || "Unknown error" }))
+      toast.error(t("arrInstances.toasts.createFailed", { error: error.message || t("arrInstances.unknownError") }))
     },
   })
 
@@ -87,7 +87,7 @@ export function ArrInstancesManager() {
       toast.success(t("arrInstances.toasts.updated"))
     },
     onError: (error: Error) => {
-      toast.error(t("arrInstances.toasts.updateFailed", { error: error.message || "Unknown error" }))
+      toast.error(t("arrInstances.toasts.updateFailed", { error: error.message || t("arrInstances.unknownError") }))
     },
   })
 
@@ -101,7 +101,7 @@ export function ArrInstancesManager() {
       toast.success(t("arrInstances.toasts.deleted"))
     },
     onError: (error: Error) => {
-      toast.error(t("arrInstances.toasts.deleteFailed", { error: error.message || "Unknown error" }))
+      toast.error(t("arrInstances.toasts.deleteFailed", { error: error.message || t("arrInstances.unknownError") }))
     },
   })
 
@@ -115,11 +115,11 @@ export function ArrInstancesManager() {
       if (result.success) {
         toast.success(t("arrInstances.toasts.connectionSuccess"))
       } else {
-        toast.error(t("arrInstances.toasts.connectionFailed", { error: result.error || "Unknown error" }))
+        toast.error(t("arrInstances.toasts.connectionFailed", { error: result.error || t("arrInstances.unknownError") }))
       }
     },
     onError: (error: Error) => {
-      toast.error(t("arrInstances.toasts.testFailed", { error: error.message || "Unknown error" }))
+      toast.error(t("arrInstances.toasts.testFailed", { error: error.message || t("arrInstances.unknownError") }))
     },
     onSettled: () => {
       setTestingId(null)
@@ -167,7 +167,7 @@ export function ArrInstancesManager() {
               size="sm"
               onClick={() => testMutation.mutate(instance.id)}
               disabled={testingId === instance.id}
-              aria-label={`Test connection for ${instance.name}`}
+              aria-label={t("arrInstances.ariaLabels.testConnection", { name: instance.name })}
             >
               {testingId === instance.id ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -179,7 +179,7 @@ export function ArrInstancesManager() {
               variant="ghost"
               size="sm"
               onClick={() => setEditInstance(instance)}
-              aria-label={`Edit ${instance.name}`}
+              aria-label={t("arrInstances.ariaLabels.edit", { name: instance.name })}
             >
               <Edit className="h-4 w-4" />
             </Button>
@@ -187,7 +187,7 @@ export function ArrInstancesManager() {
               variant="ghost"
               size="sm"
               onClick={() => setDeleteInstance(instance)}
-              aria-label={`Delete ${instance.name}`}
+              aria-label={t("arrInstances.ariaLabels.delete", { name: instance.name })}
             >
               <Trash2 className="h-4 w-4 text-destructive" />
             </Button>
@@ -370,10 +370,10 @@ function ArrInstanceForm({ instance, onSubmit, onCancel, isPending }: ArrInstanc
       if (result.success) {
         toast.success(t("arrInstances.toasts.connectionSuccess"))
       } else {
-        toast.error(t("arrInstances.toasts.connectionFailed", { error: result.error || "Unknown error" }))
+        toast.error(t("arrInstances.toasts.connectionFailed", { error: result.error || t("arrInstances.unknownError") }))
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown error"
+      const message = error instanceof Error ? error.message : t("arrInstances.unknownError")
       setTestResult({ success: false, error: message })
       toast.error(t("arrInstances.toasts.testFailed", { error: message }))
     } finally {

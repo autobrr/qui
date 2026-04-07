@@ -1936,8 +1936,8 @@ export function TorrentCardsMobile({
               size="sm"
               onClick={toggleSortOrder}
               className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground md:hidden"
-              aria-label={`Sort ${sortOrder === "desc" ? "descending" : "ascending"}`}
-              title={`Sort ${sortOrder === "desc" ? "descending" : "ascending"}`}
+              aria-label={`${t("sort.label")} ${sortOrder === "desc" ? t("sort.descending") : t("sort.ascending")}`}
+              title={`${t("sort.label")} ${sortOrder === "desc" ? t("sort.descending") : t("sort.ascending")}`}
             >
               {sortOrder === "desc" ? (
                 <ChevronDown className="h-3.5 w-3.5" />

@@ -386,7 +386,7 @@ export function IndexerTable({
                                     key={cap}
                                     variant="secondary"
                                     className="text-xs"
-                                    title={`Capability: ${cap}`}
+                                    title={t("indexers.table.capability", { name: cap })}
                                   >
                                     {cap}
                                   </Badge>
@@ -417,7 +417,7 @@ export function IndexerTable({
                                       size="sm"
                                       className="text-xs h-5 px-1.5 flex-shrink-0"
                                       onClick={() => toggleCapabilities(indexer.id)}
-                                      aria-label={`Click to show all ${indexer.capabilities.length} capabilities`}
+                                      aria-label={t("indexers.table.clickToShowAllCapabilities", { count: indexer.capabilities.length })}
                                     >
                                       +{indexer.capabilities.length - 2}
                                     </Button>

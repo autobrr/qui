@@ -103,7 +103,7 @@ export function AutodiscoveryDialog({ open, onClose }: AutodiscoveryDialogProps)
       }
     } catch (error) {
       console.error("Failed to discover indexers:", error)
-      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      const errorMessage = error instanceof Error ? error.message : t("indexers.autodiscovery.unknownError")
       toast.error(t("indexers.autodiscovery.toast.discoverFailed", { error: errorMessage }))
     } finally {
       setLoading(false)

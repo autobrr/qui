@@ -245,7 +245,7 @@ function InstanceCard({
   })()
 
   const listenPort = preferences?.listen_port
-  const connectionStatusTooltip = connectionStatusDisplay? `${isConnectable ? "Connectable" : connectionStatusDisplay}${listenPort ? `. Port: ${listenPort}` : ""}`: ""
+  const connectionStatusTooltip = connectionStatusDisplay ? `${isConnectable ? t("instanceCard.connectable") : connectionStatusDisplay}${listenPort ? t("instanceCard.portInfo", { port: listenPort }) : ""}` : ""
 
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
@@ -365,7 +365,7 @@ function InstanceCard({
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span
-                      aria-label={`qBittorrent connection status: ${connectionStatusDisplay || formattedConnectionStatus}`}
+                      aria-label={t("instanceCard.connectionStatus", { status: connectionStatusDisplay || formattedConnectionStatus })}
                       className={`inline-flex h-5 w-5 items-center justify-center ${connectionStatusIconClass}`}
                     >
                       <ConnectionStatusIcon className="h-4 w-4" aria-hidden="true" />

@@ -24,6 +24,7 @@ import type { Automation } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Folder, Loader2, Pause, Pencil, Plus, RefreshCw, Scale, Tag, Terminal, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
+import type { TFunction } from "i18next"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { WorkflowDialog } from "./WorkflowDialog"
@@ -35,18 +36,18 @@ interface WorkflowsPanelProps {
 }
 
 /** Format share limit value for display: -2 = "Global", -1 = "Unlimited", >= 0 = number with optional precision */
-function formatShareLimit(value: number | undefined, isRatio: boolean): string | null {
+function formatShareLimit(value: number | undefined, isRatio: boolean, t: TFunction): string | null {
   if (value === undefined) return null
-  if (value === -2) return "Global"
-  if (value === -1) return "Unlimited"
+  if (value === -2) return t("preferences.shareLimit.global")
+  if (value === -1) return t("preferences.shareLimit.unlimited")
   // For ratio, show 2 decimal places; for time, show whole number
   return isRatio ? value.toFixed(2) : String(value)
 }
 
 /** Format speed limit value for display: 0 = "Unlimited", > 0 = KiB/s value */
-function formatSpeedLimit(kiB: number | undefined): string | null {
+function formatSpeedLimit(kiB: number | undefined, t: TFunction): string | null {
   if (kiB === undefined) return null
-  if (kiB === 0) return "Unlimited"
+  if (kiB === 0) return t("preferences.shareLimit.unlimited")
   return `${kiB} KiB/s`
 }
 
@@ -375,10 +376,10 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipContent>
             <div className="space-y-1">
               {conditions.speedLimits.uploadKiB !== undefined && (
-                <p>{t("preferences.workflows.upload")}: {formatSpeedLimit(conditions.speedLimits.uploadKiB)}</p>
+                <p>{t("preferences.workflows.upload")}: {formatSpeedLimit(conditions.speedLimits.uploadKiB, t)}</p>
               )}
               {conditions.speedLimits.downloadKiB !== undefined && (
-                <p>{t("preferences.workflows.download")}: {formatSpeedLimit(conditions.speedLimits.downloadKiB)}</p>
+                <p>{t("preferences.workflows.download")}: {formatSpeedLimit(conditions.speedLimits.downloadKiB, t)}</p>
               )}
             </div>
           </TooltipContent>
@@ -397,10 +398,10 @@ function RuleSummary({ rule }: { rule: Automation }) {
           <TooltipContent>
             <div className="space-y-1">
               {conditions.shareLimits.ratioLimit !== undefined && (
-                <p>{t("preferences.workflows.ratio")}: {formatShareLimit(conditions.shareLimits.ratioLimit, true)}</p>
+                <p>{t("preferences.workflows.ratio")}: {formatShareLimit(conditions.shareLimits.ratioLimit, true, t)}</p>
               )}
               {conditions.shareLimits.seedingTimeMinutes !== undefined && (
-                <p>{t("preferences.workflows.seedTime")}: {formatShareLimit(conditions.shareLimits.seedingTimeMinutes, false)}{conditions.shareLimits.seedingTimeMinutes >= 0 ? t("preferences.workflows.minuteSuffix") : ""}</p>
+                <p>{t("preferences.workflows.seedTime")}: {formatShareLimit(conditions.shareLimits.seedingTimeMinutes, false, t)}{conditions.shareLimits.seedingTimeMinutes >= 0 ? t("preferences.workflows.minuteSuffix") : ""}</p>
               )}
             </div>
           </TooltipContent>
