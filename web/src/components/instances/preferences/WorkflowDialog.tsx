@@ -686,7 +686,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: trackerIcons } = useTrackerIcons()
   const { data: metadata } = useInstanceMetadata(instanceId)
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
-  const { instances, isLoading: instancesLoading } = useInstances()
+  const { instances, isLoading: instancesLoading, error: instancesError } = useInstances()
   const {
     data: allExternalPrograms,
     isError: externalProgramsError,
@@ -1193,17 +1193,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     return () => { cancelled = true }
   }, [open, rule, mapDomainsToOptionValues])
-
-  // Clear stale export target ID if the instance no longer exists.
-  // Only acts when nonSelfInstances is defined (instances loaded), not during loading/error.
-  useEffect(() => {
-    if (!open || !nonSelfInstances) return
-    setFormState(prev => {
-      if (!prev.exprExportTargetInstanceId) return prev
-      if (nonSelfInstances.some(i => i.id === prev.exprExportTargetInstanceId)) return prev
-      return { ...prev, exprExportTargetInstanceId: null }
-    })
-  }, [open, nonSelfInstances])
 
   useEffect(() => {
     if (!open) {
@@ -3394,6 +3383,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50 flex items-center gap-2">
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               Loading instances...
+                            </div>
+                          ) : instancesError ? (
+                            <div className="text-sm text-destructive p-2 border border-destructive/50 rounded-md bg-destructive/5">
+                              Failed to load instances.
                             </div>
                           ) : nonSelfInstances && nonSelfInstances.length > 0 ? (
                             <Select

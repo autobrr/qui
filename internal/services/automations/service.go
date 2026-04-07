@@ -2624,8 +2624,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				ruleName: state.exportToInstanceRuleName,
 			}
 
-			// Skip if the torrent already exists on the target instance
-			if _, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, state.exportToInstance.TargetInstanceID, []string{hash}); err != nil {
+			// Skip if the torrent already exists on the target instance.
+			// Use a bounded timeout so a slow/unreachable target doesn't stall the entire pass.
+			checkCtx, checkCancel := context.WithTimeout(ctx, 10*time.Second)
+			_, exists, err := s.syncManager.HasTorrentByAnyHash(checkCtx, state.exportToInstance.TargetInstanceID, []string{hash})
+			checkCancel()
+			if err != nil {
 				log.Warn().Err(err).
 					Str("hash", hash).
 					Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
@@ -3836,20 +3840,28 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}()
 
-	// Wait for export drain with a bounded timeout independent of ApplyTimeout
+	// Wait for export drain, respecting both a hard timeout and the caller's context
+	drainTimer := time.NewTimer(3 * time.Minute)
+	defer drainTimer.Stop()
+
+	mergePartial := func(reason string) {
+		close(stopDrain)
+		batch := <-exportBatchCh
+		for _, activity := range batch.activities {
+			summary.recordActivity(activity, 1)
+		}
+		log.Warn().Int("instanceID", instanceID).Str("reason", reason).Msg("automations: export drain interrupted, notifying with partial summary")
+	}
+
 	select {
 	case batch := <-exportBatchCh:
 		for _, activity := range batch.activities {
 			summary.recordActivity(activity, 1)
 		}
-	case <-time.After(3 * time.Minute):
-		close(stopDrain)
-		// Drain whatever was collected before timeout
-		batch := <-exportBatchCh
-		for _, activity := range batch.activities {
-			summary.recordActivity(activity, 1)
-		}
-		log.Warn().Int("instanceID", instanceID).Msg("automations: timed out waiting for export results, notifying with partial summary")
+	case <-drainTimer.C:
+		mergePartial("timeout")
+	case <-ctx.Done():
+		mergePartial("context cancelled")
 	}
 
 	s.notifyAutomationSummary(ctx, instanceID, summary, eligibleRules)
