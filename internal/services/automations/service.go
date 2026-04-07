@@ -2629,19 +2629,20 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			checkCtx, checkCancel := context.WithTimeout(ctx, 10*time.Second)
 			_, exists, err := s.syncManager.HasTorrentByAnyHash(checkCtx, state.exportToInstance.TargetInstanceID, []string{hash})
 			checkCancel()
-			if err != nil {
+			switch {
+			case err != nil:
 				log.Warn().Err(err).
 					Str("hash", hash).
 					Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
 					Msg("automations: failed to check target instance for existing torrent")
 				exportEntry.failureReason = "Failed to check target instance: " + err.Error()
 				exportExecutions = append(exportExecutions, exportEntry)
-			} else if exists {
+			case exists:
 				log.Debug().
 					Str("hash", hash).
 					Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
 					Msg("automations: torrent already exists on target instance, skipping export")
-			} else {
+			default:
 				resolvedPath := state.exportToInstance.SavePath
 				if resolvedPath != "" {
 					if resolved, ok := resolveMovePath(resolvedPath, torrent, state, evalCtx); ok {
