@@ -1049,7 +1049,7 @@ func collectConditionRegexErrors(conditions *models.ActionConditions) []RegexVal
 	if conditions.ExternalProgram != nil {
 		validateConditionRegex(conditions.ExternalProgram.Condition, "/conditions/externalProgram/condition", &result)
 	}
-	if conditions.Webhook != nil {
+	if conditions.Webhook != nil && conditions.Webhook.Enabled {
 		validateConditionRegex(conditions.Webhook.Condition, "/conditions/webhook/condition", &result)
 	}
 	if conditions.AutoManagement != nil {

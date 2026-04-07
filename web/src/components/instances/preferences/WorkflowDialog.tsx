@@ -206,6 +206,7 @@ function formatDryRunEventSummary(event: AutomationActivity): string {
     case "reannounced":
     case "auto_managed":
     case "external_program":
+    case "webhook":
     case "deleted_ratio":
     case "deleted_seeding":
     case "deleted_unregistered":
@@ -1000,6 +1001,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             ?? conditions.category?.condition
             ?? conditions.move?.condition
             ?? conditions.externalProgram?.condition
+            ?? conditions.webhook?.condition
             ?? null
 
           if (conditions.speedLimits?.enabled) {
@@ -1421,7 +1423,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       conditions.webhook = {
         enabled: true,
         url: input.exprWebhookUrl.trim(),
-        headers: input.exprWebhookHeaders.filter(h => h.key.trim()),
+        headers: input.exprWebhookHeaders.map(h => ({ key: h.key.trim(), value: h.value.trim() })).filter(h => h.key),
         condition: input.actionCondition ?? undefined,
       }
     }
@@ -1523,6 +1525,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.categoryEnabled,
     formState.moveEnabled,
     formState.externalProgramEnabled,
+    formState.webhookEnabled,
   ].filter(Boolean).length
 
   const latestDryRunOperationCount = useMemo(
@@ -2002,7 +2005,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         return
       }
       try {
-        new URL(submitState.exprWebhookUrl.trim())
+        const parsed = new URL(submitState.exprWebhookUrl.trim())
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          toast.error("Webhook URL must use http or https")
+          return
+        }
+        if (!parsed.hostname) {
+          toast.error("Webhook URL must have a host")
+          return
+        }
       } catch {
         toast.error("Webhook URL is invalid")
         return

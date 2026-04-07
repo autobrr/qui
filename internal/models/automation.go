@@ -403,6 +403,9 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 	if err := automation.Conditions.ExternalProgram.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid external program action: %w", err)
 	}
+	if err := automation.Conditions.Webhook.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid webhook action: %w", err)
+	}
 
 	if automation.SortingConfig != nil {
 		if err := automation.SortingConfig.Validate(); err != nil {
@@ -473,6 +476,9 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 	}
 	if err := automation.Conditions.ExternalProgram.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid external program action: %w", err)
+	}
+	if err := automation.Conditions.Webhook.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid webhook action: %w", err)
 	}
 
 	if automation.SortingConfig != nil {

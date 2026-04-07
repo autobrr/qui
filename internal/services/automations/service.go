@@ -6086,10 +6086,15 @@ const maxWebhooksPerRun = 50
 
 // executeWebhooksFromAutomation executes webhooks for matching torrents.
 // Webhooks are executed asynchronously (fire-and-forget) to avoid blocking the automation run.
-func (s *Service) executeWebhooksFromAutomation(_ context.Context, instanceID int, executions []pendingWebhookExec) {
+func (s *Service) executeWebhooksFromAutomation(ctx context.Context, instanceID int, executions []pendingWebhookExec) {
 	if len(executions) == 0 {
 		return
 	}
+
+	// Sort deterministically so truncation to maxWebhooksPerRun is stable.
+	sort.Slice(executions, func(i, j int) bool {
+		return executions[i].hash < executions[j].hash
+	})
 
 	if len(executions) > maxWebhooksPerRun {
 		log.Warn().
@@ -6108,7 +6113,7 @@ func (s *Service) executeWebhooksFromAutomation(_ context.Context, instanceID in
 	// Look up instance name
 	instanceName := ""
 	if s.instanceStore != nil {
-		if inst, err := s.instanceStore.Get(context.Background(), instanceID); err == nil {
+		if inst, err := s.instanceStore.Get(ctx, instanceID); err == nil {
 			instanceName = inst.Name
 		}
 	}
