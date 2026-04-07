@@ -14,6 +14,7 @@ Automations are evaluated in **sort order** (first match wins for exclusive acti
 
 - **Automatic** - Background service scans torrents every 20 seconds
 - **Per-Rule Intervals** - Each rule can have its own interval (minimum 60 seconds, default 15 minutes)
+- **Per-Rule Notifications** - If notification targets are configured, each rule can opt in or out of sending automation notifications
 - **Manual** - Click "Apply Now" to trigger immediately (bypasses interval checks)
 - **Manual dry-run** - Run "Dry-run now" from the workflow dialog or "Run dry-run now" from the workflow menu
 - **Debouncing** - Same torrent won't be re-processed within 2 minutes
@@ -76,6 +77,19 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 | Max Inactive Seeding Time | Configured max inactive seeding time |
 | Seeding Time Limit       | Torrent seeding time limit            |
 | Inactive Seeding Time Limit | Torrent inactive seeding time limit |
+
+#### System Time Fields
+
+These fields use qui's current system time when the rule is evaluated. They are useful for time-window automations such as "only run at night" or "apply different actions on weekends."
+
+| Field              | Description                               |
+| ------------------ | ----------------------------------------- |
+| System Hour        | Current hour (`0-23`)                     |
+| System Minute      | Current minute (`0-59`)                   |
+| System Day of Week | Current weekday (`0=Sun` to `6=Sat`)      |
+| System Day         | Current day of month (`1-31`)             |
+| System Month       | Current month (`1-12`)                    |
+| System Year        | Current year                              |
 
 #### Progress Fields
 
