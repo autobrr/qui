@@ -281,7 +281,7 @@ function formatExternalProgramSummary(details: AutomationActivity["details"], ou
 }
 
 function formatExportedToInstanceSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
-  const count = details?.count ?? 1
+  const count = details?.count ?? 0
   if (outcome === "failed") {
     return formatCountWithVerb(count, "torrent", "failed to export")
   }

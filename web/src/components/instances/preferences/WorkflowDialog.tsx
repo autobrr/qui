@@ -490,6 +490,7 @@ type FormState = {
   exprExportTags: string
   exprExportPaused: boolean
   exprExportSkipChecking: boolean
+  exprExportContentLayout: "" | "Original" | "Subfolder" | "NoSubfolder"
 }
 
 const emptyFormState: FormState = {
@@ -551,6 +552,7 @@ const emptyFormState: FormState = {
   exprExportTags: "",
   exprExportPaused: false,
   exprExportSkipChecking: true,
+  exprExportContentLayout: "",
 }
 
 // Helper to get enabled actions from form state
@@ -684,7 +686,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: trackerIcons } = useTrackerIcons()
   const { data: metadata } = useInstanceMetadata(instanceId)
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
-  const { instances } = useInstances()
+  const { instances, isLoading: instancesLoading } = useInstances()
   const {
     data: allExternalPrograms,
     isError: externalProgramsError,
@@ -968,6 +970,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprExportTags = ""
         let exprExportPaused = false
         let exprExportSkipChecking = true
+        let exprExportContentLayout: FormState["exprExportContentLayout"] = ""
 
         if (rule.sortingConfig) {
           if (rule.sortingConfig.type === "simple") {
@@ -1098,6 +1101,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprExportTags = (conditions.exportToInstance.tags ?? []).join(", ")
             exprExportPaused = conditions.exportToInstance.paused ?? false
             exprExportSkipChecking = conditions.exportToInstance.skipChecking ?? true
+            exprExportContentLayout = (conditions.exportToInstance.contentLayout ?? "") as FormState["exprExportContentLayout"]
           }
         }
 
@@ -1161,6 +1165,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprExportTags,
           exprExportPaused,
           exprExportSkipChecking,
+          exprExportContentLayout,
         }
         setFormState(newState)
       } else {
@@ -1449,6 +1454,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         tags: tags.length > 0 ? tags : undefined,
         paused: input.exprExportPaused || undefined,
         skipChecking: input.exprExportSkipChecking,
+        contentLayout: input.exprExportContentLayout || undefined,
         condition: input.actionCondition ?? undefined,
       }
     }
@@ -3350,6 +3356,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               exprExportTags: "",
                               exprExportPaused: false,
                               exprExportSkipChecking: true,
+                              exprExportContentLayout: "",
                             }))}
                           >
                             <X className="h-3.5 w-3.5" />
@@ -3357,7 +3364,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Target instance</Label>
-                          {instances && instances.filter(i => i.id !== instanceId).length > 0 ? (
+                          {instancesLoading ? (
+                            <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50">
+                              Loading instances...
+                            </div>
+                          ) : instances && instances.filter(i => i.id !== instanceId).length > 0 ? (
                             <Select
                               value={formState.exprExportTargetInstanceId?.toString() ?? ""}
                               onValueChange={(value) => setFormState(prev => ({
@@ -3411,6 +3422,26 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             placeholder="e.g. seedbox, migrated"
                             className="text-sm"
                           />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Content layout (optional)</Label>
+                          <Select
+                            value={formState.exprExportContentLayout || "default"}
+                            onValueChange={(value) => setFormState(prev => ({
+                              ...prev,
+                              exprExportContentLayout: (value === "default" ? "" : value) as FormState["exprExportContentLayout"],
+                            }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Default (no preference)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="default">Default</SelectItem>
+                              <SelectItem value="Original">Original</SelectItem>
+                              <SelectItem value="Subfolder">Subfolder</SelectItem>
+                              <SelectItem value="NoSubfolder">No subfolder</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="flex items-center gap-2">
