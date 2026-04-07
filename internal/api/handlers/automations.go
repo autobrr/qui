@@ -355,7 +355,8 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 			(len(payload.Conditions.TagActions()) > 0) ||
 			(payload.Conditions.Category != nil && payload.Conditions.Category.Enabled) ||
 			(payload.Conditions.Move != nil && payload.Conditions.Move.Enabled) ||
-			(payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled)
+			(payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled) ||
+			(payload.Conditions.AutoManagement != nil)
 		if hasOtherAction {
 			return http.StatusBadRequest, "Delete action cannot be combined with other actions", errors.New("delete must be standalone")
 		}
