@@ -71,10 +71,6 @@ type Client struct {
 	addedInit         bool
 }
 
-func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
-	return NewClientWithTimeout(instanceID, instanceHost, username, password, basicUsername, basicPassword, tlsSkipVerify, 60*time.Second)
-}
-
 func NewClientWithTimeout(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, timeout time.Duration) (*Client, error) {
 	cfg := qbt.Config{
 		Host:          instanceHost,

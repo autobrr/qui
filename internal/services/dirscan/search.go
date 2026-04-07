@@ -192,28 +192,6 @@ type SearchResult struct {
 	MatchScore float64
 }
 
-// FilterResults filters search results based on basic criteria.
-func FilterResults(results []*SearchResult, minSize, maxSize int64) []*SearchResult {
-	if len(results) == 0 {
-		return results
-	}
-
-	filtered := make([]*SearchResult, 0, len(results))
-	for _, r := range results {
-		// Skip if size is outside bounds
-		if minSize > 0 && r.Size < minSize {
-			continue
-		}
-		if maxSize > 0 && r.Size > maxSize {
-			continue
-		}
-
-		filtered = append(filtered, r)
-	}
-
-	return filtered
-}
-
 // CalculateSizeRange calculates min/max size based on searchee size and tolerance.
 func CalculateSizeRange(searcheeSize int64, tolerancePercent float64) (minSize, maxSize int64) {
 	if searcheeSize <= 0 {

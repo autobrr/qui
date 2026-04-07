@@ -812,21 +812,3 @@ func (i *Injector) applyAddPolicy(options map[string]string, req *InjectRequest)
 	policy := crossseed.PolicyForSourceFiles(files)
 	policy.ApplyToAddOptions(options)
 }
-
-// InjectBatch injects multiple torrents.
-// Returns results for each injection attempt.
-func (i *Injector) InjectBatch(ctx context.Context, requests []*InjectRequest) []*InjectResult {
-	results := make([]*InjectResult, len(requests))
-
-	for idx, req := range requests {
-		result, err := i.Inject(ctx, req)
-		if err != nil {
-			// Error is already captured in result.ErrorMessage
-			results[idx] = result
-			continue
-		}
-		results[idx] = result
-	}
-
-	return results
-}

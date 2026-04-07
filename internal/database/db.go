@@ -1601,39 +1601,6 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 // - Tests should use short-lived databases or manually clean up
 // - Uses the same connection for both reads and writes (no separate reader pool)
 //
-// This differs from production where:
-// - stringPoolCleanupLoop runs automatically every 24 hours
-// - Unused strings are automatically removed
-// - String pool size is bounded
-// - Separate writer connection and reader pool for better concurrency
-//
-// Note: This function is intended for testing only and should not be used in
-// production code. Use New() for production database initialization.
-func NewForTest(conn *sql.DB) *DB {
-	stmtOpts := ttlcache.Options[string, *sql.Stmt]{}.SetDefaultTTL(5 * time.Minute).
-		SetDeallocationFunc(func(k string, s *sql.Stmt, _ ttlcache.DeallocationReason) {
-			if s != nil {
-				_ = s.Close()
-			}
-		})
-
-	stmtsCache := ttlcache.New(stmtOpts)
-
-	db := &DB{
-		writerConn:      conn,
-		readerPool:      conn,       // For tests, use same connection for both
-		writerStmts:     stmtsCache, // For tests, use same cache for both
-		readerStmts:     stmtsCache, // For tests, use same cache for both
-		dialect:         DialectSQLite,
-		serializeWrites: true,
-	}
-
-	// Note: stringPoolCleanupLoop is NOT started for tests
-	// Tests that need cleanup must call CleanupUnusedStrings() explicitly
-
-	return db
-}
-
 // GetStringPoolMetrics returns the current values of string pool cleanup metrics.
 // These metrics track cleanup activity:
 //   - cleanupDeleted: Total number of unused strings deleted since startup

@@ -176,17 +176,9 @@ func NewServer(deps *Dependencies) *Server {
 	return &s
 }
 
-func (s *Server) ListenAndServe() error {
-	return s.open(nil)
-}
-
 // ListenAndServeReady behaves like ListenAndServe but signals once the listener is active.
 func (s *Server) ListenAndServeReady(ready chan<- struct{}) error {
 	return s.open(ready)
-}
-
-func (s *Server) Open() error {
-	return s.open(nil)
 }
 
 func (s *Server) open(ready chan<- struct{}) error {

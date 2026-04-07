@@ -3439,14 +3439,6 @@ func (m *mockRecoverSyncManager) ExportTorrent(context.Context, int, string) ([]
 	return nil, "", "", errors.New("not implemented")
 }
 
-// Simulate state progression after recheck
-func (m *mockRecoverSyncManager) simulateRecheckComplete(hash string, finalProgress float64, finalState qbt.TorrentState) {
-	if torrent, ok := m.torrents[hash]; ok {
-		torrent.Progress = finalProgress
-		torrent.State = finalState
-	}
-}
-
 func (m *mockRecoverSyncManager) GetTorrentFilesBatch(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
 	return nil, fmt.Errorf("not implemented")
 }

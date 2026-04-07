@@ -458,22 +458,6 @@ func (idx *HardlinkIndex) GetHardlinkScope(hash string) string {
 	return ""
 }
 
-// InvalidateHardlinkIndex removes the cached index for an instance.
-// Call this when torrents are added/removed to force a rebuild on next access.
-func InvalidateHardlinkIndex(instanceID int) {
-	globalHardlinkIndexCache.mu.Lock()
-	delete(globalHardlinkIndexCache.indices, instanceID)
-	globalHardlinkIndexCache.mu.Unlock()
-}
-
-// ClearHardlinkIndexCache clears all cached indices.
-// Useful for tests or when global settings change.
-func ClearHardlinkIndexCache() {
-	globalHardlinkIndexCache.mu.Lock()
-	globalHardlinkIndexCache.indices = make(map[int]*HardlinkIndex)
-	globalHardlinkIndexCache.mu.Unlock()
-}
-
 // Ensure syncManager implements the required interface
 var _ interface {
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)

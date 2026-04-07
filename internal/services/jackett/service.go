@@ -3894,14 +3894,6 @@ func GetIndexerNameFromInfo(indexerInfo map[int]EnabledIndexerInfo, indexerID in
 	return ""
 }
 
-// GetIndexerDomainFromInfo returns the indexer domain for a given ID using cached indexer info
-func GetIndexerDomainFromInfo(indexerInfo map[int]EnabledIndexerInfo, indexerID int) string {
-	if info, exists := indexerInfo[indexerID]; exists {
-		return info.Domain
-	}
-	return ""
-}
-
 // GetEnabledTrackerDomains extracts domain names from enabled indexers only
 func (s *Service) GetEnabledTrackerDomains(ctx context.Context) ([]string, error) {
 	indexers, err := s.indexerStore.ListEnabled(ctx)

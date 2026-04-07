@@ -1381,11 +1381,6 @@ func TestSearchRespectsRequestedIndexerIDs(t *testing.T) {
 
 // Helper functions
 //
-//go:fix inline
-func intPtr(i int) *int {
-	return new(i)
-}
-
 // Mock store for testing
 type mockTorznabIndexerStore struct {
 	mu                 sync.Mutex

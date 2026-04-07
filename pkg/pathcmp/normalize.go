@@ -58,8 +58,3 @@ func NormalizePath(p string) string {
 	}
 	return p
 }
-
-// NormalizePathFold is a case-folded version of NormalizePath for case-insensitive comparisons.
-func NormalizePathFold(p string) string {
-	return strings.ToLower(NormalizePath(p))
-}

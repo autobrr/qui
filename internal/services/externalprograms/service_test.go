@@ -26,28 +26,10 @@ type mockProgramStore struct {
 	err      error
 }
 
-func (m *mockProgramStore) GetByID(_ context.Context, id int) (*models.ExternalProgram, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	if program, ok := m.programs[id]; ok {
-		return program, nil
-	}
-	return nil, models.ErrExternalProgramNotFound
-}
-
 // mockActivityStore implements a minimal mock for testing
 type mockActivityStore struct {
 	activities []*models.AutomationActivity
 	err        error
-}
-
-func (m *mockActivityStore) Create(_ context.Context, activity *models.AutomationActivity) error {
-	if m.err != nil {
-		return m.err
-	}
-	m.activities = append(m.activities, activity)
-	return nil
 }
 
 func TestNewService(t *testing.T) {
@@ -571,11 +553,6 @@ func TestExecuteResult_Constructors(t *testing.T) {
 
 // Helper function
 //
-//go:fix inline
-func intPtr(i int) *int {
-	return new(i)
-}
-
 // =============================================================================
 // Terminal Detection Function Tests
 // =============================================================================

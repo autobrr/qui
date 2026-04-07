@@ -1110,11 +1110,6 @@ func TestEvaluateCondition_StateTrackerDown_WithContext(t *testing.T) {
 	})
 }
 
-//go:fix inline
-func float64Ptr(v float64) *float64 {
-	return new(v)
-}
-
 func TestEvaluateCondition_ExistsIn(t *testing.T) {
 	// Build test torrents for the category index
 	torrents := []qbt.Torrent{
