@@ -340,6 +340,16 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return http.StatusBadRequest, "Category action requires a category name", errors.New("category name required")
 	}
 
+	// Validate export to instance action
+	if payload.Conditions.ExportToInstance != nil && payload.Conditions.ExportToInstance.Enabled {
+		if payload.Conditions.ExportToInstance.TargetInstanceID <= 0 {
+			return http.StatusBadRequest, "Export to instance requires a target instance", errors.New("target instance required")
+		}
+		if payload.Conditions.ExportToInstance.TargetInstanceID == instanceID {
+			return http.StatusBadRequest, "Export target cannot be the same as the source instance", errors.New("self-export not allowed")
+		}
+	}
+
 	// Validate delete is standalone - it cannot be combined with any other action
 	hasDelete := payload.Conditions.Delete != nil && payload.Conditions.Delete.Enabled
 	if hasDelete {
@@ -355,7 +365,8 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 			(len(payload.Conditions.TagActions()) > 0) ||
 			(payload.Conditions.Category != nil && payload.Conditions.Category.Enabled) ||
 			(payload.Conditions.Move != nil && payload.Conditions.Move.Enabled) ||
-			(payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled)
+			(payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled) ||
+			(payload.Conditions.ExportToInstance != nil && payload.Conditions.ExportToInstance.Enabled)
 		if hasOtherAction {
 			return http.StatusBadRequest, "Delete action cannot be combined with other actions", errors.New("delete must be standalone")
 		}
@@ -486,7 +497,8 @@ func conditionsUseField(conditions *models.ActionConditions, field automations.C
 		anyEnabledTagActionUsesField(c.TagActions(), field) ||
 		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition)) ||
 		(c.Move != nil && check(c.Move.Enabled, c.Move.Condition)) ||
-		(c.ExternalProgram != nil && check(c.ExternalProgram.Enabled, c.ExternalProgram.Condition))
+		(c.ExternalProgram != nil && check(c.ExternalProgram.Enabled, c.ExternalProgram.Condition)) ||
+		(c.ExportToInstance != nil && check(c.ExportToInstance.Enabled, c.ExportToInstance.Condition))
 }
 
 func anyEnabledTagActionUsesField(actions []*models.TagAction, field automations.ConditionField) bool {

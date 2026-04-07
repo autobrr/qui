@@ -105,10 +105,10 @@ const SPEED_LIMIT_UNITS = [
   { value: 1024, label: "MiB/s" },
 ]
 
-type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "delete" | "tag" | "category" | "move" | "externalProgram"
+type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "delete" | "tag" | "category" | "move" | "externalProgram" | "exportToInstance"
 
 // Actions that can be combined (Delete must be standalone)
-const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "tag", "category", "move", "externalProgram"]
+const COMBINABLE_ACTIONS: ActionType[] = ["speedLimits", "shareLimits", "pause", "resume", "recheck", "reannounce", "tag", "category", "move", "externalProgram", "exportToInstance"]
 
 const ACTION_LABELS: Record<ActionType, string> = {
   speedLimits: "Speed limits",
@@ -122,6 +122,7 @@ const ACTION_LABELS: Record<ActionType, string> = {
   category: "Category",
   move: "Move",
   externalProgram: "Run external program",
+  exportToInstance: "Export to instance",
 }
 
 const DRY_RUN_ACTION_LABELS: Record<AutomationActivity["action"], string> = {
@@ -141,6 +142,7 @@ const DRY_RUN_ACTION_LABELS: Record<AutomationActivity["action"], string> = {
   reannounced: "Reannounce",
   moved: "Move",
   external_program: "External program",
+  exported_to_instance: "Export to instance",
   dry_run_no_match: "No matches",
 }
 
@@ -474,6 +476,14 @@ type FormState = {
   exprMoveAtomic: "all" | ""
   // External program action settings
   exprExternalProgramId: number | null
+  // Export to instance action settings
+  exportToInstanceEnabled: boolean
+  exprExportTargetInstanceId: number | null
+  exprExportSavePath: string
+  exprExportCategory: string
+  exprExportTags: string
+  exprExportPaused: boolean
+  exprExportSkipChecking: boolean
 }
 
 const emptyFormState: FormState = {
@@ -526,6 +536,13 @@ const emptyFormState: FormState = {
   exprMoveGroupId: "",
   exprMoveAtomic: "",
   exprExternalProgramId: null,
+  exportToInstanceEnabled: false,
+  exprExportTargetInstanceId: null,
+  exprExportSavePath: "",
+  exprExportCategory: "",
+  exprExportTags: "",
+  exprExportPaused: false,
+  exprExportSkipChecking: true,
 }
 
 // Helper to get enabled actions from form state
@@ -542,6 +559,7 @@ function getEnabledActions(state: FormState): ActionType[] {
   if (state.categoryEnabled) actions.push("category")
   if (state.moveEnabled) actions.push("move")
   if (state.externalProgramEnabled) actions.push("externalProgram")
+  if (state.exportToInstanceEnabled) actions.push("exportToInstance")
   return actions
 }
 
@@ -933,6 +951,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprCategoryGroupId = ""
         let exprMoveGroupId = ""
         let exprMoveAtomic: FormState["exprMoveAtomic"] = ""
+        let exportToInstanceEnabled = false
+        let exprExportTargetInstanceId: number | null = null
+        let exprExportSavePath = ""
+        let exprExportCategory = ""
+        let exprExportTags = ""
+        let exprExportPaused = false
+        let exprExportSkipChecking = true
 
         if (rule.sortingConfig) {
           if (rule.sortingConfig.type === "simple") {
@@ -1050,6 +1075,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             externalProgramEnabled = true
             exprExternalProgramId = conditions.externalProgram.programId ?? null
           }
+          if (conditions.exportToInstance?.enabled) {
+            exportToInstanceEnabled = true
+            exprExportTargetInstanceId = conditions.exportToInstance.targetInstanceId ?? null
+            exprExportSavePath = conditions.exportToInstance.savePath ?? ""
+            exprExportCategory = conditions.exportToInstance.category ?? ""
+            exprExportTags = (conditions.exportToInstance.tags ?? []).join(", ")
+            exprExportPaused = conditions.exportToInstance.paused ?? false
+            exprExportSkipChecking = conditions.exportToInstance.skipChecking ?? true
+          }
         }
 
         const newState: FormState = {
@@ -1103,6 +1137,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprMoveGroupId,
           exprMoveAtomic,
           exprExternalProgramId,
+          exportToInstanceEnabled,
+          exprExportTargetInstanceId,
+          exprExportSavePath,
+          exprExportCategory,
+          exprExportTags,
+          exprExportPaused,
+          exprExportSkipChecking,
         }
         setFormState(newState)
       } else {
@@ -1375,6 +1416,19 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
+    if (input.exportToInstanceEnabled && input.exprExportTargetInstanceId) {
+      const tags = input.exprExportTags.split(",").map(t => t.trim()).filter(Boolean)
+      conditions.exportToInstance = {
+        enabled: true,
+        targetInstanceId: input.exprExportTargetInstanceId,
+        savePath: input.exprExportSavePath.trim(),
+        category: input.exprExportCategory.trim() || undefined,
+        tags: tags.length > 0 ? tags : undefined,
+        paused: input.exprExportPaused || undefined,
+        skipChecking: input.exprExportSkipChecking,
+        condition: input.actionCondition ?? undefined,
+      }
+    }
 
     const usesFreeSpace = conditionUsesField(input.actionCondition, "FREE_SPACE")
     const trimmedFreeSpacePath = input.exprFreeSpaceSourcePath.trim()
@@ -1472,6 +1526,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     formState.categoryEnabled,
     formState.moveEnabled,
     formState.externalProgramEnabled,
+    formState.exportToInstanceEnabled,
   ].filter(Boolean).length
 
   const latestDryRunOperationCount = useMemo(
@@ -1682,6 +1737,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
     if (dryRunInput.externalProgramEnabled && !dryRunInput.exprExternalProgramId) {
       toast.error("Select an external program")
+      return
+    }
+    if (dryRunInput.exportToInstanceEnabled && !dryRunInput.exprExportTargetInstanceId) {
+      toast.error("Select a target instance")
       return
     }
     if (dryRunInput.tagEnabled) {
@@ -1938,6 +1997,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (submitState.externalProgramEnabled) {
       if (!submitState.exprExternalProgramId) {
         toast.error("Select an external program")
+        return
+      }
+    }
+    if (submitState.exportToInstanceEnabled) {
+      if (!submitState.exprExportTargetInstanceId) {
+        toast.error("Select a target instance")
         return
       }
     }
@@ -2509,6 +2574,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             categoryEnabled: false,
                             moveEnabled: false,
                             externalProgramEnabled: false,
+                            exportToInstanceEnabled: false,
                             // Safety: when selecting delete in "create new" mode, start disabled
                             enabled: !rule ? false : prev.enabled,
                           }))
@@ -3205,6 +3271,112 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               </a>
                             </div>
                           )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Export to Instance */}
+                    {formState.exportToInstanceEnabled && (
+                      <div className="rounded-lg border p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Export to instance</Label>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => setFormState(prev => ({
+                              ...prev,
+                              exportToInstanceEnabled: false,
+                              exprExportTargetInstanceId: null,
+                              exprExportSavePath: "",
+                              exprExportCategory: "",
+                              exprExportTags: "",
+                              exprExportPaused: false,
+                              exprExportSkipChecking: true,
+                            }))}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Target instance</Label>
+                          {instances && instances.filter(i => i.id !== instanceId).length > 0 ? (
+                            <Select
+                              value={formState.exprExportTargetInstanceId?.toString() ?? ""}
+                              onValueChange={(value) => setFormState(prev => ({
+                                ...prev,
+                                exprExportTargetInstanceId: value ? parseInt(value, 10) : null,
+                              }))}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select target instance..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {instances.filter(i => i.id !== instanceId).map(instance => (
+                                  <SelectItem key={instance.id} value={instance.id.toString()}>
+                                    {instance.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50">
+                              No other instances available.
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Save path on target</Label>
+                          <Input
+                            value={formState.exprExportSavePath}
+                            onChange={(e) => setFormState(prev => ({ ...prev, exprExportSavePath: e.target.value }))}
+                            placeholder="/data/torrents/{{ .Category }}"
+                            className="text-sm"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Supports templates: {"{{ .Name }}"}, {"{{ .Category }}"}, {"{{ .Hash }}"}, {"{{ .Tracker }}"}
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Category on target (optional)</Label>
+                          <Input
+                            value={formState.exprExportCategory}
+                            onChange={(e) => setFormState(prev => ({ ...prev, exprExportCategory: e.target.value }))}
+                            placeholder="e.g. imported"
+                            className="text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Tags on target (optional, comma-separated)</Label>
+                          <Input
+                            value={formState.exprExportTags}
+                            onChange={(e) => setFormState(prev => ({ ...prev, exprExportTags: e.target.value }))}
+                            placeholder="e.g. seedbox, migrated"
+                            className="text-sm"
+                          />
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              id="export-skip-checking"
+                              checked={formState.exprExportSkipChecking}
+                              onCheckedChange={(checked) => setFormState(prev => ({ ...prev, exprExportSkipChecking: checked }))}
+                            />
+                            <Label htmlFor="export-skip-checking" className="text-sm cursor-pointer whitespace-nowrap">
+                              Skip checking
+                            </Label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              id="export-paused"
+                              checked={formState.exprExportPaused}
+                              onCheckedChange={(checked) => setFormState(prev => ({ ...prev, exprExportPaused: checked }))}
+                            />
+                            <Label htmlFor="export-paused" className="text-sm cursor-pointer whitespace-nowrap">
+                              Add paused
+                            </Label>
+                          </div>
                         </div>
                       </div>
                     )}
