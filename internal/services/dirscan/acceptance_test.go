@@ -305,6 +305,48 @@ func TestRefineDirScanMatchDecision_AcceptsFlexibleSingleFilePerfectWithTMDbCorr
 	}
 }
 
+func TestRefineDirScanMatchDecision_AcceptsFlexibleSingleFilePerfectWithResultTMDbCorroboration(t *testing.T) {
+	searchee := &Searchee{
+		Name: "Avatar - De feu et de cendres (2025) {tmdb-83533}",
+		Files: []*ScannedFile{{
+			Path:    "/media/movies/Avatar - De feu et de cendres (2025)/Avatar - De feu et de cendres (2025).mkv",
+			RelPath: "Avatar - De feu et de cendres (2025).mkv",
+			Size:    1000,
+		}},
+	}
+	parsed := &ParsedTorrent{
+		Name:        "Avatar.Fire.and.Ash.2025.2160p.WEB-DL.x265-GROUP",
+		InfoHash:    "deadbeef",
+		PieceLength: 4,
+		Files: []TorrentFile{
+			{Path: "Avatar.Fire.and.Ash.2025.2160p.WEB-DL.x265-GROUP.mkv", Size: 1000, Offset: 0},
+		},
+		TotalSize: 1000,
+	}
+	match := &MatchResult{
+		MatchedFiles: []MatchedFilePair{{
+			SearcheeFile: searchee.Files[0],
+			TorrentFile:  parsed.Files[0],
+		}},
+		IsPerfectMatch: true,
+		IsMatch:        true,
+	}
+	settings := &models.DirScanSettings{
+		MatchMode:    models.MatchModeFlexible,
+		AllowPartial: false,
+	}
+	searcheeMeta := NewParser(nil).Parse(searchee.Name)
+	baseDecision := shouldAcceptDirScanMatch(match, parsed, settings)
+	decision := refineDirScanMatchDecision(searchee, searcheeMeta, parsed, &jackett.SearchResult{
+		Title:  "Avatar Fire and Ash 2025 2160p WEB-DL x265-GROUP",
+		TMDbID: "83533",
+	}, settings, match, baseDecision)
+
+	if !decision.Accept {
+		t.Fatalf("expected result TMDb corroboration to be accepted, got reason %q", decision.Reason)
+	}
+}
+
 func TestRefineDirScanMatchDecision_RejectsFlexibleSingleFilePerfectForWrongEpisode(t *testing.T) {
 	searchee := &Searchee{
 		Name: "The Office S01E01",

@@ -2099,7 +2099,7 @@ func hasCorroboratingExternalID(searcheeMeta *SearcheeMetadata, result *jackett.
 	}
 
 	if searcheeMeta.GetTMDbID() > 0 {
-		if numericIDsMatch(strconv.Itoa(searcheeMeta.GetTMDbID()), strconv.Itoa(result.SearchTMDbID)) {
+		if numericIDsMatch(strconv.Itoa(searcheeMeta.GetTMDbID()), result.TMDbID, strconv.Itoa(result.SearchTMDbID)) {
 			return true
 		}
 	}

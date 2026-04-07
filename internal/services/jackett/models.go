@@ -107,6 +107,8 @@ type SearchResult struct {
 	IMDbID string `json:"imdb_id,omitempty"`
 	// TVDb ID if available
 	TVDbID string `json:"tvdb_id,omitempty"`
+	// TMDb ID if available
+	TMDbID string `json:"tmdb_id,omitempty"`
 	// SearchIMDbID is the IMDb ID actually used in the per-indexer search request, if any.
 	SearchIMDbID string `json:"search_imdb_id,omitempty"`
 	// SearchTVDbID is the TVDb ID actually used in the per-indexer search request, if any.

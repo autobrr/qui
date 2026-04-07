@@ -3237,6 +3237,7 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 			InfoHashV2:           "", // InfoHashV2 not typically in extended attributes
 			IMDbID:               r.Imdb,
 			TVDbID:               s.parseTVDbID(r),
+			TMDbID:               s.parseTMDbID(r),
 			SearchIMDbID:         r.SearchIMDbID,
 			SearchTVDbID:         r.SearchTVDbID,
 			SearchTMDbID:         r.SearchTMDbID,
@@ -3307,6 +3308,9 @@ var (
 	tvdbIdentifierPattern = regexp.MustCompile(`(?i)(?:tvdb|thetvdb|tvdb:)[^\d]*([0-9]+)`)
 	tvdbAttributeKeys     = []string{"tvdb", "tvdbid", "tvdb_id"}
 	tvdbDigitsOnlyPattern = regexp.MustCompile(`\A[0-9]+\z`)
+	tmdbIdentifierPattern = regexp.MustCompile(`(?i)(?:tmdb|themoviedb|tmdb:)[^\d]*([0-9]+)`)
+	tmdbAttributeKeys     = []string{"tmdb", "tmdbid", "tmdb_id"}
+	tmdbDigitsOnlyPattern = regexp.MustCompile(`\A[0-9]+\z`)
 	infohashAttributeKeys = []string{"infohash", "info_hash", "hash"}
 )
 
@@ -3350,6 +3354,53 @@ func extractTVDbIDFromAttributes(attrs map[string]string) string {
 	for _, key := range tvdbAttributeKeys {
 		if value, ok := attrs[key]; ok {
 			if id := parseTVDbNumericIDFromString(value); id != "" {
+				return id
+			}
+		}
+	}
+
+	return ""
+}
+
+func parseTMDbNumericIDFromString(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+
+	if tmdbDigitsOnlyPattern.MatchString(value) {
+		return value
+	}
+
+	if matches := tmdbIdentifierPattern.FindStringSubmatch(value); len(matches) == 2 {
+		if tmdbDigitsOnlyPattern.MatchString(matches[1]) {
+			return matches[1]
+		}
+	}
+
+	return ""
+}
+
+func (s *Service) parseTMDbID(r Result) string {
+	if id := parseTMDbNumericIDFromString(r.GUID); id != "" {
+		return id
+	}
+
+	if id := extractTMDbIDFromAttributes(r.Attributes); id != "" {
+		return id
+	}
+
+	return ""
+}
+
+func extractTMDbIDFromAttributes(attrs map[string]string) string {
+	if len(attrs) == 0 {
+		return ""
+	}
+
+	for _, key := range tmdbAttributeKeys {
+		if value, ok := attrs[key]; ok {
+			if id := parseTMDbNumericIDFromString(value); id != "" {
 				return id
 			}
 		}

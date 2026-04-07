@@ -1031,11 +1031,14 @@ func TestConvertResults(t *testing.T) {
 			name: "preserves executed search id context",
 			input: []Result{
 				{
-					Tracker:      "Tracker1",
-					Title:        "Example",
-					Seeders:      10,
-					Peers:        10,
-					Size:         1024,
+					Tracker: "Tracker1",
+					Title:   "Example",
+					Seeders: 10,
+					Peers:   10,
+					Size:    1024,
+					Attributes: map[string]string{
+						"tmdbid": "42",
+					},
 					SearchIMDbID: "tt1234567",
 					SearchTVDbID: "7654321",
 					SearchTMDbID: 42,
@@ -1048,6 +1051,9 @@ func TestConvertResults(t *testing.T) {
 				}
 				if results[0].SearchTVDbID != "7654321" {
 					t.Fatalf("SearchTVDbID = %q, want %q", results[0].SearchTVDbID, "7654321")
+				}
+				if results[0].TMDbID != "42" {
+					t.Fatalf("TMDbID = %q, want %q", results[0].TMDbID, "42")
 				}
 				if results[0].SearchTMDbID != 42 {
 					t.Fatalf("SearchTMDbID = %d, want %d", results[0].SearchTMDbID, 42)
