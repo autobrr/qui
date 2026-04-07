@@ -909,6 +909,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return options
   }, [formState.exprGrouping?.groups])
 
+  const nonSelfInstances = useMemo(
+    () => instances?.filter(i => i.id !== instanceId) ?? [],
+    [instances, instanceId],
+  )
+
   // Initialize form state when dialog opens or rule changes
   useEffect(() => {
     let cancelled = false
@@ -1191,14 +1196,13 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   // Clear stale export target ID if the instance no longer exists
   useEffect(() => {
-    if (!open || instancesLoading || !instances) return
+    if (!open || instancesLoading) return
     setFormState(prev => {
       if (!prev.exprExportTargetInstanceId) return prev
-      const available = instances.filter(i => i.id !== instanceId)
-      if (available.some(i => i.id === prev.exprExportTargetInstanceId)) return prev
+      if (nonSelfInstances.some(i => i.id === prev.exprExportTargetInstanceId)) return prev
       return { ...prev, exprExportTargetInstanceId: null }
     })
-  }, [open, instances, instancesLoading, instanceId])
+  }, [open, nonSelfInstances, instancesLoading])
 
   useEffect(() => {
     if (!open) {
@@ -3386,10 +3390,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         <div className="space-y-1">
                           <Label className="text-xs">Target instance</Label>
                           {instancesLoading ? (
-                            <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50">
+                            <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50 flex items-center gap-2">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               Loading instances...
                             </div>
-                          ) : instances && instances.filter(i => i.id !== instanceId).length > 0 ? (
+                          ) : nonSelfInstances.length > 0 ? (
                             <Select
                               value={formState.exprExportTargetInstanceId?.toString() ?? ""}
                               onValueChange={(value) => setFormState(prev => ({
@@ -3401,7 +3406,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                 <SelectValue placeholder="Select target instance..." />
                               </SelectTrigger>
                               <SelectContent>
-                                {instances.filter(i => i.id !== instanceId).map(instance => (
+                                {nonSelfInstances.map(instance => (
                                   <SelectItem key={instance.id} value={instance.id.toString()}>
                                     {instance.name}
                                   </SelectItem>

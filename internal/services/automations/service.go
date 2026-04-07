@@ -2624,19 +2624,6 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				ruleName: state.exportToInstanceRuleName,
 			}
 
-			// Skip if an export for this hash+target is already in-flight
-			flightKey := fmt.Sprintf("%d:%s", state.exportToInstance.TargetInstanceID, hash)
-			s.mu.RLock()
-			_, inFlight := s.inFlightExports[flightKey]
-			s.mu.RUnlock()
-			if inFlight {
-				log.Debug().
-					Str("hash", hash).
-					Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
-					Msg("automations: export already in-flight, skipping")
-				continue
-			}
-
 			// Skip if the torrent already exists on the target instance
 			if _, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, state.exportToInstance.TargetInstanceID, []string{hash}); err != nil {
 				log.Warn().Err(err).
@@ -2667,9 +2654,23 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					}
 				}
 				exportEntry.resolvedSavePath = resolvedPath
-				s.mu.Lock()
-				s.inFlightExports[flightKey] = struct{}{}
-				s.mu.Unlock()
+
+				// Reserve in-flight slot atomically (live runs only, not dry-run)
+				if !dryRun {
+					flightKey := fmt.Sprintf("%d:%s", state.exportToInstance.TargetInstanceID, hash)
+					s.mu.Lock()
+					if _, alreadyInFlight := s.inFlightExports[flightKey]; alreadyInFlight {
+						s.mu.Unlock()
+						log.Debug().
+							Str("hash", hash).
+							Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
+							Msg("automations: export already in-flight, skipping")
+						continue
+					}
+					s.inFlightExports[flightKey] = struct{}{}
+					s.mu.Unlock()
+				}
+
 				exportExecutions = append(exportExecutions, exportEntry)
 			}
 		}
@@ -3705,8 +3706,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// Execute external programs (async, fire-and-forget)
 	s.executeExternalProgramsFromAutomation(ctx, instanceID, programExecutions)
 
-	// Execute export to instance (async, fire-and-forget)
-	s.executeExportToInstance(ctx, instanceID, exportExecutions)
+	// Execute export to instance — collect results before notification
+	exportResults := s.executeExportToInstance(ctx, instanceID, exportExecutions)
 
 	// Execute deletions
 	//
@@ -3807,6 +3808,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				}
 			}
 		}
+	}
+
+	// Collect export results into summary before notification
+	for activity := range exportResults {
+		summary.recordActivity(activity, 1)
 	}
 
 	s.notifyAutomationSummary(ctx, instanceID, summary, eligibleRules)
@@ -5908,10 +5914,13 @@ type pendingExportToInstance struct {
 }
 
 // executeExportToInstance exports torrents from the source instance and adds them to target instances.
-// Exports are executed asynchronously (fire-and-forget) to avoid blocking the automation run.
-func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID int, executions []pendingExportToInstance) {
+// Returns a channel of activities that is closed when all exports complete.
+// The caller should drain the channel and record activities into the summary before notifying.
+func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID int, executions []pendingExportToInstance) <-chan *models.AutomationActivity {
+	ch := make(chan *models.AutomationActivity, len(executions))
 	if len(executions) == 0 {
-		return
+		close(ch)
+		return ch
 	}
 
 	// Group by target for logging
@@ -5930,37 +5939,43 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 	const exportTimeout = 2 * time.Minute
 	sem := make(chan struct{}, maxConcurrentExports)
 
+	var wg sync.WaitGroup
+
 	for _, exec := range executions {
 		// Handle preflight failures without spawning a goroutine
 		if exec.failureReason != "" {
+			ruleID := exec.ruleID
+			detailsJSON, _ := json.Marshal(map[string]any{
+				"targetInstanceId": exec.action.TargetInstanceID,
+			})
+			trackerDomain := getTrackerForTorrent(&exec.torrent, s.syncManager)
+			activity := &models.AutomationActivity{
+				InstanceID:    sourceInstanceID,
+				Hash:          exec.hash,
+				TorrentName:   exec.torrent.Name,
+				TrackerDomain: trackerDomain,
+				Action:        models.ActivityActionExportedToInstance,
+				RuleID:        &ruleID,
+				RuleName:      exec.ruleName,
+				Outcome:       models.ActivityOutcomeFailed,
+				Reason:        exec.failureReason,
+				Details:       detailsJSON,
+			}
 			if s.activityStore != nil {
-				ruleID := exec.ruleID
-				detailsJSON, _ := json.Marshal(map[string]any{
-					"targetInstanceId": exec.action.TargetInstanceID,
-				})
-				trackerDomain := getTrackerForTorrent(&exec.torrent, s.syncManager)
-				if err := s.activityStore.Create(context.Background(), &models.AutomationActivity{
-					InstanceID:    sourceInstanceID,
-					Hash:          exec.hash,
-					TorrentName:   exec.torrent.Name,
-					TrackerDomain: trackerDomain,
-					Action:        models.ActivityActionExportedToInstance,
-					RuleID:        &ruleID,
-					RuleName:      exec.ruleName,
-					Outcome:       models.ActivityOutcomeFailed,
-					Reason:        exec.failureReason,
-					Details:       detailsJSON,
-				}); err != nil {
+				if err := s.activityStore.Create(context.Background(), activity); err != nil {
 					log.Warn().Err(err).Str("hash", exec.hash).Msg("automations: failed to log export activity")
 				}
 			}
+			ch <- activity
 			continue
 		}
 
+		wg.Add(1)
 		// Use context.Background() since parent context may be cancelled before execution completes
 		go func() { //nolint:gosec // G118 - intentional: goroutine outlives request context
 			sem <- struct{}{}
 			defer func() { <-sem }()
+			defer wg.Done()
 			defer func() {
 				flightKey := fmt.Sprintf("%d:%s", exec.action.TargetInstanceID, exec.hash)
 				s.mu.Lock()
@@ -5973,73 +5988,55 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 
 			trackerDomain := getTrackerForTorrent(&exec.torrent, s.syncManager)
 
-			// 1. Export .torrent from source instance
-			torrentBytes, _, _, err := s.syncManager.ExportTorrent(ctx, sourceInstanceID, exec.hash)
-			if err != nil {
-				log.Error().
-					Err(err).
-					Int("sourceInstanceID", sourceInstanceID).
-					Int("targetInstanceID", exec.action.TargetInstanceID).
-					Str("hash", exec.hash).
-					Str("name", exec.torrent.Name).
-					Str("rule", exec.ruleName).
-					Msg("automations: export torrent failed")
+			buildActivity := func(outcome, reason string) *models.AutomationActivity {
+				ruleID := exec.ruleID
+				detailsJSON, _ := json.Marshal(map[string]any{
+					"targetInstanceId": exec.action.TargetInstanceID,
+					"savePath":         exec.resolvedSavePath,
+				})
+				return &models.AutomationActivity{
+					InstanceID:    sourceInstanceID,
+					Hash:          exec.hash,
+					TorrentName:   exec.torrent.Name,
+					TrackerDomain: trackerDomain,
+					Action:        models.ActivityActionExportedToInstance,
+					RuleID:        &ruleID,
+					RuleName:      exec.ruleName,
+					Outcome:       outcome,
+					Reason:        reason,
+					Details:       detailsJSON,
+				}
+			}
 
+			recordAndSend := func(activity *models.AutomationActivity) {
 				if s.activityStore != nil {
-					ruleID := exec.ruleID
-					detailsJSON, _ := json.Marshal(map[string]any{
-						"targetInstanceId": exec.action.TargetInstanceID,
-						"savePath":         exec.resolvedSavePath,
-					})
-					if err := s.activityStore.Create(context.Background(), &models.AutomationActivity{
-						InstanceID:    sourceInstanceID,
-						Hash:          exec.hash,
-						TorrentName:   exec.torrent.Name,
-						TrackerDomain: trackerDomain,
-						Action:        models.ActivityActionExportedToInstance,
-						RuleID:        &ruleID,
-						RuleName:      exec.ruleName,
-						Outcome:       models.ActivityOutcomeFailed,
-						Reason:        "Export failed: " + err.Error(),
-						Details:       detailsJSON,
-					}); err != nil {
+					if err := s.activityStore.Create(context.Background(), activity); err != nil {
 						log.Warn().Err(err).Str("hash", exec.hash).Msg("automations: failed to log export activity")
 					}
 				}
+				ch <- activity
+			}
+
+			// 1. Export .torrent from source instance
+			torrentBytes, _, _, err := s.syncManager.ExportTorrent(ctx, sourceInstanceID, exec.hash)
+			if err != nil {
+				log.Error().Err(err).
+					Int("sourceInstanceID", sourceInstanceID).
+					Int("targetInstanceID", exec.action.TargetInstanceID).
+					Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
+					Msg("automations: export torrent failed")
+				recordAndSend(buildActivity(models.ActivityOutcomeFailed, "Export failed: "+err.Error()))
 				return
 			}
 
-			// Guard against empty torrent data (qBittorrent may return empty body for missing/errored torrents)
+			// Guard against empty torrent data
 			if len(torrentBytes) == 0 {
 				log.Error().
 					Int("sourceInstanceID", sourceInstanceID).
 					Int("targetInstanceID", exec.action.TargetInstanceID).
-					Str("hash", exec.hash).
-					Str("name", exec.torrent.Name).
-					Str("rule", exec.ruleName).
+					Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
 					Msg("automations: export returned empty torrent data")
-
-				if s.activityStore != nil {
-					ruleID := exec.ruleID
-					detailsJSON, _ := json.Marshal(map[string]any{
-						"targetInstanceId": exec.action.TargetInstanceID,
-						"savePath":         exec.resolvedSavePath,
-					})
-					if err := s.activityStore.Create(context.Background(), &models.AutomationActivity{
-						InstanceID:    sourceInstanceID,
-						Hash:          exec.hash,
-						TorrentName:   exec.torrent.Name,
-						TrackerDomain: trackerDomain,
-						Action:        models.ActivityActionExportedToInstance,
-						RuleID:        &ruleID,
-						RuleName:      exec.ruleName,
-						Outcome:       models.ActivityOutcomeFailed,
-						Reason:        "Export returned empty torrent data",
-						Details:       detailsJSON,
-					}); err != nil {
-						log.Warn().Err(err).Str("hash", exec.hash).Msg("automations: failed to log export activity")
-					}
-				}
+				recordAndSend(buildActivity(models.ActivityOutcomeFailed, "Export returned empty torrent data"))
 				return
 			}
 
@@ -6067,70 +6064,32 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 
 			// 3. Add to target instance
 			if err := s.syncManager.AddTorrent(ctx, exec.action.TargetInstanceID, torrentBytes, options); err != nil {
-				log.Error().
-					Err(err).
+				log.Error().Err(err).
 					Int("sourceInstanceID", sourceInstanceID).
 					Int("targetInstanceID", exec.action.TargetInstanceID).
-					Str("hash", exec.hash).
-					Str("name", exec.torrent.Name).
-					Str("rule", exec.ruleName).
+					Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
 					Msg("automations: add torrent to target instance failed")
-
-				if s.activityStore != nil {
-					ruleID := exec.ruleID
-					detailsJSON, _ := json.Marshal(map[string]any{
-						"targetInstanceId": exec.action.TargetInstanceID,
-						"savePath":         exec.resolvedSavePath,
-					})
-					if err := s.activityStore.Create(context.Background(), &models.AutomationActivity{
-						InstanceID:    sourceInstanceID,
-						Hash:          exec.hash,
-						TorrentName:   exec.torrent.Name,
-						TrackerDomain: trackerDomain,
-						Action:        models.ActivityActionExportedToInstance,
-						RuleID:        &ruleID,
-						RuleName:      exec.ruleName,
-						Outcome:       models.ActivityOutcomeFailed,
-						Reason:        "Add to target failed: " + err.Error(),
-						Details:       detailsJSON,
-					}); err != nil {
-						log.Warn().Err(err).Str("hash", exec.hash).Msg("automations: failed to log export activity")
-					}
-				}
+				recordAndSend(buildActivity(models.ActivityOutcomeFailed, "Add to target failed: "+err.Error()))
 				return
 			}
 
 			log.Info().
 				Int("sourceInstanceID", sourceInstanceID).
 				Int("targetInstanceID", exec.action.TargetInstanceID).
-				Str("hash", exec.hash).
-				Str("name", exec.torrent.Name).
-				Str("savePath", exec.resolvedSavePath).
-				Str("rule", exec.ruleName).
+				Str("hash", exec.hash).Str("name", exec.torrent.Name).
+				Str("savePath", exec.resolvedSavePath).Str("rule", exec.ruleName).
 				Msg("automations: exported torrent to instance")
-
-			if s.activityStore != nil {
-				ruleID := exec.ruleID
-				detailsJSON, _ := json.Marshal(map[string]any{
-					"targetInstanceId": exec.action.TargetInstanceID,
-					"savePath":         exec.resolvedSavePath,
-				})
-				if err := s.activityStore.Create(context.Background(), &models.AutomationActivity{
-					InstanceID:    sourceInstanceID,
-					Hash:          exec.hash,
-					TorrentName:   exec.torrent.Name,
-					TrackerDomain: trackerDomain,
-					Action:        models.ActivityActionExportedToInstance,
-					RuleID:        &ruleID,
-					RuleName:      exec.ruleName,
-					Outcome:       models.ActivityOutcomeSuccess,
-					Details:       detailsJSON,
-				}); err != nil {
-					log.Warn().Err(err).Str("hash", exec.hash).Msg("automations: failed to log export activity")
-				}
-			}
+			recordAndSend(buildActivity(models.ActivityOutcomeSuccess, ""))
 		}()
 	}
+
+	// Close channel when all workers complete
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	return ch
 }
 
 func SortTorrentsWithFallback(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext, instanceID int, ruleName string) {
