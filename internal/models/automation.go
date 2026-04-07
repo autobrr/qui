@@ -858,22 +858,22 @@ func (c *RuleCondition) CompileRegex() error {
 // ActionConditions holds per-action conditions with action configuration.
 // This is the top-level structure stored in the `conditions` JSON column.
 type ActionConditions struct {
-	SchemaVersion   string                 `json:"schemaVersion"`
-	Grouping        *GroupingConfig        `json:"grouping,omitempty"`
-	SpeedLimits     *SpeedLimitAction      `json:"speedLimits,omitempty"`
-	ShareLimits     *ShareLimitsAction     `json:"shareLimits,omitempty"`
-	Pause           *PauseAction           `json:"pause,omitempty"`
-	Resume          *ResumeAction          `json:"resume,omitempty"`
-	Recheck         *RecheckAction         `json:"recheck,omitempty"`
-	Reannounce      *ReannounceAction      `json:"reannounce,omitempty"`
-	Delete          *DeleteAction          `json:"delete,omitempty"`
-	Tag             *TagAction             `json:"tag,omitempty"`  // Legacy single-tag action (backward compatible alias for first entry in Tags)
-	Tags            []*TagAction           `json:"tags,omitempty"` // Preferred multi-tag actions
-	Category        *CategoryAction        `json:"category,omitempty"`
-	Move            *MoveAction            `json:"move,omitempty"`
+	SchemaVersion    string                  `json:"schemaVersion"`
+	Grouping         *GroupingConfig         `json:"grouping,omitempty"`
+	SpeedLimits      *SpeedLimitAction       `json:"speedLimits,omitempty"`
+	ShareLimits      *ShareLimitsAction      `json:"shareLimits,omitempty"`
+	Pause            *PauseAction            `json:"pause,omitempty"`
+	Resume           *ResumeAction           `json:"resume,omitempty"`
+	Recheck          *RecheckAction          `json:"recheck,omitempty"`
+	Reannounce       *ReannounceAction       `json:"reannounce,omitempty"`
+	Delete           *DeleteAction           `json:"delete,omitempty"`
+	Tag              *TagAction              `json:"tag,omitempty"`  // Legacy single-tag action (backward compatible alias for first entry in Tags)
+	Tags             []*TagAction            `json:"tags,omitempty"` // Preferred multi-tag actions
+	Category         *CategoryAction         `json:"category,omitempty"`
+	Move             *MoveAction             `json:"move,omitempty"`
 	ExternalProgram  *ExternalProgramAction  `json:"externalProgram,omitempty"`
 	AutoManagement   *AutoManagementAction   `json:"autoManagement,omitempty"`
-	ExportToInstance *ExportToInstanceAction  `json:"exportToInstance,omitempty"`
+	ExportToInstance *ExportToInstanceAction `json:"exportToInstance,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -1006,13 +1006,13 @@ func (a *ExternalProgramAction) Validate() error {
 // ExportToInstanceAction configures exporting a torrent to a different qBittorrent instance.
 type ExportToInstanceAction struct {
 	Enabled          bool           `json:"enabled"`
-	TargetInstanceID int            `json:"targetInstanceId"`          // Destination qBittorrent instance
-	SavePath         string         `json:"savePath"`                  // Save path on target (Go template supported)
-	Category         string         `json:"category,omitempty"`        // Category on target instance
-	Tags             []string       `json:"tags,omitempty"`            // Tags on target instance
-	Paused           bool           `json:"paused,omitempty"`          // Start paused on target
-	SkipChecking     *bool          `json:"skipChecking,omitempty"`    // Skip hash check (defaults true)
-	ContentLayout    string         `json:"contentLayout,omitempty"`   // "Original", "Subfolder", "NoSubfolder"
+	TargetInstanceID int            `json:"targetInstanceId"`        // Destination qBittorrent instance
+	SavePath         string         `json:"savePath"`                // Save path on target (Go template supported)
+	Category         string         `json:"category,omitempty"`      // Category on target instance
+	Tags             []string       `json:"tags,omitempty"`          // Tags on target instance
+	Paused           bool           `json:"paused,omitempty"`        // Start paused on target
+	SkipChecking     *bool          `json:"skipChecking,omitempty"`  // Skip hash check (defaults true)
+	ContentLayout    string         `json:"contentLayout,omitempty"` // "Original", "Subfolder", "NoSubfolder"
 	Condition        *RuleCondition `json:"condition,omitempty"`
 }
 

@@ -5865,7 +5865,8 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 		Msg("automations: exporting torrents to instances")
 
 	for _, exec := range executions {
-		go func() {
+		// Use context.Background() since parent context may be cancelled before execution completes
+		go func() { //nolint:gosec // G118 - intentional: goroutine outlives request context
 			ctx := context.Background()
 
 			// 1. Export .torrent from source instance
