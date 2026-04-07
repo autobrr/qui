@@ -29,6 +29,7 @@ const (
 	ActivityActionRechecked           = "rechecked"            // Batch force recheck operation
 	ActivityActionReannounced         = "reannounced"          // Batch force reannounce operation
 	ActivityActionMoved               = "moved"                // Batch move operation
+	ActivityActionAutoManaged         = "auto_managed"         // Batch auto management operation
 	ActivityActionDryRunNoMatch       = "dry_run_no_match"     // Manual dry-run completed with no matching actions
 )
 

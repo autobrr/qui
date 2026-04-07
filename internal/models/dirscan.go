@@ -67,6 +67,7 @@ type DirScanSettings struct {
 	AllowPartial                 bool      `json:"allowPartial"`
 	SkipPieceBoundarySafetyCheck bool      `json:"skipPieceBoundarySafetyCheck"`
 	StartPaused                  bool      `json:"startPaused"`
+	DownloadMissingFiles         bool      `json:"downloadMissingFiles"`
 	Category                     string    `json:"category"`
 	Tags                         []string  `json:"tags"`
 	CreatedAt                    time.Time `json:"createdAt"`
@@ -166,6 +167,7 @@ func (s *DirScanStore) GetSettings(ctx context.Context) (*DirScanSettings, error
 		SELECT id, enabled, match_mode, size_tolerance_percent, min_piece_ratio, max_searchees_per_run,
 		       max_searchee_age_days,
 		       allow_partial, skip_piece_boundary_safety_check, start_paused,
+		       download_missing_files,
 		       category, tags, created_at, updated_at
 		FROM dir_scan_settings
 		WHERE id = 1
@@ -174,7 +176,7 @@ func (s *DirScanStore) GetSettings(ctx context.Context) (*DirScanSettings, error
 	var settings DirScanSettings
 	var category sql.NullString
 	var tagsJSON sql.NullString
-	var enabled, allowPartial, skipPieceBoundarySafetyCheck, startPaused int
+	var enabled, allowPartial, skipPieceBoundarySafetyCheck, startPaused, downloadMissingFiles int
 
 	err := row.Scan(
 		&settings.ID,
@@ -187,6 +189,7 @@ func (s *DirScanStore) GetSettings(ctx context.Context) (*DirScanSettings, error
 		&allowPartial,
 		&skipPieceBoundarySafetyCheck,
 		&startPaused,
+		&downloadMissingFiles,
 		&category,
 		&tagsJSON,
 		&settings.CreatedAt,
@@ -214,6 +217,7 @@ func (s *DirScanStore) GetSettings(ctx context.Context) (*DirScanSettings, error
 	settings.AllowPartial = SQLiteIntToBool(allowPartial)
 	settings.SkipPieceBoundarySafetyCheck = SQLiteIntToBool(skipPieceBoundarySafetyCheck)
 	settings.StartPaused = SQLiteIntToBool(startPaused)
+	settings.DownloadMissingFiles = SQLiteIntToBool(downloadMissingFiles)
 
 	// Store in DB uses a 0-1 ratio; API/UI expects percent (0-100).
 	settings.MinPieceRatio = minPieceRatioToPercent(settings.MinPieceRatio)
@@ -249,8 +253,9 @@ func (s *DirScanStore) UpdateSettings(ctx context.Context, settings *DirScanSett
 			id, enabled, match_mode, size_tolerance_percent, min_piece_ratio,
 			max_searchees_per_run, max_searchee_age_days,
 			allow_partial, skip_piece_boundary_safety_check, start_paused,
+			download_missing_files,
 			category, tags
-		) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
 			match_mode = excluded.match_mode,
@@ -261,6 +266,7 @@ func (s *DirScanStore) UpdateSettings(ctx context.Context, settings *DirScanSett
 			allow_partial = excluded.allow_partial,
 			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check,
 			start_paused = excluded.start_paused,
+			download_missing_files = excluded.download_missing_files,
 			category = excluded.category,
 			tags = excluded.tags
 	`,
@@ -273,6 +279,7 @@ func (s *DirScanStore) UpdateSettings(ctx context.Context, settings *DirScanSett
 		boolToInt(settings.AllowPartial),
 		boolToInt(settings.SkipPieceBoundarySafetyCheck),
 		boolToInt(settings.StartPaused),
+		boolToInt(settings.DownloadMissingFiles),
 		category,
 		string(tagsJSON),
 	)

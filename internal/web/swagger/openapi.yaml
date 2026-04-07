@@ -7637,6 +7637,8 @@ components:
           type: boolean
         startPaused:
           type: boolean
+        downloadMissingFiles:
+          type: boolean
         category:
           type: string
         tags:
@@ -7660,6 +7662,7 @@ components:
         - allowPartial
         - skipPieceBoundarySafetyCheck
         - startPaused
+        - downloadMissingFiles
         - category
         - tags
         - createdAt
@@ -7687,6 +7690,8 @@ components:
         skipPieceBoundarySafetyCheck:
           type: boolean
         startPaused:
+          type: boolean
+        downloadMissingFiles:
           type: boolean
         category:
           type: string

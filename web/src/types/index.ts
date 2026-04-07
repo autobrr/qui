@@ -232,6 +232,13 @@ export type ConditionField =
   | "ADDED_ON_AGE"
   | "COMPLETION_ON_AGE"
   | "LAST_ACTIVITY_AGE"
+  // System Time fields
+  | "SYSTEM_HOUR"
+  | "SYSTEM_MINUTE"
+  | "SYSTEM_DAY_OF_WEEK"
+  | "SYSTEM_DAY"
+  | "SYSTEM_MONTH"
+  | "SYSTEM_YEAR"
   // Numeric fields (float64)
   | "RATIO"
   | "RATIO_LIMIT"
@@ -262,6 +269,10 @@ export type ConditionField =
   | "IS_UNREGISTERED"
   | "HAS_MISSING_FILES"
   | "IS_GROUPED"
+  | "EXISTS_ON_OTHER_INSTANCE"
+  | "SEEDING_ON_OTHER_INSTANCE"
+  | "EXISTS_ON_SAME_INSTANCE"
+  | "SEEDING_ON_SAME_INSTANCE"
   // Enum-like fields
   | "HARDLINK_SCOPE"
 
@@ -330,6 +341,11 @@ export interface RecheckAction {
 }
 
 export interface ReannounceAction {
+  enabled: boolean
+  condition?: RuleCondition
+}
+
+export interface AutoManagementAction {
   enabled: boolean
   condition?: RuleCondition
 }
@@ -406,6 +422,7 @@ export interface ActionConditions {
   category?: CategoryAction
   move?: MoveAction
   externalProgram?: ExternalProgramAction
+  autoManagement?: AutoManagementAction
 }
 
 export type FreeSpaceSource =
@@ -496,7 +513,7 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "moved" | "external_program" | "dry_run_no_match"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "auto_managed" | "moved" | "external_program" | "dry_run_no_match"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed" | "dry-run"
@@ -2281,6 +2298,7 @@ export interface DirScanSettings {
   allowPartial: boolean
   skipPieceBoundarySafetyCheck: boolean
   startPaused: boolean
+  downloadMissingFiles: boolean
   category: string
   tags: string[]
   createdAt: string
@@ -2297,6 +2315,7 @@ export interface DirScanSettingsUpdate {
   allowPartial?: boolean
   skipPieceBoundarySafetyCheck?: boolean
   startPaused?: boolean
+  downloadMissingFiles?: boolean
   category?: string
   tags?: string[]
 }

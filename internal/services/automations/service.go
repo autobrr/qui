@@ -22,6 +22,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/releases"
@@ -499,6 +500,18 @@ func DefaultConfig() Config {
 	}
 }
 
+// CrossMatchNeeds specifies which cross-match sets to compute.
+type CrossMatchNeeds = crossseed.CrossMatchNeeds
+
+// CrossMatchResult contains all cross-match sets for a given instance.
+type CrossMatchResult = crossseed.CrossMatchResult
+
+// CrossMatcher provides cross-seed torrent matching using content-aware
+// strategies (content path, name, release metadata) — the same logic as "Filter Cross-Seeds".
+type CrossMatcher interface {
+	BuildCrossMatchSets(ctx context.Context, currentInstanceID int, needs CrossMatchNeeds) *CrossMatchResult
+}
+
 // Service periodically applies automation rules to torrents for all active instances.
 type Service struct {
 	cfg                       Config
@@ -509,6 +522,7 @@ type Service struct {
 	syncManager               *qbittorrent.SyncManager
 	notifier                  notifications.Notifier
 	externalProgramService    *externalprograms.Service // for executing external programs
+	crossMatcher              CrossMatcher
 	activityRuns              *activityRunStore
 	releaseParser             *releases.Parser
 
@@ -520,7 +534,7 @@ type Service struct {
 	mu                    sync.RWMutex
 }
 
-func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher) *Service {
 	if cfg.ScanInterval <= 0 {
 		cfg.ScanInterval = DefaultConfig().ScanInterval
 	}
@@ -548,6 +562,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		syncManager:               syncManager,
 		notifier:                  notifier,
 		externalProgramService:    externalProgramService,
+		crossMatcher:              crossMatcher,
 		activityRuns:              newActivityRunStore(cfg.ActivityRunRetention, cfg.ActivityRunMax),
 		releaseParser:             releases.NewDefaultParser(),
 		lastApplied:               make(map[int]map[string]time.Time),
@@ -849,6 +864,26 @@ func (s *Service) initPreviewEvalContext(ctx context.Context, instanceID int, to
 	return evalCtx, instance
 }
 
+// setupPreviewCrossMatchContext populates all cross-match hash sets (same-instance
+// and other-instance) in evalCtx based on which fields the condition or sorting config uses.
+func (s *Service) setupPreviewCrossMatchContext(ctx context.Context, instanceID int, rule *models.Automation, cond *RuleCondition, evalCtx *EvalContext) {
+	if evalCtx == nil || rule == nil {
+		return
+	}
+
+	needs := CrossMatchNeeds{
+		SameExists:   ConditionUsesField(cond, FieldExistsOnSameInstance) || sortingConfigUsesField(rule.SortingConfig, FieldExistsOnSameInstance),
+		SameSeeding:  ConditionUsesField(cond, FieldSeedingOnSameInstance) || sortingConfigUsesField(rule.SortingConfig, FieldSeedingOnSameInstance),
+		OtherExists:  ConditionUsesField(cond, FieldExistsOnOtherInstance) || sortingConfigUsesField(rule.SortingConfig, FieldExistsOnOtherInstance),
+		OtherSeeding: ConditionUsesField(cond, FieldSeedingOnOtherInstance) || sortingConfigUsesField(rule.SortingConfig, FieldSeedingOnOtherInstance),
+	}
+	if !needs.SameExists && !needs.SameSeeding && !needs.OtherExists && !needs.OtherSeeding {
+		return
+	}
+
+	s.applyCrossMatchResult(evalCtx, s.buildCrossMatchSets(ctx, instanceID, needs))
+}
+
 func (s *Service) setupPreviewTrackerDisplayNames(ctx context.Context, instanceID int, cond *RuleCondition, evalCtx *EvalContext) {
 	if evalCtx == nil || cond == nil || evalCtx.TrackerDisplayNameByDomain != nil {
 		return
@@ -920,6 +955,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if rule != nil && rule.Conditions != nil && rule.Conditions.Delete != nil {
 		deleteCondition = rule.Conditions.Delete.Condition
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Delete.Condition, evalCtx)
+		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, rule.Conditions.Delete.Condition, evalCtx)
 	}
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx, instance)
@@ -1521,6 +1557,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	evalCtx, instance := s.initPreviewEvalContext(ctx, instanceID, torrents)
 	if rule != nil && rule.Conditions != nil && rule.Conditions.Category != nil {
 		s.setupPreviewTrackerDisplayNames(ctx, instanceID, rule.Conditions.Category.Condition, evalCtx)
+		s.setupPreviewCrossMatchContext(ctx, instanceID, rule, rule.Conditions.Category.Condition, evalCtx)
 	}
 	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx, instance)
@@ -1950,6 +1987,17 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
 	}
 
+	// On-demand cross-match lookup (same-instance and other-instance cross-seed detection)
+	needs := CrossMatchNeeds{
+		SameExists:   rulesUseCondition(eligibleRules, FieldExistsOnSameInstance),
+		SameSeeding:  rulesUseCondition(eligibleRules, FieldSeedingOnSameInstance),
+		OtherExists:  rulesUseCondition(eligibleRules, FieldExistsOnOtherInstance),
+		OtherSeeding: rulesUseCondition(eligibleRules, FieldSeedingOnOtherInstance),
+	}
+	if needs.SameExists || needs.SameSeeding || needs.OtherExists || needs.OtherSeeding {
+		s.applyCrossMatchResult(evalCtx, s.buildCrossMatchSets(ctx, instanceID, needs))
+	}
+
 	// Get free space on instance (only if rules use FREE_SPACE field)
 	// Also pre-compute hardlink groups for FREE_SPACE projection if needed
 	if rulesUseCondition(eligibleRules, FieldFreeSpace) {
@@ -2120,6 +2168,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	resumeHashes := make([]string, 0)
 	recheckHashes := make([]string, 0)
 	reannounceHashes := make([]string, 0)
+	autoManageEnableHashes := make([]string, 0)
+	autoManageDisableHashes := make([]string, 0)
 	uploadRuleByHash := make(map[string]ruleRef)
 	downloadRuleByHash := make(map[string]ruleRef)
 	shareRatioRuleByHash := make(map[string]ruleRef)
@@ -2128,6 +2178,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	resumeRuleByHash := make(map[string]ruleRef)
 	recheckRuleByHash := make(map[string]ruleRef)
 	reannounceRuleByHash := make(map[string]ruleRef)
+	autoManageRuleByHash := make(map[string]ruleRef)
 	categoryRuleByHash := make(map[string]ruleRef)
 	moveRuleByHash := make(map[string]ruleRef)
 
@@ -2497,6 +2548,16 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			reannounceRuleByHash[hash] = state.reannounceRule
 		}
 
+		// Auto management
+		if state.shouldAutoManage {
+			if state.autoManageValue {
+				autoManageEnableHashes = append(autoManageEnableHashes, hash)
+			} else {
+				autoManageDisableHashes = append(autoManageDisableHashes, hash)
+			}
+			autoManageRuleByHash[hash] = state.autoManageRule
+		}
+
 		// Tags
 		if len(state.tagActions) > 0 {
 			var toAdd, toRemove []string
@@ -2560,6 +2621,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			resumeHashes,
 			recheckHashes,
 			reannounceHashes,
+			append(autoManageEnableHashes, autoManageDisableHashes...),
 			tagChanges,
 			categoryBatches,
 			moveBatches,
@@ -2883,6 +2945,62 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record reannounce activity")
 			} else if s.activityRuns != nil {
 				items := buildRunItemsFromHashes(reannouncedHashesSuccess, torrentByHash, s.syncManager)
+				if len(items) > 0 {
+					s.activityRuns.Put(activityID, instanceID, items)
+				}
+			}
+		}
+	}
+
+	// Execute auto management actions
+	autoManagedCount := 0
+	autoManagedHashesSuccess := make([]string, 0)
+	for _, group := range []struct {
+		hashes []string
+		enable bool
+		verb   string
+	}{
+		{autoManageEnableHashes, true, "enabled"},
+		{autoManageDisableHashes, false, "disabled"},
+	} {
+		if len(group.hashes) == 0 {
+			continue
+		}
+		limited := limitHashBatch(group.hashes, s.cfg.MaxBatchHashes)
+		for _, batch := range limited {
+			if err := s.syncManager.SetAutoTMM(ctx, instanceID, batch, group.enable); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Int("count", len(batch)).Msg("automations: auto management action failed")
+			} else {
+				log.Info().Int("instanceID", instanceID).Int("count", len(batch)).Str("mode", group.verb).Msg("automations: auto management for torrents")
+				autoManagedCount += len(batch)
+				autoManagedHashesSuccess = append(autoManagedHashesSuccess, batch...)
+			}
+		}
+	}
+
+	// Record aggregated auto management activity
+	if autoManagedCount > 0 {
+		detailsJSON, _ := json.Marshal(map[string]any{"count": autoManagedCount})
+		activity := &models.AutomationActivity{
+			InstanceID: instanceID,
+			Hash:       "",
+			Action:     models.ActivityActionAutoManaged,
+			Outcome:    models.ActivityOutcomeSuccess,
+			Details:    detailsJSON,
+		}
+		summary.recordActivity(activity, autoManagedCount)
+		summary.recordRuleCounts(
+			models.ActivityActionAutoManaged,
+			models.ActivityOutcomeSuccess,
+			buildRuleCountsFromHashes(autoManagedHashesSuccess, autoManageRuleByHash),
+		)
+		summary.addTorrentSamples(collectTorrentNamesForHashes(autoManagedHashesSuccess, torrentByHash), 3)
+		if s.activityStore != nil {
+			activityID, err := s.activityStore.CreateWithID(ctx, activity)
+			if err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("automations: failed to record auto management activity")
+			} else if s.activityRuns != nil {
+				items := buildRunItemsFromHashes(autoManagedHashesSuccess, torrentByHash, s.syncManager)
 				if len(items) > 0 {
 					s.activityRuns.Put(activityID, instanceID, items)
 				}
@@ -4510,6 +4628,9 @@ func actionConditionsUseField(ac *models.ActionConditions, field ConditionField)
 	if ac.Reannounce != nil && ac.Reannounce.Enabled {
 		conds = append(conds, ac.Reannounce.Condition)
 	}
+	if ac.AutoManagement != nil {
+		conds = append(conds, ac.AutoManagement.Condition)
+	}
 	if ac.Delete != nil && ac.Delete.Enabled {
 		conds = append(conds, ac.Delete.Condition)
 	}
@@ -4612,6 +4733,33 @@ func rulesUseIncludeHardlinks(rules []*models.Automation) bool {
 		}
 	}
 	return false
+}
+
+// buildCrossMatchSets delegates to the CrossMatcher to build all cross-match sets.
+func (s *Service) buildCrossMatchSets(ctx context.Context, instanceID int, needs CrossMatchNeeds) *CrossMatchResult {
+	if s.crossMatcher != nil {
+		return s.crossMatcher.BuildCrossMatchSets(ctx, instanceID, needs)
+	}
+	return &CrossMatchResult{}
+}
+
+// applyCrossMatchResult populates the EvalContext with cross-match hash sets.
+func (s *Service) applyCrossMatchResult(evalCtx *EvalContext, result *CrossMatchResult) {
+	if result == nil {
+		return
+	}
+	if result.SameInstanceExists != nil {
+		evalCtx.SameInstanceCrossSeedHashSet = result.SameInstanceExists
+	}
+	if result.SameInstanceSeeding != nil {
+		evalCtx.SameInstanceCrossSeedSeedingHashSet = result.SameInstanceSeeding
+	}
+	if result.OtherInstanceExists != nil {
+		evalCtx.CrossInstanceHashSet = result.OtherInstanceExists
+	}
+	if result.OtherInstanceSeeding != nil {
+		evalCtx.CrossInstanceSeedingHashSet = result.OtherInstanceSeeding
+	}
 }
 
 // rulesNeedHardlinkSignatureMap checks if any rule uses FREE_SPACE + includeHardlinks
@@ -4803,6 +4951,7 @@ func (s *Service) recordDryRunActivities(
 	resumeHashes []string,
 	recheckHashes []string,
 	reannounceHashes []string,
+	autoManageHashes []string,
 	tagChanges map[string]*tagChange,
 	categoryBatches map[string][]string,
 	moveBatches map[string][]string,
@@ -4910,6 +5059,7 @@ func (s *Service) recordDryRunActivities(
 		{action: models.ActivityActionResumed, hashes: resumeHashes},
 		{action: models.ActivityActionRechecked, hashes: recheckHashes},
 		{action: models.ActivityActionReannounced, hashes: reannounceHashes},
+		{action: models.ActivityActionAutoManaged, hashes: autoManageHashes},
 	} {
 		if len(a.hashes) == 0 {
 			continue
