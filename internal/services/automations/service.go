@@ -3835,8 +3835,20 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				}
 				collected = append(collected, activity)
 			case <-stopDrain:
-				exportBatchCh <- exportBatch{activities: collected}
-				return
+				// Flush any buffered activities before returning
+				for {
+					select {
+					case activity, ok := <-exportResults:
+						if !ok {
+							exportBatchCh <- exportBatch{activities: collected}
+							return
+						}
+						collected = append(collected, activity)
+					default:
+						exportBatchCh <- exportBatch{activities: collected}
+						return
+					}
+				}
 			}
 		}
 	}()

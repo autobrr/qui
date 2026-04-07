@@ -2050,6 +2050,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         toast.error("Select a target instance")
         return
       }
+      if (nonSelfInstances && !nonSelfInstances.some(i => i.id === submitState.exprExportTargetInstanceId)) {
+        toast.error("Selected target instance no longer exists")
+        setFormState(prev => ({ ...prev, exprExportTargetInstanceId: null }))
+        return
+      }
     }
     if (submitState.deleteEnabled && !submitState.actionCondition) {
       toast.error("Delete requires at least one condition")
