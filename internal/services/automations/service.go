@@ -532,7 +532,7 @@ type Service struct {
 	lastApplied           map[int]map[string]time.Time // instanceID -> hash -> timestamp
 	lastRuleRun           map[ruleKey]time.Time        // per-rule cadence tracking
 	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
-	inFlightExports       map[string]struct{}           // "targetInstanceID:hash" -> in-progress export
+	inFlightExports       map[string]struct{}          // "targetInstanceID:hash" -> in-progress export
 	mu                    sync.RWMutex
 }
 
