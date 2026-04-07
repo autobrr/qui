@@ -9,6 +9,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, ChevronDown, Info, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { z } from "zod"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -51,6 +52,13 @@ import { pieceSizeOptions, TorrentPieceSize } from "./piece-size"
 function parseLines(input: string): string[] {
   return input.split("\n").map((line) => line.trim()).filter(Boolean)
 }
+
+const torrentFilePathSchema = z.string().trim().refine(
+  (value) => value === "" || (!value.endsWith("/") && !value.endsWith("\\")),
+  {
+    message: "Enter a full .torrent file path, not a directory",
+  }
+)
 
 interface PathSuggestionsProps {
   suggestions: string[]
@@ -487,7 +495,15 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                 </form.Field>
 
                 {/* Torrent File Path */}
-                <form.Field name="torrentFilePath">
+                <form.Field
+                  name="torrentFilePath"
+                  validators={{
+                    onChange: ({ value }) => {
+                      const result = torrentFilePathSchema.safeParse(value)
+                      return result.success ? undefined : result.error.issues[0]?.message
+                    },
+                  }}
+                >
                   {(field) => (
                     <div className="space-y-2">
                       <Label htmlFor="torrentFilePath">Save .torrent to (optional)</Label>
@@ -498,6 +514,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                         autoComplete="off"
                         spellCheck={false}
                         value={field.state.value}
+                        aria-invalid={field.state.meta.isTouched && !!field.state.meta.errors[0]}
                         onBlur={field.handleBlur}
                         onKeyDown={supportsPathAutocomplete ? handleTorrentFilePathKeyDown : undefined}
                         onChange={(e) => {
@@ -517,7 +534,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                       )}
 
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>Where to save the .torrent file on the server</span>
+                        <span>Full .torrent file path on the server; directory alone is invalid</span>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Info className="h-4 w-4 cursor-help shrink-0" />
@@ -527,6 +544,9 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                           </TooltipContent>
                         </Tooltip>
                       </div>
+                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                      )}
                     </div>
                   )}
                 </form.Field>

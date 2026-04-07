@@ -156,6 +156,44 @@ func TestSyncManager_TorrentTrackerIsDown_TrackerUpdating(t *testing.T) {
 
 		assert.False(t, sm.torrentTrackerIsDown(&torrent))
 	})
+
+	t.Run("does not mark tracker down from down keyword inside URL", func(t *testing.T) {
+		torrent := qbt.Torrent{
+			AddedOn: time.Now().Add(-2 * time.Hour).Unix(),
+			Trackers: []qbt.TorrentTracker{
+				{
+					Status:  qbt.TrackerStatusNotWorking,
+					Message: "Trumped: https://beyond-hd.me/torrents/paradise-2025-s02e07-the-final-countdown-1080p",
+				},
+			},
+		}
+
+		assert.True(t, sm.torrentIsUnregistered(&torrent))
+		assert.False(t, sm.torrentTrackerIsDown(&torrent))
+		assert.Equal(t, TrackerHealthUnregistered, sm.determineTrackerHealth(&torrent))
+	})
+}
+
+func TestSyncManager_CountTorrentStatuses_TrackerHealthExclusive(t *testing.T) {
+	sm := &SyncManager{}
+	counts := map[string]int{}
+
+	torrent := qbt.Torrent{
+		Hash:    "hash1",
+		AddedOn: time.Now().Add(-2 * time.Hour).Unix(),
+		Trackers: []qbt.TorrentTracker{
+			{
+				Status:  qbt.TrackerStatusNotWorking,
+				Message: "Trumped: https://beyond-hd.me/torrents/paradise-2025-s02e07-the-final-countdown-1080p",
+			},
+		},
+	}
+
+	sm.countTorrentStatuses(torrent, counts)
+
+	assert.Equal(t, 1, counts["all"])
+	assert.Equal(t, 1, counts["unregistered"])
+	assert.Zero(t, counts["tracker_down"])
 }
 
 func TestSyncManager_TorrentBelongsToTrackerDomain(t *testing.T) {
