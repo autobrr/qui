@@ -2614,12 +2614,22 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 		// Export to instance
 		if state.exportToInstance != nil {
+			exportEntry := pendingExportToInstance{
+				hash:     hash,
+				torrent:  torrent,
+				action:   state.exportToInstance,
+				ruleID:   state.exportToInstanceRuleID,
+				ruleName: state.exportToInstanceRuleName,
+			}
+
 			// Skip if the torrent already exists on the target instance
 			if _, exists, err := s.syncManager.HasTorrentByAnyHash(ctx, state.exportToInstance.TargetInstanceID, []string{hash}); err != nil {
 				log.Warn().Err(err).
 					Str("hash", hash).
 					Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
-					Msg("automations: failed to check target instance for existing torrent, skipping export")
+					Msg("automations: failed to check target instance for existing torrent")
+				exportEntry.failureReason = "Failed to check target instance: " + err.Error()
+				exportExecutions = append(exportExecutions, exportEntry)
 			} else if exists {
 				log.Debug().
 					Str("hash", hash).
@@ -2635,18 +2645,14 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 							Str("hash", hash).
 							Str("rawPath", resolvedPath).
 							Str("rule", state.exportToInstanceRuleName).
-							Msg("automations: skipping export, save path template resolution failed")
+							Msg("automations: save path template resolution failed")
+						exportEntry.failureReason = "Save path template resolution failed"
+						exportExecutions = append(exportExecutions, exportEntry)
 						continue
 					}
 				}
-				exportExecutions = append(exportExecutions, pendingExportToInstance{
-					hash:             hash,
-					torrent:          torrent,
-					action:           state.exportToInstance,
-					resolvedSavePath: resolvedPath,
-					ruleID:           state.exportToInstanceRuleID,
-					ruleName:         state.exportToInstanceRuleName,
-				})
+				exportEntry.resolvedSavePath = resolvedPath
+				exportExecutions = append(exportExecutions, exportEntry)
 			}
 		}
 
@@ -5861,6 +5867,7 @@ func (s *Service) executeExternalProgramsFromAutomation(_ context.Context, insta
 }
 
 // pendingExportToInstance tracks a pending export-to-instance execution.
+// If failureReason is set, the export failed preflight and should only record a failure activity.
 type pendingExportToInstance struct {
 	hash             string
 	torrent          qbt.Torrent
@@ -5868,6 +5875,7 @@ type pendingExportToInstance struct {
 	resolvedSavePath string
 	ruleID           int
 	ruleName         string
+	failureReason    string
 }
 
 // executeExportToInstance exports torrents from the source instance and adds them to target instances.
@@ -5894,6 +5902,32 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 	sem := make(chan struct{}, maxConcurrentExports)
 
 	for _, exec := range executions {
+		// Handle preflight failures without spawning a goroutine
+		if exec.failureReason != "" {
+			if s.activityStore != nil {
+				ruleID := exec.ruleID
+				detailsJSON, _ := json.Marshal(map[string]any{
+					"targetInstanceId": exec.action.TargetInstanceID,
+				})
+				trackerDomain := getTrackerForTorrent(&exec.torrent, s.syncManager)
+				if err := s.activityStore.Create(context.Background(), &models.AutomationActivity{
+					InstanceID:    sourceInstanceID,
+					Hash:          exec.hash,
+					TorrentName:   exec.torrent.Name,
+					TrackerDomain: trackerDomain,
+					Action:        models.ActivityActionExportedToInstance,
+					RuleID:        &ruleID,
+					RuleName:      exec.ruleName,
+					Outcome:       models.ActivityOutcomeFailed,
+					Reason:        exec.failureReason,
+					Details:       detailsJSON,
+				}); err != nil {
+					log.Warn().Err(err).Str("hash", exec.hash).Msg("automations: failed to log export activity")
+				}
+			}
+			continue
+		}
+
 		// Use context.Background() since parent context may be cancelled before execution completes
 		go func() { //nolint:gosec // G118 - intentional: goroutine outlives request context
 			sem <- struct{}{}

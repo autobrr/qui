@@ -1189,6 +1189,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return () => { cancelled = true }
   }, [open, rule, mapDomainsToOptionValues])
 
+  // Clear stale export target ID if the instance no longer exists
+  useEffect(() => {
+    if (!open || instancesLoading || !instances) return
+    setFormState(prev => {
+      if (!prev.exprExportTargetInstanceId) return prev
+      const available = instances.filter(i => i.id !== instanceId)
+      if (available.some(i => i.id === prev.exprExportTargetInstanceId)) return prev
+      return { ...prev, exprExportTargetInstanceId: null }
+    })
+  }, [open, instances, instancesLoading, instanceId])
+
   useEffect(() => {
     if (!open) {
       setShowDryRunPrompt(false)
@@ -1797,6 +1808,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const applyEnabledChange = useCallback((checked: boolean, options?: { forceDryRun?: boolean }) => {
     if (checked && isDeleteRule && !formState.actionCondition) {
       toast.error("Delete requires at least one condition")
+      return
+    }
+    if (checked && formState.exportToInstanceEnabled && !formState.exprExportTargetInstanceId) {
+      toast.error("Select a target instance")
       return
     }
 
