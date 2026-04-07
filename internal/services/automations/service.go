@@ -4667,6 +4667,9 @@ func actionConditionsUseField(ac *models.ActionConditions, field ConditionField)
 	if ac.ExternalProgram != nil && ac.ExternalProgram.Enabled {
 		conds = append(conds, ac.ExternalProgram.Condition)
 	}
+	if ac.ExportToInstance != nil && ac.ExportToInstance.Enabled {
+		conds = append(conds, ac.ExportToInstance.Condition)
+	}
 	for _, cond := range conds {
 		if conditionTreeUsesField(cond, field) {
 			return true
@@ -5891,7 +5894,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 
 				if s.activityStore != nil {
 					ruleID := exec.ruleID
-					_ = s.activityStore.Create(ctx, &models.AutomationActivity{
+					if err := s.activityStore.Create(context.Background(), &models.AutomationActivity{
 						InstanceID:  sourceInstanceID,
 						Hash:        exec.hash,
 						TorrentName: exec.torrent.Name,
@@ -5900,7 +5903,9 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 						RuleName:    exec.ruleName,
 						Outcome:     models.ActivityOutcomeFailed,
 						Reason:      "Export failed: " + err.Error(),
-					})
+					}); err != nil {
+						log.Warn().Err(err).Str("hash", exec.hash).Msg("automations: failed to log export activity")
+					}
 				}
 				return
 			}
@@ -5941,7 +5946,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 
 				if s.activityStore != nil {
 					ruleID := exec.ruleID
-					_ = s.activityStore.Create(ctx, &models.AutomationActivity{
+					if err := s.activityStore.Create(context.Background(), &models.AutomationActivity{
 						InstanceID:  sourceInstanceID,
 						Hash:        exec.hash,
 						TorrentName: exec.torrent.Name,
@@ -5950,7 +5955,9 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 						RuleName:    exec.ruleName,
 						Outcome:     models.ActivityOutcomeFailed,
 						Reason:      "Add to target failed: " + err.Error(),
-					})
+					}); err != nil {
+						log.Warn().Err(err).Str("hash", exec.hash).Msg("automations: failed to log export activity")
+					}
 				}
 				return
 			}
@@ -5970,7 +5977,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 					"targetInstanceId": exec.action.TargetInstanceID,
 					"savePath":         exec.resolvedSavePath,
 				})
-				_ = s.activityStore.Create(ctx, &models.AutomationActivity{
+				if err := s.activityStore.Create(context.Background(), &models.AutomationActivity{
 					InstanceID:  sourceInstanceID,
 					Hash:        exec.hash,
 					TorrentName: exec.torrent.Name,
@@ -5979,7 +5986,9 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 					RuleName:    exec.ruleName,
 					Outcome:     models.ActivityOutcomeSuccess,
 					Details:     detailsJSON,
-				})
+				}); err != nil {
+					log.Warn().Err(err).Str("hash", exec.hash).Msg("automations: failed to log export activity")
+				}
 			}
 		}()
 	}
