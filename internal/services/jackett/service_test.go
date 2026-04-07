@@ -334,10 +334,11 @@ func TestLoadCachedSearchPortionReturnsPartialCoverage(t *testing.T) {
 	}
 	req := &TorznabSearchRequest{Query: "My Query"}
 	payload := searchCacheKeyPayload{
-		Scope:       searchCacheScopeCrossSeed,
-		Query:       canonicalizeQuery(req.Query),
-		IndexerIDs:  []int{1, 2},
-		ContentType: contentTypeTVShow,
+		SchemaVersion: searchCacheSchemaVersion,
+		Scope:         searchCacheScopeCrossSeed,
+		Query:         canonicalizeQuery(req.Query),
+		IndexerIDs:    []int{1, 2},
+		ContentType:   contentTypeTVShow,
 	}
 	full, base, err := buildSearchCacheFingerprints(payload)
 	if err != nil {
@@ -395,9 +396,10 @@ func TestLoadCachedSearchPortionReturnsPartialCoverage(t *testing.T) {
 
 func TestSelectCacheEntryForCoveragePrefersMostCoverage(t *testing.T) {
 	payload := searchCacheKeyPayload{
-		Scope:       searchCacheScopeCrossSeed,
-		Query:       "query",
-		ContentType: contentTypeTVShow,
+		SchemaVersion: searchCacheSchemaVersion,
+		Scope:         searchCacheScopeCrossSeed,
+		Query:         "query",
+		ContentType:   contentTypeTVShow,
 	}
 	firstFull, base, err := buildSearchCacheFingerprints(payload)
 	if err != nil {
@@ -419,6 +421,30 @@ func TestSelectCacheEntryForCoveragePrefersMostCoverage(t *testing.T) {
 	}
 	if entry, coverage := selectCacheEntryForCoverage([]*models.TorznabSearchCacheEntry{first}, []int{1, 3}, base, true); entry != nil || coverage != nil {
 		t.Fatalf("expected nil when full coverage unavailable")
+	}
+}
+
+func TestBuildBaseFingerprintFromRaw_LegacyPayloadDoesNotMatchCurrentSchema(t *testing.T) {
+	legacyRaw := `{"scope":"dir-scan","query":"query","content_type":1}`
+
+	base, err := buildBaseFingerprintFromRaw(legacyRaw)
+	if err != nil {
+		t.Fatalf("buildBaseFingerprintFromRaw: %v", err)
+	}
+
+	currentPayload := searchCacheKeyPayload{
+		SchemaVersion: searchCacheSchemaVersion,
+		Scope:         searchCacheScopeDirScan,
+		Query:         "query",
+		ContentType:   contentTypeMovie,
+	}
+	_, currentBase, err := buildSearchCacheFingerprints(currentPayload)
+	if err != nil {
+		t.Fatalf("buildSearchCacheFingerprints: %v", err)
+	}
+
+	if base == currentBase {
+		t.Fatal("expected legacy cache fingerprint to differ from current schema fingerprint")
 	}
 }
 

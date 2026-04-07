@@ -111,6 +111,7 @@ const (
 	searchCacheScopeCrossSeed = "cross_seed"
 	searchCacheScopeGeneral   = "general"
 	searchCacheScopeDirScan   = "dir-scan"
+	searchCacheSchemaVersion  = 2
 
 	searchCacheSourceNetwork = "network"
 	searchCacheSourceCache   = "cache"
@@ -236,21 +237,22 @@ type searchCacheSignature struct {
 }
 
 type searchCacheKeyPayload struct {
-	Scope       string      `json:"scope"`
-	Query       string      `json:"query"`
-	Categories  []int       `json:"categories,omitempty"`
-	IndexerIDs  []int       `json:"indexer_ids,omitempty"`
-	IMDbID      string      `json:"imdb_id,omitempty"`
-	TVDbID      string      `json:"tvdb_id,omitempty"`
-	TMDbID      int         `json:"tmdb_id,omitempty"`
-	TVMazeID    int         `json:"tvmaze_id,omitempty"`
-	Year        int         `json:"year,omitempty"`
-	Season      *int        `json:"season,omitempty"`
-	Episode     *int        `json:"episode,omitempty"`
-	Artist      string      `json:"artist,omitempty"`
-	Album       string      `json:"album,omitempty"`
-	SearchMode  string      `json:"search_mode,omitempty"`
-	ContentType contentType `json:"content_type"`
+	SchemaVersion int         `json:"schema_version"`
+	Scope         string      `json:"scope"`
+	Query         string      `json:"query"`
+	Categories    []int       `json:"categories,omitempty"`
+	IndexerIDs    []int       `json:"indexer_ids,omitempty"`
+	IMDbID        string      `json:"imdb_id,omitempty"`
+	TVDbID        string      `json:"tvdb_id,omitempty"`
+	TMDbID        int         `json:"tmdb_id,omitempty"`
+	TVMazeID      int         `json:"tvmaze_id,omitempty"`
+	Year          int         `json:"year,omitempty"`
+	Season        *int        `json:"season,omitempty"`
+	Episode       *int        `json:"episode,omitempty"`
+	Artist        string      `json:"artist,omitempty"`
+	Album         string      `json:"album,omitempty"`
+	SearchMode    string      `json:"search_mode,omitempty"`
+	ContentType   contentType `json:"content_type"`
 }
 
 // TorrentDownloadRequest captures the metadata required to download (and cache) a torrent payload.
@@ -1183,21 +1185,22 @@ func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequ
 	query := canonicalizeQuery(req.Query)
 
 	payload := searchCacheKeyPayload{
-		Scope:       scope,
-		Query:       query,
-		Categories:  categories,
-		IndexerIDs:  normalizedIndexerIDs,
-		IMDbID:      strings.TrimSpace(req.IMDbID),
-		TVDbID:      strings.TrimSpace(req.TVDbID),
-		TMDbID:      req.TMDbID,
-		TVMazeID:    req.TVMazeID,
-		Year:        req.Year,
-		Season:      req.Season,
-		Episode:     req.Episode,
-		Artist:      strings.TrimSpace(req.Artist),
-		Album:       strings.TrimSpace(req.Album),
-		SearchMode:  searchMode,
-		ContentType: detectedType,
+		SchemaVersion: searchCacheSchemaVersion,
+		Scope:         scope,
+		Query:         query,
+		Categories:    categories,
+		IndexerIDs:    normalizedIndexerIDs,
+		IMDbID:        strings.TrimSpace(req.IMDbID),
+		TVDbID:        strings.TrimSpace(req.TVDbID),
+		TMDbID:        req.TMDbID,
+		TVMazeID:      req.TVMazeID,
+		Year:          req.Year,
+		Season:        req.Season,
+		Episode:       req.Episode,
+		Artist:        strings.TrimSpace(req.Artist),
+		Album:         strings.TrimSpace(req.Album),
+		SearchMode:    searchMode,
+		ContentType:   detectedType,
 	}
 
 	fullFingerprint, baseFingerprint, err := buildSearchCacheFingerprints(payload)

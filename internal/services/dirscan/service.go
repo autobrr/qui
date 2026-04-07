@@ -2465,7 +2465,7 @@ func describeDirScanNoMatchHints(
 func describeDirScanDecisionHints(decision dirScanMatchDecision) (hint string, hints []string) {
 	if decision.Reason == "flexible size-only match lacks title or ID corroboration" {
 		hints = append(hints, "size matched, but the candidate release title/ID did not corroborate the searchee")
-		hints = append(hints, "this often happens when an indexer falls back from IMDb/TMDb lookup to plain title search")
+		hints = append(hints, "this often happens when an indexer falls back from IMDb/TMDb/TVDb lookup to plain title search")
 		hints = append(hints, "tighten total size tolerance or use strict mode when scanning renamed library folders")
 		return "size-only match rejected", hints
 	}
