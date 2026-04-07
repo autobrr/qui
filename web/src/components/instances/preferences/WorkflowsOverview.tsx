@@ -190,6 +190,8 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Move"
     case "external_program":
       return "External program"
+    case "exported_to_instance":
+      return "Export to instance"
     case "dry_run_no_match":
       return "Dry-run"
     default:
@@ -806,6 +808,7 @@ export function WorkflowsOverview({
     moved: "bg-green-500/10 text-green-500 border-green-500/20",
     external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
     auto_managed: "bg-rose-500/10 text-rose-500 border-rose-500/20",
+    exported_to_instance: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
     dry_run_no_match: "bg-slate-500/10 text-slate-500 border-slate-500/20",
   }
 

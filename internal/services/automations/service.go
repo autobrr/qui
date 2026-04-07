@@ -2188,6 +2188,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// External program execution tracking
 	var programExecutions []pendingProgramExec
+	// Export to instance execution tracking
+	var exportExecutions []pendingExportToInstance
 	deleteHashesByMode := make(map[string][]string)
 	pendingByHash := make(map[string]pendingDeletion)
 
@@ -2608,6 +2610,24 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			})
 		}
 
+		// Export to instance
+		if state.exportToInstance != nil {
+			resolvedPath := state.exportToInstance.SavePath
+			if resolvedPath != "" {
+				if resolved, ok := resolveMovePath(resolvedPath, torrent, state, evalCtx); ok {
+					resolvedPath = resolved
+				}
+			}
+			exportExecutions = append(exportExecutions, pendingExportToInstance{
+				hash:             hash,
+				torrent:          torrent,
+				action:           state.exportToInstance,
+				resolvedSavePath: resolvedPath,
+				ruleID:           state.exportToInstanceRuleID,
+				ruleName:         state.exportToInstanceRuleName,
+			})
+		}
+
 	}
 
 	if dryRun {
@@ -2627,6 +2647,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			moveBatches,
 			pendingByHash,
 			programExecutions,
+			exportExecutions,
 			torrentByHash,
 			torrents,
 			states,
@@ -3637,6 +3658,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// Execute external programs (async, fire-and-forget)
 	s.executeExternalProgramsFromAutomation(ctx, instanceID, programExecutions)
+
+	// Execute export to instance (async, fire-and-forget)
+	s.executeExportToInstance(ctx, instanceID, exportExecutions)
 
 	// Execute deletions
 	//
@@ -4957,6 +4981,7 @@ func (s *Service) recordDryRunActivities(
 	moveBatches map[string][]string,
 	pendingByHash map[string]pendingDeletion,
 	programExecutions []pendingProgramExec,
+	exportExecutions []pendingExportToInstance,
 	torrentByHash map[string]qbt.Torrent,
 	torrents []qbt.Torrent,
 	states map[string]*torrentDesiredState,
@@ -5443,6 +5468,20 @@ func (s *Service) recordDryRunActivities(
 		}
 	}
 
+	// Export to instance
+	if len(exportExecutions) > 0 {
+		hashesByTarget := make(map[int][]string)
+		for _, exec := range exportExecutions {
+			hashesByTarget[exec.action.TargetInstanceID] = append(hashesByTarget[exec.action.TargetInstanceID], exec.hash)
+		}
+		for targetID, hashes := range hashesByTarget {
+			uniqueHashes := dedupeHashes(hashes)
+			createActivity(models.ActivityActionExportedToInstance, map[string]any{"targetInstanceId": targetID, "count": len(uniqueHashes)}, func() []ActivityRunTorrent {
+				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
+			})
+		}
+	}
+
 	// Deletes
 	if len(pendingByHash) > 0 {
 		hashesByAction := make(map[string][]string)
@@ -5791,6 +5830,147 @@ func (s *Service) executeExternalProgramsFromAutomation(_ context.Context, insta
 					Str("ruleName", ruleName).
 					Str("torrentHash", torrent.Hash).
 					Msg("automation: external program execution failed")
+			}
+		}()
+	}
+}
+
+// pendingExportToInstance tracks a pending export-to-instance execution.
+type pendingExportToInstance struct {
+	hash             string
+	torrent          qbt.Torrent
+	action           *models.ExportToInstanceAction
+	resolvedSavePath string
+	ruleID           int
+	ruleName         string
+}
+
+// executeExportToInstance exports torrents from the source instance and adds them to target instances.
+// Exports are executed asynchronously (fire-and-forget) to avoid blocking the automation run.
+func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID int, executions []pendingExportToInstance) {
+	if len(executions) == 0 {
+		return
+	}
+
+	// Group by target for logging
+	targetCounts := make(map[int]int)
+	for _, exec := range executions {
+		targetCounts[exec.action.TargetInstanceID]++
+	}
+
+	log.Debug().
+		Int("instanceID", sourceInstanceID).
+		Int("executions", len(executions)).
+		Interface("targetCounts", targetCounts).
+		Msg("automations: exporting torrents to instances")
+
+	for _, exec := range executions {
+		go func() {
+			ctx := context.Background()
+
+			// 1. Export .torrent from source instance
+			torrentBytes, _, _, err := s.syncManager.ExportTorrent(ctx, sourceInstanceID, exec.hash)
+			if err != nil {
+				log.Error().
+					Err(err).
+					Int("sourceInstanceID", sourceInstanceID).
+					Int("targetInstanceID", exec.action.TargetInstanceID).
+					Str("hash", exec.hash).
+					Str("name", exec.torrent.Name).
+					Str("rule", exec.ruleName).
+					Msg("automations: export torrent failed")
+
+				if s.activityStore != nil {
+					ruleID := exec.ruleID
+					_ = s.activityStore.Create(ctx, &models.AutomationActivity{
+						InstanceID:  sourceInstanceID,
+						Hash:        exec.hash,
+						TorrentName: exec.torrent.Name,
+						Action:      models.ActivityActionExportedToInstance,
+						RuleID:      &ruleID,
+						RuleName:    exec.ruleName,
+						Outcome:     models.ActivityOutcomeFailed,
+						Reason:      "Export failed: " + err.Error(),
+					})
+				}
+				return
+			}
+
+			// 2. Build options for AddTorrent on target
+			options := map[string]string{
+				"autoTMM": "false",
+			}
+			if exec.resolvedSavePath != "" {
+				options["savepath"] = exec.resolvedSavePath
+			}
+			if exec.action.Category != "" {
+				options["category"] = exec.action.Category
+			}
+			if len(exec.action.Tags) > 0 {
+				options["tags"] = strings.Join(exec.action.Tags, ",")
+			}
+			if exec.action.Paused {
+				options["paused"] = "true"
+			}
+			if exec.action.SkipCheckingEnabled() {
+				options["skip_checking"] = "true"
+			}
+			if exec.action.ContentLayout != "" {
+				options["contentLayout"] = exec.action.ContentLayout
+			}
+
+			// 3. Add to target instance
+			if err := s.syncManager.AddTorrent(ctx, exec.action.TargetInstanceID, torrentBytes, options); err != nil {
+				log.Error().
+					Err(err).
+					Int("sourceInstanceID", sourceInstanceID).
+					Int("targetInstanceID", exec.action.TargetInstanceID).
+					Str("hash", exec.hash).
+					Str("name", exec.torrent.Name).
+					Str("rule", exec.ruleName).
+					Msg("automations: add torrent to target instance failed")
+
+				if s.activityStore != nil {
+					ruleID := exec.ruleID
+					_ = s.activityStore.Create(ctx, &models.AutomationActivity{
+						InstanceID:  sourceInstanceID,
+						Hash:        exec.hash,
+						TorrentName: exec.torrent.Name,
+						Action:      models.ActivityActionExportedToInstance,
+						RuleID:      &ruleID,
+						RuleName:    exec.ruleName,
+						Outcome:     models.ActivityOutcomeFailed,
+						Reason:      "Add to target failed: " + err.Error(),
+					})
+				}
+				return
+			}
+
+			log.Info().
+				Int("sourceInstanceID", sourceInstanceID).
+				Int("targetInstanceID", exec.action.TargetInstanceID).
+				Str("hash", exec.hash).
+				Str("name", exec.torrent.Name).
+				Str("savePath", exec.resolvedSavePath).
+				Str("rule", exec.ruleName).
+				Msg("automations: exported torrent to instance")
+
+			if s.activityStore != nil {
+				ruleID := exec.ruleID
+				detailsJSON, _ := json.Marshal(map[string]any{
+					"targetInstanceId": exec.action.TargetInstanceID,
+					"savePath":         exec.resolvedSavePath,
+				})
+				_ = s.activityStore.Create(ctx, &models.AutomationActivity{
+					InstanceID:  sourceInstanceID,
+					Hash:        exec.hash,
+					TorrentName: exec.torrent.Name,
+					Action:      models.ActivityActionExportedToInstance,
+					RuleID:      &ruleID,
+					RuleName:    exec.ruleName,
+					Outcome:     models.ActivityOutcomeSuccess,
+					Details:     detailsJSON,
+				})
 			}
 		}()
 	}
