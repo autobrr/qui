@@ -1101,7 +1101,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprExportTags = (conditions.exportToInstance.tags ?? []).join(", ")
             exprExportPaused = conditions.exportToInstance.paused ?? false
             exprExportSkipChecking = conditions.exportToInstance.skipChecking ?? true
-            exprExportContentLayout = (conditions.exportToInstance.contentLayout ?? "") as FormState["exprExportContentLayout"]
+            const rawLayout = conditions.exportToInstance.contentLayout ?? ""
+            exprExportContentLayout = (["Original", "Subfolder", "NoSubfolder"] as const).includes(rawLayout as "Original" | "Subfolder" | "NoSubfolder")
+              ? rawLayout as FormState["exprExportContentLayout"]
+              : ""
           }
         }
 
@@ -1444,7 +1447,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         condition: input.actionCondition ?? undefined,
       }
     }
-    if (input.exportToInstanceEnabled && input.exprExportTargetInstanceId) {
+    if (input.exportToInstanceEnabled) {
+      if (!input.exprExportTargetInstanceId) {
+        throw new Error("Export to instance requires a target instance")
+      }
       const tags = input.exprExportTags.split(",").map(t => t.trim()).filter(Boolean)
       conditions.exportToInstance = {
         enabled: true,

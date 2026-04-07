@@ -5894,9 +5894,9 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 	sem := make(chan struct{}, maxConcurrentExports)
 
 	for _, exec := range executions {
-		sem <- struct{}{} // Acquire before spawning to limit goroutine creation
 		// Use context.Background() since parent context may be cancelled before execution completes
 		go func() { //nolint:gosec // G118 - intentional: goroutine outlives request context
+			sem <- struct{}{}
 			defer func() { <-sem }()
 
 			ctx, cancel := context.WithTimeout(context.Background(), exportTimeout)
