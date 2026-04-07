@@ -1781,16 +1781,17 @@ func (s *Service) tryMatchAndInject(
 	tags := mergeStringLists(settings.Tags, dir.Tags)
 
 	injectReq := &InjectRequest{
-		InstanceID:     dir.TargetInstanceID,
-		TorrentBytes:   torrentData,
-		ParsedTorrent:  parsed,
-		Searchee:       searchee,
-		MatchResult:    matchResult,
-		SearchResult:   result,
-		QbitPathPrefix: dir.QbitPathPrefix,
-		Category:       category,
-		Tags:           tags,
-		StartPaused:    settings.StartPaused,
+		InstanceID:           dir.TargetInstanceID,
+		TorrentBytes:         torrentData,
+		ParsedTorrent:        parsed,
+		Searchee:             searchee,
+		MatchResult:          matchResult,
+		SearchResult:         result,
+		QbitPathPrefix:       dir.QbitPathPrefix,
+		Category:             category,
+		Tags:                 tags,
+		StartPaused:          settings.StartPaused,
+		DownloadMissingFiles: settings.DownloadMissingFiles,
 	}
 
 	trackerDomain := crossseed.ParseTorrentAnnounceDomain(torrentData)

@@ -437,12 +437,12 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 	}
 
 	for _, t := range enriched {
-		// Health counts
-		if sm.torrentIsUnregistered(&t) {
+		// Health counts are mutually exclusive.
+		switch sm.determineTrackerHealth(&t) {
+		case TrackerHealthUnregistered:
 			counts.Unregistered++
 			counts.UnregisteredSet[t.Hash] = struct{}{}
-		}
-		if sm.torrentTrackerIsDown(&t) {
+		case TrackerHealthDown:
 			counts.TrackerDown++
 			counts.TrackerDownSet[t.Hash] = struct{}{}
 		}
@@ -2624,7 +2624,7 @@ func (sm *SyncManager) torrentTrackerIsDown(torrent *qbt.Torrent) bool {
 		case qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
 			hasWorking = true
 		case qbt.TrackerStatusNotWorking:
-			if trackerMessageMatches(tracker.Message, trackerDownStatuses) {
+			if TrackerMessageMatchesDown(tracker.Message) {
 				hasDown = true
 			}
 		default:
@@ -2875,11 +2875,10 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 	// Count "all"
 	counts["all"]++
 
-	if sm.torrentIsUnregistered(&torrent) {
+	switch sm.determineTrackerHealth(&torrent) {
+	case TrackerHealthUnregistered:
 		counts["unregistered"]++
-	}
-
-	if sm.torrentTrackerIsDown(&torrent) {
+	case TrackerHealthDown:
 		counts["tracker_down"]++
 	}
 
@@ -4404,9 +4403,9 @@ func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState
 func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bool {
 	switch strings.ToLower(status) {
 	case "unregistered":
-		return sm.torrentIsUnregistered(&torrent)
+		return sm.determineTrackerHealth(&torrent) == TrackerHealthUnregistered
 	case "tracker_down":
-		return sm.torrentTrackerIsDown(&torrent)
+		return sm.determineTrackerHealth(&torrent) == TrackerHealthDown
 	}
 
 	// Handle special cases first

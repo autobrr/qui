@@ -370,6 +370,42 @@ func TestConditionsUseFreeSpace(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name: "autoManagement enabled with FREE_SPACE returns true",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled: true,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldFreeSpace,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "autoManagement disabled with FREE_SPACE returns true (presence semantics)",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled: false,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldFreeSpace,
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "autoManagement enabled without FREE_SPACE returns false",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled: true,
+					Condition: &automations.RuleCondition{
+						Field: automations.FieldSize,
+					},
+				},
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -377,6 +413,111 @@ func TestConditionsUseFreeSpace(t *testing.T) {
 			got := conditionsUseFreeSpace(tt.conditions)
 			if got != tt.want {
 				t.Errorf("conditionsUseFreeSpace() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestConditionTreesForValidation_AutoManagement(t *testing.T) {
+	tests := []struct {
+		name       string
+		conditions *models.ActionConditions
+		wantCount  int
+	}{
+		{
+			name: "autoManagement enabled is included",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled:   true,
+					Condition: &automations.RuleCondition{Field: automations.FieldSize},
+				},
+			},
+			wantCount: 1,
+		},
+		{
+			name: "autoManagement disabled is included (presence semantics)",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled:   false,
+					Condition: &automations.RuleCondition{Field: automations.FieldSize},
+				},
+			},
+			wantCount: 1,
+		},
+		{
+			name: "autoManagement nil is excluded",
+			conditions: &models.ActionConditions{
+				AutoManagement: nil,
+			},
+			wantCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			trees := conditionTreesForValidation(tt.conditions)
+			if len(trees) != tt.wantCount {
+				t.Errorf("conditionTreesForValidation() returned %d trees, want %d", len(trees), tt.wantCount)
+			}
+		})
+	}
+}
+
+func TestCollectConditionRegexErrors_AutoManagement(t *testing.T) {
+	tests := []struct {
+		name       string
+		conditions *models.ActionConditions
+		wantErrs   int
+	}{
+		{
+			name: "autoManagement with invalid regex returns error",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled: true,
+					Condition: &automations.RuleCondition{
+						Field:    automations.FieldTracker,
+						Operator: models.OperatorMatches,
+						Value:    "[invalid",
+					},
+				},
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "autoManagement disabled with invalid regex still returns error",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled: false,
+					Condition: &automations.RuleCondition{
+						Field:    automations.FieldTracker,
+						Operator: models.OperatorMatches,
+						Value:    "[invalid",
+					},
+				},
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "autoManagement with valid regex returns no errors",
+			conditions: &models.ActionConditions{
+				AutoManagement: &models.AutoManagementAction{
+					Enabled: true,
+					Condition: &automations.RuleCondition{
+						Field:    automations.FieldTracker,
+						Operator: models.OperatorMatches,
+						Value:    "^tracker\\.example\\.com$",
+					},
+				},
+			},
+			wantErrs: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := collectConditionRegexErrors(tt.conditions)
+			if len(errs) != tt.wantErrs {
+				t.Errorf("collectConditionRegexErrors() returned %d errors, want %d", len(errs), tt.wantErrs)
 			}
 		})
 	}
