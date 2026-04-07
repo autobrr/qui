@@ -3810,22 +3810,45 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		}
 	}
 
-	// Collect export results into summary before notification.
-	// Drain in a goroutine with its own timeout to avoid blocking the ApplyTimeout context,
-	// since export workers use a separate 2-minute timeout.
-	exportDone := make(chan struct{})
+	// Collect export results before notification.
+	// Drain in a goroutine to avoid blocking the ApplyTimeout context.
+	// Activities are collected into a slice and sent back to the main goroutine
+	// so only the main goroutine mutates summary.
+	type exportBatch struct {
+		activities []*models.AutomationActivity
+	}
+	exportBatchCh := make(chan exportBatch, 1)
+	stopDrain := make(chan struct{})
 	go func() {
-		defer close(exportDone)
-		for activity := range exportResults {
-			summary.recordActivity(activity, 1)
+		var collected []*models.AutomationActivity
+		for {
+			select {
+			case activity, ok := <-exportResults:
+				if !ok {
+					exportBatchCh <- exportBatch{activities: collected}
+					return
+				}
+				collected = append(collected, activity)
+			case <-stopDrain:
+				exportBatchCh <- exportBatch{activities: collected}
+				return
+			}
 		}
 	}()
 
 	// Wait for export drain with a bounded timeout independent of ApplyTimeout
 	select {
-	case <-exportDone:
-		// All export results collected
+	case batch := <-exportBatchCh:
+		for _, activity := range batch.activities {
+			summary.recordActivity(activity, 1)
+		}
 	case <-time.After(3 * time.Minute):
+		close(stopDrain)
+		// Drain whatever was collected before timeout
+		batch := <-exportBatchCh
+		for _, activity := range batch.activities {
+			summary.recordActivity(activity, 1)
+		}
 		log.Warn().Int("instanceID", instanceID).Msg("automations: timed out waiting for export results, notifying with partial summary")
 	}
 

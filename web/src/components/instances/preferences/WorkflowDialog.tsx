@@ -910,7 +910,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   }, [formState.exprGrouping?.groups])
 
   const nonSelfInstances = useMemo(
-    () => instances?.filter(i => i.id !== instanceId) ?? [],
+    () => instances ? instances.filter(i => i.id !== instanceId) : undefined,
     [instances, instanceId],
   )
 
@@ -1194,15 +1194,16 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return () => { cancelled = true }
   }, [open, rule, mapDomainsToOptionValues])
 
-  // Clear stale export target ID if the instance no longer exists
+  // Clear stale export target ID if the instance no longer exists.
+  // Only acts when nonSelfInstances is defined (instances loaded), not during loading/error.
   useEffect(() => {
-    if (!open || instancesLoading) return
+    if (!open || !nonSelfInstances) return
     setFormState(prev => {
       if (!prev.exprExportTargetInstanceId) return prev
       if (nonSelfInstances.some(i => i.id === prev.exprExportTargetInstanceId)) return prev
       return { ...prev, exprExportTargetInstanceId: null }
     })
-  }, [open, nonSelfInstances, instancesLoading])
+  }, [open, nonSelfInstances])
 
   useEffect(() => {
     if (!open) {
@@ -3394,7 +3395,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                               Loading instances...
                             </div>
-                          ) : nonSelfInstances.length > 0 ? (
+                          ) : nonSelfInstances && nonSelfInstances.length > 0 ? (
                             <Select
                               value={formState.exprExportTargetInstanceId?.toString() ?? ""}
                               onValueChange={(value) => setFormState(prev => ({
