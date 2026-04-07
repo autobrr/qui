@@ -280,6 +280,15 @@ function formatExternalProgramSummary(details: AutomationActivity["details"], ou
   return outcome === "failed" ? `${programName} failed` : `${programName} executed`
 }
 
+function formatExportedToInstanceSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const count = details?.count ?? 1
+  if (outcome === "failed") {
+    return formatCountWithVerb(count, "torrent", "failed to export")
+  }
+  const verb = outcome === "dry-run" ? "would be exported" : "exported"
+  return formatCountWithVerb(count, "torrent", verb)
+}
+
 function formatDeleteDryRunSummary(details: AutomationActivity["details"], action: AutomationActivity["action"]): string {
   const count = details?.count ?? 0
   const label = action === "deleted_ratio"
@@ -303,6 +312,7 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
   "reannounced",
   "auto_managed",
   "moved",
+  "exported_to_instance",
 ])
 
 function isRunSummary(event: AutomationActivity): boolean {
@@ -1242,6 +1252,10 @@ export function WorkflowsOverview({
                                           <span className="font-medium text-sm block">
                                             {formatExternalProgramSummary(event.details, event.outcome)}
                                           </span>
+                                        ) : event.action === "exported_to_instance" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatExportedToInstanceSummary(event.details, event.outcome)}
+                                          </span>
                                         ) : event.action === "dry_run_no_match" ? (
                                           <span className="font-medium text-sm block">
                                             No torrents matched this dry-run
@@ -1274,7 +1288,9 @@ export function WorkflowsOverview({
                                               ? "Dry run"
                                               : event.action === "external_program"
                                                 ? (event.outcome === "success" ? "Executed" : "Failed")
-                                                : (event.outcome === "success" ? "Removed" : "Failed")}
+                                                : event.action === "exported_to_instance"
+                                                  ? (event.outcome === "success" ? "Exported" : "Failed")
+                                                  : (event.outcome === "success" ? "Removed" : "Failed")}
                                           </Badge>
                                         )}
                                       </div>

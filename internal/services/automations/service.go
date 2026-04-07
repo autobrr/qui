@@ -5864,10 +5864,18 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 		Interface("targetCounts", targetCounts).
 		Msg("automations: exporting torrents to instances")
 
+	const maxConcurrentExports = 5
+	const exportTimeout = 2 * time.Minute
+	sem := make(chan struct{}, maxConcurrentExports)
+
 	for _, exec := range executions {
 		// Use context.Background() since parent context may be cancelled before execution completes
 		go func() { //nolint:gosec // G118 - intentional: goroutine outlives request context
-			ctx := context.Background()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			ctx, cancel := context.WithTimeout(context.Background(), exportTimeout)
+			defer cancel()
 
 			// 1. Export .torrent from source instance
 			torrentBytes, _, _, err := s.syncManager.ExportTorrent(ctx, sourceInstanceID, exec.hash)
