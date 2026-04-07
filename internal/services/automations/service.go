@@ -5894,6 +5894,10 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 
 				if s.activityStore != nil {
 					ruleID := exec.ruleID
+					detailsJSON, _ := json.Marshal(map[string]any{
+						"targetInstanceId": exec.action.TargetInstanceID,
+						"savePath":         exec.resolvedSavePath,
+					})
 					if err := s.activityStore.Create(context.Background(), &models.AutomationActivity{
 						InstanceID:  sourceInstanceID,
 						Hash:        exec.hash,
@@ -5903,6 +5907,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 						RuleName:    exec.ruleName,
 						Outcome:     models.ActivityOutcomeFailed,
 						Reason:      "Export failed: " + err.Error(),
+						Details:     detailsJSON,
 					}); err != nil {
 						log.Warn().Err(err).Str("hash", exec.hash).Msg("automations: failed to log export activity")
 					}
@@ -5946,6 +5951,10 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 
 				if s.activityStore != nil {
 					ruleID := exec.ruleID
+					detailsJSON, _ := json.Marshal(map[string]any{
+						"targetInstanceId": exec.action.TargetInstanceID,
+						"savePath":         exec.resolvedSavePath,
+					})
 					if err := s.activityStore.Create(context.Background(), &models.AutomationActivity{
 						InstanceID:  sourceInstanceID,
 						Hash:        exec.hash,
@@ -5955,6 +5964,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 						RuleName:    exec.ruleName,
 						Outcome:     models.ActivityOutcomeFailed,
 						Reason:      "Add to target failed: " + err.Error(),
+						Details:     detailsJSON,
 					}); err != nil {
 						log.Warn().Err(err).Str("hash", exec.hash).Msg("automations: failed to log export activity")
 					}
