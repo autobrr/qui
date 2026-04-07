@@ -107,3 +107,26 @@ func TestMatcher_Strict_NormalizesFilenames(t *testing.T) {
 		})
 	}
 }
+
+func TestMatcher_Flexible_RequiresExactFileSize(t *testing.T) {
+	matcher := NewMatcher(MatchModeFlexible, 5)
+
+	searchee := &Searchee{
+		Name: "EPiC.Elvis.Presley.in.Concert.2025",
+		Files: []*ScannedFile{{
+			RelPath: "EPiC.Elvis.Presley.in.Concert.2025.NORDiC.1080p.AMZN.WEB-DL.H.264-NORViNE.mkv",
+			Size:    1040,
+		}},
+	}
+	torrentFiles := []TorrentFile{{
+		Path: "EPiC.Elvis.Presley.in.Concert.2025.1080p.AMZN.WEB-DL.H.264-NTb.mkv",
+		Size: 1000,
+	}}
+
+	res := matcher.Match(searchee, torrentFiles)
+	require.False(t, res.IsMatch)
+	require.False(t, res.IsPerfectMatch)
+	require.Empty(t, res.MatchedFiles)
+	require.Len(t, res.UnmatchedSearcheeFiles, 1)
+	require.Len(t, res.UnmatchedTorrentFiles, 1)
+}

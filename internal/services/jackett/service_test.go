@@ -1027,6 +1027,33 @@ func TestConvertResults(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "preserves executed search id context",
+			input: []Result{
+				{
+					Tracker:      "Tracker1",
+					Title:        "Example",
+					Seeders:      10,
+					Peers:        10,
+					Size:         1024,
+					SearchIMDbID: "tt1234567",
+					SearchTVDbID: "7654321",
+					SearchTMDbID: 42,
+				},
+			},
+			expected: 1,
+			checkFn: func(t *testing.T, results []SearchResult) {
+				if results[0].SearchIMDbID != "tt1234567" {
+					t.Fatalf("SearchIMDbID = %q, want %q", results[0].SearchIMDbID, "tt1234567")
+				}
+				if results[0].SearchTVDbID != "7654321" {
+					t.Fatalf("SearchTVDbID = %q, want %q", results[0].SearchTVDbID, "7654321")
+				}
+				if results[0].SearchTMDbID != 42 {
+					t.Fatalf("SearchTMDbID = %d, want %d", results[0].SearchTMDbID, 42)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1039,6 +1066,27 @@ func TestConvertResults(t *testing.T) {
 				tt.checkFn(t, result)
 			}
 		})
+	}
+}
+
+func TestAnnotateResultsWithSearchIDs(t *testing.T) {
+	results := []Result{{Title: "Example"}}
+	params := map[string]string{
+		"imdbid": "1234567",
+		"tvdbid": "7654321",
+		"tmdbid": "42",
+	}
+
+	annotateResultsWithSearchIDs(results, params)
+
+	if results[0].SearchIMDbID != "tt1234567" {
+		t.Fatalf("SearchIMDbID = %q, want %q", results[0].SearchIMDbID, "tt1234567")
+	}
+	if results[0].SearchTVDbID != "7654321" {
+		t.Fatalf("SearchTVDbID = %q, want %q", results[0].SearchTVDbID, "7654321")
+	}
+	if results[0].SearchTMDbID != 42 {
+		t.Fatalf("SearchTMDbID = %d, want %d", results[0].SearchTMDbID, 42)
 	}
 }
 

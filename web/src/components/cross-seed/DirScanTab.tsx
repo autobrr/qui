@@ -921,7 +921,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Strict mode matches files by name and size. Flexible mode matches by size only.
+              Strict mode matches by filename plus exact file size. Flexible mode ignores filenames for primary matching, but file sizes must still match exactly.
             </p>
           </div>
 
@@ -942,7 +942,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
               }
             />
             <p className="text-xs text-muted-foreground">
-              Allows small size differences when comparing files (useful for minor repacks). Keep low for best accuracy.
+              Allows small differences in total torrent size before file matching. File sizes must still match exactly. Keep low for best accuracy.
             </p>
           </div>
 

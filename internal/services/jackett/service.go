@@ -2035,6 +2035,7 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 			results[i].Tracker = idx.Name
 		}
 	}
+	annotateResultsWithSearchIDs(results, paramsMap)
 
 	// Reset escalation on successful request
 	s.rateLimiter.RecordSuccess(idx.ID)
@@ -2043,6 +2044,47 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		results: results,
 		id:      idx.ID,
 	}
+}
+
+func annotateResultsWithSearchIDs(results []Result, params map[string]string) {
+	if len(results) == 0 || len(params) == 0 {
+		return
+	}
+
+	imdbID := normalizeSearchIMDbID(params["imdbid"])
+	tvdbID := strings.TrimSpace(params["tvdbid"])
+	tmdbID := 0
+	if rawTMDbID := strings.TrimSpace(params["tmdbid"]); rawTMDbID != "" {
+		if parsedTMDbID, err := strconv.Atoi(rawTMDbID); err == nil {
+			tmdbID = parsedTMDbID
+		}
+	}
+
+	for i := range results {
+		results[i].SearchIMDbID = imdbID
+		results[i].SearchTVDbID = tvdbID
+		results[i].SearchTMDbID = tmdbID
+	}
+}
+
+func normalizeSearchIMDbID(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if digitsOnlyString(value) {
+		return "tt" + value
+	}
+	return strings.ToLower(value)
+}
+
+func digitsOnlyString(value string) bool {
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return value != ""
 }
 
 // searchMultipleIndexers searches multiple indexers in parallel and aggregates results.
@@ -3195,6 +3237,9 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 			InfoHashV2:           "", // InfoHashV2 not typically in extended attributes
 			IMDbID:               r.Imdb,
 			TVDbID:               s.parseTVDbID(r),
+			SearchIMDbID:         r.SearchIMDbID,
+			SearchTVDbID:         r.SearchTVDbID,
+			SearchTMDbID:         r.SearchTMDbID,
 			Source:               source,
 			Collection:           collection,
 			Group:                group,
