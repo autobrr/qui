@@ -693,7 +693,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const { data: metadata } = useInstanceMetadata(instanceId)
-  const { data: targetMetadata } = useInstanceMetadata(formState.exprExportTargetInstanceId ?? 0)
+  const { data: targetMetadata, isLoading: targetMetadataLoading } = useInstanceMetadata(formState.exprExportTargetInstanceId ?? 0)
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
   const { instances, isLoading: instancesLoading, error: instancesError } = useInstances()
   const {
@@ -3460,7 +3460,20 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Category on target (optional)</Label>
-                          {targetCategories.length > 0 ? (
+                          {!formState.exprExportTargetInstanceId ? (
+                            <Input
+                              value={formState.exprExportCategory}
+                              onChange={(e) => setFormState(prev => ({ ...prev, exprExportCategory: e.target.value }))}
+                              placeholder="Select a target instance first"
+                              className="text-sm"
+                              disabled
+                            />
+                          ) : targetMetadataLoading ? (
+                            <div className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/50 flex items-center gap-2">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              Loading categories...
+                            </div>
+                          ) : targetCategories.length > 0 ? (
                             <Select
                               value={formState.exprExportCategory || "none"}
                               onValueChange={(value) => setFormState(prev => ({
@@ -3482,7 +3495,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             <Input
                               value={formState.exprExportCategory}
                               onChange={(e) => setFormState(prev => ({ ...prev, exprExportCategory: e.target.value }))}
-                              placeholder={formState.exprExportTargetInstanceId ? "No categories found on target" : "Select a target instance first"}
+                              placeholder="No categories found on target"
                               className="text-sm"
                             />
                           )}

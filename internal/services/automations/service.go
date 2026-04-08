@@ -5599,18 +5599,29 @@ func (s *Service) recordDryRunActivities(
 
 	// Export to instance
 	if len(exportExecutions) > 0 {
+		const alreadyExistsReason = "Already exists on target instance"
 		successByTarget := make(map[int][]string)
 		failedByTarget := make(map[int][]string)
+		existsByTarget := make(map[int][]string)
 		for _, exec := range exportExecutions {
-			if exec.failureReason != "" {
+			switch {
+			case exec.failureReason == alreadyExistsReason:
+				existsByTarget[exec.action.TargetInstanceID] = append(existsByTarget[exec.action.TargetInstanceID], exec.hash)
+			case exec.failureReason != "":
 				failedByTarget[exec.action.TargetInstanceID] = append(failedByTarget[exec.action.TargetInstanceID], exec.hash)
-			} else {
+			default:
 				successByTarget[exec.action.TargetInstanceID] = append(successByTarget[exec.action.TargetInstanceID], exec.hash)
 			}
 		}
 		for targetID, hashes := range successByTarget {
 			uniqueHashes := dedupeHashes(hashes)
 			createActivity(models.ActivityActionExportedToInstance, map[string]any{"targetInstanceId": targetID, "count": len(uniqueHashes)}, func() []ActivityRunTorrent {
+				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
+			})
+		}
+		for targetID, hashes := range existsByTarget {
+			uniqueHashes := dedupeHashes(hashes)
+			createActivity(models.ActivityActionExportedToInstance, map[string]any{"targetInstanceId": targetID, "count": len(uniqueHashes), "alreadyOnTarget": true}, func() []ActivityRunTorrent {
 				return buildRunItemsFromHashes(uniqueHashes, torrentByHash, s.syncManager)
 			})
 		}
