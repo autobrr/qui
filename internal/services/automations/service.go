@@ -66,7 +66,7 @@ var automationActionLabels = map[string]string{
 	models.ActivityActionRechecked:           "Rechecked torrents",
 	models.ActivityActionReannounced:         "Reannounced torrents",
 	models.ActivityActionMoved:               "Moved torrents",
-	models.ActivityActionExportedToInstance:  "Exported torrent to instance",
+	models.ActivityActionExportedToInstance:  "Export to instance",
 	models.ActivityActionDryRunNoMatch:       "Dry-run: no matches",
 }
 
@@ -3877,8 +3877,14 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		mergePartial("context cancelled")
 	}
 
-	// Use a fresh context for notification since the original ctx may have been cancelled
-	s.notifyAutomationSummary(context.Background(), instanceID, summary, eligibleRules)
+	// Use the original context if still valid; otherwise create a bounded fallback
+	notifyCtx := ctx
+	if ctx.Err() != nil {
+		var cancel context.CancelFunc
+		notifyCtx, cancel = context.WithTimeout(context.Background(), s.cfg.ApplyTimeout)
+		defer cancel()
+	}
+	s.notifyAutomationSummary(notifyCtx, instanceID, summary, eligibleRules)
 	return nil, nil
 }
 

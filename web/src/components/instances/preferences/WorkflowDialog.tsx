@@ -1780,8 +1780,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       toast.error("Select an external program")
       return
     }
-    if (dryRunInput.exportToInstanceEnabled && !dryRunInput.exprExportTargetInstanceId) {
-      toast.error("Select a target instance")
+    if (!validateExportTarget(dryRunInput)) {
       return
     }
     if (dryRunInput.tagEnabled) {
@@ -1799,13 +1798,30 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     dryRunNowMutation.mutate(dryRunInput)
   }
 
+  const validateExportTarget = useCallback((state: FormState): boolean => {
+    if (!state.exportToInstanceEnabled) return true
+    if (!state.exprExportTargetInstanceId) {
+      toast.error("Select a target instance")
+      return false
+    }
+    if (!nonSelfInstances) {
+      toast.error("Target instances unavailable")
+      return false
+    }
+    if (!nonSelfInstances.some(i => i.id === state.exprExportTargetInstanceId)) {
+      toast.error("Selected target instance no longer exists")
+      setFormState(prev => ({ ...prev, exprExportTargetInstanceId: null }))
+      return false
+    }
+    return true
+  }, [nonSelfInstances])
+
   const applyEnabledChange = useCallback((checked: boolean, options?: { forceDryRun?: boolean }) => {
     if (checked && isDeleteRule && !formState.actionCondition) {
       toast.error("Delete requires at least one condition")
       return
     }
-    if (checked && formState.exportToInstanceEnabled && !formState.exprExportTargetInstanceId) {
-      toast.error("Select a target instance")
+    if (checked && !validateExportTarget(formState)) {
       return
     }
 
@@ -1835,7 +1851,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       enabled: checked,
       dryRun: options?.forceDryRun ? true : prev.dryRun,
     }))
-  }, [formState, isCategoryRule, isDeleteRule, previewMutation, validateFreeSpaceSource])
+  }, [formState, isCategoryRule, isDeleteRule, previewMutation, validateExportTarget, validateFreeSpaceSource])
 
   const handleEnabledToggle = useCallback((checked: boolean) => {
     if (checked && !formState.dryRun && !hasPromptedDryRun()) {
@@ -2045,20 +2061,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         return
       }
     }
-    if (submitState.exportToInstanceEnabled) {
-      if (!submitState.exprExportTargetInstanceId) {
-        toast.error("Select a target instance")
-        return
-      }
-      if (!nonSelfInstances) {
-        toast.error("Target instances unavailable")
-        return
-      }
-      if (!nonSelfInstances.some(i => i.id === submitState.exprExportTargetInstanceId)) {
-        toast.error("Selected target instance no longer exists")
-        setFormState(prev => ({ ...prev, exprExportTargetInstanceId: null }))
-        return
-      }
+    if (!validateExportTarget(submitState)) {
+      return
     }
     if (submitState.deleteEnabled && !submitState.actionCondition) {
       toast.error("Delete requires at least one condition")
@@ -2105,6 +2109,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     // Clear the stored value so onOpenChange won't restore it after successful save
     setEnabledBeforePreview(null)
     if (!validateFreeSpaceSource(formState)) {
+      return
+    }
+    if (!validateExportTarget(formState)) {
       return
     }
     createOrUpdate.mutate(formState)
