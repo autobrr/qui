@@ -8,7 +8,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/alexedwards/scs/v2"
@@ -27,11 +26,11 @@ func newOIDCDiscoveryServer(t *testing.T, codeChallenges []string) *httptest.Ser
 		}
 		w.Header().Set("Content-Type", "application/json")
 		payload := map[string]any{
-			"issuer":                           discovery.URL,
-			"authorization_endpoint":           discovery.URL + "/authorize",
-			"token_endpoint":                   discovery.URL + "/token",
-			"userinfo_endpoint":                discovery.URL + "/userinfo",
-			"jwks_uri":                         discovery.URL + "/jwks",
+			"issuer":                 discovery.URL,
+			"authorization_endpoint": discovery.URL + "/authorize",
+			"token_endpoint":         discovery.URL + "/token",
+			"userinfo_endpoint":      discovery.URL + "/userinfo",
+			"jwks_uri":               discovery.URL + "/jwks",
 		}
 		if codeChallenges != nil {
 			payload["code_challenge_methods_supported"] = codeChallenges
@@ -45,18 +44,30 @@ func newOIDCDiscoveryServer(t *testing.T, codeChallenges []string) *httptest.Ser
 	return discovery
 }
 
-func TestOIDCConfigDoesNotExposePKCEVerifier(t *testing.T) {
-	discovery := newOIDCDiscoveryServer(t, []string{"S256"})
-	handler, err := NewOIDCHandler(&domain.Config{
-		OIDCEnabled:      true,
-		OIDCIssuer:       discovery.URL,
-		OIDCClientID:     "client-id",
-		OIDCClientSecret: "client-secret",
-		OIDCRedirectURL:  "http://localhost/callback",
-	}, scs.New())
+func newTestOIDCHandler(t *testing.T, issuer string) *OIDCHandler {
+	t.Helper()
+
+	// #nosec G101 -- test-only OIDC client config values.
+	cfg := &domain.Config{
+		OIDCEnabled:     true,
+		OIDCIssuer:      issuer,
+		OIDCClientID:    "client-id",
+		OIDCRedirectURL: "http://localhost/callback",
+	}
+	// #nosec G101 -- test-only placeholder used to satisfy OIDC config validation.
+	cfg.OIDCClientSecret = "placeholder"
+
+	handler, err := NewOIDCHandler(cfg, scs.New())
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/auth/oidc/config", nil)
+	return handler
+}
+
+func TestOIDCConfigDoesNotExposePKCEVerifier(t *testing.T) {
+	discovery := newOIDCDiscoveryServer(t, []string{"S256"})
+	handler := newTestOIDCHandler(t, discovery.URL)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/auth/oidc/config", nil)
 	ctx, err := handler.sessionManager.Load(req.Context(), "")
 	require.NoError(t, err)
 	req = req.WithContext(ctx)
@@ -79,19 +90,12 @@ func TestOIDCConfigDoesNotExposePKCEVerifier(t *testing.T) {
 	require.True(t, ok)
 	assert.Contains(t, authURL, "code_challenge=")
 	assert.NotContains(t, authURL, storedVerifier)
-	assert.False(t, strings.Contains(rec.Body.String(), `"pkceVerifier"`))
+	assert.NotContains(t, rec.Body.String(), `"pkceVerifier"`)
 }
 
 func TestOIDCConfigReturnsInternalServerErrorWhenStateGenerationFails(t *testing.T) {
 	discovery := newOIDCDiscoveryServer(t, nil)
-	handler, err := NewOIDCHandler(&domain.Config{
-		OIDCEnabled:      true,
-		OIDCIssuer:       discovery.URL,
-		OIDCClientID:     "client-id",
-		OIDCClientSecret: "client-secret",
-		OIDCRedirectURL:  "http://localhost/callback",
-	}, scs.New())
-	require.NoError(t, err)
+	handler := newTestOIDCHandler(t, discovery.URL)
 
 	originalReadRandom := oidcReadRandom
 	oidcReadRandom = func(_ []byte) error {
@@ -101,7 +105,7 @@ func TestOIDCConfigReturnsInternalServerErrorWhenStateGenerationFails(t *testing
 		oidcReadRandom = originalReadRandom
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/auth/oidc/config", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/auth/oidc/config", nil)
 	ctx, err := handler.sessionManager.Load(req.Context(), "")
 	require.NoError(t, err)
 	req = req.WithContext(ctx)
