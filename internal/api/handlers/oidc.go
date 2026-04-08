@@ -6,6 +6,7 @@ package handlers
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -205,7 +206,7 @@ func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 	config, pkceVerifier, err := h.GetConfigResponse()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to build OIDC config response")
-		RespondError(w, http.StatusInternalServerError, "failed to generate OIDC state")
+		RespondError(w, http.StatusInternalServerError, "failed to build OIDC config response")
 		return
 	}
 
@@ -446,6 +447,14 @@ func generateRandomState() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+func generatePKCEVerifier() (string, error) {
+	b := make([]byte, 32)
+	if err := oidcReadRandom(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
 func (h *OIDCHandler) supportsPKCE() bool {
 	var claims struct {
 		CodeChallenges []string `json:"code_challenge_methods_supported"`
@@ -464,7 +473,10 @@ func (h *OIDCHandler) GetConfigResponse() (OIDCConfigResponse, string, error) {
 
 	var authURL, verifier string
 	if h.supportsPKCE() {
-		verifier = oauth2.GenerateVerifier()
+		verifier, err = generatePKCEVerifier()
+		if err != nil {
+			return OIDCConfigResponse{}, "", err
+		}
 		authURL = h.oauthConfig.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
 	} else {
 		authURL = h.oauthConfig.AuthCodeURL(state)

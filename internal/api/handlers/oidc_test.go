@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -116,7 +117,80 @@ func TestOIDCConfigReturnsInternalServerErrorWhenStateGenerationFails(t *testing
 	handler.getConfig(rec, req)
 
 	require.Equal(t, http.StatusInternalServerError, rec.Code)
-	assert.Contains(t, rec.Body.String(), "failed to generate OIDC state")
+	assert.Contains(t, rec.Body.String(), "failed to build OIDC config response")
+	assert.Empty(t, handler.sessionManager.GetString(req.Context(), "oidc_state"))
+	assert.Empty(t, handler.sessionManager.GetString(req.Context(), "oidc_pkce_verifier"))
+}
+
+func TestGeneratePKCEVerifierReturnsErrorWhenRandomReadFails(t *testing.T) {
+	originalReadRandom := oidcReadRandom
+	oidcReadRandom = func(_ []byte) error {
+		return errors.New("entropy unavailable")
+	}
+	t.Cleanup(func() {
+		oidcReadRandom = originalReadRandom
+	})
+
+	verifier, err := generatePKCEVerifier()
+	require.Error(t, err)
+	assert.Empty(t, verifier)
+}
+
+func TestGeneratePKCEVerifierEncodesRandomBytes(t *testing.T) {
+	originalReadRandom := oidcReadRandom
+	oidcReadRandom = func(b []byte) error {
+		for i := range b {
+			b[i] = byte(i)
+		}
+		return nil
+	}
+	t.Cleanup(func() {
+		oidcReadRandom = originalReadRandom
+	})
+
+	verifier, err := generatePKCEVerifier()
+	require.NoError(t, err)
+	assert.Equal(t, base64.RawURLEncoding.EncodeToString(func() []byte {
+		b := make([]byte, 32)
+		for i := range b {
+			b[i] = byte(i)
+		}
+		return b
+	}()), verifier)
+}
+
+func TestOIDCConfigReturnsInternalServerErrorWhenPKCEVerifierGenerationFails(t *testing.T) {
+	discovery := newOIDCDiscoveryServer(t, []string{"S256"})
+	handler := newTestOIDCHandler(t, discovery.URL)
+
+	originalReadRandom := oidcReadRandom
+	readCalls := 0
+	oidcReadRandom = func(b []byte) error {
+		readCalls++
+		if readCalls == 1 {
+			for i := range b {
+				b[i] = byte(i)
+			}
+			return nil
+		}
+		return errors.New("entropy unavailable")
+	}
+	t.Cleanup(func() {
+		oidcReadRandom = originalReadRandom
+	})
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/auth/oidc/config", nil)
+	ctx, err := handler.sessionManager.Load(req.Context(), "")
+	require.NoError(t, err)
+	req = req.WithContext(ctx)
+	handler.sessionManager.Put(req.Context(), "oidc_state", "stale-state")
+	handler.sessionManager.Put(req.Context(), "oidc_pkce_verifier", "stale-verifier")
+
+	rec := httptest.NewRecorder()
+	handler.getConfig(rec, req)
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Contains(t, rec.Body.String(), "failed to build OIDC config response")
 	assert.Empty(t, handler.sessionManager.GetString(req.Context(), "oidc_state"))
 	assert.Empty(t, handler.sessionManager.GetString(req.Context(), "oidc_pkce_verifier"))
 }
