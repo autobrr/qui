@@ -58,7 +58,6 @@ type OIDCConfigResponse struct {
 	Enabled             bool   `json:"enabled"`
 	AuthorizationURL    string `json:"authorizationUrl"`
 	State               string `json:"state"`
-	PKCEVerifier        string `json:"pkceVerifier"`
 	DisableBuiltInLogin bool   `json:"disableBuiltInLogin"`
 	IssuerURL           string `json:"issuerUrl"`
 }
@@ -194,13 +193,13 @@ func discoverOIDCProvider(ctx context.Context, issuer string) (*oidc.Provider, s
 
 func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 	// Get the config first
-	config := h.GetConfigResponse()
+	config, pkceVerifier := h.GetConfigResponse()
 
 	// Store state and PKCE verifier in session for later validation
 	// This is needed even if user is already authenticated, in case they're re-authenticating
 	h.sessionManager.Put(r.Context(), "oidc_state", config.State)
-	if config.PKCEVerifier != "" {
-		h.sessionManager.Put(r.Context(), "oidc_pkce_verifier", config.PKCEVerifier)
+	if pkceVerifier != "" {
+		h.sessionManager.Put(r.Context(), "oidc_pkce_verifier", pkceVerifier)
 	}
 
 	RespondJSON(w, http.StatusOK, config)
@@ -445,7 +444,7 @@ func (h *OIDCHandler) supportsPKCE() bool {
 	return slices.Contains(claims.CodeChallenges, "S256")
 }
 
-func (h *OIDCHandler) GetConfigResponse() OIDCConfigResponse {
+func (h *OIDCHandler) GetConfigResponse() (OIDCConfigResponse, string) {
 	state := generateRandomState()
 
 	var authURL, verifier string
@@ -460,8 +459,7 @@ func (h *OIDCHandler) GetConfigResponse() OIDCConfigResponse {
 		Enabled:             h.config.OIDCEnabled,
 		AuthorizationURL:    authURL,
 		State:               state,
-		PKCEVerifier:        verifier,
 		DisableBuiltInLogin: h.config.OIDCDisableBuiltInLogin,
 		IssuerURL:           h.config.OIDCIssuer,
-	}
+	}, verifier
 }
