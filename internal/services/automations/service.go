@@ -6163,6 +6163,9 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 					Int("targetInstanceID", exec.action.TargetInstanceID).
 					Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
 					Str("reason", reason).
+					Str("configuredSavePath", exec.resolvedSavePath).
+					Str("configuredCategory", exec.action.Category).
+					Bool("autoTMM", exec.resolvedSavePath == "" && exec.action.Category != "").
 					Msg("automations: export verification failed on target")
 				recordAndSend(buildActivity(models.ActivityOutcomeFailed, reason))
 				return
@@ -6231,7 +6234,13 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 
 		switch torrent.State { //nolint:exhaustive // only failure and transient states need special handling
 		case qbt.TorrentStateMissingFiles:
-			return "Files missing on target instance"
+			log.Warn().
+				Int("targetInstanceID", targetInstanceID).
+				Str("hash", hash).
+				Str("savePath", torrent.SavePath).
+				Str("contentPath", torrent.ContentPath).
+				Msg("automations: torrent has missingFiles state on target")
+			return fmt.Sprintf("Files missing on target instance (savePath: %s)", torrent.SavePath)
 		case qbt.TorrentStateError:
 			return "Torrent in error state on target instance"
 		case qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingResumeData:
