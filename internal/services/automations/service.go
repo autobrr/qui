@@ -3877,7 +3877,8 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 		mergePartial("context cancelled")
 	}
 
-	s.notifyAutomationSummary(ctx, instanceID, summary, eligibleRules)
+	// Use a fresh context for notification since the original ctx may have been cancelled
+	s.notifyAutomationSummary(context.Background(), instanceID, summary, eligibleRules)
 	return nil, nil
 }
 
