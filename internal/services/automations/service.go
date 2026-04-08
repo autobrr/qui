@@ -6055,6 +6055,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 			ctx, cancel := context.WithTimeout(context.Background(), exportTimeout)
 			defer cancel()
 
+			// Fallback tracker domain from cached sync data; overridden by ExportTorrent if available
 			trackerDomain := getTrackerForTorrent(&exec.torrent, s.syncManager)
 
 			buildActivity := func(outcome, reason string) *models.AutomationActivity {
@@ -6087,7 +6088,10 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 			}
 
 			// 1. Export .torrent from source instance
-			torrentBytes, _, _, err := s.syncManager.ExportTorrent(ctx, sourceInstanceID, exec.hash)
+			torrentBytes, _, exportTracker, err := s.syncManager.ExportTorrent(ctx, sourceInstanceID, exec.hash)
+			if exportTracker != "" {
+				trackerDomain = exportTracker
+			}
 			if err != nil {
 				log.Error().Err(err).
 					Int("sourceInstanceID", sourceInstanceID).
