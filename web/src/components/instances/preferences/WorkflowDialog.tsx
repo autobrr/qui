@@ -105,6 +105,14 @@ const SPEED_LIMIT_UNITS = [
   { value: 1024, label: "MiB/s" },
 ]
 
+const CONTENT_LAYOUT_OPTIONS = [
+  { value: "Original", label: "Original" },
+  { value: "Subfolder", label: "Subfolder" },
+  { value: "NoSubfolder", label: "No subfolder" },
+] as const
+
+const CONTENT_LAYOUT_VALUES = CONTENT_LAYOUT_OPTIONS.map(o => o.value)
+
 type ActionType = "speedLimits" | "shareLimits" | "pause" | "resume" | "recheck" | "reannounce" | "autoManagement" | "delete" | "tag" | "category" | "move" | "externalProgram" | "exportToInstance"
 
 // Actions that can be combined (Delete must be standalone)
@@ -1113,8 +1121,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprExportPaused = conditions.exportToInstance.paused ?? false
             exprExportSkipChecking = conditions.exportToInstance.skipChecking ?? true
             const rawLayout = conditions.exportToInstance.contentLayout ?? ""
-            const allowedLayouts = ["Original", "Subfolder", "NoSubfolder"] as const
-            exprExportContentLayout = allowedLayouts.includes(rawLayout as typeof allowedLayouts[number])
+            exprExportContentLayout = CONTENT_LAYOUT_VALUES.includes(rawLayout as typeof CONTENT_LAYOUT_VALUES[number])
               ? rawLayout as FormState["exprExportContentLayout"]
               : ""
           }
@@ -3499,9 +3506,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="default">Default</SelectItem>
-                              <SelectItem value="Original">Original</SelectItem>
-                              <SelectItem value="Subfolder">Subfolder</SelectItem>
-                              <SelectItem value="NoSubfolder">No subfolder</SelectItem>
+                              {CONTENT_LAYOUT_OPTIONS.map(opt => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </div>

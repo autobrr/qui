@@ -6112,8 +6112,12 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 			// 2. Build options for AddTorrent on target
 			options := map[string]string{}
 			if exec.resolvedSavePath != "" {
+				// Explicit save path: disable autoTMM so qBittorrent uses the provided path
 				options["autoTMM"] = "false"
 				options["savepath"] = exec.resolvedSavePath
+			} else if exec.action.Category != "" {
+				// No save path but category set: enable autoTMM so qBittorrent uses the category's configured path
+				options["autoTMM"] = "true"
 			}
 			if exec.action.Category != "" {
 				options["category"] = exec.action.Category
@@ -6196,6 +6200,7 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 		torrent, found, err := s.syncManager.HasTorrentByAnyHash(ctx, targetInstanceID, []string{hash})
 		if err != nil {
 			lastErr = err
+			lastStateChecking = false
 			log.Debug().Err(err).
 				Int("targetInstanceID", targetInstanceID).
 				Str("hash", hash).Int("attempt", attempt+1).
@@ -6203,6 +6208,7 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 			continue
 		}
 		if !found {
+			lastStateChecking = false
 			log.Debug().
 				Int("targetInstanceID", targetInstanceID).
 				Str("hash", hash).Int("attempt", attempt+1).
