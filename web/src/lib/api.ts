@@ -587,7 +587,6 @@ class ApiClient {
   async getOIDCConfig(): Promise<{
     enabled: boolean
     authorizationUrl: string
-    state: string
     disableBuiltInLogin: boolean
     issuerUrl: string
   }> {
@@ -598,7 +597,6 @@ class ApiClient {
       return {
         enabled: false,
         authorizationUrl: "",
-        state: "",
         disableBuiltInLogin: false,
         issuerUrl: "",
       }

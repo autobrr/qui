@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/alexedwards/scs/v2"
@@ -85,7 +86,7 @@ func TestOIDCConfigDoesNotExposePKCEVerifier(t *testing.T) {
 
 	var body OIDCConfigResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	assert.NotEmpty(t, body.State)
+	assert.NotContains(t, rec.Body.String(), `"state"`)
 
 	var sessionCookie *http.Cookie
 	for _, cookie := range rec.Result().Cookies() {
@@ -103,7 +104,12 @@ func TestOIDCConfigDoesNotExposePKCEVerifier(t *testing.T) {
 
 	storedVerifier := handler.sessionManager.GetString(ctx, "oidc_pkce_verifier")
 	assert.NotEmpty(t, storedVerifier)
-	assert.Equal(t, body.State, handler.sessionManager.GetString(ctx, "oidc_state"))
+	storedState := handler.sessionManager.GetString(ctx, "oidc_state")
+	assert.NotEmpty(t, storedState)
+
+	authURL, err := url.Parse(body.AuthorizationURL)
+	require.NoError(t, err)
+	assert.Equal(t, storedState, authURL.Query().Get("state"))
 
 	assert.Contains(t, body.AuthorizationURL, "code_challenge=")
 	assert.NotContains(t, body.AuthorizationURL, storedVerifier)

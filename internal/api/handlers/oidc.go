@@ -63,7 +63,6 @@ type OIDCClaims struct {
 type OIDCConfigResponse struct {
 	Enabled             bool   `json:"enabled"`
 	AuthorizationURL    string `json:"authorizationUrl"`
-	State               string `json:"state"`
 	DisableBuiltInLogin bool   `json:"disableBuiltInLogin"`
 	IssuerURL           string `json:"issuerUrl"`
 }
@@ -203,7 +202,7 @@ func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 	h.sessionManager.Remove(r.Context(), "oidc_pkce_verifier")
 
 	// Get the config first
-	config, pkceVerifier, err := h.GetConfigResponse()
+	config, state, pkceVerifier, err := h.GetConfigResponse()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to build OIDC config response")
 		RespondError(w, http.StatusInternalServerError, "failed to build OIDC config response")
@@ -212,7 +211,7 @@ func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 
 	// Store state and PKCE verifier in session for later validation
 	// This is needed even if user is already authenticated, in case they're re-authenticating
-	h.sessionManager.Put(r.Context(), "oidc_state", config.State)
+	h.sessionManager.Put(r.Context(), "oidc_state", state)
 	if pkceVerifier != "" {
 		h.sessionManager.Put(r.Context(), "oidc_pkce_verifier", pkceVerifier)
 	}
@@ -465,17 +464,17 @@ func (h *OIDCHandler) supportsPKCE() bool {
 	return slices.Contains(claims.CodeChallenges, "S256")
 }
 
-func (h *OIDCHandler) GetConfigResponse() (OIDCConfigResponse, string, error) {
+func (h *OIDCHandler) GetConfigResponse() (OIDCConfigResponse, string, string, error) {
 	state, err := generateRandomState()
 	if err != nil {
-		return OIDCConfigResponse{}, "", err
+		return OIDCConfigResponse{}, "", "", err
 	}
 
 	var authURL, verifier string
 	if h.supportsPKCE() {
 		verifier, err = generatePKCEVerifier()
 		if err != nil {
-			return OIDCConfigResponse{}, "", err
+			return OIDCConfigResponse{}, "", "", err
 		}
 		authURL = h.oauthConfig.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
 	} else {
@@ -485,8 +484,7 @@ func (h *OIDCHandler) GetConfigResponse() (OIDCConfigResponse, string, error) {
 	return OIDCConfigResponse{
 		Enabled:             h.config.OIDCEnabled,
 		AuthorizationURL:    authURL,
-		State:               state,
 		DisableBuiltInLogin: h.config.OIDCDisableBuiltInLogin,
 		IssuerURL:           h.config.OIDCIssuer,
-	}, verifier, nil
+	}, state, verifier, nil
 }
