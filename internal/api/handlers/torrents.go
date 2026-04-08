@@ -68,6 +68,19 @@ func truncateExpr(expr string, maxLen int) string {
 	return expr[:maxLen-3] + "..."
 }
 
+func validateTorrentFilePath(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+
+	if strings.HasSuffix(path, "/") || strings.HasSuffix(path, `\`) {
+		return errors.New("torrentFilePath must include a filename, not a directory")
+	}
+
+	return nil
+}
+
 const addTorrentMaxFormMemory int64 = 256 << 20 // 256 MiB cap for multi-file uploads
 
 // SortedPeer represents a peer with its key for sorting
@@ -2544,6 +2557,10 @@ func (h *TorrentsHandler) CreateTorrent(w http.ResponseWriter, r *http.Request) 
 
 	if req.SourcePath == "" {
 		RespondError(w, http.StatusBadRequest, "sourcePath is required")
+		return
+	}
+	if err := validateTorrentFilePath(req.TorrentFilePath); err != nil {
+		RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

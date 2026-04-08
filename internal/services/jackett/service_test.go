@@ -334,10 +334,11 @@ func TestLoadCachedSearchPortionReturnsPartialCoverage(t *testing.T) {
 	}
 	req := &TorznabSearchRequest{Query: "My Query"}
 	payload := searchCacheKeyPayload{
-		Scope:       searchCacheScopeCrossSeed,
-		Query:       canonicalizeQuery(req.Query),
-		IndexerIDs:  []int{1, 2},
-		ContentType: contentTypeTVShow,
+		SchemaVersion: searchCacheSchemaVersion,
+		Scope:         searchCacheScopeCrossSeed,
+		Query:         canonicalizeQuery(req.Query),
+		IndexerIDs:    []int{1, 2},
+		ContentType:   contentTypeTVShow,
 	}
 	full, base, err := buildSearchCacheFingerprints(payload)
 	if err != nil {
@@ -395,9 +396,10 @@ func TestLoadCachedSearchPortionReturnsPartialCoverage(t *testing.T) {
 
 func TestSelectCacheEntryForCoveragePrefersMostCoverage(t *testing.T) {
 	payload := searchCacheKeyPayload{
-		Scope:       searchCacheScopeCrossSeed,
-		Query:       "query",
-		ContentType: contentTypeTVShow,
+		SchemaVersion: searchCacheSchemaVersion,
+		Scope:         searchCacheScopeCrossSeed,
+		Query:         "query",
+		ContentType:   contentTypeTVShow,
 	}
 	firstFull, base, err := buildSearchCacheFingerprints(payload)
 	if err != nil {
@@ -419,6 +421,30 @@ func TestSelectCacheEntryForCoveragePrefersMostCoverage(t *testing.T) {
 	}
 	if entry, coverage := selectCacheEntryForCoverage([]*models.TorznabSearchCacheEntry{first}, []int{1, 3}, base, true); entry != nil || coverage != nil {
 		t.Fatalf("expected nil when full coverage unavailable")
+	}
+}
+
+func TestBuildBaseFingerprintFromRaw_LegacyPayloadDoesNotMatchCurrentSchema(t *testing.T) {
+	legacyRaw := `{"scope":"dir-scan","query":"query","content_type":1}`
+
+	base, err := buildBaseFingerprintFromRaw(legacyRaw)
+	if err != nil {
+		t.Fatalf("buildBaseFingerprintFromRaw: %v", err)
+	}
+
+	currentPayload := searchCacheKeyPayload{
+		SchemaVersion: searchCacheSchemaVersion,
+		Scope:         searchCacheScopeDirScan,
+		Query:         "query",
+		ContentType:   contentTypeMovie,
+	}
+	_, currentBase, err := buildSearchCacheFingerprints(currentPayload)
+	if err != nil {
+		t.Fatalf("buildSearchCacheFingerprints: %v", err)
+	}
+
+	if base == currentBase {
+		t.Fatal("expected legacy cache fingerprint to differ from current schema fingerprint")
 	}
 }
 
@@ -1027,6 +1053,39 @@ func TestConvertResults(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "preserves executed search id context",
+			input: []Result{
+				{
+					Tracker: "Tracker1",
+					Title:   "Example",
+					Seeders: 10,
+					Peers:   10,
+					Size:    1024,
+					Attributes: map[string]string{
+						"tmdbid": "42",
+					},
+					SearchIMDbID: "tt1234567",
+					SearchTVDbID: "7654321",
+					SearchTMDbID: 42,
+				},
+			},
+			expected: 1,
+			checkFn: func(t *testing.T, results []SearchResult) {
+				if results[0].SearchIMDbID != "tt1234567" {
+					t.Fatalf("SearchIMDbID = %q, want %q", results[0].SearchIMDbID, "tt1234567")
+				}
+				if results[0].SearchTVDbID != "7654321" {
+					t.Fatalf("SearchTVDbID = %q, want %q", results[0].SearchTVDbID, "7654321")
+				}
+				if results[0].TMDbID != "42" {
+					t.Fatalf("TMDbID = %q, want %q", results[0].TMDbID, "42")
+				}
+				if results[0].SearchTMDbID != 42 {
+					t.Fatalf("SearchTMDbID = %d, want %d", results[0].SearchTMDbID, 42)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1039,6 +1098,27 @@ func TestConvertResults(t *testing.T) {
 				tt.checkFn(t, result)
 			}
 		})
+	}
+}
+
+func TestAnnotateResultsWithSearchIDs(t *testing.T) {
+	results := []Result{{Title: "Example"}}
+	params := map[string]string{
+		"imdbid": "1234567",
+		"tvdbid": "7654321",
+		"tmdbid": "42",
+	}
+
+	annotateResultsWithSearchIDs(results, params)
+
+	if results[0].SearchIMDbID != "tt1234567" {
+		t.Fatalf("SearchIMDbID = %q, want %q", results[0].SearchIMDbID, "tt1234567")
+	}
+	if results[0].SearchTVDbID != "7654321" {
+		t.Fatalf("SearchTVDbID = %q, want %q", results[0].SearchTVDbID, "7654321")
+	}
+	if results[0].SearchTMDbID != 42 {
+		t.Fatalf("SearchTMDbID = %d, want %d", results[0].SearchTMDbID, 42)
 	}
 }
 

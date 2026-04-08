@@ -160,9 +160,7 @@ func TestHumanizeLinkPlanError(t *testing.T) {
 	}
 }
 
-func TestBuildLinkTreeMatchedFiles_SizeToleranceMismatch(t *testing.T) {
-	// Simulate flexible-mode match where sizes differ within tolerance:
-	// torrent file is 1000 bytes, searchee file is 1040 bytes (4% diff).
+func TestBuildLinkTreeMatchedFiles_UsesTorrentFileSize(t *testing.T) {
 	match := &MatchResult{
 		MatchedFiles: []MatchedFilePair{
 			{
@@ -173,7 +171,7 @@ func TestBuildLinkTreeMatchedFiles_SizeToleranceMismatch(t *testing.T) {
 				SearcheeFile: &ScannedFile{
 					Path:    "/media/tv/Show (2024)/Season 01/Show (2024) - S01E07 - Title [CR][WEBDL-1080p]-Group.mkv",
 					RelPath: "Show (2024) - S01E07 - Title [CR][WEBDL-1080p]-Group.mkv",
-					Size:    1040,
+					Size:    1000,
 				},
 			},
 		},
@@ -184,13 +182,11 @@ func TestBuildLinkTreeMatchedFiles_SizeToleranceMismatch(t *testing.T) {
 		t.Fatalf("buildLinkTreeMatchedFiles: %v", err)
 	}
 
-	// The bug: existing[0].Size was set to SearcheeFile.Size (1040),
-	// but linkable[0].Size is TorrentFile.Size (1000).
-	// BuildPlan indexes by existing size and looks up by candidate size,
-	// so mismatched sizes cause "no matching file" error.
+	// The bug was that existing[0].Size used the searchee file size instead of the
+	// torrent file size. Exact file-size matching means these should now be equal.
 	_, err = hardlinktree.BuildPlan(linkable, existing, hardlinktree.LayoutOriginal, "Show", t.TempDir())
 	if err != nil {
-		t.Fatalf("BuildPlan should succeed with tolerance-matched sizes, got: %v", err)
+		t.Fatalf("BuildPlan should succeed with exact matched sizes, got: %v", err)
 	}
 }
 
