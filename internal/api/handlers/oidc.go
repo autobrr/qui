@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -32,6 +33,10 @@ const (
 var (
 	oidcNewProvider = oidc.NewProvider
 	oidcSleep       = time.Sleep
+	oidcReadRandom  = func(b []byte) error {
+		_, err := io.ReadFull(rand.Reader, b)
+		return err
+	}
 )
 
 type OIDCHandler struct {
@@ -193,7 +198,12 @@ func discoverOIDCProvider(ctx context.Context, issuer string) (*oidc.Provider, s
 
 func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
 	// Get the config first
-	config, pkceVerifier := h.GetConfigResponse()
+	config, pkceVerifier, err := h.GetConfigResponse()
+	if err != nil {
+		log.Error().Err(err).Msg("failed to build OIDC config response")
+		RespondError(w, http.StatusInternalServerError, "failed to generate OIDC state")
+		return
+	}
 
 	// Store state and PKCE verifier in session for later validation
 	// This is needed even if user is already authenticated, in case they're re-authenticating
@@ -424,14 +434,12 @@ func isValidRedirectURL(candidateURL, configuredURL string) bool {
 	return candidate.Host == configured.Host
 }
 
-func generateRandomState() string {
+func generateRandomState() (string, error) {
 	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		// Fallback to a less secure random state
-		b = make([]byte, 32)
-		_, _ = rand.Read(b)
+	if err := oidcReadRandom(b); err != nil {
+		return "", err
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
 }
 
 func (h *OIDCHandler) supportsPKCE() bool {
@@ -444,8 +452,11 @@ func (h *OIDCHandler) supportsPKCE() bool {
 	return slices.Contains(claims.CodeChallenges, "S256")
 }
 
-func (h *OIDCHandler) GetConfigResponse() (OIDCConfigResponse, string) {
-	state := generateRandomState()
+func (h *OIDCHandler) GetConfigResponse() (OIDCConfigResponse, string, error) {
+	state, err := generateRandomState()
+	if err != nil {
+		return OIDCConfigResponse{}, "", err
+	}
 
 	var authURL, verifier string
 	if h.supportsPKCE() {
@@ -461,5 +472,5 @@ func (h *OIDCHandler) GetConfigResponse() (OIDCConfigResponse, string) {
 		State:               state,
 		DisableBuiltInLogin: h.config.OIDCDisableBuiltInLogin,
 		IssuerURL:           h.config.OIDCIssuer,
-	}, verifier
+	}, verifier, nil
 }

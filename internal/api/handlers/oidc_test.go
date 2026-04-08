@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,7 +18,7 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 )
 
-func TestOIDCConfigDoesNotExposePKCEVerifier(t *testing.T) {
+func newOIDCDiscoveryServer(t *testing.T, codeChallenges []string) *httptest.Server {
 	var discovery *httptest.Server
 	discovery = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/.well-known/openid-configuration" {
@@ -25,17 +26,27 @@ func TestOIDCConfigDoesNotExposePKCEVerifier(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+		payload := map[string]any{
 			"issuer":                           discovery.URL,
 			"authorization_endpoint":           discovery.URL + "/authorize",
 			"token_endpoint":                   discovery.URL + "/token",
 			"userinfo_endpoint":                discovery.URL + "/userinfo",
 			"jwks_uri":                         discovery.URL + "/jwks",
-			"code_challenge_methods_supported": []string{"S256"},
-		}))
+		}
+		if codeChallenges != nil {
+			payload["code_challenge_methods_supported"] = codeChallenges
+		}
+		if err := json.NewEncoder(w).Encode(payload); err != nil {
+			t.Errorf("encode OIDC discovery response: %v", err)
+			http.Error(w, "failed to encode discovery response", http.StatusInternalServerError)
+		}
 	}))
 	t.Cleanup(discovery.Close)
+	return discovery
+}
 
+func TestOIDCConfigDoesNotExposePKCEVerifier(t *testing.T) {
+	discovery := newOIDCDiscoveryServer(t, []string{"S256"})
 	handler, err := NewOIDCHandler(&domain.Config{
 		OIDCEnabled:      true,
 		OIDCIssuer:       discovery.URL,
@@ -69,4 +80,36 @@ func TestOIDCConfigDoesNotExposePKCEVerifier(t *testing.T) {
 	assert.Contains(t, authURL, "code_challenge=")
 	assert.NotContains(t, authURL, storedVerifier)
 	assert.False(t, strings.Contains(rec.Body.String(), `"pkceVerifier"`))
+}
+
+func TestOIDCConfigReturnsInternalServerErrorWhenStateGenerationFails(t *testing.T) {
+	discovery := newOIDCDiscoveryServer(t, nil)
+	handler, err := NewOIDCHandler(&domain.Config{
+		OIDCEnabled:      true,
+		OIDCIssuer:       discovery.URL,
+		OIDCClientID:     "client-id",
+		OIDCClientSecret: "client-secret",
+		OIDCRedirectURL:  "http://localhost/callback",
+	}, scs.New())
+	require.NoError(t, err)
+
+	originalReadRandom := oidcReadRandom
+	oidcReadRandom = func(_ []byte) error {
+		return errors.New("entropy unavailable")
+	}
+	t.Cleanup(func() {
+		oidcReadRandom = originalReadRandom
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/oidc/config", nil)
+	ctx, err := handler.sessionManager.Load(req.Context(), "")
+	require.NoError(t, err)
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.getConfig(rec, req)
+
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Contains(t, rec.Body.String(), "failed to generate OIDC state")
+	assert.Empty(t, handler.sessionManager.GetString(req.Context(), "oidc_state"))
 }
