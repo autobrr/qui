@@ -685,6 +685,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const { data: metadata } = useInstanceMetadata(instanceId)
+  const { data: targetMetadata } = useInstanceMetadata(formState.exprExportTargetInstanceId ?? 0)
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: open })
   const { instances, isLoading: instancesLoading, error: instancesError } = useInstances()
   const {
@@ -912,6 +913,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   const nonSelfInstances = useMemo(
     () => instances ? instances.filter(i => i.id !== instanceId) : undefined,
     [instances, instanceId],
+  )
+
+  const targetCategories = useMemo(
+    () => targetMetadata?.categories ? Object.keys(targetMetadata.categories).sort() : [],
+    [targetMetadata],
   )
 
   // Initialize form state when dialog opens or rule changes
@@ -3409,6 +3415,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               onValueChange={(value) => setFormState(prev => ({
                                 ...prev,
                                 exprExportTargetInstanceId: value ? parseInt(value, 10) : null,
+                                exprExportCategory: "",
                               }))}
                             >
                               <SelectTrigger>
@@ -3429,25 +3436,45 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           )}
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">Save path on target</Label>
+                          <Label className="text-xs">Save path on target (optional)</Label>
                           <Input
                             value={formState.exprExportSavePath}
                             onChange={(e) => setFormState(prev => ({ ...prev, exprExportSavePath: e.target.value }))}
-                            placeholder="/data/torrents/{{ .Category }}"
+                            placeholder="e.g. /data/torrents"
                             className="text-sm"
                           />
                           <p className="text-xs text-muted-foreground">
-                            Supports templates: {"{{ .Name }}"}, {"{{ .Category }}"}, {"{{ .Hash }}"}, {"{{ .Tracker }}"}
+                            Parent directory for torrent content. Leave empty to use category default. Supports templates: {"{{ .Category }}"}, {"{{ .Tracker }}"}
                           </p>
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Category on target (optional)</Label>
-                          <Input
-                            value={formState.exprExportCategory}
-                            onChange={(e) => setFormState(prev => ({ ...prev, exprExportCategory: e.target.value }))}
-                            placeholder="e.g. imported"
-                            className="text-sm"
-                          />
+                          {targetCategories.length > 0 ? (
+                            <Select
+                              value={formState.exprExportCategory || "none"}
+                              onValueChange={(value) => setFormState(prev => ({
+                                ...prev,
+                                exprExportCategory: value === "none" ? "" : value,
+                              }))}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="No category" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">No category</SelectItem>
+                                {targetCategories.map(cat => (
+                                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Input
+                              value={formState.exprExportCategory}
+                              onChange={(e) => setFormState(prev => ({ ...prev, exprExportCategory: e.target.value }))}
+                              placeholder={formState.exprExportTargetInstanceId ? "No categories found on target" : "Select a target instance first"}
+                              className="text-sm"
+                            />
+                          )}
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Tags on target (optional, comma-separated)</Label>
