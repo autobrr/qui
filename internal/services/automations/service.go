@@ -2642,6 +2642,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 					Str("hash", hash).
 					Int("targetInstanceID", state.exportToInstance.TargetInstanceID).
 					Msg("automations: torrent already exists on target instance, skipping export")
+				// In dry-run, record so the report shows "already on target" instead of "no match"
+				if dryRun {
+					exportEntry.failureReason = "Already exists on target instance"
+					exportExecutions = append(exportExecutions, exportEntry)
+				}
 			default:
 				resolvedPath := state.exportToInstance.SavePath
 				if resolvedPath != "" {
