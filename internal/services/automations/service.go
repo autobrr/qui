@@ -6136,6 +6136,18 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 				return
 			}
 
+			// 4. Post-add verification: confirm torrent is healthy on target
+			if reason := s.verifyExportOnTarget(ctx, exec.action.TargetInstanceID, exec.hash, exec.torrent.Name); reason != "" {
+				log.Error().
+					Int("sourceInstanceID", sourceInstanceID).
+					Int("targetInstanceID", exec.action.TargetInstanceID).
+					Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
+					Str("reason", reason).
+					Msg("automations: export verification failed on target")
+				recordAndSend(buildActivity(models.ActivityOutcomeFailed, reason))
+				return
+			}
+
 			log.Info().
 				Int("sourceInstanceID", sourceInstanceID).
 				Int("targetInstanceID", exec.action.TargetInstanceID).
@@ -6153,6 +6165,64 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 	}()
 
 	return ch
+}
+
+// verifyExportOnTarget polls the target instance to confirm the exported torrent is healthy.
+// Returns empty string on success, or a failure reason string.
+func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int, hash, name string) string {
+	const (
+		maxAttempts  = 10
+		pollInterval = 3 * time.Second
+	)
+
+	for attempt := range maxAttempts {
+		select {
+		case <-ctx.Done():
+			return "Verification cancelled: " + ctx.Err().Error()
+		case <-time.After(pollInterval):
+		}
+
+		torrent, found, err := s.syncManager.HasTorrentByAnyHash(ctx, targetInstanceID, []string{hash})
+		if err != nil {
+			log.Debug().Err(err).
+				Int("targetInstanceID", targetInstanceID).
+				Str("hash", hash).Int("attempt", attempt+1).
+				Msg("automations: verification poll failed, retrying")
+			continue
+		}
+		if !found {
+			log.Debug().
+				Int("targetInstanceID", targetInstanceID).
+				Str("hash", hash).Int("attempt", attempt+1).
+				Msg("automations: torrent not yet visible on target, retrying")
+			continue
+		}
+
+		switch torrent.State {
+		case qbt.TorrentStateMissingFiles:
+			return "Files missing on target instance"
+		case qbt.TorrentStateError:
+			return "Torrent in error state on target instance"
+		case qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingResumeData:
+			log.Debug().
+				Int("targetInstanceID", targetInstanceID).
+				Str("hash", hash).Str("state", string(torrent.State)).Int("attempt", attempt+1).
+				Msg("automations: torrent still checking on target, retrying")
+			continue
+		default:
+			if torrent.Progress >= 1.0 {
+				return "" // success
+			}
+			// Progress < 1.0 but not in a checking/error state — might still be initializing
+			log.Debug().
+				Int("targetInstanceID", targetInstanceID).
+				Str("hash", hash).Float64("progress", torrent.Progress).
+				Str("state", string(torrent.State)).Int("attempt", attempt+1).
+				Msg("automations: torrent not yet complete on target, retrying")
+		}
+	}
+
+	return fmt.Sprintf("Verification timed out after %d attempts (%v)", maxAttempts, time.Duration(maxAttempts)*pollInterval)
 }
 
 func SortTorrentsWithFallback(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext, instanceID int, ruleName string) {
