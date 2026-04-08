@@ -6181,6 +6181,8 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 		pollInterval = 3 * time.Second
 	)
 
+	var lastErr error
+
 	for attempt := range maxAttempts {
 		select {
 		case <-ctx.Done():
@@ -6190,6 +6192,7 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 
 		torrent, found, err := s.syncManager.HasTorrentByAnyHash(ctx, targetInstanceID, []string{hash})
 		if err != nil {
+			lastErr = err
 			log.Debug().Err(err).
 				Int("targetInstanceID", targetInstanceID).
 				Str("hash", hash).Int("attempt", attempt+1).
@@ -6228,6 +6231,9 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 		}
 	}
 
+	if lastErr != nil {
+		return fmt.Sprintf("Verification failed: %v", lastErr)
+	}
 	return fmt.Sprintf("Verification timed out after %d attempts (%v)", maxAttempts, time.Duration(maxAttempts)*pollInterval)
 }
 
