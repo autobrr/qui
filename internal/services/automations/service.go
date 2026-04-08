@@ -6175,7 +6175,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 
 // verifyExportOnTarget polls the target instance to confirm the exported torrent is healthy.
 // Returns empty string on success, or a failure reason string.
-func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int, hash, name string) string {
+func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int, hash, _ string) string {
 	const (
 		maxAttempts  = 10
 		pollInterval = 3 * time.Second
@@ -6204,7 +6204,7 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 			continue
 		}
 
-		switch torrent.State {
+		switch torrent.State { //nolint:exhaustive // only failure and transient states need special handling
 		case qbt.TorrentStateMissingFiles:
 			return "Files missing on target instance"
 		case qbt.TorrentStateError:
