@@ -6032,6 +6032,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 			ruleID := exec.ruleID
 			detailsJSON, _ := json.Marshal(map[string]any{
 				"targetInstanceId": exec.action.TargetInstanceID,
+				"count":            1,
 			})
 			trackerDomain := getTrackerForTorrent(&exec.torrent, s.syncManager)
 			activity := &models.AutomationActivity{
@@ -6180,6 +6181,18 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 					Bool("autoTMM", exec.resolvedSavePath == "" && exec.action.Category != "").
 					Msg("automations: export verification failed on target")
 
+				// Re-check before cleanup — the torrent may have become healthy after verification timed out
+				if torrent, found, recheckErr := s.syncManager.HasTorrentByAnyHash(ctx, exec.action.TargetInstanceID, []string{exec.hash}); recheckErr == nil && found &&
+					torrent.State != qbt.TorrentStateMissingFiles && torrent.State != qbt.TorrentStateError && torrent.Progress >= 1.0 {
+					log.Info().
+						Int("sourceInstanceID", sourceInstanceID).
+						Int("targetInstanceID", exec.action.TargetInstanceID).
+						Str("hash", exec.hash).Str("name", exec.torrent.Name).Str("rule", exec.ruleName).
+						Msg("automations: torrent recovered after verification timeout, reporting success")
+					recordAndSend(buildActivity(models.ActivityOutcomeSuccess, ""))
+					return
+				}
+
 				// Clean up the failed torrent from target so it doesn't block re-export on next run
 				if err := s.syncManager.BulkAction(ctx, exec.action.TargetInstanceID, []string{exec.hash}, "delete"); err != nil {
 					log.Warn().Err(err).Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
@@ -6226,12 +6239,6 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 	var lastStateChecking bool
 
 	for attempt := range maxAttempts {
-		select {
-		case <-ctx.Done():
-			return "Verification cancelled: " + ctx.Err().Error()
-		case <-time.After(pollInterval):
-		}
-
 		torrent, found, err := s.syncManager.HasTorrentByAnyHash(ctx, targetInstanceID, []string{hash})
 		if err != nil {
 			lastErr = err
@@ -6284,6 +6291,13 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 				Str("hash", hash).Float64("progress", torrent.Progress).
 				Str("state", string(torrent.State)).Int("attempt", attempt+1).
 				Msg("automations: torrent not yet complete on target, retrying")
+		}
+
+		// Wait before next retry
+		select {
+		case <-ctx.Done():
+			return "Verification cancelled: " + ctx.Err().Error()
+		case <-time.After(pollInterval):
 		}
 	}
 
