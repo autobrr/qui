@@ -1804,11 +1804,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       toast.error("Select a target instance")
       return false
     }
-    if (!nonSelfInstances) {
-      toast.error("Target instances unavailable")
-      return false
-    }
-    if (!nonSelfInstances.some(i => i.id === state.exprExportTargetInstanceId)) {
+    // Only check existence when the instances list is available;
+    // if still loading/errored, allow the save — backend validates via instanceStore.Get()
+    if (nonSelfInstances && !nonSelfInstances.some(i => i.id === state.exprExportTargetInstanceId)) {
       toast.error("Selected target instance no longer exists")
       setFormState(prev => ({ ...prev, exprExportTargetInstanceId: null }))
       return false
