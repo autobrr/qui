@@ -3475,17 +3475,17 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             </div>
                           ) : targetCategories.length > 0 ? (
                             <Select
-                              value={formState.exprExportCategory || "none"}
+                              value={formState.exprExportCategory || "__none__"}
                               onValueChange={(value) => setFormState(prev => ({
                                 ...prev,
-                                exprExportCategory: value === "none" ? "" : value,
+                                exprExportCategory: value === "__none__" ? "" : value,
                               }))}
                             >
                               <SelectTrigger>
                                 <SelectValue placeholder="No category" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="none">No category</SelectItem>
+                                <SelectItem value="__none__">No category</SelectItem>
                                 {targetCategories.map(cat => (
                                   <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                                 ))}

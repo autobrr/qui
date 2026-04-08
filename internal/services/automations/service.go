@@ -6243,6 +6243,7 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 			continue
 		}
 		if !found {
+			lastErr = nil
 			lastStateChecking = false
 			log.Debug().
 				Int("targetInstanceID", targetInstanceID).
