@@ -6127,6 +6127,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 			}
 			if exec.action.Paused {
 				options["paused"] = "true"
+				options["stopped"] = "true"
 			}
 			if exec.action.SkipCheckingEnabled() {
 				options["skip_checking"] = "true"

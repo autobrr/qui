@@ -923,10 +923,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     [instances, instanceId],
   )
 
-  const targetCategories = useMemo(
-    () => targetMetadata?.categories ? Object.keys(targetMetadata.categories).sort() : [],
-    [targetMetadata],
-  )
+  const targetCategories = useMemo(() => {
+    const cats = targetMetadata?.categories ? Object.keys(targetMetadata.categories) : []
+    // Include the current saved category so it remains selectable even if not on the target yet
+    if (formState.exprExportCategory && !cats.includes(formState.exprExportCategory)) {
+      cats.push(formState.exprExportCategory)
+    }
+    return cats.sort()
+  }, [targetMetadata, formState.exprExportCategory])
 
   // Initialize form state when dialog opens or rule changes
   useEffect(() => {
@@ -3451,7 +3455,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                             className="text-sm"
                           />
                           <p className="text-xs text-muted-foreground">
-                            Parent directory for torrent content. Leave empty to use category default. Supports templates: {"{{ .Category }}"}, {"{{ .Tracker }}"}
+                            Parent directory for torrent content. Leave empty to use category default. Supports templates: {"{{ .Name }}"}, {"{{ .Category }}"}, {"{{ .Hash }}"}, {"{{ .Tracker }}"}
                           </p>
                         </div>
                         <div className="space-y-1">
