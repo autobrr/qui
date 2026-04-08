@@ -6143,7 +6143,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 			}
 
 			// 4. Post-add verification: confirm torrent is healthy on target
-			if reason := s.verifyExportOnTarget(ctx, exec.action.TargetInstanceID, exec.hash, exec.torrent.Name); reason != "" {
+			if reason := s.verifyExportOnTarget(ctx, exec.action.TargetInstanceID, exec.hash, exec.action.SkipCheckingEnabled()); reason != "" {
 				log.Error().
 					Int("sourceInstanceID", sourceInstanceID).
 					Int("targetInstanceID", exec.action.TargetInstanceID).
@@ -6174,14 +6174,17 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 }
 
 // verifyExportOnTarget polls the target instance to confirm the exported torrent is healthy.
+// When skipChecking is false, a torrent still in a checking state after retries is treated as
+// success (the add worked, hash check is in progress).
 // Returns empty string on success, or a failure reason string.
-func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int, hash, _ string) string {
+func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int, hash string, skipChecking bool) string {
 	const (
 		maxAttempts  = 10
 		pollInterval = 3 * time.Second
 	)
 
 	var lastErr error
+	var lastStateChecking bool
 
 	for attempt := range maxAttempts {
 		select {
@@ -6213,6 +6216,7 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 		case qbt.TorrentStateError:
 			return "Torrent in error state on target instance"
 		case qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingResumeData:
+			lastStateChecking = true
 			log.Debug().
 				Int("targetInstanceID", targetInstanceID).
 				Str("hash", hash).Str("state", string(torrent.State)).Int("attempt", attempt+1).
@@ -6231,6 +6235,10 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 		}
 	}
 
+	// When skip_checking is false, a torrent still hash-checking is expected — treat as success
+	if lastStateChecking && !skipChecking {
+		return ""
+	}
 	if lastErr != nil {
 		return fmt.Sprintf("Verification failed: %v", lastErr)
 	}
