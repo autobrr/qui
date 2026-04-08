@@ -197,6 +197,10 @@ func discoverOIDCProvider(ctx context.Context, issuer string) (*oidc.Provider, s
 }
 
 func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
+	// Clear any prior authorization state before generating a new config response.
+	h.sessionManager.Remove(r.Context(), "oidc_state")
+	h.sessionManager.Remove(r.Context(), "oidc_pkce_verifier")
+
 	// Get the config first
 	config, pkceVerifier, err := h.GetConfigResponse()
 	if err != nil {

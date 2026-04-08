@@ -109,6 +109,8 @@ func TestOIDCConfigReturnsInternalServerErrorWhenStateGenerationFails(t *testing
 	ctx, err := handler.sessionManager.Load(req.Context(), "")
 	require.NoError(t, err)
 	req = req.WithContext(ctx)
+	handler.sessionManager.Put(req.Context(), "oidc_state", "stale-state")
+	handler.sessionManager.Put(req.Context(), "oidc_pkce_verifier", "stale-verifier")
 
 	rec := httptest.NewRecorder()
 	handler.getConfig(rec, req)
@@ -116,4 +118,5 @@ func TestOIDCConfigReturnsInternalServerErrorWhenStateGenerationFails(t *testing
 	require.Equal(t, http.StatusInternalServerError, rec.Code)
 	assert.Contains(t, rec.Body.String(), "failed to generate OIDC state")
 	assert.Empty(t, handler.sessionManager.GetString(req.Context(), "oidc_state"))
+	assert.Empty(t, handler.sessionManager.GetString(req.Context(), "oidc_pkce_verifier"))
 }
