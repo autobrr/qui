@@ -6079,6 +6079,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 				detailsJSON, _ := json.Marshal(map[string]any{
 					"targetInstanceId": exec.action.TargetInstanceID,
 					"savePath":         exec.resolvedSavePath,
+					"count":            1,
 				})
 				return &models.AutomationActivity{
 					InstanceID:    sourceInstanceID,
@@ -6178,6 +6179,16 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 					Str("configuredCategory", exec.action.Category).
 					Bool("autoTMM", exec.resolvedSavePath == "" && exec.action.Category != "").
 					Msg("automations: export verification failed on target")
+
+				// Clean up the failed torrent from target so it doesn't block re-export on next run
+				if err := s.syncManager.BulkAction(ctx, exec.action.TargetInstanceID, []string{exec.hash}, "delete"); err != nil {
+					log.Warn().Err(err).Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
+						Msg("automations: failed to clean up torrent from target after verification failure")
+				} else {
+					log.Info().Str("hash", exec.hash).Int("targetInstanceID", exec.action.TargetInstanceID).
+						Msg("automations: cleaned up failed export torrent from target")
+				}
+
 				recordAndSend(buildActivity(models.ActivityOutcomeFailed, reason))
 				return
 			}
