@@ -18,6 +18,15 @@ import (
 	"github.com/autobrr/qui/internal/domain"
 )
 
+type discoveryDocument struct {
+	Issuer                        string   `json:"issuer"`
+	AuthorizationEndpoint         string   `json:"authorization_endpoint"`
+	TokenEndpoint                 string   `json:"token_endpoint"`
+	UserInfoEndpoint              string   `json:"userinfo_endpoint"`
+	JWKSURI                       string   `json:"jwks_uri"`
+	CodeChallengeMethodsSupported []string `json:"code_challenge_methods_supported,omitempty"`
+}
+
 func newOIDCDiscoveryServer(t *testing.T, codeChallenges []string) *httptest.Server {
 	var discovery *httptest.Server
 	discovery = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -26,17 +35,17 @@ func newOIDCDiscoveryServer(t *testing.T, codeChallenges []string) *httptest.Ser
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		payload := map[string]any{
-			"issuer":                 discovery.URL,
-			"authorization_endpoint": discovery.URL + "/authorize",
-			"token_endpoint":         discovery.URL + "/token",
-			"userinfo_endpoint":      discovery.URL + "/userinfo",
-			"jwks_uri":               discovery.URL + "/jwks",
+		doc := discoveryDocument{
+			Issuer:                discovery.URL,
+			AuthorizationEndpoint: discovery.URL + "/authorize",
+			TokenEndpoint:         discovery.URL + "/token",
+			UserInfoEndpoint:      discovery.URL + "/userinfo",
+			JWKSURI:               discovery.URL + "/jwks",
 		}
 		if codeChallenges != nil {
-			payload["code_challenge_methods_supported"] = codeChallenges
+			doc.CodeChallengeMethodsSupported = codeChallenges
 		}
-		if err := json.NewEncoder(w).Encode(payload); err != nil {
+		if err := json.NewEncoder(w).Encode(doc); err != nil {
 			t.Errorf("encode OIDC discovery response: %v", err)
 			http.Error(w, "failed to encode discovery response", http.StatusInternalServerError)
 		}
@@ -69,28 +78,35 @@ func TestOIDCConfigDoesNotExposePKCEVerifier(t *testing.T) {
 	handler := newTestOIDCHandler(t, discovery.URL)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/auth/oidc/config", nil)
-	ctx, err := handler.sessionManager.Load(req.Context(), "")
-	require.NoError(t, err)
-	req = req.WithContext(ctx)
-
 	rec := httptest.NewRecorder()
-	handler.getConfig(rec, req)
+	handler.sessionManager.LoadAndSave(http.HandlerFunc(handler.getConfig)).ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	var body map[string]any
+	var body OIDCConfigResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	assert.NotEmpty(t, body.State)
 
-	_, leakedVerifier := body["pkceVerifier"]
-	assert.False(t, leakedVerifier)
+	var sessionCookie *http.Cookie
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == handler.sessionManager.Cookie.Name {
+			sessionCookie = cookie
+			break
+		}
+	}
+	require.NotNil(t, sessionCookie)
 
-	storedVerifier := handler.sessionManager.GetString(req.Context(), "oidc_pkce_verifier")
+	secondReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/auth/oidc/config", nil)
+	secondReq.AddCookie(sessionCookie)
+	ctx, err := handler.sessionManager.Load(secondReq.Context(), sessionCookie.Value)
+	require.NoError(t, err)
+
+	storedVerifier := handler.sessionManager.GetString(ctx, "oidc_pkce_verifier")
 	assert.NotEmpty(t, storedVerifier)
+	assert.Equal(t, body.State, handler.sessionManager.GetString(ctx, "oidc_state"))
 
-	authURL, ok := body["authorizationUrl"].(string)
-	require.True(t, ok)
-	assert.Contains(t, authURL, "code_challenge=")
-	assert.NotContains(t, authURL, storedVerifier)
+	assert.Contains(t, body.AuthorizationURL, "code_challenge=")
+	assert.NotContains(t, body.AuthorizationURL, storedVerifier)
 	assert.NotContains(t, rec.Body.String(), `"pkceVerifier"`)
 }
 
