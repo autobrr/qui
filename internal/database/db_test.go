@@ -40,6 +40,27 @@ func TestMigrationNumbering(t *testing.T) {
 	}
 }
 
+func TestPostgresMigrationNumbering(t *testing.T) {
+	files := listPostgresMigrationFiles(t)
+
+	seen := make(map[string]struct{})
+	prev := -1
+
+	for _, name := range files {
+		parts := strings.SplitN(name, "_", 2)
+		require.Lenf(t, parts, 2, "migration file %s must follow <number>_<description>.sql", name)
+
+		number := parts[0]
+		require.NotContainsf(t, seen, number, "Duplicate postgres migration number found: %s", number)
+		seen[number] = struct{}{}
+
+		n, err := strconv.Atoi(number)
+		require.NoErrorf(t, err, "migration prefix %s must be numeric", number)
+		require.Greaterf(t, n, prev, "postgres migration numbers must be strictly increasing (saw %d then %d)", prev, n)
+		prev = n
+	}
+}
+
 func TestMigrationIdempotency(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	ctx := t.Context()
@@ -300,6 +321,22 @@ var expectedTriggers = []string{
 func listMigrationFiles(t *testing.T) []string {
 	entries, err := migrationsFS.ReadDir("migrations")
 	require.NoError(t, err, "Failed to read migrations directory")
+
+	var files []string
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
+			continue
+		}
+		files = append(files, entry.Name())
+	}
+
+	sort.Strings(files)
+	return files
+}
+
+func listPostgresMigrationFiles(t *testing.T) []string {
+	entries, err := postgresMigrationsFS.ReadDir("postgres_migrations")
+	require.NoError(t, err, "Failed to read postgres migrations directory")
 
 	var files []string
 	for _, entry := range entries {
