@@ -1107,7 +1107,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprExportPaused = conditions.exportToInstance.paused ?? false
             exprExportSkipChecking = conditions.exportToInstance.skipChecking ?? true
             const rawLayout = conditions.exportToInstance.contentLayout ?? ""
-            exprExportContentLayout = (["Original", "Subfolder", "NoSubfolder"] as const).includes(rawLayout as "Original" | "Subfolder" | "NoSubfolder")
+            const allowedLayouts = ["Original", "Subfolder", "NoSubfolder"] as const
+            exprExportContentLayout = allowedLayouts.includes(rawLayout as typeof allowedLayouts[number])
               ? rawLayout as FormState["exprExportContentLayout"]
               : ""
           }

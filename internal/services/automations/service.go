@@ -6210,6 +6210,9 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 			continue
 		}
 
+		// Successful lookup — clear transient error state
+		lastErr = nil
+
 		switch torrent.State { //nolint:exhaustive // only failure and transient states need special handling
 		case qbt.TorrentStateMissingFiles:
 			return "Files missing on target instance"
@@ -6223,6 +6226,7 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 				Msg("automations: torrent still checking on target, retrying")
 			continue
 		default:
+			lastStateChecking = false
 			if torrent.Progress >= 1.0 {
 				return "" // success
 			}
