@@ -169,8 +169,8 @@ Open **Dir Scan > Settings**:
 
 | Setting | Description |
 |---------|-------------|
-| Match Mode | `Strict` matches by filename + size. `Flexible` matches by size only. |
-| Size Tolerance (%) | Allows small size differences when matching. |
+| Match Mode | `Strict` matches by filename + exact file size. `Flexible` ignores filenames for primary matching, but matched files must still have the same exact file size. |
+| Size Tolerance (%) | Allows small differences in total torrent size when filtering candidates before file matching. |
 | Minimum Piece Ratio (%) | For partial matches, minimum percent of torrent data that must exist on disk. |
 | Max searchees per run | Limits how many eligible searchees are processed per run. `0` = unlimited. Useful for making progress across restarts. |
 | Only process items changed within the last (days) | Excludes stale work items before search. Uses video/audio mtimes only for manual/scheduled scans. Webhook-triggered scans ignore this cutoff. `0` = disabled. |
@@ -179,6 +179,13 @@ Open **Dir Scan > Settings**:
 | Skip piece boundary safety check | Allow partial matches where downloading missing files could modify pieces containing existing content. |
 | Start torrents paused | Add injected torrents in paused state. |
 | Default Category / Tags | Applied to all injected torrents. Directory-level settings add to these. |
+
+In practice:
+
+- **Strict** is best when filenames on disk are still close to the release layout.
+- **Flexible** is best for renamed libraries, but it still requires exact file-size matches for the files it pairs.
+- **Size Tolerance** only affects which search results are considered based on **total torrent size**. It does **not** allow per-file size mismatches.
+- Flexible single-file matches may still be rejected when the candidate lacks corroborating title or external ID evidence. This prevents false positives when an indexer falls back from ID-based search to plain title search.
 
 ### "Max searchees per run" explained
 
