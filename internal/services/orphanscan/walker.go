@@ -95,14 +95,15 @@ func walkScanRootDiscUnits(
 }
 
 type scanWalker struct {
-	ctx                context.Context
-	root               string
-	tfm                *TorrentFileMap
-	ignorePaths        []string
-	gracePeriod        time.Duration
-	maxFiles           int
+	ctx         context.Context
+	root        string
+	tfm         *TorrentFileMap
+	ignorePaths []string
+	gracePeriod time.Duration
+	maxFiles    int
+	unitFilter  func(unitPath string, isDiscUnit bool) bool
+
 	ignoreQBIncomplete bool
-	unitFilter         func(unitPath string, isDiscUnit bool) bool
 
 	orphanUnits    map[string]*OrphanFile
 	discUnitsInUse map[string]struct{}
@@ -125,8 +126,8 @@ func newScanWalker(
 		ignorePaths:        ignorePaths,
 		gracePeriod:        gracePeriod,
 		maxFiles:           maxFiles,
-		ignoreQBIncomplete: ignoreQBIncomplete,
 		unitFilter:         unitFilter,
+		ignoreQBIncomplete: ignoreQBIncomplete,
 		orphanUnits:        make(map[string]*OrphanFile),
 		discUnitsInUse:     make(map[string]struct{}),
 		discUnitCache:      make(map[string]discUnitDecision),
