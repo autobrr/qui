@@ -64,7 +64,7 @@ RUN CGO_ENABLED=0 go build \
     -o qui ./cmd/qui
 
 # Final stage
-FROM alpine:3.22
+FROM alpine:3.23
 
 LABEL org.opencontainers.image.source="https://github.com/autobrr/qui"
 
