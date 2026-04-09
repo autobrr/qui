@@ -26,38 +26,54 @@ func newTestSeasonPackRunStore(t *testing.T) *models.SeasonPackRunStore {
 	return models.NewSeasonPackRunStore(db)
 }
 
-func TestSeasonPackCheck_Returns400ForBadPayload(t *testing.T) {
+func TestSeasonPackHandlers_RejectBadPayloads(t *testing.T) {
 	handler := &CrossSeedHandler{service: nil}
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/cross-seed/season-pack/check", strings.NewReader(`{bad json`))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
+	tests := []struct {
+		name   string
+		path   string
+		body   string
+		invoke func(*CrossSeedHandler, http.ResponseWriter, *http.Request)
+	}{
+		{
+			name:   "season pack check",
+			path:   "/api/cross-seed/season-pack/check",
+			body:   `{bad json`,
+			invoke: (*CrossSeedHandler).SeasonPackCheck,
+		},
+		{
+			name:   "season pack apply",
+			path:   "/api/cross-seed/season-pack/apply",
+			body:   `not json`,
+			invoke: (*CrossSeedHandler).SeasonPackApply,
+		},
+	}
 
-	handler.SeasonPackCheck(resp, req)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			resp := httptest.NewRecorder()
 
-	require.Equal(t, http.StatusBadRequest, resp.Code)
-	require.Contains(t, resp.Body.String(), "Invalid request body")
+			tt.invoke(handler, resp, req)
+
+			require.Equal(t, http.StatusBadRequest, resp.Code)
+			require.Contains(t, resp.Body.String(), "Invalid request body")
+		})
+	}
 }
 
-func TestSeasonPackApply_Returns400ForBadPayload(t *testing.T) {
-	handler := &CrossSeedHandler{service: nil}
-
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/cross-seed/season-pack/apply", strings.NewReader(`not json`))
-	req.Header.Set("Content-Type", "application/json")
-	resp := httptest.NewRecorder()
-
-	handler.SeasonPackApply(resp, req)
-
-	require.Equal(t, http.StatusBadRequest, resp.Code)
-	require.Contains(t, resp.Body.String(), "Invalid request body")
-}
-
-func TestListSeasonPackRuns_ReturnsRecentActivity(t *testing.T) {
+func TestListSeasonPackRuns(t *testing.T) {
 	store := newTestSeasonPackRunStore(t)
 	handler := &CrossSeedHandler{seasonPackRunStore: store}
 
 	ctx := t.Context()
-	for _, name := range []string{"Pack.S01.720p", "Pack.S02.1080p"} {
+	createdNames := []string{
+		"Pack.S01.720p",
+		"Pack.S02.1080p",
+		"Pack.S03.2160p",
+	}
+	for _, name := range createdNames {
 		_, err := store.Create(ctx, &models.SeasonPackRun{
 			TorrentName: name,
 			Phase:       "check",
@@ -67,47 +83,52 @@ func TestListSeasonPackRuns_ReturnsRecentActivity(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/cross-seed/season-pack/runs", nil)
-	resp := httptest.NewRecorder()
-
-	handler.ListSeasonPackRuns(resp, req)
-
-	require.Equal(t, http.StatusOK, resp.Code)
-
-	var runs []*models.SeasonPackRun
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&runs))
-	require.Len(t, runs, 2)
-
-	// Collect names; both should be present (order by created_at DESC, same timestamp = ID order)
-	names := map[string]bool{runs[0].TorrentName: true, runs[1].TorrentName: true}
-	require.True(t, names["Pack.S01.720p"])
-	require.True(t, names["Pack.S02.1080p"])
-}
-
-func TestListSeasonPackRuns_RespectsLimit(t *testing.T) {
-	store := newTestSeasonPackRunStore(t)
-	handler := &CrossSeedHandler{seasonPackRunStore: store}
-
-	ctx := t.Context()
-	for i := range 5 {
-		_, err := store.Create(ctx, &models.SeasonPackRun{
-			TorrentName: "Pack.S0" + string(rune('1'+i)) + ".720p",
-			Phase:       "check",
-			Status:      "not_ready",
-		})
-		require.NoError(t, err)
+	tests := []struct {
+		name      string
+		path      string
+		wantNames []string
+	}{
+		{
+			name:      "default limit",
+			path:      "/api/cross-seed/season-pack/runs",
+			wantNames: []string{"Pack.S03.2160p", "Pack.S02.1080p", "Pack.S01.720p"},
+		},
+		{
+			name:      "explicit limit",
+			path:      "/api/cross-seed/season-pack/runs?limit=2",
+			wantNames: []string{"Pack.S03.2160p", "Pack.S02.1080p"},
+		},
 	}
 
-	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/cross-seed/season-pack/runs?limit=2", nil)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(ctx, http.MethodGet, tt.path, nil)
+			resp := httptest.NewRecorder()
+
+			handler.ListSeasonPackRuns(resp, req)
+
+			require.Equal(t, http.StatusOK, resp.Code)
+
+			var runs []*models.SeasonPackRun
+			require.NoError(t, json.NewDecoder(resp.Body).Decode(&runs))
+			require.Len(t, runs, len(tt.wantNames))
+			for i, wantName := range tt.wantNames {
+				require.Equal(t, wantName, runs[i].TorrentName)
+			}
+		})
+	}
+}
+
+func TestListSeasonPackRuns_Returns503WhenStoreMissing(t *testing.T) {
+	handler := &CrossSeedHandler{}
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/cross-seed/season-pack/runs", nil)
 	resp := httptest.NewRecorder()
 
 	handler.ListSeasonPackRuns(resp, req)
 
-	require.Equal(t, http.StatusOK, resp.Code)
-
-	var runs []*models.SeasonPackRun
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&runs))
-	require.Len(t, runs, 2)
+	require.Equal(t, http.StatusServiceUnavailable, resp.Code)
+	require.Contains(t, resp.Body.String(), "Season pack run store not configured")
 }
 
 func TestPatchAutomationSettings_RejectsInvalidSeasonPackThreshold(t *testing.T) {
@@ -153,9 +174,14 @@ func TestPatchAutomationSettings_AppliesSeasonPackFields(t *testing.T) {
 		SeasonPackSimplifyHDRCompare: false,
 		SeasonPackSimplifyWEBCompare: false,
 		SeasonPackSkipYearCompare:    false,
+		SeasonPackTVDBAPIKey:         "keep-key",
+		SeasonPackTVDBPIN:            "keep-pin",
 	}
 
 	threshold := 0.9
+	//nolint:gosec // test fixtures exercise trimming behavior; these are not real credentials.
+	tvdbCredential := "  tvdb value  "
+	subscriberCredential := "  subscriber value  "
 	patch := automationSettingsPatchRequest{
 		SeasonPackEnabled:            new(true),
 		SeasonPackCoverageThreshold:  &threshold,
@@ -163,6 +189,8 @@ func TestPatchAutomationSettings_AppliesSeasonPackFields(t *testing.T) {
 		SeasonPackSimplifyHDRCompare: new(true),
 		SeasonPackSimplifyWEBCompare: new(true),
 		SeasonPackSkipYearCompare:    new(true),
+		SeasonPackTVDBAPIKey:         &tvdbCredential,
+		SeasonPackTVDBPIN:            &subscriberCredential,
 	}
 
 	applyAutomationSettingsPatch(&existing, patch)
@@ -173,6 +201,8 @@ func TestPatchAutomationSettings_AppliesSeasonPackFields(t *testing.T) {
 	require.True(t, existing.SeasonPackSimplifyHDRCompare)
 	require.True(t, existing.SeasonPackSimplifyWEBCompare)
 	require.True(t, existing.SeasonPackSkipYearCompare)
+	require.Equal(t, "tvdb value", existing.SeasonPackTVDBAPIKey)
+	require.Equal(t, "subscriber value", existing.SeasonPackTVDBPIN)
 }
 
 func TestPatchAutomationSettings_IsEmptyIncludesSeasonPackFields(t *testing.T) {
@@ -193,6 +223,14 @@ func TestPatchAutomationSettings_IsEmptyIncludesSeasonPackFields(t *testing.T) {
 		{
 			name:  "season pack tags",
 			patch: automationSettingsPatchRequest{SeasonPackTags: func() *[]string { v := []string{"season-pack", "cross-seed"}; return &v }()},
+		},
+		{
+			name:  "season pack tvdb api key",
+			patch: automationSettingsPatchRequest{SeasonPackTVDBAPIKey: func() *string { v := " tvdb value "; return &v }()},
+		},
+		{
+			name:  "season pack tvdb pin",
+			patch: automationSettingsPatchRequest{SeasonPackTVDBPIN: func() *string { v := " subscriber value "; return &v }()},
 		},
 		{
 			name:  "season pack skip repack compare",

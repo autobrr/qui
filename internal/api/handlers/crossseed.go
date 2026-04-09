@@ -1649,6 +1649,12 @@ func (h *CrossSeedHandler) SeasonPackApply(w http.ResponseWriter, r *http.Reques
 
 // ListSeasonPackRuns returns recent season-pack processing activity.
 func (h *CrossSeedHandler) ListSeasonPackRuns(w http.ResponseWriter, r *http.Request) {
+	if h.seasonPackRunStore == nil {
+		log.Error().Msg("Season pack run store not configured")
+		RespondError(w, http.StatusServiceUnavailable, "Season pack run store not configured")
+		return
+	}
+
 	limit := 20
 	if v := r.URL.Query().Get("limit"); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 200 {
