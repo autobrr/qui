@@ -87,7 +87,6 @@ If **Skip Recheck** is enabled and the pack is incomplete, qui skips the apply i
 
 ## Prerequisites
 
-- **qBittorrent only** - other clients are not supported in v1
 - **Local filesystem access** must be enabled on the target instance
 - **Hardlink or reflink mode** must be enabled on the target instance - season packs always use linked trees
 
