@@ -128,6 +128,7 @@ Load secrets such as `THEMES_REPO_TOKEN` via `.env` so the Makefile can fetch pr
 ## API & Database Change Rules
 
 - Database schema changes must ship as migrations under `internal/database/migrations`, include matching model/store updates in the same PR, and add both SQLite and Postgres migrations.
+- For an open PR, keep schema work consolidated to at most one new SQLite migration and one new Postgres migration. If the PR needs more schema changes before merge, edit the draft migration files for that PR instead of adding more migration files.
 - API contract changes must update OpenAPI content under `internal/web/swagger` and pass `make test-openapi`.
 - Prefer minimal, reviewable diffs in high-churn areas (`internal/services/crossseed`, `internal/qbittorrent`, `internal/models`).
 

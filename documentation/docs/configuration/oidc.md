@@ -8,6 +8,8 @@ title: OIDC
 Set `QUI__OIDC_ENABLED=true` to hand authentication off to an external identity provider. The built-in login screen automatically offers a "Sign in with OIDC" button when the backend detects a valid OIDC configuration.
 
 If your provider advertises PKCE (`S256`) support, qui uses it automatically for the authorization flow. No extra qui setting is required.
+To confirm it is active, inspect `/api/auth/oidc/config` and verify `authorizationUrl` includes both `code_challenge=` and `code_challenge_method=S256`.
+qui does not currently emit a dedicated "PKCE enabled" log line, so the authorize URL is the easiest check.
 
 For the full mapping (TOML keys + environment variables + defaults), see [Configuration Reference](./reference).
 

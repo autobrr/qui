@@ -6,8 +6,10 @@ package handlers
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -32,6 +34,10 @@ const (
 var (
 	oidcNewProvider = oidc.NewProvider
 	oidcSleep       = time.Sleep
+	oidcReadRandom  = func(b []byte) error {
+		_, err := io.ReadFull(rand.Reader, b)
+		return err
+	}
 )
 
 type OIDCHandler struct {
@@ -57,8 +63,6 @@ type OIDCClaims struct {
 type OIDCConfigResponse struct {
 	Enabled             bool   `json:"enabled"`
 	AuthorizationURL    string `json:"authorizationUrl"`
-	State               string `json:"state"`
-	PKCEVerifier        string `json:"pkceVerifier"`
 	DisableBuiltInLogin bool   `json:"disableBuiltInLogin"`
 	IssuerURL           string `json:"issuerUrl"`
 }
@@ -193,14 +197,23 @@ func discoverOIDCProvider(ctx context.Context, issuer string) (*oidc.Provider, s
 }
 
 func (h *OIDCHandler) getConfig(w http.ResponseWriter, r *http.Request) {
+	// Clear any prior authorization state before generating a new config response.
+	h.sessionManager.Remove(r.Context(), "oidc_state")
+	h.sessionManager.Remove(r.Context(), "oidc_pkce_verifier")
+
 	// Get the config first
-	config := h.GetConfigResponse()
+	config, state, pkceVerifier, err := h.GetConfigResponse()
+	if err != nil {
+		log.Error().Err(err).Msg("failed to build OIDC config response")
+		RespondError(w, http.StatusInternalServerError, "failed to build OIDC config response")
+		return
+	}
 
 	// Store state and PKCE verifier in session for later validation
 	// This is needed even if user is already authenticated, in case they're re-authenticating
-	h.sessionManager.Put(r.Context(), "oidc_state", config.State)
-	if config.PKCEVerifier != "" {
-		h.sessionManager.Put(r.Context(), "oidc_pkce_verifier", config.PKCEVerifier)
+	h.sessionManager.Put(r.Context(), "oidc_state", state)
+	if pkceVerifier != "" {
+		h.sessionManager.Put(r.Context(), "oidc_pkce_verifier", pkceVerifier)
 	}
 
 	RespondJSON(w, http.StatusOK, config)
@@ -425,14 +438,20 @@ func isValidRedirectURL(candidateURL, configuredURL string) bool {
 	return candidate.Host == configured.Host
 }
 
-func generateRandomState() string {
+func generateRandomState() (string, error) {
 	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		// Fallback to a less secure random state
-		b = make([]byte, 32)
-		_, _ = rand.Read(b)
+	if err := oidcReadRandom(b); err != nil {
+		return "", err
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
+}
+
+func generatePKCEVerifier() (string, error) {
+	b := make([]byte, 32)
+	if err := oidcReadRandom(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 func (h *OIDCHandler) supportsPKCE() bool {
@@ -445,12 +464,18 @@ func (h *OIDCHandler) supportsPKCE() bool {
 	return slices.Contains(claims.CodeChallenges, "S256")
 }
 
-func (h *OIDCHandler) GetConfigResponse() OIDCConfigResponse {
-	state := generateRandomState()
+func (h *OIDCHandler) GetConfigResponse() (OIDCConfigResponse, string, string, error) {
+	state, err := generateRandomState()
+	if err != nil {
+		return OIDCConfigResponse{}, "", "", err
+	}
 
 	var authURL, verifier string
 	if h.supportsPKCE() {
-		verifier = oauth2.GenerateVerifier()
+		verifier, err = generatePKCEVerifier()
+		if err != nil {
+			return OIDCConfigResponse{}, "", "", err
+		}
 		authURL = h.oauthConfig.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
 	} else {
 		authURL = h.oauthConfig.AuthCodeURL(state)
@@ -459,9 +484,7 @@ func (h *OIDCHandler) GetConfigResponse() OIDCConfigResponse {
 	return OIDCConfigResponse{
 		Enabled:             h.config.OIDCEnabled,
 		AuthorizationURL:    authURL,
-		State:               state,
-		PKCEVerifier:        verifier,
 		DisableBuiltInLogin: h.config.OIDCDisableBuiltInLogin,
 		IssuerURL:           h.config.OIDCIssuer,
-	}
+	}, state, verifier, nil
 }
