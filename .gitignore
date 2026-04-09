@@ -63,6 +63,7 @@ config.toml
 .mcp.json
 components.json
 .cache/
+.worktrees/
 tracker-icons/*
 .device-id-*
 backups/*
