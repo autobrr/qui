@@ -29,7 +29,6 @@ type OrphanScanSettings struct {
 	MaxFilesPerRun      int       `json:"maxFilesPerRun"`
 	AutoCleanupEnabled  bool      `json:"autoCleanupEnabled"`
 	AutoCleanupMaxFiles int       `json:"autoCleanupMaxFiles"`
-	IgnoreQBIncomplete  bool      `json:"ignoreQbIncomplete"`
 	CreatedAt           time.Time `json:"createdAt"`
 	UpdatedAt           time.Time `json:"updatedAt"`
 }
@@ -78,14 +77,14 @@ func (s *OrphanScanStore) GetSettings(ctx context.Context, instanceID int) (*Orp
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, instance_id, enabled, grace_period_minutes, ignore_paths,
 		       scan_interval_hours, preview_sort, max_files_per_run, auto_cleanup_enabled,
-		       auto_cleanup_max_files, ignore_qb_incomplete, created_at, updated_at
+		       auto_cleanup_max_files, created_at, updated_at
 		FROM orphan_scan_settings
 		WHERE instance_id = ?
 	`, instanceID)
 
 	var settings OrphanScanSettings
 	var ignorePathsJSON sql.NullString
-	var enabled, autoCleanupEnabled, ignoreQBIncomplete int
+	var enabled, autoCleanupEnabled int
 
 	err := row.Scan(
 		&settings.ID,
@@ -98,7 +97,6 @@ func (s *OrphanScanStore) GetSettings(ctx context.Context, instanceID int) (*Orp
 		&settings.MaxFilesPerRun,
 		&autoCleanupEnabled,
 		&settings.AutoCleanupMaxFiles,
-		&ignoreQBIncomplete,
 		&settings.CreatedAt,
 		&settings.UpdatedAt,
 	)
@@ -119,7 +117,6 @@ func (s *OrphanScanStore) GetSettings(ctx context.Context, instanceID int) (*Orp
 	}
 	settings.Enabled = SQLiteIntToBool(enabled)
 	settings.AutoCleanupEnabled = SQLiteIntToBool(autoCleanupEnabled)
-	settings.IgnoreQBIncomplete = SQLiteIntToBool(ignoreQBIncomplete)
 
 	return &settings, nil
 }
@@ -138,9 +135,8 @@ func (s *OrphanScanStore) UpsertSettings(ctx context.Context, settings *OrphanSc
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO orphan_scan_settings
 				(instance_id, enabled, grace_period_minutes, ignore_paths, scan_interval_hours,
-				 preview_sort, max_files_per_run, auto_cleanup_enabled, auto_cleanup_max_files,
-				 ignore_qb_incomplete)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				 preview_sort, max_files_per_run, auto_cleanup_enabled, auto_cleanup_max_files)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(instance_id) DO UPDATE SET
 			enabled = excluded.enabled,
 			grace_period_minutes = excluded.grace_period_minutes,
@@ -149,12 +145,10 @@ func (s *OrphanScanStore) UpsertSettings(ctx context.Context, settings *OrphanSc
 			preview_sort = excluded.preview_sort,
 			max_files_per_run = excluded.max_files_per_run,
 			auto_cleanup_enabled = excluded.auto_cleanup_enabled,
-			auto_cleanup_max_files = excluded.auto_cleanup_max_files,
-			ignore_qb_incomplete = excluded.ignore_qb_incomplete
+			auto_cleanup_max_files = excluded.auto_cleanup_max_files
 	`, settings.InstanceID, boolToInt(settings.Enabled), settings.GracePeriodMinutes,
 		string(ignorePathsJSON), settings.ScanIntervalHours, settings.PreviewSort, settings.MaxFilesPerRun,
-		boolToInt(settings.AutoCleanupEnabled), settings.AutoCleanupMaxFiles,
-		boolToInt(settings.IgnoreQBIncomplete))
+		boolToInt(settings.AutoCleanupEnabled), settings.AutoCleanupMaxFiles)
 	if err != nil {
 		return nil, err
 	}

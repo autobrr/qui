@@ -34,7 +34,6 @@ const DEFAULT_SETTINGS: Omit<OrphanScanSettings, "id" | "instanceId" | "createdA
   ignorePaths: [],
   autoCleanupEnabled: false,
   autoCleanupMaxFiles: 100,
-  ignoreQbIncomplete: true,
 }
 
 export function OrphanScanSettingsForm({
@@ -66,7 +65,6 @@ export function OrphanScanSettingsForm({
         ignorePaths: [...settingsQuery.data.ignorePaths],
         autoCleanupEnabled: settingsQuery.data.autoCleanupEnabled,
         autoCleanupMaxFiles: settingsQuery.data.autoCleanupMaxFiles,
-        ignoreQbIncomplete: settingsQuery.data.ignoreQbIncomplete ?? true,
       })
       setIgnorePathsText(settingsQuery.data.ignorePaths.join("\n"))
       setInitialAutoCleanupEnabled(settingsQuery.data.autoCleanupEnabled)
@@ -97,7 +95,6 @@ export function OrphanScanSettingsForm({
       ignorePaths: nextSettings.ignorePaths.map(p => p.trim()).filter(Boolean),
       autoCleanupEnabled: nextSettings.autoCleanupEnabled,
       autoCleanupMaxFiles: Math.max(1, nextSettings.autoCleanupMaxFiles),
-      ignoreQbIncomplete: nextSettings.ignoreQbIncomplete,
     }
 
     updateMutation.mutate(payload, {
@@ -390,32 +387,6 @@ export function OrphanScanSettingsForm({
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Exclusions</h3>
           <Separator className="flex-1" />
-        </div>
-
-        <div className="flex items-center justify-between p-4 bg-muted/40 rounded-lg border">
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="ignore-qb-incomplete" className="text-sm font-medium cursor-pointer">
-                Ignore Incomplete Files
-              </Label>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground/70 cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-[300px]">
-                  <p>Skip files with the .!qB extension. These are qBittorrent incomplete/in-progress downloads and are not orphans.</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Skip .!qB files (qBittorrent incomplete downloads)
-            </p>
-          </div>
-          <Switch
-            id="ignore-qb-incomplete"
-            checked={settings.ignoreQbIncomplete}
-            onCheckedChange={(checked) => setSettings(prev => ({ ...prev, ignoreQbIncomplete: checked }))}
-          />
         </div>
 
         <div className="space-y-2">

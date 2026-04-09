@@ -489,7 +489,6 @@ func TestOrphanScanReadsIntegerBooleanColumns(t *testing.T) {
 			max_files_per_run INTEGER NOT NULL DEFAULT 0,
 			auto_cleanup_enabled INTEGER NOT NULL DEFAULT 0,
 			auto_cleanup_max_files INTEGER NOT NULL DEFAULT 0,
-			ignore_qb_incomplete INTEGER NOT NULL DEFAULT 1,
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)
@@ -513,9 +512,9 @@ func TestOrphanScanReadsIntegerBooleanColumns(t *testing.T) {
 	`)
 	mustExec(t, db, `
 		INSERT INTO orphan_scan_settings
-			(instance_id, enabled, grace_period_minutes, ignore_paths, scan_interval_hours, preview_sort, max_files_per_run, auto_cleanup_enabled, auto_cleanup_max_files, ignore_qb_incomplete)
+			(instance_id, enabled, grace_period_minutes, ignore_paths, scan_interval_hours, preview_sort, max_files_per_run, auto_cleanup_enabled, auto_cleanup_max_files)
 		VALUES
-			(1, 1, 120, '[]', 24, 'modified_desc', 100, 1, 25, 1)
+			(1, 1, 120, '[]', 24, 'modified_desc', 100, 1, 25)
 	`)
 	mustExec(t, db, `
 		INSERT INTO orphan_scan_runs

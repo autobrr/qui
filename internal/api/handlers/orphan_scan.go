@@ -68,7 +68,6 @@ type OrphanScanSettingsPayload struct {
 	MaxFilesPerRun      *int     `json:"maxFilesPerRun"`
 	AutoCleanupEnabled  *bool    `json:"autoCleanupEnabled"`
 	AutoCleanupMaxFiles *int     `json:"autoCleanupMaxFiles"`
-	IgnoreQBIncomplete  *bool    `json:"ignoreQbIncomplete"`
 }
 
 // GetSettings returns the orphan scan settings for an instance.
@@ -102,7 +101,6 @@ func (h *OrphanScanHandler) GetSettings(w http.ResponseWriter, r *http.Request) 
 			MaxFilesPerRun:      defaults.MaxFilesPerRun,
 			AutoCleanupEnabled:  defaults.AutoCleanupEnabled,
 			AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
-			IgnoreQBIncomplete:  defaults.IgnoreQBIncomplete,
 		}
 	}
 
@@ -147,7 +145,6 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 			MaxFilesPerRun:      defaults.MaxFilesPerRun,
 			AutoCleanupEnabled:  defaults.AutoCleanupEnabled,
 			AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
-			IgnoreQBIncomplete:  defaults.IgnoreQBIncomplete,
 		}
 	}
 
@@ -200,9 +197,6 @@ func (h *OrphanScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		settings.AutoCleanupMaxFiles = *payload.AutoCleanupMaxFiles
-	}
-	if payload.IgnoreQBIncomplete != nil {
-		settings.IgnoreQBIncomplete = *payload.IgnoreQBIncomplete
 	}
 
 	// Validate and normalize ignore paths
