@@ -42,5 +42,6 @@ func DefaultSettings() Settings {
 		MaxFilesPerRun:      1000,
 		AutoCleanupEnabled:  false,
 		AutoCleanupMaxFiles: 100,
+		IgnoreQBIncomplete:  true,
 	}
 }

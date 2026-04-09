@@ -2177,6 +2177,7 @@ export interface OrphanScanSettings {
   maxFilesPerRun: number
   autoCleanupEnabled: boolean
   autoCleanupMaxFiles: number
+  ignoreQbIncomplete: boolean
   createdAt?: string
   updatedAt?: string
 }
@@ -2190,6 +2191,7 @@ export interface OrphanScanSettingsUpdate {
   maxFilesPerRun?: number
   autoCleanupEnabled?: boolean
   autoCleanupMaxFiles?: number
+  ignoreQbIncomplete?: boolean
 }
 
 export interface OrphanScanRun {

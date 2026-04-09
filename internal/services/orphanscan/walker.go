@@ -40,6 +40,10 @@ var ignoredOrphanFileNameSuffixes = []string{
 	".parts",
 }
 
+// qbIncompleteFileSuffix is the file extension qBittorrent appends to files that are still
+// being downloaded. These files are not orphans - they are active incomplete downloads.
+const qbIncompleteFileSuffix = ".!qB"
+
 // ignoredOrphanDirNames are directory names that should be skipped entirely during scanning.
 // These are typically system metadata/recycle bins/snapshot internals, not real content.
 var ignoredOrphanDirNames = []string{
@@ -74,8 +78,9 @@ type discUnitDecision struct {
 // walkScanRoot walks a directory tree and returns orphan files not in the TorrentFileMap.
 // Only files are returned as orphans - directories are cleaned up separately after file deletion.
 func walkScanRoot(ctx context.Context, root string, tfm *TorrentFileMap,
-	ignorePaths []string, gracePeriod time.Duration, maxFiles int) ([]OrphanFile, bool, error) {
-	return walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, nil)
+	ignorePaths []string, gracePeriod time.Duration, maxFiles int,
+	ignoreQBIncomplete bool) ([]OrphanFile, bool, error) {
+	return walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, ignoreQBIncomplete, nil)
 }
 
 // walkScanRootDiscUnits walks a directory tree and returns only disc-layout orphan units.
@@ -84,19 +89,20 @@ func walkScanRootDiscUnits(
 	ctx context.Context, root string, tfm *TorrentFileMap,
 	ignorePaths []string, gracePeriod time.Duration, maxUnits int,
 ) ([]OrphanFile, bool, error) {
-	return walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxUnits, func(_ string, isDiscUnit bool) bool {
+	return walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxUnits, false, func(_ string, isDiscUnit bool) bool {
 		return isDiscUnit
 	})
 }
 
 type scanWalker struct {
-	ctx         context.Context
-	root        string
-	tfm         *TorrentFileMap
-	ignorePaths []string
-	gracePeriod time.Duration
-	maxFiles    int
-	unitFilter  func(unitPath string, isDiscUnit bool) bool
+	ctx                context.Context
+	root               string
+	tfm                *TorrentFileMap
+	ignorePaths        []string
+	gracePeriod        time.Duration
+	maxFiles           int
+	ignoreQBIncomplete bool
+	unitFilter         func(unitPath string, isDiscUnit bool) bool
 
 	orphanUnits    map[string]*OrphanFile
 	discUnitsInUse map[string]struct{}
@@ -109,21 +115,23 @@ type scanWalker struct {
 func newScanWalker(
 	ctx context.Context, root string, tfm *TorrentFileMap,
 	ignorePaths []string, gracePeriod time.Duration, maxFiles int,
+	ignoreQBIncomplete bool,
 	unitFilter func(unitPath string, isDiscUnit bool) bool,
 ) *scanWalker {
 	return &scanWalker{
-		ctx:            ctx,
-		root:           root,
-		tfm:            tfm,
-		ignorePaths:    ignorePaths,
-		gracePeriod:    gracePeriod,
-		maxFiles:       maxFiles,
-		unitFilter:     unitFilter,
-		orphanUnits:    make(map[string]*OrphanFile),
-		discUnitsInUse: make(map[string]struct{}),
-		discUnitCache:  make(map[string]discUnitDecision),
-		discUnitPaths:  make(map[string]struct{}),
-		seenInodes:     make(map[inodeKey]struct{}),
+		ctx:                ctx,
+		root:               root,
+		tfm:                tfm,
+		ignorePaths:        ignorePaths,
+		gracePeriod:        gracePeriod,
+		maxFiles:           maxFiles,
+		ignoreQBIncomplete: ignoreQBIncomplete,
+		unitFilter:         unitFilter,
+		orphanUnits:        make(map[string]*OrphanFile),
+		discUnitsInUse:     make(map[string]struct{}),
+		discUnitCache:      make(map[string]discUnitDecision),
+		discUnitPaths:      make(map[string]struct{}),
+		seenInodes:         make(map[inodeKey]struct{}),
 	}
 }
 
@@ -209,6 +217,9 @@ func (w *scanWalker) handleFile(path string, d fs.DirEntry) error {
 		return nil
 	}
 	if isIgnoredOrphanFileName(d.Name()) {
+		return nil
+	}
+	if w.ignoreQBIncomplete && hasSuffixFold(d.Name(), qbIncompleteFileSuffix) {
 		return nil
 	}
 
@@ -321,9 +332,10 @@ func (w *scanWalker) orphans() []OrphanFile {
 func walkScanRootWithUnitFilter(
 	ctx context.Context, root string, tfm *TorrentFileMap,
 	ignorePaths []string, gracePeriod time.Duration, maxFiles int,
+	ignoreQBIncomplete bool,
 	unitFilter func(unitPath string, isDiscUnit bool) bool,
 ) ([]OrphanFile, bool, error) {
-	w := newScanWalker(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, unitFilter)
+	w := newScanWalker(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, ignoreQBIncomplete, unitFilter)
 	err := filepath.WalkDir(root, w.walk)
 	return w.orphans(), w.truncated, err
 }

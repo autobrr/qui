@@ -77,6 +77,7 @@ type Settings struct {
 	MaxFilesPerRun      int
 	AutoCleanupEnabled  bool
 	AutoCleanupMaxFiles int
+	IgnoreQBIncomplete  bool
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
 }

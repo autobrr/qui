@@ -477,6 +477,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			MaxFilesPerRun:      defaults.MaxFilesPerRun,
 			AutoCleanupEnabled:  defaults.AutoCleanupEnabled,
 			AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
+			IgnoreQBIncomplete:  defaults.IgnoreQBIncomplete,
 		}
 	}
 
@@ -554,7 +555,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 
-		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0)
+		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0, settings.IgnoreQBIncomplete)
 		if err != nil {
 			if ctx.Err() != nil {
 				s.markCanceled(ctx, runID)

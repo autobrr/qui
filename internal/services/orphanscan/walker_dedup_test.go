@@ -49,7 +49,7 @@ func TestScanWalker_RecordsInUseInodesForDedup(t *testing.T) {
 	tfm := NewTorrentFileMap()
 	tfm.Add(inUsePath)
 
-	w := newScanWalker(context.Background(), root, tfm, nil, 0, 0, nil)
+	w := newScanWalker(context.Background(), root, tfm, nil, 0, 0, false, nil)
 
 	info := testFileInfo{
 		name:    "file.mkv",
