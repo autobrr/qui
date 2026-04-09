@@ -1915,9 +1915,9 @@ func resolveDirscanTrackerCategory(
 	qbitCats, catErr := categoryGetter.GetCategories(ctx, instanceID)
 	if catErr != nil {
 		if l != nil {
-			l.Warn().Err(catErr).Str("trackerCategory", trackerCat).Msg("dirscan: failed to look up category save path, continuing without AutoTMM")
+			l.Warn().Err(catErr).Str("trackerCategory", trackerCat).Msg("dirscan: failed to look up category save path, aborting inject")
 		}
-		return trackerCat, "", false
+		return "", "", true
 	}
 
 	if cat, ok := qbitCats[trackerCat]; ok {
