@@ -153,17 +153,6 @@ jobs:
             exit 1
           fi
 
-      - name: Run GoReleaser build
-        if: github.event_name == 'pull_request'
-        uses: goreleaser/goreleaser-action@v7
-        with:
-          distribution: goreleaser
-          version: "~> v2"
-          args: release --clean --skip=validate,publish --parallelism 5 --config .goreleaser.yml
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BUILDER: ${{ github.actor }}@github-actions
-
       - name: Run GoReleaser build and publish tags
         if: startsWith(github.ref, 'refs/tags/')
         uses: goreleaser/goreleaser-action@v7
