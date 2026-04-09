@@ -110,6 +110,16 @@ func TestDownloadClientAllowed(t *testing.T) {
 	}
 }
 
+func TestNormalizeAllowedDownloadClients(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(
+		t,
+		[]string{"SABnzbd", "qBittorrent"},
+		normalizeAllowedDownloadClients([]string{" SABnzbd ", "", "sabnzbd", "   ", "qBittorrent"}),
+	)
+}
+
 func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 	ctx := t.Context()
 

@@ -252,7 +252,7 @@ func (h *DirScanHandler) directoryFromCreatePayload(w http.ResponseWriter, r *ht
 		dir.Tags = *payload.Tags
 	}
 	if payload.AllowedDownloadClients != nil {
-		dir.AllowedDownloadClients = *payload.AllowedDownloadClients
+		dir.AllowedDownloadClients = normalizeAllowedDownloadClients(*payload.AllowedDownloadClients)
 	}
 	if payload.Enabled != nil {
 		dir.Enabled = *payload.Enabled
@@ -316,15 +316,18 @@ func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request)
 	}
 
 	params := &models.DirScanDirectoryUpdateParams{
-		Path:                   payload.Path,
-		QbitPathPrefix:         payload.QbitPathPrefix,
-		Category:               payload.Category,
-		Tags:                   payload.Tags,
-		AllowedDownloadClients: payload.AllowedDownloadClients,
-		Enabled:                payload.Enabled,
-		ArrInstanceID:          payload.ArrInstanceID,
-		TargetInstanceID:       payload.TargetInstanceID,
-		ScanIntervalMinutes:    payload.ScanIntervalMinutes,
+		Path:                payload.Path,
+		QbitPathPrefix:      payload.QbitPathPrefix,
+		Category:            payload.Category,
+		Tags:                payload.Tags,
+		Enabled:             payload.Enabled,
+		ArrInstanceID:       payload.ArrInstanceID,
+		TargetInstanceID:    payload.TargetInstanceID,
+		ScanIntervalMinutes: payload.ScanIntervalMinutes,
+	}
+	if payload.AllowedDownloadClients != nil {
+		normalizedAllowed := normalizeAllowedDownloadClients(*payload.AllowedDownloadClients)
+		params.AllowedDownloadClients = &normalizedAllowed
 	}
 
 	updated, err := h.service.UpdateDirectory(r.Context(), dirID, params)
@@ -754,18 +757,34 @@ func pathMatchesDirectory(cleanPath, dirPath string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+func normalizeAllowedDownloadClients(allowed []string) []string {
+	filteredAllowed := make([]string, 0, len(allowed))
+	seen := make(map[string]struct{}, len(allowed))
+
+	for _, allowedClient := range allowed {
+		normalizedAllowed := strings.TrimSpace(allowedClient)
+		if normalizedAllowed == "" {
+			continue
+		}
+
+		key := strings.ToLower(normalizedAllowed)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+
+		seen[key] = struct{}{}
+		filteredAllowed = append(filteredAllowed, normalizedAllowed)
+	}
+
+	return filteredAllowed
+}
+
 func downloadClientAllowed(allowed []string, downloadClient string) bool {
 	if len(allowed) == 0 {
 		return true
 	}
 
-	filteredAllowed := make([]string, 0, len(allowed))
-	for _, allowedClient := range allowed {
-		normalizedAllowed := strings.TrimSpace(allowedClient)
-		if normalizedAllowed != "" {
-			filteredAllowed = append(filteredAllowed, normalizedAllowed)
-		}
-	}
+	filteredAllowed := normalizeAllowedDownloadClients(allowed)
 	if len(filteredAllowed) == 0 {
 		return true
 	}
