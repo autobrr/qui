@@ -548,6 +548,7 @@ func TestDirScanReadsIntegerBooleanColumns(t *testing.T) {
 			allow_partial INTEGER NOT NULL DEFAULT 0,
 			skip_piece_boundary_safety_check INTEGER NOT NULL DEFAULT 0,
 			start_paused INTEGER NOT NULL DEFAULT 0,
+			download_missing_files INTEGER NOT NULL DEFAULT 1,
 			category TEXT,
 			tags TEXT NOT NULL DEFAULT '[]',
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -572,9 +573,9 @@ func TestDirScanReadsIntegerBooleanColumns(t *testing.T) {
 	`)
 	mustExec(t, db, `
 		INSERT INTO dir_scan_settings
-			(id, enabled, match_mode, size_tolerance_percent, min_piece_ratio, max_searchees_per_run, max_searchee_age_days, allow_partial, skip_piece_boundary_safety_check, start_paused, category, tags)
+			(id, enabled, match_mode, size_tolerance_percent, min_piece_ratio, max_searchees_per_run, max_searchee_age_days, allow_partial, skip_piece_boundary_safety_check, start_paused, download_missing_files, category, tags)
 		VALUES
-			(1, 1, 'strict', 5.0, 0.85, 500, 365, 1, 1, 0, 'movies', '["tag1"]')
+			(1, 1, 'strict', 5.0, 0.85, 500, 365, 1, 1, 0, 1, 'movies', '["tag1"]')
 	`)
 	mustExec(t, db, `
 		INSERT INTO dir_scan_directories
@@ -590,6 +591,7 @@ func TestDirScanReadsIntegerBooleanColumns(t *testing.T) {
 	require.True(t, settings.AllowPartial)
 	require.True(t, settings.SkipPieceBoundarySafetyCheck)
 	require.False(t, settings.StartPaused)
+	require.True(t, settings.DownloadMissingFiles)
 
 	dir, err := store.GetDirectory(context.Background(), 1)
 	require.NoError(t, err)

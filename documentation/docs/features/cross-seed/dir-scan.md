@@ -169,15 +169,23 @@ Open **Dir Scan > Settings**:
 
 | Setting | Description |
 |---------|-------------|
-| Match Mode | `Strict` matches by filename + size. `Flexible` matches by size only. |
-| Size Tolerance (%) | Allows small size differences when matching. |
+| Match Mode | `Strict` matches by filename + exact file size. `Flexible` ignores filenames for primary matching, but matched files must still have the same exact file size. |
+| Size Tolerance (%) | Allows small differences in total torrent size when filtering candidates before file matching. |
 | Minimum Piece Ratio (%) | For partial matches, minimum percent of torrent data that must exist on disk. |
 | Max searchees per run | Limits how many eligible searchees are processed per run. `0` = unlimited. Useful for making progress across restarts. |
 | Only process items changed within the last (days) | Excludes stale work items before search. Uses video/audio mtimes only for manual/scheduled scans. Webhook-triggered scans ignore this cutoff. `0` = disabled. |
 | Allow partial matches | Add torrents even if they have extra/missing files compared to disk. |
+| Download missing files | Downloads files not found on disk for partial matches. Required for season packs and partial releases in hardlink/reflink mode. Enabled by default. |
 | Skip piece boundary safety check | Allow partial matches where downloading missing files could modify pieces containing existing content. |
 | Start torrents paused | Add injected torrents in paused state. |
 | Default Category / Tags | Applied to all injected torrents. Directory-level settings add to these. |
+
+In practice:
+
+- **Strict** is best when filenames on disk are still close to the release layout.
+- **Flexible** is best for renamed libraries, but it still requires exact file-size matches for the files it pairs.
+- **Size Tolerance** only affects which search results are considered based on **total torrent size**. It does **not** allow per-file size mismatches.
+- Flexible single-file matches may still be rejected when the candidate lacks corroborating title or external ID evidence. This prevents false positives when an indexer falls back from ID-based search to plain title search.
 
 ### "Max searchees per run" explained
 
@@ -328,6 +336,10 @@ If the target qBittorrent instance has hardlink or reflink mode enabled, Dir Sca
 
 - Builds a link tree matching the incoming torrent's layout.
 - Adds the torrent pointing at that tree (`contentLayout=Original`). Full matches use `skip_checking=true`; partial matches allow qBittorrent to verify existing data and download missing files safely into the link tree.
+
+:::note
+Partial matches in link tree mode (hardlink or reflink) require **Download missing files** to be enabled in Dir Scan settings. Without it, partial link tree injections are rejected.
+:::
 
 See:
 - [Hardlink Mode](hardlink-mode)

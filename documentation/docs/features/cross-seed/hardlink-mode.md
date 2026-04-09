@@ -78,6 +78,7 @@ By default, hardlink-added torrents start seeding immediately (since `skip_check
 - Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not necessarily free space until all links are removed.
 - Windows support: folder names are sanitized to remove characters Windows forbids. Torrent file paths themselves still need to be valid for your qBittorrent setup.
 - Hardlink mode supports extra files when piece-boundary safe. If the incoming torrent contains extra files not present in the matched torrent (e.g., `.nfo`/`.srt` sidecars), hardlink mode will link the content files and trigger a recheck so qBittorrent downloads the extras. If extras share pieces with content (unsafe), the cross-seed is skipped.
+- Partial matches (e.g., season packs where only some episodes are on disk) require the **Download missing files** setting to be enabled in [Dir Scan settings](dir-scan#settings-global). Without it, partial link tree injections are rejected.
 
 ## Reflink Mode (Alternative)
 
