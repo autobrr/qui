@@ -115,6 +115,101 @@ func TestCreate_Success(t *testing.T) {
 	}
 }
 
+func TestCreate_IdempotentSkipsExistingMatch(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	supported, reason := SupportsReflink(tmpDir)
+	if !supported {
+		t.Skipf("reflink not supported: %s", reason)
+	}
+
+	// Create source file
+	srcDir := filepath.Join(tmpDir, "src")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatalf("failed to create src dir: %v", err)
+	}
+
+	srcFile := filepath.Join(srcDir, "test.txt")
+	testContent := "test content for reflink"
+	if err := os.WriteFile(srcFile, []byte(testContent), 0o644); err != nil {
+		t.Fatalf("failed to write source file: %v", err)
+	}
+
+	dstDir := filepath.Join(tmpDir, "dst")
+	plan := &hardlinktree.TreePlan{
+		RootDir: dstDir,
+		Files: []hardlinktree.FilePlan{
+			{
+				SourcePath: srcFile,
+				TargetPath: filepath.Join(dstDir, "test.txt"),
+			},
+		},
+	}
+
+	// First create succeeds
+	if err := Create(plan); err != nil {
+		t.Fatalf("first Create failed: %v", err)
+	}
+
+	// Second create should also succeed (idempotent skip)
+	if err := Create(plan); err != nil {
+		t.Fatalf("second Create should succeed when target matches source size: %v", err)
+	}
+
+	// Verify content is still correct
+	dstContent, err := os.ReadFile(filepath.Join(dstDir, "test.txt"))
+	if err != nil {
+		t.Fatalf("failed to read destination file: %v", err)
+	}
+	if string(dstContent) != testContent {
+		t.Errorf("content mismatch: got %q, want %q", string(dstContent), testContent)
+	}
+}
+
+func TestCreate_RejectsExistingSizeMismatch(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	supported, reason := SupportsReflink(tmpDir)
+	if !supported {
+		t.Skipf("reflink not supported: %s", reason)
+	}
+
+	// Create source file
+	srcDir := filepath.Join(tmpDir, "src")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatalf("failed to create src dir: %v", err)
+	}
+
+	srcFile := filepath.Join(srcDir, "test.txt")
+	if err := os.WriteFile(srcFile, []byte("source content"), 0o644); err != nil {
+		t.Fatalf("failed to write source file: %v", err)
+	}
+
+	// Pre-create target with different size
+	dstDir := filepath.Join(tmpDir, "dst")
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		t.Fatalf("failed to create dst dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dstDir, "test.txt"), []byte("different"), 0o644); err != nil {
+		t.Fatalf("failed to write target file: %v", err)
+	}
+
+	plan := &hardlinktree.TreePlan{
+		RootDir: dstDir,
+		Files: []hardlinktree.FilePlan{
+			{
+				SourcePath: srcFile,
+				TargetPath: filepath.Join(dstDir, "test.txt"),
+			},
+		},
+	}
+
+	err := Create(plan)
+	if err == nil {
+		t.Fatal("expected error when target exists with different size")
+	}
+}
+
 func TestRollback(t *testing.T) {
 	tmpDir := t.TempDir()
 

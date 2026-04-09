@@ -82,9 +82,14 @@ func Create(plan *hardlinktree.TreePlan) error {
 		}
 
 		// Check if target already exists
-		if _, err := os.Lstat(fp.TargetPath); err == nil {
-			// File exists at target - this is an error for reflinks
-			// (unlike hardlinks, we can't easily check if it's the same content)
+		if targetInfo, err := os.Lstat(fp.TargetPath); err == nil {
+			// File exists - check if it matches the source size (idempotent skip)
+			srcInfo, srcErr := os.Stat(fp.SourcePath)
+			if srcErr == nil && targetInfo.Mode().IsRegular() && targetInfo.Size() == srcInfo.Size() {
+				// Same size regular file already at target - skip
+				continue
+			}
+			// Different size or non-regular file - error
 			return rollbackOnError(fmt.Errorf("target already exists: %s", fp.TargetPath))
 		} else if !os.IsNotExist(err) {
 			return rollbackOnError(fmt.Errorf("check target %s: %w", fp.TargetPath, err))
