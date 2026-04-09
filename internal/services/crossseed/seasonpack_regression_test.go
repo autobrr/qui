@@ -80,6 +80,7 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 		t.TempDir(),
 		localFiles,
 		seasonPackNormalizer(nil),
+		nil,
 	)
 
 	require.ErrorIs(t, err, errLayoutMismatch)

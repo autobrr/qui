@@ -1,6 +1,10 @@
 -- Season pack settings on cross_seed_settings table.
 ALTER TABLE cross_seed_settings ADD COLUMN season_pack_enabled INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE cross_seed_settings ADD COLUMN season_pack_coverage_threshold REAL NOT NULL DEFAULT 0.75;
+ALTER TABLE cross_seed_settings ADD COLUMN season_pack_skip_repack_compare INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE cross_seed_settings ADD COLUMN season_pack_simplify_hdr_compare INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE cross_seed_settings ADD COLUMN season_pack_simplify_web_compare INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE cross_seed_settings ADD COLUMN season_pack_skip_year_compare INTEGER NOT NULL DEFAULT 0;
 
 -- Season pack run activity table.
 CREATE TABLE season_pack_runs (

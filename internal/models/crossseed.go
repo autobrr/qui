@@ -85,11 +85,15 @@ type CrossSeedAutomationSettings struct {
 	SkipPieceBoundarySafetyCheck bool `json:"skipPieceBoundarySafetyCheck"` // Skip piece boundary safety check (risky: may corrupt existing seeded data)
 
 	// Season pack settings
-	SeasonPackEnabled           bool     `json:"seasonPackEnabled"`           // Enable season pack webhook flow
-	SeasonPackCoverageThreshold float64  `json:"seasonPackCoverageThreshold"` // Minimum episode coverage to trigger (0..1, default 0.75)
-	SeasonPackTags              []string `json:"seasonPackTags"`              // Tags for season pack results
-	SeasonPackTVDBAPIKey        string   `json:"seasonPackTvdbApiKey,omitempty"`
-	SeasonPackTVDBPIN           string   `json:"seasonPackTvdbPin,omitempty"`
+	SeasonPackSkipRepackCompare  bool     `json:"seasonPackSkipRepackCompare"`
+	SeasonPackSimplifyHDRCompare bool     `json:"seasonPackSimplifyHdrCompare"`
+	SeasonPackSimplifyWEBCompare bool     `json:"seasonPackSimplifyWebCompare"`
+	SeasonPackSkipYearCompare    bool     `json:"seasonPackSkipYearCompare"`
+	SeasonPackEnabled            bool     `json:"seasonPackEnabled"`           // Enable season pack webhook flow
+	SeasonPackCoverageThreshold  float64  `json:"seasonPackCoverageThreshold"` // Minimum episode coverage to trigger (0..1, default 0.75)
+	SeasonPackTags               []string `json:"seasonPackTags"`              // Tags for season pack results
+	SeasonPackTVDBAPIKey         string   `json:"seasonPackTvdbApiKey,omitempty"`
+	SeasonPackTVDBPIN            string   `json:"seasonPackTvdbPin,omitempty"`
 
 	// Gazelle (OPS/RED) cross-seed settings.
 	// When enabled, qui uses the tracker JSON APIs to find matches for OPS/RED torrents
@@ -157,14 +161,18 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		SkipRecheck:                  false,
 		SkipPieceBoundarySafetyCheck: true, // Skip by default to maximize matches
 		// Season pack defaults
-		SeasonPackEnabled:           false,
-		SeasonPackCoverageThreshold: 0.75,
-		SeasonPackTags:              []string{"cross-seed"},
-		GazelleEnabled:              false,
-		RedactedAPIKey:              "",
-		OrpheusAPIKey:               "",
-		CreatedAt:                   time.Now().UTC(),
-		UpdatedAt:                   time.Now().UTC(),
+		SeasonPackSkipRepackCompare:  true,
+		SeasonPackSimplifyHDRCompare: false,
+		SeasonPackSimplifyWEBCompare: false,
+		SeasonPackSkipYearCompare:    false,
+		SeasonPackEnabled:            false,
+		SeasonPackCoverageThreshold:  0.75,
+		SeasonPackTags:               []string{"cross-seed"},
+		GazelleEnabled:               false,
+		RedactedAPIKey:               "",
+		OrpheusAPIKey:                "",
+		CreatedAt:                    time.Now().UTC(),
+		UpdatedAt:                    time.Now().UTC(),
 	}
 }
 
@@ -398,6 +406,8 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       skip_auto_resume_rss, skip_auto_resume_seeded_search,
 		       skip_auto_resume_completion, skip_auto_resume_webhook,
 		       skip_recheck, skip_piece_boundary_safety_check,
+		       season_pack_skip_repack_compare, season_pack_simplify_hdr_compare,
+		       season_pack_simplify_web_compare, season_pack_skip_year_compare,
 		       season_pack_enabled, season_pack_coverage_threshold, season_pack_tags,
 		       season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted,
 		       gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted,
@@ -420,6 +430,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var inheritSourceTags, useCrossCategoryAffix, useCustomCategory int
 	var skipAutoResumeRSS, skipAutoResumeSeededSearch, skipAutoResumeCompletion, skipAutoResumeWebhook int
 	var skipRecheck, skipPieceBoundarySafetyCheck int
+	var seasonPackSkipRepackCompare, seasonPackSimplifyHDRCompare, seasonPackSimplifyWEBCompare, seasonPackSkipYearCompare int
 	var seasonPackEnabled int
 	var seasonPackTags sql.NullString
 	var seasonPackTVDBAPIKeyEncrypted, seasonPackTVDBPINEncrypted sql.NullString
@@ -463,6 +474,10 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&skipAutoResumeWebhook,
 		&skipRecheck,
 		&skipPieceBoundarySafetyCheck,
+		&seasonPackSkipRepackCompare,
+		&seasonPackSimplifyHDRCompare,
+		&seasonPackSimplifyWEBCompare,
+		&seasonPackSkipYearCompare,
 		&seasonPackEnabled,
 		&settings.SeasonPackCoverageThreshold,
 		&seasonPackTags,
@@ -563,6 +578,10 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	settings.SkipAutoResumeWebhook = SQLiteIntToBool(skipAutoResumeWebhook)
 	settings.SkipRecheck = SQLiteIntToBool(skipRecheck)
 	settings.SkipPieceBoundarySafetyCheck = SQLiteIntToBool(skipPieceBoundarySafetyCheck)
+	settings.SeasonPackSkipRepackCompare = SQLiteIntToBool(seasonPackSkipRepackCompare)
+	settings.SeasonPackSimplifyHDRCompare = SQLiteIntToBool(seasonPackSimplifyHDRCompare)
+	settings.SeasonPackSimplifyWEBCompare = SQLiteIntToBool(seasonPackSimplifyWEBCompare)
+	settings.SeasonPackSkipYearCompare = SQLiteIntToBool(seasonPackSkipYearCompare)
 	settings.SeasonPackEnabled = SQLiteIntToBool(seasonPackEnabled)
 	settings.GazelleEnabled = SQLiteIntToBool(gazelleEnabled)
 	if redactedAPIKeyEncrypted.Valid {
@@ -836,11 +855,13 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_rss, skip_auto_resume_seeded_search,
 			skip_auto_resume_completion, skip_auto_resume_webhook,
 			skip_recheck, skip_piece_boundary_safety_check,
+			season_pack_skip_repack_compare, season_pack_simplify_hdr_compare,
+			season_pack_simplify_web_compare, season_pack_skip_year_compare,
 			season_pack_enabled, season_pack_coverage_threshold, season_pack_tags,
 			season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted,
 			gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -878,6 +899,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			skip_auto_resume_webhook = excluded.skip_auto_resume_webhook,
 			skip_recheck = excluded.skip_recheck,
 			skip_piece_boundary_safety_check = excluded.skip_piece_boundary_safety_check,
+			season_pack_skip_repack_compare = excluded.season_pack_skip_repack_compare,
+			season_pack_simplify_hdr_compare = excluded.season_pack_simplify_hdr_compare,
+			season_pack_simplify_web_compare = excluded.season_pack_simplify_web_compare,
+			season_pack_skip_year_compare = excluded.season_pack_skip_year_compare,
 			season_pack_enabled = excluded.season_pack_enabled,
 			season_pack_coverage_threshold = excluded.season_pack_coverage_threshold,
 			season_pack_tags = excluded.season_pack_tags,
@@ -936,6 +961,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		BoolToSQLite(settings.SkipAutoResumeWebhook),
 		BoolToSQLite(settings.SkipRecheck),
 		BoolToSQLite(settings.SkipPieceBoundarySafetyCheck),
+		BoolToSQLite(settings.SeasonPackSkipRepackCompare),
+		BoolToSQLite(settings.SeasonPackSimplifyHDRCompare),
+		BoolToSQLite(settings.SeasonPackSimplifyWEBCompare),
+		BoolToSQLite(settings.SeasonPackSkipYearCompare),
 		BoolToSQLite(settings.SeasonPackEnabled),
 		settings.SeasonPackCoverageThreshold,
 		seasonPackTags,

@@ -52,6 +52,10 @@ type automationSettingsRequest struct {
 	RunExternalProgramID         *int     `json:"runExternalProgramId"`
 	SkipRecheck                  bool     `json:"skipRecheck"`
 	SeasonPackEnabled            bool     `json:"seasonPackEnabled"`
+	SeasonPackSkipRepackCompare  bool     `json:"seasonPackSkipRepackCompare"`
+	SeasonPackSimplifyHDRCompare bool     `json:"seasonPackSimplifyHdrCompare"`
+	SeasonPackSimplifyWEBCompare bool     `json:"seasonPackSimplifyWebCompare"`
+	SeasonPackSkipYearCompare    bool     `json:"seasonPackSkipYearCompare"`
 	SeasonPackCoverageThreshold  float64  `json:"seasonPackCoverageThreshold"`
 	SeasonPackTags               []string `json:"seasonPackTags"`
 	// Gazelle (OPS/RED) cross-seed settings.
@@ -104,14 +108,18 @@ type automationSettingsPatchRequest struct {
 	SkipPieceBoundarySafetyCheck *bool `json:"skipPieceBoundarySafetyCheck,omitempty"`
 	// Gazelle (OPS/RED) cross-seed settings.
 	// Season pack settings
-	SeasonPackEnabled           *bool     `json:"seasonPackEnabled,omitempty"`
-	SeasonPackCoverageThreshold *float64  `json:"seasonPackCoverageThreshold,omitempty"`
-	SeasonPackTags              *[]string `json:"seasonPackTags,omitempty"`
-	GazelleEnabled              *bool     `json:"gazelleEnabled,omitempty"`
-	RedactedAPIKey              *string   `json:"redactedApiKey,omitempty"`
-	OrpheusAPIKey               *string   `json:"orpheusApiKey,omitempty"`
-	SeasonPackTVDBAPIKey        *string   `json:"seasonPackTvdbApiKey,omitempty"`
-	SeasonPackTVDBPIN           *string   `json:"seasonPackTvdbPin,omitempty"`
+	SeasonPackEnabled            *bool     `json:"seasonPackEnabled,omitempty"`
+	SeasonPackSkipRepackCompare  *bool     `json:"seasonPackSkipRepackCompare,omitempty"`
+	SeasonPackSimplifyHDRCompare *bool     `json:"seasonPackSimplifyHdrCompare,omitempty"`
+	SeasonPackSimplifyWEBCompare *bool     `json:"seasonPackSimplifyWebCompare,omitempty"`
+	SeasonPackSkipYearCompare    *bool     `json:"seasonPackSkipYearCompare,omitempty"`
+	SeasonPackCoverageThreshold  *float64  `json:"seasonPackCoverageThreshold,omitempty"`
+	SeasonPackTags               *[]string `json:"seasonPackTags,omitempty"`
+	GazelleEnabled               *bool     `json:"gazelleEnabled,omitempty"`
+	RedactedAPIKey               *string   `json:"redactedApiKey,omitempty"`
+	OrpheusAPIKey                *string   `json:"orpheusApiKey,omitempty"`
+	SeasonPackTVDBAPIKey         *string   `json:"seasonPackTvdbApiKey,omitempty"`
+	SeasonPackTVDBPIN            *string   `json:"seasonPackTvdbPin,omitempty"`
 }
 
 type optionalString struct {
@@ -207,6 +215,10 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SkipRecheck == nil &&
 		r.SkipPieceBoundarySafetyCheck == nil &&
 		r.SeasonPackEnabled == nil &&
+		r.SeasonPackSkipRepackCompare == nil &&
+		r.SeasonPackSimplifyHDRCompare == nil &&
+		r.SeasonPackSimplifyWEBCompare == nil &&
+		r.SeasonPackSkipYearCompare == nil &&
 		r.SeasonPackCoverageThreshold == nil &&
 		r.SeasonPackTags == nil &&
 		r.GazelleEnabled == nil &&
@@ -338,6 +350,18 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	// Season pack settings
 	if patch.SeasonPackEnabled != nil {
 		settings.SeasonPackEnabled = *patch.SeasonPackEnabled
+	}
+	if patch.SeasonPackSkipRepackCompare != nil {
+		settings.SeasonPackSkipRepackCompare = *patch.SeasonPackSkipRepackCompare
+	}
+	if patch.SeasonPackSimplifyHDRCompare != nil {
+		settings.SeasonPackSimplifyHDRCompare = *patch.SeasonPackSimplifyHDRCompare
+	}
+	if patch.SeasonPackSimplifyWEBCompare != nil {
+		settings.SeasonPackSimplifyWEBCompare = *patch.SeasonPackSimplifyWEBCompare
+	}
+	if patch.SeasonPackSkipYearCompare != nil {
+		settings.SeasonPackSkipYearCompare = *patch.SeasonPackSkipYearCompare
 	}
 	if patch.SeasonPackCoverageThreshold != nil {
 		settings.SeasonPackCoverageThreshold = *patch.SeasonPackCoverageThreshold
@@ -889,6 +913,10 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		RunExternalProgramID:         req.RunExternalProgramID,
 		SkipRecheck:                  req.SkipRecheck,
 		SeasonPackEnabled:            req.SeasonPackEnabled,
+		SeasonPackSkipRepackCompare:  req.SeasonPackSkipRepackCompare,
+		SeasonPackSimplifyHDRCompare: req.SeasonPackSimplifyHDRCompare,
+		SeasonPackSimplifyWEBCompare: req.SeasonPackSimplifyWEBCompare,
+		SeasonPackSkipYearCompare:    req.SeasonPackSkipYearCompare,
 		SeasonPackCoverageThreshold:  req.SeasonPackCoverageThreshold,
 		SeasonPackTags:               req.SeasonPackTags,
 		GazelleEnabled:               req.GazelleEnabled,

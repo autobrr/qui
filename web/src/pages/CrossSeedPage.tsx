@@ -115,6 +115,10 @@ interface GlobalCrossSeedSettings {
   webhookSourceExcludeTags: string[]
   // Season packs
   seasonPackEnabled: boolean
+  seasonPackSkipRepackCompare: boolean
+  seasonPackSimplifyHdrCompare: boolean
+  seasonPackSimplifyWebCompare: boolean
+  seasonPackSkipYearCompare: boolean
   seasonPackCoverageThreshold: number
   seasonPackTags: string[]
   seasonPackTvdbApiKey: string
@@ -172,6 +176,10 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   skipPieceBoundarySafetyCheck: true,
   // Season packs
   seasonPackEnabled: false,
+  seasonPackSkipRepackCompare: true,
+  seasonPackSimplifyHdrCompare: false,
+  seasonPackSimplifyWebCompare: false,
+  seasonPackSkipYearCompare: false,
   seasonPackCoverageThreshold: 0.75,
   seasonPackTags: ["cross-seed"],
   seasonPackTvdbApiKey: "",
@@ -873,6 +881,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
         // Season packs
         seasonPackEnabled: settings.seasonPackEnabled ?? false,
+        seasonPackSkipRepackCompare: settings.seasonPackSkipRepackCompare ?? true,
+        seasonPackSimplifyHdrCompare: settings.seasonPackSimplifyHdrCompare ?? false,
+        seasonPackSimplifyWebCompare: settings.seasonPackSimplifyWebCompare ?? false,
+        seasonPackSkipYearCompare: settings.seasonPackSkipYearCompare ?? false,
         seasonPackCoverageThreshold: settings.seasonPackCoverageThreshold ?? 0.75,
         seasonPackTags: settings.seasonPackTags ?? ["cross-seed"],
         seasonPackTvdbApiKey: settings.seasonPackTvdbApiKey ?? "",
@@ -966,6 +978,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
       // Season packs
       seasonPackEnabled: settings.seasonPackEnabled ?? false,
+      seasonPackSkipRepackCompare: settings.seasonPackSkipRepackCompare ?? true,
+      seasonPackSimplifyHdrCompare: settings.seasonPackSimplifyHdrCompare ?? false,
+      seasonPackSimplifyWebCompare: settings.seasonPackSimplifyWebCompare ?? false,
+      seasonPackSkipYearCompare: settings.seasonPackSkipYearCompare ?? false,
       seasonPackCoverageThreshold: settings.seasonPackCoverageThreshold ?? 0.75,
       seasonPackTags: settings.seasonPackTags ?? ["cross-seed"],
       seasonPackTvdbApiKey: settings.seasonPackTvdbApiKey ?? "",
@@ -1006,6 +1022,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       webhookSourceExcludeTags: globalSource.webhookSourceExcludeTags,
       // Season packs
       seasonPackEnabled: globalSource.seasonPackEnabled,
+      seasonPackSkipRepackCompare: globalSource.seasonPackSkipRepackCompare,
+      seasonPackSimplifyHdrCompare: globalSource.seasonPackSimplifyHdrCompare,
+      seasonPackSimplifyWebCompare: globalSource.seasonPackSimplifyWebCompare,
+      seasonPackSkipYearCompare: globalSource.seasonPackSkipYearCompare,
       seasonPackCoverageThreshold: globalSource.seasonPackCoverageThreshold,
       seasonPackTags: globalSource.seasonPackTags,
       seasonPackTvdbApiKey: globalSource.seasonPackTvdbApiKey,
@@ -2635,6 +2655,61 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                   <p className="text-xs text-muted-foreground">
                     Minimum local coverage before qui injects a season pack. If Sonarr resolves the show, qui uses the larger season total; otherwise it falls back to playable files in the pack. Incomplete packs are added paused, rechecked, then resumed automatically.
                   </p>
+                </div>
+
+                <div className="space-y-3 pt-3 border-t border-border/50">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium leading-none">Matching settings</p>
+                    <p className="text-xs text-muted-foreground">Season-pack webhook matching rules. These settings only affect season-pack checks and applies.</p>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="season-pack-skip-repack-compare" className="font-medium">Ignore REPACK/PROPER differences</Label>
+                      <p className="text-xs text-muted-foreground">Treat REPACK and PROPER episodes as compatible with the season pack.</p>
+                    </div>
+                    <Switch
+                      id="season-pack-skip-repack-compare"
+                      checked={globalSettings.seasonPackSkipRepackCompare}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSkipRepackCompare: !!value }))}
+                      disabled={!globalSettings.seasonPackEnabled}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="season-pack-simplify-hdr-compare" className="font-medium">Simplify HDR matching</Label>
+                      <p className="text-xs text-muted-foreground">Treat HDR10, HDR10+, and HDR+ as HDR for season-pack matching.</p>
+                    </div>
+                    <Switch
+                      id="season-pack-simplify-hdr-compare"
+                      checked={globalSettings.seasonPackSimplifyHdrCompare}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSimplifyHdrCompare: !!value }))}
+                      disabled={!globalSettings.seasonPackEnabled}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="season-pack-simplify-web-compare" className="font-medium">Simplify WEB source matching</Label>
+                      <p className="text-xs text-muted-foreground">Treat WEB-DL as WEB for season-pack matching.</p>
+                    </div>
+                    <Switch
+                      id="season-pack-simplify-web-compare"
+                      checked={globalSettings.seasonPackSimplifyWebCompare}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSimplifyWebCompare: !!value }))}
+                      disabled={!globalSettings.seasonPackEnabled}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="season-pack-skip-year-compare" className="font-medium">Ignore year differences</Label>
+                      <p className="text-xs text-muted-foreground">Allow matches when one release includes a year and the other does not.</p>
+                    </div>
+                    <Switch
+                      id="season-pack-skip-year-compare"
+                      checked={globalSettings.seasonPackSkipYearCompare}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSkipYearCompare: !!value }))}
+                      disabled={!globalSettings.seasonPackEnabled}
+                    />
+                  </div>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 pt-3 border-t border-border/50">

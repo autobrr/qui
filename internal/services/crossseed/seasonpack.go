@@ -72,11 +72,34 @@ type seasonPackPlanBuild struct {
 	totalFiles        int
 }
 
+type seasonPackMatchOptions struct {
+	skipRepackCompare  bool
+	simplifyHDRCompare bool
+	simplifyWEBCompare bool
+	skipYearCompare    bool
+}
+
 func (b *seasonPackPlanBuild) hasPendingFiles() bool {
 	if b == nil {
 		return false
 	}
 	return len(b.materializedPaths) < b.totalFiles
+}
+
+func seasonPackMatchOptionsFromSettings(settings *models.CrossSeedAutomationSettings) seasonPackMatchOptions {
+	opts := seasonPackMatchOptions{
+		skipRepackCompare: true,
+	}
+	if settings == nil {
+		return opts
+	}
+
+	opts.skipRepackCompare = settings.SeasonPackSkipRepackCompare
+	opts.simplifyHDRCompare = settings.SeasonPackSimplifyHDRCompare
+	opts.simplifyWEBCompare = settings.SeasonPackSimplifyWEBCompare
+	opts.skipYearCompare = settings.SeasonPackSkipYearCompare
+
+	return opts
 }
 
 func (b *seasonPackPlanBuild) recheckThreshold() float64 {
@@ -448,7 +471,7 @@ func (s *Service) assembleSeasonPack(
 
 	planBuild, err := buildSeasonPackPlan(
 		prep.meta.Files, prep.packRelease, prep.meta.Name,
-		inst.HardlinkBaseDir, localFiles, seasonPackNormalizer(s),
+		inst.HardlinkBaseDir, localFiles, seasonPackNormalizer(s), prep.settings,
 	)
 	if err != nil {
 		return nil, nil, nil, err
@@ -620,6 +643,132 @@ func (s *Service) seasonPackCoverageTotal(ctx context.Context, torrentName strin
 	return totalEpisodes
 }
 
+func (s *Service) seasonPackReleasesMatch(
+	source *rls.Release,
+	candidate *rls.Release,
+	findIndividualEpisodes bool,
+	settings *models.CrossSeedAutomationSettings,
+) bool {
+	if source == nil || candidate == nil {
+		return false
+	}
+
+	sourceCopy := *source
+	candidateCopy := *candidate
+	opts := seasonPackMatchOptionsFromSettings(settings)
+
+	if opts.skipRepackCompare {
+		sourceCopy.Other = stripSeasonPackRepackTags(sourceCopy.Other)
+		candidateCopy.Other = stripSeasonPackRepackTags(candidateCopy.Other)
+	}
+	if opts.simplifyHDRCompare {
+		sourceCopy.HDR = simplifySeasonPackHDRTags(sourceCopy.HDR)
+		candidateCopy.HDR = simplifySeasonPackHDRTags(candidateCopy.HDR)
+	}
+	if opts.simplifyWEBCompare {
+		simplifySeasonPackWEBSource(&sourceCopy)
+		simplifySeasonPackWEBSource(&candidateCopy)
+	}
+	if !seasonPackNonPackVariantsMatch(&sourceCopy, &candidateCopy) {
+		return false
+	}
+	if !seasonPackSourcesMatchExactly(&sourceCopy, &candidateCopy) {
+		return false
+	}
+	if opts.skipYearCompare {
+		sourceCopy.Year, sourceCopy.Month, sourceCopy.Day = 0, 0, 0
+		candidateCopy.Year, candidateCopy.Month, candidateCopy.Day = 0, 0, 0
+	}
+
+	return s.releasesMatch(&sourceCopy, &candidateCopy, findIndividualEpisodes)
+}
+
+func stripSeasonPackRepackTags(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	filtered := make([]string, 0, len(values))
+	for _, value := range values {
+		normalized := normalizeVariant(value)
+		switch {
+		case normalized == "":
+			continue
+		case variantValueMatches(normalized, "REPACK"):
+			continue
+		case variantValueMatches(normalized, "PROPER"):
+			continue
+		default:
+			filtered = append(filtered, value)
+		}
+	}
+
+	return filtered
+}
+
+func simplifySeasonPackHDRTags(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(values))
+	simplified := make([]string, 0, len(values))
+	for _, value := range values {
+		normalized := normalizeVariant(value)
+		if normalized == "" {
+			continue
+		}
+		if strings.Contains(normalized, "HDR") {
+			normalized = "HDR"
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		simplified = append(simplified, normalized)
+	}
+
+	return simplified
+}
+
+func simplifySeasonPackWEBSource(release *rls.Release) {
+	if release == nil {
+		return
+	}
+
+	if normalizeSource(release.Source) == "WEBDL" {
+		release.Source = "WEB"
+	}
+}
+
+func seasonPackSourcesMatchExactly(source *rls.Release, candidate *rls.Release) bool {
+	if source == nil || candidate == nil {
+		return false
+	}
+
+	sourceSource := normalizeSource(source.Source)
+	candidateSource := normalizeSource(candidate.Source)
+	if sourceSource == "" || candidateSource == "" {
+		return true
+	}
+
+	return sourceSource == candidateSource
+}
+
+func seasonPackNonPackVariantsMatch(source *rls.Release, candidate *rls.Release) bool {
+	if source == nil || candidate == nil {
+		return false
+	}
+	if mismatch := nonPackVariantOverrides.findMismatch(source, candidate); mismatch != "" {
+		return false
+	}
+	if mismatch := nonPackVariantOverrides.findMismatch(candidate, source); mismatch != "" {
+		return false
+	}
+
+	return true
+}
+
 func (s *Service) lookupSeasonPackEpisodeTotal(ctx context.Context, torrentName string, packRelease *rls.Release) (int, bool) {
 	if s == nil || packRelease == nil || packRelease.Series <= 0 || torrentName == "" {
 		return 0, false
@@ -739,7 +888,7 @@ func (s *Service) matchEpisodesDetailed(
 			continue
 		}
 
-		if !matcher.releasesMatch(packRelease, parsed, true) {
+		if !matcher.seasonPackReleasesMatch(packRelease, parsed, true, settings) {
 			continue
 		}
 
@@ -884,6 +1033,7 @@ func buildSeasonPackPlan(
 	destDir string,
 	localFiles map[episodeIdentity]seasonPackLocalFile,
 	normalizer *stringutils.Normalizer[string, string],
+	settings *models.CrossSeedAutomationSettings,
 ) (*seasonPackPlanBuild, error) {
 	rootDir, ok := safeSeasonPackJoin(destDir, packName)
 	if !ok {
@@ -917,7 +1067,7 @@ func buildSeasonPackPlan(
 		if localFile.size != pf.Size {
 			return nil, fmt.Errorf("%w: file size mismatch for %s", errLayoutMismatch, pf.Name)
 		}
-		if !matcher.releasesMatch(packFileRelease, localFile.release, false) {
+		if !matcher.seasonPackReleasesMatch(packFileRelease, localFile.release, false, settings) {
 			return nil, fmt.Errorf("%w: release mismatch for %s", errLayoutMismatch, pf.Name)
 		}
 

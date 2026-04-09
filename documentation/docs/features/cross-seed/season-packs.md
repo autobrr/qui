@@ -58,6 +58,19 @@ This means mixed variants do **not** count toward coverage. For example, `720p W
 
 The default threshold is **75%**. Change it in **Cross-Seed > Season Packs** in the qui UI.
 
+## Matching Settings
+
+These settings only affect season-pack checks and applies. They do not change normal cross-seed matching in the Rules tab.
+
+Defaults are chosen to match common seasonpackarr expectations.
+
+| Setting | Default | Effect | Example |
+| --- | --- | --- | --- |
+| Ignore REPACK/PROPER differences | On | Treat REPACK and PROPER episodes as compatible with the season pack. | `Show.S01E01.REPACK` matches `Show.S01E01.PROPER` |
+| Simplify HDR matching | Off | Treat HDR10, HDR10+, and HDR+ as HDR for season-pack matching. | `HDR10+` matches `HDR10` |
+| Simplify WEB source matching | Off | Treat WEB-DL as WEB for season-pack matching. | `WEB-DL` matches `WEB` |
+| Ignore year differences | Off | Allow matches when release dates differ or one side omits the year. | `Show.2024.S01E01` matches `Show.2025.S01E01` |
+
 ## Apply Model
 
 Passing the threshold does **not** require 100% local coverage.

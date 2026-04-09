@@ -147,40 +147,74 @@ func TestPatchAutomationSettings_RejectsInvalidSeasonPackThreshold(t *testing.T)
 
 func TestPatchAutomationSettings_AppliesSeasonPackFields(t *testing.T) {
 	existing := models.CrossSeedAutomationSettings{
-		SeasonPackEnabled:           false,
-		SeasonPackCoverageThreshold: 0.75,
+		SeasonPackEnabled:            false,
+		SeasonPackCoverageThreshold:  0.75,
+		SeasonPackSkipRepackCompare:  true,
+		SeasonPackSimplifyHDRCompare: false,
+		SeasonPackSimplifyWEBCompare: false,
+		SeasonPackSkipYearCompare:    false,
 	}
 
 	threshold := 0.9
 	patch := automationSettingsPatchRequest{
-		SeasonPackEnabled:           new(true),
-		SeasonPackCoverageThreshold: &threshold,
+		SeasonPackEnabled:            new(true),
+		SeasonPackCoverageThreshold:  &threshold,
+		SeasonPackSkipRepackCompare:  new(false),
+		SeasonPackSimplifyHDRCompare: new(true),
+		SeasonPackSimplifyWEBCompare: new(true),
+		SeasonPackSkipYearCompare:    new(true),
 	}
 
 	applyAutomationSettingsPatch(&existing, patch)
 
 	require.True(t, existing.SeasonPackEnabled)
 	require.InDelta(t, 0.9, existing.SeasonPackCoverageThreshold, 0.001)
+	require.False(t, existing.SeasonPackSkipRepackCompare)
+	require.True(t, existing.SeasonPackSimplifyHDRCompare)
+	require.True(t, existing.SeasonPackSimplifyWEBCompare)
+	require.True(t, existing.SeasonPackSkipYearCompare)
 }
 
 func TestPatchAutomationSettings_IsEmptyIncludesSeasonPackFields(t *testing.T) {
-	// All-nil patch should be empty
-	patch := automationSettingsPatchRequest{}
-	require.True(t, patch.isEmpty())
+	require.True(t, automationSettingsPatchRequest{}.isEmpty())
 
-	// Setting season pack enabled should make it non-empty
-	patch.SeasonPackEnabled = new(true)
-	require.False(t, patch.isEmpty())
+	tests := []struct {
+		name  string
+		patch automationSettingsPatchRequest
+	}{
+		{
+			name:  "season pack enabled",
+			patch: automationSettingsPatchRequest{SeasonPackEnabled: new(true)},
+		},
+		{
+			name:  "season pack threshold",
+			patch: automationSettingsPatchRequest{SeasonPackCoverageThreshold: func() *float64 { v := 0.8; return &v }()},
+		},
+		{
+			name:  "season pack tags",
+			patch: automationSettingsPatchRequest{SeasonPackTags: func() *[]string { v := []string{"season-pack", "cross-seed"}; return &v }()},
+		},
+		{
+			name:  "season pack skip repack compare",
+			patch: automationSettingsPatchRequest{SeasonPackSkipRepackCompare: new(true)},
+		},
+		{
+			name:  "season pack simplify hdr compare",
+			patch: automationSettingsPatchRequest{SeasonPackSimplifyHDRCompare: new(true)},
+		},
+		{
+			name:  "season pack simplify web compare",
+			patch: automationSettingsPatchRequest{SeasonPackSimplifyWEBCompare: new(true)},
+		},
+		{
+			name:  "season pack skip year compare",
+			patch: automationSettingsPatchRequest{SeasonPackSkipYearCompare: new(true)},
+		},
+	}
 
-	// Reset and test threshold
-	patch = automationSettingsPatchRequest{}
-	threshold := 0.8
-	patch.SeasonPackCoverageThreshold = &threshold
-	require.False(t, patch.isEmpty())
-
-	// Reset and test tags-only patch
-	patch = automationSettingsPatchRequest{}
-	tags := []string{"season-pack", "cross-seed"}
-	patch.SeasonPackTags = &tags
-	require.False(t, patch.isEmpty())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.False(t, tt.patch.isEmpty())
+		})
+	}
 }

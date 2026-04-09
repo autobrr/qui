@@ -2022,6 +2022,10 @@ export interface CrossSeedAutomationSettings {
   orpheusApiKey: string
   // Season pack settings
   seasonPackEnabled: boolean
+  seasonPackSkipRepackCompare: boolean
+  seasonPackSimplifyHdrCompare: boolean
+  seasonPackSimplifyWebCompare: boolean
+  seasonPackSkipYearCompare: boolean
   seasonPackCoverageThreshold: number
   seasonPackTags: string[]
   seasonPackTvdbApiKey?: string
@@ -2079,6 +2083,10 @@ export interface CrossSeedAutomationSettingsPatch {
   orpheusApiKey?: string
   // Season pack settings
   seasonPackEnabled?: boolean
+  seasonPackSkipRepackCompare?: boolean
+  seasonPackSimplifyHdrCompare?: boolean
+  seasonPackSimplifyWebCompare?: boolean
+  seasonPackSkipYearCompare?: boolean
   seasonPackCoverageThreshold?: number
   seasonPackTags?: string[]
   seasonPackTvdbApiKey?: string

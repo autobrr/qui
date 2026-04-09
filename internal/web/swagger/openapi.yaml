@@ -6457,6 +6457,14 @@ components:
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
+        seasonPackSkipRepackCompare:
+          type: boolean
+        seasonPackSimplifyHdrCompare:
+          type: boolean
+        seasonPackSimplifyWebCompare:
+          type: boolean
+        seasonPackSkipYearCompare:
+          type: boolean
         seasonPackCoverageThreshold:
           type: number
           format: double
@@ -6574,6 +6582,14 @@ components:
         seasonPackEnabled:
           type: boolean
           description: Enable season pack webhook flow
+        seasonPackSkipRepackCompare:
+          type: boolean
+        seasonPackSimplifyHdrCompare:
+          type: boolean
+        seasonPackSimplifyWebCompare:
+          type: boolean
+        seasonPackSkipYearCompare:
+          type: boolean
         seasonPackCoverageThreshold:
           type: number
           format: double

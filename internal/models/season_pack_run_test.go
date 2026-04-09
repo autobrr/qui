@@ -12,8 +12,12 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
-func TestDefaultCrossSeedAutomationSettings_SeasonPackDefaults(t *testing.T) {
+func TestDefaultCrossSeedAutomationSettings_SeasonPackMatchingDefaults(t *testing.T) {
 	settings := models.DefaultCrossSeedAutomationSettings()
+	require.True(t, settings.SeasonPackSkipRepackCompare)
+	require.False(t, settings.SeasonPackSimplifyHDRCompare)
+	require.False(t, settings.SeasonPackSimplifyWEBCompare)
+	require.False(t, settings.SeasonPackSkipYearCompare)
 	require.False(t, settings.SeasonPackEnabled)
 	require.InDelta(t, 0.75, settings.SeasonPackCoverageThreshold, 0.0001)
 }
@@ -109,26 +113,42 @@ func TestSeasonPackRunStore_SettingsRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, defaults.SeasonPackEnabled)
 	require.InDelta(t, 0.75, defaults.SeasonPackCoverageThreshold, 0.0001)
+	require.True(t, defaults.SeasonPackSkipRepackCompare)
+	require.False(t, defaults.SeasonPackSimplifyHDRCompare)
+	require.False(t, defaults.SeasonPackSimplifyWEBCompare)
+	require.False(t, defaults.SeasonPackSkipYearCompare)
 
 	// Upsert with season pack fields
 	updated, err := store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
-		Enabled:                     true,
-		RunIntervalMinutes:          60,
-		StartPaused:                 true,
-		SeasonPackEnabled:           true,
-		SeasonPackCoverageThreshold: 0.85,
-		RSSAutomationTags:           []string{"cross-seed"},
-		SeededSearchTags:            []string{"cross-seed"},
-		CompletionSearchTags:        []string{"cross-seed"},
-		WebhookTags:                 []string{"cross-seed"},
+		Enabled:                      true,
+		RunIntervalMinutes:           60,
+		StartPaused:                  true,
+		SeasonPackSkipRepackCompare:  true,
+		SeasonPackSimplifyHDRCompare: true,
+		SeasonPackSimplifyWEBCompare: true,
+		SeasonPackSkipYearCompare:    true,
+		SeasonPackEnabled:            true,
+		SeasonPackCoverageThreshold:  0.85,
+		RSSAutomationTags:            []string{"cross-seed"},
+		SeededSearchTags:             []string{"cross-seed"},
+		CompletionSearchTags:         []string{"cross-seed"},
+		WebhookTags:                  []string{"cross-seed"},
 	})
 	require.NoError(t, err)
+	require.True(t, updated.SeasonPackSkipRepackCompare)
+	require.True(t, updated.SeasonPackSimplifyHDRCompare)
+	require.True(t, updated.SeasonPackSimplifyWEBCompare)
+	require.True(t, updated.SeasonPackSkipYearCompare)
 	require.True(t, updated.SeasonPackEnabled)
 	require.InDelta(t, 0.85, updated.SeasonPackCoverageThreshold, 0.0001)
 
 	// Reload should match
 	reloaded, err := store.GetSettings(ctx)
 	require.NoError(t, err)
+	require.True(t, reloaded.SeasonPackSkipRepackCompare)
+	require.True(t, reloaded.SeasonPackSimplifyHDRCompare)
+	require.True(t, reloaded.SeasonPackSimplifyWEBCompare)
+	require.True(t, reloaded.SeasonPackSkipYearCompare)
 	require.True(t, reloaded.SeasonPackEnabled)
 	require.InDelta(t, 0.85, reloaded.SeasonPackCoverageThreshold, 0.0001)
 }

@@ -60,7 +60,11 @@ func TestUpdateAutomationSettings_PersistsSeasonPackFields(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/cross-seed/settings", strings.NewReader(`{
 		"seasonPackEnabled": true,
 		"seasonPackCoverageThreshold": 0.9,
-		"seasonPackTags": ["season-pack", "cross-seed"]
+		"seasonPackTags": ["season-pack", "cross-seed"],
+		"seasonPackSkipRepackCompare": false,
+		"seasonPackSimplifyHdrCompare": true,
+		"seasonPackSimplifyWebCompare": true,
+		"seasonPackSkipYearCompare": true
 	}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
@@ -74,12 +78,20 @@ func TestUpdateAutomationSettings_PersistsSeasonPackFields(t *testing.T) {
 	require.True(t, updated.SeasonPackEnabled)
 	require.InDelta(t, 0.9, updated.SeasonPackCoverageThreshold, 0.001)
 	require.Equal(t, []string{"season-pack", "cross-seed"}, updated.SeasonPackTags)
+	require.False(t, updated.SeasonPackSkipRepackCompare)
+	require.True(t, updated.SeasonPackSimplifyHDRCompare)
+	require.True(t, updated.SeasonPackSimplifyWEBCompare)
+	require.True(t, updated.SeasonPackSkipYearCompare)
 
 	stored, err := store.GetSettings(t.Context())
 	require.NoError(t, err)
 	require.True(t, stored.SeasonPackEnabled)
 	require.InDelta(t, 0.9, stored.SeasonPackCoverageThreshold, 0.001)
 	require.Equal(t, []string{"season-pack", "cross-seed"}, stored.SeasonPackTags)
+	require.False(t, stored.SeasonPackSkipRepackCompare)
+	require.True(t, stored.SeasonPackSimplifyHDRCompare)
+	require.True(t, stored.SeasonPackSimplifyWEBCompare)
+	require.True(t, stored.SeasonPackSkipYearCompare)
 }
 
 func TestUpdateAutomationSettings_RejectsInvalidSeasonPackThreshold(t *testing.T) {

@@ -37,6 +37,8 @@ The season-pack webhook returns `404 Not Found` whenever the pack is not ready t
 - **Webhook source filters excluded your episodes**: include/exclude category or tag filters removed them from the scan
 - **The release is not a season pack** or **season-pack matching is disabled**
 
+If the pack should match except for REPACK, HDR, WEB, or year differences, check **Cross-Seed > Season Packs > Matching settings**.
+
 See [Season Packs](season-packs) for the full flow and setup requirements.
 
 ## How do I see why a release was filtered?
