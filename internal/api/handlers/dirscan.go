@@ -164,14 +164,15 @@ func (h *DirScanHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 
 // DirScanDirectoryPayload is the request body for creating/updating directories.
 type DirScanDirectoryPayload struct {
-	Path                *string   `json:"path"`
-	QbitPathPrefix      *string   `json:"qbitPathPrefix"`
-	Category            *string   `json:"category"`
-	Tags                *[]string `json:"tags"`
-	Enabled             *bool     `json:"enabled"`
-	ArrInstanceID       *int      `json:"arrInstanceId"`
-	TargetInstanceID    *int      `json:"targetInstanceId"`
-	ScanIntervalMinutes *int      `json:"scanIntervalMinutes"`
+	Path                   *string   `json:"path"`
+	QbitPathPrefix         *string   `json:"qbitPathPrefix"`
+	Category               *string   `json:"category"`
+	Tags                   *[]string `json:"tags"`
+	AllowedDownloadClients *[]string `json:"allowedDownloadClients"`
+	Enabled                *bool     `json:"enabled"`
+	ArrInstanceID          *int      `json:"arrInstanceId"`
+	TargetInstanceID       *int      `json:"targetInstanceId"`
+	ScanIntervalMinutes    *int      `json:"scanIntervalMinutes"`
 }
 
 // ListDirectories returns all configured scan directories.
@@ -250,6 +251,9 @@ func (h *DirScanHandler) directoryFromCreatePayload(w http.ResponseWriter, r *ht
 	if payload.Tags != nil {
 		dir.Tags = *payload.Tags
 	}
+	if payload.AllowedDownloadClients != nil {
+		dir.AllowedDownloadClients = *payload.AllowedDownloadClients
+	}
 	if payload.Enabled != nil {
 		dir.Enabled = *payload.Enabled
 	}
@@ -312,14 +316,15 @@ func (h *DirScanHandler) UpdateDirectory(w http.ResponseWriter, r *http.Request)
 	}
 
 	params := &models.DirScanDirectoryUpdateParams{
-		Path:                payload.Path,
-		QbitPathPrefix:      payload.QbitPathPrefix,
-		Category:            payload.Category,
-		Tags:                payload.Tags,
-		Enabled:             payload.Enabled,
-		ArrInstanceID:       payload.ArrInstanceID,
-		TargetInstanceID:    payload.TargetInstanceID,
-		ScanIntervalMinutes: payload.ScanIntervalMinutes,
+		Path:                   payload.Path,
+		QbitPathPrefix:         payload.QbitPathPrefix,
+		Category:               payload.Category,
+		Tags:                   payload.Tags,
+		AllowedDownloadClients: payload.AllowedDownloadClients,
+		Enabled:                payload.Enabled,
+		ArrInstanceID:          payload.ArrInstanceID,
+		TargetInstanceID:       payload.TargetInstanceID,
+		ScanIntervalMinutes:    payload.ScanIntervalMinutes,
 	}
 
 	updated, err := h.service.UpdateDirectory(r.Context(), dirID, params)
@@ -665,7 +670,8 @@ func (h *DirScanHandler) requireDirectory(w http.ResponseWriter, r *http.Request
 // webhookTriggerScanPayload accepts both a direct {"path": "..."} and native
 // *arr webhook payloads (Sonarr, Radarr, Lidarr, Readarr).
 type webhookTriggerScanPayload struct {
-	EventType string `json:"eventType"`
+	EventType      string `json:"eventType"`
+	DownloadClient string `json:"downloadClient"`
 	// Direct path (simple mode)
 	Path string `json:"path"`
 	// Sonarr: series.path
@@ -693,6 +699,11 @@ type dirScanTriggerResponse struct {
 	ScanRoot      string `json:"scanRoot"`
 }
 
+type dirScanWebhookSkipResponse struct {
+	Skipped bool   `json:"skipped"`
+	Reason  string `json:"reason"`
+}
+
 // resolvedPath extracts the path from whichever format was provided.
 func (p *webhookTriggerScanPayload) resolvedPath() string {
 	if p.Path != "" {
@@ -717,6 +728,10 @@ func (p *webhookTriggerScanPayload) isTestEvent() bool {
 	return strings.EqualFold(p.EventType, "test")
 }
 
+func (p *webhookTriggerScanPayload) isSimpleMode() bool {
+	return p.Path != ""
+}
+
 func normalizeScanRoot(path string) string {
 	cleanPath := filepath.Clean(path)
 	info, err := os.Stat(cleanPath)
@@ -737,6 +752,25 @@ func pathMatchesDirectory(cleanPath, dirPath string) bool {
 	}
 
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func downloadClientAllowed(allowed []string, downloadClient string) bool {
+	if len(allowed) == 0 {
+		return true
+	}
+
+	normalizedClient := strings.TrimSpace(downloadClient)
+	if normalizedClient == "" {
+		return false
+	}
+
+	for _, allowedClient := range allowed {
+		if strings.EqualFold(strings.TrimSpace(allowedClient), normalizedClient) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // WebhookTriggerScan triggers a directory scan by matching the provided path
@@ -797,6 +831,20 @@ func (h *DirScanHandler) WebhookTriggerScan(w http.ResponseWriter, r *http.Reque
 	}
 	if ambiguous {
 		RespondError(w, http.StatusConflict, "Multiple directories match the given path")
+		return
+	}
+	if !payload.isSimpleMode() && !downloadClientAllowed(bestMatch.AllowedDownloadClients, payload.DownloadClient) {
+		log.Info().
+			Int("directoryID", bestMatch.ID).
+			Str("path", resolvedPath).
+			Str("downloadClient", payload.DownloadClient).
+			Strs("allowedDownloadClients", bestMatch.AllowedDownloadClients).
+			Msg("dirscan: webhook skipped due to download client filter")
+
+		RespondJSON(w, http.StatusOK, dirScanWebhookSkipResponse{
+			Skipped: true,
+			Reason:  "download client not allowed",
+		})
 		return
 	}
 

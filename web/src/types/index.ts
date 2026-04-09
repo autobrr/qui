@@ -2298,6 +2298,7 @@ export interface DirScanDirectory {
   qbitPathPrefix?: string
   category?: string
   tags: string[]
+  allowedDownloadClients: string[]
   enabled: boolean
   arrInstanceId?: number
   targetInstanceId: number
@@ -2312,6 +2313,7 @@ export interface DirScanDirectoryCreate {
   qbitPathPrefix?: string
   category?: string
   tags?: string[]
+  allowedDownloadClients?: string[]
   enabled?: boolean
   arrInstanceId?: number
   targetInstanceId: number
@@ -2323,6 +2325,7 @@ export interface DirScanDirectoryUpdate {
   qbitPathPrefix?: string
   category?: string
   tags?: string[]
+  allowedDownloadClients?: string[]
   enabled?: boolean
   arrInstanceId?: number
   targetInstanceId?: number
