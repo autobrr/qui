@@ -37,7 +37,7 @@ qui picks the largest episode total from these sources (in priority order):
 
 If none of these sources are available (no torrent data, no Sonarr, no metadata), the check endpoint skips threshold enforcement and only verifies that matching episodes exist. The apply endpoint always requires the torrent file and enforces the threshold.
 
-The torrent file still provides the file-layout truth for apply. Metadata providers only improve the threshold decision on check.
+For apply, the torrent file is the source of truth for file layout. Metadata providers only improve the threshold decision on check.
 
 When qui falls back to the pack torrent, it:
 
@@ -153,7 +153,7 @@ To search all instances, omit `instanceIds`:
 ```
 
 :::tip
-The check endpoint no longer requires the torrent file. Sending only the release name avoids downloading the `.torrent` for every season pack announce. qui uses Sonarr, TVDB, or TVMaze to determine the episode count for threshold enforcement. If you still want qui to use the torrent file for the check, include `"torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}"` in the payload.
+The check endpoint does not require the torrent file. Sending only the release name avoids downloading the `.torrent` for every season pack announce. qui uses Sonarr, TVDB, or TVMaze to determine the episode count for threshold enforcement. To include the torrent file in the check request, add `"torrentData": "{{ .TorrentDataRawBytes | toString | b64enc }}"` to the payload.
 :::
 
 **Field descriptions:**
