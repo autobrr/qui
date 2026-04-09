@@ -67,7 +67,7 @@ ENV HOME="/config" \
 # The Go binary is statically linked (CGO_ENABLED=0) so no libc/openssl/curl needed.
 # ca-certificates: TLS connections to qBittorrent, trackers, update checks
 # tzdata: timezone display in logs and UI
-RUN apk --no-cache add ca-certificates tzdata bash
+RUN apk --no-cache add ca-certificates curl tzdata bash
 
 WORKDIR /config
 
