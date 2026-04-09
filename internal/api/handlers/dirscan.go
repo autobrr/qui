@@ -759,13 +759,24 @@ func downloadClientAllowed(allowed []string, downloadClient string) bool {
 		return true
 	}
 
+	filteredAllowed := make([]string, 0, len(allowed))
+	for _, allowedClient := range allowed {
+		normalizedAllowed := strings.TrimSpace(allowedClient)
+		if normalizedAllowed != "" {
+			filteredAllowed = append(filteredAllowed, normalizedAllowed)
+		}
+	}
+	if len(filteredAllowed) == 0 {
+		return true
+	}
+
 	normalizedClient := strings.TrimSpace(downloadClient)
 	if normalizedClient == "" {
 		return false
 	}
 
-	for _, allowedClient := range allowed {
-		if strings.EqualFold(strings.TrimSpace(allowedClient), normalizedClient) {
+	for _, allowedClient := range filteredAllowed {
+		if strings.EqualFold(allowedClient, normalizedClient) {
 			return true
 		}
 	}

@@ -67,6 +67,49 @@ func TestPathMatchesDirectory(t *testing.T) {
 	}
 }
 
+func TestDownloadClientAllowed(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		allowed        []string
+		downloadClient string
+		expected       bool
+	}{
+		{
+			name:           "empty allowlist allows all",
+			allowed:        nil,
+			downloadClient: "",
+			expected:       true,
+		},
+		{
+			name:           "blank allowlist entries are ignored",
+			allowed:        []string{"", "   "},
+			downloadClient: "",
+			expected:       true,
+		},
+		{
+			name:           "matching is case insensitive",
+			allowed:        []string{" SABnzbd "},
+			downloadClient: "sabNZBD",
+			expected:       true,
+		},
+		{
+			name:           "missing client is rejected when nonblank allowlist exists",
+			allowed:        []string{"SABnzbd"},
+			downloadClient: "",
+			expected:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.expected, downloadClientAllowed(tt.allowed, tt.downloadClient))
+		})
+	}
+}
+
 func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 	ctx := t.Context()
 
