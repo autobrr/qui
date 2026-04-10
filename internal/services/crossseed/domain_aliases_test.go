@@ -5,6 +5,7 @@ package crossseed
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,12 +17,13 @@ import (
 func TestTrackerDomainAliasesAcyclic(t *testing.T) {
 	var visit func(domain string, path []string)
 	visit = func(domain string, path []string) {
-		if slices.Contains(path, domain) {
-			t.Errorf("cycle detected in trackerDomainAliases: %v → %s", path, domain)
+		normalized := strings.ToLower(strings.TrimSpace(domain))
+		if slices.Contains(path, normalized) {
+			t.Errorf("cycle detected in trackerDomainAliases: %v → %s", path, normalized)
 			return
 		}
-		for _, alias := range trackerDomainAliases[domain] {
-			visit(alias, append(path, domain))
+		for _, alias := range trackerDomainAliases[normalized] {
+			visit(alias, append(path, normalized))
 		}
 	}
 
