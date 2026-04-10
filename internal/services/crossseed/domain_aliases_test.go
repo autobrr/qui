@@ -52,6 +52,11 @@ func TestTrackerDomainAliases(t *testing.T) {
 		{name: "OPS home.opsfet.ch matches Orpheus", announceDomain: "home.opsfet.ch", indexerName: "Orpheus", want: true},
 		{name: "OPS home.opsfet.ch matches Orpheus Network", announceDomain: "home.opsfet.ch", indexerName: "Orpheus Network", want: true},
 		{name: "OPS home.opsfet.ch matches Orpheus (Prowlarr)", announceDomain: "home.opsfet.ch", indexerName: "Orpheus (Prowlarr)", want: true},
+
+		// Aliases must not cross-match unrelated indexers
+		{name: "BTN landof.tv does not match Redacted", announceDomain: "landof.tv", indexerName: "Redacted", want: false},
+		{name: "RED flacsfor.me does not match BroadcasTheNet", announceDomain: "flacsfor.me", indexerName: "BroadcasTheNet", want: false},
+		{name: "OPS home.opsfet.ch does not match Redacted", announceDomain: "home.opsfet.ch", indexerName: "Redacted", want: false},
 	}
 
 	for _, tt := range tests {

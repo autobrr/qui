@@ -1884,7 +1884,7 @@ func resolveDirscanTrackerCategory(
 	if store == nil || instance == nil {
 		return "", "", false
 	}
-	if !instance.UseHardlinks && !instance.UseReflinks || instance.HardlinkDirPreset != "by-tracker" {
+	if (!instance.UseHardlinks && !instance.UseReflinks) || instance.HardlinkDirPreset != "by-tracker" {
 		return "", "", false
 	}
 

@@ -3949,7 +3949,14 @@ paths:
       tags:
         - Cross-Seed
       summary: List per-instance indexer category mappings
-      description: Returns all per-indexer category mappings for a specific qBittorrent instance. When the "by-tracker" directory preset is active, these mappings override the global category for cross-seeds matched via each indexer.
+      description: |
+        Returns all per-indexer category mappings for a specific qBittorrent instance.
+        When the "by-tracker" directory preset is active, these mappings override the
+        global category for cross-seeds matched via each indexer.
+
+        The response contains only explicit per-indexer overrides. If an indexer is not
+        present, callers should fall back to qui's normal category resolution order
+        (custom → indexer-name → affix → reuse).
       parameters:
         - name: instanceId
           in: path
