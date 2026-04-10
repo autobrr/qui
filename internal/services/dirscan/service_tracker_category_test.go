@@ -21,9 +21,11 @@ import (
 type fakeDirscanCategoryGetter struct {
 	categories map[string]qbt.Category
 	err        error
+	calls      int
 }
 
 func (g *fakeDirscanCategoryGetter) GetCategories(context.Context, int) (map[string]qbt.Category, error) {
+	g.calls++
 	if g.err != nil {
 		return nil, g.err
 	}
@@ -93,6 +95,7 @@ func TestResolveDirscanTrackerCategory_FallsBackOnLookupError(t *testing.T) {
 		HardlinkDirPreset: "by-tracker",
 	}
 
+	getter := &fakeDirscanCategoryGetter{err: errors.New("should not be called")}
 	category, savePath, fatal := resolveDirscanTrackerCategory(
 		context.Background(),
 		7,
@@ -100,13 +103,14 @@ func TestResolveDirscanTrackerCategory_FallsBackOnLookupError(t *testing.T) {
 		"aither.cc",
 		instance,
 		store,
-		&fakeDirscanCategoryGetter{err: errors.New("should not be called")},
+		getter,
 		&logger,
 	)
 
 	require.False(t, fatal)
 	require.Empty(t, category)
 	require.Empty(t, savePath)
+	require.Zero(t, getter.calls)
 }
 
 func TestResolveDirscanTrackerCategory_FatalOnGetCategoriesError(t *testing.T) {
@@ -122,6 +126,7 @@ func TestResolveDirscanTrackerCategory_FatalOnGetCategoriesError(t *testing.T) {
 		HardlinkDirPreset: "by-tracker",
 	}
 
+	getter := &fakeDirscanCategoryGetter{err: errors.New("qbittorrent unavailable")}
 	category, savePath, fatal := resolveDirscanTrackerCategory(
 		context.Background(),
 		instanceID,
@@ -129,11 +134,12 @@ func TestResolveDirscanTrackerCategory_FatalOnGetCategoriesError(t *testing.T) {
 		"aither.cc",
 		instance,
 		store,
-		&fakeDirscanCategoryGetter{err: errors.New("qbittorrent unavailable")},
+		getter,
 		&logger,
 	)
 
 	require.True(t, fatal)
 	require.Empty(t, category)
 	require.Empty(t, savePath)
+	require.Equal(t, 1, getter.calls)
 }
