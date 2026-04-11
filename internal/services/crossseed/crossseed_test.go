@@ -2502,9 +2502,10 @@ func TestNotifyAutomationRun_SuccessRequiresMeaningfulChange(t *testing.T) {
 	completedAt := time.Now().UTC()
 
 	tests := []struct {
-		name      string
-		run       *models.CrossSeedRun
-		wantEvent bool
+		name          string
+		run           *models.CrossSeedRun
+		wantEvent     bool
+		wantEventType notifications.EventType
 	}{
 		{
 			name: "successful skipped-only run does not notify",
@@ -2536,7 +2537,25 @@ func TestNotifyAutomationRun_SuccessRequiresMeaningfulChange(t *testing.T) {
 				TorrentsFailed:  0,
 				TorrentsSkipped: 9,
 			},
-			wantEvent: true,
+			wantEvent:     true,
+			wantEventType: notifications.EventCrossSeedAutomationSucceeded,
+		},
+		{
+			name: "failed run still notifies",
+			run: &models.CrossSeedRun{
+				ID:              44,
+				Mode:            models.CrossSeedRunModeAuto,
+				Status:          models.CrossSeedRunStatusFailed,
+				StartedAt:       time.Now().UTC().Add(-2 * time.Minute),
+				CompletedAt:     &completedAt,
+				TotalFeedItems:  10,
+				CandidatesFound: 3,
+				TorrentsAdded:   0,
+				TorrentsFailed:  2,
+				TorrentsSkipped: 8,
+			},
+			wantEvent:     true,
+			wantEventType: notifications.EventCrossSeedAutomationFailed,
 		},
 	}
 
@@ -2550,7 +2569,7 @@ func TestNotifyAutomationRun_SuccessRequiresMeaningfulChange(t *testing.T) {
 			events := notifier.Events()
 			if tt.wantEvent {
 				require.Len(t, events, 1)
-				assert.Equal(t, notifications.EventCrossSeedAutomationSucceeded, events[0].Type)
+				assert.Equal(t, tt.wantEventType, events[0].Type)
 				return
 			}
 
