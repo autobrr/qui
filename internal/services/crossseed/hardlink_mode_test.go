@@ -743,6 +743,9 @@ func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// Should be Used=true because reflink mode is enabled, but skipped due to recheck requirement
@@ -879,6 +882,9 @@ func TestProcessReflinkMode_FallbackEnabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// With fallback enabled, failure should return Used=false to allow regular mode
@@ -920,6 +926,9 @@ func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// With fallback disabled, failure should return Used=true with error status

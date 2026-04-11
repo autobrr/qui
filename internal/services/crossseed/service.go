@@ -4510,7 +4510,7 @@ func (s *Service) processCrossSeedCandidate(
 		rlResult := s.processReflinkMode(
 			ctx, candidate, torrentBytes, torrentHash, torrentHashV2, torrentName, req,
 			matchedTorrent, matchType, sourceFiles, candidateFiles, props,
-			baseCategory, crossCategory,
+			baseCategory, crossCategory, actualCategorySavePath, trackerCategoryMatched, crossCategoryExistsInQbit,
 		)
 		if rlResult.Used {
 			// Reflink mode was attempted (regardless of success/failure)
@@ -10958,6 +10958,62 @@ type hardlinkModeResult struct {
 	Result InstanceCrossSeedResult
 }
 
+type linkModeCategoryPlacement struct {
+	EffectiveCategorySavePath string
+	DestDir                   string
+	EnableAutoTMM             bool
+}
+
+func (s *Service) resolveLinkModeCategoryPlacement(
+	ctx context.Context,
+	instance *models.Instance,
+	selectedBaseDir string,
+	torrentHash, torrentName string,
+	candidate CrossSeedCandidate,
+	incomingTrackerDomain string,
+	req *CrossSeedRequest,
+	candidateFiles []hardlinktree.TorrentFile,
+	crossCategory, categorySavePath string,
+	isTrackerCategoryMode, crossCategoryExistsInQbit bool,
+) linkModeCategoryPlacement {
+	// When the qBittorrent category already has a configured save path, place files there directly.
+	// For a brand-new tracker-mapped category, derive the first save path from the directory preset
+	// so both hardlink and reflink mode establish the same category layout from the first inject.
+	effectiveCategorySavePath := categorySavePath
+	if effectiveCategorySavePath == "" && crossCategory != "" && isTrackerCategoryMode && !crossCategoryExistsInQbit {
+		effectiveCategorySavePath = s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
+	}
+	if isTrackerCategoryMode && crossCategory != "" && crossCategoryExistsInQbit && effectiveCategorySavePath == "" {
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Str("category", crossCategory).
+			Msg("[CROSSSEED] Tracker-mapped category exists in qBittorrent without a configured save path; AutoTMM will not be enabled — configure a save path for this category in qBittorrent")
+	}
+
+	var destDir string
+	switch {
+	case effectiveCategorySavePath != "":
+		selectedBaseDir = effectiveCategorySavePath
+		if isTrackerCategoryMode || hardlinktree.HasCommonRootFolder(candidateFiles) {
+			destDir = selectedBaseDir
+		} else {
+			destDir = filepath.Join(selectedBaseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
+		}
+	case isTrackerCategoryMode:
+		// Category exists in qBittorrent but has no configured save path.
+		// Keep the preset-derived placement stable rather than dropping to a per-hash isolation folder.
+		destDir = s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
+	default:
+		destDir = s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateFiles)
+	}
+
+	return linkModeCategoryPlacement{
+		EffectiveCategorySavePath: effectiveCategorySavePath,
+		DestDir:                   destDir,
+		EnableAutoTMM:             isTrackerCategoryMode && crossCategory != "" && effectiveCategorySavePath != "",
+	}
+}
+
 // processHardlinkMode attempts to add a cross-seed torrent using hardlink mode.
 // This creates a hardlinked file tree matching the incoming torrent's layout,
 // eliminating the need for reuse+rename alignment.
@@ -11122,48 +11178,23 @@ func (s *Service) processHardlinkMode(
 	// Extract incoming tracker domain from torrent bytes (for "by-tracker" preset)
 	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
-	// Build destination directory.
-	// When using a category save path, hardlinks go directly into that directory (no preset
-	// subdirectory) so the file layout matches what qBittorrent expects for the category.
-	// In tracker category mode, AutoTMM manages placement so we never use an isolation folder —
-	// qBittorrent expects rootless files directly under the category save path.
-	// Outside tracker category mode, rootless torrents still get an isolation folder to avoid
-	// collisions since there is no AutoTMM to separate them.
-	//
-	// effectiveCategorySavePath: when the qBittorrent category already has a configured save path
-	// (categorySavePath != ""), use it directly. Otherwise, if a cross-seed category was assigned,
-	// derive the path from the preset (by-tracker → tracker subdir, by-instance → instance subdir,
-	// flat → base dir). This ensures the first inject for a brand-new tracker category uses the
-	// same directory layout and AutoTMM behaviour as all subsequent injects.
-	effectiveCategorySavePath := categorySavePath
-	if effectiveCategorySavePath == "" && crossCategory != "" && isTrackerCategoryMode && !crossCategoryExistsInQbit {
-		effectiveCategorySavePath = s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
-	}
-	if isTrackerCategoryMode && crossCategory != "" && crossCategoryExistsInQbit && effectiveCategorySavePath == "" {
-		log.Warn().
-			Int("instanceID", candidate.InstanceID).
-			Str("category", crossCategory).
-			Msg("[CROSSSEED] Tracker-mapped category exists in qBittorrent without a configured save path; AutoTMM will not be enabled — configure a save path for this category in qBittorrent")
-	}
-
-	var destDir string
-	switch {
-	case effectiveCategorySavePath != "":
-		selectedBaseDir = effectiveCategorySavePath
-		if isTrackerCategoryMode || hardlinktree.HasCommonRootFolder(candidateTorrentFilesAll) {
-			destDir = selectedBaseDir
-		} else {
-			destDir = filepath.Join(selectedBaseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
-		}
-	case isTrackerCategoryMode:
-		// Category exists in qBittorrent but has no configured save path (warned above).
-		// Use buildCategorySavePath so rootless/single-file releases land at a consistent
-		// path (e.g. baseDir/TrackerName/) rather than per-hash isolation subfolders —
-		// matching the no-isolation-folder behaviour of the effectiveCategorySavePath branch.
-		destDir = s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
-	default:
-		destDir = s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
-	}
+	placement := s.resolveLinkModeCategoryPlacement(
+		ctx,
+		instance,
+		selectedBaseDir,
+		torrentHash,
+		torrentName,
+		candidate,
+		incomingTrackerDomain,
+		req,
+		candidateTorrentFilesAll,
+		crossCategory,
+		categorySavePath,
+		isTrackerCategoryMode,
+		crossCategoryExistsInQbit,
+	)
+	effectiveCategorySavePath := placement.EffectiveCategorySavePath
+	destDir := placement.DestDir
 
 	// Ensure cross-seed category exists with the correct save path.
 	// effectiveCategorySavePath already carries either the existing qBittorrent-configured path
@@ -11283,7 +11314,7 @@ func (s *Service) processHardlinkMode(
 	// and avoid double-folder nesting when instance default is Subfolder.
 	// In "by-tracker" mode, enable AutoTMM so qBittorrent manages placement via
 	// the category's configured save path (files are already hardlinked there).
-	if isTrackerCategoryMode && crossCategory != "" && effectiveCategorySavePath != "" {
+	if placement.EnableAutoTMM {
 		options["autoTMM"] = "true"
 	} else {
 		options["autoTMM"] = "false"
@@ -11638,7 +11669,8 @@ func (s *Service) processReflinkMode(
 	matchType string,
 	sourceFiles, candidateFiles qbt.TorrentFiles,
 	props *qbt.TorrentProperties,
-	_, crossCategory string, // baseCategory unused, crossCategory used for torrent options
+	_, crossCategory, categorySavePath string, // baseCategory unused, crossCategory used for torrent options
+	isTrackerCategoryMode, crossCategoryExistsInQbit bool,
 ) reflinkModeResult {
 	notUsed := reflinkModeResult{Used: false}
 
@@ -11775,18 +11807,31 @@ func (s *Service) processReflinkMode(
 	// Extract incoming tracker domain from torrent bytes (for "by-tracker" preset)
 	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
-	// Build destination directory based on preset and torrent structure
-	destDir := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
+	placement := s.resolveLinkModeCategoryPlacement(
+		ctx,
+		instance,
+		selectedBaseDir,
+		torrentHash,
+		torrentName,
+		candidate,
+		incomingTrackerDomain,
+		req,
+		candidateTorrentFilesAll,
+		crossCategory,
+		categorySavePath,
+		isTrackerCategoryMode,
+		crossCategoryExistsInQbit,
+	)
+	effectiveCategorySavePath := placement.EffectiveCategorySavePath
+	destDir := placement.DestDir
 
-	// Ensure cross-seed category exists with the correct save path derived from
-	// the base directory and directory preset, rather than the matched torrent's save path.
+	// Ensure cross-seed category exists with the effective save path chosen for link mode.
 	categoryCreationFailed := false
 	if crossCategory != "" {
-		categorySavePath := s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
-		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, false); err != nil {
+		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, effectiveCategorySavePath, false); err != nil {
 			log.Warn().Err(err).
 				Str("category", crossCategory).
-				Str("savePath", categorySavePath).
+				Str("savePath", effectiveCategorySavePath).
 				Msg("[CROSSSEED] Reflink mode: failed to ensure category exists, continuing without category")
 			crossCategory = ""
 			categoryCreationFailed = true
@@ -11882,10 +11927,15 @@ func (s *Service) processReflinkMode(
 		options["tags"] = strings.Join(finalTags, ",")
 	}
 
-	// Reflink mode: files are pre-created, so use savepath pointing to tree root
-	// Force contentLayout=Original to match the reflink tree layout exactly
-	options["autoTMM"] = "false"
-	options["savepath"] = plan.RootDir
+	// Reflink mode mirrors hardlink mode category handling:
+	// if a tracker-mapped category has an explicit save path, let AutoTMM place the torrent there.
+	// Otherwise, add against the pre-created reflink tree root directly.
+	if placement.EnableAutoTMM {
+		options["autoTMM"] = "true"
+	} else {
+		options["autoTMM"] = "false"
+		options["savepath"] = plan.RootDir
+	}
 	options["contentLayout"] = "Original"
 
 	// Compute add policy from source files (e.g., disc layout detection)
