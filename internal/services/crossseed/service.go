@@ -4491,11 +4491,13 @@ func (s *Service) processCrossSeedCandidate(
 		// This avoids setting incorrect save paths when the category doesn't exist yet and
 		// the fallback to props.SavePath would produce the wrong path.
 		if !useReflinkMode && !useHardlinkMode {
-		// Ensure the cross-seed category exists with the correct SavePath
-			if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, true); err != nil {
+			savePathToPersist := selectCategorySavePathToPersist(trackerCategoryMatched, categorySavePath, actualCategorySavePath)
+
+			// Ensure the cross-seed category exists with the correct SavePath.
+			if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, savePathToPersist, true); err != nil {
 				log.Warn().Err(err).
 					Str("category", crossCategory).
-					Str("savePath", categorySavePath).
+					Str("savePath", savePathToPersist).
 					Msg("[CROSSSEED] Failed to ensure category exists, continuing without category")
 				crossCategory = ""            // Clear category to proceed without it
 				categoryCreationFailed = true // Track for result message
@@ -10070,6 +10072,14 @@ func shouldWarnOnCategorySavePathMismatch(compareExistingSavePath bool, requeste
 	}
 
 	return normalizePathForComparison(existingSavePath) != requestedSavePath
+}
+
+func selectCategorySavePathToPersist(trackerCategoryMatched bool, categorySavePath, actualCategorySavePath string) string {
+	if trackerCategoryMatched {
+		return actualCategorySavePath
+	}
+
+	return categorySavePath
 }
 
 // determineCrossSeedCategory selects the category to apply to a cross-seeded torrent.
