@@ -78,3 +78,33 @@ func TestGetMetadataService_RefreshesServiceWhenRevisionChanges(t *testing.T) {
 	require.Equal(t, newRevision, svc.metadataCredsRevision)
 	require.Equal(t, metadataCredentialsFingerprint("api-key", "1234"), svc.metadataCredsFingerprint)
 }
+
+func TestGetMetadataService_DoesNotReplaceNewerCachedRevisionWithOlderSnapshot(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	olderRevision := time.Date(2026, time.April, 10, 12, 0, 0, 0, time.UTC)
+	newerRevision := olderRevision.Add(time.Hour)
+	newerService := metadata.NewService("newer-api-key", "9999")
+	loaderCalls := 0
+	svc := &Service{
+		metadataService: newerService,
+		metadataCredsRevisionLoader: func(context.Context) (time.Time, error) {
+			return olderRevision, nil
+		},
+		metadataCredentialLoader: func(context.Context) (string, string, error) {
+			loaderCalls++
+			return "older-api-key", "1234", nil
+		},
+		metadataCredsRevision:    newerRevision,
+		metadataCredsFingerprint: metadataCredentialsFingerprint("newer-api-key", "9999"),
+	}
+
+	got := svc.getMetadataService(ctx)
+
+	require.Same(t, newerService, got)
+	require.Equal(t, 1, loaderCalls)
+	require.Equal(t, newerRevision, svc.metadataCredsRevision)
+	require.Equal(t, metadataCredentialsFingerprint("newer-api-key", "9999"), svc.metadataCredsFingerprint)
+	require.True(t, got.HasTVDB())
+}

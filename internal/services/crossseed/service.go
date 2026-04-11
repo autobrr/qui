@@ -540,6 +540,10 @@ func (s *Service) getMetadataService(ctx context.Context) *metadata.Service {
 	s.metadataMu.Lock()
 	defer s.metadataMu.Unlock()
 
+	if s.metadataCredsRevisionLoader != nil && metadataRevisionIsNewer(s.metadataCredsRevision, revision) {
+		return s.metadataService
+	}
+
 	// Re-check after lock acquisition.
 	if fingerprint != s.metadataCredsFingerprint || (s.metadataCredsRevisionLoader != nil && !revision.Equal(s.metadataCredsRevision)) {
 		s.metadataService = metadata.NewService(apiKey, pin)
@@ -553,6 +557,10 @@ func (s *Service) getMetadataService(ctx context.Context) *metadata.Service {
 func metadataCredentialsFingerprint(apiKey, pin string) string {
 	sum := sha256.Sum256([]byte("qui:season-pack-tvdb\x00" + apiKey + "\x00" + pin))
 	return hex.EncodeToString(sum[:])
+}
+
+func metadataRevisionIsNewer(cached, candidate time.Time) bool {
+	return cached.After(candidate)
 }
 
 func (s *Service) getCompletionPollInterval() time.Duration {
