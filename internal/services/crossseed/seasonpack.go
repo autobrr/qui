@@ -386,11 +386,12 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		return s.failApply(ctx, req.TorrentName, err, prep, winner)
 	}
 
-	_, crossCategory := s.determineCrossSeedCategory(ctx, &CrossSeedRequest{
+	announceDomain := ParseTorrentAnnounceDomain(torrentBytes)
+	_, crossCategory, _ := s.determineCrossSeedCategory(ctx, inst, &CrossSeedRequest{
 		IndexerName: req.Indexer,
 	}, &qbt.Torrent{
 		Category: firstMatchedEpisodeCategory(episodes),
-	}, prep.settings)
+	}, prep.settings, announceDomain)
 
 	opts := seasonPackAddOptions(planBuild.plan, crossCategory, planBuild.hasPendingFiles())
 	if tags := prep.settings.SeasonPackTags; len(tags) > 0 {

@@ -65,7 +65,9 @@ type Service struct {
 	arrService     *arr.Service // ARR service for external ID lookup (optional)
 	// Optional store for tracker display-name resolution (shared with cross-seed).
 	trackerCustomizationStore *models.TrackerCustomizationStore
-	notifier                  notifications.Notifier
+	// Per-instance indexer category mappings for the "by-tracker" preset (optional).
+	indexerCategoryStore *models.CrossSeedIndexerCategoryStore
+	notifier             notifications.Notifier
 
 	// Components for search/match/inject
 	parser   *Parser
@@ -110,6 +112,10 @@ func (c *syncManagerTorrentChecker) HasTorrentByAnyHash(ctx context.Context, ins
 	return torrent, exists, nil
 }
 
+type dirscanCategoryGetter interface {
+	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
+}
+
 // NewService creates a new directory scanner service.
 func NewService(
 	cfg Config,
@@ -120,6 +126,7 @@ func NewService(
 	jackettService *jackett.Service,
 	arrService *arr.Service, // optional, for external ID lookup
 	trackerCustomizationStore *models.TrackerCustomizationStore, // optional, for display-name resolution
+	indexerCategoryStore *models.CrossSeedIndexerCategoryStore, // optional, for by-tracker category mapping
 	notifier notifications.Notifier,
 ) *Service {
 	if cfg.SchedulerInterval <= 0 {
@@ -147,6 +154,7 @@ func NewService(
 		jackettService:            jackettService,
 		arrService:                arrService,
 		trackerCustomizationStore: trackerCustomizationStore,
+		indexerCategoryStore:      indexerCategoryStore,
 		notifier:                  notifier,
 		parser:                    parser,
 		searcher:                  searcher,
@@ -1775,23 +1783,65 @@ func (s *Service) tryMatchAndInject(
 		category = dir.Category
 	}
 
+	// "By-tracker" preset: resolve the per-indexer category from the candidate
+	// torrent's announce domain and look up its save path in qBittorrent.
+	// When successful, override the global category and carry the save path so
+	// the injector can hardlink into the category directory and enable AutoTMM.
+	announceDomain := crossseed.ParseTorrentAnnounceDomain(torrentData)
+	var trackerCategorySavePath string
+	failMatch := func() *searcheeMatch {
+		return &searcheeMatch{
+			searchee:        searchee,
+			torrentData:     torrentData,
+			parsedTorrent:   parsed,
+			matchResult:     matchResult,
+			searchResult:    result,
+			injectionFailed: true,
+		}
+	}
+	if s.indexerCategoryStore != nil {
+		instance, instanceErr := s.instanceStore.Get(ctx, dir.TargetInstanceID)
+		if instanceErr != nil {
+			l.Warn().Err(instanceErr).Int("instanceID", dir.TargetInstanceID).Msg("dirscan: failed to load instance for by-tracker preset check")
+			return failMatch()
+		}
+		trackerCat, trackerSavePath, fatal := resolveDirscanTrackerCategory(
+			ctx,
+			dir.TargetInstanceID,
+			result.Indexer,
+			announceDomain,
+			instance,
+			s.indexerCategoryStore,
+			s.syncManager,
+			l,
+		)
+		if fatal {
+			return failMatch()
+		}
+		if trackerCat != "" {
+			category = trackerCat
+			trackerCategorySavePath = trackerSavePath
+		}
+	}
+
 	tags := mergeStringLists(settings.Tags, dir.Tags)
 
 	injectReq := &InjectRequest{
-		InstanceID:           dir.TargetInstanceID,
-		TorrentBytes:         torrentData,
-		ParsedTorrent:        parsed,
-		Searchee:             searchee,
-		MatchResult:          matchResult,
-		SearchResult:         result,
-		QbitPathPrefix:       dir.QbitPathPrefix,
-		Category:             category,
-		Tags:                 tags,
-		StartPaused:          settings.StartPaused,
-		DownloadMissingFiles: settings.DownloadMissingFiles,
+		InstanceID:              dir.TargetInstanceID,
+		TorrentBytes:            torrentData,
+		ParsedTorrent:           parsed,
+		Searchee:                searchee,
+		MatchResult:             matchResult,
+		SearchResult:            result,
+		QbitPathPrefix:          dir.QbitPathPrefix,
+		Category:                category,
+		TrackerCategorySavePath: trackerCategorySavePath,
+		Tags:                    tags,
+		StartPaused:             settings.StartPaused,
+		DownloadMissingFiles:    settings.DownloadMissingFiles,
 	}
 
-	trackerDomain := crossseed.ParseTorrentAnnounceDomain(torrentData)
+	trackerDomain := announceDomain
 
 	// Once we are about to inject, reflect that in run status so the UI can distinguish
 	// pure searching from active injection attempts.
@@ -1819,6 +1869,69 @@ func (s *Service) tryMatchAndInject(
 		injected:        injected,
 		injectionFailed: injectionFailed,
 	}
+}
+
+func resolveDirscanTrackerCategory(
+	ctx context.Context,
+	instanceID int,
+	indexerName string,
+	announceDomain string,
+	instance *models.Instance,
+	store *models.CrossSeedIndexerCategoryStore,
+	categoryGetter dirscanCategoryGetter,
+	l *zerolog.Logger,
+) (category, savePath string, fatal bool) {
+	if store == nil || instance == nil {
+		return "", "", false
+	}
+	if (!instance.UseHardlinks && !instance.UseReflinks) || instance.HardlinkDirPreset != "by-tracker" {
+		return "", "", false
+	}
+
+	trackerCat, found, resolveErr := crossseed.ResolveTrackerCategory(ctx, instanceID, indexerName, announceDomain, store)
+	if resolveErr != nil {
+		if ctx.Err() != nil {
+			if l != nil {
+				l.Warn().Err(resolveErr).Msg("dirscan: context error resolving tracker category, aborting match")
+			}
+			return "", "", true
+		}
+		if l != nil {
+			l.Warn().Err(resolveErr).Msg("dirscan: failed to resolve tracker category, falling back to standard category logic")
+		}
+		return "", "", false
+	}
+	if !found {
+		return "", "", false
+	}
+
+	if categoryGetter == nil {
+		if l != nil {
+			l.Warn().Str("trackerCategory", trackerCat).Msg("dirscan: sync manager unavailable, continuing without AutoTMM")
+		}
+		return trackerCat, "", false
+	}
+
+	qbitCats, catErr := categoryGetter.GetCategories(ctx, instanceID)
+	if catErr != nil {
+		if l != nil {
+			l.Warn().Err(catErr).Str("trackerCategory", trackerCat).Msg("dirscan: failed to look up category save path, aborting inject")
+		}
+		return "", "", true
+	}
+
+	if cat, ok := qbitCats[trackerCat]; ok {
+		savePath = cat.SavePath
+	}
+	if l != nil {
+		l.Info().
+			Str("announceDomain", announceDomain).
+			Str("trackerCategory", trackerCat).
+			Str("categorySavePath", savePath).
+			Msg("dirscan: resolved by-tracker category")
+	}
+
+	return trackerCat, savePath, false
 }
 
 func logDirScanMatchRejection(

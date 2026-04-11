@@ -29,6 +29,7 @@ import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
   CrossSeedBlocklistEntry,
+  CrossSeedIndexerCategory,
   CrossSeedInstanceResult,
   CrossSeedRun,
   CrossSeedSearchRun,
@@ -1491,6 +1492,23 @@ class ApiClient {
     return this.request<InstanceCrossSeedCompletionSettings>(`/cross-seed/completion/${instanceId}`, {
       method: "PUT",
       body: JSON.stringify(payload),
+    })
+  }
+
+  async getCrossSeedIndexerCategories(instanceId: number): Promise<CrossSeedIndexerCategory[]> {
+    return this.request<CrossSeedIndexerCategory[]>(`/cross-seed/indexer-categories/${instanceId}`)
+  }
+
+  async setCrossSeedIndexerCategory(instanceId: number, indexerId: number, category: string): Promise<void> {
+    await this.request(`/cross-seed/indexer-categories/${instanceId}`, {
+      method: "PUT",
+      body: JSON.stringify({ indexerId, category }),
+    })
+  }
+
+  async deleteCrossSeedIndexerCategory(instanceId: number, indexerId: number): Promise<void> {
+    await this.request(`/cross-seed/indexer-categories/${instanceId}/${indexerId}`, {
+      method: "DELETE",
     })
   }
 

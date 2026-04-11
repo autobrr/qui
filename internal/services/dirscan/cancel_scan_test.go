@@ -105,7 +105,7 @@ func TestService_Start_PrunesLegacyRunHistory(t *testing.T) {
 		require.NoError(t, execErr)
 	}
 
-	svc := NewService(DefaultConfig(), store, nil, instanceStore, nil, nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), store, nil, instanceStore, nil, nil, nil, nil, nil, nil)
 	require.NoError(t, svc.Start(ctx))
 	svc.Stop()
 
