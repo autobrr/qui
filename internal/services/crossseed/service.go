@@ -9179,6 +9179,8 @@ func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeed
 	eventType := notifications.EventCrossSeedAutomationSucceeded
 	if run.Status == models.CrossSeedRunStatusFailed || run.Status == models.CrossSeedRunStatusPartial {
 		eventType = notifications.EventCrossSeedAutomationFailed
+	} else if run.TorrentsAdded == 0 && run.TorrentsFailed == 0 {
+		return
 	}
 
 	var errorMessage string
