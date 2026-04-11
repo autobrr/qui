@@ -4446,7 +4446,7 @@ func (s *Service) processCrossSeedCandidate(
 		if catErr != nil {
 			log.Debug().Err(catErr).Int("instanceID", candidate.InstanceID).
 				Msg("[CROSSSEED] Failed to fetch categories, falling back to torrent SavePath")
-			if trackerCategoryMatched && useHardlinkMode {
+			if shouldAbortTrackerCategoryInjectOnCategoryLookupFailure(trackerCategoryMatched, useHardlinkMode, useReflinkMode) {
 				// Cannot safely derive a hardlink destination without knowing whether the
 				// tracker category already exists in qBittorrent and with what save path.
 				// Fail the inject so cross-seed retries when qBittorrent is reachable.
@@ -10060,6 +10060,10 @@ func selectCategorySavePathToPersist(trackerCategoryMatched bool, categorySavePa
 	}
 
 	return categorySavePath
+}
+
+func shouldAbortTrackerCategoryInjectOnCategoryLookupFailure(trackerCategoryMatched, useHardlinkMode, useReflinkMode bool) bool {
+	return trackerCategoryMatched && (useHardlinkMode || useReflinkMode)
 }
 
 // determineCrossSeedCategory selects the category to apply to a cross-seeded torrent.

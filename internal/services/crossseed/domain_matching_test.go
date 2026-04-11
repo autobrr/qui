@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTrackerDomainsMatchIndexer_DoesNotCrossMatchSpecificIndexerDomainAcrossTLD(t *testing.T) {
+func TestTrackerDomainsMatchIndexer_SpecificIndexerDomainMatching(t *testing.T) {
 	t.Parallel()
 
 	service := &Service{
@@ -21,34 +21,34 @@ func TestTrackerDomainsMatchIndexer_DoesNotCrossMatchSpecificIndexerDomainAcross
 	}
 	_ = service.indexerDomainCache.Set("My Indexer", "example.org", ttlcache.DefaultTTL)
 
-	matched := service.trackerDomainsMatchIndexer([]string{"example.cc"}, "My Indexer")
-	require.False(t, matched)
-}
-
-func TestTrackerDomainsMatchIndexer_MatchesSpecificIndexerDomainDirectly(t *testing.T) {
-	t.Parallel()
-
-	service := &Service{
-		jackettService:     newFailingJackettService(errors.New("jackett lookup should not run in this test")),
-		indexerDomainCache: ttlcache.New(ttlcache.Options[string, string]{}),
-		domainMappings:     trackerDomainAliases,
+	tests := []struct {
+		name     string
+		domains  []string
+		expected bool
+	}{
+		{
+			name:     "does not cross match specific indexer domain across tld",
+			domains:  []string{"example.cc"},
+			expected: false,
+		},
+		{
+			name:     "matches specific indexer domain directly",
+			domains:  []string{"example.org"},
+			expected: true,
+		},
+		{
+			name:     "matches specific indexer domain by subdomain",
+			domains:  []string{"tracker.example.org"},
+			expected: true,
+		},
 	}
-	_ = service.indexerDomainCache.Set("My Indexer", "example.org", ttlcache.DefaultTTL)
 
-	matched := service.trackerDomainsMatchIndexer([]string{"example.org"}, "My Indexer")
-	require.True(t, matched)
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestTrackerDomainsMatchIndexer_MatchesSpecificIndexerDomainBySubdomain(t *testing.T) {
-	t.Parallel()
-
-	service := &Service{
-		jackettService:     newFailingJackettService(errors.New("jackett lookup should not run in this test")),
-		indexerDomainCache: ttlcache.New(ttlcache.Options[string, string]{}),
-		domainMappings:     trackerDomainAliases,
+			matched := service.trackerDomainsMatchIndexer(tt.domains, "My Indexer")
+			require.Equal(t, tt.expected, matched)
+		})
 	}
-	_ = service.indexerDomainCache.Set("My Indexer", "example.org", ttlcache.DefaultTTL)
-
-	matched := service.trackerDomainsMatchIndexer([]string{"tracker.example.org"}, "My Indexer")
-	require.True(t, matched)
 }
