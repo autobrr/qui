@@ -1247,9 +1247,24 @@ export function Search() {
                                 </DropdownMenuSubContent>
                               </DropdownMenuSub>
                             )}
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onSelect={() => handleClearSelection()}>
-                              Clear selection
+                            <DropdownMenuItem
+                              onSelect={(event) => {
+                                event.preventDefault()
+                                handleDownload(selectedResult)
+                              }}
+                            >
+                              <Download className="mr-2 h-4 w-4" /> Download
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={(event) => {
+                                event.preventDefault()
+                                if (selectedResult.infoUrl) {
+                                  handleViewDetails(selectedResult)
+                                }
+                              }}
+                              disabled={!selectedResult.infoUrl}
+                            >
+                              <ExternalLink className="mr-2 h-4 w-4" /> View details
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1631,7 +1646,7 @@ export function Search() {
                             <TableCell className={cn("text-sm text-muted-foreground", isSelected && "text-accent-foreground")}>
                               {formatCacheTimestamp(result.publishDate)}
                             </TableCell>
-                            <TableCell className="w-20" onClick={(e) => e.stopPropagation()}>
+                            <TableCell className="w-20 py-1" onClick={(e) => e.stopPropagation()}>
                               <div className="flex items-center gap-1">
                                 <Tooltip>
                                   <TooltipTrigger asChild>
