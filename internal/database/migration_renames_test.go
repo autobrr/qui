@@ -110,3 +110,29 @@ func TestNormalizeMigrationFilenames_RenamesCompletionBypass065To066ForSQLite(t 
 	require.NoError(t, db.normalizeMigrationFilenames(ctx))
 	assertMigrationRenamed(t, conn, "065_add_completion_bypass_torznab_cache.sql", "066_add_completion_bypass_torznab_cache.sql")
 }
+
+func TestNormalizeMigrationFilenames_RenamesSeasonPack070To071ForSQLite(t *testing.T) {
+	ctx := context.Background()
+	db, conn := newMigrationRenameTestDB(t, DialectSQLite)
+
+	_, err := conn.ExecContext(ctx, `
+		INSERT INTO migrations (filename) VALUES ('070_add_season_pack_settings_and_runs.sql');
+	`)
+	require.NoError(t, err)
+
+	require.NoError(t, db.normalizeMigrationFilenames(ctx))
+	assertMigrationRenamed(t, conn, "070_add_season_pack_settings_and_runs.sql", "071_add_season_pack_settings_and_runs.sql")
+}
+
+func TestNormalizeMigrationFilenames_RenamesSeasonPack071To072ForPostgres(t *testing.T) {
+	ctx := context.Background()
+	db, conn := newMigrationRenameTestDB(t, DialectPostgres)
+
+	_, err := conn.ExecContext(ctx, `
+		INSERT INTO migrations (filename) VALUES ('071_add_season_pack_settings_and_runs.sql');
+	`)
+	require.NoError(t, err)
+
+	require.NoError(t, db.normalizeMigrationFilenamesWithExecer(ctx, conn, sharedMigrationFilenameRenames, postgresMigrationFilenameRenames))
+	assertMigrationRenamed(t, conn, "071_add_season_pack_settings_and_runs.sql", "072_add_season_pack_settings_and_runs.sql")
+}
