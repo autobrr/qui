@@ -666,6 +666,24 @@ func (s *CrossSeedStore) GetDecryptedSeasonPackTVDBCredentials(ctx context.Conte
 	return apiKey, pin, nil
 }
 
+// GetSeasonPackTVDBCredentialsUpdatedAt returns the row revision used to avoid
+// decrypting unchanged TVDB credentials on every metadata lookup.
+func (s *CrossSeedStore) GetSeasonPackTVDBCredentialsUpdatedAt(ctx context.Context) (time.Time, error) {
+	var updatedAt time.Time
+	err := s.db.QueryRowContext(ctx, `
+		SELECT updated_at
+		FROM cross_seed_settings WHERE id = 1
+	`).Scan(&updatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, nil
+		}
+		return time.Time{}, err
+	}
+
+	return updatedAt, nil
+}
+
 // UpsertSettings saves automation settings and returns the updated value.
 func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeedAutomationSettings) (*CrossSeedAutomationSettings, error) {
 	if settings == nil {

@@ -14,8 +14,10 @@ package crossseed
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
@@ -364,10 +366,12 @@ type Service struct {
 	seasonPackEpisodeTotalLookup func(context.Context, string, *rls.Release) (int, bool)
 
 	// Metadata provider for season pack episode totals (TVDB/TVMaze).
-	metadataCredentialLoader func(ctx context.Context) (apiKey, pin string, err error)
-	metadataService          *metadata.Service
-	metadataMu               sync.RWMutex
-	metadataCredsFingerprint string
+	metadataCredsRevisionLoader func(ctx context.Context) (time.Time, error)
+	metadataCredentialLoader    func(ctx context.Context) (apiKey, pin string, err error)
+	metadataService             *metadata.Service
+	metadataMu                  sync.RWMutex
+	metadataCredsRevision       time.Time
+	metadataCredsFingerprint    string
 }
 
 // pendingResume tracks a torrent waiting for recheck to complete before resuming.
@@ -420,6 +424,7 @@ func NewService(
 	notifier notifications.Notifier,
 	recoverErroredTorrents bool,
 	seasonPackRunStore seasonPackRunCreator,
+	metadataCredsRevisionLoader func(ctx context.Context) (time.Time, error),
 	metadataCredentialLoader func(ctx context.Context) (apiKey, pin string, err error),
 ) *Service {
 	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
@@ -470,6 +475,7 @@ func NewService(
 		recheckResumeChan:             make(chan *pendingResume, 100),
 		recheckResumeCtx:              recheckCtx,
 		recheckResumeCancel:           recheckCancel,
+		metadataCredsRevisionLoader:   metadataCredsRevisionLoader,
 		metadataCredentialLoader:      metadataCredentialLoader,
 		metadataService:               metadata.NewService("", ""), // TVMaze-only default
 	}
@@ -489,6 +495,27 @@ func (s *Service) getMetadataService(ctx context.Context) *metadata.Service {
 		return svc
 	}
 
+	var revision time.Time
+	if s.metadataCredsRevisionLoader != nil {
+		var err error
+		revision, err = s.metadataCredsRevisionLoader(ctx)
+		if err != nil {
+			log.Debug().Err(err).Msg("metadata: failed to load TVDB credential revision, using existing service")
+			s.metadataMu.RLock()
+			svc := s.metadataService
+			s.metadataMu.RUnlock()
+			return svc
+		}
+
+		s.metadataMu.RLock()
+		if revision.Equal(s.metadataCredsRevision) {
+			svc := s.metadataService
+			s.metadataMu.RUnlock()
+			return svc
+		}
+		s.metadataMu.RUnlock()
+	}
+
 	apiKey, pin, err := s.metadataCredentialLoader(ctx)
 	if err != nil {
 		log.Debug().Err(err).Msg("metadata: failed to load TVDB credentials, using existing service")
@@ -498,11 +525,11 @@ func (s *Service) getMetadataService(ctx context.Context) *metadata.Service {
 		return svc
 	}
 
-	fingerprint := fmt.Sprintf("%d:%s%s", len(apiKey), apiKey, pin)
+	fingerprint := metadataCredentialsFingerprint(apiKey, pin)
 
 	// Fast path: credentials unchanged, read lock only.
 	s.metadataMu.RLock()
-	if fingerprint == s.metadataCredsFingerprint {
+	if fingerprint == s.metadataCredsFingerprint && (s.metadataCredsRevisionLoader == nil || revision.Equal(s.metadataCredsRevision)) {
 		svc := s.metadataService
 		s.metadataMu.RUnlock()
 		return svc
@@ -514,12 +541,18 @@ func (s *Service) getMetadataService(ctx context.Context) *metadata.Service {
 	defer s.metadataMu.Unlock()
 
 	// Re-check after lock acquisition.
-	if fingerprint != s.metadataCredsFingerprint {
+	if fingerprint != s.metadataCredsFingerprint || (s.metadataCredsRevisionLoader != nil && !revision.Equal(s.metadataCredsRevision)) {
 		s.metadataService = metadata.NewService(apiKey, pin)
+		s.metadataCredsRevision = revision
 		s.metadataCredsFingerprint = fingerprint
 	}
 
 	return s.metadataService
+}
+
+func metadataCredentialsFingerprint(apiKey, pin string) string {
+	sum := sha256.Sum256([]byte("qui:season-pack-tvdb\x00" + apiKey + "\x00" + pin))
+	return hex.EncodeToString(sum[:])
 }
 
 func (s *Service) getCompletionPollInterval() time.Duration {

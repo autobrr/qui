@@ -111,28 +111,50 @@ func TestNormalizeMigrationFilenames_RenamesCompletionBypass065To066ForSQLite(t 
 	assertMigrationRenamed(t, conn, "065_add_completion_bypass_torznab_cache.sql", "066_add_completion_bypass_torznab_cache.sql")
 }
 
-func TestNormalizeMigrationFilenames_RenamesSeasonPack070To071ForSQLite(t *testing.T) {
-	ctx := context.Background()
-	db, conn := newMigrationRenameTestDB(t, DialectSQLite)
+func TestNormalizeMigrationFilenames_RenamesSeasonPackMigrations(t *testing.T) {
+	t.Parallel()
 
-	_, err := conn.ExecContext(ctx, `
-		INSERT INTO migrations (filename) VALUES ('070_add_season_pack_settings_and_runs.sql');
-	`)
-	require.NoError(t, err)
+	testCases := []struct {
+		name            string
+		dialect         Dialect
+		initialFilename string
+		expectedName    string
+		useExecer       bool
+	}{
+		{
+			name:            "sqlite",
+			dialect:         DialectSQLite,
+			initialFilename: "070_add_season_pack_settings_and_runs.sql",
+			expectedName:    "071_add_season_pack_settings_and_runs.sql",
+		},
+		{
+			name:            "postgres",
+			dialect:         DialectPostgres,
+			initialFilename: "071_add_season_pack_settings_and_runs.sql",
+			expectedName:    "072_add_season_pack_settings_and_runs.sql",
+			useExecer:       true,
+		},
+	}
 
-	require.NoError(t, db.normalizeMigrationFilenames(ctx))
-	assertMigrationRenamed(t, conn, "070_add_season_pack_settings_and_runs.sql", "071_add_season_pack_settings_and_runs.sql")
-}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-func TestNormalizeMigrationFilenames_RenamesSeasonPack071To072ForPostgres(t *testing.T) {
-	ctx := context.Background()
-	db, conn := newMigrationRenameTestDB(t, DialectPostgres)
+			ctx := context.Background()
+			db, conn := newMigrationRenameTestDB(t, tc.dialect)
 
-	_, err := conn.ExecContext(ctx, `
-		INSERT INTO migrations (filename) VALUES ('071_add_season_pack_settings_and_runs.sql');
-	`)
-	require.NoError(t, err)
+			_, err := conn.ExecContext(ctx, `
+				INSERT INTO migrations (filename) VALUES (?);
+			`, tc.initialFilename)
+			require.NoError(t, err)
 
-	require.NoError(t, db.normalizeMigrationFilenamesWithExecer(ctx, conn, sharedMigrationFilenameRenames, postgresMigrationFilenameRenames))
-	assertMigrationRenamed(t, conn, "071_add_season_pack_settings_and_runs.sql", "072_add_season_pack_settings_and_runs.sql")
+			if tc.useExecer {
+				require.NoError(t, db.normalizeMigrationFilenamesWithExecer(ctx, conn, sharedMigrationFilenameRenames, postgresMigrationFilenameRenames))
+			} else {
+				require.NoError(t, db.normalizeMigrationFilenames(ctx))
+			}
+
+			assertMigrationRenamed(t, conn, tc.initialFilename, tc.expectedName)
+		})
+	}
 }
