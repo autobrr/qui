@@ -8943,26 +8943,6 @@ func (s *Service) trackerDomainsMatchIndexer(trackerDomains []string, indexerNam
 					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Specific indexer domain partial match ***")
 				return true
 			}
-
-			// TLD-stripped specific indexer domain comparison.
-			indexerDomainWithoutTLD := normalizedSpecificDomain
-			for _, suffix := range []string{".cc", ".org", ".net", ".com", ".to", ".me", ".tv", ".xyz"} {
-				if before, ok := strings.CutSuffix(indexerDomainWithoutTLD, suffix); ok {
-					indexerDomainWithoutTLD = before
-					break
-				}
-			}
-			domainWithoutTLD := normalizeDomainNameValue(stripTrackerTLD(normalizedDomain))
-			normalizedIndexerDomainName := s.normalizeDomainName(indexerDomainWithoutTLD)
-			if domainWithoutTLD == normalizedIndexerDomainName {
-				log.Debug().
-					Str("matchType", "normalized_specific_indexer_domain").
-					Str("torrentDomain", domain).
-					Str("indexerDomain", specificIndexerDomain).
-					Str("indexerName", indexerName).
-					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Normalized specific indexer domain match ***")
-				return true
-			}
 		}
 	}
 
