@@ -1593,6 +1593,10 @@ export function Search() {
                             aria-selected={isSelected}
                             onClick={() => handleToggleResultSelection(result)}
                             onKeyDown={(event) => {
+                              if (event.currentTarget !== event.target) {
+                                return
+                              }
+
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault()
                                 handleToggleResultSelection(result)

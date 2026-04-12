@@ -43,13 +43,21 @@ export function SearchResultCard({
 }: SearchResultCardProps) {
   const primaryAddLabel = targetInstanceName ? `Add to ${targetInstanceName}` : "Add to instance"
   const menuCooldownRef = useRef(false)
+  const menuCooldownTimerRef = useRef<number | null>(null)
 
   const handleMenuOpenChange = useCallback((open: boolean) => {
+    if (menuCooldownTimerRef.current !== null) {
+      clearTimeout(menuCooldownTimerRef.current)
+      menuCooldownTimerRef.current = null
+    }
     if (open) {
       menuCooldownRef.current = true
     } else {
       // Brief cooldown so the phantom tap after menu close doesn't reach the card
-      setTimeout(() => { menuCooldownRef.current = false }, 300)
+      menuCooldownTimerRef.current = window.setTimeout(() => {
+        menuCooldownRef.current = false
+        menuCooldownTimerRef.current = null
+      }, 300)
     }
   }, [])
 
@@ -70,6 +78,10 @@ export function SearchResultCard({
       aria-selected={isSelected}
       onClick={handleCardClick}
       onKeyDown={(event) => {
+        if (event.currentTarget !== event.target) {
+          return
+        }
+
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault()
           onSelect()
