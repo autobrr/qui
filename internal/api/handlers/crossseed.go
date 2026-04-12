@@ -25,10 +25,9 @@ import (
 
 // CrossSeedHandler handles cross-seed API endpoints
 type CrossSeedHandler struct {
-	service              *crossseed.Service
-	completionStore      *models.InstanceCrossSeedCompletionStore
-	indexerCategoryStore *models.CrossSeedIndexerCategoryStore
-	instanceStore        *models.InstanceStore
+	service         *crossseed.Service
+	completionStore *models.InstanceCrossSeedCompletionStore
+	instanceStore   *models.InstanceStore
 }
 
 var infoHashRegex = regexp.MustCompile(`^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$`)
@@ -354,12 +353,11 @@ type CrossSeedBlocklistRequest struct {
 }
 
 // NewCrossSeedHandler creates a new cross-seed handler
-func NewCrossSeedHandler(service *crossseed.Service, completionStore *models.InstanceCrossSeedCompletionStore, indexerCategoryStore *models.CrossSeedIndexerCategoryStore, instanceStore *models.InstanceStore) *CrossSeedHandler {
+func NewCrossSeedHandler(service *crossseed.Service, completionStore *models.InstanceCrossSeedCompletionStore, instanceStore *models.InstanceStore) *CrossSeedHandler {
 	return &CrossSeedHandler{
-		service:              service,
-		completionStore:      completionStore,
-		indexerCategoryStore: indexerCategoryStore,
-		instanceStore:        instanceStore,
+		service:         service,
+		completionStore: completionStore,
+		instanceStore:   instanceStore,
 	}
 }
 
@@ -404,11 +402,6 @@ func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler
 		r.With(authMiddleware).Route("/completion", func(r chi.Router) {
 			r.Get("/{instanceID}", h.GetInstanceCompletionSettings)
 			r.Put("/{instanceID}", h.UpdateInstanceCompletionSettings)
-		})
-		r.With(authMiddleware).Route("/indexer-categories", func(r chi.Router) {
-			r.Get("/{instanceID}", h.GetInstanceIndexerCategories)
-			r.Put("/{instanceID}", h.SetInstanceIndexerCategory)
-			r.Delete("/{instanceID}/{indexerID}", h.DeleteInstanceIndexerCategory)
 		})
 	})
 }
@@ -1650,131 +1643,4 @@ func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWrite
 	}
 
 	RespondJSON(w, http.StatusOK, toInstanceCompletionSettingsResponse(saved))
-}
-
-// validateInstanceExists checks that instanceID refers to a known instance.
-// It writes the appropriate error response and returns false when validation fails,
-// so callers can do: if !h.validateInstanceExists(w, r, instanceID) { return }
-func (h *CrossSeedHandler) validateInstanceExists(w http.ResponseWriter, r *http.Request, instanceID int) bool {
-	if h.instanceStore == nil {
-		return true
-	}
-	_, err := h.instanceStore.Get(r.Context(), instanceID)
-	if err != nil {
-		if errors.Is(err, models.ErrInstanceNotFound) {
-			RespondError(w, http.StatusNotFound, "Instance not found")
-			return false
-		}
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to validate instance for indexer categories")
-		RespondError(w, http.StatusInternalServerError, "Failed to validate instance")
-		return false
-	}
-	return true
-}
-
-// GetInstanceIndexerCategories returns all per-indexer category mappings for an instance.
-func (h *CrossSeedHandler) GetInstanceIndexerCategories(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
-		return
-	}
-
-	if h.indexerCategoryStore == nil {
-		RespondError(w, http.StatusServiceUnavailable, "Indexer category store not available")
-		return
-	}
-
-	if !h.validateInstanceExists(w, r, instanceID) {
-		return
-	}
-
-	mappings, err := h.indexerCategoryStore.List(r.Context(), instanceID)
-	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to list indexer categories")
-		RespondError(w, http.StatusInternalServerError, "Failed to load indexer categories")
-		return
-	}
-
-	RespondJSON(w, http.StatusOK, mappings)
-}
-
-// SetInstanceIndexerCategory upserts an (instanceID, indexerID) → category mapping.
-func (h *CrossSeedHandler) SetInstanceIndexerCategory(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
-		return
-	}
-
-	if h.indexerCategoryStore == nil {
-		RespondError(w, http.StatusServiceUnavailable, "Indexer category store not available")
-		return
-	}
-
-	if !h.validateInstanceExists(w, r, instanceID) {
-		return
-	}
-
-	var req struct {
-		IndexerID int    `json:"indexerId"`
-		Category  string `json:"category"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		RespondError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
-	if req.IndexerID <= 0 {
-		RespondError(w, http.StatusBadRequest, "indexerId must be a positive integer")
-		return
-	}
-	category := strings.TrimSpace(req.Category)
-	if category == "" {
-		RespondError(w, http.StatusBadRequest, "category cannot be blank")
-		return
-	}
-
-	if err := h.indexerCategoryStore.Set(r.Context(), instanceID, req.IndexerID, category); err != nil {
-		if errors.Is(err, models.ErrIndexerCategoryForeignKey) {
-			RespondError(w, http.StatusBadRequest, "indexer not found or instance no longer exists")
-			return
-		}
-		log.Error().Err(err).Int("instanceID", instanceID).Int("indexerID", req.IndexerID).Msg("Failed to set indexer category")
-		RespondError(w, http.StatusInternalServerError, "Failed to save indexer category")
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// DeleteInstanceIndexerCategory removes the category mapping for an (instanceID, indexerID) pair.
-func (h *CrossSeedHandler) DeleteInstanceIndexerCategory(w http.ResponseWriter, r *http.Request) {
-	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
-		return
-	}
-
-	indexerID, err := strconv.Atoi(chi.URLParam(r, "indexerID"))
-	if err != nil || indexerID <= 0 {
-		RespondError(w, http.StatusBadRequest, "indexerID must be a positive integer")
-		return
-	}
-
-	if h.indexerCategoryStore == nil {
-		RespondError(w, http.StatusServiceUnavailable, "Indexer category store not available")
-		return
-	}
-
-	if !h.validateInstanceExists(w, r, instanceID) {
-		return
-	}
-
-	if err := h.indexerCategoryStore.Delete(r.Context(), instanceID, indexerID); err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Int("indexerID", indexerID).Msg("Failed to delete indexer category")
-		RespondError(w, http.StatusInternalServerError, "Failed to delete indexer category")
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
 }

@@ -127,13 +127,6 @@ export interface InstanceCrossSeedCompletionSettings {
   bypassTorznabCache: boolean
 }
 
-export interface CrossSeedIndexerCategory {
-  instanceId: number
-  indexerId: number
-  indexerName: string
-  category: string
-}
-
 /**
  * A torrent match found by the backend using proper release metadata parsing (rls library).
  */

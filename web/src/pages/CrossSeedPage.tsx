@@ -30,18 +30,9 @@ import {
 } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect } from "@/components/ui/multi-select"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
@@ -52,30 +43,24 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
-import { cn } from "@/lib/utils"
 import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
   CrossSeedRun,
-  Instance,
-  TorznabIndexer,
+  Instance
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 import {
   AlertTriangle,
-  Check,
   CheckCircle2,
   ChevronDown,
-  ChevronsUpDown,
   Clock,
   History,
   Info,
   Loader2,
   Play,
-  Plus,
   Rocket,
-  X,
   XCircle,
   Zap
 } from "lucide-react"
@@ -199,19 +184,6 @@ function normalizeNumberList(values: Array<string | number>): number[] {
   ))
 }
 
-// Normalize category mode flags to ensure exactly one is active.
-// Priority: custom > indexer > affix > reuse (affix is the default).
-function normalizeCategoryFlags(s: {
-  useCustomCategory?: boolean
-  useCategoryFromIndexer?: boolean
-  useCrossCategoryAffix?: boolean
-}) {
-  const useCustomCategory = s.useCustomCategory ?? false
-  const useCategoryFromIndexer = !useCustomCategory && (s.useCategoryFromIndexer ?? false)
-  const useCrossCategoryAffix = !useCustomCategory && !useCategoryFromIndexer && (s.useCrossCategoryAffix ?? true)
-  return { useCustomCategory, useCategoryFromIndexer, useCrossCategoryAffix }
-}
-
 function isGazelleOnlyTorznabIndexer(indexerName: string, indexerID: string, baseURL: string) {
   const haystack = `${indexerName} ${indexerID} ${baseURL}`.toLowerCase()
   return /(^|[^a-z0-9])(ops|orpheus|opsfet|redacted|flacsfor)([^a-z0-9]|$)/.test(haystack)
@@ -332,254 +304,6 @@ function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
   )
 }
 
-/** Creatable single-select combobox for qBittorrent category names */
-function CategoryCombobox({
-  value,
-  open,
-  onOpenChange,
-  onChange,
-  options,
-  disableDeselect = false,
-}: {
-  value: string
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onChange: (cat: string) => void
-  options: Array<{ label: string; value: string }>
-  disableDeselect?: boolean
-}) {
-  const [search, setSearch] = useState("")
-  const allValues = useMemo(() => {
-    const names = new Set(options.map((o) => o.value))
-    if (value) names.add(value)
-    return [...names].sort()
-  }, [options, value])
-  const trimmedSearch = search.trim()
-  const canCreate = trimmedSearch.length > 0 &&
-    !allValues.some((name) => name.toLowerCase() === trimmedSearch.toLowerCase())
-
-  return (
-    <Popover open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) setSearch("") }}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" role="combobox" size="sm" className="min-w-[140px] justify-between font-normal text-xs h-7">
-          {value ? value : <span className="text-muted-foreground">Category…</span>}
-          <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Search or type…" value={search} onValueChange={setSearch} />
-          <CommandList>
-            <CommandGroup>
-              {canCreate && (
-                <CommandItem
-                  value={trimmedSearch}
-                  onSelect={() => { onChange(trimmedSearch); onOpenChange(false); setSearch("") }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create &ldquo;{trimmedSearch}&rdquo;
-                </CommandItem>
-              )}
-              {allValues.map((name) => (
-                <CommandItem
-                  key={name}
-                  value={name}
-                  onSelect={() => { onChange(name === value && !disableDeselect ? "" : name); onOpenChange(false); setSearch("") }}
-                >
-                  <Check className={cn("mr-2 h-4 w-4", value === name ? "opacity-100" : "opacity-0")} />
-                  {name}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-            <CommandEmpty>No categories.</CommandEmpty>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-/** Per-instance indexer → category mappings for tracker category mode */
-function InstanceTrackerCategoryMappings({
-  instanceId,
-  enabledIndexers,
-  isExpanded,
-}: {
-  instanceId: number
-  enabledIndexers: TorznabIndexer[]
-  isExpanded: boolean
-}) {
-  const queryClient = useQueryClient()
-  const [addingRow, setAddingRow] = useState<{ indexerId: number | null; category: string } | null>(null)
-  const [openCategoryFor, setOpenCategoryFor] = useState<number | null>(null)
-  const [addIndexerOpen, setAddIndexerOpen] = useState(false)
-  const resetAddingRow = useCallback(() => {
-    setAddingRow(null)
-    setOpenCategoryFor(null)
-    setAddIndexerOpen(false)
-  }, [])
-
-  const { data: mappings = [], isPending: mappingsPending, isError: mappingsError } = useQuery({
-    queryKey: ["cross-seed-indexer-categories", instanceId],
-    queryFn: () => api.getCrossSeedIndexerCategories(instanceId),
-    enabled: isExpanded,
-  })
-
-  const { data: categories } = useQuery({
-    queryKey: ["instance-categories", instanceId],
-    queryFn: () => api.getCategories(instanceId),
-    staleTime: 60000,
-    gcTime: 1800000,
-    enabled: isExpanded,
-  })
-
-  const mappedCategories = useMemo(
-    () => Array.from(new Set(mappings.map((m) => m.category))),
-    [mappings],
-  )
-
-  const categoryOptions = useMemo(
-    () => buildCategorySelectOptions(categories ?? {}, mappedCategories),
-    [categories, mappedCategories]
-  )
-
-  const setMutation = useMutation({
-    mutationFn: ({ indexerId, category }: { indexerId: number; category: string }) =>
-      api.setCrossSeedIndexerCategory(instanceId, indexerId, category),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cross-seed-indexer-categories", instanceId] })
-    },
-    onError: () => toast.error("Failed to save category mapping"),
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (indexerId: number) => api.deleteCrossSeedIndexerCategory(instanceId, indexerId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["cross-seed-indexer-categories", instanceId] }),
-    onError: () => toast.error("Failed to delete category mapping"),
-  })
-
-  const mappedIndexerIds = useMemo(() => new Set(mappings.map((m) => m.indexerId)), [mappings])
-  const unmappedIndexers = useMemo(
-    () => enabledIndexers.filter((idx) => !mappedIndexerIds.has(idx.id)),
-    [enabledIndexers, mappedIndexerIds]
-  )
-
-  return (
-    <div className="space-y-2">
-      <p className="text-xs font-medium">Tracker Category Mappings</p>
-      <p className="text-xs text-muted-foreground">
-        Assign a qBittorrent category per indexer. When the category has a configured save path, cross-seeds are placed there using the selected hardlink/reflink mode and added with Automatic Torrent Management enabled. Without a save path, the linked files are created in the base directory and the save path is set explicitly. Indexers without a mapping fall back to the global category resolution order.
-      </p>
-      {mappings.map((mapping) => (
-        <div key={mapping.indexerId} className="flex items-center gap-2">
-          <span className="text-xs min-w-0 flex-1 truncate">{mapping.indexerName}</span>
-          <CategoryCombobox
-            value={mapping.category}
-            open={openCategoryFor === mapping.indexerId}
-            onOpenChange={(open) => setOpenCategoryFor(open ? mapping.indexerId : null)}
-            options={categoryOptions}
-            disableDeselect
-            onChange={(cat) => {
-              if (cat && cat !== mapping.category) {
-                setMutation.mutate({ indexerId: mapping.indexerId, category: cat })
-              }
-            }}
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            onClick={() => deleteMutation.mutate(mapping.indexerId)}
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      ))}
-      {addingRow !== null && (
-        <div className="flex items-center gap-2">
-          <Popover open={addIndexerOpen} onOpenChange={setAddIndexerOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="min-w-[140px] justify-between font-normal text-xs h-7">
-                {addingRow.indexerId
-                  ? (unmappedIndexers.find((i) => i.id === addingRow.indexerId)?.name ?? "Indexer")
-                  : <span className="text-muted-foreground">Select indexer…</span>}
-                <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-              <Command>
-                <CommandInput placeholder="Search indexer…" />
-                <CommandList>
-                  <CommandEmpty>No indexers available.</CommandEmpty>
-                  <CommandGroup>
-                    {unmappedIndexers.map((idx) => (
-                      <CommandItem
-                        key={idx.id}
-                        value={idx.name}
-                        onSelect={() => {
-                          setAddingRow((prev) => prev ? { ...prev, indexerId: idx.id } : prev)
-                          setAddIndexerOpen(false)
-                        }}
-                      >
-                        <Check className={cn("mr-2 h-4 w-4", addingRow.indexerId === idx.id ? "opacity-100" : "opacity-0")} />
-                        {idx.name}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
-          <CategoryCombobox
-            value={addingRow.category}
-            open={openCategoryFor === -1}
-            onOpenChange={(open) => setOpenCategoryFor(open ? -1 : null)}
-            options={categoryOptions}
-            onChange={(cat) => setAddingRow((prev) => prev ? { ...prev, category: cat } : prev)}
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            disabled={!addingRow.indexerId || !addingRow.category}
-            onClick={() => {
-              if (addingRow.indexerId && addingRow.category) {
-                setMutation.mutate(
-                  { indexerId: addingRow.indexerId, category: addingRow.category },
-                  { onSuccess: resetAddingRow },
-                )
-              }
-            }}
-          >
-            <Check className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            onClick={resetAddingRow}
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      )}
-      {addingRow === null && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 text-xs"
-          onClick={() => setAddingRow({ indexerId: null, category: "" })}
-          disabled={unmappedIndexers.length === 0 || mappingsPending || mappingsError}
-        >
-          <Plus className="h-3.5 w-3.5 mr-1" />
-          Add mapping
-        </Button>
-      )}
-    </div>
-  )
-}
-
 /** Per-instance hardlink/reflink mode settings component */
 function HardlinkModeSettings() {
   const { instances, updateInstance, isUpdating } = useInstances()
@@ -600,15 +324,7 @@ function HardlinkModeSettings() {
     [instances]
   )
 
-  const { data: indexers } = useQuery({
-    queryKey: ["torznab", "indexers"],
-    queryFn: () => api.listTorznabIndexers(),
-    staleTime: 60000,
-  })
-  const enabledIndexers = useMemo(
-    () => (indexers ?? []).filter((idx) => idx.enabled),
-    [indexers]
-  )
+  // Auto-expand when 3 or fewer instances (only on first load)
   useEffect(() => {
     if (isOpen === undefined && instances !== undefined) {
       const activeCount = (instances ?? []).filter((inst) => inst.isActive).length
@@ -709,7 +425,7 @@ function HardlinkModeSettings() {
     return (
       <Collapsible className="rounded-lg border border-border/70 bg-muted/40">
         <CollapsibleTrigger className="flex w-full items-center justify-between p-4 font-medium [&[data-state=open]>svg]:rotate-180">
-          <span>Per-Instance Settings</span>
+          <span>Hardlink / Reflink Mode</span>
           <ChevronDown className="h-4 w-4 transition-transform duration-200" />
         </CollapsibleTrigger>
         <CollapsibleContent>
@@ -724,7 +440,7 @@ function HardlinkModeSettings() {
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen} className="rounded-lg border border-border/70 bg-muted/40">
       <CollapsibleTrigger className="flex w-full items-center justify-between p-4 font-medium [&[data-state=open]>svg]:rotate-180">
-        <span>Per-Instance Settings</span>
+        <span>Hardlink / Reflink Mode</span>
         <ChevronDown className="h-4 w-4 transition-transform duration-200" />
       </CollapsibleTrigger>
       <CollapsibleContent>
@@ -889,17 +605,6 @@ function HardlinkModeSettings() {
                           {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                           Save Changes
                         </Button>
-                      )}
-
-                      {(form.useHardlinks || form.useReflinks) && form.hardlinkDirPreset === "by-tracker" && (
-                        <>
-                          <Separator />
-                          <InstanceTrackerCategoryMappings
-                            instanceId={instance.id}
-                            enabledIndexers={enabledIndexers}
-                            isExpanded={expandedInstances.includes(String(instance.id))}
-                          />
-                        </>
                       )}
                     </div>
                   </AccordionContent>
@@ -1119,7 +824,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   useEffect(() => {
     if (settings && !globalSettingsInitialized) {
       // Normalize category flags: ensure exactly one mode is active (priority: custom > indexer > affix > reuse)
-      const { useCustomCategory, useCategoryFromIndexer, useCrossCategoryAffix } = normalizeCategoryFlags(settings)
+      const useCustomCategory = settings.useCustomCategory ?? false
+      const useCategoryFromIndexer = !useCustomCategory && (settings.useCategoryFromIndexer ?? false)
+      const useCrossCategoryAffix = !useCustomCategory && !useCategoryFromIndexer && (settings.useCrossCategoryAffix ?? true)
 
       setGlobalSettings({
         findIndividualEpisodes: settings.findIndividualEpisodes,
@@ -1207,11 +914,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     if (!settings) return null
 
     // Normalize category flags for fallback path (same priority as init: custom > indexer > affix > reuse)
-    const {
-      useCustomCategory: fallbackCustom,
-      useCategoryFromIndexer: fallbackIndexer,
-      useCrossCategoryAffix: fallbackAffix,
-    } = normalizeCategoryFlags(settings)
+    const fallbackCustom = settings.useCustomCategory ?? false
+    const fallbackIndexer = !fallbackCustom && (settings.useCategoryFromIndexer ?? false)
+    const fallbackAffix = !fallbackCustom && !fallbackIndexer && (settings.useCrossCategoryAffix ?? true)
 
     const globalSource = globalSettingsInitialized ? globalSettings : {
       findIndividualEpisodes: settings.findIndividualEpisodes,
@@ -1742,7 +1447,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     return "reuse"
   }
 
-  // Helper to set category mode (updates all boolean flags, mutually exclusive)
+  // Helper to set category mode (updates all three boolean flags)
   const setCategoryMode = (mode: CategoryMode) => {
     setGlobalSettings(prev => ({
       ...prev,

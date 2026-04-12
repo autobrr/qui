@@ -145,12 +145,6 @@ type InjectRequest struct {
 	// Category to assign to the torrent.
 	Category string
 
-	// TrackerCategorySavePath is the qBittorrent save path for the per-tracker
-	// category resolved from the "by-tracker" directory preset.  When non-empty,
-	// hardlinks are placed directly inside this directory and autoTMM is enabled
-	// so qBittorrent manages file placement via the category.
-	TrackerCategorySavePath string
-
 	// Tags to assign to the torrent.
 	Tags []string
 
@@ -209,27 +203,14 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	result.Mode = addMode
 	result.SavePath = savePath
 
-	hadTrackerCategorySavePath := req.TrackerCategorySavePath != ""
 	hasUnmatchedFiles := len(req.MatchResult.UnmatchedTorrentFiles) > 0
 	partialLinkTree := isLinkTreeMode(addMode) && hasUnmatchedFiles
 
 	// Reject partial link tree injections when downloading missing files is disabled.
 	if partialLinkTree && !req.DownloadMissingFiles {
-		i.rollbackLinkTree(addMode, linkPlan, hadTrackerCategorySavePath)
+		i.rollbackLinkTree(addMode, linkPlan)
 		return result, fmt.Errorf("partial match has %d missing files; enable 'Download missing files' to allow",
 			len(req.MatchResult.UnmatchedTorrentFiles))
-	}
-
-	// If prepareInjection fell back to regular mode (hardlinks not enabled or link
-	// tree failed with FallbackToRegularMode), no files were hardlinked into the
-	// tracker category save path.  Clear both the save path and the tracker-mapped
-	// category so the torrent is added as a plain reuse inject — tracker category
-	// semantics only apply when files are physically placed via hardlink/reflink.
-	if addMode == injectModeRegular {
-		req.TrackerCategorySavePath = ""
-		if hadTrackerCategorySavePath {
-			req.Category = ""
-		}
 	}
 
 	options := i.buildAddOptions(req, savePath)
@@ -248,7 +229,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 
 	// Add the torrent to qBittorrent
 	if err := i.syncManager.AddTorrent(ctx, req.InstanceID, req.TorrentBytes, options); err != nil {
-		i.rollbackLinkTree(addMode, linkPlan, hadTrackerCategorySavePath)
+		i.rollbackLinkTree(addMode, linkPlan)
 		result.ErrorMessage = fmt.Sprintf("failed to add torrent: %v", err)
 		return result, fmt.Errorf("add torrent: %w", err)
 	}
@@ -474,7 +455,7 @@ func (i *Injector) logLinkTreeFallback(instance *models.Instance, err error) {
 		Msg("dirscan: falling back to regular mode")
 }
 
-func (i *Injector) rollbackLinkTree(mode string, plan *hardlinktree.TreePlan, preserveRoot bool) {
+func (i *Injector) rollbackLinkTree(mode string, plan *hardlinktree.TreePlan) {
 	if plan == nil || plan.RootDir == "" {
 		return
 	}
@@ -492,17 +473,7 @@ func (i *Injector) rollbackLinkTree(mode string, plan *hardlinktree.TreePlan, pr
 	if rollbackErr != nil {
 		log.Warn().Err(rollbackErr).Str("rootDir", plan.RootDir).Str("mode", mode).Msg("dirscan: failed to rollback link tree")
 	}
-	if !preserveRoot {
-		if err := os.Remove(plan.RootDir); err != nil &&
-			!errors.Is(err, os.ErrNotExist) &&
-			!errors.Is(err, syscall.ENOTEMPTY) {
-			log.Debug().
-				Err(err).
-				Str("rootDir", plan.RootDir).
-				Str("mode", mode).
-				Msg("dirscan: failed to remove rolled back root dir")
-		}
-	}
+	_ = os.Remove(plan.RootDir)
 }
 
 // calculateSavePath determines the save path for the torrent.
@@ -546,72 +517,7 @@ func shouldUseSearcheeDirectory(searcheePath string, parsed *ParsedTorrent) bool
 	return !hardlinktree.HasCommonRootFolder(candidateFiles)
 }
 
-// applyInversePathMapping translates a qBittorrent-facing path back to a host
-// filesystem path.  It is the inverse of applyPathMapping: it strips qbitPrefix
-// from qbitPath and replaces it with the host-side prefix (searcheePath).
-//
-// The match is path-boundary-safe: the prefix must be followed by a '/' or be
-// an exact match, so /downloads never spuriously matches /downloads-tv/....
-//
-// Returns the translated path and true on success, or the original qbitPath and
-// false when no mapping could be applied (prefix not present or empty).
-//
-// Example:
-//
-//	qbitPath:    /downloads/aither
-//	qbitPrefix:  /downloads
-//	searcheePath: /data/torrents
-//	result:      /data/torrents/aither, true
-func applyInversePathMapping(qbitPath, searcheePath, qbitPrefix string) (string, bool) {
-	if strings.TrimSpace(qbitPrefix) == "" {
-		return qbitPath, false
-	}
-
-	cleanPath := filepath.Clean(qbitPath)
-	cleanPrefix := filepath.Clean(qbitPrefix)
-	cleanHostBase := filepath.Clean(searcheePath)
-
-	// Exact match: qbitPath IS the prefix directory.
-	samePath := cleanPath == cleanPrefix
-	if os.PathSeparator == '\\' {
-		samePath = strings.EqualFold(cleanPath, cleanPrefix)
-	}
-	if samePath {
-		return cleanHostBase, true
-	}
-
-	// Child match: require a proper path boundary so /downloads-tv doesn't match /downloads.
-	prefixWithSep := cleanPrefix
-	if !strings.HasSuffix(prefixWithSep, string(filepath.Separator)) {
-		prefixWithSep += string(filepath.Separator)
-	}
-	hasPrefix := strings.HasPrefix(cleanPath, prefixWithSep)
-	if os.PathSeparator == '\\' {
-		hasPrefix = len(cleanPath) >= len(prefixWithSep) &&
-			strings.EqualFold(cleanPath[:len(prefixWithSep)], prefixWithSep)
-	}
-	if !hasPrefix {
-		return qbitPath, false
-	}
-
-	rel := cleanPath[len(prefixWithSep):]
-	return filepath.Join(cleanHostBase, rel), true
-}
-
-func mapTrackerCategorySavePathToHost(qbitPath, qbitPrefix, hardlinkBaseDir, existingFilePath string) (string, error) {
-	hostBaseDir, err := crossseed.FindMatchingBaseDir(hardlinkBaseDir, existingFilePath)
-	if err != nil {
-		return "", fmt.Errorf("select hardlink base dir for tracker category path: %w", err)
-	}
-
-	mapped, ok := applyInversePathMapping(qbitPath, hostBaseDir, qbitPrefix)
-	if !ok {
-		return "", fmt.Errorf("tracker category save path %q cannot be mapped to host filesystem: QbitPathPrefix %q does not match", qbitPath, qbitPrefix)
-	}
-
-	return mapped, nil
-}
-
+// applyPathMapping replaces the original path prefix with the qBittorrent path prefix.
 // Example:
 //
 //	original: /data/usenet/completed/Movie.Name/
@@ -631,22 +537,17 @@ func applyPathMapping(savePath, searcheePath, qbitPrefix string) string {
 func (i *Injector) buildAddOptions(req *InjectRequest, savePath string) map[string]string {
 	options := make(map[string]string)
 
-	if req.TrackerCategorySavePath != "" {
-		// Tracker category mode: files are pre-hardlinked into the category save
-		// path; let qBittorrent manage placement via AutoTMM.  Do not set
-		// savepath — AutoTMM and category together control the destination.
-		options["autoTMM"] = qbitBoolTrue
-	} else {
-		// Standard mode: disable autoTMM so our explicit save path is used.
-		options["autoTMM"] = qbitBoolFalse
-		options["savepath"] = savePath
-	}
+	// Disable autoTMM to use our explicit save path
+	options["autoTMM"] = qbitBoolFalse
 
 	// Keep qBittorrent's on-disk layout aligned with the existing files/hardlink tree, even if the
 	// instance default content layout is "Create subfolder".
 	options["contentLayout"] = qbitContentLayoutOriginal
 	// Backwards compatibility for older qBittorrent versions (<4.3.2).
 	options["root_folder"] = qbitBoolFalse
+
+	// Set the save path
+	options["savepath"] = savePath
 
 	// Set category if provided
 	if req.Category != "" {
@@ -668,6 +569,9 @@ func (i *Injector) buildAddOptions(req *InjectRequest, savePath string) map[stri
 }
 
 func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Instance, req *InjectRequest) (*hardlinktree.TreePlan, string, error) {
+	if err := validateLinkTreeInstance(instance); err != nil {
+		return nil, "", err
+	}
 	if req == nil || req.ParsedTorrent == nil || req.MatchResult == nil {
 		return nil, "", errors.New("link-tree request is missing required data")
 	}
@@ -680,51 +584,17 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 		return nil, "", err
 	}
 
-	effectiveBaseDir := instance.HardlinkBaseDir
-	if req.TrackerCategorySavePath != "" {
-		if req.QbitPathPrefix != "" {
-			effectiveBaseDir, err = mapTrackerCategorySavePathToHost(
-				req.TrackerCategorySavePath,
-				req.QbitPathPrefix,
-				instance.HardlinkBaseDir,
-				existingFiles[0].AbsPath,
-			)
-			if err != nil {
-				return nil, "", err
-			}
-		} else {
-			effectiveBaseDir = req.TrackerCategorySavePath
-		}
+	selectedBaseDir, err := crossseed.FindMatchingBaseDir(instance.HardlinkBaseDir, existingFiles[0].AbsPath)
+	if err != nil {
+		return nil, "", fmt.Errorf("select hardlink base dir: %w", err)
+	}
+	if err := os.MkdirAll(selectedBaseDir, 0o750); err != nil {
+		return nil, "", fmt.Errorf("create hardlink base dir: %w", err)
 	}
 
-	if err := validateLinkTreeInstance(instance, effectiveBaseDir); err != nil {
-		return nil, "", err
-	}
-
-	var selectedBaseDir string
-	var destDir string
-
-	if req.TrackerCategorySavePath != "" {
-		// Tracker-category mode: files must land directly inside the category save
-		// path — no isolation subfolder — so AutoTMM can manage placement.
-		// effectiveBaseDir was already translated to a host filesystem path above.
-		selectedBaseDir = effectiveBaseDir
-		if err := os.MkdirAll(selectedBaseDir, 0o755); err != nil {
-			return nil, "", fmt.Errorf("create tracker category dir %q: %w", selectedBaseDir, err)
-		}
-		destDir = selectedBaseDir
-	} else {
-		selectedBaseDir, err = crossseed.FindMatchingBaseDir(instance.HardlinkBaseDir, existingFiles[0].AbsPath)
-		if err != nil {
-			return nil, "", fmt.Errorf("select hardlink base dir: %w", err)
-		}
-		if err := os.MkdirAll(selectedBaseDir, 0o750); err != nil {
-			return nil, "", fmt.Errorf("create hardlink base dir: %w", err)
-		}
-		incomingTrackerDomain := crossseed.ParseTorrentAnnounceDomain(req.TorrentBytes)
-		trackerDisplayName := i.resolveTrackerDisplayName(ctx, incomingTrackerDomain, indexerName(req.SearchResult))
-		destDir = buildLinkDestDir(selectedBaseDir, instance, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, needsIsolation, trackerDisplayName)
-	}
+	incomingTrackerDomain := crossseed.ParseTorrentAnnounceDomain(req.TorrentBytes)
+	trackerDisplayName := i.resolveTrackerDisplayName(ctx, incomingTrackerDomain, indexerName(req.SearchResult))
+	destDir := buildLinkDestDir(selectedBaseDir, instance, req.ParsedTorrent.InfoHash, req.ParsedTorrent.Name, needsIsolation, trackerDisplayName)
 
 	plan, err := hardlinktree.BuildPlan(linkableFiles, existingFiles, hardlinktree.LayoutOriginal, req.ParsedTorrent.Name, destDir)
 	if err != nil {
@@ -798,15 +668,15 @@ func (i *Injector) resolveTrackerDisplayName(ctx context.Context, incomingTracke
 	return models.ResolveTrackerDisplayName(incomingTrackerDomain, indexerName, customizations)
 }
 
-func validateLinkTreeInstance(instance *models.Instance, effectiveBaseDir string) error {
+func validateLinkTreeInstance(instance *models.Instance) error {
 	if instance == nil {
 		return errors.New("instance is nil")
 	}
 	if !instance.HasLocalFilesystemAccess {
 		return errors.New("instance does not have local filesystem access enabled")
 	}
-	if effectiveBaseDir == "" {
-		return errors.New("no hardlink base directory configured (set a hardlink base dir or configure by-tracker categories with save paths)")
+	if instance.HardlinkBaseDir == "" {
+		return errors.New("hardlink base directory is not configured")
 	}
 	if !instance.UseReflinks && !instance.UseHardlinks {
 		return errors.New("no link mode enabled")

@@ -93,7 +93,6 @@ func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -156,7 +155,6 @@ func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T
 		nil,
 		nil,
 		nil,
-		nil,
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -206,7 +204,6 @@ func TestWebhookTriggerScan_AcceptsArrTestPayloadWithoutScan(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -249,7 +246,6 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 		models.NewDirScanStore(db),
 		nil,
 		instanceStore,
-		nil,
 		nil,
 		nil,
 		nil,

@@ -261,6 +261,19 @@ func computeAutomationSearchTimeout(indexerCount int) time.Duration {
 	return timeouts.AdaptiveSearchTimeout(indexerCount)
 }
 
+// initializeDomainMappings returns a hardcoded mapping of tracker domains to indexer domains.
+// This helps map tracker domains (from existing torrents) to indexer domains (from Jackett/Prowlarr)
+// for better indexer matching when tracker has no correlation with indexer name/domain.
+//
+// Format: tracker_domain -> []indexer_domains
+func initializeDomainMappings() map[string][]string {
+	return map[string][]string{
+		"landof.tv":      {"broadcasthe.net"},
+		"flacsfor.me":    {"redacted.sh"},
+		"home.opsfet.ch": {"orpheus.network"},
+	}
+}
+
 // Service provides cross-seed functionality
 type Service struct {
 	instanceStore             instanceProvider
@@ -289,9 +302,6 @@ type Service struct {
 
 	// Per-instance completion settings
 	completionStore *models.InstanceCrossSeedCompletionStore
-
-	// Per-instance indexer category mappings (tracker category mode)
-	indexerCategoryStore *models.CrossSeedIndexerCategoryStore
 
 	// recoverErroredTorrentsEnabled controls whether to attempt recovery of errored/missingFiles
 	// torrents before candidate selection. When false (default), errored torrents are simply
@@ -397,7 +407,6 @@ func NewService(
 	externalProgramStore *models.ExternalProgramStore,
 	externalProgramService *externalprograms.Service,
 	completionStore *models.InstanceCrossSeedCompletionStore,
-	indexerCategoryStore *models.CrossSeedIndexerCategoryStore,
 	trackerCustomizationStore *models.TrackerCustomizationStore,
 	notifier notifications.Notifier,
 	recoverErroredTorrents bool,
@@ -434,10 +443,9 @@ func NewService(
 		externalProgramStore:          externalProgramStore,
 		externalProgramService:        externalProgramService,
 		completionStore:               completionStore,
-		indexerCategoryStore:          indexerCategoryStore,
 		recoverErroredTorrentsEnabled: recoverErroredTorrents,
 		automationWake:                make(chan struct{}, 1),
-		domainMappings:                trackerDomainAliases,
+		domainMappings:                initializeDomainMappings(),
 		torrentFilesCache:             contentFilesCache,
 		dedupCache:                    dedupCache,
 		metrics:                       NewServiceMetrics(),
@@ -4108,15 +4116,6 @@ func (s *Service) processCrossSeedCandidate(
 		Status:       "error",
 	}
 
-	// Load automation settings once; used for category determination and AutoTMM decision below.
-	candidateSettings, settingsErr := s.GetAutomationSettings(ctx)
-	if settingsErr != nil {
-		log.Warn().Err(settingsErr).
-			Int("instanceID", candidate.InstanceID).
-			Msg("[CROSSSEED] Failed to load automation settings, using defaults")
-		candidateSettings = models.DefaultCrossSeedAutomationSettings()
-	}
-
 	// Check if torrent already exists
 	hashes := make([]string, 0, 2)
 	seenHashes := make(map[string]struct{}, 2)
@@ -4250,18 +4249,8 @@ func (s *Service) processCrossSeedCandidate(
 	// Mode selection must happen BEFORE safety checks because reflink mode bypasses safety
 	// checks that exist to protect the *original* files (reflinks protect originals via CoW).
 	instance, instanceErr := s.instanceStore.Get(ctx, candidate.InstanceID)
-	if instanceErr != nil {
-		log.Warn().Err(instanceErr).Int("instanceID", candidate.InstanceID).
-			Msg("[CROSSSEED] Failed to load instance settings")
-		result.Message = fmt.Sprintf("Failed to load instance settings: %v", instanceErr)
-		return result
-	}
-	if instance == nil {
-		result.Message = fmt.Sprintf("Target instance %d not found", candidate.InstanceID)
-		return result
-	}
-	useReflinkMode := instance.UseReflinks
-	useHardlinkMode := instance.UseHardlinks && !instance.UseReflinks
+	useReflinkMode := instanceErr == nil && instance != nil && instance.UseReflinks
+	useHardlinkMode := instanceErr == nil && instance != nil && instance.UseHardlinks && !instance.UseReflinks
 
 	runReuseSafetyChecks := func() bool {
 		// SAFETY: Reject cross-seeds where main content file sizes don't match.
@@ -4429,8 +4418,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Determine final category to apply (with optional .cross suffix for isolation)
-	announceDomain := ParseTorrentAnnounceDomain(torrentBytes)
-	baseCategory, crossCategory, trackerCategoryMatched := s.determineCrossSeedCategory(ctx, instance, req, matchedTorrent, candidateSettings, announceDomain)
+	baseCategory, crossCategory := s.determineCrossSeedCategory(ctx, req, matchedTorrent, nil)
 
 	// Determine the SavePath for the cross-seed category.
 	// Priority: base category's configured SavePath > matched torrent's SavePath
@@ -4439,45 +4427,17 @@ func (s *Service) processCrossSeedCandidate(
 	var categorySavePath string
 	var actualCategorySavePath string
 	var categoryCreationFailed bool
-	var crossCategoryExistsInQbit bool
 	if crossCategory != "" {
 		// Try to get SavePath from the base category definition in qBittorrent
 		categories, catErr := s.syncManager.GetCategories(ctx, candidate.InstanceID)
 		if catErr != nil {
 			log.Debug().Err(catErr).Int("instanceID", candidate.InstanceID).
 				Msg("[CROSSSEED] Failed to fetch categories, falling back to torrent SavePath")
-			if shouldAbortTrackerCategoryInjectOnCategoryLookupFailure(trackerCategoryMatched, useHardlinkMode, useReflinkMode) {
-				// Cannot safely derive a hardlink destination without knowing whether the
-				// tracker category already exists in qBittorrent and with what save path.
-				// Fail the inject so cross-seed retries when qBittorrent is reachable.
-				return InstanceCrossSeedResult{
-					InstanceID:   candidate.InstanceID,
-					InstanceName: candidate.InstanceName,
-					Success:      false,
-					Status:       "category_lookup_failed",
-					Message:      "by-tracker: could not fetch qBittorrent categories, inject skipped",
-				}
-			}
 		}
 		if catErr == nil && categories != nil {
-			// Track whether crossCategory already exists in qBittorrent (with or without a save path).
-			// This distinguishes "brand new category" from "existing category with no save path" —
-			// the latter means the user deliberately left it unconfigured, so we must not synthesize
-			// a save path or enable AutoTMM for it.
-			if cat, exists := categories[crossCategory]; exists {
-				crossCategoryExistsInQbit = true
-				if cat.SavePath != "" {
-					categorySavePath = cat.SavePath
-					actualCategorySavePath = cat.SavePath
-				}
-			}
-			// When crossCategory is brand new, use baseCategory's save path as a creation template.
-			// Do NOT set actualCategorySavePath from baseCategory — it is not the cross-category's
-			// actual configured path and must not be used for AutoTMM decisions.
-			if !crossCategoryExistsInQbit {
-				if cat, exists := categories[baseCategory]; exists && cat.SavePath != "" {
-					categorySavePath = cat.SavePath
-				}
+			if cat, exists := categories[baseCategory]; exists && cat.SavePath != "" {
+				categorySavePath = cat.SavePath
+				actualCategorySavePath = cat.SavePath
 			}
 		}
 
@@ -4491,13 +4451,11 @@ func (s *Service) processCrossSeedCandidate(
 		// This avoids setting incorrect save paths when the category doesn't exist yet and
 		// the fallback to props.SavePath would produce the wrong path.
 		if !useReflinkMode && !useHardlinkMode {
-			savePathToPersist := selectCategorySavePathToPersist(trackerCategoryMatched, categorySavePath, actualCategorySavePath)
-
-			// Ensure the cross-seed category exists with the correct SavePath.
-			if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, savePathToPersist, true); err != nil {
+			// Ensure the cross-seed category exists with the correct SavePath
+			if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, true); err != nil {
 				log.Warn().Err(err).
 					Str("category", crossCategory).
-					Str("savePath", savePathToPersist).
+					Str("savePath", categorySavePath).
 					Msg("[CROSSSEED] Failed to ensure category exists, continuing without category")
 				crossCategory = ""            // Clear category to proceed without it
 				categoryCreationFailed = true // Track for result message
@@ -4510,7 +4468,7 @@ func (s *Service) processCrossSeedCandidate(
 		rlResult := s.processReflinkMode(
 			ctx, candidate, torrentBytes, torrentHash, torrentHashV2, torrentName, req,
 			matchedTorrent, matchType, sourceFiles, candidateFiles, props,
-			baseCategory, crossCategory, actualCategorySavePath, trackerCategoryMatched, crossCategoryExistsInQbit,
+			baseCategory, crossCategory,
 		)
 		if rlResult.Used {
 			// Reflink mode was attempted (regardless of success/failure)
@@ -4529,7 +4487,7 @@ func (s *Service) processCrossSeedCandidate(
 		hlResult := s.processHardlinkMode(
 			ctx, candidate, torrentBytes, torrentHash, torrentHashV2, torrentName, req,
 			matchedTorrent, matchType, sourceFiles, candidateFiles, props,
-			baseCategory, crossCategory, actualCategorySavePath, trackerCategoryMatched, crossCategoryExistsInQbit,
+			baseCategory, crossCategory,
 		)
 		if hlResult.Used {
 			// Hardlink mode was attempted (regardless of success/failure)
@@ -4626,9 +4584,9 @@ func (s *Service) processCrossSeedCandidate(
 
 	// Check if UseCategoryFromIndexer or UseCustomCategory is enabled (affects TMM decision)
 	var useCategoryFromIndexer, useCustomCategory bool
-	if candidateSettings != nil {
-		useCategoryFromIndexer = candidateSettings.UseCategoryFromIndexer
-		useCustomCategory = candidateSettings.UseCustomCategory
+	if settings, err := s.GetAutomationSettings(ctx); err == nil && settings != nil {
+		useCategoryFromIndexer = settings.UseCategoryFromIndexer
+		useCustomCategory = settings.UseCustomCategory
 	}
 
 	// Determine save path strategy:
@@ -4682,7 +4640,7 @@ func (s *Service) processCrossSeedCandidate(
 		}
 
 		// Evaluate whether autoTMM should be enabled
-		tmmDecision := shouldEnableAutoTMM(crossCategory, matchedTorrent.AutoManaged, useCategoryFromIndexer, useCustomCategory, trackerCategoryMatched, actualCategorySavePath, props.SavePath)
+		tmmDecision := shouldEnableAutoTMM(crossCategory, matchedTorrent.AutoManaged, useCategoryFromIndexer, useCustomCategory, actualCategorySavePath, props.SavePath)
 		if forceManualSavePath {
 			tmmDecision.Enabled = false
 		}
@@ -8873,36 +8831,24 @@ func (s *Service) torrentMatchesIndexer(torrent *qbt.Torrent, indexerName string
 }
 
 // trackerDomainsMatchIndexer checks if any of the provided domains align with the target indexer.
-// It first applies the portable MatchAnnounceDomainToIndexer checks (shared with dirscan),
-// then adds Service-specific enrichments: the static hardcoded domain map and the
-// per-indexer URL obtained from the Jackett/Prowlarr cache.
 func (s *Service) trackerDomainsMatchIndexer(trackerDomains []string, indexerName string) bool {
 	if len(trackerDomains) == 0 {
 		return false
 	}
 
-	// Portable checks — same logic used by ResolveTrackerCategory in dirscan.
-	for _, domain := range trackerDomains {
-		if MatchAnnounceDomainToIndexer(domain, indexerName) {
-			log.Debug().
-				Str("matchType", "portable").
-				Str("domain", domain).
-				Str("indexerName", indexerName).
-				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Portable domain match ***")
-			return true
-		}
-	}
-
-	// Service-specific enrichment 1: hardcoded domain alias map
-	// (e.g. landof.tv → broadcasthe.net).
 	normalizedIndexerName := s.normalizeIndexerName(indexerName)
 	specificIndexerDomain := s.getCachedIndexerDomain(indexerName)
 
+	// Check hardcoded domain mappings first
 	for _, trackerDomain := range trackerDomains {
 		normalizedTrackerDomain := normalizeLowerTrim(trackerDomain)
+
+		// Check if this tracker domain maps to the indexer domain
 		if mappedDomains, exists := s.domainMappings[normalizedTrackerDomain]; exists {
 			for _, mappedDomain := range mappedDomains {
 				normalizedMappedDomain := normalizeLowerTrim(mappedDomain)
+
+				// Check if mapped domain matches indexer name or specific indexer domain
 				if normalizedMappedDomain == normalizedIndexerName ||
 					(specificIndexerDomain != "" && strings.EqualFold(normalizedMappedDomain, specificIndexerDomain)) {
 					log.Debug().
@@ -8910,6 +8856,7 @@ func (s *Service) trackerDomainsMatchIndexer(trackerDomains []string, indexerNam
 						Str("trackerDomain", trackerDomain).
 						Str("mappedDomain", mappedDomain).
 						Str("indexerName", indexerName).
+						Str("specificIndexerDomain", specificIndexerDomain).
 						Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Hardcoded domain mapping ***")
 					return true
 				}
@@ -8917,13 +8864,25 @@ func (s *Service) trackerDomainsMatchIndexer(trackerDomains []string, indexerNam
 		}
 	}
 
-	// Service-specific enrichment 2: match against the specific indexer URL
-	// obtained from the Jackett/Prowlarr config cache.
-	if specificIndexerDomain != "" {
-		for _, domain := range trackerDomains {
-			normalizedDomain := normalizeLowerTrim(domain)
+	// Check if any tracker domain matches or contains the indexer name
+	for _, domain := range trackerDomains {
+		normalizedDomain := normalizeLowerTrim(domain)
+
+		// 1. Direct match: normalized indexer name matches domain
+		if normalizedIndexerName == normalizedDomain {
+			log.Debug().
+				Str("matchType", "direct").
+				Str("domain", domain).
+				Str("indexerName", indexerName).
+				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Direct match ***")
+			return true
+		}
+
+		// 2. Check if torrent domain matches the specific indexer's domain
+		if specificIndexerDomain != "" {
 			normalizedSpecificDomain := normalizeLowerTrim(specificIndexerDomain)
 
+			// Direct domain match
 			if normalizedDomain == normalizedSpecificDomain {
 				log.Debug().
 					Str("matchType", "specific_indexer_domain_direct").
@@ -8933,16 +8892,177 @@ func (s *Service) trackerDomainsMatchIndexer(trackerDomains []string, indexerNam
 					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Specific indexer domain direct match ***")
 				return true
 			}
-			if strings.HasSuffix(normalizedDomain, "."+normalizedSpecificDomain) ||
-				strings.HasSuffix(normalizedSpecificDomain, "."+normalizedDomain) {
+
+			// Check if indexer name matches the indexer domain (handles cases where indexer name is the domain)
+			if normalizedIndexerName == normalizedSpecificDomain {
 				log.Debug().
-					Str("matchType", "specific_indexer_domain_partial").
+					Str("matchType", "indexer_name_to_specific_domain").
 					Str("torrentDomain", domain).
 					Str("indexerDomain", specificIndexerDomain).
 					Str("indexerName", indexerName).
-					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Specific indexer domain partial match ***")
+					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Indexer name matches specific domain ***")
 				return true
 			}
+		}
+
+		// 3. Partial match: domain contains normalized indexer name or vice versa
+		if strings.Contains(normalizedDomain, normalizedIndexerName) {
+			log.Debug().
+				Str("matchType", "domain_contains_indexer").
+				Str("domain", domain).
+				Str("indexerName", indexerName).
+				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Domain contains indexer ***")
+			return true
+		}
+		if strings.Contains(normalizedIndexerName, normalizedDomain) {
+			log.Debug().
+				Str("matchType", "indexer_contains_domain").
+				Str("domain", domain).
+				Str("indexerName", indexerName).
+				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Indexer contains domain ***")
+			return true
+		}
+
+		// 4. Check partial matches against the specific indexer domain
+		if specificIndexerDomain != "" {
+			normalizedSpecificDomain := normalizeLowerTrim(specificIndexerDomain)
+
+			// Check if torrent domain contains indexer domain or vice versa
+			if strings.Contains(normalizedDomain, normalizedSpecificDomain) {
+				log.Debug().
+					Str("matchType", "torrent_domain_contains_specific_indexer_domain").
+					Str("torrentDomain", domain).
+					Str("indexerDomain", specificIndexerDomain).
+					Str("indexerName", indexerName).
+					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Torrent domain contains specific indexer domain ***")
+				return true
+			}
+			if strings.Contains(normalizedSpecificDomain, normalizedDomain) {
+				log.Debug().
+					Str("matchType", "specific_indexer_domain_contains_torrent_domain").
+					Str("torrentDomain", domain).
+					Str("indexerDomain", specificIndexerDomain).
+					Str("indexerName", indexerName).
+					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Specific indexer domain contains torrent domain ***")
+				return true
+			}
+		} // Handle TLD variations and domain normalization
+		domainWithoutTLD := normalizedDomain
+		for _, suffix := range []string{".cc", ".org", ".net", ".com", ".to", ".me", ".tv", ".xyz"} {
+			if before, ok := strings.CutSuffix(domainWithoutTLD, suffix); ok {
+				domainWithoutTLD = before
+				break
+			}
+		}
+
+		// Normalize the domain name for comparison (remove hyphens, dots, etc.)
+		normalizedDomainName := s.normalizeDomainName(domainWithoutTLD)
+
+		// Direct match after normalization
+		if normalizedIndexerName == normalizedDomainName {
+			log.Debug().
+				Str("matchType", "normalized_match").
+				Str("domain", domain).
+				Str("normalizedDomainName", normalizedDomainName).
+				Str("indexerName", indexerName).
+				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Normalized domain match ***")
+			return true
+		}
+
+		// Partial match after normalization
+		if strings.Contains(normalizedDomainName, normalizedIndexerName) {
+			log.Debug().
+				Str("matchType", "normalized_domain_contains_indexer").
+				Str("domain", domain).
+				Str("normalizedDomainName", normalizedDomainName).
+				Str("indexerName", indexerName).
+				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Normalized domain contains indexer ***")
+			return true
+		}
+		if strings.Contains(normalizedIndexerName, normalizedDomainName) {
+			log.Debug().
+				Str("matchType", "normalized_indexer_contains_domain").
+				Str("domain", domain).
+				Str("normalizedDomainName", normalizedDomainName).
+				Str("indexerName", indexerName).
+				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Normalized indexer contains domain ***")
+			return true
+		}
+
+		// 5. Check normalized matches against the specific indexer domain with TLD normalization
+		if specificIndexerDomain != "" {
+			normalizedSpecificDomain := normalizeLowerTrim(specificIndexerDomain)
+
+			// Remove TLD from indexer domain for comparison
+			indexerDomainWithoutTLD := normalizedSpecificDomain
+			for _, suffix := range []string{".cc", ".org", ".net", ".com", ".to", ".me", ".tv", ".xyz"} {
+				if before, ok := strings.CutSuffix(indexerDomainWithoutTLD, suffix); ok {
+					indexerDomainWithoutTLD = before
+					break
+				}
+			}
+
+			// Normalize indexer domain name
+			normalizedIndexerDomainName := s.normalizeDomainName(indexerDomainWithoutTLD)
+
+			// Compare normalized torrent domain with normalized indexer domain
+			if normalizedDomainName == normalizedIndexerDomainName {
+				log.Debug().
+					Str("matchType", "normalized_specific_indexer_domain_match").
+					Str("torrentDomain", domain).
+					Str("indexerDomain", specificIndexerDomain).
+					Str("normalizedTorrentDomain", normalizedDomainName).
+					Str("normalizedIndexerDomain", normalizedIndexerDomainName).
+					Str("indexerName", indexerName).
+					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Normalized specific indexer domain match ***")
+				return true
+			}
+
+			// Partial matches with normalized indexer domains
+			if strings.Contains(normalizedDomainName, normalizedIndexerDomainName) {
+				log.Debug().
+					Str("matchType", "normalized_torrent_domain_contains_specific_indexer").
+					Str("torrentDomain", domain).
+					Str("indexerDomain", specificIndexerDomain).
+					Str("normalizedTorrentDomain", normalizedDomainName).
+					Str("normalizedIndexerDomain", normalizedIndexerDomainName).
+					Str("indexerName", indexerName).
+					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Normalized torrent domain contains specific indexer domain ***")
+				return true
+			}
+			if strings.Contains(normalizedIndexerDomainName, normalizedDomainName) {
+				log.Debug().
+					Str("matchType", "normalized_specific_indexer_domain_contains_torrent").
+					Str("torrentDomain", domain).
+					Str("indexerDomain", specificIndexerDomain).
+					Str("normalizedTorrentDomain", normalizedDomainName).
+					Str("normalizedIndexerDomain", normalizedIndexerDomainName).
+					Str("indexerName", indexerName).
+					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - Normalized specific indexer domain contains torrent domain ***")
+				return true
+			}
+
+			// Check TLD-stripped match against specific indexer domain
+			if domainWithoutTLD == indexerDomainWithoutTLD {
+				log.Debug().
+					Str("matchType", "tld_stripped_specific_indexer_domain").
+					Str("torrentDomain", domain).
+					Str("indexerDomain", specificIndexerDomain).
+					Str("torrentDomainWithoutTLD", domainWithoutTLD).
+					Str("indexerDomainWithoutTLD", indexerDomainWithoutTLD).
+					Str("indexerName", indexerName).
+					Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - TLD stripped specific indexer domain match ***")
+				return true
+			}
+		} // Check original TLD-stripped match for backward compatibility
+		if normalizedIndexerName == domainWithoutTLD {
+			log.Debug().
+				Str("matchType", "tld_stripped").
+				Str("domain", domain).
+				Str("domainWithoutTLD", domainWithoutTLD).
+				Str("indexerName", indexerName).
+				Msg("[CROSSSEED-DOMAIN] *** MATCH FOUND - TLD stripped match ***")
+			return true
 		}
 	}
 
@@ -9788,15 +9908,14 @@ func (s *Service) isSizeWithinTolerance(sourceSize, candidateSize int64, toleran
 
 // autoTMMDecision holds the inputs and result of autoTMM evaluation for logging.
 type autoTMMDecision struct {
-	Enabled               bool
-	CrossCategory         string
-	MatchedAutoManaged    bool
-	UseIndexerCategory    bool
-	UseCustomCategory     bool
-	IsTrackerCategoryMode bool
-	CategorySavePath      string
-	MatchedSavePath       string
-	PathsMatch            bool
+	Enabled            bool
+	CrossCategory      string
+	MatchedAutoManaged bool
+	UseIndexerCategory bool
+	UseCustomCategory  bool
+	CategorySavePath   string
+	MatchedSavePath    string
+	PathsMatch         bool
 }
 
 // shouldEnableAutoTMM determines whether Auto Torrent Management should be enabled.
@@ -9810,40 +9929,27 @@ type autoTMMDecision struct {
 // cross-seed should inherit that setting.
 //
 // Returns the decision struct for logging and whether autoTMM should be enabled.
-func shouldEnableAutoTMM(crossCategory string, matchedAutoManaged bool, useCategoryFromIndexer bool, useCustomCategory bool, isTrackerCategoryMode bool, actualCategorySavePath string, matchedSavePath string) autoTMMDecision {
+func shouldEnableAutoTMM(crossCategory string, matchedAutoManaged bool, useCategoryFromIndexer bool, useCustomCategory bool, actualCategorySavePath string, matchedSavePath string) autoTMMDecision {
 	// Check if explicit category save path matches the matched torrent's path (informational).
 	pathsMatch := actualCategorySavePath != "" && matchedSavePath != "" &&
 		normalizePath(actualCategorySavePath) == normalizePath(matchedSavePath)
 
-	var enabled bool
-	// Tracker category mode: autoTMM is enabled only when a category was assigned,
-	// that category has a configured save path, AND that save path already matches
-	// where the matched torrent's files are.  Without the path check, qBittorrent
-	// would move existing files to the category directory instead of cross-seeding.
-	// (The dirscan hardlink path is handled separately — it pre-positions files
-	// under the category directory before adding the torrent, so it does not go
-	// through this function.)
-	if isTrackerCategoryMode {
-		enabled = crossCategory != "" && actualCategorySavePath != "" && pathsMatch
-	} else {
-		// Enable autoTMM if the matched torrent uses autoTMM and we're not using indexer or custom categories.
-		// When a category has no explicit save path, qBittorrent uses an implicit path:
-		// <default_save_path>/<category_name>. Since the matched torrent is already using
-		// autoTMM successfully at its current path, the cross-seed should too.
-		// Custom categories disable autoTMM like indexer categories for safety.
-		enabled = crossCategory != "" && matchedAutoManaged && !useCategoryFromIndexer && !useCustomCategory
-	}
+	// Enable autoTMM if the matched torrent uses autoTMM and we're not using indexer or custom categories.
+	// When a category has no explicit save path, qBittorrent uses an implicit path:
+	// <default_save_path>/<category_name>. Since the matched torrent is already using
+	// autoTMM successfully at its current path, the cross-seed should too.
+	// Custom categories disable autoTMM like indexer categories for safety.
+	enabled := crossCategory != "" && matchedAutoManaged && !useCategoryFromIndexer && !useCustomCategory
 
 	return autoTMMDecision{
-		Enabled:               enabled,
-		CrossCategory:         crossCategory,
-		MatchedAutoManaged:    matchedAutoManaged,
-		UseIndexerCategory:    useCategoryFromIndexer,
-		UseCustomCategory:     useCustomCategory,
-		IsTrackerCategoryMode: isTrackerCategoryMode,
-		CategorySavePath:      actualCategorySavePath,
-		MatchedSavePath:       matchedSavePath,
-		PathsMatch:            pathsMatch,
+		Enabled:            enabled,
+		CrossCategory:      crossCategory,
+		MatchedAutoManaged: matchedAutoManaged,
+		UseIndexerCategory: useCategoryFromIndexer,
+		UseCustomCategory:  useCustomCategory,
+		CategorySavePath:   actualCategorySavePath,
+		MatchedSavePath:    matchedSavePath,
+		PathsMatch:         pathsMatch,
 	}
 }
 
@@ -10056,70 +10162,24 @@ func shouldWarnOnCategorySavePathMismatch(compareExistingSavePath bool, requeste
 	return normalizePathForComparison(existingSavePath) != requestedSavePath
 }
 
-func selectCategorySavePathToPersist(trackerCategoryMatched bool, categorySavePath, actualCategorySavePath string) string {
-	if trackerCategoryMatched {
-		return actualCategorySavePath
-	}
-
-	return categorySavePath
-}
-
-func shouldAbortTrackerCategoryInjectOnCategoryLookupFailure(trackerCategoryMatched, useHardlinkMode, useReflinkMode bool) bool {
-	return trackerCategoryMatched && (useHardlinkMode || useReflinkMode)
-}
-
 // determineCrossSeedCategory selects the category to apply to a cross-seeded torrent.
 // Returns (baseCategory, crossCategory) where baseCategory is used to look up save_path
 // and crossCategory is the final category name (with .cross suffix if enabled).
 // If settings is nil, it will be loaded from the database.
-func (s *Service) determineCrossSeedCategory(ctx context.Context, instance *models.Instance, req *CrossSeedRequest, matchedTorrent *qbt.Torrent, settings *models.CrossSeedAutomationSettings, announceDomain string) (baseCategory, crossCategory string, trackerCategoryMatched bool) {
+func (s *Service) determineCrossSeedCategory(ctx context.Context, req *CrossSeedRequest, matchedTorrent *qbt.Torrent, settings *models.CrossSeedAutomationSettings) (baseCategory, crossCategory string) {
 	var matchedCategory string
 	if matchedTorrent != nil {
 		matchedCategory = matchedTorrent.Category
 	}
 
 	// Load settings if not provided by caller
-	if settings == nil {
-		loaded, err := s.GetAutomationSettings(ctx)
-		if err != nil {
-			log.Warn().Err(err).
-				Msg("[CROSSSEED] Failed to load automation settings for category resolution, using defaults")
-			settings = models.DefaultCrossSeedAutomationSettings()
-		} else {
-			settings = loaded
-		}
-	}
-
-	// "By Tracker" directory preset: look up the per-indexer category for this instance.
-	// Delegates to ResolveTrackerCategory which tries exact indexer name first, then
-	// announce-domain heuristic — see tracker_category.go for matching details.
-	// If neither hits, fall through to the global category mode below.
-	if instance != nil && instance.HardlinkDirPreset == "by-tracker" && s.indexerCategoryStore != nil {
-		reqIndexerName := ""
-		if req != nil {
-			reqIndexerName = req.IndexerName
-		}
-		if cat, found, resolveErr := ResolveTrackerCategory(ctx, instance.ID, reqIndexerName, announceDomain, s.indexerCategoryStore); resolveErr != nil {
-			log.Warn().
-				Err(resolveErr).
-				Int("instanceID", instance.ID).
-				Str("indexerName", reqIndexerName).
-				Str("announceDomain", announceDomain).
-				Msg("[CROSSSEED] By-tracker: category lookup failed, falling back to other category rules")
-		} else if found {
-			log.Info().
-				Int("instanceID", instance.ID).
-				Str("indexerName", reqIndexerName).
-				Str("announceDomain", announceDomain).
-				Str("mappedCategory", cat).
-				Msg("[CROSSSEED] By-tracker category resolved")
-			return cat, cat, true
-		}
+	if settings == nil && s != nil {
+		settings, _ = s.GetAutomationSettings(ctx)
 	}
 
 	// Custom category takes priority - use exact category without any affix
 	if settings != nil && settings.UseCustomCategory && settings.CustomCategory != "" {
-		return settings.CustomCategory, settings.CustomCategory, false
+		return settings.CustomCategory, settings.CustomCategory
 	}
 
 	// Helper to apply category affix (prefix or suffix) based on settings
@@ -10131,18 +10191,18 @@ func (s *Service) determineCrossSeedCategory(ctx context.Context, instance *mode
 	}
 
 	if req == nil {
-		return matchedCategory, applyAffix(matchedCategory), false
+		return matchedCategory, applyAffix(matchedCategory)
 	}
 
 	if req.Category != "" {
-		return req.Category, applyAffix(req.Category), false
+		return req.Category, applyAffix(req.Category)
 	}
 
 	if req.IndexerName != "" && settings != nil && settings.UseCategoryFromIndexer {
-		return req.IndexerName, applyAffix(req.IndexerName), false
+		return req.IndexerName, applyAffix(req.IndexerName)
 	}
 
-	return matchedCategory, applyAffix(matchedCategory), false
+	return matchedCategory, applyAffix(matchedCategory)
 }
 
 // buildCrossSeedTags merges source-specific tags with optional matched torrent tags.
@@ -10960,62 +11020,6 @@ type hardlinkModeResult struct {
 	Result InstanceCrossSeedResult
 }
 
-type linkModeCategoryPlacement struct {
-	EffectiveCategorySavePath string
-	DestDir                   string
-	EnableAutoTMM             bool
-}
-
-func (s *Service) resolveLinkModeCategoryPlacement(
-	ctx context.Context,
-	instance *models.Instance,
-	selectedBaseDir string,
-	torrentHash, torrentName string,
-	candidate CrossSeedCandidate,
-	incomingTrackerDomain string,
-	req *CrossSeedRequest,
-	candidateFiles []hardlinktree.TorrentFile,
-	crossCategory, categorySavePath string,
-	isTrackerCategoryMode, crossCategoryExistsInQbit bool,
-) linkModeCategoryPlacement {
-	// When the qBittorrent category already has a configured save path, place files there directly.
-	// For a brand-new tracker-mapped category, derive the first save path from the directory preset
-	// so both hardlink and reflink mode establish the same category layout from the first inject.
-	effectiveCategorySavePath := categorySavePath
-	if effectiveCategorySavePath == "" && crossCategory != "" && isTrackerCategoryMode && !crossCategoryExistsInQbit {
-		effectiveCategorySavePath = s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
-	}
-	if isTrackerCategoryMode && crossCategory != "" && crossCategoryExistsInQbit && effectiveCategorySavePath == "" {
-		log.Warn().
-			Int("instanceID", candidate.InstanceID).
-			Str("category", crossCategory).
-			Msg("[CROSSSEED] Tracker-mapped category exists in qBittorrent without a configured save path; AutoTMM will not be enabled — configure a save path for this category in qBittorrent")
-	}
-
-	var destDir string
-	switch {
-	case effectiveCategorySavePath != "":
-		selectedBaseDir = effectiveCategorySavePath
-		if isTrackerCategoryMode || hardlinktree.HasCommonRootFolder(candidateFiles) {
-			destDir = selectedBaseDir
-		} else {
-			destDir = filepath.Join(selectedBaseDir, pathutil.IsolationFolderName(torrentHash, torrentName))
-		}
-	case isTrackerCategoryMode:
-		// Category exists in qBittorrent but has no configured save path.
-		// Keep the preset-derived placement stable rather than dropping to a per-hash isolation folder.
-		destDir = s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
-	default:
-		destDir = s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateFiles)
-	}
-
-	return linkModeCategoryPlacement{
-		EffectiveCategorySavePath: effectiveCategorySavePath,
-		DestDir:                   destDir,
-		EnableAutoTMM:             isTrackerCategoryMode && crossCategory != "" && effectiveCategorySavePath != "",
-	}
-}
-
 // processHardlinkMode attempts to add a cross-seed torrent using hardlink mode.
 // This creates a hardlinked file tree matching the incoming torrent's layout,
 // eliminating the need for reuse+rename alignment.
@@ -11036,9 +11040,6 @@ func (s *Service) processHardlinkMode(
 	sourceFiles, candidateFiles qbt.TorrentFiles,
 	props *qbt.TorrentProperties,
 	_, crossCategory string, // baseCategory unused, crossCategory used for torrent options
-	categorySavePath string, // cross-category's actual configured save path in qBittorrent; non-empty overrides HardlinkBaseDir
-	isTrackerCategoryMode bool, // true when a tracker→category mapping was successfully resolved (subset of by-tracker preset)
-	crossCategoryExistsInQbit bool, // true when crossCategory already exists in qBittorrent (even if it has no save path configured)
 ) hardlinkModeResult {
 	notUsed := hardlinkModeResult{Used: false}
 
@@ -11106,6 +11107,14 @@ func (s *Service) processHardlinkMode(
 		}
 	}
 
+	// Validate base directory is configured
+	if instance.HardlinkBaseDir == "" {
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Msg("[CROSSSEED] Hardlink mode enabled but base directory is empty")
+		return handleError("Hardlink mode enabled but base directory is not configured")
+	}
+
 	// Verify instance has local filesystem access (required for hardlinks)
 	if !instance.HasLocalFilesystemAccess {
 		log.Warn().
@@ -11134,37 +11143,18 @@ func (s *Service) processHardlinkMode(
 		return handleError("No content path or save path available for matched torrent")
 	}
 
-	// Determine the base directory for hardlinks.
-	// When the cross-seed category has a configured save path in qBittorrent, use it directly —
-	// this places hardlinks inside the category directory so qBittorrent's category management
-	// reflects the actual file layout. Otherwise fall back to the instance's configured base dir.
-	var selectedBaseDir string
-	if categorySavePath != "" {
-		if err := os.MkdirAll(categorySavePath, 0o755); err != nil {
-			return handleError(fmt.Sprintf("Failed to create category directory %q: %v", categorySavePath, err))
-		}
-		sameFS, err := fsutil.SameFilesystem(existingFilePath, categorySavePath)
-		if err != nil {
-			return handleError(fmt.Sprintf("Failed to check filesystem for category path %q: %v", categorySavePath, err))
-		}
-		if !sameFS {
-			return handleError(fmt.Sprintf("Category save path %q is not on the same filesystem as source files — hardlinks require the same device", categorySavePath))
-		}
-		selectedBaseDir = categorySavePath
-	} else {
-		var err error
-		selectedBaseDir, err = FindMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
-		if err != nil {
-			log.Warn().
-				Err(err).
-				Str("configuredDirs", instance.HardlinkBaseDir).
-				Str("existingPath", existingFilePath).
-				Msg("[CROSSSEED] Hardlink mode: no suitable base directory found")
-			return handleError(fmt.Sprintf("No suitable base directory: %v", err))
-		}
+	selectedBaseDir, err := FindMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("configuredDirs", instance.HardlinkBaseDir).
+			Str("existingPath", existingFilePath).
+			Msg("[CROSSSEED] Hardlink mode: no suitable base directory found")
+		return handleError(fmt.Sprintf("No suitable base directory: %v", err))
 	}
 
 	// Hardlink mode always uses Original layout to match the incoming torrent's structure exactly.
+	// We'll also set contentLayout=Original when adding the torrent to qBittorrent to avoid
 	// double-folder nesting issues when the instance default is Subfolder.
 	layout := hardlinktree.LayoutOriginal
 
@@ -11180,33 +11170,18 @@ func (s *Service) processHardlinkMode(
 	// Extract incoming tracker domain from torrent bytes (for "by-tracker" preset)
 	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
-	placement := s.resolveLinkModeCategoryPlacement(
-		ctx,
-		instance,
-		selectedBaseDir,
-		torrentHash,
-		torrentName,
-		candidate,
-		incomingTrackerDomain,
-		req,
-		candidateTorrentFilesAll,
-		crossCategory,
-		categorySavePath,
-		isTrackerCategoryMode,
-		crossCategoryExistsInQbit,
-	)
-	effectiveCategorySavePath := placement.EffectiveCategorySavePath
-	destDir := placement.DestDir
+	// Build destination directory based on preset and torrent structure
+	destDir := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
 
-	// Ensure cross-seed category exists with the correct save path.
-	// effectiveCategorySavePath already carries either the existing qBittorrent-configured path
-	// or the freshly derived preset path, so we pass it directly — no double-append risk.
+	// Ensure cross-seed category exists with the correct save path derived from
+	// the base directory and directory preset, rather than the matched torrent's save path.
 	categoryCreationFailed := false
 	if crossCategory != "" {
-		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, effectiveCategorySavePath, false); err != nil {
+		categorySavePath := s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
+		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, false); err != nil {
 			log.Warn().Err(err).
 				Str("category", crossCategory).
-				Str("savePath", effectiveCategorySavePath).
+				Str("savePath", categorySavePath).
 				Msg("[CROSSSEED] Hardlink mode: failed to ensure category exists, continuing without category")
 			crossCategory = ""
 			categoryCreationFailed = true
@@ -11302,26 +11277,11 @@ func (s *Service) processHardlinkMode(
 		options["tags"] = strings.Join(finalTags, ",")
 	}
 
-	log.Info().
-		Bool("isTrackerCategoryMode", isTrackerCategoryMode).
-		Str("categorySavePath", categorySavePath).
-		Str("effectiveCategorySavePath", effectiveCategorySavePath).
-		Str("selectedBaseDir", selectedBaseDir).
-		Str("destDir", destDir).
-		Str("planRootDir", plan.RootDir).
-		Msg("[CROSSSEED] Hardlink mode: path decision")
-
-	// Hardlink mode: files are pre-created at plan.RootDir.
+	// Hardlink mode: files are pre-created, so use savepath pointing to tree root
 	// Force contentLayout=Original to match the hardlink tree layout exactly
-	// and avoid double-folder nesting when instance default is Subfolder.
-	// In "by-tracker" mode, enable AutoTMM so qBittorrent manages placement via
-	// the category's configured save path (files are already hardlinked there).
-	if placement.EnableAutoTMM {
-		options["autoTMM"] = "true"
-	} else {
-		options["autoTMM"] = "false"
-		options["savepath"] = plan.RootDir
-	}
+	// and avoid double-folder nesting when instance default is Subfolder
+	options["autoTMM"] = "false"
+	options["savepath"] = plan.RootDir
 	options["contentLayout"] = "Original"
 
 	// Compute add policy from source files (e.g., disc layout detection)
@@ -11671,8 +11631,7 @@ func (s *Service) processReflinkMode(
 	matchType string,
 	sourceFiles, candidateFiles qbt.TorrentFiles,
 	props *qbt.TorrentProperties,
-	_, crossCategory, categorySavePath string, // baseCategory unused, crossCategory used for torrent options
-	isTrackerCategoryMode, crossCategoryExistsInQbit bool,
+	_, crossCategory string, // baseCategory unused, crossCategory used for torrent options
 ) reflinkModeResult {
 	notUsed := reflinkModeResult{Used: false}
 
@@ -11809,31 +11768,18 @@ func (s *Service) processReflinkMode(
 	// Extract incoming tracker domain from torrent bytes (for "by-tracker" preset)
 	incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
 
-	placement := s.resolveLinkModeCategoryPlacement(
-		ctx,
-		instance,
-		selectedBaseDir,
-		torrentHash,
-		torrentName,
-		candidate,
-		incomingTrackerDomain,
-		req,
-		candidateTorrentFilesAll,
-		crossCategory,
-		categorySavePath,
-		isTrackerCategoryMode,
-		crossCategoryExistsInQbit,
-	)
-	effectiveCategorySavePath := placement.EffectiveCategorySavePath
-	destDir := placement.DestDir
+	// Build destination directory based on preset and torrent structure
+	destDir := s.buildHardlinkDestDir(ctx, instance, selectedBaseDir, torrentHash, torrentName, candidate, incomingTrackerDomain, req, candidateTorrentFilesAll)
 
-	// Ensure cross-seed category exists with the effective save path chosen for link mode.
+	// Ensure cross-seed category exists with the correct save path derived from
+	// the base directory and directory preset, rather than the matched torrent's save path.
 	categoryCreationFailed := false
 	if crossCategory != "" {
-		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, effectiveCategorySavePath, false); err != nil {
+		categorySavePath := s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
+		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, false); err != nil {
 			log.Warn().Err(err).
 				Str("category", crossCategory).
-				Str("savePath", effectiveCategorySavePath).
+				Str("savePath", categorySavePath).
 				Msg("[CROSSSEED] Reflink mode: failed to ensure category exists, continuing without category")
 			crossCategory = ""
 			categoryCreationFailed = true
@@ -11929,15 +11875,10 @@ func (s *Service) processReflinkMode(
 		options["tags"] = strings.Join(finalTags, ",")
 	}
 
-	// Reflink mode mirrors hardlink mode category handling:
-	// if a tracker-mapped category has an explicit save path, let AutoTMM place the torrent there.
-	// Otherwise, add against the pre-created reflink tree root directly.
-	if placement.EnableAutoTMM {
-		options["autoTMM"] = "true"
-	} else {
-		options["autoTMM"] = "false"
-		options["savepath"] = plan.RootDir
-	}
+	// Reflink mode: files are pre-created, so use savepath pointing to tree root
+	// Force contentLayout=Original to match the reflink tree layout exactly
+	options["autoTMM"] = "false"
+	options["savepath"] = plan.RootDir
 	options["contentLayout"] = "Original"
 
 	// Compute add policy from source files (e.g., disc layout detection)

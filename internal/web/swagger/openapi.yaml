@@ -3898,7 +3898,6 @@ paths:
           required: true
           schema:
             type: integer
-            minimum: 1
           description: qBittorrent instance ID
       responses:
         '200':
@@ -3922,7 +3921,6 @@ paths:
           required: true
           schema:
             type: integer
-            minimum: 1
           description: qBittorrent instance ID
       requestBody:
         required: true
@@ -3943,148 +3941,6 @@ paths:
           description: Failed to save completion settings
         '503':
           description: Completion settings store not configured
-
-  /api/cross-seed/indexer-categories/{instanceId}:
-    get:
-      tags:
-        - Cross-Seed
-      summary: List per-instance indexer category mappings
-      description: |
-        Returns all per-indexer category mappings for a specific qBittorrent instance.
-        When the "by-tracker" directory preset is active, these mappings override the
-        global category for cross-seeds matched via each indexer.
-
-        The response contains only explicit per-indexer overrides. If an indexer is not
-        present, callers should fall back to qui's normal category resolution order
-        (custom → indexer-name → affix → reuse).
-      parameters:
-        - name: instanceId
-          in: path
-          required: true
-          schema:
-            type: integer
-            minimum: 1
-          description: qBittorrent instance ID
-      responses:
-        '200':
-          description: Indexer category mappings
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/CrossSeedIndexerCategory'
-        '400':
-          description: instanceID must be a positive integer
-        '404':
-          description: Instance not found
-        '500':
-          description: Failed to load indexer categories
-        '503':
-          description: Indexer category store not available
-    put:
-      tags:
-        - Cross-Seed
-      summary: Upsert an indexer category mapping
-      description: Creates or updates the category mapping for a specific indexer on a qBittorrent instance. Used to configure which qBittorrent category receives cross-seeds from a particular tracker.
-      parameters:
-        - name: instanceId
-          in: path
-          required: true
-          schema:
-            type: integer
-            minimum: 1
-          description: qBittorrent instance ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CrossSeedIndexerCategoryRequest'
-      responses:
-        '204':
-          description: Mapping saved
-        '400':
-          description: Invalid instance ID or request body
-        '404':
-          description: Instance not found
-        '500':
-          description: Failed to save indexer category
-        '503':
-          description: Indexer category store not available
-
-  /api/cross-seed/indexer-categories/{instanceId}/{indexerID}:
-    delete:
-      tags:
-        - Cross-Seed
-      summary: Delete an indexer category mapping
-      description: Removes the category mapping for a specific indexer on a qBittorrent instance.
-      parameters:
-        - name: instanceId
-          in: path
-          required: true
-          schema:
-            type: integer
-            minimum: 1
-          description: qBittorrent instance ID
-        - name: indexerID
-          in: path
-          required: true
-          schema:
-            type: integer
-            minimum: 1
-          description: Torznab indexer ID
-      responses:
-        '204':
-          description: Mapping deleted
-        '400':
-          description: Invalid instance ID or indexer ID
-        '404':
-          description: Instance not found
-        '500':
-          description: Failed to delete indexer category
-        '503':
-          description: Indexer category store not available
-
-  /proxy/{api-key}/api/v2/cross-seed/indexer-categories:
-    get:
-      tags:
-        - Cross-Seed
-      summary: List indexer category mappings (proxy endpoint)
-      description: |
-        Returns all per-indexer category mappings for the qBittorrent instance associated with the
-        given client API key. This is a qui extension — not forwarded to qBittorrent.
-
-        The response contains only explicit per-indexer overrides. If an indexer is not present,
-        callers should fall back to qui's normal category resolution order
-        (custom → indexer-name → affix → reuse).
-
-        Intended for use by cross-seed clients (e.g. the qui torrent client adapter) that authenticate
-        via the client API key in the URL path rather than a user API key header. The instance is
-        resolved automatically from the key.
-      security: []
-      parameters:
-        - name: api-key
-          in: path
-          required: true
-          schema:
-            type: string
-          description: 64-character hex client API key (from qui Settings → Client API Keys)
-      responses:
-        '200':
-          description: Indexer category mappings for the instance bound to this key
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/CrossSeedIndexerCategory'
-        '401':
-          description: Invalid or missing client API key
-        '500':
-          description: Failed to load indexer categories or missing instance context
-        '503':
-          description: Indexer category store not available
 
   /api/cross-seed/webhook/check:
     post:
@@ -4205,7 +4061,7 @@ paths:
                 indexer:
                   type: string
                   minLength: 1
-                  description: autobrr indexer identifier (for example "hdb"). Webhook applies cannot derive tracker identity from the torrent file, so provide this when you want qui to resolve tracker-aware category behavior. In "by-tracker" hardlink mode, qui first checks the per-indexer mapping for the target instance and falls back to the normal category resolution order when no mapping exists. When "Use indexer name as category" mode is enabled, qui can also use this identifier directly as the category value.
+                  description: autobrr indexer identifier (for example "hdb"). Only used when "Use indexer name as category" mode is enabled; when provided in that mode, qui uses this identifier as the category value. If omitted, qui falls back to the matched torrent category. Webhook applies cannot derive tracker identity from the torrent file.
       responses:
         '200':
           description: Torrent processed
@@ -6289,31 +6145,6 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CrossSeedRunResult'
-
-    CrossSeedIndexerCategory:
-      type: object
-      properties:
-        instanceId:
-          type: integer
-        indexerId:
-          type: integer
-        indexerName:
-          type: string
-        category:
-          type: string
-
-    CrossSeedIndexerCategoryRequest:
-      type: object
-      required:
-        - indexerId
-        - category
-      properties:
-        indexerId:
-          type: integer
-          minimum: 1
-        category:
-          type: string
-          minLength: 1
 
     CrossSeedBlocklistEntry:
       type: object
