@@ -100,6 +100,21 @@ func TestMigrationsApplyFullSchema(t *testing.T) {
 	})
 }
 
+func TestTrackerCategoryTableRemovedFromFreshSchema(t *testing.T) {
+	log.Output(io.Discard)
+	ctx := t.Context()
+	db := openTestDatabase(t)
+
+	var exists int
+	err := db.Conn().QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM sqlite_master
+		WHERE type = 'table' AND name = 'cross_seed_indexer_categories'
+	`).Scan(&exists)
+	require.NoError(t, err)
+	require.Zero(t, exists, "cross_seed_indexer_categories should not exist in a fresh schema")
+}
+
 func TestConnectionPragmasApplyToEachConnection(t *testing.T) {
 	log.Output(io.Discard)
 	ctx := t.Context()
