@@ -620,7 +620,6 @@ func (app *Application) runServer() {
 		log.Fatal().Err(err).Msg("Failed to initialize cross-seed store")
 	}
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
-	crossSeedIndexerCategoryStore := models.NewCrossSeedIndexerCategoryStore(db)
 	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
 	seasonPackRunStore := models.NewSeasonPackRunStore(db)
 	crossSeedService := crossseed.NewService(
@@ -634,7 +633,6 @@ func (app *Application) runServer() {
 		externalProgramStore,
 		externalProgramService,
 		instanceCrossSeedCompletionStore,
-		crossSeedIndexerCategoryStore,
 		trackerCustomizationStore,
 		notificationService,
 		cfg.Config.CrossSeedRecoverErroredTorrents,
@@ -649,7 +647,7 @@ func (app *Application) runServer() {
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, crossSeedIndexerCategoryStore, notificationService)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
 		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
@@ -778,7 +776,6 @@ func (app *Application) runServer() {
 		NotificationService:              notificationService,
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
 		SeasonPackRunStore:               seasonPackRunStore,
-		CrossSeedIndexerCategoryStore:    crossSeedIndexerCategoryStore,
 		OrphanScanStore:                  orphanScanStore,
 		OrphanScanService:                orphanScanService,
 		DirScanService:                   dirScanService,

@@ -47,7 +47,7 @@ func TestStartWebhookScan_QueuesAndMergesFollowUpRuns(t *testing.T) {
 	require.NoError(t, err)
 
 	store := models.NewDirScanStore(db)
-	service := NewService(DefaultConfig(), store, nil, instanceStore, nil, nil, nil, nil, nil, nil)
+	service := NewService(DefaultConfig(), store, nil, instanceStore, nil, nil, nil, nil, nil)
 
 	dirPath := t.TempDir()
 	created, err := service.CreateDirectory(ctx, &models.DirScanDirectory{
