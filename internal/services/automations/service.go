@@ -6235,62 +6235,75 @@ func (s *Service) verifyExportOnTarget(ctx context.Context, targetInstanceID int
 		pollInterval = 3 * time.Second
 	)
 
+	syncMgr, err := s.syncManager.GetQBittorrentSyncManager(ctx, targetInstanceID)
+	if err != nil {
+		return fmt.Sprintf("Verification failed: unable to get sync manager: %v", err)
+	}
+
 	var lastErr error
 	var lastStateChecking bool
 
 	for attempt := range maxAttempts {
-		torrent, found, err := s.syncManager.HasTorrentByAnyHash(ctx, targetInstanceID, []string{hash})
-		if err != nil {
+		// Force a cache refresh so we see newly added torrents
+		if err := syncMgr.Sync(ctx); err != nil {
 			lastErr = err
 			lastStateChecking = false
 			log.Debug().Err(err).
 				Int("targetInstanceID", targetInstanceID).
 				Str("hash", hash).Int("attempt", attempt+1).
-				Msg("automations: verification poll failed, retrying")
-			continue
-		}
-		if !found {
-			lastErr = nil
-			lastStateChecking = false
-			log.Debug().
-				Int("targetInstanceID", targetInstanceID).
-				Str("hash", hash).Int("attempt", attempt+1).
-				Msg("automations: torrent not yet visible on target, retrying")
-			continue
-		}
+				Msg("automations: sync failed during verification, retrying")
+		} else {
+			torrent, found, lookupErr := s.syncManager.HasTorrentByAnyHash(ctx, targetInstanceID, []string{hash})
 
-		// Successful lookup — clear transient error state
-		lastErr = nil
+			switch {
+			case lookupErr != nil:
+				lastErr = lookupErr
+				lastStateChecking = false
+				log.Debug().Err(lookupErr).
+					Int("targetInstanceID", targetInstanceID).
+					Str("hash", hash).Int("attempt", attempt+1).
+					Msg("automations: verification poll failed, retrying")
+			case !found:
+				lastErr = nil
+				lastStateChecking = false
+				log.Debug().
+					Int("targetInstanceID", targetInstanceID).
+					Str("hash", hash).Int("attempt", attempt+1).
+					Msg("automations: torrent not yet visible on target, retrying")
+			default:
+				// Successful lookup — clear transient error state
+				lastErr = nil
 
-		switch torrent.State { //nolint:exhaustive // only failure and transient states need special handling
-		case qbt.TorrentStateMissingFiles:
-			log.Warn().
-				Int("targetInstanceID", targetInstanceID).
-				Str("hash", hash).
-				Str("savePath", torrent.SavePath).
-				Str("contentPath", torrent.ContentPath).
-				Msg("automations: torrent has missingFiles state on target")
-			return fmt.Sprintf("Files missing on target instance (savePath: %s)", torrent.SavePath)
-		case qbt.TorrentStateError:
-			return "Torrent in error state on target instance"
-		case qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingResumeData:
-			lastStateChecking = true
-			log.Debug().
-				Int("targetInstanceID", targetInstanceID).
-				Str("hash", hash).Str("state", string(torrent.State)).Int("attempt", attempt+1).
-				Msg("automations: torrent still checking on target, retrying")
-			continue
-		default:
-			lastStateChecking = false
-			if torrent.Progress >= 1.0 {
-				return "" // success
+				switch torrent.State { //nolint:exhaustive // only failure and transient states need special handling
+				case qbt.TorrentStateMissingFiles:
+					log.Warn().
+						Int("targetInstanceID", targetInstanceID).
+						Str("hash", hash).
+						Str("savePath", torrent.SavePath).
+						Str("contentPath", torrent.ContentPath).
+						Msg("automations: torrent has missingFiles state on target")
+					return fmt.Sprintf("Files missing on target instance (savePath: %s)", torrent.SavePath)
+				case qbt.TorrentStateError:
+					return "Torrent in error state on target instance"
+				case qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingResumeData:
+					lastStateChecking = true
+					log.Debug().
+						Int("targetInstanceID", targetInstanceID).
+						Str("hash", hash).Str("state", string(torrent.State)).Int("attempt", attempt+1).
+						Msg("automations: torrent still checking on target, retrying")
+				default:
+					lastStateChecking = false
+					if torrent.Progress >= 1.0 {
+						return "" // success
+					}
+					// Progress < 1.0 but not in a checking/error state — might still be initializing
+					log.Debug().
+						Int("targetInstanceID", targetInstanceID).
+						Str("hash", hash).Float64("progress", torrent.Progress).
+						Str("state", string(torrent.State)).Int("attempt", attempt+1).
+						Msg("automations: torrent not yet complete on target, retrying")
+				}
 			}
-			// Progress < 1.0 but not in a checking/error state — might still be initializing
-			log.Debug().
-				Int("targetInstanceID", targetInstanceID).
-				Str("hash", hash).Float64("progress", torrent.Progress).
-				Str("state", string(torrent.State)).Int("attempt", attempt+1).
-				Msg("automations: torrent not yet complete on target, retrying")
 		}
 
 		// Wait before next retry
