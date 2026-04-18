@@ -57,9 +57,7 @@ type Client struct {
 	// optimisticUpdates stores temporary optimistic state changes for this instance
 	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
-	lastServerState   *qbt.ServerState
 	mu                sync.RWMutex
-	serverStateMu     sync.RWMutex
 	healthMu          sync.RWMutex
 	completionMu      sync.Mutex
 	completionState   map[string]bool
@@ -131,7 +129,6 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	// Set up health check callbacks
 	syncOpts.OnUpdate = func(data *qbt.MainData) {
 		client.updateHealthStatus(true)
-		client.updateServerState(data)
 		client.handleCompletionUpdates(data)
 		client.handleAddedUpdates(data)
 		log.Trace().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
@@ -139,7 +136,6 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 
 	syncOpts.OnError = func(err error) {
 		client.updateHealthStatus(false)
-		client.clearServerState()
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Sync manager error received, marking client as unhealthy")
 	}
 
@@ -272,58 +268,6 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
 	c.supportsPathAutocomplete = !v.LessThan(pathAutocompleteMinVersion)
 	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
-}
-
-func (c *Client) updateServerState(data *qbt.MainData) {
-	c.serverStateMu.Lock()
-	defer c.serverStateMu.Unlock()
-
-	if data == nil || data.ServerState == (qbt.ServerState{}) {
-		c.lastServerState = nil
-		return
-	}
-
-	stateCopy := data.ServerState
-	c.lastServerState = &stateCopy
-}
-
-func (c *Client) clearServerState() {
-	c.serverStateMu.Lock()
-	defer c.serverStateMu.Unlock()
-
-	c.lastServerState = nil
-}
-
-func (c *Client) GetCachedServerState() *qbt.ServerState {
-	c.serverStateMu.RLock()
-	defer c.serverStateMu.RUnlock()
-
-	if c.lastServerState == nil {
-		return nil
-	}
-
-	copy := *c.lastServerState
-	return &copy
-}
-
-func (c *Client) GetCachedConnectionStatus() string {
-	state := c.GetCachedServerState()
-	if state == nil {
-		return ""
-	}
-
-	return state.ConnectionStatus
-}
-
-// UpdateWithMainData updates the client's cached state with fresh MainData
-// This is used when intercepting sync/maindata responses to keep local state in sync
-func (c *Client) UpdateWithMainData(data *qbt.MainData) {
-	c.updateServerState(data)
-	c.updateHealthStatus(true)
-	log.Debug().
-		Int("instanceID", c.instanceID).
-		Int("torrentCount", len(data.Torrents)).
-		Msg("Updated client state with fresh maindata from intercepted request")
 }
 
 // UpdateWithPeersData triggers a sync on the peer manager to keep it warm after intercepting peer data
