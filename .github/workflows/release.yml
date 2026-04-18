@@ -52,7 +52,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v5
+        uses: pnpm/action-setup@v6
         with:
           version: latest
 
@@ -62,7 +62,7 @@ jobs:
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
       - name: Setup pnpm cache
-        uses: actions/cache@v5
+        uses: actions/cache@v5.0.4
         with:
           path: ${{ env.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -199,7 +199,7 @@ jobs:
           cache: true
 
       - name: Cache Go build artifacts
-        uses: actions/cache@v5
+        uses: actions/cache@v5.0.4
         with:
           path: ~/.cache/go-build
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
