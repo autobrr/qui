@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { cn } from '@/lib/utils'
-import type { InstanceResponse, TorznabSearchResult } from '@/types'
-import { Download, ExternalLink, MoreVertical, Plus } from 'lucide-react'
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { cn } from "@/lib/utils"
+import type { InstanceResponse, TorznabSearchResult } from "@/types"
+import { Download, ExternalLink, MoreVertical, Plus } from "lucide-react"
+import { useCallback, useRef } from "react"
 
 type SearchResultCardProps = {
   result: TorznabSearchResult
@@ -38,24 +39,50 @@ export function SearchResultCard({
   formatDate,
   instances,
   hasInstances,
-  targetInstanceName
+  targetInstanceName,
 }: SearchResultCardProps) {
-  const primaryAddLabel = targetInstanceName ? `Add to ${targetInstanceName}` : 'Add to instance'
+  const primaryAddLabel = targetInstanceName ? `Add to ${targetInstanceName}` : "Add to instance"
+  const menuCooldownRef = useRef(false)
+  const menuCooldownTimerRef = useRef<number | null>(null)
+
+  const handleMenuOpenChange = useCallback((open: boolean) => {
+    if (menuCooldownTimerRef.current !== null) {
+      clearTimeout(menuCooldownTimerRef.current)
+      menuCooldownTimerRef.current = null
+    }
+    if (open) {
+      menuCooldownRef.current = true
+    } else {
+      // Brief cooldown so the phantom tap after menu close doesn't reach the card
+      menuCooldownTimerRef.current = window.setTimeout(() => {
+        menuCooldownRef.current = false
+        menuCooldownTimerRef.current = null
+      }, 300)
+    }
+  }, [])
+
+  const handleCardClick = useCallback(() => {
+    if (!menuCooldownRef.current) {
+      onSelect()
+    }
+  }, [onSelect])
 
   return (
     <Card
       className={cn(
-        'p-3 transition-colors cursor-pointer',
-        isSelected
-          ? 'bg-accent text-accent-foreground ring-2 ring-accent'
-          : 'hover:bg-muted/60'
+        "p-3 transition-colors cursor-pointer",
+        isSelected? "bg-accent text-accent-foreground ring-2 ring-inset ring-accent": "hover:bg-muted/60"
       )}
       role="button"
       tabIndex={0}
       aria-selected={isSelected}
-      onClick={onSelect}
+      onClick={handleCardClick}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
+        if (event.currentTarget !== event.target) {
+          return
+        }
+
+        if (event.key === "Enter" || event.key === " ") {
           event.preventDefault()
           onSelect()
         }
@@ -67,27 +94,21 @@ export function SearchResultCard({
           <h3 className="text-sm font-medium leading-tight line-clamp-2">
             {result.title}
           </h3>
-          <DropdownMenu>
+          <DropdownMenu onOpenChange={handleMenuOpenChange}>
             <DropdownMenuTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 flex-shrink-0"
+                className="h-7 w-7 shrink-0"
                 onClick={(e) => e.stopPropagation()}
               >
                 <MoreVertical className="h-4 w-4" />
                 <span className="sr-only">Actions</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault()
-                  onAddTorrent()
-                }}
-                disabled={!hasInstances}
-              >
+            <DropdownMenuContent align="end" onCloseAutoFocus={(e) => e.preventDefault()}>
+              <DropdownMenuItem onSelect={() => onAddTorrent()} disabled={!hasInstances}>
                 <Plus className="mr-2 h-4 w-4" /> {primaryAddLabel}
               </DropdownMenuItem>
               {hasInstances && instances && instances.length > 1 && (
@@ -99,48 +120,20 @@ export function SearchResultCard({
                     {instances.map(instance => (
                       <DropdownMenuItem
                         key={instance.id}
-                        onSelect={(event) => {
-                          event.preventDefault()
-                          onAddTorrent(instance.id)
-                        }}
+                        onSelect={() => onAddTorrent(instance.id)}
                       >
-                        {instance.name}{!instance.connected ? ' (offline)' : ''}
+                        {instance.name}{!instance.connected ? " (offline)" : ""}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
               )}
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault()
-                  onDownload()
-                }}
-                disabled={!result.downloadUrl}
-              >
+              <DropdownMenuItem onSelect={() => onDownload()} disabled={!result.downloadUrl}>
                 <Download className="mr-2 h-4 w-4" /> Download
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault()
-                  onViewDetails()
-                }}
-                disabled={!result.infoUrl}
-              >
+              <DropdownMenuItem onSelect={() => onViewDetails()} disabled={!result.infoUrl}>
                 <ExternalLink className="mr-2 h-4 w-4" /> View details
               </DropdownMenuItem>
-              {isSelected && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.preventDefault()
-                      onSelect()
-                    }}
-                  >
-                    Clear selection
-                  </DropdownMenuItem>
-                </>
-              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -149,7 +142,7 @@ export function SearchResultCard({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">{result.indexer}</span>
           <span>{formatSize(result.size)}</span>
-          <Badge variant={result.seeders > 0 ? 'default' : 'secondary'} className="text-[10px]">
+          <Badge variant={result.seeders > 0 ? "default" : "secondary"} className="text-[10px]">
             {result.seeders} seeders
           </Badge>
         </div>
