@@ -573,7 +573,7 @@ export function Search() {
   const getSortIcon = (column: Exclude<typeof sortColumn, null>) => {
     if (sortColumn !== column) return null
 
-    return sortOrder === "asc" ? <ChevronUp className="h-4 w-4 flex-shrink-0" /> : <ChevronDown className="h-4 w-4 flex-shrink-0" />
+    return sortOrder === "asc" ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />
   }
 
   // Filter and sort results
@@ -765,7 +765,7 @@ export function Search() {
     window.open(result.infoUrl, "_blank")
   }
 
-  const toggleResultSelection = (result: TorznabSearchResult) => {
+  const handleToggleResultSelection = (result: TorznabSearchResult) => {
     setSelectedResultGuid(prev => prev === result.guid ? null : result.guid)
   }
 
@@ -804,7 +804,7 @@ export function Search() {
                 </Button>
               </SheetTrigger>
 
-              <SheetContent side="right" className="flex h-full max-h-[100dvh] max-w-xl flex-col overflow-hidden p-0">
+              <SheetContent side="right" className="flex h-full max-h-dvh max-w-xl flex-col overflow-hidden p-0">
                 <SheetHeader>
                   <SheetTitle>Indexer selection</SheetTitle>
                   <SheetDescription>Pick which indexers to include in searches.</SheetDescription>
@@ -951,7 +951,7 @@ export function Search() {
             <form onSubmit={handleSearch} className="space-y-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
                 <div className="flex items-center gap-2">
-                  <div className="flex-shrink-0 min-w-[120px] max-w-[180px]">
+                  <div className="shrink-0 min-w-30 max-w-45">
                     <Label htmlFor="search-type" className="sr-only">Search type</Label>
                     <Select value={searchType} onValueChange={(value) => setSearchType(value as SearchType)}>
                       <SelectTrigger id="search-type" className="w-full">
@@ -966,13 +966,13 @@ export function Search() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="flex flex-shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     <Button
                       type="button"
                       variant={showAdvancedParams ? "default" : "outline"}
                       size="default"
                       className={cn(
-                        "!border !px-4 !py-2.5 h-9",
+                        "border! px-4! py-2.5! h-9",
                         showAdvancedParams? "border-primary bg-primary text-primary-foreground shadow-xs hover:bg-primary/90": "border-input dark:border-input"
                       )}
                       onClick={() => setShowAdvancedParams(prev => !prev)}
@@ -1056,7 +1056,7 @@ export function Search() {
                   <Button
                     type="submit"
                     disabled={loading || (!query.trim() && !hasAdvancedParams) || selectedIndexers.size === 0}
-                    className="flex-shrink-0"
+                    className="shrink-0"
                   >
                     <SearchIcon className="mr-2 h-4 w-4" />
                     {loading ? "Searching..." : "Search"}
@@ -1108,7 +1108,7 @@ export function Search() {
                   Showing {filteredAndSortedResults.length} of {total} results
                 </div>
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-                  <div className="w-full sm:min-w-[200px] sm:flex-1 min-w-0 relative">
+                  <div className="w-full sm:min-w-50 sm:flex-1 min-w-0 relative">
                     <Input
                       type="text"
                       placeholder="Filter results..."
@@ -1203,28 +1203,6 @@ export function Search() {
                         </div>
                         <Button
                           type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDownload(selectedResult)}
-                          disabled={!selectedResult.downloadUrl}
-                          title="Download"
-                          className="h-9"
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleViewDetails(selectedResult)}
-                          disabled={!selectedResult.infoUrl}
-                          title={selectedResult.infoUrl ? "View details" : "No info URL available"}
-                          className="h-9"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          type="button"
                           variant="ghost"
                           size="sm"
                           onClick={handleClearSelection}
@@ -1288,15 +1266,6 @@ export function Search() {
                             >
                               <ExternalLink className="mr-2 h-4 w-4" /> View details
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onSelect={(event) => {
-                                event.preventDefault()
-                                handleClearSelection()
-                              }}
-                            >
-                              Clear selection
-                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -1336,13 +1305,13 @@ export function Search() {
                   </div>
                 </div>
                 {/* Mobile: Card-based view */}
-                <div className="sm:hidden space-y-2 max-h-[600px] overflow-auto">
+                <div className="sm:hidden space-y-2 max-h-150 overflow-auto">
                   {filteredAndSortedResults.map((result) => (
                     <SearchResultCard
                       key={result.guid}
                       result={result}
                       isSelected={selectedResultGuid === result.guid}
-                      onSelect={() => toggleResultSelection(result)}
+                      onSelect={() => handleToggleResultSelection(result)}
                       onAddTorrent={(overrideInstanceId) => handleAddTorrent(result, overrideInstanceId)}
                       onDownload={() => handleDownload(result)}
                       onViewDetails={() => handleViewDetails(result)}
@@ -1357,7 +1326,7 @@ export function Search() {
                 </div>
 
                 {/* Desktop: Full table view */}
-                <div className="hidden sm:block max-h-[600px] overflow-auto border rounded-md">
+                <div className="hidden sm:block max-h-150 overflow-auto border rounded-md">
                   <Table>
                     <TableHeader className="sticky top-0 z-20 bg-card">
                       <TableRow className="bg-card">
@@ -1604,6 +1573,9 @@ export function Search() {
                             </div>
                           </div>
                         </TableHead>
+                        <TableHead className="w-20">
+                          <span className="sr-only">Actions</span>
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1613,17 +1585,21 @@ export function Search() {
                           <TableRow
                             key={result.guid}
                             className={cn(
-                              "cursor-pointer transition-colors",
+                              "cursor-pointer select-none transition-colors",
                               isSelected? "bg-accent text-accent-foreground hover:bg-accent/90": "hover:bg-muted/60 odd:bg-background/70 even:bg-card/90 dark:odd:bg-background/30 dark:even:bg-card/80"
                             )}
                             role="button"
                             tabIndex={0}
                             aria-selected={isSelected}
-                            onClick={() => toggleResultSelection(result)}
+                            onClick={() => handleToggleResultSelection(result)}
                             onKeyDown={(event) => {
+                              if (event.currentTarget !== event.target) {
+                                return
+                              }
+
                               if (event.key === "Enter" || event.key === " ") {
                                 event.preventDefault()
-                                toggleResultSelection(result)
+                                handleToggleResultSelection(result)
                               }
                             }}
                           >
@@ -1673,6 +1649,42 @@ export function Search() {
                             </TableCell>
                             <TableCell className={cn("text-sm text-muted-foreground", isSelected && "text-accent-foreground")}>
                               {formatCacheTimestamp(result.publishDate)}
+                            </TableCell>
+                            <TableCell className="w-20 py-1" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center gap-1">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      onClick={() => handleDownload(result)}
+                                      disabled={!result.downloadUrl}
+                                    >
+                                      <Download className="h-3.5 w-3.5" />
+                                      <span className="sr-only">Download</span>
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Download .torrent</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7"
+                                      onClick={() => handleViewDetails(result)}
+                                      disabled={!result.infoUrl}
+                                    >
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                      <span className="sr-only">View details</span>
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{result.infoUrl ? "View details" : "No info URL"}</TooltipContent>
+                                </Tooltip>
+                              </div>
                             </TableCell>
                           </TableRow>
                         )

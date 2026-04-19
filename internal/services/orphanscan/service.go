@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -1116,16 +1117,58 @@ func addAbsoluteScanRoot(scanRoots map[string]struct{}, root string) {
 	scanRoots[root] = struct{}{}
 }
 
-func actualSavePathFromContentPath(contentPath string, files qbt.TorrentFiles) string {
+func torrentRootFolder(files qbt.TorrentFiles) string {
+	rootFolder := ""
+
+	for _, f := range files {
+		name := path.Clean(strings.ReplaceAll(f.Name, "\\", "/"))
+		parts := strings.Split(name, "/")
+		if len(parts) <= 1 {
+			return ""
+		}
+		if rootFolder == "" {
+			rootFolder = parts[0]
+			continue
+		}
+		if rootFolder != parts[0] {
+			return ""
+		}
+	}
+
+	return rootFolder
+}
+
+func actualSavePathFromContentPath(savePath, contentPath string, files qbt.TorrentFiles) string {
+	savePath = filepath.Clean(savePath)
 	contentPath = filepath.Clean(contentPath)
 	if contentPath == "" || !filepath.IsAbs(contentPath) || len(files) == 0 {
 		return ""
 	}
+	if savePath != "" && filepath.IsAbs(savePath) && contentPath == savePath {
+		return savePath
+	}
 
-	firstFileName := filepath.Clean(files[0].Name)
-	actualSavePath := strings.TrimSuffix(contentPath, string(filepath.Separator)+firstFileName)
-	if actualSavePath == "" || actualSavePath == contentPath {
-		actualSavePath = filepath.Dir(contentPath)
+	var actualSavePath string
+	if len(files) == 1 {
+		firstFileName := filepath.Clean(filepath.FromSlash(files[0].Name))
+		actualSavePath = strings.TrimSuffix(contentPath, string(filepath.Separator)+firstFileName)
+		if actualSavePath == "" || actualSavePath == contentPath {
+			actualSavePath = filepath.Dir(contentPath)
+		}
+	} else {
+		rootFolder := torrentRootFolder(files)
+		if rootFolder == "" {
+			actualSavePath = contentPath
+		} else {
+			actualSavePath = strings.TrimSuffix(contentPath, string(filepath.Separator)+filepath.FromSlash(rootFolder))
+			if actualSavePath == "" || actualSavePath == contentPath {
+				firstFileName := filepath.Clean(filepath.FromSlash(files[0].Name))
+				actualSavePath = strings.TrimSuffix(contentPath, string(filepath.Separator)+firstFileName)
+				if actualSavePath == "" || actualSavePath == contentPath {
+					actualSavePath = filepath.Dir(contentPath)
+				}
+			}
+		}
 	}
 	if actualSavePath == "" || !filepath.IsAbs(actualSavePath) {
 		return ""
@@ -1178,7 +1221,7 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 
 		// Auto TMM can update save_path to the category root without moving the
 		// payload. content_path still reflects the real on-disk location.
-		actualSavePath := actualSavePathFromContentPath(torrent.ContentPath, files)
+		actualSavePath := actualSavePathFromContentPath(savePath, torrent.ContentPath, files)
 		if actualSavePath != "" && actualSavePath != savePath {
 			scanRoots[actualSavePath] = struct{}{}
 			for _, f := range files {

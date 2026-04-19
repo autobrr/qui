@@ -229,3 +229,63 @@ func TestBuildFileMapFromTorrents_ContentPathDivergesFromSavePath(t *testing.T) 
 	assert.Contains(t, result.scanRoots, filepath.Clean(categoryRoot))
 	assert.Contains(t, result.scanRoots, filepath.Clean(trackerDir))
 }
+
+func TestBuildFileMapFromTorrents_FlatMultiFileContentPathStaysWithinSavePath(t *testing.T) {
+	t.Parallel()
+
+	saveRoot := filepath.Join(t.TempDir(), "downloads")
+	result, err := buildFileMapFromTorrents(
+		[]qbt.Torrent{
+			{
+				Hash:        "flat123",
+				SavePath:    saveRoot,
+				ContentPath: saveRoot,
+				State:       qbt.TorrentStatePausedUp,
+			},
+		},
+		map[string]qbt.TorrentFiles{
+			"flat123": {
+				{Name: "movie.mkv", Size: 1000},
+				{Name: "subs/file.srt", Size: 100},
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(saveRoot, "movie.mkv"))))
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(saveRoot, "subs", "file.srt"))))
+	assert.Equal(t, []string{filepath.Clean(saveRoot)}, result.scanRoots)
+	assert.NotContains(t, result.scanRoots, filepath.Dir(saveRoot))
+}
+
+func TestBuildFileMapFromTorrents_FlatMultiFileDivergentContentPathUsesContentRoot(t *testing.T) {
+	t.Parallel()
+
+	categoryRoot := filepath.Join(t.TempDir(), "cross-seed")
+	contentRoot := filepath.Join(categoryRoot, "tracker-name")
+	result, err := buildFileMapFromTorrents(
+		[]qbt.Torrent{
+			{
+				Hash:        "flat-divergent",
+				SavePath:    categoryRoot,
+				ContentPath: contentRoot,
+				State:       qbt.TorrentStatePausedUp,
+			},
+		},
+		map[string]qbt.TorrentFiles{
+			"flat-divergent": {
+				{Name: "extras/poster.jpg", Size: 100},
+				{Name: "movie.mkv", Size: 1000},
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(categoryRoot, "extras", "poster.jpg"))))
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(categoryRoot, "movie.mkv"))))
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(contentRoot, "extras", "poster.jpg"))))
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(contentRoot, "movie.mkv"))))
+	assert.Contains(t, result.scanRoots, filepath.Clean(categoryRoot))
+	assert.Contains(t, result.scanRoots, filepath.Clean(contentRoot))
+	assert.NotContains(t, result.scanRoots, filepath.Dir(categoryRoot))
+}
