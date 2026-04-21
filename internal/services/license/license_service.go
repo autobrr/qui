@@ -919,7 +919,7 @@ func (s *Service) DeleteLicense(ctx context.Context, licenseKey string) error {
 		}
 	}
 
-	return s.licenseRepo.DeleteLicense(ctx, licenseKey)
+	return s.licenseRepo.DeleteLicense(context.WithoutCancel(ctx), licenseKey)
 }
 
 // Helper function to mask license keys in logs
