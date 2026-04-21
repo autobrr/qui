@@ -919,7 +919,10 @@ func (s *Service) DeleteLicense(ctx context.Context, licenseKey string) error {
 		}
 	}
 
-	return s.licenseRepo.DeleteLicense(context.WithoutCancel(ctx), licenseKey)
+	deleteCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
+	return s.licenseRepo.DeleteLicense(deleteCtx, licenseKey)
 }
 
 // Helper function to mask license keys in logs
