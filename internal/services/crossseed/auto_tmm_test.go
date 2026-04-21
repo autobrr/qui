@@ -16,6 +16,7 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 		matchedAutoManaged     bool
 		useCategoryFromIndexer bool
 		useCustomCategory      bool
+		isTrackerCategoryMode  bool
 		actualCategorySavePath string
 		matchedSavePath        string
 		wantEnabled            bool
@@ -153,6 +154,50 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 			wantEnabled:            false,
 			wantPathsMatch:         false,
 		},
+		{
+			name:                   "tracker category mode with matching paths - auto tmm enabled",
+			crossCategory:          "Aither",
+			matchedAutoManaged:     false, // does not matter in this mode
+			useCategoryFromIndexer: false,
+			useCustomCategory:      false,
+			isTrackerCategoryMode:  true,
+			actualCategorySavePath: "/downloads/aither",
+			matchedSavePath:        "/downloads/aither",
+			wantEnabled:            true,
+			wantPathsMatch:         true,
+		},
+		{
+			// AutoTMM must NOT be enabled when paths differ: qBittorrent would move the
+			// existing files to the category directory instead of cross-seeding in place.
+			name:                   "tracker category mode with mismatched paths - auto tmm disabled",
+			crossCategory:          "Aither",
+			matchedAutoManaged:     false,
+			useCategoryFromIndexer: false,
+			useCustomCategory:      false,
+			isTrackerCategoryMode:  true,
+			actualCategorySavePath: "/downloads/aither",
+			matchedSavePath:        "/downloads/tv",
+			wantEnabled:            false,
+			wantPathsMatch:         false,
+		},
+		{
+			name:                  "tracker category mode with no category - disabled",
+			crossCategory:         "",
+			matchedAutoManaged:    true,
+			isTrackerCategoryMode: true,
+			wantEnabled:           false,
+			wantPathsMatch:        false,
+		},
+		{
+			name:                   "tracker category mode auto tmm enabled but category has no save path - disabled",
+			crossCategory:          "Aither",
+			matchedAutoManaged:     false,
+			isTrackerCategoryMode:  true,
+			actualCategorySavePath: "", // category exists in qBit but has no configured save path
+			matchedSavePath:        "/downloads/tv",
+			wantEnabled:            false,
+			wantPathsMatch:         false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -162,6 +207,7 @@ func TestShouldEnableAutoTMM(t *testing.T) {
 				tt.matchedAutoManaged,
 				tt.useCategoryFromIndexer,
 				tt.useCustomCategory,
+				tt.isTrackerCategoryMode,
 				tt.actualCategorySavePath,
 				tt.matchedSavePath,
 			)

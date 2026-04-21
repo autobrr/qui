@@ -531,6 +531,9 @@ func TestProcessHardlinkMode_NotUsedWhenDisabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	assert.False(t, result.Used, "hardlink mode should not be used when disabled")
@@ -564,10 +567,13 @@ func TestProcessHardlinkMode_FailsWhenBaseDirEmpty(t *testing.T) {
 		&qbt.Torrent{},
 		"exact",
 		nil,
-		nil,
+		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// When hardlink mode is enabled but fails, it should return Used=true with error
@@ -639,6 +645,9 @@ func TestProcessHardlinkMode_ExecutesExternalProgramAfterSuccessfulAdd(t *testin
 		&qbt.TorrentProperties{SavePath: downloadsDir},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	require.True(t, result.Success)
@@ -678,6 +687,9 @@ func TestProcessHardlinkMode_FailsWhenNoLocalAccess(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// When hardlink mode is enabled but fails, it should return Used=true with error
@@ -723,6 +735,9 @@ func TestProcessHardlinkMode_FailsOnInfrastructureError(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/also/nonexistent"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// Should be Used=true because we attempted hardlink mode, but failed
@@ -781,6 +796,9 @@ func TestProcessHardlinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) 
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// Should be Used=true because hardlink mode is enabled, but skipped due to recheck requirement
@@ -837,6 +855,9 @@ func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// Should be Used=true because reflink mode is enabled, but skipped due to recheck requirement
@@ -940,6 +961,7 @@ func TestProcessHardlinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.
 		&qbt.TorrentProperties{SavePath: downloadsDir},
 		"category",
 		"category.cross",
+		"", false, false,
 	)
 
 	require.True(t, result.Used)
@@ -990,6 +1012,7 @@ func TestProcessReflinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.T
 		&qbt.TorrentProperties{SavePath: downloadsDir},
 		"category",
 		"category.cross",
+		"", false, false,
 	)
 
 	require.True(t, result.Used)
@@ -1121,6 +1144,7 @@ func TestProcessReflinkMode_DoesNotFallbackToRegularAfterMaterializationError(t 
 		&qbt.TorrentProperties{SavePath: downloadsDir},
 		"category",
 		"category.cross",
+		"", false, false,
 	)
 
 	require.True(t, result.Used)
@@ -1165,6 +1189,9 @@ func TestProcessHardlinkMode_FallbackEnabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// With fallback enabled, failure should return Used=false to allow regular mode
@@ -1206,6 +1233,9 @@ func TestProcessHardlinkMode_FallbackDisabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// With fallback disabled, failure should return Used=true with error status
@@ -1250,6 +1280,9 @@ func TestProcessReflinkMode_FallbackEnabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// With fallback enabled, failure should return Used=false to allow regular mode
@@ -1291,6 +1324,9 @@ func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// With fallback disabled, failure should return Used=true with error status

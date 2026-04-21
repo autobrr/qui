@@ -85,6 +85,7 @@ func matchSeasonPackCategoryRule(rules []models.SeasonPackCategoryRule, resoluti
 func (s *Service) resolveSeasonPackCategory(
 	ctx context.Context,
 	prep *seasonPackPrep,
+	inst *models.Instance,
 	indexer string,
 	episodes map[episodeIdentity]episodeMatch,
 ) string {
@@ -100,10 +101,10 @@ func (s *Service) resolveSeasonPackCategory(
 		return fallback
 	}
 
-	_, crossCategory := s.determineCrossSeedCategory(ctx, &CrossSeedRequest{
+	_, crossCategory, _ := s.determineCrossSeedCategory(ctx, inst, &CrossSeedRequest{
 		IndexerName: indexer,
 	}, &qbt.Torrent{
 		Category: firstMatchedEpisodeCategory(episodes),
-	}, prep.settings)
+	}, prep.settings, "")
 	return crossCategory
 }

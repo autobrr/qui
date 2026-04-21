@@ -28,6 +28,7 @@ import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
   CrossSeedBlocklistEntry,
+  CrossSeedIndexerCategory,
   CrossSeedInstanceResult,
   CrossSeedRun,
   CrossSeedSearchRun,
@@ -337,7 +338,7 @@ async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; t
     try {
       const registrations = await navigator.serviceWorker.getRegistrations()
       await Promise.all(
-        registrations.filter(r => r.scope === quiScope).map(r => r.unregister())
+        registrations.filter(r => r.scope === quiScope).map(r => r.unregister()),
       )
     } catch {
       // ignore unregister errors
@@ -351,7 +352,7 @@ async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; t
     try {
       const names = await caches.keys()
       await Promise.all(
-        names.filter(name => name.endsWith(quiScope)).map(name => caches.delete(name))
+        names.filter(name => name.endsWith(quiScope)).map(name => caches.delete(name)),
       )
     } catch {
       // ignore cache clear errors
@@ -1490,6 +1491,23 @@ class ApiClient {
     return this.request<InstanceCrossSeedCompletionSettings>(`/cross-seed/completion/${instanceId}`, {
       method: "PUT",
       body: JSON.stringify(payload),
+    })
+  }
+
+  async getCrossSeedIndexerCategories(instanceId: number): Promise<CrossSeedIndexerCategory[]> {
+    return this.request<CrossSeedIndexerCategory[]>(`/cross-seed/indexer-categories/${instanceId}`)
+  }
+
+  async setCrossSeedIndexerCategory(instanceId: number, indexerId: number, category: string): Promise<void> {
+    await this.request(`/cross-seed/indexer-categories/${instanceId}`, {
+      method: "PUT",
+      body: JSON.stringify({ indexerId, category }),
+    })
+  }
+
+  async deleteCrossSeedIndexerCategory(instanceId: number, indexerId: number): Promise<void> {
+    await this.request(`/cross-seed/indexer-categories/${instanceId}/${indexerId}`, {
+      method: "DELETE",
     })
   }
 

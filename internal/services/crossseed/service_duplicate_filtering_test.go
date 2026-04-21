@@ -996,7 +996,7 @@ func newDuplicateFilteringContentFilterService(sync *duplicateFilteringSyncManag
 	return &Service{
 		syncManager:      sync,
 		releaseCache:     NewReleaseCache(),
-		domainMappings:   initializeDomainMappings(),
+		domainMappings:   trackerDomainAliases,
 		stringNormalizer: stringutils.DefaultNormalizer,
 	}
 }

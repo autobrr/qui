@@ -77,7 +77,7 @@ func TestHandlerRewriteRequest_PathJoining(t *testing.T) {
 
 	for _, baseCase := range baseCases {
 		t.Run(baseCase.name, func(t *testing.T) {
-			h := NewHandler(nil, nil, nil, nil, nil, nil, baseCase.baseURL)
+			h := NewHandler(nil, nil, nil, nil, nil, nil, nil, baseCase.baseURL)
 			require.NotNil(t, h)
 
 			for _, tc := range instanceCases {
@@ -133,7 +133,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 func TestHandleSyncMainDataCapturesBodyWithoutLeadingZeros(t *testing.T) {
 	t.Helper()
 
-	handler := NewHandler(nil, nil, nil, nil, nil, nil, "/")
+	handler := NewHandler(nil, nil, nil, nil, nil, nil, nil, "/")
 	require.NotNil(t, handler)
 
 	payload := []byte(`{"rid":1,"full_update":false}`)
@@ -196,7 +196,7 @@ func TestHandleSyncMainDataCapturesBodyWithoutLeadingZeros(t *testing.T) {
 func TestHandler_ProxyUsesInstanceHTTPClientTransport(t *testing.T) {
 	t.Helper()
 
-	handler := NewHandler(nil, nil, nil, nil, nil, nil, "/")
+	handler := NewHandler(nil, nil, nil, nil, nil, nil, nil, "/")
 	require.NotNil(t, handler)
 
 	rt, ok := handler.proxy.Transport.(*RetryTransport)
