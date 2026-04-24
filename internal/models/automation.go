@@ -754,7 +754,8 @@ const (
 	FieldSystemYear      ConditionField = "SYSTEM_YEAR"
 
 	// Enum-like fields
-	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"
+	FieldHardlinkScope      ConditionField = "HARDLINK_SCOPE"
+	FieldHardlinkScopeCross ConditionField = "HARDLINK_SCOPE_CROSS"
 )
 
 //nolint:exhaustive // Only sortable numeric fields belong here.

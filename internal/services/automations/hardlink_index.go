@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -52,11 +53,40 @@ type HardlinkIndex struct {
 	// Used for HARDLINK_SCOPE condition evaluation.
 	ScopeByHash map[string]string
 
+	// CrossScopeByHash maps torrent hash to its cross-instance hardlink scope.
+	// Considers files from ALL instances with HasLocalFilesystemAccess when resolving
+	// whether "outside" links are on other qBittorrent instances or truly external.
+	// Used for HARDLINK_SCOPE_CROSS condition evaluation. Nil until Phase 2 runs.
+	CrossScopeByHash map[string]string
+
 	// builtAt is when this index was built.
 	builtAt time.Time
 
 	// digest identifies the torrent set used to build this index.
 	digest string
+
+	// buildState holds intermediate data from Phase 1 that Phase 2 (cross-instance
+	// augmentation) needs. Retained until cross-scope is computed or the index is replaced.
+	buildState *hardlinkBuildState
+
+	// crossScopeOnce ensures augmentCrossInstanceScope runs at most once per index.
+	crossScopeOnce sync.Once
+}
+
+// hardlinkBuildState holds intermediate state from the single-instance scan so that
+// cross-instance augmentation can update uniquePathCount without re-scanning.
+type hardlinkBuildState struct {
+	globalFileIDMap   map[hardlink.FileID]*fileIDTracker
+	seenPaths         map[string]struct{}
+	torrentInfoByHash map[string]*torrentFileInfo
+}
+
+// torrentFileInfo tracks per-torrent file identity data during hardlink index build.
+type torrentFileInfo struct {
+	fileIDs        []hardlink.FileID
+	allAccessible  bool
+	hasHardlinks   bool // at least one file has nlink > 1
+	hasInvalidPath bool // at least one file path escapes save path
 }
 
 // hardlinkIndexCache stores cached indices per instance.
@@ -208,13 +238,6 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 	seenPaths := make(map[string]struct{})
 	torrentsInvalidPaths := 0
 
-	// Also track per-torrent: which FileIDs it contains and whether all files are accessible
-	type torrentFileInfo struct {
-		fileIDs        []hardlink.FileID
-		allAccessible  bool
-		hasHardlinks   bool // At least one file has nlink > 1
-		hasInvalidPath bool // At least one file path escapes save path
-	}
 	torrentInfoByHash := make(map[string]*torrentFileInfo)
 
 	for hash, files := range filesByHash {
@@ -338,6 +361,13 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 	pruneSingletonHardlinkGroups(index.SignatureByHash, index.GroupBySignature)
 	pruneSingletonHardlinkGroups(index.DeleteSafeSignatureByHash, index.DeleteSafeGroupBySignature)
 
+	// Retain build state for potential cross-instance augmentation (Phase 2).
+	index.buildState = &hardlinkBuildState{
+		globalFileIDMap:   globalFileIDMap,
+		seenPaths:         seenPaths,
+		torrentInfoByHash: torrentInfoByHash,
+	}
+
 	// Set builtAt at the end of successful build (not start) to avoid TTL issues with slow builds
 	index.builtAt = time.Now()
 
@@ -456,6 +486,287 @@ func (idx *HardlinkIndex) GetHardlinkScope(hash string) string {
 		return scope
 	}
 	return ""
+}
+
+// GetHardlinkCrossScope returns the cross-instance hardlink scope for a torrent.
+// Returns empty string if cross-scope has not been computed or is unknown.
+func (idx *HardlinkIndex) GetHardlinkCrossScope(hash string) string {
+	if idx == nil || idx.CrossScopeByHash == nil {
+		return ""
+	}
+	if scope, ok := idx.CrossScopeByHash[hash]; ok {
+		return scope
+	}
+	return ""
+}
+
+// augmentCrossInstanceScope runs Phase 2 of the hardlink index: scanning files from other
+// instances to determine whether "outside" hardlinks point to other qBittorrent instances
+// or to truly external paths (media libraries, import dirs, etc.).
+//
+// It only Lstats files from other instances that might resolve deficit FileIDs (where
+// nlink > uniquePathCount after the single-instance scan). Scanning stops early once all
+// deficits are resolved.
+//
+// augmentCrossInstanceScope runs Phase 2 of the hardlink index: scanning files from other
+// instances to determine whether "outside" hardlinks point to other qBittorrent instances
+// or to truly external paths (media libraries, import dirs, etc.).
+//
+// It only Lstats files from other instances that might resolve deficit FileIDs (where
+// nlink > uniquePathCount after the single-instance scan). Scanning stops early once all
+// deficits are resolved.
+func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int, index *HardlinkIndex) {
+	if index == nil || index.buildState == nil {
+		return
+	}
+	state := index.buildState
+	phase2Start := time.Now()
+
+	deficitSet := collectDeficitFileIDs(state)
+
+	if len(deficitSet) == 0 {
+		index.finalizeCrossScope(state, instanceID, "no deficits")
+		return
+	}
+
+	if s.instanceStore == nil || s.syncManager == nil {
+		log.Warn().Int("instanceID", instanceID).
+			Msg("automations: instanceStore or syncManager unavailable for cross-scope, falling back to single-instance scope")
+		index.finalizeCrossScope(state, instanceID, "")
+		return
+	}
+
+	otherInstances, err := s.listCrossScopeInstances(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).
+			Msg("automations: failed to list instances for cross-scope, falling back to single-instance scope")
+		index.finalizeCrossScope(state, instanceID, "")
+		return
+	}
+	if len(otherInstances) == 0 {
+		index.finalizeCrossScope(state, instanceID, "no other instances with local access")
+		return
+	}
+
+	stats := s.scanOtherInstancesForDeficits(ctx, instanceID, otherInstances, deficitSet, state)
+
+	// Recompute scope for all torrents using augmented counts.
+	index.CrossScopeByHash = computeScopeMap(state)
+	index.buildState = nil
+
+	var countNone, countTorrentsOnly, countOutside int
+	for _, scope := range index.CrossScopeByHash {
+		switch scope {
+		case HardlinkScopeNone:
+			countNone++
+		case HardlinkScopeTorrentsOnly:
+			countTorrentsOnly++
+		case HardlinkScopeOutsideQBitTorrent:
+			countOutside++
+		}
+	}
+
+	log.Debug().
+		Int("instanceID", instanceID).
+		Int("otherInstancesScanned", stats.scanned).
+		Int("otherInstancesSkipped", stats.skipped).
+		Int("deficitFileIDsBefore", stats.deficitBefore).
+		Int("deficitFileIDsAfter", len(deficitSet)).
+		Int("crossScopeNone", countNone).
+		Int("crossScopeTorrentsOnly", countTorrentsOnly).
+		Int("crossScopeOutside", countOutside).
+		Int("lstatCalls", stats.lstatCalls).
+		Int("lstatErrors", stats.lstatErrors).
+		Dur("crossScopeBuildTime", time.Since(phase2Start)).
+		Msg("automations: cross-instance hardlink scope computed")
+}
+
+// deficitEntry tracks a fileIDTracker that has unresolved outside links.
+type deficitEntry struct {
+	tracker *fileIDTracker
+}
+
+// collectDeficitFileIDs returns FileIDs where nlink > uniquePathCount.
+func collectDeficitFileIDs(state *hardlinkBuildState) map[hardlink.FileID]*deficitEntry {
+	deficitSet := make(map[hardlink.FileID]*deficitEntry)
+	for fileID, tracker := range state.globalFileIDMap {
+		if tracker.nlink > uint64(tracker.uniquePathCount) { //nolint:gosec // uniquePathCount is always positive
+			deficitSet[fileID] = &deficitEntry{tracker: tracker}
+		}
+	}
+	return deficitSet
+}
+
+// finalizeCrossScope copies ScopeByHash to CrossScopeByHash and frees build state.
+// Used when Phase 2 cannot or does not need to scan other instances.
+func (index *HardlinkIndex) finalizeCrossScope(state *hardlinkBuildState, instanceID int, reason string) {
+	index.CrossScopeByHash = make(map[string]string, len(index.ScopeByHash))
+	maps.Copy(index.CrossScopeByHash, index.ScopeByHash)
+	index.buildState = nil
+	if reason != "" {
+		log.Debug().Int("instanceID", instanceID).
+			Msgf("automations: cross-instance scope matches single-instance (%s)", reason)
+	}
+}
+
+// listCrossScopeInstances returns IDs of other active instances with local filesystem access.
+func (s *Service) listCrossScopeInstances(ctx context.Context, instanceID int) ([]int, error) {
+	instances, err := s.instanceStore.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var result []int
+	for _, inst := range instances {
+		if inst.ID != instanceID && inst.IsActive && inst.HasLocalFilesystemAccess {
+			result = append(result, inst.ID)
+		}
+	}
+	return result, nil
+}
+
+// crossScanStats holds counters from the cross-instance scan loop.
+type crossScanStats struct {
+	scanned, skipped   int
+	deficitBefore      int
+	lstatCalls         int
+	lstatErrors        int
+}
+
+// maxCrossInstanceLstatCalls limits the total Lstat calls during cross-instance scanning
+// to prevent excessive filesystem operations from misconfigured qBittorrent instances.
+const maxCrossInstanceLstatCalls = 500_000
+
+// scanOtherInstancesForDeficits Lstats files from other instances to resolve deficit FileIDs.
+// Modifies deficitSet and state.seenPaths/globalFileIDMap in place.
+//
+//nolint:gocognit // early-exit checks at multiple loop levels are inherent to the scanning pattern
+func (s *Service) scanOtherInstancesForDeficits(
+	ctx context.Context,
+	instanceID int,
+	otherInstances []int,
+	deficitSet map[hardlink.FileID]*deficitEntry,
+	state *hardlinkBuildState,
+) crossScanStats {
+	stats := crossScanStats{deficitBefore: len(deficitSet)}
+
+	for _, otherID := range otherInstances {
+		if ctx.Err() != nil || len(deficitSet) == 0 {
+			break
+		}
+
+		views, err := s.syncManager.GetCachedInstanceTorrents(ctx, otherID)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Int("otherInstanceID", otherID).
+				Msg("automations: failed to get torrents for cross-scope, skipping instance")
+			stats.skipped++
+			continue
+		}
+
+		otherHashes := make([]string, 0, len(views))
+		savePaths := make(map[string]string, len(views))
+		for _, v := range views {
+			otherHashes = append(otherHashes, v.Hash)
+			savePaths[v.Hash] = v.SavePath
+		}
+
+		filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, otherID, otherHashes)
+		if err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Int("otherInstanceID", otherID).
+				Msg("automations: failed to get files for cross-scope, skipping instance")
+			stats.skipped++
+			continue
+		}
+
+		stats.scanned++
+
+		for hash, files := range filesByHash {
+			if len(deficitSet) == 0 || stats.lstatCalls >= maxCrossInstanceLstatCalls {
+				break
+			}
+
+			savePath := savePaths[hash]
+			if savePath == "" || !filepath.IsAbs(savePath) {
+				continue
+			}
+
+			for _, f := range files {
+				if len(deficitSet) == 0 || stats.lstatCalls >= maxCrossInstanceLstatCalls {
+					break
+				}
+
+				fullPath := buildFullPath(savePath, f.Name)
+				if !isPathInsideBase(savePath, fullPath) {
+					continue
+				}
+				if _, seen := state.seenPaths[fullPath]; seen {
+					continue
+				}
+
+				stats.lstatCalls++
+
+				fi, err := os.Lstat(fullPath)
+				if err != nil {
+					stats.lstatErrors++
+					continue
+				}
+				if !fi.Mode().IsRegular() {
+					continue
+				}
+
+				fileID, _, err := hardlink.GetFileID(fi, fullPath)
+				if err != nil {
+					stats.lstatErrors++
+					continue
+				}
+
+				entry, isDeficit := deficitSet[fileID]
+				if !isDeficit {
+					continue
+				}
+
+				state.seenPaths[fullPath] = struct{}{}
+				entry.tracker.uniquePathCount++
+
+				if entry.tracker.nlink <= uint64(entry.tracker.uniquePathCount) { //nolint:gosec // uniquePathCount is always positive
+					delete(deficitSet, fileID)
+				}
+			}
+		}
+	}
+
+	if stats.lstatCalls >= maxCrossInstanceLstatCalls {
+		log.Warn().
+			Int("instanceID", instanceID).
+			Int("lstatCalls", stats.lstatCalls).
+			Int("remainingDeficits", len(deficitSet)).
+			Msg("automations: cross-instance Lstat budget exhausted, some deficits may be unresolved")
+	}
+
+	return stats
+}
+
+// computeScopeMap computes hardlink scope for each torrent from the current build state.
+func computeScopeMap(state *hardlinkBuildState) map[string]string {
+	result := make(map[string]string, len(state.torrentInfoByHash))
+	for hash, info := range state.torrentInfoByHash {
+		if !info.allAccessible || len(info.fileIDs) == 0 {
+			continue
+		}
+		scope := HardlinkScopeNone
+		for _, fileID := range info.fileIDs {
+			tracker := state.globalFileIDMap[fileID]
+			if tracker == nil || tracker.nlink <= 1 {
+				continue
+			}
+			if tracker.nlink > uint64(tracker.uniquePathCount) { //nolint:gosec // uniquePathCount is always positive
+				scope = HardlinkScopeOutsideQBitTorrent
+				break
+			}
+			scope = HardlinkScopeTorrentsOnly
+		}
+		result[hash] = scope
+	}
+	return result
 }
 
 // InvalidateHardlinkIndex removes the cached index for an instance.

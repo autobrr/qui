@@ -118,7 +118,8 @@ const (
 	FieldSeedingOnSameInstance  = models.FieldSeedingOnSameInstance
 
 	// Enum-like fields
-	FieldHardlinkScope = models.FieldHardlinkScope
+	FieldHardlinkScope      = models.FieldHardlinkScope
+	FieldHardlinkScopeCross = models.FieldHardlinkScopeCross
 
 	// Hardlink scope values
 	HardlinkScopeNone               = models.HardlinkScopeNone

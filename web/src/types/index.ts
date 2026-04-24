@@ -275,6 +275,7 @@ export type ConditionField =
   | "SEEDING_ON_SAME_INSTANCE"
   // Enum-like fields
   | "HARDLINK_SCOPE"
+  | "HARDLINK_SCOPE_CROSS"
 
 export type ConditionOperator =
   // Logical operators (for groups)
@@ -583,6 +584,7 @@ export interface AutomationPreviewTorrent {
   isCrossSeed?: boolean
   isHardlinkCopy?: boolean // Included via hardlink expansion (not ContentPath match)
   hardlinkScope?: string // none, torrents_only, outside_qbittorrent
+  hardlinkCrossScope?: string // cross-instance: none, torrents_only, outside_qbittorrent
   // Additional fields for dynamic columns
   numSeeds: number
   numComplete: number

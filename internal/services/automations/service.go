@@ -759,18 +759,19 @@ type PreviewTorrent struct {
 	IsHardlinkCopy bool    `json:"isHardlinkCopy,omitempty"` // Included via hardlink expansion (not ContentPath match)
 
 	// Additional fields for dynamic columns based on filter conditions
-	NumSeeds      int64    `json:"numSeeds"`                // Active seeders (connected to)
-	NumComplete   int64    `json:"numComplete"`             // Total seeders in swarm
-	NumLeechs     int64    `json:"numLeechs"`               // Active leechers (connected to)
-	NumIncomplete int64    `json:"numIncomplete"`           // Total leechers in swarm
-	Progress      float64  `json:"progress"`                // Download progress (0-1)
-	Availability  float64  `json:"availability"`            // Distributed copies
-	TimeActive    int64    `json:"timeActive"`              // Total active time (seconds)
-	LastActivity  int64    `json:"lastActivity"`            // Last activity timestamp
-	CompletionOn  int64    `json:"completionOn"`            // Completion timestamp
-	TotalSize     int64    `json:"totalSize"`               // Total torrent size
-	HardlinkScope string   `json:"hardlinkScope,omitempty"` // none, torrents_only, outside_qbittorrent
-	Score         *float64 `json:"score,omitempty"`         // Sorting score
+	NumSeeds           int64    `json:"numSeeds"`                     // Active seeders (connected to)
+	NumComplete        int64    `json:"numComplete"`                  // Total seeders in swarm
+	NumLeechs          int64    `json:"numLeechs"`                    // Active leechers (connected to)
+	NumIncomplete      int64    `json:"numIncomplete"`                // Total leechers in swarm
+	Progress           float64  `json:"progress"`                     // Download progress (0-1)
+	Availability       float64  `json:"availability"`                 // Distributed copies
+	TimeActive         int64    `json:"timeActive"`                   // Total active time (seconds)
+	LastActivity       int64    `json:"lastActivity"`                 // Last activity timestamp
+	CompletionOn       int64    `json:"completionOn"`                 // Completion timestamp
+	TotalSize          int64    `json:"totalSize"`                    // Total torrent size
+	HardlinkScope      string   `json:"hardlinkScope,omitempty"`      // none, torrents_only, outside_qbittorrent
+	HardlinkCrossScope string   `json:"hardlinkCrossScope,omitempty"` // cross-instance scope: none, torrents_only, outside_qbittorrent
+	Score              *float64 `json:"score,omitempty"`              // Sorting score
 }
 
 // buildPreviewTorrent creates a PreviewTorrent from a qbt.Torrent with optional context flags.
@@ -810,6 +811,9 @@ func buildPreviewTorrent(torrent *qbt.Torrent, tracker string, evalCtx *EvalCont
 		}
 		if evalCtx.HardlinkScopeByHash != nil {
 			pt.HardlinkScope = evalCtx.HardlinkScopeByHash[torrent.Hash]
+		}
+		if evalCtx.HardlinkCrossScopeByHash != nil {
+			pt.HardlinkCrossScope = evalCtx.HardlinkCrossScopeByHash[torrent.Hash]
 		}
 	}
 
@@ -991,8 +995,10 @@ func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int
 	needsHardlinkScope := ConditionUsesField(cond, FieldHardlinkScope) ||
 		sortingConfigUsesField(rule.SortingConfig, FieldHardlinkScope) ||
 		rule.Conditions.Delete.IncludeHardlinks
+	needsCrossScope := ConditionUsesField(cond, FieldHardlinkScopeCross) ||
+		sortingConfigUsesField(rule.SortingConfig, FieldHardlinkScopeCross)
 	needsHardlinkSignatureGrouping := ruleUsesHardlinkSignatureGrouping(rule)
-	if !needsHardlinkScope && !needsHardlinkSignatureGrouping {
+	if !needsHardlinkScope && !needsHardlinkSignatureGrouping && !needsCrossScope {
 		return nil
 	}
 
@@ -1001,6 +1007,14 @@ func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int
 		evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
 		if needsHardlinkSignatureGrouping {
 			evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+		}
+		if needsCrossScope {
+			hardlinkIndex.crossScopeOnce.Do(func() {
+				s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
+			})
+			if hardlinkIndex.CrossScopeByHash != nil {
+				evalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
+			}
 		}
 	}
 	return hardlinkIndex
@@ -1622,8 +1636,10 @@ func (s *Service) setupCategoryHardlinkContext(ctx context.Context, instanceID i
 	cond := rule.Conditions.Category.Condition
 	needsHardlinkScope := ConditionUsesField(cond, FieldHardlinkScope) ||
 		sortingConfigUsesField(rule.SortingConfig, FieldHardlinkScope)
+	needsCrossScope := ConditionUsesField(cond, FieldHardlinkScopeCross) ||
+		sortingConfigUsesField(rule.SortingConfig, FieldHardlinkScopeCross)
 	needsHardlinkSignatureGrouping := ruleUsesHardlinkSignatureGrouping(rule)
-	if !needsHardlinkScope && !needsHardlinkSignatureGrouping {
+	if !needsHardlinkScope && !needsHardlinkSignatureGrouping && !needsCrossScope {
 		return
 	}
 
@@ -1632,6 +1648,14 @@ func (s *Service) setupCategoryHardlinkContext(ctx context.Context, instanceID i
 		evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
 		if needsHardlinkSignatureGrouping {
 			evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+		}
+		if needsCrossScope {
+			hardlinkIndex.crossScopeOnce.Do(func() {
+				s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
+			})
+			if hardlinkIndex.CrossScopeByHash != nil {
+				evalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
+			}
 		}
 	}
 }
@@ -1970,14 +1994,21 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// The cached index provides scope detection AND hardlink grouping in a single build.
 	var hardlinkIndex *HardlinkIndex
 	needsHardlinkScope := rulesUseCondition(eligibleRules, FieldHardlinkScope) || rulesUseIncludeHardlinks(eligibleRules)
+	needsCrossScope := rulesUseCondition(eligibleRules, FieldHardlinkScopeCross)
 	needsHardlinkSignatureGrouping := rulesUseHardlinkSignatureGrouping(eligibleRules)
-	needsHardlinkIndex := needsHardlinkScope || needsHardlinkSignatureGrouping
+	needsHardlinkIndex := needsHardlinkScope || needsHardlinkSignatureGrouping || needsCrossScope
 	if instance.HasLocalFilesystemAccess && needsHardlinkIndex {
 		hardlinkIndex = s.GetHardlinkIndex(ctx, instanceID, torrents)
 		if hardlinkIndex != nil {
 			evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
 			if needsHardlinkSignatureGrouping {
 				evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+			}
+			if needsCrossScope && hardlinkIndex.CrossScopeByHash == nil {
+				s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
+			}
+			if hardlinkIndex.CrossScopeByHash != nil {
+				evalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
 			}
 		}
 	}
@@ -4983,17 +5014,30 @@ func (s *Service) recordDryRunActivities(
 			dryRunEvalCtx.InstanceHasLocalAccess = instance.HasLocalFilesystemAccess
 			if dryRunEvalCtx.InstanceHasLocalAccess {
 				needsHardlinkSignature := false
+				needsDryRunCrossScope := false
 				for _, rule := range ruleByID {
 					if ruleUsesHardlinkSignatureGrouping(rule) {
 						needsHardlinkSignature = true
-						break
+					}
+					if ruleUsesCondition(rule, FieldHardlinkScopeCross) {
+						needsDryRunCrossScope = true
 					}
 				}
-				if needsHardlinkSignature {
+				if needsHardlinkSignature || needsDryRunCrossScope {
 					hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
 					if hardlinkIndex != nil {
 						dryRunEvalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
-						dryRunEvalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+						if needsHardlinkSignature {
+							dryRunEvalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
+						}
+						if needsDryRunCrossScope {
+							hardlinkIndex.crossScopeOnce.Do(func() {
+								s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
+							})
+							if hardlinkIndex.CrossScopeByHash != nil {
+								dryRunEvalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
+							}
+						}
 					}
 				}
 			}

@@ -2012,6 +2012,108 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 	}
 }
 
+func TestEvaluateCondition_HardlinkScopeCross(t *testing.T) {
+	torrent := qbt.Torrent{
+		Hash: "abc123",
+		Name: "Test.Torrent",
+	}
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		evalCtx  *EvalContext
+		expected bool
+	}{
+		{
+			name: "cross scope torrents_only - match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeTorrentsOnly,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeTorrentsOnly},
+			},
+			expected: true,
+		},
+		{
+			name: "cross scope outside_qbittorrent - match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeOutsideQBitTorrent,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
+			},
+			expected: true,
+		},
+		{
+			name: "cross scope not outside - match (torrents_only)",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorNotEqual,
+				Value:    HardlinkScopeOutsideQBitTorrent,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeTorrentsOnly},
+			},
+			expected: true,
+		},
+		{
+			name: "nil cross scope map - no match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeNone,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: nil,
+			},
+			expected: false,
+		},
+		{
+			name: "no local access - no match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeNone,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   false,
+				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeNone},
+			},
+			expected: false,
+		},
+		{
+			name: "unknown hash - no match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeNone,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: map[string]string{},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EvaluateConditionWithContext(tt.cond, torrent, tt.evalCtx, 0)
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
 func TestEvaluateCondition_FreeSpaceWithSpaceToClear(t *testing.T) {
 	tests := []struct {
 		name     string

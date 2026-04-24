@@ -222,6 +222,19 @@ const DYNAMIC_COLUMNS: ColumnDef[] = [
     ),
   },
   {
+    key: "hardlinkCrossScope",
+    header: "Hardlinks (Cross)",
+    align: "center",
+    triggerFields: ["HARDLINK_SCOPE_CROSS"],
+    render: (t) => (
+      t.hardlinkCrossScope ? (
+        <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+          {getLabelFromValues(HARDLINK_SCOPE_VALUES, t.hardlinkCrossScope)}
+        </span>
+      ) : null
+    ),
+  },
+  {
     key: "status",
     header: "Status",
     align: "center",

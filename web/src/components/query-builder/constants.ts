@@ -109,6 +109,7 @@ export const CONDITION_FIELDS = {
 
   // Enum-like fields
   HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },
+  HARDLINK_SCOPE_CROSS: { label: "Hardlink scope (cross-instance)", type: "hardlinkScope" as const, description: "Where hardlinks exist considering ALL instances. Requires Local Filesystem Access on all relevant instances." },
 } as const;
 
 export type FieldType = "string" | "state" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope";
@@ -286,7 +287,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Files",
-    fields: ["HARDLINK_SCOPE", "HAS_MISSING_FILES"],
+    fields: ["HARDLINK_SCOPE", "HARDLINK_SCOPE_CROSS", "HAS_MISSING_FILES"],
   },
 ];
 
@@ -362,6 +363,7 @@ export const FIELD_REQUIREMENTS = {
   IS_UNREGISTERED: "trackerHealth",
   HAS_MISSING_FILES: "localFilesystemAccess",
   HARDLINK_SCOPE: "localFilesystemAccess",
+  HARDLINK_SCOPE_CROSS: "localFilesystemAccess",
 } as const;
 
 export const STATE_VALUE_REQUIREMENTS = {
