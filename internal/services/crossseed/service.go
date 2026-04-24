@@ -9179,6 +9179,17 @@ func (s *Service) notifyAutomationRun(ctx context.Context, run *models.CrossSeed
 	eventType := notifications.EventCrossSeedAutomationSucceeded
 	if run.Status == models.CrossSeedRunStatusFailed || run.Status == models.CrossSeedRunStatusPartial {
 		eventType = notifications.EventCrossSeedAutomationFailed
+	} else if run.TorrentsAdded == 0 && run.TorrentsFailed == 0 {
+		log.Info().
+			Int64("runID", run.ID).
+			Str("status", string(run.Status)).
+			Int("feedItems", run.TotalFeedItems).
+			Int("candidates", run.CandidatesFound).
+			Int("added", run.TorrentsAdded).
+			Int("failed", run.TorrentsFailed).
+			Int("skipped", run.TorrentsSkipped).
+			Msg("Skipping cross-seed RSS success notification")
+		return
 	}
 
 	var errorMessage string
