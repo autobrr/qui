@@ -137,8 +137,36 @@ var sqliteMigrationFilenameRenames = []migrationFilenameRename{
 		to:   "066_add_completion_bypass_torznab_cache.sql",
 	},
 	{
+		from: "068_add_season_pack_settings_and_runs.sql",
+		to:   "072_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "069_add_season_pack_settings_and_runs.sql",
+		to:   "072_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "069_add_season_pack_tags.sql",
+		to:   "072_add_season_pack_settings_and_runs.sql",
+	},
+	{
 		from: "070_add_season_pack_settings_and_runs.sql",
-		to:   "071_add_season_pack_settings_and_runs.sql",
+		to:   "072_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "070_add_season_pack_tags.sql",
+		to:   "072_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "070_add_season_pack_metadata_settings.sql",
+		to:   "072_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "071_add_season_pack_settings_and_runs.sql",
+		to:   "072_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "071_add_season_pack_metadata_settings.sql",
+		to:   "072_add_season_pack_settings_and_runs.sql",
 	},
 }
 
@@ -148,8 +176,36 @@ var postgresMigrationFilenameRenames = []migrationFilenameRename{
 		to:   "067_add_completion_bypass_torznab_cache.sql",
 	},
 	{
+		from: "069_add_season_pack_settings_and_runs.sql",
+		to:   "073_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "070_add_season_pack_settings_and_runs.sql",
+		to:   "073_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "070_add_season_pack_tags.sql",
+		to:   "073_add_season_pack_settings_and_runs.sql",
+	},
+	{
 		from: "071_add_season_pack_settings_and_runs.sql",
-		to:   "072_add_season_pack_settings_and_runs.sql",
+		to:   "073_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "071_add_season_pack_tags.sql",
+		to:   "073_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "071_add_season_pack_metadata_settings.sql",
+		to:   "073_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "072_add_season_pack_settings_and_runs.sql",
+		to:   "073_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "072_add_season_pack_metadata_settings.sql",
+		to:   "073_add_season_pack_settings_and_runs.sql",
 	},
 }
 
