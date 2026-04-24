@@ -1215,6 +1215,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
     qbitPathPrefix: directory?.qbitPathPrefix ?? "",
     category: directory?.category ?? "",
     tags: directory?.tags ?? [],
+    allowedDownloadClients: directory?.allowedDownloadClients ?? [],
     enabled: directory?.enabled ?? true,
     targetInstanceId: directory?.targetInstanceId ?? defaultTargetInstanceId,
     scanIntervalMinutes: directory?.scanIntervalMinutes ?? 1440,
@@ -1253,6 +1254,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
         qbitPathPrefix: directory.qbitPathPrefix ?? "",
         category: directory.category ?? "",
         tags: directory.tags ?? [],
+        allowedDownloadClients: directory.allowedDownloadClients ?? [],
         enabled: directory.enabled,
         targetInstanceId: directory.targetInstanceId,
         scanIntervalMinutes: directory.scanIntervalMinutes,
@@ -1263,6 +1265,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
         qbitPathPrefix: "",
         category: "",
         tags: [],
+        allowedDownloadClients: [],
         enabled: true,
         targetInstanceId: defaultTargetInstanceId,
         scanIntervalMinutes: 1440,
@@ -1417,6 +1420,23 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
             )}
             <p className="text-xs text-muted-foreground">
               Added on top of the global Dir Scan tags. Suggested: <span className="font-mono">dirscan</span>, <span className="font-mono">needs-review</span>.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Allowed Download Clients</Label>
+            <MultiSelect
+              options={(form.allowedDownloadClients ?? []).map((value) => ({ label: value, value }))}
+              selected={form.allowedDownloadClients ?? []}
+              onChange={(values) =>
+                setForm((prev) => ({ ...prev, allowedDownloadClients: values }))
+              }
+              placeholder="All clients (leave empty for all)"
+              creatable
+              disabled={isPending}
+            />
+            <p className="text-xs text-muted-foreground">
+              Only trigger webhook scans when the Sonarr/Radarr download client name matches. Exact names are copied from Sonarr/Radarr; matching is case-insensitive.
             </p>
           </div>
 
