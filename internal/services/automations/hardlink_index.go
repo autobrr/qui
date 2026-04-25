@@ -57,6 +57,7 @@ type HardlinkIndex struct {
 	// Considers files from ALL instances with HasLocalFilesystemAccess when resolving
 	// whether "outside" links are on other qBittorrent instances or truly external.
 	// Used for HARDLINK_SCOPE_CROSS condition evaluation. Nil until Phase 2 runs.
+	// Access requires holding crossScopeMu.
 	CrossScopeByHash map[string]string
 
 	// builtAt is when this index was built.
@@ -67,9 +68,11 @@ type HardlinkIndex struct {
 
 	// buildState holds intermediate data from Phase 1 that Phase 2 (cross-instance
 	// augmentation) needs. Retained until cross-scope is computed or the index is replaced.
+	// Access requires holding crossScopeMu.
 	buildState *hardlinkBuildState
 
-	// crossScopeMu protects concurrent access to augmentCrossInstanceScope.
+	// crossScopeMu protects CrossScopeByHash and buildState from concurrent access.
+	// augmentCrossInstanceScope and finalizeCrossScope must be called with this held.
 	// On success, CrossScopeByHash is set and buildState freed.
 	// On failure (e.g. context cancellation), CrossScopeByHash stays nil and
 	// buildState is retained so the next caller can retry.
@@ -268,6 +271,14 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 			allAccessible: true,
 		}
 		torrentInfoByHash[hash] = info
+
+		// Reject empty or non-absolute save paths to prevent Lstat on unintended locations.
+		if torrent.SavePath == "" || !filepath.IsAbs(torrent.SavePath) {
+			info.allAccessible = false
+			info.hasInvalidPath = true
+			torrentsInvalidPaths++
+			continue
+		}
 
 		for _, f := range files {
 			fullPath := buildFullPath(torrent.SavePath, f.Name)
@@ -515,11 +526,18 @@ func (idx *HardlinkIndex) GetHardlinkScope(hash string) string {
 
 // GetHardlinkCrossScope returns the cross-instance hardlink scope for a torrent.
 // Returns empty string if cross-scope has not been computed or is unknown.
+// Safe for concurrent use; acquires crossScopeMu internally.
 func (idx *HardlinkIndex) GetHardlinkCrossScope(hash string) string {
-	if idx == nil || idx.CrossScopeByHash == nil {
+	if idx == nil {
 		return ""
 	}
-	if scope, ok := idx.CrossScopeByHash[hash]; ok {
+	idx.crossScopeMu.Lock()
+	scopeMap := idx.CrossScopeByHash
+	idx.crossScopeMu.Unlock()
+	if scopeMap == nil {
+		return ""
+	}
+	if scope, ok := scopeMap[hash]; ok {
 		return scope
 	}
 	return ""
