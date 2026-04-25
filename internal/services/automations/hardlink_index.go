@@ -70,6 +70,8 @@ type HardlinkIndex struct {
 	buildState *hardlinkBuildState
 
 	// crossScopeOnce ensures augmentCrossInstanceScope runs at most once per index.
+	// If the caller's context is cancelled mid-augmentation, unresolved deficits remain
+	// as outside_qbittorrent (conservative). The index TTL (2 min) bounds staleness.
 	crossScopeOnce sync.Once
 }
 
@@ -102,7 +104,9 @@ var globalHardlinkIndexCache = &hardlinkIndexCache{
 
 // GetHardlinkIndex returns a cached or freshly built hardlink index for the given instance.
 // The index is cached for 2 minutes and invalidated when the torrent set changes.
-func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents []qbt.Torrent) *HardlinkIndex {
+// When needsCrossScope is true, the index retains intermediate build state so that
+// augmentCrossInstanceScope can later augment it without re-scanning the current instance.
+func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents []qbt.Torrent, needsCrossScope bool) *HardlinkIndex {
 	if s == nil || s.syncManager == nil {
 		return nil
 	}
@@ -123,7 +127,7 @@ func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents
 	// Include digest in key so concurrent calls with different torrent sets don't share results.
 	key := strconv.Itoa(instanceID) + ":" + currentDigest
 	result, err, _ := globalHardlinkIndexCache.sf.Do(key, func() (any, error) {
-		return s.buildHardlinkIndex(ctx, instanceID, torrents, currentDigest), nil
+		return s.buildHardlinkIndex(ctx, instanceID, torrents, currentDigest, needsCrossScope), nil
 	})
 	if err != nil {
 		return nil
@@ -137,7 +141,7 @@ func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents
 	// Validate digest matches (paranoid check for edge cases)
 	if idx.digest != currentDigest {
 		// Rebuild with correct digest
-		return s.buildHardlinkIndex(ctx, instanceID, torrents, currentDigest)
+		return s.buildHardlinkIndex(ctx, instanceID, torrents, currentDigest, needsCrossScope)
 	}
 	return idx
 }
@@ -184,7 +188,7 @@ type fileIDTracker struct {
 // The complexity is inherent to the single-pass algorithm that avoids multiple filesystem scans.
 //
 //nolint:gocognit,gocyclo,funlen,revive // complexity is inherent to the single-pass design
-func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torrents []qbt.Torrent, digest string) *HardlinkIndex {
+func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torrents []qbt.Torrent, digest string, retainBuildState bool) *HardlinkIndex {
 	startTime := time.Now()
 	index := &HardlinkIndex{
 		SignatureByHash:            make(map[string]string),
@@ -361,11 +365,15 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 	pruneSingletonHardlinkGroups(index.SignatureByHash, index.GroupBySignature)
 	pruneSingletonHardlinkGroups(index.DeleteSafeSignatureByHash, index.DeleteSafeGroupBySignature)
 
-	// Retain build state for potential cross-instance augmentation (Phase 2).
-	index.buildState = &hardlinkBuildState{
-		globalFileIDMap:   globalFileIDMap,
-		seenPaths:         seenPaths,
-		torrentInfoByHash: torrentInfoByHash,
+	// Retain build state only when cross-instance augmentation (Phase 2) may be needed.
+	// This avoids keeping globalFileIDMap/seenPaths/torrentInfoByHash in memory for
+	// runs that only use HARDLINK_SCOPE or includeHardlinks.
+	if retainBuildState {
+		index.buildState = &hardlinkBuildState{
+			globalFileIDMap:   globalFileIDMap,
+			seenPaths:         seenPaths,
+			torrentInfoByHash: torrentInfoByHash,
+		}
 	}
 
 	// Set builtAt at the end of successful build (not start) to avoid TTL issues with slow builds
@@ -599,10 +607,10 @@ func collectDeficitFileIDs(state *hardlinkBuildState) map[hardlink.FileID]*defic
 
 // finalizeCrossScope copies ScopeByHash to CrossScopeByHash and frees build state.
 // Used when Phase 2 cannot or does not need to scan other instances.
-func (index *HardlinkIndex) finalizeCrossScope(state *hardlinkBuildState, instanceID int, reason string) {
-	index.CrossScopeByHash = make(map[string]string, len(index.ScopeByHash))
-	maps.Copy(index.CrossScopeByHash, index.ScopeByHash)
-	index.buildState = nil
+func (idx *HardlinkIndex) finalizeCrossScope(state *hardlinkBuildState, instanceID int, reason string) {
+	idx.CrossScopeByHash = make(map[string]string, len(idx.ScopeByHash))
+	maps.Copy(idx.CrossScopeByHash, idx.ScopeByHash)
+	idx.buildState = nil
 	if reason != "" {
 		log.Debug().Int("instanceID", instanceID).
 			Msgf("automations: cross-instance scope matches single-instance (%s)", reason)
@@ -626,10 +634,10 @@ func (s *Service) listCrossScopeInstances(ctx context.Context, instanceID int) (
 
 // crossScanStats holds counters from the cross-instance scan loop.
 type crossScanStats struct {
-	scanned, skipped   int
-	deficitBefore      int
-	lstatCalls         int
-	lstatErrors        int
+	scanned, skipped int
+	deficitBefore    int
+	lstatCalls       int
+	lstatErrors      int
 }
 
 // maxCrossInstanceLstatCalls limits the total Lstat calls during cross-instance scanning

@@ -567,8 +567,12 @@ func TestCrossScope_SeenPathsDedup(t *testing.T) {
 func TestCrossScope_ContextCancellation(t *testing.T) {
 	t.Parallel()
 
-	// augmentCrossInstanceScope should respect context cancellation.
-	// With a cancelled context and a deficit, it should fall back gracefully.
+	// augmentCrossInstanceScope should handle a cancelled context gracefully.
+	// Note: this test hits the nil-instanceStore guard before reaching the ctx.Err()
+	// check in the scan loop because instanceStore/syncManager are concrete types
+	// (not interfaces), so we can't inject stubs without refactoring Service.
+	// The scan loop's ctx.Err() check is exercised implicitly in production when
+	// the automation runner's context is cancelled mid-scan.
 	fid := hardlink.FileID{Dev: 1, Ino: 999}
 	index := &HardlinkIndex{
 		ScopeByHash: map[string]string{"hash1": HardlinkScopeOutsideQBitTorrent},
@@ -606,8 +610,8 @@ func TestCrossScope_InaccessibleTorrentExcluded(t *testing.T) {
 	// Torrents with allAccessible=false should not appear in cross-scope.
 	fid := hardlink.FileID{Dev: 1, Ino: 200}
 	state := &hardlinkBuildState{
-		globalFileIDMap:   map[hardlink.FileID]*fileIDTracker{},
-		seenPaths:         make(map[string]struct{}),
+		globalFileIDMap: map[hardlink.FileID]*fileIDTracker{},
+		seenPaths:       make(map[string]struct{}),
 		torrentInfoByHash: map[string]*torrentFileInfo{
 			"accessible": {
 				fileIDs:       []hardlink.FileID{fid},

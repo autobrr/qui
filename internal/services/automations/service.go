@@ -1002,7 +1002,7 @@ func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int
 		return nil
 	}
 
-	hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
+	hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents, needsCrossScope)
 	if hardlinkIndex != nil {
 		evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
 		if needsHardlinkSignatureGrouping {
@@ -1643,7 +1643,7 @@ func (s *Service) setupCategoryHardlinkContext(ctx context.Context, instanceID i
 		return
 	}
 
-	hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
+	hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents, needsCrossScope)
 	if hardlinkIndex != nil {
 		evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
 		if needsHardlinkSignatureGrouping {
@@ -1998,17 +1998,19 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	needsHardlinkSignatureGrouping := rulesUseHardlinkSignatureGrouping(eligibleRules)
 	needsHardlinkIndex := needsHardlinkScope || needsHardlinkSignatureGrouping || needsCrossScope
 	if instance.HasLocalFilesystemAccess && needsHardlinkIndex {
-		hardlinkIndex = s.GetHardlinkIndex(ctx, instanceID, torrents)
+		hardlinkIndex = s.GetHardlinkIndex(ctx, instanceID, torrents, needsCrossScope)
 		if hardlinkIndex != nil {
 			evalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
 			if needsHardlinkSignatureGrouping {
 				evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
 			}
-			if needsCrossScope && hardlinkIndex.CrossScopeByHash == nil {
-				s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
-			}
-			if hardlinkIndex.CrossScopeByHash != nil {
-				evalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
+			if needsCrossScope {
+				hardlinkIndex.crossScopeOnce.Do(func() {
+					s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
+				})
+				if hardlinkIndex.CrossScopeByHash != nil {
+					evalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
+				}
 			}
 		}
 	}
@@ -5024,7 +5026,7 @@ func (s *Service) recordDryRunActivities(
 					}
 				}
 				if needsHardlinkSignature || needsDryRunCrossScope {
-					hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents)
+					hardlinkIndex := s.GetHardlinkIndex(ctx, instanceID, torrents, needsDryRunCrossScope)
 					if hardlinkIndex != nil {
 						dryRunEvalCtx.HardlinkScopeByHash = hardlinkIndex.ScopeByHash
 						if needsHardlinkSignature {

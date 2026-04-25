@@ -841,7 +841,7 @@ This rule tags torrents with `noHL` when they have no media library hardlinks, e
             {
               "field": "STATE",
               "operator": "EQUAL",
-              "value": "seeding"
+              "value": "uploading"
             }
           ]
         }
