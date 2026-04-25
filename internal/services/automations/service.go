@@ -1009,9 +1009,11 @@ func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int
 			evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
 		}
 		if needsCrossScope {
-			hardlinkIndex.crossScopeOnce.Do(func() {
+			hardlinkIndex.crossScopeMu.Lock()
+			if hardlinkIndex.CrossScopeByHash == nil && hardlinkIndex.buildState != nil {
 				s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
-			})
+			}
+			hardlinkIndex.crossScopeMu.Unlock()
 			if hardlinkIndex.CrossScopeByHash != nil {
 				evalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
 			}
@@ -1650,9 +1652,11 @@ func (s *Service) setupCategoryHardlinkContext(ctx context.Context, instanceID i
 			evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
 		}
 		if needsCrossScope {
-			hardlinkIndex.crossScopeOnce.Do(func() {
+			hardlinkIndex.crossScopeMu.Lock()
+			if hardlinkIndex.CrossScopeByHash == nil && hardlinkIndex.buildState != nil {
 				s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
-			})
+			}
+			hardlinkIndex.crossScopeMu.Unlock()
 			if hardlinkIndex.CrossScopeByHash != nil {
 				evalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
 			}
@@ -2005,9 +2009,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				evalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
 			}
 			if needsCrossScope {
-				hardlinkIndex.crossScopeOnce.Do(func() {
+				hardlinkIndex.crossScopeMu.Lock()
+				if hardlinkIndex.CrossScopeByHash == nil && hardlinkIndex.buildState != nil {
 					s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
-				})
+				}
+				hardlinkIndex.crossScopeMu.Unlock()
 				if hardlinkIndex.CrossScopeByHash != nil {
 					evalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
 				}
@@ -5033,9 +5039,11 @@ func (s *Service) recordDryRunActivities(
 							dryRunEvalCtx.HardlinkSignatureByHash = hardlinkIndex.SignatureByHash
 						}
 						if needsDryRunCrossScope {
-							hardlinkIndex.crossScopeOnce.Do(func() {
+							hardlinkIndex.crossScopeMu.Lock()
+							if hardlinkIndex.CrossScopeByHash == nil && hardlinkIndex.buildState != nil {
 								s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
-							})
+							}
+							hardlinkIndex.crossScopeMu.Unlock()
 							if hardlinkIndex.CrossScopeByHash != nil {
 								dryRunEvalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
 							}

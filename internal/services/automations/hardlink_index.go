@@ -69,10 +69,11 @@ type HardlinkIndex struct {
 	// augmentation) needs. Retained until cross-scope is computed or the index is replaced.
 	buildState *hardlinkBuildState
 
-	// crossScopeOnce ensures augmentCrossInstanceScope runs at most once per index.
-	// If the caller's context is cancelled mid-augmentation, unresolved deficits remain
-	// as outside_qbittorrent (conservative). The index TTL (2 min) bounds staleness.
-	crossScopeOnce sync.Once
+	// crossScopeMu protects concurrent access to augmentCrossInstanceScope.
+	// On success, CrossScopeByHash is set and buildState freed.
+	// On failure (e.g. context cancellation), CrossScopeByHash stays nil and
+	// buildState is retained so the next caller can retry.
+	crossScopeMu sync.Mutex
 }
 
 // hardlinkBuildState holds intermediate state from the single-instance scan so that
@@ -562,6 +563,14 @@ func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int,
 	}
 
 	stats := s.scanOtherInstancesForDeficits(ctx, instanceID, otherInstances, deficitSet, state)
+
+	// If context was cancelled during scanning, don't cache partial results.
+	// Leave CrossScopeByHash nil and retain buildState so the next caller can retry.
+	if ctx.Err() != nil {
+		log.Warn().Int("instanceID", instanceID).
+			Msg("automations: cross-instance scope aborted (context cancelled), will retry on next run")
+		return
+	}
 
 	// Recompute scope for all torrents using augmented counts.
 	index.CrossScopeByHash = computeScopeMap(state)
