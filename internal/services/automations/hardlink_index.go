@@ -119,13 +119,26 @@ func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents
 	cached := globalHardlinkIndexCache.indices[instanceID]
 	globalHardlinkIndexCache.mu.RUnlock()
 
-	if cached != nil && time.Since(cached.builtAt) < hardlinkIndexTTL && cached.digest == currentDigest {
+	cacheValid := cached != nil && time.Since(cached.builtAt) < hardlinkIndexTTL && cached.digest == currentDigest
+	if cacheValid {
+		// If cross-scope is requested but the cached index lacks build state and hasn't
+		// computed cross-scope yet, treat as a cache miss so we rebuild with retainBuildState.
+		if needsCrossScope && cached.CrossScopeByHash == nil && cached.buildState == nil {
+			cacheValid = false
+		}
+	}
+	if cacheValid {
 		return cached
 	}
 
 	// Build index with singleflight to prevent duplicate builds.
-	// Include digest in key so concurrent calls with different torrent sets don't share results.
-	key := strconv.Itoa(instanceID) + ":" + currentDigest
+	// Include digest and cross-scope flag in key so concurrent calls with different
+	// scope requirements don't collide.
+	crossFlag := "0"
+	if needsCrossScope {
+		crossFlag = "1"
+	}
+	key := strconv.Itoa(instanceID) + ":" + currentDigest + ":" + crossFlag
 	result, err, _ := globalHardlinkIndexCache.sf.Do(key, func() (any, error) {
 		return s.buildHardlinkIndex(ctx, instanceID, torrents, currentDigest, needsCrossScope), nil
 	})
@@ -515,14 +528,6 @@ func (idx *HardlinkIndex) GetHardlinkCrossScope(hash string) string {
 // It only Lstats files from other instances that might resolve deficit FileIDs (where
 // nlink > uniquePathCount after the single-instance scan). Scanning stops early once all
 // deficits are resolved.
-//
-// augmentCrossInstanceScope runs Phase 2 of the hardlink index: scanning files from other
-// instances to determine whether "outside" hardlinks point to other qBittorrent instances
-// or to truly external paths (media libraries, import dirs, etc.).
-//
-// It only Lstats files from other instances that might resolve deficit FileIDs (where
-// nlink > uniquePathCount after the single-instance scan). Scanning stops early once all
-// deficits are resolved.
 func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int, index *HardlinkIndex) {
 	if index == nil || index.buildState == nil {
 		return
@@ -533,14 +538,14 @@ func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int,
 	deficitSet := collectDeficitFileIDs(state)
 
 	if len(deficitSet) == 0 {
-		index.finalizeCrossScope(state, instanceID, "no deficits")
+		index.finalizeCrossScope(instanceID, "no deficits")
 		return
 	}
 
 	if s.instanceStore == nil || s.syncManager == nil {
 		log.Warn().Int("instanceID", instanceID).
 			Msg("automations: instanceStore or syncManager unavailable for cross-scope, falling back to single-instance scope")
-		index.finalizeCrossScope(state, instanceID, "")
+		index.finalizeCrossScope(instanceID, "")
 		return
 	}
 
@@ -548,11 +553,11 @@ func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int,
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).
 			Msg("automations: failed to list instances for cross-scope, falling back to single-instance scope")
-		index.finalizeCrossScope(state, instanceID, "")
+		index.finalizeCrossScope(instanceID, "")
 		return
 	}
 	if len(otherInstances) == 0 {
-		index.finalizeCrossScope(state, instanceID, "no other instances with local access")
+		index.finalizeCrossScope(instanceID, "no other instances with local access")
 		return
 	}
 
@@ -589,17 +594,12 @@ func (s *Service) augmentCrossInstanceScope(ctx context.Context, instanceID int,
 		Msg("automations: cross-instance hardlink scope computed")
 }
 
-// deficitEntry tracks a fileIDTracker that has unresolved outside links.
-type deficitEntry struct {
-	tracker *fileIDTracker
-}
-
 // collectDeficitFileIDs returns FileIDs where nlink > uniquePathCount.
-func collectDeficitFileIDs(state *hardlinkBuildState) map[hardlink.FileID]*deficitEntry {
-	deficitSet := make(map[hardlink.FileID]*deficitEntry)
+func collectDeficitFileIDs(state *hardlinkBuildState) map[hardlink.FileID]*fileIDTracker {
+	deficitSet := make(map[hardlink.FileID]*fileIDTracker)
 	for fileID, tracker := range state.globalFileIDMap {
 		if tracker.nlink > uint64(tracker.uniquePathCount) { //nolint:gosec // uniquePathCount is always positive
-			deficitSet[fileID] = &deficitEntry{tracker: tracker}
+			deficitSet[fileID] = tracker
 		}
 	}
 	return deficitSet
@@ -607,7 +607,7 @@ func collectDeficitFileIDs(state *hardlinkBuildState) map[hardlink.FileID]*defic
 
 // finalizeCrossScope copies ScopeByHash to CrossScopeByHash and frees build state.
 // Used when Phase 2 cannot or does not need to scan other instances.
-func (idx *HardlinkIndex) finalizeCrossScope(state *hardlinkBuildState, instanceID int, reason string) {
+func (idx *HardlinkIndex) finalizeCrossScope(instanceID int, reason string) {
 	idx.CrossScopeByHash = make(map[string]string, len(idx.ScopeByHash))
 	maps.Copy(idx.CrossScopeByHash, idx.ScopeByHash)
 	idx.buildState = nil
@@ -652,7 +652,7 @@ func (s *Service) scanOtherInstancesForDeficits(
 	ctx context.Context,
 	instanceID int,
 	otherInstances []int,
-	deficitSet map[hardlink.FileID]*deficitEntry,
+	deficitSet map[hardlink.FileID]*fileIDTracker,
 	state *hardlinkBuildState,
 ) crossScanStats {
 	stats := crossScanStats{deficitBefore: len(deficitSet)}
@@ -727,15 +727,15 @@ func (s *Service) scanOtherInstancesForDeficits(
 					continue
 				}
 
-				entry, isDeficit := deficitSet[fileID]
+				tracker, isDeficit := deficitSet[fileID]
 				if !isDeficit {
 					continue
 				}
 
 				state.seenPaths[fullPath] = struct{}{}
-				entry.tracker.uniquePathCount++
+				tracker.uniquePathCount++
 
-				if entry.tracker.nlink <= uint64(entry.tracker.uniquePathCount) { //nolint:gosec // uniquePathCount is always positive
+				if tracker.nlink <= uint64(tracker.uniquePathCount) { //nolint:gosec // uniquePathCount is always positive
 					delete(deficitSet, fileID)
 				}
 			}

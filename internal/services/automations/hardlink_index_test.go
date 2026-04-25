@@ -164,6 +164,7 @@ func TestIsPathInsideBase_OSSpecific(t *testing.T) {
 }
 
 func TestAugmentCrossInstanceScope_NoDeficits(t *testing.T) {
+	t.Parallel()
 	// When there are no deficit FileIDs, CrossScopeByHash should equal ScopeByHash.
 	index := &HardlinkIndex{
 		ScopeByHash: map[string]string{
@@ -198,6 +199,7 @@ func TestAugmentCrossInstanceScope_NoDeficits(t *testing.T) {
 }
 
 func TestAugmentCrossInstanceScope_NilIndex(t *testing.T) {
+	t.Parallel()
 	s := &Service{}
 	// Should not panic on nil index.
 	s.augmentCrossInstanceScope(t.Context(), 1, nil)
@@ -211,6 +213,7 @@ func TestAugmentCrossInstanceScope_NilIndex(t *testing.T) {
 }
 
 func TestAugmentCrossInstanceScope_DeficitWithNoOtherInstances(t *testing.T) {
+	t.Parallel()
 	// Simulate: torrent with one file that has nlink=2, uniquePathCount=1 (deficit).
 	// No other instances available -> cross-scope should fall back to single-instance scope.
 	fid := hardlink.FileID{Dev: 1, Ino: 100}
