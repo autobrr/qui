@@ -121,10 +121,13 @@ func (s *Service) GetHardlinkIndex(ctx context.Context, instanceID int, torrents
 	globalHardlinkIndexCache.mu.RUnlock()
 
 	cacheValid := cached != nil && time.Since(cached.builtAt) < hardlinkIndexTTL && cached.digest == currentDigest
-	if cacheValid {
-		// If cross-scope is requested but the cached index lacks build state and hasn't
-		// computed cross-scope yet, treat as a cache miss so we rebuild with retainBuildState.
-		if needsCrossScope && cached.CrossScopeByHash == nil && cached.buildState == nil {
+	if cacheValid && needsCrossScope {
+		// Check cross-scope fields under the per-index mutex to avoid racing with
+		// a concurrent augmentCrossInstanceScope that writes these fields.
+		cached.crossScopeMu.Lock()
+		needsRebuild := cached.CrossScopeByHash == nil && cached.buildState == nil
+		cached.crossScopeMu.Unlock()
+		if needsRebuild {
 			cacheValid = false
 		}
 	}
@@ -667,7 +670,7 @@ func (s *Service) scanOtherInstancesForDeficits(
 	stats := crossScanStats{deficitBefore: len(deficitSet)}
 
 	for _, otherID := range otherInstances {
-		if ctx.Err() != nil || len(deficitSet) == 0 {
+		if ctx.Err() != nil || len(deficitSet) == 0 || stats.lstatCalls >= maxCrossInstanceLstatCalls {
 			break
 		}
 
