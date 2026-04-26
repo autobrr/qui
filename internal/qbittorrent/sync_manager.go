@@ -6348,6 +6348,13 @@ func (sm *SyncManager) SetRSSRule(ctx context.Context, instanceID int, ruleName 
 		return fmt.Errorf("failed to get client: %w", err)
 	}
 
+	// qBittorrent < 5.0 ignores torrentParams and uses legacy flat fields instead.
+	// Mirror the values so category/savePath persist on older instances.
+	if rule.TorrentParams != nil {
+		rule.AssignedCategory = rule.TorrentParams.Category
+		rule.SavePath = rule.TorrentParams.SavePath
+	}
+
 	return client.SetRSSRuleCtx(ctx, ruleName, rule)
 }
 
