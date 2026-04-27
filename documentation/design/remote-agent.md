@@ -6,15 +6,13 @@ qui has a cluster of features that work only when the qui process and qBittorren
 
 **Proposal.** Ship a separate single-binary daemon, `qui-agent`, that runs on the same host as the remote qBittorrent. The agent **dials qui** over outbound HTTPS, registers, and long-polls for filesystem jobs. qui dispatches FS ops to the agent through that connection instead of calling `os.*` locally. The agent is opt-in per-instance and additive: it lands behind a new interface so the existing local-filesystem code path is untouched until the user opts in.
 
-A user-submitted RFC exists at autobrr/qui#1814 (2026-04-26). It proposes the inverse direction (qui pulls from a listening agent) plus SPKI-pinned TLS, AES-GCM bearer token, and allow-listed roots with `openat2(RESOLVE_BENEATH)`. We adopt the security primitives but invert the connection direction: shared seedboxes rarely give users an arbitrary inbound listening port, and qui already has a publicly reachable URL as a precondition of the product. Agent-dials-qui matches the topology that actually exists.
-
 **Success criteria.** A user installs `qui-agent` on a seedbox, runs `qui-agent pair <one-time-string>` with a string copied out of qui's UI, and sees cross-seed inject, dirscan, orphanscan, missing-files, and free-space all work over the wire with the same UX they have today on a co-located host. No inbound port required on the seedbox. Existing local-filesystem deployments see zero behavior change. Re-pairing, rotating credentials, or revoking access is straightforward.
 
 **Non-goals.**
 - Not a general-purpose RPC. Job ops are scoped exactly to qui's filesystem features.
 - The agent does not execute user scripts, exec arbitrary programs, or proxy qBittorrent's WebUI.
 - v1 does not support one agent serving multiple qui installs (each agent is paired to exactly one qui via its bearer; one-to-one).
-- No agent-listens mode in v1 (no inbound port on the seedbox). The agent always dials qui. This deliberately removes the "do I have a forwarded port?" question from the install flow. Federated/multi-qui setups can be revisited later.
+- No agent-listens mode in v1 (no inbound port on the seedbox). The agent always dials qui. This deliberately removes the "do I have a forwarded port?" question from the install flow.
 - No NAT traversal needed: outbound HTTPS is universal on every seedbox (qBittorrent already needs it for trackers, RSS, etc.).
 - No agent-side scheduling. The agent executes jobs qui dispatches; qui owns scheduling.
 - The agent does not manage qBittorrent itself. It is purely a filesystem broker.
