@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,7 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // Config holds configuration for the directory scanner service.
@@ -1497,7 +1499,7 @@ func (s *Service) processSearchee(
 		Msg("dirscan: got search results")
 
 	// Try to match and inject
-	return s.tryMatchResults(ctx, dir, searchee, response, minSize, maxSize, contentType, settings, matcher, runID, l), searcheeOutcome{searched: true}
+	return s.tryMatchResults(ctx, dir, searchee, meta, response, minSize, maxSize, contentType, settings, matcher, runID, l), searcheeOutcome{searched: true}
 }
 
 func (s *Service) buildSearcheeMetadata(searchee *Searchee) (meta *SearcheeMetadata, arrLookupName string) {
@@ -1641,6 +1643,7 @@ func (s *Service) tryMatchResults(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
 	searchee *Searchee,
+	searcheeMeta *SearcheeMetadata,
 	response *jackett.SearchResponse,
 	minSize, maxSize int64,
 	contentType string,
@@ -1660,7 +1663,7 @@ func (s *Service) tryMatchResults(
 			return false
 		},
 		func(result *jackett.SearchResult) *searcheeMatch {
-			return s.tryMatchAndInject(ctx, dir, searchee, result, contentType, settings, matcher, runID, l)
+			return s.tryMatchAndInject(ctx, dir, searchee, searcheeMeta, result, contentType, settings, matcher, runID, l)
 		},
 	)
 
@@ -1726,6 +1729,7 @@ func (s *Service) tryMatchAndInject(
 	ctx context.Context,
 	dir *models.DirScanDirectory,
 	searchee *Searchee,
+	searcheeMeta *SearcheeMetadata,
 	result *jackett.SearchResult,
 	contentType string,
 	settings *models.DirScanSettings,
@@ -1740,6 +1744,7 @@ func (s *Service) tryMatchAndInject(
 
 	matchResult := matcher.Match(searchee, parsed.Files)
 	decision := shouldAcceptDirScanMatch(matchResult, parsed, settings)
+	decision = refineDirScanMatchDecision(searchee, searcheeMeta, parsed, result, settings, matchResult, decision)
 	if !decision.Accept {
 		logDirScanMatchRejection(l, searchee, result, parsed, contentType, settings, matchResult, decision, matcher)
 		return nil
@@ -1763,15 +1768,7 @@ func (s *Service) tryMatchAndInject(
 		}
 	}
 
-	l.Info().
-		Str("name", searchee.Name).
-		Str("torrent", parsed.Name).
-		Str("hash", parsed.InfoHash).
-		Bool("perfect", matchResult.IsPerfectMatch).
-		Bool("partial", matchResult.IsPartialMatch).
-		Float64("matchRatio", matchResult.MatchRatio).
-		Float64("pieceMatchPercent", decision.PieceMatchPercent).
-		Msg("dirscan: found match")
+	logDirScanAcceptedMatch(l, searchee, parsed, matchResult, decision)
 
 	category := settings.Category
 	if dir.Category != "" {
@@ -1865,6 +1862,9 @@ func logDirScanMatchRejection(
 		Strs("unmatchedSearcheeExts", summarizeDirScanExtensions(matchResult.UnmatchedSearcheeFiles, 5)).
 		Float64("pieceMatchPercent", decision.PieceMatchPercent).
 		Bool("pieceBoundaryUnsafe", decision.PieceBoundaryUnsafe).
+		Bool("nameCorroborated", decision.NameCorroborated).
+		Bool("titleCorroborated", decision.TitleCorroborated).
+		Bool("idCorroborated", decision.IDCorroborated).
 		Str("reason", decision.Reason).
 		Str("hint", hint).
 		Strs("hints", hints).
@@ -1969,6 +1969,9 @@ type dirScanMatchDecision struct {
 	Reason              string
 	PieceMatchPercent   float64
 	PieceBoundaryUnsafe bool
+	NameCorroborated    bool
+	TitleCorroborated   bool
+	IDCorroborated      bool
 }
 
 func shouldAcceptDirScanMatch(match *MatchResult, parsed *ParsedTorrent, settings *models.DirScanSettings) dirScanMatchDecision {
@@ -2018,6 +2021,224 @@ func shouldAcceptDirScanMatch(match *MatchResult, parsed *ParsedTorrent, setting
 	return decision
 }
 
+func refineDirScanMatchDecision(
+	searchee *Searchee,
+	searcheeMeta *SearcheeMetadata,
+	parsed *ParsedTorrent,
+	result *jackett.SearchResult,
+	settings *models.DirScanSettings,
+	match *MatchResult,
+	decision dirScanMatchDecision,
+) dirScanMatchDecision {
+	if !decision.Accept || searchee == nil || parsed == nil || settings == nil || match == nil {
+		return decision
+	}
+
+	if settings.MatchMode != models.MatchModeFlexible || !match.IsPerfectMatch {
+		return decision
+	}
+
+	// Size-only single-file matches are the riskiest false positives when scanning
+	// renamed movie libraries. Require corroborating title or ID evidence before inject.
+	if len(searchee.Files) != 1 || len(parsed.Files) != 1 {
+		return decision
+	}
+
+	if hasMatchedNameEvidence(match) {
+		decision.NameCorroborated = true
+		return decision
+	}
+
+	candidateMetas := candidateMetadataVariants(parsed, result)
+
+	if hasCorroboratingExternalID(searcheeMeta, result) {
+		decision.IDCorroborated = true
+		return decision
+	}
+
+	for _, candidateMeta := range candidateMetas {
+		if titlesCorroborate(searcheeMeta, candidateMeta) {
+			decision.TitleCorroborated = true
+			return decision
+		}
+	}
+
+	decision.Accept = false
+	decision.Reason = "flexible size-only match lacks title or ID corroboration"
+	return decision
+}
+
+func hasMatchedNameEvidence(match *MatchResult) bool {
+	if match == nil {
+		return false
+	}
+
+	for _, pair := range match.MatchedFiles {
+		if pair.SearcheeFile == nil {
+			continue
+		}
+		if normalizeFileName(pair.SearcheeFile.RelPath) == normalizeFileName(pair.TorrentFile.Path) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasCorroboratingExternalID(searcheeMeta *SearcheeMetadata, result *jackett.SearchResult) bool {
+	if searcheeMeta == nil || result == nil {
+		return false
+	}
+
+	if imdbIDsMatch(searcheeMeta.GetIMDbID(), result.IMDbID, result.SearchIMDbID) {
+		return true
+	}
+
+	if numericIDsMatch(strconv.Itoa(searcheeMeta.GetTVDbID()), result.TVDbID, result.SearchTVDbID) {
+		return true
+	}
+
+	if searcheeMeta.GetTMDbID() > 0 {
+		if numericIDsMatch(strconv.Itoa(searcheeMeta.GetTMDbID()), result.TMDbID, strconv.Itoa(result.SearchTMDbID)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func imdbIDsMatch(expected string, candidates ...string) bool {
+	expected = strings.TrimSpace(expected)
+	if expected == "" {
+		return false
+	}
+	expected = normalizeIMDbIDForComparison(expected)
+
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" || candidate == "0" {
+			continue
+		}
+		if normalizeIMDbIDForComparison(candidate) == expected {
+			return true
+		}
+	}
+
+	return false
+}
+
+func numericIDsMatch(expected string, candidates ...string) bool {
+	expected = normalizeNumericIDForComparison(expected)
+	if expected == "" {
+		return false
+	}
+
+	for _, candidate := range candidates {
+		if normalizeNumericIDForComparison(candidate) == expected {
+			return true
+		}
+	}
+
+	return false
+}
+
+func normalizeIMDbIDForComparison(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if digitsOnly(value) {
+		return "tt" + value
+	}
+	return strings.ToLower(value)
+}
+
+func normalizeNumericIDForComparison(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "0" {
+		return ""
+	}
+	if !digitsOnly(value) {
+		return ""
+	}
+	return value
+}
+
+func digitsOnly(value string) bool {
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return value != ""
+}
+
+func candidateMetadataVariants(parsed *ParsedTorrent, result *jackett.SearchResult) []*SearcheeMetadata {
+	parser := NewParser(nil)
+	metas := make([]*SearcheeMetadata, 0, 2)
+	if parsed != nil && strings.TrimSpace(parsed.Name) != "" {
+		metas = append(metas, parser.Parse(parsed.Name))
+	}
+	if result != nil && strings.TrimSpace(result.Title) != "" && (parsed == nil || result.Title != parsed.Name) {
+		metas = append(metas, parser.Parse(result.Title))
+	}
+	return metas
+}
+
+func titlesCorroborate(searcheeMeta, candidateMeta *SearcheeMetadata) bool {
+	if searcheeMeta == nil || candidateMeta == nil {
+		return false
+	}
+
+	searcheeTitle := normalizedTitleIdentity(searcheeMeta.Title)
+	candidateTitle := normalizedTitleIdentity(candidateMeta.Title)
+	if searcheeTitle == "" || candidateTitle == "" {
+		return false
+	}
+
+	if searcheeMeta.Year > 0 && candidateMeta.Year > 0 && searcheeMeta.Year != candidateMeta.Year {
+		return false
+	}
+
+	if episodicMarkersConflict(searcheeMeta, candidateMeta) {
+		return false
+	}
+
+	return searcheeTitle == candidateTitle
+}
+
+func episodicMarkersConflict(searcheeMeta, candidateMeta *SearcheeMetadata) bool {
+	if !hasEpisodicMarkers(searcheeMeta) || !hasEpisodicMarkers(candidateMeta) {
+		return false
+	}
+
+	if searcheeMeta.Season != nil && candidateMeta.Season != nil && *searcheeMeta.Season != *candidateMeta.Season {
+		return true
+	}
+
+	if searcheeMeta.Episode != nil && candidateMeta.Episode != nil && *searcheeMeta.Episode != *candidateMeta.Episode {
+		return true
+	}
+
+	return false
+}
+
+func hasEpisodicMarkers(meta *SearcheeMetadata) bool {
+	if meta == nil {
+		return false
+	}
+
+	return meta.Season != nil || meta.Episode != nil
+}
+
+func normalizedTitleIdentity(title string) string {
+	title = cleanForSearch(title)
+	if title == "" {
+		return ""
+	}
+	return stringutils.NormalizeForMatching(title)
+}
+
 func sampleDirScanSearcheeFiles(files []*ScannedFile, limit int) []string {
 	if limit <= 0 || len(files) == 0 {
 		return nil
@@ -2049,6 +2270,38 @@ func sampleDirScanTorrentFiles(files []TorrentFile, limit int) []string {
 		out = append(out, fmt.Sprintf("%s (%d bytes)", f.Path, f.Size))
 	}
 	return out
+}
+
+func logDirScanAcceptedMatch(
+	l *zerolog.Logger,
+	searchee *Searchee,
+	parsed *ParsedTorrent,
+	matchResult *MatchResult,
+	decision dirScanMatchDecision,
+) {
+	if l == nil || searchee == nil || parsed == nil || matchResult == nil {
+		return
+	}
+
+	ev := l.Info().
+		Str("name", searchee.Name).
+		Str("torrent", parsed.Name).
+		Str("hash", parsed.InfoHash).
+		Bool("perfect", matchResult.IsPerfectMatch).
+		Bool("partial", matchResult.IsPartialMatch).
+		Float64("matchRatio", matchResult.MatchRatio).
+		Float64("pieceMatchPercent", decision.PieceMatchPercent)
+
+	if matchResult.IsPartialMatch {
+		ev = ev.
+			Int("matchedFiles", len(matchResult.MatchedFiles)).
+			Int("unmatchedSearcheeFiles", len(matchResult.UnmatchedSearcheeFiles)).
+			Int("unmatchedTorrentFiles", len(matchResult.UnmatchedTorrentFiles)).
+			Strs("unmatchedSearcheeSample", sampleDirScanSearcheeFiles(matchResult.UnmatchedSearcheeFiles, 3)).
+			Strs("unmatchedTorrentSample", sampleDirScanTorrentFiles(matchResult.UnmatchedTorrentFiles, 3))
+	}
+
+	ev.Msg("dirscan: found match")
 }
 
 func summarizeDirScanExtensions(files []*ScannedFile, limit int) []string {
@@ -2168,7 +2421,7 @@ func updateDirScanMatchSignals(
 		return
 	}
 
-	sizeMatch := matcher.sizesMatch(searcheeSize, torrentFile.Size)
+	sizeMatch := sizesMatchExactly(searcheeSize, torrentFile.Size)
 	if sizeMatch {
 		signals.HasAnySizeMatch = true
 	}
@@ -2210,6 +2463,13 @@ func describeDirScanNoMatchHints(
 }
 
 func describeDirScanDecisionHints(decision dirScanMatchDecision) (hint string, hints []string) {
+	if decision.Reason == "flexible size-only match lacks title or ID corroboration" {
+		hints = append(hints, "size matched, but the candidate release title/ID did not corroborate the searchee")
+		hints = append(hints, "this often happens when an indexer falls back from IMDb/TMDb/TVDb lookup to plain title search")
+		hints = append(hints, "tighten total size tolerance or use strict mode when scanning renamed library folders")
+		return "size-only match rejected", hints
+	}
+
 	if strings.Contains(decision.Reason, "below minimum") {
 		hints = append(hints, "matched pieces below threshold; lower minPieceRatio or disable partial matching")
 		return "piece ratio too low", hints

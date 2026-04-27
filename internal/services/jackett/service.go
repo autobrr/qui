@@ -111,6 +111,7 @@ const (
 	searchCacheScopeCrossSeed = "cross_seed"
 	searchCacheScopeGeneral   = "general"
 	searchCacheScopeDirScan   = "dir-scan"
+	searchCacheSchemaVersion  = 2
 
 	searchCacheSourceNetwork = "network"
 	searchCacheSourceCache   = "cache"
@@ -236,21 +237,22 @@ type searchCacheSignature struct {
 }
 
 type searchCacheKeyPayload struct {
-	Scope       string      `json:"scope"`
-	Query       string      `json:"query"`
-	Categories  []int       `json:"categories,omitempty"`
-	IndexerIDs  []int       `json:"indexer_ids,omitempty"`
-	IMDbID      string      `json:"imdb_id,omitempty"`
-	TVDbID      string      `json:"tvdb_id,omitempty"`
-	TMDbID      int         `json:"tmdb_id,omitempty"`
-	TVMazeID    int         `json:"tvmaze_id,omitempty"`
-	Year        int         `json:"year,omitempty"`
-	Season      *int        `json:"season,omitempty"`
-	Episode     *int        `json:"episode,omitempty"`
-	Artist      string      `json:"artist,omitempty"`
-	Album       string      `json:"album,omitempty"`
-	SearchMode  string      `json:"search_mode,omitempty"`
-	ContentType contentType `json:"content_type"`
+	SchemaVersion int         `json:"schema_version"`
+	Scope         string      `json:"scope"`
+	Query         string      `json:"query"`
+	Categories    []int       `json:"categories,omitempty"`
+	IndexerIDs    []int       `json:"indexer_ids,omitempty"`
+	IMDbID        string      `json:"imdb_id,omitempty"`
+	TVDbID        string      `json:"tvdb_id,omitempty"`
+	TMDbID        int         `json:"tmdb_id,omitempty"`
+	TVMazeID      int         `json:"tvmaze_id,omitempty"`
+	Year          int         `json:"year,omitempty"`
+	Season        *int        `json:"season,omitempty"`
+	Episode       *int        `json:"episode,omitempty"`
+	Artist        string      `json:"artist,omitempty"`
+	Album         string      `json:"album,omitempty"`
+	SearchMode    string      `json:"search_mode,omitempty"`
+	ContentType   contentType `json:"content_type"`
 }
 
 // TorrentDownloadRequest captures the metadata required to download (and cache) a torrent payload.
@@ -1183,21 +1185,22 @@ func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequ
 	query := canonicalizeQuery(req.Query)
 
 	payload := searchCacheKeyPayload{
-		Scope:       scope,
-		Query:       query,
-		Categories:  categories,
-		IndexerIDs:  normalizedIndexerIDs,
-		IMDbID:      strings.TrimSpace(req.IMDbID),
-		TVDbID:      strings.TrimSpace(req.TVDbID),
-		TMDbID:      req.TMDbID,
-		TVMazeID:    req.TVMazeID,
-		Year:        req.Year,
-		Season:      req.Season,
-		Episode:     req.Episode,
-		Artist:      strings.TrimSpace(req.Artist),
-		Album:       strings.TrimSpace(req.Album),
-		SearchMode:  searchMode,
-		ContentType: detectedType,
+		SchemaVersion: searchCacheSchemaVersion,
+		Scope:         scope,
+		Query:         query,
+		Categories:    categories,
+		IndexerIDs:    normalizedIndexerIDs,
+		IMDbID:        strings.TrimSpace(req.IMDbID),
+		TVDbID:        strings.TrimSpace(req.TVDbID),
+		TMDbID:        req.TMDbID,
+		TVMazeID:      req.TVMazeID,
+		Year:          req.Year,
+		Season:        req.Season,
+		Episode:       req.Episode,
+		Artist:        strings.TrimSpace(req.Artist),
+		Album:         strings.TrimSpace(req.Album),
+		SearchMode:    searchMode,
+		ContentType:   detectedType,
 	}
 
 	fullFingerprint, baseFingerprint, err := buildSearchCacheFingerprints(payload)
@@ -2035,6 +2038,7 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 			results[i].Tracker = idx.Name
 		}
 	}
+	annotateResultsWithSearchIDs(results, paramsMap)
 
 	// Reset escalation on successful request
 	s.rateLimiter.RecordSuccess(idx.ID)
@@ -2043,6 +2047,47 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		results: results,
 		id:      idx.ID,
 	}
+}
+
+func annotateResultsWithSearchIDs(results []Result, params map[string]string) {
+	if len(results) == 0 || len(params) == 0 {
+		return
+	}
+
+	imdbID := normalizeSearchIMDbID(params["imdbid"])
+	tvdbID := strings.TrimSpace(params["tvdbid"])
+	tmdbID := 0
+	if rawTMDbID := strings.TrimSpace(params["tmdbid"]); rawTMDbID != "" {
+		if parsedTMDbID, err := strconv.Atoi(rawTMDbID); err == nil {
+			tmdbID = parsedTMDbID
+		}
+	}
+
+	for i := range results {
+		results[i].SearchIMDbID = imdbID
+		results[i].SearchTVDbID = tvdbID
+		results[i].SearchTMDbID = tmdbID
+	}
+}
+
+func normalizeSearchIMDbID(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if digitsOnlyString(value) {
+		return "tt" + value
+	}
+	return strings.ToLower(value)
+}
+
+func digitsOnlyString(value string) bool {
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return value != ""
 }
 
 // searchMultipleIndexers searches multiple indexers in parallel and aggregates results.
@@ -3195,6 +3240,10 @@ func (s *Service) convertResults(results []Result) []SearchResult {
 			InfoHashV2:           "", // InfoHashV2 not typically in extended attributes
 			IMDbID:               r.Imdb,
 			TVDbID:               s.parseTVDbID(r),
+			TMDbID:               s.parseTMDbID(r),
+			SearchIMDbID:         r.SearchIMDbID,
+			SearchTVDbID:         r.SearchTVDbID,
+			SearchTMDbID:         r.SearchTMDbID,
 			Source:               source,
 			Collection:           collection,
 			Group:                group,
@@ -3262,6 +3311,9 @@ var (
 	tvdbIdentifierPattern = regexp.MustCompile(`(?i)(?:tvdb|thetvdb|tvdb:)[^\d]*([0-9]+)`)
 	tvdbAttributeKeys     = []string{"tvdb", "tvdbid", "tvdb_id"}
 	tvdbDigitsOnlyPattern = regexp.MustCompile(`\A[0-9]+\z`)
+	tmdbIdentifierPattern = regexp.MustCompile(`(?i)(?:tmdb|themoviedb|tmdb:)[^\d]*([0-9]+)`)
+	tmdbAttributeKeys     = []string{"tmdb", "tmdbid", "tmdb_id"}
+	tmdbDigitsOnlyPattern = regexp.MustCompile(`\A[0-9]+\z`)
 	infohashAttributeKeys = []string{"infohash", "info_hash", "hash"}
 )
 
@@ -3305,6 +3357,53 @@ func extractTVDbIDFromAttributes(attrs map[string]string) string {
 	for _, key := range tvdbAttributeKeys {
 		if value, ok := attrs[key]; ok {
 			if id := parseTVDbNumericIDFromString(value); id != "" {
+				return id
+			}
+		}
+	}
+
+	return ""
+}
+
+func parseTMDbNumericIDFromString(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+
+	if tmdbDigitsOnlyPattern.MatchString(value) {
+		return value
+	}
+
+	if matches := tmdbIdentifierPattern.FindStringSubmatch(value); len(matches) == 2 {
+		if tmdbDigitsOnlyPattern.MatchString(matches[1]) {
+			return matches[1]
+		}
+	}
+
+	return ""
+}
+
+func (s *Service) parseTMDbID(r Result) string {
+	if id := parseTMDbNumericIDFromString(r.GUID); id != "" {
+		return id
+	}
+
+	if id := extractTMDbIDFromAttributes(r.Attributes); id != "" {
+		return id
+	}
+
+	return ""
+}
+
+func extractTMDbIDFromAttributes(attrs map[string]string) string {
+	if len(attrs) == 0 {
+		return ""
+	}
+
+	for _, key := range tmdbAttributeKeys {
+		if value, ok := attrs[key]; ok {
+			if id := parseTMDbNumericIDFromString(value); id != "" {
 				return id
 			}
 		}

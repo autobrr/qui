@@ -921,7 +921,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Strict mode matches files by name and size. Flexible mode matches by size only.
+              Strict mode matches by filename plus exact file size. Flexible mode ignores filenames for primary matching, but file sizes must still match exactly.
             </p>
           </div>
 
@@ -942,7 +942,7 @@ function SettingsDialog({ open, onOpenChange, settings, instances }: SettingsDia
               }
             />
             <p className="text-xs text-muted-foreground">
-              Allows small size differences when comparing files (useful for minor repacks). Keep low for best accuracy.
+              Allows small differences in total torrent size before file matching. File sizes must still match exactly. Keep low for best accuracy.
             </p>
           </div>
 
@@ -1215,6 +1215,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
     qbitPathPrefix: directory?.qbitPathPrefix ?? "",
     category: directory?.category ?? "",
     tags: directory?.tags ?? [],
+    allowedDownloadClients: directory?.allowedDownloadClients ?? [],
     enabled: directory?.enabled ?? true,
     targetInstanceId: directory?.targetInstanceId ?? defaultTargetInstanceId,
     scanIntervalMinutes: directory?.scanIntervalMinutes ?? 1440,
@@ -1253,6 +1254,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
         qbitPathPrefix: directory.qbitPathPrefix ?? "",
         category: directory.category ?? "",
         tags: directory.tags ?? [],
+        allowedDownloadClients: directory.allowedDownloadClients ?? [],
         enabled: directory.enabled,
         targetInstanceId: directory.targetInstanceId,
         scanIntervalMinutes: directory.scanIntervalMinutes,
@@ -1263,6 +1265,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
         qbitPathPrefix: "",
         category: "",
         tags: [],
+        allowedDownloadClients: [],
         enabled: true,
         targetInstanceId: defaultTargetInstanceId,
         scanIntervalMinutes: 1440,
@@ -1417,6 +1420,23 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
             )}
             <p className="text-xs text-muted-foreground">
               Added on top of the global Dir Scan tags. Suggested: <span className="font-mono">dirscan</span>, <span className="font-mono">needs-review</span>.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Allowed Download Clients</Label>
+            <MultiSelect
+              options={(form.allowedDownloadClients ?? []).map((value) => ({ label: value, value }))}
+              selected={form.allowedDownloadClients ?? []}
+              onChange={(values) =>
+                setForm((prev) => ({ ...prev, allowedDownloadClients: values }))
+              }
+              placeholder="All clients (leave empty for all)"
+              creatable
+              disabled={isPending}
+            />
+            <p className="text-xs text-muted-foreground">
+              Only trigger webhook scans when the Sonarr/Radarr download client name matches. Exact names are copied from Sonarr/Radarr; matching is case-insensitive.
             </p>
           </div>
 

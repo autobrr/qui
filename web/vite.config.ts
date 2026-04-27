@@ -48,7 +48,7 @@ export default defineConfig(() => ({
         disableDevLogs: true,
         // VitePWA defaults to 2 MiB; our main bundle can exceed that, which breaks CI builds.
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
-        sourcemap: true,
+        sourcemap: false,
         // Avoid serving the SPA shell for backend proxy routes and SSO callback paths
         // (also under custom base URLs). /cdn-cgi/ is used by Cloudflare Access for its
         // auth callback (/cdn-cgi/access/authorized); intercepting it breaks the SSO flow.
@@ -159,6 +159,6 @@ export default defineConfig(() => ({
       },
     },
     chunkSizeWarningLimit: 750,
-    sourcemap: true,
+    sourcemap: false,
   },
 }));

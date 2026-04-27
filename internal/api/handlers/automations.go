@@ -501,9 +501,10 @@ func anyEnabledTagActionUsesField(actions []*models.TagAction, field automations
 }
 
 // conditionsRequireLocalAccess checks if any enabled action condition uses fields
-// that require local filesystem access (HARDLINK_SCOPE or HAS_MISSING_FILES).
+// that require local filesystem access (HARDLINK_SCOPE, HARDLINK_SCOPE_CROSS, or HAS_MISSING_FILES).
 func conditionsRequireLocalAccess(conditions *models.ActionConditions) bool {
 	return conditionsUseField(conditions, automations.FieldHardlinkScope) ||
+		conditionsUseField(conditions, automations.FieldHardlinkScopeCross) ||
 		conditionsUseField(conditions, automations.FieldHasMissingFiles)
 }
 

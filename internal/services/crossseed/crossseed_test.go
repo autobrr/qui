@@ -2496,6 +2496,88 @@ func TestCheckWebhook_NotificationRequiresCompleteMatch(t *testing.T) {
 	}
 }
 
+func TestNotifyAutomationRun_SuccessRequiresMeaningfulChange(t *testing.T) {
+	t.Parallel()
+
+	completedAt := time.Now().UTC()
+
+	tests := []struct {
+		name          string
+		run           *models.CrossSeedRun
+		wantEvent     bool
+		wantEventType notifications.EventType
+	}{
+		{
+			name: "successful skipped-only run does not notify",
+			run: &models.CrossSeedRun{
+				ID:              42,
+				Mode:            models.CrossSeedRunModeAuto,
+				Status:          models.CrossSeedRunStatusSuccess,
+				StartedAt:       time.Now().UTC().Add(-2 * time.Minute),
+				CompletedAt:     &completedAt,
+				TotalFeedItems:  885,
+				CandidatesFound: 0,
+				TorrentsAdded:   0,
+				TorrentsFailed:  0,
+				TorrentsSkipped: 885,
+			},
+			wantEvent: false,
+		},
+		{
+			name: "successful run with additions still notifies",
+			run: &models.CrossSeedRun{
+				ID:              43,
+				Mode:            models.CrossSeedRunModeAuto,
+				Status:          models.CrossSeedRunStatusSuccess,
+				StartedAt:       time.Now().UTC().Add(-2 * time.Minute),
+				CompletedAt:     &completedAt,
+				TotalFeedItems:  10,
+				CandidatesFound: 2,
+				TorrentsAdded:   1,
+				TorrentsFailed:  0,
+				TorrentsSkipped: 9,
+			},
+			wantEvent:     true,
+			wantEventType: notifications.EventCrossSeedAutomationSucceeded,
+		},
+		{
+			name: "failed run still notifies",
+			run: &models.CrossSeedRun{
+				ID:              44,
+				Mode:            models.CrossSeedRunModeAuto,
+				Status:          models.CrossSeedRunStatusFailed,
+				StartedAt:       time.Now().UTC().Add(-2 * time.Minute),
+				CompletedAt:     &completedAt,
+				TotalFeedItems:  10,
+				CandidatesFound: 3,
+				TorrentsAdded:   0,
+				TorrentsFailed:  2,
+				TorrentsSkipped: 8,
+			},
+			wantEvent:     true,
+			wantEventType: notifications.EventCrossSeedAutomationFailed,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			notifier := &recordingNotifier{}
+			svc := &Service{notifier: notifier}
+
+			svc.notifyAutomationRun(context.Background(), tt.run, nil)
+
+			events := notifier.Events()
+			if tt.wantEvent {
+				require.Len(t, events, 1)
+				assert.Equal(t, tt.wantEventType, events[0].Type)
+				return
+			}
+
+			assert.Empty(t, events)
+		})
+	}
+}
+
 func TestCheckWebhook_NoInstancesAvailable(t *testing.T) {
 	t.Parallel()
 

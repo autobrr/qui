@@ -235,8 +235,8 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 	var connectionStatus string
 	if !instance.IsActive {
 		connectionStatus = "disabled"
-	} else if client != nil {
-		if status := strings.TrimSpace(client.GetCachedConnectionStatus()); status != "" {
+	} else if client != nil && h.syncManager != nil {
+		if status := strings.TrimSpace(h.syncManager.ReadCachedConnectionStatus(ctx, instance.ID)); status != "" {
 			connectionStatus = strings.ToLower(status)
 		}
 	}

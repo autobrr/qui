@@ -3344,11 +3344,16 @@ paths:
                       type: string
                       description: Plain path to match against configured scan directories.
                       example: "/data/media/movies/Movie Name (2024)"
+                    downloadClient:
+                      type: string
+                      description: Optional *arr download client name used for per-directory webhook filtering.
                 - type: object
                   required:
                     - series
                   properties:
                     eventType:
+                      type: string
+                    downloadClient:
                       type: string
                     series:
                       type: object
@@ -3363,6 +3368,8 @@ paths:
                   properties:
                     eventType:
                       type: string
+                    downloadClient:
+                      type: string
                     movie:
                       type: object
                       required:
@@ -3376,6 +3383,8 @@ paths:
                   properties:
                     eventType:
                       type: string
+                    downloadClient:
+                      type: string
                     artist:
                       type: object
                       required:
@@ -3388,6 +3397,8 @@ paths:
                     - author
                   properties:
                     eventType:
+                      type: string
+                    downloadClient:
                       type: string
                     author:
                       type: object
@@ -3405,6 +3416,20 @@ paths:
                       enum:
                         - test
       responses:
+        '200':
+          description: Webhook accepted but scan skipped by directory filters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skipped:
+                    type: boolean
+                  reason:
+                    type: string
+                required:
+                  - skipped
+                  - reason
         '202':
           description: Scan started
           content:
@@ -3418,7 +3443,7 @@ paths:
         '404':
           description: No enabled directory matched the provided path
         '409':
-          description: A scan is already in progress for the matched directory
+          description: Request conflicts with directory state, such as ambiguous path matches or an active scan
         '500':
           description: Failed to start scan
 
@@ -7432,6 +7457,10 @@ components:
           type: array
           items:
             type: string
+        allowedDownloadClients:
+          type: array
+          items:
+            type: string
         enabled:
           type: boolean
         arrInstanceId:
@@ -7455,6 +7484,7 @@ components:
         - id
         - path
         - tags
+        - allowedDownloadClients
         - enabled
         - targetInstanceId
         - scanIntervalMinutes
@@ -7471,6 +7501,10 @@ components:
         category:
           type: string
         tags:
+          type: array
+          items:
+            type: string
+        allowedDownloadClients:
           type: array
           items:
             type: string
@@ -7497,6 +7531,10 @@ components:
         category:
           type: string
         tags:
+          type: array
+          items:
+            type: string
+        allowedDownloadClients:
           type: array
           items:
             type: string

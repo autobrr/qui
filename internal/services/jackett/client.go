@@ -144,6 +144,9 @@ type Result struct {
 	DownloadVolumeFactor float64
 	UploadVolumeFactor   float64
 	Imdb                 string
+	SearchIMDbID         string
+	SearchTVDbID         string
+	SearchTMDbID         int
 	// Attributes stores every Torznab attribute with lowercase keys from RSS item attr entries (see convertRssToResults normalization).
 	Attributes map[string]string
 }
