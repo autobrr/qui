@@ -1013,9 +1013,10 @@ func (s *Service) setupDeleteHardlinkContext(ctx context.Context, instanceID int
 			if hardlinkIndex.CrossScopeByHash == nil && hardlinkIndex.buildState != nil {
 				s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
 			}
+			crossScope := hardlinkIndex.CrossScopeByHash
 			hardlinkIndex.crossScopeMu.Unlock()
-			if hardlinkIndex.CrossScopeByHash != nil {
-				evalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
+			if crossScope != nil {
+				evalCtx.HardlinkCrossScopeByHash = crossScope
 			}
 		}
 	}
@@ -1656,9 +1657,10 @@ func (s *Service) setupCategoryHardlinkContext(ctx context.Context, instanceID i
 			if hardlinkIndex.CrossScopeByHash == nil && hardlinkIndex.buildState != nil {
 				s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
 			}
+			crossScope := hardlinkIndex.CrossScopeByHash
 			hardlinkIndex.crossScopeMu.Unlock()
-			if hardlinkIndex.CrossScopeByHash != nil {
-				evalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
+			if crossScope != nil {
+				evalCtx.HardlinkCrossScopeByHash = crossScope
 			}
 		}
 	}
@@ -2013,9 +2015,10 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				if hardlinkIndex.CrossScopeByHash == nil && hardlinkIndex.buildState != nil {
 					s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
 				}
+				crossScope := hardlinkIndex.CrossScopeByHash
 				hardlinkIndex.crossScopeMu.Unlock()
-				if hardlinkIndex.CrossScopeByHash != nil {
-					evalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
+				if crossScope != nil {
+					evalCtx.HardlinkCrossScopeByHash = crossScope
 				}
 			}
 		}
@@ -5043,9 +5046,10 @@ func (s *Service) recordDryRunActivities(
 							if hardlinkIndex.CrossScopeByHash == nil && hardlinkIndex.buildState != nil {
 								s.augmentCrossInstanceScope(ctx, instanceID, hardlinkIndex)
 							}
+							crossScope := hardlinkIndex.CrossScopeByHash
 							hardlinkIndex.crossScopeMu.Unlock()
-							if hardlinkIndex.CrossScopeByHash != nil {
-								dryRunEvalCtx.HardlinkCrossScopeByHash = hardlinkIndex.CrossScopeByHash
+							if crossScope != nil {
+								dryRunEvalCtx.HardlinkCrossScopeByHash = crossScope
 							}
 						}
 					}
