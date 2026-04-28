@@ -163,11 +163,11 @@ Deviations from design doc:
 
 ## Phase 3: Local Backend (`internal/fsops/local`)
 
-- [ ] All 17 Backend methods implemented
-- [ ] Platform-specific Statfs (unix/windows)
-- [ ] WalkDir channel closes on completion, error, and ctx cancellation
-- [ ] Tests for all methods
-- [ ] HardlinkTree create + RemoveTree rollback round-trip test
+- [x] All 17 Backend methods implemented
+- [x] Platform-specific Statfs (unix/windows)
+- [x] WalkDir channel closes on completion, error, and ctx cancellation
+- [x] Tests for all methods (26 tests x3, -race)
+- [x] HardlinkTree create + RemoveTree rollback round-trip test
 
 **Goal:** `LocalBackend` implementing `Backend` — thin adapter over `os.*`, `pkg/hardlinktree`, `pkg/reflinktree`, `pkg/hardlink`, `pkg/fsutil`.
 
@@ -196,7 +196,24 @@ go test -race -count=3 ./internal/fsops/...
 > Implement Phase 3 from `documentation/design/ssh-helper-plan.md`. Create `internal/fsops/local/local.go` implementing the `fsops.Backend` interface from Phase 2. This is a thin adapter (~200 lines) delegating to `os.*`, `pkg/hardlinktree`, `pkg/reflinktree`, `pkg/hardlink`, and `pkg/fsutil`. Key methods: `WalkDir` must spawn a goroutine that calls `filepath.WalkDir` and sends `fsops.WalkEntry` values on a channel, checking `ctx.Done()` between entries. `Lstat` must populate `FileID` and `Nlinks` using `hardlink.GetFileID` and link count from the `os.FileInfo`. `Statfs` needs platform-specific files (`_unix.go` using `unix.Statfs`, `_windows.go` using `GetDiskFreeSpaceEx`) — match the build tag pattern from `internal/services/automations/free_space.go`. Write comprehensive tests in `local_test.go` using `t.TempDir()` — test all 17 methods, test WalkDir cancellation, test HardlinkTree+RemoveTree round-trip. Follow coding standards in `CLAUDE.md`. Stay strictly within scope. Update the plan checkboxes and add implementation notes when done.
 
 ### Implementation Notes
-_(filled in after phase completion)_
+
+**Completed 2026-04-28.**
+
+Files created:
+- `internal/fsops/local/local.go` — `Backend` struct implementing all 17 `fsops.Backend` methods (~270 lines)
+- `internal/fsops/local/statfs_unix.go` — `Statfs` via `unix.Statfs` (build tag `!windows`)
+- `internal/fsops/local/statfs_windows.go` — `Statfs` via `windows.GetDiskFreeSpaceEx` (build tag `windows`)
+- `internal/fsops/local/local_test.go` — 26 tests covering all methods
+
+Design decisions:
+- Named the struct `local.Backend` (not `local.LocalBackend`) to avoid stutter. Callers write `local.NewBackend()`.
+- `HardlinkTree`/`ReflinkTree` return `TreeCreateResult{Created: len(plan.Files)}` on success since the underlying `hardlinktree.Create`/`reflinktree.Create` return only `error` (no count). On failure, `RolledBack: true` is set.
+- `Lstat` only populates `FileID`/`Nlinks` for regular files (not symlinks/dirs) since `hardlink.GetFileID` requires `syscall.Stat_t` which is only meaningful for regular files.
+- WalkDir uses a buffered channel (cap 64) to decouple the walker goroutine from consumers.
+- Compile-time interface check: `var _ fsops.Backend = (*Backend)(nil)`.
+
+Deviations from design doc:
+- None. The Local implementation matches the §8 interface exactly.
 
 ---
 
