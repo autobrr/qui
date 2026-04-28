@@ -385,10 +385,10 @@ Deviations from design doc:
 
 ## Phase 8: Refactor — `qbittorrent/delete_cleanup.go`
 
-- [ ] `os.Stat` → `backend.Stat`
-- [ ] `os.Remove` → `backend.Remove`
-- [ ] Backend flows through delete action call chain
-- [ ] Tests pass
+- [x] `os.Stat` → `backend.Stat`
+- [x] `os.Remove` → `backend.Remove`
+- [x] Backend flows through delete action call chain
+- [x] Tests pass
 
 **Goal:** Managed-delete cleanup: `os.Stat` → `backend.Stat`, `os.Remove` → `backend.Remove`. Backend must flow through the automation delete action call chain.
 
@@ -408,7 +408,22 @@ go test -race -count=3 ./internal/services/automations/...
 > Implement Phase 8 from `documentation/design/ssh-helper-plan.md`. Refactor `internal/qbittorrent/delete_cleanup.go`: `managedDeleteCleanupDir` and `pruneEmptyManagedDeleteDirOnce` gain `ctx context.Context` and `backend fsops.Backend` parameters. Replace `os.Stat(contentPath)` (line 67) with `backend.Stat(ctx, contentPath)`, `os.Remove(dir)` (line 151) with `backend.Remove(ctx, dir, fsops.RemoveOptions{})`. Trace the caller chain from automation delete actions to these functions and thread the backend parameter through. Leave all `filepath.*` calls untouched. All existing tests must pass. Follow coding standards in `CLAUDE.md`. Stay strictly within scope. Update the plan checkboxes and add implementation notes when done.
 
 ### Implementation Notes
-_(filled in after phase completion)_
+
+**Completed 2026-04-28.**
+
+Files modified:
+- `internal/qbittorrent/delete_cleanup.go` — All functions now accept `ctx context.Context` + `backend fsops.Backend`. `os.Stat` → `backend.Stat`, `os.Remove` → `backend.Remove`. Removed `os` import.
+- `internal/qbittorrent/delete_cleanup_test.go` — Updated all test callsites to pass `ctx` and `local.NewBackend()`. Added shared `testBackend` var.
+- `internal/qbittorrent/sync_manager.go` — Added `backendPool` field (atomic.Value), `SetBackendPool`/`getBackendPool` methods. Updated `buildManagedDeleteCleanupTargets` and `cleanupManagedDeleteTargets` callers to resolve and pass backend.
+- `cmd/qui/main.go` — Added `syncManager.SetBackendPool(backendPool)` after pool creation.
+
+Design decisions:
+- Used `atomic.Value` for `backendPool` on SyncManager, matching the `filesManager` pattern. Thread-safe without mutex.
+- `cleanupManagedDeleteTargets` is only called if `deleteBackend != nil` (guarded at callsite). If the pool isn't set (shouldn't happen in production), cleanup is silently skipped.
+- `os.IsNotExist(err)` → `errors.Is(err, fs.ErrNotExist)` in `pruneEmptyManagedDeleteDirOnce`.
+
+Deviations from design doc:
+- None.
 
 ---
 

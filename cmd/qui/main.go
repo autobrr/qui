@@ -641,6 +641,7 @@ func (app *Application) runServer() {
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	localBackend := local.NewBackend()
 	backendPool := fsops.NewPool(instanceStore, localBackend)
+	syncManager.SetBackendPool(backendPool)
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
