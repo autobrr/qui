@@ -125,10 +125,10 @@ Deviations from design doc:
 
 ## Phase 2: Backend Interface + Types (`internal/fsops`)
 
-- [ ] Interface defined
-- [ ] Types defined
-- [ ] Errors defined
-- [ ] Compiles clean
+- [x] Interface defined (17 methods)
+- [x] Types defined (9 value types)
+- [x] Errors defined (3 sentinel errors)
+- [x] Compiles clean
 
 **Goal:** Define the `Backend` interface (17 methods) and value types exactly as in design doc §8. No implementations yet.
 
@@ -148,7 +148,16 @@ go build ./internal/fsops/...
 > Implement Phase 2 from `documentation/design/ssh-helper-plan.md`. Create the `internal/fsops` package with the `Backend` interface and value types. Reference design doc `documentation/design/remote-helper.md` §8 for the exact interface definition (17 methods) and all associated types. The interface imports `pkg/hardlink` for `FileID` and `pkg/hardlinktree` for `TreePlan`. Also create sentinel errors in `errors.go`: `ErrNoFilesystemAccess`, `ErrConnectionLost`, `ErrPathNotAllowed`. No implementations yet — just the contract. Follow coding standards in `CLAUDE.md`. Stay strictly within scope. Update the plan checkboxes and add implementation notes when done.
 
 ### Implementation Notes
-_(filled in after phase completion)_
+
+**Completed 2026-04-28.**
+
+Files created:
+- `internal/fsops/backend.go` — `Backend` interface with 17 methods, thorough doc comments
+- `internal/fsops/types.go` — 9 value types: `FileInfo`, `DirEntry`, `LstatInfo`, `WalkEntry`, `WalkOptions`, `StatfsResult`, `RemoveOptions`, `TreeCreateResult`, `BackendInfo`
+- `internal/fsops/errors.go` — 3 sentinel errors: `ErrNoFilesystemAccess`, `ErrConnectionLost`, `ErrPathNotAllowed`
+
+Deviations from design doc:
+- None. Interface matches §8 exactly — 17 methods with identical signatures.
 
 ---
 
