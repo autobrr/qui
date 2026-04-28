@@ -2,11 +2,24 @@
 
 ## 1. Context & Motivation
 
-qui has a cluster of features that work only when the qui process and qBittorrent share a host: cross-seed hardlink/reflink injection, dirscan, orphanscan, the missing-files automation condition, and the path-based free-space automation condition. All of these reach into the local filesystem via `os.*`/`filepath.*`/`unix.*`. A non-trivial fraction of users run qBittorrent on remote seedboxes/VPS while qui lives on a home server or in a container. For them, every feature listed above is dead — and the network-mount workarounds (SSHFS, rclone, NFS) either misreport inode/nlink (breaking cross-seed) or are operationally painful.
+qui has a cluster of features that work only when the qui process and qBittorrent share a host: cross-seed hardlink/reflink injection, dirscan, orphanscan, three automation rule conditions (missing-files, path-based free-space, hardlink-scope), and the post-delete managed-cleanup pass. All of these reach into the local filesystem via `os.*`/`filepath.*`/`unix.*`. A non-trivial fraction of users run qBittorrent on remote seedboxes/VPS while qui lives on a home server or in a container. For them, every feature listed above is dead — and the network-mount workarounds (SSHFS, rclone, NFS) either misreport inode/nlink (breaking cross-seed) or are operationally painful. The complete inventory and user-visible mapping live in §2 and the bullets below.
 
 **Proposal.** Ship a separate single-binary daemon, `qui-agent`, that runs on the same host as the remote qBittorrent. The agent **dials qui** over outbound HTTPS, registers, and long-polls for filesystem jobs. qui dispatches FS ops to the agent through that connection instead of calling `os.*` locally. The agent is opt-in per-instance and additive: it lands behind a new interface so the existing local-filesystem code path is untouched until the user opts in.
 
-**Success criteria.** A user installs `qui-agent` on a seedbox, runs `qui-agent pair <one-time-string>` with a string copied out of qui's UI, and sees cross-seed inject, dirscan, orphanscan, missing-files, and free-space all work over the wire with the same UX they have today on a co-located host. No inbound port required on the seedbox. Existing local-filesystem deployments see zero behavior change. Re-pairing, rotating credentials, or revoking access is straightforward.
+**Features the agent unlocks.** With a paired agent, every filesystem-dependent feature qui ships today works against a remote qBittorrent instance with the same UX users get on a co-located install:
+
+- **Cross-seed inject — hardlink mode.** When cross-seed identifies a torrent that matches data already in the user's library, qui materializes a hardlink tree on the seedbox so qBittorrent can immediately seed the matched torrent without re-downloading any bytes. The agent's `pkg/fsexec` primitives execute the link tree atomically and roll back cleanly on partial failure. Includes the same-filesystem precondition check (the link-tree base directory and the source data must share a device) so qui never attempts a hardlink that would cross filesystems.
+- **Cross-seed inject — reflink mode.** Same shape as hardlink mode but using copy-on-write reflinks (XFS, Btrfs, ZFS). Eliminates even the inode pressure of hardlinks. The agent reports per-root reflink support at registration and on every heartbeat (`reflinkRoots`); qui only dispatches `tree.reflink` jobs for roots whose underlying filesystem supports it, and falls back to hardlinks where it doesn't.
+- **Dirscan.** Scheduled or webhook-triggered directory walks build a FileID index of files on the seedbox, used by cross-seed to identify match candidates without round-tripping qBittorrent's API for every file. NDJSON streaming over the agent connection keeps memory bounded on both sides for trees with 10k+ files.
+- **Orphanscan.** Periodic walks of save directories surface files no torrent claims, with the safety layer described in §6: an ignore-list of well-known sensitive paths (`.ssh`, `.config`, `.gnupg`, etc.), and a per-root acknowledgement requirement when the configured root is broader than qBittorrent's known save paths. The agent's audit log records every destructive op; qui's dispatcher log correlates one-to-one by `requestID`.
+- **Missing-files automation condition.** Automation rules can trigger on actual filesystem state — *"pause torrents whose files have gone missing on disk"* — rather than relying on qBittorrent's reported state, which can be stale after manual file moves or external cleanup. Batch-friendly: one `fs.stat` job covers an entire torrent's file list.
+- **Free-space automation condition — path-based.** Automation rules can read disk space at a specific path on the seedbox via `fs.statfs`, not just qBittorrent's reported value. Useful when the qBittorrent save path differs from the partition the user actually wants to monitor (e.g. ZFS dataset quotas, separate cache vs. archive volumes).
+- **Hardlink-scope automation condition.** Rules can branch on whether a torrent's data is hardlinked to files outside qBittorrent's managed directory — *"only delete this torrent if its files are unique"* / *"only act on torrents whose data is shared with my media library"*. The agent builds a per-instance hardlink index (`fs.lstat` + `fs.fileid`) across all torrents on each automation cycle, cached for 2 min. High-volume but cached; the cache invalidates on torrent set change.
+- **Managed delete cleanup.** When an automation runs a `deleteWithFiles` action, qBittorrent removes the files but leaves empty parent directories behind. qui's post-action cleanup walks up the parent chain (`fs.stat` + `fs.remove`) pruning empty dirs until it hits a configured "managed delete base dir". The agent surface is small (a handful of ops per delete) but destructive — the audit log captures every directory removal. Lives in `internal/qbittorrent/delete_cleanup.go`, triggered by automation delete actions when `managed_delete_enabled` and base dirs are configured.
+
+These eight features are everything the agent enables. The complete operation-level inventory lives in §2; this section is the user-visible mapping of "what becomes possible once you pair an agent."
+
+**Success criteria.** A user installs `qui-agent` on a seedbox, runs `qui-agent pair <one-time-string>` with a string copied out of qui's UI, and sees every feature listed above work over the wire with the same UX they have today on a co-located host. No inbound port required on the seedbox. Existing local-filesystem deployments see zero behavior change. Re-pairing, rotating credentials, or revoking access is straightforward.
 
 **Non-goals.**
 - Not a general-purpose RPC. Job ops are scoped exactly to qui's filesystem features.
@@ -31,6 +44,8 @@ qui has a cluster of features that work only when the qui process and qBittorren
 | Orphanscan — destructive cleanup | `Lstat`, `Remove`, `RemoveAll`, ignore-list & TFM re-check | tens per run typical | Background, destructive | `internal/services/orphanscan/delete.go` |
 | Automations — missing-files condition | `Stat` per torrent file | hundreds per cycle (~5s cycles) | Latency-sensitive | `internal/services/automations/missing_files.go` |
 | Automations — free-space condition | `Statfs` (Unix) / `GetDiskFreeSpaceEx` (Windows) | 1 per evaluation per source | Latency-sensitive | `internal/services/automations/free_space.go`, `free_space_windows.go` |
+| Automations — hardlink-scope condition | `Lstat` + FileID extraction across all torrents | 10k+ files per build, cached 2 min | Background per evaluation cycle | `internal/services/automations/hardlink_index.go` (`buildHardlinkIndex`) |
+| Automations — managed delete cleanup | `Stat` + `Remove` on parent dirs (empty-only) | tens per delete action | Best-effort; destructive | `internal/qbittorrent/delete_cleanup.go` (`cleanupManagedDeleteTargets`, `pruneEmptyManagedDeleteDir`) |
 | Same-filesystem precondition | `Stat` ×2 + dev-id compare | 1 per inject | User-facing | `pkg/fsutil/samefs.go`, `samefs_{unix,windows}.go` |
 
 This is the complete RPC surface. Anything outside this table stays local to the qui host (trackericons cache, backups DataDir, externalprograms exec, license files, settings).
@@ -381,6 +396,26 @@ type StatfsResponse struct {
     Filesystem     string `json:"filesystem,omitempty"` // best-effort
 }
 
+// ReadDir is a one-level non-streaming read. Used by callsites that need to inspect
+// immediate children without paying the cost of a streamed walk (e.g. disc-layout
+// marker detection, parent-dir validation, root accessibility checks).
+type ReadDirRequest struct {
+    Path       string `json:"path"`
+    MaxEntries int    `json:"maxEntries,omitempty"` // 0 = no cap (subject to per-op cap)
+}
+type DirEntry struct {
+    Name      string `json:"name"`
+    IsDir     bool   `json:"isDir,omitempty"`
+    IsSymlink bool   `json:"isSymlink,omitempty"`
+    Size      int64  `json:"size,omitempty"`
+    ModTime   string `json:"modTime,omitempty"`
+    Mode      uint32 `json:"mode,omitempty"`
+}
+type ReadDirResponse struct {
+    Entries   []DirEntry `json:"entries"`
+    Truncated bool       `json:"truncated,omitempty"` // true if MaxEntries hit
+}
+
 type SameFSRequest  struct { Path1, Path2 string }
 type SameFSResponse struct { Same bool `json:"same"` }
 
@@ -497,6 +532,7 @@ Per-op caps are enforced server-side (qui rejects with 400 `request_too_large` b
 | `LstatRequest.Paths` | 1024 | Same |
 | `WalkRequest.IgnorePaths` | 1024 | Orphanscan ignore list is small in practice |
 | `WalkRequest.IgnoreDirNames` | 256 | Pattern names, not paths |
+| `ReadDirRequest.MaxEntries` | 8192 (default cap) | One-level directory reads are bounded by FS limits in practice; cap protects against pathological cases (`/tmp` with 100k entries) |
 | `RemoveRequest.IgnorePaths` | 1024 | Same as walk |
 | `TreeCreateRequest.Plan.Files` | 10 000 | A single cross-seed match never exceeds this; if it does, split the plan |
 | `WalkRequest.Root` length | 4 096 bytes | Linux PATH_MAX |
@@ -537,6 +573,13 @@ type FileInfo struct {
     Path      string
     Size      int64
     ModTime   time.Time
+    IsDir     bool
+    IsSymlink bool
+    Mode      fs.FileMode
+}
+
+type DirEntry struct {
+    Name      string  // basename only; caller joins with the request path if needed
     IsDir     bool
     IsSymlink bool
     Mode      fs.FileMode
@@ -586,6 +629,7 @@ type Backend interface {
     StatBatch(ctx context.Context, paths []string) ([]*FileInfo, []error, error)
     Lstat(ctx context.Context, path string) (*LstatInfo, error)
     LstatBatch(ctx context.Context, paths []string) ([]*LstatInfo, []error, error)
+    ReadDir(ctx context.Context, path string, maxEntries int) ([]DirEntry, bool, error) // bool = truncated
     WalkDir(ctx context.Context, root string, opts WalkOptions) (<-chan WalkEntry, error)
     Statfs(ctx context.Context, path string) (*StatfsResult, error)
     SameFilesystem(ctx context.Context, p1, p2 string) (bool, error)
@@ -612,6 +656,7 @@ type BackendInfo struct {
     Kind         string   // "local" | "remote"
     AgentVersion string   // remote only
     AllowedRoots []string // remote only
+    ReflinkRoots []string // subset of AllowedRoots whose underlying FS supports reflinks
     Capabilities []string
 }
 ```
@@ -628,7 +673,8 @@ type BackendInfo struct {
 - Talks to the in-process **agent dispatcher** (a sibling subsystem at `internal/agent/dispatcher.go`), *not* directly to the agent. There is no outbound HTTP from `fsops.Remote`; the agent is on the other side of the long-poll, not at a URL `fsops.Remote` can dial.
 - Each method does: (1) serialize args to the matching `pkg/agent/proto` request type; (2) call `dispatcher.Submit(ctx, instanceID, op, args)` which generates a `requestID`, drops the `Job` into the per-agent inbox, and registers a result channel (whether the response streams is determined by the op name, looked up in the static op-registry); (3) block on the channel (or `ctx.Done`); (4) deserialize the response payload into the matching response type and return.
 - `WalkDir` returns the result channel directly (typed `<-chan WalkEntry`); the dispatcher streams NDJSON entries from the agent's `/result/{id}` POST body straight onto it.
-- Capabilities are cached on the `Agent` record on each heartbeat (no extra round-trip needed).
+- `SupportsReflink(path)` and `Info(ctx)` are **cache reads** — they consult `agents.reflink_roots` and `agents.capabilities` (refreshed on every heartbeat) rather than dispatching an RPC. The agent already advertised the answer at register time and keeps it current via heartbeats; `fsops.Remote` just looks it up in the locally-cached `Agent` record.
+- All other methods cache nothing; every call dispatches a fresh job through the dispatcher.
 
 **Dispatcher (`internal/agent/dispatcher.go`).** New subsystem owned by qui:
 ```go
@@ -676,6 +722,9 @@ The HTTP handlers (`internal/api/handlers/agent.go`) are thin wrappers over the 
 - `internal/services/orphanscan/delete.go` (`os.Remove`, `os.RemoveAll`, `os.Lstat` → `backend.Remove` with `RemoveOptions`).
 - `internal/services/automations/missing_files.go` (`os.Stat` → `backend.Stat` or `StatBatch`).
 - `internal/services/automations/free_space.go` (`unix.Statfs` → `backend.Statfs`). The `FreeSpaceSourceType` enum gains a third value `agentPath`.
+- `internal/services/automations/hardlink_index.go` `buildHardlinkIndex` (`os.Lstat` + `pkg/hardlink.GetFileID` per torrent file → `backend.LstatBatch` with `WantFileID:true`). High-volume; the 2-minute cache layer in this file is preserved unchanged — it sits above the Backend boundary.
+- `internal/qbittorrent/delete_cleanup.go` `cleanupManagedDeleteTargets` and `pruneEmptyManagedDeleteDir` (`os.Stat` + `os.Remove` on parent dirs → `backend.Stat` + `backend.Remove` with `Recursive:false`). Destructive, so flows through the audit log on the agent side.
+- `internal/services/crossseed/service.go` `FindMatchingBaseDir` (`os.MkdirAll` per candidate base dir + `fsutil.SameFilesystem(sourcePath, baseDir)` → `backend.MkdirAll` + `backend.SameFilesystem`). Composite operation — qui-side orchestration over existing primitives; no new op needed.
 - `pkg/fsutil/samefs.go` callsites (e.g. `internal/services/dirscan/inject.go`) → `backend.SameFilesystem`.
 
 `pkg/hardlinktree`, `pkg/reflinktree`, `pkg/hardlink`, and `pkg/fsutil` stay where they are. They define the canonical `TreePlan` and the local execution semantics. The `Local` backend depends on them. The `Remote` backend serializes `TreePlan` over the wire, and the agent re-uses the same packages.
@@ -704,6 +753,7 @@ CREATE TABLE agents (
     agent_version         TEXT NOT NULL,
     capabilities          TEXT NOT NULL,        -- JSON array
     allowed_roots         TEXT NOT NULL,        -- JSON array
+    reflink_roots         TEXT NOT NULL DEFAULT '[]',  -- JSON array; subset of allowed_roots whose FS supports CoW reflinks
     platform              TEXT NOT NULL,
     hostname              TEXT NOT NULL,        -- self-reported by agent
     registered_from_addr  TEXT NOT NULL,        -- remote_addr qui observed on /register; surfaced in UI
@@ -872,22 +922,24 @@ Total user actions: one paste, one shell command. No URLs, fingerprints, or toke
 
 **Capabilities** are additive. The agent advertises its capability list in the `RegisterRequest` and refreshes it on every `Heartbeat`:
 ```
-["fs.stat", "fs.lstat", "fs.walk", "fs.fileid", "fs.statfs", "fs.samefs",
+["fs.stat", "fs.lstat", "fs.readdir", "fs.walk", "fs.fileid", "fs.statfs", "fs.samefs",
  "fs.mkdir", "fs.remove", "fs.removeall",
  "tree.hardlink", "tree.reflink", "tree.remove"]
 ```
 
 `fs.fileid` is a flag, not an op — it means the agent can populate `WalkEntry.FileID` (and `LstatEntry.FileID`) when the request asks for it. Required by dirscan and orphanscan even though they don't dispatch a `fs.fileid` op directly.
 
-qui persists the latest capability list on `agents.capabilities` and consults it before dispatching a job. A static map of `feature → required_capabilities` lives in qui code:
-- Cross-seed inject hardlink → `tree.hardlink`
-- Cross-seed inject reflink → `tree.reflink`
-- Dirscan → `fs.walk`, `fs.fileid`
-- Orphanscan → `fs.walk`, `fs.fileid`, `fs.removeall`
-- Missing-files automation → `fs.stat`
-- Free-space automation (path source) → `fs.statfs`
+qui persists the latest `capabilities`, `allowed_roots`, and `reflink_roots` on the `agents` row and consults them before dispatching a job. Capabilities answer "can the agent perform this op at all?"; the root lists answer "is the specific path eligible for this op?". A static map of `feature → required_capabilities` lives in qui code:
+- Cross-seed inject hardlink → `tree.hardlink`, `fs.samefs` (pre-flight check picks the link-tree base dir)
+- Cross-seed inject reflink → `tree.reflink`, `fs.samefs`, **plus** the chosen base dir must be under one of `agents.reflink_roots` (CoW support is per-filesystem, not per-agent)
+- Dirscan → `fs.walk`, `fs.fileid`, `fs.readdir` (`fs.readdir` for disc-layout marker detection and root accessibility checks)
+- Orphanscan → `fs.walk`, `fs.fileid`, `fs.readdir`, `fs.remove`, `fs.removeall` (`fs.readdir` for disc-parent validation; `fs.remove` for single orphan files; `fs.removeall` for orphan directories)
+- Missing-files automation condition → `fs.stat`
+- Free-space automation condition (path source) → `fs.statfs`
+- Hardlink-scope automation condition → `fs.lstat`, `fs.fileid`
+- Managed delete cleanup → `fs.stat`, `fs.remove`
 
-If a required capability is missing when the user enables a feature: hard block in the UI with a specific message ("Your remote agent (v0.0.5) doesn't support `tree.reflink` (required for reflink cross-seed mode). Upgrade the agent and retry."). If the agent dispatches a job whose op isn't in the capability list, qui rejects internally with `version_skew` rather than enqueueing.
+If a required capability is missing when the user enables a feature: hard block in the UI with a specific message ("Your remote agent (v0.0.5) doesn't support `tree.reflink` (required for reflink cross-seed mode). Upgrade the agent and retry."). If the chosen base dir is not under `reflink_roots`, the UI surfaces the same hard-block style message ("This filesystem doesn't support reflinks; pick a different base directory or fall back to hardlink mode"). If the agent dispatches a job whose op isn't in the capability list, qui rejects internally with `version_skew` rather than enqueueing.
 
 **Register-time gating.** qui rejects `register` from an agent whose `protoVersion` doesn't match a supported value. This catches major-version skew before any work is dispatched.
 
@@ -1048,7 +1100,7 @@ The `Instance` type stays unchanged on its existing fields; the agent record is 
 - Existing instances continue to use `Local` backend if they had `has_local_filesystem_access=true`, no-op backend otherwise. Zero behavior change.
 - Migration 070 only adds two new tables. No changes to `instances` and no data migration.
 - Frontend: the radio group's default selection mirrors the current bool: existing instances with `hasLocalFilesystemAccess=true` show as "Local", others show as "None".
-- Existing `HasLocalFilesystemAccess` checks (e.g. `internal/proxy/handler.go`, `internal/qbittorrent/sync_manager.go`, `internal/api/handlers/dirscan.go`, `internal/api/handlers/automations.go`, `internal/services/dirscan/inject.go`) get a small refactor: instead of `if !instance.HasLocalFilesystemAccess { reject }`, they call a helper `instances.HasFilesystemAccess(ctx, instance) (bool, FilesystemMode)` that returns true if the bool is set OR an `agents` row exists for the instance, plus the mode (`"local" | "agent" | "none"`). Gating language unchanged.
+- Existing `HasLocalFilesystemAccess` checks (e.g. `internal/proxy/handler.go`, `internal/qbittorrent/sync_manager.go`, `internal/api/handlers/dirscan.go`, `internal/api/handlers/automations.go`, `internal/services/dirscan/inject.go`, `internal/services/automations/hardlink_index.go`, `internal/qbittorrent/delete_cleanup.go`) get a small refactor: instead of `if !instance.HasLocalFilesystemAccess { reject }`, they call a helper `instances.HasFilesystemAccess(ctx, instance) (bool, FilesystemMode)` that returns true if the bool is set OR an `agents` row exists for the instance, plus the mode (`"local" | "agent" | "none"`). Gating language unchanged.
 
 ## 18. Phased Implementation Plan
 
@@ -1152,13 +1204,14 @@ The dual-backend integration matrix from Stage A grows: each FS op gets a `Job.O
 2. `fs.statfs`
 3. `fs.samefs`
 4. `fs.lstat`
-5. `fs.mkdir`
-6. `fs.walk` (streaming — exercises NDJSON framing under real load; FileID-indexing is a flag on the same op)
-7. `fs.remove`
-8. `fs.removeall`
-9. `tree.hardlink` (atomic; tests rollback with synthetic mid-tree failures)
-10. `tree.reflink` (capability-gated)
-11. `tree.remove`
+5. `fs.readdir`
+6. `fs.mkdir`
+7. `fs.walk` (streaming — exercises NDJSON framing under real load; FileID-indexing is a flag on the same op)
+8. `fs.remove`
+9. `fs.removeall`
+10. `tree.hardlink` (atomic; tests rollback with synthetic mid-tree failures)
+11. `tree.reflink` (capability-gated)
+12. `tree.remove`
 
 **Each op is one PR.** Per-PR scope: proto-args type, agent-executor switch case, `Backend` method on `Remote` (the `Local` method already exists from Stage B), capability advertisement, dual-backend integration test, audit-log assertion if destructive, capability-missing UI test if applicable. The CI matrix from Stage A grows by one test row per PR; nothing else changes structurally.
 
