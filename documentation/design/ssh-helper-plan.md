@@ -429,9 +429,9 @@ Deviations from design doc:
 
 ## Phase 9: Refactor — `dirscan/fileid_index.go`
 
-- [ ] `os.Stat` + `hardlink.GetFileID` → `backend.Lstat`
-- [ ] Dirscan service gains `backendPool`
-- [ ] Tests pass
+- [x] `os.Stat` + `hardlink.GetFileID` → `backend.Lstat`
+- [x] Dirscan service gains `backendPool`
+- [x] Tests pass
 
 **Goal:** FileID index builder refactor. Also adds `backendPool` to the dirscan `Service` struct (used by Phases 10-11).
 
@@ -452,7 +452,18 @@ make build
 > Implement Phase 9 from `documentation/design/ssh-helper-plan.md`. Refactor `internal/services/dirscan/fileid_index.go`: replace `os.Stat(absPath)` + `hardlink.GetFileID(fi, absPath)` in `addTorrentFilesToFileIDIndex` with `info, err := backend.Lstat(ctx, absPath)` where `info.FileID` is already populated. Add `backendPool *fsops.Pool` to the `Service` struct in `service.go` and to `NewService`. Wire it in `cmd/qui/main.go`. This phase establishes the backend pool on the dirscan service that Phases 10-11 will also use. Follow coding standards in `CLAUDE.md`. Stay strictly within scope. Update the plan checkboxes and add implementation notes when done.
 
 ### Implementation Notes
-_(filled in after phase completion)_
+
+**Completed 2026-04-28.**
+
+Files modified:
+- `internal/services/dirscan/service.go` — Added `backendPool *fsops.Pool` field and `fsops` import; extended `NewService` parameter list
+- `internal/services/dirscan/fileid_index.go` — Replaced `os.Stat` + `hardlink.GetFileID` with `backend.Lstat` in `addTorrentFilesToFileIDIndex`. Removed `os` and `hardlink` imports. Added `ctx` + `backend` params.
+- `internal/services/dirscan/webhook_queue_test.go` — Added nil backendPool param to `NewService` call
+- `internal/services/dirscan/cancel_scan_test.go` — Same
+- `cmd/qui/main.go` — Passed `backendPool` to `dirscan.NewService`
+
+Deviations from design doc:
+- None.
 
 ---
 

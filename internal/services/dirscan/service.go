@@ -22,6 +22,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/arr"
@@ -64,6 +65,7 @@ type Service struct {
 	// Optional store for tracker display-name resolution (shared with cross-seed).
 	trackerCustomizationStore *models.TrackerCustomizationStore
 	notifier                  notifications.Notifier
+	backendPool               *fsops.Pool
 
 	// Components for search/match/inject
 	parser   *Parser
@@ -119,6 +121,7 @@ func NewService(
 	arrService *arr.Service, // optional, for external ID lookup
 	trackerCustomizationStore *models.TrackerCustomizationStore, // optional, for display-name resolution
 	notifier notifications.Notifier,
+	backendPool *fsops.Pool,
 ) *Service {
 	if cfg.SchedulerInterval <= 0 {
 		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval
@@ -146,6 +149,7 @@ func NewService(
 		arrService:                arrService,
 		trackerCustomizationStore: trackerCustomizationStore,
 		notifier:                  notifier,
+		backendPool:               backendPool,
 		parser:                    parser,
 		searcher:                  searcher,
 		injector:                  injector,
