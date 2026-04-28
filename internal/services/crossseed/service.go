@@ -1498,6 +1498,40 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 		return
 	}
 
+	if completionSettings.DelaySeconds > 0 {
+		log.Info().
+			Int("instanceID", instanceID).
+			Str("hash", torrent.Hash).
+			Str("name", torrent.Name).
+			Int("delaySeconds", completionSettings.DelaySeconds).
+			Msg("[CROSSSEED-COMPLETION] Delaying completion search")
+
+		timer := time.NewTimer(time.Duration(completionSettings.DelaySeconds) * time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+
+		completionSettings, err = s.completionStore.Get(ctx, instanceID)
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", instanceID).
+				Str("hash", torrent.Hash).
+				Msg("[CROSSSEED-COMPLETION] Failed to reload settings after delay")
+			return
+		}
+		if !completionSettings.Enabled {
+			logCompletionSkip(instanceID, &torrent, "[CROSSSEED-COMPLETION] Completion search disabled during delay")
+			return
+		}
+		if shouldSkipCompletionTorrent(instanceID, &torrent, completionSettings) {
+			return
+		}
+	}
+
 	readyTorrent, err := s.waitForCompletionTorrentReady(ctx, instanceID, torrent)
 	if err != nil {
 		log.Warn().
