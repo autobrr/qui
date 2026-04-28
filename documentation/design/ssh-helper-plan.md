@@ -305,9 +305,9 @@ Deviations from design doc:
 
 ## Phase 6: Refactor — `automations/free_space.go`
 
-- [ ] `unix.Statfs` → `backend.Statfs`
-- [ ] `HasLocalFilesystemAccess` check replaced with backend pool resolution
-- [ ] Tests pass, build tags work
+- [x] `unix.Statfs` → `backend.Statfs`
+- [x] `HasLocalFilesystemAccess` check replaced with backend pool resolution
+- [x] Tests pass, build tags work
 
 **Goal:** `unix.Statfs` → `backend.Statfs`. Replaces `HasLocalFilesystemAccess` check with backend pool resolution.
 
@@ -327,7 +327,22 @@ make build
 > Implement Phase 6 from `documentation/design/ssh-helper-plan.md`. Refactor `internal/services/automations/free_space.go`: replace `unix.Statfs(path, &stat)` (line 102) with `backend.Statfs(ctx, path)` which returns `(*fsops.StatfsResult, error)`. The `HasLocalFilesystemAccess` check on line 88 should be replaced by resolving the backend from the pool — if the pool returns `NoopBackend`, the Statfs call will return `ErrNoFilesystemAccess` naturally. `GetFreeSpaceBytesForSource` needs access to the backend pool (pass through the service or as a parameter). Apply the same pattern to `free_space_windows.go`. Build tags must still work correctly. Follow coding standards in `CLAUDE.md`. Stay strictly within scope. Update the plan checkboxes and add implementation notes when done.
 
 ### Implementation Notes
-_(filled in after phase completion)_
+
+**Completed 2026-04-28.**
+
+Files modified:
+- `internal/services/automations/free_space.go` — Removed `getLocalFreeSpaceBytes` and `unix` import; added `backend fsops.Backend` param to `GetFreeSpaceBytesForSource`; path case uses `backend.Statfs`
+- `internal/services/automations/free_space_windows.go` — Same signature change; path case now uses `backend.Statfs` instead of returning "not supported on Windows"
+- `internal/services/automations/free_space_test.go` — Updated tests to call through `GetFreeSpaceBytesForSource` with `local.NewBackend()` instead of the removed `getLocalFreeSpaceBytes`
+- `internal/services/automations/service.go` — Both `GetFreeSpaceBytesForSource` callsites updated to resolve backend from pool and pass it
+
+Design decisions:
+- Added `backend fsops.Backend` as a parameter to `GetFreeSpaceBytesForSource` rather than making it a method on Service, since it's a package-level function. Callers resolve the backend from the pool and pass it in.
+- The `HasLocalFilesystemAccess` check on the old line 89 is now gone — the backend handles access control naturally (noop backend returns `ErrNoFilesystemAccess` from `Statfs`).
+- Windows now supports path-based free space via the backend (previously returned "not supported on Windows"). The local backend's `Statfs` on Windows uses `GetDiskFreeSpaceEx`.
+
+Deviations from design doc:
+- None.
 
 ---
 
