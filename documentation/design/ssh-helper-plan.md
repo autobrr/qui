@@ -81,9 +81,9 @@ Phase 17 (design review) ─────── depends on 16
 
 ## Phase 1: Proto Types (`pkg/agent/proto`)
 
-- [ ] Types created
-- [ ] Tests passing
-- [ ] Lint clean
+- [x] Types created
+- [x] Tests passing (33 tests x3, -race)
+- [x] Lint clean (go vet; golangci-lint not installed locally)
 
 **Goal:** Shared NDJSON protocol types used by both qui and qui-helper. Leaf package, zero `internal/` imports.
 
@@ -106,7 +106,20 @@ go list -deps ./pkg/agent/proto/... | grep -c 'qui/internal' # must be 0
 > Implement Phase 1 from `documentation/design/ssh-helper-plan.md`. Create the `pkg/agent/proto` package with shared NDJSON protocol types. Reference design doc `documentation/design/remote-helper.md` §7.2 for `Command`/`Result`/`HelloBanner` envelopes and §7.4 for all op-specific payload types (`StatRequest`, `StatResponse`, `LstatRequest`, `LstatEntry`, `WalkRequest`, `WalkEntry`, `StatfsRequest`, `StatfsResponse`, `ReadDirRequest`, `ReadDirResponse`, `SameFSRequest`, `SameFSResponse`, `MkdirRequest`, `RemoveRequest`, `RemoveResponse`, `TreeCreateRequest`, `TreeCreateResponse`, `TreeRemoveRequest`, `CancelRequest`, `DiagEchoRequest`, `DiagEchoResponse`). This is a leaf `pkg/` package — it MUST NOT import anything from `internal/`. It imports `pkg/hardlinktree` for `TreePlan` and `pkg/hardlink` for `FileID`. Write JSON round-trip tests for every type. Follow coding standards in `CLAUDE.md`. Stay strictly within scope. Update the plan checkboxes and add implementation notes when done.
 
 ### Implementation Notes
-_(filled in after phase completion)_
+
+**Completed 2026-04-28.**
+
+Files created:
+- `pkg/agent/proto/proto.go` — Envelopes (`Command`, `Result`, `HelloBanner`), op constants, `IsStreamingOp`, error code constants
+- `pkg/agent/proto/ops.go` — All 20 op payload types
+- `pkg/agent/proto/proto_test.go` — 33 tests covering JSON round-trip for every type
+
+Deviations from design doc:
+- Added `LstatResponse` wrapper type (design doc §7.4 only showed `LstatEntry` inline; added `LstatResponse{Entries []LstatEntry}` for consistency with `StatResponse`)
+- `SameFSRequest` — design doc was missing JSON tags (`Path1, Path2 string` with no tags). Added `json:"path1"` / `json:"path2"`.
+- Added `OpRemoveAll` constant — design doc treats remove/removeall as one op with a `Recursive` flag, but the op constant table in §7.4 lists them separately. Kept both constants mapping to the same payload type.
+- Added `DiagEchoRequest`/`DiagEchoResponse` types (not in design doc §7.4 but referenced in the build plan for Phase 15's diag.echo op).
+- Op constants and error code constants added as package-level consts for type safety (not in design doc but follows Go conventions).
 
 ---
 
