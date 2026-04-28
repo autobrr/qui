@@ -642,6 +642,7 @@ func (app *Application) runServer() {
 	localBackend := local.NewBackend()
 	backendPool := fsops.NewPool(instanceStore, localBackend)
 	syncManager.SetBackendPool(backendPool)
+	crossSeedService.SetBackendPool(backendPool)
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
 
 	orphanScanStore := models.NewOrphanScanStore(db)

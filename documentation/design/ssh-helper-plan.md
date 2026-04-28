@@ -467,11 +467,11 @@ Deviations from design doc:
 
 ## Phase 10: Refactor — `dirscan/inject.go` + `crossseed/FindMatchingBaseDir`
 
-- [ ] `FindMatchingBaseDir` uses `backend.MkdirAll` + `backend.SameFilesystem`
-- [ ] All 3 callsites updated (crossseed:11125, crossseed:11715, inject:587)
-- [ ] `createLinkTree` uses `backend.HardlinkTree`/`ReflinkTree`/`SupportsReflink`
-- [ ] `rollbackLinkTree` uses `backend.RemoveTree`/`Remove`
-- [ ] Tests pass for both dirscan and crossseed
+- [x] `FindMatchingBaseDir` uses `backend.MkdirAll` + `backend.SameFilesystem`
+- [x] All 3 callsites updated (crossseed + inject)
+- [x] `createLinkTree` uses `backend.HardlinkTree`/`ReflinkTree`/`SupportsReflink`
+- [x] `rollbackLinkTree` uses `backend.RemoveTree`/`Remove`
+- [x] Tests pass for both dirscan and crossseed
 
 **Goal:** Link-tree materialization. Exercises the most Backend methods: `HardlinkTree`, `ReflinkTree`, `RemoveTree`, `SameFilesystem`, `MkdirAll`, `SupportsReflink`, `Remove`.
 
@@ -492,7 +492,26 @@ go test -race -count=3 ./internal/services/crossseed/...
 > Implement Phase 10 from `documentation/design/ssh-helper-plan.md`. This is the most architecturally significant callsite refactor. Modify `FindMatchingBaseDir` in `internal/services/crossseed/service.go` (line 11528) to accept `ctx context.Context` and `backend fsops.Backend` parameters. Replace `os.MkdirAll(dir, 0o755)` (line 11542) with `backend.MkdirAll(ctx, dir, 0o755)` and `fsutil.SameFilesystem(sourcePath, dir)` (line 11547) with `backend.SameFilesystem(ctx, sourcePath, dir)`. Update all 3 callsites: `crossseed/service.go:11125`, `crossseed/service.go:11715`, `dirscan/inject.go:587`. In `dirscan/inject.go`, refactor `createLinkTree` to use `backend.HardlinkTree`/`backend.ReflinkTree`/`backend.SupportsReflink`, `rollbackLinkTree` to use `backend.RemoveTree`/`backend.Remove`, and `materializeLinkTree` to use `backend.MkdirAll`. Update tests in `crossseed/hardlink_mode_test.go` to pass a `local.NewLocalBackend()`. Follow coding standards in `CLAUDE.md`. Stay strictly within scope. Update the plan checkboxes and add implementation notes when done.
 
 ### Implementation Notes
-_(filled in after phase completion)_
+
+**Completed 2026-04-28.**
+
+Files modified:
+- `internal/services/crossseed/service.go` — Added `backendPool` field (atomic.Value), `SetBackendPool`/`getBackendPool`/`getBackendForInstance` methods. Refactored `FindMatchingBaseDir` to accept `ctx` + `backend`. Updated 2 callsites. Removed `os` and `fsutil` imports.
+- `internal/services/crossseed/hardlink_mode_test.go` — Updated all 5 `FindMatchingBaseDir` test calls to pass `ctx` + `local.NewBackend()`.
+- `internal/services/crossseed/partial_contains_guard_test.go` — Added `SetBackendPool` call for test Service that exercises hardlink mode.
+- `internal/services/dirscan/inject.go` — Added `backendPool` to Injector. Refactored `createLinkTree`, `rollbackLinkTree`, `materializeLinkTree` to use backend. 6 Backend methods exercised. Removed `fsutil` and `reflinktree` imports.
+- `internal/services/dirscan/inject_test.go` — Added `newTestInjectorWithPool` helper. Updated all test Injector creation to use real pool.
+- `internal/services/dirscan/service.go` — Updated `NewInjector` call to pass `backendPool`.
+- `cmd/qui/main.go` — Added `crossSeedService.SetBackendPool(backendPool)`.
+
+Design decisions:
+- Used `atomic.Value` + `SetBackendPool` pattern for crossseed Service (matches SyncManager pattern) since the crossseed service is created before the backendPool in main.go.
+- Added nil check for `i.backendPool` in `materializeLinkTree` to avoid panic when tests pass nil pool (tests that don't exercise link-tree mode).
+- `rollbackLinkTree` simplified: removed mode switch, uses `backend.RemoveTree` (which internally delegates to the right rollback for the plan).
+- `shouldUseSearcheeDirectory` still uses `os.Stat` — it's a Phase 11 concern (scanner area), so `os` import remains in inject.go.
+
+Deviations from design doc:
+- None.
 
 ---
 
