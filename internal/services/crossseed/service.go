@@ -1506,13 +1506,7 @@ func (s *Service) HandleTorrentCompletion(ctx context.Context, instanceID int, t
 			Int("delaySeconds", completionSettings.DelaySeconds).
 			Msg("[CROSSSEED-COMPLETION] Delaying completion search")
 
-		timer := time.NewTimer(time.Duration(completionSettings.DelaySeconds) * time.Second)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return
-		case <-timer.C:
-		}
+		time.Sleep(time.Duration(completionSettings.DelaySeconds) * time.Second)
 
 		completionSettings, err = s.completionStore.Get(ctx, instanceID)
 		if err != nil {

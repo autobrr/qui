@@ -137,26 +137,30 @@ func TestInstanceCrossSeedCompletionStore_UpsertClampsDelaySeconds(t *testing.T)
 	db := setupCompletionTestDB(t)
 	store := models.NewInstanceCrossSeedCompletionStore(db)
 	ctx := context.Background()
-
 	instanceID := insertTestInstance(t, db, "Delay Clamp Test")
 
-	// Negative gets clamped to 0
-	saved, err := store.Upsert(ctx, &models.InstanceCrossSeedCompletionSettings{
-		InstanceID:   instanceID,
-		Enabled:      true,
-		DelaySeconds: -10,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, 0, saved.DelaySeconds)
+	cases := []struct {
+		name     string
+		input    int
+		expected int
+	}{
+		{"negative clamps to zero", -10, 0},
+		{"above max clamps to MaxCompletionDelaySeconds", models.MaxCompletionDelaySeconds + 1000, models.MaxCompletionDelaySeconds},
+		{"max boundary preserved", models.MaxCompletionDelaySeconds, models.MaxCompletionDelaySeconds},
+		{"in-range value preserved", 120, 120},
+	}
 
-	// Above max gets clamped to MaxCompletionDelaySeconds
-	saved, err = store.Upsert(ctx, &models.InstanceCrossSeedCompletionSettings{
-		InstanceID:   instanceID,
-		Enabled:      true,
-		DelaySeconds: models.MaxCompletionDelaySeconds + 1000,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, models.MaxCompletionDelaySeconds, saved.DelaySeconds)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			saved, err := store.Upsert(ctx, &models.InstanceCrossSeedCompletionSettings{
+				InstanceID:   instanceID,
+				Enabled:      true,
+				DelaySeconds: tc.input,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, saved.DelaySeconds)
+		})
+	}
 }
 
 func TestInstanceCrossSeedCompletionStore_UpsertUpdatesExisting(t *testing.T) {

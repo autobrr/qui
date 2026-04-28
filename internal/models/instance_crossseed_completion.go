@@ -273,7 +273,7 @@ func scanInstanceCrossSeedCompletionSettings(scanner interface {
 		ExcludeTags:        excludeTags,
 		IndexerIDs:         indexerIDs,
 		BypassTorznabCache: bypassTorznabCache == 1,
-		DelaySeconds:       delaySeconds,
+		DelaySeconds:       max(0, min(MaxCompletionDelaySeconds, delaySeconds)),
 	}
 
 	if updatedAt.Valid {
