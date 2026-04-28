@@ -1,0 +1,173 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package fsops
+
+import (
+	"context"
+	"errors"
+	"io/fs"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/hardlink"
+	"github.com/autobrr/qui/pkg/hardlinktree"
+)
+
+// fakeInstanceStore implements instanceGetter for tests.
+type fakeInstanceStore struct {
+	instances map[int]*models.Instance
+}
+
+func (s *fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
+	inst, ok := s.instances[id]
+	if !ok {
+		return nil, nil
+	}
+	return inst, nil
+}
+
+// fakeBackend is a minimal Backend for verifying which backend the pool returns.
+type fakeBackend struct{ kind string }
+
+func (f fakeBackend) Stat(context.Context, string) (*FileInfo, error) {
+	return &FileInfo{}, nil
+}
+func (f fakeBackend) StatBatch(context.Context, []string) ([]*FileInfo, []error, error) {
+	return nil, nil, nil
+}
+func (f fakeBackend) Lstat(context.Context, string) (*LstatInfo, error) { return nil, nil }
+func (f fakeBackend) LstatBatch(context.Context, []string) ([]*LstatInfo, []error, error) {
+	return nil, nil, nil
+}
+func (f fakeBackend) ReadDir(context.Context, string, int) ([]DirEntry, bool, error) {
+	return nil, false, nil
+}
+func (f fakeBackend) WalkDir(context.Context, string, WalkOptions) (<-chan WalkEntry, error) {
+	return nil, nil
+}
+func (f fakeBackend) Statfs(context.Context, string) (*StatfsResult, error) { return nil, nil }
+func (f fakeBackend) SameFilesystem(context.Context, string, string) (bool, error) {
+	return false, nil
+}
+func (f fakeBackend) FileID(context.Context, string) (hardlink.FileID, uint64, error) {
+	return hardlink.FileID{}, 0, nil
+}
+func (f fakeBackend) MkdirAll(context.Context, string, fs.FileMode) error { return nil }
+func (f fakeBackend) Remove(context.Context, string, RemoveOptions) error {
+	return nil
+}
+func (f fakeBackend) HardlinkTree(context.Context, *hardlinktree.TreePlan) (*TreeCreateResult, error) {
+	return nil, nil
+}
+func (f fakeBackend) ReflinkTree(context.Context, *hardlinktree.TreePlan) (*TreeCreateResult, error) {
+	return nil, nil
+}
+func (f fakeBackend) RemoveTree(context.Context, *hardlinktree.TreePlan) error { return nil }
+func (f fakeBackend) SupportsReflink(context.Context, string) (bool, string, error) {
+	return false, "", nil
+}
+func (f fakeBackend) Info(context.Context) (*BackendInfo, error) {
+	return &BackendInfo{Kind: f.kind}, nil
+}
+func (f fakeBackend) HealthCheck(context.Context) error { return nil }
+
+func TestPool_LocalAccess(t *testing.T) {
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{
+		1: {ID: 1, HasLocalFilesystemAccess: true},
+	}}
+	local := fakeBackend{kind: "local"}
+	pool := NewPool(store, local)
+
+	backend, err := pool.GetBackend(context.Background(), 1)
+	require.NoError(t, err)
+
+	info, err := backend.Info(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "local", info.Kind)
+}
+
+func TestPool_NoAccess(t *testing.T) {
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{
+		2: {ID: 2, HasLocalFilesystemAccess: false},
+	}}
+	local := fakeBackend{kind: "local"}
+	pool := NewPool(store, local)
+
+	backend, err := pool.GetBackend(context.Background(), 2)
+	require.NoError(t, err)
+
+	// All ops should return ErrNoFilesystemAccess.
+	_, err = backend.Stat(context.Background(), "/any")
+	assert.True(t, errors.Is(err, ErrNoFilesystemAccess))
+
+	err = backend.MkdirAll(context.Background(), "/any", 0o755)
+	assert.True(t, errors.Is(err, ErrNoFilesystemAccess))
+
+	err = backend.HealthCheck(context.Background())
+	assert.True(t, errors.Is(err, ErrNoFilesystemAccess))
+
+	// Info should still work (returns kind="none").
+	info, err := backend.Info(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "none", info.Kind)
+}
+
+func TestPool_InstanceNotFound(t *testing.T) {
+	store := &fakeInstanceStore{instances: map[int]*models.Instance{}}
+	pool := NewPool(store, fakeBackend{})
+
+	_, err := pool.GetBackend(context.Background(), 999)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestNoopBackend_AllMethodsError(t *testing.T) {
+	b := noopBackend{}
+	ctx := context.Background()
+
+	_, err := b.Stat(ctx, "/x")
+	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, _, err = b.StatBatch(ctx, []string{"/x"})
+	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.Lstat(ctx, "/x")
+	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, _, err = b.LstatBatch(ctx, []string{"/x"})
+	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, _, err = b.ReadDir(ctx, "/x", 0)
+	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.WalkDir(ctx, "/x", WalkOptions{})
+	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.Statfs(ctx, "/x")
+	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.SameFilesystem(ctx, "/x", "/y")
+	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, _, err = b.FileID(ctx, "/x")
+	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	assert.ErrorIs(t, b.MkdirAll(ctx, "/x", 0o755), ErrNoFilesystemAccess)
+	assert.ErrorIs(t, b.Remove(ctx, "/x", RemoveOptions{}), ErrNoFilesystemAccess)
+	assert.ErrorIs(t, b.RemoveTree(ctx, nil), ErrNoFilesystemAccess)
+
+	_, err = b.HardlinkTree(ctx, nil)
+	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, err = b.ReflinkTree(ctx, nil)
+	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	_, _, err = b.SupportsReflink(ctx, "/x")
+	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+
+	assert.ErrorIs(t, b.HealthCheck(ctx), ErrNoFilesystemAccess)
+}
