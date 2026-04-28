@@ -261,10 +261,10 @@ Deviations from design doc:
 
 ## Phase 5: Refactor — `automations/missing_files.go`
 
-- [ ] `os.Stat` → `backend.Stat`
-- [ ] `os.IsNotExist` → error wrapping check
-- [ ] Existing tests pass with zero behavioral diff
-- [ ] `make build` succeeds
+- [x] `os.Stat` → `backend.Stat`
+- [x] `os.IsNotExist` → `errors.Is(err, fs.ErrNotExist)`
+- [x] Existing tests pass with zero behavioral diff
+- [x] `go build ./...` succeeds
 
 **Goal:** First callsite refactor (2 `os.*` calls). Proves the pattern. Smallest possible scope.
 
@@ -285,7 +285,21 @@ make build
 > Implement Phase 5 from `documentation/design/ssh-helper-plan.md`. This is the first callsite refactor — prove the pattern works on the simplest file. Modify `internal/services/automations/missing_files.go`: replace `os.Stat(fullPath)` (line 49) with `backend.Stat(ctx, fullPath)` and `os.IsNotExist(err)` (line 50) with `errors.Is(err, fs.ErrNotExist)`. The backend is obtained from `s.backendPool.GetBackend(ctx, instanceID)` at the start of `detectMissingFiles`. Add `backendPool *fsops.Pool` to the `Service` struct in `service.go` and to the `NewService` constructor. Wire it in `cmd/qui/main.go` by creating `localBackend := local.NewLocalBackend()` and `backendPool := fsops.NewPool(instanceStore, localBackend)` then passing it to `automations.NewService`. All existing tests must pass with zero behavioral difference. Follow coding standards in `CLAUDE.md`. Stay strictly within scope. Update the plan checkboxes and add implementation notes when done.
 
 ### Implementation Notes
-_(filled in after phase completion)_
+
+**Completed 2026-04-28.**
+
+Files modified:
+- `internal/services/automations/service.go` — Added `backendPool *fsops.Pool` field and `fsops` import; extended `NewService` parameter list
+- `internal/services/automations/missing_files.go` — Replaced `os.Stat` with `backend.Stat`, `os.IsNotExist` with `errors.Is(err, fs.ErrNotExist)`; backend obtained via `s.backendPool.GetBackend(ctx, instanceID)`
+- `cmd/qui/main.go` — Created `localBackend` + `backendPool`; passed pool to `automations.NewService`
+
+Design decisions:
+- Backend is resolved once at the top of `detectMissingFiles` rather than per-file. The instanceID doesn't change within the function.
+- The `HasLocalFilesystemAccess` guard at the callsite (service.go:1986) is preserved for now — it's an optimization that skips detection entirely. Phase 13 will migrate it to `HasFilesystemAccess`.
+- `backendPool` and `localBackend` are created right before `automationService` in main.go. Later phases will reuse these same variables for other service constructors.
+
+Deviations from design doc:
+- None.
 
 ---
 
