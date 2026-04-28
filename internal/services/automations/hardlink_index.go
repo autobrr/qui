@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -166,6 +165,13 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		// builtAt is set at the end of a successful build to avoid TTL issues with slow builds
 	}
 
+	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get backend for hardlink index")
+		index.builtAt = time.Now()
+		return index
+	}
+
 	if len(torrents) == 0 {
 		index.builtAt = time.Now()
 		globalHardlinkIndexCache.mu.Lock()
@@ -236,17 +242,18 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 				continue
 			}
 
-			fi, err := os.Lstat(fullPath)
+			lstatInfo, err := backend.Lstat(ctx, fullPath)
 			if err != nil {
 				info.allAccessible = false
 				continue
 			}
-			if !fi.Mode().IsRegular() {
+			if !lstatInfo.Mode.IsRegular() {
 				continue
 			}
 
-			fileID, nlink, err := hardlink.GetFileID(fi, fullPath)
-			if err != nil {
+			fileID := lstatInfo.FileID
+			nlink := lstatInfo.Nlinks
+			if fileID.IsZero() {
 				info.allAccessible = false
 				continue
 			}
@@ -413,7 +420,7 @@ func isPathInsideBase(basePath, fullPath string) bool {
 	// Check if the relative path escapes the base:
 	// - ".." means direct parent traversal
 	// - Paths starting with "../" traverse upward
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return false
 	}
 

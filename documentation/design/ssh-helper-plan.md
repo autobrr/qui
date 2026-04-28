@@ -348,9 +348,9 @@ Deviations from design doc:
 
 ## Phase 7: Refactor — `automations/hardlink_index.go`
 
-- [ ] `os.Lstat` + `hardlink.GetFileID` → `backend.Lstat`
-- [ ] Hardlink index scope maps unchanged
-- [ ] Tests pass
+- [x] `os.Lstat` + `hardlink.GetFileID` → `backend.Lstat`
+- [x] Hardlink index scope maps unchanged
+- [x] Tests pass
 
 **Goal:** First test of the Lstat-with-FileID pattern. `os.Lstat` + `hardlink.GetFileID` → `backend.Lstat` (with FileID populated).
 
@@ -368,7 +368,18 @@ go test -race -count=3 ./internal/services/automations/...
 > Implement Phase 7 from `documentation/design/ssh-helper-plan.md`. Refactor `internal/services/automations/hardlink_index.go`: in `buildHardlinkIndex`, replace `os.Lstat(fullPath)` (line 239) + `hardlink.GetFileID(fi, fullPath)` with `info, err := backend.Lstat(ctx, fullPath)` where `info.FileID` and `info.Nlinks` are already populated by the Local backend. Obtain the backend from `s.backendPool.GetBackend(ctx, instanceID)` at the start of the function. Leave all `filepath.*` calls (`filepath.Clean`, `filepath.Rel`, `isPathInsideBase`) untouched — those are path manipulation, not filesystem operations. All existing hardlink index tests must pass identically. Follow coding standards in `CLAUDE.md`. Stay strictly within scope. Update the plan checkboxes and add implementation notes when done.
 
 ### Implementation Notes
-_(filled in after phase completion)_
+
+**Completed 2026-04-28.**
+
+Files modified:
+- `internal/services/automations/hardlink_index.go` — Replaced `os.Lstat(fullPath)` + `hardlink.GetFileID(fi, fullPath)` with `backend.Lstat(ctx, fullPath)` using `lstatInfo.FileID` and `lstatInfo.Nlinks` directly. Removed `os` import. Backend resolved once from `s.backendPool` at top of `buildHardlinkIndex`. Changed `os.PathSeparator` to `filepath.Separator` in `isPathInsideBase`.
+
+Design decisions:
+- Check `fileID.IsZero()` after Lstat to handle the case where the backend couldn't extract FileID (e.g., for non-regular files on some platforms). Marks `allAccessible = false` same as the old error path.
+- The `isPathInsideBase` helper only uses `filepath.*` — stays untouched except for the `os.PathSeparator` → `filepath.Separator` swap to remove the `os` import entirely.
+
+Deviations from design doc:
+- None.
 
 ---
 
