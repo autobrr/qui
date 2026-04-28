@@ -421,10 +421,16 @@ Identical to the daemon design. Every `pkg/fsexec` primitive accepts a `context.
 |---|---|---|
 | Helper crashes (panic, OOM, SIGTERM from seedbox reboot) | qui's stdout reader gets EOF | All in-flight pending results closed with `connection_lost`; SSH session reaped; `sshpool` marks the connection invalid; next call re-establishes |
 | SSH connection dropped (network blip, firewall idle-timeout, server restart) | qui's reader gets read error or write fails | Same as helper crash — connection invalidated, lazy reconnect on next call |
-| qui crashes during an op | Helper's stdin reader gets EOF on next blocking read | Helper writes "stdin closed" log to stderr (which goes nowhere now), aborts in-flight ops, exits cleanly. On qui restart, a fresh `*ssh.Client` + `ssh.Session` is established. |
+| qui crashes during an op | Helper's stdin reader gets EOF on next blocking read | Helper cancels all in-flight op contexts (triggering `pkg/fsexec` cooperative exits / rollbacks), waits up to **30s grace period** for ops to drain, then exits cleanly. Tree ops mid-creation roll back atomically within this window. On qui restart, a fresh `*ssh.Client` + `ssh.Session` is established. |
 | qui restarts | All in-memory pending-results lost | Next call to `fsops.Remote` re-establishes from scratch. The helper had no qui-derived state — clean. |
 | Helper restarts (reboot, manual kill) | qui's reader gets EOF | Same as helper crash. qui transparently reconnects on next call. |
 | TCP keepalive failure | `*ssh.Client` reports error within `ServerAliveInterval × CountMax` | Connection invalidated; reconnect on next call. |
+
+**Stdin-EOF shutdown sequence.** When the helper's stdin reader detects EOF (qui crashed, quit, or closed the session):
+1. Helper cancels the root context shared by all in-flight ops. Each op's `pkg/fsexec` primitive sees `ctx.Done()` at its next yield point and exits cooperatively. Tree ops enter their rollback path.
+2. Helper waits up to **30 seconds** for all in-flight ops to drain. This accommodates the worst case: a large tree rollback (removing partially-created hardlinks) needs filesystem time.
+3. After all ops drain or the 30s grace period expires, the helper flushes the audit log and exits 0.
+4. If an op has not exited after 30s, the helper logs it as `"forced_exit"` in the audit log and exits 1. This should not happen in practice — `pkg/fsexec` primitives check ctx between each syscall — but the hard bound prevents a hung op from keeping the helper alive indefinitely.
 
 In every failure mode, qui's `fsops.Remote` callers receive `context.DeadlineExceeded` (if their context had a deadline) or `connection_lost` (if not). Service code handles those exactly the way it handles any FS error today.
 
@@ -438,6 +444,8 @@ The `*ssh.Client` per instance is the single source of truth for "is this instan
 - **On bad SSH credentials:** initial connect returns auth-error; qui surfaces "credentials invalid" on the instance card and stops trying until the user updates them.
 
 **Reconnect backoff.** If reconnection fails (network down, SSH server unreachable), qui backs off exponentially (5s → 60s, jitter ±20%). UI shows "instance unreachable" until reconnect succeeds. Once reconnected, queued ops resume normally.
+
+**Network instability impact.** A single SSH connection per instance means a network blip fails ALL in-flight ops for that instance simultaneously. With `ServerAliveInterval=15s` and `CountMax=3`, detection takes up to ~45s. During that window, missing-files checks, automations, and dirscan are silently blocked. Combined with reconnect backoff, worst-case total unavailability per blip is ~60s. For home-server-to-seedbox links, users should expect intermittent feature unavailability during network instability. This is inherent to the single-connection model and acceptable for the self-hosted use case.
 
 ### 7.6 Op input bounds
 
@@ -654,7 +662,7 @@ Compared to the daemon design, this is dramatically simpler: no `agents` table, 
 **New columns on `instances`.**
 
 ```sql
--- Migration 070_add_remote_helper.sql
+-- Migration 074_add_remote_helper.sql (sqlite), 075_add_remote_helper.sql (postgres)
 ALTER TABLE instances ADD COLUMN ssh_host                  TEXT NOT NULL DEFAULT '';
 ALTER TABLE instances ADD COLUMN ssh_port                  INTEGER NOT NULL DEFAULT 22;
 ALTER TABLE instances ADD COLUMN ssh_username              TEXT NOT NULL DEFAULT '';
@@ -715,34 +723,28 @@ No SQLite, no embedded frontend, **no top-level `internal/` dependencies**. The 
 - linux/arm64
 - darwin/amd64
 - darwin/arm64
-- windows/amd64
+
+Windows/amd64 is a best-effort Stage D addition (see §18).
 
 qui's release CI publishes each binary as a **GitHub release asset** under the qui repository, named with a stable pattern: `qui-helper_v{version}_{os}_{arch}{ext}` (e.g. `qui-helper_v1.5.0_linux_amd64`). qui's main binary does **not** embed the helper binaries — that would add ~30 MB of mostly-unused weight to every qui release and force users to upgrade qui to upgrade the helper.
 
-What qui *does* embed is a small constants file (~300 bytes total per release) containing the SHA256 of each cross-compiled helper artifact. On deploy, qui SSHes in, probes the remote arch with `uname -m && uname -s`, picks the matching asset URL, has the seedbox curl it down, and verifies the SHA256 against the embedded constant before installing. The deploy handler does the equivalent of:
+What qui *does* embed is a small constants file (~300 bytes total per release) containing the SHA256 of each cross-compiled helper artifact. **Deployment is qui-driven**: qui downloads the correct helper binary from GitHub releases to its own host, verifies the SHA256 against the embedded constant, then SCPs the verified binary to the seedbox over the existing SSH connection. The seedbox never needs outbound HTTPS to GitHub — only qui does, and it already has internet access.
 
-```
-ssh seedbox '
-  set -e
-  mkdir -p ~/.config/qui-helper
-  curl -fsSL -o ~/.config/qui-helper/qui-helper.new \
-    https://github.com/autobrr/qui/releases/download/v1.5.0/qui-helper_v1.5.0_linux_amd64
-  sha256sum -c <<<"<expected-hash>  ~/.config/qui-helper/qui-helper.new"
-  chmod 700 ~/.config/qui-helper/qui-helper.new
-  mv ~/.config/qui-helper/qui-helper.new ~/.config/qui-helper/qui-helper
-'
-```
-
-(In the actual implementation this is a single command stream over the existing SSH session, not a literal shell-out, but the steps are identical.)
+The deploy flow:
+1. qui probes the remote architecture via the SSH session: `uname -m && uname -s` → maps to one of the cross-compiled helper binaries.
+2. qui downloads the matching binary from `https://github.com/autobrr/qui/releases/download/v{version}/qui-helper_v{version}_{os}_{arch}` to a temp file on qui's host.
+3. qui verifies the downloaded binary's SHA256 against the embedded constant. Rejects on mismatch.
+4. qui SCPs the verified binary to `~/.config/qui-helper/qui-helper.new` on the seedbox (mode 0700).
+5. qui runs `mv ~/.config/qui-helper/qui-helper.new ~/.config/qui-helper/qui-helper` atomically over SSH.
+6. qui runs `~/.config/qui-helper/qui-helper version --json` to confirm the deployment.
 
 Failure modes are clean and surfaced verbatim in the UI:
 - **SHA256 mismatch** (corrupted download or asset tampering): "Downloaded binary failed checksum verification. Try redeploying."
 - **GitHub release missing the asset** (build failure or asset deletion): "qui-helper v{version} for {arch} isn't published. File an issue."
-- **Transient network error** (GitHub temporarily unreachable, DNS hiccup): retried once with backoff inside the deploy handler; if it still fails, surface the underlying error.
+- **Transient network error** (GitHub temporarily unreachable from qui's host): retried once with backoff inside the deploy handler; if it still fails, surface the underlying error.
+- **SCP failure** (seedbox disk full, permission denied): surfaced verbatim.
 
-Outbound HTTPS to github.com from the seedbox is assumed available — it's a precondition for any seedbox doing actual torrenting (trackers, RSS, indexers all use HTTPS), so we don't design around its absence.
-
-**Updates** follow the same flow. When qui upgrades to a newer version, the next deploy or auto-redeploy pulls the matching helper asset from the new GitHub release. The user doesn't see anything beyond a status notification ("Helper auto-upgraded to v1.6.0").
+**Updates** follow the same flow. When qui upgrades to a newer version, the next deploy or auto-redeploy downloads the matching helper asset from the new GitHub release, verifies it, and SCPs it to the seedbox. The user doesn't see anything beyond a status notification ("Helper auto-upgraded to v1.6.0").
 
 **Subcommands.**
 - `qui-helper serve --stdio --root /path1 --root /path2 [--audit-log /path/to/audit.log]`: the long-running mode. Reads NDJSON commands from stdin, executes via `pkg/fsexec` primitives, writes results to stdout. Logs structured JSON to stderr. Writes the destructive-op audit log to the configured path (default `~/.local/state/qui-helper/audit.log`).
@@ -761,7 +763,7 @@ No `pair`, `unpair`, `serve` (without `--stdio`), or `status` subcommands — th
 
 **Why no Docker / systemd / launchd.** The helper has no supervisor needs. It runs as long as qui's SSH session is open and exits when qui closes stdin (or when SSH disconnects). There is no "should I start at boot" question — qui starts the helper on first FS op after qui boots. No PID file, no port, no socket.
 
-**Why no Windows special-casing.** The cross-compile matrix includes windows/amd64 for completeness. SSH support on Windows requires the user to have an SSH server running (OpenSSH for Windows, Cygwin's sshd, etc.) — uncommon for Windows seedboxes, but supported if present.
+**Why no Windows special-casing.** Windows/amd64 is a Stage D best-effort addition to the cross-compile matrix. SSH support on Windows requires the user to have an SSH server running (OpenSSH for Windows, Cygwin's sshd, etc.) — uncommon for Windows seedboxes. Supported if present, but not integration-tested.
 
 ## 11. Deployment / Onboarding Flow
 
@@ -782,14 +784,19 @@ End-to-end:
 4. Form shows a **"Deploy helper"** button.
 5. User clicks Deploy:
    - qui dials the SSH connection (now with the saved host key as a verifier).
-   - qui probes architecture: `uname -m && uname -s`.
-   - qui has the seedbox curl the matching helper binary from GitHub releases (`https://github.com/autobrr/qui/releases/download/v{version}/qui-helper_v{version}_{os}_{arch}`).
+   - qui probes architecture via SSH: `uname -m && uname -s`.
+   - qui downloads the matching helper binary from GitHub releases to a temp file on qui's host.
    - qui verifies the downloaded binary's SHA256 against the constant embedded in qui for the running version.
-   - qui installs the binary atomically to `~/.config/qui-helper/qui-helper` (mode 0700).
-   - qui runs `~/.config/qui-helper/qui-helper version --json` and parses the `HelloBanner`.
+   - qui SCPs the verified binary to `~/.config/qui-helper/qui-helper` on the seedbox (mode 0700, atomic via temp + rename).
+   - qui runs `~/.config/qui-helper/qui-helper version --json` over SSH and parses the `HelloBanner`.
    - qui updates `instances.helper_version`, `helper_capabilities`, `helper_reflink_roots`, etc.
-   - UI flips to "✓ Deployed (vX.Y.Z, 13 capabilities, 2 reflink-capable roots, 2 allowed roots)".
-6. Done. The instance card now shows "Remote helper: deployed". The first time any qui service performs an FS op for this instance, the SSH connection is established lazily and the long-running helper is started.
+   - UI flips to "Deployed (vX.Y.Z, 13 capabilities, 2 reflink-capable roots, 2 allowed roots)".
+6. After successful deploy, the UI shows an **`authorized_keys` hardening snippet** with a copy button:
+   ```
+   command="/home/user/.config/qui-helper/qui-helper serve --stdio --root /home/user/data --root /home/user/seed",no-port-forwarding,no-X11-forwarding,no-agent-forwarding ssh-ed25519 AAAA...
+   ```
+   Accompanied by: *"Optional but recommended: add this to `~/.ssh/authorized_keys` on the seedbox to restrict this SSH key to helper-only access. This prevents the key from being used for general shell access if it is ever compromised."*
+7. Done. The instance card now shows "Remote helper: deployed". The first time any qui service performs an FS op for this instance, the SSH connection is established lazily and the long-running helper is started.
 
 Total user actions: fill form, confirm host key, click Deploy. No paste of pairing strings, no terminal session on the seedbox.
 
@@ -835,10 +842,10 @@ If a required capability is missing when the user enables a feature: hard block 
 
 ## 13. Concurrency, Backpressure & Rate Limits
 
-**qui side.**
+**qui side (authoritative for dispatch rate).**
 - Per-instance command queue: a buffered channel that the SSH writer goroutine drains line-by-line. Default capacity 32. When full, `sshpool.Submit` blocks (or fails fast on `ctx.Done`).
 - The pending-results map enforces a 5-min TTL on dispatched-but-undelivered ops. A connection drop closes all pending results immediately with `connection_lost`.
-- Per-instance: pool tracks `inflight_count`. There's no hard cap from the helper's side (it accepts whatever qui sends), but qui throttles dispatch to avoid running thousands of concurrent walks against a single seedbox FS. Default `max_inflight_per_instance = 32`.
+- Per-instance: pool tracks `inflight_count`. **qui is the authoritative throttle** — `max_inflight_per_instance = 32` prevents qui from overwhelming the seedbox FS. The helper has a secondary safety valve (see below), but qui's limit is what governs steady-state dispatch.
 - Per-call timeouts via `context.Context` from the caller; `Command.Deadline` reflects the soonest deadline.
 - Reconnect backoff after connection loss: exponential 5s → 60s with ±20% jitter.
 - SSH-auth-failure backoff: 60s pause after each auth error; 3 sequential failures put the instance into "credentials invalid" state until the user updates them.
@@ -846,7 +853,7 @@ If a required capability is missing when the user enables a feature: hard block 
 **Helper side.**
 - One persistent process; concurrent commands handled via goroutines.
 - Walker concurrency cap (default 4 concurrent walks).
-- `max_inflight_ops` (default 32) is the helper's local safety valve. If qui dispatches faster than execution, the helper rejects with `request_too_large` on subsequent commands until the queue drains.
+- `max_inflight_ops` (default 32) is the helper's local safety valve. This is a defensive backstop, not the primary throttle — qui's dispatch limit should prevent this from firing in practice. If it does fire, the helper rejects with `request_too_large` on subsequent commands until the queue drains.
 - Streamed result frames flush every N entries (default 256) and on any walker callback that takes > 50 ms.
 
 **Cancellation.** Detailed in §7.5. Summary: cancels are normal commands on stdin (`Op: control.cancel`), propagate through `pkg/fsexec` via `context.Context`, and complete through the same Result-frame path as any other op. Idempotent on duplicate cancels.
@@ -860,8 +867,8 @@ If a required capability is missing when the user enables a feature: hard block 
 **Helper.**
 - Structured zerolog JSON output to **stderr**. Every helper log line is consumed by qui's stderr reader and forwarded into qui's main log pipeline. Operators see helper logs and qui logs in one place.
 - Separate `audit.log` on the seedbox containing destructive ops only. JSON lines: `{ts, op, path, request_id, qui_session_id, outcome, error}` (`error` populated only on `outcome: "failure"`). Format mirrors §6's audit-log spec exactly.
-- Optional Prometheus metrics via a local-only `--metrics-addr 127.0.0.1:9090` (loopback-only by default). Counters: `qui_helper_ops_total{op,outcome}`, `qui_helper_walk_entries_total`, `qui_helper_destructive_ops_total{op}`, histograms `qui_helper_op_duration_seconds_bucket{op,le}`. Useful only if the user SSHes in to scrape it; not the primary monitoring path.
 - `qui-helper version --json` returns the same data on demand for support diagnostics.
+- No Prometheus endpoint on the helper — qui-side metrics (see below) cover operational visibility. Adding a loopback metrics port that nobody scrapes is unnecessary complexity.
 
 **qui.**
 - Helper connection status is **derived from `instance.helper_last_activity_at`** plus the in-memory connection state. UI shows:
@@ -907,7 +914,7 @@ When "Remote helper" is selected, the form reveals SSH credential fields:
   - Failure: shows the SSH error.
 
 **Helper status (after SSH credentials are saved):**
-- If helper is not deployed: **"Deploy helper"** button. On click: posts to `POST /api/instances/{id}/helper/deploy`. Shows progress ("Detecting architecture… Pushing binary… Probing version…"). Result: "✓ Deployed (vX.Y.Z, 13 capabilities, 2 reflink-capable roots)" or an error.
+- If helper is not deployed: **"Deploy helper"** button. On click: posts to `POST /api/instances/{id}/helper/deploy`. Shows progress ("Detecting architecture… Downloading binary… Verifying checksum… Pushing to seedbox… Probing version…"). Result: "Deployed (vX.Y.Z, 13 capabilities, 2 reflink-capable roots)" + an `authorized_keys` hardening snippet with copy button (see §11 step 6).
 - If helper is deployed: read-only summary card with `helperVersion`, `platform`, `hostname`, `allowedRoots`, `reflinkRoots`, `capabilities`, `helperDeployedAt`, `helperLastActivityAt`. Plus three buttons:
   - **"Test connection"** — opens a short SSH session, runs a `diag.echo` op, reports round-trip time.
   - **"Redeploy"** — re-pushes the binary (for upgrade or manual re-install).
@@ -999,7 +1006,7 @@ Build everything that doesn't change as filesystem features come and go. The del
 
 **CI / lint / test foundations.** Built first, in Stage A, so every later commit benefits.
 - New CI workflow `helper-ci.yml`:
-  - **Cross-compile matrix** for `cmd/qui-helper`: linux/{amd64,arm64}, darwin/{amd64,arm64}, windows/amd64. CI publishes each binary as a GitHub release asset on every qui release; CI also computes SHA256 hashes for each and updates the embedded `helperChecksums` constants in qui's main binary. CI verifies that the published assets match the embedded checksums.
+  - **Cross-compile matrix** for `cmd/qui-helper`: linux/{amd64,arm64}, darwin/{amd64,arm64}. CI publishes each binary as a GitHub release asset on every qui release; CI also computes SHA256 hashes for each and updates the embedded `helperChecksums` constants in qui's main binary. CI verifies that the published assets match the embedded checksums. (Windows/amd64 is deferred to Stage D as best-effort.)
   - **`make test-helper`**: unit tests for `pkg/fsexec`, `pkg/agent/proto`, `internal/sshpool`, `cmd/qui-helper/...` under `-race -count=3` (per CLAUDE.md).
   - **`make test-integration-helper`**: dual-backend harness runs against the synthetic `diag.echo` op (Stage C extends this for every real op).
   - **`make lint-helper`**: golangci-lint v2 on the new packages, applying the existing project profile.
@@ -1014,11 +1021,11 @@ Build everything that doesn't change as filesystem features come and go. The del
 - `pkg/agent/proto/`: `Command`, `Result`, `HelloBanner`, op-payload type sketches.
 - `internal/sshpool/pool.go`: per-instance `*ssh.Client` + persistent `ssh.Session`, command writer, result reader, pending-results map, cancellation propagation, streaming-frame demux, `requestID` dedup, idle-timeout sweeper.
 - `internal/sshpool/transport.go`: SSH dial logic, host-key verification (TOFU), credential decryption, reconnect backoff.
-- Schema migration 070 (extend `instances` with SSH/helper columns) + extend `internal/models/instance.go` + extend `InstanceStore` CRUD with SSH + helper params.
+- Schema migration 074/075 (extend `instances` with SSH/helper columns) + extend `internal/models/instance.go` + extend `InstanceStore` CRUD with SSH + helper params.
 - `internal/api/handlers/instances.go`: extend with `POST /api/instances/{id}/ssh-test`, `POST .../helper/deploy`, `POST .../helper/redeploy`, `DELETE .../helper`, `DELETE .../ssh-credentials`, `GET .../helper`.
 - `cmd/qui-helper/`: `main.go` + subcommands (`serve --stdio`, `version`, `version --json`); subpackages live under `cmd/qui-helper/internal/{server,executor}` so the helper binary stays standalone.
 - Frontend: SSH credential form (`InstanceForm.tsx` extension), `HelperStatusCard.tsx` (new), `useHelper` hook, RadioGroup change. Deploy UX is part of the platform — without it the platform has no front door.
-- Observability primitives: structured zerolog throughout, audit log with in-process size-based rotation, Prometheus metrics on both sides, instance-card status surfacing via existing `InstanceErrorStore`.
+- Observability primitives: structured zerolog throughout, audit log with in-process size-based rotation, instance-card status surfacing via existing `InstanceErrorStore`. Prometheus metrics on qui's side only (helper has no metrics endpoint).
 - Synthetic `diag.echo` capability: the only op the helper advertises in Stage A. Used for the round-trip integration tests and the user-facing "Test connection" button. Stays for diagnostics in later stages.
 
 **Acceptance for Stage A** (measurable gates; Stage A is "done" only when every gate is green).
@@ -1048,7 +1055,7 @@ Build everything that doesn't change as filesystem features come and go. The del
 - **Sweeper invariants:** verify connection-health, pending-results-TTL, and reconnect-backoff sweepers all run on their cadences.
 
 *Build / hygiene gates.*
-- `make helper` cross-compiles cleanly for **linux/{amd64,arm64}, darwin/{amd64,arm64}, windows/amd64**. Each binary's `version --json` invocation succeeds in CI.
+- `make helper` cross-compiles cleanly for **linux/{amd64,arm64}, darwin/{amd64,arm64}**. Each binary's `version --json` invocation succeeds in CI.
 - All cross-compiled helpers published as GitHub release assets; the embedded `helperChecksums` map covers all supported `(os, arch)` combinations.
 - `make lint-helper` (golangci-lint v2) reports **zero findings**.
 - Import-graph guard: `go list -deps ./cmd/qui-helper/...` contains **zero** packages matching `^github.com/autobrr/qui/internal/(?!agent/proto/...)`. CI runs a negative test (deliberate violation must fail).
@@ -1110,7 +1117,8 @@ The dual-backend integration matrix from Stage A grows: each FS op gets a `Comma
 Distribution and documentation. Hardening, observability, and the integration-test harness are not in this stage — they were intrinsic to Stage A and exercised throughout B and C.
 
 **Scope.**
-- Helper binaries are already embedded in qui's main binary; the release pipeline just builds qui as usual.
+- Helper binaries are published as GitHub release assets alongside qui's release; the release pipeline builds both.
+- **Windows/amd64 best-effort**: add windows/amd64 to the cross-compile matrix. No dedicated integration testing — SSH on Windows is uncommon for seedboxes. Ship it if it compiles and `version --json` works; document it as community-supported.
 - User-facing docs: `documentation/docs/remote-helper.md` (install, deploy, troubleshooting, restricted-shell hardening), README updates, install one-pagers.
 - Multi-day soak test against real seedboxes if available; security review pass on path-safety, allowed-roots policy defaults, and SSH credential storage.
 
@@ -1151,13 +1159,13 @@ Distribution and documentation. Hardening, observability, and the integration-te
 
 These are the items that genuinely need information we don't have yet.
 
-1. **Restricted-shell hardening adoption.** The `command="qui-helper serve --stdio …"` pattern in `authorized_keys` is the right way to scope SSH access to helper-only. But it requires the user to manually configure `authorized_keys`. How aggressively do we promote this in docs / install guides? Worth a UX experiment: show the snippet in the deploy modal so users can paste it.
+1. **Restricted-shell hardening adoption.** The `command="qui-helper serve --stdio …"` pattern in `authorized_keys` is the right way to scope SSH access to helper-only. The deploy UI now shows the snippet with a copy button after successful deployment (§11 step 6). Open question: should we also generate a dedicated SSH key pair from qui's UI so the user can paste just the public key + command restriction into `authorized_keys`, instead of managing their own key? This would further simplify the hardening flow.
 
 2. **Capability `fs.fileid` on Windows.** Windows `FileID` is a `(VolumeSerial, FileIndex)` tuple. Need a careful look at `pkg/hardlink/fileid_windows.go` before shipping to confirm cross-volume `FileID` comparisons aren't accidentally meaningful.
 
 3. **Reflinks in Docker on common seedbox topologies.** `pkg/reflinktree` handles the platform-specific CoW syscalls correctly today, but reflink behavior inside a Docker container on a host bind-mount needs end-to-end verification. Particularly on ZFS-backed hosts and Btrfs.
 
-4. **GitHub release-pipeline coupling.** Helpers are pulled from GitHub release assets at deploy time, with SHA256 verification against constants embedded in qui. Deploy success couples to (a) the release pipeline correctly publishing the asset for the qui version the user is running, and (b) GitHub's release-asset CDN being reachable. (b) is fine in practice — seedboxes already need HTTPS for trackers — but (a) means a botched release with a missing asset breaks deploy until the next release ships. Worth a Stage D readiness check: CI gates that block a qui release tag if any helper asset is missing or fails checksum verification.
+4. **GitHub release-pipeline coupling.** qui downloads helper binaries from GitHub release assets at deploy time, verifies SHA256 against embedded constants, and SCPs them to the seedbox. Deploy success couples to (a) the release pipeline correctly publishing the asset for the qui version the user is running, and (b) GitHub's release-asset CDN being reachable from qui's host (not the seedbox). (b) is fine in practice — qui's host has internet access. (a) means a botched release with a missing asset breaks deploy until the next release ships. Worth a Stage D readiness check: CI gates that block a qui release tag if any helper asset is missing or fails checksum verification.
 
 5. **SSH library quirks.** `golang.org/x/crypto/ssh` works but has rough edges (key parsing for some legacy formats, TOFU support requires manual implementation). Worth a Stage A spike to confirm the rough edges are tolerable before committing.
 
@@ -1176,10 +1184,10 @@ These are the items that genuinely need information we don't have yet.
 - `internal/sshpool/pool.go` (new — per-instance `*ssh.Client` + persistent `ssh.Session` + pending-results + cancellation + streaming demux)
 - `internal/sshpool/transport.go` (new — SSH dial, host-key TOFU, reconnect backoff)
 - `internal/sshpool/sweeper.go` (new — connection-health + pending-results TTL + reconnect scheduler)
-- `internal/sshpool/deploy.go` (new — arch detection, GitHub-release asset URL construction, curl-+-verify-+-install dance, manual-install fallback)
+- `internal/sshpool/deploy.go` (new — arch detection, GitHub-release asset download to qui host, SHA256 verification, SCP to seedbox, atomic install)
 - `internal/sshpool/helper_checksums.go` (new — generated by release CI; embeds SHA256 hashes for each supported `(os, arch)` of `qui-helper_v{thisQuiVersion}_*` so deploy can verify downloads without trusting the network)
 - `internal/api/handlers/instances.go` (extend with SSH-test, helper-deploy, helper-redeploy, helper-remove, helper-status endpoints)
-- `internal/database/migrations/070_add_remote_helper.sql` (new — SSH + helper columns on `instances`)
+- `internal/database/migrations/074_add_remote_helper.sql` (new — SSH + helper columns on `instances`)
 - `internal/models/instance.go` (extend with SSH + helper fields)
 - `internal/models/ssh_credentials.go` (new — SSH credential value type, encrypt/decrypt helpers)
 
@@ -1211,7 +1219,7 @@ These are the items that genuinely need information we don't have yet.
 
 End-to-end verification once Stage C lands (every op wired to the helper):
 
-1. `make backend && make helper` builds both cleanly. `make backend` includes the embedded helper binaries.
+1. `make backend && make helper` builds both cleanly.
 2. Start qui locally on `https://localhost:7476`.
 3. In the qui UI, edit an instance, choose "Remote helper", enter SSH credentials for a real seedbox (or a local test VM). Click "Test connection" — confirm host key fingerprint.
 4. Click "Deploy helper". Watch the progress: arch detected, binary pushed, version probed. UI flips to "Deployed (vX.Y.Z, 14 capabilities, 2 reflink-capable roots)".
