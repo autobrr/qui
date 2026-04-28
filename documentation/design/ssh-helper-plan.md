@@ -3,7 +3,6 @@
 > **Location:** This plan will be committed to `documentation/design/ssh-helper-plan.md`
 >
 > **Design reference:** `documentation/design/remote-helper.md`
-> **Coding standards:** `CLAUDE.md`
 
 ---
 
@@ -25,14 +24,13 @@ Execute one phase per session. Start each session with:
 - Host key verification must not default to insecure. TOFU is fine; `InsecureIgnoreHostKey` is not.
 - Goroutines spawned for connection handling need explicit lifecycle management with `sync.WaitGroup` or `errgroup`.
 
-**General coding standards (from CLAUDE.md):**
+**General coding standards:**
 - `gofmt`-clean, PascalCase exports, camelCase locals
 - Interfaces max 5 methods (the 17-method `Backend` is the documented exception)
 - Explicit error handling, no silent failures
 - `go test -race -count=3` for all test runs
 - golangci-lint v2 with project profile
 - Conventional commits: `feat(scope):`, `fix(scope):`, etc.
-- Never add Co-Authored-By or AI attribution to commits
 
 ---
 
