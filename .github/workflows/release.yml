@@ -413,6 +413,7 @@ jobs:
   helper:
     name: Build helper
     runs-on: ubuntu-latest
+    needs: [test]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
