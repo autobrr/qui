@@ -213,6 +213,6 @@ func deviceID(fi os.FileInfo) (uint64, error) {
 	if !ok {
 		return 0, errors.New("failed to get syscall.Stat_t from FileInfo")
 	}
-	//nolint:gosec // Stat_t.Dev is always non-negative
+	//nolint:gosec,unconvert // uint64 cast needed for macOS (int32) even though Linux is already uint64
 	return uint64(stat.Dev), nil
 }
