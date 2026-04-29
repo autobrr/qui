@@ -37,6 +37,7 @@ import (
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/fsops/local"
+	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/dirscan"
@@ -641,6 +642,7 @@ func (app *Application) runServer() {
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	localBackend := local.NewBackend()
 	backendPool := fsops.NewPool(instanceStore, localBackend)
+	sshPool := sshpool.NewPool(instanceStore)
 	syncManager.SetBackendPool(backendPool)
 	crossSeedService.SetBackendPool(backendPool)
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
@@ -782,6 +784,7 @@ func (app *Application) runServer() {
 		DirScanService:                   dirScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
+		SSHPool:                          sshPool,
 	})
 
 	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.

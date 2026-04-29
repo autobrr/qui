@@ -19,6 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/dirscan"
 )
@@ -93,6 +95,7 @@ func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, local.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -155,6 +158,7 @@ func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, local.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -204,6 +208,7 @@ func TestWebhookTriggerScan_AcceptsArrTestPayloadWithoutScan(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, local.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -251,6 +256,7 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, local.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
