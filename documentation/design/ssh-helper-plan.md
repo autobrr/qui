@@ -720,13 +720,13 @@ Deviations from design doc:
 
 ## Phase 15: SSH Pool + Helper Binary Scaffold
 
-- [ ] `qui-helper serve --stdio` reads NDJSON, responds to `diag.echo`
-- [ ] `qui-helper version --json` outputs valid `HelloBanner`
-- [ ] SSH pool manages per-instance connections
-- [ ] Round-trip test: stdin command → stdout result
-- [ ] Helper cross-compiles for linux/{amd64,arm64}, darwin/{amd64,arm64}
-- [ ] Stdin-EOF triggers 30s graceful shutdown
-- [ ] No `internal/` imports in `cmd/qui-helper/`
+- [x] `qui-helper serve --stdio` reads NDJSON, responds to `diag.echo`
+- [x] `qui-helper version --json` outputs valid `HelloBanner`
+- [x] SSH pool manages per-instance connections (scaffold with Submit/Cancel stubs)
+- [x] Round-trip test: stdin command → stdout result (5 server tests)
+- [x] Helper cross-compiles for linux/{amd64,arm64}, darwin/{amd64,arm64}
+- [x] Stdin-EOF triggers 30s graceful shutdown
+- [x] No `internal/` imports in `cmd/qui-helper/`
 
 **Goal:** SSH connection management and helper binary with `diag.echo`. Proves the full round-trip.
 
@@ -758,7 +758,31 @@ go list -deps ./cmd/qui-helper/... | grep -c 'qui/internal/' # must be 0
 > Implement Phase 15 from `documentation/design/ssh-helper-plan.md`. Create the SSH pool (`internal/sshpool/`) and helper binary (`cmd/qui-helper/`). Reference design doc `documentation/design/remote-helper.md` §4 (transport), §5 (auth), §7 (protocol), §10 (helper binary), §13 (concurrency). **SSH-specific requirements:** Use `golang.org/x/crypto/ssh` directly — do NOT wrap the ssh CLI. Host key verification must use TOFU (capture on first connect, verify on subsequent) — `InsecureIgnoreHostKey` is forbidden. Never log credentials or full key material. All goroutines for connection handling must use `sync.WaitGroup` or `errgroup` for lifecycle management. Every operation must accept `context.Context` and respect cancellation. The helper's stdin-EOF shutdown: cancel all in-flight op contexts, wait up to 30s for drain, then exit. The helper binary must NOT import any `internal/` packages — only `pkg/` packages (`pkg/agent/proto`, `pkg/fsexec`). Only implement `diag.echo` op for now — it echoes the input payload back. Write a round-trip test using `io.Pipe` (write a Command to stdin, read a Result from stdout, verify payload matches). Add `make helper` to the Makefile for cross-compilation. Follow coding standards in `CLAUDE.md`. Stay strictly within scope. Update the plan checkboxes and add implementation notes when done.
 
 ### Implementation Notes
-_(filled in after phase completion)_
+
+**Completed 2026-04-28.**
+
+Files created:
+- `cmd/qui-helper/main.go` — CLI entrypoint with `serve --stdio --root` and `version [--json]` subcommands. Signal handling via `signal.NotifyContext`.
+- `cmd/qui-helper/internal/server/server.go` — NDJSON stdio loop: reads Commands from stdin, writes HelloBanner + Results to stdout. 30s graceful shutdown on stdin EOF via `sync.WaitGroup` drain. Concurrent op dispatch via goroutines. `writeMu` serializes stdout writes.
+- `cmd/qui-helper/internal/server/server_test.go` — 5 tests: diag.echo round-trip, unsupported op, malformed command, context cancellation, version JSON output.
+- `cmd/qui-helper/internal/executor/executor.go` — Op switch dispatching. Only `diag.echo` implemented.
+- `internal/sshpool/pool.go` — `Pool` struct with `Submit`/`Cancel`/`Disconnect`/`Close`. Submit and Cancel return "not implemented" errors (wired in Stage C).
+- `internal/sshpool/transport.go` — `dialSSH` using `golang.org/x/crypto/ssh` directly, `tofuHostKeyCallback` (TOFU — never insecure), `buildSSHConfig` for key/password auth. Never logs credentials.
+- `internal/sshpool/deploy.go` — `DetectArch` (uname), `DeployHelper` (SCP via cat + atomic rename).
+- `internal/sshpool/sweeper.go` — `Sweeper` with 3 ticker goroutines (health, pending TTL, reconnect). Stub implementations for Stage C. Lifecycle managed with `sync.WaitGroup`.
+- `internal/sshpool/pool_test.go` — 5 tests: submit/cancel not implemented, disconnect/close no-op, context cancellation.
+- `internal/sshpool/transport_test.go` — 7 tests: TOFU callback (reject unknown, capture first, accept match, reject changed), buildSSHConfig (key/password/unsupported).
+- `Makefile` — Added `helper` target cross-compiling for linux/{amd64,arm64}, darwin/{amd64,arm64}.
+
+Design decisions:
+- Helper binary has zero `internal/` imports — only uses `pkg/agent/proto`. The `pkg/fsexec` import will come in Stage C when real ops are wired.
+- SSH pool's `Submit`/`Cancel` return "not implemented" rather than silently succeeding — forces Stage C to wire the real dispatch before any remote ops work.
+- TOFU callback generates `SHA256` fingerprints for comparison (same format `ssh-keygen -l` outputs). `InsecureIgnoreHostKey` is never used.
+- Sweeper goroutines use `sync.WaitGroup` for lifecycle management as required by the plan's SSH-specific instructions.
+- Transport test uses `crypto/ed25519.GenerateKey` for unique key pairs per test call.
+
+Deviations from design doc:
+- None.
 
 ---
 
