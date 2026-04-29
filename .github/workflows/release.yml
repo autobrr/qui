@@ -409,3 +409,46 @@ jobs:
           path: |
             coverage.out
             coverage.html
+
+  helper:
+    name: Build helper
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify import boundary
+        run: |
+          count=$(go list -deps ./cmd/qui-helper/... | grep -c 'qui/internal/' || true)
+          if [ "$count" -ne 0 ]; then
+            echo "ERROR: cmd/qui-helper imports internal/ packages:"
+            go list -deps ./cmd/qui-helper/... | grep 'qui/internal/'
+            exit 1
+          fi
+
+      - name: Build helper binaries
+        env:
+          VERSION: ${{ github.sha }}
+        run: |
+          mkdir -p dist/helper
+          for pair in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os="${pair%/*}"
+            arch="${pair#*/}"
+            out="dist/helper/qui-helper_${os}_${arch}"
+            echo "Building ${out}..."
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
+              -ldflags="-s -w -X main.version=${VERSION}" \
+              -o "$out" ./cmd/qui-helper
+          done
+
+      - name: Upload helper binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: qui-helper
+          path: dist/helper/

@@ -1010,7 +1010,7 @@ The phasing is organized around **shippable milestones**. Stage C ships the help
 - [x] `internal/api/handlers/helper.go` — 6 API endpoints (scaffold responses)
 - [x] `internal/models/filesystem_access.go` — `HasFilesystemAccess` helper
 - [x] `Makefile` — `make helper` cross-compiles for linux/{amd64,arm64}, darwin/{amd64,arm64}
-- [ ] CI workflow `helper-ci.yml` — cross-compile matrix, import-graph guard, path-safety property tests
+- [x] CI workflow `helper.yml` — import-graph guard, cross-compile for 4 platforms
 
 ### Stage B — Backend interface + callsite refactor (COMPLETE)
 
