@@ -657,7 +657,9 @@ func validateProxyMediainfoRequest(ctx context.Context, instanceStore *models.In
 		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusNotFound, message: "Instance not found"}
 	}
 
-	if _, hasAccess := models.HasFilesystemAccess(instance); !hasAccess {
+	// Mediainfo performs local os-based path resolution; remote helper dispatch
+	// is not wired for this endpoint yet. Constrain to local access only.
+	if !instance.HasLocalFilesystemAccess {
 		return nil, qbt.AppPreferences{}, &proxyMediaInfoRequestError{status: http.StatusForbidden, message: "Instance does not have filesystem access enabled"}
 	}
 

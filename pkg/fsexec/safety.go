@@ -128,20 +128,30 @@ func (r *Roots) ResolveSafe(requestPath string, destructive bool) (*SafeRoot, st
 		return nil, "", err
 	}
 
+	// Select the most specific (longest-prefix) matching root so that
+	// overlapping roots don't weaken the ErrRootItself destructive guard.
+	var matchedRoot *SafeRoot
+	var matchedRel string
 	for _, sr := range r.roots {
 		rel, ok := relUnder(requestPath, sr.path)
 		if !ok {
 			continue
 		}
-
-		if destructive && (rel == "." || rel == "") {
-			return nil, "", fmt.Errorf("%w: %s", ErrRootItself, requestPath)
+		if matchedRoot == nil || len(sr.path) > len(matchedRoot.path) {
+			matchedRoot = sr
+			matchedRel = rel
 		}
-
-		return sr, rel, nil
 	}
 
-	return nil, "", fmt.Errorf("%w: %s", ErrPathNotAllowed, requestPath)
+	if matchedRoot == nil {
+		return nil, "", fmt.Errorf("%w: %s", ErrPathNotAllowed, requestPath)
+	}
+
+	if destructive && (matchedRel == "." || matchedRel == "") {
+		return nil, "", fmt.Errorf("%w: %s", ErrRootItself, requestPath)
+	}
+
+	return matchedRoot, matchedRel, nil
 }
 
 // validatePath performs pre-resolution validation on a request path.

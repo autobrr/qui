@@ -86,6 +86,19 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		CreatedAt                time.Time  `json:"created_at"`
 		UpdatedAt                time.Time  `json:"updated_at"`
 		SortOrder                int        `json:"sortOrder"`
+		SSHHost                  string     `json:"sshHost,omitempty"`
+		SSHPort                  int        `json:"sshPort,omitempty"`
+		SSHUsername              string     `json:"sshUsername,omitempty"`
+		SSHAuthType              string     `json:"sshAuthType,omitempty"`
+		SSHHostKey               string     `json:"sshHostKey,omitempty"`
+		HelperPath               string     `json:"helperPath,omitempty"`
+		HelperVersion            string     `json:"helperVersion,omitempty"`
+		HelperCapabilities       string     `json:"helperCapabilities,omitempty"`
+		HelperAllowedRoots       string     `json:"helperAllowedRoots,omitempty"`
+		HelperReflinkRoots       string     `json:"helperReflinkRoots,omitempty"`
+		HelperPlatform           string     `json:"helperPlatform,omitempty"`
+		HelperDeployedAt         *time.Time `json:"helperDeployedAt,omitempty"`
+		HelperLastActivityAt     *time.Time `json:"helperLastActivityAt,omitempty"`
 	}{
 		ID:            i.ID,
 		Name:          i.Name,
@@ -108,6 +121,19 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		HardlinkDirPreset:        i.HardlinkDirPreset,
 		UseReflinks:              i.UseReflinks,
 		FallbackToRegularMode:    i.FallbackToRegularMode,
+		SSHHost:                  i.SSHHost,
+		SSHPort:                  i.SSHPort,
+		SSHUsername:              i.SSHUsername,
+		SSHAuthType:              i.SSHAuthType,
+		SSHHostKey:               i.SSHHostKey,
+		HelperPath:               i.HelperPath,
+		HelperVersion:            i.HelperVersion,
+		HelperCapabilities:       i.HelperCapabilities,
+		HelperAllowedRoots:       i.HelperAllowedRoots,
+		HelperReflinkRoots:       i.HelperReflinkRoots,
+		HelperPlatform:           i.HelperPlatform,
+		HelperDeployedAt:         i.HelperDeployedAt,
+		HelperLastActivityAt:     i.HelperLastActivityAt,
 	})
 }
 
@@ -133,6 +159,19 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		CreatedAt                time.Time  `json:"created_at"`
 		UpdatedAt                time.Time  `json:"updated_at"`
 		SortOrder                *int       `json:"sortOrder,omitempty"`
+		SSHHost                  string     `json:"sshHost,omitempty"`
+		SSHPort                  int        `json:"sshPort,omitempty"`
+		SSHUsername              string     `json:"sshUsername,omitempty"`
+		SSHAuthType              string     `json:"sshAuthType,omitempty"`
+		SSHHostKey               string     `json:"sshHostKey,omitempty"`
+		HelperPath               string     `json:"helperPath,omitempty"`
+		HelperVersion            string     `json:"helperVersion,omitempty"`
+		HelperCapabilities       string     `json:"helperCapabilities,omitempty"`
+		HelperAllowedRoots       string     `json:"helperAllowedRoots,omitempty"`
+		HelperReflinkRoots       string     `json:"helperReflinkRoots,omitempty"`
+		HelperPlatform           string     `json:"helperPlatform,omitempty"`
+		HelperDeployedAt         *time.Time `json:"helperDeployedAt,omitempty"`
+		HelperLastActivityAt     *time.Time `json:"helperLastActivityAt,omitempty"`
 	}
 
 	if err := json.Unmarshal(data, &temp); err != nil {
@@ -189,6 +228,21 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 	if temp.BasicPassword != "" && !domain.IsRedactedString(temp.BasicPassword) {
 		i.BasicPasswordEncrypted = &temp.BasicPassword
 	}
+
+	// SSH / helper fields (non-secret)
+	i.SSHHost = temp.SSHHost
+	i.SSHPort = temp.SSHPort
+	i.SSHUsername = temp.SSHUsername
+	i.SSHAuthType = temp.SSHAuthType
+	i.SSHHostKey = temp.SSHHostKey
+	i.HelperPath = temp.HelperPath
+	i.HelperVersion = temp.HelperVersion
+	i.HelperCapabilities = temp.HelperCapabilities
+	i.HelperAllowedRoots = temp.HelperAllowedRoots
+	i.HelperReflinkRoots = temp.HelperReflinkRoots
+	i.HelperPlatform = temp.HelperPlatform
+	i.HelperDeployedAt = temp.HelperDeployedAt
+	i.HelperLastActivityAt = temp.HelperLastActivityAt
 
 	return nil
 }

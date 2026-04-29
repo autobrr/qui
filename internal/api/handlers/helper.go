@@ -5,8 +5,10 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -53,6 +55,7 @@ func (h *HelperHandler) TestSSHConnection(w http.ResponseWriter, r *http.Request
 	}
 
 	var req sshTestRequest
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64 KB limit for SSH key material
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
@@ -98,11 +101,11 @@ func (h *HelperHandler) GetHelperStatus(w http.ResponseWriter, r *http.Request) 
 
 	instance, err := h.instanceStore.Get(r.Context(), instanceID)
 	if err != nil {
+		if errors.Is(err, models.ErrInstanceNotFound) {
+			RespondError(w, http.StatusNotFound, "Instance not found")
+			return
+		}
 		RespondError(w, http.StatusInternalServerError, "Failed to load instance")
-		return
-	}
-	if instance == nil {
-		RespondError(w, http.StatusNotFound, "Instance not found")
 		return
 	}
 
@@ -115,10 +118,10 @@ func (h *HelperHandler) GetHelperStatus(w http.ResponseWriter, r *http.Request) 
 		ReflinkRoots: instance.HelperReflinkRoots,
 	}
 	if instance.HelperDeployedAt != nil {
-		resp.DeployedAt = instance.HelperDeployedAt.Format("2006-01-02T15:04:05Z")
+		resp.DeployedAt = instance.HelperDeployedAt.UTC().Format(time.RFC3339)
 	}
 	if instance.HelperLastActivityAt != nil {
-		resp.LastActivityAt = instance.HelperLastActivityAt.Format("2006-01-02T15:04:05Z")
+		resp.LastActivityAt = instance.HelperLastActivityAt.UTC().Format(time.RFC3339)
 	}
 
 	RespondJSON(w, http.StatusOK, resp)

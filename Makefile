@@ -79,6 +79,7 @@ backend:
 # Build qui-helper for all supported platforms
 helper:
 	@echo "Building qui-helper..."
+	@mkdir -p $(BUILD_DIR)
 	GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/qui-helper_linux_amd64 ./cmd/qui-helper
 	GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/qui-helper_linux_arm64 ./cmd/qui-helper
 	GOOS=darwin GOARCH=amd64 go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/qui-helper_darwin_amd64 ./cmd/qui-helper

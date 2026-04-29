@@ -1804,7 +1804,12 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	if action == "deleteWithFiles" {
 		managedDeleteCleanupTargets = sm.buildManagedDeleteCleanupTargets(ctx, instanceID, syncManager, canonicalHashes)
 		if pool := sm.getBackendPool(); pool != nil {
-			deleteBackend, _ = pool.GetBackend(ctx, instanceID)
+			var backendErr error
+			deleteBackend, backendErr = pool.GetBackend(ctx, instanceID)
+			if backendErr != nil {
+				log.Warn().Err(backendErr).Int("instanceID", instanceID).
+					Msg("BulkAction: failed to get backend for managed delete cleanup, file cleanup will be skipped")
+			}
 		}
 	}
 
@@ -1936,8 +1941,12 @@ func (sm *SyncManager) buildManagedDeleteCleanupTargets(
 	}
 
 	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("delete cleanup: failed to load instance")
+		return nil
+	}
 	_, hasAccess := models.HasFilesystemAccess(instance)
-	if err != nil || instance == nil || !hasAccess || strings.TrimSpace(instance.HardlinkBaseDir) == "" {
+	if !hasAccess || strings.TrimSpace(instance.HardlinkBaseDir) == "" {
 		return nil
 	}
 

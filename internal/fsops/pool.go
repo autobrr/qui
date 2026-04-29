@@ -50,7 +50,12 @@ func (p *Pool) GetBackend(ctx context.Context, instanceID int) (Backend, error) 
 		return p.local, nil
 	}
 
-	// Future: check for SSH/helper configuration here and return a remote backend.
+	// Helper-configured instances are recognized as having filesystem access,
+	// but the remote backend is not wired until Stage C. Return a clear error
+	// so callers can distinguish "no access" from "not yet implemented".
+	if instance.SSHHost != "" && instance.HelperDeployedAt != nil {
+		return nil, fmt.Errorf("instance %d has helper-based filesystem access, but remote backend is not yet implemented", instanceID)
+	}
 
 	return noopBackend{}, nil
 }

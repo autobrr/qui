@@ -74,7 +74,11 @@ func cmdServe(args []string) {
 	cancel()
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, `{"level":"error","error":"%s","message":"serve exited with error"}`+"\n", err)
+		_ = json.NewEncoder(os.Stderr).Encode(map[string]string{
+			"level":   "error",
+			"error":   err.Error(),
+			"message": "serve exited with error",
+		})
 		os.Exit(1)
 	}
 }

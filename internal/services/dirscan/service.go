@@ -747,11 +747,13 @@ func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID 
 func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, scanRoot string, runID int64, l *zerolog.Logger) (*ScanResult, map[string]string, bool) {
 	if s.backendPool == nil {
 		l.Error().Msg("dirscan: backend pool not configured")
+		s.markRunFailed(ctx, runID, "backend pool not configured", dir.TargetInstanceID, l)
 		return nil, nil, false
 	}
 	backend, err := s.backendPool.GetBackend(ctx, dir.TargetInstanceID)
 	if err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to get backend for scanning")
+		s.markRunFailed(ctx, runID, fmt.Sprintf("failed to get backend: %v", err), dir.TargetInstanceID, l)
 		return nil, nil, false
 	}
 	scanner := NewScanner(backend)

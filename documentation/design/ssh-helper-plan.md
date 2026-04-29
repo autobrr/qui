@@ -51,7 +51,7 @@ Execute one phase per session. Start each session with:
 
 ## Dependency Graph
 
-```
+```text
 Phase 1 (proto) ──────────────────────────────────────┐
 Phase 2 (Backend interface) ──┐                        │
 Phase 3 (Local impl) ────────┤                        │
@@ -69,7 +69,7 @@ Phase 12 (orphanscan) ───────┤                        │
 Phase 13 (schema+SSH model) ──┼────────────────────────┤
 Phase 14 (pkg/fsexec) ────────┼────────────────────────┤
 Phase 15 (sshpool+helper) ────┼── depends on 1,13,14 ──┘
-Phase 16 (wiring+API) ───��────┘── depends on ALL
+Phase 16 (wiring+API) ────────┘── depends on ALL
 Phase 17 (design review) ─────── depends on 16
 ```
 

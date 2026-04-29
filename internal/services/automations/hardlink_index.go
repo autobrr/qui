@@ -299,6 +299,9 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 
 			lstatInfo, err := backend.Lstat(ctx, fullPath)
 			if err != nil {
+				if ctx.Err() != nil {
+					return index
+				}
 				info.allAccessible = false
 				continue
 			}

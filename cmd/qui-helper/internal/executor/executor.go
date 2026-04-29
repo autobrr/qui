@@ -46,7 +46,16 @@ func (e *Executor) diagEcho(cmd proto.Command) proto.Result {
 		}
 	}
 
-	payload, _ := json.Marshal(proto.DiagEchoResponse(req))
+	payload, err := json.Marshal(proto.DiagEchoResponse(req))
+	if err != nil {
+		return proto.Result{
+			RequestID: cmd.RequestID,
+			OK:        false,
+			Code:      proto.CodeInternal,
+			Error:     "marshal diag.echo response: " + err.Error(),
+			Done:      true,
+		}
+	}
 	return proto.Result{
 		RequestID: cmd.RequestID,
 		OK:        true,

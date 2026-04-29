@@ -5,6 +5,7 @@ package sshpool
 
 import (
 	"fmt"
+	"path"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
@@ -59,6 +60,13 @@ func DetectArch(client *ssh.Client) (goos, goarch string, err error) {
 // This is a scaffold — the actual download-from-GitHub + SHA256 verification
 // is implemented when the release pipeline is ready.
 func DeployHelper(client *ssh.Client, binary []byte, remotePath string) error {
+	if !path.IsAbs(remotePath) {
+		return fmt.Errorf("remotePath must be absolute: %s", remotePath)
+	}
+	if strings.ContainsAny(remotePath, ";$`\"'\\|&<>(){}[] \t\n") {
+		return fmt.Errorf("remotePath contains invalid characters: %s", remotePath)
+	}
+
 	session, err := client.NewSession()
 	if err != nil {
 		return fmt.Errorf("open session: %w", err)
@@ -66,7 +74,7 @@ func DeployHelper(client *ssh.Client, binary []byte, remotePath string) error {
 	defer session.Close()
 
 	// Ensure parent directory exists.
-	dir := remotePath[:strings.LastIndex(remotePath, "/")]
+	dir := path.Dir(remotePath)
 	if _, err := runCommand(client, "mkdir -p "+dir); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}

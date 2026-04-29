@@ -1076,9 +1076,44 @@ paths:
       description: Test SSH connectivity with the provided credentials. Returns host key fingerprint on success.
       parameters:
         - $ref: '#/components/parameters/instanceID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [host, username]
+              properties:
+                host:
+                  type: string
+                port:
+                  type: integer
+                  default: 22
+                username:
+                  type: string
+                authType:
+                  type: string
+                  enum: [key, password]
+                key:
+                  type: string
+                password:
+                  type: string
       responses:
         '200':
           description: Test result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  fingerprint:
+                    type: string
+                  error:
+                    type: string
+        '400':
+          description: Invalid request
 
   /api/instances/{instanceID}/ssh-credentials:
     delete:
@@ -1091,6 +1126,10 @@ paths:
       responses:
         '200':
           description: Credentials removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
 
   /api/instances/{instanceID}/helper:
     get:
@@ -1103,6 +1142,31 @@ paths:
       responses:
         '200':
           description: Helper status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deployed:
+                    type: boolean
+                  helperVersion:
+                    type: string
+                  platform:
+                    type: string
+                  capabilities:
+                    type: string
+                  allowedRoots:
+                    type: string
+                  reflinkRoots:
+                    type: string
+                  deployedAt:
+                    type: string
+                    format: date-time
+                  lastActivityAt:
+                    type: string
+                    format: date-time
+        '404':
+          description: Instance not found
     delete:
       tags:
         - Instances
@@ -1113,6 +1177,10 @@ paths:
       responses:
         '200':
           description: Helper removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
 
   /api/instances/{instanceID}/helper/deploy:
     post:
@@ -1125,6 +1193,10 @@ paths:
       responses:
         '200':
           description: Deploy result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
 
   /api/instances/{instanceID}/helper/redeploy:
     post:
@@ -1137,6 +1209,10 @@ paths:
       responses:
         '200':
           description: Redeploy result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusMessage'
 
   /api/instances/{instanceID}/app-info:
     get:
@@ -5437,6 +5513,14 @@ components:
       description: Directory scan run ID
 
   schemas:
+    StatusMessage:
+      type: object
+      properties:
+        status:
+          type: string
+        message:
+          type: string
+
     User:
       type: object
       properties:

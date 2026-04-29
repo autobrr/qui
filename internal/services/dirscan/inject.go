@@ -208,7 +208,12 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	// Resolve backend for potential rollback of link trees.
 	var injectBackend fsops.Backend
 	if i.backendPool != nil && isLinkTreeMode(addMode) {
-		injectBackend, _ = i.backendPool.GetBackend(ctx, req.InstanceID)
+		var backendErr error
+		injectBackend, backendErr = i.backendPool.GetBackend(ctx, req.InstanceID)
+		if backendErr != nil {
+			log.Warn().Err(backendErr).Int("instanceID", req.InstanceID).
+				Msg("dirscan: failed to resolve backend for link-tree rollback")
+		}
 	}
 
 	hasUnmatchedFiles := len(req.MatchResult.UnmatchedTorrentFiles) > 0

@@ -602,7 +602,13 @@ func isUnderIgnoredPrefixDir(path, root string) bool {
 	if err != nil {
 		return false
 	}
-	for seg := range strings.SplitSeq(rel, string(filepath.Separator)) {
+	// Only inspect directory components — exclude the basename so file names
+	// like ".Trash-foo.mkv" don't match the prefix check.
+	dir := filepath.Dir(rel)
+	if dir == "." {
+		return false
+	}
+	for seg := range strings.SplitSeq(dir, string(filepath.Separator)) {
 		for _, prefix := range ignoredOrphanDirNamePrefixes {
 			if hasPrefixFold(seg, prefix) {
 				return true

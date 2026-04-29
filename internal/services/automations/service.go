@@ -1052,7 +1052,13 @@ func (s *Service) setupMissingFilesContext(
 		return
 	}
 
-	evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
+	missingFiles, err := s.detectMissingFiles(ctx, instanceID, torrents)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).
+			Msg("automations: skipping missing files detection for preview")
+		return
+	}
+	evalCtx.HasMissingFilesByHash = missingFiles
 }
 
 func buildPreviewScoreMap(torrents []qbt.Torrent, rule *models.Automation, evalCtx *EvalContext) map[string]float64 {
@@ -2034,7 +2040,13 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	// On-demand missing files detection (only if rules use HAS_MISSING_FILES and instance has local access)
 	if instance.HasLocalFilesystemAccess && rulesUseCondition(eligibleRules, FieldHasMissingFiles) {
-		evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
+		missingFiles, missingErr := s.detectMissingFiles(ctx, instanceID, torrents)
+		if missingErr != nil {
+			log.Warn().Err(missingErr).Int("instanceID", instanceID).
+				Msg("automations: failed to detect missing files, skipping HAS_MISSING_FILES rules")
+		} else {
+			evalCtx.HasMissingFilesByHash = missingFiles
+		}
 	}
 
 	// On-demand cross-match lookup (same-instance and other-instance cross-seed detection)
@@ -2070,8 +2082,10 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			// Get free space for this source
 			freeSpaceBackend, backendErr := s.backendPool.GetBackend(ctx, instanceID)
 			if backendErr != nil {
-				log.Error().Err(backendErr).Int("instanceID", instanceID).Msg("automations: failed to get backend for free space")
-				return nil, fmt.Errorf("failed to get backend: %w", backendErr)
+				wrapped := fmt.Errorf("failed to get backend for free space: %w", backendErr)
+				log.Error().Err(wrapped).Int("instanceID", instanceID).Msg("automations: failed to get backend for free space")
+				s.notifyAutomationFailure(ctx, instanceID, wrapped)
+				return nil, wrapped
 			}
 			freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, r.FreeSpaceSource, freeSpaceBackend)
 			if err != nil {

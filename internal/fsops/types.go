@@ -79,7 +79,7 @@ type TreeCreateResult struct {
 
 // BackendInfo describes the capabilities of a Backend implementation.
 type BackendInfo struct {
-	Kind          string   // "local" or "helper"
+	Kind          string   // "local", "helper", or "none"
 	HelperVersion string   // empty for local
 	AllowedRoots  []string // empty for local (no restrictions)
 	ReflinkRoots  []string // roots whose FS supports CoW reflinks

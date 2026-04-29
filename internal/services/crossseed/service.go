@@ -468,7 +468,11 @@ func NewService(
 }
 
 // SetBackendPool sets the filesystem backend pool for link-tree operations.
+// pool must not be nil (atomic.Value.Store panics on nil).
 func (s *Service) SetBackendPool(pool *fsops.Pool) {
+	if pool == nil {
+		return
+	}
 	s.backendPool.Store(pool)
 }
 
