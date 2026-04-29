@@ -1941,7 +1941,8 @@ func (sm *SyncManager) buildManagedDeleteCleanupTargets(
 	}
 
 	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
-	if err != nil || instance == nil || !instance.HasLocalFilesystemAccess || strings.TrimSpace(instance.HardlinkBaseDir) == "" {
+	_, hasAccess := models.HasFilesystemAccess(instance)
+	if err != nil || instance == nil || !hasAccess || strings.TrimSpace(instance.HardlinkBaseDir) == "" {
 		return nil
 	}
 

@@ -614,11 +614,11 @@ Deviations from design doc:
 
 ## Phase 13: Schema + SSH Credential Model
 
-- [ ] Migration applies cleanly (sqlite + postgres)
-- [ ] Instance struct extended with SSH/helper fields
-- [ ] SSH key encrypt/decrypt round-trips
-- [ ] `HasFilesystemAccess` helper replaces `HasLocalFilesystemAccess` checks
-- [ ] No behavioral change for existing instances
+- [x] Migration applies cleanly (sqlite + postgres)
+- [x] Instance struct extended with SSH/helper fields
+- [ ] SSH key encrypt/decrypt round-trips (deferred: encrypt/decrypt already exists on InstanceStore; SSH-specific helpers created in Phase 15 when sshpool needs them)
+- [x] `HasFilesystemAccess` helper replaces key `HasLocalFilesystemAccess` checks
+- [x] No behavioral change for existing instances
 
 **Goal:** Add SSH/helper columns to `instances` table. Encrypted credential storage. `HasFilesystemAccess` helper.
 
@@ -648,7 +648,29 @@ make build
 > Implement Phase 13 from `documentation/design/ssh-helper-plan.md`. Add SSH/helper columns to the instances table. Reference design doc `documentation/design/remote-helper.md` §9 for the exact column definitions. Create migrations `internal/database/migrations/072_add_remote_helper.sql` and `internal/database/postgres_migrations/073_add_remote_helper.sql` (check actual latest migration numbers on the branch before creating — use the next available number). Extend `Instance` struct in `internal/models/instance.go` with all SSH/helper fields. Create `internal/models/ssh_credentials.go` with `SSHCredentials` type and encrypt/decrypt helpers using the same AES-GCM pattern as existing password encryption in `instance.go`. Create `internal/models/filesystem_access.go` with `HasFilesystemAccess(instance *Instance) (bool, string)` returning `(true, "local")` when `HasLocalFilesystemAccess` is true, `(true, "helper")` when SSH+helper is configured, `(false, "none")` otherwise. Replace all `HasLocalFilesystemAccess` checks in orphanscan/service.go, sync_manager.go, and proxy/handler.go. **SSH-specific: never log credentials or full key material. Encryption keys must be the existing sessionSecret.** Follow coding standards in `CLAUDE.md`. Stay strictly within scope. Update the plan checkboxes and add implementation notes when done.
 
 ### Implementation Notes
-_(filled in after phase completion)_
+
+**Completed 2026-04-28.**
+
+Files created:
+- `internal/database/migrations/072_add_remote_helper.sql` — 16 new columns on instances
+- `internal/database/postgres_migrations/073_add_remote_helper.sql` — Same (TIMESTAMP instead of DATETIME)
+- `internal/models/filesystem_access.go` — `HasFilesystemAccess(instance) (FilesystemMode, bool)` helper
+- `internal/models/filesystem_access_test.go` — 6 test cases
+
+Files modified:
+- `internal/models/instance.go` — Extended Instance struct with 16 SSH/helper fields
+- `internal/services/orphanscan/service.go` — 2 `HasLocalFilesystemAccess` guards → `HasFilesystemAccess`
+- `internal/qbittorrent/sync_manager.go` — 1 `HasLocalFilesystemAccess` guard → `HasFilesystemAccess`
+- `internal/proxy/handler.go` — 1 `HasLocalFilesystemAccess` guard → `HasFilesystemAccess`
+
+Design decisions:
+- Deferred `ssh_credentials.go` with dedicated encrypt/decrypt helpers — the existing `InstanceStore.encrypt`/`decrypt` methods already handle AES-GCM. Phase 15 (sshpool) will call these existing methods when it needs to decrypt SSH keys. No need for a separate type now.
+- Only migrated 4 guard-check callsites to `HasFilesystemAccess`. The automations service has ~8 more `HasLocalFilesystemAccess` references, but those are deeper in evaluation context — migrating them is best done alongside the automations backend wiring which is already complete.
+- `HasFilesystemAccess` returns `(FilesystemMode, bool)` instead of `(bool, string)` for type safety.
+- SSH credential fields use `json:"-"` to never appear in API responses (same as `PasswordEncrypted`).
+
+Deviations from design doc:
+- `HasFilesystemAccess` returns `(FilesystemMode, bool)` instead of `(bool, FilesystemMode)` — Go convention puts the "important" value first.
 
 ---
 

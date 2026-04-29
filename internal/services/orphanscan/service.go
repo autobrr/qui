@@ -236,8 +236,8 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 
 	now := time.Now()
 	for _, inst := range instances {
-		// Gate 1: instance must be active and have local access
-		if !inst.IsActive || !inst.HasLocalFilesystemAccess {
+		// Gate 1: instance must be active and have filesystem access (local or helper)
+		if _, hasAccess := models.HasFilesystemAccess(inst); !inst.IsActive || !hasAccess {
 			continue
 		}
 
@@ -1232,7 +1232,7 @@ func (s *Service) getOtherLocalInstances(ctx context.Context, excludeInstanceID 
 		if inst == nil || inst.ID == excludeInstanceID {
 			continue
 		}
-		if inst.IsActive && inst.HasLocalFilesystemAccess {
+		if _, hasAccess := models.HasFilesystemAccess(inst); inst.IsActive && hasAccess {
 			local = append(local, inst)
 		}
 	}
