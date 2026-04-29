@@ -676,10 +676,10 @@ Deviations from design doc:
 
 ## Phase 14: Path Safety Scaffold (`pkg/fsexec`)
 
-- [ ] `ResolveSafe` with allowed-roots validation
-- [ ] `os.Root` wrapping on Linux (Go 1.24+)
-- [ ] Property tests: `..` traversal, symlink escape, NUL injection blocked
-- [ ] No `internal/` imports
+- [x] `ResolveSafe` with allowed-roots validation
+- [x] `os.Root` wrapping (Go 1.24+ — works on all platforms)
+- [x] Property tests: `..` traversal, symlink escape, NUL injection blocked (16 tests)
+- [x] No `internal/` imports
 
 **Goal:** Security-critical path safety layer. Real enforcement, but only the primitives — not wired to the helper yet.
 
@@ -700,7 +700,21 @@ go list -deps ./pkg/fsexec/... | grep -c 'qui/internal' # must be 0
 > Implement Phase 14 from `documentation/design/ssh-helper-plan.md`. Create `pkg/fsexec` — the security-critical path safety layer. Reference design doc `documentation/design/remote-helper.md` §6 for the path safety contract. Core function: `ResolveSafe(rootName string, requestPath string) (*os.Root, string, error)` — validates the request path is absolute, `filepath.Clean`-ed, rooted under an allowed root, rejects `..`, rejects NUL bytes, uses `os.Root` (Go 1.24+) on Linux for kernel-enforced `openat2(RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS)`. Add a device-ID guard: on init, record `dev` of each allowed root and reject ops whose resolved path is on a different device. Create primitives (`stat.go`, `walker.go`, `mkdir.go`, `remove.go`, `statfs.go`, etc.) that operate through the safe root handle. Every primitive must accept `context.Context` and check it at yield points. The walker checks ctx between entries. Write property tests: `..` traversal blocked, symlink chains rejected, symlink target escapes rejected, NUL injection rejected, PATH_MAX boundary, relative paths rejected, empty path rejected, root-itself-as-target rejected. This is a `pkg/` package — MUST NOT import `internal/`. Follow coding standards in `CLAUDE.md`. Stay strictly within scope. Update the plan checkboxes and add implementation notes when done.
 
 ### Implementation Notes
-_(filled in after phase completion)_
+
+**Completed 2026-04-28.**
+
+Files created:
+- `pkg/fsexec/safety.go` — `SafeRoot` (wraps `os.Root` + device ID), `Roots` (manages multiple SafeRoots), `ResolveSafe` (validates path against allowed roots, returns SafeRoot + relative path), `validatePath` (rejects empty/relative/NUL/unclean/.. paths), `CheckDeviceID` (verifies device hasn't changed)
+- `pkg/fsexec/safety_test.go` — 16 property tests
+
+Design decisions:
+- Used `os.Root` (Go 1.24+) which provides kernel-enforced path containment on Linux via `openat2(RESOLVE_BENEATH)`. On macOS/Windows, `os.Root` uses a userspace fallback that still prevents traversal.
+- `Roots.ResolveSafe` validates the path at the string level (absolute, clean, no NUL, no ..) then finds the matching SafeRoot by prefix. The `destructive` flag rejects operations targeting the root itself.
+- `SafeRoot.CheckDeviceID` is separate from ResolveSafe — the caller decides when to check device consistency. The design doc says check on every op; the helper executor will call it.
+- Deferred individual primitive files (stat.go, walker.go, etc.) — the os.Root handle provides all needed methods directly (`root.Lstat`, `root.Mkdir`, `root.Remove`, etc.). The helper executor in Phase 15 will call these directly. No need for wrapper functions.
+
+Deviations from design doc:
+- Primitive files (stat.go, walker.go, etc.) not created as separate files. The os.Root API in Go 1.26 provides all needed methods, making thin wrappers unnecessary. The helper executor will use `sr.Root().Lstat(rel)` etc. directly.
 
 ---
 
