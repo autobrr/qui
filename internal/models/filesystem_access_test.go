@@ -42,7 +42,7 @@ func TestHasFilesystemAccess(t *testing.T) {
 			instance: &Instance{
 				ID:               1,
 				SSHHost:          "seedbox.example.com",
-				HelperDeployedAt: ptrTime(time.Now()),
+				HelperDeployedAt: timePtr(time.Now()),
 			},
 			wantMode: FilesystemModeHelper,
 			wantOK:   true,
@@ -62,7 +62,7 @@ func TestHasFilesystemAccess(t *testing.T) {
 				ID:                       1,
 				HasLocalFilesystemAccess: true,
 				SSHHost:                  "seedbox.example.com",
-				HelperDeployedAt:         ptrTime(time.Now()),
+				HelperDeployedAt:         timePtr(time.Now()),
 			},
 			wantMode: FilesystemModeLocal,
 			wantOK:   true,
@@ -78,4 +78,7 @@ func TestHasFilesystemAccess(t *testing.T) {
 	}
 }
 
-func ptrTime(t time.Time) *time.Time { return &t }
+func timePtr(t time.Time) *time.Time {
+	v := t
+	return &v
+}

@@ -602,7 +602,7 @@ func isUnderIgnoredPrefixDir(path, root string) bool {
 	if err != nil {
 		return false
 	}
-	for _, seg := range strings.Split(rel, string(filepath.Separator)) {
+	for seg := range strings.SplitSeq(rel, string(filepath.Separator)) {
 		for _, prefix := range ignoredOrphanDirNamePrefixes {
 			if hasPrefixFold(seg, prefix) {
 				return true
