@@ -322,7 +322,10 @@ export function formatRelativeTime(value?: string | number | Date | null, addSuf
   const diffYear = Math.floor(diffDay / 365)
 
   let relativeValue: string
-  if (diffSec < 60) relativeValue = "just now"
+  if (diffSec < 60) {
+    const seconds = Math.max(diffSec, 1)
+    relativeValue = isFuture ? `${seconds} second${seconds !== 1 ? "s" : ""}` : "just now"
+  }
   else if (diffMin < 60) relativeValue = `${diffMin} minute${diffMin !== 1 ? "s" : ""}`
   else if (diffHour < 24) relativeValue = `${diffHour} hour${diffHour !== 1 ? "s" : ""}`
   else if (diffDay < 7) relativeValue = `${diffDay} day${diffDay !== 1 ? "s" : ""}`
