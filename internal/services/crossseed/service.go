@@ -6905,8 +6905,8 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			}
 		}
 
-		// Add year info if available
-		if searchRelease.Year > 0 {
+		// Year hurts TV searches on many indexers; keep it for movies only.
+		if searchRelease.Year > 0 && contentInfo.ContentType != "tv" {
 			searchReq.Year = searchRelease.Year
 		}
 
@@ -6987,6 +6987,50 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	searchResults := searchResp.Results
+
+	// Retry without year for single-indexer searches when the first pass returned zero.
+	if len(searchResults) == 0 && searchReq.Year > 0 && len(filteredIndexerIDs) <= 1 {
+		log.Debug().
+			Str("torrentName", sourceTorrent.Name).
+			Int("year", searchReq.Year).
+			Msg("[CROSSSEED-SEARCH] Zero results with year filter; retrying without year")
+
+		retryRespCh := make(chan *jackett.SearchResponse, 1)
+		retryErrCh := make(chan error, 1)
+		var retryOnce sync.Once
+		retryReq := *searchReq
+		retryReq.Year = 0
+		retryReq.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
+			retryOnce.Do(func() {
+				if err != nil {
+					select {
+					case retryErrCh <- err:
+					case <-waitCtx.Done():
+					}
+				} else {
+					select {
+					case retryRespCh <- resp:
+					case <-waitCtx.Done():
+					}
+				}
+			})
+		}
+		if retryErr := s.jackettService.Search(waitCtx, &retryReq); retryErr != nil {
+			return nil, wrapCrossSeedSearchError(retryErr)
+		}
+		select {
+		case retryResp := <-retryRespCh:
+			searchResp = retryResp
+			searchResults = retryResp.Results
+		case retryErr := <-retryErrCh:
+			return nil, wrapCrossSeedSearchError(retryErr)
+		case <-waitCtx.Done():
+			if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
+				return nil, wrapCrossSeedSearchError(errors.New("search timed out"))
+			}
+			return nil, wrapCrossSeedSearchError(waitCtx.Err())
+		}
+	}
 
 	// Load automation settings to get size tolerance percentage
 	settings, err := s.GetAutomationSettings(ctx)

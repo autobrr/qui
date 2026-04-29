@@ -17,8 +17,8 @@ export type SearchTypeOption = {
 type NonAutoSearchType = Exclude<SearchType, 'auto'>
 
 const SEARCH_TYPE_CATEGORY_MAP: Record<NonAutoSearchType, number[]> = {
-  movies: [2000, 2030, 2040, 2045],
-  tv: [5000, 5030, 5040, 5045],
+  movies: [2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080],
+  tv: [5000, 5010, 5020, 5030, 5040, 5045, 5070, 5080],
   music: [3000],
   books: [7000, 7020, 7030],
   apps: [4000],
