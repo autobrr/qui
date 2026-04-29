@@ -1011,7 +1011,6 @@ The phasing is organized around **shippable milestones**. Stage C ships the help
 - [x] `internal/models/filesystem_access.go` — `HasFilesystemAccess` helper
 - [x] `Makefile` — `make helper` cross-compiles for linux/{amd64,arm64}, darwin/{amd64,arm64}
 - [ ] CI workflow `helper-ci.yml` — cross-compile matrix, import-graph guard, path-safety property tests
-- [ ] Frontend — SSH credential form, deploy modal, helper status card, instance RadioGroup
 
 ### Stage B — Backend interface + callsite refactor (COMPLETE)
 
