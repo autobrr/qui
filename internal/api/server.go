@@ -38,6 +38,7 @@ import (
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/internal/services/orphanscan"
 	"github.com/autobrr/qui/internal/services/reannounce"
+	"github.com/autobrr/qui/internal/sshpool"
 	"github.com/autobrr/qui/internal/services/trackericons"
 	"github.com/autobrr/qui/internal/update"
 	"github.com/autobrr/qui/internal/web"
@@ -85,6 +86,7 @@ type Server struct {
 	dirScanService                   *dirscan.Service
 	arrInstanceStore                 *models.ArrInstanceStore
 	arrService                       *arr.Service
+	sshPool                          *sshpool.Pool
 }
 
 type Dependencies struct {
@@ -124,6 +126,7 @@ type Dependencies struct {
 	DirScanService                   *dirscan.Service
 	ArrInstanceStore                 *models.ArrInstanceStore
 	ArrService                       *arr.Service
+	SSHPool                          *sshpool.Pool
 }
 
 func NewServer(deps *Dependencies) *Server {
@@ -171,6 +174,7 @@ func NewServer(deps *Dependencies) *Server {
 		dirScanService:                   deps.DirScanService,
 		arrInstanceStore:                 deps.ArrInstanceStore,
 		arrService:                       deps.ArrService,
+		sshPool:                          deps.SSHPool,
 	}
 
 	return &s
@@ -300,6 +304,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		return nil, err
 	}
 	instancesHandler := handlers.NewInstancesHandler(s.instanceStore, s.instanceReannounce, s.reannounceCache, s.clientPool, s.syncManager, s.reannounceService)
+	helperHandler := handlers.NewHelperHandler(s.instanceStore, s.sshPool)
 	torrentsHandler := handlers.NewTorrentsHandler(s.syncManager, s.jackettService, s.instanceStore)
 	preferencesHandler := handlers.NewPreferencesHandler(s.syncManager)
 	clientAPIKeysHandler := handlers.NewClientAPIKeysHandler(s.clientAPIKeyStore, s.instanceStore, s.config.Config.BaseURL)
@@ -468,6 +473,16 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.Delete("/", instancesHandler.DeleteInstance)
 					r.Post("/test", instancesHandler.TestConnection)
 					r.Get("/mediainfo", torrentsHandler.GetContentPathMediaInfo)
+
+					// SSH helper management
+					r.Post("/ssh-test", helperHandler.TestSSHConnection)
+					r.Delete("/ssh-credentials", helperHandler.RemoveSSHCredentials)
+					r.Route("/helper", func(r chi.Router) {
+						r.Get("/", helperHandler.GetHelperStatus)
+						r.Post("/deploy", helperHandler.DeployHelper)
+						r.Post("/redeploy", helperHandler.RedeployHelper)
+						r.Delete("/", helperHandler.RemoveHelper)
+					})
 
 					// Torrent operations
 					r.Route("/torrents", func(r chi.Router) {

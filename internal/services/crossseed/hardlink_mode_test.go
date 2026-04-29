@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/reflinktree"
@@ -338,7 +339,7 @@ func TestFindMatchingBaseDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := FindMatchingBaseDir(tt.configured, "/some/source/path")
+			result, err := FindMatchingBaseDir(context.Background(), tt.configured, "/some/source/path", local.NewBackend())
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -367,7 +368,7 @@ func TestFindMatchingBaseDir_ParsesCommaSeparated(t *testing.T) {
 	require.NoError(t, os.WriteFile(invalidPath3, []byte("file"), 0o600))
 
 	configured := invalidPath1 + ", " + invalidPath2 + " , " + invalidPath3
-	_, err := FindMatchingBaseDir(configured, sourceFile)
+	_, err := FindMatchingBaseDir(context.Background(), configured, sourceFile, local.NewBackend())
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no base directory")
@@ -402,7 +403,7 @@ func TestFindMatchingBaseDir_TrimsWhitespace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := FindMatchingBaseDir(tt.configured, "/nonexistent/source")
+			_, err := FindMatchingBaseDir(context.Background(), tt.configured, "/nonexistent/source", local.NewBackend())
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "no base directory")
 		})
@@ -417,7 +418,7 @@ func TestFindMatchingBaseDir_ReturnsFirstMatchingDir(t *testing.T) {
 	firstDir := filepath.Join(t.TempDir(), "first")
 	secondDir := filepath.Join(t.TempDir(), "second")
 
-	result, err := FindMatchingBaseDir("  "+firstDir+" , "+secondDir+"  ", sourceFile)
+	result, err := FindMatchingBaseDir(context.Background(), "  "+firstDir+" , "+secondDir+"  ", sourceFile, local.NewBackend())
 	require.NoError(t, err)
 	assert.Equal(t, firstDir, result)
 	assert.DirExists(t, firstDir)
@@ -433,7 +434,7 @@ func TestFindMatchingBaseDir_SkipsInvalidDirAndFindsNextMatch(t *testing.T) {
 
 	validDir := filepath.Join(t.TempDir(), "valid")
 
-	result, err := FindMatchingBaseDir(invalidFilePath+", "+validDir, sourceFile)
+	result, err := FindMatchingBaseDir(context.Background(), invalidFilePath+", "+validDir, sourceFile, local.NewBackend())
 	require.NoError(t, err)
 	assert.Equal(t, validDir, result)
 	assert.DirExists(t, validDir)

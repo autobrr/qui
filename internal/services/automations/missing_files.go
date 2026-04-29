@@ -5,7 +5,8 @@ package automations
 
 import (
 	"context"
-	"os"
+	"errors"
+	"io/fs"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
@@ -15,6 +16,13 @@ import (
 // Returns a map of torrent hash to missing files boolean.
 func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torrents []qbt.Torrent) map[string]bool {
 	result := make(map[string]bool)
+
+	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).
+			Msg("automations: failed to get backend for missing files detection")
+		return result
+	}
 
 	// Only completed torrents
 	var completedHashes []string
@@ -47,8 +55,8 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 				continue
 			}
 			fullPath := buildFullPath(torrent.SavePath, f.Name)
-			if _, err := os.Stat(fullPath); err != nil {
-				if os.IsNotExist(err) {
+			if _, err := backend.Stat(ctx, fullPath); err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
 					hasMissing = true
 					break
 				}

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -58,12 +59,12 @@ func GetFreeSpaceRuleKey(rule *models.Automation) string {
 }
 
 // GetFreeSpaceBytesForSource returns the free space in bytes for the given source.
-// On Windows, only qBittorrent source is supported.
 func GetFreeSpaceBytesForSource(
 	ctx context.Context,
 	syncManager *qbittorrent.SyncManager,
 	instance *models.Instance,
 	src *models.FreeSpaceSource,
+	backend fsops.Backend,
 ) (int64, error) {
 	resolved := resolveFreeSpaceSource(src)
 
@@ -83,8 +84,15 @@ func GetFreeSpaceBytesForSource(
 		return freeSpace, nil
 
 	case models.FreeSpaceSourcePath:
-		// Path-based free space is not supported on Windows
-		return 0, errors.New("path-based free space source is not supported on Windows")
+		// Read free space via the backend (local or remote helper)
+		if backend == nil {
+			return 0, errors.New("backend is required for path-based free space source")
+		}
+		result, err := backend.Statfs(ctx, resolved.Path)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get filesystem stats for %s: %w", resolved.Path, err)
+		}
+		return result.BytesAvailable, nil
 
 	default:
 		return 0, fmt.Errorf("unsupported free space source type: %s", resolved.Type)

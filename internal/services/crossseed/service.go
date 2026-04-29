@@ -21,7 +21,6 @@ import (
 	"maps"
 	"math"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -43,6 +42,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
@@ -53,7 +53,6 @@ import (
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
 	"github.com/autobrr/qui/internal/services/notifications"
-	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathcmp"
 	"github.com/autobrr/qui/pkg/pathutil"
@@ -360,6 +359,9 @@ type Service struct {
 	recheckResumeChan   chan *pendingResume
 	recheckResumeCtx    context.Context
 	recheckResumeCancel context.CancelFunc
+
+	// Filesystem backend pool for link-tree operations.
+	backendPool atomic.Value // stores *fsops.Pool; set via SetBackendPool
 }
 
 // pendingResume tracks a torrent waiting for recheck to complete before resuming.
@@ -463,6 +465,27 @@ func NewService(
 	go svc.recheckResumeWorker()
 
 	return svc
+}
+
+// SetBackendPool sets the filesystem backend pool for link-tree operations.
+func (s *Service) SetBackendPool(pool *fsops.Pool) {
+	s.backendPool.Store(pool)
+}
+
+func (s *Service) getBackendPool() *fsops.Pool {
+	v := s.backendPool.Load()
+	if v == nil {
+		return nil
+	}
+	return v.(*fsops.Pool)
+}
+
+func (s *Service) getBackendForInstance(ctx context.Context, instanceID int) (fsops.Backend, error) {
+	pool := s.getBackendPool()
+	if pool == nil {
+		return nil, errors.New("filesystem backend pool not configured")
+	}
+	return pool.GetBackend(ctx, instanceID)
 }
 
 func (s *Service) getCompletionPollInterval() time.Duration {
@@ -11152,7 +11175,11 @@ func (s *Service) processHardlinkMode(
 		return handleError("No content path or save path available for matched torrent")
 	}
 
-	selectedBaseDir, err := FindMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
+	hlBackend, backendErr := s.getBackendForInstance(ctx, candidate.InstanceID)
+	if backendErr != nil {
+		return handleError(fmt.Sprintf("Failed to get filesystem backend: %v", backendErr))
+	}
+	selectedBaseDir, err := FindMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFilePath, hlBackend)
 	if err != nil {
 		log.Warn().
 			Err(err).
@@ -11555,7 +11582,7 @@ func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTracker
 // or an error if none match.
 // FindMatchingBaseDir returns the first configured base directory on the same
 // filesystem as the source path.
-func FindMatchingBaseDir(configuredDirs string, sourcePath string) (string, error) {
+func FindMatchingBaseDir(ctx context.Context, configuredDirs string, sourcePath string, backend fsops.Backend) (string, error) {
 	if strings.TrimSpace(configuredDirs) == "" {
 		return "", errors.New("base directory not configured")
 	}
@@ -11569,12 +11596,12 @@ func FindMatchingBaseDir(configuredDirs string, sourcePath string) (string, erro
 			continue
 		}
 
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := backend.MkdirAll(ctx, dir, 0o755); err != nil {
 			lastErr = fmt.Errorf("failed to create directory %s: %w", dir, err)
 			continue
 		}
 
-		sameFS, err := fsutil.SameFilesystem(sourcePath, dir)
+		sameFS, err := backend.SameFilesystem(ctx, sourcePath, dir)
 		if err != nil {
 			lastErr = fmt.Errorf("failed to check filesystem for %s: %w", dir, err)
 			continue
@@ -11742,7 +11769,11 @@ func (s *Service) processReflinkMode(
 		return handleError("No content path or save path available for matched torrent")
 	}
 
-	selectedBaseDir, err := FindMatchingBaseDir(instance.HardlinkBaseDir, existingFilePath)
+	rlBackend, backendErr := s.getBackendForInstance(ctx, candidate.InstanceID)
+	if backendErr != nil {
+		return handleError(fmt.Sprintf("Failed to get filesystem backend: %v", backendErr))
+	}
+	selectedBaseDir, err := FindMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFilePath, rlBackend)
 	if err != nil {
 		log.Warn().
 			Err(err).

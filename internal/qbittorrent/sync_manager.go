@@ -28,6 +28,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/trackericons"
 )
@@ -186,6 +187,7 @@ type SyncManager struct {
 	clientPool   *ClientPool
 	exprCache    *ttlcache.Cache[string, *vm.Program]
 	filesManager atomic.Value // stores FilesManager interface value
+	backendPool  atomic.Value // stores *fsops.Pool; set via SetBackendPool
 
 	// Providers used for testing and specialized flows; nil defaults to live clients.
 	torrentFilesClientProvider func(ctx context.Context, instanceID int) (torrentFilesClient, error)
@@ -263,6 +265,19 @@ func NewSyncManager(clientPool *ClientPool, trackerCustomizationStore TrackerCus
 // SetFilesManager sets the files manager for caching in a thread-safe manner
 func (sm *SyncManager) SetFilesManager(fm FilesManager) {
 	sm.filesManager.Store(fm)
+}
+
+// SetBackendPool sets the filesystem backend pool used for managed delete cleanup.
+func (sm *SyncManager) SetBackendPool(pool *fsops.Pool) {
+	sm.backendPool.Store(pool)
+}
+
+func (sm *SyncManager) getBackendPool() *fsops.Pool {
+	v := sm.backendPool.Load()
+	if v == nil {
+		return nil
+	}
+	return v.(*fsops.Pool)
 }
 
 // GetClient returns a client for an instance, creating one if needed
@@ -1785,8 +1800,12 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	}
 
 	var managedDeleteCleanupTargets []managedDeleteCleanupTarget
+	var deleteBackend fsops.Backend
 	if action == "deleteWithFiles" {
 		managedDeleteCleanupTargets = sm.buildManagedDeleteCleanupTargets(ctx, instanceID, syncManager, canonicalHashes)
+		if pool := sm.getBackendPool(); pool != nil {
+			deleteBackend, _ = pool.GetBackend(ctx, instanceID)
+		}
 	}
 
 	// Log debug info when variant resolution was used (helps diagnose hybrid hash issues)
@@ -1855,7 +1874,9 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, true)
 		// Invalidate caches for deleted torrents
 		if err == nil {
-			cleanupManagedDeleteTargets(managedDeleteCleanupTargets)
+			if deleteBackend != nil {
+				cleanupManagedDeleteTargets(ctx, managedDeleteCleanupTargets, deleteBackend)
+			}
 			sm.RemoveHashesFromTrackerHealthCache(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
 			if fm := sm.getFilesManager(); fm != nil {
@@ -1915,7 +1936,18 @@ func (sm *SyncManager) buildManagedDeleteCleanupTargets(
 	}
 
 	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
-	if err != nil || instance == nil || !instance.HasLocalFilesystemAccess || strings.TrimSpace(instance.HardlinkBaseDir) == "" {
+	_, hasAccess := models.HasFilesystemAccess(instance)
+	if err != nil || instance == nil || !hasAccess || strings.TrimSpace(instance.HardlinkBaseDir) == "" {
+		return nil
+	}
+
+	pool := sm.getBackendPool()
+	if pool == nil {
+		return nil
+	}
+	backend, err := pool.GetBackend(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("delete cleanup: failed to get backend")
 		return nil
 	}
 
@@ -1924,7 +1956,7 @@ func (sm *SyncManager) buildManagedDeleteCleanupTargets(
 		return nil
 	}
 
-	return buildManagedDeleteCleanupTargets(instance.HardlinkBaseDir, torrents)
+	return buildManagedDeleteCleanupTargets(ctx, instance.HardlinkBaseDir, torrents, backend)
 }
 
 // bulkActionSyncRetry forces a sync and retries hash resolution for just-added torrents.

@@ -12,8 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"golang.org/x/sys/unix"
-
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 )
@@ -66,6 +65,7 @@ func GetFreeSpaceBytesForSource(
 	syncManager *qbittorrent.SyncManager,
 	instance *models.Instance,
 	src *models.FreeSpaceSource,
+	backend fsops.Backend,
 ) (int64, error) {
 	resolved := resolveFreeSpaceSource(src)
 
@@ -85,26 +85,17 @@ func GetFreeSpaceBytesForSource(
 		return freeSpace, nil
 
 	case models.FreeSpaceSourcePath:
-		// Read free space from local filesystem path
-		if instance == nil || !instance.HasLocalFilesystemAccess {
-			return 0, errors.New("path-based free space source requires local filesystem access")
+		// Read free space via the backend (local or remote helper)
+		if backend == nil {
+			return 0, errors.New("backend is required for path-based free space source")
 		}
-		return getLocalFreeSpaceBytes(resolved.Path)
+		result, err := backend.Statfs(ctx, resolved.Path)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get filesystem stats for %s: %w", resolved.Path, err)
+		}
+		return result.BytesAvailable, nil
 
 	default:
-		// Future: add "agentPath" type for remote agent-based free space checks
 		return 0, fmt.Errorf("unsupported free space source type: %s", resolved.Type)
 	}
-}
-
-// getLocalFreeSpaceBytes returns the available bytes on the filesystem containing the given path.
-func getLocalFreeSpaceBytes(path string) (int64, error) {
-	var stat unix.Statfs_t
-	if err := unix.Statfs(path, &stat); err != nil {
-		return 0, fmt.Errorf("failed to get filesystem stats for %s: %w", path, err)
-	}
-	// Bavail is the number of free blocks available to unprivileged users
-	// Bsize is the fundamental block size
-	//nolint:gosec // uint64 to int64 conversion is safe: disk free space won't exceed int64 max (~8 EiB)
-	return int64(stat.Bavail) * int64(stat.Bsize), nil
 }

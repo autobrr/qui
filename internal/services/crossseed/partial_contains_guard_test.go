@@ -12,6 +12,8 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/fsops"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -235,6 +237,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 			return models.DefaultCrossSeedAutomationSettings(), nil
 		},
 	}
+	service.SetBackendPool(fsops.NewPool(instanceStore, local.NewBackend()))
 
 	candidate := CrossSeedCandidate{
 		InstanceID:   instanceID,

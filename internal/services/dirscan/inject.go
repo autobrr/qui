@@ -15,14 +15,13 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	qbsync "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
-	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathutil"
-	"github.com/autobrr/qui/pkg/reflinktree"
 	"github.com/rs/zerolog/log"
 )
 
@@ -44,6 +43,7 @@ type Injector struct {
 	torrentChecker            TorrentChecker
 	instanceStore             InstanceProvider
 	trackerCustomizationStore trackerCustomizationProvider
+	backendPool               *fsops.Pool
 }
 
 // JackettDownloader is the interface for downloading torrent files.
@@ -78,6 +78,7 @@ func NewInjector(
 	torrentChecker TorrentChecker,
 	instanceStore InstanceProvider,
 	trackerCustomizationStore trackerCustomizationProvider,
+	backendPool *fsops.Pool,
 ) *Injector {
 	return &Injector{
 		jackettService:            jackettService,
@@ -85,6 +86,7 @@ func NewInjector(
 		torrentChecker:            torrentChecker,
 		instanceStore:             instanceStore,
 		trackerCustomizationStore: trackerCustomizationStore,
+		backendPool:               backendPool,
 	}
 }
 
@@ -203,12 +205,20 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	result.Mode = addMode
 	result.SavePath = savePath
 
+	// Resolve backend for potential rollback of link trees.
+	var injectBackend fsops.Backend
+	if i.backendPool != nil && isLinkTreeMode(addMode) {
+		injectBackend, _ = i.backendPool.GetBackend(ctx, req.InstanceID)
+	}
+
 	hasUnmatchedFiles := len(req.MatchResult.UnmatchedTorrentFiles) > 0
 	partialLinkTree := isLinkTreeMode(addMode) && hasUnmatchedFiles
 
 	// Reject partial link tree injections when downloading missing files is disabled.
 	if partialLinkTree && !req.DownloadMissingFiles {
-		i.rollbackLinkTree(addMode, linkPlan)
+		if injectBackend != nil {
+			i.rollbackLinkTree(ctx, linkPlan, injectBackend)
+		}
 		return result, fmt.Errorf("partial match has %d missing files; enable 'Download missing files' to allow",
 			len(req.MatchResult.UnmatchedTorrentFiles))
 	}
@@ -229,7 +239,9 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 
 	// Add the torrent to qBittorrent
 	if err := i.syncManager.AddTorrent(ctx, req.InstanceID, req.TorrentBytes, options); err != nil {
-		i.rollbackLinkTree(addMode, linkPlan)
+		if injectBackend != nil {
+			i.rollbackLinkTree(ctx, linkPlan, injectBackend)
+		}
 		result.ErrorMessage = fmt.Sprintf("failed to add torrent: %v", err)
 		return result, fmt.Errorf("add torrent: %w", err)
 	}
@@ -455,25 +467,15 @@ func (i *Injector) logLinkTreeFallback(instance *models.Instance, err error) {
 		Msg("dirscan: falling back to regular mode")
 }
 
-func (i *Injector) rollbackLinkTree(mode string, plan *hardlinktree.TreePlan) {
+func (i *Injector) rollbackLinkTree(ctx context.Context, plan *hardlinktree.TreePlan, backend fsops.Backend) {
 	if plan == nil || plan.RootDir == "" {
 		return
 	}
 
-	var rollbackErr error
-	switch mode {
-	case injectModeHardlink:
-		rollbackErr = hardlinktree.Rollback(plan)
-	case injectModeReflink:
-		rollbackErr = reflinktree.Rollback(plan)
-	default:
-		return
+	if err := backend.RemoveTree(ctx, plan); err != nil {
+		log.Warn().Err(err).Str("rootDir", plan.RootDir).Msg("dirscan: failed to rollback link tree")
 	}
-
-	if rollbackErr != nil {
-		log.Warn().Err(rollbackErr).Str("rootDir", plan.RootDir).Str("mode", mode).Msg("dirscan: failed to rollback link tree")
-	}
-	_ = os.Remove(plan.RootDir)
+	_ = backend.Remove(ctx, plan.RootDir, fsops.RemoveOptions{})
 }
 
 // calculateSavePath determines the save path for the torrent.
@@ -584,11 +586,18 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 		return nil, "", err
 	}
 
-	selectedBaseDir, err := crossseed.FindMatchingBaseDir(instance.HardlinkBaseDir, existingFiles[0].AbsPath)
+	if i.backendPool == nil {
+		return nil, "", errors.New("filesystem backend pool not configured")
+	}
+	backend, err := i.backendPool.GetBackend(ctx, instance.ID)
+	if err != nil {
+		return nil, "", fmt.Errorf("get filesystem backend: %w", err)
+	}
+	selectedBaseDir, err := crossseed.FindMatchingBaseDir(ctx, instance.HardlinkBaseDir, existingFiles[0].AbsPath, backend)
 	if err != nil {
 		return nil, "", fmt.Errorf("select hardlink base dir: %w", err)
 	}
-	if err := os.MkdirAll(selectedBaseDir, 0o750); err != nil {
+	if err := backend.MkdirAll(ctx, selectedBaseDir, 0o750); err != nil {
 		return nil, "", fmt.Errorf("create hardlink base dir: %w", err)
 	}
 
@@ -623,7 +632,7 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 		return nil, "", humanizeLinkPlanError(err)
 	}
 
-	mode, err := i.createLinkTree(instance, selectedBaseDir, existingFiles, plan)
+	mode, err := i.createLinkTree(ctx, instance, selectedBaseDir, existingFiles, plan, backend)
 	if err != nil {
 		return nil, "", err
 	}
@@ -729,19 +738,23 @@ func buildLinkTreeMatchedFiles(match *MatchResult) ([]hardlinktree.TorrentFile, 
 	return linkableFiles, existingFiles, nil
 }
 
-func (i *Injector) createLinkTree(instance *models.Instance, selectedBaseDir string, existingFiles []hardlinktree.ExistingFile, plan *hardlinktree.TreePlan) (string, error) {
+func (i *Injector) createLinkTree(ctx context.Context, instance *models.Instance, selectedBaseDir string, existingFiles []hardlinktree.ExistingFile, plan *hardlinktree.TreePlan, backend fsops.Backend) (string, error) {
 	if instance.UseReflinks {
-		if supported, reason := reflinktree.SupportsReflink(selectedBaseDir); !supported {
-			return "", fmt.Errorf("%w: %s", reflinktree.ErrReflinkUnsupported, reason)
+		supported, reason, err := backend.SupportsReflink(ctx, selectedBaseDir)
+		if err != nil {
+			return "", fmt.Errorf("check reflink support: %w", err)
 		}
-		if err := reflinktree.Create(plan); err != nil {
+		if !supported {
+			return "", fmt.Errorf("reflink not supported: %s", reason)
+		}
+		if _, err := backend.ReflinkTree(ctx, plan); err != nil {
 			return "", fmt.Errorf("create reflink tree: %w", err)
 		}
 		return injectModeReflink, nil
 	}
 
 	if instance.UseHardlinks {
-		sameFS, err := fsutil.SameFilesystem(existingFiles[0].AbsPath, selectedBaseDir)
+		sameFS, err := backend.SameFilesystem(ctx, existingFiles[0].AbsPath, selectedBaseDir)
 		if err != nil {
 			return "", fmt.Errorf("verify same filesystem: %w", err)
 		}
@@ -753,7 +766,7 @@ func (i *Injector) createLinkTree(instance *models.Instance, selectedBaseDir str
 			)
 		}
 
-		if err := hardlinktree.Create(plan); err != nil {
+		if _, err := backend.HardlinkTree(ctx, plan); err != nil {
 			if errors.Is(err, syscall.EXDEV) {
 				return "", fmt.Errorf(
 					"create hardlink tree: %w (hardlinks cannot cross filesystems; put your scanned directory and hardlink base dir on the same mount, or enable reflinks if supported)",

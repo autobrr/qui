@@ -15,6 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/autobrr/qui/internal/dbinterface"
+	"github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -29,7 +30,7 @@ func TestSafeDeleteFile(t *testing.T) {
 
 	tfm := NewTorrentFileMap()
 
-	disp, err := safeDeleteFile(root, target, tfm)
+	disp, err := safeDeleteFile(context.Background(), root, target, tfm, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteFile error: %v", err)
 	}
@@ -53,7 +54,7 @@ func TestSafeDeleteFile_SkipsWhenInUse(t *testing.T) {
 	tfm := NewTorrentFileMap()
 	tfm.Add(normalizePath(target))
 
-	disp, err := safeDeleteFile(root, target, tfm)
+	disp, err := safeDeleteFile(context.Background(), root, target, tfm, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteFile error: %v", err)
 	}
@@ -71,7 +72,7 @@ func TestSafeDeleteFile_RefusesScanRoot(t *testing.T) {
 	root := t.TempDir()
 	tfm := NewTorrentFileMap()
 
-	if _, err := safeDeleteFile(root, root, tfm); err == nil {
+	if _, err := safeDeleteFile(context.Background(), root, root, tfm, local.NewBackend()); err == nil {
 		t.Fatalf("expected error deleting scan root")
 	}
 }
@@ -83,7 +84,7 @@ func TestSafeDeleteFile_RefusesEscapingPath(t *testing.T) {
 	tfm := NewTorrentFileMap()
 
 	outside := filepath.Join(root, "..", "escape.txt")
-	if _, err := safeDeleteFile(root, outside, tfm); err == nil {
+	if _, err := safeDeleteFile(context.Background(), root, outside, tfm, local.NewBackend()); err == nil {
 		t.Fatalf("expected error for path escaping scan root")
 	}
 }
@@ -109,7 +110,7 @@ func TestSafeDeleteTarget_DeletesDirectoryRecursively(t *testing.T) {
 	tfm := NewTorrentFileMap()
 
 	unit := filepath.Join(root, "Movie.2024")
-	disp, err := safeDeleteTarget(root, unit, tfm, nil)
+	disp, err := safeDeleteTarget(context.Background(), root, unit, tfm, nil, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -146,7 +147,7 @@ func TestSafeDeleteTarget_SkipsDirectoryWhenAnyFileInUse(t *testing.T) {
 	tfm.Add(normalizePath(fileInUse))
 
 	unit := filepath.Join(root, "Movie.2024")
-	disp, err := safeDeleteTarget(root, unit, tfm, nil)
+	disp, err := safeDeleteTarget(context.Background(), root, unit, tfm, nil, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -186,7 +187,7 @@ func TestSafeDeleteTarget_DeletingMarkerDirDoesNotDeleteSiblingFiles(t *testing.
 
 	tfm := NewTorrentFileMap()
 	markerUnit := filepath.Join(movieDir, "BDMV")
-	disp, err := safeDeleteTarget(root, markerUnit, tfm, nil)
+	disp, err := safeDeleteTarget(context.Background(), root, markerUnit, tfm, nil, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -228,7 +229,7 @@ func TestSafeDeleteTarget_DirectorySkipsWhenContainsInUseSymlinkFile(t *testing.
 	tfm := NewTorrentFileMap()
 	tfm.Add(normalizePath(linkPath))
 
-	disp, err := safeDeleteTarget(root, dir, tfm, nil)
+	disp, err := safeDeleteTarget(context.Background(), root, dir, tfm, nil, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -258,7 +259,7 @@ func TestCollectCandidateDirsForCleanup_CascadesToParents(t *testing.T) {
 	}
 
 	tfm := NewTorrentFileMap()
-	disp, err := safeDeleteFile(scanRoot, target, tfm)
+	disp, err := safeDeleteFile(context.Background(), scanRoot, target, tfm, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteFile error: %v", err)
 	}
@@ -268,7 +269,7 @@ func TestCollectCandidateDirsForCleanup_CascadesToParents(t *testing.T) {
 
 	candidates := collectCandidateDirsForCleanup([]string{target}, []string{scanRoot}, nil)
 	for _, dir := range candidates {
-		_ = safeDeleteEmptyDir(scanRoot, dir)
+		_ = safeDeleteEmptyDir(context.Background(), scanRoot, dir, local.NewBackend())
 	}
 
 	if _, err := os.Stat(seasonDir); !os.IsNotExist(err) {
@@ -333,7 +334,7 @@ func TestSafeDeleteTarget_SkipsWhenContainsIgnoredFile(t *testing.T) {
 	tfm := NewTorrentFileMap()
 	ignorePaths := []string{fileB}
 
-	disp, err := safeDeleteTarget(root, dir, tfm, ignorePaths)
+	disp, err := safeDeleteTarget(context.Background(), root, dir, tfm, ignorePaths, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -358,7 +359,7 @@ func TestSafeDeleteTarget_SkipsWhenTargetIsIgnored(t *testing.T) {
 	tfm := NewTorrentFileMap()
 	ignorePaths := []string{file}
 
-	disp, err := safeDeleteTarget(root, file, tfm, ignorePaths)
+	disp, err := safeDeleteTarget(context.Background(), root, file, tfm, ignorePaths, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -388,7 +389,7 @@ func TestSafeDeleteTarget_AllowsDeleteWhenNoIgnorePaths(t *testing.T) {
 	tfm := NewTorrentFileMap()
 	ignorePaths := []string{} // No ignore paths
 
-	disp, err := safeDeleteTarget(root, dir, tfm, ignorePaths)
+	disp, err := safeDeleteTarget(context.Background(), root, dir, tfm, ignorePaths, local.NewBackend())
 	if err != nil {
 		t.Fatalf("safeDeleteTarget error: %v", err)
 	}
@@ -565,7 +566,7 @@ func TestOrphanScan_RecoverStuckRuns_MarksDeletingFailedImmediately(t *testing.T
 	}
 
 	store := models.NewOrphanScanStore(&testQuerier{DB: sqlDB})
-	svc := NewService(DefaultConfig(), nil, store, nil, nil)
+	svc := NewService(DefaultConfig(), nil, store, nil, nil, nil)
 	if err := svc.recoverStuckRuns(ctx); err != nil {
 		t.Fatalf("recoverStuckRuns: %v", err)
 	}
