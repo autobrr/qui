@@ -743,7 +743,12 @@ func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID 
 // runScanPhase executes the directory scanning phase.
 // Returns the raw scan result and true if successful, or nil and false on failure.
 func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, scanRoot string, runID int64, l *zerolog.Logger) (*ScanResult, map[string]string, bool) {
-	scanner := NewScanner()
+	backend, err := s.backendPool.GetBackend(ctx, dir.TargetInstanceID)
+	if err != nil {
+		l.Error().Err(err).Msg("dirscan: failed to get backend for scanning")
+		return nil, nil, false
+	}
+	scanner := NewScanner(backend)
 
 	// Build FileID index from qBittorrent torrents for already-seeding detection.
 	// This is best-effort; if it fails, scanning continues without seeding skips.

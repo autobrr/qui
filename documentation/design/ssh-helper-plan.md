@@ -517,11 +517,11 @@ Deviations from design doc:
 
 ## Phase 11: Refactor — `dirscan/scanner.go`
 
-- [ ] `filepath.WalkDir` callback → `backend.WalkDir` channel consumption
-- [ ] `os.ReadDir` → `backend.ReadDir`
-- [ ] `os.Stat` → `backend.Stat`
-- [ ] Same searchees found, same files, same sizes
-- [ ] Context cancellation mid-scan works
+- [x] `filepath.WalkDir` callback → `backend.WalkDir` channel consumption
+- [x] `os.ReadDir` → `backend.ReadDir`
+- [x] `os.Stat` → `backend.Lstat`
+- [x] Same searchees found, same files, same sizes
+- [x] Context cancellation mid-scan works
 
 **Goal:** Directory scanner: callback-to-channel conversion for `WalkDir`. Most nuanced control-flow change.
 
@@ -539,7 +539,21 @@ go test -race -count=3 ./internal/services/dirscan/...
 > Implement Phase 11 from `documentation/design/ssh-helper-plan.md`. Refactor `internal/services/dirscan/scanner.go`. The most significant change: `scanSearcheeDir` currently uses `filepath.WalkDir(dirPath, w.walk)` with a callback. Convert this to consuming a `<-chan fsops.WalkEntry` from `backend.WalkDir(ctx, dirPath, opts)`. The `walkDirEntry` callback's skip/continue/error logic must be restructured into a channel-consuming for-range loop. Move hidden-file filtering into `WalkOptions.SkipHidden`. Replace `os.ReadDir(rootPath)` (line 88) with `backend.ReadDir(ctx, rootPath, 0)`. Replace `os.Stat(filePath)` in `scanSingleFile` with `backend.Stat(ctx, filePath)`. The backend comes from `s.backendPool.GetBackend(ctx, instanceID)` at the scan entry point. All scanner tests must pass with identical results — same searchees, same files, same sizes. Follow coding standards in `CLAUDE.md`. Stay strictly within scope. Update the plan checkboxes and add implementation notes when done.
 
 ### Implementation Notes
-_(filled in after phase completion)_
+
+**Completed 2026-04-28.**
+
+Files modified:
+- `internal/services/dirscan/scanner.go` — Major refactor: `Scanner` gains `backend fsops.Backend` field. `NewScanner` accepts backend. `ScanDirectory` uses `backend.ReadDir`. `scanSearcheeDir` converts from `filepath.WalkDir` callback to `backend.WalkDir` channel consumption with `for entry := range ch` loop. `scanSingleFile` uses `backend.Lstat`. `isDiscLayoutRoot` uses `backend.ReadDir`. Removed `walkDirEntry`, `shouldSkipEntry`, `shouldProcessFile`, `addFileToSearchee`, `getFileIDSafe` (all folded into the channel loop). Removed `os` import.
+- `internal/services/dirscan/service.go` — `runScanPhase` resolves backend from pool and passes it to `NewScanner(backend)`.
+
+Design decisions:
+- Used `backend.WalkDir` with `SkipHidden: true, WantFileID: true, WantNlinks: true` to offload filtering and metadata collection to the backend. The callback's skip-hidden and symlink-skip logic moves into WalkOptions.
+- The channel loop is simpler than the callback: just `for entry := range ch` with continue/break instead of returning `filepath.SkipDir` or `nil`.
+- `scanSingleFile` uses `backend.Lstat` (not `Stat`) to get FileID and Nlinks in one call.
+- `isDiscLayoutRoot` is now a method on `Scanner` (was package-level) since it needs the backend.
+
+Deviations from design doc:
+- None.
 
 ---
 
