@@ -1068,6 +1068,76 @@ paths:
         '503':
           description: Connection failed
 
+  /api/instances/{instanceID}/ssh-test:
+    post:
+      tags:
+        - Instances
+      summary: Test SSH connection
+      description: Test SSH connectivity with the provided credentials. Returns host key fingerprint on success.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Test result
+
+  /api/instances/{instanceID}/ssh-credentials:
+    delete:
+      tags:
+        - Instances
+      summary: Remove SSH credentials
+      description: Clears SSH credential fields for an instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Credentials removed
+
+  /api/instances/{instanceID}/helper:
+    get:
+      tags:
+        - Instances
+      summary: Get helper status
+      description: Returns the helper deployment status for an instance.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Helper status
+    delete:
+      tags:
+        - Instances
+      summary: Remove helper
+      description: Removes the helper binary from the remote host.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Helper removed
+
+  /api/instances/{instanceID}/helper/deploy:
+    post:
+      tags:
+        - Instances
+      summary: Deploy helper
+      description: Deploys the helper binary to the remote host via SCP.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Deploy result
+
+  /api/instances/{instanceID}/helper/redeploy:
+    post:
+      tags:
+        - Instances
+      summary: Redeploy helper
+      description: Redeploys the helper binary (e.g. after a qui upgrade).
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+      responses:
+        '200':
+          description: Redeploy result
+
   /api/instances/{instanceID}/app-info:
     get:
       tags:

@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/pkg/fsutil"
@@ -160,10 +161,8 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 
 			// Skip ignored directory names.
 			if d.IsDir() && path != root {
-				for _, ignored := range opts.IgnoreDirNames {
-					if name == ignored {
-						return filepath.SkipDir
-					}
+				if slices.Contains(opts.IgnoreDirNames, name) {
+					return filepath.SkipDir
 				}
 			}
 
