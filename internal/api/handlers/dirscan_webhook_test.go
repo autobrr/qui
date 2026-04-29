@@ -389,6 +389,7 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, local.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -449,6 +450,7 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientMissingButFilterExists(t *tes
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, local.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -509,6 +511,7 @@ func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T)
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, local.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -576,6 +579,7 @@ func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T)
 		nil,
 		nil,
 		nil,
+		fsops.NewPool(instanceStore, local.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
