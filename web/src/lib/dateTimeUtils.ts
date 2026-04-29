@@ -48,7 +48,7 @@ function getRelativeTime(date: Date): string {
   if (diffWeek < 4) return `${diffWeek} week${diffWeek !== 1 ? "s" : ""} ago`
   if (diffMonth < 12 && diffMonth > 0) return `${diffMonth} month${diffMonth !== 1 ? "s" : ""} ago`
   if (diffYear > 0) return `${diffYear} year${diffYear !== 1 ? "s" : ""} ago`
-  
+
   // Fallback for edge cases (like exactly 0 months but some weeks)
   if (diffWeek > 0) return `${diffWeek} week${diffWeek !== 1 ? "s" : ""} ago`
   if (diffDay > 0) return `${diffDay} day${diffDay !== 1 ? "s" : ""} ago`
@@ -59,23 +59,24 @@ function getRelativeTime(date: Date): string {
  * Format a timestamp using user preferences
  * @param timestamp Unix timestamp in seconds
  * @param preferences Optional preferences (will use stored if not provided)
+ * @param includeSeconds Whether to include seconds in absolute timestamps
  * @returns Formatted date/time string
  */
-export function formatTimestamp(timestamp: number, preferences?: DateTimePreferences): string {
+export function formatTimestamp(timestamp: number, preferences?: DateTimePreferences, includeSeconds = false): string {
   if (!timestamp || timestamp === 0) return "N/A"
-  
+
   const prefs = preferences || getStoredPreferences()
   const date = new Date(timestamp * 1000)
-  
+
   // For relative format, return relative time
   if (prefs.dateFormat === "relative") {
     return getRelativeTime(date)
   }
-  
+
   try {
     const timeZone = prefs.timezone
     const hour12 = prefs.timeFormat === "12h"
-    
+
     switch (prefs.dateFormat) {
       case "iso": {
         // ISO 8601 format: YYYY-MM-DD HH:MM covering the preferred timezone
@@ -89,11 +90,12 @@ export function formatTimestamp(timestamp: number, preferences?: DateTimePrefere
           timeZone,
           hour: "2-digit",
           minute: "2-digit",
+          ...(includeSeconds ? { second: "2-digit" } : {}),
           hour12,
         })
         return `${dateFormatter.format(date)} ${timeFormatter.format(date)}`
       }
-      
+
       case "us": {
         // US format: MM/DD/YYYY HH:MM AM/PM
         return date.toLocaleString("en-US", {
@@ -103,10 +105,11 @@ export function formatTimestamp(timestamp: number, preferences?: DateTimePrefere
           year: "numeric",
           hour: "2-digit",
           minute: "2-digit",
+          ...(includeSeconds ? { second: "2-digit" } : {}),
           hour12
         })
       }
-      
+
       case "eu": {
         // European format: DD/MM/YYYY HH:MM
         return date.toLocaleString("en-GB", {
@@ -116,10 +119,11 @@ export function formatTimestamp(timestamp: number, preferences?: DateTimePrefere
           year: "numeric",
           hour: "2-digit",
           minute: "2-digit",
+          ...(includeSeconds ? { second: "2-digit" } : {}),
           hour12
         })
       }
-      
+
       default: {
         // Fallback to ISO format
         const dateFormatter = new Intl.DateTimeFormat("en-CA", {
@@ -132,6 +136,7 @@ export function formatTimestamp(timestamp: number, preferences?: DateTimePrefere
           timeZone,
           hour: "2-digit",
           minute: "2-digit",
+          ...(includeSeconds ? { second: "2-digit" } : {}),
           hour12,
         })
         return `${dateFormatter.format(date)} ${timeFormatter.format(date)}`
@@ -152,26 +157,26 @@ export function formatTimestamp(timestamp: number, preferences?: DateTimePrefere
  */
 export function formatDateOnly(timestamp: number, preferences?: DateTimePreferences): string {
   if (!timestamp || timestamp === 0) return "N/A"
-  
+
   const prefs = preferences || getStoredPreferences()
   const date = new Date(timestamp * 1000)
-  
+
   // For relative format, return relative date
   if (prefs.dateFormat === "relative") {
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
     const diffDay = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-    
+
     if (diffDay === 0) return "Today"
     if (diffDay === 1) return "Yesterday"
     if (diffDay < 7) return `${diffDay} days ago`
-    
+
     return getRelativeTime(date)
   }
-  
+
   try {
     const timeZone = prefs.timezone
-    
+
     switch (prefs.dateFormat) {
       case "iso": {
         const dateFormatter = new Intl.DateTimeFormat("en-CA", {
@@ -182,7 +187,7 @@ export function formatDateOnly(timestamp: number, preferences?: DateTimePreferen
         })
         return dateFormatter.format(date)
       }
-      
+
       case "us":
         return date.toLocaleDateString("en-US", {
           timeZone,
@@ -190,7 +195,7 @@ export function formatDateOnly(timestamp: number, preferences?: DateTimePreferen
           day: "2-digit",
           year: "numeric"
         })
-      
+
       case "eu":
         return date.toLocaleDateString("en-GB", {
           timeZone,
@@ -198,7 +203,7 @@ export function formatDateOnly(timestamp: number, preferences?: DateTimePreferen
           month: "2-digit",
           year: "numeric"
         })
-      
+
       default: {
         const dateFormatter = new Intl.DateTimeFormat("en-CA", {
           timeZone,
@@ -219,19 +224,21 @@ export function formatDateOnly(timestamp: number, preferences?: DateTimePreferen
  * Format time only (without date) using user preferences
  * @param timestamp Unix timestamp in seconds
  * @param preferences Optional preferences (will use stored if not provided)
+ * @param includeSeconds Whether to include seconds in the formatted time
  * @returns Formatted time string
  */
-export function formatTimeOnly(timestamp: number, preferences?: DateTimePreferences): string {
+export function formatTimeOnly(timestamp: number, preferences?: DateTimePreferences, includeSeconds = false): string {
   if (!timestamp || timestamp === 0) return "N/A"
-  
+
   const prefs = preferences || getStoredPreferences()
   const date = new Date(timestamp * 1000)
-  
+
   try {
     return date.toLocaleTimeString([], {
       timeZone: prefs.timezone,
       hour: "2-digit",
       minute: "2-digit",
+      ...(includeSeconds ? { second: "2-digit" } : {}),
       hour12: prefs.timeFormat === "12h"
     })
   } catch (error) {
@@ -284,14 +291,23 @@ export function formatISOTimestamp(isoTimestamp: string, preferences?: DateTimeP
 }
 
 /**
- * Format relative time from a date (e.g., "5 minutes ago" or "3 minutes")
+ * Format relative time from a date-like value.
  * Always returns relative time, independent of user preferences.
  * Use this for status displays where relative time is always appropriate.
- * @param date Date to format
+ * @param value Date, ISO string, or Unix timestamp in seconds
  * @param addSuffix Whether to add "ago" suffix (default: true)
- * @returns Relative time string
+ * @returns Relative time string or "—" for invalid input
  */
-export function formatRelativeTime(date: Date, addSuffix = true): string {
+export function formatRelativeTime(value?: string | number | Date | null, addSuffix = true): string {
+  if (value === undefined || value === null) {
+    return "—"
+  }
+
+  const date = value instanceof Date ? value : new Date(typeof value === "number" ? value * 1000 : value)
+  if (Number.isNaN(date.getTime())) {
+    return "—"
+  }
+
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const isFuture = diffMs < 0
@@ -305,20 +321,20 @@ export function formatRelativeTime(date: Date, addSuffix = true): string {
   const diffMonth = Math.floor(diffDay / 30)
   const diffYear = Math.floor(diffDay / 365)
 
-  let value: string
-  if (diffSec < 60) value = "just now"
-  else if (diffMin < 60) value = `${diffMin} minute${diffMin !== 1 ? "s" : ""}`
-  else if (diffHour < 24) value = `${diffHour} hour${diffHour !== 1 ? "s" : ""}`
-  else if (diffDay < 7) value = `${diffDay} day${diffDay !== 1 ? "s" : ""}`
-  else if (diffWeek < 4) value = `${diffWeek} week${diffWeek !== 1 ? "s" : ""}`
-  else if (diffMonth < 12 && diffMonth > 0) value = `${diffMonth} month${diffMonth !== 1 ? "s" : ""}`
-  else if (diffYear > 0) value = `${diffYear} year${diffYear !== 1 ? "s" : ""}`
-  else if (diffWeek > 0) value = `${diffWeek} week${diffWeek !== 1 ? "s" : ""}`
-  else if (diffDay > 0) value = `${diffDay} day${diffDay !== 1 ? "s" : ""}`
-  else value = "just now"
+  let relativeValue: string
+  if (diffSec < 60) relativeValue = "just now"
+  else if (diffMin < 60) relativeValue = `${diffMin} minute${diffMin !== 1 ? "s" : ""}`
+  else if (diffHour < 24) relativeValue = `${diffHour} hour${diffHour !== 1 ? "s" : ""}`
+  else if (diffDay < 7) relativeValue = `${diffDay} day${diffDay !== 1 ? "s" : ""}`
+  else if (diffWeek < 4) relativeValue = `${diffWeek} week${diffWeek !== 1 ? "s" : ""}`
+  else if (diffMonth < 12 && diffMonth > 0) relativeValue = `${diffMonth} month${diffMonth !== 1 ? "s" : ""}`
+  else if (diffYear > 0) relativeValue = `${diffYear} year${diffYear !== 1 ? "s" : ""}`
+  else if (diffWeek > 0) relativeValue = `${diffWeek} week${diffWeek !== 1 ? "s" : ""}`
+  else if (diffDay > 0) relativeValue = `${diffDay} day${diffDay !== 1 ? "s" : ""}`
+  else relativeValue = "just now"
 
-  if (!addSuffix || value === "just now") return value
-  return isFuture ? `in ${value}` : `${value} ago`
+  if (!addSuffix || relativeValue === "just now") return relativeValue
+  return isFuture ? `in ${relativeValue}` : `${relativeValue} ago`
 }
 
 /**
