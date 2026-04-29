@@ -8,7 +8,6 @@ package executor
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
 	"github.com/autobrr/qui/pkg/agent/proto"
 )
@@ -20,7 +19,7 @@ type Executor struct{}
 func NewExecutor() *Executor { return &Executor{} }
 
 // Execute dispatches a command to the appropriate handler and returns the result.
-func (e *Executor) Execute(ctx context.Context, cmd proto.Command) proto.Result {
+func (e *Executor) Execute(_ context.Context, cmd proto.Command) proto.Result {
 	switch cmd.Op {
 	case proto.OpDiagEcho:
 		return e.diagEcho(cmd)
@@ -29,7 +28,7 @@ func (e *Executor) Execute(ctx context.Context, cmd proto.Command) proto.Result 
 			RequestID: cmd.RequestID,
 			OK:        false,
 			Code:      proto.CodeInternal,
-			Error:     fmt.Sprintf("unsupported op: %s", cmd.Op),
+			Error:     "unsupported op: " + cmd.Op,
 			Done:      true,
 		}
 	}
@@ -42,12 +41,12 @@ func (e *Executor) diagEcho(cmd proto.Command) proto.Result {
 			RequestID: cmd.RequestID,
 			OK:        false,
 			Code:      proto.CodeInternal,
-			Error:     fmt.Sprintf("unmarshal diag.echo args: %v", err),
+			Error:     "unmarshal diag.echo args: " + err.Error(),
 			Done:      true,
 		}
 	}
 
-	payload, _ := json.Marshal(proto.DiagEchoResponse{Message: req.Message})
+	payload, _ := json.Marshal(proto.DiagEchoResponse(req))
 	return proto.Result{
 		RequestID: cmd.RequestID,
 		OK:        true,

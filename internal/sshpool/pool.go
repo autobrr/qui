@@ -30,14 +30,8 @@ type instanceGetter interface {
 }
 
 // instanceClient holds the state for a single SSH connection to a helper.
-type instanceClient struct {
-	instanceID int
-	banner     *proto.HelloBanner
-
-	// pending tracks in-flight requests awaiting results.
-	pending map[string]chan proto.Result
-	mu      sync.Mutex
-}
+// Fields are populated in Stage C when real SSH dispatch is wired.
+type instanceClient struct{}
 
 // NewPool creates a new SSH connection pool.
 func NewPool(store instanceGetter) *Pool {
@@ -51,7 +45,7 @@ func NewPool(store instanceGetter) *Pool {
 // until a result is received or ctx is cancelled. Returns the result.
 //
 // In this scaffold, Submit returns an error — real SSH dispatch is wired in Stage C.
-func (p *Pool) Submit(ctx context.Context, instanceID int, op string, args json.RawMessage) (*proto.Result, error) {
+func (p *Pool) Submit(ctx context.Context, instanceID int, op string, _ json.RawMessage) (*proto.Result, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -59,7 +53,7 @@ func (p *Pool) Submit(ctx context.Context, instanceID int, op string, args json.
 }
 
 // Cancel sends a control.cancel command for the given requestIDs on the specified instance.
-func (p *Pool) Cancel(ctx context.Context, instanceID int, requestIDs []string) error {
+func (p *Pool) Cancel(ctx context.Context, instanceID int, _ []string) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}

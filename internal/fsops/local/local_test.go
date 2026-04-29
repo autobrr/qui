@@ -22,7 +22,7 @@ func newBackend() *Backend { return NewBackend() }
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
-	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
 }
 
 func TestStat_ExistingFile(t *testing.T) {
@@ -77,7 +77,7 @@ func TestStatBatch(t *testing.T) {
 	require.Len(t, errs, 2)
 
 	assert.NotNil(t, infos[0])
-	assert.Nil(t, errs[0])
+	require.NoError(t, errs[0])
 	assert.Equal(t, int64(4), infos[0].Size)
 
 	assert.Nil(t, infos[1])
@@ -141,7 +141,7 @@ func TestLstatBatch(t *testing.T) {
 	infos, errs, err := b.LstatBatch(context.Background(), []string{f1, missing})
 	require.NoError(t, err)
 	assert.NotNil(t, infos[0])
-	assert.Nil(t, errs[0])
+	require.NoError(t, errs[0])
 	assert.Nil(t, infos[1])
 	assert.True(t, os.IsNotExist(errs[1]))
 }
@@ -314,8 +314,8 @@ func TestStatfs(t *testing.T) {
 	b := newBackend()
 	result, err := b.Statfs(context.Background(), t.TempDir())
 	require.NoError(t, err)
-	assert.Greater(t, result.BytesAvailable, int64(0))
-	assert.Greater(t, result.BytesTotal, int64(0))
+	assert.Positive(t, result.BytesAvailable)
+	assert.Positive(t, result.BytesTotal)
 	assert.LessOrEqual(t, result.BytesAvailable, result.BytesTotal)
 }
 

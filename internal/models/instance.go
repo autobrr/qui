@@ -46,22 +46,22 @@ type Instance struct {
 	FallbackToRegularMode bool `json:"fallbackToRegularMode"`
 
 	// SSH remote helper configuration (per-instance)
-	SSHHost                    string     `json:"sshHost,omitempty"`
-	SSHPort                    int        `json:"sshPort,omitempty"`
-	SSHUsername                string     `json:"sshUsername,omitempty"`
-	SSHAuthType                string     `json:"sshAuthType,omitempty"` // "", "key", "password"
-	SSHKeyEncrypted            string     `json:"-"`                     // AES-GCM ciphertext, never in JSON
-	SSHKeyPassphraseEncrypted  string     `json:"-"`                     // AES-GCM ciphertext, never in JSON
-	SSHPasswordEncrypted       string     `json:"-"`                     // AES-GCM ciphertext, never in JSON
-	SSHHostKey                 string     `json:"sshHostKey,omitempty"`  // captured on first connect (TOFU)
-	HelperPath                 string     `json:"helperPath,omitempty"`
-	HelperVersion              string     `json:"helperVersion,omitempty"`
-	HelperCapabilities         string     `json:"helperCapabilities,omitempty"`   // JSON array
-	HelperAllowedRoots         string     `json:"helperAllowedRoots,omitempty"`   // JSON array
-	HelperReflinkRoots         string     `json:"helperReflinkRoots,omitempty"`   // JSON array
-	HelperPlatform             string     `json:"helperPlatform,omitempty"`
-	HelperDeployedAt           *time.Time `json:"helperDeployedAt,omitempty"`
-	HelperLastActivityAt       *time.Time `json:"helperLastActivityAt,omitempty"`
+	SSHHost                   string     `json:"sshHost,omitempty"`
+	SSHPort                   int        `json:"sshPort,omitempty"`
+	SSHUsername               string     `json:"sshUsername,omitempty"`
+	SSHAuthType               string     `json:"sshAuthType,omitempty"` // "", "key", "password"
+	SSHKeyEncrypted           string     `json:"-"`                     // AES-GCM ciphertext, never in JSON
+	SSHKeyPassphraseEncrypted string     `json:"-"`                     // AES-GCM ciphertext, never in JSON
+	SSHPasswordEncrypted      string     `json:"-"`                     // AES-GCM ciphertext, never in JSON
+	SSHHostKey                string     `json:"sshHostKey,omitempty"`  // captured on first connect (TOFU)
+	HelperPath                string     `json:"helperPath,omitempty"`
+	HelperVersion             string     `json:"helperVersion,omitempty"`
+	HelperCapabilities        string     `json:"helperCapabilities,omitempty"` // JSON array
+	HelperAllowedRoots        string     `json:"helperAllowedRoots,omitempty"` // JSON array
+	HelperReflinkRoots        string     `json:"helperReflinkRoots,omitempty"` // JSON array
+	HelperPlatform            string     `json:"helperPlatform,omitempty"`
+	HelperDeployedAt          *time.Time `json:"helperDeployedAt,omitempty"`
+	HelperLastActivityAt      *time.Time `json:"helperLastActivityAt,omitempty"`
 }
 
 func (i Instance) MarshalJSON() ([]byte, error) {

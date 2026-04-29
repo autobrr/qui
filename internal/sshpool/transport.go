@@ -14,35 +14,7 @@ import (
 const (
 	// dialTimeout is the TCP connection timeout for SSH.
 	dialTimeout = 15 * time.Second
-
-	// serverAliveInterval is the SSH keepalive interval.
-	serverAliveInterval = 15 * time.Second
-
-	// reconnectBaseDelay is the initial reconnect backoff delay.
-	reconnectBaseDelay = 5 * time.Second
-
-	// reconnectMaxDelay is the maximum reconnect backoff delay.
-	reconnectMaxDelay = 60 * time.Second
 )
-
-// dialSSH establishes an SSH connection to the given host:port with the
-// provided config. Uses TOFU host key verification — the caller must provide
-// a HostKeyCallback that captures or verifies the host key.
-//
-// This function uses golang.org/x/crypto/ssh directly. It never wraps the
-// ssh CLI and never uses InsecureIgnoreHostKey.
-func dialSSH(host string, port int, config *ssh.ClientConfig) (*ssh.Client, error) {
-	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
-
-	config.Timeout = dialTimeout
-
-	client, err := ssh.Dial("tcp", addr, config)
-	if err != nil {
-		return nil, fmt.Errorf("ssh dial %s: %w", addr, err)
-	}
-
-	return client, nil
-}
 
 // tofuHostKeyCallback returns an ssh.HostKeyCallback that implements TOFU
 // (Trust On First Use). On first connect (knownKey is empty), it captures the
@@ -52,7 +24,7 @@ func dialSSH(host string, port int, config *ssh.ClientConfig) (*ssh.Client, erro
 // This NEVER defaults to insecure — if knownKey is empty and onFirstSeen is nil,
 // the callback rejects the connection.
 func tofuHostKeyCallback(knownKey string, onFirstSeen func(key ssh.PublicKey) error) ssh.HostKeyCallback {
-	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+	return func(hostname string, _ net.Addr, key ssh.PublicKey) error {
 		fingerprint := ssh.FingerprintSHA256(key)
 
 		if knownKey == "" {

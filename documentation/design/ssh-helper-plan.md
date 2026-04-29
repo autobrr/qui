@@ -784,6 +784,12 @@ Design decisions:
 Deviations from design doc:
 - None.
 
+**Deferred to Stage C (removed to avoid shipping dead code):**
+- `dialSSH(host, port, config)` — SSH dial function. Add back in Stage C when `Pool.Submit` wires real SSH dispatch. Implementation: `net.JoinHostPort` + `ssh.Dial` with `dialTimeout`.
+- `serverAliveInterval`, `reconnectBaseDelay`, `reconnectMaxDelay` constants — for keepalive and reconnect backoff. Add back when sweeper health/reconnect stubs are implemented.
+- `pendingResultsTTL` constant — for pending result eviction. Add back when sweeper TTL stub is implemented.
+- `instanceClient` fields (`instanceID`, `banner`, `pending`, `mu`) — per-connection state. Add back when real SSH sessions are established.
+
 ---
 
 ## Phase 16: Wiring + API Endpoints + Full Acceptance
@@ -913,7 +919,7 @@ Branch uses sqlite 072 / postgres 073. Develop has up to sqlite 071 / postgres 0
 
 ### Follow-up Tasks for Stage C
 
-1. Wire real SSH dispatch in `sshpool.Pool.Submit`/`Cancel` (currently returns "not implemented")
+1. Wire real SSH dispatch in `sshpool.Pool.Submit`/`Cancel` (currently returns "not implemented") — restore `dialSSH`, `serverAliveInterval`, `reconnectBaseDelay`, `reconnectMaxDelay`, `pendingResultsTTL`, and `instanceClient` fields (see Phase 15 deferred items)
 2. Implement each FS op in `cmd/qui-helper/internal/executor` (12 ops, one PR each per plan)
 3. Implement `fsops/remote/remote.go` (Remote backend backed by SSH pool)
 4. Update OpenAPI spec with finalized response schemas

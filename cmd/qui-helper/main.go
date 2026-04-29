@@ -68,10 +68,12 @@ func cmdServe(args []string) {
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
-	defer cancel()
 
 	srv := server.NewServer(os.Stdin, os.Stdout)
-	if err := srv.Serve(ctx, roots); err != nil {
+	err := srv.Serve(ctx, roots)
+	cancel()
+
+	if err != nil {
 		fmt.Fprintf(os.Stderr, `{"level":"error","error":"%s","message":"serve exited with error"}`+"\n", err)
 		os.Exit(1)
 	}

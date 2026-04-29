@@ -72,7 +72,7 @@ func TestBuildSSHConfig_KeyAuth(t *testing.T) {
 	privBytes := ssh.MarshalAuthorizedKey(privKey.PublicKey())
 	// We can't easily get PEM from ssh.Signer, so test with a generated key.
 	// Just verify the function rejects invalid key material.
-	_, err = buildSSHConfig("user", "key", []byte("invalid-key"), nil, "", ssh.InsecureIgnoreHostKey())
+	_, err = buildSSHConfig("user", "key", []byte("invalid-key"), nil, "", ssh.InsecureIgnoreHostKey()) //nolint:gosec // test-only: verifying key parsing, not host key verification
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "parse SSH private key")
 
@@ -80,14 +80,14 @@ func TestBuildSSHConfig_KeyAuth(t *testing.T) {
 }
 
 func TestBuildSSHConfig_PasswordAuth(t *testing.T) {
-	config, err := buildSSHConfig("user", "password", nil, nil, "secret", ssh.InsecureIgnoreHostKey())
+	config, err := buildSSHConfig("user", "password", nil, nil, "secret", ssh.InsecureIgnoreHostKey()) //nolint:gosec // test-only
 	require.NoError(t, err)
 	assert.Equal(t, "user", config.User)
 	assert.Len(t, config.Auth, 1)
 }
 
 func TestBuildSSHConfig_UnsupportedAuthType(t *testing.T) {
-	_, err := buildSSHConfig("user", "certificate", nil, nil, "", ssh.InsecureIgnoreHostKey())
+	_, err := buildSSHConfig("user", "certificate", nil, nil, "", ssh.InsecureIgnoreHostKey()) //nolint:gosec // test-only
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported SSH auth type")
 }

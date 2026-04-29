@@ -138,7 +138,7 @@ func (s *Server) Serve(ctx context.Context, allowedRoots []string) error {
 }
 
 func (s *Server) writeResult(r proto.Result) {
-	s.writeJSON(r)
+	_ = s.writeJSON(r)
 }
 
 func (s *Server) writeJSON(v any) error {

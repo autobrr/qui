@@ -15,9 +15,6 @@ const (
 	// connectionHealthInterval is how often to check connection health.
 	connectionHealthInterval = 30 * time.Second
 
-	// pendingResultsTTL is how long to wait for a dispatched result before timing out.
-	pendingResultsTTL = 5 * time.Minute
-
 	// reconnectCheckInterval is how often to process reconnect attempts.
 	reconnectCheckInterval = 5 * time.Second
 )

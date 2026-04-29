@@ -7,9 +7,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
 // roundTrip marshals v to JSON and unmarshals it into a new value of the same type.

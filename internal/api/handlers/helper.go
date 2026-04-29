@@ -77,14 +77,14 @@ func (h *HelperHandler) TestSSHConnection(w http.ResponseWriter, r *http.Request
 }
 
 type helperStatusResponse struct {
-	Deployed         bool   `json:"deployed"`
-	Version          string `json:"helperVersion,omitempty"`
-	Platform         string `json:"platform,omitempty"`
-	Capabilities     string `json:"capabilities,omitempty"`
-	AllowedRoots     string `json:"allowedRoots,omitempty"`
-	ReflinkRoots     string `json:"reflinkRoots,omitempty"`
-	DeployedAt       string `json:"deployedAt,omitempty"`
-	LastActivityAt   string `json:"lastActivityAt,omitempty"`
+	Deployed       bool   `json:"deployed"`
+	Version        string `json:"helperVersion,omitempty"`
+	Platform       string `json:"platform,omitempty"`
+	Capabilities   string `json:"capabilities,omitempty"`
+	AllowedRoots   string `json:"allowedRoots,omitempty"`
+	ReflinkRoots   string `json:"reflinkRoots,omitempty"`
+	DeployedAt     string `json:"deployedAt,omitempty"`
+	LastActivityAt string `json:"lastActivityAt,omitempty"`
 }
 
 // GetHelperStatus returns the helper deployment status for an instance.

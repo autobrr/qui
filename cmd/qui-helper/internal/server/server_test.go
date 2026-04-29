@@ -92,7 +92,7 @@ func TestServer_UnsupportedOp(t *testing.T) {
 	cmd := proto.Command{RequestID: "bad-1", Op: "fs.stat", Args: args}
 	cmdBytes, _ := json.Marshal(cmd)
 	cmdBytes = append(cmdBytes, '\n')
-	stdinW.Write(cmdBytes)
+	_, _ = stdinW.Write(cmdBytes)
 	stdinW.Close()
 
 	select {
@@ -125,7 +125,7 @@ func TestServer_MalformedCommand(t *testing.T) {
 		done <- srv.Serve(context.Background(), nil)
 	}()
 
-	stdinW.Write([]byte("this is not json\n"))
+	_, _ = stdinW.Write([]byte("this is not json\n"))
 	stdinW.Close()
 
 	select {

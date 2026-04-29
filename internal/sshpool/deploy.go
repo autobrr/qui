@@ -67,7 +67,7 @@ func DeployHelper(client *ssh.Client, binary []byte, remotePath string) error {
 
 	// Ensure parent directory exists.
 	dir := remotePath[:strings.LastIndex(remotePath, "/")]
-	if _, err := runCommand(client, fmt.Sprintf("mkdir -p %s", dir)); err != nil {
+	if _, err := runCommand(client, "mkdir -p "+dir); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}
 

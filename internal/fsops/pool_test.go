@@ -5,7 +5,6 @@ package fsops
 
 import (
 	"context"
-	"errors"
 	"io/fs"
 	"testing"
 
@@ -102,13 +101,13 @@ func TestPool_NoAccess(t *testing.T) {
 
 	// All ops should return ErrNoFilesystemAccess.
 	_, err = backend.Stat(context.Background(), "/any")
-	assert.True(t, errors.Is(err, ErrNoFilesystemAccess))
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	err = backend.MkdirAll(context.Background(), "/any", 0o755)
-	assert.True(t, errors.Is(err, ErrNoFilesystemAccess))
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	err = backend.HealthCheck(context.Background())
-	assert.True(t, errors.Is(err, ErrNoFilesystemAccess))
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	// Info should still work (returns kind="none").
 	info, err := backend.Info(context.Background())
@@ -130,44 +129,44 @@ func TestNoopBackend_AllMethodsError(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := b.Stat(ctx, "/x")
-	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	_, _, err = b.StatBatch(ctx, []string{"/x"})
-	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	_, err = b.Lstat(ctx, "/x")
-	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	_, _, err = b.LstatBatch(ctx, []string{"/x"})
-	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	_, _, err = b.ReadDir(ctx, "/x", 0)
-	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	_, err = b.WalkDir(ctx, "/x", WalkOptions{})
-	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	_, err = b.Statfs(ctx, "/x")
-	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	_, err = b.SameFilesystem(ctx, "/x", "/y")
-	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	_, _, err = b.FileID(ctx, "/x")
-	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
-	assert.ErrorIs(t, b.MkdirAll(ctx, "/x", 0o755), ErrNoFilesystemAccess)
-	assert.ErrorIs(t, b.Remove(ctx, "/x", RemoveOptions{}), ErrNoFilesystemAccess)
-	assert.ErrorIs(t, b.RemoveTree(ctx, nil), ErrNoFilesystemAccess)
+	require.ErrorIs(t, b.MkdirAll(ctx, "/x", 0o755), ErrNoFilesystemAccess)
+	require.ErrorIs(t, b.Remove(ctx, "/x", RemoveOptions{}), ErrNoFilesystemAccess)
+	require.ErrorIs(t, b.RemoveTree(ctx, nil), ErrNoFilesystemAccess)
 
 	_, err = b.HardlinkTree(ctx, nil)
-	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	_, err = b.ReflinkTree(ctx, nil)
-	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
 	_, _, err = b.SupportsReflink(ctx, "/x")
-	assert.ErrorIs(t, err, ErrNoFilesystemAccess)
+	require.ErrorIs(t, err, ErrNoFilesystemAccess)
 
-	assert.ErrorIs(t, b.HealthCheck(ctx), ErrNoFilesystemAccess)
+	require.ErrorIs(t, b.HealthCheck(ctx), ErrNoFilesystemAccess)
 }

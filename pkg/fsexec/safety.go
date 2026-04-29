@@ -30,9 +30,9 @@ var ErrDeviceMismatch = errors.New("path is on a different device than the allow
 // SafeRoot holds a validated os.Root handle along with the device ID of the
 // root directory. All filesystem operations should go through this handle.
 type SafeRoot struct {
-	root   *os.Root
-	path   string // absolute path of the root
-	devID  uint64 // device ID recorded at open time
+	root  *os.Root
+	path  string // absolute path of the root
+	devID uint64 // device ID recorded at open time
 }
 
 // OpenSafeRoot opens a directory as a SafeRoot, recording its device ID.

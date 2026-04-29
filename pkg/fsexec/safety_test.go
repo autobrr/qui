@@ -16,7 +16,7 @@ func setupRoots(t *testing.T) (*Roots, string) {
 	t.Helper()
 	root := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "subdir"), 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(root, "subdir", "file.txt"), []byte("data"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "subdir", "file.txt"), []byte("data"), 0o600))
 	roots, err := OpenRoots([]string{root})
 	require.NoError(t, err)
 	t.Cleanup(func() { roots.Close() })
@@ -95,8 +95,8 @@ func TestResolveSafe_OutsideRoot(t *testing.T) {
 func TestResolveSafe_MultipleRoots(t *testing.T) {
 	root1 := t.TempDir()
 	root2 := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(root1, "a.txt"), []byte("a"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(root2, "b.txt"), []byte("b"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root1, "a.txt"), []byte("a"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root2, "b.txt"), []byte("b"), 0o600))
 
 	roots, err := OpenRoots([]string{root1, root2})
 	require.NoError(t, err)
@@ -118,7 +118,7 @@ func TestResolveSafe_SymlinkEscape(t *testing.T) {
 
 	// Create a symlink inside the root that points outside.
 	outside := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("secret"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("secret"), 0o600))
 	require.NoError(t, os.Symlink(outside, filepath.Join(root, "escape")))
 
 	// ResolveSafe only validates the path prefix — it doesn't follow symlinks.
@@ -146,12 +146,12 @@ func TestResolveSafe_SymlinkWithinRoot(t *testing.T) {
 	// os.Root follows relative symlinks within the root.
 	fi, err := sr.Root().Lstat(rel)
 	require.NoError(t, err)
-	assert.True(t, fi.Mode()&os.ModeSymlink != 0, "Lstat should report symlink")
+	assert.NotEqual(t, os.FileMode(0), fi.Mode()&os.ModeSymlink, "Lstat should report symlink")
 }
 
 func TestCheckDeviceID_SameDevice(t *testing.T) {
 	root := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(root, "file.txt"), []byte("data"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file.txt"), []byte("data"), 0o600))
 
 	sr, err := OpenSafeRoot(root)
 	require.NoError(t, err)
@@ -172,7 +172,7 @@ func TestOpenRoots_NonexistentDir(t *testing.T) {
 
 func TestOpenRoots_NotADirectory(t *testing.T) {
 	f := filepath.Join(t.TempDir(), "file.txt")
-	require.NoError(t, os.WriteFile(f, []byte("data"), 0o644))
+	require.NoError(t, os.WriteFile(f, []byte("data"), 0o600))
 	_, err := OpenRoots([]string{f})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not a directory")
@@ -180,14 +180,11 @@ func TestOpenRoots_NotADirectory(t *testing.T) {
 
 func TestValidatePath_PATHMAXBoundary(t *testing.T) {
 	// Very long but valid path should pass validation.
-	long := "/" + filepath.Join(make([]string, 100)...)
-	// This creates /000...000 which is absolute and clean.
-	// filepath.Clean removes empty segments, so let's build a proper long path.
 	segments := make([]string, 0, 50)
 	for range 50 {
 		segments = append(segments, "abcdefghijklmnop")
 	}
-	long = "/" + filepath.Join(segments...)
+	long := "/" + filepath.Join(segments...)
 	err := validatePath(long)
 	require.NoError(t, err)
 }

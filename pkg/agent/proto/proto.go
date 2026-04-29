@@ -36,7 +36,7 @@ type HelloBanner struct {
 	Capabilities  []string `json:"capabilities"`
 	AllowedRoots  []string `json:"allowedRoots"`
 	ReflinkRoots  []string `json:"reflinkRoots"` // subset of AllowedRoots whose FS supports CoW reflinks
-	Platform      string   `json:"platform"`      // "linux", "darwin", "windows"
+	Platform      string   `json:"platform"`     // "linux", "darwin", "windows"
 	Hostname      string   `json:"hostname"`
 	PID           int      `json:"pid"`
 	StartedAt     string   `json:"startedAt"` // RFC 3339
@@ -44,14 +44,14 @@ type HelloBanner struct {
 
 // Op constants. Whether an op streams is determined solely by Op via IsStreamingOp.
 const (
-	OpStat     = "fs.stat"
-	OpLstat    = "fs.lstat"
-	OpReadDir  = "fs.readdir"
-	OpWalk     = "fs.walk"
-	OpStatfs   = "fs.statfs"
-	OpSameFS   = "fs.samefs"
-	OpMkdir    = "fs.mkdir"
-	OpRemove   = "fs.remove"
+	OpStat      = "fs.stat"
+	OpLstat     = "fs.lstat"
+	OpReadDir   = "fs.readdir"
+	OpWalk      = "fs.walk"
+	OpStatfs    = "fs.statfs"
+	OpSameFS    = "fs.samefs"
+	OpMkdir     = "fs.mkdir"
+	OpRemove    = "fs.remove"
 	OpRemoveAll = "fs.removeall"
 
 	OpTreeHardlink = "tree.hardlink"
@@ -71,15 +71,15 @@ func IsStreamingOp(op string) bool {
 
 // Stable error codes returned in Result.Code.
 const (
-	CodePathNotAllowed    = "path_not_allowed"
-	CodePathNotFound      = "path_not_found"
-	CodePermissionDenied  = "permission_denied"
-	CodeCrossDevice       = "cross_device"
+	CodePathNotAllowed      = "path_not_allowed"
+	CodePathNotFound        = "path_not_found"
+	CodePermissionDenied    = "permission_denied"
+	CodeCrossDevice         = "cross_device"
 	CodeTreePartialRollback = "tree_partial_rollback"
-	CodeVersionSkew       = "version_skew"
-	CodeRequestTooLarge   = "request_too_large"
-	CodeInternal          = "internal"
-	CodeConnectionLost    = "connection_lost"
-	CodeCancelled         = "cancelled"
-	CodeDeadlineExceeded  = "deadline_exceeded"
+	CodeVersionSkew         = "version_skew"
+	CodeRequestTooLarge     = "request_too_large"
+	CodeInternal            = "internal"
+	CodeConnectionLost      = "connection_lost"
+	CodeCancelled           = "cancelled"
+	CodeDeadlineExceeded    = "deadline_exceeded"
 )

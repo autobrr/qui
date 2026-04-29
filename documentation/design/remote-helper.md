@@ -992,7 +992,7 @@ The SSH key, key passphrase, and password are write-only (never round-trip back 
 ## 17. Compatibility & Migration
 
 - Existing instances continue to use `Local` backend if they had `has_local_filesystem_access=true`, no-op backend otherwise. Zero behavior change.
-- Migration 070 only adds columns to the existing `instances` table with safe defaults. No new tables.
+- Migration 072/073 (sqlite/postgres) adds columns to the existing `instances` table with safe defaults. No new tables.
 - Frontend: the radio group's default selection mirrors the current bool: existing instances with `hasLocalFilesystemAccess=true` show as "Local", others show as "None".
 - Existing `HasLocalFilesystemAccess` checks (e.g. `internal/proxy/handler.go`, `internal/qbittorrent/sync_manager.go`, `internal/api/handlers/dirscan.go`, `internal/api/handlers/automations.go`, `internal/services/dirscan/inject.go`, `internal/services/automations/hardlink_index.go`, `internal/qbittorrent/delete_cleanup.go`) get a small refactor: instead of `if !instance.HasLocalFilesystemAccess { reject }`, they call a helper `instances.HasFilesystemAccess(ctx, instance) (bool, FilesystemMode)` that returns true if the bool is set OR SSH credentials + helper deployment are configured, plus the mode (`"local" | "helper" | "none"`). Gating language unchanged.
 
@@ -1230,3 +1230,46 @@ End-to-end verification once Stage C lands (every op wired to the helper):
 9. Click "Remove helper". Verify the binary and audit log are cleaned up on the seedbox.
 10. Run `make test` (`-race -count=3`) — every test passes including the new fsops interface conformance, sshpool unit tests, and the dual-backend integration tests.
 11. Run `make lint` — passes.
+
+## 23. Implementation Status
+
+> Added 2026-04-29 after completing Stages A+B. This section tracks what has been built, what deviates from the design above, and what remains for Stage C.
+
+### Completed (Stages A+B)
+
+**Detailed build plan with per-phase notes:** `documentation/design/ssh-helper-plan.md`
+
+| Area | Status | Notes |
+|------|--------|-------|
+| `pkg/agent/proto` | Done | 27 types (3 envelopes + 20 op payloads + 2 diag + `LstatResponse`). Op/error code constants added. |
+| `internal/fsops` | Done | `Backend` interface (17 methods), `Pool` resolver, `NoopBackend`, sentinel errors. |
+| `internal/fsops/local` | Done | All 17 methods, platform-specific Statfs, 26 tests. |
+| Callsite refactors | Done | All 104 `os.*`/`unix.*` callsites across 10 files migrated to Backend. Zero behavioral change. |
+| Schema | Done | Migration 072/073 — 16 SSH/helper columns on `instances`. |
+| `HasFilesystemAccess` | Done | Returns `(FilesystemMode, bool)` — note: signature differs from §17's `(bool, FilesystemMode)`. Service-layer guards migrated; handler-layer guards deferred to Stage C. |
+| `pkg/fsexec` | Done | `SafeRoot` + `Roots` + `ResolveSafe` with `os.Root` (Go 1.24+). 16 property tests. Individual primitive wrapper files omitted — `os.Root` provides all methods directly. |
+| `internal/sshpool` | Scaffold | `Pool` with `Submit`/`Cancel` stubs (return "not implemented"). `tofuHostKeyCallback`, `buildSSHConfig` implemented and tested. `DetectArch`, `DeployHelper` implemented. Sweeper goroutines are stubs. |
+| `cmd/qui-helper` | Scaffold | `serve --stdio` with `diag.echo` only. `version --json` outputs `HelloBanner`. 30s graceful shutdown on stdin EOF. Zero `internal/` imports. Cross-compiles for 4 platforms via `make helper`. |
+| API endpoints | Scaffold | 6 endpoints registered on `/{instanceID}/`. All return "not implemented" responses. OpenAPI spec deferred. |
+
+### Intentional Deviations from Design
+
+1. **`HasFilesystemAccess` returns `(FilesystemMode, bool)` not `(bool, FilesystemMode)`** — Go convention.
+2. **`pkg/fsexec` omits primitive wrapper files** (`stat.go`, `walker.go`, etc.) — Go 1.26's `os.Root` has all needed methods; thin wrappers add no value. Helper executor calls `sr.Root().Lstat(rel)` directly.
+3. **`noopBackend` is unexported** — only accessible through the Pool.
+4. **`local.Backend` not `local.LocalBackend`** — avoids stutter.
+5. **OpenAPI spec not updated** — endpoints return scaffold responses; spec updates when responses are final.
+
+### Deferred to Stage C
+
+These items were removed from the scaffold to avoid shipping dead code. They must be restored when `Pool.Submit` wires real SSH dispatch:
+
+- **`dialSSH(host, port, config)`** — SSH dial function. Uses `net.JoinHostPort` + `ssh.Dial` with `dialTimeout`.
+- **`serverAliveInterval`** (15s), **`reconnectBaseDelay`** (5s), **`reconnectMaxDelay`** (60s) — keepalive and reconnect backoff constants.
+- **`pendingResultsTTL`** (5min) — for pending result eviction in the sweeper.
+- **`instanceClient` fields** (`instanceID`, `banner`, `pending`, `mu`) — per-connection state for SSH session management.
+- **Real sweeper implementations** — health check (ping SSH), pending TTL (close stale channels), reconnect (exponential backoff with jitter).
+- **`fsops/remote`** — Remote backend translating `Backend.*` calls into SSH pool `Submit` commands.
+- **Each FS op in helper executor** — 12 ops, one PR each: `fs.stat` → `fs.statfs` → `fs.samefs` → `fs.lstat` → `fs.readdir` → `fs.mkdir` → `fs.walk` → `fs.remove` → `fs.removeall` → `tree.hardlink` → `tree.reflink` → `tree.remove`.
+- **Handler-layer `HasLocalFilesystemAccess` migration** — ~15 references in API handlers to migrate to `HasFilesystemAccess`.
+- **Frontend** — instance form radio group (None / Local / Remote helper), SSH credential fields, deploy modal, helper status card.

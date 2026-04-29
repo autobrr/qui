@@ -47,7 +47,7 @@ func TestScanWalker_DedupThroughWalkScanRoot(t *testing.T) {
 
 	root := t.TempDir()
 	src := filepath.Join(root, "original.mkv")
-	if err := os.WriteFile(src, []byte("data"), 0o644); err != nil {
+	if err := os.WriteFile(src, []byte("data"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	dup := filepath.Join(root, "duplicate.mkv")
