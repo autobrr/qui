@@ -998,132 +998,101 @@ The SSH key, key passphrase, and password are write-only (never round-trip back 
 
 ## 18. Phased Implementation Plan
 
-The phasing is organized around **internal-correctness milestones**, not user-shipping milestones. Nothing is exposed to users until the entire system is provably correct end-to-end. Hardening, observability, and the integration-test harness are intrinsic to Stage A — they're how we know the platform works — not bolted on as a final phase. Stages A and B can run in parallel once `pkg/fsexec` is stable; Stage C joins them; Stage D is release engineering.
+The phasing is organized around **shippable milestones**. Stage C ships the helper with a single real op (`fs.statfs`) so users get value immediately. Stage D iteratively adds more ops, one PR at a time, until full feature parity.
 
-### Stage A — Platform foundations + CI/test infrastructure
+### Stage A — Platform foundations (COMPLETE)
 
-Build everything that doesn't change as filesystem features come and go. The deliverable is a deployed helper that can dispatch a single synthetic `diag.echo` command round-trip — no real FS ops yet. The platform is what subsequent stages consume.
+- [x] `pkg/agent/proto` — NDJSON wire types (Command, Result, HelloBanner, 20+ op payloads)
+- [x] `pkg/fsexec` — Path safety with `os.Root` wrapping, allowed-roots validation, device-ID guard
+- [x] `internal/sshpool` — SSH pool scaffold (TOFU host-key, transport, deploy, sweeper stubs)
+- [x] `cmd/qui-helper` — Helper binary with `serve --stdio` (diag.echo), `version --json`
+- [x] Schema migration 072/073 — 16 SSH/helper columns on `instances`
+- [x] `internal/api/handlers/helper.go` — 6 API endpoints (scaffold responses)
+- [x] `internal/models/filesystem_access.go` — `HasFilesystemAccess` helper
+- [x] `Makefile` — `make helper` cross-compiles for linux/{amd64,arm64}, darwin/{amd64,arm64}
+- [ ] CI workflow `helper-ci.yml` — cross-compile matrix, import-graph guard, path-safety property tests
+- [ ] Frontend — SSH credential form, deploy modal, helper status card, instance RadioGroup
 
-**CI / lint / test foundations.** Built first, in Stage A, so every later commit benefits.
-- New CI workflow `helper-ci.yml`:
-  - **Cross-compile matrix** for `cmd/qui-helper`: linux/{amd64,arm64}, darwin/{amd64,arm64}. CI publishes each binary as a GitHub release asset on every qui release; CI also computes SHA256 hashes for each and updates the embedded `helperChecksums` constants in qui's main binary. CI verifies that the published assets match the embedded checksums. (Windows/amd64 is deferred to Stage D as best-effort.)
-  - **`make test-helper`**: unit tests for `pkg/fsexec`, `pkg/agent/proto`, `internal/sshpool`, `cmd/qui-helper/...` under `-race -count=3` (per CLAUDE.md).
-  - **`make test-integration-helper`**: dual-backend harness runs against the synthetic `diag.echo` op (Stage C extends this for every real op).
-  - **`make lint-helper`**: golangci-lint v2 on the new packages, applying the existing project profile.
-  - **Import-graph guard**: a small Go check in CI that runs `go list -deps ./cmd/qui-helper/...` and fails the build if any imported package matches `^github.com/autobrr/qui/internal/(?!sshpool/...|.../proto)`. Catches accidental boundary crossings at PR time.
-  - **Path-safety property tests** (`pkg/fsexec` with random `..`/symlink/devicemount injection): runs on every PR. Non-trivial runtime; gets its own job.
-  - **SSH-pool reconnect / fan-out stress test**: long-running variant exercising large concurrent in-flight command counts and forced SSH-disconnect mid-stream. Runs post-merge on `main`, not per-PR.
-- New `Makefile` targets: `make helper`, `make test-helper`, `make test-integration-helper`, `make lint-helper`.
-- A reusable test fixture, `testutil/helperfixture`, that boots an in-process SSH server (`golang.org/x/crypto/ssh`'s server side), spawns `cmd/qui-helper serve --stdio` over a session, and returns a `Backend` driven through the pool. Stage C reuses this fixture verbatim for every op test.
+### Stage B — Backend interface + callsite refactor (COMPLETE)
 
-**Platform code.**
-- `pkg/fsexec/`: identical to the daemon design. `ResolveSafe`, allowed-roots policy, `os.Root` wrapping, `openat2(RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS)`, `O_NOFOLLOW`, `..` rejection, device-ID guard, walker with a callback API, primitives for stat/lstat/readdir/mkdir/remove/statfs/samefs/fileid. Path safety lives here, exactly once.
-- `pkg/agent/proto/`: `Command`, `Result`, `HelloBanner`, op-payload type sketches.
-- `internal/sshpool/pool.go`: per-instance `*ssh.Client` + persistent `ssh.Session`, command writer, result reader, pending-results map, cancellation propagation, streaming-frame demux, `requestID` dedup, idle-timeout sweeper.
-- `internal/sshpool/transport.go`: SSH dial logic, host-key verification (TOFU), credential decryption, reconnect backoff.
-- Schema migration 074/075 (extend `instances` with SSH/helper columns) + extend `internal/models/instance.go` + extend `InstanceStore` CRUD with SSH + helper params.
-- `internal/api/handlers/instances.go`: extend with `POST /api/instances/{id}/ssh-test`, `POST .../helper/deploy`, `POST .../helper/redeploy`, `DELETE .../helper`, `DELETE .../ssh-credentials`, `GET .../helper`.
-- `cmd/qui-helper/`: `main.go` + subcommands (`serve --stdio`, `version`, `version --json`); subpackages live under `cmd/qui-helper/internal/{server,executor}` so the helper binary stays standalone.
-- Frontend: SSH credential form (`InstanceForm.tsx` extension), `HelperStatusCard.tsx` (new), `useHelper` hook, RadioGroup change. Deploy UX is part of the platform — without it the platform has no front door.
-- Observability primitives: structured zerolog throughout, audit log with in-process size-based rotation, instance-card status surfacing via existing `InstanceErrorStore`. Prometheus metrics on qui's side only (helper has no metrics endpoint).
-- Synthetic `diag.echo` capability: the only op the helper advertises in Stage A. Used for the round-trip integration tests and the user-facing "Test connection" button. Stays for diagnostics in later stages.
+- [x] `internal/fsops/backend.go` — `Backend` interface (17 methods)
+- [x] `internal/fsops/types.go` — Value types (`FileInfo`, `LstatInfo`, `WalkEntry`, etc.)
+- [x] `internal/fsops/local` — Local backend (thin adapter over `os.*`, hardlinktree, reflinktree, hardlink, fsutil)
+- [x] `internal/fsops/pool.go` — Pool/resolver (routes instanceID to Local or Noop backend)
+- [x] `automations/missing_files.go` — `os.Stat` -> `backend.Stat`
+- [x] `automations/free_space.go` — `unix.Statfs` -> `backend.Statfs`
+- [x] `automations/hardlink_index.go` — `os.Lstat` + `hardlink.GetFileID` -> `backend.Lstat`
+- [x] `qbittorrent/delete_cleanup.go` — `os.Stat`/`os.Remove` -> `backend.Stat`/`backend.Remove`
+- [x] `dirscan/fileid_index.go` — `os.Stat` + `hardlink.GetFileID` -> `backend.Lstat`
+- [x] `dirscan/inject.go` + `crossseed/FindMatchingBaseDir` — 6 Backend methods
+- [x] `dirscan/scanner.go` — `filepath.WalkDir` callback -> `backend.WalkDir` channel
+- [x] `orphanscan/walker.go` + `delete.go` — Full walker + delete refactor
+- [x] All existing tests pass with zero behavioral diff
 
-**Acceptance for Stage A** (measurable gates; Stage A is "done" only when every gate is green).
+### Stage C — First real op + release engineering
 
-*Coverage gates.*
-- `pkg/fsexec` ≥ **90%** line, ≥ **85%** branch.
-- `pkg/fsexec/safety.go` ≥ **95%** line.
-- `pkg/agent/proto` ≥ **80%** line.
-- `internal/sshpool` ≥ **85%** line.
-- `internal/api/handlers/instances` (new endpoints) ≥ **80%** line.
-- `cmd/qui-helper/internal/{server,executor}` ≥ **80%** line each.
-- Frontend pairing components: snapshot tests + at least one rendering test per state.
+Ship the helper with one real op (`fs.statfs` for path-based free space) so users get value immediately. This stage covers everything needed to ship: real SSH dispatch, release pipeline, frontend, docs.
 
-*Race / concurrency gates.*
-- `make test-helper` per-PR: `-count=3` baseline.
-- Post-merge `sshpool race / fan-out stress`: `-count=10`, 256 concurrent in-flight `diag.echo` commands, 16 simulated SSH-disconnect injections, completes in < 5 min wall clock with **zero** race-detector hits and **zero** leaked goroutines.
-- Integration test runs **100 disconnect/reconnect cycles** within a single test invocation: kill the helper subprocess, wait, observe automatic reconnect on next call.
-- Integration test runs **64 concurrent `diag.echo` commands** through a single SSH session and verifies all return exactly once with correct requestID correlation.
+**Wire `fs.statfs` end-to-end:**
+- [ ] Restore `dialSSH`, reconnect constants, `instanceClient` fields (see section 23 deferred items)
+- [ ] Wire `sshpool.Pool.Submit`/`Cancel` with real SSH session dispatch
+- [ ] Implement `fs.statfs` in `cmd/qui-helper/internal/executor`
+- [ ] Implement `internal/fsops/remote/remote.go` (Remote backend backed by SSH pool)
+- [ ] Pool resolver returns Remote backend for instances with deployed helper
+- [ ] Dual-backend integration test: Local and Remote produce equivalent `Statfs` results
 
-*Functional integration tests.*
-- **Deploy flow:** 50 deploy-then-remove cycles. Each verifies: SSH dial succeeds, host key captured, binary SCPed, `version --json` parsed, instance record updated, remove cleans up.
-- **Auth attacks:** wrong password → clean error; wrong key → clean error; wrong host key (rotation simulated) → "host key changed" error.
-- **Capability check:** dispatch a `diag.echo` job; verify cross-correlation with helper-side audit log entries by `requestID`.
-- **Cancel propagation:** 1000 cancel cycles. Steady-state cancel latency < **200ms p95**.
-- **Crash recovery:** kill qui mid-stream → helper exits cleanly. Kill helper mid-stream → qui's reader sees EOF, channel closes with `connection_lost`. SSH disconnect → all pending fail with `connection_lost`, automatic reconnect.
-- **Allowed-roots enforcement:** dispatch a `diag.echo` with a path payload that escapes the allowed roots; helper rejects with `path_not_allowed`, audit log records the attempt.
-- **Sweeper invariants:** verify connection-health, pending-results-TTL, and reconnect-backoff sweepers all run on their cadences.
+**Release pipeline:**
+- [ ] CI workflow `helper-ci.yml` — cross-compile, publish as GitHub release assets, SHA256 checksums
+- [ ] Import-graph guard in CI (helper must not import `internal/`)
+- [ ] Windows/amd64 best-effort in cross-compile matrix
 
-*Build / hygiene gates.*
-- `make helper` cross-compiles cleanly for **linux/{amd64,arm64}, darwin/{amd64,arm64}**. Each binary's `version --json` invocation succeeds in CI.
-- All cross-compiled helpers published as GitHub release assets; the embedded `helperChecksums` map covers all supported `(os, arch)` combinations.
-- `make lint-helper` (golangci-lint v2) reports **zero findings**.
-- Import-graph guard: `go list -deps ./cmd/qui-helper/...` contains **zero** packages matching `^github.com/autobrr/qui/internal/(?!agent/proto/...)`. CI runs a negative test (deliberate violation must fail).
-- All Go tests pass `-race -count=3` per CLAUDE.md.
+**Frontend:**
+- [ ] Instance form: RadioGroup (None / Local / Remote helper)
+- [ ] SSH credential fields (host, port, username, auth type, key/password)
+- [ ] Host key confirmation modal (TOFU)
+- [ ] Deploy helper button + progress UI
+- [ ] Helper status card (version, capabilities, last activity)
+- [ ] `authorized_keys` hardening snippet with copy button
 
-*Performance baselines (recorded, not gated; tracked across releases).*
-- Connect-to-first-result latency p95.
-- Op round-trip latency p95 (steady-state, single instance).
-- Cancel latency p95.
-- Memory / FD usage of `qui-helper serve --stdio` after 24h soak with synthetic load.
+**Documentation:**
+- [ ] User-facing docs: `documentation/docs/remote-helper.md` (install, deploy, troubleshooting)
+- [ ] Restricted-shell hardening guide (`authorized_keys` `command=...`)
+- [ ] README updates
 
-**Non-gates.** Stage A explicitly does *not* exercise real FS operations on either Backend — those land in Stages B and C. The platform's correctness is proven on a synthetic op (`diag.echo`); each real op gets its own dual-backend integration test in Stage C.
+**Acceptance for Stage C:**
+- [ ] User can configure SSH credentials, deploy helper, and see path-based free space from a remote seedbox
+- [ ] `make test` passes (full suite, `-race -count=3`)
+- [ ] `make lint` clean
+- [ ] `make helper` cross-compiles cleanly
+- [ ] Manual smoke test on a real seedbox
 
-### Stage B — `Backend` interface + Local impl + callsite refactor
+### Stage D — Wire remaining ops (iterative)
 
-**Identical to the daemon design's Stage B.** Land the polymorphism in qui's existing services. Behavior-preserving; no helper involvement. Can run in parallel with Stage A once `pkg/fsexec` is stable.
+Each op is one PR. Pure read ops first, destructive ops later, streaming op in its natural complexity progression. Each PR adds: helper executor switch case + Remote backend method + dual-backend integration test.
 
-**Scope.**
-- `internal/fsops/{backend.go,types.go}`: the `Backend` interface (channels, `RemoveOptions`, `BackendInfo`).
-- `internal/fsops/local/local.go`: thin adapter (~150 lines of typed delegation) over `pkg/fsexec`.
-- `internal/fsops/pool.go`: resolver. For Stage B, always returns `Local` or no-op; Stage C extends.
-- Callsite refactor: every site listed in §8 migrates to `Backend.*`.
-- `instances.HasFilesystemAccess` helper rolls out, replacing direct `HasLocalFilesystemAccess` reads.
+**Read ops:**
+- [ ] `fs.stat` — file existence/metadata checks (missing-files condition)
+- [ ] `fs.lstat` — file identity with FileID/Nlinks (hardlink index, FileID index)
+- [ ] `fs.samefs` — same-filesystem check (hardlink/reflink precondition)
+- [ ] `fs.readdir` — directory listing (disc-layout detection, orphanscan)
+- [ ] `fs.walk` (streaming) — directory tree walking (dirscan, orphanscan)
 
-**Acceptance for Stage B.**
-- Existing test suite passes `-race -count=3` with zero behavioral diff vs. `develop`.
-- No regressions in dirscan, orphanscan, automations, cross-seed.
-- Existing instances default to "Local" or "None" in the new RadioGroup; behavior unchanged.
+**Write ops:**
+- [ ] `fs.mkdir` — directory creation (link-tree materialization)
+- [ ] `fs.remove` — file/empty-dir removal (managed delete cleanup, orphanscan)
+- [ ] `fs.removeall` — recursive removal (orphanscan directory deletion)
 
-### Stage C — Wire Remote ops, one at a time
+**High-level ops:**
+- [ ] `tree.hardlink` — atomic hardlink tree creation (cross-seed inject)
+- [ ] `tree.reflink` — atomic reflink tree creation (cross-seed inject, capability-gated)
+- [ ] `tree.remove` — link tree rollback (cross-seed inject failure/undo)
 
-The dual-backend integration matrix from Stage A grows: each FS op gets a `Command.Op` + helper-executor switch case + `Backend` method on `Remote`, plus matching integration tests that run **twice** (`Local` and `Remote`) and require equivalent observable outcomes.
+**Acceptance per PR:**
+- Both backends produce equivalent observable outcomes for that op
+- For destructive ops: helper audit-log entries correlate with qui pool-log by `requestID`
+- Capability hint surfaces correctly in the frontend
 
-**Order** (pure ops first, destructive ops later, streaming op in its natural complexity progression):
-1. `fs.stat`
-2. `fs.statfs`
-3. `fs.samefs`
-4. `fs.lstat`
-5. `fs.readdir`
-6. `fs.mkdir`
-7. `fs.walk` (streaming)
-8. `fs.remove`
-9. `fs.removeall`
-10. `tree.hardlink`
-11. `tree.reflink` (capability-gated)
-12. `tree.remove`
-
-**Each op is one PR.** Per-PR scope: proto-args type, helper-executor switch case, `Backend` method on `Remote`, capability advertisement, dual-backend integration test, audit-log assertion if destructive, capability-missing UI test if applicable.
-
-**Acceptance per PR.**
-- Both backends produce equivalent observable outcomes for that op.
-- For destructive ops: helper audit-log entries and qui pool-log entries correlate one-to-one by `requestID`.
-- Capability hint surfaces correctly in the frontend.
-
-**Stage C exit criterion.** Every feature in §2 works end-to-end on a real seedbox, with the dual-backend matrix proving parity vs. the local code path. At this point the system is internally complete.
-
-### Stage D — Release engineering
-
-Distribution and documentation. Hardening, observability, and the integration-test harness are not in this stage — they were intrinsic to Stage A and exercised throughout B and C.
-
-**Scope.**
-- Helper binaries are published as GitHub release assets alongside qui's release; the release pipeline builds both.
-- **Windows/amd64 best-effort**: add windows/amd64 to the cross-compile matrix. No dedicated integration testing — SSH on Windows is uncommon for seedboxes. Ship it if it compiles and `version --json` works; document it as community-supported.
-- User-facing docs: `documentation/docs/remote-helper.md` (install, deploy, troubleshooting, restricted-shell hardening), README updates, install one-pagers.
-- Multi-day soak test against real seedboxes if available; security review pass on path-safety, allowed-roots policy defaults, and SSH credential storage.
-
-**Acceptance for Stage D.**
-- Public release. Users can configure SSH credentials, deploy the helper with one click, and use every feature in §2.
+**Stage D exit criterion:** Every feature in section 2 works end-to-end on a real seedbox with the dual-backend matrix proving parity vs. the local code path.
 
 ## 19. Testing & Verification
 
