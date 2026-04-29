@@ -559,12 +559,12 @@ Deviations from design doc:
 
 ## Phase 12: Refactor — `orphanscan/walker.go` + `delete.go`
 
-- [ ] Walker: `filepath.WalkDir` → `backend.WalkDir` channel
-- [ ] Walker: `os.ReadDir` → `backend.ReadDir`
-- [ ] Delete: `os.Lstat`/`os.Remove`/`os.RemoveAll` → backend equivalents
-- [ ] Orphanscan service gains `backendPool`
-- [ ] All orphanscan tests pass (including cross-instance)
-- [ ] Delete safety checks preserved
+- [x] Walker: `filepath.WalkDir` → `backend.WalkDir` channel
+- [x] Walker: `os.ReadDir` → `backend.ReadDir`
+- [x] Delete: `os.Lstat`/`os.Remove`/`os.RemoveAll` → backend equivalents
+- [x] Orphanscan service gains `backendPool`
+- [x] All orphanscan tests pass (including cross-instance)
+- [x] Delete safety checks preserved
 
 **Goal:** Largest refactor by callsite count. Note: many of delete.go's "callsites" are `filepath.*` manipulation — only actual `os.*` calls go through Backend.
 
@@ -586,7 +586,29 @@ make build
 > Implement Phase 12 from `documentation/design/ssh-helper-plan.md`. Refactor `internal/services/orphanscan/walker.go` and `delete.go`. In walker.go: convert `walkScanRootWithUnitFilter` from `filepath.WalkDir` callback to consuming `backend.WalkDir` channel. Replace `os.ReadDir` in `discParentIsPureDiscRoot`/`discParentIsSafeDiscRoot` with `backend.ReadDir`. In delete.go: replace `os.Lstat` (lines 54, 130) with `backend.Lstat`, `os.Remove` (lines 65, 151, 196) with `backend.Remove`, `os.RemoveAll` (line 168) with `backend.Remove(ctx, path, fsops.RemoveOptions{Recursive: true})`, and `filepath.WalkDir` (line 91) with `backend.WalkDir`. Leave ALL `filepath.*` calls (`filepath.Clean`, `filepath.IsAbs`, `filepath.Rel`, `filepath.Dir`) untouched. Add `backendPool *fsops.Pool` to `Service` struct and `NewService`. Wire in `cmd/qui/main.go`. Critical: all delete safety checks must be preserved (scan-root refusal, path-traversal rejection, in-use file protection, disc-layout detection). Follow coding standards in `CLAUDE.md`. Stay strictly within scope. Update the plan checkboxes and add implementation notes when done.
 
 ### Implementation Notes
-_(filled in after phase completion)_
+
+**Completed 2026-04-28.**
+
+Files modified:
+- `internal/services/orphanscan/walker.go` — Major refactor: converted `filepath.WalkDir` callback to `backend.WalkDir` channel. Replaced `inodeKey` with `hardlink.FileID`. Updated `shouldSkipDuplicate` to accept FileID/Nlinks. Updated `discParentIsPureDiscRoot`/`discParentIsSafeDiscRoot` to use `backend.ReadDir`. Added `isUnderIgnoredPrefixDir` for prefix-based dir name filtering. Propagated `ctx`/`backend` through disc-unit decision chain.
+- `internal/services/orphanscan/delete.go` — All delete functions gain `ctx`/`backend` params. `os.Lstat` → `backend.Lstat`, `os.Remove` → `backend.Remove`, `os.RemoveAll` → `backend.Remove(recursive)`, `filepath.WalkDir` in `checkDirContainsInUseFile` → `backend.WalkDir`.
+- `internal/services/orphanscan/service.go` — Added `backendPool *fsops.Pool` to Service and NewService. Resolve backend before walker/delete calls.
+- `internal/services/orphanscan/inode_unix.go` / `inode_windows.go` — Gutted (bodies removed). `inodeKeyFromInfo` no longer needed; `hardlink.FileID` from WalkEntry replaces it.
+- `internal/services/orphanscan/walker_dedup_test.go` — Rewritten to test `shouldSkipDuplicate` with `hardlink.FileID` directly.
+- `internal/services/orphanscan/test_helpers_test.go` — New file with `newTestBackend()` helper.
+- `internal/services/orphanscan/walker_test.go` — All 16 `walkScanRoot` calls updated with backend param.
+- `internal/services/orphanscan/delete_test.go` — All delete callsites updated with `ctx`/`backend`.
+- `internal/services/orphanscan/service_cross_instance_test.go` — All 7 `NewService` calls updated.
+- `internal/services/orphanscan/local_path_test.go` — `walkScanRootDiscUnits` and `discOrphanUnit` calls updated.
+- `cmd/qui/main.go` — Pass `backendPool` to `orphanscan.NewService`.
+
+Design decisions:
+- Replaced `inodeKey` with `hardlink.FileID` entirely — same dev/ino pair, avoids redundant type.
+- Added `isUnderIgnoredPrefixDir` to handle prefix-based dir name filtering (e.g., `..data` for k8s) that the backend's `IgnoreDirNames` exact-match can't cover. Backend handles exact matches; orphanscan handles prefix matches.
+- `IgnorePaths` from WalkOptions passed to backend so the backend can skip ignored paths at the walk level.
+
+Deviations from design doc:
+- None.
 
 ---
 

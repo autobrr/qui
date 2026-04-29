@@ -27,7 +27,7 @@ func (s stubHealthChecker) GetLastSyncUpdate() time.Time { return s.lastSync }
 func TestGetOtherLocalInstances(t *testing.T) {
 	t.Parallel()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 	svc.listInstancesProvider = func(_ context.Context) ([]*models.Instance, error) {
 		return []*models.Instance{
 			{ID: 1, Name: "one", IsActive: true, HasLocalFilesystemAccess: true},
@@ -51,7 +51,7 @@ func TestBuildFileMap_CrossInstance(t *testing.T) {
 
 	root := t.TempDir()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -124,7 +124,7 @@ func TestBuildFileMap_MergesOtherInstanceWhenOnlyContentPathsOverlap(t *testing.
 	instanceTwoSaveRoot := filepath.Join(root, "qb2", "cross-seed")
 	sharedContentRoot := filepath.Join(root, "shared", "tracker-name")
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -197,7 +197,7 @@ func TestBuildFileMap_BailsWhenOtherLocalInstanceUnavailable(t *testing.T) {
 
 	root := t.TempDir()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -245,7 +245,7 @@ func TestBuildFileMap_BailsWhenOverlappingInstanceFileMapUnavailable(t *testing.
 
 	root := t.TempDir()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -301,7 +301,7 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 	rootA := t.TempDir()
 	rootB := t.TempDir()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -362,7 +362,7 @@ func TestBuildFileMap_DoesNotMergeWhenNoOverlap(t *testing.T) {
 func TestInstanceScanRootsForOverlap_EmptyHealthyInstanceDoesNotUseStaleFallback(t *testing.T) {
 	t.Parallel()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -401,7 +401,7 @@ func TestBuildFileMap_MergesSkippedRootsFromOverlappingInstance(t *testing.T) {
 	stableRoot := filepath.Join(root, "stable")
 	skippedRoot := filepath.Join(stableRoot, "partial")
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -467,7 +467,7 @@ func TestBuildFileMap_DropsScanRootsCoveredByOverlappingSkippedRoots(t *testing.
 	skippedRoot := filepath.Join(root, "partial")
 	stableRoot := filepath.Join(skippedRoot, "complete")
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)
@@ -532,7 +532,7 @@ func TestBuildFileMap_StaleNonOverlappingRootsDoNotBypassSafety(t *testing.T) {
 	rootA := t.TempDir()
 	rootB := t.TempDir()
 
-	svc := NewService(DefaultConfig(), nil, nil, nil, nil)
+	svc := NewService(DefaultConfig(), nil, nil, nil, nil, nil)
 
 	now := time.Now()
 	lastSync := now.Add(-10 * time.Second)

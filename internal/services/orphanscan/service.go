@@ -19,6 +19,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/notifications"
@@ -38,6 +39,7 @@ type Service struct {
 	store         *models.OrphanScanStore
 	syncManager   *qbittorrent.SyncManager
 	notifier      notifications.Notifier
+	backendPool   *fsops.Pool
 
 	// Per-instance mutex to prevent overlapping scans
 	instanceMu map[int]*sync.Mutex
@@ -56,7 +58,7 @@ type Service struct {
 }
 
 // NewService creates a new orphan scan service.
-func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.OrphanScanStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.OrphanScanStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, backendPool *fsops.Pool) *Service {
 	if cfg.SchedulerInterval <= 0 {
 		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval
 	}
@@ -72,6 +74,7 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 		store:         store,
 		syncManager:   syncManager,
 		notifier:      notifier,
+		backendPool:   backendPool,
 		instanceMu:    make(map[int]*sync.Mutex),
 		cancelFuncs:   make(map[int64]context.CancelFunc),
 	}
@@ -554,7 +557,13 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 
-		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0)
+		backend, backendErr := s.backendPool.GetBackend(ctx, instanceID)
+		if backendErr != nil {
+			log.Error().Err(backendErr).Int("instanceID", instanceID).Msg("orphanscan: failed to get backend")
+			s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to get backend: %v", backendErr))
+			return
+		}
+		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0, backend)
 		if err != nil {
 			if ctx.Err() != nil {
 				s.markCanceled(ctx, runID)
@@ -845,7 +854,13 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		disp, err := safeDeleteTarget(scanRoot, f.FilePath, tfm, ignorePaths)
+		deleteBackend, backendErr := s.backendPool.GetBackend(ctx, instanceID)
+		if backendErr != nil {
+			s.updateFileStatus(ctx, f.ID, "failed", "backend unavailable")
+			failedDeletes++
+			continue
+		}
+		disp, err := safeDeleteTarget(ctx, scanRoot, f.FilePath, tfm, ignorePaths, deleteBackend)
 		if err != nil {
 			s.updateFileStatus(ctx, f.ID, "failed", err.Error())
 			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete target")
@@ -892,7 +907,11 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		if err := safeDeleteEmptyDir(scanRoot, dir); err == nil {
+		cleanupBackend, _ := s.backendPool.GetBackend(ctx, instanceID)
+		if cleanupBackend == nil {
+			continue
+		}
+		if err := safeDeleteEmptyDir(ctx, scanRoot, dir, cleanupBackend); err == nil {
 			foldersDeleted++
 		}
 	}

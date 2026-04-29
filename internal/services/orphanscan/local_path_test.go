@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/autobrr/qui/internal/fsops/local"
 )
 
 func TestLocalDiscUnitsOnPath(t *testing.T) {
@@ -35,7 +37,7 @@ func TestLocalDiscUnitsOnPath(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	orphans, truncated, err := walkScanRootDiscUnits(ctx, path, tfm, nil, 0, 50_000)
+	orphans, truncated, err := walkScanRootDiscUnits(ctx, path, tfm, nil, 0, 50_000, local.NewBackend())
 	if err != nil {
 		t.Fatalf("walkScanRootDiscUnits(%q): %v", path, err)
 	}
@@ -128,7 +130,7 @@ func TestLocalAllUnitsOnPath(t *testing.T) {
 			maxFilePath = p
 		}
 
-		unitPath, isDiscUnit := discOrphanUnit(path, p, discUnitCache)
+		unitPath, isDiscUnit := discOrphanUnit(context.Background(), path, p, discUnitCache, local.NewBackend())
 		if isDiscUnit {
 			discUnits[unitPath] += sz
 			return nil
