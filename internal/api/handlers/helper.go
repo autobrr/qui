@@ -57,6 +57,11 @@ func (h *HelperHandler) TestSSHConnection(w http.ResponseWriter, r *http.Request
 	var req sshTestRequest
 	r.Body = http.MaxBytesReader(w, r.Body, 64*1024) // 64 KB limit for SSH key material
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			RespondError(w, http.StatusRequestEntityTooLarge, "Request body too large")
+			return
+		}
 		RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
@@ -67,6 +72,10 @@ func (h *HelperHandler) TestSSHConnection(w http.ResponseWriter, r *http.Request
 	}
 	if req.Port == 0 {
 		req.Port = 22
+	}
+	if req.Port < 1 || req.Port > 65535 {
+		RespondError(w, http.StatusBadRequest, "Port must be between 1 and 65535")
+		return
 	}
 
 	// In this scaffold, we validate the request but don't actually dial.

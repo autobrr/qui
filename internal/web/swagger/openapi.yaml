@@ -5515,6 +5515,9 @@ components:
   schemas:
     StatusMessage:
       type: object
+      required:
+        - status
+        - message
       properties:
         status:
           type: string

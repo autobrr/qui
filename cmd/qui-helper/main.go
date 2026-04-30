@@ -86,8 +86,12 @@ func cmdServe(args []string) {
 func cmdVersion(args []string) {
 	jsonOutput := false
 	for _, arg := range args {
-		if arg == "--json" {
+		switch arg {
+		case "--json":
 			jsonOutput = true
+		default:
+			fmt.Fprintf(os.Stderr, "unknown flag: %s\n", arg)
+			os.Exit(1)
 		}
 	}
 

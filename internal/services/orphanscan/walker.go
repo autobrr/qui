@@ -309,6 +309,10 @@ func walkScanRootWithUnitFilter(
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return w.orphans(), w.truncated, err
+	}
+
 	return w.orphans(), w.truncated, nil
 }
 

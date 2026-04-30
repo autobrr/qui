@@ -219,18 +219,18 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		// builtAt is set at the end of a successful build to avoid TTL issues with slow builds
 	}
 
-	backend, err := s.backendPool.GetBackend(ctx, instanceID)
-	if err != nil {
-		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get backend for hardlink index")
-		index.builtAt = time.Now()
-		return index
-	}
-
 	if len(torrents) == 0 {
 		index.builtAt = time.Now()
 		globalHardlinkIndexCache.mu.Lock()
 		globalHardlinkIndexCache.indices[instanceID] = index
 		globalHardlinkIndexCache.mu.Unlock()
+		return index
+	}
+
+	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get backend for hardlink index")
+		index.builtAt = time.Now()
 		return index
 	}
 
@@ -704,6 +704,8 @@ func (s *Service) scanOtherInstancesForDeficits(
 
 		backend, backendErr := s.backendPool.GetBackend(ctx, otherID)
 		if backendErr != nil {
+			log.Warn().Err(backendErr).Int("instanceID", instanceID).Int("otherInstanceID", otherID).
+				Msg("automations: failed to get backend for cross-scope scan, skipping instance")
 			stats.skipped++
 			continue
 		}

@@ -44,7 +44,7 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).
 			Msg("automations: failed to fetch files for missing files detection")
-		return result, nil
+		return result, fmt.Errorf("failed to fetch torrent files: %w", err)
 	}
 
 	for hash, files := range filesByHash {
