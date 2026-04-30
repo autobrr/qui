@@ -126,8 +126,70 @@ func TestInstanceCreateUsesIntegerBooleanArgs(t *testing.T) {
 			tls_skip_verify INTEGER NOT NULL DEFAULT 0,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			is_active INTEGER NOT NULL DEFAULT 1,
-			has_local_filesystem_access INTEGER NOT NULL DEFAULT 0
+			has_local_filesystem_access INTEGER NOT NULL DEFAULT 0,
+			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
+			hardlink_base_dir TEXT NOT NULL DEFAULT '',
+			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
+			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
+			ssh_host TEXT NOT NULL DEFAULT '',
+			ssh_port INTEGER NOT NULL DEFAULT 22,
+			ssh_username TEXT NOT NULL DEFAULT '',
+			ssh_auth_type TEXT NOT NULL DEFAULT '',
+			ssh_key_encrypted TEXT NOT NULL DEFAULT '',
+			ssh_key_passphrase_encrypted TEXT NOT NULL DEFAULT '',
+			ssh_password_encrypted TEXT NOT NULL DEFAULT '',
+			ssh_host_key TEXT NOT NULL DEFAULT '',
+			helper_path TEXT NOT NULL DEFAULT '~/.config/qui-helper/qui-helper',
+			helper_version TEXT NOT NULL DEFAULT '',
+			helper_capabilities TEXT NOT NULL DEFAULT '[]',
+			helper_allowed_roots TEXT NOT NULL DEFAULT '[]',
+			helper_reflink_roots TEXT NOT NULL DEFAULT '[]',
+			helper_platform TEXT NOT NULL DEFAULT '',
+			helper_deployed_at DATETIME,
+			helper_last_activity_at DATETIME
 		)
+	`)
+	mustExec(t, db, `
+		CREATE VIEW instances_view AS
+		SELECT
+			i.id,
+			sp_name.value AS name,
+			sp_host.value AS host,
+			sp_username.value AS username,
+			i.password_encrypted,
+			sp_basic_username.value AS basic_username,
+			i.basic_password_encrypted,
+			i.tls_skip_verify,
+			i.sort_order,
+			i.is_active,
+			i.has_local_filesystem_access,
+			i.use_hardlinks,
+			i.hardlink_base_dir,
+			i.hardlink_dir_preset,
+			i.use_reflinks,
+			i.fallback_to_regular_mode,
+			i.ssh_host,
+			i.ssh_port,
+			i.ssh_username,
+			i.ssh_auth_type,
+			i.ssh_key_encrypted,
+			i.ssh_key_passphrase_encrypted,
+			i.ssh_password_encrypted,
+			i.ssh_host_key,
+			i.helper_path,
+			i.helper_version,
+			i.helper_capabilities,
+			i.helper_allowed_roots,
+			i.helper_reflink_roots,
+			i.helper_platform,
+			i.helper_deployed_at,
+			i.helper_last_activity_at
+		FROM instances i
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id
 	`)
 
 	var insertArgs []any

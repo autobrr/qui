@@ -460,30 +460,11 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		return nil, err
 	}
 
-	instance := &Instance{
-		ID:                       instanceID,
-		Name:                     name,
-		Host:                     normalizedHost,
-		Username:                 username,
-		PasswordEncrypted:        passwordEncrypted.String,
-		TLSSkipVerify:            SQLiteIntToBool(tlsSkipVerifyResult),
-		HasLocalFilesystemAccess: SQLiteIntToBool(hasLocalFilesystemAccessResult),
-		SortOrder:                sortOrder,
-		IsActive:                 SQLiteIntToBool(isActive),
-	}
-
-	if basicUsername != nil {
-		instance.BasicUsername = basicUsername
-	}
-	if basicPasswordEncrypted.Valid {
-		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
-	}
-
 	if err = tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	return instance, nil
+	return s.Get(ctx, instanceID)
 }
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {

@@ -4,8 +4,10 @@
 package orphanscan
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	"github.com/autobrr/qui/pkg/hardlink"
@@ -53,7 +55,10 @@ func TestScanWalker_DedupThroughWalkScanRoot(t *testing.T) {
 	}
 	dup := filepath.Join(root, "duplicate.mkv")
 	if err := os.Link(src, dup); err != nil {
-		t.Skip("hardlinks not supported on this filesystem")
+		if errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EOPNOTSUPP) || errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
+			t.Skip("hardlinks not supported on this filesystem")
+		}
+		t.Fatalf("os.Link(%s, %s): %v", src, dup, err)
 	}
 
 	tfm := NewTorrentFileMap()
