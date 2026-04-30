@@ -58,8 +58,8 @@ func TestScanWalker_DedupThroughWalkScanRoot(t *testing.T) {
 
 	tfm := NewTorrentFileMap()
 	// Neither file is in the TFM, so both are orphans.
-	// But they share the same inode, and nlink=2 so dedup doesn't apply (nlink > 1).
-	// Both should appear as orphan units.
+	// They share the same inode with nlink=2, so shouldSkipDuplicate deduplicates
+	// the second occurrence — only one orphan unit should be produced.
 
 	orphans, _, err := walkScanRoot(
 		t.Context(), root, tfm, nil, 0, 100,
@@ -69,9 +69,7 @@ func TestScanWalker_DedupThroughWalkScanRoot(t *testing.T) {
 		t.Fatalf("walkScanRoot: %v", err)
 	}
 
-	// With nlink=2, dedup is disabled, so both files should produce orphan entries.
-	// They may be grouped into one unit (the file path itself) depending on disc-unit logic.
-	if len(orphans) == 0 {
-		t.Fatal("expected orphans, got none")
+	if len(orphans) != 1 {
+		t.Fatalf("expected 1 deduped orphan unit, got %d", len(orphans))
 	}
 }

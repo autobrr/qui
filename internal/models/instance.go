@@ -488,7 +488,9 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 
 func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode,
+		       ssh_host, ssh_port, ssh_username, ssh_auth_type, ssh_key_encrypted, ssh_key_passphrase_encrypted, ssh_password_encrypted, ssh_host_key,
+		       helper_path, helper_version, helper_capabilities, helper_allowed_roots, helper_reflink_roots, helper_platform, helper_deployed_at, helper_last_activity_at
 		FROM instances_view
 		WHERE id = ?
 	`
@@ -504,6 +506,10 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	var hardlinkBaseDir, hardlinkDirPreset string
 	var useReflinks int
 	var fallbackToRegularMode int
+	var sshHost, sshUsername, sshAuthType, sshKeyEncrypted, sshKeyPassphraseEncrypted, sshPasswordEncrypted, sshHostKey string
+	var sshPort int
+	var helperPath, helperVersion, helperCapabilities, helperAllowedRoots, helperReflinkRoots, helperPlatform string
+	var helperDeployedAt, helperLastActivityAt sql.NullTime
 
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&instanceID,
@@ -522,6 +528,22 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 		&hardlinkDirPreset,
 		&useReflinks,
 		&fallbackToRegularMode,
+		&sshHost,
+		&sshPort,
+		&sshUsername,
+		&sshAuthType,
+		&sshKeyEncrypted,
+		&sshKeyPassphraseEncrypted,
+		&sshPasswordEncrypted,
+		&sshHostKey,
+		&helperPath,
+		&helperVersion,
+		&helperCapabilities,
+		&helperAllowedRoots,
+		&helperReflinkRoots,
+		&helperPlatform,
+		&helperDeployedAt,
+		&helperLastActivityAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -531,20 +553,34 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	}
 
 	instance := &Instance{
-		ID:                       instanceID,
-		Name:                     name,
-		Host:                     host,
-		Username:                 username,
-		PasswordEncrypted:        passwordEncrypted,
-		TLSSkipVerify:            SQLiteIntToBool(tlsSkipVerify),
-		SortOrder:                sortOrder,
-		IsActive:                 SQLiteIntToBool(isActive),
-		HasLocalFilesystemAccess: SQLiteIntToBool(hasLocalFilesystemAccess),
-		UseHardlinks:             SQLiteIntToBool(useHardlinks),
-		HardlinkBaseDir:          hardlinkBaseDir,
+		ID:                        instanceID,
+		Name:                      name,
+		Host:                      host,
+		Username:                  username,
+		PasswordEncrypted:         passwordEncrypted,
+		TLSSkipVerify:             SQLiteIntToBool(tlsSkipVerify),
+		SortOrder:                 sortOrder,
+		IsActive:                  SQLiteIntToBool(isActive),
+		HasLocalFilesystemAccess:  SQLiteIntToBool(hasLocalFilesystemAccess),
+		UseHardlinks:              SQLiteIntToBool(useHardlinks),
+		HardlinkBaseDir:           hardlinkBaseDir,
 		HardlinkDirPreset:        hardlinkDirPreset,
-		UseReflinks:              SQLiteIntToBool(useReflinks),
-		FallbackToRegularMode:    SQLiteIntToBool(fallbackToRegularMode),
+		UseReflinks:               SQLiteIntToBool(useReflinks),
+		FallbackToRegularMode:     SQLiteIntToBool(fallbackToRegularMode),
+		SSHHost:                   sshHost,
+		SSHPort:                   sshPort,
+		SSHUsername:               sshUsername,
+		SSHAuthType:               sshAuthType,
+		SSHKeyEncrypted:           sshKeyEncrypted,
+		SSHKeyPassphraseEncrypted: sshKeyPassphraseEncrypted,
+		SSHPasswordEncrypted:      sshPasswordEncrypted,
+		SSHHostKey:                sshHostKey,
+		HelperPath:                helperPath,
+		HelperVersion:             helperVersion,
+		HelperCapabilities:        helperCapabilities,
+		HelperAllowedRoots:        helperAllowedRoots,
+		HelperReflinkRoots:        helperReflinkRoots,
+		HelperPlatform:            helperPlatform,
 	}
 
 	if basicUsername.Valid {
@@ -552,6 +588,12 @@ func (s *InstanceStore) Get(ctx context.Context, id int) (*Instance, error) {
 	}
 	if basicPasswordEncrypted.Valid {
 		instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
+	}
+	if helperDeployedAt.Valid {
+		instance.HelperDeployedAt = &helperDeployedAt.Time
+	}
+	if helperLastActivityAt.Valid {
+		instance.HelperLastActivityAt = &helperLastActivityAt.Time
 	}
 
 	return instance, nil
@@ -564,7 +606,9 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	}
 
 	query := fmt.Sprintf(`
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode
+		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, use_reflinks, fallback_to_regular_mode,
+		       ssh_host, ssh_port, ssh_username, ssh_auth_type, ssh_key_encrypted, ssh_key_passphrase_encrypted, ssh_password_encrypted, ssh_host_key,
+		       helper_path, helper_version, helper_capabilities, helper_allowed_roots, helper_reflink_roots, helper_platform, helper_deployed_at, helper_last_activity_at
 		FROM instances_view
 		ORDER BY sort_order ASC, %s ASC, id ASC
 	`, orderByName)
@@ -588,6 +632,10 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 		var hardlinkBaseDir, hardlinkDirPreset string
 		var useReflinks int
 		var fallbackToRegularMode int
+		var sshHost, sshUsername, sshAuthType, sshKeyEncrypted, sshKeyPassphraseEncrypted, sshPasswordEncrypted, sshHostKey string
+		var sshPort int
+		var helperPath, helperVersion, helperCapabilities, helperAllowedRoots, helperReflinkRoots, helperPlatform string
+		var helperDeployedAt, helperLastActivityAt sql.NullTime
 
 		err := rows.Scan(
 			&id,
@@ -606,26 +654,56 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			&hardlinkDirPreset,
 			&useReflinks,
 			&fallbackToRegularMode,
+			&sshHost,
+			&sshPort,
+			&sshUsername,
+			&sshAuthType,
+			&sshKeyEncrypted,
+			&sshKeyPassphraseEncrypted,
+			&sshPasswordEncrypted,
+			&sshHostKey,
+			&helperPath,
+			&helperVersion,
+			&helperCapabilities,
+			&helperAllowedRoots,
+			&helperReflinkRoots,
+			&helperPlatform,
+			&helperDeployedAt,
+			&helperLastActivityAt,
 		)
 		if err != nil {
 			return nil, err
 		}
 
 		instance := &Instance{
-			ID:                       id,
-			Name:                     name,
-			Host:                     host,
-			Username:                 username,
-			PasswordEncrypted:        passwordEncrypted,
-			TLSSkipVerify:            SQLiteIntToBool(tlsSkipVerify),
-			SortOrder:                sortOrder,
-			IsActive:                 SQLiteIntToBool(isActive),
-			HasLocalFilesystemAccess: SQLiteIntToBool(hasLocalFilesystemAccess),
-			UseHardlinks:             SQLiteIntToBool(useHardlinks),
-			HardlinkBaseDir:          hardlinkBaseDir,
+			ID:                        id,
+			Name:                      name,
+			Host:                      host,
+			Username:                  username,
+			PasswordEncrypted:         passwordEncrypted,
+			TLSSkipVerify:             SQLiteIntToBool(tlsSkipVerify),
+			SortOrder:                 sortOrder,
+			IsActive:                  SQLiteIntToBool(isActive),
+			HasLocalFilesystemAccess:  SQLiteIntToBool(hasLocalFilesystemAccess),
+			UseHardlinks:              SQLiteIntToBool(useHardlinks),
+			HardlinkBaseDir:           hardlinkBaseDir,
 			HardlinkDirPreset:        hardlinkDirPreset,
-			UseReflinks:              SQLiteIntToBool(useReflinks),
-			FallbackToRegularMode:    SQLiteIntToBool(fallbackToRegularMode),
+			UseReflinks:               SQLiteIntToBool(useReflinks),
+			FallbackToRegularMode:     SQLiteIntToBool(fallbackToRegularMode),
+			SSHHost:                   sshHost,
+			SSHPort:                   sshPort,
+			SSHUsername:               sshUsername,
+			SSHAuthType:               sshAuthType,
+			SSHKeyEncrypted:           sshKeyEncrypted,
+			SSHKeyPassphraseEncrypted: sshKeyPassphraseEncrypted,
+			SSHPasswordEncrypted:      sshPasswordEncrypted,
+			SSHHostKey:                sshHostKey,
+			HelperPath:                helperPath,
+			HelperVersion:             helperVersion,
+			HelperCapabilities:        helperCapabilities,
+			HelperAllowedRoots:        helperAllowedRoots,
+			HelperReflinkRoots:        helperReflinkRoots,
+			HelperPlatform:            helperPlatform,
 		}
 
 		if basicUsername.Valid {
@@ -633,6 +711,12 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 		}
 		if basicPasswordEncrypted.Valid {
 			instance.BasicPasswordEncrypted = &basicPasswordEncrypted.String
+		}
+		if helperDeployedAt.Valid {
+			instance.HelperDeployedAt = &helperDeployedAt.Time
+		}
+		if helperLastActivityAt.Valid {
+			instance.HelperLastActivityAt = &helperLastActivityAt.Time
 		}
 
 		instances = append(instances, instance)
