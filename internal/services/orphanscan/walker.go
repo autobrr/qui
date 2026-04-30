@@ -135,7 +135,7 @@ func newScanWalker(
 }
 
 func (w *scanWalker) shouldSkipDuplicate(fid hardlink.FileID, nlinks uint64) bool {
-	if fid.IsZero() || nlinks > 1 {
+	if fid.IsZero() || nlinks <= 1 {
 		return false
 	}
 	if _, exists := w.seenFileIDs[fid]; exists {
@@ -227,6 +227,10 @@ func walkScanRootWithUnitFilter(
 	if err != nil {
 		return nil, false, fmt.Errorf("walk %s: %w", root, err)
 	}
+	defer func() {
+		for range ch { //nolint:revive // drain channel to avoid leaking sender goroutine
+		}
+	}()
 
 	for entry := range ch {
 		if ctx.Err() != nil {
@@ -293,13 +297,12 @@ func walkScanRootWithUnitFilter(
 			continue
 		}
 
-		if w.maxFiles > 0 && len(w.orphanUnits) >= w.maxFiles {
-			w.truncated = true
-			break
-		}
-
 		existing, exists := w.orphanUnits[unitPath]
 		if !exists {
+			if w.maxFiles > 0 && len(w.orphanUnits) >= w.maxFiles {
+				w.truncated = true
+				break
+			}
 			existing = &OrphanFile{Path: unitPath, Status: FileStatusPending}
 			w.orphanUnits[unitPath] = existing
 		}

@@ -1089,6 +1089,8 @@ paths:
                 port:
                   type: integer
                   default: 22
+                  minimum: 1
+                  maximum: 65535
                 username:
                   type: string
                 authType:
@@ -1114,6 +1116,8 @@ paths:
                     type: string
         '400':
           description: Invalid request
+        '413':
+          description: Request body too large
 
   /api/instances/{instanceID}/ssh-credentials:
     delete:
@@ -1165,8 +1169,12 @@ paths:
                   lastActivityAt:
                     type: string
                     format: date-time
+        '400':
+          description: Invalid instance ID
         '404':
           description: Instance not found
+        '500':
+          description: Failed to load instance
     delete:
       tags:
         - Instances
@@ -1181,6 +1189,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StatusMessage'
+        '400':
+          description: Invalid instance ID
 
   /api/instances/{instanceID}/helper/deploy:
     post:
@@ -1197,6 +1207,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StatusMessage'
+        '400':
+          description: Invalid instance ID
 
   /api/instances/{instanceID}/helper/redeploy:
     post:
@@ -1213,6 +1225,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StatusMessage'
+        '400':
+          description: Invalid instance ID
 
   /api/instances/{instanceID}/app-info:
     get:

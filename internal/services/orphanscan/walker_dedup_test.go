@@ -20,24 +20,25 @@ func TestScanWalker_ShouldSkipDuplicate(t *testing.T) {
 
 	fid := hardlink.FileID{Dev: 1, Ino: 42}
 
-	// First time seeing this FileID with nlink=1: not a dup, should be recorded.
+	// Single-link file (nlink=1): never dedup — can't appear twice in a walk.
 	if w.shouldSkipDuplicate(fid, 1) {
-		t.Fatal("first file should not be skipped")
+		t.Fatal("single-link file should not be skipped")
+	}
+	if w.shouldSkipDuplicate(fid, 1) {
+		t.Fatal("single-link file should not be skipped even with same FileID")
 	}
 
-	// Second time with same FileID: duplicate, should be skipped.
-	if !w.shouldSkipDuplicate(fid, 1) {
-		t.Fatal("duplicate file should be skipped")
-	}
-
-	// File with nlink > 1: never skip (hardlinked files tracked differently).
+	// Hardlinked file (nlink > 1): first occurrence recorded, second is a dup.
 	fid2 := hardlink.FileID{Dev: 1, Ino: 99}
 	if w.shouldSkipDuplicate(fid2, 3) {
-		t.Fatal("hardlinked file (nlink > 1) should not be skipped")
+		t.Fatal("first hardlinked file should not be skipped")
+	}
+	if !w.shouldSkipDuplicate(fid2, 3) {
+		t.Fatal("duplicate hardlinked file should be skipped")
 	}
 
 	// Zero FileID: never skip.
-	if w.shouldSkipDuplicate(hardlink.FileID{}, 1) {
+	if w.shouldSkipDuplicate(hardlink.FileID{}, 2) {
 		t.Fatal("zero FileID should not be skipped")
 	}
 }

@@ -13,7 +13,7 @@ Execute one phase per session. Start each session with:
 > "Implement Phase N from `documentation/design/ssh-helper-plan.md`. Stay strictly within scope — if you discover work belonging to a different phase, stop and tell me. Update the plan's checkboxes and implementation notes at the end of each phase."
 
 **Rules:**
-- Don't move to the next phase until the previous one is green (all verification gates pass).
+- Don't move to the next phase until the previous one is green (all verification gates pass). Phases marked "completed with deferred items" are green — the unchecked items are explicitly scoped to a later phase.
 - Each phase ends with a runnable verification command. Run it.
 - If a phase requires deviating from the design doc, document the deviation in that phase's Implementation Notes section. Phase 17 reviews all deviations.
 
@@ -520,7 +520,7 @@ Deviations from design doc:
 - [x] `filepath.WalkDir` callback → `backend.WalkDir` channel consumption
 - [x] `os.ReadDir` → `backend.ReadDir`
 - [x] `os.Stat` → `backend.Lstat`
-- [x] Same searchees found, same files, same sizes
+- [x] Same search results found, same files, same sizes
 - [x] Context cancellation mid-scan works
 
 **Goal:** Directory scanner: callback-to-channel conversion for `WalkDir`. Most nuanced control-flow change.
@@ -628,7 +628,7 @@ Deviations from design doc:
 - `internal/database/migrations/072_add_remote_helper.sql`
 - `internal/database/postgres_migrations/073_add_remote_helper.sql`
 - `internal/models/ssh_credentials.go` — `SSHCredentials` type, `EncryptSSHKey`/`DecryptSSHKey` using existing `sessionSecret` AES-GCM pattern
-- `internal/models/filesystem_access.go` — `HasFilesystemAccess(instance) (bool, string)`
+- `internal/models/filesystem_access.go` — `HasFilesystemAccess(instance) (FilesystemMode, bool)`
 
 **Modify:**
 - `internal/models/instance.go` — Extend `Instance` struct with SSH/helper fields; extend store CRUD
