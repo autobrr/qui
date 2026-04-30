@@ -135,7 +135,7 @@ func TestInstanceCreateUsesIntegerBooleanArgs(t *testing.T) {
 			ssh_host TEXT NOT NULL DEFAULT '',
 			ssh_port INTEGER NOT NULL DEFAULT 22,
 			ssh_username TEXT NOT NULL DEFAULT '',
-			ssh_auth_type TEXT NOT NULL DEFAULT '',
+			ssh_auth_type TEXT NOT NULL DEFAULT '' CHECK (ssh_auth_type IN ('', 'key', 'password')),
 			ssh_key_encrypted TEXT NOT NULL DEFAULT '',
 			ssh_key_passphrase_encrypted TEXT NOT NULL DEFAULT '',
 			ssh_password_encrypted TEXT NOT NULL DEFAULT '',
