@@ -243,6 +243,7 @@ export type ConditionField =
   | "RATIO"
   | "RATIO_LIMIT"
   | "MAX_RATIO"
+  | "UPLOADED_OVER_SIZE"
   | "PROGRESS"
   | "AVAILABILITY"
   | "POPULARITY"

@@ -708,12 +708,13 @@ const (
 	FieldLastActivityAge ConditionField = "LAST_ACTIVITY_AGE"
 
 	// Numeric fields (float64)
-	FieldRatio        ConditionField = "RATIO"
-	FieldRatioLimit   ConditionField = "RATIO_LIMIT"
-	FieldMaxRatio     ConditionField = "MAX_RATIO"
-	FieldProgress     ConditionField = "PROGRESS"
-	FieldAvailability ConditionField = "AVAILABILITY"
-	FieldPopularity   ConditionField = "POPULARITY"
+	FieldRatio            ConditionField = "RATIO"
+	FieldRatioLimit       ConditionField = "RATIO_LIMIT"
+	FieldMaxRatio         ConditionField = "MAX_RATIO"
+	FieldUploadedOverSize ConditionField = "UPLOADED_OVER_SIZE"
+	FieldProgress         ConditionField = "PROGRESS"
+	FieldAvailability     ConditionField = "AVAILABILITY"
+	FieldPopularity       ConditionField = "POPULARITY"
 
 	// Numeric fields (speeds)
 	FieldDlSpeed ConditionField = "DL_SPEED"
@@ -764,7 +765,7 @@ func (f ConditionField) IsNumeric() bool {
 	case FieldSize, FieldTotalSize, FieldDownloaded, FieldUploaded, FieldAmountLeft, FieldFreeSpace,
 		FieldAddedOn, FieldCompletionOn, FieldLastActivity, FieldSeedingTime, FieldTimeActive,
 		FieldAddedOnAge, FieldCompletionOnAge, FieldLastActivityAge,
-		FieldRatio, FieldProgress, FieldAvailability,
+		FieldRatio, FieldUploadedOverSize, FieldProgress, FieldAvailability,
 		FieldDlSpeed, FieldUpSpeed,
 		FieldNumSeeds, FieldNumLeechs, FieldNumComplete, FieldNumIncomplete, FieldTrackersCount,
 		FieldSystemHour, FieldSystemMinute, FieldSystemDayOfWeek, FieldSystemDay, FieldSystemMonth, FieldSystemYear:

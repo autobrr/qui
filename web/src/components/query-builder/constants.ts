@@ -73,6 +73,7 @@ export const CONDITION_FIELDS = {
   RATIO: { label: "Ratio", type: "float" as const, description: "Upload/download ratio" },
   RATIO_LIMIT: { label: "Ratio Limit", type: "float" as const, description: "Configured ratio limit" },
   MAX_RATIO: { label: "Max Ratio", type: "float" as const, description: "Maximum ratio value from qBittorrent" },
+  UPLOADED_OVER_SIZE: { label: "Uploaded / Size", type: "float" as const, description: "Uploaded / total torrent size. Cross-seed-safe alternative to RATIO." },
   PROGRESS: { label: "Progress", type: "percentage" as const, description: "Download progress (0-100%)" },
   AVAILABILITY: { label: "Availability", type: "float" as const, description: "Distributed copies" },
   POPULARITY: { label: "Popularity", type: "float" as const, description: "Swarm popularity metric" },
@@ -263,7 +264,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Progress",
-    fields: ["RATIO", "RATIO_LIMIT", "MAX_RATIO", "PROGRESS", "AVAILABILITY", "POPULARITY"],
+    fields: ["RATIO", "RATIO_LIMIT", "MAX_RATIO", "UPLOADED_OVER_SIZE", "PROGRESS", "AVAILABILITY", "POPULARITY"],
   },
   {
     label: "Speed",

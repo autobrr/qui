@@ -80,12 +80,13 @@ const (
 	FieldLastActivityAge = models.FieldLastActivityAge
 
 	// Numeric fields (float64)
-	FieldRatio        = models.FieldRatio
-	FieldRatioLimit   = models.FieldRatioLimit
-	FieldMaxRatio     = models.FieldMaxRatio
-	FieldProgress     = models.FieldProgress
-	FieldAvailability = models.FieldAvailability
-	FieldPopularity   = models.FieldPopularity
+	FieldRatio            = models.FieldRatio
+	FieldRatioLimit       = models.FieldRatioLimit
+	FieldMaxRatio         = models.FieldMaxRatio
+	FieldUploadedOverSize = models.FieldUploadedOverSize
+	FieldProgress         = models.FieldProgress
+	FieldAvailability     = models.FieldAvailability
+	FieldPopularity       = models.FieldPopularity
 
 	// Numeric fields (speeds)
 	FieldDlSpeed = models.FieldDlSpeed
