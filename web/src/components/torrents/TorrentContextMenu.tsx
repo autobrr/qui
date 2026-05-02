@@ -153,13 +153,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     filterCrossSeeds(torrents)
   }, [filterCrossSeeds, torrents])
 
-  const copyToClipboard = useCallback(async (text: string, type: "name" | "hash" | "full path", itemCount: number) => {
+  const copyToClipboard = useCallback(async (text: string, type: "name" | "hash" | "full path" | "magnet link", itemCount: number) => {
     try {
       await copyTextToClipboard(text)
-      const pluralTypes: Record<"name" | "hash" | "full path", string> = {
+      const pluralTypes: Record<"name" | "hash" | "full path" | "magnet link", string> = {
         name: "names",
         hash: "hashes",
         "full path": "full paths",
+        "magnet link": "magnet links",
       }
       const label = itemCount > 1 ? pluralTypes[type] : type
       toast.success(`Torrent ${label} copied to clipboard`)
@@ -270,6 +271,19 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
 
     void copyToClipboard(values.join("\n"), "full path", values.length)
   }, [copyToClipboard, incognitoMode, torrents, isAllSelected, effectiveSelectionCount, onFetchAllField])
+
+  const handleCopyMagnetLinks = useCallback(() => {
+    const values = torrents
+      .map(t => t.magnet_uri)
+      .filter(Boolean)
+
+    if (values.length === 0) {
+      toast.error("Magnet link not available")
+      return
+    }
+
+    void copyToClipboard(values.join("\n"), "magnet link", values.length)
+  }, [copyToClipboard, torrents])
 
   const handleExport = useCallback(() => {
     if (!onExport) {
@@ -583,6 +597,9 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 </ContextMenuItem>
                 <ContextMenuItem onClick={handleCopyFullPaths}>
                   Copy Full Path
+                </ContextMenuItem>
+                <ContextMenuItem onClick={handleCopyMagnetLinks}>
+                  Copy Magnet Link
                 </ContextMenuItem>
               </ContextMenuSubContent>
             </ContextMenuSub>
