@@ -379,6 +379,9 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             <ContextMenuItem onClick={handleCopyFullPaths}>
               Copy Full Path
             </ContextMenuItem>
+            <ContextMenuItem onClick={handleCopyMagnetLinks}>
+              Copy Magnet Link
+            </ContextMenuItem>
           </>
         ) : (
           <>
