@@ -975,11 +975,13 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	deleteMode := getDeleteMode(rule)
 	eligibleMode := previewView == "eligible"
 
+	cpIndex := buildContentPathIndex(torrents)
+
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds {
-		return s.previewDeleteIncludeCrossSeeds(ctx, instanceID, rule, torrents, evalCtx, hardlinkIndex, cfg.limit, cfg.offset, eligibleMode, scoreByHash)
+		return s.previewDeleteIncludeCrossSeeds(ctx, instanceID, rule, torrents, evalCtx, hardlinkIndex, cfg.limit, cfg.offset, eligibleMode, scoreByHash, cpIndex)
 	}
 
-	return s.previewDeleteStandard(ctx, instanceID, rule, torrents, evalCtx, deleteMode, eligibleMode, cfg, scoreByHash)
+	return s.previewDeleteStandard(ctx, instanceID, rule, torrents, evalCtx, deleteMode, eligibleMode, cfg, scoreByHash, cpIndex)
 }
 
 // setupDeleteHardlinkContext sets up hardlink index if needed for delete preview.
@@ -1103,6 +1105,7 @@ func (s *Service) previewDeleteStandard(
 	eligibleMode bool,
 	cfg previewConfig,
 	scoreByHash map[string]float64,
+	cpIndex contentPathIndex,
 ) (*PreviewResult, error) {
 	result := &PreviewResult{
 		Examples: make([]PreviewTorrent, 0, cfg.limit),
@@ -1253,7 +1256,7 @@ func (s *Service) previewDeleteStandard(
 		score := computePreviewScore(torrent, rule, evalCtx, scoreByHash)
 
 		if !eligibleMode {
-			updateCumulativeFreeSpaceCleared(*torrent, evalCtx, deleteMode, torrents)
+			updateCumulativeFreeSpaceCleared(*torrent, evalCtx, deleteMode, cpIndex)
 		}
 
 		matchIndex++
@@ -1332,6 +1335,7 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 	limit, offset int,
 	eligibleMode bool,
 	scoreByHash map[string]float64,
+	cpIndex contentPathIndex,
 ) (*PreviewResult, error) {
 	if rule.Conditions == nil || rule.Conditions.Delete == nil || !rule.Conditions.Delete.Enabled {
 		return &PreviewResult{Examples: make([]PreviewTorrent, 0)}, nil
@@ -1358,7 +1362,7 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 			continue
 		}
 
-		crossSeedGroup := findCrossSeedGroup(*torrent, torrents)
+		crossSeedGroup := findCrossSeedGroup(*torrent, cpIndex)
 		state.markContentPathProcessed(contentPath)
 
 		if !s.expandGroupForPreview(ctx, instanceID, torrent, crossSeedGroup, state.expandedSet, state.crossSeedSet) {
@@ -1370,7 +1374,7 @@ func (s *Service) previewDeleteIncludeCrossSeeds(
 		}
 
 		if !eligibleMode {
-			updateCumulativeFreeSpaceCleared(*torrent, evalCtx, DeleteModeWithFilesIncludeCrossSeeds, torrents)
+			updateCumulativeFreeSpaceCleared(*torrent, evalCtx, DeleteModeWithFilesIncludeCrossSeeds, cpIndex)
 		}
 	}
 
@@ -2191,11 +2195,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	}
 	s.mu.Unlock()
 
-	// Build torrent lookup for cross-seed detection
+	// Build torrent lookups for cross-seed detection
 	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
 	for _, t := range torrents {
 		torrentByHash[t.Hash] = t
 	}
+	cpIndex := buildContentPathIndex(torrents)
 
 	ruleByID := make(map[int]*models.Automation, len(eligibleRules))
 	for _, r := range eligibleRules {
@@ -2254,7 +2259,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			switch deleteMode {
 			case DeleteModeWithFilesIncludeCrossSeeds:
 				// Find all cross-seeds sharing the same ContentPath
-				crossSeedGroup := findCrossSeedGroup(torrent, torrents)
+				crossSeedGroup := findCrossSeedGroup(torrent, cpIndex)
 				if len(crossSeedGroup) <= 1 {
 					// No cross-seeds, just delete this torrent
 					hashesToDelete = []string{hash}
@@ -2350,7 +2355,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				}
 			case DeleteModeWithFilesPreserveCrossSeeds:
 				hashesToDelete = []string{hash}
-				if detectCrossSeeds(torrent, torrents) {
+				if detectCrossSeeds(torrent, cpIndex) {
 					actualMode = DeleteModeKeepFiles
 					logMsg = "automations: removing torrent (cross-seed detected - keeping files)"
 					keepingFiles = true
@@ -4360,19 +4365,35 @@ func inheritRuleRefForMoveGroup(expandedHash, triggerHash string, ruleByHash map
 	ruleByHash[expandedHash] = ref
 }
 
+// contentPathIndex maps normalized content paths to groups of torrents sharing
+// that path. Build once with buildContentPathIndex, then look up in O(1).
+type contentPathIndex map[string][]qbt.Torrent
+
+// buildContentPathIndex builds a map from normalized ContentPath to all torrents
+// at that path. Building is O(n); lookups are O(1).
+func buildContentPathIndex(torrents []qbt.Torrent) contentPathIndex {
+	idx := make(contentPathIndex, len(torrents)/2)
+	for i := range torrents {
+		p := normalizePath(torrents[i].ContentPath)
+		if p == "" {
+			continue
+		}
+		idx[p] = append(idx[p], torrents[i])
+	}
+	return idx
+}
+
 // detectCrossSeeds checks if any other torrent shares the same ContentPath,
 // indicating they are cross-seeds sharing the same data files.
-func detectCrossSeeds(target qbt.Torrent, allTorrents []qbt.Torrent) bool {
-	targetPath := normalizePath(target.ContentPath)
-	if targetPath == "" {
+func detectCrossSeeds(target qbt.Torrent, idx contentPathIndex) bool {
+	p := normalizePath(target.ContentPath)
+	if p == "" {
 		return false
 	}
-	for _, other := range allTorrents {
-		if other.Hash == target.Hash {
-			continue // skip self
-		}
-		if normalizePath(other.ContentPath) == targetPath {
-			return true // cross-seed found
+	group := idx[p]
+	for _, other := range group {
+		if other.Hash != target.Hash {
+			return true
 		}
 	}
 	return false
@@ -4407,18 +4428,12 @@ func isContentPathAmbiguous(t qbt.Torrent) bool {
 
 // findCrossSeedGroup returns all torrents (including the target) that share
 // the same normalized ContentPath. Returns nil if ContentPath is empty.
-func findCrossSeedGroup(target qbt.Torrent, allTorrents []qbt.Torrent) []qbt.Torrent {
-	targetPath := normalizePath(target.ContentPath)
-	if targetPath == "" {
+func findCrossSeedGroup(target qbt.Torrent, idx contentPathIndex) []qbt.Torrent {
+	p := normalizePath(target.ContentPath)
+	if p == "" {
 		return nil
 	}
-	var group []qbt.Torrent
-	for _, t := range allTorrents {
-		if normalizePath(t.ContentPath) == targetPath {
-			group = append(group, t)
-		}
-	}
-	return group
+	return idx[p]
 }
 
 // fileOverlapKey represents a unique file identity for overlap comparison.
@@ -4618,14 +4633,14 @@ func allGroupMembersMatchCategoryAction(
 //   - DeleteModeWithFiles: files are always deleted
 //   - DeleteModeWithFilesPreserveCrossSeeds when no cross-seeds exist: files will be deleted
 //   - DeleteModeWithFilesIncludeCrossSeeds: always frees disk space (deletes entire group)
-func deleteFreesSpace(mode string, torrent qbt.Torrent, allTorrents []qbt.Torrent) bool {
+func deleteFreesSpace(mode string, torrent qbt.Torrent, cpIndex contentPathIndex) bool {
 	switch mode {
 	case DeleteModeKeepFiles, DeleteModeNone, "":
 		// Keep-files mode never frees disk space
 		return false
 	case DeleteModeWithFilesPreserveCrossSeeds:
 		// Only frees space if no cross-seeds share the files
-		return !detectCrossSeeds(torrent, allTorrents)
+		return !detectCrossSeeds(torrent, cpIndex)
 	case DeleteModeWithFiles, DeleteModeWithFilesIncludeCrossSeeds:
 		// Always frees disk space (include mode deletes the whole group)
 		return true
