@@ -765,7 +765,7 @@ func (f ConditionField) IsNumeric() bool {
 	case FieldSize, FieldTotalSize, FieldDownloaded, FieldUploaded, FieldAmountLeft, FieldFreeSpace,
 		FieldAddedOn, FieldCompletionOn, FieldLastActivity, FieldSeedingTime, FieldTimeActive,
 		FieldAddedOnAge, FieldCompletionOnAge, FieldLastActivityAge,
-		FieldRatio, FieldUploadedOverSize, FieldProgress, FieldAvailability,
+		FieldRatio, FieldProgress, FieldAvailability,
 		FieldDlSpeed, FieldUpSpeed,
 		FieldNumSeeds, FieldNumLeechs, FieldNumComplete, FieldNumIncomplete, FieldTrackersCount,
 		FieldSystemHour, FieldSystemMinute, FieldSystemDayOfWeek, FieldSystemDay, FieldSystemMonth, FieldSystemYear:

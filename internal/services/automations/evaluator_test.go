@@ -463,8 +463,8 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldUploadedOverSize,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(0.5),
-				MaxValue: float64Ptr(2.0),
+				MinValue: new(0.5),
+				MaxValue: new(2.0),
 			},
 			torrent:  qbt.Torrent{Uploaded: 5_000_000_000, TotalSize: 5_000_000_000},
 			expected: true,

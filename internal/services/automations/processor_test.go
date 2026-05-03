@@ -1595,6 +1595,42 @@ func TestSortTorrents_Score(t *testing.T) {
 	}
 }
 
+func TestSortTorrents_RejectsUploadedOverSizeSorting(t *testing.T) {
+	torrents := []qbt.Torrent{{Hash: "a", Uploaded: 100, TotalSize: 50}}
+
+	t.Run("simple sort", func(t *testing.T) {
+		config := models.SortingConfig{
+			SchemaVersion: "1",
+			Type:          models.SortingTypeSimple,
+			Direction:     models.SortDirectionDESC,
+			Field:         models.FieldUploadedOverSize,
+		}
+
+		err := SortTorrents(torrents, &config, nil)
+		require.ErrorContains(t, err, "unsupported sort field: UPLOADED_OVER_SIZE")
+	})
+
+	t.Run("score multiplier", func(t *testing.T) {
+		config := models.SortingConfig{
+			SchemaVersion: "1",
+			Type:          models.SortingTypeScore,
+			Direction:     models.SortDirectionDESC,
+			ScoreRules: []models.ScoreRule{
+				{
+					Type: models.ScoreRuleTypeFieldMultiplier,
+					FieldMultiplier: &models.FieldMultiplierScoreRule{
+						Field:      models.FieldUploadedOverSize,
+						Multiplier: 1,
+					},
+				},
+			},
+		}
+
+		err := SortTorrents(torrents, &config, nil)
+		require.ErrorContains(t, err, "field multiplier requires numeric field, got: UPLOADED_OVER_SIZE")
+	})
+}
+
 func TestProcessTorrents_PauseResume(t *testing.T) {
 	sm := qbittorrent.NewSyncManager(nil, nil)
 

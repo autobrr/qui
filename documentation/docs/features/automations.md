@@ -98,6 +98,7 @@ These fields use qui's current system time when the rule is evaluated. They are 
 | Ratio       | Upload/download ratio        |
 | Ratio Limit | Configured ratio limit       |
 | Max Ratio   | qBittorrent max ratio value  |
+| Uploaded / Size | Uploaded bytes divided by total torrent size. Use this instead of Ratio for cross-seeded torrents. |
 | Progress    | Download progress (0-100%)   |
 | Availability | Distributed copies available |
 | Popularity  | Swarm popularity metric      |
