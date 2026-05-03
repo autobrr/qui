@@ -472,6 +472,15 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareFloat64(torrent.RatioLimit, cond)
 	case FieldMaxRatio:
 		return compareFloat64(torrent.MaxRatio, cond)
+	case FieldUploadedOverSize:
+		// Cross-seed-safe alternative to FieldRatio: qBittorrent's Ratio is
+		// uploaded/downloaded, which explodes for cross-seeded torrents
+		// whose downloaded is near zero. Comparing against total_size
+		// sidesteps the broken denominator.
+		if torrent.TotalSize == 0 {
+			return false
+		}
+		return compareFloat64(float64(torrent.Uploaded)/float64(torrent.TotalSize), cond)
 	case FieldProgress:
 		return compareFloat64(torrent.Progress, normalizeProgressCondition(cond))
 	case FieldAvailability:

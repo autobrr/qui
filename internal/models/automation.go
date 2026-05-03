@@ -708,12 +708,13 @@ const (
 	FieldLastActivityAge ConditionField = "LAST_ACTIVITY_AGE"
 
 	// Numeric fields (float64)
-	FieldRatio        ConditionField = "RATIO"
-	FieldRatioLimit   ConditionField = "RATIO_LIMIT"
-	FieldMaxRatio     ConditionField = "MAX_RATIO"
-	FieldProgress     ConditionField = "PROGRESS"
-	FieldAvailability ConditionField = "AVAILABILITY"
-	FieldPopularity   ConditionField = "POPULARITY"
+	FieldRatio            ConditionField = "RATIO"
+	FieldRatioLimit       ConditionField = "RATIO_LIMIT"
+	FieldMaxRatio         ConditionField = "MAX_RATIO"
+	FieldUploadedOverSize ConditionField = "UPLOADED_OVER_SIZE"
+	FieldProgress         ConditionField = "PROGRESS"
+	FieldAvailability     ConditionField = "AVAILABILITY"
+	FieldPopularity       ConditionField = "POPULARITY"
 
 	// Numeric fields (speeds)
 	FieldDlSpeed ConditionField = "DL_SPEED"
