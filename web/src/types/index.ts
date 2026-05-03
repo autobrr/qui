@@ -125,6 +125,7 @@ export interface InstanceCrossSeedCompletionSettings {
   excludeTags: string[]
   indexerIds: number[]
   bypassTorznabCache: boolean
+  delaySeconds: number
 }
 
 /**
@@ -243,6 +244,7 @@ export type ConditionField =
   | "RATIO"
   | "RATIO_LIMIT"
   | "MAX_RATIO"
+  | "UPLOADED_OVER_SIZE"
   | "PROGRESS"
   | "AVAILABILITY"
   | "POPULARITY"

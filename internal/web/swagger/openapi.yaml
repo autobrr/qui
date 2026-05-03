@@ -6236,6 +6236,12 @@ components:
           type: boolean
           default: false
           description: When true, completion searches for this instance bypass the Torznab search cache and always perform a fresh search. Default false.
+        delaySeconds:
+          type: integer
+          minimum: 0
+          maximum: 600
+          default: 0
+          description: Seconds to wait after a torrent completes before starting the cross-seed search. 0 disables the delay.
 
     InstanceCrossSeedCompletionSettingsRequest:
       type: object
@@ -6273,6 +6279,12 @@ components:
           type: boolean
           default: false
           description: When true, completion searches for this instance bypass the Torznab search cache and always perform a fresh search. Default false.
+        delaySeconds:
+          type: integer
+          minimum: 0
+          maximum: 600
+          default: 0
+          description: Seconds to wait after a torrent completes before starting the cross-seed search. 0 disables the delay.
 
     CrossSeedAutomationSettingsPatch:
       type: object

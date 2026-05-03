@@ -98,7 +98,7 @@ jobs:
 
       - name: Run Claude Code for Discussion Triage
         if: steps.check-duplicate.outputs.skip != 'true'
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@v1.0.107
         with:
           prompt: |
             You're a triage assistant for GitHub discussions. Your task is to analyze the discussion and select appropriate labels from the provided list.
