@@ -114,7 +114,7 @@ func (s *Searcher) buildSearchRequest(meta *SearcheeMetadata, req *SearchRequest
 	}
 
 	// Year hurts TV searches on many indexers; keep it for movies only.
-	if meta.Year > 0 && !meta.IsTV {
+	if meta.Year > 0 && meta.IsMovie {
 		searchReq.Year = meta.Year
 	}
 
