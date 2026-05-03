@@ -1267,7 +1267,7 @@ type TorrentFieldResponse struct {
 }
 
 // GetTorrentField returns field values for torrents matching the given filters.
-// Supported fields: "name", "hash", "full_path" (save_path/name), "tags".
+// Supported fields: "name", "hash", "full_path" (save_path/name), "tags", "magnet_uri".
 // excludeHashes and excludeTargets remove specific torrents from the result.
 func (sm *SyncManager) GetTorrentField(
 	ctx context.Context,
@@ -1341,6 +1341,8 @@ func (sm *SyncManager) GetTorrentField(
 			}
 		case "tags":
 			v = t.Tags
+		case "magnet_uri":
+			v = strings.TrimSpace(t.MagnetURI)
 		}
 		if field == "tags" || v != "" {
 			values = append(values, v)

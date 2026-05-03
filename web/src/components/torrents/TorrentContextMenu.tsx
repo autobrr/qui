@@ -85,7 +85,7 @@ interface TorrentContextMenuProps {
   onCrossSeedSearch?: (torrent: Torrent) => void
   isCrossSeedSearching?: boolean
   onFilterChange?: (filters: TorrentFilters) => void
-  onFetchAllField?: (field: "name" | "hash" | "full_path") => Promise<string[]>
+  onFetchAllField?: (field: "name" | "hash" | "full_path" | "magnet_uri") => Promise<string[]>
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
@@ -272,9 +272,21 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     void copyToClipboard(values.join("\n"), "full path", values.length)
   }, [copyToClipboard, incognitoMode, torrents, isAllSelected, effectiveSelectionCount, onFetchAllField])
 
-  const handleCopyMagnetLinks = useCallback(() => {
+  const handleCopyMagnetLinks = useCallback(async () => {
+    if (isAllSelected && onFetchAllField && torrents.length < effectiveSelectionCount) {
+      try {
+        const values = await onFetchAllField("magnet_uri")
+        if (values.length === 0) { toast.error("Magnet link not available"); return }
+        void copyToClipboard(values.join("\n"), "magnet link", values.length)
+      } catch (error) {
+        console.error("Failed to fetch torrent magnet links:", error)
+        toast.error("Failed to fetch torrent magnet links")
+      }
+      return
+    }
+
     const values = torrents
-      .map(t => t.magnet_uri)
+      .map(t => (t.magnet_uri ?? "").trim())
       .filter(Boolean)
 
     if (values.length === 0) {
@@ -283,7 +295,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     }
 
     void copyToClipboard(values.join("\n"), "magnet link", values.length)
-  }, [copyToClipboard, torrents])
+  }, [copyToClipboard, torrents, isAllSelected, effectiveSelectionCount, onFetchAllField])
 
   const handleExport = useCallback(() => {
     if (!onExport) {
