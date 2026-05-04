@@ -57,8 +57,6 @@ archives:
 
 release:
   prerelease: auto
-  extra_files:
-    - glob: web-dist.tar.gz
   footer: |
     **Full Changelog**: https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/qui/compare/{{ .PreviousTag }}...{{ .Tag }}
 
