@@ -437,6 +437,61 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			expected: true,
 		},
 		{
+			// Cross-seeded torrent: data already on disk, downloaded ~ 0,
+			// qBit's Ratio explodes (uploaded / 0) but uploaded/total_size is sane.
+			name: "uploaded over size greater than 1.0 (cross-seeded torrent)",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorGreaterThan,
+				Value:    "1.0",
+			},
+			torrent:  qbt.Torrent{Uploaded: 7_500_000_000, TotalSize: 5_000_000_000, Downloaded: 0},
+			expected: true,
+		},
+		{
+			name: "uploaded over size below threshold",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorGreaterThanOrEqual,
+				Value:    "1.0",
+			},
+			torrent:  qbt.Torrent{Uploaded: 500_000_000, TotalSize: 5_000_000_000},
+			expected: false,
+		},
+		{
+			name: "uploaded over size between 0.5 and 2.0",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorBetween,
+				MinValue: new(0.5),
+				MaxValue: new(2.0),
+			},
+			torrent:  qbt.Torrent{Uploaded: 5_000_000_000, TotalSize: 5_000_000_000},
+			expected: true,
+		},
+		{
+			// TotalSize == 0 should not divide-by-zero; field returns false
+			// regardless of operator, so an automation gated on this won't fire.
+			name: "uploaded over size returns false when total size is zero",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorGreaterThan,
+				Value:    "0",
+			},
+			torrent:  qbt.Torrent{Uploaded: 1_000_000, TotalSize: 0},
+			expected: false,
+		},
+		{
+			name: "uploaded over size with zero uploaded equals 0",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorEqual,
+				Value:    "0",
+			},
+			torrent:  qbt.Torrent{Uploaded: 0, TotalSize: 5_000_000_000},
+			expected: true,
+		},
+		{
 			name: "progress equals 1.0",
 			cond: &RuleCondition{
 				Field:    FieldProgress,
@@ -1999,6 +2054,108 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 				HardlinkScopeByHash:    map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
 			},
 			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EvaluateConditionWithContext(tt.cond, torrent, tt.evalCtx, 0)
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestEvaluateCondition_HardlinkScopeCross(t *testing.T) {
+	torrent := qbt.Torrent{
+		Hash: "abc123",
+		Name: "Test.Torrent",
+	}
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		evalCtx  *EvalContext
+		expected bool
+	}{
+		{
+			name: "cross scope torrents_only - match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeTorrentsOnly,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeTorrentsOnly},
+			},
+			expected: true,
+		},
+		{
+			name: "cross scope outside_qbittorrent - match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeOutsideQBitTorrent,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
+			},
+			expected: true,
+		},
+		{
+			name: "cross scope not outside - match (torrents_only)",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorNotEqual,
+				Value:    HardlinkScopeOutsideQBitTorrent,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeTorrentsOnly},
+			},
+			expected: true,
+		},
+		{
+			name: "nil cross scope map - no match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeNone,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: nil,
+			},
+			expected: false,
+		},
+		{
+			name: "no local access - no match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeNone,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   false,
+				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeNone},
+			},
+			expected: false,
+		},
+		{
+			name: "unknown hash - no match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeNone,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: map[string]string{},
+			},
+			expected: false,
 		},
 	}
 

@@ -125,6 +125,7 @@ export interface InstanceCrossSeedCompletionSettings {
   excludeTags: string[]
   indexerIds: number[]
   bypassTorznabCache: boolean
+  delaySeconds: number
 }
 
 /**
@@ -243,6 +244,7 @@ export type ConditionField =
   | "RATIO"
   | "RATIO_LIMIT"
   | "MAX_RATIO"
+  | "UPLOADED_OVER_SIZE"
   | "PROGRESS"
   | "AVAILABILITY"
   | "POPULARITY"
@@ -275,6 +277,7 @@ export type ConditionField =
   | "SEEDING_ON_SAME_INSTANCE"
   // Enum-like fields
   | "HARDLINK_SCOPE"
+  | "HARDLINK_SCOPE_CROSS"
 
 export type ConditionOperator =
   // Logical operators (for groups)
@@ -596,6 +599,7 @@ export interface AutomationPreviewTorrent {
   isCrossSeed?: boolean
   isHardlinkCopy?: boolean // Included via hardlink expansion (not ContentPath match)
   hardlinkScope?: string // none, torrents_only, outside_qbittorrent
+  hardlinkCrossScope?: string // cross-instance: none, torrents_only, outside_qbittorrent
   // Additional fields for dynamic columns
   numSeeds: number
   numComplete: number
@@ -2311,6 +2315,7 @@ export interface DirScanDirectory {
   qbitPathPrefix?: string
   category?: string
   tags: string[]
+  allowedDownloadClients: string[]
   enabled: boolean
   arrInstanceId?: number
   targetInstanceId: number
@@ -2325,6 +2330,7 @@ export interface DirScanDirectoryCreate {
   qbitPathPrefix?: string
   category?: string
   tags?: string[]
+  allowedDownloadClients?: string[]
   enabled?: boolean
   arrInstanceId?: number
   targetInstanceId: number
@@ -2336,6 +2342,7 @@ export interface DirScanDirectoryUpdate {
   qbitPathPrefix?: string
   category?: string
   tags?: string[]
+  allowedDownloadClients?: string[]
   enabled?: boolean
   arrInstanceId?: number
   targetInstanceId?: number

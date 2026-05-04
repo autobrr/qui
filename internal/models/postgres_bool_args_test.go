@@ -562,6 +562,7 @@ func TestDirScanReadsIntegerBooleanColumns(t *testing.T) {
 			qbit_path_prefix TEXT,
 			category TEXT,
 			tags TEXT NOT NULL DEFAULT '[]',
+			allowed_download_clients TEXT NOT NULL DEFAULT '[]',
 			enabled INTEGER NOT NULL DEFAULT 1,
 			arr_instance_id INTEGER,
 			target_instance_id INTEGER NOT NULL,
@@ -579,9 +580,9 @@ func TestDirScanReadsIntegerBooleanColumns(t *testing.T) {
 	`)
 	mustExec(t, db, `
 		INSERT INTO dir_scan_directories
-			(path, qbit_path_prefix, category, tags, enabled, arr_instance_id, target_instance_id, scan_interval_minutes)
+			(path, qbit_path_prefix, category, tags, allowed_download_clients, enabled, arr_instance_id, target_instance_id, scan_interval_minutes)
 		VALUES
-			('/data/incoming', '/data', 'movies', '["tag1"]', 1, NULL, 1, 30)
+			('/data/incoming', '/data', 'movies', '["tag1"]', '["SABnzbd"]', 1, NULL, 1, 30)
 	`)
 
 	store := NewDirScanStore(&capturingQuerier{db: db})

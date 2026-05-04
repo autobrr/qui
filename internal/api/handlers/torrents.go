@@ -298,8 +298,8 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if req.Field != "name" && req.Field != "hash" && req.Field != "full_path" && req.Field != "tags" {
-		RespondError(w, http.StatusBadRequest, "Invalid field: must be name, hash, full_path, or tags")
+	if req.Field != "name" && req.Field != "hash" && req.Field != "full_path" && req.Field != "tags" && req.Field != "magnet_uri" {
+		RespondError(w, http.StatusBadRequest, "Invalid field: must be name, hash, full_path, tags, or magnet_uri")
 		return
 	}
 
@@ -406,7 +406,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 					continue
 				}
 
-				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags)
+				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.MagnetURI)
 				if shouldIncludeTorrentFieldValue(req.Field, value) {
 					values = append(values, value)
 					resolvedCount++
@@ -464,7 +464,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 				continue
 			}
 
-			value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags)
+			value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.MagnetURI)
 			if shouldIncludeTorrentFieldValue(req.Field, value) {
 				values = append(values, value)
 			}
@@ -500,7 +500,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, fieldResponse)
 }
 
-func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags string) string {
+func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags, magnetURI string) string {
 	switch field {
 	case "name":
 		return strings.TrimSpace(name)
@@ -514,6 +514,8 @@ func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags
 		return fullPathValue(savePath, name)
 	case "tags":
 		return tags
+	case "magnet_uri":
+		return strings.TrimSpace(magnetURI)
 	default:
 		return ""
 	}

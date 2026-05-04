@@ -19,7 +19,8 @@ import {
   useTriggerOrphanScan,
   useUpdateOrphanScanSettings,
 } from "@/hooks/useOrphanScan"
-import { cn, copyTextToClipboard, formatBytes, formatRelativeTime } from "@/lib/utils"
+import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
+import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import type { Instance, OrphanScanRunStatus } from "@/types"
 import { AlertTriangle, ChevronDown as ChevronDownIcon, Copy, Eye, Files, Info, Loader2, Play, Settings2, X } from "lucide-react"
 import { useMemo, useState } from "react"
@@ -182,7 +183,7 @@ function InstanceOrphanScanItem({
 
             {latestRun?.completedAt && (
               <span className="text-xs text-muted-foreground hidden sm:block">
-                {formatRelativeTime(new Date(latestRun.completedAt))}
+                {formatRelativeTime(latestRun.completedAt)}
               </span>
             )}
           </div>
@@ -372,7 +373,7 @@ function InstanceOrphanScanItem({
                           </span>
                         )}
                         {run.startedAt && (
-                          <span>{formatRelativeTime(new Date(run.startedAt))}</span>
+                          <span>{formatRelativeTime(run.startedAt)}</span>
                         )}
                         {hasError && (
                           <ChevronDownIcon className="h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180" />

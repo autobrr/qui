@@ -269,6 +269,8 @@ POST /api/dir-scan/webhook/scan?apikey=YOUR_API_KEY
 
 qui extracts the path from the *arr payload (`series.path`, `movie.folderPath`, `artist.path`, or `author.path`), matches it against the Dir Scan **Directory Path** values configured in qui, and uses the provided path itself as the scan root. It does not use qBittorrent path prefixes for this lookup. On success, the response includes `runId`, `directoryId`, `directoryPath`, and `scanRoot`.
 
+Each Dir Scan directory can also define **Allowed Download Clients**. When set, native *arr webhook scans only run if the webhook `downloadClient` matches one of those names. Leave the list empty to accept all clients. Matching is case-insensitive and trims surrounding whitespace. Direct simple-mode `{"path": ...}` callers are not filtered by download client.
+
 #### Setting up in Sonarr / Radarr
 
 1. Go to **Settings → Connect → Add → Webhook**.
@@ -298,16 +300,27 @@ In split-mount setups, the *arr app must send the same library path that qui see
 
 | Status Code | Meaning |
 |-------------|---------|
+| `200` | Webhook accepted but skipped by directory filters. Example: `{"skipped": true, "reason": "download client not allowed"}` |
 | `202` | Scan accepted. If the directory is idle, qui starts the run immediately. If a webhook scan is already running for that directory, qui keeps one follow-up queued run and merges later webhook paths into it. Example: `{"runId": 42, "directoryId": 3, "directoryPath": "/data/media/tv", "scanRoot": "/data/media/tv/Show Name"}` |
 | `204` | Test webhook accepted. No scan started |
 | `400` | Invalid JSON payload, or no supported path field was found in the request body |
 | `404` | No enabled directory matches the path in the payload |
-| `409` | Multiple directories match the given path |
+| `409` | Request conflicts with directory state, such as multiple matching directories |
 | `500` | Internal server error — scan could not be started due to an internal failure |
 
 If a second webhook arrives while the same directory is already scanning, qui returns `202` again. It does not reject the request or require client-side retries. Instead, it updates one queued follow-up run for that directory and expands the queued `scanRoot` to the nearest common ancestor when needed.
 
 Webhook-triggered scans also ignore the global age cutoff. This avoids false skips when Sonarr/Radarr imports files that preserve old filesystem mtimes.
+
+#### Allowed download clients
+
+Use **Allowed Download Clients** on a Dir Scan directory when only specific Sonarr/Radarr clients should trigger scans for that path.
+
+- Leave it empty to allow all webhook clients.
+- Add exact client names as shown in Sonarr or Radarr, such as `SABnzbd`, `NZBGet`, or `qBittorrent`.
+- Matching is case-insensitive and ignores leading/trailing whitespace.
+- If the webhook is otherwise valid but the client is missing or not allowed, qui returns `200` and skips starting a scan.
+- Direct simple-mode callers using `{"path": ...}` bypass this filter because they do not provide *arr download client metadata.
 
 #### Simple mode
 

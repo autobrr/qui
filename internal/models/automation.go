@@ -714,12 +714,13 @@ const (
 	FieldLastActivityAge ConditionField = "LAST_ACTIVITY_AGE"
 
 	// Numeric fields (float64)
-	FieldRatio        ConditionField = "RATIO"
-	FieldRatioLimit   ConditionField = "RATIO_LIMIT"
-	FieldMaxRatio     ConditionField = "MAX_RATIO"
-	FieldProgress     ConditionField = "PROGRESS"
-	FieldAvailability ConditionField = "AVAILABILITY"
-	FieldPopularity   ConditionField = "POPULARITY"
+	FieldRatio            ConditionField = "RATIO"
+	FieldRatioLimit       ConditionField = "RATIO_LIMIT"
+	FieldMaxRatio         ConditionField = "MAX_RATIO"
+	FieldUploadedOverSize ConditionField = "UPLOADED_OVER_SIZE"
+	FieldProgress         ConditionField = "PROGRESS"
+	FieldAvailability     ConditionField = "AVAILABILITY"
+	FieldPopularity       ConditionField = "POPULARITY"
 
 	// Numeric fields (speeds)
 	FieldDlSpeed ConditionField = "DL_SPEED"
@@ -760,7 +761,8 @@ const (
 	FieldSystemYear      ConditionField = "SYSTEM_YEAR"
 
 	// Enum-like fields
-	FieldHardlinkScope ConditionField = "HARDLINK_SCOPE"
+	FieldHardlinkScope      ConditionField = "HARDLINK_SCOPE"
+	FieldHardlinkScopeCross ConditionField = "HARDLINK_SCOPE_CROSS"
 )
 
 //nolint:exhaustive // Only sortable numeric fields belong here.

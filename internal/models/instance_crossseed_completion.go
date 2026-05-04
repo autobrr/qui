@@ -13,6 +13,9 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
+// MaxCompletionDelaySeconds caps the per-instance completion delay (10 minutes).
+const MaxCompletionDelaySeconds = 600
+
 // InstanceCrossSeedCompletionSettings stores per-instance cross-seed completion configuration.
 type InstanceCrossSeedCompletionSettings struct {
 	InstanceID         int       `json:"instanceId"`
@@ -23,6 +26,7 @@ type InstanceCrossSeedCompletionSettings struct {
 	ExcludeTags        []string  `json:"excludeTags"`
 	IndexerIDs         []int     `json:"indexerIds"`
 	BypassTorznabCache bool      `json:"bypassTorznabCache"`
+	DelaySeconds       int       `json:"delaySeconds"`
 	UpdatedAt          time.Time `json:"updatedAt"`
 }
 
@@ -65,13 +69,14 @@ func DefaultInstanceCrossSeedCompletionSettings(instanceID int) *InstanceCrossSe
 		ExcludeTags:        []string{},
 		IndexerIDs:         []int{},
 		BypassTorznabCache: false,
+		DelaySeconds:       0,
 	}
 }
 
 // Get returns settings for an instance, falling back to defaults if missing.
 func (s *InstanceCrossSeedCompletionStore) Get(ctx context.Context, instanceID int) (*InstanceCrossSeedCompletionSettings, error) {
 	const query = `SELECT instance_id, enabled, categories_json, tags_json,
-		exclude_categories_json, exclude_tags_json, indexer_ids_json, bypass_torznab_cache, updated_at
+		exclude_categories_json, exclude_tags_json, indexer_ids_json, bypass_torznab_cache, completion_delay_seconds, updated_at
 		FROM instance_crossseed_completion_settings WHERE instance_id = ?`
 
 	row := s.db.QueryRowContext(ctx, query, instanceID)
@@ -88,7 +93,7 @@ func (s *InstanceCrossSeedCompletionStore) Get(ctx context.Context, instanceID i
 // List returns settings for all instances that have overrides. Instances without overrides are omitted.
 func (s *InstanceCrossSeedCompletionStore) List(ctx context.Context) ([]*InstanceCrossSeedCompletionSettings, error) {
 	const query = `SELECT instance_id, enabled, categories_json, tags_json,
-		exclude_categories_json, exclude_tags_json, indexer_ids_json, bypass_torznab_cache, updated_at
+		exclude_categories_json, exclude_tags_json, indexer_ids_json, bypass_torznab_cache, completion_delay_seconds, updated_at
 		FROM instance_crossseed_completion_settings`
 
 	rows, err := s.db.QueryContext(ctx, query)
@@ -142,8 +147,8 @@ func (s *InstanceCrossSeedCompletionStore) Upsert(ctx context.Context, settings 
 	}
 
 	const stmt = `INSERT INTO instance_crossseed_completion_settings (
-		instance_id, enabled, categories_json, tags_json, exclude_categories_json, exclude_tags_json, indexer_ids_json, bypass_torznab_cache)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		instance_id, enabled, categories_json, tags_json, exclude_categories_json, exclude_tags_json, indexer_ids_json, bypass_torznab_cache, completion_delay_seconds)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(instance_id) DO UPDATE SET
 		enabled = excluded.enabled,
 		categories_json = excluded.categories_json,
@@ -151,7 +156,8 @@ func (s *InstanceCrossSeedCompletionStore) Upsert(ctx context.Context, settings 
 		exclude_categories_json = excluded.exclude_categories_json,
 		exclude_tags_json = excluded.exclude_tags_json,
 		indexer_ids_json = excluded.indexer_ids_json,
-		bypass_torznab_cache = excluded.bypass_torznab_cache`
+		bypass_torznab_cache = excluded.bypass_torznab_cache,
+		completion_delay_seconds = excluded.completion_delay_seconds`
 
 	_, err = s.db.ExecContext(ctx, stmt,
 		coerced.InstanceID,
@@ -162,6 +168,7 @@ func (s *InstanceCrossSeedCompletionStore) Upsert(ctx context.Context, settings 
 		excludeTagJSON,
 		indexerJSON,
 		BoolToSQLite(coerced.BypassTorznabCache),
+		coerced.DelaySeconds,
 	)
 	if err != nil {
 		return nil, err
@@ -177,6 +184,12 @@ func sanitizeInstanceCrossSeedCompletionSettings(s *InstanceCrossSeedCompletionS
 	clone.ExcludeCategories = SanitizeStringSlice(clone.ExcludeCategories)
 	clone.ExcludeTags = SanitizeStringSlice(clone.ExcludeTags)
 	clone.IndexerIDs = sanitizePositiveInts(clone.IndexerIDs)
+	if clone.DelaySeconds < 0 {
+		clone.DelaySeconds = 0
+	}
+	if clone.DelaySeconds > MaxCompletionDelaySeconds {
+		clone.DelaySeconds = MaxCompletionDelaySeconds
+	}
 	return &clone
 }
 
@@ -211,6 +224,7 @@ func scanInstanceCrossSeedCompletionSettings(scanner interface {
 		excludeTagJSON     sql.NullString
 		indexerJSON        sql.NullString
 		bypassTorznabCache int
+		delaySeconds       int
 		updatedAt          sql.NullTime
 	)
 
@@ -223,6 +237,7 @@ func scanInstanceCrossSeedCompletionSettings(scanner interface {
 		&excludeTagJSON,
 		&indexerJSON,
 		&bypassTorznabCache,
+		&delaySeconds,
 		&updatedAt,
 	); err != nil {
 		return nil, err
@@ -258,6 +273,7 @@ func scanInstanceCrossSeedCompletionSettings(scanner interface {
 		ExcludeTags:        excludeTags,
 		IndexerIDs:         indexerIDs,
 		BypassTorznabCache: bypassTorznabCache == 1,
+		DelaySeconds:       max(0, min(MaxCompletionDelaySeconds, delaySeconds)),
 	}
 
 	if updatedAt.Valid {

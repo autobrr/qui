@@ -787,10 +787,12 @@ func (sm *SyncManager) GetErrorStore() *models.InstanceErrorStore {
 
 // GetTorrents gets torrents with the specified filter options
 func (sm *SyncManager) GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
-	// Get client and sync manager
-	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	_, syncManager, _, err := sm.readMainData(ctx, instanceID, mainDataRead)
 	if err != nil {
 		return nil, err
+	}
+	if syncManager == nil {
+		return nil, errors.New("sync manager not initialized")
 	}
 
 	// Get torrents with filters
@@ -862,10 +864,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var allTorrentsForCounts []qbt.Torrent
 	var err error
 
-	// Get client and sync manager
-	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	client, syncManager, mainData, err := sm.readMainData(ctx, instanceID, mainDataRead)
 	if err != nil {
 		return nil, err
+	}
+	if syncManager == nil {
+		return nil, errors.New("sync manager not initialized")
 	}
 
 	skipTrackerHydration := shouldSkipTrackerHydration(ctx)
@@ -875,9 +879,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		trackerHealthSupported = false
 	}
 	needsTrackerHealthSorting := trackerHealthSupported && sort == "state"
-
-	// Get MainData for tracker filtering (if needed)
-	mainData := syncManager.GetData()
 
 	// Determine if we can use library filtering or need manual filtering
 	// Use library filtering only if we have single filters that the library supports
@@ -1209,31 +1210,25 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Determine cache metadata based on last sync update time
 	var cacheMetadata *CacheMetadata
 	var serverState *qbt.ServerState
-	client, clientErr := sm.clientPool.GetClient(ctx, instanceID)
-	if clientErr == nil {
-		syncManager := client.GetSyncManager()
-		if syncManager != nil {
-			lastSyncTime := syncManager.LastSyncTime()
-			now := time.Now()
-			age := int(now.Sub(lastSyncTime).Seconds())
-			isFresh := age <= 1 // Fresh if updated within the last second
+	if syncManager != nil {
+		lastSyncTime := syncManager.LastSyncTime()
+		now := time.Now()
+		age := int(time.Since(lastSyncTime).Seconds())
+		isFresh := age <= 1 // Fresh if updated within the last second
 
-			source := "cache"
-			if isFresh {
-				source = "fresh"
-			}
-
-			cacheMetadata = &CacheMetadata{
-				Source:      source,
-				Age:         age,
-				IsStale:     !isFresh,
-				NextRefresh: now.Add(time.Second).Format(time.RFC3339),
-			}
+		source := "cache"
+		if isFresh {
+			source = "fresh"
 		}
 
-		if cached := client.GetCachedServerState(); cached != nil {
-			serverState = cached
+		cacheMetadata = &CacheMetadata{
+			Source:      source,
+			Age:         age,
+			IsStale:     !isFresh,
+			NextRefresh: now.Add(time.Second).Format(time.RFC3339),
 		}
+
+		serverState = resolveServerState(syncManager, mainDataServerState(mainData))
 	}
 
 	response := &TorrentResponse{
@@ -1272,7 +1267,7 @@ type TorrentFieldResponse struct {
 }
 
 // GetTorrentField returns field values for torrents matching the given filters.
-// Supported fields: "name", "hash", "full_path" (save_path/name), "tags".
+// Supported fields: "name", "hash", "full_path" (save_path/name), "tags", "magnet_uri".
 // excludeHashes and excludeTargets remove specific torrents from the result.
 func (sm *SyncManager) GetTorrentField(
 	ctx context.Context,
@@ -1346,6 +1341,8 @@ func (sm *SyncManager) GetTorrentField(
 			}
 		case "tags":
 			v = t.Tags
+		case "magnet_uri":
+			v = strings.TrimSpace(t.MagnetURI)
 		}
 		if field == "tags" || v != "" {
 			values = append(values, v)
@@ -3264,10 +3261,12 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 
 // GetTorrentCounts gets all torrent counts for the filter sidebar
 func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*TorrentCounts, error) {
-	// Get client and sync manager
-	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	client, syncManager, mainData, err := sm.readMainData(ctx, instanceID, mainDataRead)
 	if err != nil {
 		return nil, err
+	}
+	if syncManager == nil {
+		return nil, errors.New("sync manager not initialized")
 	}
 
 	// Get all torrents from the same source the table uses (now fresh from sync manager)
@@ -3277,9 +3276,6 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 	}
 
 	log.Debug().Int("instanceID", instanceID).Int("torrents", len(allTorrents)).Msg("GetTorrentCounts: got fresh torrents from sync manager")
-
-	// Get the MainData which includes the Trackers map
-	mainData := syncManager.GetData()
 
 	// Calculate counts using the shared function - pass mainData for tracker information
 	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
@@ -6239,12 +6235,19 @@ func (sm *SyncManager) DeleteTorrentCreationTask(ctx context.Context, instanceID
 
 // GetFreeSpace returns the free space on the instance's filesystem.
 func (sm *SyncManager) GetFreeSpace(ctx context.Context, instanceID int) (int64, error) {
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	_, syncManager, mainData, err := sm.readMainData(ctx, instanceID, mainDataRead)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get client: %w", err)
 	}
+	if syncManager == nil {
+		return 0, errors.New("sync manager not initialized")
+	}
 
-	state := client.syncManager.GetServerState()
+	state := resolveServerState(syncManager, mainDataServerState(mainData))
+	if state == nil {
+		return 0, errors.New("server state not available")
+	}
+
 	return state.FreeSpaceOnDisk, nil
 }
 
@@ -6345,6 +6348,13 @@ func (sm *SyncManager) SetRSSRule(ctx context.Context, instanceID int, ruleName 
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// qBittorrent < 5.0 ignores torrentParams and uses legacy flat fields instead.
+	// Mirror the values so category/savePath persist on older instances.
+	if rule.TorrentParams != nil {
+		rule.AssignedCategory = rule.TorrentParams.Category
+		rule.SavePath = rule.TorrentParams.SavePath
 	}
 
 	return client.SetRSSRuleCtx(ctx, ruleName, rule)

@@ -55,6 +55,9 @@ type EvalContext struct {
 	TrackerDownSet map[string]struct{}
 	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent)
 	HardlinkScopeByHash map[string]string
+	// HardlinkCrossScopeByHash maps torrent hash to its cross-instance hardlink scope.
+	// Same values as HardlinkScopeByHash but considers files from all instances.
+	HardlinkCrossScopeByHash map[string]string
 	// HasMissingFilesByHash maps torrent hash to whether or not it has missing files on disk
 	HasMissingFilesByHash map[string]bool
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
@@ -469,6 +472,15 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareFloat64(torrent.RatioLimit, cond)
 	case FieldMaxRatio:
 		return compareFloat64(torrent.MaxRatio, cond)
+	case FieldUploadedOverSize:
+		// Cross-seed-safe alternative to FieldRatio: qBittorrent's Ratio is
+		// uploaded/downloaded, which explodes for cross-seeded torrents
+		// whose downloaded is near zero. Comparing against total_size
+		// sidesteps the broken denominator.
+		if torrent.TotalSize == 0 {
+			return false
+		}
+		return compareFloat64(float64(torrent.Uploaded)/float64(torrent.TotalSize), cond)
 	case FieldProgress:
 		return compareFloat64(torrent.Progress, normalizeProgressCondition(cond))
 	case FieldAvailability:
@@ -555,6 +567,19 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		scope, ok := ctx.HardlinkScopeByHash[torrent.Hash]
 		if !ok {
 			return false // Unknown scope - don't match
+		}
+		return compareHardlinkScope(scope, cond)
+
+	case FieldHardlinkScopeCross:
+		if ctx == nil || !ctx.InstanceHasLocalAccess {
+			return false
+		}
+		if ctx.HardlinkCrossScopeByHash == nil {
+			return false
+		}
+		scope, ok := ctx.HardlinkCrossScopeByHash[torrent.Hash]
+		if !ok {
+			return false
 		}
 		return compareHardlinkScope(scope, cond)
 
