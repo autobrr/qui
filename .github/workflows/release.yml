@@ -121,6 +121,9 @@ jobs:
           name: web-dist
           path: web/dist
 
+      - name: Create web dist tarball
+        run: tar -czf web-dist.tar.gz -C . web/dist
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
@@ -165,17 +168,6 @@ jobs:
           BUILDER: ${{ github.actor }}@github-actions
           RELEASE_SIGNING_KEY_FILE: ${{ env.RELEASE_SIGNING_KEY_FILE }}
 
-      - name: Create web-dist artifact
-        if: startsWith(github.ref, 'refs/tags/')
-        run: mkdir -p dist && tar czf dist/web-dist.tar.gz web/dist
-
-      - name: Upload web-dist to release assets
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: |
-            dist/web-dist.tar.gz
-
       - name: Upload assets
         uses: actions/upload-artifact@v7
         with:
@@ -202,6 +194,9 @@ jobs:
         with:
           name: web-dist
           path: web/dist
+
+      - name: Create web dist tarball
+        run: tar -czf web-dist.tar.gz -C . web/dist
 
       - name: Set up Go
         uses: actions/setup-go@v6
