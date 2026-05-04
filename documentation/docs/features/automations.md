@@ -98,6 +98,7 @@ These fields use qui's current system time when the rule is evaluated. They are 
 | Ratio       | Upload/download ratio        |
 | Ratio Limit | Configured ratio limit       |
 | Max Ratio   | qBittorrent max ratio value  |
+| Uploaded / Size | Uploaded bytes divided by total torrent size. Use this instead of Ratio for cross-seeded torrents. |
 | Progress    | Download progress (0-100%)   |
 | Availability | Distributed copies available |
 | Popularity  | Swarm popularity metric      |
@@ -171,10 +172,11 @@ Note: if you have **Settings → Tracker Customizations** configured, the **Trac
 
 #### Filesystem Fields
 
-| Field             | Description                                                                                |
-| ----------------- | ------------------------------------------------------------------------------------------ |
-| Hardlink Scope    | `none`, `torrents_only`, or `outside_qbittorrent` (requires local filesystem access)     |
-| Has Missing Files | Boolean - completed torrent has files missing on disk (requires local filesystem access)  |
+| Field                            | Description                                                                                                    |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Hardlink Scope                   | `none`, `torrents_only`, or `outside_qbittorrent` (requires local filesystem access)                         |
+| Hardlink Scope (Cross-Instance)  | `none`, `torrents_only`, or `outside_qbittorrent` considering ALL instances (requires local filesystem access) |
+| Has Missing Files                | Boolean - completed torrent has files missing on disk (requires local filesystem access)                      |
 
 ### State Values
 
@@ -770,6 +772,87 @@ If the automation is matching torrents you expect to be protected, verify:
 1. qui can access all torrent files at the paths qBittorrent reports (check debug logs for inaccessible files).
 2. Your filesystem reports accurate nlink values (`stat <file>` should show Links > 1 for hardlinked files).
 3. Your Docker volume mounts do not overlap or subdivide the storage in a way that breaks inode consistency.
+
+### Cross-Instance Hardlink Detection
+
+The `HARDLINK_SCOPE_CROSS` field extends hardlink detection across **all** configured qBittorrent instances. While `HARDLINK_SCOPE` only considers torrents within a single instance, `HARDLINK_SCOPE_CROSS` accounts for hardlinks to files managed by any instance with local filesystem access enabled.
+
+This is essential for multi-instance setups where cross-seeds are hardlinked across instances. Without cross-instance awareness, those hardlinks appear as `outside_qbittorrent` even though they point to files managed by another qBittorrent instance.
+
+#### Scope values
+
+| Scope                 | Meaning                                                                  |
+| --------------------- | ------------------------------------------------------------------------ |
+| `none`                | No hardlinks detected.                                                   |
+| `torrents_only`       | All hardlinks are accounted for across all qBittorrent instances.        |
+| `outside_qbittorrent` | Hardlinks exist to files outside all qBittorrent instances.              |
+
+#### Combining with HARDLINK_SCOPE
+
+Use both fields together to distinguish cross-instance hardlinks from truly external links:
+
+| Combination | Interpretation |
+| --- | --- |
+| `HARDLINK_SCOPE = outside_qbittorrent` AND `HARDLINK_SCOPE_CROSS = torrents_only` | Hardlinks point to other qBittorrent instances only (cross-seeds). No media library copy. |
+| `HARDLINK_SCOPE = outside_qbittorrent` AND `HARDLINK_SCOPE_CROSS = outside_qbittorrent` | Hardlinks point outside all instances — typically a media library import. |
+| `HARDLINK_SCOPE = torrents_only` | All hardlinks within this instance. `HARDLINK_SCOPE_CROSS` will also be `torrents_only`. |
+
+#### Prerequisites
+
+`HARDLINK_SCOPE_CROSS` requires:
+
+1. **Local Filesystem Access** enabled on **all** instances whose files you want considered. Instances without it are skipped — their files won't be scanned, and unresolved hardlinks will conservatively show as `outside_qbittorrent`.
+2. **Same filesystem** across all instances. Hardlinks cannot cross filesystem boundaries.
+3. **Matching paths in Docker** — same volume mount requirements as `HARDLINK_SCOPE`, applied to every instance.
+
+#### Performance
+
+Cross-instance scanning only runs when:
+- A rule uses `HARDLINK_SCOPE_CROSS`
+- The single-instance scan found torrents with unresolved outside links
+
+When triggered, it uses cached torrent and file data from other instances (no extra API calls) and only calls `Lstat()` on files that might resolve the unaccounted hardlinks. Scanning stops as soon as all deficits are resolved.
+
+A safety budget of 500,000 `Lstat()` calls limits the cross-instance scan. If the budget is exhausted before all deficits are resolved, the remaining torrents conservatively report `outside_qbittorrent`. This prevents excessive filesystem operations in large multi-instance setups. A warning is logged if the budget is reached.
+
+#### Example: noHL tagging in multi-instance setups
+
+This rule tags torrents with `noHL` when they have no media library hardlinks, even if they have cross-instance hardlinks to other qBittorrent instances:
+
+```json
+{
+  "name": "Tag noHL (multi-instance)",
+  "trackerPattern": "*",
+  "trackerDomains": ["*"],
+  "conditions": {
+    "schemaVersion": "1",
+    "tags": [
+      {
+        "enabled": true,
+        "mode": "add",
+        "tags": ["noHL"],
+        "condition": {
+          "operator": "AND",
+          "conditions": [
+            {
+              "field": "HARDLINK_SCOPE_CROSS",
+              "operator": "NOT_EQUAL",
+              "value": "outside_qbittorrent"
+            },
+            {
+              "field": "STATE",
+              "operator": "EQUAL",
+              "value": "uploading"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+This works because `HARDLINK_SCOPE_CROSS != outside_qbittorrent` matches both `none` (no hardlinks) and `torrents_only` (hardlinks only between qBittorrent instances). Torrents with a media library copy (`outside_qbittorrent`) are excluded from the tag.
 
 ## Missing Files Detection
 

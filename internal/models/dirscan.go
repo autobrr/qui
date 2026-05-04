@@ -76,18 +76,19 @@ type DirScanSettings struct {
 
 // DirScanDirectory represents a configured scan directory.
 type DirScanDirectory struct {
-	ID                  int        `json:"id"`
-	Path                string     `json:"path"`
-	QbitPathPrefix      string     `json:"qbitPathPrefix,omitempty"`
-	Category            string     `json:"category,omitempty"`
-	Tags                []string   `json:"tags"`
-	Enabled             bool       `json:"enabled"`
-	ArrInstanceID       *int       `json:"arrInstanceId,omitempty"`
-	TargetInstanceID    int        `json:"targetInstanceId"`
-	ScanIntervalMinutes int        `json:"scanIntervalMinutes"`
-	LastScanAt          *time.Time `json:"lastScanAt,omitempty"`
-	CreatedAt           time.Time  `json:"createdAt"`
-	UpdatedAt           time.Time  `json:"updatedAt"`
+	ID                     int        `json:"id"`
+	Path                   string     `json:"path"`
+	QbitPathPrefix         string     `json:"qbitPathPrefix,omitempty"`
+	Category               string     `json:"category,omitempty"`
+	Tags                   []string   `json:"tags"`
+	AllowedDownloadClients []string   `json:"allowedDownloadClients"`
+	Enabled                bool       `json:"enabled"`
+	ArrInstanceID          *int       `json:"arrInstanceId,omitempty"`
+	TargetInstanceID       int        `json:"targetInstanceId"`
+	ScanIntervalMinutes    int        `json:"scanIntervalMinutes"`
+	LastScanAt             *time.Time `json:"lastScanAt,omitempty"`
+	CreatedAt              time.Time  `json:"createdAt"`
+	UpdatedAt              time.Time  `json:"updatedAt"`
 }
 
 // DirScanRun represents a scan run history entry.
@@ -341,14 +342,21 @@ func (s *DirScanStore) CreateDirectory(ctx context.Context, dir *DirScanDirector
 	if err != nil {
 		return nil, fmt.Errorf("marshal tags: %w", err)
 	}
+	if dir.AllowedDownloadClients == nil {
+		dir.AllowedDownloadClients = []string{}
+	}
+	allowedDownloadClientsJSON, err := json.Marshal(dir.AllowedDownloadClients)
+	if err != nil {
+		return nil, fmt.Errorf("marshal allowed download clients: %w", err)
+	}
 
 	var id int
 	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO dir_scan_directories
-			(path, qbit_path_prefix, category, tags, enabled, arr_instance_id, target_instance_id, scan_interval_minutes)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			(path, qbit_path_prefix, category, tags, allowed_download_clients, enabled, arr_instance_id, target_instance_id, scan_interval_minutes)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING id
-	`, dir.Path, qbitPathPrefix, category, string(tagsJSON), boolToInt(dir.Enabled), dir.ArrInstanceID,
+	`, dir.Path, qbitPathPrefix, category, string(tagsJSON), string(allowedDownloadClientsJSON), boolToInt(dir.Enabled), dir.ArrInstanceID,
 		dir.TargetInstanceID, dir.ScanIntervalMinutes).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("insert directory: %w", err)
@@ -360,7 +368,7 @@ func (s *DirScanStore) CreateDirectory(ctx context.Context, dir *DirScanDirector
 // GetDirectory retrieves a directory by ID.
 func (s *DirScanStore) GetDirectory(ctx context.Context, id int) (*DirScanDirectory, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, path, qbit_path_prefix, category, tags, enabled, arr_instance_id, target_instance_id,
+		SELECT id, path, qbit_path_prefix, category, tags, allowed_download_clients, enabled, arr_instance_id, target_instance_id,
 		       scan_interval_minutes, last_scan_at, created_at, updated_at
 		FROM dir_scan_directories
 		WHERE id = ?
@@ -386,6 +394,7 @@ func (s *DirScanStore) scanDirectoryFromScanner(scanner sqlScanner) (*DirScanDir
 	var qbitPathPrefix sql.NullString
 	var category sql.NullString
 	var tagsJSON sql.NullString
+	var allowedDownloadClientsJSON sql.NullString
 	var arrInstanceID sql.NullInt64
 	var lastScanAt sql.NullTime
 	var enabled int
@@ -396,6 +405,7 @@ func (s *DirScanStore) scanDirectoryFromScanner(scanner sqlScanner) (*DirScanDir
 		&qbitPathPrefix,
 		&category,
 		&tagsJSON,
+		&allowedDownloadClientsJSON,
 		&enabled,
 		&arrInstanceID,
 		&dir.TargetInstanceID,
@@ -420,6 +430,14 @@ func (s *DirScanStore) scanDirectoryFromScanner(scanner sqlScanner) (*DirScanDir
 	}
 	if dir.Tags == nil {
 		dir.Tags = []string{}
+	}
+	if allowedDownloadClientsJSON.Valid && allowedDownloadClientsJSON.String != "" {
+		if err := json.Unmarshal([]byte(allowedDownloadClientsJSON.String), &dir.AllowedDownloadClients); err != nil {
+			return nil, fmt.Errorf("unmarshal allowed download clients: %w", err)
+		}
+	}
+	if dir.AllowedDownloadClients == nil {
+		dir.AllowedDownloadClients = []string{}
 	}
 	if arrInstanceID.Valid {
 		id := int(arrInstanceID.Int64)
@@ -453,7 +471,7 @@ func (s *DirScanStore) scanDirectoriesFromRows(rows *sql.Rows) ([]*DirScanDirect
 // ListDirectories retrieves all scan directories.
 func (s *DirScanStore) ListDirectories(ctx context.Context) ([]*DirScanDirectory, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, path, qbit_path_prefix, category, tags, enabled, arr_instance_id, target_instance_id,
+		SELECT id, path, qbit_path_prefix, category, tags, allowed_download_clients, enabled, arr_instance_id, target_instance_id,
 		       scan_interval_minutes, last_scan_at, created_at, updated_at
 		FROM dir_scan_directories
 		ORDER BY id
@@ -495,14 +513,15 @@ func (s *DirScanStore) ListDirectoryIDs(ctx context.Context) ([]int, error) {
 
 // DirScanDirectoryUpdateParams holds optional fields for updating a directory.
 type DirScanDirectoryUpdateParams struct {
-	Path                *string
-	QbitPathPrefix      *string
-	Category            *string
-	Tags                *[]string
-	Enabled             *bool
-	ArrInstanceID       *int // Use -1 to clear
-	TargetInstanceID    *int
-	ScanIntervalMinutes *int
+	Path                   *string
+	QbitPathPrefix         *string
+	Category               *string
+	Tags                   *[]string
+	AllowedDownloadClients *[]string
+	Enabled                *bool
+	ArrInstanceID          *int // Use -1 to clear
+	TargetInstanceID       *int
+	ScanIntervalMinutes    *int
 }
 
 // UpdateDirectory updates a scan directory.
@@ -535,6 +554,13 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 	if err != nil {
 		return nil, fmt.Errorf("marshal tags: %w", err)
 	}
+	if existing.AllowedDownloadClients == nil {
+		existing.AllowedDownloadClients = []string{}
+	}
+	allowedDownloadClientsJSON, err := json.Marshal(existing.AllowedDownloadClients)
+	if err != nil {
+		return nil, fmt.Errorf("marshal allowed download clients: %w", err)
+	}
 
 	_, err = s.db.ExecContext(ctx, `
 		UPDATE dir_scan_directories
@@ -542,12 +568,13 @@ func (s *DirScanStore) UpdateDirectory(ctx context.Context, id int, params *DirS
 		    qbit_path_prefix = ?,
 		    category = ?,
 		    tags = ?,
+		    allowed_download_clients = ?,
 		    enabled = ?,
 		    arr_instance_id = ?,
 		    target_instance_id = ?,
 		    scan_interval_minutes = ?
 		WHERE id = ?
-	`, existing.Path, qbitPathPrefix, category, string(tagsJSON), boolToInt(existing.Enabled),
+	`, existing.Path, qbitPathPrefix, category, string(tagsJSON), string(allowedDownloadClientsJSON), boolToInt(existing.Enabled),
 		existing.ArrInstanceID, existing.TargetInstanceID, existing.ScanIntervalMinutes, id)
 	if err != nil {
 		return nil, fmt.Errorf("update directory: %w", err)
@@ -592,6 +619,9 @@ func applyDirectoryUpdateParams(existing *DirScanDirectory, params *DirScanDirec
 	}
 	if params.Tags != nil {
 		existing.Tags = *params.Tags
+	}
+	if params.AllowedDownloadClients != nil {
+		existing.AllowedDownloadClients = *params.AllowedDownloadClients
 	}
 	if params.Enabled != nil {
 		existing.Enabled = *params.Enabled
@@ -643,7 +673,7 @@ func (s *DirScanStore) UpdateDirectoryLastScan(ctx context.Context, id int) erro
 // ListEnabledDirectories returns all enabled directories.
 func (s *DirScanStore) ListEnabledDirectories(ctx context.Context) ([]*DirScanDirectory, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, path, qbit_path_prefix, category, tags, enabled, arr_instance_id, target_instance_id,
+		SELECT id, path, qbit_path_prefix, category, tags, allowed_download_clients, enabled, arr_instance_id, target_instance_id,
 		       scan_interval_minutes, last_scan_at, created_at, updated_at
 		FROM dir_scan_directories
 		WHERE enabled = 1

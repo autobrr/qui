@@ -19,7 +19,7 @@ export function useDateTimeFormatters() {
     /**
      * Format a Unix timestamp (seconds) to a full date/time string
      */
-    formatTimestamp: (timestamp: number) => formatTimestamp(timestamp, preferences),
+    formatTimestamp: (timestamp: number, includeSeconds = false) => formatTimestamp(timestamp, preferences, includeSeconds),
 
     /**
      * Format a Unix timestamp (seconds) to a date-only string
@@ -29,7 +29,7 @@ export function useDateTimeFormatters() {
     /**
      * Format a Unix timestamp (seconds) to a time-only string
      */
-    formatTimeOnly: (timestamp: number) => formatTimeOnly(timestamp, preferences),
+    formatTimeOnly: (timestamp: number, includeSeconds = false) => formatTimeOnly(timestamp, preferences, includeSeconds),
 
     /**
      * Format a JavaScript Date object to a full date/time string

@@ -49,7 +49,7 @@ func TestAnalyzeTorrentForSearchAsync_RejectsUnrelatedLargestFile(t *testing.T) 
 
 	require.Equal(t, "movie", result.TorrentInfo.ContentType, "should fall back to torrent name when largest file is unrelated")
 	require.Equal(t, "movie", result.TorrentInfo.SearchType)
-	require.Equal(t, []int{2000}, result.TorrentInfo.SearchCategories)
+	require.Equal(t, []int{2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080}, result.TorrentInfo.SearchCategories)
 }
 
 func TestAnalyzeTorrentForSearchAsync_UsesLargestFileWhenTitlesAlign(t *testing.T) {
@@ -87,7 +87,7 @@ func TestAnalyzeTorrentForSearchAsync_UsesLargestFileWhenTitlesAlign(t *testing.
 
 	require.Equal(t, "tv", result.TorrentInfo.ContentType, "aligned largest file should refine content detection")
 	require.Equal(t, "tvsearch", result.TorrentInfo.SearchType)
-	require.Equal(t, []int{5000}, result.TorrentInfo.SearchCategories)
+	require.Equal(t, []int{5000, 5010, 5020, 5030, 5040, 5045, 5070, 5080}, result.TorrentInfo.SearchCategories)
 }
 
 func TestAnalyzeTorrentForSearchAsync_TrustFileEpisodeMarkers_Miniseries(t *testing.T) {
@@ -133,7 +133,7 @@ func TestAnalyzeTorrentForSearchAsync_TrustFileEpisodeMarkers_Miniseries(t *test
 
 	require.Equal(t, "tv", result.TorrentInfo.ContentType, "should detect as TV when file has episode markers")
 	require.Equal(t, "tvsearch", result.TorrentInfo.SearchType)
-	require.Equal(t, []int{5000}, result.TorrentInfo.SearchCategories)
+	require.Equal(t, []int{5000, 5010, 5020, 5030, 5040, 5045, 5070, 5080}, result.TorrentInfo.SearchCategories)
 }
 
 func TestAnalyzeTorrentForSearchAsync_TrustFileEpisodeMarkers_Anime(t *testing.T) {
@@ -183,5 +183,5 @@ func TestAnalyzeTorrentForSearchAsync_TrustFileEpisodeMarkers_Anime(t *testing.T
 
 	require.Equal(t, "tv", result.TorrentInfo.ContentType, "should detect anime as TV when file has episode markers")
 	require.Equal(t, "tvsearch", result.TorrentInfo.SearchType)
-	require.Equal(t, []int{5000}, result.TorrentInfo.SearchCategories)
+	require.Equal(t, []int{5000, 5010, 5020, 5030, 5040, 5045, 5070, 5080}, result.TorrentInfo.SearchCategories)
 }

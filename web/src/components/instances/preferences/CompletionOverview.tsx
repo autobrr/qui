@@ -6,6 +6,7 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect } from "@/components/ui/multi-select"
 import { Switch } from "@/components/ui/switch"
@@ -20,6 +21,8 @@ import { AlertCircle, Info, Loader2 } from "lucide-react"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 
+const MAX_COMPLETION_DELAY_SECONDS = 600
+
 interface CompletionFormState {
   enabled: boolean
   categories: string[]
@@ -28,6 +31,7 @@ interface CompletionFormState {
   excludeTags: string[]
   indexerIds: number[]
   bypassTorznabCache: boolean
+  delaySeconds: number
 }
 
 const DEFAULT_COMPLETION_FORM: CompletionFormState = {
@@ -38,6 +42,7 @@ const DEFAULT_COMPLETION_FORM: CompletionFormState = {
   excludeTags: [],
   indexerIds: [],
   bypassTorznabCache: false,
+  delaySeconds: 0,
 }
 
 function settingsToForm(settings: InstanceCrossSeedCompletionSettings | undefined): CompletionFormState {
@@ -50,6 +55,7 @@ function settingsToForm(settings: InstanceCrossSeedCompletionSettings | undefine
     excludeTags: settings.excludeTags ?? [],
     indexerIds: settings.indexerIds ?? [],
     bypassTorznabCache: settings.bypassTorznabCache ?? false,
+    delaySeconds: settings.delaySeconds ?? 0,
   }
 }
 
@@ -62,6 +68,7 @@ function formToSettings(form: CompletionFormState): Omit<InstanceCrossSeedComple
     excludeTags: form.excludeTags,
     indexerIds: form.indexerIds,
     bypassTorznabCache: form.bypassTorznabCache,
+    delaySeconds: form.delaySeconds,
   }
 }
 
@@ -172,7 +179,7 @@ export function CompletionOverview() {
   const handleFormChange = (
     instanceId: number,
     field: keyof CompletionFormState,
-    value: string[] | number[] | boolean,
+    value: string[] | number[] | boolean | number,
     currentForm: CompletionFormState
   ) => {
     setFormMap((prev) => ({
@@ -368,6 +375,34 @@ export function CompletionOverview() {
                             checked={form.bypassTorznabCache}
                             onCheckedChange={(checked) => handleFormChange(instance.id, "bypassTorznabCache", checked, form)}
                             disabled={isSaving}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4 rounded-md border border-border/50 bg-muted/30 p-3">
+                          <div className="space-y-0.5">
+                            <Label htmlFor={`completion-delay-${instance.id}`} className="text-sm font-medium">
+                              Search delay (seconds)
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                              Wait this long after a torrent completes before searching trackers. 0 disables the delay. Common values: 5–10s if you use UploadAssistant; 60–120s if files move into place after completion.
+                            </p>
+                          </div>
+                          <Input
+                            id={`completion-delay-${instance.id}`}
+                            type="number"
+                            min={0}
+                            max={MAX_COMPLETION_DELAY_SECONDS}
+                            step={1}
+                            value={form.delaySeconds}
+                            onChange={(event) => {
+                              const raw = event.target.value
+                              const parsed = raw === "" ? 0 : Number(raw)
+                              if (!Number.isFinite(parsed)) return
+                              const clamped = Math.min(MAX_COMPLETION_DELAY_SECONDS, Math.max(0, Math.floor(parsed)))
+                              handleFormChange(instance.id, "delaySeconds", clamped, form)
+                            }}
+                            disabled={isSaving}
+                            className="w-24 text-right"
                           />
                         </div>
 

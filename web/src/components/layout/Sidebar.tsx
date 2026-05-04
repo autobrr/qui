@@ -23,10 +23,10 @@ import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
 import {
   Archive,
+  Code,
   Copyright,
   FileText,
   GitBranch,
-  Github,
   HardDrive,
   Home,
   Loader2,
@@ -330,7 +330,7 @@ export function Sidebar() {
               rel="noopener noreferrer"
               aria-label="View on GitHub"
             >
-              <Github className="h-3.5 w-3.5" />
+              <Code className="h-3.5 w-3.5" />
             </a>
           </Button>
         </div>

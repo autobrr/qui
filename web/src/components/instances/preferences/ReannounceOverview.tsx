@@ -14,7 +14,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
-import { cn, copyTextToClipboard, formatErrorReason, formatRelativeTime } from "@/lib/utils"
+import { formatRelativeTime } from "@/lib/dateTimeUtils"
+import { cn, copyTextToClipboard, formatErrorReason } from "@/lib/utils"
 import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceReannounceSettings } from "@/types"
 import { useQueries, useQueryClient } from "@tanstack/react-query"
 import { ChevronDown, Copy, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
@@ -287,210 +288,202 @@ export function ReannounceOverview({
 
                   <AccordionContent className="px-6 pb-4">
                     <div className="space-y-4">
-                    {/* Settings summary */}
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
-                      <div className="space-y-0.5">
-                        <p className="text-sm text-muted-foreground">
-                          {getSettingsSummary(settings)}
-                        </p>
-                        {settings?.monitorAll ? (
-                          <p className="text-xs text-muted-foreground/70">Monitoring all stalled torrents</p>
-                        ) : (
-                          <p className="text-xs text-muted-foreground/70">
-                            {settings?.categories.length || settings?.tags.length || settings?.trackers.length
-                              ? "Filtered by categories/tags/trackers"
-                              : "No filters configured"}
+                      {/* Settings summary */}
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
+                        <div className="space-y-0.5">
+                          <p className="text-sm text-muted-foreground">
+                            {getSettingsSummary(settings)}
                           </p>
+                          {settings?.monitorAll ? (
+                            <p className="text-xs text-muted-foreground/70">Monitoring all stalled torrents</p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground/70">
+                              {settings?.categories.length || settings?.tags.length || settings?.trackers.length? "Filtered by categories/tags/trackers": "No filters configured"}
+                            </p>
+                          )}
+                        </div>
+                        {onConfigureInstance && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onConfigureInstance(instance.id)}
+                            className="h-8"
+                          >
+                            <Settings2 className="h-4 w-4 mr-2" />
+                            Configure
+                          </Button>
                         )}
                       </div>
-                      {onConfigureInstance && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onConfigureInstance(instance.id)}
-                          className="h-8"
-                        >
-                          <Settings2 className="h-4 w-4 mr-2" />
-                          Configure
-                        </Button>
-                      )}
-                    </div>
 
-                    {/* Activity log */}
-                    {isEnabled && (
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-medium">Recent Activity</h4>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="text-xs text-muted-foreground cursor-help">
-                                  {filteredEvents.length === events.length
-                                    ? `${events.length} events`
-                                    : `${filteredEvents.length} of ${events.length}`}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Retains last 100 succeeded, 100 failed, 50 skipped</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              className={cn(
-                                "text-xs px-2 py-1 rounded transition-colors",
-                                hideSkipped
-                                  ? "bg-muted text-foreground"
-                                  : "text-muted-foreground hover:text-foreground"
-                              )}
-                              onClick={() => setHideSkippedMap((prev) => ({
-                                ...prev,
-                                [instance.id]: !hideSkipped,
-                              }))}
-                            >
-                              {hideSkipped ? "Show skipped" : "Hide skipped"}
-                            </button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              disabled={activityQuery?.isFetching}
-                              onClick={() => queryClient.invalidateQueries({
-                                queryKey: ["instance-reannounce-activity", instance.id],
-                              })}
-                              className="h-7 px-2"
-                            >
-                              <RefreshCcw className={cn(
-                                "h-3.5 w-3.5",
-                                activityQuery?.isFetching && "animate-spin"
-                              )} />
-                            </Button>
-                          </div>
-                        </div>
-
-                        {/* Search filter */}
-                        <div className="relative">
-                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            type="text"
-                            placeholder="Filter by name or hash..."
-                            value={searchMap[instance.id] ?? ""}
-                            onChange={(e) => setSearchMap((prev) => ({
-                              ...prev,
-                              [instance.id]: e.target.value,
-                            }))}
-                            className="pl-9 h-8 text-sm"
-                          />
-                        </div>
-
-                        {activityQuery?.isError ? (
-                          <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
-                            <p className="text-sm text-destructive">Failed to load activity</p>
-                            <p className="text-xs text-destructive/70 mt-1">
-                              Check connection to the instance.
-                            </p>
-                          </div>
-                        ) : activityQuery?.isLoading ? (
-                          <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/40">
-                            <p className="text-sm text-muted-foreground">Loading activity...</p>
-                          </div>
-                        ) : filteredEvents.length === 0 ? (
-                          <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/40 text-center p-4">
-                            <p className="text-sm text-muted-foreground">
-                              {searchTerm ? "No matching events found." : "No activity recorded yet."}
-                            </p>
-                            <p className="text-xs text-muted-foreground/60 mt-1">
-                              {searchTerm
-                                ? "Try a different search term or clear the filter."
-                                : "Events will appear here when stalled torrents are detected."}
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="max-h-[350px] overflow-auto rounded-md border bg-muted/20">
-                            <div className="divide-y divide-border">
-                              {filteredEvents.map((event, eventIndex) => (
-                                <div
-                                  key={`${event.hash}-${eventIndex}-${event.timestamp}`}
-                                  className="p-3 hover:bg-muted/30 transition-colors"
-                                >
-                                  <div className="flex flex-col gap-2">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <span className="font-medium text-sm truncate max-w-[250px] cursor-help">
-                                            {event.torrentName || event.hash}
-                                          </span>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p className="font-semibold">{event.torrentName || "N/A"}</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                      <Badge
-                                        variant="outline"
-                                        className={cn(
-                                          "capitalize text-[10px] px-1.5 py-0 h-5",
-                                          outcomeClasses[event.outcome]
-                                        )}
-                                      >
-                                        {event.outcome}
-                                      </Badge>
-                                    </div>
-
-                                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                      <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
-                                        <span className="font-mono">{event.hash.substring(0, 7)}</span>
-                                        <button
-                                          type="button"
-                                          className="hover:text-foreground transition-colors"
-                                          onClick={() => {
-                                            copyTextToClipboard(event.hash)
-                                            toast.success("Hash copied")
-                                          }}
-                                          title="Copy hash"
-                                        >
-                                          <Copy className="h-3 w-3" />
-                                        </button>
-                                      </div>
-                                      <span className="text-muted-foreground/40">·</span>
-                                      <span>{formatISOTimestamp(event.timestamp)}</span>
-                                    </div>
-
-                                    {event.reason && (
-                                      <div className="text-xs bg-muted/40 p-2 rounded">
-                                        {formatErrorReason(event.reason) !== event.reason ? (
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <span className="cursor-help">{formatErrorReason(event.reason)}</span>
-                                            </TooltipTrigger>
-                                            <TooltipContent className="max-w-md">
-                                              <p className="break-all">{event.reason}</p>
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        ) : (
-                                          <span>{event.reason}</span>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
+                      {/* Activity log */}
+                      {isEnabled && (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-medium">Recent Activity</h4>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="text-xs text-muted-foreground cursor-help">
+                                    {filteredEvents.length === events.length? `${events.length} events`: `${filteredEvents.length} of ${events.length}`}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Retains last 100 succeeded, 100 failed, 50 skipped</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                className={cn(
+                                  "text-xs px-2 py-1 rounded transition-colors",
+                                  hideSkipped? "bg-muted text-foreground": "text-muted-foreground hover:text-foreground"
+                                )}
+                                onClick={() => setHideSkippedMap((prev) => ({
+                                  ...prev,
+                                  [instance.id]: !hideSkipped,
+                                }))}
+                              >
+                                {hideSkipped ? "Show skipped" : "Hide skipped"}
+                              </button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                disabled={activityQuery?.isFetching}
+                                onClick={() => queryClient.invalidateQueries({
+                                  queryKey: ["instance-reannounce-activity", instance.id],
+                                })}
+                                className="h-7 px-2"
+                              >
+                                <RefreshCcw className={cn(
+                                  "h-3.5 w-3.5",
+                                  activityQuery?.isFetching && "animate-spin"
+                                )} />
+                              </Button>
                             </div>
                           </div>
-                        )}
-                      </div>
-                    )}
 
-                    {!isEnabled && (
-                      <div className="flex flex-col items-center justify-center py-6 text-center space-y-2 border border-dashed rounded-lg">
-                        <div className="p-2 rounded-full bg-muted/50">
-                          <RefreshCcw className="h-5 w-5 text-muted-foreground/50" />
+                          {/* Search filter */}
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              type="text"
+                              placeholder="Filter by name or hash..."
+                              value={searchMap[instance.id] ?? ""}
+                              onChange={(e) => setSearchMap((prev) => ({
+                                ...prev,
+                                [instance.id]: e.target.value,
+                              }))}
+                              className="pl-9 h-8 text-sm"
+                            />
+                          </div>
+
+                          {activityQuery?.isError ? (
+                            <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
+                              <p className="text-sm text-destructive">Failed to load activity</p>
+                              <p className="text-xs text-destructive/70 mt-1">
+                                Check connection to the instance.
+                              </p>
+                            </div>
+                          ) : activityQuery?.isLoading ? (
+                            <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/40">
+                              <p className="text-sm text-muted-foreground">Loading activity...</p>
+                            </div>
+                          ) : filteredEvents.length === 0 ? (
+                            <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/40 text-center p-4">
+                              <p className="text-sm text-muted-foreground">
+                                {searchTerm ? "No matching events found." : "No activity recorded yet."}
+                              </p>
+                              <p className="text-xs text-muted-foreground/60 mt-1">
+                                {searchTerm? "Try a different search term or clear the filter.": "Events will appear here when stalled torrents are detected."}
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="max-h-[350px] overflow-auto rounded-md border bg-muted/20">
+                              <div className="divide-y divide-border">
+                                {filteredEvents.map((event, eventIndex) => (
+                                  <div
+                                    key={`${event.hash}-${eventIndex}-${event.timestamp}`}
+                                    className="p-3 hover:bg-muted/30 transition-colors"
+                                  >
+                                    <div className="flex flex-col gap-2">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span className="font-medium text-sm truncate max-w-[250px] cursor-help">
+                                              {event.torrentName || event.hash}
+                                            </span>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p className="font-semibold">{event.torrentName || "N/A"}</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                        <Badge
+                                          variant="outline"
+                                          className={cn(
+                                            "capitalize text-[10px] px-1.5 py-0 h-5",
+                                            outcomeClasses[event.outcome]
+                                          )}
+                                        >
+                                          {event.outcome}
+                                        </Badge>
+                                      </div>
+
+                                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                        <div className="flex items-center gap-1 bg-muted/60 px-1.5 py-0.5 rounded">
+                                          <span className="font-mono">{event.hash.substring(0, 7)}</span>
+                                          <button
+                                            type="button"
+                                            className="hover:text-foreground transition-colors"
+                                            onClick={() => {
+                                              copyTextToClipboard(event.hash)
+                                              toast.success("Hash copied")
+                                            }}
+                                            title="Copy hash"
+                                          >
+                                            <Copy className="h-3 w-3" />
+                                          </button>
+                                        </div>
+                                        <span className="text-muted-foreground/40">·</span>
+                                        <span>{formatISOTimestamp(event.timestamp)}</span>
+                                      </div>
+
+                                      {event.reason && (
+                                        <div className="text-xs bg-muted/40 p-2 rounded">
+                                          {formatErrorReason(event.reason) !== event.reason ? (
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <span className="cursor-help">{formatErrorReason(event.reason)}</span>
+                                              </TooltipTrigger>
+                                              <TooltipContent className="max-w-md">
+                                                <p className="break-all">{event.reason}</p>
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          ) : (
+                                            <span>{event.reason}</span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                          Enable monitoring to start tracking stalled torrents.
-                        </p>
-                      </div>
-                    )}
+                      )}
+
+                      {!isEnabled && (
+                        <div className="flex flex-col items-center justify-center py-6 text-center space-y-2 border border-dashed rounded-lg">
+                          <div className="p-2 rounded-full bg-muted/50">
+                            <RefreshCcw className="h-5 w-5 text-muted-foreground/50" />
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            Enable monitoring to start tracking stalled torrents.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </AccordionContent>
                 </AccordionItem>

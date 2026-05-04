@@ -68,7 +68,7 @@ jobs:
           EOF
 
       - name: Run Claude Code for Deduplication
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@v1.0.107
         with:
           prompt: |
             You're a deduplication assistant for GitHub discussions. Your task is to find potential duplicates and handle them appropriately.

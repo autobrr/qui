@@ -88,6 +88,7 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
     accessTitle = "License Activation Required"
     accessDescription = "Your license needs to be activated on this machine"
   }
+  const canAddLicense = !hasStoredLicense || hasInvalidLicense
   const checkoutUrl = useMemo(() => {
     const returnPath = withBasePath("settings?tab=themes&checkout=success")
     const returnUrl = new URL(returnPath, window.location.origin).toString()
@@ -177,7 +178,7 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              {!hasStoredLicense && (
+              {canAddLicense && (
                 <Button
                   size="sm"
                   onClick={() => setShowAddLicense(true)}
@@ -336,7 +337,7 @@ export function LicenseManager({ checkoutStatus, checkoutPaymentStatus, onChecko
           <DialogHeader>
             <DialogTitle>Remove license?</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove this license from this machine? This will deactivate it here to free up an activation slot.
+              Are you sure you want to remove this license from this machine? qui will try to free the remote activation slot too, but local removal will still finish if that request fails.
             </DialogDescription>
           </DialogHeader>
 
