@@ -684,16 +684,7 @@ func extractDomainFromAnnounce(announceURL string) string {
 
 // FindLargestFile returns the file with the largest size from a list of torrent files.
 // This is useful for content type detection as the largest file usually represents the main content.
-func FindLargestFile(files qbt.TorrentFiles) *struct {
-	Availability float32 `json:"availability"`
-	Index        int     `json:"index"`
-	IsSeed       bool    `json:"is_seed,omitempty"`
-	Name         string  `json:"name"`
-	PieceRange   []int   `json:"piece_range"`
-	Priority     int     `json:"priority"`
-	Progress     float32 `json:"progress"`
-	Size         int64   `json:"size"`
-} {
+func FindLargestFile(files qbt.TorrentFiles) *qbt.TorrentFile {
 	if len(files) == 0 {
 		return nil
 	}

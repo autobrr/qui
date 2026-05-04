@@ -9,9 +9,9 @@ require (
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/anacrolix/torrent v1.61.0
 	github.com/andybalholm/brotli v1.2.1
-	github.com/autobrr/autobrr v1.76.0
+	github.com/autobrr/autobrr v1.77.0
 	github.com/autobrr/go-mediainfo v0.3.1
-	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20260221205148-5cc22ac80d42
+	github.com/autobrr/go-qbittorrent v1.15.0-rc1.0.20260504155815-c211e84d3742
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/coreos/go-oidc/v3 v3.18.0
