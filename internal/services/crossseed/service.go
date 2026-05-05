@@ -12733,12 +12733,16 @@ func (s *Service) resolveLinkModeCategoryPlacement(
 	crossCategory, categorySavePath string,
 	isTrackerCategoryMode, crossCategoryExistsInQbit bool,
 ) linkModeCategoryPlacement {
-	// When the qBittorrent category already has a configured save path, place files there directly.
-	// For a brand-new tracker-mapped category, derive the first save path from the directory preset
-	// so both hardlink and reflink mode establish the same category layout from the first inject.
-	effectiveCategorySavePath := categorySavePath
-	if effectiveCategorySavePath == "" && crossCategory != "" && isTrackerCategoryMode && !crossCategoryExistsInQbit {
-		effectiveCategorySavePath = s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
+	// Only apply tracker-category save-path logic when the feature is active.
+	// When isTrackerCategoryMode is false (no mapping configured), categorySavePath comes from
+	// the matched torrent's existing qBittorrent category — using it here would bypass
+	// buildHardlinkDestDir and break by-tracker subfolder placement for non-feature users.
+	effectiveCategorySavePath := ""
+	if isTrackerCategoryMode {
+		effectiveCategorySavePath = categorySavePath
+		if effectiveCategorySavePath == "" && crossCategory != "" && !crossCategoryExistsInQbit {
+			effectiveCategorySavePath = s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
+		}
 	}
 	if isTrackerCategoryMode && crossCategory != "" && crossCategoryExistsInQbit && effectiveCategorySavePath == "" {
 		log.Warn().
@@ -12940,11 +12944,13 @@ func (s *Service) processHardlinkMode(
 	}
 
 	// Determine the base directory for hardlinks.
-	// When the cross-seed category has a configured save path in qBittorrent, use it directly —
-	// this places hardlinks inside the category directory so qBittorrent's category management
-	// reflects the actual file layout. Otherwise fall back to the instance's configured base dir.
+	// When the tracker category feature is active and the category has a configured save path
+	// in qBittorrent, use it directly — this places hardlinks inside the category directory so
+	// qBittorrent's category management reflects the actual file layout.
+	// Otherwise always fall back to the instance's configured base dir (FindMatchingBaseDir),
+	// preserving the existing by-tracker subfolder placement for users not using this feature.
 	var selectedBaseDir string
-	if categorySavePath != "" {
+	if categorySavePath != "" && isTrackerCategoryMode {
 		if err := os.MkdirAll(categorySavePath, 0o755); err != nil {
 			return handleError(fmt.Sprintf("Failed to create category directory %q: %v", categorySavePath, err))
 		}
@@ -13088,7 +13094,10 @@ func (s *Service) processHardlinkMode(
 	// and avoid double-folder nesting when instance default is Subfolder.
 	// In "by-tracker" mode, enable AutoTMM so qBittorrent manages placement via
 	// the category's configured save path (files are already hardlinked there).
-	if placement.EnableAutoTMM {
+	// Guard on crossCategory: if ensureCrossCategory failed above, crossCategory
+	// was cleared to "" — enabling AutoTMM without a category would let qBittorrent
+	// use its default save path instead of plan.RootDir where the hardlinks are.
+	if placement.EnableAutoTMM && crossCategory != "" {
 		options["autoTMM"] = "true"
 	} else {
 		options["autoTMM"] = "false"
@@ -13279,7 +13288,6 @@ func (s *Service) buildHardlinkDestDir(
 	req *CrossSeedRequest,
 	candidateFiles []hardlinktree.TorrentFile,
 ) string {
-
 	// Determine if isolation folder is needed based on torrent structure.
 	// Since hardlink mode always uses contentLayout=Original, we only need
 	// an isolation folder when the torrent doesn't have a common root folder.
@@ -13794,7 +13802,10 @@ func (s *Service) processReflinkMode(
 	// Reflink mode mirrors hardlink mode category handling:
 	// if a tracker-mapped category has an explicit save path, let AutoTMM place the torrent there.
 	// Otherwise, add against the pre-created reflink tree root directly.
-	if placement.EnableAutoTMM {
+	// Guard on crossCategory: if ensureCrossCategory failed above, crossCategory
+	// was cleared to "" — enabling AutoTMM without a category would let qBittorrent
+	// use its default save path instead of plan.RootDir where the reflinks are.
+	if placement.EnableAutoTMM && crossCategory != "" {
 		options["autoTMM"] = "true"
 	} else {
 		options["autoTMM"] = "false"

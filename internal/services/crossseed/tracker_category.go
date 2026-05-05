@@ -90,14 +90,6 @@ func MatchAnnounceDomainToIndexer(announceDomain, indexerName string) bool {
 	if domainNorm == normalizedIndexer {
 		return true
 	}
-	// Containment on fully separator-stripped strings: apply a minimum length
-	// guard on both sides to prevent short common tokens from matching broadly.
-	if len(normalizedIndexer) >= 6 && strings.Contains(domainNorm, normalizedIndexer) {
-		return true
-	}
-	if len(domainNorm) >= 6 && strings.Contains(normalizedIndexer, domainNorm) {
-		return true
-	}
 
 	// 4. Domain alias: look up the announce domain in trackerDomainAliases and
 	//    re-run the match against each canonical hostname.  Handles Gazelle sites

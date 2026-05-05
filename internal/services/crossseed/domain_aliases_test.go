@@ -42,9 +42,9 @@ func TestTrackerDomainAliases(t *testing.T) {
 		indexerName    string
 		want           bool
 	}{
-		// BroadcasTheNet: announce via landof.tv, indexer named BroadcasTheNet
-		{name: "BTN landof.tv matches BroadcasTheNet", announceDomain: "landof.tv", indexerName: "BroadcasTheNet", want: true},
-		{name: "BTN landof.tv matches BroadcasTheNet (Prowlarr)", announceDomain: "landof.tv", indexerName: "BroadcasTheNet (Prowlarr)", want: true},
+		// BroadcastHe: announce via landof.tv, indexer named BroadcastHe
+		{name: "BTN landof.tv matches BroadcastHe", announceDomain: "landof.tv", indexerName: "BroadcastHe", want: true},
+		{name: "BTN landof.tv matches BroadcastHe (Prowlarr)", announceDomain: "landof.tv", indexerName: "BroadcastHe (Prowlarr)", want: true},
 
 		// Redacted: announce via flacsfor.me, indexer named Redacted
 		{name: "RED flacsfor.me matches Redacted", announceDomain: "flacsfor.me", indexerName: "Redacted", want: true},
@@ -57,7 +57,7 @@ func TestTrackerDomainAliases(t *testing.T) {
 
 		// Aliases must not cross-match unrelated indexers
 		{name: "BTN landof.tv does not match Redacted", announceDomain: "landof.tv", indexerName: "Redacted", want: false},
-		{name: "RED flacsfor.me does not match BroadcasTheNet", announceDomain: "flacsfor.me", indexerName: "BroadcasTheNet", want: false},
+		{name: "RED flacsfor.me does not match BroadcastHe", announceDomain: "flacsfor.me", indexerName: "BroadcastHe", want: false},
 		{name: "OPS home.opsfet.ch does not match Redacted", announceDomain: "home.opsfet.ch", indexerName: "Redacted", want: false},
 	}
 

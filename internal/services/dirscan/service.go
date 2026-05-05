@@ -1914,6 +1914,10 @@ func (s *Service) tryMatchAndInject(
 			l.Warn().Err(instanceErr).Int("instanceID", dir.TargetInstanceID).Msg("dirscan: failed to load instance for by-tracker preset check")
 			return failMatch()
 		}
+		var categoryGetter dirscanCategoryGetter
+		if s.syncManager != nil {
+			categoryGetter = s.syncManager
+		}
 		trackerCat, trackerSavePath, fatal := resolveDirscanTrackerCategory(
 			ctx,
 			dir.TargetInstanceID,
@@ -1921,7 +1925,7 @@ func (s *Service) tryMatchAndInject(
 			announceDomain,
 			instance,
 			s.indexerCategoryStore,
-			s.syncManager,
+			categoryGetter,
 			l,
 		)
 		if fatal {

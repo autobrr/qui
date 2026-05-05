@@ -34,7 +34,7 @@ func TestMatchAnnounceDomainToIndexer(t *testing.T) {
 		{name: "domain with .me TLD", announceDomain: "beyond-hd.me", indexerName: "BeyondHD", want: true},
 		{name: "domain with .cc TLD", announceDomain: "aither.cc", indexerName: "Aither", want: true},
 		{name: "domain with .to TLD", announceDomain: "filelist.to", indexerName: "FileList", want: true},
-		{name: "domain with .net TLD", announceDomain: "broadcasthe.net", indexerName: "BroadcasTheNet", want: true},
+		{name: "domain with .net TLD", announceDomain: "broadcasthe.net", indexerName: "BroadcastHe", want: true},
 		{name: "domain with .co TLD", announceDomain: "beyondhd.co", indexerName: "BeyondHD", want: true},
 
 		// Subdomain in announce domain (tracker.X.Y)
@@ -51,6 +51,10 @@ func TestMatchAnnounceDomainToIndexer(t *testing.T) {
 		{name: "completely unrelated domain", announceDomain: "randomtracker.org", indexerName: "Aither", want: false},
 		// Short domain fragments must not spuriously match via reverse substring.
 		{name: "short fragment hd.me does not match BeyondHD", announceDomain: "hd.me", indexerName: "BeyondHD", want: false},
+		// Containment must not produce false positives — "notbeyondhd" contains
+		// "beyondhd" as a substring but is a different tracker entirely.
+		{name: "notbeyondhd.co does not match BeyondHD", announceDomain: "notbeyondhd.co", indexerName: "BeyondHD", want: false},
+		{name: "myaither.cc does not match Aither", announceDomain: "myaither.cc", indexerName: "Aither", want: false},
 
 		// Whitespace handling
 		{name: "domain with leading space", announceDomain: "  aither.cc", indexerName: "Aither", want: true},

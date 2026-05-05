@@ -688,6 +688,17 @@ func applyInversePathMapping(qbitPath, searcheePath, qbitPrefix string) (string,
 	return filepath.Join(cleanHostBase, rel), true
 }
 
+// mapTrackerCategorySavePathToHost translates a qBittorrent category save path
+// (qbitPath) back to a host filesystem path using the instance's HardlinkBaseDir
+// and QbitPathPrefix settings.
+//
+// Configuration constraint: QbitPathPrefix must be a prefix of the qBittorrent-side
+// path for whichever HardlinkBaseDir entry is selected.  When multiple comma-separated
+// HardlinkBaseDir entries are configured across different filesystems, only the entry
+// whose filesystem contains existingFilePath is chosen — if QbitPathPrefix does not
+// correspond to that entry, applyInversePathMapping will fail with a clear error.
+// There is no upfront validation for this pairing; misconfiguration is caught at
+// inject time with the message "cannot be mapped to host filesystem".
 func mapTrackerCategorySavePathToHost(qbitPath, qbitPrefix, hardlinkBaseDir, existingFilePath string) (string, error) {
 	hostBaseDir, err := crossseed.FindMatchingBaseDir(hardlinkBaseDir, existingFilePath)
 	if err != nil {
