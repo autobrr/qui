@@ -67,6 +67,7 @@ Triggers a cross-seed search when torrents finish downloading. Configure in the 
 - **Target indexers** - Limit completion searches to specific indexers (empty means all enabled)
 - **Exclude categories/tags** - Skip torrents matching these filters
 - **Bypass Torznab cache** - When enabled for an instance, completion searches for that instance always perform a fresh Torznab search instead of using cached indexer results. Default: off. Does not affect Gazelle (OPS/RED) searches, which do not use the Torznab cache.
+- **Search delay** - Wait 0-600 seconds after completion before searching. Default: 0. Use this when post-completion file moves or sister-torrent injection tools need a short head start before qui searches trackers.
 
 If a torrent is still **checking** or **moving**, qui waits and runs the completion search afterward instead of searching immediately against an unstable path/state.
 

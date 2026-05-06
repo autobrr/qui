@@ -215,7 +215,7 @@ export function DateTimePreferencesForm() {
       dateFormat,
     }
 
-    return formatTimestamp(Math.floor(now.getTime() / 1000), previewPreferences)
+    return formatTimestamp(Math.floor(now.getTime() / 1000), previewPreferences, true)
   }
 
   return (
