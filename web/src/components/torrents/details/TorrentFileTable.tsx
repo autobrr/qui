@@ -47,6 +47,7 @@ interface FlatRow {
   depth: number
   isExpanded: boolean
   hasChildren: boolean
+  isVisible: boolean
 }
 
 function buildFileTree(
@@ -143,18 +144,27 @@ function buildFileTree(
 function flattenTree(
   nodes: FileTreeNode[],
   expandedFolders: Set<string>,
-  depth = 0
+  depth = 0,
+  visible = false
 ): FlatRow[] {
   const rows: FlatRow[] = []
 
   for (const node of nodes) {
     const hasChildren = node.kind === "folder" && Boolean(node.children?.length)
     const isExpanded = expandedFolders.has(node.id)
+    const isVisible = depth === 0 || visible
 
-    rows.push({ node, depth, isExpanded, hasChildren })
+    rows.push({ node, depth, isExpanded, hasChildren, isVisible })
 
-    if (hasChildren && isExpanded && node.children) {
-      rows.push(...flattenTree(node.children, expandedFolders, depth + 1))
+    if (hasChildren && node.children) {
+      rows.push(
+        ...flattenTree(
+          node.children,
+          expandedFolders,
+          depth + 1,
+          isVisible && isExpanded
+        )
+      )
     }
   }
 
@@ -210,7 +220,8 @@ export const TorrentFileTable = memo(function TorrentFileTable({
 
   // Filter rows based on search query
   const filteredRows = useMemo(() => {
-    if (!searchQuery.trim()) return flatRows
+    const visibleRows = flatRows.filter((row) => row.isVisible)
+    if (!searchQuery.trim()) return visibleRows
 
     const query = searchQuery.toLowerCase()
     const matchingIds = new Set<string>()
@@ -229,7 +240,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
       }
     }
 
-    return flatRows.filter(row => matchingIds.has(row.node.id))
+    return visibleRows.filter((row) => matchingIds.has(row.node.id))
   }, [flatRows, searchQuery])
 
   // Row height: 28px for file rows (with some padding)
