@@ -5509,7 +5509,7 @@ func (sm *SyncManager) NormalizeScanDirsPreference(prefs map[string]any) error {
 		return err
 	}
 
-	var scanDirs map[string]any
+	var scanDirs qbt.MonitoredFolders
 	if err := json.Unmarshal(encoded, &scanDirs); err != nil {
 		return err
 	}
