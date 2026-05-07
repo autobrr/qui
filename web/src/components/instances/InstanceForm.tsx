@@ -26,11 +26,13 @@ interface InstanceFormProps {
 export function InstanceForm({ instance, onSuccess, onCancel, formId }: InstanceFormProps) {
   const { createInstance, updateInstance, isCreating, isUpdating } = useInstances()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
-  const [authBypass, setAuthBypass] = useState(instance?.username === "")
+  const [authType, setAuthType] = useState<"none" | "usernamePassword" | "apiKey">(
+    instance?.hasApiKey ? "apiKey" : instance?.username ? "usernamePassword" : "none"
+  )
 
   useEffect(() => {
-    setAuthBypass(instance?.username === "")
-  }, [instance?.username])
+    setAuthType(instance?.hasApiKey ? "apiKey" : instance?.username ? "usernamePassword" : "none")
+  }, [instance?.hasApiKey, instance?.username])
 
   const handleSubmit = (data: InstanceFormData) => {
     let submitData: InstanceFormData
@@ -55,7 +57,23 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
       }
     }
 
-    if (authBypass) {
+    if (authType === "none") {
+      submitData = {
+        ...submitData,
+        username: "",
+        password: "",
+        apiKey: "",
+      }
+    }
+
+    if (authType === "usernamePassword") {
+      submitData = {
+        ...submitData,
+        apiKey: "",
+      }
+    }
+
+    if (authType === "apiKey") {
       submitData = {
         ...submitData,
         username: "",
@@ -100,6 +118,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
       host: instance?.host ?? "http://localhost:8080",
       username: instance?.username ?? "",
       password: "",
+      apiKey: "",
       basicUsername: instance?.basicUsername ?? "",
       basicPassword: instance?.basicUsername ? "<redacted>" : "",
       tlsSkipVerify: instance?.tlsSkipVerify ?? false,
@@ -216,22 +235,25 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
         </form.Field>
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="auth-bypass-toggle">Authentication Bypass</Label>
-              <p className="text-sm text-muted-foreground pr-2">
-                Enable when qBittorrent bypasses authentication for localhost or whitelisted IPs
-              </p>
-            </div>
-            <Switch
-              id="auth-bypass-toggle"
-              checked={authBypass}
-              onCheckedChange={setAuthBypass}
-            />
+          <div className="space-y-2">
+            <Label htmlFor="auth-type">Authentication Type</Label>
+            <select
+              id="auth-type"
+              value={authType}
+              onChange={(e) => setAuthType(e.target.value as "none" | "usernamePassword" | "apiKey")}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+            >
+              <option value="none">None</option>
+              <option value="usernamePassword">Username and Password</option>
+              <option value="apiKey">API Key</option>
+            </select>
+            <p className="text-sm text-muted-foreground pr-2">
+              Select how qui should authenticate to qBittorrent.
+            </p>
           </div>
         </div>
 
-        {!authBypass && (
+        {authType === "usernamePassword" && (
           <>
             <form.Field name="username">
               {(field) => (
@@ -242,7 +264,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="qBittorrent username (usually admin)"
+                    placeholder="qBittorrent username"
                     data-1p-ignore
                     autoComplete="off"
                   />
@@ -273,6 +295,26 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
               )}
             </form.Field>
           </>
+        )}
+
+        {authType === "apiKey" && (
+          <form.Field name="apiKey">
+            {(field) => (
+              <div className="space-y-2">
+                <Label htmlFor={field.name}>API Key</Label>
+                <Input
+                  id={field.name}
+                  type="password"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder={instance ? "Leave empty to keep current API key" : "qBittorrent API key"}
+                  data-1p-ignore
+                  autoComplete="off"
+                />
+              </div>
+            )}
+          </form.Field>
         )}
 
         <div className="space-y-4">

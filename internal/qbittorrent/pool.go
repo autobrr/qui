@@ -239,6 +239,15 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 		return nil, fmt.Errorf("failed to decrypt password: %w", err)
 	}
 
+	apiKey, err := cp.instanceStore.GetDecryptedAPIKey(instance)
+	if err != nil {
+		if cp.isDecryptionError(err) && cp.shouldLogDecryptionError(instanceID) {
+			log.Error().Err(err).Int("instanceID", instanceID).Str("instanceName", instance.Name).
+				Msg("Failed to decrypt API key - likely due to sessionSecret change. Instance will be unavailable until API key is re-entered via web UI")
+		}
+		return nil, fmt.Errorf("failed to decrypt api key: %w", err)
+	}
+
 	// Decrypt basic auth password if present
 	var basicPassword *string
 	if instance.BasicPasswordEncrypted != nil {
@@ -253,7 +262,7 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	}
 
 	// Create new client with custom timeout
-	client, err := NewClientWithTimeout(instanceID, instance.Host, instance.Username, password, instance.BasicUsername, basicPassword, instance.TLSSkipVerify, timeout)
+	client, err := NewClientWithTimeout(instanceID, instance.Host, instance.Username, password, apiKey, instance.BasicUsername, basicPassword, instance.TLSSkipVerify, timeout)
 	if err != nil {
 		cp.trackFailure(instanceID, err)
 		return nil, fmt.Errorf("failed to create client: %w", err)

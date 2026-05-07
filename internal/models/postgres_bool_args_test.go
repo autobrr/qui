@@ -121,6 +121,7 @@ func TestInstanceCreateUsesIntegerBooleanArgs(t *testing.T) {
 			host_id INTEGER NOT NULL,
 			username_id INTEGER NOT NULL,
 			password_encrypted TEXT NOT NULL,
+			api_key_encrypted TEXT NOT NULL DEFAULT '',
 			basic_username_id INTEGER,
 			basic_password_encrypted TEXT,
 			tls_skip_verify INTEGER NOT NULL DEFAULT 0,
@@ -149,14 +150,14 @@ func TestInstanceCreateUsesIntegerBooleanArgs(t *testing.T) {
 	hasLocalAccess := true
 	_, err = store.Create(ctx, "main", "http://localhost:8080", "admin", "secret", nil, nil, true, &hasLocalAccess)
 	require.NoError(t, err)
-	require.Len(t, insertArgs, 8)
+	require.Len(t, insertArgs, 9)
 
-	tlsArg, ok := insertArgs[6].(int)
-	require.Truef(t, ok, "expected int arg for tls_skip_verify, got %T", insertArgs[6])
+	tlsArg, ok := insertArgs[7].(int)
+	require.Truef(t, ok, "expected int arg for tls_skip_verify, got %T", insertArgs[7])
 	require.Equal(t, 1, tlsArg)
 
-	localAccessArg, ok := insertArgs[7].(int)
-	require.Truef(t, ok, "expected int arg for has_local_filesystem_access, got %T", insertArgs[7])
+	localAccessArg, ok := insertArgs[8].(int)
+	require.Truef(t, ok, "expected int arg for has_local_filesystem_access, got %T", insertArgs[8])
 	require.Equal(t, 1, localAccessArg)
 }
 

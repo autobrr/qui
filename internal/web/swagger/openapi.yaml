@@ -862,8 +862,6 @@ paths:
               required:
                 - name
                 - host
-                - username
-                - password
               properties:
                 name:
                   type: string
@@ -876,6 +874,10 @@ paths:
                   type: string
                   writeOnly: true
                   description: Password for qBittorrent instance. Will be encrypted and never returned in responses.
+                apiKey:
+                  type: string
+                  writeOnly: true
+                  description: Optional qBittorrent API key. When provided, username/password login is bypassed.
                 basicUsername:
                   type: string
                   nullable: true
@@ -975,6 +977,10 @@ paths:
                   type: string
                   writeOnly: true
                   description: Password for qBittorrent instance. Optional for updates - only updates if provided and not masked.
+                apiKey:
+                  type: string
+                  writeOnly: true
+                  description: Optional qBittorrent API key. Provide an empty string to clear it.
                 basicUsername:
                   type: string
                   nullable: true
@@ -5579,6 +5585,9 @@ components:
           type: string
           description: Always masked with asterisks in responses. Only used for input.
           readOnly: true
+        hasApiKey:
+          type: boolean
+          description: True when an API key is configured for this instance.
         basic_username:
           type: string
           nullable: true

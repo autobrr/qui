@@ -11,7 +11,7 @@ require (
 	github.com/andybalholm/brotli v1.2.1
 	github.com/autobrr/autobrr v1.77.0
 	github.com/autobrr/go-mediainfo v0.3.1
-	github.com/autobrr/go-qbittorrent v1.15.1-0.20260506110806-0f6206131e7a
+	github.com/autobrr/go-qbittorrent v1.15.1-0.20260506141918-c977ad8365de
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/coreos/go-oidc/v3 v3.18.0
