@@ -1141,8 +1141,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		allTorrents = syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 	}
 
-	useSubcategories = resolveUseSubcategories(supportsSubcategories, subcategoriesAlwaysEnabled, mainData, categories)
-
 	var enrichedAll []qbt.Torrent
 
 	if skipTrackerHydration {
