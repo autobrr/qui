@@ -1193,6 +1193,8 @@ func TestApplySeasonPackWebhook_RespectsSkipPieceBoundarySafetyCheck(t *testing.
 	require.Equal(t, "true", sm.addCalls[0].options["stopped"])
 	require.Len(t, sm.bulkCalls, 1)
 	require.Equal(t, "recheck", sm.bulkCalls[0].action)
+	req := <-svc.recheckResumeChan
+	require.InDelta(t, 0.75, req.threshold, 0.0001)
 }
 
 func TestApplySeasonPackWebhook_RejectsInstanceWithoutLinkMode(t *testing.T) {
@@ -1379,8 +1381,7 @@ func TestApplySeasonPackWebhook_PausesForSafeExtrasAndQueuesRecheck(t *testing.T
 	select {
 	case pending := <-svc.recheckResumeChan:
 		require.Equal(t, inst.ID, pending.instanceID)
-		require.Greater(t, pending.threshold, 0.8)
-		require.Less(t, pending.threshold, 0.9)
+		require.InDelta(t, 0.75, pending.threshold, 0.0001)
 	default:
 		t.Fatal("expected safe extras flow to queue recheck resume")
 	}

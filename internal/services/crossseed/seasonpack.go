@@ -102,20 +102,6 @@ func seasonPackMatchOptionsFromSettings(settings *models.CrossSeedAutomationSett
 	return opts
 }
 
-func (b *seasonPackPlanBuild) recheckThreshold() float64 {
-	if b == nil || b.totalBytes <= 0 {
-		return 1.0
-	}
-	threshold := float64(b.linkedBytes) / float64(b.totalBytes)
-	if threshold <= 0 {
-		return 0.01
-	}
-	if threshold > 1 {
-		return 1.0
-	}
-	return threshold
-}
-
 // seasonPackPrep holds validated and parsed state shared between check and apply.
 type seasonPackPrep struct {
 	settings      *models.CrossSeedAutomationSettings
@@ -418,7 +404,7 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 				message = "torrent added paused; automatic resume could not be queued"
 			} else if s.recheckResumeChan == nil {
 				message = "torrent added paused; automatic resume is unavailable"
-			} else if err := s.queueRecheckResumeWithThreshold(ctx, inst.ID, activeHash, planBuild.recheckThreshold()); err != nil {
+			} else if err := s.queueRecheckResumeWithThreshold(ctx, inst.ID, activeHash, prep.threshold); err != nil {
 				message = "torrent added paused; automatic resume queue is full"
 			} else {
 				message = "torrent added paused; recheck queued"
