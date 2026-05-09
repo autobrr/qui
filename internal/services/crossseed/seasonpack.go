@@ -480,7 +480,7 @@ func (s *Service) assembleSeasonPack(
 		return nil, nil, nil, fmt.Errorf("%w: incomplete season pack requires recheck, but Skip Recheck is enabled", errSkippedRecheck)
 	}
 
-	if linkMode == "hardlink" {
+	if linkMode == "hardlink" && !prep.settings.SkipPieceBoundarySafetyCheck {
 		if unsafe, result := hasUnsafeSeasonPackPendingFiles(prep.meta.Info, planBuild.materializedPaths); unsafe {
 			return nil, nil, nil, fmt.Errorf("%w: unsafe piece boundary with pending files: %s", errLayoutMismatch, result.Reason)
 		}

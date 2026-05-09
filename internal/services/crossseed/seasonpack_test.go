@@ -1133,6 +1133,68 @@ func TestApplySeasonPackWebhook_RejectsUnsafePieceBoundariesInHardlinkMode(t *te
 	require.Empty(t, sm.addCalls)
 }
 
+func TestApplySeasonPackWebhook_RespectsSkipPieceBoundarySafetyCheck(t *testing.T) {
+	packName := "Cool.Show.S01.1080p.WEB.x264-GRP"
+	main := bytes.Repeat([]byte("M"), 53)
+	extra := bytes.Repeat([]byte("E"), 11)
+	torrentBytes := buildMultiFileTorrent(t, packName, 64, map[string][]byte{
+		"Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv": main,
+		"zzz-extra.nfo": extra,
+	})
+	torrentData := base64.StdEncoding.EncodeToString(torrentBytes)
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          t.TempDir(),
+	}
+
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+	}
+
+	baseSM := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
+	sm.files = map[string]qbt.TorrentFiles{
+		normalizeHash("e01"): {
+			{Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Size: int64(len(main))},
+		},
+	}
+
+	svc := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:   sm,
+		releaseCache:  NewReleaseCache(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			return &models.CrossSeedAutomationSettings{
+				SeasonPackEnabled:            true,
+				SeasonPackCoverageThreshold:  0.75,
+				SkipPieceBoundarySafetyCheck: true,
+			}, nil
+		},
+		seasonPackLinkCreator: func(_ *hardlinktree.TreePlan) error { return nil },
+		recheckResumeChan:     make(chan *pendingResume, 1),
+	}
+
+	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+		TorrentName: packName,
+		TorrentData: torrentData,
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.Applied)
+	require.Len(t, sm.addCalls, 1)
+	require.Equal(t, "true", sm.addCalls[0].options["paused"])
+	require.Equal(t, "true", sm.addCalls[0].options["stopped"])
+	require.Len(t, sm.bulkCalls, 1)
+	require.Equal(t, "recheck", sm.bulkCalls[0].action)
+}
+
 func TestApplySeasonPackWebhook_RejectsInstanceWithoutLinkMode(t *testing.T) {
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}
