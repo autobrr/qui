@@ -54,7 +54,7 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@v6.0.5
         with:
-          version: latest
+          package_json_file: web/package.json
 
       - name: Get pnpm store directory
         shell: bash
