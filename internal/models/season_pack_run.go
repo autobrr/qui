@@ -13,6 +13,8 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 )
 
+const maxSeasonPackRunHistory = 200
+
 // SeasonPackRun records one season-pack webhook processing attempt.
 type SeasonPackRun struct {
 	ID              int64     `json:"id"`
@@ -50,6 +52,7 @@ func (s *SeasonPackRunStore) Create(ctx context.Context, run *SeasonPackRun) (*S
 		instanceID = sql.NullInt64{Int64: int64(*run.InstanceID), Valid: true}
 	}
 
+	var id int64
 	if dbinterface.DialectOf(s.db) != "postgres" {
 		res, err := s.db.ExecContext(ctx, `
 			INSERT INTO season_pack_runs
@@ -62,25 +65,26 @@ func (s *SeasonPackRunStore) Create(ctx context.Context, run *SeasonPackRun) (*S
 			return nil, fmt.Errorf("insert season pack run: %w", err)
 		}
 
-		id, err := res.LastInsertId()
+		id, err = res.LastInsertId()
 		if err != nil {
 			return nil, fmt.Errorf("last insert id: %w", err)
 		}
-
-		return s.get(ctx, id)
+	} else {
+		err := s.db.QueryRowContext(ctx, `
+			INSERT INTO season_pack_runs
+				(torrent_name, phase, status, reason, message, instance_id, matched_episodes, total_episodes, coverage, link_mode)
+			VALUES
+				(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			RETURNING id
+		`, run.TorrentName, run.Phase, run.Status, run.Reason, run.Message,
+			instanceID, run.MatchedEpisodes, run.TotalEpisodes, run.Coverage, run.LinkMode).Scan(&id)
+		if err != nil {
+			return nil, fmt.Errorf("insert season pack run: %w", err)
+		}
 	}
 
-	var id int64
-	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO season_pack_runs
-			(torrent_name, phase, status, reason, message, instance_id, matched_episodes, total_episodes, coverage, link_mode)
-		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		RETURNING id
-	`, run.TorrentName, run.Phase, run.Status, run.Reason, run.Message,
-		instanceID, run.MatchedEpisodes, run.TotalEpisodes, run.Coverage, run.LinkMode).Scan(&id)
-	if err != nil {
-		return nil, fmt.Errorf("insert season pack run: %w", err)
+	if err := s.prune(ctx); err != nil {
+		return nil, err
 	}
 
 	return s.get(ctx, id)
@@ -146,6 +150,22 @@ func (s *SeasonPackRunStore) get(ctx context.Context, id int64) (*SeasonPackRun,
 	}
 
 	return &r, nil
+}
+
+func (s *SeasonPackRunStore) prune(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `
+		DELETE FROM season_pack_runs
+		WHERE id NOT IN (
+			SELECT id FROM season_pack_runs
+			ORDER BY created_at DESC, id DESC
+			LIMIT ?
+		)
+	`, maxSeasonPackRunHistory)
+	if err != nil {
+		return fmt.Errorf("prune old season pack runs: %w", err)
+	}
+
+	return nil
 }
 
 func scanSeasonPackRun(s sqlScanner) (*SeasonPackRun, error) {

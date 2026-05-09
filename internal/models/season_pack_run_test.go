@@ -97,6 +97,33 @@ func TestSeasonPackRunStore_ListLimit(t *testing.T) {
 	require.Len(t, runs, 3)
 }
 
+func TestSeasonPackRunStore_CreatePrunesOldRuns(t *testing.T) {
+	db := setupCrossSeedTestDB(t)
+	store := models.NewSeasonPackRunStore(db)
+
+	ctx := context.Background()
+
+	for i := range 201 {
+		_, err := store.Create(ctx, &models.SeasonPackRun{
+			TorrentName:   "Show.S01.1080p.WEB-DL-GRP",
+			Phase:         "check",
+			Status:        "ready",
+			TotalEpisodes: i + 1,
+		})
+		require.NoError(t, err)
+	}
+
+	runs, err := store.List(ctx, 200)
+	require.NoError(t, err)
+	require.Len(t, runs, 200)
+	require.Equal(t, 201, runs[0].TotalEpisodes)
+	require.Equal(t, 2, runs[len(runs)-1].TotalEpisodes)
+
+	var count int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM season_pack_runs`).Scan(&count))
+	require.Equal(t, 200, count)
+}
+
 func TestSeasonPackRunStore_SettingsRoundTrip(t *testing.T) {
 	db := setupCrossSeedTestDB(t)
 	key := make([]byte, 32)

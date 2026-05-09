@@ -20,9 +20,9 @@ Disc layouts (`BDMV`/`VIDEO_TS`) are treated more strictly: they only auto-resum
 
 ## Season Pack Threshold
 
-The season-pack webhook uses a separate coverage threshold (default 75%) to decide whether enough local data exists to inject a pack. Season episode totals are sourced from Sonarr, TVDB, or TVMaze (in that order) when available; otherwise qui falls back to the playable files in the pack torrent. Incomplete packs are added paused, rechecked, then resumed automatically. This is configured in the **Season Packs** tab, not in Rules. Instances must have local filesystem access and hardlink or reflink mode enabled to qualify. See [Season Packs](season-packs) for details.
+The season-pack webhook uses a separate coverage threshold (default 75%) to decide whether enough local data exists to inject a pack. Season episode totals are sourced from Sonarr first, then TVDB or TVMaze when Sonarr cannot resolve the release. When torrent data is available, qui never uses a total lower than the playable file count in the pack torrent. Incomplete packs are added paused, rechecked, then resumed automatically when qBittorrent reports progress at or above the season-pack threshold. This is configured in **Rules > Season packs**. Instances must have local filesystem access and hardlink or reflink mode enabled to qualify. See [Season Packs](season-packs) for details.
 
-Season-pack matching rules live in the Season Packs tab and affect only the season-pack webhook flow.
+Season-pack matching rules live in **Rules > Season packs** and affect only the season-pack webhook flow.
 
 ## Categories
 

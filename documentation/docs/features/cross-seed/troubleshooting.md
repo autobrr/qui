@@ -28,7 +28,9 @@ By default, season packs only match other season packs. Enable **Find individual
 
 ## Why did my season-pack check return 404?
 
-The season-pack webhook returns `404 Not Found` whenever the pack is not ready to apply. Common reasons:
+The season-pack check webhook returns `404 Not Found` whenever the pack is not ready to apply. In autobrr this usually appears as `[external webhook status code] not matching: got 404 want: 200`.
+
+Common reasons:
 
 - **Coverage is below your threshold**: qui did not find enough matching episodes
 - **Episodes are still downloading**: only fully completed episode torrents count toward coverage
@@ -37,9 +39,11 @@ The season-pack webhook returns `404 Not Found` whenever the pack is not ready t
 - **Webhook source filters excluded your episodes**: include/exclude category or tag filters removed them from the scan
 - **The release is not a season pack** or **season-pack matching is disabled**
 
-If the pack should match except for REPACK, HDR, WEB, or year differences, check **Cross-Seed > Season Packs > Matching settings**.
+If the pack should match except for REPACK, HDR, WEB, or year differences, check **Cross-Seed > Rules > Season packs > Matching settings**.
 
-See [Season Packs](season-packs) for the full flow and setup requirements.
+Open **Cross-Seed > Rules > Season packs** for recent season-pack activity. It shows the check/apply phase, status, reason, message, coverage, matched episodes, total episodes, selected instance, and link mode. You can also query `/api/cross-seed/season-pack/runs?limit=20` directly.
+
+See [Season Packs](season-packs) for the full flow, setup requirements, and season-pack-specific debugging steps.
 
 ## How do I see why a release was filtered?
 
@@ -50,6 +54,15 @@ loglevel = 'TRACE'
 ```
 
 Look for `[CROSSSEED-MATCH] Release filtered` entries showing exactly which field caused the mismatch (e.g., `group_mismatch`, `resolution_mismatch`, `language_mismatch`).
+
+For season-pack checks, `DEBUG` is often enough. Look for the torrent name and messages such as:
+
+- `season pack: failed to resolve Sonarr season total`
+- `season pack: metadata provider lookup failed`
+- `load cached torrents for instance`
+- `unsafe piece boundary with pending files`
+- `torrent added paused; recheck queued`
+- `Recheck completed below threshold, torrent left paused for manual review`
 
 ## When Rechecks Are Required (Reuse Mode)
 

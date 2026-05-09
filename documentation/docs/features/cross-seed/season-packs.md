@@ -14,11 +14,11 @@ qui can assemble season-pack torrents from individual episodes you already seed.
 2. autobrr sends the torrent name (and optionally the torrent file) to qui's `/api/cross-seed/season-pack/check` endpoint
 3. If a torrent file is provided, qui parses its file list to determine playable episode files. If not, qui uses metadata providers for episode counts.
 4. qui scans your qBittorrent instances for completed individual episodes that match the season pack's release details
-5. qui computes coverage using the largest available episode total from:
-   - Sonarr's season episode total, when Sonarr can resolve the show
-   - TVDB episode total, when a TVDB API key is configured
-   - TVMaze episode total (always available, public API)
-   - The playable episode count inside the pack torrent (when torrent data is provided)
+5. qui computes coverage from completed, matching local episodes:
+   - When torrent data is provided, the pack torrent's playable episode files define the expected pack layout
+   - qui asks Sonarr for the season total first, when Sonarr can resolve the show
+   - If Sonarr cannot resolve it, qui falls back to metadata providers: TVDB when configured, then TVMaze
+   - With torrent data, qui never uses a total lower than the playable episode count inside the pack torrent
 6. qui responds with:
    - `200 OK` - coverage meets the threshold, ready to apply
    - `404 Not Found` - local coverage is too low, the release is not a season pack, or the feature is disabled
@@ -28,16 +28,21 @@ qui can assemble season-pack torrents from individual episodes you already seed.
 
 ## Coverage Model
 
-qui picks the largest episode total from these sources (in priority order):
+qui uses a provider-first episode total with the pack torrent as the layout source.
 
-1. **Sonarr** - season episode total, when Sonarr can resolve the release
-2. **TVDB** - season episode total, when a TVDB API key is configured (opt-in)
-3. **TVMaze** - season episode total from the public API (always available, no config needed)
-4. **Pack torrent** - playable episode count from the torrent file (when torrent data is provided)
+For `/check` without torrent data:
 
-If none of these sources are available (no torrent data, no Sonarr, no metadata), the check endpoint skips threshold enforcement and only verifies that matching episodes exist. The apply endpoint always requires the torrent file and enforces the threshold.
+- qui asks Sonarr for the season episode total first
+- If Sonarr fails or cannot resolve the show, qui asks TVDB when configured, otherwise TVMaze
+- If no provider returns a total, qui skips threshold enforcement and only verifies that matching episodes exist
 
-For apply, the torrent file is the source of truth for file layout. Metadata providers only improve the threshold decision on check.
+For `/check` or `/apply` with torrent data:
+
+- The torrent file is the source of truth for the pack layout and playable episode files
+- qui still asks Sonarr, then TVDB/TVMaze, for a season total
+- If the provider total is lower than the playable episode count in the torrent, qui uses the playable file count instead
+
+The apply endpoint always requires the torrent file and enforces the threshold.
 
 When qui falls back to the pack torrent, it:
 
@@ -56,7 +61,7 @@ For an episode to count toward coverage, it must:
 
 This means mixed variants do **not** count toward coverage. For example, `720p WEB` episodes do not satisfy a `1080p BluRay` season pack.
 
-The default threshold is **75%**. Change it in **Cross-Seed > Season Packs** in the qui UI.
+The default threshold is **75%**. Change it in **Cross-Seed > Rules > Season packs** in the qui UI.
 
 ## Matching Settings
 
@@ -87,10 +92,13 @@ If automatic recheck or resume queueing cannot be started, qui reports `automati
 
 If **Skip Recheck** is enabled and the pack is incomplete, qui skips the apply instead of adding a broken torrent.
 
+In hardlink mode, incomplete packs are also subject to piece-boundary protection. If pending files share torrent pieces with linked episode files, qui blocks the apply unless **Skip piece boundary safety check** is enabled. Reflink mode avoids that hardlink corruption risk because qBittorrent writes to cloned files instead of the original seeded files.
+
 ## Prerequisites
 
 - **Local filesystem access** must be enabled on the target instance
 - **Hardlink or reflink mode** must be enabled on the target instance - season packs always use linked trees
+- The instance's link-mode base directory must be configured and writable. In the current UI/API this is the same base-directory field used by hardlink/reflink mode.
 
 Instances without local filesystem access or a link mode are skipped during eligibility checks.
 
@@ -100,7 +108,7 @@ See [Hardlink Mode](hardlink-mode) for setup instructions.
 
 ### 1. Enable Season Packs in qui
 
-- Go to **Cross-Seed > Season Packs**
+- Go to **Cross-Seed > Rules > Season packs**
 - Enable the feature
 - Set the coverage threshold (default 75%)
 - Optionally, add a TVDB API key for improved episode count accuracy. TVMaze is used automatically as a free fallback without any configuration.
@@ -203,14 +211,16 @@ When `/check` returns `200 OK`, send the torrent to `/api/cross-seed/season-pack
 | POST   | `/api/cross-seed/season-pack/apply`   | Assemble and add the pack  |
 | GET    | `/api/cross-seed/season-pack/runs`    | List recent activity       |
 
-The `/runs` endpoint accepts an optional `limit` query parameter (default 20, max 200).
+The `/runs` endpoint accepts an optional `limit` query parameter (default 20, max 200). qui keeps the most recent 200 season-pack runs and prunes older rows when new check/apply activity is recorded.
+
+`/check` returns `404 Not Found` for expected skips such as below-threshold coverage, disabled season packs, non-season-pack releases, or no eligible instances. `/apply` returns `500 Internal Server Error` when the pack cannot be applied, including skipped recheck-required packs, layout mismatch, add failure, or operational failures while reading qBittorrent state.
 
 ## Added Torrent Behavior
 
 When qui applies a season pack, it:
 
 - Always adds the torrent with an explicit `savepath` pointing at the linked tree
-- Applies the tags configured in **Cross-Seed > Season Packs**
+- Applies the tags configured in **Cross-Seed > Rules > Season packs**
 - Adds incomplete packs paused, then best-effort attempts automatic recheck and queues automatic resume. After recheck, qui resumes at or above the configured season-pack coverage threshold; below that threshold, the torrent stays paused for manual review.
 - Uses your normal cross-seed category rules:
   - Custom category, if enabled
@@ -228,4 +238,41 @@ When `instanceIds` is omitted or contains multiple instances:
 
 ## Activity
 
-Recent season pack activity is visible in the **Cross-Seed > Season Packs** tab. Each check and apply request creates one activity row showing the torrent name, coverage, status, and selected instance.
+Each check and apply request records a season-pack run. qui keeps the most recent 200 runs. Recent runs are shown in **Cross-Seed > Rules > Season packs**. The panel shows the torrent name, phase (`check` or `apply`), status, reason, message, selected instance, matched episodes, total episodes, coverage, link mode, and timestamp.
+
+You can also query recent runs directly:
+
+```bash
+curl -H "X-API-Key: YOUR_QUI_API_KEY" "http://localhost:7476/api/cross-seed/season-pack/runs?limit=20"
+```
+
+## Debugging
+
+Start with autobrr:
+
+- A rejected check usually appears as `[external webhook status code] not matching: got 404 want: 200`
+- That means qui answered the season-pack check but did not consider the release ready to apply
+- Confirm the release used the season-pack filter, not the regular cross-seed filter
+
+Then check qui:
+
+- Open **Cross-Seed > Rules > Season packs** and find the recent row for the torrent name
+- Check the phase (`check` or `apply`), status, reason, message, coverage, matched episodes, total episodes, selected instance, and link mode
+- If the row is missing, autobrr probably did not reach qui or used the wrong endpoint/API key. You can confirm with `/api/cross-seed/season-pack/runs?limit=20`.
+
+For deeper logs, set:
+
+```toml
+loglevel = 'DEBUG'
+```
+
+Look for messages containing the torrent name and these clues:
+
+- `season pack: failed to resolve Sonarr season total` - Sonarr lookup failed, so qui fell back to metadata providers or skipped threshold enforcement
+- `season pack: metadata provider lookup failed` - TVDB/TVMaze lookup failed
+- `load cached torrents for instance` - qBittorrent cache lookup failed, so the check/apply is an operational failure
+- `unsafe piece boundary with pending files` - hardlink mode blocked an incomplete pack for safety
+- `torrent added paused; recheck queued` - qui added the pack and queued automatic resume
+- `Recheck completed below threshold, torrent left paused for manual review` - qBittorrent rechecked below the configured season-pack coverage threshold
+
+Use `TRACE` when you need field-level matching details. Then look for `[CROSSSEED-MATCH] Release filtered` entries to see which release field caused an episode to be rejected.
