@@ -2137,8 +2137,8 @@ function EditRuleDialog({
         category: rule.torrentParams?.category ?? rule.assignedCategory ?? "",
         tags: rule.torrentParams?.tags ?? [],
         ignoreDays: rule.ignoreDays ?? 0,
-        contentLayout: rule.torrentParams?.content_layout ?? "",
-        addStopped: rule.torrentParams?.stopped ?? null,
+        contentLayout: rule.torrentParams?.content_layout ?? rule.torrentContentLayout ?? "",
+        addStopped: rule.torrentParams?.stopped ?? rule.addPaused ?? null,
       })
     }
   }, [rule])

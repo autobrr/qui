@@ -57,6 +57,14 @@ const LEGACY_AUTORUN_PROGRAM_PLACEHOLDER = "/path/to/script \"%N\" \"%I\""
 const MODERN_AUTORUN_PROGRAM_PLACEHOLDER = "/path/to/script \"%N\" \"%K\""
 const AUTORUN_PROGRAM_TIP = "Tip: wrap placeholders in quotes, e.g. \"%N\", to preserve spaces."
 const AUTORUN_ON_ADDED_MIN_WEBAPI_VERSION = "2.8.18" // qBittorrent 4.5.0+
+const DEFAULT_WATCH_FOLDER_MODE = 0
+const OVERRIDE_WATCH_FOLDER_SAVE_MODE = 1
+type WatchFolderDestination = "monitored-folder" | "default-save-location" | "other"
+type WatchFolderConfig = {
+  path: string
+  destination: WatchFolderDestination
+  otherPath: string
+}
 
 function isWebAPIVersionAtLeast(version: string, minimum: string): boolean {
   // WebAPI versions are "x.y.z". Compare each numeric part.
@@ -76,16 +84,51 @@ function isWebAPIVersionAtLeast(version: string, minimum: string): boolean {
   return true
 }
 
+function getWatchFolders(scanDirs: Record<string, unknown> | undefined): WatchFolderConfig[] {
+  if (!scanDirs || typeof scanDirs !== "object") {
+    return []
+  }
+
+  return Object.entries(scanDirs).map(([path, value]) => {
+    if (typeof value === "string") {
+      return { path, destination: "other", otherPath: value }
+    }
+    if (typeof value === "number" && value === OVERRIDE_WATCH_FOLDER_SAVE_MODE) {
+      return { path, destination: "default-save-location", otherPath: "" }
+    }
+    return { path, destination: "monitored-folder", otherPath: "" }
+  })
+}
+
+function toScanDirs(watchFolders: WatchFolderConfig[]): Record<string, number | string> {
+  return watchFolders.reduce<Record<string, number | string>>((acc, folder) => {
+    const path = folder.path.trim()
+    if (!path) {
+      return acc
+    }
+
+    acc[path] = folder.destination === "default-save-location"
+      ? OVERRIDE_WATCH_FOLDER_SAVE_MODE
+      : folder.destination === "other"
+        ? folder.otherPath
+        : DEFAULT_WATCH_FOLDER_MODE
+
+    return acc
+  }, {})
+}
+
 function SwitchSetting({
   label,
   checked,
   onCheckedChange,
   description,
+  disabled,
 }: {
   label: string
   checked: boolean
   onCheckedChange: (checked: boolean) => void
   description?: string
+  disabled?: boolean
 }) {
   const switchId = React.useId()
   const descriptionId = description ? `${switchId}-desc` : undefined
@@ -100,6 +143,7 @@ function SwitchSetting({
         checked={checked}
         onCheckedChange={onCheckedChange}
         aria-describedby={descriptionId}
+        disabled={disabled}
       />
       <div className="space-y-0.5">
         <span className="text-sm font-medium">{label}</span>
@@ -143,6 +187,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
       autorun_on_torrent_added_program: "",
       autorun_enabled: false,
       autorun_program: "",
+      watch_folders: [] as WatchFolderConfig[],
     },
     onSubmit: async ({ value }) => {
       try {
@@ -162,6 +207,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
           torrent_content_layout: value.torrent_content_layout ?? "Original",
           autorun_enabled: value.autorun_enabled,
           autorun_program: value.autorun_program,
+          scan_dirs: toScanDirs(value.watch_folders),
         }
         if (supportsAutorunOnTorrentAdded) {
           qbittorrentPrefs.autorun_on_torrent_added_enabled = value.autorun_on_torrent_added_enabled
@@ -199,6 +245,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
       form.setFieldValue("autorun_on_torrent_added_program", preferences.autorun_on_torrent_added_program ?? "")
       form.setFieldValue("autorun_enabled", preferences.autorun_enabled ?? false)
       form.setFieldValue("autorun_program", preferences.autorun_program ?? "")
+      form.setFieldValue("watch_folders", getWatchFolders(preferences.scan_dirs))
     }
   }, [preferences, form, supportsSubcategories])
 
@@ -396,6 +443,106 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
               </div>
             )}
           </form.Field>
+
+          <form.Subscribe selector={(state) => state.values.watch_folders}>
+            {(watchFolders) => (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <Label className="text-sm font-medium">Watch Folders</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Add one or more monitored folders and choose where discovered torrents should be saved.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => form.setFieldValue("watch_folders", [
+                      ...watchFolders,
+                      { path: "", destination: "default-save-location", otherPath: "" },
+                    ])}
+                  >
+                    Add Folder
+                  </Button>
+                </div>
+
+                {watchFolders.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No watch folders configured.
+                  </p>
+                )}
+
+                {watchFolders.map((watchFolder, index) => (
+                  <div key={`watch-folder-${index}`} className="rounded-md border p-3 space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Monitored Folder</Label>
+                        <Input
+                          value={watchFolder.path}
+                          onChange={(e) => {
+                            const next = [...watchFolders]
+                            next[index] = { ...next[index], path: e.target.value }
+                            form.setFieldValue("watch_folders", next)
+                          }}
+                          placeholder="/watchfolder"
+                          className={incognitoMode ? "blur-sm select-none" : ""}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Torrent Destination</Label>
+                        <Select
+                          value={watchFolder.destination}
+                          onValueChange={(value) => {
+                            const next = [...watchFolders]
+                            next[index] = { ...next[index], destination: value as WatchFolderDestination }
+                            form.setFieldValue("watch_folders", next)
+                          }}
+                          disabled={!watchFolder.path}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select destination" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="monitored-folder">Monitored folder</SelectItem>
+                            <SelectItem value="default-save-location">Default save location</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {watchFolder.destination === "other" && (
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Custom Save Path</Label>
+                        <Input
+                          value={watchFolder.otherPath}
+                          onChange={(e) => {
+                            const next = [...watchFolders]
+                            next[index] = { ...next[index], otherPath: e.target.value }
+                            form.setFieldValue("watch_folders", next)
+                          }}
+                          placeholder="foldername"
+                          disabled={!watchFolder.path}
+                          className={incognitoMode ? "blur-sm select-none" : ""}
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => form.setFieldValue("watch_folders", watchFolders.filter((_, i) => i !== index))}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </form.Subscribe>
 
           <Card className="bg-muted/20 border-muted/60">
             <CardHeader className="pb-3">
