@@ -5,8 +5,5 @@ package backups
 
 import "github.com/autobrr/qui/pkg/stringutils"
 
-var lowerTrimNormalizer = stringutils.NewDefaultNormalizer()
-
-func normalizeLowerTrim(value string) string {
-	return lowerTrimNormalizer.Normalize(value)
-}
+// normalizeLowerTrim is a convenience wrapper around stringutils.NormalizeLowerTrim
+var normalizeLowerTrim = stringutils.NormalizeLowerTrim
