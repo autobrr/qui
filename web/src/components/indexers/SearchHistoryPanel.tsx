@@ -104,18 +104,17 @@ function transformParams(params: Record<string, string>): ParamBadge[] {
     consumed.add("ep")
   }
 
-  // Map category ID to name with number in parentheses
+  // Map each category ID to a name with number in parentheses
   if (params.cat) {
-    // Handle comma-separated categories, use first one for display
-    const firstCat = params.cat.split(",")[0]
-    // Try exact match first, then fall back to parent category (e.g., 5030 -> 5000 -> TV)
-    let catName = CATEGORY_MAP[firstCat]
-    if (!catName && firstCat.length >= 4) {
-      const parentCat = `${firstCat.slice(0, 1)}000`
-      catName = CATEGORY_MAP[parentCat]
+    const cats = params.cat.split(",").map((c) => c.trim()).filter(Boolean)
+    for (const cat of cats) {
+      let catName = CATEGORY_MAP[cat]
+      if (!catName && cat.length >= 4) {
+        const parentCat = `${cat.slice(0, 1)}000`
+        catName = CATEGORY_MAP[parentCat]
+      }
+      badges.push({ label: catName ? `${catName} (${cat})` : cat })
     }
-    const catLabel = catName ? `${catName} (${firstCat})` : firstCat
-    badges.push({ label: catLabel })
     consumed.add("cat")
   }
 

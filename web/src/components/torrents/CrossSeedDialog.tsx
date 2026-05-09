@@ -31,7 +31,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
-import { formatBytes, formatRelativeTime } from "@/lib/utils"
+import { formatRelativeTime } from "@/lib/dateTimeUtils"
+import { formatBytes } from "@/lib/utils"
 import type {
   CrossSeedApplyResponse,
   CrossSeedTorrentSearchResponse,

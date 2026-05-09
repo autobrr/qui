@@ -1687,6 +1687,7 @@ type instanceCompletionSettingsResponse struct {
 	ExcludeTags        []string `json:"excludeTags"`
 	IndexerIDs         []int    `json:"indexerIds"`
 	BypassTorznabCache bool     `json:"bypassTorznabCache"`
+	DelaySeconds       int      `json:"delaySeconds"`
 }
 
 // toInstanceCompletionSettingsResponse converts model to API response.
@@ -1700,6 +1701,7 @@ func toInstanceCompletionSettingsResponse(s *models.InstanceCrossSeedCompletionS
 		ExcludeTags:        s.ExcludeTags,
 		IndexerIDs:         s.IndexerIDs,
 		BypassTorznabCache: s.BypassTorznabCache,
+		DelaySeconds:       s.DelaySeconds,
 	}
 }
 
@@ -1712,6 +1714,7 @@ type instanceCompletionSettingsRequest struct {
 	ExcludeTags        []string `json:"excludeTags"`
 	IndexerIDs         []int    `json:"indexerIds"`
 	BypassTorznabCache bool     `json:"bypassTorznabCache"`
+	DelaySeconds       int      `json:"delaySeconds"`
 }
 
 // GetInstanceCompletionSettings returns the completion settings for a specific instance.
@@ -1791,6 +1794,11 @@ func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWrite
 		return
 	}
 
+	if req.DelaySeconds < 0 || req.DelaySeconds > models.MaxCompletionDelaySeconds {
+		RespondError(w, http.StatusBadRequest, fmt.Sprintf("delaySeconds must be between 0 and %d", models.MaxCompletionDelaySeconds))
+		return
+	}
+
 	settings := &models.InstanceCrossSeedCompletionSettings{
 		InstanceID:         instanceID,
 		Enabled:            req.Enabled,
@@ -1800,6 +1808,7 @@ func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWrite
 		ExcludeTags:        req.ExcludeTags,
 		IndexerIDs:         req.IndexerIDs,
 		BypassTorznabCache: req.BypassTorznabCache,
+		DelaySeconds:       req.DelaySeconds,
 	}
 
 	saved, err := h.completionStore.Upsert(r.Context(), settings)

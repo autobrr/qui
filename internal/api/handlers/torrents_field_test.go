@@ -85,6 +85,37 @@ func TestGetTorrentField_TagBaselineHandlesDuplicateCrossInstanceHashesWithoutTa
 	require.ElementsMatch(t, []string{"movies", "hdr"}, response.Values)
 }
 
+func TestGetTorrentField_MagnetURIReturnsSelectedLinks(t *testing.T) {
+	t.Parallel()
+
+	instanceStore, syncManager, instanceIDs := createTorrentFieldTestHarness(t, map[string][]qbt.Torrent{
+		"alpha": {
+			{Name: "Alpha", Hash: "aaa", MagnetURI: "magnet:?xt=urn:btih:aaa"},
+			{Name: "Beta", Hash: "bbb"},
+			{Name: "Gamma", Hash: "ccc", MagnetURI: "magnet:?xt=urn:btih:ccc"},
+		},
+	})
+
+	handler := NewTorrentsHandler(syncManager, nil, instanceStore)
+	req := newTorrentFieldRequest(t, instanceIDs["alpha"], map[string]any{
+		"field": "magnet_uri",
+		"sort":  "name",
+		"order": "asc",
+	})
+
+	rec := httptest.NewRecorder()
+	handler.GetTorrentField(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var response quiqbt.TorrentFieldResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+	require.Equal(t, []string{
+		"magnet:?xt=urn:btih:aaa",
+		"magnet:?xt=urn:btih:ccc",
+	}, response.Values)
+}
+
 func createTorrentFieldTestHarness(t *testing.T, torrentsByInstanceName map[string][]qbt.Torrent) (*models.InstanceStore, *quiqbt.SyncManager, map[string]int) {
 	t.Helper()
 

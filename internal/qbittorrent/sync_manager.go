@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -1267,7 +1268,7 @@ type TorrentFieldResponse struct {
 }
 
 // GetTorrentField returns field values for torrents matching the given filters.
-// Supported fields: "name", "hash", "full_path" (save_path/name), "tags".
+// Supported fields: "name", "hash", "full_path" (save_path/name), "tags", "magnet_uri".
 // excludeHashes and excludeTargets remove specific torrents from the result.
 func (sm *SyncManager) GetTorrentField(
 	ctx context.Context,
@@ -1341,6 +1342,8 @@ func (sm *SyncManager) GetTorrentField(
 			}
 		case "tags":
 			v = t.Tags
+		case "magnet_uri":
+			v = strings.TrimSpace(t.MagnetURI)
 		}
 		if field == "tags" || v != "" {
 			values = append(values, v)
@@ -5493,6 +5496,28 @@ func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, pr
 	return nil
 }
 
+// NormalizeScanDirsPreference validates and normalizes the scan_dirs preference
+// using go-qbittorrent's typed monitored folder support.
+func (sm *SyncManager) NormalizeScanDirsPreference(prefs map[string]any) error {
+	rawScanDirs, ok := prefs["scan_dirs"]
+	if !ok {
+		return nil
+	}
+
+	encoded, err := json.Marshal(rawScanDirs)
+	if err != nil {
+		return err
+	}
+
+	var scanDirs qbt.MonitoredFolders
+	if err := json.Unmarshal(encoded, &scanDirs); err != nil {
+		return err
+	}
+
+	prefs["scan_dirs"] = scanDirs
+	return nil
+}
+
 // GetDirectoryContentCtx lists folders inside a directory (for autocomplete).
 func (sm *SyncManager) GetDirectoryContentCtx(ctx context.Context, instanceID int, dirPath string, withMetadata bool) (any, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
@@ -6346,6 +6371,24 @@ func (sm *SyncManager) SetRSSRule(ctx context.Context, instanceID int, ruleName 
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// qBittorrent < 5.0 silently ignores torrentParams and only reads the legacy flat
+	// fields. Mirror any torrentParams values to their flat equivalents so rules behave
+	// correctly on older instances.
+	if rule.TorrentParams != nil {
+		if rule.TorrentParams.Category != "" && rule.AssignedCategory == "" {
+			rule.AssignedCategory = rule.TorrentParams.Category
+		}
+		if rule.TorrentParams.SavePath != "" && rule.SavePath == "" {
+			rule.SavePath = rule.TorrentParams.SavePath
+		}
+		if rule.TorrentParams.Stopped != nil && rule.AddPaused == nil {
+			rule.AddPaused = rule.TorrentParams.Stopped
+		}
+		if rule.TorrentParams.ContentLayout != "" && rule.TorrentContentLayout == "" {
+			rule.TorrentContentLayout = rule.TorrentParams.ContentLayout
+		}
 	}
 
 	return client.SetRSSRuleCtx(ctx, ruleName, rule)
