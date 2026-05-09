@@ -15,6 +15,7 @@ import (
 	"github.com/moistari/rls"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlinktree"
@@ -652,6 +653,54 @@ func TestApplySeasonPackWebhook_ReturnsAlreadyExistsWhenTorrentPresent(t *testin
 	require.Equal(t, "apply", store.runs[0].Phase)
 	require.Equal(t, "skipped", store.runs[0].Status)
 	require.Equal(t, "already_exists", store.runs[0].Reason)
+}
+
+func TestApplySeasonPackWebhook_LoadsPersistedAutomationSettingsWithoutLoader(t *testing.T) {
+	fix := newSeasonPackFixture(t)
+	db, err := database.New(filepath.Join(t.TempDir(), "qui.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	automationStore, err := models.NewCrossSeedStore(db, make([]byte, 32))
+	require.NoError(t, err)
+	_, err = automationStore.UpsertSettings(context.Background(), &models.CrossSeedAutomationSettings{
+		SeasonPackEnabled:           true,
+		SeasonPackCoverageThreshold: 0.75,
+	})
+	require.NoError(t, err)
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          t.TempDir(),
+	}
+	sm := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: {}},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+
+	svc := &Service{
+		instanceStore:      &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:        sm,
+		releaseCache:       NewReleaseCache(),
+		automationStore:    automationStore,
+		seasonPackRunStore: &stubSeasonPackRunStore{},
+		recheckResumeChan:  make(chan *pendingResume, 1),
+	}
+
+	var resp *SeasonPackApplyResponse
+	require.NotPanics(t, func() {
+		resp, err = svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+			TorrentName: fix.packName,
+			TorrentData: fix.torrentData,
+			InstanceIDs: []int{inst.ID},
+		})
+	})
+	require.NoError(t, err)
+	require.Equal(t, "drifted", resp.Reason)
 }
 
 func TestApplySeasonPackWebhook_SelectsDeterministicWinner(t *testing.T) {

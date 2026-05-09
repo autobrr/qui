@@ -131,7 +131,7 @@ type seasonPackPrep struct {
 // prepareSeasonPack runs the shared validation pipeline for check and apply.
 // Returns (nil, reason, message, nil) on expected early exit, or (nil, "", "", err) on internal error.
 func (s *Service) prepareSeasonPack(ctx context.Context, torrentName, torrentData string, instanceIDs []int) (*seasonPackPrep, string, string, error) {
-	settings, err := s.automationSettingsLoader(ctx)
+	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("load automation settings: %w", err)
 	}
