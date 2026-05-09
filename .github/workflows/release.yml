@@ -121,6 +121,9 @@ jobs:
           name: web-dist
           path: web/dist
 
+      - name: Create web dist tarball
+        run: tar -czf web-dist.tar.gz -C . web/dist
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
@@ -191,6 +194,9 @@ jobs:
         with:
           name: web-dist
           path: web/dist
+
+      - name: Create web dist tarball
+        run: tar -czf web-dist.tar.gz -C . web/dist
 
       - name: Set up Go
         uses: actions/setup-go@v6
