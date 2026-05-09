@@ -24,7 +24,7 @@ qui can assemble season-pack torrents from individual episodes you already seed.
    - `404 Not Found` - local coverage is too low, the release is not a season pack, or the feature is disabled
 7. On `200 OK`, autobrr sends the torrent file to `/api/cross-seed/season-pack/apply`
 8. qui links the matched episodes, applies your configured season-pack tags, and adds the season pack torrent
-9. If episodes or extras are still missing, qui adds the torrent paused, attempts an automatic recheck, and may queue an automatic resume if qBittorrent reports enough linked data. Best-effort fallbacks are reported by name, including `automatic recheck failed`, `automatic resume is unavailable`, and `automatic resume queue is full`.
+9. If episodes or extras are still missing, qui adds the torrent paused, attempts an automatic recheck, and queues automatic resume. After recheck, qui resumes the torrent when qBittorrent reports progress at or above your configured season-pack coverage threshold. If recheck finishes below that threshold, qui leaves the torrent paused for manual review. Best-effort fallbacks are reported by name, including `automatic recheck failed`, `automatic resume is unavailable`, and `automatic resume queue is full`.
 
 ## Coverage Model
 
@@ -81,7 +81,9 @@ When `/apply` runs, qui:
 - Leaves unmatched episodes and extras for qBittorrent to download
 - Adds the torrent paused when anything is still missing
 - Attempts an automatic recheck so qBittorrent can discover the linked bytes
-- May auto-resume after recheck if automatic resume is available and queueing succeeds; otherwise qui reports `automatic recheck failed`, `automatic resume is unavailable`, or `automatic resume queue is full`
+- Queues automatic resume after recheck. qui resumes the torrent when qBittorrent reports progress at or above the configured season-pack coverage threshold, so qBittorrent can download the remaining files or pieces. If recheck finishes below that threshold, qui leaves the torrent paused for manual review.
+
+If automatic recheck or resume queueing cannot be started, qui reports `automatic recheck failed`, `automatic resume is unavailable`, or `automatic resume queue is full`.
 
 If **Skip Recheck** is enabled and the pack is incomplete, qui skips the apply instead of adding a broken torrent.
 
@@ -209,7 +211,7 @@ When qui applies a season pack, it:
 
 - Always adds the torrent with an explicit `savepath` pointing at the linked tree
 - Applies the tags configured in **Cross-Seed > Season Packs**
-- Adds incomplete packs paused, then best-effort attempts automatic recheck and automatic resume; fallback outcomes include `automatic recheck failed`, `automatic resume is unavailable`, and `automatic resume queue is full`
+- Adds incomplete packs paused, then best-effort attempts automatic recheck and queues automatic resume. After recheck, qui resumes at or above the configured season-pack coverage threshold; below that threshold, the torrent stays paused for manual review.
 - Uses your normal cross-seed category rules:
   - Custom category, if enabled
   - Otherwise category affix mode, if enabled
