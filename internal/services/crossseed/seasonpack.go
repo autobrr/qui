@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/anacrolix/torrent/metainfo"
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -258,7 +259,10 @@ func (s *Service) CheckSeasonPackWebhook(ctx context.Context, req *SeasonPackChe
 		return s.checkSeasonPackNoThreshold(ctx, req.TorrentName, prep)
 	}
 
-	matches := s.computeCoverage(ctx, prep.eligible, prep.packRelease, prep.packEpisodes, prep.totalEpisodes, prep.settings)
+	matches, err := s.computeCoverage(ctx, prep.eligible, prep.packRelease, prep.packEpisodes, prep.totalEpisodes, prep.settings)
+	if err != nil {
+		return nil, err
+	}
 
 	var passing []SeasonPackCheckMatch
 	for _, m := range matches {
@@ -280,9 +284,7 @@ func (s *Service) checkSeasonPackNoThreshold(ctx context.Context, torrentName st
 	for _, inst := range prep.eligible {
 		cached, err := s.syncManager.GetCachedInstanceTorrents(ctx, inst.ID)
 		if err != nil {
-			log.Warn().Err(err).Int("instanceID", inst.ID).
-				Msg("failed to get cached torrents for season pack coverage")
-			continue
+			return nil, fmt.Errorf("load cached torrents for instance %d: %w", inst.ID, err)
 		}
 
 		matched := s.matchEpisodesOnInstance(cached, prep.packRelease, prep.packEpisodes, prep.settings)
@@ -353,7 +355,15 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		}
 	}
 
-	matches := s.computeCoverage(ctx, prep.eligible, prep.packRelease, prep.packEpisodes, prep.totalEpisodes, prep.settings)
+	matches, err := s.computeCoverage(ctx, prep.eligible, prep.packRelease, prep.packEpisodes, prep.totalEpisodes, prep.settings)
+	if err != nil {
+		message := err.Error()
+		s.recordApplyRun(ctx, req.TorrentName, "coverage_check_failed", message, 0, 0, prep.totalEpisodes, 0, "")
+		return &SeasonPackApplyResponse{
+			Reason:  "coverage_check_failed",
+			Message: message,
+		}, nil
+	}
 
 	winner := selectWinner(matches, prep.threshold)
 	if winner == nil {
@@ -798,15 +808,13 @@ func (s *Service) computeCoverage(
 	packEpisodes map[episodeIdentity]struct{},
 	totalEpisodes int,
 	settings *models.CrossSeedAutomationSettings,
-) []SeasonPackCheckMatch {
+) ([]SeasonPackCheckMatch, error) {
 	var matches []SeasonPackCheckMatch
 
 	for _, inst := range instances {
 		cached, err := s.syncManager.GetCachedInstanceTorrents(ctx, inst.ID)
 		if err != nil {
-			log.Warn().Err(err).Int("instanceID", inst.ID).
-				Msg("failed to get cached torrents for season pack coverage")
-			continue
+			return nil, fmt.Errorf("load cached torrents for instance %d: %w", inst.ID, err)
 		}
 
 		matched := s.matchEpisodesOnInstance(cached, packRelease, packEpisodes, settings)
@@ -823,7 +831,7 @@ func (s *Service) computeCoverage(
 		})
 	}
 
-	return matches
+	return matches, nil
 }
 
 // matchEpisodesOnInstance finds which pack episodes are present as individual
@@ -1125,10 +1133,19 @@ func rollbackSeasonPackTree(linkMode string, plan *hardlinktree.TreePlan) error 
 		return nil
 	}
 
-	if err := os.RemoveAll(plan.RootDir); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Remove(plan.RootDir); err != nil &&
+		!errors.Is(err, os.ErrNotExist) &&
+		!seasonPackDirNotEmpty(err) {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
+}
+
+func seasonPackDirNotEmpty(err error) bool {
+	return errors.Is(err, syscall.ENOTEMPTY) ||
+		strings.Contains(err.Error(), "not empty") ||
+		strings.Contains(err.Error(), "directory not empty") ||
+		strings.Contains(err.Error(), "The directory is not empty")
 }
 
 // selectWinner picks the best instance from the coverage matches using

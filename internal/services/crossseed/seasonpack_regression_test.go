@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
+	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -22,6 +23,14 @@ type seasonPackRegressionSyncManager struct {
 	*seasonPackSyncManager
 	filesErr error
 	hashErr  error
+	cacheErr error
+}
+
+func (s *seasonPackRegressionSyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]internalqb.CrossInstanceTorrentView, error) {
+	if s.cacheErr != nil {
+		return nil, s.cacheErr
+	}
+	return s.fakeSyncManager.GetCachedInstanceTorrents(ctx, instanceID)
 }
 
 func (s *seasonPackRegressionSyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
@@ -60,6 +69,27 @@ func TestResolveSeasonPackSourcePath_RejectsEscapingRelativePaths(t *testing.T) 
 	require.Empty(t, resolveSeasonPackSourcePath("/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "../escape.mkv"))
 	require.Empty(t, resolveSeasonPackSourcePath("/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "/escape.mkv"))
 	require.Empty(t, resolveSeasonPackSourcePath("/downloads/Show.S01E01.1080p.WEB.x264-GRP.mkv", files, "subdir/../../escape.mkv"))
+}
+
+func TestRollbackSeasonPackTree_PreservesUnrelatedFilesInRoot(t *testing.T) {
+	rootDir := filepath.Join(t.TempDir(), "pack")
+	plannedFile := filepath.Join(rootDir, "Show.S01E01.1080p.WEB.x264-GRP.mkv")
+	unrelatedFile := filepath.Join(rootDir, "unrelated.txt")
+	require.NoError(t, os.MkdirAll(rootDir, 0o755))
+	require.NoError(t, os.WriteFile(plannedFile, []byte("planned"), 0o600))
+	require.NoError(t, os.WriteFile(unrelatedFile, []byte("keep"), 0o600))
+
+	err := rollbackSeasonPackTree("hardlink", &hardlinktree.TreePlan{
+		RootDir: rootDir,
+		Files: []hardlinktree.FilePlan{
+			{TargetPath: plannedFile},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NoFileExists(t, plannedFile)
+	require.FileExists(t, unrelatedFile)
+	require.DirExists(t, rootDir)
 }
 
 func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
@@ -137,6 +167,87 @@ func TestApplySeasonPackWebhook_ReturnsOperationalFailureWhenExistingHashCheckFa
 	require.Len(t, store.runs, 1)
 	require.Equal(t, "failed", store.runs[0].Status)
 	require.Equal(t, "existing_check_failed", store.runs[0].Reason)
+}
+
+func TestCheckSeasonPackWebhook_ReturnsErrorWhenCoverageLookupFails(t *testing.T) {
+	fix := newSeasonPackFixture(t)
+	inst := &models.Instance{
+		ID:                       1,
+		Name:                     "Test",
+		IsActive:                 true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          t.TempDir(),
+	}
+
+	baseSM := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: nil},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+	sm := &seasonPackRegressionSyncManager{
+		seasonPackSyncManager: &seasonPackSyncManager{fakeSyncManager: baseSM},
+		cacheErr:              errors.New("cached torrent lookup failed"),
+	}
+
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+	}
+
+	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
+		TorrentName: fix.packName,
+		TorrentData: fix.torrentData,
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.Nil(t, resp)
+	require.ErrorContains(t, err, "cached torrent lookup failed")
+}
+
+func TestApplySeasonPackWebhook_ReturnsOperationalFailureWhenCoverageLookupFails(t *testing.T) {
+	fix := newSeasonPackFixture(t)
+	store := &stubSeasonPackRunStore{}
+	inst := &models.Instance{
+		ID:                       1,
+		Name:                     "Test",
+		IsActive:                 true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          t.TempDir(),
+	}
+
+	baseSM := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: nil},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+	sm := &seasonPackRegressionSyncManager{
+		seasonPackSyncManager: &seasonPackSyncManager{fakeSyncManager: baseSM},
+		cacheErr:              errors.New("cached torrent lookup failed"),
+	}
+
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackRunStore:       store,
+	}
+
+	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+		TorrentName: fix.packName,
+		TorrentData: fix.torrentData,
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.False(t, resp.Applied)
+	require.Equal(t, "coverage_check_failed", resp.Reason)
+	require.Contains(t, resp.Message, "cached torrent lookup failed")
+	require.Len(t, store.runs, 1)
+	require.Equal(t, "failed", store.runs[0].Status)
+	require.Equal(t, "coverage_check_failed", store.runs[0].Reason)
 }
 
 func TestApplySeasonPackWebhook_ClassifiesFileBatchErrorsAsOperationalFailures(t *testing.T) {
@@ -219,8 +330,9 @@ func TestApplySeasonPackWebhook_RollsBackPartialTreeWhenLinkCreationFails(t *tes
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 1.0),
 		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) error {
-			require.NoError(t, os.MkdirAll(plan.RootDir, 0o755))
-			require.NoError(t, os.WriteFile(filepath.Join(plan.RootDir, "partial.txt"), []byte("partial"), 0o600))
+			require.NotEmpty(t, plan.Files)
+			require.NoError(t, os.MkdirAll(filepath.Dir(plan.Files[0].TargetPath), 0o755))
+			require.NoError(t, os.WriteFile(plan.Files[0].TargetPath, []byte("partial"), 0o600))
 			return errors.New("link creator failed")
 		},
 	}
