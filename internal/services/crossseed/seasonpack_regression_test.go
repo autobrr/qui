@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -115,6 +116,72 @@ func TestBuildSeasonPackPlan_RejectsEscapingTargetPaths(t *testing.T) {
 
 	require.ErrorIs(t, err, errLayoutMismatch)
 	require.ErrorContains(t, err, "invalid pack target path")
+}
+
+func TestApplySeasonPackWebhook_SelectsConcreteBaseDirFromCommaSeparatedConfig(t *testing.T) {
+	fix := newSeasonPackFixture(t)
+	store := &stubSeasonPackRunStore{}
+	sourceDir := t.TempDir()
+	invalidBaseDir := filepath.Join(t.TempDir(), "not-a-directory")
+	selectedBaseDir := filepath.Join(t.TempDir(), "selected")
+	require.NoError(t, os.WriteFile(invalidBaseDir, []byte("file"), 0o600))
+
+	inst := &models.Instance{
+		ID:                       1,
+		Name:                     "Test",
+		IsActive:                 true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          invalidBaseDir + ", " + selectedBaseDir,
+	}
+
+	hashes := []string{"e01", "e02", "e03", "e04"}
+	require.Len(t, fix.packFiles, len(hashes))
+	episodeTorrents := make([]qbt.Torrent, 0, len(fix.packFiles))
+	for i, fileName := range fix.packFiles {
+		sourcePath := filepath.Join(sourceDir, fileName)
+		require.NoError(t, os.WriteFile(sourcePath, []byte("source"), 0o600))
+		episodeTorrents = append(episodeTorrents, qbt.Torrent{
+			Hash:        hashes[i],
+			Name:        strings.TrimSuffix(fileName, filepath.Ext(fileName)),
+			ContentPath: sourcePath,
+			Progress:    1.0,
+		})
+	}
+
+	baseSM := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+	baseSM.files = seasonPackEpisodeFiles(t, fix.torrentData, hashes...)
+	sm := &seasonPackRegressionSyncManager{
+		seasonPackSyncManager: &seasonPackSyncManager{fakeSyncManager: baseSM},
+	}
+
+	var capturedPlan *hardlinktree.TreePlan
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 1.0),
+		seasonPackRunStore:       store,
+		seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) error {
+			capturedPlan = plan
+			return nil
+		},
+	}
+
+	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+		TorrentName: fix.packName,
+		TorrentData: fix.torrentData,
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.Applied)
+	require.NotNil(t, capturedPlan)
+	require.Equal(t, filepath.Join(selectedBaseDir, fix.packName), capturedPlan.RootDir)
+	require.Equal(t, capturedPlan.RootDir, sm.addCalls[0].options["savepath"])
 }
 
 func TestApplySeasonPackWebhook_ReturnsOperationalFailureWhenExistingHashCheckFails(t *testing.T) {

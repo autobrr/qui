@@ -21,6 +21,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/reflinktree"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -465,9 +466,14 @@ func (s *Service) assembleSeasonPack(
 		return nil, nil, nil, err
 	}
 
+	selectedBaseDir, err := selectSeasonPackBaseDir(inst.HardlinkBaseDir, localFiles)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
 	planBuild, err := buildSeasonPackPlan(
 		prep.meta.Files, prep.packRelease, prep.meta.Name,
-		inst.HardlinkBaseDir, localFiles, seasonPackNormalizer(s), prep.settings,
+		selectedBaseDir, localFiles, seasonPackNormalizer(s), prep.settings,
 	)
 	if err != nil {
 		return nil, nil, nil, err
@@ -494,6 +500,78 @@ func (s *Service) assembleSeasonPack(
 	}
 
 	return planBuild, prep.torrentBytes, episodes, nil
+}
+
+func selectSeasonPackBaseDir(configuredDirs string, localFiles map[episodeIdentity]seasonPackLocalFile) (string, error) {
+	dirs := parseSeasonPackBaseDirs(configuredDirs)
+	if len(dirs) == 0 {
+		return "", fmt.Errorf("%w: hardlink base dir not configured", errLayoutMismatch)
+	}
+	if len(dirs) == 1 {
+		return dirs[0], nil
+	}
+
+	sourcePaths := seasonPackSourcePaths(localFiles)
+	if len(sourcePaths) == 0 {
+		return "", fmt.Errorf("%w: no resolved episode files for base dir selection", errLayoutMismatch)
+	}
+
+	var lastErr error
+	for _, dir := range dirs {
+		matchesAllSources, err := seasonPackBaseDirMatchesAllSources(dir, sourcePaths)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if matchesAllSources {
+			return dir, nil
+		}
+	}
+
+	if lastErr != nil {
+		return "", fmt.Errorf("%w: no base directory on same filesystem as season pack sources (last error: %w)", errLayoutMismatch, lastErr)
+	}
+	return "", fmt.Errorf("%w: no base directory on same filesystem as season pack sources", errLayoutMismatch)
+}
+
+func seasonPackSourcePaths(localFiles map[episodeIdentity]seasonPackLocalFile) []string {
+	sourcePaths := make([]string, 0, len(localFiles))
+	for _, localFile := range localFiles {
+		if localFile.sourcePath != "" {
+			sourcePaths = append(sourcePaths, localFile.sourcePath)
+		}
+	}
+	sort.Strings(sourcePaths)
+	return sourcePaths
+}
+
+func seasonPackBaseDirMatchesAllSources(dir string, sourcePaths []string) (bool, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return false, fmt.Errorf("failed to create directory %s: %w", dir, err)
+	}
+
+	for _, sourcePath := range sourcePaths {
+		sameFS, err := fsutil.SameFilesystem(sourcePath, dir)
+		if err != nil {
+			return false, fmt.Errorf("failed to check filesystem for %s: %w", dir, err)
+		}
+		if !sameFS {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func parseSeasonPackBaseDirs(configuredDirs string) []string {
+	parts := strings.Split(configuredDirs, ",")
+	dirs := make([]string, 0, len(parts))
+	for _, part := range parts {
+		dir := strings.TrimSpace(part)
+		if dir != "" {
+			dirs = append(dirs, dir)
+		}
+	}
+	return dirs
 }
 
 // failApply handles apply errors, categorizing by reason prefix.
