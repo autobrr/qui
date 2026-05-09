@@ -355,6 +355,13 @@ function formatSeasonPackCoverage(run: SeasonPackRun) {
   return `${Math.round(run.coverage * 100)}%`
 }
 
+function formatSeasonPackReason(run: SeasonPackRun): string | null {
+  const reason = run.reason?.trim()
+  if (!reason) return null
+  if (reason.toLowerCase() === run.status) return null
+  return reason.replace(/_/g, " ")
+}
+
 function SeasonPackRunsPanel({
   runs,
   isLoading,
@@ -473,26 +480,29 @@ function SeasonPackRunsPanel({
             ) : (
               <div className="overflow-hidden rounded-md border border-border/70">
                 <div className="max-h-[420px] divide-y divide-border/70 overflow-y-auto">
-                  {filteredRuns.map(run => (
-                    <div key={run.id} className="grid gap-2 bg-background/50 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <Badge variant={seasonPackStatusVariant(run.status)} className="capitalize">{run.status}</Badge>
-                          <Badge variant="outline" className="uppercase">{run.phase}</Badge>
-                          {run.reason && <span className="text-xs text-muted-foreground">{run.reason}</span>}
+                  {filteredRuns.map(run => {
+                    const reasonLabel = formatSeasonPackReason(run)
+                    return (
+                      <div key={run.id} className="grid gap-2 bg-background/50 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <Badge variant={seasonPackStatusVariant(run.status)} className="capitalize">{run.status}</Badge>
+                            <Badge variant="outline" className="uppercase">{run.phase}</Badge>
+                            {reasonLabel && <span className="text-xs text-muted-foreground">· {reasonLabel}</span>}
+                          </div>
+                          <p className="truncate text-sm font-medium" title={run.torrentName}>{run.torrentName}</p>
+                          {run.message && <p className="line-clamp-2 text-xs text-muted-foreground">{run.message}</p>}
                         </div>
-                        <p className="truncate text-sm font-medium" title={run.torrentName}>{run.torrentName}</p>
-                        {run.message && <p className="line-clamp-2 text-xs text-muted-foreground">{run.message}</p>}
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground md:min-w-72 md:grid-cols-3">
+                          <span>Coverage <span className="font-medium text-foreground">{formatSeasonPackCoverage(run)}</span></span>
+                          <span>Episodes <span className="font-medium text-foreground">{run.matchedEpisodes}/{run.totalEpisodes || "?"}</span></span>
+                          <span>Instance <span className="font-medium text-foreground">{run.instanceId ?? "—"}</span></span>
+                          <span>Mode <span className="font-medium text-foreground">{run.linkMode || "—"}</span></span>
+                          <span className="col-span-2 md:col-span-2">{formatDateValue(run.createdAt)}</span>
+                        </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground md:min-w-72 md:grid-cols-3">
-                        <span>Coverage <span className="font-medium text-foreground">{formatSeasonPackCoverage(run)}</span></span>
-                        <span>Episodes <span className="font-medium text-foreground">{run.matchedEpisodes}/{run.totalEpisodes || "?"}</span></span>
-                        <span>Instance <span className="font-medium text-foreground">{run.instanceId ?? "—"}</span></span>
-                        <span>Mode <span className="font-medium text-foreground">{run.linkMode || "—"}</span></span>
-                        <span className="col-span-2 md:col-span-2">{formatDateValue(run.createdAt)}</span>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}
