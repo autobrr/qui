@@ -12,6 +12,48 @@ import { ChevronDown, ChevronUp } from "lucide-react"
 import { ColumnFilterPopover } from "./ColumnFilterPopover"
 import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
 
+{/* Auto-fit width for column headers on double-click*/}
+const TORRENT_TABLE_COLUMN_MEASURE = "data-torrent-column-measure"
+
+function escapeColumnIdForSelector(columnId: string): string {
+  const cssEscape = (globalThis as unknown as { CSS?: { escape?: (id: string) => string } }).CSS?.escape
+  return typeof cssEscape === "function" ? cssEscape(columnId) : columnId.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")
+}
+
+function measureNaturalOuterWidth(source: HTMLElement): number {
+  const body = source.ownerDocument.body
+  if (!body) {
+    return source.scrollWidth
+  }
+
+  const clone = source.cloneNode(true) as HTMLElement
+  clone.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;left:-99999px;top:0;width:max-content;max-width:none;min-width:min-content;height:auto;flex-shrink:0;flex-grow:0;box-sizing:border-box"
+
+  body.appendChild(clone)
+  const rect = clone.getBoundingClientRect()
+  const widthPx = Math.max(clone.scrollWidth, rect.width)
+  body.removeChild(clone)
+  return widthPx
+}
+
+function measureTorrentColumnFitWidth(gridRoot: HTMLElement, columnId: string): number | null {
+  const nodes = gridRoot.querySelectorAll<HTMLElement>(
+    `[${TORRENT_TABLE_COLUMN_MEASURE}="${escapeColumnIdForSelector(columnId)}"]`
+  )
+  if (nodes.length === 0) {
+    return null
+  }
+
+  let maxContent = 0
+  nodes.forEach((el) => {
+    maxContent = Math.max(maxContent, measureNaturalOuterWidth(el))
+  })
+
+  const resizeHandleGutterPx = 12
+  return maxContent + resizeHandleGutterPx
+}
+{/* Auto-fit width for column headers on double-click end*/}
+
 interface DraggableTableHeaderProps {
   header: Header<Torrent, unknown>
   columnFilters?: ColumnFilter[]
@@ -65,6 +107,7 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
       ref={setNodeRef}
       style={style}
       className="group overflow-hidden"
+      data-torrent-column-measure={column.id}
     >
       <div
         className={`${headerPadding} ${viewMode === "dense" ? "h-7 text-xs" : "h-10 text-sm"} text-left font-medium text-muted-foreground flex items-center ${canSort ? "cursor-pointer select-none" : ""
@@ -128,6 +171,30 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
         <div
           onMouseDown={canResize ? header.getResizeHandler() : undefined}
           onTouchStart={canResize ? header.getResizeHandler() : undefined}
+          onDoubleClick={(event) => {
+            if (!canResize) {
+              return
+            }
+            event.preventDefault()
+            event.stopPropagation()
+            const gridRoot = event.currentTarget.closest("[role=\"grid\"]") as HTMLElement | null
+            if (!gridRoot) {
+              column.resetSize()
+              return
+            }
+            const measured = measureTorrentColumnFitWidth(gridRoot, column.id)
+            if (measured === null) {
+              column.resetSize()
+              return
+            }
+            const minSize = column.columnDef.minSize ?? 20
+            const maxSize = column.columnDef.maxSize ?? Number.MAX_SAFE_INTEGER
+            const nextWidth = Math.min(Math.max(Math.ceil(measured), minSize), maxSize)
+            table.setColumnSizing(prev => ({
+              ...prev,
+              [column.id]: nextWidth,
+            }))
+          }}
           className={`absolute right-0 top-0 h-full w-2 select-none group/resize flex justify-end ${canResize ? "cursor-col-resize touch-none" : "pointer-events-none"
           }`}
         >
