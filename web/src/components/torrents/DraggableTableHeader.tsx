@@ -13,7 +13,7 @@ import { ColumnFilterPopover } from "./ColumnFilterPopover"
 import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
 
 {/* Auto-fit width for column headers on double-click*/}
-const TORRENT_TABLE_COLUMN_MEASURE = "data-torrent-column-measure"
+const TORRENT_ROW_CELL_MEASURE = "data-torrent-column-measure"
 
 function escapeColumnIdForSelector(columnId: string): string {
   const cssEscape = (globalThis as unknown as { CSS?: { escape?: (id: string) => string } }).CSS?.escape
@@ -38,7 +38,7 @@ function measureNaturalOuterWidth(source: HTMLElement): number {
 
 function measureTorrentColumnFitWidth(gridRoot: HTMLElement, columnId: string): number | null {
   const nodes = gridRoot.querySelectorAll<HTMLElement>(
-    `[${TORRENT_TABLE_COLUMN_MEASURE}="${escapeColumnIdForSelector(columnId)}"]`
+    `[${TORRENT_ROW_CELL_MEASURE}="${escapeColumnIdForSelector(columnId)}"]`
   )
   if (nodes.length === 0) {
     return null
@@ -49,8 +49,7 @@ function measureTorrentColumnFitWidth(gridRoot: HTMLElement, columnId: string): 
     maxContent = Math.max(maxContent, measureNaturalOuterWidth(el))
   })
 
-  const resizeHandleGutterPx = 12
-  return maxContent + resizeHandleGutterPx
+  return maxContent
 }
 {/* Auto-fit width for column headers on double-click end*/}
 
@@ -107,7 +106,6 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
       ref={setNodeRef}
       style={style}
       className="group overflow-hidden"
-      data-torrent-column-measure={column.id}
     >
       <div
         className={`${headerPadding} ${viewMode === "dense" ? "h-7 text-xs" : "h-10 text-sm"} text-left font-medium text-muted-foreground flex items-center ${canSort ? "cursor-pointer select-none" : ""
