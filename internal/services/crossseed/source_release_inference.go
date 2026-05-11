@@ -4,9 +4,6 @@
 package crossseed
 
 import (
-	"path"
-	"strings"
-
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 
@@ -110,90 +107,4 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 	}
 
 	return bestSeries, 0, false, true
-}
-
-// deriveTVSearchName chooses the best TV release folder name for search inference.
-// It prefers ContentPath's folder, then a shared top-level file folder, then torrent.Name.
-func deriveTVSearchName(torrent *qbt.Torrent, files qbt.TorrentFiles) string {
-	if torrent == nil {
-		return ""
-	}
-
-	if name := folderNameFromContentPath(torrent.ContentPath, torrent.SavePath); name != "" {
-		return name
-	}
-
-	if name := commonTopLevelFolder(files); name != "" {
-		return name
-	}
-
-	return strings.TrimSpace(torrent.Name)
-}
-
-// folderNameFromContentPath returns the basename of ContentPath when it points at a folder.
-// It returns empty for special paths, paths equal to savePath, or names that look like files.
-func folderNameFromContentPath(contentPath, savePath string) string {
-	cleaned := cleanTorrentPath(contentPath)
-	if cleaned == "" || cleaned == "." || cleaned == "/" {
-		return ""
-	}
-	if strings.EqualFold(cleaned, cleanTorrentPath(savePath)) {
-		return ""
-	}
-
-	name := path.Base(cleaned)
-	if name == "." || name == "/" || name == "" || isLikelyTorrentFileName(name) {
-		return ""
-	}
-
-	return strings.TrimSpace(name)
-}
-
-// commonTopLevelFolder returns the single shared top-level folder for all nested files.
-// It returns empty when files are flat, lack a shared folder, or disagree on the top folder.
-func commonTopLevelFolder(files qbt.TorrentFiles) string {
-	var folder string
-	for _, file := range files {
-		name := cleanTorrentPath(file.Name)
-		if name == "" || name == "." || !strings.Contains(name, "/") {
-			continue
-		}
-
-		current := strings.TrimSpace(strings.SplitN(name, "/", 2)[0])
-		if current == "" {
-			continue
-		}
-		if folder == "" {
-			folder = current
-			continue
-		}
-		if folder != current {
-			return ""
-		}
-	}
-
-	return folder
-}
-
-func cleanTorrentPath(value string) string {
-	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
-	if value == "" {
-		return ""
-	}
-	return path.Clean(value)
-}
-
-// isLikelyTorrentFileName reports whether name has a common payload or sidecar extension.
-// It treats video, subtitle, metadata/image, archive, and split-RAR extensions as files.
-func isLikelyTorrentFileName(name string) bool {
-	ext := strings.ToLower(path.Ext(name))
-	switch ext {
-	case ".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".ts", ".m2ts",
-		".srt", ".ass", ".ssa", ".sub", ".idx",
-		".nfo", ".sfv", ".txt", ".jpg", ".jpeg", ".png",
-		".rar", ".zip", ".7z", ".r00", ".r01":
-		return true
-	default:
-		return false
-	}
 }
