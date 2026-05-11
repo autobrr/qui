@@ -64,7 +64,10 @@ type searchCacheStore interface {
 
 var _ searchCacheStore = (*models.TorznabSearchCacheStore)(nil)
 
-var trailingResolutionToken = regexp.MustCompile(`(?i)^(480|576|720|1080|2160|4320)p?$`)
+var (
+	searchResolutionToken   = regexp.MustCompile(`(?i)\b(480|576|720|1080|2160|4320)p?\b`)
+	trailingResolutionToken = regexp.MustCompile(`(?i)^(480|576|720|1080|2160|4320)p?$`)
+)
 
 // Service provides Jackett integration for Torznab searching
 type Service struct {
@@ -113,7 +116,7 @@ const (
 	searchCacheScopeCrossSeed = "cross_seed"
 	searchCacheScopeGeneral   = "general"
 	searchCacheScopeDirScan   = "dir-scan"
-	searchCacheSchemaVersion  = 2
+	searchCacheSchemaVersion  = 3
 
 	searchCacheSourceNetwork = "network"
 	searchCacheSourceCache   = "cache"
@@ -750,7 +753,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		}
 		combined = append(combined, networkConverted...)
 		combined = dedupeSearchResults(combined)
-		sortSearchResults(combined)
+		sortSearchResults(combined, shouldSortSearchResultsBySize(meta, params))
 		pageResults, total := paginateSearchResults(combined, req.Offset, req.Limit)
 
 		response := &SearchResponse{
@@ -1446,13 +1449,33 @@ func filterResultsByIndexerIDs(results []SearchResult, allowed []int) []SearchRe
 	return filtered
 }
 
-func sortSearchResults(results []SearchResult) {
+func sortSearchResults(results []SearchResult, sizeFirst bool) {
+	if sizeFirst {
+		sort.SliceStable(results, func(i, j int) bool {
+			if results[i].Size != results[j].Size {
+				return results[i].Size < results[j].Size
+			}
+			return results[i].Seeders > results[j].Seeders
+		})
+		return
+	}
+
 	sort.SliceStable(results, func(i, j int) bool {
 		if results[i].Seeders != results[j].Seeders {
 			return results[i].Seeders > results[j].Seeders
 		}
 		return results[i].Size > results[j].Size
 	})
+}
+
+func shouldSortSearchResultsBySize(meta *searchContext, params url.Values) bool {
+	if meta == nil {
+		return false
+	}
+	if meta.contentType != contentTypeTVShow && meta.contentType != contentTypeTVDaily {
+		return false
+	}
+	return !searchResolutionToken.MatchString(params.Get("q"))
 }
 
 func dedupeSearchResults(results []SearchResult) []SearchResult {

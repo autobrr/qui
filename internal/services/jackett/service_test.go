@@ -327,6 +327,85 @@ func TestAdaptiveSearchTimeoutScalesWithIndexerCount(t *testing.T) {
 	}
 }
 
+func TestShouldSortSearchResultsBySize(t *testing.T) {
+	tests := []struct {
+		name string
+		meta *searchContext
+		q    string
+		want bool
+	}{
+		{
+			name: "tv search without resolution sorts by size",
+			meta: &searchContext{contentType: contentTypeTVShow},
+			q:    "Some Show S22",
+			want: true,
+		},
+		{
+			name: "tv search with integer resolution keeps seeders first",
+			meta: &searchContext{contentType: contentTypeTVShow},
+			q:    "Some Show S22 720",
+		},
+		{
+			name: "tv search with p resolution keeps seeders first",
+			meta: &searchContext{contentType: contentTypeTVShow},
+			q:    "Some Show S22 720p",
+		},
+		{
+			name: "movie search without resolution keeps seeders first",
+			meta: &searchContext{contentType: contentTypeMovie},
+			q:    "Some Movie",
+		},
+		{
+			name: "nil metadata keeps seeders first",
+			q:    "Some Show S22",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := url.Values{}
+			params.Set("q", tt.q)
+			if got := shouldSortSearchResultsBySize(tt.meta, params); got != tt.want {
+				t.Fatalf("shouldSortSearchResultsBySize() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSortSearchResults_SizeFirstUsesSeedersAsTieBreaker(t *testing.T) {
+	results := []SearchResult{
+		{Title: "large popular", Size: 2000, Seeders: 100},
+		{Title: "small weak", Size: 1000, Seeders: 5},
+		{Title: "small strong", Size: 1000, Seeders: 10},
+	}
+
+	sortSearchResults(results, true)
+
+	want := []string{"small strong", "small weak", "large popular"}
+	for i, title := range want {
+		if results[i].Title != title {
+			t.Fatalf("results[%d].Title = %q, want %q; results=%+v", i, results[i].Title, title, results)
+		}
+	}
+}
+
+func TestSortSearchResults_SeedersFirstUsesSizeAsTieBreaker(t *testing.T) {
+	results := []SearchResult{
+		{Title: "small weak", Size: 1000, Seeders: 5},
+		{Title: "large popular", Size: 2000, Seeders: 100},
+		{Title: "larger popular", Size: 3000, Seeders: 100},
+	}
+
+	sortSearchResults(results, false)
+
+	want := []string{"larger popular", "large popular", "small weak"}
+	for i, title := range want {
+		if results[i].Title != title {
+			t.Fatalf("results[%d].Title = %q, want %q; results=%+v", i, results[i].Title, title, results)
+		}
+	}
+}
+
 func TestLoadCachedSearchPortionReturnsPartialCoverage(t *testing.T) {
 	svc := &Service{
 		searchCacheEnabled: true,
