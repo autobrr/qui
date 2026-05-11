@@ -64,10 +64,7 @@ type searchCacheStore interface {
 
 var _ searchCacheStore = (*models.TorznabSearchCacheStore)(nil)
 
-var (
-	seasonEpisodePattern    = regexp.MustCompile(`\bS\d{1,4}E\d{1,4}\b`)
-	trailingResolutionToken = regexp.MustCompile(`(?i)^(480|576|720|1080|2160|4320)p?$`)
-)
+var trailingResolutionToken = regexp.MustCompile(`(?i)^(480|576|720|1080|2160|4320)p?$`)
 
 // Service provides Jackett integration for Torznab searching
 type Service struct {
@@ -2616,26 +2613,11 @@ func appendSearchToken(query, token string) string {
 	if strings.Contains(queryUpper, tokenUpper) {
 		return query
 	}
-	if strings.HasPrefix(tokenUpper, "S") && !strings.Contains(tokenUpper, "E") {
-		if queryHasSeasonEpisodeToken(queryUpper, tokenUpper) {
-			return query
-		}
-	}
 	if before, resolution, ok := splitTrailingResolutionToken(query); ok {
 		return before + " " + token + " " + resolution
 	}
 
 	return query + " " + token
-}
-
-func queryHasSeasonEpisodeToken(queryUpper, seasonTokenUpper string) bool {
-	episodePrefix := seasonTokenUpper + "E"
-	for _, match := range seasonEpisodePattern.FindAllString(queryUpper, -1) {
-		if strings.HasPrefix(match, episodePrefix) {
-			return true
-		}
-	}
-	return false
 }
 
 func splitTrailingResolutionToken(query string) (before, resolution string, ok bool) {
