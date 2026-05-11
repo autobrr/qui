@@ -64,6 +64,11 @@ type searchCacheStore interface {
 
 var _ searchCacheStore = (*models.TorznabSearchCacheStore)(nil)
 
+var (
+	seasonEpisodePattern    = regexp.MustCompile(`\bS\d{1,4}E\d{1,4}\b`)
+	trailingResolutionToken = regexp.MustCompile(`(?i)^(480|576|720|1080|2160|4320)p?$`)
+)
+
 // Service provides Jackett integration for Torznab searching
 type Service struct {
 	indexerStore           IndexerStore
@@ -1938,9 +1943,9 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 			return indexerExecResult{id: idx.ID, skipped: true}
 		}
 
-		// Apply the year->query workaround after capability processing so that
+		// Apply the Prowlarr query workaround after capability processing so that
 		// ID-driven searches which lose IDs can still restore the original query.
-		s.applyProwlarrWorkaround(idx, paramsMap)
+		s.applyProwlarrWorkaround(idx, paramsMap, meta)
 
 		if opts.logSearchActivity {
 			log.Debug().
@@ -2398,10 +2403,8 @@ func (s *Service) applyIndexerRestrictions(ctx context.Context, client *Client, 
 	// Handle conditional parameter addition based on indexer capabilities
 	s.applyCapabilitySpecificParams(idx, meta, params)
 
-	// Apply Prowlarr year workaround after pruning/restoring parameters.
-	s.applyProwlarrWorkaround(idx, params)
-
-	// Debug log final parameters after processing
+	// Debug log parameters after capability/category restrictions. Backend-specific
+	// query workarounds may still run after this returns.
 	log.Debug().
 		Int("indexer_id", idx.ID).
 		Str("indexer", idx.Name).
@@ -2508,12 +2511,14 @@ func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta
 	}
 }
 
-// applyProwlarrWorkaround applies the Prowlarr year parameter workaround to search parameters.
-// It always moves the year parameter into the search query for Prowlarr indexers.
-func (s *Service) applyProwlarrWorkaround(idx *models.TorznabIndexer, params map[string]string) {
+// applyProwlarrWorkaround applies Prowlarr-specific query workarounds to search parameters.
+// Prowlarr is more reliable when year and TV season/episode tokens are included in q.
+func (s *Service) applyProwlarrWorkaround(idx *models.TorznabIndexer, params map[string]string, meta *searchContext) {
 	if idx.Backend != models.TorznabBackendProwlarr {
 		return
 	}
+
+	s.applyProwlarrTVTokenWorkaround(idx, params, meta)
 
 	yearStr, exists := params["year"]
 	if !exists || yearStr == "" {
@@ -2543,6 +2548,108 @@ func (s *Service) applyProwlarrWorkaround(idx *models.TorznabIndexer, params map
 		Str("modified_query", params["q"]).
 		Str("year", yearStr).
 		Msg("Prowlarr workaround: moved year parameter to search query")
+}
+
+func (s *Service) applyProwlarrTVTokenWorkaround(idx *models.TorznabIndexer, params map[string]string, meta *searchContext) {
+	if params["t"] != "tvsearch" {
+		return
+	}
+
+	token := prowlarrTVToken(params["season"], params["ep"])
+	if token == "" {
+		return
+	}
+
+	currentQuery := strings.TrimSpace(params["q"])
+	if currentQuery == "" && meta != nil {
+		currentQuery = strings.TrimSpace(meta.originalQuery)
+		if currentQuery == "" {
+			currentQuery = strings.TrimSpace(meta.releaseName)
+		}
+	}
+
+	modifiedQuery := appendSearchToken(currentQuery, token)
+	if modifiedQuery == "" {
+		modifiedQuery = token
+	}
+
+	params["q"] = modifiedQuery
+	delete(params, "season")
+	delete(params, "ep")
+
+	log.Debug().
+		Int("indexer_id", idx.ID).
+		Str("indexer_name", idx.Name).
+		Str("original_query", currentQuery).
+		Str("modified_query", modifiedQuery).
+		Str("tv_token", token).
+		Msg("Prowlarr workaround: moved TV season/episode parameter to search query")
+}
+
+func prowlarrTVToken(seasonStr, episodeStr string) string {
+	season, err := strconv.Atoi(strings.TrimSpace(seasonStr))
+	if err != nil || season <= 0 {
+		return ""
+	}
+
+	token := fmt.Sprintf("S%02d", season)
+	episode, err := strconv.Atoi(strings.TrimSpace(episodeStr))
+	if err == nil && episode > 0 {
+		token += fmt.Sprintf("E%02d", episode)
+	}
+
+	return token
+}
+
+func appendSearchToken(query, token string) string {
+	query = strings.TrimSpace(query)
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return query
+	}
+	if query == "" {
+		return token
+	}
+
+	queryUpper := strings.ToUpper(query)
+	tokenUpper := strings.ToUpper(token)
+	if strings.Contains(queryUpper, tokenUpper) {
+		return query
+	}
+	if strings.HasPrefix(tokenUpper, "S") && !strings.Contains(tokenUpper, "E") {
+		if queryHasSeasonEpisodeToken(queryUpper, tokenUpper) {
+			return query
+		}
+	}
+	if before, resolution, ok := splitTrailingResolutionToken(query); ok {
+		return before + " " + token + " " + resolution
+	}
+
+	return query + " " + token
+}
+
+func queryHasSeasonEpisodeToken(queryUpper, seasonTokenUpper string) bool {
+	episodePrefix := seasonTokenUpper + "E"
+	for _, match := range seasonEpisodePattern.FindAllString(queryUpper, -1) {
+		if strings.HasPrefix(match, episodePrefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func splitTrailingResolutionToken(query string) (before, resolution string, ok bool) {
+	fields := strings.Fields(query)
+	if len(fields) < 2 {
+		return "", "", false
+	}
+
+	last := fields[len(fields)-1]
+	if !trailingResolutionToken.MatchString(last) {
+		return "", "", false
+	}
+
+	return strings.Join(fields[:len(fields)-1], " "), last, true
 }
 
 func (s *Service) ensureIndexerMetadata(ctx context.Context, client *Client, idx *models.TorznabIndexer, identifier string, ensureCaps bool, ensureCategories bool) {

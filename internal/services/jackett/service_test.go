@@ -1746,6 +1746,7 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 		backend     models.TorznabBackend
 		inputParams map[string]string
 		expected    map[string]string
+		meta        *searchContext
 		description string
 	}{
 		{
@@ -1840,6 +1841,70 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 			},
 			description: "Prowlarr indexer should not modify query when no year parameter",
 		},
+		{
+			name:    "prowlarr tv season parameter",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t":      "tvsearch",
+				"q":      "Some Show",
+				"season": "22",
+				"cat":    "5000",
+			},
+			expected: map[string]string{
+				"t":   "tvsearch",
+				"q":   "Some Show S22",
+				"cat": "5000",
+			},
+			description: "Prowlarr indexer should move TV season parameter to search query",
+		},
+		{
+			name:    "prowlarr tv season episode parameter",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t":      "tvsearch",
+				"q":      "Some Show",
+				"season": "22",
+				"ep":     "32",
+			},
+			expected: map[string]string{
+				"t": "tvsearch",
+				"q": "Some Show S22E32",
+			},
+			description: "Prowlarr indexer should move TV season and episode parameters to search query",
+		},
+		{
+			name:    "prowlarr tv season parameter before trailing resolution",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t":      "tvsearch",
+				"q":      "Some Show 720",
+				"season": "22",
+			},
+			expected: map[string]string{
+				"t": "tvsearch",
+				"q": "Some Show S22 720",
+			},
+			description: "Prowlarr indexer should place TV season before a trailing resolution token",
+		},
+		{
+			name:    "prowlarr id driven tv restores query with season token",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t":      "tvsearch",
+				"season": "17",
+				"imdbid": "1785123",
+			},
+			expected: map[string]string{
+				"t":      "tvsearch",
+				"q":      "Some.Show.S17.1080p.HULU.WEB-DL.AAC2.0.H.264-RAWR",
+				"imdbid": "1785123",
+			},
+			meta: &searchContext{
+				originalQuery: "Some.Show.S17.1080p.HULU.WEB-DL.AAC2.0.H.264-RAWR",
+				releaseName:   "Some.Show.S17.1080p.HULU.WEB-DL.AAC2.0.H.264-RAWR",
+			},
+			description: "Prowlarr indexer should keep q for ID-driven TV searches and remove season parameter",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1867,7 +1932,7 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 			maps.Copy(inputParams, tt.inputParams)
 
 			// Call the actual service method to apply the workaround
-			service.applyProwlarrWorkaround(indexer, inputParams)
+			service.applyProwlarrWorkaround(indexer, inputParams, tt.meta)
 
 			// Assert expected parameter values
 			for key, expectedValue := range tt.expected {
@@ -1890,6 +1955,15 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestAppendSearchTokenDetectsExistingSeasonEpisode(t *testing.T) {
+	if got := appendSearchToken("Some Show S22E01 720", "S22"); got != "Some Show S22E01 720" {
+		t.Fatalf("appendSearchToken() = %q, want %q", got, "Some Show S22E01 720")
+	}
+	if got := appendSearchToken("Some Show S21E01 720", "S22"); got != "Some Show S21E01 S22 720" {
+		t.Fatalf("appendSearchToken() = %q, want %q", got, "Some Show S21E01 S22 720")
 	}
 }
 
