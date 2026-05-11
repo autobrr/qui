@@ -106,7 +106,7 @@ function MobileShareLimitsDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   hashCount: number
-  onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => void
+  onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, shareLimitAction?: string, shareLimitsMode?: string) => void
   isPending: boolean
 }) {
   const [ratioEnabled, setRatioEnabled] = useState(false)
@@ -2444,7 +2444,7 @@ export function TorrentCardsMobile({
         open={showShareLimitDialog}
         onOpenChange={setShowShareLimitDialog}
         hashCount={effectiveSelectionCount}
-        onConfirm={async (ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit) => {
+        onConfirm={async (ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, shareLimitAction, shareLimitsMode) => {
           const hashes = isAllSelected ? [] : selectedRequestHashes
           const visibleHashes = isAllSelected ? torrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t))).map(t => t.hash) : selectedRequestHashes
           const totalSelected = isAllSelected ? effectiveSelectionCount : visibleHashes.length || 1
@@ -2464,7 +2464,9 @@ export function TorrentCardsMobile({
               excludeTargets: isAllSelected
                 ? buildTorrentActionTargets(excludedTorrents, instanceId)
                 : undefined,
-            }
+            },
+            shareLimitAction,
+            shareLimitsMode
           )
           setShowShareLimitDialog(false)
         }}

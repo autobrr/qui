@@ -452,6 +452,8 @@ type FormState = {
   exprRatioLimitValue?: number
   exprSeedingTimeMode: "no_change" | "global" | "unlimited" | "custom"
   exprSeedingTimeValue?: number
+  exprShareLimitAction: string
+  exprShareLimitsMode: string
   // Delete settings
   exprDeleteMode: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
   exprIncludeHardlinks: boolean // Only for deleteWithFilesIncludeCrossSeeds mode
@@ -513,6 +515,8 @@ const emptyFormState: FormState = {
   exprRatioLimitValue: undefined,
   exprSeedingTimeMode: "no_change",
   exprSeedingTimeValue: undefined,
+  exprShareLimitAction: "default",
+  exprShareLimitsMode: "default",
   exprDeleteMode: "deleteWithFilesPreserveCrossSeeds",
   exprIncludeHardlinks: false,
   exprDeleteGroupId: "",
@@ -921,6 +925,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         let exprRatioLimitValue: number | undefined
         let exprSeedingTimeMode: FormState["exprSeedingTimeMode"] = "no_change"
         let exprSeedingTimeValue: number | undefined
+        let exprShareLimitAction = "default"
+        let exprShareLimitsMode = "default"
         let exprDeleteMode: FormState["exprDeleteMode"] = "deleteWithFilesPreserveCrossSeeds"
         let exprIncludeHardlinks = false
         let exprFreeSpaceSourceType: FormState["exprFreeSpaceSourceType"] = "qbittorrent"
@@ -1010,6 +1016,9 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             const seedTime = hydrateShareLimit(conditions.shareLimits.seedingTimeMinutes)
             exprSeedingTimeMode = seedTime.mode
             exprSeedingTimeValue = seedTime.value
+
+            exprShareLimitAction = conditions.shareLimits.shareLimitAction ?? "default"
+            exprShareLimitsMode = conditions.shareLimits.shareLimitsMode ?? "default"
           }
           if (conditions.pause?.enabled) {
             pauseEnabled = true
@@ -1098,6 +1107,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           exprRatioLimitValue,
           exprSeedingTimeMode,
           exprSeedingTimeValue,
+          exprShareLimitAction,
+          exprShareLimitsMode,
           exprDeleteMode,
           exprIncludeHardlinks,
           exprDeleteGroupId,
@@ -1305,6 +1316,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         enabled: true,
         ratioLimit,
         seedingTimeMinutes,
+        shareLimitAction: input.exprShareLimitAction !== "default" ? input.exprShareLimitAction : undefined,
+        shareLimitsMode: input.exprShareLimitsMode !== "default" ? input.exprShareLimitsMode : undefined,
         condition: input.actionCondition ?? undefined,
       }
     }
@@ -2835,6 +2848,52 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               )}
                             </div>
                           </div>
+                          {capabilities?.supportsShareLimits && (
+                            <>
+                              {/* Share limit action (qBittorrent 5.2+) */}
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">When limits are reached</Label>
+                                <Select
+                                  value={formState.exprShareLimitAction}
+                                  onValueChange={(value: string) => setFormState(prev => ({
+                                    ...prev,
+                                    exprShareLimitAction: value,
+                                  }))}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="default">Default (use global)</SelectItem>
+                                    <SelectItem value="0">Stop torrent</SelectItem>
+                                    <SelectItem value="1">Remove torrent</SelectItem>
+                                    <SelectItem value="3">Remove with content</SelectItem>
+                                    <SelectItem value="2">Enable super seeding</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {/* Share limits mode (qBittorrent 5.2+) */}
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Limits matching mode</Label>
+                                <Select
+                                  value={formState.exprShareLimitsMode}
+                                  onValueChange={(value: string) => setFormState(prev => ({
+                                    ...prev,
+                                    exprShareLimitsMode: value,
+                                  }))}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="default">Default (use global)</SelectItem>
+                                    <SelectItem value="0">Match any limit</SelectItem>
+                                    <SelectItem value="1">Match all limits</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     )}

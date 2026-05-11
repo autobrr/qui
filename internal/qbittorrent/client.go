@@ -31,6 +31,7 @@ var (
 	torrentTmpPathMinVersion   = semver.MustParse("2.8.4")
 	pathAutocompleteMinVersion = semver.MustParse("2.11.2")
 	rssSetFeedURLMinVersion    = semver.MustParse("2.9.1")
+	shareLimitsMinVersion      = semver.MustParse("2.15.3")
 )
 
 type Client struct {
@@ -50,6 +51,7 @@ type Client struct {
 	supportsPathAutocomplete bool
 	trackerIncludeSupported  bool
 	supportsSetRSSFeedURL    bool
+	supportsShareLimits      bool
 	lastHealthCheck          time.Time
 	isHealthy                bool
 	syncManager              *qbt.SyncManager
@@ -268,6 +270,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
 	c.supportsPathAutocomplete = !v.LessThan(pathAutocompleteMinVersion)
 	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
+	c.supportsShareLimits = !v.LessThan(shareLimitsMinVersion)
 }
 
 // UpdateWithPeersData triggers a sync on the peer manager to keep it warm after intercepting peer data
@@ -382,6 +385,12 @@ func (c *Client) SupportsSetRSSFeedURL() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsSetRSSFeedURL
+}
+
+func (c *Client) SupportsShareLimits() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsShareLimits
 }
 
 func (c *Client) GetWebAPIVersion() string {

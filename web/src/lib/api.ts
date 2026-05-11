@@ -1055,6 +1055,8 @@ class ApiClient {
       ratioLimit?: number  // For setShareLimit action
       seedingTimeLimit?: number  // For setShareLimit action (minutes)
       inactiveSeedingTimeLimit?: number  // For setShareLimit action (minutes)
+      shareLimitAction?: string  // For setShareLimit action (qBittorrent 5.2+)
+      shareLimitsMode?: string  // For setShareLimit action (qBittorrent 5.2+)
       uploadLimit?: number  // For setUploadLimit action (KB/s)
       downloadLimit?: number  // For setDownloadLimit action (KB/s)
       location?: string  // For setLocation action

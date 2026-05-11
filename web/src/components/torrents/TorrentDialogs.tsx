@@ -1583,8 +1583,9 @@ interface ShareLimitDialogProps {
   onOpenChange: (open: boolean) => void
   hashCount: number
   torrents?: TorrentLimitSnapshot[]
-  onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => void
+  onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, shareLimitAction?: string, shareLimitsMode?: string) => void
   isPending?: boolean
+  supportsShareLimits?: boolean
 }
 
 // Share limit mode: matches qBittorrent sentinel values
@@ -1666,6 +1667,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
   torrents,
   onConfirm,
   isPending = false,
+  supportsShareLimits = false,
 }: ShareLimitDialogProps) {
   const [ratioMode, setRatioMode] = useState<ShareLimitMode>("global")
   const [ratioCustom, setRatioCustom] = useState(1.0)
@@ -1681,6 +1683,9 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
   const [inactiveTimeCustom, setInactiveTimeCustom] = useState(10080)
   const [inactiveTimeMixed, setInactiveTimeMixed] = useState(false)
   const [inactiveTimeTouched, setInactiveTimeTouched] = useState(false)
+
+  const [shareLimitAction, setShareLimitAction] = useState<string>("default")
+  const [shareLimitsMode, setShareLimitsMode] = useState<string>("default")
 
   const wasOpen = useRef(false)
 
@@ -1703,6 +1708,9 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
       setInactiveTimeCustom(states.inactiveTime.customValue)
       setInactiveTimeMixed(states.inactiveTime.isMixed)
       setInactiveTimeTouched(false)
+
+      setShareLimitAction("default")
+      setShareLimitsMode("default")
     }
     wasOpen.current = open
   }, [open, torrents])
@@ -1716,7 +1724,9 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
     onConfirm(
       fieldStateToValue(ratioMode, ratioCustom, true),
       fieldStateToValue(seedTimeMode, seedTimeCustom, false),
-      fieldStateToValue(inactiveTimeMode, inactiveTimeCustom, false)
+      fieldStateToValue(inactiveTimeMode, inactiveTimeCustom, false),
+      shareLimitAction !== "default" ? shareLimitAction : undefined,
+      shareLimitsMode !== "default" ? shareLimitsMode : undefined
     )
     // Reset form
     setRatioMode("global")
@@ -1731,8 +1741,10 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
     setInactiveTimeCustom(10080)
     setInactiveTimeMixed(false)
     setInactiveTimeTouched(false)
+    setShareLimitAction("default")
+    setShareLimitsMode("default")
     onOpenChange(false)
-  }, [onConfirm, ratioMode, ratioCustom, seedTimeMode, seedTimeCustom, inactiveTimeMode, inactiveTimeCustom, onOpenChange])
+  }, [onConfirm, ratioMode, ratioCustom, seedTimeMode, seedTimeCustom, inactiveTimeMode, inactiveTimeCustom, shareLimitAction, shareLimitsMode, onOpenChange])
 
   const handleCancel = useCallback((): void => {
     setRatioMode("global")
@@ -1747,6 +1759,8 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
     setInactiveTimeCustom(10080)
     setInactiveTimeMixed(false)
     setInactiveTimeTouched(false)
+    setShareLimitAction("default")
+    setShareLimitsMode("default")
     onOpenChange(false)
   }, [onOpenChange])
 
@@ -1918,6 +1932,48 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
               {inactiveTimeMode === "global" ? "Follow qBittorrent global settings" :inactiveTimeMode === "unlimited" ? "No inactive limit" :"Minutes (10080 = 7 days)"}
             </p>
           </div>
+
+          {supportsShareLimits && (
+            <>
+              {/* Share limit action (qBittorrent 5.2+) */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">When limits are reached</Label>
+                <Select value={shareLimitAction} onValueChange={setShareLimitAction}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default (use global)</SelectItem>
+                    <SelectItem value="0">Stop torrent</SelectItem>
+                    <SelectItem value="1">Remove torrent</SelectItem>
+                    <SelectItem value="3">Remove with content</SelectItem>
+                    <SelectItem value="2">Enable super seeding</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Action when share limits are reached
+                </p>
+              </div>
+
+              {/* Share limits mode (qBittorrent 5.2+) */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Limits matching mode</Label>
+                <Select value={shareLimitsMode} onValueChange={setShareLimitsMode}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default (use global)</SelectItem>
+                    <SelectItem value="0">Match any limit</SelectItem>
+                    <SelectItem value="1">Match all limits</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Whether any or all limits must be reached
+                </p>
+              </div>
+            </>
+          )}
         </div>
         <DialogFooter className="flex-col sm:flex-row gap-2">
           {hasUnresolvedMixed && (

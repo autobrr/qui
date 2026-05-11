@@ -325,6 +325,8 @@ export interface ShareLimitsAction {
   enabled: boolean
   ratioLimit?: number
   seedingTimeMinutes?: number
+  shareLimitAction?: string
+  shareLimitsMode?: string
   condition?: RuleCondition
 }
 
@@ -643,6 +645,7 @@ export interface InstanceCapabilities {
   supportsPathAutocomplete: boolean
   supportsFreeSpacePathSource: boolean
   supportsSetRSSFeedURL: boolean
+  supportsShareLimits: boolean
   webAPIVersion?: string
 }
 

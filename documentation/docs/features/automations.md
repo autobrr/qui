@@ -436,6 +436,30 @@ Set ratio limit and/or seeding time limit. Each field supports these modes:
 
 Torrents stop seeding when any enabled limit is reached.
 
+#### Share Limit Action & Mode (qBittorrent 5.2+)
+
+On qBittorrent 5.2 and newer (Web API 2.15.3+), two additional per-torrent settings are available:
+
+**When limits are reached** controls what happens when a torrent's share limits are hit:
+
+| Option                  | Value | Description                                 |
+| ----------------------- | ----- | ------------------------------------------- |
+| Default (use global)    | -1    | Follow qBittorrent's global setting         |
+| Stop torrent            | 0     | Pause the torrent                           |
+| Remove torrent          | 1     | Remove from client, keep files              |
+| Enable super seeding    | 2     | Switch to super seeding mode                |
+| Remove with content     | 3     | Remove from client and delete files         |
+
+**Limits matching mode** controls whether the action triggers when *any* limit is reached or only when *all* limits are reached:
+
+| Option                  | Value | Description                                 |
+| ----------------------- | ----- | ------------------------------------------- |
+| Default (use global)    | -1    | Follow qBittorrent's global setting         |
+| Match any limit         | 0     | Trigger when any single limit is reached    |
+| Match all limits        | 1     | Trigger only when all limits are reached    |
+
+These fields appear in both the torrent share limit dialog and the automation workflow editor when the connected qBittorrent instance supports them. On older instances, the fields are hidden and only the classic ratio/seeding time limits are sent.
+
 ### Pause
 
 Pause matching torrents. Only pauses if not already stopped.

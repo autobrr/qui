@@ -63,6 +63,8 @@ interface TorrentActionData {
   ratioLimit?: number
   seedingTimeLimit?: number
   inactiveSeedingTimeLimit?: number
+  shareLimitAction?: string
+  shareLimitsMode?: string
   uploadLimit?: number
   downloadLimit?: number
   location?: string
@@ -177,6 +179,8 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
         ratioLimit: payload.ratioLimit,
         seedingTimeLimit: payload.seedingTimeLimit,
         inactiveSeedingTimeLimit: payload.inactiveSeedingTimeLimit,
+        shareLimitAction: payload.shareLimitAction,
+        shareLimitsMode: payload.shareLimitsMode,
         uploadLimit: payload.uploadLimit,
         downloadLimit: payload.downloadLimit,
         location: payload.location,
@@ -642,7 +646,9 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     filters?: TorrentActionData["filters"],
     search?: string,
     excludeHashes?: string[],
-    clientMeta?: ClientMeta
+    clientMeta?: ClientMeta,
+    shareLimitAction?: string,
+    shareLimitsMode?: string
   ) => {
     const clientHashes = clientMeta?.clientHashes ?? hashes
     const clientCount = clientMeta?.totalSelected
@@ -660,6 +666,8 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       ratioLimit,
       seedingTimeLimit,
       inactiveSeedingTimeLimit,
+      shareLimitAction,
+      shareLimitsMode,
       clientHashes,
       clientCount,
     })

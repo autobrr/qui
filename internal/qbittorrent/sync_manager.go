@@ -5636,8 +5636,9 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 	return trackerMap, nil
 }
 
-// SetTorrentShareLimit sets share limits (ratio, seeding time) for torrents
-func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64) error {
+// SetTorrentShareLimit sets share limits (ratio, seeding time, action, mode) for torrents.
+// shareLimitAction and shareLimitsMode are only sent when the instance supports them (webAPI >= 2.15.3).
+func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64, shareLimitAction, shareLimitsMode string) error {
 	// Get client and sync manager
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
@@ -5649,7 +5650,14 @@ func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int,
 		return err
 	}
 
-	if err := client.SetTorrentShareLimitCtx(ctx, hashes, ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit); err != nil {
+	action := shareLimitAction
+	mode := shareLimitsMode
+	if !client.SupportsShareLimits() {
+		action = ""
+		mode = ""
+	}
+
+	if err := client.SetTorrentShareLimitCtx(ctx, hashes, ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, action, mode); err != nil {
 		return fmt.Errorf("failed to set torrent share limit: %w", err)
 	}
 

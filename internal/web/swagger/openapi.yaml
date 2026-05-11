@@ -1594,6 +1594,12 @@ paths:
                   type: integer
                   format: int64
                   description: Inactive seeding time limit (minutes) for setShareLimit action.
+                shareLimitAction:
+                  type: string
+                  description: Action when share limits are reached (qBittorrent 5.2+). Values -1=default, 0=stop, 1=remove, 2=enable super seeding, 3=remove with content.
+                shareLimitsMode:
+                  type: string
+                  description: Whether any or all limits must be reached (qBittorrent 5.2+). Values -1=default, 0=match any, 1=match all.
                 uploadLimit:
                   type: integer
                   format: int64

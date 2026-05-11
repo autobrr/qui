@@ -446,7 +446,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     triggerAction(actionMap[action])
   }, [triggerAction])
 
-  const handleSetShareLimitWrapper = useCallback((ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => {
+  const handleSetShareLimitWrapper = useCallback((ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, shareLimitAction?: string, shareLimitsMode?: string) => {
     handleSetShareLimit(
       ratioLimit,
       seedingTimeLimit,
@@ -456,7 +456,9 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       filters,
       search,
       excludeHashes,
-      clientMeta
+      clientMeta,
+      shareLimitAction,
+      shareLimitsMode
     )
   }, [handleSetShareLimit, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
@@ -834,6 +836,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         torrents={selectedTorrents}
         onConfirm={handleSetShareLimitWrapper}
         isPending={isPending}
+        supportsShareLimits={capabilities?.supportsShareLimits}
       />
 
       <SpeedLimitsDialog

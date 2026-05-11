@@ -461,6 +461,8 @@ type shareKey struct {
 	ratio    float64
 	seed     int64
 	inactive int64
+	action   string
+	mode     string
 }
 
 type tagChange struct {
@@ -2560,7 +2562,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			seedingNeedsUpdate := state.seedingMinutes != nil && torrent.SeedingTimeLimit != seedMinutes
 			needsUpdate := ratioNeedsUpdate || seedingNeedsUpdate
 			if needsUpdate {
-				key := shareKey{ratio: ratio, seed: seedMinutes, inactive: inactiveMinutes}
+				key := shareKey{ratio: ratio, seed: seedMinutes, inactive: inactiveMinutes, action: state.shareLimitAction, mode: state.shareLimitsMode}
 				shareBatches[key] = append(shareBatches[key], hash)
 				if ratioNeedsUpdate {
 					shareRatioRuleByHash[hash] = state.ratioRule
@@ -2744,13 +2746,13 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	for key, hashes := range shareBatches {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
-			err := s.syncManager.SetTorrentShareLimit(ctx, instanceID, batch, key.ratio, key.seed, key.inactive)
+			err := s.syncManager.SetTorrentShareLimit(ctx, instanceID, batch, key.ratio, key.seed, key.inactive, key.action, key.mode)
 			if err == nil {
 				shareLimitSuccess[key] = append(shareLimitSuccess[key], batch...)
 				continue
 			}
-			log.Warn().Err(err).Int("instanceID", instanceID).Float64("ratio", key.ratio).Int64("seedMinutes", key.seed).Int64("inactiveMinutes", key.inactive).Int("count", len(batch)).Msg("automations: share limit failed")
-			detailsJSON, marshalErr := json.Marshal(map[string]any{"ratio": key.ratio, "seedMinutes": key.seed, "inactiveMinutes": key.inactive, "count": len(batch), "type": "share"})
+			log.Warn().Err(err).Int("instanceID", instanceID).Float64("ratio", key.ratio).Int64("seedMinutes", key.seed).Int64("inactiveMinutes", key.inactive).Str("action", key.action).Str("mode", key.mode).Int("count", len(batch)).Msg("automations: share limit failed")
+			detailsJSON, marshalErr := json.Marshal(map[string]any{"ratio": key.ratio, "seedMinutes": key.seed, "inactiveMinutes": key.inactive, "action": key.action, "mode": key.mode, "count": len(batch), "type": "share"})
 			if marshalErr != nil {
 				log.Warn().Err(marshalErr).Int("instanceID", instanceID).Msg("automations: failed to marshal share limit details")
 				continue

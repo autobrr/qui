@@ -26,6 +26,7 @@ qui automatically detects the features available on each qBittorrent instance an
 | **Path Autocomplete** | 5.0.0+ (Web API 2.11.2+) | Autocomplete suggestions for path inputs when adding torrents or creating .torrent files |
 | **External IP Reporting (IPv4/IPv6)** | 5.1.0+ (Web API 2.11.3+) | Exposes `last_external_address_v4` / `_v6` fields |
 | **Tracker Health Status** | 5.1.0+ (Web API 2.11.4+) | Automatically detects unregistered torrents and tracker issues |
+| **Share Limit Action & Mode** | 5.2.0+ (Web API 2.15.3+) | Per-torrent action when share limits are reached (stop, remove, remove with content, enable super seeding) and matching mode (any vs all) |
 
 :::note
 Hybrid and v2 torrent creation requires a qBittorrent build that links against libtorrent v2. Builds compiled with libtorrent 1.x ignore the `format` parameter.
