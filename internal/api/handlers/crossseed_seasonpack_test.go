@@ -119,6 +119,19 @@ func TestListSeasonPackRuns(t *testing.T) {
 	}
 }
 
+func TestListSeasonPackRuns_ReturnsEmptyArrayWhenNoRuns(t *testing.T) {
+	store := newTestSeasonPackRunStore(t)
+	handler := &CrossSeedHandler{seasonPackRunStore: store}
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/cross-seed/season-pack/runs", nil)
+	resp := httptest.NewRecorder()
+
+	handler.ListSeasonPackRuns(resp, req)
+
+	require.Equal(t, http.StatusOK, resp.Code)
+	require.JSONEq(t, `[]`, resp.Body.String())
+}
+
 func TestListSeasonPackRuns_Returns503WhenStoreMissing(t *testing.T) {
 	handler := &CrossSeedHandler{}
 

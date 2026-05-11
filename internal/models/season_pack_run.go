@@ -109,7 +109,7 @@ func (s *SeasonPackRunStore) List(ctx context.Context, limit int) ([]*SeasonPack
 	}
 	defer rows.Close()
 
-	var runs []*SeasonPackRun
+	runs := make([]*SeasonPackRun, 0)
 	for rows.Next() {
 		r, err := scanSeasonPackRun(rows)
 		if err != nil {
