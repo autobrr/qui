@@ -2981,6 +2981,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           return (
                             <div
                               key={cell.id}
+                              data-torrent-column-measure={cell.column.id}
                               style={{
                                 width: cell.column.getSize(),
                                 flexShrink: 0,
