@@ -50,7 +50,8 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
   const canSort = column.getCanSort() || (!!trackerColumn && trackerColumn.getCanSort())
   const toggleSortingHandler = column.getToggleSortingHandler()
   const trackerToggleHandler = trackerColumn?.getToggleSortingHandler()
-
+  const columnHasActiveFilter = columnFilters.some(f => f.columnId === column.id)
+  const columnFilterIconVisibilityClassName = columnHasActiveFilter ? undefined : "hidden group-hover:block focus-within:block [&:has(button[data-state=open])]:block"
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -102,23 +103,25 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
               header.getContext()
             )}
           </span>
+          {/* Column filter button - only show for filterable columns */}
+          {!isSelectHeader && !isPriorityHeader && !isTrackerIconHeader && !isStatusIconHeader && onFilterChange && (
+            <span className={columnFilterIconVisibilityClassName}>
+              <ColumnFilterPopover
+                columnId={column.id}
+                columnName={(column.columnDef.meta as { headerString?: string })?.headerString ||
+                  (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
+                columnType={getColumnType(column.id)}
+                currentFilter={columnFilters.find(f => f.columnId === column.id)}
+                onApply={(filter) => onFilterChange(column.id, filter)}
+              />
+            </span>
+          )}
           {shouldShowSortIndicator && (
             column.getIsSorted() === "asc" ? (
               <ChevronUp className={`h-4 w-4 flex-shrink-0${isPriorityHeader ? " ml-1 mr-1" : ""}`} />
             ) : (
               <ChevronDown className={`h-4 w-4 flex-shrink-0${isPriorityHeader ? " ml-1 mr-1" : ""}`} />
             )
-          )}
-          {/* Column filter button - only show for filterable columns */}
-          {!isSelectHeader && !isPriorityHeader && !isTrackerIconHeader && !isStatusIconHeader && onFilterChange && (
-            <ColumnFilterPopover
-              columnId={column.id}
-              columnName={(column.columnDef.meta as { headerString?: string })?.headerString ||
-                (typeof column.columnDef.header === "string" ? column.columnDef.header : column.id)}
-              columnType={getColumnType(column.id)}
-              currentFilter={columnFilters.find(f => f.columnId === column.id)}
-              onApply={(filter) => onFilterChange(column.id, filter)}
-            />
           )}
         </div>
       </div>
