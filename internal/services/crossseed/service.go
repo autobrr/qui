@@ -236,6 +236,7 @@ const (
 	minSearchCooldownMinutes              = 720
 	maxCompletionSearchAttempts           = 3
 	maxCompletionCheckingAttempts         = 3
+	torznabCrossSeedSearchLimit           = 100
 	defaultCompletionRetryDelay           = 30 * time.Second
 	defaultCompletionCheckingRetryDelay   = 30 * time.Second
 	defaultCompletionCheckingPollInterval = 2 * time.Second
@@ -6674,7 +6675,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	if limit <= 0 {
 		limit = 50
 	}
-	requestLimit := max(limit*3, 300)
 
 	// Apply indexer filtering (capabilities first, then optionally content filtering async)
 	var filteredIndexerIDs []int
@@ -6855,11 +6855,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	searchReq := &jackett.TorznabSearchRequest{
-		Query:       query,
-		ReleaseName: sourceTorrent.Name,
-		Limit:       requestLimit,
-		IndexerIDs:  filteredIndexerIDs,
-		CacheMode:   opts.CacheMode,
+		Query:            query,
+		ReleaseName:      sourceTorrent.Name,
+		Limit:            torznabCrossSeedSearchLimit,
+		IndexerIDs:       filteredIndexerIDs,
+		CacheMode:        opts.CacheMode,
+		ReturnAllResults: true,
 	}
 
 	// Apply IDs from ARR lookup and set OmitQueryForIDs flag

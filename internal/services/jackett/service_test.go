@@ -1006,6 +1006,53 @@ func TestBuildSearchParams(t *testing.T) {
 	}
 }
 
+func TestResponseSearchResultsReturnAllSkipsPagination(t *testing.T) {
+	results := []SearchResult{
+		{Title: "first"},
+		{Title: "second"},
+		{Title: "third"},
+	}
+
+	paged, pagedTotal := responseSearchResults(results, 1, 1, false)
+	if pagedTotal != 3 {
+		t.Fatalf("paged total = %d, want 3", pagedTotal)
+	}
+	if len(paged) != 1 || paged[0].Title != "second" {
+		t.Fatalf("paged results = %+v, want only second result", paged)
+	}
+
+	all, allTotal := responseSearchResults(results, 1, 1, true)
+	if allTotal != 3 {
+		t.Fatalf("all total = %d, want 3", allTotal)
+	}
+	if len(all) != 3 {
+		t.Fatalf("all results length = %d, want 3", len(all))
+	}
+}
+
+func TestClampedTorznabLimit(t *testing.T) {
+	tests := []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{name: "unset", limit: 0, want: 0},
+		{name: "negative", limit: -1, want: 0},
+		{name: "below fixed max", limit: 50, want: 50},
+		{name: "fixed max", limit: 100, want: 100},
+		{name: "above fixed max", limit: 300, want: 100},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := clampedTorznabLimit(tt.limit)
+			if got != tt.want {
+				t.Fatalf("clampedTorznabLimit(%d) = %d, want %d", tt.limit, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestConvertResults(t *testing.T) {
 	s := &Service{}
 	tests := []struct {

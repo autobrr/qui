@@ -13,10 +13,14 @@ import (
 
 type capturingJackettSearcher struct {
 	priority jackett.RateLimitPriority
+	req      *jackett.TorznabSearchRequest
+	scope    string
 	captured bool
 }
 
-func (c *capturingJackettSearcher) SearchWithScope(ctx context.Context, _ *jackett.TorznabSearchRequest, _ string) error {
+func (c *capturingJackettSearcher) SearchWithScope(ctx context.Context, req *jackett.TorznabSearchRequest, scope string) error {
+	c.req = req
+	c.scope = scope
 	priority, ok := jackett.SearchPriority(ctx)
 	if ok {
 		c.priority = priority
@@ -31,7 +35,6 @@ func TestSearcher_Search_UsesBackgroundPriority(t *testing.T) {
 
 	req := &SearchRequest{
 		Searchee: &Searchee{Name: "Example.Movie.2024.1080p.WEB-DL"},
-		Limit:    1,
 	}
 
 	ctx := jackett.WithSearchPriority(context.Background(), jackett.RateLimitPriorityInteractive)
@@ -41,4 +44,21 @@ func TestSearcher_Search_UsesBackgroundPriority(t *testing.T) {
 
 	require.True(t, capture.captured)
 	require.Equal(t, jackett.RateLimitPriorityBackground, capture.priority)
+}
+
+func TestSearcher_Search_UsesFixedTorznabWindowAndReturnsAllResults(t *testing.T) {
+	capture := &capturingJackettSearcher{}
+	searcher := NewSearcher(capture, NewParser(nil))
+
+	req := &SearchRequest{
+		Searchee: &Searchee{Name: "Example.Movie.2024.1080p.WEB-DL"},
+	}
+
+	err := searcher.Search(context.Background(), req)
+	require.NoError(t, err)
+
+	require.NotNil(t, capture.req)
+	require.Equal(t, SearchScope, capture.scope)
+	require.Equal(t, torznabDirScanSearchLimit, capture.req.Limit)
+	require.True(t, capture.req.ReturnAllResults)
 }

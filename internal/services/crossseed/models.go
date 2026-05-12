@@ -211,7 +211,7 @@ type CrossSeedCandidate struct {
 type TorrentSearchOptions struct {
 	// Optional override for the search query; defaults to the torrent name.
 	Query string `json:"query,omitempty"`
-	// Limit controls how many results are returned (after filtering). Defaults to 20.
+	// Limit controls how many results are returned (after filtering). Defaults to 50.
 	Limit int `json:"limit,omitempty"`
 	// IndexerIDs restricts the search to specific Torznab indexers.
 	IndexerIDs []int `json:"indexer_ids,omitempty"`

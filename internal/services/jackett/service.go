@@ -116,7 +116,7 @@ const (
 	searchCacheScopeCrossSeed = "cross_seed"
 	searchCacheScopeGeneral   = "general"
 	searchCacheScopeDirScan   = "dir-scan"
-	searchCacheSchemaVersion  = 3
+	searchCacheSchemaVersion  = 4
 
 	searchCacheSourceNetwork = "network"
 	searchCacheSourceCache   = "cache"
@@ -130,14 +130,6 @@ type cachedSearchPortion struct {
 	cachedAt   time.Time
 	expiresAt  time.Time
 	lastUsed   *time.Time
-}
-
-func (p *cachedSearchPortion) paginate(offset, limit int) ([]SearchResult, int) {
-	if p == nil {
-		return nil, 0
-	}
-	copyResults := append([]SearchResult(nil), p.results...)
-	return paginateSearchResults(copyResults, offset, limit)
 }
 
 func (p *cachedSearchPortion) metadata(source string) *SearchCacheMetadata {
@@ -247,6 +239,7 @@ type searchCacheKeyPayload struct {
 	Query         string      `json:"query"`
 	Categories    []int       `json:"categories,omitempty"`
 	IndexerIDs    []int       `json:"indexer_ids,omitempty"`
+	Limit         int         `json:"limit,omitempty"`
 	IMDbID        string      `json:"imdb_id,omitempty"`
 	TVDbID        string      `json:"tvdb_id,omitempty"`
 	TMDbID        int         `json:"tmdb_id,omitempty"`
@@ -661,7 +654,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		if cacheReadAllowed {
 			if portion, complete := s.loadCachedSearchPortion(ctx, cacheSig, cacheScope, req, requestedIndexerIDs, true); portion != nil {
 				if complete {
-					results, total := portion.paginate(req.Offset, req.Limit)
+					results, total := responseSearchResults(portion.results, req.Offset, req.Limit, req.ReturnAllResults)
 					response := &SearchResponse{Results: results, Total: total}
 					response.Cache = portion.metadata(searchCacheSourceCache)
 					if req.OnAllComplete != nil {
@@ -681,7 +674,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 
 	if len(indexersToSearch) == 0 {
 		if len(cachedResults) > 0 && cachedPortion != nil {
-			results, total := paginateSearchResults(cachedResults, req.Offset, req.Limit)
+			results, total := responseSearchResults(cachedResults, req.Offset, req.Limit, req.ReturnAllResults)
 			resp := &SearchResponse{Results: results, Total: total}
 			resp.Cache = cachedPortion.metadata(searchCacheSourceCache)
 			if req.OnAllComplete != nil {
@@ -722,7 +715,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 					Int("indexers_requested", len(indexersToSearch)).
 					Int("cached_results", len(cachedResults)).
 					Msg("Returning cached torznab search results after search failure")
-				results, total := paginateSearchResults(cachedResults, req.Offset, req.Limit)
+				results, total := responseSearchResults(cachedResults, req.Offset, req.Limit, req.ReturnAllResults)
 				resp := &SearchResponse{
 					Results: results,
 					Total:   total,
@@ -754,7 +747,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		combined = append(combined, networkConverted...)
 		combined = dedupeSearchResults(combined)
 		sortSearchResults(combined, shouldSortSearchResultsBySize(meta, params))
-		pageResults, total := paginateSearchResults(combined, req.Offset, req.Limit)
+		pageResults, total := responseSearchResults(combined, req.Offset, req.Limit, req.ReturnAllResults)
 
 		response := &SearchResponse{
 			Results: pageResults,
@@ -1195,6 +1188,7 @@ func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequ
 		Query:         query,
 		Categories:    categories,
 		IndexerIDs:    normalizedIndexerIDs,
+		Limit:         clampedTorznabLimit(req.Limit),
 		IMDbID:        strings.TrimSpace(req.IMDbID),
 		TVDbID:        strings.TrimSpace(req.TVDbID),
 		TMDbID:        req.TMDbID,
@@ -1913,21 +1907,12 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		}
 	}
 
-	limitMax := idx.LimitMax
-	if limitMax <= 0 {
-		limitMax = defaultTorznabLimit
-	}
-
-	// Clamp limit to indexer's max
 	if limitStr, hasLimit := paramsMap["limit"]; hasLimit {
-		if limit, parseErr := strconv.Atoi(limitStr); parseErr == nil && limit > limitMax {
-			paramsMap["limit"] = strconv.Itoa(limitMax)
-			log.Debug().
-				Int("indexer_id", idx.ID).
-				Str("indexer", idx.Name).
-				Int("requested_limit", limit).
-				Int("clamped_to", limitMax).
-				Msg("Clamped search limit to indexer's max")
+		if limit, parseErr := strconv.Atoi(limitStr); parseErr == nil {
+			clampedLimit := clampedTorznabLimit(limit)
+			if clampedLimit > 0 && clampedLimit != limit {
+				paramsMap["limit"] = strconv.Itoa(clampedLimit)
+			}
 		}
 	}
 
@@ -3436,6 +3421,20 @@ func paginateSearchResults(results []SearchResult, offset, limit int) ([]SearchR
 		results = results[:limit]
 	}
 	return results, total
+}
+
+func responseSearchResults(results []SearchResult, offset, limit int, returnAll bool) ([]SearchResult, int) {
+	if returnAll {
+		return results, len(results)
+	}
+	return paginateSearchResults(results, offset, limit)
+}
+
+func clampedTorznabLimit(limit int) int {
+	if limit <= 0 {
+		return 0
+	}
+	return min(limit, defaultTorznabLimit)
 }
 
 // parseCategoryID attempts to extract the category ID from category string
