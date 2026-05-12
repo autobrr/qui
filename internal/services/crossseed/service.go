@@ -7095,57 +7095,15 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
-		if match, reason := s.releasesMatchWithReason(searchRelease, candidateRelease, opts.FindIndividualEpisodes); !match {
+		if !s.releasesMatch(searchRelease, candidateRelease, opts.FindIndividualEpisodes) {
 			releaseFilteredCount++
-			log.Trace().
-				Str("sourceTitle", sourceTorrent.Name).
-				Str("candidateTitle", res.Title).
-				Str("indexer", res.Indexer).
-				Int("indexerID", res.IndexerID).
-				Str("reason", reason).
-				Bool("findIndividualEpisodes", opts.FindIndividualEpisodes).
-				Str("sourceParsedTitle", searchRelease.Title).
-				Int("sourceSeason", searchRelease.Series).
-				Int("sourceEpisode", searchRelease.Episode).
-				Int("sourceYear", searchRelease.Year).
-				Str("sourceGroup", searchRelease.Group).
-				Str("sourceResolution", searchRelease.Resolution).
-				Str("sourceSource", searchRelease.Source).
-				Str("sourceCollection", searchRelease.Collection).
-				Strs("sourceCodec", searchRelease.Codec).
-				Strs("sourceHDR", searchRelease.HDR).
-				Str("candidateParsedTitle", candidateRelease.Title).
-				Int("candidateSeason", candidateRelease.Series).
-				Int("candidateEpisode", candidateRelease.Episode).
-				Int("candidateYear", candidateRelease.Year).
-				Str("candidateGroup", candidateRelease.Group).
-				Str("candidateResolution", candidateRelease.Resolution).
-				Str("candidateSource", candidateRelease.Source).
-				Str("candidateCollection", candidateRelease.Collection).
-				Strs("candidateCodec", candidateRelease.Codec).
-				Strs("candidateHDR", candidateRelease.HDR).
-				Msg("[CROSSSEED-SEARCH] Candidate filtered out due to release mismatch")
 			continue
 		}
 
 		// Reject forbidden pairing: season pack candidate (new) vs single episode source (existing).
 		// In search context: candidateRelease is the new torrent, sourceRelease is the existing local torrent.
-		if reject, reason := rejectSeasonPackFromEpisode(candidateRelease, searchRelease, opts.FindIndividualEpisodes); reject {
+		if reject, _ := rejectSeasonPackFromEpisode(candidateRelease, searchRelease, opts.FindIndividualEpisodes); reject {
 			releaseFilteredCount++
-			log.Trace().
-				Str("sourceTitle", sourceTorrent.Name).
-				Str("candidateTitle", res.Title).
-				Str("indexer", res.Indexer).
-				Int("indexerID", res.IndexerID).
-				Str("reason", reason).
-				Bool("findIndividualEpisodes", opts.FindIndividualEpisodes).
-				Str("sourceParsedTitle", searchRelease.Title).
-				Int("sourceSeason", searchRelease.Series).
-				Int("sourceEpisode", searchRelease.Episode).
-				Str("candidateParsedTitle", candidateRelease.Title).
-				Int("candidateSeason", candidateRelease.Series).
-				Int("candidateEpisode", candidateRelease.Episode).
-				Msg("[CROSSSEED-SEARCH] Candidate filtered out due to forbidden season pack pairing")
 			continue
 		}
 
