@@ -29,36 +29,53 @@ func (c *capturingJackettSearcher) SearchWithScope(ctx context.Context, req *jac
 	return nil
 }
 
-func TestSearcher_Search_UsesBackgroundPriority(t *testing.T) {
-	capture := &capturingJackettSearcher{}
-	searcher := NewSearcher(capture, NewParser(nil))
-
-	req := &SearchRequest{
-		Searchee: &Searchee{Name: "Example.Movie.2024.1080p.WEB-DL"},
+func TestSearcher_Search(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupCtx       func(context.Context) context.Context
+		assertPriority bool
+		assertRequest  bool
+	}{
+		{
+			name: "uses background priority",
+			setupCtx: func(ctx context.Context) context.Context {
+				return jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityInteractive)
+			},
+			assertPriority: true,
+		},
+		{
+			name:          "uses fixed torznab window and returns all results",
+			assertRequest: true,
+		},
 	}
 
-	ctx := jackett.WithSearchPriority(context.Background(), jackett.RateLimitPriorityInteractive)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			capture := &capturingJackettSearcher{}
+			searcher := NewSearcher(capture, NewParser(nil))
 
-	err := searcher.Search(ctx, req)
-	require.NoError(t, err)
+			req := &SearchRequest{
+				Searchee: &Searchee{Name: "Example.Movie.2024.1080p.WEB-DL"},
+			}
 
-	require.True(t, capture.captured)
-	require.Equal(t, jackett.RateLimitPriorityBackground, capture.priority)
-}
+			ctx := context.Background()
+			if tt.setupCtx != nil {
+				ctx = tt.setupCtx(ctx)
+			}
 
-func TestSearcher_Search_UsesFixedTorznabWindowAndReturnsAllResults(t *testing.T) {
-	capture := &capturingJackettSearcher{}
-	searcher := NewSearcher(capture, NewParser(nil))
+			err := searcher.Search(ctx, req)
+			require.NoError(t, err)
 
-	req := &SearchRequest{
-		Searchee: &Searchee{Name: "Example.Movie.2024.1080p.WEB-DL"},
+			if tt.assertPriority {
+				require.True(t, capture.captured)
+				require.Equal(t, jackett.RateLimitPriorityBackground, capture.priority)
+			}
+			if tt.assertRequest {
+				require.NotNil(t, capture.req)
+				require.Equal(t, SearchScope, capture.scope)
+				require.Equal(t, torznabDirScanSearchLimit, capture.req.Limit)
+				require.True(t, capture.req.ReturnAllResults)
+			}
+		})
 	}
-
-	err := searcher.Search(context.Background(), req)
-	require.NoError(t, err)
-
-	require.NotNil(t, capture.req)
-	require.Equal(t, SearchScope, capture.scope)
-	require.Equal(t, torznabDirScanSearchLimit, capture.req.Limit)
-	require.True(t, capture.req.ReturnAllResults)
 }
