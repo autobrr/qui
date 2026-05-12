@@ -355,6 +355,7 @@ type Service struct {
 	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
 	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
+	postInjectionHook       func(context.Context, int, string)
 
 	// Recheck resume worker
 	recheckResumeChan   chan *pendingResume
@@ -4902,7 +4903,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Execute external program if configured (async, non-blocking)
-	s.executeExternalProgram(ctx, candidate.InstanceID, torrentHash)
+	s.runPostInjectionHooks(ctx, candidate.InstanceID, torrentHash)
 
 	logEvent := log.Info().
 		Int("instanceID", candidate.InstanceID).
@@ -10665,6 +10666,15 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	}, nil
 }
 
+func (s *Service) runPostInjectionHooks(ctx context.Context, instanceID int, torrentHash string) {
+	if s.postInjectionHook != nil {
+		s.postInjectionHook(ctx, instanceID, torrentHash)
+		return
+	}
+
+	s.executeExternalProgram(ctx, instanceID, torrentHash)
+}
+
 // executeExternalProgram runs the configured external program for a successfully injected torrent.
 //
 // WARNING: No rate limiting is applied. Rapid injections can spawn many concurrent processes.
@@ -11506,6 +11516,8 @@ func (s *Service) processHardlinkMode(
 		statusMsg += addPolicy.StatusSuffix()
 	}
 
+	s.runPostInjectionHooks(ctx, candidate.InstanceID, torrentHash)
+
 	return hardlinkModeResult{
 		Used:    true,
 		Success: true,
@@ -12110,6 +12122,8 @@ func (s *Service) processReflinkMode(
 	if hasExtras && clonedFiles < totalFiles {
 		statusMsg += " (below threshold = remains paused for manual review)"
 	}
+
+	s.runPostInjectionHooks(ctx, candidate.InstanceID, torrentHash)
 
 	return reflinkModeResult{
 		Used:    true,
