@@ -948,20 +948,50 @@ func TestResponseSearchResultsReturnAllSkipsPagination(t *testing.T) {
 		{Title: "third"},
 	}
 
-	paged, pagedTotal := responseSearchResults(results, 1, 1, false)
-	if pagedTotal != 3 {
-		t.Fatalf("paged total = %d, want 3", pagedTotal)
-	}
-	if len(paged) != 1 || paged[0].Title != "second" {
-		t.Fatalf("paged results = %+v, want only second result", paged)
+	tests := []struct {
+		name           string
+		input          []SearchResult
+		page           int
+		perPage        int
+		returnAll      bool
+		wantTotal      int
+		wantLen        int
+		wantFirstTitle string
+	}{
+		{
+			name:           "paged",
+			input:          results,
+			page:           1,
+			perPage:        1,
+			wantTotal:      3,
+			wantLen:        1,
+			wantFirstTitle: "second",
+		},
+		{
+			name:           "return all",
+			input:          results,
+			page:           1,
+			perPage:        1,
+			returnAll:      true,
+			wantTotal:      3,
+			wantLen:        3,
+			wantFirstTitle: "first",
+		},
 	}
 
-	all, allTotal := responseSearchResults(results, 1, 1, true)
-	if allTotal != 3 {
-		t.Fatalf("all total = %d, want 3", allTotal)
-	}
-	if len(all) != 3 {
-		t.Fatalf("all results length = %d, want 3", len(all))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, gotTotal := responseSearchResults(tt.input, tt.page, tt.perPage, tt.returnAll)
+			if gotTotal != tt.wantTotal {
+				t.Fatalf("total = %d, want %d", gotTotal, tt.wantTotal)
+			}
+			if len(got) != tt.wantLen {
+				t.Fatalf("results length = %d, want %d", len(got), tt.wantLen)
+			}
+			if tt.wantFirstTitle != "" && got[0].Title != tt.wantFirstTitle {
+				t.Fatalf("first title = %q, want %q", got[0].Title, tt.wantFirstTitle)
+			}
+		})
 	}
 }
 
@@ -2147,11 +2177,32 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 }
 
 func TestAppendSearchTokenDetectsExistingSeasonEpisode(t *testing.T) {
-	if got := appendSearchToken("Some Show S22E01 720", "S22"); got != "Some Show S22E01 720" {
-		t.Fatalf("appendSearchToken() = %q, want %q", got, "Some Show S22E01 720")
+	tests := []struct {
+		name     string
+		input    string
+		token    string
+		expected string
+	}{
+		{
+			name:     "keeps existing season token",
+			input:    "Some Show S22E01 720",
+			token:    "S22",
+			expected: "Some Show S22E01 720",
+		},
+		{
+			name:     "adds missing season token",
+			input:    "Some Show S21E01 720",
+			token:    "S22",
+			expected: "Some Show S21E01 S22 720",
+		},
 	}
-	if got := appendSearchToken("Some Show S21E01 720", "S22"); got != "Some Show S21E01 S22 720" {
-		t.Fatalf("appendSearchToken() = %q, want %q", got, "Some Show S21E01 S22 720")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := appendSearchToken(tt.input, tt.token); got != tt.expected {
+				t.Fatalf("appendSearchToken() = %q, want %q", got, tt.expected)
+			}
+		})
 	}
 }
 
