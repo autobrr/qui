@@ -2460,6 +2460,8 @@ func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta
 	// Track what IDs we started with and what we have after pruning
 	hadIDs := false
 	hasIDsAfterPruning := false
+	var prunedParams []string
+	var missingCapabilities []string
 
 	for _, def := range idParams {
 		// Check if this param is in the request
@@ -2503,13 +2505,18 @@ func (s *Service) applyCapabilitySpecificParams(idx *models.TorznabIndexer, meta
 		} else {
 			// Indexer doesn't support it, prune the param
 			delete(params, def.param)
-			log.Debug().
-				Int("indexer_id", idx.ID).
-				Str("indexer", idx.Name).
-				Str("param", def.param).
-				Str("capability", capToCheck).
-				Msg("Pruned unsupported ID parameter for indexer")
+			prunedParams = append(prunedParams, def.param)
+			missingCapabilities = append(missingCapabilities, capToCheck)
 		}
+	}
+
+	if len(prunedParams) > 0 {
+		log.Debug().
+			Int("indexer_id", idx.ID).
+			Str("indexer", idx.Name).
+			Strs("pruned_params", prunedParams).
+			Strs("missing_capabilities", missingCapabilities).
+			Msg("Pruned unsupported ID parameters for indexer")
 	}
 
 	// If we had IDs but they were all pruned, restore q param for this indexer
