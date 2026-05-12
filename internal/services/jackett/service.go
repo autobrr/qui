@@ -2581,6 +2581,22 @@ func (s *Service) applyProwlarrTVTokenWorkaround(idx *models.TorznabIndexer, par
 	}
 
 	currentQuery := strings.TrimSpace(params["q"])
+	if hasTorznabIDParams(params) {
+		modifiedQuery := idDrivenTVQuery(token, currentQuery, meta)
+		params["q"] = modifiedQuery
+		delete(params, "season")
+		delete(params, "ep")
+
+		log.Debug().
+			Int("indexer_id", idx.ID).
+			Str("indexer_name", idx.Name).
+			Str("original_query", currentQuery).
+			Str("modified_query", modifiedQuery).
+			Str("tv_token", token).
+			Msg("Prowlarr workaround: moved TV season/episode parameter to search query")
+		return
+	}
+
 	if currentQuery == "" && meta != nil {
 		currentQuery = strings.TrimSpace(meta.originalQuery)
 		if currentQuery == "" {
@@ -2604,6 +2620,28 @@ func (s *Service) applyProwlarrTVTokenWorkaround(idx *models.TorznabIndexer, par
 		Str("modified_query", modifiedQuery).
 		Str("tv_token", token).
 		Msg("Prowlarr workaround: moved TV season/episode parameter to search query")
+}
+
+func hasTorznabIDParams(params map[string]string) bool {
+	return params["imdbid"] != "" || params["tvdbid"] != "" || params["tmdbid"] != "" || params["tvmazeid"] != ""
+}
+
+func idDrivenTVQuery(token, currentQuery string, meta *searchContext) string {
+	resolution := firstResolutionToken(currentQuery)
+	if resolution == "" && meta != nil {
+		resolution = firstResolutionToken(meta.originalQuery)
+		if resolution == "" {
+			resolution = firstResolutionToken(meta.releaseName)
+		}
+	}
+	if resolution == "" {
+		return strings.TrimSpace(token)
+	}
+	return strings.TrimSpace(token + " " + resolution)
+}
+
+func firstResolutionToken(query string) string {
+	return searchResolutionToken.FindString(query)
 }
 
 func prowlarrTVToken(seasonStr, episodeStr string) string {

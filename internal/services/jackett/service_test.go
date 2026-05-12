@@ -1975,14 +1975,34 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 			},
 			expected: map[string]string{
 				"t":      "tvsearch",
-				"q":      "Some.Show.S17.1080p.HULU.WEB-DL.AAC2.0.H.264-RAWR",
+				"q":      "S17 1080p",
 				"imdbid": "1785123",
 			},
 			meta: &searchContext{
 				originalQuery: "Some.Show.S17.1080p.HULU.WEB-DL.AAC2.0.H.264-RAWR",
 				releaseName:   "Some.Show.S17.1080p.HULU.WEB-DL.AAC2.0.H.264-RAWR",
 			},
-			description: "Prowlarr indexer should keep q for ID-driven TV searches and remove season parameter",
+			description: "Prowlarr indexer should keep TV token and resolution for ID-driven TV searches",
+		},
+		{
+			name:    "prowlarr id driven tv drops title from restored query",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t":      "tvsearch",
+				"q":      "Greys Anatomy 720",
+				"season": "22",
+				"imdbid": "0413573",
+				"tvdbid": "73762",
+				"tmdbid": "1416",
+			},
+			expected: map[string]string{
+				"t":      "tvsearch",
+				"q":      "S22 720",
+				"imdbid": "0413573",
+				"tvdbid": "73762",
+				"tmdbid": "1416",
+			},
+			description: "Prowlarr indexer should not include title in q when IDs are present",
 		},
 	}
 
