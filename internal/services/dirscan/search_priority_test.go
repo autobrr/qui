@@ -31,21 +31,17 @@ func (c *capturingJackettSearcher) SearchWithScope(ctx context.Context, req *jac
 
 func TestSearcher_Search(t *testing.T) {
 	tests := []struct {
-		name           string
-		setupCtx       func(context.Context) context.Context
-		assertPriority bool
-		assertRequest  bool
+		name     string
+		setupCtx func(context.Context) context.Context
 	}{
 		{
 			name: "uses background priority",
 			setupCtx: func(ctx context.Context) context.Context {
 				return jackett.WithSearchPriority(ctx, jackett.RateLimitPriorityInteractive)
 			},
-			assertPriority: true,
 		},
 		{
-			name:          "uses fixed torznab window and returns all results",
-			assertRequest: true,
+			name: "uses fixed torznab window and returns all results",
 		},
 	}
 
@@ -66,16 +62,12 @@ func TestSearcher_Search(t *testing.T) {
 			err := searcher.Search(ctx, req)
 			require.NoError(t, err)
 
-			if tt.assertPriority {
-				require.True(t, capture.captured)
-				require.Equal(t, jackett.RateLimitPriorityBackground, capture.priority)
-			}
-			if tt.assertRequest {
-				require.NotNil(t, capture.req)
-				require.Equal(t, SearchScope, capture.scope)
-				require.Equal(t, torznabDirScanSearchLimit, capture.req.Limit)
-				require.True(t, capture.req.ReturnAllResults)
-			}
+			require.True(t, capture.captured)
+			require.Equal(t, jackett.RateLimitPriorityBackground, capture.priority)
+			require.NotNil(t, capture.req)
+			require.Equal(t, SearchScope, capture.scope)
+			require.Equal(t, torznabDirScanSearchLimit, capture.req.Limit)
+			require.True(t, capture.req.ReturnAllResults)
 		})
 	}
 }
