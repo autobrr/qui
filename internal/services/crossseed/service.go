@@ -11600,9 +11600,9 @@ func (s *Service) buildCategorySavePath(
 	switch instance.HardlinkDirPreset {
 	case "by-tracker":
 		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
+		return normalizePath(filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName)))
 	case "by-instance":
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName))
+		return normalizePath(filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName)))
 	default: // "flat" or unknown
 		return baseDir
 	}
