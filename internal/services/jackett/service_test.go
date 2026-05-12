@@ -341,6 +341,11 @@ func TestShouldSortSearchResultsBySize(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "tv id search without q keeps seeders first",
+			meta: &searchContext{contentType: contentTypeTVShow},
+			q:    "",
+		},
+		{
 			name: "tv search with integer resolution keeps seeders first",
 			meta: &searchContext{contentType: contentTypeTVShow},
 			q:    "Some Show S22 720",

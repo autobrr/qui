@@ -1475,7 +1475,11 @@ func shouldSortSearchResultsBySize(meta *searchContext, params url.Values) bool 
 	if meta.contentType != contentTypeTVShow && meta.contentType != contentTypeTVDaily {
 		return false
 	}
-	return !searchResolutionToken.MatchString(params.Get("q"))
+	query := strings.TrimSpace(params.Get("q"))
+	if query == "" {
+		return false
+	}
+	return !searchResolutionToken.MatchString(query)
 }
 
 func dedupeSearchResults(results []SearchResult) []SearchResult {
