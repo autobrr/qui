@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"maps"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
@@ -1048,6 +1050,108 @@ func TestClampedTorznabLimit(t *testing.T) {
 			got := clampedTorznabLimit(tt.limit)
 			if got != tt.want {
 				t.Fatalf("clampedTorznabLimit(%d) = %d, want %d", tt.limit, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExecuteIndexerSearchClampsLimitPerIndexer(t *testing.T) {
+	tests := []struct {
+		name      string
+		backend   models.TorznabBackend
+		indexerID string
+		limitMax  int
+		requested string
+		wantLimit string
+	}{
+		{
+			name:      "native uses indexer max below fallback cap",
+			backend:   models.TorznabBackendNative,
+			limitMax:  50,
+			requested: "100",
+			wantLimit: "50",
+		},
+		{
+			name:      "prowlarr uses indexer max below fallback cap",
+			backend:   models.TorznabBackendProwlarr,
+			indexerID: "7",
+			limitMax:  50,
+			requested: "100",
+			wantLimit: "50",
+		},
+		{
+			name:      "jackett uses indexer max below fallback cap",
+			backend:   models.TorznabBackendJackett,
+			indexerID: "test-indexer",
+			limitMax:  50,
+			requested: "100",
+			wantLimit: "50",
+		},
+		{
+			name:      "valid indexer max above fallback cap is honored",
+			backend:   models.TorznabBackendNative,
+			limitMax:  150,
+			requested: "300",
+			wantLimit: "150",
+		},
+		{
+			name:      "missing indexer max falls back to hard cap",
+			backend:   models.TorznabBackendNative,
+			limitMax:  0,
+			requested: "300",
+			wantLimit: "100",
+		},
+		{
+			name:      "invalid indexer max falls back to hard cap",
+			backend:   models.TorznabBackendNative,
+			limitMax:  -5,
+			requested: "300",
+			wantLimit: "100",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured url.Values
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				captured = r.URL.Query()
+				w.Header().Set("Content-Type", "application/rss+xml")
+				if _, err := w.Write([]byte(`<rss version="2.0"><channel><title>Test</title></channel></rss>`)); err != nil {
+					t.Errorf("write RSS response: %v", err)
+				}
+			}))
+			defer server.Close()
+
+			idx := &models.TorznabIndexer{
+				ID:             1,
+				Name:           "Test Indexer",
+				BaseURL:        server.URL,
+				Backend:        tt.backend,
+				IndexerID:      tt.indexerID,
+				LimitMax:       tt.limitMax,
+				TimeoutSeconds: 5,
+				Enabled:        true,
+			}
+			service := NewService(&mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{idx}})
+
+			result := service.executeIndexerSearch(
+				context.Background(),
+				idx,
+				url.Values{
+					"q":     {"Example"},
+					"limit": {tt.requested},
+				},
+				nil,
+				indexerExecOptions{},
+			)
+			if result.err != nil {
+				t.Fatalf("executeIndexerSearch() error = %v", result.err)
+			}
+			if captured == nil {
+				t.Fatal("expected outbound request to be captured")
+			}
+			if got := captured.Get("limit"); got != tt.wantLimit {
+				t.Fatalf("outbound limit = %q, want %q", got, tt.wantLimit)
 			}
 		})
 	}

@@ -1909,9 +1909,18 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 
 	if limitStr, hasLimit := paramsMap["limit"]; hasLimit {
 		if limit, parseErr := strconv.Atoi(limitStr); parseErr == nil {
-			clampedLimit := clampedTorznabLimit(limit)
+			clampedLimit := clampedTorznabLimitForIndexer(limit, idx)
 			if clampedLimit > 0 && clampedLimit != limit {
 				paramsMap["limit"] = strconv.Itoa(clampedLimit)
+				if idx.LimitMax > 0 {
+					log.Debug().
+						Int("indexer_id", idx.ID).
+						Str("indexer", idx.Name).
+						Int("requested_limit", limit).
+						Int("limit_max", idx.LimitMax).
+						Int("clamped_limit", clampedLimit).
+						Msg("Clamped search limit to indexer's max")
+				}
 			}
 		}
 	}
@@ -3435,6 +3444,16 @@ func clampedTorznabLimit(limit int) int {
 		return 0
 	}
 	return min(limit, defaultTorznabLimit)
+}
+
+func clampedTorznabLimitForIndexer(limit int, idx *models.TorznabIndexer) int {
+	if limit <= 0 {
+		return 0
+	}
+	if idx != nil && idx.LimitMax > 0 {
+		return min(limit, idx.LimitMax)
+	}
+	return clampedTorznabLimit(limit)
 }
 
 // parseCategoryID attempts to extract the category ID from category string
