@@ -246,6 +246,13 @@ const (
 	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
 )
 
+func effectiveTorznabCrossSeedSearchLimit(limit int) int {
+	if limit <= 0 {
+		return torznabCrossSeedSearchLimit
+	}
+	return min(limit, torznabCrossSeedSearchLimit)
+}
+
 var completionRateLimitTokens = []string{
 	"429",
 	"rate limit",
@@ -6671,10 +6678,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Msg("[CROSSSEED-SEARCH] Generated search query with fallback parsing")
 	}
 
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 50
-	}
+	limit := effectiveTorznabCrossSeedSearchLimit(opts.Limit)
 
 	// Apply indexer filtering (capabilities first, then optionally content filtering async)
 	var filteredIndexerIDs []int
@@ -6857,7 +6861,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	searchReq := &jackett.TorznabSearchRequest{
 		Query:            query,
 		ReleaseName:      sourceTorrent.Name,
-		Limit:            torznabCrossSeedSearchLimit,
+		Limit:            limit,
 		IndexerIDs:       filteredIndexerIDs,
 		CacheMode:        opts.CacheMode,
 		ReturnAllResults: true,
