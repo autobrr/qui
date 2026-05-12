@@ -746,7 +746,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 		}
 		combined = append(combined, networkConverted...)
 		combined = dedupeSearchResults(combined)
-		sortSearchResults(combined, shouldSortSearchResultsBySize(meta, params))
+		sortSearchResults(combined)
 		pageResults, total := responseSearchResults(combined, req.Offset, req.Limit, req.ReturnAllResults)
 
 		response := &SearchResponse{
@@ -1443,37 +1443,13 @@ func filterResultsByIndexerIDs(results []SearchResult, allowed []int) []SearchRe
 	return filtered
 }
 
-func sortSearchResults(results []SearchResult, sizeFirst bool) {
-	if sizeFirst {
-		sort.SliceStable(results, func(i, j int) bool {
-			if results[i].Size != results[j].Size {
-				return results[i].Size < results[j].Size
-			}
-			return results[i].Seeders > results[j].Seeders
-		})
-		return
-	}
-
+func sortSearchResults(results []SearchResult) {
 	sort.SliceStable(results, func(i, j int) bool {
 		if results[i].Seeders != results[j].Seeders {
 			return results[i].Seeders > results[j].Seeders
 		}
 		return results[i].Size > results[j].Size
 	})
-}
-
-func shouldSortSearchResultsBySize(meta *searchContext, params url.Values) bool {
-	if meta == nil {
-		return false
-	}
-	if meta.contentType != contentTypeTVShow && meta.contentType != contentTypeTVDaily {
-		return false
-	}
-	query := strings.TrimSpace(params.Get("q"))
-	if query == "" {
-		return false
-	}
-	return !searchResolutionToken.MatchString(query)
 }
 
 func dedupeSearchResults(results []SearchResult) []SearchResult {
