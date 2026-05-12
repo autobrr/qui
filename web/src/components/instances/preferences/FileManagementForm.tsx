@@ -166,6 +166,8 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
   const { data: capabilities } = useInstanceCapabilities(instanceId)
   const [incognitoMode] = useIncognitoMode()
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
+  const canToggleSubcategories = supportsSubcategories && !subcategoriesAlwaysEnabled
   const webAPIVersion = capabilities?.webAPIVersion?.trim() ?? ""
   const supportsAutorunOnTorrentAdded = isWebAPIVersionAtLeast(webAPIVersion, AUTORUN_ON_ADDED_MIN_WEBAPI_VERSION)
   const autorunPlaceholders = supportsAutorunOnTorrentAdded ? MODERN_AUTORUN_PLACEHOLDERS : LEGACY_AUTORUN_PLACEHOLDERS
@@ -213,7 +215,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
           qbittorrentPrefs.autorun_on_torrent_added_enabled = value.autorun_on_torrent_added_enabled
           qbittorrentPrefs.autorun_on_torrent_added_program = value.autorun_on_torrent_added_program
         }
-        if (supportsSubcategories) {
+        if (canToggleSubcategories) {
           qbittorrentPrefs.use_subcategories = Boolean(value.use_subcategories)
         }
         updatePreferences(qbittorrentPrefs)
@@ -232,7 +234,9 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
       form.setFieldValue("torrent_changed_tmm_enabled", preferences.torrent_changed_tmm_enabled ?? true)
       form.setFieldValue("save_path_changed_tmm_enabled", preferences.save_path_changed_tmm_enabled ?? true)
       form.setFieldValue("category_changed_tmm_enabled", preferences.category_changed_tmm_enabled ?? true)
-      if (supportsSubcategories) {
+      if (subcategoriesAlwaysEnabled) {
+        form.setFieldValue("use_subcategories", true)
+      } else if (supportsSubcategories) {
         form.setFieldValue("use_subcategories", Boolean(preferences.use_subcategories))
       } else {
         form.setFieldValue("use_subcategories", false)
@@ -247,7 +251,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
       form.setFieldValue("autorun_program", preferences.autorun_program ?? "")
       form.setFieldValue("watch_folders", getWatchFolders(preferences.scan_dirs))
     }
-  }, [preferences, form, supportsSubcategories])
+  }, [preferences, form, supportsSubcategories, subcategoriesAlwaysEnabled])
 
   // Update form when localStorage start_paused_enabled changes
   React.useEffect(() => {
@@ -346,7 +350,7 @@ export function FileManagementForm({ instanceId, onSuccess }: FileManagementForm
             }
           </form.Subscribe>
 
-          {supportsSubcategories && (
+          {canToggleSubcategories && (
             <form.Field name="use_subcategories">
               {(field) => (
                 <SwitchSetting

@@ -1255,11 +1255,12 @@ export function TorrentCardsMobile({
   const supportsSubcategories = isAllInstancesView
     ? Boolean(subcategoriesFromData)
     : (capabilities?.supportsSubcategories ?? false)
+  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
   // subcategoriesFromData reflects backend/server state; allowSubcategories
   // additionally respects user preferences for UI surfaces like dialogs.
   const allowSubcategories = isAllInstancesView
     ? Boolean(subcategoriesFromData)
-    : (supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false))
+    : (supportsSubcategories && (subcategoriesAlwaysEnabled || (preferences?.use_subcategories ?? subcategoriesFromData ?? false)))
 
   const getSelectionIdentity = useCallback((torrent: Torrent): string => {
     if (!isAllInstancesView) {
