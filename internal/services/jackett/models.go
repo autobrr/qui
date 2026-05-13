@@ -45,6 +45,8 @@ type TorznabSearchRequest struct {
 	OmitQueryForIDs bool `json:"-"`
 	// SkipHistory prevents recording this search in the history buffer
 	SkipHistory bool `json:"-"`
+	// ReturnAllResults skips response pagination for internal callers that need the complete result set.
+	ReturnAllResults bool `json:"-"`
 	// OnComplete is called when a search job for an indexer completes
 	OnComplete func(jobID uint64, indexerID int, err error) `json:"-"`
 	// OnAllComplete is called when all search jobs complete with the final results

@@ -537,6 +537,55 @@ func (m *mockInstanceStore) List(ctx context.Context) ([]*models.Instance, error
 	return result, nil
 }
 
+func TestProcessHardlinkMode_ExecutesExternalProgramAfterSuccessfulAdd(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "movie.mkv"), []byte("movie"), 0o600))
+
+	hookCallCount := 0
+	s := &Service{
+		instanceStore: &mockInstanceStore{
+			instances: map[int]*models.Instance{
+				1: {
+					ID:                       1,
+					Name:                     "qbt1",
+					HasLocalFilesystemAccess: true,
+					UseHardlinks:             true,
+					HardlinkBaseDir:          filepath.Join(tempDir, "hardlinks"),
+				},
+			},
+		},
+		syncManager: &rootlessSavePathSyncManager{},
+		postInjectionHook: func(_ context.Context, instanceID int, torrentHash string) {
+			if instanceID == 1 && torrentHash == "hash123" {
+				hookCallCount++
+			}
+		},
+	}
+
+	result := s.processHardlinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+		"exact",
+		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}},
+		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 5}},
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"category",
+		"category.cross",
+	)
+
+	require.True(t, result.Success)
+	require.Equal(t, "added_hardlink", result.Result.Status)
+	require.Equal(t, 1, hookCallCount, "expected successful hardlink injection to run post-injection hooks once")
+}
+
 func TestProcessHardlinkMode_FailsWhenNoLocalAccess(t *testing.T) {
 	mockInstances := &mockInstanceStore{
 		instances: map[int]*models.Instance{

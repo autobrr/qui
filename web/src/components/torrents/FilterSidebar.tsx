@@ -212,13 +212,14 @@ const FilterSidebarComponent = ({
   const supportsSubcategories = isConcreteInstanceScope
     ? (capabilities?.supportsSubcategories ?? false)
     : Boolean(useSubcategories)
+  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
   const { preferences } = useInstancePreferences(
     instanceId,
     { enabled: isConcreteInstanceScope && isInstanceActive }
   )
   const preferenceUseSubcategories = preferences?.use_subcategories
   const subcategoriesEnabled = isConcreteInstanceScope
-    ? Boolean(supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false))
+    ? Boolean(supportsSubcategories && (subcategoriesAlwaysEnabled || (preferenceUseSubcategories ?? useSubcategories ?? false)))
     : Boolean(useSubcategories)
 
   // View mode syncs with the torrent list (table on desktop, cards on mobile).

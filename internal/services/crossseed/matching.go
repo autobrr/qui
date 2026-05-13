@@ -119,8 +119,13 @@ func (k releaseKey) String() string {
 // releasesMatch checks if two releases are related using fuzzy matching.
 // This allows matching similar content that isn't exactly the same.
 func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEpisodes bool) bool {
+	match, _ := s.releasesMatchWithReason(source, candidate, findIndividualEpisodes)
+	return match
+}
+
+func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIndividualEpisodes bool) (bool, string) {
 	if source == candidate {
-		return true
+		return true, ""
 	}
 
 	normalizer := stringutils.NewDefaultNormalizer()
@@ -135,7 +140,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	candidateTitleNorm := stringutils.NormalizeForMatching(candidate.Title)
 
 	if sourceTitleNorm == "" || candidateTitleNorm == "" {
-		return false
+		return false, "empty normalized title"
 	}
 
 	// Require exact title match after normalization.
@@ -145,7 +150,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	// would incorrectly treat them as the same show.
 	if sourceTitleNorm != candidateTitleNorm {
 		// Title mismatches are expected for most candidates - don't log to avoid noise
-		return false
+		return false, "title mismatch"
 	}
 
 	isTV := source.Series > 0 || candidate.Series > 0
@@ -156,13 +161,13 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		sourceArtist := normalizer.Normalize(source.Artist)
 		candidateArtist := normalizer.Normalize(candidate.Artist)
 		if sourceArtist != candidateArtist {
-			return false
+			return false, "artist mismatch"
 		}
 	}
 
 	// Year should match if both are present.
 	if source.Year > 0 && candidate.Year > 0 && source.Year != candidate.Year {
-		return false
+		return false, "year mismatch"
 	}
 
 	// For date-based releases (0day scene), require exact date match including month and day.
@@ -170,7 +175,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	if source.Year > 0 && source.Month > 0 && source.Day > 0 &&
 		candidate.Year > 0 && candidate.Month > 0 && candidate.Day > 0 {
 		if source.Month != candidate.Month || source.Day != candidate.Day {
-			return false
+			return false, "date mismatch"
 		}
 	}
 
@@ -178,22 +183,22 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	// audiobook, etc.), require the types to match. This prevents, for example,
 	// music releases from matching audiobooks with similar titles.
 	if !isTV && source.Type != 0 && candidate.Type != 0 && source.Type != candidate.Type {
-		return false
+		return false, "content type mismatch"
 	}
 
 	// For TV shows, season and episode structure must match based on settings.
 	if source.Series > 0 || candidate.Series > 0 {
 		// Both must have series info if either does
 		if source.Series > 0 && candidate.Series == 0 {
-			return false
+			return false, "candidate missing season"
 		}
 		if candidate.Series > 0 && source.Series == 0 {
-			return false
+			return false, "source missing season"
 		}
 
 		// Series numbers must match
 		if source.Series > 0 && candidate.Series > 0 && source.Series != candidate.Series {
-			return false
+			return false, "season mismatch"
 		}
 
 		// Episode structure matching depends on user setting
@@ -203,18 +208,18 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		if !findIndividualEpisodes {
 			// Strict matching: season packs only match season packs, episodes only match episodes
 			if sourceIsPack != candidateIsPack {
-				return false
+				return false, "season pack versus episode mismatch"
 			}
 
 			// If both are individual episodes, episodes must match
 			if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
-				return false
+				return false, "episode mismatch"
 			}
 		} else {
 			// Flexible matching: allow season packs to match individual episodes
 			// But individual episodes still need exact episode matching
 			if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
-				return false
+				return false, "episode mismatch"
 			}
 		}
 	}
@@ -228,7 +233,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	if sourceGroup != "" {
 		// If source has a group, candidate must have the same group
 		if candidateGroup == "" || sourceGroup != candidateGroup {
-			return false
+			return false, "group mismatch"
 		}
 	}
 	// If source has no group, we don't care about candidate's group
@@ -241,7 +246,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	sourceSite := normalizer.Normalize(source.Site)
 	candidateSite := normalizer.Normalize(candidate.Site)
 	if sourceSite != "" && candidateSite != "" && sourceSite != candidateSite {
-		return false
+		return false, "site mismatch"
 	}
 
 	// Sum field contains the CRC32 checksum for anime releases like [32ECE75A].
@@ -250,7 +255,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	candidateSum := normalizer.Normalize(candidate.Sum)
 	if sourceSum != "" {
 		if candidateSum == "" || sourceSum != candidateSum {
-			return false
+			return false, "checksum mismatch"
 		}
 	}
 
@@ -261,7 +266,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	sourceSource := normalizeSource(source.Source)
 	candidateSource := normalizeSource(candidate.Source)
 	if !sourcesCompatible(sourceSource, candidateSource) {
-		return false
+		return false, "source mismatch"
 	}
 
 	// Resolution must match (1080p vs 2160p are different files).
@@ -282,7 +287,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 
 		sdFallbackAllowed := (sourceRes == "" && isKnownSD(candidateRes)) || (candidateRes == "" && isKnownSD(sourceRes))
 		if !sdFallbackAllowed {
-			return false
+			return false, "resolution mismatch"
 		}
 	}
 
@@ -291,7 +296,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	sourceCollection := normalizer.Normalize((source.Collection))
 	candidateCollection := normalizer.Normalize((candidate.Collection))
 	if sourceCollection != candidateCollection {
-		return false
+		return false, "collection mismatch"
 	}
 
 	// Codec must match if both are present (AVC vs HEVC produce different files).
@@ -300,7 +305,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		sourceCodec := joinNormalizedCodecSlice(source.Codec)
 		candidateCodec := joinNormalizedCodecSlice(candidate.Codec)
 		if sourceCodec != candidateCodec {
-			return false
+			return false, "codec mismatch"
 		}
 	}
 
@@ -309,7 +314,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	sourceHDR := joinNormalizedHDRSlice(source.HDR)
 	candidateHDR := joinNormalizedHDRSlice(candidate.HDR)
 	if sourceHDR != candidateHDR {
-		return false
+		return false, "hdr mismatch"
 	}
 
 	// Bit depth should match when both are present (8-bit vs 10-bit are different encodes).
@@ -317,7 +322,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	sourceBitDepth := normalizer.Normalize(source.BitDepth)
 	candidateBitDepth := normalizer.Normalize(candidate.BitDepth)
 	if sourceBitDepth != "" && candidateBitDepth != "" && sourceBitDepth != candidateBitDepth {
-		return false
+		return false, "bit depth mismatch"
 	}
 
 	// NOTE: Audio codec and channel checks are intentionally omitted here.
@@ -331,7 +336,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		sourceCut := joinNormalizedSlice(source.Cut)
 		candidateCut := joinNormalizedSlice(candidate.Cut)
 		if sourceCut != candidateCut {
-			return false
+			return false, "cut mismatch"
 		}
 	}
 
@@ -340,7 +345,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 		sourceEdition := joinNormalizedSlice(source.Edition)
 		candidateEdition := joinNormalizedSlice(candidate.Edition)
 		if sourceEdition != candidateEdition {
-			return false
+			return false, "edition mismatch"
 		}
 	}
 
@@ -355,7 +360,7 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 			return lang == "" || lang == "ENGLISH"
 		}
 		if !(isEnglishOrEmpty(sourceLanguage) && isEnglishOrEmpty(candidateLanguage)) {
-			return false
+			return false, "language mismatch"
 		}
 	}
 
@@ -363,39 +368,42 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 	sourceVersion := normalizer.Normalize(source.Version)
 	candidateVersion := normalizer.Normalize(candidate.Version)
 	if sourceVersion != "" && candidateVersion != "" && sourceVersion != candidateVersion {
-		return false
+		return false, "version mismatch"
 	}
 
 	// Disc must match if both are present (Disc1 vs Disc2 are different content)
 	sourceDisc := normalizer.Normalize(source.Disc)
 	candidateDisc := normalizer.Normalize(candidate.Disc)
 	if sourceDisc != "" && candidateDisc != "" && sourceDisc != candidateDisc {
-		return false
+		return false, "disc mismatch"
 	}
 
 	// Platform must match if both are present (Windows vs macOS are different binaries)
 	sourcePlatform := normalizer.Normalize(source.Platform)
 	candidatePlatform := normalizer.Normalize(candidate.Platform)
 	if sourcePlatform != "" && candidatePlatform != "" && sourcePlatform != candidatePlatform {
-		return false
+		return false, "platform mismatch"
 	}
 
 	// Architecture must match if both are present (x64 vs x86 are different binaries)
 	sourceArch := normalizer.Normalize(source.Arch)
 	candidateArch := normalizer.Normalize(candidate.Arch)
 	if sourceArch != "" && candidateArch != "" && sourceArch != candidateArch {
-		return false
+		return false, "architecture mismatch"
 	}
 
 	// Certain variant tags must match for safe cross-seeding.
 	// IMAX/HYBRID always require exact match (different video masters).
 	// REPACK/PROPER require exact match for non-pack content, but season packs
 	// are exempt since a pack might contain a REPACK of just one episode.
-	if compatible, _ := checkVariantsCompatible(source, candidate); !compatible {
-		return false
+	if compatible, reason := checkVariantsCompatible(source, candidate); !compatible {
+		if reason == "" {
+			reason = "variant mismatch"
+		}
+		return false, reason
 	}
 
-	return true
+	return true, ""
 }
 
 const hdbitsAutobrrIndexer = "hdb"

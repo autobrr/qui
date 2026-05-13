@@ -5776,6 +5776,9 @@ components:
         supportsSubcategories:
           type: boolean
           description: Whether the instance supports nested torrent categories (requires WebAPI 2.9.0+, qBittorrent 4.6.0+).
+        subcategoriesAlwaysEnabled:
+          type: boolean
+          description: Whether nested torrent categories are always enabled by qBittorrent (WebAPI 2.15.0+).
         webAPIVersion:
           type: string
           nullable: true

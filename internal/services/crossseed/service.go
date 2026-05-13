@@ -244,6 +244,7 @@ const (
 	minSearchCooldownMinutes              = 720
 	maxCompletionSearchAttempts           = 3
 	maxCompletionCheckingAttempts         = 3
+	torznabCrossSeedSearchLimit           = 100
 	defaultCompletionRetryDelay           = 30 * time.Second
 	defaultCompletionCheckingRetryDelay   = 30 * time.Second
 	defaultCompletionCheckingPollInterval = 2 * time.Second
@@ -252,6 +253,13 @@ const (
 	// User-facing message when cross-seed is skipped due to recheck requirement
 	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
 )
+
+func effectiveTorznabCrossSeedSearchLimit(limit int) int {
+	if limit <= 0 {
+		return torznabCrossSeedSearchLimit
+	}
+	return min(limit, torznabCrossSeedSearchLimit)
+}
 
 var completionRateLimitTokens = []string{
 	"429",
@@ -367,6 +375,7 @@ type Service struct {
 	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
 	seasonPackLinkCreator   func(plan *hardlinktree.TreePlan) error
+	postInjectionHook       func(context.Context, int, string)
 
 	// Recheck resume worker
 	recheckResumeChan   chan *pendingResume
@@ -5008,7 +5017,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Execute external program if configured (async, non-blocking)
-	s.executeExternalProgram(ctx, candidate.InstanceID, torrentHash)
+	s.runPostInjectionHooks(ctx, candidate.InstanceID, torrentHash)
 
 	logEvent := log.Info().
 		Int("instanceID", candidate.InstanceID).
@@ -6749,7 +6758,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			}
 		}
 
-		safeQuery := buildSafeSearchQuery(sourceTorrent.Name, queryRelease, baseQuery)
+		safeQuery := buildSafeSearchQuery(sourceTorrent.Name, queryRelease, baseQuery, SearchQueryOptions{
+			IncludeResolution: contentInfo.ContentType == "tv",
+		})
 		query = strings.TrimSpace(safeQuery.Query)
 		if query == "" {
 			// Fallback to a basic title-based query to avoid empty searches
@@ -6774,11 +6785,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Msg("[CROSSSEED-SEARCH] Generated search query with fallback parsing")
 	}
 
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 40
-	}
-	requestLimit := max(limit*3, limit)
+	limit := effectiveTorznabCrossSeedSearchLimit(opts.Limit)
 
 	// Apply indexer filtering (capabilities first, then optionally content filtering async)
 	var filteredIndexerIDs []int
@@ -6959,11 +6966,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	searchReq := &jackett.TorznabSearchRequest{
-		Query:       query,
-		ReleaseName: sourceTorrent.Name,
-		Limit:       requestLimit,
-		IndexerIDs:  filteredIndexerIDs,
-		CacheMode:   opts.CacheMode,
+		Query:            query,
+		ReleaseName:      sourceTorrent.Name,
+		Limit:            limit,
+		IndexerIDs:       filteredIndexerIDs,
+		CacheMode:        opts.CacheMode,
+		ReturnAllResults: true,
 	}
 
 	// Apply IDs from ARR lookup and set OmitQueryForIDs flag
@@ -10771,6 +10779,15 @@ func (s *Service) CheckWebhook(ctx context.Context, req *WebhookCheckRequest) (*
 	}, nil
 }
 
+func (s *Service) runPostInjectionHooks(ctx context.Context, instanceID int, torrentHash string) {
+	if s.postInjectionHook != nil {
+		s.postInjectionHook(ctx, instanceID, torrentHash)
+		return
+	}
+
+	s.executeExternalProgram(ctx, instanceID, torrentHash)
+}
+
 // executeExternalProgram runs the configured external program for a successfully injected torrent.
 //
 // WARNING: No rate limiting is applied. Rapid injections can spawn many concurrent processes.
@@ -11612,6 +11629,8 @@ func (s *Service) processHardlinkMode(
 		statusMsg += addPolicy.StatusSuffix()
 	}
 
+	s.runPostInjectionHooks(ctx, candidate.InstanceID, torrentHash)
+
 	return hardlinkModeResult{
 		Used:    true,
 		Success: true,
@@ -11699,9 +11718,9 @@ func (s *Service) buildCategorySavePath(
 	switch instance.HardlinkDirPreset {
 	case "by-tracker":
 		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
+		return normalizePath(filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName)))
 	case "by-instance":
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName))
+		return normalizePath(filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName)))
 	default: // "flat" or unknown
 		return baseDir
 	}
@@ -12216,6 +12235,8 @@ func (s *Service) processReflinkMode(
 	if hasExtras && clonedFiles < totalFiles {
 		statusMsg += " (below threshold = remains paused for manual review)"
 	}
+
+	s.runPostInjectionHooks(ctx, candidate.InstanceID, torrentHash)
 
 	return reflinkModeResult{
 		Used:    true,

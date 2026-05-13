@@ -1592,7 +1592,6 @@ func (s *Service) searchForSearchee(
 		Metadata:   meta,       // Pass parsed metadata with external IDs
 		IndexerIDs: indexerIDs, // Use capability-filtered indexers
 		Categories: categories,
-		Limit:      50,
 		OnAllComplete: func(response *jackett.SearchResponse, err error) {
 			if err != nil {
 				errCh <- err
