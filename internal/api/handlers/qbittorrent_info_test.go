@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -34,39 +35,70 @@ func (c *stubQBittorrentAppInfoClient) GetProcessInfoCtx(context.Context) (qbt.P
 	return c.processInfo, c.processInfoCallErr
 }
 
-func TestGetQBittorrentAppInfoIncludesProcessInfoForSupportedWebAPI(t *testing.T) {
-	client := &stubQBittorrentAppInfoClient{
-		version:       "v5.2.0",
-		webAPIVersion: "2.15.1",
-		buildInfo: qbt.BuildInfo{
-			Libtorrent: "2.0.11",
-			Platform:   "linux",
+func TestGetQBittorrentAppInfoProcessInfo(t *testing.T) {
+	processInfoErr := errors.New("process info unavailable")
+
+	tests := []struct {
+		name                  string
+		version               string
+		webAPIVersion         string
+		processInfo           qbt.ProcessInfo
+		processInfoErr        error
+		wantProcessInfoCalled bool
+		wantLaunchTime        int64
+		wantProcessInfo       bool
+	}{
+		{
+			name:                  "includes process info for supported web api",
+			version:               "v5.2.0",
+			webAPIVersion:         "2.15.1",
+			processInfo:           qbt.ProcessInfo{LaunchTime: 1769331513},
+			wantProcessInfoCalled: true,
+			wantLaunchTime:        1769331513,
+			wantProcessInfo:       true,
 		},
-		processInfo: qbt.ProcessInfo{LaunchTime: 1769331513},
+		{
+			name:                  "skips process info for older web api",
+			version:               "v5.1.4",
+			webAPIVersion:         "2.11.4",
+			processInfo:           qbt.ProcessInfo{LaunchTime: 1769331513},
+			wantProcessInfoCalled: false,
+			wantProcessInfo:       false,
+		},
+		{
+			name:                  "omits process info when supported call fails",
+			version:               "v5.2.0",
+			webAPIVersion:         "2.15.1",
+			processInfoErr:        processInfoErr,
+			wantProcessInfoCalled: true,
+			wantProcessInfo:       false,
+		},
 	}
 
-	info, err := getQBittorrentAppInfo(context.Background(), client)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &stubQBittorrentAppInfoClient{
+				version:       tt.version,
+				webAPIVersion: tt.webAPIVersion,
+				buildInfo: qbt.BuildInfo{
+					Libtorrent: "2.0.11",
+					Platform:   "linux",
+				},
+				processInfo:        tt.processInfo,
+				processInfoCallErr: tt.processInfoErr,
+			}
 
-	require.NoError(t, err)
-	require.True(t, client.processInfoCalled)
-	require.NotNil(t, info.ProcessInfo)
-	require.Equal(t, int64(1769331513), info.ProcessInfo.LaunchTime)
-}
+			info, err := getQBittorrentAppInfo(context.Background(), client)
 
-func TestGetQBittorrentAppInfoSkipsProcessInfoForOlderWebAPI(t *testing.T) {
-	client := &stubQBittorrentAppInfoClient{
-		version:       "v5.1.4",
-		webAPIVersion: "2.11.4",
-		buildInfo: qbt.BuildInfo{
-			Libtorrent: "2.0.11",
-			Platform:   "linux",
-		},
-		processInfo: qbt.ProcessInfo{LaunchTime: 1769331513},
+			require.NoError(t, err)
+			require.Equal(t, tt.wantProcessInfoCalled, client.processInfoCalled)
+			if !tt.wantProcessInfo {
+				require.Nil(t, info.ProcessInfo)
+				return
+			}
+
+			require.NotNil(t, info.ProcessInfo)
+			require.Equal(t, tt.wantLaunchTime, info.ProcessInfo.LaunchTime)
+		})
 	}
-
-	info, err := getQBittorrentAppInfo(context.Background(), client)
-
-	require.NoError(t, err)
-	require.False(t, client.processInfoCalled)
-	require.Nil(t, info.ProcessInfo)
 }
