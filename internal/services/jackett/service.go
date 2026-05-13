@@ -650,7 +650,7 @@ func (s *Service) performSearch(ctx context.Context, req *TorznabSearchRequest, 
 	var cachedResults []SearchResult
 	var cachedIndexerCoverage []int
 	if cacheEnabled {
-		cacheSig = s.buildSearchCacheSignature(cacheScope, req, detectedType, searchMode, requestedIndexerIDs)
+		cacheSig = s.buildSearchCacheSignature(cacheScope, req, detectedType, searchMode, indexersToSearch)
 		if cacheReadAllowed {
 			if portion, complete := s.loadCachedSearchPortion(ctx, cacheSig, cacheScope, req, requestedIndexerIDs, true); portion != nil {
 				if complete {
@@ -1173,13 +1173,13 @@ func (s *Service) cacheTTL() time.Duration {
 	return ttl
 }
 
-func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequest, detectedType contentType, searchMode string, indexerIDs []int) *searchCacheSignature {
+func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequest, detectedType contentType, searchMode string, indexers []*models.TorznabIndexer) *searchCacheSignature {
 	if !s.shouldUseSearchCache() || req == nil {
 		return nil
 	}
 
 	categories := canonicalizeIntSlice(req.Categories)
-	normalizedIndexerIDs := canonicalizeIntSlice(indexerIDs)
+	normalizedIndexerIDs := collectIndexerIDs(indexers)
 	query := canonicalizeQuery(req.Query)
 
 	payload := searchCacheKeyPayload{
@@ -1188,7 +1188,7 @@ func (s *Service) buildSearchCacheSignature(scope string, req *TorznabSearchRequ
 		Query:         query,
 		Categories:    categories,
 		IndexerIDs:    normalizedIndexerIDs,
-		Limit:         clampedTorznabLimit(req.Limit),
+		Limit:         searchCacheSignatureLimit(req.Limit, indexers),
 		IMDbID:        strings.TrimSpace(req.IMDbID),
 		TVDbID:        strings.TrimSpace(req.TVDbID),
 		TMDbID:        req.TMDbID,
@@ -3430,6 +3430,24 @@ func clampedTorznabLimitForIndexer(limit int, idx *models.TorznabIndexer) int {
 		return min(limit, idx.LimitMax)
 	}
 	return clampedTorznabLimit(limit)
+}
+
+func searchCacheSignatureLimit(limit int, indexers []*models.TorznabIndexer) int {
+	if limit <= 0 {
+		return 0
+	}
+	if len(indexers) == 0 {
+		return clampedTorznabLimit(limit)
+	}
+
+	normalized := 0
+	for _, idx := range indexers {
+		normalized = max(normalized, clampedTorznabLimitForIndexer(limit, idx))
+	}
+	if normalized == 0 {
+		return clampedTorznabLimit(limit)
+	}
+	return normalized
 }
 
 // parseCategoryID attempts to extract the category ID from category string

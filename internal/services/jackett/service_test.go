@@ -346,6 +346,51 @@ func TestSortSearchResults_SeedersFirstUsesSizeAsTieBreaker(t *testing.T) {
 	}
 }
 
+func TestBuildSearchCacheSignatureNormalizesLimitToEffectiveIndexerCap(t *testing.T) {
+	svc := NewService(nil)
+	svc.searchCacheEnabled = true
+	svc.searchCacheTTL = time.Hour
+	svc.searchCache = &fakeSearchCache{}
+
+	baseReq := &TorznabSearchRequest{
+		Query:      "Example Show",
+		Categories: []int{CategoryTV},
+	}
+	const (
+		indexerMaxLimit      = 150
+		limitAboveIndexerMax = indexerMaxLimit + 1
+		limitAboveDefault    = defaultTorznabLimit + 1
+	)
+	sigForLimit := func(limit int, indexer *models.TorznabIndexer) *searchCacheSignature {
+		req := *baseReq
+		req.Limit = limit
+		sig := svc.buildSearchCacheSignature(searchCacheScopeCrossSeed, &req, contentTypeTVShow, "tvsearch", []*models.TorznabIndexer{indexer})
+		if sig == nil {
+			t.Fatalf("expected cache signature for limit %d", limit)
+		}
+		return sig
+	}
+
+	highCapIndexer := &models.TorznabIndexer{ID: 1, LimitMax: indexerMaxLimit}
+	highCap100 := sigForLimit(defaultTorznabLimit, highCapIndexer)
+	highCapMax := sigForLimit(indexerMaxLimit, highCapIndexer)
+	highCapAboveMax := sigForLimit(limitAboveIndexerMax, highCapIndexer)
+
+	if highCap100.Key == highCapMax.Key {
+		t.Fatal("expected default and high-cap max limits to produce distinct cache keys")
+	}
+	if highCapMax.Key != highCapAboveMax.Key {
+		t.Fatal("expected high-cap max and above-max limits to share cache key")
+	}
+
+	defaultCapIndexer := &models.TorznabIndexer{ID: 1}
+	defaultCap100 := sigForLimit(defaultTorznabLimit, defaultCapIndexer)
+	defaultCapAboveMax := sigForLimit(limitAboveDefault, defaultCapIndexer)
+	if defaultCap100.Key != defaultCapAboveMax.Key {
+		t.Fatal("expected default and above-default limits to share cache key")
+	}
+}
+
 func TestLoadCachedSearchPortionReturnsPartialCoverage(t *testing.T) {
 	svc := &Service{
 		searchCacheEnabled: true,
@@ -1005,7 +1050,7 @@ func TestClampedTorznabLimit(t *testing.T) {
 		{name: "negative", limit: -1, want: 0},
 		{name: "below fixed max", limit: 50, want: 50},
 		{name: "fixed max", limit: 100, want: 100},
-		{name: "above fixed max", limit: 300, want: 100},
+		{name: "above fixed max", limit: defaultTorznabLimit + 1, want: defaultTorznabLimit},
 	}
 
 	for _, tt := range tests {
@@ -1054,21 +1099,21 @@ func TestExecuteIndexerSearchClampsLimitPerIndexer(t *testing.T) {
 			name:      "valid indexer max above fallback cap is honored",
 			backend:   models.TorznabBackendNative,
 			limitMax:  150,
-			requested: "300",
+			requested: "151",
 			wantLimit: "150",
 		},
 		{
 			name:      "missing indexer max falls back to hard cap",
 			backend:   models.TorznabBackendNative,
 			limitMax:  0,
-			requested: "300",
+			requested: "101",
 			wantLimit: "100",
 		},
 		{
 			name:      "invalid indexer max falls back to hard cap",
 			backend:   models.TorznabBackendNative,
 			limitMax:  -5,
-			requested: "300",
+			requested: "101",
 			wantLimit: "100",
 		},
 	}
