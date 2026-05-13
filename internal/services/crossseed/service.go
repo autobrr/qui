@@ -236,6 +236,7 @@ const (
 	minSearchCooldownMinutes              = 720
 	maxCompletionSearchAttempts           = 3
 	maxCompletionCheckingAttempts         = 3
+	torznabCrossSeedSearchLimit           = 100
 	defaultCompletionRetryDelay           = 30 * time.Second
 	defaultCompletionCheckingRetryDelay   = 30 * time.Second
 	defaultCompletionCheckingPollInterval = 2 * time.Second
@@ -244,6 +245,13 @@ const (
 	// User-facing message when cross-seed is skipped due to recheck requirement
 	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
 )
+
+func effectiveTorznabCrossSeedSearchLimit(limit int) int {
+	if limit <= 0 {
+		return torznabCrossSeedSearchLimit
+	}
+	return min(limit, torznabCrossSeedSearchLimit)
+}
 
 var completionRateLimitTokens = []string{
 	"429",
@@ -6644,7 +6652,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			}
 		}
 
-		safeQuery := buildSafeSearchQuery(sourceTorrent.Name, queryRelease, baseQuery)
+		safeQuery := buildSafeSearchQuery(sourceTorrent.Name, queryRelease, baseQuery, SearchQueryOptions{
+			IncludeResolution: contentInfo.ContentType == "tv",
+		})
 		query = strings.TrimSpace(safeQuery.Query)
 		if query == "" {
 			// Fallback to a basic title-based query to avoid empty searches
@@ -6669,11 +6679,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Msg("[CROSSSEED-SEARCH] Generated search query with fallback parsing")
 	}
 
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 40
-	}
-	requestLimit := max(limit*3, limit)
+	limit := effectiveTorznabCrossSeedSearchLimit(opts.Limit)
 
 	// Apply indexer filtering (capabilities first, then optionally content filtering async)
 	var filteredIndexerIDs []int
@@ -6854,11 +6860,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	searchReq := &jackett.TorznabSearchRequest{
-		Query:       query,
-		ReleaseName: sourceTorrent.Name,
-		Limit:       requestLimit,
-		IndexerIDs:  filteredIndexerIDs,
-		CacheMode:   opts.CacheMode,
+		Query:            query,
+		ReleaseName:      sourceTorrent.Name,
+		Limit:            limit,
+		IndexerIDs:       filteredIndexerIDs,
+		CacheMode:        opts.CacheMode,
+		ReturnAllResults: true,
 	}
 
 	// Apply IDs from ARR lookup and set OmitQueryForIDs flag
@@ -11605,9 +11612,9 @@ func (s *Service) buildCategorySavePath(
 	switch instance.HardlinkDirPreset {
 	case "by-tracker":
 		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, req)
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
+		return normalizePath(filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName)))
 	case "by-instance":
-		return filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName))
+		return normalizePath(filepath.Join(baseDir, pathutil.SanitizePathSegment(candidate.InstanceName)))
 	default: // "flat" or unknown
 		return baseDir
 	}
