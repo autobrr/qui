@@ -1017,8 +1017,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprSeedingTimeMode = seedTime.mode
             exprSeedingTimeValue = seedTime.value
 
-            exprShareLimitAction = conditions.shareLimits.shareLimitAction ?? "default"
-            exprShareLimitsMode = conditions.shareLimits.shareLimitsMode ?? "default"
+            const rawAction = conditions.shareLimits.shareLimitAction
+            exprShareLimitAction = rawAction !== undefined && rawAction !== "" ? rawAction : "default"
+            const rawMode = conditions.shareLimits.shareLimitsMode
+            exprShareLimitsMode = rawMode !== undefined && rawMode !== "" ? rawMode : "default"
           }
           if (conditions.pause?.enabled) {
             pauseEnabled = true
@@ -2864,10 +2866,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   </SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="default">Default (use global)</SelectItem>
-                                    <SelectItem value="0">Stop torrent</SelectItem>
-                                    <SelectItem value="1">Remove torrent</SelectItem>
-                                    <SelectItem value="3">Remove with content</SelectItem>
-                                    <SelectItem value="2">Enable super seeding</SelectItem>
+                                    <SelectItem value="Stop">Stop torrent</SelectItem>
+                                    <SelectItem value="Remove">Remove torrent</SelectItem>
+                                    <SelectItem value="RemoveWithContent">Remove with content</SelectItem>
+                                    <SelectItem value="EnableSuperSeeding">Enable super seeding</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
@@ -2885,8 +2887,8 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   </SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="default">Default (use global)</SelectItem>
-                                    <SelectItem value="0">Match any limit</SelectItem>
-                                    <SelectItem value="1">Match all limits</SelectItem>
+                                    <SelectItem value="MatchAny">Match any limit</SelectItem>
+                                    <SelectItem value="MatchAll">Match all limits</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>

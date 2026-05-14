@@ -1943,10 +1943,10 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="default">Default (use global)</SelectItem>
-                    <SelectItem value="0">Stop torrent</SelectItem>
-                    <SelectItem value="1">Remove torrent</SelectItem>
-                    <SelectItem value="3">Remove with content</SelectItem>
-                    <SelectItem value="2">Enable super seeding</SelectItem>
+                    <SelectItem value="Stop">Stop torrent</SelectItem>
+                    <SelectItem value="Remove">Remove torrent</SelectItem>
+                    <SelectItem value="RemoveWithContent">Remove with content</SelectItem>
+                    <SelectItem value="EnableSuperSeeding">Enable super seeding</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
@@ -1962,8 +1962,8 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="default">Default (use global)</SelectItem>
-                    <SelectItem value="0">Match any limit</SelectItem>
-                    <SelectItem value="1">Match all limits</SelectItem>
+                    <SelectItem value="MatchAny">Match any limit</SelectItem>
+                    <SelectItem value="MatchAll">Match all limits</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">

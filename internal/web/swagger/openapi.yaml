@@ -1596,10 +1596,10 @@ paths:
                   description: Inactive seeding time limit (minutes) for setShareLimit action.
                 shareLimitAction:
                   type: string
-                  description: Action when share limits are reached (qBittorrent 5.2+). Values -1=default, 0=stop, 1=remove, 2=enable super seeding, 3=remove with content.
+                  description: Action when share limits are reached (qBittorrent Web API 2.12+). Qt enum names Default, Stop, Remove, EnableSuperSeeding, RemoveWithContent. Omit or empty for global default.
                 shareLimitsMode:
                   type: string
-                  description: Whether any or all limits must be reached (qBittorrent 5.2+). Values -1=default, 0=match any, 1=match all.
+                  description: Whether any or all limits must be reached (Web API 2.12+). Qt enum names Default, MatchAny, MatchAll. Omit or empty for global default.
                 uploadLimit:
                   type: integer
                   format: int64
