@@ -72,6 +72,17 @@ func TestDeriveSourceReleaseForSearch(t *testing.T) {
 			expectedEpisode: 0,
 		},
 		{
+			name:   "infer seasonless anime pack when files parse to same episode",
+			source: "[SubsPlease] Classic Stars (1080p)",
+			files: qbt.TorrentFiles{
+				{Name: "[SubsPlease] Classic Stars - 11 (1080p) [11111111].mkv", Size: 1},
+				{Name: "[SubsPlease] Classic Stars - 11 (1080p) [22222222].mkv", Size: 1},
+			},
+			expectedType:    rls.Series,
+			expectedSeries:  0,
+			expectedEpisode: 0,
+		},
+		{
 			name:   "infer seasonless anime episode",
 			source: "[SubsPlease] Classic Stars (1080p)",
 			files: qbt.TorrentFiles{

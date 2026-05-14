@@ -58,6 +58,7 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 
 	bySeries := make(map[int]*seriesInfo)
 	absoluteEpisodes := make(map[int]struct{})
+	seasonlessEpisodeFiles := 0
 	for _, file := range files {
 		if shouldIgnoreFile(file.Name, normalizer) {
 			continue
@@ -67,6 +68,7 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 		fileRelease = enrichReleaseFromTorrent(fileRelease, torrentRelease)
 		if fileRelease.Series <= 0 {
 			if fileRelease.Episode > 0 {
+				seasonlessEpisodeFiles++
 				absoluteEpisodes[fileRelease.Episode] = struct{}{}
 			}
 			continue
@@ -99,16 +101,18 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 		if isYearBearingMovieRelease(torrentRelease) {
 			return 0, 0, false, false
 		}
-		switch {
-		case len(absoluteEpisodes) >= 2:
+
+		// Multiple seasonless episode files indicate a pack even if parsing
+		// collapses them to the same absolute episode number.
+		if seasonlessEpisodeFiles >= 2 {
 			return 0, 0, true, true
-		case len(absoluteEpisodes) == 1:
+		}
+		if len(absoluteEpisodes) == 1 {
 			for ep := range absoluteEpisodes {
 				return 0, ep, false, true
 			}
-		default:
-			return 0, 0, false, false
 		}
+		return 0, 0, false, false
 	}
 
 	switch {
