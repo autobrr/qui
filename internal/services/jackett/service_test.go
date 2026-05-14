@@ -1451,6 +1451,83 @@ func TestFilterCategoriesForIndexer(t *testing.T) {
 			t.Fatalf("expected unsupported categories to be rejected")
 		}
 	})
+
+	t.Run("deduplicates repeated categories", func(t *testing.T) {
+		tvIndexerCats := []models.TorznabIndexerCategory{
+			{CategoryID: CategoryTV},
+		}
+
+		filtered, ok := filterCategoriesForIndexer(tvIndexerCats, []int{CategoryTV, CategoryTV, CategoryTV})
+		if !ok {
+			t.Fatalf("expected parent TV category to be permitted")
+		}
+		if len(filtered) != 1 || filtered[0] != CategoryTV {
+			t.Fatalf("unexpected filtered categories: %+v", filtered)
+		}
+	})
+}
+
+func TestMapCategoriesToIndexerCapabilitiesCompactsParentFallbacks(t *testing.T) {
+	service := &Service{}
+
+	tests := []struct {
+		name      string
+		parent    int
+		requested []int
+	}{
+		{
+			name:      "movies",
+			parent:    CategoryMovies,
+			requested: []int{CategoryMovies, CategoryMoviesSD, CategoryMoviesHD, CategoryMovies4K, CategoryMovies3D},
+		},
+		{
+			name:      "tv and anime",
+			parent:    CategoryTV,
+			requested: []int{CategoryTV, 5010, 5020, CategoryTVSD, CategoryTVHD, CategoryTV4K, CategoryTVAnime, CategoryTVDocumentary},
+		},
+		{
+			name:      "xxx",
+			parent:    CategoryXXX,
+			requested: []int{CategoryXXX, CategoryXXXDVD, CategoryXXXWMV, CategoryXXXXviD, CategoryXXXx264, CategoryXXXPack, CategoryXXXImageSet, CategoryXXXOther},
+		},
+		{
+			name:      "books",
+			parent:    CategoryBooks,
+			requested: []int{CategoryBooks, CategoryBooksEbook, CategoryBooksComics},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			indexer := &models.TorznabIndexer{
+				Categories: []models.TorznabIndexerCategory{
+					{CategoryID: tt.parent},
+				},
+			}
+
+			mapped := service.MapCategoriesToIndexerCapabilities(context.Background(), indexer, tt.requested)
+			if !slices.Equal(mapped, []int{tt.parent}) {
+				t.Fatalf("expected duplicate subcategory fallbacks to compact to [%d], got %+v", tt.parent, mapped)
+			}
+		})
+	}
+}
+
+func TestCategorySerializationCompactsDuplicates(t *testing.T) {
+	service := &Service{}
+	req := &TorznabSearchRequest{
+		Query:      "Example",
+		Categories: []int{CategoryTVHD, CategoryTV, CategoryTVHD, CategoryTVAnime, CategoryTV},
+	}
+
+	params := service.buildSearchParams(req, "tvsearch")
+	if got := params.Get("cat"); got != "5000,5040,5070" {
+		t.Fatalf("cat param = %q, want %q", got, "5000,5040,5070")
+	}
+
+	if got := formatCategoryList([]int{CategoryMoviesHD, CategoryMovies, CategoryMoviesHD}); got != "2000,2040" {
+		t.Fatalf("formatCategoryList() = %q, want %q", got, "2000,2040")
+	}
 }
 
 func TestSearchGenericAutoDetectCategories(t *testing.T) {

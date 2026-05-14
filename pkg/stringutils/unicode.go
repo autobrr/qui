@@ -20,6 +20,34 @@ var (
 	// matchingNormalizer caches expensive NormalizeForMatching results to avoid repeated unicode transformations.
 	// This cuts CPU usage significantly in hot paths like crossseed matching.
 	matchingNormalizer = NewNormalizer(defaultNormalizerTTL, normalized)
+
+	animeTitleSymbolReplacer = strings.NewReplacer(
+		"★", " ",
+		"☆", " ",
+		"✩", " ",
+		"✭", " ",
+		"✯", " ",
+		"✰", " ",
+		"✦", " ",
+		"✧", " ",
+		"◆", " ",
+		"◇", " ",
+		"■", " ",
+		"□", " ",
+		"●", " ",
+		"○", " ",
+		"◎", " ",
+		"♪", " ",
+		"♫", " ",
+		"♬", " ",
+		"♩", " ",
+		"♡", " ",
+		"♥", " ",
+		"・", " ",
+		"･", " ",
+		"·", " ",
+		"•", " ",
+	)
 )
 
 // normalizeUnicodeInner is the inner transformation function used by unicodeNormalizer.
@@ -70,6 +98,9 @@ func normalized(s string) string {
 
 	// Normalize hyphens to spaces - "Spider-Man" → "spider man"
 	s = strings.ReplaceAll(s, "-", " ")
+
+	// Normalize decorative anime title separators - "Classic★Stars" → "classic stars"
+	s = animeTitleSymbolReplacer.Replace(s)
 
 	// Collapse multiple spaces to single space
 	s = strings.Join(strings.Fields(s), " ")

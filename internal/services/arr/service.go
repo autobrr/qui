@@ -101,6 +101,9 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 	// Check cache first
 	cacheEntry, err := s.cacheStore.Get(ctx, titleHash, string(contentType))
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
 		// Log real DB errors (not just "not found")
 		log.Warn().Err(err).
 			Str("title", title).

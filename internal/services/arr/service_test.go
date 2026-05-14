@@ -4,13 +4,52 @@
 package arr
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
 
+	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 )
+
+type testQuerier struct {
+	db *sql.DB
+}
+
+func (q *testQuerier) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return q.db.QueryRowContext(ctx, query, args...)
+}
+
+func (q *testQuerier) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return q.db.ExecContext(ctx, query, args...)
+}
+
+func (q *testQuerier) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return q.db.QueryContext(ctx, query, args...)
+}
+
+func (q *testQuerier) BeginTx(ctx context.Context, opts *sql.TxOptions) (dbinterface.TxQuerier, error) {
+	return q.db.BeginTx(ctx, opts)
+}
+
+func openTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	return db
+}
 
 func TestService_getArrTypeForContent(t *testing.T) {
 	// Create a minimal service for testing internal method
@@ -57,6 +96,51 @@ func TestService_getArrTypeForContent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := s.getArrTypeForContent(tt.contentType)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestService_LookupExternalIDsReturnsCacheCancellation(t *testing.T) {
+	tests := []struct {
+		name    string
+		context func(t *testing.T) context.Context
+		wantErr error
+	}{
+		{
+			name: "context canceled",
+			context: func(t *testing.T) context.Context {
+				t.Helper()
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx
+			},
+			wantErr: context.Canceled,
+		},
+		{
+			name: "deadline exceeded",
+			context: func(t *testing.T) context.Context {
+				t.Helper()
+				ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+				t.Cleanup(cancel)
+				return ctx
+			},
+			wantErr: context.DeadlineExceeded,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cacheStore := models.NewArrIDCacheStore(&testQuerier{db: openTestDB(t)})
+			s := &Service{
+				cacheStore:       cacheStore,
+				nextCacheCleanup: time.Now().Add(time.Hour),
+			}
+
+			result, err := s.LookupExternalIDs(tt.context(t), "Example Movie", ContentTypeMovie)
+
+			require.Error(t, err)
+			assert.True(t, errors.Is(err, tt.wantErr))
+			assert.Nil(t, result)
 		})
 	}
 }

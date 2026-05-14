@@ -73,6 +73,57 @@ func TestReleasesMatch_SiteMustMatch(t *testing.T) {
 			description: "missing site metadata should not block a match",
 		},
 		{
+			name: "source site matches candidate group",
+			source: rls.Release{
+				Title:   "Kingdom",
+				Series:  6,
+				Episode: 11,
+				Site:    "SubsPlease",
+			},
+			candidate: rls.Release{
+				Title:   "Kingdom",
+				Series:  6,
+				Episode: 11,
+				Group:   "SubsPlease",
+			},
+			wantMatch:   true,
+			description: "anime site and scene-style group can describe the same release group",
+		},
+		{
+			name: "source site rejects different candidate group",
+			source: rls.Release{
+				Title:   "Kingdom",
+				Series:  6,
+				Episode: 11,
+				Site:    "SubsPlease",
+			},
+			candidate: rls.Release{
+				Title:   "Kingdom",
+				Series:  6,
+				Episode: 11,
+				Group:   "BiOMA",
+			},
+			wantMatch:   false,
+			description: "candidate group is concrete metadata and must not conflict with anime site",
+		},
+		{
+			name: "source group matches candidate site",
+			source: rls.Release{
+				Title:   "Kingdom",
+				Series:  6,
+				Episode: 11,
+				Group:   "SubsPlease",
+			},
+			candidate: rls.Release{
+				Title:   "Kingdom",
+				Series:  6,
+				Episode: 11,
+				Site:    "SubsPlease",
+			},
+			wantMatch:   true,
+			description: "group matching should also accept candidate site metadata",
+		},
+		{
 			name: "candidate has site, source does not - should match",
 			source: rls.Release{
 				Title:   "Kingdom",

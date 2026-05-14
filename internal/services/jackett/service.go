@@ -1795,7 +1795,7 @@ func (s *Service) MapCategoriesToIndexerCapabilities(ctx context.Context, indexe
 		return requestedCategories
 	}
 
-	return mappedCategories
+	return canonicalizeIntSlice(mappedCategories)
 }
 
 func asRateLimitWaitError(err error) (*RateLimitWaitError, bool) {
@@ -2742,7 +2742,7 @@ func (s *Service) ensureIndexerMetadata(ctx context.Context, client *Client, idx
 
 func requestedCategories(meta *searchContext, params map[string]string) []int {
 	if meta != nil && len(meta.categories) > 0 {
-		return meta.categories
+		return canonicalizeIntSlice(meta.categories)
 	}
 	if catStr, ok := params["cat"]; ok {
 		return parseCategoryList(catStr)
@@ -2762,10 +2762,11 @@ func parseCategoryList(value string) []int {
 			categories = append(categories, id)
 		}
 	}
-	return categories
+	return canonicalizeIntSlice(categories)
 }
 
 func formatCategoryList(categories []int) string {
+	categories = canonicalizeIntSlice(categories)
 	if len(categories) == 0 {
 		return ""
 	}
@@ -2813,7 +2814,7 @@ func filterCategoriesForIndexer(indexerCats []models.TorznabIndexerCategory, req
 		return nil, false
 	}
 
-	return filtered, true
+	return canonicalizeIntSlice(filtered), true
 }
 
 func deriveParentCategory(cat int) int {
@@ -2845,11 +2846,7 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string
 	params.Set("q", req.Query)
 
 	if len(req.Categories) > 0 {
-		catStr := make([]string, len(req.Categories))
-		for i, cat := range req.Categories {
-			catStr[i] = strconv.Itoa(cat)
-		}
-		params.Set("cat", strings.Join(catStr, ","))
+		params.Set("cat", formatCategoryList(req.Categories))
 	}
 
 	// Always add basic parameters - these are widely supported
@@ -3799,8 +3796,9 @@ func extractIndexerIDFromURL(baseURL, indexerName string) string {
 // GetOptimalCategoriesForIndexers returns categories optimized for the given indexers based on their capabilities
 func (s *Service) GetOptimalCategoriesForIndexers(ctx context.Context, requestedCategories []int, indexerIDs []int) []int {
 	if len(requestedCategories) == 0 || len(indexerIDs) == 0 {
-		return requestedCategories
+		return canonicalizeIntSlice(requestedCategories)
 	}
+	requestedCategories = canonicalizeIntSlice(requestedCategories)
 
 	// Get all specified indexers
 	var indexers []*models.TorznabIndexer
@@ -3816,7 +3814,7 @@ func (s *Service) GetOptimalCategoriesForIndexers(ctx context.Context, requested
 	}
 
 	if len(indexers) == 0 {
-		return requestedCategories
+		return canonicalizeIntSlice(requestedCategories)
 	}
 
 	// Find the intersection of categories supported by all indexers
@@ -3843,10 +3841,10 @@ func (s *Service) GetOptimalCategoriesForIndexers(ctx context.Context, requested
 
 	// If no optimal categories found, return original requested categories
 	if len(optimalCategories) == 0 {
-		return requestedCategories
+		return canonicalizeIntSlice(requestedCategories)
 	}
 
-	return optimalCategories
+	return canonicalizeIntSlice(optimalCategories)
 }
 
 func resolveCapsIdentifier(indexer *models.TorznabIndexer) (string, error) {

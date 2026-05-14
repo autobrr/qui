@@ -21,14 +21,20 @@ import (
 // matching.go groups all heuristics and helpers that decide whether two torrents
 // describe the same underlying content.
 
-// isTVEpisode returns true if the release is a TV episode (has series and episode number).
-func isTVEpisode(r *rls.Release) bool {
-	return r != nil && r.Series > 0 && r.Episode > 0
+func isTVRelease(r *rls.Release) bool {
+	return r != nil && (r.Type == rls.Series || r.Type == rls.Episode || r.Series > 0 || r.Episode > 0)
 }
 
-// isTVSeasonPack returns true if the release is a TV season pack (has series but no episode number).
+// isTVEpisode returns true if the release is a TV episode, including anime-style
+// absolute-numbered episodes that do not carry a season number.
+func isTVEpisode(r *rls.Release) bool {
+	return isTVRelease(r) && r.Episode > 0
+}
+
+// isTVSeasonPack returns true if the release is a TV season pack, including
+// seasonless anime packs where file inspection marked the release as TV.
 func isTVSeasonPack(r *rls.Release) bool {
-	return r != nil && r.Series > 0 && r.Episode == 0
+	return isTVRelease(r) && (r.Series > 0 || r.Type == rls.Series) && r.Episode == 0
 }
 
 // rejectReasonSeasonPackFromEpisode is the reason returned when rejecting a season pack
@@ -148,7 +154,7 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 		return false, "title mismatch"
 	}
 
-	isTV := source.Series > 0 || candidate.Series > 0
+	isTV := isTVRelease(source) || isTVRelease(candidate)
 
 	// Artist must match for content with artist metadata (music, 0day scene radio shows, etc.)
 	// This prevents matching different artists with the same show/album title.
@@ -182,23 +188,22 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 	}
 
 	// For TV shows, season and episode structure must match based on settings.
-	if source.Series > 0 || candidate.Series > 0 {
-		// Both must have series info if either does
-		if source.Series > 0 && candidate.Series == 0 {
-			return false, "candidate missing season"
+	if isTV {
+		sourceIsTV := isTVRelease(source)
+		candidateIsTV := isTVRelease(candidate)
+		sourceIsPack := isTVSeasonPack(source)
+		candidateIsPack := isTVSeasonPack(candidate)
+
+		if sourceIsTV && !candidateIsTV {
+			return false, "candidate not recognized as TV"
 		}
-		if candidate.Series > 0 && source.Series == 0 {
-			return false, "source missing season"
+		if candidateIsTV && !sourceIsTV {
+			return false, "source not recognized as TV"
 		}
 
-		// Series numbers must match
 		if source.Series > 0 && candidate.Series > 0 && source.Series != candidate.Series {
 			return false, "season mismatch"
 		}
-
-		// Episode structure matching depends on user setting
-		sourceIsPack := source.Series > 0 && source.Episode == 0
-		candidateIsPack := candidate.Series > 0 && candidate.Episode == 0
 
 		if !findIndividualEpisodes {
 			// Strict matching: season packs only match season packs, episodes only match episodes
@@ -223,11 +228,17 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 	// Different release groups often have different encoding settings and file structures.
 	sourceGroup := s.stringNormalizer.Normalize((source.Group))
 	candidateGroup := s.stringNormalizer.Normalize((candidate.Group))
+	sourceSite := s.stringNormalizer.Normalize(source.Site)
+	candidateSite := s.stringNormalizer.Normalize(candidate.Site)
 
 	// Only enforce group matching if the source has a group tag
 	if sourceGroup != "" {
+		candidateGroupIdentity := candidateGroup
+		if candidateGroupIdentity == "" {
+			candidateGroupIdentity = candidateSite
+		}
 		// If source has a group, candidate must have the same group
-		if candidateGroup == "" || sourceGroup != candidateGroup {
+		if candidateGroupIdentity == "" || sourceGroup != candidateGroupIdentity {
 			return false, "group mismatch"
 		}
 	}
@@ -238,10 +249,14 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 	// cross-seed, but many indexer titles omit the site tag entirely. Treat mismatched
 	// non-empty site tags as incompatible, but don't reject candidates that simply
 	// lack this metadata.
-	sourceSite := s.stringNormalizer.Normalize(source.Site)
-	candidateSite := s.stringNormalizer.Normalize(candidate.Site)
-	if sourceSite != "" && candidateSite != "" && sourceSite != candidateSite {
-		return false, "site mismatch"
+	if sourceSite != "" {
+		candidateSiteIdentity := candidateSite
+		if candidateSiteIdentity == "" {
+			candidateSiteIdentity = candidateGroup
+		}
+		if candidateSiteIdentity != "" && sourceSite != candidateSiteIdentity {
+			return false, "site mismatch"
+		}
 	}
 
 	// Sum field contains the CRC32 checksum for anime releases like [32ECE75A].
@@ -291,7 +306,13 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 	sourceCollection := s.stringNormalizer.Normalize((source.Collection))
 	candidateCollection := s.stringNormalizer.Normalize((candidate.Collection))
 	if sourceCollection != candidateCollection {
-		return false, "collection mismatch"
+		sourceMissingCollection := sourceCollection == ""
+		candidateMissingCollection := candidateCollection == ""
+		unknownSeasonTV := isTV && (source.Series == 0 || candidate.Series == 0)
+		missingCollectionAllowed := unknownSeasonTV && (sourceMissingCollection || candidateMissingCollection)
+		if !missingCollectionAllowed {
+			return false, "collection mismatch"
+		}
 	}
 
 	// Codec must match if both are present (AVC vs HEVC produce different files).

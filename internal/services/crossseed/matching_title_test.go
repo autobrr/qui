@@ -177,6 +177,8 @@ func TestNormalizeForMatching(t *testing.T) {
 		{"colon", "City: Downtown", "city downtown"},
 		{"hyphen to space", "Laser-Cat", "laser cat"},
 		{"multiple hyphens", "Up-And-Away", "up and away"},
+		{"anime star separator", "Classic★Stars", "classic stars"},
+		{"anime middle dot separator", "Kaguya・Sama", "kaguya sama"},
 		{"mixed punctuation", "Jake's Place: Season 1", "jakes place season 1"},
 		{"extra spaces collapsed", "The   Show", "the show"},
 		{"trim whitespace", "  Trimmed  ", "trimmed"},
@@ -267,6 +269,23 @@ func TestReleasesMatch_PunctuationVariations(t *testing.T) {
 			},
 			wantMatch:   true,
 			description: "curly apostrophe should be stripped",
+		},
+		{
+			name: "anime symbol separator TV",
+			source: rls.Release{
+				Title:      "Classic Stars",
+				Series:     1,
+				Resolution: "1080p",
+				Source:     "WEB-DL",
+			},
+			candidate: rls.Release{
+				Title:      "Classic★Stars",
+				Series:     1,
+				Resolution: "1080p",
+				Source:     "WEB-DL",
+			},
+			wantMatch:   true,
+			description: "decorative anime symbols should separate title words",
 		},
 		{
 			name: "apostrophe vs no apostrophe non-TV movie",

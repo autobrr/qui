@@ -95,6 +95,12 @@ func TestNormalizeForMatching(t *testing.T) {
 		{"hyphen", "Spider-Man", "spider man"},
 		{"multiple hyphens", "X-Men: Days of Future Past", "x men days of future past"},
 
+		// Decorative anime title symbols
+		{"star separator", "Classic★Stars", "classic stars"},
+		{"hollow star separator", "Idol☆Time", "idol time"},
+		{"middle dot separator", "Kaguya・Sama", "kaguya sama"},
+		{"music note separator", "Love♪Live", "love live"},
+
 		// Ampersand handling
 		{"ampersand", "His & Hers", "his and hers"},
 		{"ampersand no spaces", "Law&Order", "law and order"},
@@ -215,6 +221,26 @@ func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
 			"ampersand law and order",
 			"Law & Order SVU",
 			"Law and Order SVU",
+		},
+		{
+			"anime star separator",
+			"Classic★Stars",
+			"Classic Stars",
+		},
+		{
+			"anime hollow star separator",
+			"Idol☆Time",
+			"Idol Time",
+		},
+		{
+			"anime middle dot separator",
+			"Kaguya・Sama",
+			"Kaguya Sama",
+		},
+		{
+			"anime music note separator",
+			"Love♪Live",
+			"Love Live",
 		},
 	}
 

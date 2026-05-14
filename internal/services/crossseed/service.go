@@ -7087,6 +7087,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	seen := make(map[string]struct{})
 	sizeFilteredCount := 0
 	releaseFilteredCount := 0
+	releaseFilterReasons := make(map[string]int)
 
 	for _, res := range searchResults {
 		key := res.GUID
@@ -7101,15 +7102,44 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
-		if !s.releasesMatch(searchRelease, candidateRelease, opts.FindIndividualEpisodes) {
+		match, mismatchReason := s.releasesMatchWithReason(searchRelease, candidateRelease, opts.FindIndividualEpisodes)
+		if !match {
 			releaseFilteredCount++
+			if mismatchReason == "" {
+				mismatchReason = "release mismatch"
+			}
+			releaseFilterReasons[mismatchReason]++
+			if trace := log.Trace(); trace.Enabled() {
+				trace.
+					Str("sourceTitle", sourceTorrent.Name).
+					Str("candidateTitle", res.Title).
+					Str("reason", mismatchReason).
+					Bool("findIndividualEpisodes", opts.FindIndividualEpisodes).
+					Interface("sourceRelease", releaseFilterDebugInfoFrom(searchRelease)).
+					Interface("candidateRelease", releaseFilterDebugInfoFrom(candidateRelease)).
+					Msg("[CROSSSEED-SEARCH] Candidate filtered out by release match")
+			}
 			continue
 		}
 
 		// Reject forbidden pairing: season pack candidate (new) vs single episode source (existing).
 		// In search context: candidateRelease is the new torrent, sourceRelease is the existing local torrent.
-		if reject, _ := rejectSeasonPackFromEpisode(candidateRelease, searchRelease, opts.FindIndividualEpisodes); reject {
+		if reject, reason := rejectSeasonPackFromEpisode(candidateRelease, searchRelease, opts.FindIndividualEpisodes); reject {
 			releaseFilteredCount++
+			if reason == "" {
+				reason = "forbidden release pairing"
+			}
+			releaseFilterReasons[reason]++
+			if trace := log.Trace(); trace.Enabled() {
+				trace.
+					Str("sourceTitle", sourceTorrent.Name).
+					Str("candidateTitle", res.Title).
+					Str("reason", reason).
+					Bool("findIndividualEpisodes", opts.FindIndividualEpisodes).
+					Interface("sourceRelease", releaseFilterDebugInfoFrom(searchRelease)).
+					Interface("candidateRelease", releaseFilterDebugInfoFrom(candidateRelease)).
+					Msg("[CROSSSEED-SEARCH] Candidate filtered out by release pairing rule")
+			}
 			continue
 		}
 
@@ -7152,6 +7182,14 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		Int("finalMatches", matchedResults).
 		Float64("tolerancePercent", settings.SizeMismatchTolerancePercent).
 		Msg("[CROSSSEED-SEARCH] Search filtering completed")
+
+	if releaseFilteredCount > 0 {
+		log.Debug().
+			Str("torrentName", sourceTorrent.Name).
+			Interface("sourceRelease", releaseFilterDebugInfoFrom(searchRelease)).
+			Interface("releaseFilterReasons", releaseFilterReasons).
+			Msg("[CROSSSEED-SEARCH] Release filtering rejection summary")
+	}
 
 	if len(scored) == 0 {
 		combined := mergeTorrentSearchResults(gazelleResults, nil)
@@ -9968,6 +10006,68 @@ func evaluateReleaseMatch(source, candidate *rls.Release) (float64, string) {
 	}
 
 	return score, strings.Join(reasons, ", ")
+}
+
+type releaseFilterDebugInfo struct {
+	Type       string   `json:"type,omitempty"`
+	Title      string   `json:"title,omitempty"`
+	Subtitle   string   `json:"subtitle,omitempty"`
+	Collection string   `json:"collection,omitempty"`
+	Year       int      `json:"year,omitempty"`
+	Month      int      `json:"month,omitempty"`
+	Day        int      `json:"day,omitempty"`
+	Series     int      `json:"series,omitempty"`
+	Episode    int      `json:"episode,omitempty"`
+	Group      string   `json:"group,omitempty"`
+	Site       string   `json:"site,omitempty"`
+	Sum        string   `json:"sum,omitempty"`
+	Source     string   `json:"source,omitempty"`
+	Resolution string   `json:"resolution,omitempty"`
+	Codec      []string `json:"codec,omitempty"`
+	HDR        []string `json:"hdr,omitempty"`
+	BitDepth   string   `json:"bit_depth,omitempty"`
+	Audio      []string `json:"audio,omitempty"`
+	Cut        []string `json:"cut,omitempty"`
+	Edition    []string `json:"edition,omitempty"`
+	Language   []string `json:"language,omitempty"`
+	Version    string   `json:"version,omitempty"`
+	Disc       string   `json:"disc,omitempty"`
+	Platform   string   `json:"platform,omitempty"`
+	Arch       string   `json:"arch,omitempty"`
+}
+
+func releaseFilterDebugInfoFrom(release *rls.Release) releaseFilterDebugInfo {
+	if release == nil {
+		return releaseFilterDebugInfo{}
+	}
+
+	return releaseFilterDebugInfo{
+		Type:       release.Type.String(),
+		Title:      release.Title,
+		Subtitle:   release.Subtitle,
+		Collection: release.Collection,
+		Year:       release.Year,
+		Month:      release.Month,
+		Day:        release.Day,
+		Series:     release.Series,
+		Episode:    release.Episode,
+		Group:      release.Group,
+		Site:       release.Site,
+		Sum:        release.Sum,
+		Source:     release.Source,
+		Resolution: release.Resolution,
+		Codec:      append([]string(nil), release.Codec...),
+		HDR:        append([]string(nil), release.HDR...),
+		BitDepth:   release.BitDepth,
+		Audio:      append([]string(nil), release.Audio...),
+		Cut:        append([]string(nil), release.Cut...),
+		Edition:    append([]string(nil), release.Edition...),
+		Language:   append([]string(nil), release.Language...),
+		Version:    release.Version,
+		Disc:       release.Disc,
+		Platform:   release.Platform,
+		Arch:       release.Arch,
+	}
 }
 
 // isSizeWithinTolerance checks if two torrent sizes are within the specified tolerance percentage.

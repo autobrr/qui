@@ -29,13 +29,17 @@ func (s *Service) deriveSourceReleaseForSearch(sourceRelease *rls.Release, files
 	}
 
 	// Trust file structure when it indicates a season pack.
-	if inferredIsPack && derived.Series > 0 {
+	if inferredIsPack {
+		derived.Type = rls.Series
 		derived.Episode = 0
 		return &derived
 	}
 
-	if derived.Series > 0 && derived.Episode == 0 && inferredEpisode > 0 {
+	if derived.Episode == 0 && inferredEpisode > 0 {
 		derived.Episode = inferredEpisode
+	}
+	if inferredEpisode > 0 {
+		derived.Type = rls.Episode
 	}
 
 	return &derived
@@ -53,6 +57,8 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 	}
 
 	bySeries := make(map[int]*seriesInfo)
+	absoluteEpisodes := make(map[int]struct{})
+	absoluteFileCount := 0
 	for _, file := range files {
 		if shouldIgnoreFile(file.Name, normalizer) {
 			continue
@@ -61,6 +67,10 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 		fileRelease := s.releaseCache.Parse(file.Name)
 		fileRelease = enrichReleaseFromTorrent(fileRelease, torrentRelease)
 		if fileRelease.Series <= 0 {
+			if fileRelease.Episode > 0 {
+				absoluteFileCount++
+				absoluteEpisodes[fileRelease.Episode] = struct{}{}
+			}
 			continue
 		}
 
@@ -88,7 +98,21 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 	}
 
 	if bestSeries == 0 {
-		return 0, 0, false, false
+		if isYearBearingMovieRelease(torrentRelease) {
+			return 0, 0, false, false
+		}
+		switch {
+		case len(absoluteEpisodes) >= 2:
+			return 0, 0, true, true
+		case len(absoluteEpisodes) == 1:
+			for ep := range absoluteEpisodes {
+				return 0, ep, false, true
+			}
+		case absoluteFileCount >= 2:
+			return 0, 0, true, true
+		default:
+			return 0, 0, false, false
+		}
 	}
 
 	switch {
@@ -107,4 +131,8 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 	}
 
 	return bestSeries, 0, false, true
+}
+
+func isYearBearingMovieRelease(release *rls.Release) bool {
+	return release != nil && release.Type == rls.Movie && release.Year > 0
 }
