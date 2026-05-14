@@ -436,27 +436,29 @@ Set ratio limit and/or seeding time limit. Each field supports these modes:
 
 Torrents stop seeding when any enabled limit is reached.
 
-#### Share Limit Action & Mode (qBittorrent 5.2+)
+#### Share limit action (Web API 2.15.1+)
 
-On qBittorrent 5.2 and newer (Web API 2.15.3+), two additional per-torrent settings are available:
+On instances whose qBittorrent Web API is **2.15.1** or newer, **When limits are reached** is available in the torrent share limit dialog and in automation workflows. It controls what happens when a torrent hits its configured ratio, seeding time, or inactive seeding limits. Stored and sent as the same **string enum names** qBittorrent expects for `setShareLimits` (Qt meta-object names, not numeric codes):
 
-**When limits are reached** controls what happens when a torrent's share limits are hit:
+| Option                  | Value (`shareLimitAction`) | Description                                 |
+| ----------------------- | -------------------------- | ------------------------------------------- |
+| Default (use global)    | omit or `default`          | Follow qBittorrent's global setting         |
+| Stop torrent            | `Stop`                     | Pause the torrent                           |
+| Remove torrent          | `Remove`                   | Remove from client, keep files              |
+| Remove with content     | `RemoveWithContent`        | Remove from client and delete files         |
+| Enable super seeding    | `EnableSuperSeeding`       | Switch to super seeding mode                |
 
-| Option                  | Value | Description                                 |
-| ----------------------- | ----- | ------------------------------------------- |
-| Default (use global)    | -1    | Follow qBittorrent's global setting         |
-| Stop torrent            | 0     | Pause the torrent                           |
-| Remove torrent          | 1     | Remove from client, keep files              |
-| Enable super seeding    | 2     | Switch to super seeding mode                |
-| Remove with content     | 3     | Remove from client and delete files         |
+#### Share limits matching mode (Web API 2.16.0+)
 
-**Limits matching mode** controls whether the action triggers when *any* limit is reached or only when *all* limits are reached:
+**Limits matching mode** (match **any** limit vs **all** limits) is a separate Web API capability and requires **2.16.0** or newer. On slightly older 5.2 builds that only expose **2.15.1**, qui still shows the action above but hides this control until you upgrade qBittorrent. Values use **string enum names** for `setShareLimits`:
 
-| Option                  | Value | Description                                 |
-| ----------------------- | ----- | ------------------------------------------- |
-| Default (use global)    | -1    | Follow qBittorrent's global setting         |
-| Match any limit         | 0     | Trigger when any single limit is reached    |
-| Match all limits        | 1     | Trigger only when all limits are reached    |
+| Option               | Value (`shareLimitsMode`) | Description                              |
+| -------------------- | ------------------------- | ---------------------------------------- |
+| Default (use global) | omit or `default`         | Follow qBittorrent's global setting      |
+| Match any limit      | `MatchAny`                | Trigger when any single limit is reached |
+| Match all limits     | `MatchAll`                | Trigger only when all limits are reached |
+
+These options are hidden when the instance does not report the required Web API version (see [qBittorrent Version Compatibility](../advanced/compatibility.md)). Ratio and seeding time limits above still apply on older instances; only the extra controls are gated.
 
 These fields appear in both the torrent share limit dialog and the automation workflow editor when the connected qBittorrent instance supports them. On older instances, the fields are hidden and only the classic ratio/seeding time limits are sent.
 
