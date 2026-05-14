@@ -37,7 +37,6 @@ var (
 
 type Client struct {
 	*qbt.Client
-
 	instanceID                 int
 	webAPIVersion              string
 	supportsSetTags            bool
