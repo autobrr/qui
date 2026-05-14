@@ -1155,8 +1155,6 @@ func TestAdaptiveExportDelayRespectsContextCancellation(t *testing.T) {
 }
 
 func TestDeleteFilesParallelStopsWhenContextCanceled(t *testing.T) {
-	t.Parallel()
-
 	svc := &Service{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

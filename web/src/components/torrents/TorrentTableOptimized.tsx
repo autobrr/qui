@@ -1031,9 +1031,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const supportsSubcategories = isAllInstancesView
     ? Boolean(subcategoriesFromData)
     : (capabilities?.supportsSubcategories ?? false)
+  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
   const allowSubcategories = isAllInstancesView
     ? Boolean(subcategoriesFromData)
-    : (supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false))
+    : (supportsSubcategories && (subcategoriesAlwaysEnabled || (preferences?.use_subcategories ?? subcategoriesFromData ?? false)))
   const availableTags = isCrossInstanceEndpoint ? (tags ?? metadataTags) : metadataTags
   const availableCategories = isCrossInstanceEndpoint ? (categories ?? metadataCategories) : metadataCategories
   const isLoadingTags = isMetadataLoading && availableTags.length === 0
@@ -2980,6 +2981,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           return (
                             <div
                               key={cell.id}
+                              data-torrent-column-measure={cell.column.id}
                               style={{
                                 width: cell.column.getSize(),
                                 flexShrink: 0,

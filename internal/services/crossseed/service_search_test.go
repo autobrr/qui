@@ -133,6 +133,26 @@ func TestComputeAutomationSearchTimeout(t *testing.T) {
 	}
 }
 
+func TestEffectiveTorznabCrossSeedSearchLimit(t *testing.T) {
+	tests := []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{name: "unset uses cross seed max", limit: 0, want: torznabCrossSeedSearchLimit},
+		{name: "negative uses cross seed max", limit: -1, want: torznabCrossSeedSearchLimit},
+		{name: "below max", limit: 25, want: 25},
+		{name: "at max", limit: torznabCrossSeedSearchLimit, want: torznabCrossSeedSearchLimit},
+		{name: "above max clamps", limit: torznabCrossSeedSearchLimit + 1, want: torznabCrossSeedSearchLimit},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, effectiveTorznabCrossSeedSearchLimit(tt.limit))
+		})
+	}
+}
+
 func TestGazelleTargetsForSource(t *testing.T) {
 	require.Equal(t, []string{"orpheus.network"}, gazelleTargetsForSource("redacted.sh", true))
 	require.Equal(t, []string{"redacted.sh"}, gazelleTargetsForSource("orpheus.network", true))
