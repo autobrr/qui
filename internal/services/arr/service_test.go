@@ -43,6 +43,25 @@ func openTestDB(t *testing.T) *sql.DB {
 
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
+
+	_, err = db.Exec(`
+		CREATE TABLE arr_id_cache (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title_hash TEXT NOT NULL,
+			content_type TEXT NOT NULL CHECK(content_type IN ('movie', 'tv', 'anime', 'unknown')),
+			arr_instance_id INTEGER,
+			imdb_id TEXT,
+			tmdb_id INTEGER,
+			tvdb_id INTEGER,
+			tvmaze_id INTEGER,
+			is_negative BOOLEAN DEFAULT 0,
+			cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			expires_at TIMESTAMP NOT NULL,
+			UNIQUE(title_hash, content_type)
+		)
+	`)
+	require.NoError(t, err)
 
 	t.Cleanup(func() {
 		require.NoError(t, db.Close())
