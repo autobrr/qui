@@ -93,8 +93,8 @@ func normalized(s string) string {
 	// Remove colons - "csi: miami" → "csi miami"
 	s = strings.ReplaceAll(s, ":", "")
 
-	// Remove commas - "show, title" → "show title"
-	s = strings.ReplaceAll(s, ",", "")
+	// Normalize commas to spaces - "show,title" → "show title"
+	s = strings.ReplaceAll(s, ",", " ")
 
 	// Normalize ampersand to "and" - "His & Hers" → "His and Hers"
 	s = strings.ReplaceAll(s, "&", " and ")
@@ -130,7 +130,7 @@ func NormalizeUnicode(s string) string {
 //   - Lowercase
 //   - Strip apostrophes (including Unicode variants)
 //   - Strip colons
-//   - Strip commas
+//   - Convert commas to spaces
 //   - Convert ampersand to "and"
 //   - Convert hyphens to spaces
 //   - Replace decorative anime title symbols via animeTitleSymbolReplacer, e.g. "Classic★Stars" to "classic stars"

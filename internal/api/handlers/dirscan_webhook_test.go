@@ -37,7 +37,7 @@ type webhookPayloadArr struct {
 	EventType      string               `json:"eventType,omitempty"`
 }
 
-func dirScanWebhookJSONBody(t *testing.T, payload interface{}) *bytes.Reader {
+func dirScanWebhookJSONBody(t *testing.T, payload any) *bytes.Reader {
 	t.Helper()
 	body, err := json.Marshal(payload)
 	require.NoError(t, err)

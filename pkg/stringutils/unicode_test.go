@@ -91,6 +91,7 @@ func TestNormalizeForMatching(t *testing.T) {
 		{"colon", "CSI: Miami", "csi miami"},
 		{"colon with space", "City: Downtown", "city downtown"},
 		{"comma", "Signal, Bloom", "signal bloom"},
+		{"comma without space", "Signal,Bloom", "signal bloom"},
 
 		// Hyphen handling
 		{"hyphen", "Spider-Man", "spider man"},
