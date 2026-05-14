@@ -1935,7 +1935,6 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
 
           {supportsShareLimits && (
             <>
-              {/* Share limit action (qBittorrent 5.2+) */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium">When limits are reached</Label>
                 <Select value={shareLimitAction} onValueChange={setShareLimitAction}>
@@ -1955,7 +1954,6 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
                 </p>
               </div>
 
-              {/* Share limits mode (qBittorrent 5.2+) */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Limits matching mode</Label>
                 <Select value={shareLimitsMode} onValueChange={setShareLimitsMode}>

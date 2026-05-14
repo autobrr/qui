@@ -2850,7 +2850,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                           </div>
                           {capabilities?.supportsShareLimits && (
                             <>
-                              {/* Share limit action (qBittorrent 5.2+) */}
                               <div className="space-y-1.5">
                                 <Label className="text-xs">When limits are reached</Label>
                                 <Select
@@ -2872,7 +2871,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                                   </SelectContent>
                                 </Select>
                               </div>
-                              {/* Share limits mode (qBittorrent 5.2+) */}
                               <div className="space-y-1.5">
                                 <Label className="text-xs">Limits matching mode</Label>
                                 <Select

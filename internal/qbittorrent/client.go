@@ -32,7 +32,7 @@ var (
 	torrentTmpPathMinVersion             = semver.MustParse("2.8.4")
 	pathAutocompleteMinVersion           = semver.MustParse("2.11.2")
 	rssSetFeedURLMinVersion              = semver.MustParse("2.9.1")
-	shareLimitsMinVersion                = semver.MustParse("2.15.3")
+	shareLimitsMinVersion                = semver.MustParse("2.15.1")
 )
 
 type Client struct {

@@ -5634,7 +5634,7 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 }
 
 // SetTorrentShareLimit sets share limits (ratio, seeding time, action, mode) for torrents.
-// shareLimitAction and shareLimitsMode are only sent when the instance supports them (webAPI >= 2.15.3).
+// shareLimitAction and shareLimitsMode are only sent when the instance supports them (WebAPI >= 2.15.1).
 func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64, shareLimitAction, shareLimitsMode string) error {
 	// Get client and sync manager
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
