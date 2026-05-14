@@ -26,7 +26,8 @@ type InstanceCapabilitiesResponse struct {
 	SupportsPathAutocomplete    bool   `json:"supportsPathAutocomplete"`
 	SupportsFreeSpacePathSource bool   `json:"supportsFreeSpacePathSource"`
 	SupportsSetRSSFeedURL       bool   `json:"supportsSetRSSFeedURL"`
-	SupportsShareLimits         bool   `json:"supportsShareLimits"`
+	SupportsShareLimitsAction   bool   `json:"supportsShareLimitsAction"`
+	SupportsShareLimitsMode     bool   `json:"supportsShareLimitsMode"`
 	WebAPIVersion               string `json:"webAPIVersion,omitempty"`
 }
 
@@ -48,7 +49,8 @@ func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) Instanc
 		SupportsPathAutocomplete:    client.SupportsPathAutocomplete(),
 		SupportsFreeSpacePathSource: runtime.GOOS != osWindows,
 		SupportsSetRSSFeedURL:       client.SupportsSetRSSFeedURL(),
-		SupportsShareLimits:         client.SupportsShareLimits(),
+		SupportsShareLimitsAction:   client.SupportsShareLimitsAction(),
+		SupportsShareLimitsMode:     client.SupportsShareLimitsMode(),
 	}
 
 	if version := client.GetWebAPIVersion(); version != "" {

@@ -5634,7 +5634,8 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 }
 
 // SetTorrentShareLimit sets share limits (ratio, seeding time, action, mode) for torrents.
-// shareLimitAction and shareLimitsMode are only sent when the instance supports them (WebAPI >= 2.15.1).
+// shareLimitAction is sent when SupportsShareLimitsAction (Web API >= 2.15.1).
+// shareLimitsMode (MatchAny / MatchAll) is sent only when SupportsShareLimitsMode (Web API >= 2.16.0).
 // Action and mode must be qBittorrent/Qt meta enum names (Default, Stop, Remove, …).
 func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64, shareLimitAction, shareLimitsMode string) error {
 	// Get client and sync manager
@@ -5649,9 +5650,12 @@ func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int,
 	}
 
 	action := strings.TrimSpace(shareLimitAction)
-	mode := strings.TrimSpace(shareLimitsMode)
-	if !client.SupportsShareLimits() {
+	if !client.SupportsShareLimitsAction() {
 		action = ""
+	}
+
+	mode := strings.TrimSpace(shareLimitsMode)
+	if !client.SupportsShareLimitsMode() {
 		mode = ""
 	}
 

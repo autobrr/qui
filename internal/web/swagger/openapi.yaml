@@ -5677,9 +5677,12 @@ components:
         subcategoriesAlwaysEnabled:
           type: boolean
           description: Whether nested torrent categories are always enabled by qBittorrent (WebAPI 2.15.0+).
-        supportsShareLimits:
+        supportsShareLimitsAction:
           type: boolean
-          description: Whether extended per-torrent share limits are available (Web API at least 2.15.1; includes action and matching mode in qui).
+          description: Whether extended per-torrent share limits are available (Web API 2.15.1+; ratio, seeding time, inactive seeding, and share-limit action).
+        supportsShareLimitsMode:
+          type: boolean
+          description: Whether setShareLimits accepts ShareLimitsMode (MatchAny / MatchAll); requires Web API 2.16.0+.
         webAPIVersion:
           type: string
           nullable: true

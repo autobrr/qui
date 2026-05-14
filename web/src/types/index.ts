@@ -646,7 +646,8 @@ export interface InstanceCapabilities {
   supportsPathAutocomplete: boolean
   supportsFreeSpacePathSource: boolean
   supportsSetRSSFeedURL: boolean
-  supportsShareLimits: boolean
+  supportsShareLimitsAction: boolean
+  supportsShareLimitsMode?: boolean
   webAPIVersion?: string
 }
 

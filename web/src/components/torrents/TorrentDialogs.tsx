@@ -1587,7 +1587,8 @@ interface ShareLimitDialogProps {
   torrents?: TorrentLimitSnapshot[]
   onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, shareLimitAction?: string, shareLimitsMode?: string) => void
   isPending?: boolean
-  supportsShareLimits?: boolean
+  supportsShareLimitsAction?: boolean
+  supportsShareLimitsMode?: boolean
 }
 
 // Share limit mode: matches qBittorrent sentinel values
@@ -1683,7 +1684,8 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
   torrents,
   onConfirm,
   isPending = false,
-  supportsShareLimits = false,
+  supportsShareLimitsAction = false,
+  supportsShareLimitsMode = false,
 }: ShareLimitDialogProps) {
   const [ratioMode, setRatioMode] = useState<ShareLimitMode>("global")
   const [ratioCustom, setRatioCustom] = useState(1.0)
@@ -1703,7 +1705,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
   const [shareLimitAction, setShareLimitAction] = useState("default")
   const [shareLimitActionMixed, setShareLimitActionMixed] = useState(false)
   const [shareLimitActionTouched, setShareLimitActionTouched] = useState(false)
-  
+
   const [shareLimitsMode, setShareLimitsMode] = useState("default")
   const [shareLimitsModeMixed, setShareLimitsModeMixed] = useState(false)
   const [shareLimitsModeTouched, setShareLimitsModeTouched] = useState(false)
@@ -1733,15 +1735,20 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
       setShareLimitActionTouched(false)
       setShareLimitsModeTouched(false)
     }
-    if (open && supportsShareLimits && !shareLimitsEdited.current) {
+    if (open && supportsShareLimitsAction && !shareLimitsEdited.current) {
       const a = shareLimitEnumFieldFromTorrents(torrents, t => t.share_limit_action)
       setShareLimitAction(a.value)
       setShareLimitActionMixed(a.isMixed)
-      const m = shareLimitEnumFieldFromTorrents(torrents, t => t.share_limits_mode)
-      setShareLimitsMode(m.value)
-      setShareLimitsModeMixed(m.isMixed)
+      if (supportsShareLimitsMode) {
+        const m = shareLimitEnumFieldFromTorrents(torrents, t => t.share_limits_mode)
+        setShareLimitsMode(m.value)
+        setShareLimitsModeMixed(m.isMixed)
+      } else {
+        setShareLimitsMode("default")
+        setShareLimitsModeMixed(false)
+      }
     }
-    if (open && !supportsShareLimits) {
+    if (open && !supportsShareLimitsAction) {
       setShareLimitAction("default")
       setShareLimitActionMixed(false)
       setShareLimitsMode("default")
@@ -1751,15 +1758,13 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
       shareLimitsEdited.current = false
     }
     wasOpen.current = open
-  }, [open, torrents, supportsShareLimits])
+  }, [open, torrents, supportsShareLimitsAction, supportsShareLimitsMode])
 
   const hasUnresolvedMixed = (ratioMixed && !ratioTouched) ||
     (seedTimeMixed && !seedTimeTouched) ||
     (inactiveTimeMixed && !inactiveTimeTouched) ||
-    (supportsShareLimits && (
-      (shareLimitActionMixed && !shareLimitActionTouched) ||
-      (shareLimitsModeMixed && !shareLimitsModeTouched)
-    ))
+    (supportsShareLimitsAction && (shareLimitActionMixed && !shareLimitActionTouched)) ||
+    (supportsShareLimitsMode && (shareLimitsModeMixed && !shareLimitsModeTouched))
 
   const handleConfirm = useCallback((): void => {
     onConfirm(
@@ -1767,7 +1772,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
       fieldStateToValue(seedTimeMode, seedTimeCustom, false),
       fieldStateToValue(inactiveTimeMode, inactiveTimeCustom, false),
       shareLimitAction !== "default" ? shareLimitAction : undefined,
-      shareLimitsMode !== "default" ? shareLimitsMode : undefined
+      supportsShareLimitsMode && shareLimitsMode !== "default" ? shareLimitsMode : undefined
     )
     setRatioMode("global")
     setRatioCustom(1.0)
@@ -1799,6 +1804,7 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
     inactiveTimeCustom,
     shareLimitAction,
     shareLimitsMode,
+    supportsShareLimitsMode,
   ])
 
   const handleCancel = useCallback((): void => {
@@ -1830,14 +1836,17 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
     setSeedTimeTouched(true)
     setInactiveTimeMode("global")
     setInactiveTimeTouched(true)
-    if (supportsShareLimits) {
+    if (supportsShareLimitsAction) {
       setShareLimitAction("default")
-      setShareLimitsMode("default")
       setShareLimitActionTouched(true)
+      shareLimitsEdited.current = true
+    }
+    if (supportsShareLimitsMode) {
+      setShareLimitsMode("default")
       setShareLimitsModeTouched(true)
       shareLimitsEdited.current = true
     }
-  }, [supportsShareLimits])
+  }, [supportsShareLimitsAction, supportsShareLimitsMode])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1998,74 +2007,74 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
             </p>
           </div>
 
-          {supportsShareLimits && (
-            <>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">When limits are reached</Label>
-                  {shareLimitActionMixed && !shareLimitActionTouched && (
-                    <span className="text-xs text-yellow-600">Select a value</span>
-                  )}
-                  {shareLimitActionMixed && shareLimitActionTouched && (
-                    <span className="text-xs text-muted-foreground">(was mixed)</span>
-                  )}
-                </div>
-                <Select
-                  value={shareLimitAction}
-                  onValueChange={(v: string) => {
-                    shareLimitsEdited.current = true
-                    setShareLimitAction(v)
-                    setShareLimitActionTouched(true)
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Default (use global)</SelectItem>
-                    <SelectItem value="Stop">Stop torrent</SelectItem>
-                    <SelectItem value="Remove">Remove torrent</SelectItem>
-                    <SelectItem value="RemoveWithContent">Remove with content</SelectItem>
-                    <SelectItem value="EnableSuperSeeding">Enable super seeding</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Action when share limits are reached
-                </p>
+          {supportsShareLimitsAction && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">When limits are reached</Label>
+                {shareLimitActionMixed && !shareLimitActionTouched && (
+                  <span className="text-xs text-yellow-600">Select a value</span>
+                )}
+                {shareLimitActionMixed && shareLimitActionTouched && (
+                  <span className="text-xs text-muted-foreground">(was mixed)</span>
+                )}
               </div>
+              <Select
+                value={shareLimitAction}
+                onValueChange={(v: string) => {
+                  shareLimitsEdited.current = true
+                  setShareLimitAction(v)
+                  setShareLimitActionTouched(true)
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Default (use global)</SelectItem>
+                  <SelectItem value="Stop">Stop torrent</SelectItem>
+                  <SelectItem value="Remove">Remove torrent</SelectItem>
+                  <SelectItem value="RemoveWithContent">Remove with content</SelectItem>
+                  <SelectItem value="EnableSuperSeeding">Enable super seeding</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Action when share limits are reached
+              </p>
+            </div>
+          )}
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium">Limits matching mode</Label>
-                  {shareLimitsModeMixed && !shareLimitsModeTouched && (
-                    <span className="text-xs text-yellow-600">Select a value</span>
-                  )}
-                  {shareLimitsModeMixed && shareLimitsModeTouched && (
-                    <span className="text-xs text-muted-foreground">(was mixed)</span>
-                  )}
-                </div>
-                <Select
-                  value={shareLimitsMode}
-                  onValueChange={(v: string) => {
-                    shareLimitsEdited.current = true
-                    setShareLimitsMode(v)
-                    setShareLimitsModeTouched(true)
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Default (use global)</SelectItem>
-                    <SelectItem value="MatchAny">Match any limit</SelectItem>
-                    <SelectItem value="MatchAll">Match all limits</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Whether any or all limits must be reached
-                </p>
+          {supportsShareLimitsMode && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Limits matching mode</Label>
+                {shareLimitsModeMixed && !shareLimitsModeTouched && (
+                  <span className="text-xs text-yellow-600">Select a value</span>
+                )}
+                {shareLimitsModeMixed && shareLimitsModeTouched && (
+                  <span className="text-xs text-muted-foreground">(was mixed)</span>
+                )}
               </div>
-            </>
+              <Select
+                value={shareLimitsMode}
+                onValueChange={(v: string) => {
+                  shareLimitsEdited.current = true
+                  setShareLimitsMode(v)
+                  setShareLimitsModeTouched(true)
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Default (use global)</SelectItem>
+                  <SelectItem value="MatchAny">Match any limit</SelectItem>
+                  <SelectItem value="MatchAll">Match all limits</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Whether any or all limits must be reached (Web API 2.16.0+)
+              </p>
+            </div>
           )}
         </div>
         <DialogFooter className="flex-col sm:flex-row gap-2">

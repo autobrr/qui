@@ -837,7 +837,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         torrents={selectedTorrents}
         onConfirm={handleSetShareLimitWrapper}
         isPending={isPending}
-        supportsShareLimits={capabilities?.supportsShareLimits}
+        supportsShareLimitsAction={capabilities?.supportsShareLimitsAction}
+        supportsShareLimitsMode={capabilities?.supportsShareLimitsMode}
       />
 
       <SpeedLimitsDialog

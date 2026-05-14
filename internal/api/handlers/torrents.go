@@ -1065,7 +1065,7 @@ type BulkActionRequest struct {
 	SeedingTimeLimit         int64                      `json:"seedingTimeLimit,omitempty"`         // For setShareLimit action
 	InactiveSeedingTimeLimit int64                      `json:"inactiveSeedingTimeLimit,omitempty"` // For setShareLimit action
 	ShareLimitAction         string                     `json:"shareLimitAction,omitempty"`         // For setShareLimit action (qBittorrent 5.2+)
-	ShareLimitsMode          string                     `json:"shareLimitsMode,omitempty"`          // For setShareLimit action (qBittorrent 5.2+)
+	ShareLimitsMode          string                     `json:"shareLimitsMode,omitempty"`          // MatchAny/MatchAll; Web API 2.16.0+ (ignored below that; see supportsShareLimitsMode)
 	UploadLimit              int64                      `json:"uploadLimit,omitempty"`              // For setUploadLimit action (KB/s)
 	DownloadLimit            int64                      `json:"downloadLimit,omitempty"`            // For setDownloadLimit action (KB/s)
 	Location                 string                     `json:"location,omitempty"`                 // For setLocation action

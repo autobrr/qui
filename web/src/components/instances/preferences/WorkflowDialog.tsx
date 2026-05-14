@@ -2850,49 +2850,49 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                               )}
                             </div>
                           </div>
-                          {capabilities?.supportsShareLimits && (
-                            <>
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">When limits are reached</Label>
-                                <Select
-                                  value={formState.exprShareLimitAction}
-                                  onValueChange={(value: string) => setFormState(prev => ({
-                                    ...prev,
-                                    exprShareLimitAction: value,
-                                  }))}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="default">Default (use global)</SelectItem>
-                                    <SelectItem value="Stop">Stop torrent</SelectItem>
-                                    <SelectItem value="Remove">Remove torrent</SelectItem>
-                                    <SelectItem value="RemoveWithContent">Remove with content</SelectItem>
-                                    <SelectItem value="EnableSuperSeeding">Enable super seeding</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label className="text-xs">Limits matching mode</Label>
-                                <Select
-                                  value={formState.exprShareLimitsMode}
-                                  onValueChange={(value: string) => setFormState(prev => ({
-                                    ...prev,
-                                    exprShareLimitsMode: value,
-                                  }))}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="default">Default (use global)</SelectItem>
-                                    <SelectItem value="MatchAny">Match any limit</SelectItem>
-                                    <SelectItem value="MatchAll">Match all limits</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </>
+                          {capabilities?.supportsShareLimitsAction && (
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">When limits are reached</Label>
+                              <Select
+                                value={formState.exprShareLimitAction}
+                                onValueChange={(value: string) => setFormState(prev => ({
+                                  ...prev,
+                                  exprShareLimitAction: value,
+                                }))}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="default">Default (use global)</SelectItem>
+                                  <SelectItem value="Stop">Stop torrent</SelectItem>
+                                  <SelectItem value="Remove">Remove torrent</SelectItem>
+                                  <SelectItem value="RemoveWithContent">Remove with content</SelectItem>
+                                  <SelectItem value="EnableSuperSeeding">Enable super seeding</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                          {capabilities?.supportsShareLimitsMode && (
+                            <div className="space-y-1.5">
+                              <Label className="text-xs">Limits matching mode</Label>
+                              <Select
+                                value={formState.exprShareLimitsMode}
+                                onValueChange={(value: string) => setFormState(prev => ({
+                                  ...prev,
+                                  exprShareLimitsMode: value,
+                                }))}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="default">Default (use global)</SelectItem>
+                                  <SelectItem value="MatchAny">Match any limit</SelectItem>
+                                  <SelectItem value="MatchAll">Match all limits</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
                           )}
                         </div>
                       </div>

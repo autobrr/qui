@@ -32,7 +32,8 @@ var (
 	torrentTmpPathMinVersion             = semver.MustParse("2.8.4")
 	pathAutocompleteMinVersion           = semver.MustParse("2.11.2")
 	rssSetFeedURLMinVersion              = semver.MustParse("2.9.1")
-	shareLimitsMinVersion                = semver.MustParse("2.15.1")
+	shareLimitsActionMinVersion          = semver.MustParse("2.15.1")
+	shareLimitsModeMinVersion            = semver.MustParse("2.16.0") // unused still, Web API 2.16.0+
 )
 
 type Client struct {
@@ -53,7 +54,8 @@ type Client struct {
 	supportsPathAutocomplete   bool
 	trackerIncludeSupported    bool
 	supportsSetRSSFeedURL      bool
-	supportsShareLimits        bool
+	supportsShareLimitsAction  bool
+	supportsShareLimitsMode    bool
 	lastHealthCheck            time.Time
 	isHealthy                  bool
 	syncManager                *qbt.SyncManager
@@ -273,7 +275,8 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
 	c.supportsPathAutocomplete = !v.LessThan(pathAutocompleteMinVersion)
 	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
-	c.supportsShareLimits = !v.LessThan(shareLimitsMinVersion)
+	c.supportsShareLimitsAction = !v.LessThan(shareLimitsActionMinVersion)
+	c.supportsShareLimitsMode = !v.LessThan(shareLimitsModeMinVersion)
 }
 
 // UpdateWithPeersData triggers a sync on the peer manager to keep it warm after intercepting peer data
@@ -396,10 +399,20 @@ func (c *Client) SupportsSetRSSFeedURL() bool {
 	return c.supportsSetRSSFeedURL
 }
 
-func (c *Client) SupportsShareLimits() bool {
+// SupportsShareLimitsAction reports whether extended setShareLimits is available for ratio,
+// seeding time, inactive seeding, and share-limit action (shareLimitsActionMinVersion, Web API 2.15.1+).
+func (c *Client) SupportsShareLimitsAction() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.supportsShareLimits
+	return c.supportsShareLimitsAction
+}
+
+// SupportsShareLimitsMode reports whether setShareLimits accepts ShareLimitsMode (MatchAny / MatchAll).
+// Gated by shareLimitsModeMinVersion (Web API 2.16.0+).
+func (c *Client) SupportsShareLimitsMode() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsShareLimitsMode
 }
 
 func (c *Client) GetWebAPIVersion() string {

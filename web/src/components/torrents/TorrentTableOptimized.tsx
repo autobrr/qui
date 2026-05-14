@@ -3088,7 +3088,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           torrents={contextTorrents}
           onConfirm={handleSetShareLimitWrapper}
           isPending={isPending}
-          supportsShareLimits={capabilities?.supportsShareLimits}
+          supportsShareLimitsAction={capabilities?.supportsShareLimitsAction}
+          supportsShareLimitsMode={capabilities?.supportsShareLimitsMode}
         />
 
         <SpeedLimitsDialog
