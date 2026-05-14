@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: "22.18.0"
+  NODE_VERSION: "24.15.0"
 
 jobs:
   format:
