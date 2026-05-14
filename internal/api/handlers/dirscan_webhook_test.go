@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -11,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +22,13 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/dirscan"
 )
+
+func dirScanWebhookJSONBody(t *testing.T, payload any) *bytes.Reader {
+	t.Helper()
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+	return bytes.NewReader(body)
+}
 
 func TestPathMatchesDirectory(t *testing.T) {
 	t.Parallel()
@@ -223,7 +230,9 @@ func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T
 		ctx,
 		http.MethodPost,
 		"/api/dir-scan/webhook/scan",
-		strings.NewReader(`{"path":"`+filepath.Join(dupePath, "Show Name")+`"}`),
+		dirScanWebhookJSONBody(t, map[string]any{
+			"path": filepath.Join(dupePath, "Show Name"),
+		}),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -264,7 +273,12 @@ func TestWebhookTriggerScan_AcceptsArrTestPayloadWithoutScan(t *testing.T) {
 		ctx,
 		http.MethodPost,
 		"/api/dir-scan/webhook/scan",
-		strings.NewReader(`{"eventType":"test","series":{"path":"C:\\testpath"}}`),
+		dirScanWebhookJSONBody(t, map[string]any{
+			"eventType": "test",
+			"series": map[string]any{
+				"path": `C:\testpath`,
+			},
+		}),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -327,7 +341,9 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 		ctx,
 		http.MethodPost,
 		"/api/dir-scan/webhook/scan",
-		strings.NewReader(`{"path":"`+first+`"}`),
+		dirScanWebhookJSONBody(t, map[string]any{
+			"path": first,
+		}),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -402,7 +418,12 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
 		ctx,
 		http.MethodPost,
 		"/api/dir-scan/webhook/scan",
-		strings.NewReader(`{"series":{"path":"`+root+`"},"downloadClient":"qBittorrent"}`),
+		dirScanWebhookJSONBody(t, map[string]any{
+			"series": map[string]any{
+				"path": root,
+			},
+			"downloadClient": "qBittorrent",
+		}),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -462,7 +483,11 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientMissingButFilterExists(t *tes
 		ctx,
 		http.MethodPost,
 		"/api/dir-scan/webhook/scan",
-		strings.NewReader(`{"series":{"path":"`+root+`"}}`),
+		dirScanWebhookJSONBody(t, map[string]any{
+			"series": map[string]any{
+				"path": root,
+			},
+		}),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -524,7 +549,12 @@ func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T)
 		ctx,
 		http.MethodPost,
 		"/api/dir-scan/webhook/scan",
-		strings.NewReader(`{"series":{"path":"`+root+`"},"downloadClient":"sabNZBD"}`),
+		dirScanWebhookJSONBody(t, map[string]any{
+			"series": map[string]any{
+				"path": root,
+			},
+			"downloadClient": "sabNZBD",
+		}),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -591,7 +621,9 @@ func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T)
 		ctx,
 		http.MethodPost,
 		"/api/dir-scan/webhook/scan",
-		strings.NewReader(`{"path":"`+root+`"}`),
+		dirScanWebhookJSONBody(t, map[string]any{
+			"path": root,
+		}),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
