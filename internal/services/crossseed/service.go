@@ -7099,7 +7099,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
-		match, mismatchReason := s.releasesMatchWithReason(searchRelease, candidateRelease, opts.FindIndividualEpisodes)
+		match, mismatchReason := s.releasesMatchWithReasonAndNames(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, opts.FindIndividualEpisodes)
 		if !match {
 			releaseFilteredCount++
 			if mismatchReason == "" {
@@ -10009,6 +10009,7 @@ type releaseFilterDebugInfo struct {
 	Type       string   `json:"type,omitempty"`
 	Title      string   `json:"title,omitempty"`
 	Subtitle   string   `json:"subtitle,omitempty"`
+	Alt        string   `json:"alt,omitempty"`
 	Collection string   `json:"collection,omitempty"`
 	Year       int      `json:"year,omitempty"`
 	Month      int      `json:"month,omitempty"`
@@ -10042,6 +10043,7 @@ func releaseFilterDebugInfoFrom(release *rls.Release) releaseFilterDebugInfo {
 		Type:       release.Type.String(),
 		Title:      release.Title,
 		Subtitle:   release.Subtitle,
+		Alt:        release.Alt,
 		Collection: release.Collection,
 		Year:       release.Year,
 		Month:      release.Month,

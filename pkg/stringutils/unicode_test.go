@@ -90,6 +90,7 @@ func TestNormalizeForMatching(t *testing.T) {
 		// Colon handling
 		{"colon", "CSI: Miami", "csi miami"},
 		{"colon with space", "City: Downtown", "city downtown"},
+		{"comma", "Signal, Bloom", "signal bloom"},
 
 		// Hyphen handling
 		{"hyphen", "Spider-Man", "spider man"},
@@ -166,6 +167,11 @@ func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
 			"csi colon",
 			"CSI: Miami S01",
 			"CSI Miami S01",
+		},
+		{
+			"comma title separator",
+			"Signal, Bloom S01",
+			"Signal Bloom S01",
 		},
 		{
 			"leon accent and colon",

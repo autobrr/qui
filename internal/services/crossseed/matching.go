@@ -130,12 +130,16 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 }
 
 func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIndividualEpisodes bool) (bool, string) {
+	return s.releasesMatchWithReasonAndNames(source, candidate, "", "", findIndividualEpisodes)
+}
+
+func (s *Service) releasesMatchWithReasonAndNames(source, candidate *rls.Release, sourceName, candidateName string, findIndividualEpisodes bool) (bool, string) {
 	if source == candidate {
 		return true, ""
 	}
 
 	isTV := isTVRelease(source) || isTVRelease(candidate)
-	if ok, reason := s.validateTitleArtistAndDates(source, candidate, isTV); !ok {
+	if ok, reason := s.validateTitleArtistAndDates(source, candidate, sourceName, candidateName, isTV); !ok {
 		return false, reason
 	}
 	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
@@ -157,14 +161,13 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 	return true, ""
 }
 
-func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, isTV bool) (bool, string) {
+func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, isTV bool) (bool, string) {
 	// Title should match closely but not necessarily exactly.
 	// Use punctuation-stripping normalization to handle differences like
 	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
-	sourceTitleNorm := stringutils.NormalizeForMatching(source.Title)
-	candidateTitleNorm := stringutils.NormalizeForMatching(candidate.Title)
-
-	if sourceTitleNorm == "" || candidateTitleNorm == "" {
+	sourceTitles := normalizedReleaseTitles(source, sourceName)
+	candidateTitles := normalizedReleaseTitles(candidate, candidateName)
+	if len(sourceTitles) == 0 || len(candidateTitles) == 0 {
 		return false, "empty normalized title"
 	}
 
@@ -173,7 +176,7 @@ func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, is
 	// This is intentionally strict to avoid false positives between related-but-distinct
 	// TV franchises/spinoffs (e.g. "FBI" vs "FBI Most Wanted") where substring matching
 	// would incorrectly treat them as the same show.
-	if sourceTitleNorm != candidateTitleNorm {
+	if !normalizedTitleSetsOverlap(sourceTitles, candidateTitles) {
 		// Title mismatches are expected for most candidates - don't log to avoid noise
 		return false, "title mismatch"
 	}
@@ -210,6 +213,66 @@ func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, is
 	}
 
 	return true, ""
+}
+
+func normalizedReleaseTitles(release *rls.Release, rawName string) map[string]struct{} {
+	titles := make(map[string]struct{})
+	addNormalizedTitle(titles, releaseTitle(release))
+	addNormalizedTitle(titles, releaseAlt(release))
+
+	for _, rawTitle := range rawAKATitleParts(rawName) {
+		parsed := rls.ParseString(rawTitle)
+		addNormalizedTitle(titles, parsed.Title)
+		addNormalizedTitle(titles, parsed.Alt)
+	}
+
+	return titles
+}
+
+func releaseTitle(release *rls.Release) string {
+	if release == nil {
+		return ""
+	}
+	return release.Title
+}
+
+func releaseAlt(release *rls.Release) string {
+	if release == nil {
+		return ""
+	}
+	return release.Alt
+}
+
+func rawAKATitleParts(rawName string) []string {
+	if rawName == "" || !strings.Contains(rawName, " AKA ") {
+		return nil
+	}
+
+	parts := strings.Split(rawName, " AKA ")
+	titles := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			titles = append(titles, part)
+		}
+	}
+	return titles
+}
+
+func addNormalizedTitle(titles map[string]struct{}, title string) {
+	normalized := stringutils.NormalizeForMatching(title)
+	if normalized != "" {
+		titles[normalized] = struct{}{}
+	}
+}
+
+func normalizedTitleSetsOverlap(sourceTitles, candidateTitles map[string]struct{}) bool {
+	for title := range sourceTitles {
+		if _, exists := candidateTitles[title]; exists {
+			return true
+		}
+	}
+	return false
 }
 
 func validateTVStructure(source, candidate *rls.Release, findIndividualEpisodes, isTV bool) (bool, string) {

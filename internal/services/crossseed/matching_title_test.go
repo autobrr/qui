@@ -175,6 +175,7 @@ func TestNormalizeForMatching(t *testing.T) {
 		{"curly apostrophe left", "It's Fine", "its fine"},
 		{"backtick", "Rock`n Roll", "rockn roll"},
 		{"colon", "City: Downtown", "city downtown"},
+		{"comma", "Signal, Bloom", "signal bloom"},
 		{"hyphen to space", "Laser-Cat", "laser cat"},
 		{"multiple hyphens", "Up-And-Away", "up and away"},
 		{"anime star separator", "Classic★Stars", "classic stars"},
@@ -252,6 +253,23 @@ func TestReleasesMatch_PunctuationVariations(t *testing.T) {
 			},
 			wantMatch:   true,
 			description: "hyphen should become space - 'Laser-Cat' matches 'Laser Cat'",
+		},
+		{
+			name: "comma vs no comma TV",
+			source: rls.Release{
+				Title:  "Signal Bloom",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			candidate: rls.Release{
+				Title:  "Signal, Bloom",
+				Series: 1,
+				Source: "WEB-DL",
+				Group:  "GROUP",
+			},
+			wantMatch:   true,
+			description: "comma should be stripped - 'Signal, Bloom' matches 'Signal Bloom'",
 		},
 		{
 			name: "unicode curly apostrophe TV",
@@ -348,4 +366,66 @@ func TestReleasesMatch_TVTitleMustNotUseSubstringMatching(t *testing.T) {
 	ggo := rls.ParseString("Sword.Art.Online.Alternative.Gun.Gale.Online.S01.1080p.BluRay.REMUX.AVC.Dual-Audio.FLAC.2.0-NAN0")
 	require.False(t, s.releasesMatch(&sao, &ggo, false))
 	require.False(t, s.releasesMatch(&ggo, &sao, false), "match should be symmetric")
+}
+
+func TestReleasesMatch_AKATitleAlternatives(t *testing.T) {
+	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	source := rls.Release{
+		Type:   rls.Series,
+		Title:  "Kuro Gear no Meiro Tansaku",
+		Series: 2,
+		Source: "WEB-DL",
+	}
+	candidate := rls.Release{
+		Type:   rls.Series,
+		Title:  "Black Gear, Maze Patrol",
+		Alt:    "Kuro Gear no Meiro Tansaku",
+		Series: 2,
+		Source: "WEB-DL",
+	}
+
+	match, reason := s.releasesMatchWithReason(&source, &candidate, false)
+	require.True(t, match, "parsed AKA alt should match exactly after normalization, got %q", reason)
+}
+
+func TestReleasesMatch_RawAKAFallback(t *testing.T) {
+	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	source := rls.Release{
+		Type:   rls.Series,
+		Title:  "Aoi Clockwork no Vault Run",
+		Series: 2,
+		Source: "WEB-DL",
+	}
+	candidate := rls.Release{
+		Type:   rls.Series,
+		Title:  "Blue Clockwork Vault Run",
+		Series: 2,
+		Source: "WEB-DL",
+	}
+
+	candidateName := "Blue Clockwork Vault Run AKA Aoi Clockwork no Vault Run S02 720p WEB-DL-GRP"
+	match, reason := s.releasesMatchWithReasonAndNames(&source, &candidate, "", candidateName, false)
+	require.True(t, match, "raw AKA fallback should match exact normalized alt title, got %q", reason)
+}
+
+func TestReleasesMatch_AKADoesNotUseSubstringMatching(t *testing.T) {
+	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	source := rls.Release{
+		Type:   rls.Series,
+		Title:  "Kuro Gear",
+		Series: 1,
+	}
+	candidate := rls.Release{
+		Type:   rls.Series,
+		Title:  "Kuro Gear Outer Ring",
+		Alt:    "Kuro Gear Outer Ring",
+		Series: 1,
+	}
+
+	match, reason := s.releasesMatchWithReason(&source, &candidate, false)
+	require.False(t, match, "AKA matching must remain exact, got match with reason %q", reason)
+	require.Equal(t, "title mismatch", reason)
 }
