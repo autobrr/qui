@@ -1576,6 +1576,8 @@ type TorrentLimitSnapshot = Pick<
   | "max_inactive_seeding_time"
   | "dl_limit"
   | "up_limit"
+  | "share_limit_action"
+  | "share_limits_mode"
 >
 
 interface ShareLimitDialogProps {
@@ -1621,7 +1623,21 @@ function checkFieldConsistency(
   return { isMixed: !allSame, commonValue: allSame ? firstValue : undefined }
 }
 
-// Build initial state from selected torrents
+// Qt share-limit enum for Radix; when torrents disagree, value is "default" placeholder and isMixed is true (same idea as ratio/seed/inactive).
+function shareLimitEnumFieldFromTorrents(
+  torrents: TorrentLimitSnapshot[] | undefined,
+  pick: (t: TorrentLimitSnapshot) => string | undefined
+): { value: string; isMixed: boolean } {
+  if (!torrents?.length) return { value: "default", isMixed: false }
+  const vals = torrents.map((t) => {
+    const v = (pick(t) ?? "").trim()
+    return v === "" || v === "Default" ? "default" : v
+  })
+  const first = vals[0]!
+  const isMixed = !vals.every((x) => x === first)
+  return { value: isMixed ? "default" : first, isMixed }
+}
+
 function buildShareLimitFieldStates(torrents?: TorrentLimitSnapshot[]): {
   ratio: ShareLimitFieldState
   seedTime: ShareLimitFieldState
@@ -1684,12 +1700,17 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
   const [inactiveTimeMixed, setInactiveTimeMixed] = useState(false)
   const [inactiveTimeTouched, setInactiveTimeTouched] = useState(false)
 
-  const [shareLimitAction, setShareLimitAction] = useState<string>("default")
-  const [shareLimitsMode, setShareLimitsMode] = useState<string>("default")
+  const [shareLimitAction, setShareLimitAction] = useState("default")
+  const [shareLimitActionMixed, setShareLimitActionMixed] = useState(false)
+  const [shareLimitActionTouched, setShareLimitActionTouched] = useState(false)
+  
+  const [shareLimitsMode, setShareLimitsMode] = useState("default")
+  const [shareLimitsModeMixed, setShareLimitsModeMixed] = useState(false)
+  const [shareLimitsModeTouched, setShareLimitsModeTouched] = useState(false)
 
   const wasOpen = useRef(false)
+  const shareLimitsEdited = useRef(false)
 
-  // Reset form when dialog opens with torrent values
   useEffect(() => {
     if (open && !wasOpen.current) {
       const states = buildShareLimitFieldStates(torrents)
@@ -1709,16 +1730,36 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
       setInactiveTimeMixed(states.inactiveTime.isMixed)
       setInactiveTimeTouched(false)
 
+      setShareLimitActionTouched(false)
+      setShareLimitsModeTouched(false)
+    }
+    if (open && supportsShareLimits && !shareLimitsEdited.current) {
+      const a = shareLimitEnumFieldFromTorrents(torrents, t => t.share_limit_action)
+      setShareLimitAction(a.value)
+      setShareLimitActionMixed(a.isMixed)
+      const m = shareLimitEnumFieldFromTorrents(torrents, t => t.share_limits_mode)
+      setShareLimitsMode(m.value)
+      setShareLimitsModeMixed(m.isMixed)
+    }
+    if (open && !supportsShareLimits) {
       setShareLimitAction("default")
+      setShareLimitActionMixed(false)
       setShareLimitsMode("default")
+      setShareLimitsModeMixed(false)
+    }
+    if (!open) {
+      shareLimitsEdited.current = false
     }
     wasOpen.current = open
-  }, [open, torrents])
+  }, [open, torrents, supportsShareLimits])
 
-  // Check if any mixed field hasn't been explicitly addressed by the user
   const hasUnresolvedMixed = (ratioMixed && !ratioTouched) ||
     (seedTimeMixed && !seedTimeTouched) ||
-    (inactiveTimeMixed && !inactiveTimeTouched)
+    (inactiveTimeMixed && !inactiveTimeTouched) ||
+    (supportsShareLimits && (
+      (shareLimitActionMixed && !shareLimitActionTouched) ||
+      (shareLimitsModeMixed && !shareLimitsModeTouched)
+    ))
 
   const handleConfirm = useCallback((): void => {
     onConfirm(
@@ -1728,7 +1769,6 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
       shareLimitAction !== "default" ? shareLimitAction : undefined,
       shareLimitsMode !== "default" ? shareLimitsMode : undefined
     )
-    // Reset form
     setRatioMode("global")
     setRatioCustom(1.0)
     setRatioMixed(false)
@@ -1742,9 +1782,24 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
     setInactiveTimeMixed(false)
     setInactiveTimeTouched(false)
     setShareLimitAction("default")
+    setShareLimitActionMixed(false)
+    setShareLimitActionTouched(false)
     setShareLimitsMode("default")
+    setShareLimitsModeMixed(false)
+    setShareLimitsModeTouched(false)
     onOpenChange(false)
-  }, [onConfirm, ratioMode, ratioCustom, seedTimeMode, seedTimeCustom, inactiveTimeMode, inactiveTimeCustom, shareLimitAction, shareLimitsMode, onOpenChange])
+  }, [
+    onConfirm,
+    onOpenChange,
+    ratioMode,
+    ratioCustom,
+    seedTimeMode,
+    seedTimeCustom,
+    inactiveTimeMode,
+    inactiveTimeCustom,
+    shareLimitAction,
+    shareLimitsMode,
+  ])
 
   const handleCancel = useCallback((): void => {
     setRatioMode("global")
@@ -1760,11 +1815,14 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
     setInactiveTimeMixed(false)
     setInactiveTimeTouched(false)
     setShareLimitAction("default")
+    setShareLimitActionMixed(false)
+    setShareLimitActionTouched(false)
     setShareLimitsMode("default")
+    setShareLimitsModeMixed(false)
+    setShareLimitsModeTouched(false)
     onOpenChange(false)
   }, [onOpenChange])
 
-  // Helper to set all fields to global (shortcut) - marks all as touched
   const setAllGlobal = useCallback(() => {
     setRatioMode("global")
     setRatioTouched(true)
@@ -1772,7 +1830,14 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
     setSeedTimeTouched(true)
     setInactiveTimeMode("global")
     setInactiveTimeTouched(true)
-  }, [])
+    if (supportsShareLimits) {
+      setShareLimitAction("default")
+      setShareLimitsMode("default")
+      setShareLimitActionTouched(true)
+      setShareLimitsModeTouched(true)
+      shareLimitsEdited.current = true
+    }
+  }, [supportsShareLimits])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1936,8 +2001,23 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
           {supportsShareLimits && (
             <>
               <div className="space-y-2">
-                <Label className="text-sm font-medium">When limits are reached</Label>
-                <Select value={shareLimitAction} onValueChange={setShareLimitAction}>
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">When limits are reached</Label>
+                  {shareLimitActionMixed && !shareLimitActionTouched && (
+                    <span className="text-xs text-yellow-600">Select a value</span>
+                  )}
+                  {shareLimitActionMixed && shareLimitActionTouched && (
+                    <span className="text-xs text-muted-foreground">(was mixed)</span>
+                  )}
+                </div>
+                <Select
+                  value={shareLimitAction}
+                  onValueChange={(v: string) => {
+                    shareLimitsEdited.current = true
+                    setShareLimitAction(v)
+                    setShareLimitActionTouched(true)
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -1955,8 +2035,23 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
               </div>
 
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Limits matching mode</Label>
-                <Select value={shareLimitsMode} onValueChange={setShareLimitsMode}>
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Limits matching mode</Label>
+                  {shareLimitsModeMixed && !shareLimitsModeTouched && (
+                    <span className="text-xs text-yellow-600">Select a value</span>
+                  )}
+                  {shareLimitsModeMixed && shareLimitsModeTouched && (
+                    <span className="text-xs text-muted-foreground">(was mixed)</span>
+                  )}
+                </div>
+                <Select
+                  value={shareLimitsMode}
+                  onValueChange={(v: string) => {
+                    shareLimitsEdited.current = true
+                    setShareLimitsMode(v)
+                    setShareLimitsModeTouched(true)
+                  }}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
