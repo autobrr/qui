@@ -58,7 +58,6 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 
 	bySeries := make(map[int]*seriesInfo)
 	absoluteEpisodes := make(map[int]struct{})
-	absoluteFileCount := 0
 	for _, file := range files {
 		if shouldIgnoreFile(file.Name, normalizer) {
 			continue
@@ -68,7 +67,6 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 		fileRelease = enrichReleaseFromTorrent(fileRelease, torrentRelease)
 		if fileRelease.Series <= 0 {
 			if fileRelease.Episode > 0 {
-				absoluteFileCount++
 				absoluteEpisodes[fileRelease.Episode] = struct{}{}
 			}
 			continue
@@ -108,8 +106,6 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 			for ep := range absoluteEpisodes {
 				return 0, ep, false, true
 			}
-		case absoluteFileCount >= 2:
-			return 0, 0, true, true
 		default:
 			return 0, 0, false, false
 		}

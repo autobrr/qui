@@ -129,6 +129,7 @@ func NormalizeUnicode(s string) string {
 //   - Strip colons
 //   - Convert ampersand to "and"
 //   - Convert hyphens to spaces
+//   - Replace decorative anime title symbols via animeTitleSymbolReplacer, e.g. "Classic★Stars" to "classic stars"
 //   - Collapse multiple spaces to single space
 //
 // Results are cached per input string (5 minute TTL) to avoid repeated expensive transformations.

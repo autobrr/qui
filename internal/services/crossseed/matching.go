@@ -134,6 +134,30 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 		return true, ""
 	}
 
+	isTV := isTVRelease(source) || isTVRelease(candidate)
+	if ok, reason := s.validateTitleArtistAndDates(source, candidate, isTV); !ok {
+		return false, reason
+	}
+	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
+		return false, reason
+	}
+	if ok, reason := s.validateGroupSiteAndChecksum(source, candidate); !ok {
+		return false, reason
+	}
+	if ok, reason := s.validateFormatAndCodec(source, candidate, isTV); !ok {
+		return false, reason
+	}
+	if ok, reason := s.validateMetadataFlags(source, candidate); !ok {
+		return false, reason
+	}
+	if ok, reason := validateReleaseVariants(source, candidate); !ok {
+		return false, reason
+	}
+
+	return true, ""
+}
+
+func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, isTV bool) (bool, string) {
 	// Title should match closely but not necessarily exactly.
 	// Use punctuation-stripping normalization to handle differences like
 	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
@@ -153,8 +177,6 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 		// Title mismatches are expected for most candidates - don't log to avoid noise
 		return false, "title mismatch"
 	}
-
-	isTV := isTVRelease(source) || isTVRelease(candidate)
 
 	// Artist must match for content with artist metadata (music, 0day scene radio shows, etc.)
 	// This prevents matching different artists with the same show/album title.
@@ -187,43 +209,54 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 		return false, "content type mismatch"
 	}
 
-	// For TV shows, season and episode structure must match based on settings.
-	if isTV {
-		sourceIsTV := isTVRelease(source)
-		candidateIsTV := isTVRelease(candidate)
-		sourceIsPack := isTVSeasonPack(source)
-		candidateIsPack := isTVSeasonPack(candidate)
+	return true, ""
+}
 
-		if sourceIsTV && !candidateIsTV {
-			return false, "candidate not recognized as TV"
-		}
-		if candidateIsTV && !sourceIsTV {
-			return false, "source not recognized as TV"
-		}
-
-		if source.Series > 0 && candidate.Series > 0 && source.Series != candidate.Series {
-			return false, "season mismatch"
-		}
-
-		if !findIndividualEpisodes {
-			// Strict matching: season packs only match season packs, episodes only match episodes
-			if sourceIsPack != candidateIsPack {
-				return false, "season pack versus episode mismatch"
-			}
-
-			// If both are individual episodes, episodes must match
-			if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
-				return false, "episode mismatch"
-			}
-		} else {
-			// Flexible matching: allow season packs to match individual episodes
-			// But individual episodes still need exact episode matching
-			if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
-				return false, "episode mismatch"
-			}
-		}
+func validateTVStructure(source, candidate *rls.Release, findIndividualEpisodes, isTV bool) (bool, string) {
+	if !isTV {
+		return true, ""
 	}
 
+	// For TV shows, season and episode structure must match based on settings.
+	sourceIsTV := isTVRelease(source)
+	candidateIsTV := isTVRelease(candidate)
+	sourceIsPack := isTVSeasonPack(source)
+	candidateIsPack := isTVSeasonPack(candidate)
+
+	if sourceIsTV && !candidateIsTV {
+		return false, "candidate not recognized as TV"
+	}
+	if candidateIsTV && !sourceIsTV {
+		return false, "source not recognized as TV"
+	}
+
+	if source.Series > 0 && candidate.Series > 0 && source.Series != candidate.Series {
+		return false, "season mismatch"
+	}
+
+	if !findIndividualEpisodes {
+		// Strict matching: season packs only match season packs, episodes only match episodes
+		if sourceIsPack != candidateIsPack {
+			return false, "season pack versus episode mismatch"
+		}
+
+		// If both are individual episodes, episodes must match
+		if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
+			return false, "episode mismatch"
+		}
+		return true, ""
+	}
+
+	// Flexible matching: allow season packs to match individual episodes.
+	// But individual episodes still need exact episode matching.
+	if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
+		return false, "episode mismatch"
+	}
+
+	return true, ""
+}
+
+func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release) (bool, string) {
 	// Group tags should match for proper cross-seeding compatibility.
 	// Different release groups often have different encoding settings and file structures.
 	sourceGroup := s.stringNormalizer.Normalize((source.Group))
@@ -269,6 +302,10 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 		}
 	}
 
+	return true, ""
+}
+
+func (s *Service) validateFormatAndCodec(source, candidate *rls.Release, isTV bool) (bool, string) {
 	// Source must be compatible if both are present.
 	// WEB is ambiguous and matches both WEB-DL and WEBRip.
 	// WEB-DL and WEBRip are explicitly different and do not match.
@@ -341,6 +378,10 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 		return false, "bit depth mismatch"
 	}
 
+	return true, ""
+}
+
+func (s *Service) validateMetadataFlags(source, candidate *rls.Release) (bool, string) {
 	// NOTE: Audio codec and channel checks are intentionally omitted here.
 	// Indexer metadata can be inaccurate (e.g., BTN returning DDPA5.1 when the
 	// actual file is DDP5.1). The downstream file size matching in
@@ -408,6 +449,10 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 		return false, "architecture mismatch"
 	}
 
+	return true, ""
+}
+
+func validateReleaseVariants(source, candidate *rls.Release) (bool, string) {
 	// Certain variant tags must match for safe cross-seeding.
 	// IMAX/HYBRID always require exact match (different video masters).
 	// REPACK/PROPER require exact match for non-pack content, but season packs

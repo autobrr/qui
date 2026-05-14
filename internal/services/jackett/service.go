@@ -2765,8 +2765,8 @@ func parseCategoryList(value string) []int {
 	return canonicalizeIntSlice(categories)
 }
 
+// formatCategoryList formats a canonical category slice as a comma-separated list.
 func formatCategoryList(categories []int) string {
-	categories = canonicalizeIntSlice(categories)
 	if len(categories) == 0 {
 		return ""
 	}
@@ -2846,7 +2846,7 @@ func (s *Service) buildSearchParams(req *TorznabSearchRequest, searchMode string
 	params.Set("q", req.Query)
 
 	if len(req.Categories) > 0 {
-		params.Set("cat", formatCategoryList(req.Categories))
+		params.Set("cat", formatCategoryList(canonicalizeIntSlice(req.Categories)))
 	}
 
 	// Always add basic parameters - these are widely supported

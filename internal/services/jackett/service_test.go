@@ -1525,8 +1525,8 @@ func TestCategorySerializationCompactsDuplicates(t *testing.T) {
 		t.Fatalf("cat param = %q, want %q", got, "5000,5040,5070")
 	}
 
-	if got := formatCategoryList([]int{CategoryMoviesHD, CategoryMovies, CategoryMoviesHD}); got != "2000,2040" {
-		t.Fatalf("formatCategoryList() = %q, want %q", got, "2000,2040")
+	if got := formatCategoryList([]int{CategoryMoviesHD, CategoryMovies, CategoryMoviesHD}); got != "2040,2000,2040" {
+		t.Fatalf("formatCategoryList() = %q, want %q", got, "2040,2000,2040")
 	}
 }
 
