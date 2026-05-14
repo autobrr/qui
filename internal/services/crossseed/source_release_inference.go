@@ -55,7 +55,24 @@ func (s *Service) selectSourceReleaseForSearch(sourceRelease, contentDetectionRe
 		baseRelease = contentDetectionRelease
 	}
 
-	return s.deriveSourceReleaseForSearch(baseRelease, files)
+	searchRelease := s.deriveSourceReleaseForSearch(baseRelease, files)
+	if isTVSeasonPack(searchRelease) {
+		return mergeSeasonPackSearchStructure(sourceRelease, searchRelease)
+	}
+
+	return searchRelease
+}
+
+func mergeSeasonPackSearchStructure(sourceRelease, inferredRelease *rls.Release) *rls.Release {
+	if sourceRelease == nil || inferredRelease == nil {
+		return inferredRelease
+	}
+
+	merged := *sourceRelease
+	merged.Type = rls.Series
+	merged.Series = inferredRelease.Series
+	merged.Episode = 0
+	return &merged
 }
 
 func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, files qbt.TorrentFiles) (series, episode int, isPack, ok bool) {

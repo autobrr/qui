@@ -177,3 +177,46 @@ func TestSelectSourceReleaseForSearch_UsesTVDetectionReleaseForTVCategories(t *t
 	require.NotNil(t, query.Episode)
 	require.Equal(t, 37, *query.Episode)
 }
+
+func TestSelectSourceReleaseForSearch_SeasonPackKeepsTorrentIdentity(t *testing.T) {
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	sourceName := "Silver.Gear.Labyrinth.S02.720p.CR.WEB-DL.AAC2.0.H.264-ALPHA"
+	source := svc.releaseCache.Parse(sourceName)
+	require.NotNil(t, source)
+
+	files := qbt.TorrentFiles{
+		{
+			Name: "Silver.Gear.Labyrinth.S02.720p.CR.WEB-DL.AAC2.0.H.264-ALPHA/" +
+				"[ALPHA] Aoi Gear no Meiro Tansaku S2 - 01 (720p) [11111111].mkv",
+			Size: 1,
+		},
+		{
+			Name: "Silver.Gear.Labyrinth.S02.720p.CR.WEB-DL.AAC2.0.H.264-ALPHA/" +
+				"[ALPHA] Aoi Gear no Meiro Tansaku S2 - 02 (720p) [22222222].mkv",
+			Size: 2,
+		},
+	}
+
+	contentDetectionRelease, _ := svc.selectContentDetectionRelease(sourceName, source, files)
+	contentInfo := DetermineContentType(contentDetectionRelease)
+	require.Equal(t, "tv", contentInfo.ContentType)
+
+	searchRelease := svc.selectSourceReleaseForSearch(source, contentDetectionRelease, files, contentInfo)
+	require.Equal(t, rls.Series, searchRelease.Type)
+	require.Equal(t, 2, searchRelease.Series)
+	require.Equal(t, 0, searchRelease.Episode)
+	require.Equal(t, source.Title, searchRelease.Title)
+	require.Equal(t, source.Group, searchRelease.Group)
+	require.Equal(t, source.Site, searchRelease.Site)
+	require.Equal(t, source.Sum, searchRelease.Sum)
+	require.NotEqual(t, contentDetectionRelease.Group, searchRelease.Group)
+	require.NotEqual(t, contentDetectionRelease.Sum, searchRelease.Sum)
+
+	candidate := svc.releaseCache.Parse("Silver.Gear.Labyrinth.S02.720p.CR.WEB-DL.AAC2.0.H.264-ALPHA")
+	match, reason := svc.releasesMatchWithReason(searchRelease, candidate, false)
+	require.True(t, match, "season pack candidate should not be rejected by file-level identity, got %q", reason)
+}
