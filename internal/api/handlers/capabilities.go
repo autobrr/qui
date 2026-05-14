@@ -21,6 +21,7 @@ type InstanceCapabilitiesResponse struct {
 	SupportsRenameFolder        bool   `json:"supportsRenameFolder"`
 	SupportsFilePriority        bool   `json:"supportsFilePriority"`
 	SupportsSubcategories       bool   `json:"supportsSubcategories"`
+	SubcategoriesAlwaysEnabled  bool   `json:"subcategoriesAlwaysEnabled"`
 	SupportsTorrentTmpPath      bool   `json:"supportsTorrentTmpPath"`
 	SupportsPathAutocomplete    bool   `json:"supportsPathAutocomplete"`
 	SupportsFreeSpacePathSource bool   `json:"supportsFreeSpacePathSource"`
@@ -42,6 +43,7 @@ func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) Instanc
 		SupportsRenameFolder:        client.SupportsRenameFolder(),
 		SupportsFilePriority:        client.SupportsFilePriority(),
 		SupportsSubcategories:       client.SupportsSubcategories(),
+		SubcategoriesAlwaysEnabled:  client.SubcategoriesAlwaysEnabled(),
 		SupportsTorrentTmpPath:      client.SupportsTorrentTmpPath(),
 		SupportsPathAutocomplete:    client.SupportsPathAutocomplete(),
 		SupportsFreeSpacePathSource: runtime.GOOS != osWindows,

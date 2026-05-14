@@ -10,6 +10,7 @@ import { CSS } from "@dnd-kit/utilities"
 import { flexRender, type Header } from "@tanstack/react-table"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import { ColumnFilterPopover } from "./ColumnFilterPopover"
+import { useMediaQuery } from "@/hooks/useMediaQuery"
 import type { ViewMode } from "@/hooks/usePersistedCompactViewState"
 
 {/* Auto-fit width for column headers on double-click*/}
@@ -92,7 +93,9 @@ export function DraggableTableHeader({ header, columnFilters = [], viewMode = "n
   const toggleSortingHandler = column.getToggleSortingHandler()
   const trackerToggleHandler = trackerColumn?.getToggleSortingHandler()
   const columnHasActiveFilter = columnFilters.some(f => f.columnId === column.id)
-  const columnFilterIconVisibilityClassName = columnHasActiveFilter ? undefined : "hidden group-hover:block focus-within:block [&:has(button[data-state=open])]:block"
+  const primaryInputCanHover = useMediaQuery("(hover: hover)")
+  const hideFilterUntilHover = primaryInputCanHover && !columnHasActiveFilter
+  const columnFilterIconVisibilityClassName = hideFilterUntilHover ? "hidden group-hover:block focus-within:block [&:has(button[data-state=open])]:block" : undefined
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,

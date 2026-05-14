@@ -18,44 +18,47 @@ import (
 )
 
 var (
-	setTagsMinVersion          = semver.MustParse("2.11.4")
-	torrentCreationMinVersion  = semver.MustParse("2.11.2")
-	exportTorrentMinVersion    = semver.MustParse("2.8.11")
-	trackerEditingMinVersion   = semver.MustParse("2.2.0")
-	trackerIncludeMinVersion   = semver.MustParse("2.11.4")
-	filePriorityMinVersion     = semver.MustParse("2.2.0")
-	renameTorrentMinVersion    = semver.MustParse("2.0.0")
-	renameFileMinVersion       = semver.MustParse("2.4.0")
-	renameFolderMinVersion     = semver.MustParse("2.7.0")
-	subcategoriesMinVersion    = semver.MustParse("2.9.0")
-	torrentTmpPathMinVersion   = semver.MustParse("2.8.4")
-	pathAutocompleteMinVersion = semver.MustParse("2.11.2")
-	rssSetFeedURLMinVersion    = semver.MustParse("2.9.1")
-	shareLimitsMinVersion      = semver.MustParse("2.15.3")
+	setTagsMinVersion                    = semver.MustParse("2.11.4")
+	torrentCreationMinVersion            = semver.MustParse("2.11.2")
+	exportTorrentMinVersion              = semver.MustParse("2.8.11")
+	trackerEditingMinVersion             = semver.MustParse("2.2.0")
+	trackerIncludeMinVersion             = semver.MustParse("2.11.4")
+	filePriorityMinVersion               = semver.MustParse("2.2.0")
+	renameTorrentMinVersion              = semver.MustParse("2.0.0")
+	renameFileMinVersion                 = semver.MustParse("2.4.0")
+	renameFolderMinVersion               = semver.MustParse("2.7.0")
+	subcategoriesMinVersion              = semver.MustParse("2.9.0")
+	subcategoriesAlwaysEnabledMinVersion = semver.MustParse("2.15.0")
+	torrentTmpPathMinVersion             = semver.MustParse("2.8.4")
+	pathAutocompleteMinVersion           = semver.MustParse("2.11.2")
+	rssSetFeedURLMinVersion              = semver.MustParse("2.9.1")
+	shareLimitsMinVersion                = semver.MustParse("2.15.3")
 )
 
 type Client struct {
 	*qbt.Client
-	instanceID               int
-	webAPIVersion            string
-	supportsSetTags          bool
-	supportsTorrentCreation  bool
-	supportsTorrentExport    bool
-	supportsTrackerEditing   bool
-	supportsRenameTorrent    bool
-	supportsRenameFile       bool
-	supportsRenameFolder     bool
-	supportsFilePriority     bool
-	supportsSubcategories    bool
-	supportsTorrentTmpPath   bool
-	supportsPathAutocomplete bool
-	trackerIncludeSupported  bool
-	supportsSetRSSFeedURL    bool
-	supportsShareLimits      bool
-	lastHealthCheck          time.Time
-	isHealthy                bool
-	syncManager              *qbt.SyncManager
-	peerSyncManager          map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
+
+	instanceID                 int
+	webAPIVersion              string
+	supportsSetTags            bool
+	supportsTorrentCreation    bool
+	supportsTorrentExport      bool
+	supportsTrackerEditing     bool
+	supportsRenameTorrent      bool
+	supportsRenameFile         bool
+	supportsRenameFolder       bool
+	supportsFilePriority       bool
+	supportsSubcategories      bool
+	subcategoriesAlwaysEnabled bool
+	supportsTorrentTmpPath     bool
+	supportsPathAutocomplete   bool
+	trackerIncludeSupported    bool
+	supportsSetRSSFeedURL      bool
+	supportsShareLimits        bool
+	lastHealthCheck            time.Time
+	isHealthy                  bool
+	syncManager                *qbt.SyncManager
+	peerSyncManager            map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
 	// optimisticUpdates stores temporary optimistic state changes for this instance
 	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
@@ -267,6 +270,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsRenameFile = !v.LessThan(renameFileMinVersion)
 	c.supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
 	c.supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
+	c.subcategoriesAlwaysEnabled = !v.LessThan(subcategoriesAlwaysEnabledMinVersion)
 	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
 	c.supportsPathAutocomplete = !v.LessThan(pathAutocompleteMinVersion)
 	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
@@ -331,6 +335,12 @@ func (c *Client) SupportsSubcategories() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsSubcategories
+}
+
+func (c *Client) SubcategoriesAlwaysEnabled() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.subcategoriesAlwaysEnabled
 }
 
 func (c *Client) SupportsTorrentTmpPath() bool {

@@ -121,3 +121,31 @@ func TestResolveServerStateFallsBackToUncheckedProvider(t *testing.T) {
 	require.Equal(t, int64(4096), got.DlInfoSpeed)
 	require.Equal(t, int64(8192), got.UpInfoSpeed)
 }
+
+func TestResolveUseSubcategoriesAlwaysEnabled(t *testing.T) {
+	t.Parallel()
+
+	got := resolveUseSubcategories(true, true, &qbt.MainData{
+		ServerState: qbt.ServerState{
+			ConnectionStatus: "connected",
+			UseSubcategories: false,
+		},
+	}, nil)
+
+	require.True(t, got)
+}
+
+func TestResolveUseSubcategoriesKeepsLegacyDisabledState(t *testing.T) {
+	t.Parallel()
+
+	got := resolveUseSubcategories(true, false, &qbt.MainData{
+		ServerState: qbt.ServerState{
+			ConnectionStatus: "connected",
+			UseSubcategories: false,
+		},
+	}, map[string]qbt.Category{
+		"Movies/HD": {Name: "Movies/HD"},
+	})
+
+	require.False(t, got)
+}
