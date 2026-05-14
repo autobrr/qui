@@ -45,6 +45,19 @@ func (s *Service) deriveSourceReleaseForSearch(sourceRelease *rls.Release, files
 	return &derived
 }
 
+func (s *Service) selectSourceReleaseForSearch(sourceRelease, contentDetectionRelease *rls.Release, files qbt.TorrentFiles, contentInfo ContentTypeInfo) *rls.Release {
+	if contentInfo.ContentType != "tv" {
+		return sourceRelease
+	}
+
+	baseRelease := sourceRelease
+	if isTVRelease(contentDetectionRelease) {
+		baseRelease = contentDetectionRelease
+	}
+
+	return s.deriveSourceReleaseForSearch(baseRelease, files)
+}
+
 func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, files qbt.TorrentFiles) (series, episode int, isPack, ok bool) {
 	normalizer := s.stringNormalizer
 	if normalizer == nil {

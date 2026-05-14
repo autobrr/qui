@@ -6552,10 +6552,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	// Use unified content type detection with expanded categories for search
 	contentInfo := DetermineContentType(contentDetectionRelease)
-	searchRelease := sourceRelease
-	if contentInfo.ContentType == "tv" {
-		searchRelease = s.deriveSourceReleaseForSearch(sourceRelease, sourceFiles)
-	}
+	searchRelease := s.selectSourceReleaseForSearch(sourceRelease, contentDetectionRelease, sourceFiles, contentInfo)
 
 	// Detect disc layout for this torrent
 	isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)

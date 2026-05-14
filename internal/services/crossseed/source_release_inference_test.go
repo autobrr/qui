@@ -148,3 +148,32 @@ func TestDeriveSourceReleaseForSearch_DoesNotInferSeasonlessTVFromNumberedMovieF
 		})
 	}
 }
+
+func TestSelectSourceReleaseForSearch_UsesTVDetectionReleaseForTVCategories(t *testing.T) {
+	svc := &Service{
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	source := svc.releaseCache.Parse("[SubsPlease] Some, Anime (2025) [720p]")
+	require.NotNil(t, source)
+	require.Equal(t, rls.Movie, source.Type)
+
+	files := qbt.TorrentFiles{
+		{Name: "[SubsPlease] Some, Anime (2025) [720p]/[SubsPlease] Some, Anime - 37 (720p) [11111111].mkv", Size: 1},
+	}
+	contentDetectionRelease, _ := svc.selectContentDetectionRelease("[SubsPlease] Some, Anime (2025) [720p]", source, files)
+	contentInfo := DetermineContentType(contentDetectionRelease)
+	require.Equal(t, "tv", contentInfo.ContentType)
+
+	searchRelease := svc.selectSourceReleaseForSearch(source, contentDetectionRelease, files, contentInfo)
+	require.Equal(t, rls.Episode, searchRelease.Type)
+	require.Equal(t, 37, searchRelease.Episode)
+
+	query := buildSafeSearchQuery("[SubsPlease] Some, Anime (2025) [720p]", searchRelease, searchRelease.Title, SearchQueryOptions{
+		IncludeResolution: true,
+	})
+	require.Equal(t, "Some, Anime 720", query.Query)
+	require.NotNil(t, query.Episode)
+	require.Equal(t, 37, *query.Episode)
+}
