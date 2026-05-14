@@ -1308,7 +1308,7 @@ export function Search() {
                 <div className="sm:hidden space-y-2 max-h-150 overflow-auto">
                   {filteredAndSortedResults.map((result) => (
                     <SearchResultCard
-                      key={result.guid}
+                      key={`${result.indexerId}-${result.guid}`}
                       result={result}
                       isSelected={selectedResultGuid === result.guid}
                       onSelect={() => handleToggleResultSelection(result)}
@@ -1583,7 +1583,7 @@ export function Search() {
                         const isSelected = selectedResultGuid === result.guid
                         return (
                           <TableRow
-                            key={result.guid}
+                            key={`${result.indexerId}-${result.guid}`}
                             className={cn(
                               "cursor-pointer select-none transition-colors",
                               isSelected? "bg-accent text-accent-foreground hover:bg-accent/90": "hover:bg-muted/60 odd:bg-background/70 even:bg-card/90 dark:odd:bg-background/30 dark:even:bg-card/80"
