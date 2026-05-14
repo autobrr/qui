@@ -1513,7 +1513,7 @@ func TestMapCategoriesToIndexerCapabilitiesCompactsParentFallbacks(t *testing.T)
 	}
 }
 
-func TestCategorySerializationCompactsDuplicates(t *testing.T) {
+func TestBuildSearchParamsDeduplicatesCategories(t *testing.T) {
 	service := &Service{}
 	req := &TorznabSearchRequest{
 		Query:      "Example",
@@ -1524,7 +1524,9 @@ func TestCategorySerializationCompactsDuplicates(t *testing.T) {
 	if got := params.Get("cat"); got != "5000,5040,5070" {
 		t.Fatalf("cat param = %q, want %q", got, "5000,5040,5070")
 	}
+}
 
+func TestFormatCategoryListPreservesDuplicates(t *testing.T) {
 	if got := formatCategoryList([]int{CategoryMoviesHD, CategoryMovies, CategoryMoviesHD}); got != "2040,2000,2040" {
 		t.Fatalf("formatCategoryList() = %q, want %q", got, "2040,2000,2040")
 	}
