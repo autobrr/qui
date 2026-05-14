@@ -201,8 +201,8 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Debug logging with truncated expression to prevent log bloat
-	logEvent := log.Debug().
+	// Trace logging with truncated expression to prevent log bloat
+	logEvent := log.Trace().
 		Int("instanceID", instanceID).
 		Str("sort", sort).
 		Str("order", order).
