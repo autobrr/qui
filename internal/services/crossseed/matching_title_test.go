@@ -368,64 +368,118 @@ func TestReleasesMatch_TVTitleMustNotUseSubstringMatching(t *testing.T) {
 	require.False(t, s.releasesMatch(&ggo, &sao, false), "match should be symmetric")
 }
 
-func TestReleasesMatch_AKATitleAlternatives(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
-
-	source := rls.Release{
-		Type:   rls.Series,
-		Title:  "Kuro Gear no Meiro Tansaku",
-		Series: 2,
-		Source: "WEB-DL",
+func TestReleasesMatch_AKAVariants(t *testing.T) {
+	tests := []struct {
+		name           string
+		source         rls.Release
+		candidate      rls.Release
+		candidateName  string
+		expectedMatch  bool
+		expectedReason string
+	}{
+		{
+			name: "parsed title alternatives match exactly",
+			source: rls.Release{
+				Type:   rls.Series,
+				Title:  "Kuro Gear no Meiro Tansaku",
+				Series: 2,
+				Source: "WEB-DL",
+			},
+			candidate: rls.Release{
+				Type:   rls.Series,
+				Title:  "Black Gear, Maze Patrol",
+				Alt:    "Kuro Gear no Meiro Tansaku",
+				Series: 2,
+				Source: "WEB-DL",
+			},
+			expectedMatch: true,
+		},
+		{
+			name: "raw AKA fallback matches exact normalized title",
+			source: rls.Release{
+				Type:   rls.Series,
+				Title:  "Aoi Clockwork no Vault Run",
+				Series: 2,
+				Source: "WEB-DL",
+			},
+			candidate: rls.Release{
+				Type:   rls.Series,
+				Title:  "Blue Clockwork Vault Run",
+				Series: 2,
+				Source: "WEB-DL",
+			},
+			candidateName: "Blue Clockwork Vault Run AKA Aoi Clockwork no Vault Run S02 720p WEB-DL-GRP",
+			expectedMatch: true,
+		},
+		{
+			name: "AKA matching does not use substrings",
+			source: rls.Release{
+				Type:   rls.Series,
+				Title:  "Kuro Gear",
+				Series: 1,
+			},
+			candidate: rls.Release{
+				Type:   rls.Series,
+				Title:  "Kuro Gear Outer Ring",
+				Alt:    "Kuro Gear Outer Ring",
+				Series: 1,
+			},
+			expectedMatch:  false,
+			expectedReason: "title mismatch",
+		},
 	}
-	candidate := rls.Release{
-		Type:   rls.Series,
-		Title:  "Black Gear, Maze Patrol",
-		Alt:    "Kuro Gear no Meiro Tansaku",
-		Series: 2,
-		Source: "WEB-DL",
-	}
 
-	match, reason := s.releasesMatchWithReason(&source, &candidate, false)
-	require.True(t, match, "parsed AKA alt should match exactly after normalization, got %q", reason)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+			var match bool
+			var reason string
+			if tt.candidateName == "" {
+				match, reason = s.releasesMatchWithReason(&tt.source, &tt.candidate, false)
+			} else {
+				match, reason = s.releasesMatchWithReasonAndNames(&tt.source, &tt.candidate, "", tt.candidateName, false)
+			}
+
+			if tt.expectedMatch {
+				require.True(t, match, "got reason %q", reason)
+			} else {
+				require.False(t, match, "got reason %q", reason)
+			}
+			require.Equal(t, tt.expectedReason, reason)
+		})
+	}
 }
 
-func TestReleasesMatch_RawAKAFallback(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
-
-	source := rls.Release{
-		Type:   rls.Series,
-		Title:  "Aoi Clockwork no Vault Run",
-		Series: 2,
-		Source: "WEB-DL",
-	}
-	candidate := rls.Release{
-		Type:   rls.Series,
-		Title:  "Blue Clockwork Vault Run",
-		Series: 2,
-		Source: "WEB-DL",
-	}
-
-	candidateName := "Blue Clockwork Vault Run AKA Aoi Clockwork no Vault Run S02 720p WEB-DL-GRP"
-	match, reason := s.releasesMatchWithReasonAndNames(&source, &candidate, "", candidateName, false)
-	require.True(t, match, "raw AKA fallback should match exact normalized alt title, got %q", reason)
-}
-
-func TestReleasesMatch_AKADoesNotUseSubstringMatching(t *testing.T) {
-	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
-
-	source := rls.Release{
-		Type:   rls.Series,
-		Title:  "Kuro Gear",
-		Series: 1,
-	}
-	candidate := rls.Release{
-		Type:   rls.Series,
-		Title:  "Kuro Gear Outer Ring",
-		Alt:    "Kuro Gear Outer Ring",
-		Series: 1,
+func TestRawAKATitleParts(t *testing.T) {
+	tests := []struct {
+		name     string
+		rawName  string
+		expected []string
+	}{
+		{
+			name:     "valid AKA titles",
+			rawName:  "Blue Clockwork Vault Run AKA Aoi Clockwork no Vault Run S02 720p WEB-DL-GRP",
+			expected: []string{"Blue Clockwork Vault Run", "Aoi Clockwork no Vault Run S02 720p WEB-DL-GRP"},
+		},
+		{
+			name:     "filters short noisy fragments",
+			rawName:  "Blue Clockwork Vault Run AKA S01 AKA Aoi Clockwork no Vault Run",
+			expected: []string{"Blue Clockwork Vault Run", "Aoi Clockwork no Vault Run"},
+		},
+		{
+			name:    "requires at least two valid fragments",
+			rawName: "AKA Aoi",
+		},
+		{
+			name:    "ignores names without AKA delimiter",
+			rawName: "Aoi Clockwork no Vault Run",
+		},
 	}
 
-	match, reason := s.releasesMatchWithReason(&source, &candidate, false)
-	require.False(t, match, "AKA matching must remain exact, got match with reason %q", reason)
-	require.Equal(t, "title mismatch", reason)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, rawAKATitleParts(tt.rawName))
+		})
+	}
 }

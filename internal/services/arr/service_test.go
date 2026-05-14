@@ -6,7 +6,6 @@ package arr
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"testing"
 	"time"
 
@@ -45,7 +44,7 @@ func openTestDB(t *testing.T) *sql.DB {
 	require.NoError(t, err)
 	db.SetMaxOpenConns(1)
 
-	_, err = db.Exec(`
+	_, err = db.ExecContext(t.Context(), `
 		CREATE TABLE arr_id_cache (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			title_hash TEXT NOT NULL,
@@ -158,7 +157,7 @@ func TestService_LookupExternalIDsReturnsCacheCancellation(t *testing.T) {
 			result, err := s.LookupExternalIDs(tt.context(t), "Example Movie", ContentTypeMovie)
 
 			require.Error(t, err)
-			assert.True(t, errors.Is(err, tt.wantErr))
+			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, result)
 		})
 	}

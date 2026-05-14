@@ -7102,20 +7102,16 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		match, mismatchReason := s.releasesMatchWithReasonAndNames(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, opts.FindIndividualEpisodes)
 		if !match {
 			releaseFilteredCount++
-			if mismatchReason == "" {
-				mismatchReason = "release mismatch"
-			}
-			releaseFilterReasons[mismatchReason]++
-			if trace := log.Trace(); trace.Enabled() {
-				trace.
-					Str("sourceTitle", sourceTorrent.Name).
-					Str("candidateTitle", res.Title).
-					Str("reason", mismatchReason).
-					Bool("findIndividualEpisodes", opts.FindIndividualEpisodes).
-					Interface("sourceRelease", releaseFilterDebugInfoFrom(searchRelease)).
-					Interface("candidateRelease", releaseFilterDebugInfoFrom(candidateRelease)).
-					Msg("[CROSSSEED-SEARCH] Candidate filtered out by release match")
-			}
+			recordReleaseRejection(
+				releaseFilterReasons,
+				mismatchReason,
+				sourceTorrent.Name,
+				res.Title,
+				opts.FindIndividualEpisodes,
+				releaseFilterDebugInfoFrom(searchRelease),
+				releaseFilterDebugInfoFrom(candidateRelease),
+				"[CROSSSEED-SEARCH] Candidate filtered out by release match",
+			)
 			continue
 		}
 
@@ -7123,20 +7119,16 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		// In search context: candidateRelease is the new torrent, sourceRelease is the existing local torrent.
 		if reject, reason := rejectSeasonPackFromEpisode(candidateRelease, searchRelease, opts.FindIndividualEpisodes); reject {
 			releaseFilteredCount++
-			if reason == "" {
-				reason = "forbidden release pairing"
-			}
-			releaseFilterReasons[reason]++
-			if trace := log.Trace(); trace.Enabled() {
-				trace.
-					Str("sourceTitle", sourceTorrent.Name).
-					Str("candidateTitle", res.Title).
-					Str("reason", reason).
-					Bool("findIndividualEpisodes", opts.FindIndividualEpisodes).
-					Interface("sourceRelease", releaseFilterDebugInfoFrom(searchRelease)).
-					Interface("candidateRelease", releaseFilterDebugInfoFrom(candidateRelease)).
-					Msg("[CROSSSEED-SEARCH] Candidate filtered out by release pairing rule")
-			}
+			recordReleaseRejection(
+				releaseFilterReasons,
+				reason,
+				sourceTorrent.Name,
+				res.Title,
+				opts.FindIndividualEpisodes,
+				releaseFilterDebugInfoFrom(searchRelease),
+				releaseFilterDebugInfoFrom(candidateRelease),
+				"[CROSSSEED-SEARCH] Candidate filtered out by release pairing rule",
+			)
 			continue
 		}
 
@@ -10032,6 +10024,32 @@ type releaseFilterDebugInfo struct {
 	Disc       string   `json:"disc,omitempty"`
 	Platform   string   `json:"platform,omitempty"`
 	Arch       string   `json:"arch,omitempty"`
+}
+
+func recordReleaseRejection(
+	releaseFilterReasons map[string]int,
+	reason string,
+	sourceTitle string,
+	candidateTitle string,
+	findIndividualEpisodes bool,
+	sourceRelease releaseFilterDebugInfo,
+	candidateRelease releaseFilterDebugInfo,
+	message string,
+) {
+	if reason == "" {
+		reason = "release mismatch"
+	}
+	releaseFilterReasons[reason]++
+	if trace := log.Trace(); trace.Enabled() {
+		trace.
+			Str("sourceTitle", sourceTitle).
+			Str("candidateTitle", candidateTitle).
+			Str("reason", reason).
+			Bool("findIndividualEpisodes", findIndividualEpisodes).
+			Interface("sourceRelease", sourceRelease).
+			Interface("candidateRelease", candidateRelease).
+			Msg(message)
+	}
 }
 
 func releaseFilterDebugInfoFrom(release *rls.Release) releaseFilterDebugInfo {

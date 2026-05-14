@@ -156,6 +156,40 @@ func TestReleasesMatch_SiteMustMatch(t *testing.T) {
 			wantMatch:   true,
 			description: "site comparison should be case insensitive",
 		},
+		{
+			name: "source site matches candidate group case insensitively",
+			source: rls.Release{
+				Title:   "Show",
+				Series:  1,
+				Episode: 1,
+				Site:    "SUBSPLEASE",
+			},
+			candidate: rls.Release{
+				Title:   "Show",
+				Series:  1,
+				Episode: 1,
+				Group:   "subsplease",
+			},
+			wantMatch:   true,
+			description: "site to group comparison should be case insensitive",
+		},
+		{
+			name: "source group matches candidate site case insensitively",
+			source: rls.Release{
+				Title:   "Show",
+				Series:  1,
+				Episode: 1,
+				Group:   "subsplease",
+			},
+			candidate: rls.Release{
+				Title:   "Show",
+				Series:  1,
+				Episode: 1,
+				Site:    "SUBSPLEASE",
+			},
+			wantMatch:   true,
+			description: "group to site comparison should be case insensitive",
+		},
 	}
 
 	for _, tt := range tests {

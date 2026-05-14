@@ -248,13 +248,17 @@ func rawAKATitleParts(rawName string) []string {
 		return nil
 	}
 
+	const minAKATitleLength = 4
 	parts := strings.Split(rawName, " AKA ")
 	titles := make([]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
-		if part != "" {
+		if len(part) >= minAKATitleLength {
 			titles = append(titles, part)
 		}
+	}
+	if len(titles) < 2 {
+		return nil
 	}
 	return titles
 }

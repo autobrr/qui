@@ -3814,7 +3814,7 @@ func (s *Service) GetOptimalCategoriesForIndexers(ctx context.Context, requested
 	}
 
 	if len(indexers) == 0 {
-		return canonicalizeIntSlice(requestedCategories)
+		return requestedCategories
 	}
 
 	// Find the intersection of categories supported by all indexers
@@ -3841,7 +3841,7 @@ func (s *Service) GetOptimalCategoriesForIndexers(ctx context.Context, requested
 
 	// If no optimal categories found, return original requested categories
 	if len(optimalCategories) == 0 {
-		return canonicalizeIntSlice(requestedCategories)
+		return requestedCategories
 	}
 
 	return canonicalizeIntSlice(optimalCategories)
