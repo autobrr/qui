@@ -6554,6 +6554,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// Use unified content type detection with expanded categories for search
 	contentInfo := DetermineContentType(contentDetectionRelease)
 	searchRelease := s.selectSourceReleaseForSearch(sourceRelease, contentDetectionRelease, sourceFiles, contentInfo)
+	// Keep contentInfo as the Torznab category decision; searchRelease is selected from it
+	// so later release matching follows the same search mode.
+	// Stops TV torznab searches from being miscategorized as movie when ARR/release matching.
 
 	// Detect disc layout for this torrent
 	isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
@@ -10049,6 +10052,36 @@ func recordReleaseRejection(
 			Bool("findIndividualEpisodes", findIndividualEpisodes).
 			Interface("sourceRelease", sourceRelease).
 			Interface("candidateRelease", candidateRelease).
+			Msg(message)
+	}
+}
+
+func traceReleaseMatchDecision(
+	sourceTitle string,
+	candidateTitle string,
+	findIndividualEpisodes bool,
+	sourceRelease *rls.Release,
+	candidateRelease *rls.Release,
+	matched bool,
+	reason string,
+	message string,
+) {
+	if reason == "" {
+		if matched {
+			reason = "matched"
+		} else {
+			reason = "release mismatch"
+		}
+	}
+	if trace := log.Trace(); trace.Enabled() {
+		trace.
+			Str("sourceTitle", sourceTitle).
+			Str("candidateTitle", candidateTitle).
+			Bool("matched", matched).
+			Str("reason", reason).
+			Bool("findIndividualEpisodes", findIndividualEpisodes).
+			Interface("sourceRelease", releaseFilterDebugInfoFrom(sourceRelease)).
+			Interface("candidateRelease", releaseFilterDebugInfoFrom(candidateRelease)).
 			Msg(message)
 	}
 }
