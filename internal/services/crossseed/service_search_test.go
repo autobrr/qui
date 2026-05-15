@@ -22,9 +22,27 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
+
+type spyARRLookupService struct {
+	title            string
+	contentType      arr.ContentType
+	downloadClientID string
+	result           *arr.ExternalIDsResult
+	err              error
+	called           bool
+}
+
+func (s *spyARRLookupService) LookupExternalIDsForDownload(_ context.Context, title string, contentType arr.ContentType, downloadClientID string) (*arr.ExternalIDsResult, error) {
+	s.called = true
+	s.title = title
+	s.contentType = contentType
+	s.downloadClientID = downloadClientID
+	return s.result, s.err
+}
 
 type failingEnabledIndexerStore struct {
 	err      error
@@ -112,6 +130,24 @@ func newJackettServiceWithIndexers(indexers []*models.TorznabIndexer) *jackett.S
 	return jackett.NewService(&failingEnabledIndexerStore{indexers: indexers})
 }
 
+func TestNewServiceSkipsTypedNilARRService(t *testing.T) {
+	var arrService *arr.Service
+
+	svc := NewService(nil, nil, nil, nil, nil, nil, arrService, nil, nil, nil, nil, nil, false)
+	t.Cleanup(svc.recheckResumeCancel)
+
+	require.Nil(t, svc.arrService)
+}
+
+func TestLookupARRExternalIDsSkipsTypedNilARRService(t *testing.T) {
+	var arrService *arr.Service
+	svc := &Service{arrService: arrService}
+
+	got := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", "ABCDEF1234", "movie")
+
+	require.Nil(t, got)
+}
+
 func TestComputeAutomationSearchTimeout(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -151,6 +187,112 @@ func TestEffectiveTorznabCrossSeedSearchLimit(t *testing.T) {
 			require.Equal(t, tt.want, effectiveTorznabCrossSeedSearchLimit(tt.limit))
 		})
 	}
+}
+
+func TestLookupARRExternalIDsMapsContentTypeAndPassesTorrentHash(t *testing.T) {
+	ids := &models.ExternalIDs{TMDbID: 27205, IMDbID: "tt1375666"}
+	tests := []struct {
+		name            string
+		contentType     string
+		wantContentType arr.ContentType
+		lookupErr       error
+		wantResult      bool
+		wantCalled      bool
+	}{
+		{
+			name:            "movie maps to Radarr",
+			contentType:     "movie",
+			wantContentType: arr.ContentTypeMovie,
+			wantResult:      true,
+			wantCalled:      true,
+		},
+		{
+			name:            "tv maps to Sonarr",
+			contentType:     "tv",
+			wantContentType: arr.ContentTypeTV,
+			wantResult:      true,
+			wantCalled:      true,
+		},
+		{
+			name:            "anime maps to Sonarr anime",
+			contentType:     "anime",
+			wantContentType: arr.ContentTypeAnime,
+			wantResult:      true,
+			wantCalled:      true,
+		},
+		{
+			name:        "unsupported content type skips lookup",
+			contentType: "music",
+		},
+		{
+			name:        "invalid content type skips lookup",
+			contentType: "invalid",
+		},
+		{
+			name: "empty content type skips lookup",
+		},
+		{
+			name:            "lookup error returns nil",
+			contentType:     "movie",
+			wantContentType: arr.ContentTypeMovie,
+			lookupErr:       errors.New("lookup failed"),
+			wantCalled:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spy := &spyARRLookupService{
+				result: &arr.ExternalIDsResult{
+					IDs:         ids,
+					ContentType: tt.wantContentType,
+					Source:      "queue",
+				},
+				err: tt.lookupErr,
+			}
+			svc := &Service{arrService: spy}
+
+			got := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", "ABCDEF1234", tt.contentType)
+
+			require.Equal(t, tt.wantCalled, spy.called)
+			if !tt.wantCalled {
+				require.Nil(t, got)
+				return
+			}
+
+			require.Equal(t, "Inception.2010", spy.title)
+			require.Equal(t, tt.wantContentType, spy.contentType)
+			require.Equal(t, "ABCDEF1234", spy.downloadClientID)
+			if !tt.wantResult {
+				require.Nil(t, got)
+				return
+			}
+
+			require.NotNil(t, got)
+			require.Same(t, ids, got.IDs)
+		})
+	}
+}
+
+func TestLookupARRExternalIDsPreservesTitleOnlyResult(t *testing.T) {
+	titles := []string{"Frieren: Beyond Journey's End", "Sousou no Frieren"}
+	spy := &spyARRLookupService{
+		result: &arr.ExternalIDsResult{
+			IDs:         &models.ExternalIDs{},
+			Titles:      titles,
+			ContentType: arr.ContentTypeAnime,
+			Source:      "queue",
+		},
+	}
+	svc := &Service{arrService: spy}
+
+	got := svc.lookupARRExternalIDs(context.Background(), "Sousou.no.Frieren.S01", "ABCDEF1234", "anime")
+
+	require.NotNil(t, got)
+	require.True(t, got.IDs.IsEmpty())
+	require.Equal(t, titles, got.Titles)
+	require.Equal(t, arr.ContentTypeAnime, spy.contentType)
+	require.Equal(t, "ABCDEF1234", spy.downloadClientID)
 }
 
 func TestGazelleTargetsForSource(t *testing.T) {

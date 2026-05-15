@@ -7289,6 +7289,12 @@ components:
           nullable: true
         external_ids:
           $ref: '#/components/schemas/ArrExternalIDs'
+        titles:
+          type: array
+          items:
+            type: string
+        has_titles:
+          type: boolean
         is_negative:
           type: boolean
         cached_at:

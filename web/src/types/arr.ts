@@ -77,6 +77,8 @@ export interface ArrIDCacheEntry {
   content_type: string
   arr_instance_id?: number
   external_ids: ArrExternalIDs
+  titles?: string[]
+  has_titles: boolean
   is_negative: boolean
   cached_at: string
   expires_at: string

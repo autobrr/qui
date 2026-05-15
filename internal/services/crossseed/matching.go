@@ -134,12 +134,16 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 }
 
 func (s *Service) releasesMatchWithReasonAndNames(source, candidate *rls.Release, sourceName, candidateName string, findIndividualEpisodes bool) (bool, string) {
+	return s.releasesMatchWithReasonAndNamesAndTitles(source, candidate, sourceName, candidateName, nil, nil, findIndividualEpisodes)
+}
+
+func (s *Service) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rls.Release, sourceName, candidateName string, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) (bool, string) {
 	if source == candidate {
 		return true, ""
 	}
 
 	isTV := isTVRelease(source) || isTVRelease(candidate)
-	if ok, reason := s.validateTitleArtistAndDates(source, candidate, sourceName, candidateName, isTV); !ok {
+	if ok, reason := s.validateTitleArtistAndDates(source, candidate, sourceName, candidateName, sourceTitles, candidateTitles, isTV); !ok {
 		return false, reason
 	}
 	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
@@ -161,12 +165,14 @@ func (s *Service) releasesMatchWithReasonAndNames(source, candidate *rls.Release
 	return true, ""
 }
 
-func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, isTV bool) (bool, string) {
+func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, sourceExtraTitles, candidateExtraTitles []string, isTV bool) (bool, string) {
 	// Title should match closely but not necessarily exactly.
 	// Use punctuation-stripping normalization to handle differences like
 	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
 	sourceTitles := normalizedReleaseTitles(source, sourceName)
 	candidateTitles := normalizedReleaseTitles(candidate, candidateName)
+	addNormalizedTitles(sourceTitles, sourceExtraTitles)
+	addNormalizedTitles(candidateTitles, candidateExtraTitles)
 	if len(sourceTitles) == 0 || len(candidateTitles) == 0 {
 		return false, "empty normalized title"
 	}
@@ -227,6 +233,12 @@ func normalizedReleaseTitles(release *rls.Release, rawName string) map[string]st
 	}
 
 	return titles
+}
+
+func addNormalizedTitles(titles map[string]struct{}, extraTitles []string) {
+	for _, title := range extraTitles {
+		addNormalizedTitle(titles, title)
+	}
 }
 
 func releaseTitle(release *rls.Release) string {

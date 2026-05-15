@@ -451,6 +451,48 @@ func TestReleasesMatch_AKAVariants(t *testing.T) {
 	}
 }
 
+func TestReleasesMatch_ARRTitleAliasesOnlyWidenTitleCheck(t *testing.T) {
+	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+	source := rls.Release{
+		Type:       rls.Episode,
+		Title:      "Haibara kun no Tsuyokute Seishun New Game",
+		Series:     1,
+		Episode:    1,
+		Site:       "SubsPlease",
+		Sum:        "1D28F62C",
+		Resolution: "720p",
+	}
+	candidate := rls.Release{
+		Type:       rls.Episode,
+		Title:      "Haibara's Teenage New Game+",
+		Series:     1,
+		Episode:    1,
+		Site:       "SubsPlease",
+		Sum:        "1D28F62C",
+		Resolution: "720p",
+	}
+
+	match, reason := s.releasesMatchWithReasonAndNames(&source, &candidate, "", "", false)
+	require.False(t, match)
+	require.Equal(t, "title mismatch", reason)
+
+	aliases := []string{"Haibara's Teenage New Game+"}
+	match, reason = s.releasesMatchWithReasonAndNamesAndTitles(&source, &candidate, "", "", aliases, nil, false)
+	require.True(t, match, "got reason %q", reason)
+
+	checksumMismatch := candidate
+	checksumMismatch.Sum = "52D759EF"
+	match, reason = s.releasesMatchWithReasonAndNamesAndTitles(&source, &checksumMismatch, "", "", aliases, nil, false)
+	require.False(t, match)
+	require.Equal(t, "checksum mismatch", reason)
+
+	episodeMismatch := candidate
+	episodeMismatch.Episode = 2
+	match, reason = s.releasesMatchWithReasonAndNamesAndTitles(&source, &episodeMismatch, "", "", aliases, nil, false)
+	require.False(t, match)
+	require.Equal(t, "episode mismatch", reason)
+}
+
 func TestRawAKATitleParts(t *testing.T) {
 	tests := []struct {
 		name     string

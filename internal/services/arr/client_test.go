@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -190,6 +191,11 @@ func TestClient_ParseTitle_Sonarr(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/v3/parse" {
+					assert.True(t, strings.HasPrefix(r.URL.Path, "/api/v3/series/"))
+					http.NotFound(w, r)
+					return
+				}
 				assert.Equal(t, "/api/v3/parse", r.URL.Path)
 				assert.NotEmpty(t, r.URL.Query().Get("title"))
 				w.WriteHeader(tt.responseCode)
@@ -209,6 +215,52 @@ func TestClient_ParseTitle_Sonarr(t *testing.T) {
 			assert.Equal(t, tt.wantIDs, ids)
 		})
 	}
+}
+
+func TestClient_ParseTitleLookupResult_SonarrHydratesSeriesTitles(t *testing.T) {
+	seriesCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{
+				"title": "Haibara-kun no Tsuyokute Seishun New Game+ S01E01",
+				"series": {
+					"id": 123,
+					"title": "Haibara's Teenage New Game+",
+					"tvdbId": 447381,
+					"tmdbId": 250818
+				}
+			}`))
+		case "/api/v3/series/123":
+			seriesCalls++
+			_, _ = w.Write([]byte(`{
+				"id": 123,
+				"title": "Haibara's Teenage New Game+",
+				"alternateTitles": [
+					{"title": "Haibara-kun no Tsuyokute Seishun New Game"},
+					{"title": "Haibara-kun no Tsuyokute Seishun New Game+"}
+				],
+				"tvdbId": 447381,
+				"tmdbId": 250818
+			}`))
+		default:
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+	result, err := client.ParseTitleLookupResult(context.Background(), "Test Title")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, &models.ExternalIDs{TVDbID: 447381, TMDbID: 250818}, result.IDs)
+	require.Equal(t, []string{
+		"Haibara's Teenage New Game+",
+		"Haibara-kun no Tsuyokute Seishun New Game",
+		"Haibara-kun no Tsuyokute Seishun New Game+",
+	}, result.Titles)
+	require.Equal(t, 1, seriesCalls)
 }
 
 func TestClient_ParseTitle_Radarr(t *testing.T) {
@@ -310,6 +362,254 @@ func TestClient_ParseTitle_Radarr(t *testing.T) {
 			assert.Equal(t, tt.wantIDs, ids)
 		})
 	}
+}
+
+func TestClient_QueueExternalIDs_Sonarr(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v3/queue", r.URL.Path)
+		assert.Equal(t, "true", r.URL.Query().Get("includeSeries"))
+		assert.Equal(t, "true", r.URL.Query().Get("includeEpisode"))
+		assert.Equal(t, "100", r.URL.Query().Get("pageSize"))
+		_, _ = w.Write([]byte(`{
+			"records": [
+				{"downloadId": "other", "series": {"tvdbId": 1}},
+				{"downloadId": "ABCDEF", "series": {
+					"title": "Breaking Bad",
+					"alternateTitles": [
+						{"title": "Metastasis"},
+						{"title": "Breaking Bad"}
+					],
+					"tvdbId": 81189,
+					"tvMazeId": 169,
+					"tmdbId": 1396,
+					"imdbId": "tt0903747"
+				}}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+	result, err := client.QueueLookupResult(context.Background(), "abcdef")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, &models.ExternalIDs{
+		TVDbID:   81189,
+		TVMazeID: 169,
+		TMDbID:   1396,
+		IMDbID:   "tt0903747",
+	}, result.IDs)
+	require.Equal(t, []string{"Breaking Bad", "Metastasis"}, result.Titles)
+}
+
+func TestClient_QueueLookupResult_SonarrNegativeCases(t *testing.T) {
+	tests := []struct {
+		name           string
+		status         int
+		body           string
+		wantErrContain string
+		wantNilResult  bool
+	}{
+		{
+			name:           "unauthorized returns error",
+			status:         http.StatusUnauthorized,
+			body:           `{"error":"Unauthorized"}`,
+			wantErrContain: "authentication failed: invalid API key",
+		},
+		{
+			name:           "server error returns error",
+			status:         http.StatusInternalServerError,
+			body:           `{"error":"failed"}`,
+			wantErrContain: "unexpected status 500",
+		},
+		{
+			name:          "empty records returns nil",
+			status:        http.StatusOK,
+			body:          `{"records": []}`,
+			wantNilResult: true,
+		},
+		{
+			name:           "malformed json returns decode error",
+			status:         http.StatusOK,
+			body:           `{"records": [`,
+			wantErrContain: "failed to decode response",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api/v3/queue", r.URL.Path)
+				assert.Equal(t, "true", r.URL.Query().Get("includeSeries"))
+				assert.Equal(t, "true", r.URL.Query().Get("includeEpisode"))
+				assert.Equal(t, "100", r.URL.Query().Get("pageSize"))
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+			result, err := client.QueueLookupResult(context.Background(), "abcdef")
+
+			if tt.wantErrContain != "" {
+				require.Error(t, err)
+				require.ErrorContains(t, err, tt.wantErrContain)
+				require.Nil(t, result)
+				return
+			}
+
+			require.NoError(t, err)
+			if tt.wantNilResult {
+				require.Nil(t, result)
+			}
+		})
+	}
+}
+
+func TestClient_HistoryExternalIDs_Sonarr(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v3/history", r.URL.Path)
+		assert.Equal(t, "HASH", r.URL.Query().Get("downloadId"))
+		assert.Equal(t, "true", r.URL.Query().Get("includeSeries"))
+		assert.Equal(t, "date", r.URL.Query().Get("sortKey"))
+		assert.Equal(t, "descending", r.URL.Query().Get("sortDirection"))
+		_, _ = w.Write([]byte(`{
+			"records": [
+				{"downloadId": "HASH", "eventType": "unknown", "series": {"tvdbId": 1}},
+				{"downloadId": "HASH", "eventType": "downloadFolderImported", "series": {"tvdbId": 2}}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+	ids, err := client.HistoryExternalIDs(context.Background(), "HASH")
+
+	require.NoError(t, err)
+	require.Equal(t, &models.ExternalIDs{TVDbID: 2}, ids)
+}
+
+func TestClient_HistoryLookupResult_SonarrNegativeCases(t *testing.T) {
+	tests := []struct {
+		name           string
+		status         int
+		body           string
+		wantErrContain string
+		wantNilResult  bool
+	}{
+		{
+			name:           "unauthorized returns error",
+			status:         http.StatusUnauthorized,
+			body:           `{"error":"Unauthorized"}`,
+			wantErrContain: "authentication failed: invalid API key",
+		},
+		{
+			name:           "server error returns error",
+			status:         http.StatusInternalServerError,
+			body:           `{"error":"failed"}`,
+			wantErrContain: "unexpected status 500",
+		},
+		{
+			name:          "empty records returns nil",
+			status:        http.StatusOK,
+			body:          `{"records": []}`,
+			wantNilResult: true,
+		},
+		{
+			name:           "malformed json returns decode error",
+			status:         http.StatusOK,
+			body:           `{"records": [`,
+			wantErrContain: "failed to decode response",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api/v3/history", r.URL.Path)
+				assert.Equal(t, "HASH", r.URL.Query().Get("downloadId"))
+				assert.Equal(t, "true", r.URL.Query().Get("includeSeries"))
+				assert.Equal(t, "100", r.URL.Query().Get("pageSize"))
+				assert.Equal(t, "date", r.URL.Query().Get("sortKey"))
+				assert.Equal(t, "descending", r.URL.Query().Get("sortDirection"))
+				w.WriteHeader(tt.status)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+			result, err := client.HistoryLookupResult(context.Background(), "HASH")
+
+			if tt.wantErrContain != "" {
+				require.Error(t, err)
+				require.ErrorContains(t, err, tt.wantErrContain)
+				require.Nil(t, result)
+				return
+			}
+
+			require.NoError(t, err)
+			if tt.wantNilResult {
+				require.Nil(t, result)
+			}
+		})
+	}
+}
+
+func TestClient_QueueExternalIDs_Radarr(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v3/queue", r.URL.Path)
+		assert.Equal(t, "true", r.URL.Query().Get("includeMovie"))
+		assert.Equal(t, "100", r.URL.Query().Get("pageSize"))
+		_, _ = w.Write([]byte(`{
+			"records": [
+				{"downloadId": "other", "movie": {"tmdbId": 1}},
+				{"downloadId": "HASH", "movie": {
+					"title": "Inception",
+					"originalTitle": "Inception Original",
+					"alternateTitles": [
+						{"title": "Origine"},
+						{"title": "Inception"}
+					],
+					"tmdbId": 27205,
+					"imdbId": "tt1375666"
+				}}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeRadarr, 15)
+	result, err := client.QueueLookupResult(context.Background(), "hash")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, &models.ExternalIDs{TMDbID: 27205, IMDbID: "tt1375666"}, result.IDs)
+	require.Equal(t, []string{"Inception", "Inception Original", "Origine"}, result.Titles)
+}
+
+func TestClient_HistoryExternalIDs_Radarr(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api/v3/history", r.URL.Path)
+		assert.Equal(t, "HASH", r.URL.Query().Get("downloadId"))
+		assert.Equal(t, "true", r.URL.Query().Get("includeMovie"))
+		_, _ = w.Write([]byte(`{
+			"records": [
+				{"downloadId": "HASH", "eventType": "unknown", "movie": {"tmdbId": 1}},
+				{"downloadId": "HASH", "eventType": "movieFolderImported", "movie": {
+					"tmdbId": 27205,
+					"imdbId": "tt1375666"
+				}}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeRadarr, 15)
+	ids, err := client.HistoryExternalIDs(context.Background(), "HASH")
+
+	require.NoError(t, err)
+	require.Equal(t, &models.ExternalIDs{TMDbID: 27205, IMDbID: "tt1375666"}, ids)
 }
 
 func TestSonarrParseResponse_ExtractExternalIDs(t *testing.T) {

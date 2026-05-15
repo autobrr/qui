@@ -83,8 +83,9 @@ func TestNormalizeForMatching(t *testing.T) {
 
 		// Apostrophe handling
 		{"straight apostrophe", "Bob's Burgers", "bobs burgers"},
-		{"curly apostrophe right", "Don't Stop", "dont stop"},
-		{"curly apostrophe left", "It's Fine", "its fine"},
+		{"curly apostrophe right", "Don\u2019t Stop", "dont stop"},
+		{"curly apostrophe left", "\u2018Tis Fine", "tis fine"},
+		{"modifier letter apostrophe", "Haibara\u02bcs Teenage New Game", "haibaras teenage new game"},
 		{"backtick", "Rock`n Roll", "rockn roll"},
 
 		// Colon handling
@@ -153,6 +154,11 @@ func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
 			"bobs burgers apostrophe",
 			"Bob's Burgers S01",
 			"Bobs Burgers S01",
+		},
+		{
+			"curly vs straight apostrophe",
+			"Haibara's Teenage New Game+",
+			"Haibara\u2019s Teenage New Game+",
 		},
 		{
 			"pokemon accent",

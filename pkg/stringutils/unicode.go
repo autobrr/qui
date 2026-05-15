@@ -86,9 +86,10 @@ func normalized(s string) string {
 
 	// Remove apostrophes - "Bob's" → "Bobs"
 	s = strings.ReplaceAll(s, "'", "")
-	s = strings.ReplaceAll(s, "'", "") // Unicode right single quote U+2019
-	s = strings.ReplaceAll(s, "'", "") // Unicode left single quote U+2018
-	s = strings.ReplaceAll(s, "`", "") // Backtick
+	s = strings.ReplaceAll(s, "\u2019", "") // Unicode right single quote
+	s = strings.ReplaceAll(s, "\u2018", "") // Unicode left single quote
+	s = strings.ReplaceAll(s, "\u02bc", "") // Modifier letter apostrophe
+	s = strings.ReplaceAll(s, "`", "")      // Backtick
 
 	// Remove colons - "csi: miami" → "csi miami"
 	s = strings.ReplaceAll(s, ":", "")

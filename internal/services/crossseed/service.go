@@ -24,6 +24,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -70,6 +71,24 @@ type instanceProvider interface {
 
 type trackerCustomizationProvider interface {
 	List(ctx context.Context) ([]*models.TrackerCustomization, error)
+}
+
+type arrLookupService interface {
+	LookupExternalIDsForDownload(ctx context.Context, title string, contentType arr.ContentType, downloadClientID string) (*arr.ExternalIDsResult, error)
+}
+
+func isNilARRLookupService(service arrLookupService) bool {
+	if service == nil {
+		return true
+	}
+
+	value := reflect.ValueOf(service)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 // qbittorrentSync exposes the sync manager functionality needed by the service.
@@ -302,7 +321,7 @@ type Service struct {
 	blocklistStore           *models.CrossSeedBlocklistStore
 	automationSettingsLoader func(context.Context) (*models.CrossSeedAutomationSettings, error)
 	jackettService           *jackett.Service
-	arrService               *arr.Service // ARR service for ID lookup
+	arrService               arrLookupService // ARR service for ID lookup
 	notifier                 notifications.Notifier
 
 	// External program execution
@@ -434,6 +453,10 @@ func NewService(
 		SetDefaultTTL(5 * time.Minute))
 
 	recheckCtx, recheckCancel := context.WithCancel(context.Background())
+	var arrLookup arrLookupService
+	if !isNilARRLookupService(arrService) {
+		arrLookup = arrService
+	}
 
 	svc := &Service{
 		instanceStore:                 instanceStore,
@@ -448,7 +471,7 @@ func NewService(
 		automationStore:               automationStore,
 		blocklistStore:                blocklistStore,
 		jackettService:                jackettService,
-		arrService:                    arrService,
+		arrService:                    arrLookup,
 		notifier:                      notifier,
 		externalProgramStore:          externalProgramStore,
 		externalProgramService:        externalProgramService,
@@ -6053,6 +6076,50 @@ func mapContentTypeToARR(contentType string) arr.ContentType {
 	}
 }
 
+func (s *Service) lookupARRExternalIDs(ctx context.Context, title, torrentHash, contentType string) *arr.ExternalIDsResult {
+	if isNilARRLookupService(s.arrService) {
+		return nil
+	}
+	arrContentType := mapContentTypeToARR(contentType)
+	if arrContentType == "" {
+		return nil
+	}
+
+	result, err := s.arrService.LookupExternalIDsForDownload(ctx, title, arrContentType, torrentHash)
+	if err != nil {
+		log.Debug().Err(err).
+			Str("torrentName", title).
+			Str("contentType", contentType).
+			Msg("[CROSSSEED-SEARCH] ARR ID lookup failed, continuing without IDs")
+		return nil
+	}
+	if result == nil {
+		return nil
+	}
+	if result.IDs == nil || result.IDs.IsEmpty() {
+		log.Debug().
+			Str("torrentName", title).
+			Str("source", result.Source).
+			Int("titles", len(result.Titles)).
+			Strs("arrTitles", result.Titles).
+			Msg("[CROSSSEED-SEARCH] ARR ID lookup returned no IDs")
+		return result
+	}
+
+	log.Debug().
+		Str("torrentName", title).
+		Str("imdbId", result.IDs.IMDbID).
+		Int("tmdbId", result.IDs.TMDbID).
+		Int("tvdbId", result.IDs.TVDbID).
+		Int("tvmazeId", result.IDs.TVMazeID).
+		Bool("fromCache", result.FromCache).
+		Str("source", result.Source).
+		Int("titles", len(result.Titles)).
+		Strs("arrTitles", result.Titles).
+		Msg("[CROSSSEED-SEARCH] ARR ID lookup succeeded")
+	return result
+}
+
 const (
 	gazelleIndexerIDRedacted = -1001
 	gazelleIndexerIDOrpheus  = -1002
@@ -6837,27 +6904,13 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	// ARR-driven ID lookup for enhanced Torznab searching
 	var externalIDs *models.ExternalIDs
-	if s.arrService != nil {
-		arrContentType := mapContentTypeToARR(contentInfo.ContentType)
-		if arrContentType != "" {
-			result, err := s.arrService.LookupExternalIDs(ctx, sourceTorrent.Name, arrContentType)
-			if err != nil {
-				log.Debug().Err(err).
-					Str("torrentName", sourceTorrent.Name).
-					Str("contentType", contentInfo.ContentType).
-					Msg("[CROSSSEED-SEARCH] ARR ID lookup failed, continuing without IDs")
-			} else if result != nil && result.IDs != nil && !result.IDs.IsEmpty() {
-				externalIDs = result.IDs
-				log.Debug().
-					Str("torrentName", sourceTorrent.Name).
-					Str("imdbId", externalIDs.IMDbID).
-					Int("tmdbId", externalIDs.TMDbID).
-					Int("tvdbId", externalIDs.TVDbID).
-					Int("tvmazeId", externalIDs.TVMazeID).
-					Bool("fromCache", result.FromCache).
-					Msg("[CROSSSEED-SEARCH] ARR ID lookup succeeded")
-			}
+	var arrTitles []string
+	arrResult := s.lookupARRExternalIDs(ctx, sourceTorrent.Name, sourceTorrent.Hash, contentInfo.ContentType)
+	if arrResult != nil {
+		if arrResult.IDs != nil && !arrResult.IDs.IsEmpty() {
+			externalIDs = arrResult.IDs
 		}
+		arrTitles = arrResult.Titles
 	}
 
 	searchReq := &jackett.TorznabSearchRequest{
@@ -7103,7 +7156,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
-		match, mismatchReason := s.releasesMatchWithReasonAndNames(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, opts.FindIndividualEpisodes)
+		match, mismatchReason := s.releasesMatchWithReasonAndNamesAndTitles(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, arrTitles, nil, opts.FindIndividualEpisodes)
 		if !match {
 			releaseFilteredCount++
 			recordReleaseRejection(

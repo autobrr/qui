@@ -6,6 +6,9 @@ package arr
 import (
 	"context"
 	"database/sql"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -13,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
+	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 )
@@ -54,6 +58,7 @@ func openTestDB(t *testing.T) *sql.DB {
 			tmdb_id INTEGER,
 			tvdb_id INTEGER,
 			tvmaze_id INTEGER,
+			titles_json TEXT,
 			is_negative BOOLEAN DEFAULT 0,
 			cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			expires_at TIMESTAMP NOT NULL,
@@ -161,6 +166,257 @@ func TestService_LookupExternalIDsReturnsCacheCancellation(t *testing.T) {
 			assert.Nil(t, result)
 		})
 	}
+}
+
+func TestService_LookupExternalIDsForDownloadIgnoresNegativeCache(t *testing.T) {
+	ctx := context.Background()
+	title := "Breaking Bad S01E01"
+	downloadID := "ABCDEF1234"
+	var parseCalled bool
+
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/queue":
+			_, _ = w.Write([]byte(`{
+				"records": [{
+					"downloadId": "abcdef1234",
+					"series": {
+						"tvdbId": 81189,
+						"tvMazeId": 169,
+						"tmdbId": 1396,
+						"imdbId": "tt0903747"
+					}
+				}]
+			}`))
+		case "/api/v3/history":
+			_, _ = w.Write([]byte(`{"records":[]}`))
+		case "/api/v3/parse":
+			parseCalled = true
+			_, _ = w.Write([]byte(`{"series": null}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	titleHash := models.ComputeTitleHash(title)
+	require.NoError(t, cacheStore.Set(ctx, titleHash, string(ContentTypeTV), nil, nil, true, time.Hour))
+
+	result, err := service.LookupExternalIDsForDownload(ctx, title, ContentTypeTV, downloadID)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "queue", result.Source)
+	require.False(t, result.FromCache)
+	require.False(t, parseCalled)
+	require.Equal(t, &models.ExternalIDs{
+		TVDbID:   81189,
+		TVMazeID: 169,
+		TMDbID:   1396,
+		IMDbID:   "tt0903747",
+	}, result.IDs)
+
+	cacheEntry, err := cacheStore.Get(ctx, titleHash, string(ContentTypeTV))
+	require.NoError(t, err)
+	require.False(t, cacheEntry.IsNegative)
+	require.Equal(t, 81189, cacheEntry.ExternalIDs.TVDbID)
+}
+
+func TestService_LookupExternalIDsForDownloadHydratesTitlesForPositiveCache(t *testing.T) {
+	ctx := context.Background()
+	title := "Haibara-kun no Tsuyokute Seishun New Game S01E01"
+	downloadID := "ABCDEF1234"
+	var queueCalls int
+	var parseCalled bool
+
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/queue":
+			queueCalls++
+			_, _ = w.Write([]byte(`{
+				"records": [{
+					"downloadId": "abcdef1234",
+					"series": {
+						"title": "Haibara's Teenage New Game+",
+						"alternateTitles": [
+							{"title": "Haibara-kun no Tsuyokute Seishun New Game"}
+						],
+						"tvdbId": 471000,
+						"tmdbId": 316424,
+						"imdbId": "tt39122622"
+					}
+				}]
+			}`))
+		case "/api/v3/history":
+			_, _ = w.Write([]byte(`{"records":[]}`))
+		case "/api/v3/parse":
+			parseCalled = true
+			_, _ = w.Write([]byte(`{"series": null}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	titleHash := models.ComputeTitleHash(title)
+	require.NoError(t, cacheStore.Set(ctx, titleHash, string(ContentTypeTV), nil, &models.ExternalIDs{
+		TVDbID: 471000,
+		TMDbID: 316424,
+		IMDbID: "tt39122622",
+	}, false, time.Hour))
+
+	result, err := service.LookupExternalIDsForDownload(ctx, title, ContentTypeTV, downloadID)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "queue", result.Source)
+	require.False(t, result.FromCache)
+	require.False(t, parseCalled)
+	require.Equal(t, &models.ExternalIDs{
+		TVDbID: 471000,
+		TMDbID: 316424,
+		IMDbID: "tt39122622",
+	}, result.IDs)
+	require.Equal(t, []string{
+		"Haibara's Teenage New Game+",
+		"Haibara-kun no Tsuyokute Seishun New Game",
+	}, result.Titles)
+
+	cacheEntry, err := cacheStore.Get(ctx, titleHash, string(ContentTypeTV))
+	require.NoError(t, err)
+	require.True(t, cacheEntry.HasTitles)
+	require.Equal(t, result.Titles, cacheEntry.Titles)
+
+	cachedResult, err := service.LookupExternalIDsForDownload(ctx, title, ContentTypeTV, downloadID)
+	require.NoError(t, err)
+	require.NotNil(t, cachedResult)
+	require.True(t, cachedResult.FromCache)
+	require.Equal(t, "cache", cachedResult.Source)
+	require.Equal(t, result.Titles, cachedResult.Titles)
+	require.Equal(t, 1, queueCalls)
+}
+
+func TestService_LookupExternalIDsForDownloadRefreshesPositiveCacheThroughParse(t *testing.T) {
+	ctx := context.Background()
+	title := "Haibara-kun no Tsuyokute Seishun New Game S01E01"
+	downloadID := "ABCDEF1234"
+	var parseCalled bool
+
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/queue":
+			_, _ = w.Write([]byte(`{"records":[]}`))
+		case "/api/v3/history":
+			_, _ = w.Write([]byte(`{"records":[]}`))
+		case "/api/v3/parse":
+			parseCalled = true
+			_, _ = w.Write([]byte(`{
+				"series": {
+					"title": "Haibara's Teenage New Game+",
+					"alternateTitles": [
+						{"title": "Haibara-kun no Tsuyokute Seishun New Game"}
+					],
+					"tvdbId": 471000,
+					"tmdbId": 316424,
+					"imdbId": "tt39122622"
+				}
+			}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	titleHash := models.ComputeTitleHash(title)
+	require.NoError(t, cacheStore.Set(ctx, titleHash, string(ContentTypeTV), nil, &models.ExternalIDs{
+		TVDbID: 471000,
+		TMDbID: 316424,
+		IMDbID: "tt39122622",
+	}, false, time.Hour))
+
+	result, err := service.LookupExternalIDsForDownload(ctx, title, ContentTypeTV, downloadID)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, parseCalled)
+	require.Equal(t, "parse", result.Source)
+	require.False(t, result.FromCache)
+	require.Equal(t, []string{
+		"Haibara's Teenage New Game+",
+		"Haibara-kun no Tsuyokute Seishun New Game",
+	}, result.Titles)
+}
+
+func TestService_LookupExternalIDsForDownloadUsesHistoryAfterQueueMiss(t *testing.T) {
+	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeRadarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/queue":
+			_, _ = w.Write([]byte(`{"records":[]}`))
+		case "/api/v3/history":
+			assert.Equal(t, "HASH", r.URL.Query().Get("downloadId"))
+			_, _ = w.Write([]byte(`{
+				"records": [{
+					"downloadId": "HASH",
+					"eventType": "grabbed",
+					"movie": {"tmdbId": 27205, "imdbId": "tt1375666"}
+				}]
+			}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	result, err := service.LookupExternalIDsForDownload(context.Background(), "Inception", ContentTypeMovie, "HASH")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "history", result.Source)
+	require.Equal(t, &models.ExternalIDs{TMDbID: 27205, IMDbID: "tt1375666"}, result.IDs)
+}
+
+func TestService_LookupExternalIDsForDownloadFallsBackToParse(t *testing.T) {
+	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeRadarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/queue":
+			_, _ = w.Write([]byte(`{"records":[]}`))
+		case "/api/v3/history":
+			_, _ = w.Write([]byte(`{"records":[]}`))
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{"movie": {"tmdbId": 27205, "imdbId": "tt1375666"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	result, err := service.LookupExternalIDsForDownload(context.Background(), "Inception", ContentTypeMovie, "HASH")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "parse", result.Source)
+	require.Equal(t, &models.ExternalIDs{TMDbID: 27205, IMDbID: "tt1375666"}, result.IDs)
+}
+
+func newArrLookupTestService(t *testing.T, instanceType models.ArrInstanceType, handler http.Handler) (*Service, *models.ArrIDCacheStore) {
+	t.Helper()
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	dbPath := filepath.Join(t.TempDir(), "arr-lookup.db")
+	db, err := database.New(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, db.Close())
+	})
+
+	key := []byte("01234567890123456789012345678901")
+	instanceStore, err := models.NewArrInstanceStore(db, key)
+	require.NoError(t, err)
+	_, err = instanceStore.Create(context.Background(), instanceType, "Test ARR", server.URL, "api-key", nil, nil, true, 1, 15)
+	require.NoError(t, err)
+
+	cacheStore := models.NewArrIDCacheStore(db)
+	service := NewService(instanceStore, cacheStore)
+	service.nextCacheCleanup = time.Now().Add(time.Hour)
+
+	return service, cacheStore
 }
 
 func TestNewService(t *testing.T) {
