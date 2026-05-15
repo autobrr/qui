@@ -6201,6 +6201,18 @@ components:
           example: "2.11.4"
         buildInfo:
           $ref: '#/components/schemas/QBittorrentBuildInfo'
+        processInfo:
+          $ref: '#/components/schemas/QBittorrentProcessInfo'
+
+    QBittorrentProcessInfo:
+      type: object
+      description: qBittorrent process information
+      properties:
+        launchTime:
+          type: integer
+          format: int64
+          description: Process launch time as UTC epoch seconds
+          example: 1769331513
 
     CrossSeedInstanceResult:
       type: object
