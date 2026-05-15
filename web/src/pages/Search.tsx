@@ -89,6 +89,8 @@ const ADVANCED_PARAM_CONFIG: AdvancedParamConfig[] = [
 
 const LAST_USED_INSTANCE_KEY = "qui:search:lastInstanceId"
 
+const getSearchResultKey = (result: TorznabSearchResult) => `${result.indexerId}-${result.guid}`
+
 export function Search() {
   const SUGGESTION_BLUR_DELAY_MS = 100
   const [query, setQuery] = useState("")
@@ -117,7 +119,7 @@ export function Search() {
   const [queryFocused, setQueryFocused] = useState(false)
   const [showAdvancedParams, setShowAdvancedParams] = useState(false)
   const [advancedParams, setAdvancedParams] = useState<AdvancedParamsState>(() => ({ ...ADVANCED_PARAM_DEFAULTS }))
-  const [selectedResultGuid, setSelectedResultGuid] = useState<string | null>(null)
+  const [selectedResultKey, setSelectedResultKey] = useState<string | null>(null)
   const searchPlaceholder = useMemo(() => SEARCH_PLACEHOLDERS[searchType], [searchType])
   const hasAdvancedParams = useMemo(() => Object.values(advancedParams).some(value => value.trim() !== ""), [advancedParams])
   const queryInputRef = useRef<HTMLInputElement | null>(null)
@@ -268,7 +270,7 @@ export function Search() {
       const detectedTvdbId = extractTvdbId(searchQuery)
       setLoading(true)
       setCacheMetadata(null)
-      setSelectedResultGuid(null)
+      setSelectedResultKey(null)
       setResults([])
       setTotal(0)
 
@@ -660,21 +662,21 @@ export function Search() {
   }, [results, resultsFilter, columnFilters, sortColumn, sortOrder, categoryMap])
 
   const selectedResult = useMemo(() => {
-    if (!selectedResultGuid) {
+    if (!selectedResultKey) {
       return null
     }
-    return results.find(result => result.guid === selectedResultGuid) ?? null
-  }, [results, selectedResultGuid])
+    return results.find(result => getSearchResultKey(result) === selectedResultKey) ?? null
+  }, [results, selectedResultKey])
 
   useEffect(() => {
-    if (!selectedResultGuid) {
+    if (!selectedResultKey) {
       return
     }
-    const stillVisible = filteredAndSortedResults.some(result => result.guid === selectedResultGuid)
+    const stillVisible = filteredAndSortedResults.some(result => getSearchResultKey(result) === selectedResultKey)
     if (!stillVisible) {
-      setSelectedResultGuid(null)
+      setSelectedResultKey(null)
     }
-  }, [filteredAndSortedResults, selectedResultGuid])
+  }, [filteredAndSortedResults, selectedResultKey])
 
   const suggestionMatches = useMemo(() => {
     const searches = recentSearches ?? []
@@ -766,11 +768,12 @@ export function Search() {
   }
 
   const handleToggleResultSelection = (result: TorznabSearchResult) => {
-    setSelectedResultGuid(prev => prev === result.guid ? null : result.guid)
+    const resultKey = getSearchResultKey(result)
+    setSelectedResultKey(prev => prev === resultKey ? null : resultKey)
   }
 
   const handleClearSelection = () => {
-    setSelectedResultGuid(null)
+    setSelectedResultKey(null)
   }
 
   const handleDialogOpenChange = (open: boolean) => {
@@ -1308,9 +1311,9 @@ export function Search() {
                 <div className="sm:hidden space-y-2 max-h-150 overflow-auto">
                   {filteredAndSortedResults.map((result) => (
                     <SearchResultCard
-                      key={`${result.indexerId}-${result.guid}`}
+                      key={getSearchResultKey(result)}
                       result={result}
-                      isSelected={selectedResultGuid === result.guid}
+                      isSelected={selectedResultKey === getSearchResultKey(result)}
                       onSelect={() => handleToggleResultSelection(result)}
                       onAddTorrent={(overrideInstanceId) => handleAddTorrent(result, overrideInstanceId)}
                       onDownload={() => handleDownload(result)}
@@ -1580,10 +1583,10 @@ export function Search() {
                     </TableHeader>
                     <TableBody>
                       {filteredAndSortedResults.map((result) => {
-                        const isSelected = selectedResultGuid === result.guid
+                        const isSelected = selectedResultKey === getSearchResultKey(result)
                         return (
                           <TableRow
-                            key={`${result.indexerId}-${result.guid}`}
+                            key={getSearchResultKey(result)}
                             className={cn(
                               "cursor-pointer select-none transition-colors",
                               isSelected? "bg-accent text-accent-foreground hover:bg-accent/90": "hover:bg-muted/60 odd:bg-background/70 even:bg-card/90 dark:odd:bg-background/30 dark:even:bg-card/80"
