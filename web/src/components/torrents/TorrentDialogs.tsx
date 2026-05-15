@@ -46,6 +46,15 @@ import type { ChangeEvent, KeyboardEvent } from "react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { buildCategoryTree, type CategoryNode } from "./CategoryTree"
+import {
+  checkFieldConsistency,
+  LIMIT_UNLIMITED,
+  LIMIT_USE_GLOBAL,
+  shareLimitEnumFieldFromTorrents,
+  type TorrentLimitSnapshot,
+} from "./torrent-limit-dialog-helpers"
+
+export type { TorrentLimitSnapshot } from "./torrent-limit-dialog-helpers"
 
 interface TagEditorDialogProps {
   open: boolean
@@ -1557,28 +1566,11 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
   )
 })
 
-const LIMIT_USE_GLOBAL = -2
-const LIMIT_UNLIMITED = -1
 const SPEED_DEFAULT_LIMIT = 0
 
 // Helper function to safely get numeric values with fallback
 const safeNumber = (value: number | undefined, fallback: number) =>
   typeof value === "number" ? value : fallback
-
-// Single type for torrent limit fields used in dialogs
-type TorrentLimitSnapshot = Pick<
-  Torrent,
-  | "ratio_limit"
-  | "seeding_time_limit"
-  | "inactive_seeding_time_limit"
-  | "max_ratio"
-  | "max_seeding_time"
-  | "max_inactive_seeding_time"
-  | "dl_limit"
-  | "up_limit"
-  | "share_limit_action"
-  | "share_limits_mode"
->
 
 interface ShareLimitDialogProps {
   open: boolean
@@ -1609,34 +1601,6 @@ function valueToFieldState(value: number | undefined, defaultCustom: number): Om
     return { mode: "unlimited", customValue: defaultCustom }
   }
   return { mode: "custom", customValue: value }
-}
-
-// Check if all torrents have the same value for a field
-function checkFieldConsistency(
-  torrents: TorrentLimitSnapshot[] | undefined,
-  getter: (t: TorrentLimitSnapshot) => number | undefined
-): { isMixed: boolean; commonValue: number | undefined } {
-  if (!torrents || torrents.length === 0) {
-    return { isMixed: false, commonValue: undefined }
-  }
-  const firstValue = getter(torrents[0])
-  const allSame = torrents.every(t => getter(t) === firstValue)
-  return { isMixed: !allSame, commonValue: allSame ? firstValue : undefined }
-}
-
-// Qt share-limit enum for Radix; when torrents disagree, value is "default" placeholder and isMixed is true (same idea as ratio/seed/inactive).
-function shareLimitEnumFieldFromTorrents(
-  torrents: TorrentLimitSnapshot[] | undefined,
-  pick: (t: TorrentLimitSnapshot) => string | undefined
-): { value: string; isMixed: boolean } {
-  if (!torrents?.length) return { value: "default", isMixed: false }
-  const vals = torrents.map((t) => {
-    const v = (pick(t) ?? "").trim()
-    return v === "" || v === "Default" ? "default" : v
-  })
-  const first = vals[0]!
-  const isMixed = !vals.every((x) => x === first)
-  return { value: isMixed ? "default" : first, isMixed }
 }
 
 function buildShareLimitFieldStates(torrents?: TorrentLimitSnapshot[]): {
@@ -2116,7 +2080,7 @@ interface SpeedLimitFormState {
   downloadLimit: number
 }
 
-const buildSpeedLimitInitialState = (torrents?: TorrentLimitSnapshot[]): SpeedLimitFormState => {
+export const buildSpeedLimitInitialState = (torrents?: TorrentLimitSnapshot[]): SpeedLimitFormState => {
   const base: SpeedLimitFormState = {
     uploadEnabled: false,
     uploadLimit: SPEED_DEFAULT_LIMIT,
