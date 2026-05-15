@@ -57,6 +57,7 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathcmp"
 	"github.com/autobrr/qui/pkg/pathutil"
+	"github.com/autobrr/qui/pkg/redact"
 	"github.com/autobrr/qui/pkg/reflinktree"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -3101,7 +3102,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 
 		alreadyHandled, lastStatus, err := s.automationStore.HasProcessedFeedItem(ctx, result.GUID, result.IndexerID)
 		if err != nil {
-			log.Warn().Err(err).Str("guid", result.GUID).Msg("Failed to check feed item cache")
+			log.Warn().Err(err).Str("guid", redact.URLString(result.GUID)).Msg("Failed to check feed item cache")
 		}
 
 		run.TotalFeedItems++
@@ -3319,7 +3320,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 			log.Debug().
 				Str("title", result.Title).
-				Str("commentURL", commentURL).
+				Str("commentURL", redact.URLString(commentURL)).
 				Int("instances", len(existingResults)).
 				Msg("[RSS] Skipped download - torrent already exists on all candidate instances (comment URL pre-check)")
 
@@ -3465,7 +3466,7 @@ func (s *Service) markFeedItem(ctx context.Context, result jackett.SearchResult,
 	}
 
 	if err := s.automationStore.MarkFeedItem(ctx, item); err != nil {
-		log.Debug().Err(err).Str("guid", result.GUID).Msg("Failed to persist cross-seed feed item state")
+		log.Debug().Err(err).Str("guid", redact.URLString(result.GUID)).Msg("Failed to persist cross-seed feed item state")
 	}
 }
 
