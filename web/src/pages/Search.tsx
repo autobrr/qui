@@ -89,7 +89,10 @@ const ADVANCED_PARAM_CONFIG: AdvancedParamConfig[] = [
 
 const LAST_USED_INSTANCE_KEY = "qui:search:lastInstanceId"
 
-const getSearchResultKey = (result: TorznabSearchResult) => `${result.indexerId}-${result.guid}`
+const getSearchResultKey = (result: TorznabSearchResult) => {
+  const resultId = result.guid.trim() === "" ? result.downloadUrl : result.guid
+  return `${result.indexerId}-${resultId}`
+}
 
 export function Search() {
   const SUGGESTION_BLUR_DELAY_MS = 100
