@@ -9,7 +9,7 @@ import {
   LIMIT_USE_GLOBAL,
   shareLimitEnumFieldFromTorrents,
   type TorrentLimitSnapshot,
-} from "./torrent-limit-dialog-helpers"
+} from "./torrentLimitDialogHelpers"
 
 function numericShareLimitToMobile(
   value: number | undefined,

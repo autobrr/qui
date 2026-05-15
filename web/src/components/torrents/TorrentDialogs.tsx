@@ -52,9 +52,9 @@ import {
   LIMIT_USE_GLOBAL,
   shareLimitEnumFieldFromTorrents,
   type TorrentLimitSnapshot,
-} from "./torrent-limit-dialog-helpers"
+} from "./torrentLimitDialogHelpers"
 
-export type { TorrentLimitSnapshot } from "./torrent-limit-dialog-helpers"
+export type { TorrentLimitSnapshot } from "./torrentLimitDialogHelpers"
 
 interface TagEditorDialogProps {
   open: boolean

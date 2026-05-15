@@ -98,7 +98,7 @@ import {
   buildMobileShareLimitInitialState,
   type MobileShareLimitFormState,
 } from "./mobileShareLimitDialogState"
-import type { TorrentLimitSnapshot } from "./torrent-limit-dialog-helpers"
+import type { TorrentLimitSnapshot } from "./torrentLimitDialogHelpers"
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
