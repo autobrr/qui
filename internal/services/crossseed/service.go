@@ -6754,6 +6754,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	// Apply indexer filtering (capabilities first, then optionally content filtering async)
 	var filteredIndexerIDs []int
+	filteringResolved := false
 	cacheKey := asyncFilteringCacheKey(instanceID, hash)
 
 	// Check for cached content-filtered results first
@@ -6771,9 +6772,10 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 					Ints("providedIndexers", opts.IndexerIDs).
 					Msg("[CROSSSEED-SEARCH] Found cached filtering state")
 
-				if cachedSnapshot.ContentCompleted && len(cachedSnapshot.FilteredIndexers) > 0 {
+				if cachedSnapshot.ContentCompleted {
 					// Content filtering is complete, use the refined results
 					filteredIndexerIDs = append([]int(nil), cachedSnapshot.FilteredIndexers...)
+					filteringResolved = true
 					log.Debug().
 						Str("torrentHash", hash).
 						Int("instanceID", instanceID).
@@ -6785,6 +6787,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				} else if len(cachedSnapshot.CapabilityIndexers) > 0 {
 					// Content filtering not complete, but use capability results
 					filteredIndexerIDs = append([]int(nil), cachedSnapshot.CapabilityIndexers...)
+					filteringResolved = true
 					log.Debug().
 						Str("torrentHash", hash).
 						Int("instanceID", instanceID).
@@ -6803,8 +6806,8 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 	}
 
-	// Only perform new filtering if no cache found
-	if len(filteredIndexerIDs) == 0 {
+	// Only perform new filtering if cached state did not resolve the indexer set
+	if !filteringResolved {
 		log.Debug().
 			Str("torrentHash", hash).
 			Int("instanceID", instanceID).

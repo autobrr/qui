@@ -177,11 +177,13 @@ func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, so
 		return false, "empty normalized title"
 	}
 
-	// Require exact title match after normalization.
+	// Accept any overlap between normalized title sets. Each set contains complete
+	// normalized title entries from Title, Alt, and parsed AKA parts, so legitimate
+	// alternate titles can match without requiring strict equality of one parsed title.
 	//
-	// This is intentionally strict to avoid false positives between related-but-distinct
-	// TV franchises/spinoffs (e.g. "FBI" vs "FBI Most Wanted") where substring matching
-	// would incorrectly treat them as the same show.
+	// This still avoids false positives between related-but-distinct TV franchises
+	// (e.g. "FBI" vs "FBI Most Wanted") because overlap is checked on full normalized
+	// title entries, not arbitrary substrings.
 	if !normalizedTitleSetsOverlap(sourceTitles, candidateTitles) {
 		// Title mismatches are expected for most candidates - don't log to avoid noise
 		return false, "title mismatch"
