@@ -2020,6 +2020,9 @@ func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[s
 
 	// Get categories from sync manager (real-time)
 	categories := syncManager.GetCategories()
+	if categories == nil {
+		categories = make(map[string]qbt.Category)
+	}
 
 	return categories, nil
 }
@@ -2034,6 +2037,9 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 
 	// Get tags from sync manager (real-time)
 	tags := syncManager.GetTags()
+	if tags == nil {
+		tags = []string{}
+	}
 
 	slices.SortFunc(tags, func(a, b string) int {
 		return strings.Compare(strings.ToLower(a), strings.ToLower(b))
