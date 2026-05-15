@@ -83,12 +83,15 @@ func isNilARRLookupService(service arrLookupService) bool {
 	}
 
 	value := reflect.ValueOf(service)
-	switch value.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
-		return value.IsNil()
-	default:
-		return false
-	}
+	kind := value.Kind()
+	canBeNil := kind == reflect.Chan ||
+		kind == reflect.Func ||
+		kind == reflect.Interface ||
+		kind == reflect.Map ||
+		kind == reflect.Pointer ||
+		kind == reflect.Slice
+
+	return canBeNil && value.IsNil()
 }
 
 // qbittorrentSync exposes the sync manager functionality needed by the service.
