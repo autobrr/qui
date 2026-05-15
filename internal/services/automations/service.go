@@ -465,6 +465,22 @@ type shareKey struct {
 	mode     string
 }
 
+// normalizeShareLimitEnum canonicalizes qBittorrent share-limit enum strings for comparison.
+func normalizeShareLimitEnum(value string) string {
+	v := strings.TrimSpace(value)
+	if v == "" || strings.EqualFold(v, "Default") {
+		return ""
+	}
+	return v
+}
+
+func shareLimitRuleRef(primary, fallback ruleRef) ruleRef {
+	if primary.id != 0 {
+		return primary
+	}
+	return fallback
+}
+
 type tagChange struct {
 	current  map[string]struct{}
 	desired  map[string]struct{}
@@ -2531,8 +2547,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			}
 		}
 
-		// Share limits
-		if state.ratioLimit != nil || state.seedingMinutes != nil {
+		// Share limits (ratio, seeding time, action, mode)
+		if state.ratioLimit != nil || state.seedingMinutes != nil ||
+			state.shareLimitAction != "" || state.shareLimitsMode != "" {
 			// Start with torrent's current values
 			ratio := torrent.RatioLimit
 			seedMinutes := torrent.SeedingTimeLimit
@@ -2560,7 +2577,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			// Check if update is needed (comparing normalized values)
 			ratioNeedsUpdate := state.ratioLimit != nil && currentRatio != ratio
 			seedingNeedsUpdate := state.seedingMinutes != nil && torrent.SeedingTimeLimit != seedMinutes
-			needsUpdate := ratioNeedsUpdate || seedingNeedsUpdate
+			actionNeedsUpdate := state.shareLimitAction != "" &&
+				normalizeShareLimitEnum(torrent.ShareLimitAction) != normalizeShareLimitEnum(state.shareLimitAction)
+			modeNeedsUpdate := state.shareLimitsMode != "" &&
+				normalizeShareLimitEnum(torrent.ShareLimitsMode) != normalizeShareLimitEnum(state.shareLimitsMode)
+			needsUpdate := ratioNeedsUpdate || seedingNeedsUpdate || actionNeedsUpdate || modeNeedsUpdate
 			if needsUpdate {
 				key := shareKey{ratio: ratio, seed: seedMinutes, inactive: inactiveMinutes, action: state.shareLimitAction, mode: state.shareLimitsMode}
 				shareBatches[key] = append(shareBatches[key], hash)
@@ -2569,6 +2590,12 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 				}
 				if seedingNeedsUpdate {
 					shareSeedingRuleByHash[hash] = state.seedingRule
+				}
+				if actionNeedsUpdate {
+					shareRatioRuleByHash[hash] = shareLimitRuleRef(state.shareActionRule, state.ratioRule)
+				}
+				if modeNeedsUpdate {
+					shareSeedingRuleByHash[hash] = shareLimitRuleRef(state.shareModeRule, state.seedingRule)
 				}
 			}
 		}

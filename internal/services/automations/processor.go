@@ -39,6 +39,8 @@ type torrentDesiredState struct {
 	shareLimitsMode  string
 	ratioRule        ruleRef
 	seedingRule      ruleRef
+	shareActionRule  ruleRef
+	shareModeRule    ruleRef
 
 	// Pause (OR - any rule can trigger)
 	shouldPause bool
@@ -308,9 +310,11 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			}
 			if conditions.ShareLimits.ShareLimitAction != nil {
 				state.shareLimitAction = *conditions.ShareLimits.ShareLimitAction
+				state.shareActionRule = ruleRef{id: rule.ID, name: rule.Name}
 			}
 			if conditions.ShareLimits.ShareLimitsMode != nil {
 				state.shareLimitsMode = *conditions.ShareLimits.ShareLimitsMode
+				state.shareModeRule = ruleRef{id: rule.ID, name: rule.Name}
 			}
 		} else if stats != nil {
 			stats.ShareConditionNotMet++
