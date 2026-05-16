@@ -620,9 +620,15 @@ func namesMatchIgnoringExtension(name1, name2 string) bool {
 //
 // Safety fallback: when matches aren't significant (only tiny files matched, or no keys
 // matched at all), we compare the largest files in each set to catch obvious mismatches.
-//
-// The function also returns a list of mismatched files for logging purposes.
-func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) (bool, []string) {
+type contentFileSizeMismatch struct {
+	SourceFile    string `json:"sourceFile"`
+	SourceSize    int64  `json:"sourceSize"`
+	CandidateFile string `json:"candidateFile"`
+	CandidateSize int64  `json:"candidateSize"`
+}
+
+// The function also returns mismatch details for logging purposes.
+func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, normalizer *stringutils.Normalizer[string, string]) (bool, []contentFileSizeMismatch) {
 	// Filter files by ignore patterns
 	var filteredSource, filteredCandidate qbt.TorrentFiles
 
@@ -645,8 +651,13 @@ func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, no
 
 	// Build a map of normalized key -> size for candidate files.
 	// For duplicate keys (rare), store all sizes to handle multisets.
+	type candidateFileInfo struct {
+		name string
+		size int64
+	}
 	type candidateInfo struct {
-		sizes []int64
+		files    []candidateFileInfo
+		allFiles []candidateFileInfo
 	}
 	candidateByKey := make(map[string]*candidateInfo)
 	for _, cf := range filteredCandidate {
@@ -654,17 +665,22 @@ func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, no
 		if key == "" {
 			continue
 		}
+		fileInfo := candidateFileInfo{name: cf.Name, size: cf.Size}
 		if info := candidateByKey[key]; info != nil {
-			info.sizes = append(info.sizes, cf.Size)
+			info.files = append(info.files, fileInfo)
+			info.allFiles = append(info.allFiles, fileInfo)
 		} else {
-			candidateByKey[key] = &candidateInfo{sizes: []int64{cf.Size}}
+			candidateByKey[key] = &candidateInfo{
+				files:    []candidateFileInfo{fileInfo},
+				allFiles: []candidateFileInfo{fileInfo},
+			}
 		}
 	}
 
 	// Check each source file: only flag mismatch if the same normalized key exists
 	// in candidate but with a different size.
 	// Track: largest matched file, and largest source file that has a key in candidate.
-	var mismatchedFiles []string
+	var mismatches []contentFileSizeMismatch
 	var largestMatched int64
 	var largestSourceWithKey int64
 
@@ -688,10 +704,10 @@ func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, no
 
 		// Check if any size matches
 		sizeMatched := false
-		for i, candSize := range info.sizes {
-			if candSize == sf.Size {
+		for i, candidateFile := range info.files {
+			if candidateFile.size == sf.Size {
 				// Remove this size from available (for multiset correctness)
-				info.sizes = slices.Delete(info.sizes, i, i+1)
+				info.files = slices.Delete(info.files, i, i+1)
 				sizeMatched = true
 				if sf.Size > largestMatched {
 					largestMatched = sf.Size
@@ -702,13 +718,22 @@ func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, no
 
 		if !sizeMatched {
 			// Same file key but different size - true mismatch
-			mismatchedFiles = append(mismatchedFiles, sf.Name)
+			candidateFile := info.allFiles[0]
+			if len(info.files) > 0 {
+				candidateFile = info.files[0]
+			}
+			mismatches = append(mismatches, contentFileSizeMismatch{
+				SourceFile:    sf.Name,
+				SourceSize:    sf.Size,
+				CandidateFile: candidateFile.name,
+				CandidateSize: candidateFile.size,
+			})
 		}
 	}
 
 	// If we have explicit mismatches (same key, different size), report them
-	if len(mismatchedFiles) > 0 {
-		return true, mismatchedFiles
+	if len(mismatches) > 0 {
+		return true, mismatches
 	}
 
 	// Check if we matched the source's main matchable content: the largest matched file
@@ -737,18 +762,34 @@ func hasContentFileSizeMismatch(sourceFiles, candidateFiles qbt.TorrentFiles, no
 		}
 	}
 	var largestCandidate int64
+	var largestCandidateName string
 	for _, cf := range filteredCandidate {
 		if cf.Size > largestCandidate {
 			largestCandidate = cf.Size
+			largestCandidateName = cf.Name
 		}
 	}
 
 	// If largest files differ, treat as mismatch
 	if largestSource > 0 && largestCandidate > 0 && largestSource != largestCandidate {
-		return true, []string{largestSourceName}
+		return true, []contentFileSizeMismatch{{
+			SourceFile:    largestSourceName,
+			SourceSize:    largestSource,
+			CandidateFile: largestCandidateName,
+			CandidateSize: largestCandidate,
+		}}
 	}
 
 	return false, nil
+}
+
+func contentFileSizeMismatchSourceFiles(mismatches []contentFileSizeMismatch) []string {
+	files := make([]string, 0, len(mismatches))
+	for _, mismatch := range mismatches {
+		files = append(files, mismatch.SourceFile)
+	}
+
+	return files
 }
 
 // fileKeySize is a composite key for matching files by normalized name + size.
