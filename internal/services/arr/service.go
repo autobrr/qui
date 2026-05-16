@@ -86,12 +86,6 @@ func (s *Service) WithNegativeTTL(ttl time.Duration) *Service {
 // LookupExternalIDs queries ARR instances for external IDs based on content type.
 // It checks the cache first, then queries ARR instances in priority order.
 func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentType ContentType) (*ExternalIDsResult, error) {
-	return s.LookupExternalIDsForDownload(ctx, title, contentType, "")
-}
-
-// LookupExternalIDsForDownload keeps the download-aware service signature for callers,
-// but resolves IDs through the same parse/cache path as LookupExternalIDs.
-func (s *Service) LookupExternalIDsForDownload(ctx context.Context, title string, contentType ContentType, _ string) (*ExternalIDsResult, error) {
 	if title == "" {
 		return nil, errors.New("title cannot be empty")
 	}
@@ -110,7 +104,7 @@ func (s *Service) LookupExternalIDsForDownload(ctx context.Context, title string
 	if err != nil {
 		return nil, err
 	}
-	if cacheResult != nil {
+	if cacheResult != nil && (cacheResult.IDs == nil || cacheResult.IDs.IsEmpty() || cacheResult.TitlesKnown) {
 		return cacheResult, nil
 	}
 
@@ -121,10 +115,23 @@ func (s *Service) LookupExternalIDsForDownload(ctx context.Context, title string
 	}
 
 	if len(instances) == 0 {
+		if cacheResult != nil {
+			return cacheResult, nil
+		}
 		return nil, nil
 	}
 
-	return s.lookupExternalIDsFromParse(ctx, titleHash, title, contentType, instances)
+	result, err := s.lookupExternalIDsFromParse(ctx, titleHash, title, contentType, instances, cacheResult == nil)
+	if err != nil {
+		return nil, err
+	}
+	if result.IDs == nil || result.IDs.IsEmpty() {
+		if cacheResult != nil {
+			return cacheResult, nil
+		}
+		return result, nil
+	}
+	return result, nil
 }
 
 func (s *Service) enabledInstancesForContent(ctx context.Context, title string, contentType ContentType) ([]*models.ArrInstance, error) {
@@ -198,7 +205,7 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 	}, nil
 }
 
-func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, title string, contentType ContentType, instances []*models.ArrInstance) (*ExternalIDsResult, error) {
+func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, title string, contentType ContentType, instances []*models.ArrInstance, cacheNegative bool) (*ExternalIDsResult, error) {
 	anyQueried := false
 	for _, instance := range instances {
 		client := s.clientForInstance(instance)
@@ -227,7 +234,7 @@ func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, tit
 			Msg("[ARR-LOOKUP] No IDs returned from instance")
 	}
 
-	if anyQueried {
+	if cacheNegative && anyQueried {
 		if err := s.cacheStore.Set(ctx, titleHash, string(contentType), nil, nil, true, s.negativeTTL); err != nil {
 			log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache negative result")
 		}

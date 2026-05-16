@@ -213,23 +213,6 @@ func externalIDsFromRadarrMovie(movie *RadarrMovie) *models.ExternalIDs {
 	return ids
 }
 
-func lookupResultFromRadarrMovie(movie *RadarrMovie) *ExternalIDsLookupResult {
-	if movie == nil {
-		return nil
-	}
-
-	ids := externalIDsFromRadarrMovie(movie)
-	titles := titlesFromMovie(movie)
-	if ids == nil && len(titles) == 0 {
-		return nil
-	}
-
-	return &ExternalIDsLookupResult{
-		IDs:    ids,
-		Titles: titles,
-	}
-}
-
 func titlesFromSeries(series *SonarrSeries) []string {
 	if series == nil {
 		return nil

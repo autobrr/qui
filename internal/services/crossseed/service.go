@@ -74,7 +74,7 @@ type trackerCustomizationProvider interface {
 }
 
 type arrLookupService interface {
-	LookupExternalIDsForDownload(ctx context.Context, title string, contentType arr.ContentType, downloadClientID string) (*arr.ExternalIDsResult, error)
+	LookupExternalIDs(ctx context.Context, title string, contentType arr.ContentType) (*arr.ExternalIDsResult, error)
 }
 
 func isNilARRLookupService(service arrLookupService) bool {
@@ -6079,7 +6079,7 @@ func mapContentTypeToARR(contentType string) arr.ContentType {
 	}
 }
 
-func (s *Service) lookupARRExternalIDs(ctx context.Context, title, torrentHash, contentType string) *arr.ExternalIDsResult {
+func (s *Service) lookupARRExternalIDs(ctx context.Context, title, contentType string) *arr.ExternalIDsResult {
 	if isNilARRLookupService(s.arrService) {
 		return nil
 	}
@@ -6088,7 +6088,7 @@ func (s *Service) lookupARRExternalIDs(ctx context.Context, title, torrentHash, 
 		return nil
 	}
 
-	result, err := s.arrService.LookupExternalIDsForDownload(ctx, title, arrContentType, torrentHash)
+	result, err := s.arrService.LookupExternalIDs(ctx, title, arrContentType)
 	if err != nil {
 		log.Debug().Err(err).
 			Str("torrentName", title).
@@ -6911,7 +6911,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// ARR-driven ID lookup for enhanced Torznab searching
 	var externalIDs *models.ExternalIDs
 	var arrTitles []string
-	arrResult := s.lookupARRExternalIDs(ctx, sourceTorrent.Name, sourceTorrent.Hash, contentInfo.ContentType)
+	arrResult := s.lookupARRExternalIDs(ctx, sourceTorrent.Name, contentInfo.ContentType)
 	if arrResult != nil {
 		if arrResult.IDs != nil && !arrResult.IDs.IsEmpty() {
 			externalIDs = arrResult.IDs

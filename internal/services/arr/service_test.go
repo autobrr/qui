@@ -168,18 +168,18 @@ func TestService_LookupExternalIDsReturnsCacheCancellation(t *testing.T) {
 	}
 }
 
-func TestService_LookupExternalIDsForDownloadUsesNegativeCache(t *testing.T) {
+func TestService_LookupExternalIDsUsesNegativeCache(t *testing.T) {
 	ctx := context.Background()
 	title := "Breaking Bad S01E01"
 
-	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		t.Fatalf("unexpected ARR request after negative cache hit: %s", r.URL.Path)
 	}))
 
 	titleHash := models.ComputeTitleHash(title)
 	require.NoError(t, cacheStore.Set(ctx, titleHash, string(ContentTypeTV), nil, nil, true, time.Hour))
 
-	result, err := service.LookupExternalIDsForDownload(ctx, title, ContentTypeTV, "ABCDEF1234")
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -188,7 +188,97 @@ func TestService_LookupExternalIDsForDownloadUsesNegativeCache(t *testing.T) {
 	require.Nil(t, result.IDs)
 }
 
-func TestService_LookupExternalIDsForDownloadUsesParseOnly(t *testing.T) {
+func TestService_LookupExternalIDsKeepsLegacyPositiveCacheWhenAliasHydrationMisses(t *testing.T) {
+	ctx := context.Background()
+	title := "Haibara-kun no Tsuyokute Seishun New Game S01E01"
+	legacyIDs := &models.ExternalIDs{
+		TVDbID: 471000,
+		TMDbID: 316424,
+		IMDbID: "tt39122622",
+	}
+
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{"series": null}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	titleHash := models.ComputeTitleHash(title)
+	require.NoError(t, cacheStore.Set(ctx, titleHash, string(ContentTypeTV), nil, legacyIDs, false, time.Hour))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.FromCache)
+	require.Equal(t, "cache", result.Source)
+	require.False(t, result.TitlesKnown)
+	require.Empty(t, result.Titles)
+	require.Equal(t, legacyIDs, result.IDs)
+
+	cacheEntry, err := cacheStore.Get(ctx, titleHash, string(ContentTypeTV))
+	require.NoError(t, err)
+	require.False(t, cacheEntry.IsNegative)
+	require.False(t, cacheEntry.HasTitles)
+	require.Equal(t, *legacyIDs, cacheEntry.ExternalIDs)
+}
+
+func TestService_LookupExternalIDsHydratesLegacyPositiveCacheTitles(t *testing.T) {
+	ctx := context.Background()
+	title := "Haibara-kun no Tsuyokute Seishun New Game S01E01"
+	legacyIDs := &models.ExternalIDs{
+		TVDbID: 471000,
+		TMDbID: 316424,
+		IMDbID: "tt39122622",
+	}
+
+	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{
+				"series": {
+					"title": "Haibara's Teenage New Game+",
+					"alternateTitles": [
+						{"title": "Haibara-kun no Tsuyokute Seishun New Game"}
+					],
+					"tvdbId": 471000,
+					"tmdbId": 316424,
+					"imdbId": "tt39122622"
+				}
+			}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	titleHash := models.ComputeTitleHash(title)
+	require.NoError(t, cacheStore.Set(ctx, titleHash, string(ContentTypeTV), nil, legacyIDs, false, time.Hour))
+
+	result, err := service.LookupExternalIDs(ctx, title, ContentTypeTV)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.FromCache)
+	require.Equal(t, "parse", result.Source)
+	require.True(t, result.TitlesKnown)
+	require.Equal(t, legacyIDs, result.IDs)
+	require.Equal(t, []string{
+		"Haibara's Teenage New Game+",
+		"Haibara-kun no Tsuyokute Seishun New Game",
+	}, result.Titles)
+
+	cacheEntry, err := cacheStore.Get(ctx, titleHash, string(ContentTypeTV))
+	require.NoError(t, err)
+	require.False(t, cacheEntry.IsNegative)
+	require.True(t, cacheEntry.HasTitles)
+	require.Equal(t, result.Titles, cacheEntry.Titles)
+	require.Equal(t, *legacyIDs, cacheEntry.ExternalIDs)
+}
+
+func TestService_LookupExternalIDsUsesParseOnly(t *testing.T) {
 	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeRadarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v3/parse":
@@ -198,7 +288,7 @@ func TestService_LookupExternalIDsForDownloadUsesParseOnly(t *testing.T) {
 		}
 	}))
 
-	result, err := service.LookupExternalIDsForDownload(context.Background(), "Inception", ContentTypeMovie, "HASH")
+	result, err := service.LookupExternalIDs(context.Background(), "Inception", ContentTypeMovie)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)

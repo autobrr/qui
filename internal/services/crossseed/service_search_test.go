@@ -28,19 +28,17 @@ import (
 )
 
 type spyARRLookupService struct {
-	title            string
-	contentType      arr.ContentType
-	downloadClientID string
-	result           *arr.ExternalIDsResult
-	err              error
-	called           bool
+	title       string
+	contentType arr.ContentType
+	result      *arr.ExternalIDsResult
+	err         error
+	called      bool
 }
 
-func (s *spyARRLookupService) LookupExternalIDsForDownload(_ context.Context, title string, contentType arr.ContentType, downloadClientID string) (*arr.ExternalIDsResult, error) {
+func (s *spyARRLookupService) LookupExternalIDs(_ context.Context, title string, contentType arr.ContentType) (*arr.ExternalIDsResult, error) {
 	s.called = true
 	s.title = title
 	s.contentType = contentType
-	s.downloadClientID = downloadClientID
 	return s.result, s.err
 }
 
@@ -143,7 +141,7 @@ func TestLookupARRExternalIDsSkipsTypedNilARRService(t *testing.T) {
 	var arrService *arr.Service
 	svc := &Service{arrService: arrService}
 
-	got := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", "ABCDEF1234", "movie")
+	got := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", "movie")
 
 	require.Nil(t, got)
 }
@@ -189,7 +187,7 @@ func TestEffectiveTorznabCrossSeedSearchLimit(t *testing.T) {
 	}
 }
 
-func TestLookupARRExternalIDsMapsContentTypeAndPassesTorrentHash(t *testing.T) {
+func TestLookupARRExternalIDsMapsContentType(t *testing.T) {
 	ids := &models.ExternalIDs{TMDbID: 27205, IMDbID: "tt1375666"}
 	tests := []struct {
 		name            string
@@ -252,7 +250,7 @@ func TestLookupARRExternalIDsMapsContentTypeAndPassesTorrentHash(t *testing.T) {
 			}
 			svc := &Service{arrService: spy}
 
-			got := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", "ABCDEF1234", tt.contentType)
+			got := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", tt.contentType)
 
 			require.Equal(t, tt.wantCalled, spy.called)
 			if !tt.wantCalled {
@@ -262,7 +260,6 @@ func TestLookupARRExternalIDsMapsContentTypeAndPassesTorrentHash(t *testing.T) {
 
 			require.Equal(t, "Inception.2010", spy.title)
 			require.Equal(t, tt.wantContentType, spy.contentType)
-			require.Equal(t, "ABCDEF1234", spy.downloadClientID)
 			if !tt.wantResult {
 				require.Nil(t, got)
 				return
@@ -286,13 +283,12 @@ func TestLookupARRExternalIDsPreservesTitleOnlyResult(t *testing.T) {
 	}
 	svc := &Service{arrService: spy}
 
-	got := svc.lookupARRExternalIDs(context.Background(), "Sousou.no.Frieren.S01", "ABCDEF1234", "anime")
+	got := svc.lookupARRExternalIDs(context.Background(), "Sousou.no.Frieren.S01", "anime")
 
 	require.NotNil(t, got)
 	require.True(t, got.IDs.IsEmpty())
 	require.Equal(t, titles, got.Titles)
 	require.Equal(t, arr.ContentTypeAnime, spy.contentType)
-	require.Equal(t, "ABCDEF1234", spy.downloadClientID)
 }
 
 func TestGazelleTargetsForSource(t *testing.T) {
