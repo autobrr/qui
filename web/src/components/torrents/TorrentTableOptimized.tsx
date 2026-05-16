@@ -818,8 +818,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     prepareSpeedLimitAction,
     prepareLocationAction,
     prepareRenameTorrentAction,
-    prepareRenameFileAction,
-    prepareRenameFolderAction,
     prepareRecheckAction,
     prepareReannounceAction,
     prepareTmmAction,
@@ -2699,8 +2697,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                         onPrepareSpeedLimits={prepareSpeedLimitAction}
                         onPrepareLocation={prepareLocationAction}
                         onPrepareRenameTorrent={prepareRenameTorrentAction}
-                        onPrepareRenameFile={prepareRenameFileAction}
-                        onPrepareRenameFolder={prepareRenameFolderAction}
                         onPrepareRecheck={prepareRecheckAction}
                         onPrepareReannounce={prepareReannounceAction}
                         onPrepareTmm={prepareTmmAction}
@@ -2851,8 +2847,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       onPrepareSpeedLimits={prepareSpeedLimitAction}
                       onPrepareLocation={prepareLocationAction}
                       onPrepareRenameTorrent={prepareRenameTorrentAction}
-                      onPrepareRenameFile={prepareRenameFileAction}
-                      onPrepareRenameFolder={prepareRenameFolderAction}
                       onPrepareRecheck={prepareRecheckAction}
                       onPrepareReannounce={prepareReannounceAction}
                       onPrepareTmm={prepareTmmAction}
