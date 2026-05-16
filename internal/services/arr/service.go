@@ -7,7 +7,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 	"sync"
 	"time"
 
@@ -90,9 +89,9 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 	return s.LookupExternalIDsForDownload(ctx, title, contentType, "")
 }
 
-// LookupExternalIDsForDownload resolves external IDs from ARR using a download client ID first.
-// When no download client ID is supplied, it keeps the existing parse-only cache behavior.
-func (s *Service) LookupExternalIDsForDownload(ctx context.Context, title string, contentType ContentType, downloadClientID string) (*ExternalIDsResult, error) {
+// LookupExternalIDsForDownload keeps the download-aware service signature for callers,
+// but resolves IDs through the same parse/cache path as LookupExternalIDs.
+func (s *Service) LookupExternalIDsForDownload(ctx context.Context, title string, contentType ContentType, _ string) (*ExternalIDsResult, error) {
 	if title == "" {
 		return nil, errors.New("title cannot be empty")
 	}
@@ -106,28 +105,13 @@ func (s *Service) LookupExternalIDsForDownload(ctx context.Context, title string
 	defer s.maybeScheduleCacheCleanup()
 
 	titleHash := models.ComputeTitleHash(title)
-	downloadClientID = strings.TrimSpace(downloadClientID)
 
-	cacheResult, err := s.lookupCache(ctx, titleHash, title, contentType, downloadClientID)
+	cacheResult, err := s.lookupCache(ctx, titleHash, title, contentType)
 	if err != nil {
 		return nil, err
 	}
-	// Return cacheResult unless downloadClientID is set and cacheResult.IDs is positive (!IsEmpty()) but cacheResult.TitlesKnown is false; then refresh for titles.
-	if cacheResult != nil && (downloadClientID == "" || cacheResult.IDs == nil || cacheResult.IDs.IsEmpty() || cacheResult.TitlesKnown) {
-		return cacheResult, nil
-	}
 	if cacheResult != nil {
-		log.Debug().
-			Str("title", title).
-			Str("contentType", string(contentType)).
-			Msg("[ARR-LOOKUP] Positive cache hit has no title aliases, refreshing from ARR")
-		if err := s.cacheStore.Delete(ctx, titleHash, string(contentType)); err != nil {
-			log.Warn().Err(err).
-				Str("title", title).
-				Str("contentType", string(contentType)).
-				Msg("[ARR-LOOKUP] Failed to delete stale positive cache entry")
-		}
-		cacheResult = nil
+		return cacheResult, nil
 	}
 
 	// Cache miss - determine which ARR type(s) to query
@@ -138,13 +122,6 @@ func (s *Service) LookupExternalIDsForDownload(ctx context.Context, title string
 
 	if len(instances) == 0 {
 		return nil, nil
-	}
-
-	if downloadClientID != "" {
-		result := s.lookupExternalIDsFromDownload(ctx, titleHash, title, contentType, instances, downloadClientID)
-		if result != nil {
-			return result, nil
-		}
 	}
 
 	return s.lookupExternalIDsFromParse(ctx, titleHash, title, contentType, instances)
@@ -172,7 +149,7 @@ func (s *Service) enabledInstancesForContent(ctx context.Context, title string, 
 	return instances, nil
 }
 
-func (s *Service) lookupCache(ctx context.Context, titleHash, title string, contentType ContentType, downloadClientID string) (*ExternalIDsResult, error) {
+func (s *Service) lookupCache(ctx context.Context, titleHash, title string, contentType ContentType) (*ExternalIDsResult, error) {
 	cacheEntry, err := s.cacheStore.Get(ctx, titleHash, string(contentType))
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -184,13 +161,6 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 			Msg("[ARR-LOOKUP] Cache read error, proceeding as cache miss")
 	}
 	if err != nil || cacheEntry == nil {
-		return nil, nil
-	}
-	if cacheEntry.IsNegative && downloadClientID != "" {
-		log.Debug().
-			Str("title", title).
-			Str("contentType", string(contentType)).
-			Msg("[ARR-LOOKUP] Negative cache hit ignored for download ID lookup")
 		return nil, nil
 	}
 	if cacheEntry.IsNegative {
@@ -226,52 +196,6 @@ func (s *Service) lookupCache(ctx context.Context, titleHash, title string, cont
 		ContentType:   contentType,
 		Source:        "cache",
 	}, nil
-}
-
-func (s *Service) lookupExternalIDsFromDownload(ctx context.Context, titleHash, title string, contentType ContentType, instances []*models.ArrInstance, downloadClientID string) *ExternalIDsResult {
-	for _, instance := range instances {
-		client := s.clientForInstance(instance)
-		if client == nil {
-			continue
-		}
-		if result := s.lookupInstanceQueue(ctx, titleHash, title, contentType, instance, client, downloadClientID); result != nil {
-			return result
-		}
-		if result := s.lookupInstanceHistory(ctx, titleHash, title, contentType, instance, client, downloadClientID); result != nil {
-			return result
-		}
-	}
-	return nil
-}
-
-func (s *Service) lookupInstanceQueue(ctx context.Context, titleHash, title string, contentType ContentType, instance *models.ArrInstance, client *Client, downloadClientID string) *ExternalIDsResult {
-	result, err := client.QueueLookupResult(ctx, downloadClientID)
-	if err != nil {
-		log.Debug().Err(err).
-			Int("instanceId", instance.ID).
-			Str("instanceName", instance.Name).
-			Msg("[ARR-LOOKUP] Queue request failed")
-		return nil
-	}
-	if result == nil || result.IDs == nil || result.IDs.IsEmpty() {
-		return nil
-	}
-	return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, result, "queue")
-}
-
-func (s *Service) lookupInstanceHistory(ctx context.Context, titleHash, title string, contentType ContentType, instance *models.ArrInstance, client *Client, downloadClientID string) *ExternalIDsResult {
-	result, err := client.HistoryLookupResult(ctx, downloadClientID)
-	if err != nil {
-		log.Debug().Err(err).
-			Int("instanceId", instance.ID).
-			Str("instanceName", instance.Name).
-			Msg("[ARR-LOOKUP] History request failed")
-		return nil
-	}
-	if result == nil || result.IDs == nil || result.IDs.IsEmpty() {
-		return nil
-	}
-	return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, result, "history")
 }
 
 func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, title string, contentType ContentType, instances []*models.ArrInstance) (*ExternalIDsResult, error) {

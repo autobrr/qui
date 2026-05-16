@@ -246,7 +246,7 @@ func TestLookupARRExternalIDsMapsContentTypeAndPassesTorrentHash(t *testing.T) {
 				result: &arr.ExternalIDsResult{
 					IDs:         ids,
 					ContentType: tt.wantContentType,
-					Source:      "queue",
+					Source:      "parse",
 				},
 				err: tt.lookupErr,
 			}
@@ -281,7 +281,7 @@ func TestLookupARRExternalIDsPreservesTitleOnlyResult(t *testing.T) {
 			IDs:         &models.ExternalIDs{},
 			Titles:      titles,
 			ContentType: arr.ContentTypeAnime,
-			Source:      "queue",
+			Source:      "parse",
 		},
 	}
 	svc := &Service{arrService: spy}

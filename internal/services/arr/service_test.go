@@ -168,220 +168,33 @@ func TestService_LookupExternalIDsReturnsCacheCancellation(t *testing.T) {
 	}
 }
 
-func TestService_LookupExternalIDsForDownloadIgnoresNegativeCache(t *testing.T) {
+func TestService_LookupExternalIDsForDownloadUsesNegativeCache(t *testing.T) {
 	ctx := context.Background()
 	title := "Breaking Bad S01E01"
-	downloadID := "ABCDEF1234"
-	var parseCalled bool
 
 	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v3/queue":
-			_, _ = w.Write([]byte(`{
-				"records": [{
-					"downloadId": "abcdef1234",
-					"series": {
-						"tvdbId": 81189,
-						"tvMazeId": 169,
-						"tmdbId": 1396,
-						"imdbId": "tt0903747"
-					}
-				}]
-			}`))
-		case "/api/v3/history":
-			_, _ = w.Write([]byte(`{"records":[]}`))
-		case "/api/v3/parse":
-			parseCalled = true
-			_, _ = w.Write([]byte(`{"series": null}`))
-		default:
-			http.NotFound(w, r)
-		}
+		t.Fatalf("unexpected ARR request after negative cache hit: %s", r.URL.Path)
 	}))
 
 	titleHash := models.ComputeTitleHash(title)
 	require.NoError(t, cacheStore.Set(ctx, titleHash, string(ContentTypeTV), nil, nil, true, time.Hour))
 
-	result, err := service.LookupExternalIDsForDownload(ctx, title, ContentTypeTV, downloadID)
+	result, err := service.LookupExternalIDsForDownload(ctx, title, ContentTypeTV, "ABCDEF1234")
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, "queue", result.Source)
-	require.False(t, result.FromCache)
-	require.False(t, parseCalled)
-	require.Equal(t, &models.ExternalIDs{
-		TVDbID:   81189,
-		TVMazeID: 169,
-		TMDbID:   1396,
-		IMDbID:   "tt0903747",
-	}, result.IDs)
-
-	cacheEntry, err := cacheStore.Get(ctx, titleHash, string(ContentTypeTV))
-	require.NoError(t, err)
-	require.False(t, cacheEntry.IsNegative)
-	require.Equal(t, 81189, cacheEntry.ExternalIDs.TVDbID)
+	require.True(t, result.FromCache)
+	require.Equal(t, "cache", result.Source)
+	require.Nil(t, result.IDs)
 }
 
-func TestService_LookupExternalIDsForDownloadHydratesTitlesForPositiveCache(t *testing.T) {
-	ctx := context.Background()
-	title := "Haibara-kun no Tsuyokute Seishun New Game S01E01"
-	downloadID := "ABCDEF1234"
-	var queueCalls int
-	var parseCalled bool
-
-	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v3/queue":
-			queueCalls++
-			_, _ = w.Write([]byte(`{
-				"records": [{
-					"downloadId": "abcdef1234",
-					"series": {
-						"title": "Haibara's Teenage New Game+",
-						"alternateTitles": [
-							{"title": "Haibara-kun no Tsuyokute Seishun New Game"}
-						],
-						"tvdbId": 471000,
-						"tmdbId": 316424,
-						"imdbId": "tt39122622"
-					}
-				}]
-			}`))
-		case "/api/v3/history":
-			_, _ = w.Write([]byte(`{"records":[]}`))
-		case "/api/v3/parse":
-			parseCalled = true
-			_, _ = w.Write([]byte(`{"series": null}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-
-	titleHash := models.ComputeTitleHash(title)
-	require.NoError(t, cacheStore.Set(ctx, titleHash, string(ContentTypeTV), nil, &models.ExternalIDs{
-		TVDbID: 471000,
-		TMDbID: 316424,
-		IMDbID: "tt39122622",
-	}, false, time.Hour))
-
-	result, err := service.LookupExternalIDsForDownload(ctx, title, ContentTypeTV, downloadID)
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, "queue", result.Source)
-	require.False(t, result.FromCache)
-	require.False(t, parseCalled)
-	require.Equal(t, &models.ExternalIDs{
-		TVDbID: 471000,
-		TMDbID: 316424,
-		IMDbID: "tt39122622",
-	}, result.IDs)
-	require.Equal(t, []string{
-		"Haibara's Teenage New Game+",
-		"Haibara-kun no Tsuyokute Seishun New Game",
-	}, result.Titles)
-
-	cacheEntry, err := cacheStore.Get(ctx, titleHash, string(ContentTypeTV))
-	require.NoError(t, err)
-	require.True(t, cacheEntry.HasTitles)
-	require.Equal(t, result.Titles, cacheEntry.Titles)
-
-	cachedResult, err := service.LookupExternalIDsForDownload(ctx, title, ContentTypeTV, downloadID)
-	require.NoError(t, err)
-	require.NotNil(t, cachedResult)
-	require.True(t, cachedResult.FromCache)
-	require.Equal(t, "cache", cachedResult.Source)
-	require.Equal(t, result.Titles, cachedResult.Titles)
-	require.Equal(t, 1, queueCalls)
-}
-
-func TestService_LookupExternalIDsForDownloadRefreshesPositiveCacheThroughParse(t *testing.T) {
-	ctx := context.Background()
-	title := "Haibara-kun no Tsuyokute Seishun New Game S01E01"
-	downloadID := "ABCDEF1234"
-	var parseCalled bool
-
-	service, cacheStore := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v3/queue":
-			_, _ = w.Write([]byte(`{"records":[]}`))
-		case "/api/v3/history":
-			_, _ = w.Write([]byte(`{"records":[]}`))
-		case "/api/v3/parse":
-			parseCalled = true
-			_, _ = w.Write([]byte(`{
-				"series": {
-					"title": "Haibara's Teenage New Game+",
-					"alternateTitles": [
-						{"title": "Haibara-kun no Tsuyokute Seishun New Game"}
-					],
-					"tvdbId": 471000,
-					"tmdbId": 316424,
-					"imdbId": "tt39122622"
-				}
-			}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-
-	titleHash := models.ComputeTitleHash(title)
-	require.NoError(t, cacheStore.Set(ctx, titleHash, string(ContentTypeTV), nil, &models.ExternalIDs{
-		TVDbID: 471000,
-		TMDbID: 316424,
-		IMDbID: "tt39122622",
-	}, false, time.Hour))
-
-	result, err := service.LookupExternalIDsForDownload(ctx, title, ContentTypeTV, downloadID)
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.True(t, parseCalled)
-	require.Equal(t, "parse", result.Source)
-	require.False(t, result.FromCache)
-	require.Equal(t, []string{
-		"Haibara's Teenage New Game+",
-		"Haibara-kun no Tsuyokute Seishun New Game",
-	}, result.Titles)
-}
-
-func TestService_LookupExternalIDsForDownloadUsesHistoryAfterQueueMiss(t *testing.T) {
+func TestService_LookupExternalIDsForDownloadUsesParseOnly(t *testing.T) {
 	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeRadarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/v3/queue":
-			_, _ = w.Write([]byte(`{"records":[]}`))
-		case "/api/v3/history":
-			assert.Equal(t, "HASH", r.URL.Query().Get("downloadId"))
-			_, _ = w.Write([]byte(`{
-				"records": [{
-					"downloadId": "HASH",
-					"eventType": "grabbed",
-					"movie": {"tmdbId": 27205, "imdbId": "tt1375666"}
-				}]
-			}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-
-	result, err := service.LookupExternalIDsForDownload(context.Background(), "Inception", ContentTypeMovie, "HASH")
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, "history", result.Source)
-	require.Equal(t, &models.ExternalIDs{TMDbID: 27205, IMDbID: "tt1375666"}, result.IDs)
-}
-
-func TestService_LookupExternalIDsForDownloadFallsBackToParse(t *testing.T) {
-	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeRadarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v3/queue":
-			_, _ = w.Write([]byte(`{"records":[]}`))
-		case "/api/v3/history":
-			_, _ = w.Write([]byte(`{"records":[]}`))
 		case "/api/v3/parse":
 			_, _ = w.Write([]byte(`{"movie": {"tmdbId": 27205, "imdbId": "tt1375666"}}`))
 		default:
-			http.NotFound(w, r)
+			t.Fatalf("unexpected ARR request: %s", r.URL.Path)
 		}
 	}))
 

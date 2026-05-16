@@ -87,52 +87,6 @@ type ExternalIDsLookupResult struct {
 	Titles []string
 }
 
-// SonarrQueueResponse represents the fields used from Sonarr's queue endpoint.
-type SonarrQueueResponse struct {
-	Records []SonarrQueueItem `json:"records"`
-}
-
-// SonarrQueueItem contains the download ID and embedded series from Sonarr queue.
-type SonarrQueueItem struct {
-	DownloadID string        `json:"downloadId"`
-	Series     *SonarrSeries `json:"series"`
-}
-
-// SonarrHistoryResponse represents the fields used from Sonarr's history endpoint.
-type SonarrHistoryResponse struct {
-	Records []SonarrHistoryItem `json:"records"`
-}
-
-// SonarrHistoryItem contains the download ID, event type, and embedded series from Sonarr history.
-type SonarrHistoryItem struct {
-	DownloadID string        `json:"downloadId"`
-	EventType  string        `json:"eventType"`
-	Series     *SonarrSeries `json:"series"`
-}
-
-// RadarrQueueResponse represents the fields used from Radarr's queue endpoint.
-type RadarrQueueResponse struct {
-	Records []RadarrQueueItem `json:"records"`
-}
-
-// RadarrQueueItem contains the download ID and embedded movie from Radarr queue.
-type RadarrQueueItem struct {
-	DownloadID string       `json:"downloadId"`
-	Movie      *RadarrMovie `json:"movie"`
-}
-
-// RadarrHistoryResponse represents the fields used from Radarr's history endpoint.
-type RadarrHistoryResponse struct {
-	Records []RadarrHistoryItem `json:"records"`
-}
-
-// RadarrHistoryItem contains the download ID, event type, and embedded movie from Radarr history.
-type RadarrHistoryItem struct {
-	DownloadID string       `json:"downloadId"`
-	EventType  string       `json:"eventType"`
-	Movie      *RadarrMovie `json:"movie"`
-}
-
 // ExtractExternalIDs extracts external IDs from a Sonarr parse response
 func (r *SonarrParseResponse) ExtractExternalIDs() *models.ExternalIDs {
 	result := r.ExtractLookupResult()

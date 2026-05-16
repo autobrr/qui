@@ -150,117 +150,6 @@ func (c *Client) ParseTitleLookupResult(ctx context.Context, title string) (*Ext
 	}
 }
 
-// QueueExternalIDs resolves external IDs from ARR queue records by download client ID.
-func (c *Client) QueueExternalIDs(ctx context.Context, downloadID string) (*models.ExternalIDs, error) {
-	result, err := c.QueueLookupResult(ctx, downloadID)
-	if result == nil {
-		return nil, err
-	}
-	return result.IDs, err
-}
-
-// QueueLookupResult resolves external IDs and title aliases from ARR queue records by download client ID.
-func (c *Client) QueueLookupResult(ctx context.Context, downloadID string) (*ExternalIDsLookupResult, error) {
-	switch c.instanceType {
-	case models.ArrInstanceTypeSonarr:
-		return c.sonarrQueueExternalIDs(ctx, downloadID)
-	case models.ArrInstanceTypeRadarr:
-		return c.radarrQueueExternalIDs(ctx, downloadID)
-	default:
-		return nil, fmt.Errorf("unsupported instance type: %s", c.instanceType)
-	}
-}
-
-// HistoryExternalIDs resolves external IDs from ARR history records by download client ID.
-func (c *Client) HistoryExternalIDs(ctx context.Context, downloadID string) (*models.ExternalIDs, error) {
-	result, err := c.HistoryLookupResult(ctx, downloadID)
-	if result == nil {
-		return nil, err
-	}
-	return result.IDs, err
-}
-
-// HistoryLookupResult resolves external IDs and title aliases from ARR history records by download client ID.
-func (c *Client) HistoryLookupResult(ctx context.Context, downloadID string) (*ExternalIDsLookupResult, error) {
-	switch c.instanceType {
-	case models.ArrInstanceTypeSonarr:
-		return c.sonarrHistoryExternalIDs(ctx, downloadID)
-	case models.ArrInstanceTypeRadarr:
-		return c.radarrHistoryExternalIDs(ctx, downloadID)
-	default:
-		return nil, fmt.Errorf("unsupported instance type: %s", c.instanceType)
-	}
-}
-
-func (c *Client) sonarrQueueExternalIDs(ctx context.Context, downloadID string) (*ExternalIDsLookupResult, error) {
-	// Queue lookup intentionally checks only the first page: it is a best-effort downloadID match for ARR titles before history/parse fallback.
-	var queue SonarrQueueResponse
-	if err := c.getJSON(ctx, "/api/v3/queue", sonarrQueueParams(), &queue); err != nil {
-		return nil, err
-	}
-
-	for _, item := range queue.Records {
-		if downloadIDsEqual(item.DownloadID, downloadID) {
-			if result := c.sonarrSeriesLookupResult(ctx, item.Series); result != nil && result.IDs != nil {
-				return result, nil
-			}
-		}
-	}
-	return nil, nil
-}
-
-func (c *Client) radarrQueueExternalIDs(ctx context.Context, downloadID string) (*ExternalIDsLookupResult, error) {
-	var queue RadarrQueueResponse
-	if err := c.getJSON(ctx, "/api/v3/queue", radarrQueueParams(), &queue); err != nil {
-		return nil, err
-	}
-
-	for _, item := range queue.Records {
-		if downloadIDsEqual(item.DownloadID, downloadID) {
-			if result := lookupResultFromRadarrMovie(item.Movie); result != nil && result.IDs != nil {
-				return result, nil
-			}
-		}
-	}
-	return nil, nil
-}
-
-func (c *Client) sonarrHistoryExternalIDs(ctx context.Context, downloadID string) (*ExternalIDsLookupResult, error) {
-	var history SonarrHistoryResponse
-	if err := c.getJSON(ctx, "/api/v3/history", sonarrHistoryParams(downloadID), &history); err != nil {
-		return nil, err
-	}
-	return c.sonarrHistoryIDs(ctx, history.Records, downloadID), nil
-}
-
-func (c *Client) radarrHistoryExternalIDs(ctx context.Context, downloadID string) (*ExternalIDsLookupResult, error) {
-	var history RadarrHistoryResponse
-	if err := c.getJSON(ctx, "/api/v3/history", radarrHistoryParams(downloadID), &history); err != nil {
-		return nil, err
-	}
-	return radarrHistoryIDs(history.Records, downloadID), nil
-}
-
-func (c *Client) sonarrHistoryIDs(ctx context.Context, records []SonarrHistoryItem, downloadID string) *ExternalIDsLookupResult {
-	var fallback *ExternalIDsLookupResult
-
-	for _, item := range records {
-		if downloadIDsEqual(item.DownloadID, downloadID) {
-			result := c.sonarrSeriesLookupResult(ctx, item.Series)
-			if result == nil || result.IDs == nil {
-				continue
-			}
-			if usefulSonarrHistoryEvent(item.EventType) {
-				return result
-			}
-			if fallback == nil {
-				fallback = result
-			}
-		}
-	}
-	return fallback
-}
-
 func (c *Client) sonarrSeriesLookupResult(ctx context.Context, series *SonarrSeries) *ExternalIDsLookupResult {
 	result := lookupResultFromSonarrSeries(series)
 	if series == nil || series.ID <= 0 {
@@ -331,24 +220,6 @@ func mergeExternalIDs(base, hydrated *models.ExternalIDs) *models.ExternalIDs {
 	return &ids
 }
 
-func radarrHistoryIDs(records []RadarrHistoryItem, downloadID string) *ExternalIDsLookupResult {
-	for _, item := range records {
-		if downloadIDsEqual(item.DownloadID, downloadID) && usefulRadarrHistoryEvent(item.EventType) {
-			if result := lookupResultFromRadarrMovie(item.Movie); result != nil && result.IDs != nil {
-				return result
-			}
-		}
-	}
-	for _, item := range records {
-		if downloadIDsEqual(item.DownloadID, downloadID) {
-			if result := lookupResultFromRadarrMovie(item.Movie); result != nil && result.IDs != nil {
-				return result
-			}
-		}
-	}
-	return nil
-}
-
 func (c *Client) getJSON(ctx context.Context, path string, params url.Values, target any) error {
 	u, err := url.Parse(c.baseURL + path)
 	if err != nil {
@@ -379,64 +250,6 @@ func (c *Client) getJSON(ctx context.Context, path string, params url.Values, ta
 		return fmt.Errorf("failed to decode response: %w", err)
 	}
 	return nil
-}
-
-func sonarrQueueParams() url.Values {
-	params := url.Values{}
-	params.Set("includeSeries", "true")
-	params.Set("includeEpisode", "true")
-	params.Set("pageSize", "100")
-	return params
-}
-
-func radarrQueueParams() url.Values {
-	params := url.Values{}
-	params.Set("includeMovie", "true")
-	params.Set("pageSize", "100")
-	return params
-}
-
-func sonarrHistoryParams(downloadID string) url.Values {
-	params := historyParams(downloadID)
-	params.Set("includeSeries", "true")
-	return params
-}
-
-func radarrHistoryParams(downloadID string) url.Values {
-	params := historyParams(downloadID)
-	params.Set("includeMovie", "true")
-	return params
-}
-
-func historyParams(downloadID string) url.Values {
-	params := url.Values{}
-	params.Set("downloadId", downloadID)
-	params.Set("pageSize", "100")
-	params.Set("sortKey", "date")
-	params.Set("sortDirection", "descending")
-	return params
-}
-
-func downloadIDsEqual(got, want string) bool {
-	return strings.EqualFold(strings.TrimSpace(got), strings.TrimSpace(want))
-}
-
-func usefulSonarrHistoryEvent(eventType string) bool {
-	switch strings.TrimSpace(eventType) {
-	case "grabbed", "downloadFolderImported", "seriesFolderImported":
-		return true
-	default:
-		return false
-	}
-}
-
-func usefulRadarrHistoryEvent(eventType string) bool {
-	switch strings.TrimSpace(eventType) {
-	case "grabbed", "downloadFolderImported", "movieFolderImported":
-		return true
-	default:
-		return false
-	}
 }
 
 // parseSonarrResponse parses a Sonarr parse response and extracts external IDs
