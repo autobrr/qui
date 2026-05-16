@@ -57,7 +57,6 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
       <>
         <TorrentCardsMobile
           {...memoizedProps}
-          onFilterChange={allowCrossSeedSearch ? props.onFilterChange : undefined}
           canCrossSeedSearch={allowCrossSeedSearch ? crossSeed.canCrossSeedSearch : false}
           onCrossSeedSearch={allowCrossSeedSearch ? crossSeed.openCrossSeedSearch : undefined}
           isCrossSeedSearching={allowCrossSeedSearch ? crossSeed.isCrossSeedSearching : false}
@@ -73,7 +72,6 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
         readOnly={readOnly}
         onSelectionChange={updateSelection}
         onResetSelection={setResetHandler}
-        onFilterChange={allowCrossSeedSearch ? props.onFilterChange : undefined}
         canCrossSeedSearch={allowCrossSeedSearch ? crossSeed.canCrossSeedSearch : false}
         onCrossSeedSearch={allowCrossSeedSearch ? crossSeed.openCrossSeedSearch : undefined}
         isCrossSeedSearching={allowCrossSeedSearch ? crossSeed.isCrossSeedSearching : false}

@@ -486,7 +486,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 Search Cross-Seeds
               </ContextMenuItem>
             )}
-            {onFilterChange && (
+            {onFilterChange && supportsInstanceScopedActions && (
               <ContextMenuItem
                 onClick={handleFilterCrossSeeds}
                 disabled={isPending || isFilteringCrossSeeds || count > 1}
@@ -501,7 +501,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 {isFilteringCrossSeeds && <span className="ml-1 text-xs text-muted-foreground">...</span>}
               </ContextMenuItem>
             )}
-            {(canCrossSeedSearch || onFilterChange) && <ContextMenuSeparator />}
+            {(canCrossSeedSearch || (onFilterChange && supportsInstanceScopedActions)) && <ContextMenuSeparator />}
             <ContextMenuItem
               onClick={() => onPrepareTags(hashes, torrents)}
               disabled={isPending}
