@@ -193,6 +193,23 @@ func (r *RadarrParseResponse) ExtractLookupResult() *ExternalIDsLookupResult {
 	}
 }
 
+func lookupResultFromRadarrMovie(movie *RadarrMovie) *ExternalIDsLookupResult {
+	if movie == nil {
+		return nil
+	}
+
+	ids := externalIDsFromRadarrMovie(movie)
+	titles := titlesFromMovie(movie)
+	if ids == nil && len(titles) == 0 {
+		return nil
+	}
+
+	return &ExternalIDsLookupResult{
+		IDs:    ids,
+		Titles: titles,
+	}
+}
+
 func externalIDsFromRadarrMovie(movie *RadarrMovie) *models.ExternalIDs {
 	if movie == nil {
 		return nil

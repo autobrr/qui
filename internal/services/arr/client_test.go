@@ -263,6 +263,88 @@ func TestClient_ParseTitleLookupResult_SonarrHydratesSeriesTitles(t *testing.T) 
 	require.Equal(t, 1, seriesCalls)
 }
 
+func TestClient_ParseTitleLookupResult_RadarrHydratesMovieTitles(t *testing.T) {
+	movieCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{
+				"title": "Rurouni Kenshin Part I Origins 2012",
+				"movie": {
+					"id": 456,
+					"title": "Rurouni Kenshin Part I: Origins",
+					"tmdbId": 127533,
+					"imdbId": "tt1979319"
+				}
+			}`))
+		case "/api/v3/movie/456":
+			movieCalls++
+			_, _ = w.Write([]byte(`{
+				"id": 456,
+				"title": "Rurouni Kenshin Part I: Origins",
+				"originalTitle": "Rurouni Kenshin",
+				"alternateTitles": [
+					{"title": "Rurouni Kenshin: Origins"},
+					{"title": "Samurai X: Origins"}
+				],
+				"tmdbId": 127533,
+				"imdbId": "tt1979319"
+			}`))
+		default:
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeRadarr, 15)
+	result, err := client.ParseTitleLookupResult(context.Background(), "Test Title")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, &models.ExternalIDs{TMDbID: 127533, IMDbID: "tt1979319"}, result.IDs)
+	require.Equal(t, []string{
+		"Rurouni Kenshin Part I: Origins",
+		"Rurouni Kenshin",
+		"Rurouni Kenshin: Origins",
+		"Samurai X: Origins",
+	}, result.Titles)
+	require.Equal(t, 1, movieCalls)
+}
+
+func TestClient_ParseTitleLookupResult_RadarrFallsBackWhenMovieHydrationFails(t *testing.T) {
+	movieCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{
+				"title": "Inception 2010",
+				"movie": {
+					"id": 456,
+					"title": "Inception",
+					"originalTitle": "Inception",
+					"tmdbId": 27205,
+					"imdbId": "tt1375666"
+				}
+			}`))
+		case "/api/v3/movie/456":
+			movieCalls++
+			http.Error(w, "server error", http.StatusInternalServerError)
+		default:
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeRadarr, 15)
+	result, err := client.ParseTitleLookupResult(context.Background(), "Test Title")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, &models.ExternalIDs{TMDbID: 27205, IMDbID: "tt1375666"}, result.IDs)
+	require.Equal(t, []string{"Inception"}, result.Titles)
+	require.Equal(t, 1, movieCalls)
+}
+
 func TestClient_ParseTitle_Radarr(t *testing.T) {
 	tests := []struct {
 		name         string

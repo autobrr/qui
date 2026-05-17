@@ -144,7 +144,7 @@ func (c *Client) ParseTitleLookupResult(ctx context.Context, title string) (*Ext
 	case models.ArrInstanceTypeSonarr:
 		return c.parseSonarrResponse(ctx, resp.Body)
 	case models.ArrInstanceTypeRadarr:
-		return c.parseRadarrResponse(resp.Body)
+		return c.parseRadarrResponse(ctx, resp.Body)
 	default:
 		return nil, fmt.Errorf("unsupported instance type: %s", c.instanceType)
 	}
@@ -170,6 +170,32 @@ func (c *Client) sonarrSeriesByID(ctx context.Context, id int) (*SonarrSeries, e
 		return nil, err
 	}
 	return &series, nil
+}
+
+func (c *Client) radarrMovieLookupResult(ctx context.Context, parseResp *RadarrParseResponse) *ExternalIDsLookupResult {
+	if parseResp == nil {
+		return nil
+	}
+
+	result := parseResp.ExtractLookupResult()
+	if parseResp.Movie == nil || parseResp.Movie.ID <= 0 {
+		return result
+	}
+
+	fullMovie, err := c.radarrMovieByID(ctx, parseResp.Movie.ID)
+	if err != nil {
+		return result
+	}
+
+	return mergeLookupResults(result, lookupResultFromRadarrMovie(fullMovie))
+}
+
+func (c *Client) radarrMovieByID(ctx context.Context, id int) (*RadarrMovie, error) {
+	var movie RadarrMovie
+	if err := c.getJSON(ctx, fmt.Sprintf("/api/v3/movie/%d", id), nil, &movie); err != nil {
+		return nil, err
+	}
+	return &movie, nil
 }
 
 func mergeLookupResults(base, hydrated *ExternalIDsLookupResult) *ExternalIDsLookupResult {
@@ -263,13 +289,13 @@ func (c *Client) parseSonarrResponse(ctx context.Context, body io.Reader) (*Exte
 }
 
 // parseRadarrResponse parses a Radarr parse response and extracts external IDs
-func (c *Client) parseRadarrResponse(body io.Reader) (*ExternalIDsLookupResult, error) {
+func (c *Client) parseRadarrResponse(ctx context.Context, body io.Reader) (*ExternalIDsLookupResult, error) {
 	var parseResp RadarrParseResponse
 	if err := json.NewDecoder(body).Decode(&parseResp); err != nil {
 		return nil, fmt.Errorf("failed to decode Radarr parse response: %w", err)
 	}
 
-	return parseResp.ExtractLookupResult(), nil
+	return c.radarrMovieLookupResult(ctx, &parseResp), nil
 }
 
 // setHeaders sets the required headers for ARR API requests
