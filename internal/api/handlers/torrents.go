@@ -34,8 +34,8 @@ import (
 
 // torrentAdder is the interface for adding torrents (used for testing)
 type torrentAdder interface {
-	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
-	AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error
+	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
+	AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error)
 	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 }
 
@@ -112,7 +112,7 @@ func NewTorrentsHandlerForTesting(adder torrentAdder, downloader torrentDownload
 }
 
 // addTorrent wraps the torrent addition to support both production and test modes
-func (h *TorrentsHandler) addTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
+func (h *TorrentsHandler) addTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	if h.torrentAdder != nil {
 		return h.torrentAdder.AddTorrent(ctx, instanceID, fileContent, options)
 	}
@@ -120,7 +120,7 @@ func (h *TorrentsHandler) addTorrent(ctx context.Context, instanceID int, fileCo
 }
 
 // addTorrentFromURLs wraps URL-based torrent addition to support both production and test modes
-func (h *TorrentsHandler) addTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error {
+func (h *TorrentsHandler) addTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	if h.torrentAdder != nil {
 		return h.torrentAdder.AddTorrentFromURLs(ctx, instanceID, urls, options)
 	}
@@ -892,7 +892,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 
-			if err := h.addTorrent(ctx, instanceID, fileContent, options); err != nil {
+			if _, err := h.addTorrent(ctx, instanceID, fileContent, options); err != nil {
 				if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 					return
 				}
@@ -937,7 +937,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 
 				// Magnet links can be added directly to qBittorrent
 				if strings.HasPrefix(strings.ToLower(url), "magnet:") {
-					if err := h.addTorrentFromURLs(ctx, instanceID, []string{url}, options); err != nil {
+					if _, err := h.addTorrentFromURLs(ctx, instanceID, []string{url}, options); err != nil {
 						if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 							return
 						}
@@ -960,7 +960,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					var magnetErr *jackett.MagnetDownloadError
 					if errors.As(err, &magnetErr) && magnetErr.MagnetURL != "" {
 						magnetURL := strings.TrimSpace(magnetErr.MagnetURL)
-						if err := h.addTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options); err != nil {
+						if _, err := h.addTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options); err != nil {
 							if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 								return
 							}
@@ -981,7 +981,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				}
 
 				// Add torrent from downloaded file content
-				if err := h.addTorrent(ctx, instanceID, torrentBytes, options); err != nil {
+				if _, err := h.addTorrent(ctx, instanceID, torrentBytes, options); err != nil {
 					if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 						return
 					}
@@ -1000,7 +1000,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// No indexer_id - use URL method directly
 			// (works for local qBittorrent instances or magnet links)
-			if err := h.addTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
+			if _, err := h.addTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
 				if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 					return
 				}
@@ -2408,7 +2408,7 @@ func (h *TorrentsHandler) SetTorrentFilePriority(w http.ResponseWriter, r *http.
 		switch {
 		case errors.Is(err, qbt.ErrInvalidPriority):
 			RespondError(w, http.StatusBadRequest, "Invalid priority or file indices")
-		case errors.Is(err, qbt.ErrTorrentMetdataNotDownloadedYet):
+		case errors.Is(err, qbt.ErrTorrentMetadataNotDownloadedYet):
 			RespondError(w, http.StatusConflict, "Torrent metadata is not yet available. Try again once metadata has downloaded.")
 		default:
 			log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to update torrent file priority")

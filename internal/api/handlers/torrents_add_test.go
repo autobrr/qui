@@ -42,22 +42,22 @@ type addTorrentFromURLsCall struct {
 	options    map[string]string
 }
 
-func (m *mockSyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
+func (m *mockSyncManager) AddTorrent(_ context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addTorrentCalls = append(m.addTorrentCalls, addTorrentCall{
 		instanceID:  instanceID,
 		fileContent: fileContent,
 		options:     options,
 	})
-	return m.addTorrentErr
+	return nil, m.addTorrentErr
 }
 
-func (m *mockSyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error {
+func (m *mockSyncManager) AddTorrentFromURLs(_ context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addTorrentFromURLsCalls = append(m.addTorrentFromURLsCalls, addTorrentFromURLsCall{
 		instanceID: instanceID,
 		urls:       urls,
 		options:    options,
 	})
-	return m.addTorrentFromURLsErr
+	return nil, m.addTorrentFromURLsErr
 }
 
 // mockJackettService implements the DownloadTorrent method for testing
@@ -74,8 +74,8 @@ func (m *mockJackettService) DownloadTorrent(ctx context.Context, req jackett.To
 
 // syncManagerAdapter wraps mockSyncManager to match the interface expected by TorrentsHandler
 type syncManagerAdapter interface {
-	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
-	AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error
+	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
+	AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error)
 }
 
 // jackettServiceAdapter wraps mockJackettService to match the interface expected by TorrentsHandler
@@ -103,7 +103,7 @@ func addTorrentWithIndexer(
 
 			// Magnet links can be added directly to qBittorrent
 			if strings.HasPrefix(strings.ToLower(url), "magnet:") {
-				if err := syncManager.AddTorrentFromURLs(ctx, instanceID, []string{url}, options); err != nil {
+				if _, err := syncManager.AddTorrentFromURLs(ctx, instanceID, []string{url}, options); err != nil {
 					failedCount++
 					lastError = err
 				} else {
@@ -121,7 +121,7 @@ func addTorrentWithIndexer(
 				var magnetErr *jackett.MagnetDownloadError
 				if errors.As(err, &magnetErr) && magnetErr.MagnetURL != "" {
 					magnetURL := strings.TrimSpace(magnetErr.MagnetURL)
-					if err := syncManager.AddTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options); err != nil {
+					if _, err := syncManager.AddTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options); err != nil {
 						failedCount++
 						lastError = err
 					} else {
@@ -135,7 +135,7 @@ func addTorrentWithIndexer(
 			}
 
 			// Add torrent from downloaded file content
-			if err := syncManager.AddTorrent(ctx, instanceID, torrentBytes, options); err != nil {
+			if _, err := syncManager.AddTorrent(ctx, instanceID, torrentBytes, options); err != nil {
 				failedCount++
 				lastError = err
 			} else {
@@ -144,7 +144,7 @@ func addTorrentWithIndexer(
 		}
 	} else {
 		// No indexer_id or no jackett service - use URL method directly
-		if err := syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
+		if _, err := syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
 			return 0, len(urls), err
 		}
 		addedCount = len(urls)
@@ -918,22 +918,22 @@ type fullMockSyncManager struct {
 	addTorrentFromURLsErr   error
 }
 
-func (m *fullMockSyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
+func (m *fullMockSyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addTorrentCalls = append(m.addTorrentCalls, addTorrentCall{
 		instanceID:  instanceID,
 		fileContent: fileContent,
 		options:     options,
 	})
-	return m.addTorrentErr
+	return nil, m.addTorrentErr
 }
 
-func (m *fullMockSyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error {
+func (m *fullMockSyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addTorrentFromURLsCalls = append(m.addTorrentFromURLsCalls, addTorrentFromURLsCall{
 		instanceID: instanceID,
 		urls:       urls,
 		options:    options,
 	})
-	return m.addTorrentFromURLsErr
+	return nil, m.addTorrentFromURLsErr
 }
 
 func (m *fullMockSyncManager) GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
