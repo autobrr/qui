@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/base64"
 	"maps"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -144,6 +145,22 @@ func defaultSettings(enabled bool, threshold float64) func(context.Context) (*mo
 			SeasonPackCoverageThreshold: threshold,
 		}, nil
 	}
+}
+
+func TestSelectSeasonPackBaseDir_ValidatesSingleDirAgainstSources(t *testing.T) {
+	baseDir := filepath.Join(t.TempDir(), "not-a-directory")
+	require.NoError(t, os.WriteFile(baseDir, []byte("file"), 0o600))
+	sourcePath := filepath.Join(t.TempDir(), "episode.mkv")
+	require.NoError(t, os.WriteFile(sourcePath, []byte("episode"), 0o600))
+
+	localFiles := map[episodeIdentity]seasonPackLocalFile{
+		{series: 1, episode: 1}: {sourcePath: sourcePath},
+	}
+
+	selected, err := selectSeasonPackBaseDir(baseDir, localFiles)
+
+	require.ErrorIs(t, err, errLayoutMismatch)
+	require.Empty(t, selected)
 }
 
 func TestCheckSeasonPackWebhook_ReturnsReadyWhenCoveragePasses(t *testing.T) {
@@ -1078,6 +1095,62 @@ func TestApplySeasonPackWebhook_RejectsSizeMismatchedEpisodeFiles(t *testing.T) 
 	require.False(t, resp.Applied)
 	require.Equal(t, "layout_mismatch", resp.Reason)
 	require.Empty(t, sm.addCalls)
+}
+
+func TestApplySeasonPackWebhook_TriesNextEpisodeCandidateAfterValidationFailure(t *testing.T) {
+	fix := newSeasonPackFixture(t)
+	sourceDir := t.TempDir()
+	baseDir := filepath.Join(sourceDir, "links")
+
+	for _, name := range fix.packFiles {
+		require.NoError(t, os.WriteFile(filepath.Join(sourceDir, name), []byte("episode"), 0o600))
+	}
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          baseDir,
+	}
+
+	contentPath := func(fileName string) string {
+		return filepath.Join(sourceDir, fileName)
+	}
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: contentPath(fix.packFiles[0]), Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: contentPath(fix.packFiles[1]), Progress: 1.0},
+		{Hash: "e03bad", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: contentPath(fix.packFiles[2]), Progress: 1.0},
+		{Hash: "e03good", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: contentPath(fix.packFiles[2]), Progress: 1.0},
+		{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: contentPath(fix.packFiles[3]), Progress: 1.0},
+	}
+
+	baseSM := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+	files := seasonPackEpisodeFiles(t, fix.torrentData, "e01", "e02", "e03bad", "e04")
+	files[normalizeHash("e03good")] = append(qbt.TorrentFiles(nil), files[normalizeHash("e03bad")]...)
+	files[normalizeHash("e03bad")][0].Size++
+	baseSM.files = files
+	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
+
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 1.0),
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+	}
+
+	resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+		TorrentName: fix.packName,
+		TorrentData: fix.torrentData,
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.Applied)
+	require.Len(t, sm.addCalls, 1)
 }
 
 func TestApplySeasonPackWebhook_RejectsUnsafePieceBoundariesInHardlinkMode(t *testing.T) {

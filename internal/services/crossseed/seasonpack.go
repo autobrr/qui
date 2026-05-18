@@ -456,14 +456,17 @@ func (s *Service) assembleSeasonPack(
 		return nil, nil, nil, fmt.Errorf("link_failed: %w", err)
 	}
 
-	episodes := s.matchEpisodesDetailed(cached, prep.packRelease, prep.packEpisodes, prep.settings)
-	if len(episodes) < winner.MatchedEpisodes {
+	candidates := s.matchEpisodeCandidatesDetailed(cached, prep.packRelease, prep.packEpisodes, prep.settings)
+	if len(candidates) < winner.MatchedEpisodes {
 		return nil, nil, nil, fmt.Errorf("%w: episode count drifted during apply", errLayoutMismatch)
 	}
 
-	localFiles, err := s.resolveSeasonPackLocalFiles(ctx, inst.ID, episodes)
+	episodes, localFiles, err := s.resolveSeasonPackLocalFilesForCandidates(ctx, inst.ID, candidates, prep.meta.Files, prep.packRelease, prep.settings)
 	if err != nil {
 		return nil, nil, nil, err
+	}
+	if len(episodes) < winner.MatchedEpisodes {
+		return nil, nil, nil, fmt.Errorf("%w: episode file validation drifted during apply", errLayoutMismatch)
 	}
 
 	selectedBaseDir, err := selectSeasonPackBaseDir(inst.HardlinkBaseDir, localFiles)
@@ -507,13 +510,20 @@ func selectSeasonPackBaseDir(configuredDirs string, localFiles map[episodeIdenti
 	if len(dirs) == 0 {
 		return "", fmt.Errorf("%w: hardlink base dir not configured", errLayoutMismatch)
 	}
-	if len(dirs) == 1 {
-		return dirs[0], nil
-	}
 
 	sourcePaths := seasonPackSourcePaths(localFiles)
 	if len(sourcePaths) == 0 {
 		return "", fmt.Errorf("%w: no resolved episode files for base dir selection", errLayoutMismatch)
+	}
+	if len(dirs) == 1 {
+		matchesAllSources, err := seasonPackBaseDirMatchesAllSources(dirs[0], sourcePaths)
+		if err != nil {
+			return "", fmt.Errorf("%w: no base directory on same filesystem as season pack sources (last error: %w)", errLayoutMismatch, err)
+		}
+		if matchesAllSources {
+			return dirs[0], nil
+		}
+		return "", fmt.Errorf("%w: no base directory on same filesystem as season pack sources", errLayoutMismatch)
 	}
 
 	var lastErr error
@@ -552,6 +562,12 @@ func seasonPackBaseDirMatchesAllSources(dir string, sourcePaths []string) (bool,
 
 	for _, sourcePath := range sourcePaths {
 		sameFS, err := fsutil.SameFilesystem(sourcePath, dir)
+		if err != nil && errors.Is(err, os.ErrNotExist) {
+			existingParent := nearestExistingParent(sourcePath)
+			if existingParent != "" {
+				sameFS, err = fsutil.SameFilesystem(existingParent, dir)
+			}
+		}
 		if err != nil {
 			return false, fmt.Errorf("failed to check filesystem for %s: %w", dir, err)
 		}
@@ -560,6 +576,19 @@ func seasonPackBaseDirMatchesAllSources(dir string, sourcePaths []string) (bool,
 		}
 	}
 	return true, nil
+}
+
+func nearestExistingParent(path string) string {
+	for dir := filepath.Dir(path); dir != "." && dir != ""; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(dir); err == nil {
+			return dir
+		}
+		next := filepath.Dir(dir)
+		if next == dir {
+			break
+		}
+	}
+	return ""
 }
 
 func parseSeasonPackBaseDirs(configuredDirs string) []string {
@@ -935,7 +964,24 @@ func (s *Service) matchEpisodesDetailed(
 	packEpisodes map[episodeIdentity]struct{},
 	settings *models.CrossSeedAutomationSettings,
 ) map[episodeIdentity]episodeMatch {
-	matched := make(map[episodeIdentity]episodeMatch)
+	candidates := s.matchEpisodeCandidatesDetailed(cached, packRelease, packEpisodes, settings)
+	matched := make(map[episodeIdentity]episodeMatch, len(candidates))
+	for id, episodeCandidates := range candidates {
+		if len(episodeCandidates) > 0 {
+			matched[id] = episodeCandidates[0]
+		}
+	}
+
+	return matched
+}
+
+func (s *Service) matchEpisodeCandidatesDetailed(
+	cached []qbittorrent.CrossInstanceTorrentView,
+	packRelease *rls.Release,
+	packEpisodes map[episodeIdentity]struct{},
+	settings *models.CrossSeedAutomationSettings,
+) map[episodeIdentity][]episodeMatch {
+	candidates := make(map[episodeIdentity][]episodeMatch)
 	matcher := s
 	if matcher.stringNormalizer == nil {
 		matcher = &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
@@ -970,78 +1016,172 @@ func (s *Service) matchEpisodesDetailed(
 				continue
 			}
 		}
-		if _, already := matched[id]; already {
-			continue
-		}
 
-		matched[id] = episodeMatch{
+		candidates[id] = append(candidates[id], episodeMatch{
 			torrentHash: torrent.Hash,
 			contentPath: torrent.ContentPath,
 			category:    torrent.Category,
 			release:     parsed,
-		}
+		})
 	}
 
-	return matched
+	return candidates
 }
 
-func (s *Service) resolveSeasonPackLocalFiles(
+func (s *Service) resolveSeasonPackLocalFilesForCandidates(
 	ctx context.Context,
 	instanceID int,
-	episodes map[episodeIdentity]episodeMatch,
-) (map[episodeIdentity]seasonPackLocalFile, error) {
-	hashes := make([]string, 0, len(episodes))
-	for _, episode := range episodes {
-		hashes = append(hashes, episode.torrentHash)
+	candidates map[episodeIdentity][]episodeMatch,
+	packFiles qbt.TorrentFiles,
+	packRelease *rls.Release,
+	settings *models.CrossSeedAutomationSettings,
+) (map[episodeIdentity]episodeMatch, map[episodeIdentity]seasonPackLocalFile, error) {
+	hashes := make([]string, 0)
+	seenHashes := make(map[string]struct{})
+	for _, episodeCandidates := range candidates {
+		for _, candidate := range episodeCandidates {
+			normalized := normalizeHash(candidate.torrentHash)
+			if normalized == "" {
+				continue
+			}
+			if _, seen := seenHashes[normalized]; seen {
+				continue
+			}
+			seenHashes[normalized] = struct{}{}
+			hashes = append(hashes, candidate.torrentHash)
+		}
 	}
 
 	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
 	if err != nil {
-		return nil, fmt.Errorf("load matched episode files: %w", err)
+		return nil, nil, fmt.Errorf("load matched episode files: %w", err)
 	}
 
 	normalizer := seasonPackNormalizer(s)
-	resolved := make(map[episodeIdentity]seasonPackLocalFile, len(episodes))
+	expected := seasonPackExpectedFiles(packFiles, packRelease, normalizer)
+	matcher := &Service{stringNormalizer: normalizer}
+	selected := make(map[episodeIdentity]episodeMatch, len(candidates))
+	localFiles := make(map[episodeIdentity]seasonPackLocalFile, len(candidates))
+	ids := sortedEpisodeCandidateIDs(candidates)
 
-	for id, episode := range episodes {
-		files, ok := filesByHash[normalizeHash(episode.torrentHash)]
-		if !ok || len(files) == 0 {
-			return nil, fmt.Errorf("%w: no file list for torrent %s", errLayoutMismatch, episode.torrentHash)
+	for _, id := range ids {
+		expectedFile, ok := expected[id]
+		if !ok {
+			continue
 		}
 
-		var matchedFileSize int64
-		var matchedRelease *rls.Release
-		matchedSourcePath := ""
-		matchCount := 0
-
-		for i := range files {
-			file := &files[i]
-			parsed, ok := parseSeasonPackEpisodePayload(file.Name, episode.release, normalizer)
-			if !ok {
-				continue
-			}
-			if parsed.Series != id.series || parsed.Episode != id.episode {
+		var lastErr error
+		for _, candidate := range candidates[id] {
+			files, ok := filesByHash[normalizeHash(candidate.torrentHash)]
+			if !ok || len(files) == 0 {
+				lastErr = fmt.Errorf("%w: no file list for torrent %s", errLayoutMismatch, candidate.torrentHash)
 				continue
 			}
 
-			matchCount++
-			matchedFileSize = file.Size
-			matchedRelease = parsed
-			matchedSourcePath = resolveSeasonPackSourcePath(episode.contentPath, files, file.Name)
+			localFile, err := resolveSeasonPackLocalFileCandidate(id, candidate, files, normalizer)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			if localFile.size != expectedFile.file.Size {
+				lastErr = fmt.Errorf("%w: file size mismatch for %s", errLayoutMismatch, expectedFile.file.Name)
+				continue
+			}
+			if !matcher.seasonPackReleasesMatch(expectedFile.release, localFile.release, false, settings) {
+				lastErr = fmt.Errorf("%w: release mismatch for %s", errLayoutMismatch, expectedFile.file.Name)
+				continue
+			}
+
+			selected[id] = candidate
+			localFiles[id] = localFile
+			break
 		}
 
-		if matchCount != 1 || matchedRelease == nil || matchedSourcePath == "" {
-			return nil, fmt.Errorf("%w: expected exactly one playable episode file in torrent %s", errLayoutMismatch, episode.torrentHash)
-		}
-
-		resolved[id] = seasonPackLocalFile{
-			sourcePath: matchedSourcePath,
-			size:       matchedFileSize,
-			release:    matchedRelease,
+		if _, ok := selected[id]; !ok {
+			if lastErr != nil {
+				return nil, nil, lastErr
+			}
+			return nil, nil, fmt.Errorf("%w: no valid episode file in matched candidates", errLayoutMismatch)
 		}
 	}
 
-	return resolved, nil
+	return selected, localFiles, nil
+}
+
+type seasonPackExpectedFile struct {
+	file    qbt.TorrentFile
+	release *rls.Release
+}
+
+func seasonPackExpectedFiles(
+	packFiles qbt.TorrentFiles,
+	packRelease *rls.Release,
+	normalizer *stringutils.Normalizer[string, string],
+) map[episodeIdentity]seasonPackExpectedFile {
+	expected := make(map[episodeIdentity]seasonPackExpectedFile)
+	for _, file := range packFiles {
+		release, ok := parseSeasonPackEpisodePayload(file.Name, packRelease, normalizer)
+		if !ok {
+			continue
+		}
+		expected[episodeIdentity{series: release.Series, episode: release.Episode}] = seasonPackExpectedFile{
+			file:    file,
+			release: release,
+		}
+	}
+	return expected
+}
+
+func sortedEpisodeCandidateIDs(candidates map[episodeIdentity][]episodeMatch) []episodeIdentity {
+	ids := make([]episodeIdentity, 0, len(candidates))
+	for id := range candidates {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		if ids[i].series != ids[j].series {
+			return ids[i].series < ids[j].series
+		}
+		return ids[i].episode < ids[j].episode
+	})
+	return ids
+}
+
+func resolveSeasonPackLocalFileCandidate(
+	id episodeIdentity,
+	episode episodeMatch,
+	files qbt.TorrentFiles,
+	normalizer *stringutils.Normalizer[string, string],
+) (seasonPackLocalFile, error) {
+	var matchedFileSize int64
+	var matchedRelease *rls.Release
+	matchedSourcePath := ""
+	matchCount := 0
+
+	for i := range files {
+		file := &files[i]
+		parsed, ok := parseSeasonPackEpisodePayload(file.Name, episode.release, normalizer)
+		if !ok {
+			continue
+		}
+		if parsed.Series != id.series || parsed.Episode != id.episode {
+			continue
+		}
+
+		matchCount++
+		matchedFileSize = file.Size
+		matchedRelease = parsed
+		matchedSourcePath = resolveSeasonPackSourcePath(episode.contentPath, files, file.Name)
+	}
+
+	if matchCount != 1 || matchedRelease == nil || matchedSourcePath == "" {
+		return seasonPackLocalFile{}, fmt.Errorf("%w: expected exactly one playable episode file in torrent %s", errLayoutMismatch, episode.torrentHash)
+	}
+
+	return seasonPackLocalFile{
+		sourcePath: matchedSourcePath,
+		size:       matchedFileSize,
+		release:    matchedRelease,
+	}, nil
 }
 
 func resolveSeasonPackSourcePath(contentPath string, files qbt.TorrentFiles, fileName string) string {
