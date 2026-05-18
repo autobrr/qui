@@ -1064,6 +1064,8 @@ type BulkActionRequest struct {
 	RatioLimit               float64                    `json:"ratioLimit,omitempty"`               // For setShareLimit action
 	SeedingTimeLimit         int64                      `json:"seedingTimeLimit,omitempty"`         // For setShareLimit action
 	InactiveSeedingTimeLimit int64                      `json:"inactiveSeedingTimeLimit,omitempty"` // For setShareLimit action
+	ShareLimitAction         string                     `json:"shareLimitAction,omitempty"`         // For setShareLimit action (qBittorrent 5.2+)
+	ShareLimitsMode          string                     `json:"shareLimitsMode,omitempty"`          // MatchAny/MatchAll; Web API 2.16.0+ (ignored below that; see supportsShareLimitsMode)
 	UploadLimit              int64                      `json:"uploadLimit,omitempty"`              // For setUploadLimit action (KB/s)
 	DownloadLimit            int64                      `json:"downloadLimit,omitempty"`            // For setDownloadLimit action (KB/s)
 	Location                 string                     `json:"location,omitempty"`                 // For setLocation action
@@ -1584,7 +1586,7 @@ func (h *TorrentsHandler) executeBulkActionForInstance(ctx context.Context, inst
 	case "forceStart":
 		return h.syncManager.SetForceStart(ctx, instanceID, hashes, req.Enable)
 	case "setShareLimit":
-		return h.syncManager.SetTorrentShareLimit(ctx, instanceID, hashes, req.RatioLimit, req.SeedingTimeLimit, req.InactiveSeedingTimeLimit)
+		return h.syncManager.SetTorrentShareLimit(ctx, instanceID, hashes, req.RatioLimit, req.SeedingTimeLimit, req.InactiveSeedingTimeLimit, req.ShareLimitAction, req.ShareLimitsMode)
 	case "setUploadLimit":
 		return h.syncManager.SetTorrentUploadLimit(ctx, instanceID, hashes, req.UploadLimit)
 	case "setDownloadLimit":

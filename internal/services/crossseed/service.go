@@ -1667,7 +1667,7 @@ func (s *Service) waitForCompletionTorrentReady(ctx context.Context, instanceID 
 }
 
 func (s *Service) waitForCompletionTorrentReadyLocked(
-	ctx context.Context,
+	_ context.Context,
 	instanceID int,
 	lane *completionLane,
 	eventTorrent qbt.Torrent,
@@ -1676,28 +1676,17 @@ func (s *Service) waitForCompletionTorrentReadyLocked(
 	done := wait.done
 
 	lane.mu.Unlock()
-
-	var result *qbt.Torrent
-	var err error
-
-	select {
-	case <-ctx.Done():
-		err = ctx.Err()
-	case <-done:
-		err = wait.err
-		if wait.result != nil {
-			torrent := *wait.result
-			result = &torrent
-		}
-	}
-
+	<-done
 	lane.mu.Lock()
 
-	if err != nil {
-		return nil, err
+	if wait.err != nil {
+		return nil, wait.err
 	}
-
-	return result, nil
+	if wait.result == nil {
+		return nil, nil
+	}
+	torrent := *wait.result
+	return &torrent, nil
 }
 
 func (s *Service) registerCompletionWaitLocked(
@@ -2138,13 +2127,7 @@ func (s *Service) executeCompletionSearchWithRetry(
 			Dur("retryAfter", retryAfter).
 			Msg("[CROSSSEED-COMPLETION] Rate-limited completion search, retrying")
 
-		timer := time.NewTimer(retryAfter)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-timer.C:
-		}
+		time.Sleep(retryAfter)
 	}
 	return lastErr
 }
@@ -2220,12 +2203,7 @@ func (s *Service) updateSearchRunWithRetry(ctx context.Context, run *models.Cros
 
 	for attempt := range maxRetries {
 		if attempt > 0 {
-			// Wait before retry
-			select {
-			case <-ctx.Done():
-				return run, ctx.Err()
-			case <-time.After(time.Duration(attempt) * 100 * time.Millisecond):
-			}
+			time.Sleep(time.Duration(attempt) * 100 * time.Millisecond)
 		}
 
 		updated, err := s.automationStore.UpdateSearchRun(ctx, run)
