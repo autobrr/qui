@@ -164,9 +164,7 @@ const CategoryTreeNode = memo(({
   const itemPadding = viewMode === "dense" ? "px-1 py-0.5" : "px-1.5 py-1.5"
   const itemGap = viewMode === "dense" ? "gap-1.5" : "gap-2"
   const hasToggleSlot = useSubcategories && (hasChildren || node.level > 0)
-  const itemColumns = hasToggleSlot
-    ? "grid-cols-[auto_auto_minmax(0,1fr)_auto]"
-    : "grid-cols-[auto_minmax(0,1fr)_auto]"
+  const itemColumns = hasToggleSlot? "grid-cols-[auto_auto_minmax(0,1fr)_auto]": "grid-cols-[auto_minmax(0,1fr)_auto]"
 
   const handleToggleCollapse = useCallback((e: ReactMouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
