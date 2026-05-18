@@ -1600,6 +1600,12 @@ paths:
                   type: integer
                   format: int64
                   description: Inactive seeding time limit (minutes) for setShareLimit action.
+                shareLimitAction:
+                  type: string
+                  description: Action when share limits are reached (qBittorrent Web API 2.12+). Qt enum names Default, Stop, Remove, EnableSuperSeeding, RemoveWithContent. Omit or empty for global default.
+                shareLimitsMode:
+                  type: string
+                  description: Whether any or all limits must be reached (Web API 2.12+). Qt enum names Default, MatchAny, MatchAll. Omit or empty for global default.
                 uploadLimit:
                   type: integer
                   format: int64
@@ -5680,6 +5686,12 @@ components:
         subcategoriesAlwaysEnabled:
           type: boolean
           description: Whether nested torrent categories are always enabled by qBittorrent (WebAPI 2.15.0+).
+        supportsShareLimitsAction:
+          type: boolean
+          description: Whether extended per-torrent share limits are available (Web API 2.15.1+; ratio, seeding time, inactive seeding, and share-limit action).
+        supportsShareLimitsMode:
+          type: boolean
+          description: Whether setShareLimits accepts ShareLimitsMode (MatchAny / MatchAll); requires Web API 2.16.0+.
         webAPIVersion:
           type: string
           nullable: true
@@ -6102,6 +6114,18 @@ components:
           example: "2.11.4"
         buildInfo:
           $ref: '#/components/schemas/QBittorrentBuildInfo'
+        processInfo:
+          $ref: '#/components/schemas/QBittorrentProcessInfo'
+
+    QBittorrentProcessInfo:
+      type: object
+      description: qBittorrent process information
+      properties:
+        launchTime:
+          type: integer
+          format: int64
+          description: Process launch time as UTC epoch seconds
+          example: 1769331513
 
     CrossSeedInstanceResult:
       type: object

@@ -1055,6 +1055,8 @@ class ApiClient {
       ratioLimit?: number  // For setShareLimit action
       seedingTimeLimit?: number  // For setShareLimit action (minutes)
       inactiveSeedingTimeLimit?: number  // For setShareLimit action (minutes)
+      shareLimitAction?: string  // setShareLimit: Qt enum Stop, Remove, etc.; omit for default
+      shareLimitsMode?: string  // setShareLimit: Qt enum MatchAny, MatchAll; omit for default
       uploadLimit?: number  // For setUploadLimit action (KB/s)
       downloadLimit?: number  // For setDownloadLimit action (KB/s)
       location?: string  // For setLocation action

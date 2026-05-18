@@ -327,6 +327,8 @@ export interface ShareLimitsAction {
   enabled: boolean
   ratioLimit?: number
   seedingTimeMinutes?: number
+  shareLimitAction?: string
+  shareLimitsMode?: string
   condition?: RuleCondition
 }
 
@@ -646,6 +648,8 @@ export interface InstanceCapabilities {
   supportsPathAutocomplete: boolean
   supportsFreeSpacePathSource: boolean
   supportsSetRSSFeedURL: boolean
+  supportsShareLimitsAction: boolean
+  supportsShareLimitsMode?: boolean
   webAPIVersion?: string
 }
 
@@ -770,6 +774,8 @@ export interface Torrent {
   seeding_time: number
   seeding_time_limit: number
   inactive_seeding_time_limit?: number
+  share_limit_action?: string
+  share_limits_mode?: string
   seen_complete: number
   seq_dl: boolean
   size: number
@@ -1454,6 +1460,11 @@ export interface QBittorrentAppInfo {
   version: string
   webAPIVersion?: string
   buildInfo?: QBittorrentBuildInfo
+  processInfo?: QBittorrentProcessInfo
+}
+
+export interface QBittorrentProcessInfo {
+  launchTime: number
 }
 
 // Torrent Creation Types

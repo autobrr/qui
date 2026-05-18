@@ -66,7 +66,7 @@ export const TrackersTable = memo(function TrackersTable({
         const fullUrl = incognitoMode ? "https://tracker.example.com/announce" : url
 
         // Extract hostname for display, fall back to full value for non-URLs (DHT, PeX, LSD)
-        let hostname = ""
+        let hostname: string
         let isValidUrl = false
         if (incognitoMode) {
           hostname = "tracker.example.com"

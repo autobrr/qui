@@ -252,8 +252,8 @@ func (f *episodeSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.Ap
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (f *episodeSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (f *episodeSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (f *episodeSyncManager) BulkAction(context.Context, int, []string, string) error {
