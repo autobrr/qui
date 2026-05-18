@@ -125,13 +125,26 @@ func TestNormalizeMigrationFilenames_RenamesSeasonPackMigrations(t *testing.T) {
 			name:            "sqlite",
 			dialect:         DialectSQLite,
 			initialFilename: "070_add_season_pack_settings_and_runs.sql",
-			expectedName:    "073_add_season_pack_settings_and_runs.sql",
+			expectedName:    "074_add_season_pack_settings_and_runs.sql",
 		},
 		{
 			name:            "postgres",
 			dialect:         DialectPostgres,
 			initialFilename: "071_add_season_pack_settings_and_runs.sql",
+			expectedName:    "075_add_season_pack_settings_and_runs.sql",
+			useExecer:       true,
+		},
+		{
+			name:            "sqlite previous current",
+			dialect:         DialectSQLite,
+			initialFilename: "073_add_season_pack_settings_and_runs.sql",
 			expectedName:    "074_add_season_pack_settings_and_runs.sql",
+		},
+		{
+			name:            "postgres previous current",
+			dialect:         DialectPostgres,
+			initialFilename: "074_add_season_pack_settings_and_runs.sql",
+			expectedName:    "075_add_season_pack_settings_and_runs.sql",
 			useExecer:       true,
 		},
 	}
