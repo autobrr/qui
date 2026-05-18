@@ -8,10 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
-	"unsafe"
 
 	"github.com/stretchr/testify/require"
 
@@ -38,15 +36,12 @@ func newTestCrossSeedStore(t *testing.T) *models.CrossSeedStore {
 	return store
 }
 
-// setServiceField injects an unexported crossseed.Service field via reflect/unsafe.
-// Tests use this to isolate handler behavior without constructing every service dependency.
-func setServiceField[T any](t *testing.T, svc *crossseed.Service, name string, value T) {
+func newTestCrossSeedHandler(t *testing.T) (*CrossSeedHandler, *models.CrossSeedStore) {
 	t.Helper()
 
-	field := reflect.ValueOf(svc).Elem().FieldByName(name)
-	require.True(t, field.IsValid(), "missing field %q", name)
-
-	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(value))
+	store := newTestCrossSeedStore(t)
+	svc := crossseed.NewServiceWithAutomationStore(store)
+	return &CrossSeedHandler{service: svc}, store
 }
 
 func TestAutomationSettingsSeasonPackRequests(t *testing.T) {
@@ -55,6 +50,7 @@ func TestAutomationSettingsSeasonPackRequests(t *testing.T) {
 		method     string
 		body       string
 		wantStatus int
+		setup      func(*testing.T, *CrossSeedHandler)
 		assert     func(*testing.T, *CrossSeedHandler, *models.CrossSeedStore, *httptest.ResponseRecorder)
 	}{
 		{
@@ -102,6 +98,25 @@ func TestAutomationSettingsSeasonPackRequests(t *testing.T) {
 			method:     http.MethodPatch,
 			body:       `{"seasonPackCategory": " tv-uhd "}`,
 			wantStatus: http.StatusOK,
+			setup: func(t *testing.T, handler *CrossSeedHandler) {
+				t.Helper()
+
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/api/cross-seed/settings", strings.NewReader(`{
+					"seasonPackEnabled": true,
+					"seasonPackCoverageThreshold": 0.8,
+					"seasonPackTags": ["season-pack", "sonarr"],
+					"seasonPackSkipRepackCompare": false,
+					"seasonPackSimplifyHdrCompare": true,
+					"seasonPackSimplifyWebCompare": true,
+					"seasonPackSkipYearCompare": true
+				}`))
+				req.Header.Set("Content-Type", "application/json")
+				resp := httptest.NewRecorder()
+
+				handler.UpdateAutomationSettings(resp, req)
+
+				require.Equal(t, http.StatusOK, resp.Code)
+			},
 			assert: func(t *testing.T, handler *CrossSeedHandler, _ *models.CrossSeedStore, _ *httptest.ResponseRecorder) {
 				t.Helper()
 
@@ -115,12 +130,48 @@ func TestAutomationSettingsSeasonPackRequests(t *testing.T) {
 				var stored models.CrossSeedAutomationSettings
 				require.NoError(t, json.NewDecoder(getResp.Body).Decode(&stored))
 				require.Equal(t, "tv-uhd", stored.SeasonPackCategory)
+				require.True(t, stored.SeasonPackEnabled)
+				require.InDelta(t, 0.8, stored.SeasonPackCoverageThreshold, 0.001)
+				require.Equal(t, []string{"season-pack", "sonarr"}, stored.SeasonPackTags)
 			},
 		},
 		{
-			name:       "put rejects invalid season pack threshold",
+			name:       "put rejects zero season pack threshold",
 			method:     http.MethodPut,
 			body:       `{"seasonPackCoverageThreshold": 0}`,
+			wantStatus: http.StatusBadRequest,
+			assert: func(t *testing.T, _ *CrossSeedHandler, _ *models.CrossSeedStore, resp *httptest.ResponseRecorder) {
+				t.Helper()
+
+				require.Contains(t, resp.Body.String(), "Season pack coverage threshold")
+			},
+		},
+		{
+			name:       "put rejects negative season pack threshold",
+			method:     http.MethodPut,
+			body:       `{"seasonPackCoverageThreshold": -0.1}`,
+			wantStatus: http.StatusBadRequest,
+			assert: func(t *testing.T, _ *CrossSeedHandler, _ *models.CrossSeedStore, resp *httptest.ResponseRecorder) {
+				t.Helper()
+
+				require.Contains(t, resp.Body.String(), "Season pack coverage threshold")
+			},
+		},
+		{
+			name:       "put rejects season pack threshold above one",
+			method:     http.MethodPut,
+			body:       `{"seasonPackCoverageThreshold": 1.5}`,
+			wantStatus: http.StatusBadRequest,
+			assert: func(t *testing.T, _ *CrossSeedHandler, _ *models.CrossSeedStore, resp *httptest.ResponseRecorder) {
+				t.Helper()
+
+				require.Contains(t, resp.Body.String(), "Season pack coverage threshold")
+			},
+		},
+		{
+			name:       "put rejects omitted season pack threshold",
+			method:     http.MethodPut,
+			body:       `{}`,
 			wantStatus: http.StatusBadRequest,
 			assert: func(t *testing.T, _ *CrossSeedHandler, _ *models.CrossSeedStore, resp *httptest.ResponseRecorder) {
 				t.Helper()
@@ -132,12 +183,10 @@ func TestAutomationSettingsSeasonPackRequests(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			store := newTestCrossSeedStore(t)
-
-			svc := &crossseed.Service{}
-			setServiceField(t, svc, "automationStore", store)
-
-			handler := &CrossSeedHandler{service: svc}
+			handler, store := newTestCrossSeedHandler(t)
+			if tt.setup != nil {
+				tt.setup(t, handler)
+			}
 
 			req := httptest.NewRequestWithContext(t.Context(), tt.method, "/api/cross-seed/settings", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")

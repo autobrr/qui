@@ -503,6 +503,13 @@ func NewService(
 	return svc
 }
 
+// NewServiceWithAutomationStore creates a minimal service for settings-only callers.
+func NewServiceWithAutomationStore(automationStore *models.CrossSeedStore) *Service {
+	return &Service{
+		automationStore: automationStore,
+	}
+}
+
 // getMetadataService returns the metadata service, recreating it if credentials changed.
 func (s *Service) getMetadataService(ctx context.Context) *metadata.Service {
 	if s.metadataCredentialLoader == nil {

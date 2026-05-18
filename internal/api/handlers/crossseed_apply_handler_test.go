@@ -14,7 +14,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
+	"unsafe"
 
 	"github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
@@ -26,6 +28,17 @@ import (
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
+
+// setServiceField injects unexported crossseed.Service test hooks that cannot be
+// provided through crossseed.NewService's concrete production dependencies.
+func setServiceField[T any](t *testing.T, svc *crossseed.Service, name string, value T) {
+	t.Helper()
+
+	field := reflect.ValueOf(svc).Elem().FieldByName(name)
+	require.True(t, field.IsValid(), "missing field %q", name)
+
+	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(value))
+}
 
 type seasonPackHandlerInstanceStore struct {
 	instances map[int]*models.Instance
