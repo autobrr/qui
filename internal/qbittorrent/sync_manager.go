@@ -1966,48 +1966,46 @@ func bulkActionSyncRetry(
 }
 
 // AddTorrent adds a new torrent from file content
-func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
+func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	// Get client and sync manager
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Use AddTorrentFromMemoryCtx which accepts byte array
-	if err := client.AddTorrentFromMemoryCtx(ctx, fileContent, options); err != nil {
-		return err
+	resp, err := client.AddTorrentFromMemoryCtx(ctx, fileContent, options)
+	if err != nil {
+		return nil, err
 	}
 
 	// Sync after modification
 	sm.syncAfterModification(instanceID, client, "add_torrent_from_memory")
 
-	return nil
+	return resp, nil
 }
 
 // AddTorrentFromURLs adds new torrents from URLs or magnet links
-func (sm *SyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error {
+func (sm *SyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	// Get client and sync manager
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Add each URL/magnet link
-	for _, url := range urls {
-		url = strings.TrimSpace(url)
-		if url == "" {
-			continue
-		}
-
-		if err := client.AddTorrentFromUrlCtx(ctx, url, options); err != nil {
-			return fmt.Errorf("failed to add torrent from URL %s: %w", url, err)
-		}
+	resp, err := client.AddTorrentsFromUrlsCtx(ctx, urls, options)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add torrent(s) from %s: %w", addTorrentURLsErrorSummary(urls), err)
 	}
 
 	// Sync after modification
 	sm.syncAfterModification(instanceID, client, "add_torrent_from_urls")
 
-	return nil
+	return resp, nil
+}
+
+func addTorrentURLsErrorSummary(urls []string) string {
+	return fmt.Sprintf("%d URL(s)", len(urls))
 }
 
 // GetCategories gets all categories
@@ -2602,7 +2600,7 @@ func (sm *SyncManager) torrentIsUnregistered(torrent *qbt.Torrent) bool {
 			continue
 		case qbt.TrackerStatusOK:
 			hasWorking = true
-		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotWorking:
+		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError:
 			if trackerMessageMatches(tracker.Message, defaultUnregisteredStatuses) {
 				hasUnregistered = true
 			}
@@ -2626,7 +2624,9 @@ func (sm *SyncManager) torrentTrackerIsDown(torrent *qbt.Torrent) bool {
 			continue
 		case qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
 			hasWorking = true
-		case qbt.TrackerStatusNotWorking:
+		case qbt.TrackerStatusUnreachable:
+			hasDown = true
+		case qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError:
 			if TrackerMessageMatchesDown(tracker.Message) {
 				hasDown = true
 			}
@@ -5639,8 +5639,11 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 	return trackerMap, nil
 }
 
-// SetTorrentShareLimit sets share limits (ratio, seeding time) for torrents
-func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64) error {
+// SetTorrentShareLimit sets share limits (ratio, seeding time, action, mode) for torrents.
+// shareLimitAction is sent when SupportsShareLimitsAction (Web API >= 2.15.1).
+// shareLimitsMode (MatchAny / MatchAll) is sent only when SupportsShareLimitsMode (Web API >= 2.16.0).
+// Action and mode must be qBittorrent/Qt meta enum names (Default, Stop, Remove, …).
+func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64, shareLimitAction, shareLimitsMode string) error {
 	// Get client and sync manager
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
@@ -5652,7 +5655,24 @@ func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int,
 		return err
 	}
 
-	if err := client.SetTorrentShareLimitCtx(ctx, hashes, ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit); err != nil {
+	action := strings.TrimSpace(shareLimitAction)
+	if !client.SupportsShareLimitsAction() {
+		action = ""
+	}
+
+	mode := strings.TrimSpace(shareLimitsMode)
+	if !client.SupportsShareLimitsMode() {
+		mode = ""
+	}
+
+	opts := qbt.ShareLimitOptions{
+		RatioLimit:               ratioLimit,
+		SeedingTimeLimit:         seedingTimeLimit,
+		InactiveSeedingTimeLimit: inactiveSeedingTimeLimit,
+		ShareLimitAction:         action,
+		ShareLimitsMode:          mode,
+	}
+	if err := client.SetTorrentShareLimitCtx(ctx, hashes, opts); err != nil {
 		return fmt.Errorf("failed to set torrent share limit: %w", err)
 	}
 
@@ -5778,7 +5798,7 @@ func (sm *SyncManager) SetTorrentFilePriority(ctx context.Context, instanceID in
 		switch {
 		case errors.Is(err, qbt.ErrInvalidPriority):
 			return fmt.Errorf("invalid file priority or file indices: %w", err)
-		case errors.Is(err, qbt.ErrTorrentMetdataNotDownloadedYet):
+		case errors.Is(err, qbt.ErrTorrentMetadataNotDownloadedYet):
 			return fmt.Errorf("torrent metadata is not yet available, please try again once metadata has downloaded: %w", err)
 		default:
 			return fmt.Errorf("failed to set file priority: %w", err)

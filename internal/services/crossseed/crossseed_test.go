@@ -2986,8 +2986,8 @@ func (f *fakeSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.AppPr
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (f *fakeSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) error {
-	return fmt.Errorf("AddTorrent not implemented in fakeSyncManager")
+func (f *fakeSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, errors.New("AddTorrent not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) BulkAction(_ context.Context, _ int, _ []string, _ string) error {
@@ -3530,7 +3530,7 @@ func (m *mockRecoverSyncManager) simulateRecheckComplete(hash string, finalProgr
 }
 
 func (m *mockRecoverSyncManager) GetTorrentFilesBatch(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
@@ -3547,8 +3547,8 @@ func (m *mockRecoverSyncManager) GetAppPreferences(context.Context, int) (qbt.Ap
 	}, nil
 }
 
-func (m *mockRecoverSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return fmt.Errorf("not implemented")
+func (m *mockRecoverSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) RenameTorrent(context.Context, int, string, string) error {
@@ -3930,8 +3930,8 @@ func (f *infohashTestSyncManager) GetAppPreferences(context.Context, int) (qbt.A
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (f *infohashTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (f *infohashTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (f *infohashTestSyncManager) BulkAction(context.Context, int, []string, string) error {
@@ -5467,8 +5467,8 @@ func (m *rssFilterTestSyncManager) GetAppPreferences(context.Context, int) (qbt.
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (m *rssFilterTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (m *rssFilterTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (m *rssFilterTestSyncManager) BulkAction(context.Context, int, []string, string) error {

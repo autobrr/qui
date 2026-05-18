@@ -135,8 +135,8 @@ func (*completionPollingSyncMock) GetAppPreferences(context.Context, int) (qbt.A
 	return qbt.AppPreferences{}, nil
 }
 
-func (*completionPollingSyncMock) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (*completionPollingSyncMock) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (*completionPollingSyncMock) BulkAction(context.Context, int, []string, string) error {

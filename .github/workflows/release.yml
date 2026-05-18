@@ -28,7 +28,7 @@ on:
 env:
   REGISTRY: ghcr.io
   REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
-  NODE_VERSION: "22.18.0"
+  NODE_VERSION: "24.15.0"
   POLAR_ORG_ID: ${{ secrets.POLAR_ORG_ID }}
 
 permissions:
@@ -52,7 +52,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v6.0.5
+        uses: pnpm/action-setup@v6.0.6
         with:
           package_json_file: web/package.json
 

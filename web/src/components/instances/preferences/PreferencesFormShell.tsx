@@ -46,12 +46,11 @@ export function PreferencesFormShell({
 
     updateFades()
 
-    let resizeObserver: ResizeObserver | null = null
-    if (typeof ResizeObserver !== "undefined") {
-      resizeObserver = new ResizeObserver(() => {
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? null
+      : new ResizeObserver(() => {
         updateFades()
       })
-    }
 
     scrollElement.addEventListener("scroll", updateFades, { passive: true })
     window.addEventListener("resize", updateFades)

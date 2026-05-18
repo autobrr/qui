@@ -33,12 +33,12 @@ type mediaInfoJSONMedia struct {
 	Track []json.RawMessage `json:"track"`
 }
 
-func (m *mockMediaInfoPreferencesAdder) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (m *mockMediaInfoPreferencesAdder) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
-func (m *mockMediaInfoPreferencesAdder) AddTorrentFromURLs(context.Context, int, []string, map[string]string) error {
-	return nil
+func (m *mockMediaInfoPreferencesAdder) AddTorrentFromURLs(context.Context, int, []string, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (m *mockMediaInfoPreferencesAdder) GetAppPreferences(context.Context, int) (qbt.AppPreferences, error) {

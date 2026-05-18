@@ -21,6 +21,29 @@ import (
 	"github.com/autobrr/qui/internal/services/notifications"
 )
 
+func TestNormalizeShareLimitEnum(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{in: "", want: ""},
+		{in: "  ", want: ""},
+		{in: "Default", want: ""},
+		{in: "default", want: ""},
+		{in: "Stop", want: "Stop"},
+		{in: " MatchAny ", want: "MatchAny"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, normalizeShareLimitEnum(tc.in))
+		})
+	}
+}
+
 // -----------------------------------------------------------------------------
 // matchesTracker tests
 // -----------------------------------------------------------------------------
