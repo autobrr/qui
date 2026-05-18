@@ -34,8 +34,8 @@ type failingTorrentAdder struct {
 	err error
 }
 
-func (a *failingTorrentAdder) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) error {
-	return a.err
+func (a *failingTorrentAdder) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, a.err
 }
 
 func (a *failingTorrentAdder) BulkAction(_ context.Context, _ int, _ []string, _ string) error {
@@ -205,9 +205,9 @@ type recordingTorrentManager struct {
 	}
 }
 
-func (m *recordingTorrentManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) error {
+func (m *recordingTorrentManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addOptions = options
-	return nil
+	return nil, nil
 }
 
 func (m *recordingTorrentManager) BulkAction(_ context.Context, instanceID int, hashes []string, action string) error {
@@ -475,11 +475,11 @@ type safeRecordingManager struct {
 	}
 }
 
-func (m *safeRecordingManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) error {
+func (m *safeRecordingManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.addOptions = options
-	return nil
+	return nil, nil
 }
 
 func (m *safeRecordingManager) BulkAction(_ context.Context, instanceID int, hashes []string, action string) error {

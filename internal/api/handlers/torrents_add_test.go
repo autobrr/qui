@@ -918,7 +918,7 @@ type fullMockSyncManager struct {
 	addTorrentFromURLsErr   error
 }
 
-func (m *fullMockSyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
+func (m *fullMockSyncManager) AddTorrent(_ context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addTorrentCalls = append(m.addTorrentCalls, addTorrentCall{
 		instanceID:  instanceID,
 		fileContent: fileContent,
@@ -927,7 +927,7 @@ func (m *fullMockSyncManager) AddTorrent(ctx context.Context, instanceID int, fi
 	return nil, m.addTorrentErr
 }
 
-func (m *fullMockSyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error) {
+func (m *fullMockSyncManager) AddTorrentFromURLs(_ context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addTorrentFromURLsCalls = append(m.addTorrentFromURLsCalls, addTorrentFromURLsCall{
 		instanceID: instanceID,
 		urls:       urls,
