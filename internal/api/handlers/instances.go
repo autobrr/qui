@@ -391,7 +391,7 @@ type UpdateInstanceRequest struct {
 	Host                     string                             `json:"host"`
 	Username                 string                             `json:"username"`
 	Password                 string                             `json:"password,omitempty"` // Optional for updates
-	APIKey                   string                             `json:"apiKey,omitempty"`
+	APIKey                   *string                            `json:"apiKey,omitempty"`
 	BasicUsername            *string                            `json:"basicUsername,omitempty"`
 	BasicPassword            *string                            `json:"basicPassword,omitempty"`
 	TLSSkipVerify            *bool                              `json:"tlsSkipVerify,omitempty"`
@@ -669,9 +669,9 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		req.BasicPassword = existingInstance.BasicPasswordEncrypted
 	}
 
-	// Handle redacted API key - if redacted, use existing encrypted API key
-	if req.APIKey != "" && domain.IsRedactedString(req.APIKey) {
-		req.APIKey = existingInstance.APIKeyEncrypted
+	// Handle redacted API key - if redacted, preserve the existing API key
+	if req.APIKey != nil && domain.IsRedactedString(*req.APIKey) {
+		req.APIKey = nil
 	}
 
 	// Validate hardlink/reflink settings

@@ -748,6 +748,119 @@ func TestInstanceStoreAPIKeyAuth(t *testing.T) {
 	assert.Empty(t, decryptedPassword)
 }
 
+func TestInstanceStoreUpdatePreservesAPIKeyWhenOmitted(t *testing.T) {
+	ctx := t.Context()
+	store := newInstanceStoreWithAPIKeySchema(t)
+
+	instance, err := store.Create(ctx, "API Key Instance", "http://localhost:8080", "admin", "password", nil, nil, false, nil, "api-key-123")
+	require.NoError(t, err)
+
+	updated, err := store.Update(ctx, instance.ID, "Renamed Instance", "http://localhost:8080", "", "", nil, nil, nil)
+	require.NoError(t, err)
+
+	decryptedAPIKey, err := store.GetDecryptedAPIKey(updated)
+	require.NoError(t, err)
+	assert.Equal(t, "api-key-123", decryptedAPIKey)
+}
+
+func TestInstanceStoreUpdateClearsAPIKeyWhenEmptyStringProvided(t *testing.T) {
+	ctx := t.Context()
+	store := newInstanceStoreWithAPIKeySchema(t)
+
+	instance, err := store.Create(ctx, "API Key Instance", "http://localhost:8080", "admin", "password", nil, nil, false, nil, "api-key-123")
+	require.NoError(t, err)
+
+	apiKey := ""
+	updated, err := store.Update(ctx, instance.ID, "Renamed Instance", "http://localhost:8080", "admin", "password", nil, nil, nil, &apiKey)
+	require.NoError(t, err)
+
+	decryptedAPIKey, err := store.GetDecryptedAPIKey(updated)
+	require.NoError(t, err)
+	assert.Empty(t, decryptedAPIKey)
+	assert.Equal(t, "admin", updated.Username)
+}
+
+func newInstanceStoreWithAPIKeySchema(t *testing.T) *InstanceStore {
+	t.Helper()
+
+	ctx := t.Context()
+	sqlDB, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	db := newMockQuerier(sqlDB)
+
+	encryptionKey := make([]byte, 32)
+	for i := range encryptionKey {
+		encryptionKey[i] = byte(i)
+	}
+
+	store, err := NewInstanceStore(db, encryptionKey)
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `
+		CREATE TABLE string_pool (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			value TEXT NOT NULL UNIQUE
+		)
+	`)
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `
+		CREATE TABLE instances (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name_id INTEGER NOT NULL,
+			host_id INTEGER NOT NULL,
+			username_id INTEGER NOT NULL,
+			password_encrypted TEXT NOT NULL,
+			api_key_encrypted TEXT NOT NULL DEFAULT '',
+			basic_username_id INTEGER,
+			basic_password_encrypted TEXT,
+			tls_skip_verify BOOLEAN NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			is_active BOOLEAN DEFAULT 1,
+			has_local_filesystem_access BOOLEAN NOT NULL DEFAULT 0,
+			use_hardlinks BOOLEAN NOT NULL DEFAULT 0,
+			hardlink_base_dir TEXT NOT NULL DEFAULT '',
+			hardlink_dir_preset TEXT NOT NULL DEFAULT '',
+			use_reflinks BOOLEAN NOT NULL DEFAULT 0,
+			fallback_to_regular_mode BOOLEAN NOT NULL DEFAULT 0,
+			FOREIGN KEY (name_id) REFERENCES string_pool(id),
+			FOREIGN KEY (host_id) REFERENCES string_pool(id),
+			FOREIGN KEY (username_id) REFERENCES string_pool(id),
+			FOREIGN KEY (basic_username_id) REFERENCES string_pool(id)
+		);
+
+		CREATE VIEW instances_view AS
+		SELECT
+			i.id,
+			sp_name.value AS name,
+			sp_host.value AS host,
+			sp_username.value AS username,
+			i.password_encrypted,
+			i.api_key_encrypted,
+			sp_basic_username.value AS basic_username,
+			i.basic_password_encrypted,
+			i.tls_skip_verify,
+			i.sort_order,
+			i.is_active,
+			i.has_local_filesystem_access,
+			i.use_hardlinks,
+			i.hardlink_base_dir,
+			i.hardlink_dir_preset,
+			i.use_reflinks,
+			i.fallback_to_regular_mode
+		FROM instances i
+		LEFT JOIN string_pool sp_name ON i.name_id = sp_name.id
+		LEFT JOIN string_pool sp_host ON i.host_id = sp_host.id
+		LEFT JOIN string_pool sp_username ON i.username_id = sp_username.id
+		LEFT JOIN string_pool sp_basic_username ON i.basic_username_id = sp_basic_username.id;
+	`)
+	require.NoError(t, err)
+
+	return store
+}
+
 func TestInstanceStoreGetDecryptedAPIKeyLegacyEmptyValue(t *testing.T) {
 	store, err := NewInstanceStore(newMockQuerier(nil), []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)

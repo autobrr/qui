@@ -616,20 +616,18 @@ type InstanceUpdateParams struct {
 	FallbackToRegularMode    *bool
 }
 
-func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, params *InstanceUpdateParams, apiKey ...string) (*Instance, error) {
+func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, params *InstanceUpdateParams, apiKey ...*string) (*Instance, error) {
+	var apiKeyUpdate *string
 	if len(apiKey) > 0 {
-		apiKey = apiKey[:1]
-	} else {
-		apiKey = []string{""}
+		apiKeyUpdate = apiKey[0]
 	}
-
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
 		return nil, err
 	}
 
-	if apiKey[0] != "" {
+	if apiKeyUpdate != nil && *apiKeyUpdate != "" {
 		username = ""
 		password = ""
 	}
@@ -700,12 +698,14 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		args = append(args, encryptedPassword)
 	}
 
-	encryptedAPIKey, err := s.encrypt(apiKey[0])
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt api key: %w", err)
+	if apiKeyUpdate != nil {
+		encryptedAPIKey, err := s.encrypt(*apiKeyUpdate)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt api key: %w", err)
+		}
+		query += ", api_key_encrypted = ?"
+		args = append(args, encryptedAPIKey)
 	}
-	query += ", api_key_encrypted = ?"
-	args = append(args, encryptedAPIKey)
 
 	// Handle basic password update
 	if basicPassword != nil {
