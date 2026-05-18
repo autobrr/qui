@@ -54,6 +54,7 @@ export interface Instance {
   name: string
   host: string
   username: string
+  hasApiKey?: boolean
   basicUsername?: string
   tlsSkipVerify: boolean
   hasLocalFilesystemAccess: boolean
@@ -75,6 +76,7 @@ export interface InstanceFormData {
   host: string
   username?: string
   password?: string
+  apiKey?: string
   basicUsername?: string
   basicPassword?: string
   tlsSkipVerify: boolean
@@ -410,6 +412,18 @@ export interface ExternalProgramAction {
   condition?: RuleCondition
 }
 
+export interface ExportToInstanceAction {
+  enabled: boolean
+  targetInstanceId: number
+  savePath: string
+  category?: string
+  tags?: string[]
+  paused?: boolean
+  skipChecking?: boolean
+  contentLayout?: string
+  condition?: RuleCondition
+}
+
 export interface ActionConditions {
   schemaVersion: string
   grouping?: GroupingConfig
@@ -428,6 +442,7 @@ export interface ActionConditions {
   move?: MoveAction
   externalProgram?: ExternalProgramAction
   autoManagement?: AutoManagementAction
+  exportToInstance?: ExportToInstanceAction
 }
 
 export type FreeSpaceSource =
@@ -518,7 +533,7 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "auto_managed" | "moved" | "external_program" | "dry_run_no_match"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "auto_managed" | "moved" | "external_program" | "exported_to_instance" | "dry_run_no_match"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed" | "dry-run"
@@ -2036,6 +2051,17 @@ export interface CrossSeedAutomationSettings {
   gazelleEnabled: boolean
   redactedApiKey: string
   orpheusApiKey: string
+  // Season pack settings
+  seasonPackEnabled: boolean
+  seasonPackSkipRepackCompare: boolean
+  seasonPackSimplifyHdrCompare: boolean
+  seasonPackSimplifyWebCompare: boolean
+  seasonPackSkipYearCompare: boolean
+  seasonPackCoverageThreshold: number
+  seasonPackTags: string[]
+  seasonPackCategory: string
+  seasonPackTvdbApiKey?: string
+  seasonPackTvdbPin?: string
   createdAt?: string
   updatedAt?: string
 }
@@ -2087,6 +2113,17 @@ export interface CrossSeedAutomationSettingsPatch {
   gazelleEnabled?: boolean
   redactedApiKey?: string
   orpheusApiKey?: string
+  // Season pack settings
+  seasonPackEnabled?: boolean
+  seasonPackSkipRepackCompare?: boolean
+  seasonPackSimplifyHdrCompare?: boolean
+  seasonPackSimplifyWebCompare?: boolean
+  seasonPackSkipYearCompare?: boolean
+  seasonPackCoverageThreshold?: number
+  seasonPackTags?: string[]
+  seasonPackCategory?: string
+  seasonPackTvdbApiKey?: string
+  seasonPackTvdbPin?: string
 }
 
 export interface CrossSeedAutomationStatus {
@@ -2166,6 +2203,22 @@ export interface CrossSeedSearchStatus {
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
 }
+
+export interface SeasonPackRun {
+  id: number
+  torrentName: string
+  phase: "check" | "apply"
+  status: "ready" | "skipped" | "applied" | "failed"
+  reason: string
+  message: string
+  instanceId?: number
+  matchedEpisodes: number
+  totalEpisodes: number
+  coverage: number
+  linkMode?: string
+  createdAt: string
+}
+
 // Orphan Scan types
 export type OrphanScanRunStatus =
   | "pending"

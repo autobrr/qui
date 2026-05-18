@@ -110,3 +110,64 @@ func TestNormalizeMigrationFilenames_RenamesCompletionBypass065To066ForSQLite(t 
 	require.NoError(t, db.normalizeMigrationFilenames(ctx))
 	assertMigrationRenamed(t, conn, "065_add_completion_bypass_torznab_cache.sql", "066_add_completion_bypass_torznab_cache.sql")
 }
+
+func TestNormalizeMigrationFilenames_RenamesSeasonPackMigrations(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name            string
+		dialect         Dialect
+		initialFilename string
+		expectedName    string
+		useExecer       bool
+	}{
+		{
+			name:            "sqlite",
+			dialect:         DialectSQLite,
+			initialFilename: "070_add_season_pack_settings_and_runs.sql",
+			expectedName:    "075_add_season_pack_settings_and_runs.sql",
+		},
+		{
+			name:            "postgres",
+			dialect:         DialectPostgres,
+			initialFilename: "071_add_season_pack_settings_and_runs.sql",
+			expectedName:    "076_add_season_pack_settings_and_runs.sql",
+			useExecer:       true,
+		},
+		{
+			name:            "sqlite previous current",
+			dialect:         DialectSQLite,
+			initialFilename: "073_add_season_pack_settings_and_runs.sql",
+			expectedName:    "075_add_season_pack_settings_and_runs.sql",
+		},
+		{
+			name:            "postgres previous current",
+			dialect:         DialectPostgres,
+			initialFilename: "074_add_season_pack_settings_and_runs.sql",
+			expectedName:    "076_add_season_pack_settings_and_runs.sql",
+			useExecer:       true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			db, conn := newMigrationRenameTestDB(t, tc.dialect)
+
+			_, err := conn.ExecContext(ctx, `
+				INSERT INTO migrations (filename) VALUES (?);
+			`, tc.initialFilename)
+			require.NoError(t, err)
+
+			if tc.useExecer {
+				require.NoError(t, db.normalizeMigrationFilenamesWithExecer(ctx, conn, sharedMigrationFilenameRenames, postgresMigrationFilenameRenames))
+			} else {
+				require.NoError(t, db.normalizeMigrationFilenames(ctx))
+			}
+
+			assertMigrationRenamed(t, conn, tc.initialFilename, tc.expectedName)
+		})
+	}
+}

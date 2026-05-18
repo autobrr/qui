@@ -33,6 +33,14 @@ qui automatically detects the features available on each qBittorrent instance an
 Hybrid and v2 torrent creation requires a qBittorrent build that links against libtorrent v2. Builds compiled with libtorrent 1.x ignore the `format` parameter.
 :::
 
+## Authentication Compatibility
+
+### API key auth with reverse-proxy Basic Auth
+
+qBittorrent API key authentication uses the HTTP `Authorization: Bearer ...` header. Reverse-proxy Basic Auth, such as nginx `auth_basic`, also uses the `Authorization` header.
+
+Because a request can only carry one normal `Authorization` value, qBittorrent API key authentication cannot be combined with reverse-proxy Basic Auth in the default setup. Use qBittorrent username/password authentication with reverse-proxy Basic Auth, or bypass Basic Auth for qui's requests to qBittorrent.
+
 ## Troubleshooting: Missing Features
 
 ### Create Torrent button is not visible

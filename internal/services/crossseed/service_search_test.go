@@ -42,6 +42,10 @@ func (s *spyARRLookupService) LookupExternalIDs(_ context.Context, title string,
 	return s.result, s.err
 }
 
+func (s *spyARRLookupService) LookupSeasonEpisodeTotal(context.Context, string, int) (*arr.SeasonEpisodeTotalResult, error) {
+	return nil, nil
+}
+
 type failingEnabledIndexerStore struct {
 	err      error
 	indexers []*models.TorznabIndexer

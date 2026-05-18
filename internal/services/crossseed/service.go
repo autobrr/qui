@@ -14,8 +14,10 @@ package crossseed
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
@@ -53,6 +55,7 @@ import (
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/filesmanager"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/services/metadata"
 	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
@@ -75,6 +78,7 @@ type trackerCustomizationProvider interface {
 
 type arrLookupService interface {
 	LookupExternalIDs(ctx context.Context, title string, contentType arr.ContentType) (*arr.ExternalIDsResult, error)
+	LookupSeasonEpisodeTotal(ctx context.Context, title string, seasonNumber int) (*arr.SeasonEpisodeTotalResult, error)
 }
 
 func isNilARRLookupService(service arrLookupService) bool {
@@ -92,6 +96,11 @@ func isNilARRLookupService(service arrLookupService) bool {
 		kind == reflect.Slice
 
 	return canBeNil && value.IsNil()
+}
+
+// seasonPackRunCreator persists season-pack run rows.
+type seasonPackRunCreator interface {
+	Create(ctx context.Context, run *models.SeasonPackRun) (*models.SeasonPackRun, error)
 }
 
 // qbittorrentSync exposes the sync manager functionality needed by the service.
@@ -382,16 +391,30 @@ type Service struct {
 	completionRetryDelay   time.Duration
 	completionMaxAttempts  int
 
+	// Season-pack webhook support
+	seasonPackRunStore seasonPackRunCreator
+
 	// test hooks
 	crossSeedInvoker        func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error)
 	torrentDownloadFunc     func(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 	completionSearchInvoker func(context.Context, int, *qbt.Torrent, *models.CrossSeedAutomationSettings, *models.InstanceCrossSeedCompletionSettings) error
+	seasonPackLinkCreator   func(plan *hardlinktree.TreePlan) error
 	postInjectionHook       func(context.Context, int, string)
 
 	// Recheck resume worker
 	recheckResumeChan   chan *pendingResume
 	recheckResumeCtx    context.Context
 	recheckResumeCancel context.CancelFunc
+
+	seasonPackEpisodeTotalLookup func(context.Context, string, *rls.Release) (int, bool)
+
+	// Metadata provider for season pack episode totals (TVDB/TVMaze).
+	metadataCredsRevisionLoader func(ctx context.Context) (time.Time, error)
+	metadataCredentialLoader    func(ctx context.Context) (apiKey, pin string, err error)
+	metadataService             *metadata.Service
+	metadataMu                  sync.RWMutex
+	metadataCredsRevision       time.Time
+	metadataCredsFingerprint    string
 }
 
 // pendingResume tracks a torrent waiting for recheck to complete before resuming.
@@ -442,6 +465,9 @@ func NewService(
 	trackerCustomizationStore *models.TrackerCustomizationStore,
 	notifier notifications.Notifier,
 	recoverErroredTorrents bool,
+	seasonPackRunStore seasonPackRunCreator,
+	metadataCredsRevisionLoader func(ctx context.Context) (time.Time, error),
+	metadataCredentialLoader func(ctx context.Context) (apiKey, pin string, err error),
 ) *Service {
 	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
 		SetDefaultTTL(searchResultCacheTTL))
@@ -480,6 +506,7 @@ func NewService(
 		externalProgramService:        externalProgramService,
 		completionStore:               completionStore,
 		recoverErroredTorrentsEnabled: recoverErroredTorrents,
+		seasonPackRunStore:            seasonPackRunStore,
 		automationWake:                make(chan struct{}, 1),
 		domainMappings:                initializeDomainMappings(),
 		torrentFilesCache:             contentFilesCache,
@@ -493,12 +520,99 @@ func NewService(
 		recheckResumeChan:             make(chan *pendingResume, 100),
 		recheckResumeCtx:              recheckCtx,
 		recheckResumeCancel:           recheckCancel,
+		metadataCredsRevisionLoader:   metadataCredsRevisionLoader,
+		metadataCredentialLoader:      metadataCredentialLoader,
+		metadataService:               metadata.NewService("", ""), // TVMaze-only default
 	}
 
 	// Start the single worker goroutine for processing recheck resumes
 	go svc.recheckResumeWorker()
 
 	return svc
+}
+
+// NewServiceWithAutomationStore creates a minimal service for settings-only callers.
+func NewServiceWithAutomationStore(automationStore *models.CrossSeedStore) *Service {
+	return &Service{
+		automationStore: automationStore,
+	}
+}
+
+// getMetadataService returns the metadata service, recreating it if credentials changed.
+func (s *Service) getMetadataService(ctx context.Context) *metadata.Service {
+	if s.metadataCredentialLoader == nil {
+		s.metadataMu.RLock()
+		svc := s.metadataService
+		s.metadataMu.RUnlock()
+		return svc
+	}
+
+	var revision time.Time
+	if s.metadataCredsRevisionLoader != nil {
+		var err error
+		revision, err = s.metadataCredsRevisionLoader(ctx)
+		if err != nil {
+			log.Debug().Err(err).Msg("metadata: failed to load TVDB credential revision, using existing service")
+			s.metadataMu.RLock()
+			svc := s.metadataService
+			s.metadataMu.RUnlock()
+			return svc
+		}
+
+		s.metadataMu.RLock()
+		if revision.Equal(s.metadataCredsRevision) {
+			svc := s.metadataService
+			s.metadataMu.RUnlock()
+			return svc
+		}
+		s.metadataMu.RUnlock()
+	}
+
+	apiKey, pin, err := s.metadataCredentialLoader(ctx)
+	if err != nil {
+		log.Debug().Err(err).Msg("metadata: failed to load TVDB credentials, using existing service")
+		s.metadataMu.RLock()
+		svc := s.metadataService
+		s.metadataMu.RUnlock()
+		return svc
+	}
+
+	fingerprint := metadataCredentialsFingerprint(apiKey, pin)
+
+	// Fast path: credentials unchanged, read lock only.
+	s.metadataMu.RLock()
+	if fingerprint == s.metadataCredsFingerprint && (s.metadataCredsRevisionLoader == nil || revision.Equal(s.metadataCredsRevision)) {
+		svc := s.metadataService
+		s.metadataMu.RUnlock()
+		return svc
+	}
+	s.metadataMu.RUnlock()
+
+	// Slow path: credentials changed, acquire write lock.
+	s.metadataMu.Lock()
+	defer s.metadataMu.Unlock()
+
+	if s.metadataCredsRevisionLoader != nil && metadataRevisionIsNewer(s.metadataCredsRevision, revision) {
+		return s.metadataService
+	}
+
+	// Re-check after lock acquisition.
+	if fingerprint != s.metadataCredsFingerprint || (s.metadataCredsRevisionLoader != nil && !revision.Equal(s.metadataCredsRevision)) {
+		s.metadataService = metadata.NewService(apiKey, pin)
+		s.metadataCredsRevision = revision
+		s.metadataCredsFingerprint = fingerprint
+	}
+
+	return s.metadataService
+}
+
+func metadataCredentialsFingerprint(apiKey, pin string) string {
+	sum := sha256.Sum256([]byte("qui:season-pack-tvdb\x00" + apiKey + "\x00" + pin))
+	return hex.EncodeToString(sum[:])
+}
+
+func metadataRevisionIsNewer(cached, candidate time.Time) bool {
+	return cached.After(candidate)
 }
 
 func (s *Service) getCompletionPollInterval() time.Duration {

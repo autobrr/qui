@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -244,6 +245,45 @@ func mergeExternalIDs(base, hydrated *models.ExternalIDs) *models.ExternalIDs {
 		return nil
 	}
 	return &ids
+}
+
+// ParseSonarrTitle returns the full Sonarr parse response for TV lookups that need the series ID.
+func (c *Client) ParseSonarrTitle(ctx context.Context, title string) (*SonarrParseResponse, error) {
+	if c.instanceType != models.ArrInstanceTypeSonarr {
+		return nil, fmt.Errorf("unsupported instance type for Sonarr parse: %s", c.instanceType)
+	}
+
+	var parseResp SonarrParseResponse
+	params := url.Values{}
+	params.Set("title", title)
+	if err := c.getJSON(ctx, "/api/v3/parse", params, &parseResp); err != nil {
+		if strings.Contains(err.Error(), "failed to decode response") {
+			return nil, fmt.Errorf("failed to decode Sonarr parse response: %w", err)
+		}
+		return nil, err
+	}
+
+	return &parseResp, nil
+}
+
+// GetSonarrSeasonEpisodes fetches episodes for a specific Sonarr series season.
+func (c *Client) GetSonarrSeasonEpisodes(ctx context.Context, seriesID, seasonNumber int) ([]SonarrEpisodeResource, error) {
+	if c.instanceType != models.ArrInstanceTypeSonarr {
+		return nil, fmt.Errorf("unsupported instance type for Sonarr episodes: %s", c.instanceType)
+	}
+
+	var episodes []SonarrEpisodeResource
+	params := url.Values{}
+	params.Set("seriesId", strconv.Itoa(seriesID))
+	params.Set("seasonNumber", strconv.Itoa(seasonNumber))
+	if err := c.getJSON(ctx, "/api/v3/episode", params, &episodes); err != nil {
+		if strings.Contains(err.Error(), "failed to decode response") {
+			return nil, fmt.Errorf("failed to decode Sonarr episode response: %w", err)
+		}
+		return nil, err
+	}
+
+	return episodes, nil
 }
 
 func (c *Client) getJSON(ctx context.Context, path string, params url.Values, target any) error {

@@ -47,7 +47,8 @@ import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
   CrossSeedRun,
-  Instance
+  Instance,
+  SeasonPackRun
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
@@ -60,7 +61,9 @@ import {
   Info,
   Loader2,
   Play,
+  RefreshCw,
   Rocket,
+  Search,
   XCircle,
   Zap
 } from "lucide-react"
@@ -113,6 +116,17 @@ interface GlobalCrossSeedSettings {
   webhookSourceTags: string[]
   webhookSourceExcludeCategories: string[]
   webhookSourceExcludeTags: string[]
+  // Season packs
+  seasonPackEnabled: boolean
+  seasonPackSkipRepackCompare: boolean
+  seasonPackSimplifyHdrCompare: boolean
+  seasonPackSimplifyWebCompare: boolean
+  seasonPackSkipYearCompare: boolean
+  seasonPackCoverageThreshold: number
+  seasonPackTags: string[]
+  seasonPackCategory: string
+  seasonPackTvdbApiKey: string
+  seasonPackTvdbPin: string
   // Note: Hardlink mode settings have been moved to per-instance configuration
 }
 
@@ -164,6 +178,17 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   skipAutoResumeWebhook: false,
   skipRecheck: false,
   skipPieceBoundarySafetyCheck: true,
+  // Season packs
+  seasonPackEnabled: false,
+  seasonPackSkipRepackCompare: true,
+  seasonPackSimplifyHdrCompare: false,
+  seasonPackSimplifyWebCompare: false,
+  seasonPackSkipYearCompare: false,
+  seasonPackCoverageThreshold: 0.75,
+  seasonPackTags: ["cross-seed"],
+  seasonPackCategory: "",
+  seasonPackTvdbApiKey: "",
+  seasonPackTvdbPin: "",
   // Webhook source filtering defaults - empty means no filtering (all torrents)
   webhookSourceCategories: [],
   webhookSourceTags: [],
@@ -301,6 +326,192 @@ function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
         </CollapsibleContent>
       )}
     </Collapsible>
+  )
+}
+
+interface SeasonPackRunsPanelProps {
+  runs: SeasonPackRun[]
+  isLoading: boolean
+  isFetching: boolean
+  error: unknown
+  onRefresh: () => void
+  formatDateValue: (date: string | undefined) => string
+}
+
+function seasonPackStatusVariant(status: SeasonPackRun["status"]) {
+  switch (status) {
+    case "ready":
+    case "applied":
+      return "default"
+    case "failed":
+      return "destructive"
+    default:
+      return "secondary"
+  }
+}
+
+function formatSeasonPackCoverage(run: SeasonPackRun) {
+  if (run.totalEpisodes <= 0) {
+    return "—"
+  }
+  return `${Math.round(run.coverage * 100)}%`
+}
+
+function formatSeasonPackReason(run: SeasonPackRun): string | null {
+  const reason = run.reason?.trim()
+  if (!reason) return null
+  if (reason.toLowerCase() === run.status) return null
+  return reason.replace(/_/g, " ")
+}
+
+function SeasonPackRunsPanel({
+  runs,
+  isLoading,
+  isFetching,
+  error,
+  onRefresh,
+  formatDateValue,
+}: SeasonPackRunsPanelProps) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const [showSkipped, setShowSkipped] = useState(false)
+
+  const skippedCount = useMemo(
+    () => runs.filter(run => run.status === "skipped").length,
+    [runs]
+  )
+
+  const appliedCount = useMemo(
+    () => runs.filter(run => run.status === "applied").length,
+    [runs]
+  )
+
+  const failedCount = useMemo(
+    () => runs.filter(run => run.status === "failed").length,
+    [runs]
+  )
+
+  const filteredRuns = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return runs.filter(run => {
+      if (!showSkipped && run.status === "skipped") return false
+      if (query && !run.torrentName.toLowerCase().includes(query)) return false
+      return true
+    })
+  }, [runs, search, showSkipped])
+
+  return (
+    <div className="pt-3 border-t border-border/50">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 text-left hover:cursor-pointer">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <History className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="text-sm font-medium">Recent season pack runs</span>
+            {runs.length > 0 ? (
+              <Badge variant="secondary" className="text-xs">
+                {runs.length} runs
+                {appliedCount > 0 && ` • ${appliedCount} applied`}
+                {failedCount > 0 && ` • ${failedCount} failed`}
+              </Badge>
+            ) : (
+              <span className="text-xs text-muted-foreground">No runs yet</span>
+            )}
+          </div>
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform shrink-0 ${open ? "rotate-180" : ""}`} />
+        </CollapsibleTrigger>
+
+        <CollapsibleContent>
+          <div className="space-y-3 pt-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+              <div className="relative w-full sm:w-56">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  value={search}
+                  onChange={event => setSearch(event.target.value)}
+                  placeholder="Filter by name…"
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3 sm:justify-start">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="season-pack-show-skipped"
+                    checked={showSkipped}
+                    onCheckedChange={setShowSkipped}
+                  />
+                  <Label htmlFor="season-pack-show-skipped" className="text-xs">Show skipped</Label>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={onRefresh} disabled={isFetching}>
+                  <RefreshCw className={`mr-2 h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+                  Refresh
+                </Button>
+              </div>
+            </div>
+
+            {error ? (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                Failed to load season pack runs.
+              </div>
+            ) : isLoading ? (
+              <div className="flex items-center gap-2 rounded-md border border-border/70 bg-background/50 p-3 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading season pack runs...
+              </div>
+            ) : runs.length === 0 ? (
+              <div className="rounded-md border border-border/70 bg-background/50 p-3 text-sm text-muted-foreground">
+                No season pack webhook activity yet.
+              </div>
+            ) : filteredRuns.length === 0 ? (
+              <div className="rounded-md border border-border/70 bg-background/50 p-3 text-sm text-muted-foreground">
+                No runs match your filters.
+                {!showSkipped && skippedCount > 0 && (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      onClick={() => setShowSkipped(true)}
+                      className="text-foreground underline-offset-2 hover:underline"
+                    >
+                      Show {skippedCount} skipped
+                    </button>
+                    .
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-md border border-border/70">
+                <div className="max-h-[420px] divide-y divide-border/70 overflow-y-auto">
+                  {filteredRuns.map(run => {
+                    const reasonLabel = formatSeasonPackReason(run)
+                    return (
+                      <div key={run.id} className="grid gap-2 bg-background/50 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <Badge variant={seasonPackStatusVariant(run.status)} className="capitalize">{run.status}</Badge>
+                            <Badge variant="outline" className="uppercase">{run.phase}</Badge>
+                            {reasonLabel && <span className="text-xs text-muted-foreground">· {reasonLabel}</span>}
+                          </div>
+                          <p className="truncate text-sm font-medium" title={run.torrentName}>{run.torrentName}</p>
+                          {run.message && <p className="line-clamp-2 text-xs text-muted-foreground">{run.message}</p>}
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground md:min-w-72 md:grid-cols-3">
+                          <span>Coverage <span className="font-medium text-foreground">{formatSeasonPackCoverage(run)}</span></span>
+                          <span>Episodes <span className="font-medium text-foreground">{run.matchedEpisodes}/{run.totalEpisodes || "?"}</span></span>
+                          <span>Instance <span className="font-medium text-foreground">{run.instanceId ?? "—"}</span></span>
+                          <span>Mode <span className="font-medium text-foreground">{run.linkMode || "—"}</span></span>
+                          <span className="col-span-2 md:col-span-2">{formatDateValue(run.createdAt)}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
   )
 }
 
@@ -678,6 +889,17 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     queryFn: () => api.listCrossSeedRuns({ limit: 10 }),
   })
 
+  const {
+    data: seasonPackRuns = [],
+    isLoading: seasonPackRunsLoading,
+    isFetching: seasonPackRunsFetching,
+    error: seasonPackRunsError,
+    refetch: refetchSeasonPackRuns,
+  } = useQuery({
+    queryKey: ["cross-seed", "season-pack", "runs"],
+    queryFn: () => api.listSeasonPackRuns({ limit: 50 }),
+  })
+
   const { data: instances } = useQuery({
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
@@ -859,6 +1081,17 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         webhookSourceTags: settings.webhookSourceTags ?? [],
         webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
         webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
+        // Season packs
+        seasonPackEnabled: settings.seasonPackEnabled ?? false,
+        seasonPackSkipRepackCompare: settings.seasonPackSkipRepackCompare ?? true,
+        seasonPackSimplifyHdrCompare: settings.seasonPackSimplifyHdrCompare ?? false,
+        seasonPackSimplifyWebCompare: settings.seasonPackSimplifyWebCompare ?? false,
+        seasonPackSkipYearCompare: settings.seasonPackSkipYearCompare ?? false,
+        seasonPackCoverageThreshold: settings.seasonPackCoverageThreshold ?? 0.75,
+        seasonPackTags: settings.seasonPackTags ?? ["cross-seed"],
+        seasonPackCategory: settings.seasonPackCategory ?? "",
+        seasonPackTvdbApiKey: settings.seasonPackTvdbApiKey ?? "",
+        seasonPackTvdbPin: settings.seasonPackTvdbPin ?? "",
         // Note: Hardlink mode is now per-instance (configured in Instance Settings)
       })
       setGlobalSettingsInitialized(true)
@@ -946,6 +1179,17 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       webhookSourceTags: settings.webhookSourceTags ?? [],
       webhookSourceExcludeCategories: settings.webhookSourceExcludeCategories ?? [],
       webhookSourceExcludeTags: settings.webhookSourceExcludeTags ?? [],
+      // Season packs
+      seasonPackEnabled: settings.seasonPackEnabled ?? false,
+      seasonPackSkipRepackCompare: settings.seasonPackSkipRepackCompare ?? true,
+      seasonPackSimplifyHdrCompare: settings.seasonPackSimplifyHdrCompare ?? false,
+      seasonPackSimplifyWebCompare: settings.seasonPackSimplifyWebCompare ?? false,
+      seasonPackSkipYearCompare: settings.seasonPackSkipYearCompare ?? false,
+      seasonPackCoverageThreshold: settings.seasonPackCoverageThreshold ?? 0.75,
+      seasonPackTags: settings.seasonPackTags ?? ["cross-seed"],
+      seasonPackCategory: settings.seasonPackCategory ?? "",
+      seasonPackTvdbApiKey: settings.seasonPackTvdbApiKey ?? "",
+      seasonPackTvdbPin: settings.seasonPackTvdbPin ?? "",
       // Note: Hardlink mode is now per-instance
     }
 
@@ -980,6 +1224,17 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       webhookSourceTags: globalSource.webhookSourceTags,
       webhookSourceExcludeCategories: globalSource.webhookSourceExcludeCategories,
       webhookSourceExcludeTags: globalSource.webhookSourceExcludeTags,
+      // Season packs
+      seasonPackEnabled: globalSource.seasonPackEnabled,
+      seasonPackSkipRepackCompare: globalSource.seasonPackSkipRepackCompare,
+      seasonPackSimplifyHdrCompare: globalSource.seasonPackSimplifyHdrCompare,
+      seasonPackSimplifyWebCompare: globalSource.seasonPackSimplifyWebCompare,
+      seasonPackSkipYearCompare: globalSource.seasonPackSkipYearCompare,
+      seasonPackCoverageThreshold: globalSource.seasonPackCoverageThreshold,
+      seasonPackTags: globalSource.seasonPackTags,
+      seasonPackCategory: globalSource.seasonPackCategory,
+      seasonPackTvdbApiKey: globalSource.seasonPackTvdbApiKey,
+      seasonPackTvdbPin: globalSource.seasonPackTvdbPin,
       // Note: Hardlink mode is now per-instance (see Instance Settings)
     }
   }, [
@@ -2465,24 +2720,29 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
           <Card>
             <CardHeader>
               <CardTitle>Cross-Seed Rules</CardTitle>
-              <CardDescription>Settings that apply to all cross-seed operations.</CardDescription>
+              <CardDescription>Matching, categories, tagging, and post-add behavior across all sources.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <HardlinkModeSettings />
+
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60 shrink-0">Matching</span>
+                <Separator className="flex-1" />
+              </div>
 
               {/* Gazelle (OPS/RED) */}
               <div id="gazelle-settings" className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3 scroll-mt-24">
                 <div className="space-y-1">
                   <p className="text-sm font-medium leading-none">Gazelle (OPS/RED)</p>
                   <p className="text-xs text-muted-foreground">
-                    Enable direct API matching against Orpheus and Redacted. This runs alongside Torznab; OPS/RED Torznab indexers are ignored.
+                    Match against Orpheus and Redacted via their APIs. Runs alongside Torznab; OPS/RED indexers are skipped.
                   </p>
                 </div>
 
                 <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <Label htmlFor="gazelle-enabled" className="font-medium">Enable Gazelle matching</Label>
-                    <p className="text-xs text-muted-foreground">Applies to all source torrents. If possible, qui also checks RED/OPS via Gazelle.</p>
+                    <p className="text-xs text-muted-foreground">When enabled, qui checks RED/OPS via Gazelle for all source torrents.</p>
                   </div>
                   <Switch
                     id="gazelle-enabled"
@@ -2528,7 +2788,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
               <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
                 <div className="space-y-1">
                   <p className="text-sm font-medium leading-none">Matching behavior</p>
-                  <p className="text-xs text-muted-foreground">Control how torrents are matched and which file differences are allowed.</p>
+                  <p className="text-xs text-muted-foreground">How torrents are matched and which size differences are allowed.</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="global-size-tolerance">Size mismatch tolerance (%)</Label>
@@ -2561,6 +2821,159 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
               </div>
 
+              {/* Season packs */}
+              <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium leading-none">Season packs</p>
+                  <p className="text-xs text-muted-foreground">When autobrr grabs a season pack, qui checks whether you already have enough local data to inject it, then lets qBittorrent download anything still missing.</p>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="season-pack-enabled" className="font-medium">Enable season pack matching</Label>
+                    <p className="text-xs text-muted-foreground">Allow autobrr to call qui for season pack check and apply.</p>
+                  </div>
+                  <Switch
+                    id="season-pack-enabled"
+                    checked={globalSettings.seasonPackEnabled}
+                    onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackEnabled: !!value }))}
+                  />
+                </div>
+                <div className="space-y-2 pt-3 border-t border-border/50">
+                  <Label htmlFor="season-pack-threshold">Coverage threshold (%)</Label>
+                  <Input
+                    id="season-pack-threshold"
+                    type="number"
+                    min={1}
+                    max={100}
+                    className="w-32"
+                    value={Math.round(globalSettings.seasonPackCoverageThreshold * 100)}
+                    onChange={event => {
+                      const parsed = Number(event.target.value)
+                      if (!Number.isNaN(parsed)) {
+                        setGlobalSettings(prev => ({
+                          ...prev,
+                          seasonPackCoverageThreshold: Math.max(1, Math.min(100, parsed)) / 100,
+                        }))
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Minimum local coverage before qui injects a season pack. If Sonarr resolves the show, qui uses the larger season total; otherwise it falls back to playable files in the pack. Incomplete packs are added paused, rechecked, then resumed automatically.
+                  </p>
+                </div>
+
+                <div className="space-y-3 pt-3 border-t border-border/50">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium leading-none">Matching settings</p>
+                    <p className="text-xs text-muted-foreground">Season-pack webhook matching rules. These settings only affect season-pack checks and applies.</p>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="season-pack-skip-repack-compare" className="font-medium">Ignore REPACK/PROPER differences</Label>
+                      <p className="text-xs text-muted-foreground">Treat REPACK and PROPER episodes as compatible with the season pack.</p>
+                    </div>
+                    <Switch
+                      id="season-pack-skip-repack-compare"
+                      checked={globalSettings.seasonPackSkipRepackCompare}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSkipRepackCompare: !!value }))}
+                      disabled={!globalSettings.seasonPackEnabled}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="season-pack-simplify-hdr-compare" className="font-medium">Simplify HDR matching</Label>
+                      <p className="text-xs text-muted-foreground">Treat HDR10, HDR10+, and HDR+ as HDR for season-pack matching.</p>
+                    </div>
+                    <Switch
+                      id="season-pack-simplify-hdr-compare"
+                      checked={globalSettings.seasonPackSimplifyHdrCompare}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSimplifyHdrCompare: !!value }))}
+                      disabled={!globalSettings.seasonPackEnabled}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="season-pack-simplify-web-compare" className="font-medium">Simplify WEB source matching</Label>
+                      <p className="text-xs text-muted-foreground">Treat WEB-DL as WEB for season-pack matching.</p>
+                    </div>
+                    <Switch
+                      id="season-pack-simplify-web-compare"
+                      checked={globalSettings.seasonPackSimplifyWebCompare}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSimplifyWebCompare: !!value }))}
+                      disabled={!globalSettings.seasonPackEnabled}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="season-pack-skip-year-compare" className="font-medium">Ignore year differences</Label>
+                      <p className="text-xs text-muted-foreground">Allow matches when one release includes a year and the other does not.</p>
+                    </div>
+                    <Switch
+                      id="season-pack-skip-year-compare"
+                      checked={globalSettings.seasonPackSkipYearCompare}
+                      onCheckedChange={value => setGlobalSettings(prev => ({ ...prev, seasonPackSkipYearCompare: !!value }))}
+                      disabled={!globalSettings.seasonPackEnabled}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 pt-3 border-t border-border/50">
+                  <div className="space-y-2">
+                    <Label htmlFor="season-pack-tvdb-api-key">TVDB API Key</Label>
+                    <Input
+                      id="season-pack-tvdb-api-key"
+                      type="password"
+                      value={globalSettings.seasonPackTvdbApiKey}
+                      data-1p-ignore="true"
+                      onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackTvdbApiKey: event.target.value }))}
+                      placeholder={globalSettings.seasonPackEnabled ? "Paste TVDB API key" : "Enable to configure"}
+                      disabled={!globalSettings.seasonPackEnabled}
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="season-pack-tvdb-pin">TVDB Subscriber PIN</Label>
+                    <Input
+                      id="season-pack-tvdb-pin"
+                      type="password"
+                      value={globalSettings.seasonPackTvdbPin}
+                      data-1p-ignore="true"
+                      onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackTvdbPin: event.target.value }))}
+                      placeholder={globalSettings.seasonPackEnabled ? "Paste TVDB PIN" : "Enable to configure"}
+                      disabled={!globalSettings.seasonPackEnabled}
+                      autoComplete="off"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Optional. Improves threshold accuracy when the check endpoint is called without torrent data. TVMaze is used automatically as a free fallback.
+                </p>
+                <div className="space-y-2 pt-3 border-t border-border/50">
+                  <Label htmlFor="season-pack-category">Category override</Label>
+                  <Input
+                    id="season-pack-category"
+                    value={globalSettings.seasonPackCategory}
+                    onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackCategory: event.target.value }))}
+                    placeholder={globalSettings.seasonPackEnabled ? "e.g. tv-hd" : "Enable to configure"}
+                    disabled={!globalSettings.seasonPackEnabled}
+                    className="max-w-sm"
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional. Fixed qBittorrent category for season pack injects. Set this to your Sonarr download-client category (e.g. <code>tv-hd</code>) so Sonarr imports the pack and preserves hardlinks between the library and your seeded episodes. Leave empty to follow the Category Mode below.
+                  </p>
+                </div>
+                <SeasonPackRunsPanel
+                  runs={seasonPackRuns}
+                  isLoading={seasonPackRunsLoading}
+                  isFetching={seasonPackRunsFetching}
+                  error={seasonPackRunsError}
+                  onRefresh={() => { void refetchSeasonPackRuns() }}
+                  formatDateValue={formatDateValue}
+                />
+              </div>
+
               {/* Safety & validation */}
               <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
                 <div className="space-y-1">
@@ -2570,7 +2983,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 <div className="flex items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <Label htmlFor="skip-recheck" className="font-medium">Skip recheck-required matches</Label>
-                    <p className="text-xs text-muted-foreground">Skip matches needing rename alignment, extra files, or disc layouts (BDMV/VIDEO_TS). When this is OFF, those matches are force rechecked by default.</p>
+                    <p className="text-xs text-muted-foreground">Skip matches that need file renames, extra files, or disc layouts (BDMV/VIDEO_TS). When off, those matches are force-rechecked.</p>
                   </div>
                   <Switch
                     id="skip-recheck"
@@ -2580,14 +2993,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
                 <div className="flex items-center justify-between gap-3 pt-3 border-t border-border/50">
                   <div className="space-y-0.5">
-                    <Label
-                      htmlFor="skip-piece-boundary-check"
-                      className={`font-medium ${globalSettings.skipPieceBoundarySafetyCheck ? "text-yellow-600 dark:text-yellow-500" : "text-green-600 dark:text-green-500"}`}
-                    >
-                      {globalSettings.skipPieceBoundarySafetyCheck ? "Piece boundary safety check currently disabled" : "Piece boundary safety check enabled"}
-                    </Label>
+                    <Label htmlFor="skip-piece-boundary-check" className="font-medium">Piece boundary protection</Label>
                     <p className="text-xs text-muted-foreground">
-                      {globalSettings.skipPieceBoundarySafetyCheck? "Allow matches even if extra files share pieces with content. May corrupt existing seeded files if content differs. Consider reflink mode instead.": "Matches are blocked when extra files share pieces with content, protecting your existing seeded files."}
+                      {globalSettings.skipPieceBoundarySafetyCheck? "Matches proceed even when extra files share pieces with content. May corrupt seeded data.": "Matches blocked when extra files share pieces with content, protecting seeded data."}
                     </p>
                   </div>
                   <Switch
@@ -2598,11 +3006,16 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
               </div>
 
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60 shrink-0">Organization</span>
+                <Separator className="flex-1" />
+              </div>
+
               {/* Categories */}
               <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-3">
                 <div className="space-y-1">
                   <p className="text-sm font-medium leading-none">Categories</p>
-                  <p className="text-xs text-muted-foreground">Control how cross-seeds are categorized in qBittorrent.</p>
+                  <p className="text-xs text-muted-foreground">How cross-seeds are categorized in qBittorrent.</p>
                 </div>
                 <RadioGroup
                   value={getCategoryMode()}
@@ -2740,12 +3153,12 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
               <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-4">
                 <div className="space-y-1">
                   <p className="text-sm font-medium leading-none">Tagging</p>
-                  <p className="text-xs text-muted-foreground">Configure tags applied to cross-seed torrents based on how they were discovered.</p>
+                  <p className="text-xs text-muted-foreground">Tags applied to cross-seeds based on discovery source.</p>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="rss-automation-tags">RSS Automation Tags</Label>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rss-automation-tags">RSS automation</Label>
                     <MultiSelect
                       options={[
                         { label: "cross-seed", value: "cross-seed" },
@@ -2753,15 +3166,14 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       ]}
                       selected={globalSettings.rssAutomationTags}
                       onChange={values => setGlobalSettings(prev => ({ ...prev, rssAutomationTags: normalizeStringList(values) }))}
-                      placeholder="Select tags for RSS automation"
+                      placeholder="Select tags..."
                       creatable
                       onCreateOption={value => setGlobalSettings(prev => ({ ...prev, rssAutomationTags: normalizeStringList([...prev.rssAutomationTags, value]) }))}
                     />
-                    <p className="text-xs text-muted-foreground">Tags applied to torrents added via RSS feed automation.</p>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="seeded-search-tags">Seeded Search Tags</Label>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="seeded-search-tags">Seeded search</Label>
                     <MultiSelect
                       options={[
                         { label: "cross-seed", value: "cross-seed" },
@@ -2769,15 +3181,14 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       ]}
                       selected={globalSettings.seededSearchTags}
                       onChange={values => setGlobalSettings(prev => ({ ...prev, seededSearchTags: normalizeStringList(values) }))}
-                      placeholder="Select tags for seeded search"
+                      placeholder="Select tags..."
                       creatable
                       onCreateOption={value => setGlobalSettings(prev => ({ ...prev, seededSearchTags: normalizeStringList([...prev.seededSearchTags, value]) }))}
                     />
-                    <p className="text-xs text-muted-foreground">Tags applied to torrents added via seeded torrent search.</p>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="completion-search-tags">Completion Search Tags</Label>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="completion-search-tags">Completion</Label>
                     <MultiSelect
                       options={[
                         { label: "cross-seed", value: "cross-seed" },
@@ -2785,15 +3196,14 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       ]}
                       selected={globalSettings.completionSearchTags}
                       onChange={values => setGlobalSettings(prev => ({ ...prev, completionSearchTags: normalizeStringList(values) }))}
-                      placeholder="Select tags for completion search"
+                      placeholder="Select tags..."
                       creatable
                       onCreateOption={value => setGlobalSettings(prev => ({ ...prev, completionSearchTags: normalizeStringList([...prev.completionSearchTags, value]) }))}
                     />
-                    <p className="text-xs text-muted-foreground">Tags applied to torrents added via completion-triggered search.</p>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="webhook-tags">Webhook Tags</Label>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="webhook-tags">Webhook</Label>
                     <MultiSelect
                       options={[
                         { label: "cross-seed", value: "cross-seed" },
@@ -2802,11 +3212,25 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       ]}
                       selected={globalSettings.webhookTags}
                       onChange={values => setGlobalSettings(prev => ({ ...prev, webhookTags: normalizeStringList(values) }))}
-                      placeholder="Select tags for webhook/apply"
+                      placeholder="Select tags..."
                       creatable
                       onCreateOption={value => setGlobalSettings(prev => ({ ...prev, webhookTags: normalizeStringList([...prev.webhookTags, value]) }))}
                     />
-                    <p className="text-xs text-muted-foreground">Tags applied to torrents added via /apply webhook (e.g., autobrr).</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="season-pack-tags">Season packs</Label>
+                    <MultiSelect
+                      options={[
+                        { label: "cross-seed", value: "cross-seed" },
+                        { label: "season-pack", value: "season-pack" },
+                      ]}
+                      selected={globalSettings.seasonPackTags}
+                      onChange={values => setGlobalSettings(prev => ({ ...prev, seasonPackTags: normalizeStringList(values) }))}
+                      placeholder="Select tags..."
+                      creatable
+                      onCreateOption={value => setGlobalSettings(prev => ({ ...prev, seasonPackTags: normalizeStringList([...prev.seasonPackTags, value]) }))}
+                    />
                   </div>
                 </div>
 
@@ -2823,23 +3247,25 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 </div>
               </div>
 
-              {/* Post-injection behavior */}
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60 shrink-0">After injection</span>
+                <Separator className="flex-1" />
+              </div>
+
+              {/* Post-add behavior */}
               <div className="rounded-lg border border-border/70 bg-muted/40 p-4 space-y-4">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium leading-none">Post-injection behavior</p>
+                  <p className="text-sm font-medium leading-none">Post-add behavior</p>
                   <p className="text-xs text-muted-foreground">
-                    Control what happens after cross-seed torrents are successfully injected.
+                    What happens after cross-seeds are added to qBittorrent.
                   </p>
                 </div>
 
                 <div className="space-y-3">
-                  <p className="text-xs font-medium text-muted-foreground">Auto-resume after injection (when off, torrents stay paused for review)</p>
+                  <p className="text-xs font-medium text-muted-foreground">Auto-resume per source (off = stays paused for review)</p>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="auto-resume-rss" className="font-medium">RSS</Label>
-                        <p className="text-xs text-muted-foreground">Resume RSS automation torrents automatically</p>
-                      </div>
+                      <Label htmlFor="auto-resume-rss" className="font-medium">RSS</Label>
                       <Switch
                         id="auto-resume-rss"
                         checked={!globalSettings.skipAutoResumeRss}
@@ -2848,10 +3274,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="auto-resume-seeded-search" className="font-medium">Seeded Search</Label>
-                        <p className="text-xs text-muted-foreground">Resume seeded search and dialog-injected torrents automatically</p>
-                      </div>
+                      <Label htmlFor="auto-resume-seeded-search" className="font-medium">Seeded search</Label>
                       <Switch
                         id="auto-resume-seeded-search"
                         checked={!globalSettings.skipAutoResumeSeededSearch}
@@ -2860,10 +3283,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="auto-resume-completion" className="font-medium">Completion</Label>
-                        <p className="text-xs text-muted-foreground">Resume completion-triggered torrents automatically</p>
-                      </div>
+                      <Label htmlFor="auto-resume-completion" className="font-medium">Completion</Label>
                       <Switch
                         id="auto-resume-completion"
                         checked={!globalSettings.skipAutoResumeCompletion}
@@ -2872,10 +3292,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     </div>
 
                     <div className="flex items-center justify-between gap-3">
-                      <div className="space-y-0.5">
-                        <Label htmlFor="auto-resume-webhook" className="font-medium">Webhook</Label>
-                        <p className="text-xs text-muted-foreground">Resume /apply webhook torrents automatically</p>
-                      </div>
+                      <Label htmlFor="auto-resume-webhook" className="font-medium">Webhook</Label>
                       <Switch
                         id="auto-resume-webhook"
                         checked={!globalSettings.skipAutoResumeWebhook}
@@ -2910,7 +3327,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Optionally run an external program after successfully injecting a cross-seed torrent. Only enabled programs are shown.
+                    Run a program after adding a cross-seed. Only enabled programs are shown.
                     {!enabledExternalPrograms.length && (
                       <> <Link to="/settings" search={{ tab: "external-programs" }} className="font-medium text-primary underline-offset-4 hover:underline">Configure external programs</Link> to use this feature.</>
                     )}
@@ -2942,7 +3359,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 disabled={patchSettingsMutation.isPending}
               >
                 {patchSettingsMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save global cross-seed settings
+                Save settings
               </Button>
             </CardFooter>
           </Card>

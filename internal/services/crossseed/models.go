@@ -426,3 +426,52 @@ type AutobrrApplyRequest struct {
 	// cannot derive tracker identity from the torrent file itself.
 	Indexer string `json:"indexer,omitempty"`
 }
+
+// --- Season-pack webhook DTOs ---
+
+// SeasonPackCheckRequest represents a request to check whether a season pack
+// can be reconstructed from existing individual episodes.
+type SeasonPackCheckRequest struct {
+	TorrentName string `json:"torrentName"`
+	TorrentData string `json:"torrentData"`
+	InstanceIDs []int  `json:"instanceIds,omitempty"`
+	Indexer     string `json:"indexer,omitempty"`
+}
+
+// SeasonPackCheckMatch describes per-instance episode coverage.
+type SeasonPackCheckMatch struct {
+	InstanceID      int     `json:"instanceId"`
+	MatchedEpisodes int     `json:"matchedEpisodes"`
+	TotalEpisodes   int     `json:"totalEpisodes"`
+	Coverage        float64 `json:"coverage"`
+}
+
+// SeasonPackCheckResponse is the response to a season-pack check request.
+type SeasonPackCheckResponse struct {
+	Ready            bool                   `json:"ready"`
+	Reason           string                 `json:"reason,omitempty"`
+	Message          string                 `json:"message,omitempty"`
+	Matches          []SeasonPackCheckMatch `json:"matches,omitempty"`
+	ThresholdSkipped bool                   `json:"thresholdSkipped,omitempty"`
+}
+
+// SeasonPackApplyRequest represents a request to apply (add) a season pack torrent
+// using hardlinked/reflinked episode data.
+type SeasonPackApplyRequest struct {
+	TorrentName string `json:"torrentName"`
+	TorrentData string `json:"torrentData"`
+	InstanceIDs []int  `json:"instanceIds,omitempty"`
+	Indexer     string `json:"indexer,omitempty"`
+}
+
+// SeasonPackApplyResponse is the result of a season-pack apply attempt.
+type SeasonPackApplyResponse struct {
+	Applied         bool    `json:"applied"`
+	Reason          string  `json:"reason,omitempty"`
+	Message         string  `json:"message,omitempty"`
+	InstanceID      int     `json:"instanceId,omitempty"`
+	MatchedEpisodes int     `json:"matchedEpisodes,omitempty"`
+	TotalEpisodes   int     `json:"totalEpisodes,omitempty"`
+	Coverage        float64 `json:"coverage,omitempty"`
+	LinkMode        string  `json:"linkMode,omitempty"`
+}

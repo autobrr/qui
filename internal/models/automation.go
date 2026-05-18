@@ -402,6 +402,9 @@ func (s *AutomationStore) Create(ctx context.Context, automation *Automation) (*
 	if err := automation.Conditions.ExternalProgram.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid external program action: %w", err)
 	}
+	if err := automation.Conditions.ExportToInstance.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid export to instance action: %w", err)
+	}
 
 	if automation.SortingConfig != nil {
 		if err := automation.SortingConfig.Validate(); err != nil {
@@ -472,6 +475,9 @@ func (s *AutomationStore) Update(ctx context.Context, automation *Automation) (*
 	}
 	if err := automation.Conditions.ExternalProgram.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid external program action: %w", err)
+	}
+	if err := automation.Conditions.ExportToInstance.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid export to instance action: %w", err)
 	}
 
 	if automation.SortingConfig != nil {
@@ -854,21 +860,22 @@ func (c *RuleCondition) CompileRegex() error {
 // ActionConditions holds per-action conditions with action configuration.
 // This is the top-level structure stored in the `conditions` JSON column.
 type ActionConditions struct {
-	SchemaVersion   string                 `json:"schemaVersion"`
-	Grouping        *GroupingConfig        `json:"grouping,omitempty"`
-	SpeedLimits     *SpeedLimitAction      `json:"speedLimits,omitempty"`
-	ShareLimits     *ShareLimitsAction     `json:"shareLimits,omitempty"`
-	Pause           *PauseAction           `json:"pause,omitempty"`
-	Resume          *ResumeAction          `json:"resume,omitempty"`
-	Recheck         *RecheckAction         `json:"recheck,omitempty"`
-	Reannounce      *ReannounceAction      `json:"reannounce,omitempty"`
-	Delete          *DeleteAction          `json:"delete,omitempty"`
-	Tag             *TagAction             `json:"tag,omitempty"`  // Legacy single-tag action (backward compatible alias for first entry in Tags)
-	Tags            []*TagAction           `json:"tags,omitempty"` // Preferred multi-tag actions
-	Category        *CategoryAction        `json:"category,omitempty"`
-	Move            *MoveAction            `json:"move,omitempty"`
-	ExternalProgram *ExternalProgramAction `json:"externalProgram,omitempty"`
-	AutoManagement  *AutoManagementAction  `json:"autoManagement,omitempty"`
+	SchemaVersion    string                  `json:"schemaVersion"`
+	Grouping         *GroupingConfig         `json:"grouping,omitempty"`
+	SpeedLimits      *SpeedLimitAction       `json:"speedLimits,omitempty"`
+	ShareLimits      *ShareLimitsAction      `json:"shareLimits,omitempty"`
+	Pause            *PauseAction            `json:"pause,omitempty"`
+	Resume           *ResumeAction           `json:"resume,omitempty"`
+	Recheck          *RecheckAction          `json:"recheck,omitempty"`
+	Reannounce       *ReannounceAction       `json:"reannounce,omitempty"`
+	Delete           *DeleteAction           `json:"delete,omitempty"`
+	Tag              *TagAction              `json:"tag,omitempty"`  // Legacy single-tag action (backward compatible alias for first entry in Tags)
+	Tags             []*TagAction            `json:"tags,omitempty"` // Preferred multi-tag actions
+	Category         *CategoryAction         `json:"category,omitempty"`
+	Move             *MoveAction             `json:"move,omitempty"`
+	ExternalProgram  *ExternalProgramAction  `json:"externalProgram,omitempty"`
+	AutoManagement   *AutoManagementAction   `json:"autoManagement,omitempty"`
+	ExportToInstance *ExportToInstanceAction `json:"exportToInstance,omitempty"`
 }
 
 // SpeedLimitAction configures speed limit application with optional conditions.
@@ -1000,6 +1007,38 @@ func (a *ExternalProgramAction) Validate() error {
 	return nil
 }
 
+// ExportToInstanceAction configures exporting a torrent to a different qBittorrent instance.
+type ExportToInstanceAction struct {
+	Enabled          bool           `json:"enabled"`
+	TargetInstanceID int            `json:"targetInstanceId"`        // Destination qBittorrent instance
+	SavePath         string         `json:"savePath"`                // Save path on target (Go template supported)
+	Category         string         `json:"category,omitempty"`      // Category on target instance
+	Tags             []string       `json:"tags,omitempty"`          // Tags on target instance
+	Paused           bool           `json:"paused,omitempty"`        // Start paused on target
+	SkipChecking     *bool          `json:"skipChecking,omitempty"`  // Skip hash check (defaults true)
+	ContentLayout    string         `json:"contentLayout,omitempty"` // "Original", "Subfolder", "NoSubfolder"
+	Condition        *RuleCondition `json:"condition,omitempty"`
+}
+
+// SkipCheckingEnabled returns the effective skip_checking value (defaults true).
+func (a *ExportToInstanceAction) SkipCheckingEnabled() bool {
+	if a.SkipChecking == nil {
+		return true
+	}
+	return *a.SkipChecking
+}
+
+// Validate checks that the ExportToInstanceAction has valid configuration.
+func (a *ExportToInstanceAction) Validate() error {
+	if a == nil {
+		return nil
+	}
+	if a.Enabled && a.TargetInstanceID <= 0 {
+		return errors.New("enabled export to instance action requires valid targetInstanceId")
+	}
+	return nil
+}
+
 // IsEmpty returns true if no actions are configured.
 func (ac *ActionConditions) IsEmpty() bool {
 	if ac == nil {
@@ -1016,7 +1055,8 @@ func (ac *ActionConditions) IsEmpty() bool {
 		ac.Category == nil &&
 		ac.Move == nil &&
 		ac.ExternalProgram == nil &&
-		ac.AutoManagement == nil
+		ac.AutoManagement == nil &&
+		ac.ExportToInstance == nil
 }
 
 // Normalize normalizes legacy/new action fields for in-memory use.
