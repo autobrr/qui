@@ -125,8 +125,8 @@ func (m *localMatchSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt
 	return qbt.AppPreferences{}, nil
 }
 
-func (m *localMatchSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) error {
-	return nil
+func (m *localMatchSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (m *localMatchSyncManager) BulkAction(_ context.Context, _ int, _ []string, _ string) error {

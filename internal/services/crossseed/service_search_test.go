@@ -1082,8 +1082,8 @@ func (*queueTestSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.Ap
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (*queueTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (*queueTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (*queueTestSyncManager) BulkAction(context.Context, int, []string, string) error {
@@ -1176,8 +1176,8 @@ func (*gazelleSkipHashSyncManager) GetAppPreferences(_ context.Context, _ int) (
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (*gazelleSkipHashSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (*gazelleSkipHashSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (*gazelleSkipHashSyncManager) BulkAction(context.Context, int, []string, string) error {

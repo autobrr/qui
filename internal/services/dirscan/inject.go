@@ -53,7 +53,7 @@ type JackettDownloader interface {
 
 // TorrentAdder is the interface for adding torrents to qBittorrent.
 type TorrentAdder interface {
-	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
+	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 	ResumeWhenComplete(instanceID int, hashes []string, opts qbsync.ResumeWhenCompleteOptions)
 }
@@ -228,7 +228,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	i.applyAddPolicy(options, req)
 
 	// Add the torrent to qBittorrent
-	if err := i.syncManager.AddTorrent(ctx, req.InstanceID, req.TorrentBytes, options); err != nil {
+	if _, err := i.syncManager.AddTorrent(ctx, req.InstanceID, req.TorrentBytes, options); err != nil {
 		i.rollbackLinkTree(addMode, linkPlan)
 		result.ErrorMessage = fmt.Sprintf("failed to add torrent: %v", err)
 		return result, fmt.Errorf("add torrent: %w", err)

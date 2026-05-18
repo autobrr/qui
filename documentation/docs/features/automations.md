@@ -436,6 +436,32 @@ Set ratio limit and/or seeding time limit. Each field supports these modes:
 
 Torrents stop seeding when any enabled limit is reached.
 
+#### Share limit action (Web API 2.15.1+)
+
+On instances whose qBittorrent Web API is **2.15.1** or newer, **When limits are reached** is available in the torrent share limit dialog and in automation workflows. It controls what happens when a torrent hits its configured ratio, seeding time, or inactive seeding limits. Stored and sent as the same **string enum names** qBittorrent expects for `setShareLimits` (Qt meta-object names, not numeric codes):
+
+| Option                  | Value (`shareLimitAction`) | Description                                 |
+| ----------------------- | -------------------------- | ------------------------------------------- |
+| Default (use global)    | omit or `default`          | Follow qBittorrent's global setting         |
+| Stop torrent            | `Stop`                     | Pause the torrent                           |
+| Remove torrent          | `Remove`                   | Remove from client, keep files              |
+| Remove with content     | `RemoveWithContent`        | Remove from client and delete files         |
+| Enable super seeding    | `EnableSuperSeeding`       | Switch to super seeding mode                |
+
+#### Share limits matching mode (Web API 2.16.0+)
+
+**Limits matching mode** (match **any** limit vs **all** limits) is a separate Web API capability and requires **2.16.0** or newer. On slightly older 5.2 builds that only expose **2.15.1**, qui still shows the action above but hides this control until you upgrade qBittorrent. Values use **string enum names** for `setShareLimits`:
+
+| Option               | Value (`shareLimitsMode`) | Description                              |
+| -------------------- | ------------------------- | ---------------------------------------- |
+| Default (use global) | omit or `default`         | Follow qBittorrent's global setting      |
+| Match any limit      | `MatchAny`                | Trigger when any single limit is reached |
+| Match all limits     | `MatchAll`                | Trigger only when all limits are reached |
+
+These options are hidden when the instance does not report the required Web API version (see [qBittorrent Version Compatibility](../advanced/compatibility.md)). Ratio and seeding time limits above still apply on older instances; only the extra controls are gated.
+
+These fields appear in both the torrent share limit dialog and the automation workflow editor when the connected qBittorrent instance supports them. On older instances, the fields are hidden and only the classic ratio/seeding time limits are sent.
+
 ### Pause
 
 Pause matching torrents. Only pauses if not already stopped.

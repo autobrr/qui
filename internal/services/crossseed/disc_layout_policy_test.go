@@ -79,10 +79,10 @@ func (*discPolicySyncManager) GetAppPreferences(context.Context, int) (qbt.AppPr
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (m *discPolicySyncManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) error {
+func (m *discPolicySyncManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addedOptions = make(map[string]string, len(options))
 	maps.Copy(m.addedOptions, options)
-	return nil
+	return nil, nil
 }
 
 func (m *discPolicySyncManager) BulkAction(_ context.Context, _ int, hashes []string, action string) error {

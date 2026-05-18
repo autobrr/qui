@@ -118,8 +118,8 @@ func (m *completionGazelleSyncMock) GetAppPreferences(context.Context, int) (qbt
 	return qbt.AppPreferences{}, nil
 }
 
-func (m *completionGazelleSyncMock) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (m *completionGazelleSyncMock) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (m *completionGazelleSyncMock) BulkAction(context.Context, int, []string, string) error {
