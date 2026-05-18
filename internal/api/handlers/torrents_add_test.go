@@ -916,6 +916,7 @@ type fullMockSyncManager struct {
 	addTorrentFromURLsCalls []addTorrentFromURLsCall
 	addTorrentErr           error
 	addTorrentFromURLsErr   error
+	addTorrentFromURLsFunc  func(urls []string) (*qbt.TorrentAddResponse, error)
 }
 
 func (m *fullMockSyncManager) AddTorrent(_ context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
@@ -933,6 +934,9 @@ func (m *fullMockSyncManager) AddTorrentFromURLs(_ context.Context, instanceID i
 		urls:       urls,
 		options:    options,
 	})
+	if m.addTorrentFromURLsFunc != nil {
+		return m.addTorrentFromURLsFunc(urls)
+	}
 	return nil, m.addTorrentFromURLsErr
 }
 
@@ -1144,6 +1148,55 @@ func TestAddTorrentHandler_PartialFailure_Returns201WithFailedURLs(t *testing.T)
 	// Verify only successful torrent was added
 	require.Len(t, mockSync.addTorrentCalls, 1)
 	assert.Equal(t, []byte("success torrent data"), mockSync.addTorrentCalls[0].fileContent)
+}
+
+func TestAddTorrentHandler_DirectMultiURLPartialFailure_Returns201WithFailedURLs(t *testing.T) {
+	t.Parallel()
+
+	failURL := "http://tracker.example.com/fail.torrent"
+	successURL := "http://tracker.example.com/success.torrent"
+	mockSync := &fullMockSyncManager{
+		addTorrentFromURLsFunc: func(urls []string) (*qbt.TorrentAddResponse, error) {
+			if len(urls) > 1 {
+				return &qbt.TorrentAddResponse{
+					SuccessCount: 1,
+					FailureCount: 1,
+				}, nil
+			}
+			if urls[0] == failURL {
+				return nil, errors.New("torrent URL rejected")
+			}
+			return &qbt.TorrentAddResponse{SuccessCount: 1}, nil
+		},
+	}
+
+	handler := NewTorrentsHandlerForTesting(mockSync, nil)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("urls", failURL+"\n"+successURL)
+	_ = writer.Close()
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/instances/1/torrents", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("instanceID", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	handler.AddTorrent(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	assert.Contains(t, w.Body.String(), `"added":1`)
+	assert.Contains(t, w.Body.String(), `"failed":1`)
+	assert.Contains(t, w.Body.String(), `"failedURLs"`)
+	assert.Contains(t, w.Body.String(), failURL)
+	assert.Contains(t, w.Body.String(), "torrent URL rejected")
+
+	require.Len(t, mockSync.addTorrentFromURLsCalls, 2)
+	assert.Equal(t, []string{failURL}, mockSync.addTorrentFromURLsCalls[0].urls)
+	assert.Equal(t, []string{successURL}, mockSync.addTorrentFromURLsCalls[1].urls)
 }
 
 // customMockJackettServiceForHandler is similar to customMockJackettService but

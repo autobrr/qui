@@ -1000,15 +1000,52 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// No indexer_id - use URL method directly
 			// (works for local qBittorrent instances or magnet links)
-			if _, err := h.addTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
-				if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
-					return
+			var skippedEmpty int
+			for _, url := range urls {
+				url = strings.TrimSpace(url)
+				if url == "" {
+					skippedEmpty++
+					continue
 				}
-				log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to add torrent from URLs")
-				RespondError(w, http.StatusInternalServerError, "Failed to add torrent")
-				return
+
+				if ctx.Err() != nil {
+					log.Warn().Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
+					break
+				}
+
+				resp, err := h.addTorrentFromURLs(ctx, instanceID, []string{url}, options)
+				if err != nil {
+					if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
+						return
+					}
+					log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to add torrent from URL")
+					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
+					failedCount++
+					lastError = err
+					continue
+				}
+
+				if resp != nil && resp.FailureCount > 0 {
+					err := errors.New("qBittorrent rejected torrent URL")
+					log.Error().
+						Int("instanceID", instanceID).
+						Str("url", redact.URLString(url)).
+						Int64("successCount", resp.SuccessCount).
+						Int64("failureCount", resp.FailureCount).
+						Int64("pendingCount", resp.PendingCount).
+						Msg("qBittorrent reported failed URL add")
+					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
+					failedCount++
+					lastError = err
+					continue
+				}
+
+				addedCount++
 			}
-			addedCount = len(urls) // Assume all URLs succeeded for simplicity
+			if skippedEmpty > 0 {
+				log.Debug().Int("skippedEmpty", skippedEmpty).Int("instanceID", instanceID).
+					Msg("Skipped empty URLs in add torrent request")
+			}
 		}
 	}
 
