@@ -25,9 +25,9 @@ import (
 
 // CrossSeedHandler handles cross-seed API endpoints
 type CrossSeedHandler struct {
-	service         *crossseed.Service
-	completionStore *models.InstanceCrossSeedCompletionStore
-	instanceStore   *models.InstanceStore
+	service            *crossseed.Service
+	completionStore    *models.InstanceCrossSeedCompletionStore
+	instanceStore      *models.InstanceStore
 	seasonPackRunStore *models.SeasonPackRunStore
 }
 
@@ -58,6 +58,7 @@ type automationSettingsRequest struct {
 	SeasonPackSkipYearCompare    bool     `json:"seasonPackSkipYearCompare"`
 	SeasonPackCoverageThreshold  float64  `json:"seasonPackCoverageThreshold"`
 	SeasonPackTags               []string `json:"seasonPackTags"`
+	SeasonPackCategory           string   `json:"seasonPackCategory"`
 	// Gazelle (OPS/RED) cross-seed settings.
 	GazelleEnabled       bool   `json:"gazelleEnabled"`
 	RedactedAPIKey       string `json:"redactedApiKey"`
@@ -115,6 +116,7 @@ type automationSettingsPatchRequest struct {
 	SeasonPackSkipYearCompare    *bool     `json:"seasonPackSkipYearCompare,omitempty"`
 	SeasonPackCoverageThreshold  *float64  `json:"seasonPackCoverageThreshold,omitempty"`
 	SeasonPackTags               *[]string `json:"seasonPackTags,omitempty"`
+	SeasonPackCategory           *string   `json:"seasonPackCategory,omitempty"`
 	GazelleEnabled               *bool     `json:"gazelleEnabled,omitempty"`
 	RedactedAPIKey               *string   `json:"redactedApiKey,omitempty"`
 	OrpheusAPIKey                *string   `json:"orpheusApiKey,omitempty"`
@@ -221,6 +223,7 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SeasonPackSkipYearCompare == nil &&
 		r.SeasonPackCoverageThreshold == nil &&
 		r.SeasonPackTags == nil &&
+		r.SeasonPackCategory == nil &&
 		r.GazelleEnabled == nil &&
 		r.RedactedAPIKey == nil &&
 		r.OrpheusAPIKey == nil &&
@@ -369,6 +372,9 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.SeasonPackTags != nil {
 		settings.SeasonPackTags = *patch.SeasonPackTags
 	}
+	if patch.SeasonPackCategory != nil {
+		settings.SeasonPackCategory = strings.TrimSpace(*patch.SeasonPackCategory)
+	}
 	if patch.GazelleEnabled != nil {
 		settings.GazelleEnabled = *patch.GazelleEnabled
 	}
@@ -417,9 +423,9 @@ func NewCrossSeedHandler(
 	seasonPackRunStore *models.SeasonPackRunStore,
 ) *CrossSeedHandler {
 	return &CrossSeedHandler{
-		service:         service,
-		completionStore: completionStore,
-		instanceStore:   instanceStore,
+		service:            service,
+		completionStore:    completionStore,
+		instanceStore:      instanceStore,
 		seasonPackRunStore: seasonPackRunStore,
 	}
 }
@@ -924,6 +930,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SeasonPackSkipYearCompare:    req.SeasonPackSkipYearCompare,
 		SeasonPackCoverageThreshold:  req.SeasonPackCoverageThreshold,
 		SeasonPackTags:               req.SeasonPackTags,
+		SeasonPackCategory:           strings.TrimSpace(req.SeasonPackCategory),
 		GazelleEnabled:               req.GazelleEnabled,
 		RedactedAPIKey:               strings.TrimSpace(req.RedactedAPIKey),
 		OrpheusAPIKey:                strings.TrimSpace(req.OrpheusAPIKey),

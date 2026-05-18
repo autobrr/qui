@@ -124,6 +124,7 @@ interface GlobalCrossSeedSettings {
   seasonPackSkipYearCompare: boolean
   seasonPackCoverageThreshold: number
   seasonPackTags: string[]
+  seasonPackCategory: string
   seasonPackTvdbApiKey: string
   seasonPackTvdbPin: string
   // Note: Hardlink mode settings have been moved to per-instance configuration
@@ -185,6 +186,7 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   seasonPackSkipYearCompare: false,
   seasonPackCoverageThreshold: 0.75,
   seasonPackTags: ["cross-seed"],
+  seasonPackCategory: "",
   seasonPackTvdbApiKey: "",
   seasonPackTvdbPin: "",
   // Webhook source filtering defaults - empty means no filtering (all torrents)
@@ -1087,6 +1089,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         seasonPackSkipYearCompare: settings.seasonPackSkipYearCompare ?? false,
         seasonPackCoverageThreshold: settings.seasonPackCoverageThreshold ?? 0.75,
         seasonPackTags: settings.seasonPackTags ?? ["cross-seed"],
+        seasonPackCategory: settings.seasonPackCategory ?? "",
         seasonPackTvdbApiKey: settings.seasonPackTvdbApiKey ?? "",
         seasonPackTvdbPin: settings.seasonPackTvdbPin ?? "",
         // Note: Hardlink mode is now per-instance (configured in Instance Settings)
@@ -1184,6 +1187,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       seasonPackSkipYearCompare: settings.seasonPackSkipYearCompare ?? false,
       seasonPackCoverageThreshold: settings.seasonPackCoverageThreshold ?? 0.75,
       seasonPackTags: settings.seasonPackTags ?? ["cross-seed"],
+      seasonPackCategory: settings.seasonPackCategory ?? "",
       seasonPackTvdbApiKey: settings.seasonPackTvdbApiKey ?? "",
       seasonPackTvdbPin: settings.seasonPackTvdbPin ?? "",
       // Note: Hardlink mode is now per-instance
@@ -1228,6 +1232,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       seasonPackSkipYearCompare: globalSource.seasonPackSkipYearCompare,
       seasonPackCoverageThreshold: globalSource.seasonPackCoverageThreshold,
       seasonPackTags: globalSource.seasonPackTags,
+      seasonPackCategory: globalSource.seasonPackCategory,
       seasonPackTvdbApiKey: globalSource.seasonPackTvdbApiKey,
       seasonPackTvdbPin: globalSource.seasonPackTvdbPin,
       // Note: Hardlink mode is now per-instance (see Instance Settings)
@@ -2944,6 +2949,21 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 <p className="text-xs text-muted-foreground">
                   Optional. Improves threshold accuracy when the check endpoint is called without torrent data. TVMaze is used automatically as a free fallback.
                 </p>
+                <div className="space-y-2 pt-3 border-t border-border/50">
+                  <Label htmlFor="season-pack-category">Category override</Label>
+                  <Input
+                    id="season-pack-category"
+                    value={globalSettings.seasonPackCategory}
+                    onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackCategory: event.target.value }))}
+                    placeholder={globalSettings.seasonPackEnabled ? "e.g. tv-hd" : "Enable to configure"}
+                    disabled={!globalSettings.seasonPackEnabled}
+                    className="max-w-sm"
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional. Fixed qBittorrent category for season pack injects. Set this to your Sonarr download-client category (e.g. <code>tv-hd</code>) so Sonarr imports the pack and preserves hardlinks between the library and your seeded episodes. Leave empty to follow the Category Mode below.
+                  </p>
+                </div>
                 <SeasonPackRunsPanel
                   runs={seasonPackRuns}
                   isLoading={seasonPackRunsLoading}

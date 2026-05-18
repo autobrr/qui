@@ -6548,6 +6548,9 @@ components:
           items:
             type: string
           description: Tags applied to season-pack injections
+        seasonPackCategory:
+          type: string
+          description: Fixed qBittorrent category for season-pack injections. Empty uses the global category mode.
         seasonPackTvdbApiKey:
           type: string
           description: TVDB API key for season pack metadata resolution. Redacted in API responses.
@@ -6673,6 +6676,9 @@ components:
           items:
             type: string
           description: Tags applied to season-pack injections
+        seasonPackCategory:
+          type: string
+          description: Fixed qBittorrent category for season-pack injections. Empty uses the global category mode.
         seasonPackTvdbApiKey:
           type: string
           description: TVDB API key for season pack metadata resolution. Redacted in API responses.

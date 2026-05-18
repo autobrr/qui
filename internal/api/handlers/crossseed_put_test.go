@@ -61,6 +61,7 @@ func TestUpdateAutomationSettings_PersistsSeasonPackFields(t *testing.T) {
 		"seasonPackEnabled": true,
 		"seasonPackCoverageThreshold": 0.9,
 		"seasonPackTags": ["season-pack", "cross-seed"],
+		"seasonPackCategory": " tv-hd ",
 		"seasonPackSkipRepackCompare": false,
 		"seasonPackSimplifyHdrCompare": true,
 		"seasonPackSimplifyWebCompare": true,
@@ -78,6 +79,7 @@ func TestUpdateAutomationSettings_PersistsSeasonPackFields(t *testing.T) {
 	require.True(t, updated.SeasonPackEnabled)
 	require.InDelta(t, 0.9, updated.SeasonPackCoverageThreshold, 0.001)
 	require.Equal(t, []string{"season-pack", "cross-seed"}, updated.SeasonPackTags)
+	require.Equal(t, "tv-hd", updated.SeasonPackCategory)
 	require.False(t, updated.SeasonPackSkipRepackCompare)
 	require.True(t, updated.SeasonPackSimplifyHDRCompare)
 	require.True(t, updated.SeasonPackSimplifyWEBCompare)
@@ -88,10 +90,41 @@ func TestUpdateAutomationSettings_PersistsSeasonPackFields(t *testing.T) {
 	require.True(t, stored.SeasonPackEnabled)
 	require.InDelta(t, 0.9, stored.SeasonPackCoverageThreshold, 0.001)
 	require.Equal(t, []string{"season-pack", "cross-seed"}, stored.SeasonPackTags)
+	require.Equal(t, "tv-hd", stored.SeasonPackCategory)
 	require.False(t, stored.SeasonPackSkipRepackCompare)
 	require.True(t, stored.SeasonPackSimplifyHDRCompare)
 	require.True(t, stored.SeasonPackSimplifyWEBCompare)
 	require.True(t, stored.SeasonPackSkipYearCompare)
+}
+
+func TestPatchAutomationSettings_PersistsSeasonPackCategory(t *testing.T) {
+	store := newTestCrossSeedStore(t)
+
+	svc := &crossseed.Service{}
+	setServiceField(t, svc, "automationStore", store)
+
+	handler := &CrossSeedHandler{service: svc}
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/api/cross-seed/settings", strings.NewReader(`{
+		"seasonPackCategory": " tv-uhd "
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+
+	handler.PatchAutomationSettings(resp, req)
+
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	getReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/cross-seed/settings", nil)
+	getResp := httptest.NewRecorder()
+
+	handler.GetAutomationSettings(getResp, getReq)
+
+	require.Equal(t, http.StatusOK, getResp.Code)
+
+	var stored models.CrossSeedAutomationSettings
+	require.NoError(t, json.NewDecoder(getResp.Body).Decode(&stored))
+	require.Equal(t, "tv-uhd", stored.SeasonPackCategory)
 }
 
 func TestUpdateAutomationSettings_RejectsInvalidSeasonPackThreshold(t *testing.T) {

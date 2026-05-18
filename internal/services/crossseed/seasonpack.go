@@ -383,11 +383,14 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		return s.failApply(ctx, req.TorrentName, err, prep, winner)
 	}
 
-	_, crossCategory := s.determineCrossSeedCategory(ctx, &CrossSeedRequest{
-		IndexerName: req.Indexer,
-	}, &qbt.Torrent{
-		Category: firstMatchedEpisodeCategory(episodes),
-	}, prep.settings)
+	crossCategory := strings.TrimSpace(prep.settings.SeasonPackCategory)
+	if crossCategory == "" {
+		_, crossCategory = s.determineCrossSeedCategory(ctx, &CrossSeedRequest{
+			IndexerName: req.Indexer,
+		}, &qbt.Torrent{
+			Category: firstMatchedEpisodeCategory(episodes),
+		}, prep.settings)
+	}
 
 	opts := seasonPackAddOptions(planBuild.plan, crossCategory, planBuild.hasPendingFiles())
 	if tags := prep.settings.SeasonPackTags; len(tags) > 0 {

@@ -1000,6 +1000,44 @@ func TestApplySeasonPackWebhook_UsesResolvedCategory(t *testing.T) {
 			episodeCat: "tv",
 			wantCat:    "BTN",
 		},
+		{
+			name: "season pack category override wins",
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackEnabled:           true,
+				SeasonPackCoverageThreshold: 0.75,
+				SeasonPackCategory:          "tv-hd",
+				UseCustomCategory:           true,
+				CustomCategory:              "cross-seed",
+				UseCategoryFromIndexer:      true,
+			},
+			indexer:    "BTN",
+			episodeCat: "tv",
+			wantCat:    "tv-hd",
+		},
+		{
+			name: "blank season pack category falls back",
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackEnabled:           true,
+				SeasonPackCoverageThreshold: 0.75,
+				SeasonPackCategory:          "",
+				UseCustomCategory:           true,
+				CustomCategory:              "cross-seed",
+			},
+			episodeCat: "tv",
+			wantCat:    "cross-seed",
+		},
+		{
+			name: "whitespace season pack category falls back",
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackEnabled:           true,
+				SeasonPackCoverageThreshold: 0.75,
+				SeasonPackCategory:          "   ",
+				UseCustomCategory:           true,
+				CustomCategory:              "cross-seed",
+			},
+			episodeCat: "tv",
+			wantCat:    "cross-seed",
+		},
 	}
 
 	for _, tt := range tests {

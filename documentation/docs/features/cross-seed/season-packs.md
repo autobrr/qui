@@ -112,6 +112,7 @@ See [Hardlink Mode](hardlink-mode) for setup instructions.
 - Enable the feature
 - Set the coverage threshold (default 75%)
 - Optionally, add a TVDB API key for improved episode count accuracy. TVMaze is used automatically as a free fallback without any configuration.
+- Optionally, set a **Category override** for season pack injects. If you use Sonarr, set this to the same category Sonarr is watching on its qBittorrent download client (for example `tv-hd` or `tv-uhd`). Sonarr will pick up the assembled pack and hardlink-import its files into your library, so the same on-disk bytes back both the library and every seeded episode. If left empty, season packs use the global Category Mode configured under **Cross-Seed > Rules > Categories**.
 
 ### 2. Create an API Key
 
@@ -222,7 +223,8 @@ When qui applies a season pack, it:
 - Always adds the torrent with an explicit `savepath` pointing at the linked tree
 - Applies the tags configured in **Cross-Seed > Rules > Season packs**
 - Adds incomplete packs paused, then best-effort attempts automatic recheck and queues automatic resume. After recheck, qui resumes at or above the configured season-pack coverage threshold; below that threshold, the torrent stays paused for manual review.
-- Uses your normal cross-seed category rules:
+- Uses the **Category override** from **Cross-Seed > Rules > Season packs** when set (recommended for Sonarr integration so the pack lands in Sonarr's download-client category and inherits hardlink-aware imports)
+- Otherwise uses the global cross-seed category rules:
   - Custom category, if enabled
   - Otherwise category affix mode, if enabled
   - Otherwise indexer-name category, if enabled
