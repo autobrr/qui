@@ -32,10 +32,6 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
   )
 
   useEffect(() => {
-    setAuthType(instance?.hasApiKey ? "apiKey" : instance?.username ? "usernamePassword" : "none")
-  }, [instance?.hasApiKey, instance?.username])
-
-  useEffect(() => {
     setShowBasicAuth(!!instance?.basicUsername)
   }, [instance?.basicUsername])
 
@@ -112,7 +108,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
       host: instance?.host ?? "http://localhost:8080",
       username: instance?.username ?? "",
       password: "",
-      apiKey: "",
+      apiKey: instance?.hasApiKey ? "<redacted>" : "",
       basicUsername: instance?.basicUsername ?? "",
       basicPassword: instance?.basicUsername ? "<redacted>" : "",
       tlsSkipVerify: instance?.tlsSkipVerify ?? false,
@@ -134,7 +130,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
         host: instance?.host ?? "http://localhost:8080",
         username: instance?.username ?? "",
         password: "",
-        apiKey: "",
+        apiKey: instance?.hasApiKey ? "<redacted>" : "",
         basicUsername: instance?.basicUsername ?? "",
         basicPassword: instance?.basicUsername ? "<redacted>" : "",
         tlsSkipVerify: instance?.tlsSkipVerify ?? false,

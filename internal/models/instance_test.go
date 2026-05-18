@@ -748,6 +748,16 @@ func TestInstanceStoreAPIKeyAuth(t *testing.T) {
 	assert.Empty(t, decryptedPassword)
 }
 
+func TestInstanceStoreCreateWithoutAPIKeyLeavesEncryptedFieldEmpty(t *testing.T) {
+	ctx := t.Context()
+	store := newInstanceStoreWithAPIKeySchema(t)
+
+	instance, err := store.Create(ctx, "Password Instance", "http://localhost:8080", "admin", "password", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	assert.Empty(t, instance.APIKeyEncrypted)
+}
+
 func TestInstanceStoreUpdatePreservesAPIKeyWhenOmitted(t *testing.T) {
 	ctx := t.Context()
 	store := newInstanceStoreWithAPIKeySchema(t)
@@ -777,6 +787,7 @@ func TestInstanceStoreUpdateClearsAPIKeyWhenEmptyStringProvided(t *testing.T) {
 	decryptedAPIKey, err := store.GetDecryptedAPIKey(updated)
 	require.NoError(t, err)
 	assert.Empty(t, decryptedAPIKey)
+	assert.Empty(t, updated.APIKeyEncrypted)
 	assert.Equal(t, "admin", updated.Username)
 }
 

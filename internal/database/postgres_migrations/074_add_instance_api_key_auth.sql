@@ -10,6 +10,7 @@ SELECT
     h.value AS host,
     u.value AS username,
     i.password_encrypted,
+    i.api_key_encrypted,
     bu.value AS basic_username,
     i.basic_password_encrypted,
     i.tls_skip_verify,
@@ -20,8 +21,7 @@ SELECT
     i.hardlink_base_dir,
     i.hardlink_dir_preset,
     i.use_reflinks,
-    i.fallback_to_regular_mode,
-    i.api_key_encrypted
+    i.fallback_to_regular_mode
 FROM instances i
 LEFT JOIN string_pool n ON i.name_id = n.id
 LEFT JOIN string_pool h ON i.host_id = h.id

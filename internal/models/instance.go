@@ -315,9 +315,12 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		return nil, fmt.Errorf("failed to encrypt password: %w", err)
 	}
 
-	encryptedAPIKey, err := s.encrypt(apiKey[0])
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt api key: %w", err)
+	encryptedAPIKey := ""
+	if apiKey[0] != "" {
+		encryptedAPIKey, err = s.encrypt(apiKey[0])
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt api key: %w", err)
+		}
 	}
 
 	// Encrypt basic auth password if provided
@@ -699,9 +702,12 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	}
 
 	if apiKeyUpdate != nil {
-		encryptedAPIKey, err := s.encrypt(*apiKeyUpdate)
-		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt api key: %w", err)
+		encryptedAPIKey := ""
+		if *apiKeyUpdate != "" {
+			encryptedAPIKey, err = s.encrypt(*apiKeyUpdate)
+			if err != nil {
+				return nil, fmt.Errorf("failed to encrypt api key: %w", err)
+			}
 		}
 		query += ", api_key_encrypted = ?"
 		args = append(args, encryptedAPIKey)

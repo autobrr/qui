@@ -229,36 +229,34 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 		return nil, ErrInstanceDisabled
 	}
 
-	// Decrypt password
-	password, err := cp.instanceStore.GetDecryptedPassword(instance)
+	password, err := cp.decryptField(instanceID, instance.Name, "password", func() (string, error) {
+		return cp.instanceStore.GetDecryptedPassword(instance)
+	})
 	if err != nil {
-		if cp.isDecryptionError(err) && cp.shouldLogDecryptionError(instanceID) {
-			log.Error().Err(err).Int("instanceID", instanceID).Str("instanceName", instance.Name).
-				Msg("Failed to decrypt password - likely due to sessionSecret change. Instance will be unavailable until password is re-entered via web UI")
-		}
-		return nil, fmt.Errorf("failed to decrypt password: %w", err)
+		return nil, err
 	}
 
-	apiKey, err := cp.instanceStore.GetDecryptedAPIKey(instance)
+	apiKey, err := cp.decryptField(instanceID, instance.Name, "api key", func() (string, error) {
+		return cp.instanceStore.GetDecryptedAPIKey(instance)
+	})
 	if err != nil {
-		if cp.isDecryptionError(err) && cp.shouldLogDecryptionError(instanceID) {
-			log.Error().Err(err).Int("instanceID", instanceID).Str("instanceName", instance.Name).
-				Msg("Failed to decrypt API key - likely due to sessionSecret change. Instance will be unavailable until API key is re-entered via web UI")
-		}
-		return nil, fmt.Errorf("failed to decrypt api key: %w", err)
+		return nil, err
 	}
 
 	// Decrypt basic auth password if present
 	var basicPassword *string
 	if instance.BasicPasswordEncrypted != nil {
-		basicPassword, err = cp.instanceStore.GetDecryptedBasicPassword(instance)
-		if err != nil {
-			if cp.isDecryptionError(err) && cp.shouldLogDecryptionError(instanceID) {
-				log.Error().Err(err).Int("instanceID", instanceID).Str("instanceName", instance.Name).
-					Msg("Failed to decrypt basic auth password - likely due to sessionSecret change. Instance will be unavailable until password is re-entered via web UI")
+		decryptedBasicPassword, err := cp.decryptField(instanceID, instance.Name, "basic auth password", func() (string, error) {
+			decrypted, err := cp.instanceStore.GetDecryptedBasicPassword(instance)
+			if err != nil || decrypted == nil {
+				return "", err
 			}
-			return nil, fmt.Errorf("failed to decrypt basic auth password: %w", err)
+			return *decrypted, nil
+		})
+		if err != nil {
+			return nil, err
 		}
+		basicPassword = &decryptedBasicPassword
 	}
 
 	// Create new client with custom timeout
@@ -300,6 +298,20 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	}
 
 	return client, nil
+}
+
+func (cp *ClientPool) decryptField(instanceID int, instanceName, fieldName string, decryptFn func() (string, error)) (string, error) {
+	value, err := decryptFn()
+	if err == nil {
+		return value, nil
+	}
+
+	if cp.isDecryptionError(err) && cp.shouldLogDecryptionError(instanceID) {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("instanceName", instanceName).
+			Msgf("Failed to decrypt %s - likely due to sessionSecret change. Instance will be unavailable until %s is re-entered via web UI", fieldName, fieldName)
+	}
+
+	return "", fmt.Errorf("failed to decrypt %s: %w", fieldName, err)
 }
 
 // RemoveClient removes a client from the pool

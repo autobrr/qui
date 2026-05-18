@@ -12,8 +12,10 @@ import { DEFAULT_REANNOUNCE_SETTINGS, instanceUrlSchema } from "@/lib/instance-v
 import { formatErrorMessage } from "@/lib/utils"
 import type { Instance, InstanceFormData } from "@/types"
 import { useForm } from "@tanstack/react-form"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
+
+type InstanceAuthType = "none" | "usernamePassword" | "apiKey"
 
 interface InstanceFormProps {
   instance?: Instance
@@ -23,16 +25,29 @@ interface InstanceFormProps {
   formId?: string
 }
 
+function getInstanceAuthType(instance?: Instance): InstanceAuthType {
+  return instance?.hasApiKey ? "apiKey" : instance?.username ? "usernamePassword" : "none"
+}
+
+function getInstanceFormDefaults(instance?: Instance): InstanceFormData {
+  return {
+    name: instance?.name ?? "",
+    host: instance?.host ?? "http://localhost:8080",
+    username: instance?.username ?? "",
+    password: "",
+    apiKey: instance?.hasApiKey ? "<redacted>" : "",
+    basicUsername: instance?.basicUsername ?? "",
+    basicPassword: instance?.basicUsername ? "<redacted>" : "",
+    tlsSkipVerify: instance?.tlsSkipVerify ?? false,
+    hasLocalFilesystemAccess: instance?.hasLocalFilesystemAccess ?? false,
+    reannounceSettings: instance?.reannounceSettings ?? DEFAULT_REANNOUNCE_SETTINGS,
+  }
+}
+
 export function InstanceForm({ instance, onSuccess, onCancel, formId }: InstanceFormProps) {
   const { createInstance, updateInstance, isCreating, isUpdating } = useInstances()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
-  const [authType, setAuthType] = useState<"none" | "usernamePassword" | "apiKey">(
-    instance?.hasApiKey ? "apiKey" : instance?.username ? "usernamePassword" : "none"
-  )
-
-  useEffect(() => {
-    setAuthType(instance?.hasApiKey ? "apiKey" : instance?.username ? "usernamePassword" : "none")
-  }, [instance?.hasApiKey, instance?.username])
+  const [authType, setAuthType] = useState<InstanceAuthType>(() => getInstanceAuthType(instance))
 
   const handleSubmit = (data: InstanceFormData) => {
     let submitData: InstanceFormData
@@ -71,13 +86,21 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
         ...submitData,
         apiKey: "",
       }
+      if (submitData.password === "") {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password, ...rest } = submitData
+        submitData = rest
+      }
     }
 
     if (authType === "apiKey") {
-      submitData = {
-        ...submitData,
-        username: "",
-        password: "",
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { username, password, ...rest } = submitData
+      submitData = rest
+      if (submitData.apiKey === "" || submitData.apiKey === "<redacted>") {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { apiKey, ...rest } = submitData
+        submitData = rest
       }
     }
 
@@ -113,22 +136,21 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
   }
 
   const form = useForm({
-    defaultValues: {
-      name: instance?.name ?? "",
-      host: instance?.host ?? "http://localhost:8080",
-      username: instance?.username ?? "",
-      password: "",
-      apiKey: "",
-      basicUsername: instance?.basicUsername ?? "",
-      basicPassword: instance?.basicUsername ? "<redacted>" : "",
-      tlsSkipVerify: instance?.tlsSkipVerify ?? false,
-      hasLocalFilesystemAccess: instance?.hasLocalFilesystemAccess ?? false,
-      reannounceSettings: instance?.reannounceSettings ?? DEFAULT_REANNOUNCE_SETTINGS,
-    },
+    defaultValues: getInstanceFormDefaults(instance),
     onSubmit: ({ value }) => {
       handleSubmit(value)
     },
   })
+
+  const prevInstanceId = useRef(instance?.id)
+  useEffect(() => {
+    if (prevInstanceId.current !== instance?.id) {
+      prevInstanceId.current = instance?.id
+      form.reset(getInstanceFormDefaults(instance))
+      setShowBasicAuth(!!instance?.basicUsername)
+      setAuthType(getInstanceAuthType(instance))
+    }
+  }, [instance, form])
 
   return (
     <>
@@ -240,7 +262,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
             <select
               id="auth-type"
               value={authType}
-              onChange={(e) => setAuthType(e.target.value as "none" | "usernamePassword" | "apiKey")}
+              onChange={(e) => setAuthType(e.target.value as InstanceAuthType)}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
             >
               <option value="none">None</option>
@@ -306,7 +328,17 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                   id={field.name}
                   type="password"
                   value={field.state.value}
-                  onBlur={field.handleBlur}
+                  onBlur={() => {
+                    field.handleBlur()
+                    if (instance && field.state.value === "") {
+                      field.handleChange("<redacted>")
+                    }
+                  }}
+                  onFocus={() => {
+                    if (field.state.value === "<redacted>") {
+                      field.handleChange("")
+                    }
+                  }}
                   onChange={(e) => field.handleChange(e.target.value)}
                   placeholder={instance ? "Leave empty to keep current API key" : "qBittorrent API key"}
                   data-1p-ignore
