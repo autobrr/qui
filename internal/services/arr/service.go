@@ -46,6 +46,12 @@ type ExternalIDsResult struct {
 	ContentType   ContentType         `json:"content_type"`
 }
 
+// SeasonEpisodeTotalResult contains the resolved episode count for a Sonarr season.
+type SeasonEpisodeTotalResult struct {
+	TotalEpisodes int  `json:"total_episodes"`
+	ArrInstanceID *int `json:"arr_instance_id,omitempty"`
+}
+
 // Service orchestrates ARR ID lookups with caching
 type Service struct {
 	instanceStore *models.ArrInstanceStore
@@ -256,6 +262,90 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 		FromCache:   false,
 		ContentType: contentType,
 	}, nil
+}
+
+// LookupSeasonEpisodeTotal queries Sonarr instances for the episode count of a specific season.
+func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, seasonNumber int) (*SeasonEpisodeTotalResult, error) {
+	if title == "" {
+		return nil, errors.New("title cannot be empty")
+	}
+	if seasonNumber <= 0 {
+		return nil, nil
+	}
+	if s == nil || s.instanceStore == nil {
+		return nil, nil
+	}
+
+	instances, err := s.instanceStore.ListEnabledByType(ctx, models.ArrInstanceTypeSonarr)
+	if err != nil {
+		return nil, err
+	}
+	if len(instances) == 0 {
+		return nil, nil
+	}
+
+	for _, instance := range instances {
+		apiKey, err := s.instanceStore.GetDecryptedAPIKey(instance)
+		if err != nil {
+			log.Warn().Err(err).
+				Int("instanceId", instance.ID).
+				Str("instanceName", instance.Name).
+				Msg("[ARR-LOOKUP] Failed to decrypt API key for season total")
+			continue
+		}
+
+		var basicPass string
+		if instance.BasicUsername != nil && *instance.BasicUsername != "" {
+			basicPass, err = s.instanceStore.GetDecryptedBasicPassword(instance)
+			if err != nil {
+				log.Warn().Err(err).
+					Int("instanceId", instance.ID).
+					Str("instanceName", instance.Name).
+					Msg("[ARR-LOOKUP] Failed to decrypt basic auth password for season total")
+				continue
+			}
+		}
+		basicPassPtr := &basicPass
+		if basicPass == "" {
+			basicPassPtr = nil
+		}
+
+		client := NewClient(instance.BaseURL, apiKey, instance.BasicUsername, basicPassPtr, instance.Type, instance.TimeoutSeconds)
+		parseResp, err := client.ParseSonarrTitle(ctx, title)
+		if err != nil {
+			log.Debug().Err(err).
+				Int("instanceId", instance.ID).
+				Str("instanceName", instance.Name).
+				Str("title", title).
+				Msg("[ARR-LOOKUP] Sonarr parse request failed for season total")
+			continue
+		}
+		if parseResp == nil || parseResp.Series == nil || parseResp.Series.ID <= 0 {
+			continue
+		}
+
+		episodes, err := client.GetSonarrSeasonEpisodes(ctx, parseResp.Series.ID, seasonNumber)
+		if err != nil {
+			log.Debug().Err(err).
+				Int("instanceId", instance.ID).
+				Str("instanceName", instance.Name).
+				Str("title", title).
+				Int("seasonNumber", seasonNumber).
+				Msg("[ARR-LOOKUP] Sonarr season episode lookup failed")
+			continue
+		}
+		if len(episodes) == 0 {
+			continue
+		}
+
+		instanceID := instance.ID
+		return &SeasonEpisodeTotalResult{
+			TotalEpisodes: len(episodes),
+			ArrInstanceID: &instanceID,
+		}, nil
+	}
+
+	return nil, nil
 }
 
 // TestConnection tests connectivity to an ARR instance.
