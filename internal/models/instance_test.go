@@ -737,7 +737,7 @@ func TestInstanceStoreAPIKeyAuth(t *testing.T) {
 
 	instance, err := store.Create(ctx, "API Key Instance", "http://localhost:8080", "admin", "password", nil, nil, false, nil, "api-key-123")
 	require.NoError(t, err)
-	assert.Equal(t, "", instance.Username)
+	assert.Empty(t, instance.Username)
 
 	decryptedAPIKey, err := store.GetDecryptedAPIKey(instance)
 	require.NoError(t, err)
@@ -745,7 +745,7 @@ func TestInstanceStoreAPIKeyAuth(t *testing.T) {
 
 	decryptedPassword, err := store.GetDecryptedPassword(instance)
 	require.NoError(t, err)
-	assert.Equal(t, "", decryptedPassword)
+	assert.Empty(t, decryptedPassword)
 }
 
 func TestInstanceStoreGetDecryptedAPIKeyLegacyEmptyValue(t *testing.T) {
@@ -758,5 +758,5 @@ func TestInstanceStoreGetDecryptedAPIKeyLegacyEmptyValue(t *testing.T) {
 
 	apiKey, err := store.GetDecryptedAPIKey(instance)
 	require.NoError(t, err)
-	assert.Equal(t, "", apiKey)
+	assert.Empty(t, apiKey)
 }
