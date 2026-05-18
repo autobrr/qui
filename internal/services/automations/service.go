@@ -6261,7 +6261,7 @@ func (s *Service) executeExportToInstance(_ context.Context, sourceInstanceID in
 			}
 
 			// 3. Add to target instance
-			if err := s.syncManager.AddTorrent(ctx, exec.action.TargetInstanceID, torrentBytes, options); err != nil {
+			if _, err := s.syncManager.AddTorrent(ctx, exec.action.TargetInstanceID, torrentBytes, options); err != nil {
 				log.Error().Err(err).
 					Int("sourceInstanceID", sourceInstanceID).
 					Int("targetInstanceID", exec.action.TargetInstanceID).
