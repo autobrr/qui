@@ -36,6 +36,16 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
   }, [instance?.basicUsername])
 
   const handleSubmit = (data: InstanceFormData) => {
+    if (authType === "apiKey") {
+      const hasPreservedAPIKey = instance.hasApiKey && data.apiKey === "<redacted>"
+      if (!hasPreservedAPIKey && !data.apiKey?.trim()) {
+        toast.error("Missing Credentials", {
+          description: "API key is required for API key authentication",
+        })
+        return
+      }
+    }
+
     let submitData: InstanceFormData
 
     if (showBasicAuth) {
@@ -79,8 +89,8 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
         password: "",
       }
 
-      if (submitData.apiKey === "") {
-        // Omit empty API key to preserve existing API key
+      if (submitData.apiKey === "<redacted>") {
+        // Omit redacted placeholder to preserve existing API key
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { apiKey, ...rest } = submitData
         submitData = rest
