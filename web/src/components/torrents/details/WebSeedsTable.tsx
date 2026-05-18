@@ -13,7 +13,7 @@ import {
   createColumnHelper,
   flexRender,
   getCoreRowModel,
-  useReactTable,
+  useReactTable
 } from "@tanstack/react-table"
 import { Copy, Loader2, Search, X } from "lucide-react"
 import { memo, useMemo, useState } from "react"
@@ -118,9 +118,7 @@ export const WebSeedsTable = memo(function WebSeedsTable({
           )}
         </div>
         <span className="ml-auto text-muted-foreground">
-          {searchQuery
-            ? `${filteredData.length} of ${webseeds.length}`
-            : `${webseeds.length} HTTP source${webseeds.length !== 1 ? "s" : ""}`}
+          {searchQuery? `${filteredData.length} of ${webseeds.length}`: `${webseeds.length} HTTP source${webseeds.length !== 1 ? "s" : ""}`}
         </span>
       </div>
 
