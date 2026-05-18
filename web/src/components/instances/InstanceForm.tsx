@@ -44,12 +44,41 @@ function getInstanceFormDefaults(instance?: Instance): InstanceFormData {
   }
 }
 
+function getAuthValidationError(data: InstanceFormData, authType: InstanceAuthType, instance?: Instance) {
+  if (authType === "usernamePassword") {
+    if (!data.username?.trim()) {
+      return "Username is required for username/password authentication"
+    }
+
+    if (!data.password?.trim() && !instance?.username) {
+      return "Password is required for username/password authentication"
+    }
+  }
+
+  if (authType === "apiKey") {
+    const hasPreservedAPIKey = instance?.hasApiKey && data.apiKey === "<redacted>"
+    if (!hasPreservedAPIKey && !data.apiKey?.trim()) {
+      return "API key is required for API key authentication"
+    }
+  }
+
+  return undefined
+}
+
 export function InstanceForm({ instance, onSuccess, onCancel, formId }: InstanceFormProps) {
   const { createInstance, updateInstance, isCreating, isUpdating } = useInstances()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
   const [authType, setAuthType] = useState<InstanceAuthType>(() => getInstanceAuthType(instance))
 
   const handleSubmit = (data: InstanceFormData) => {
+    const authValidationError = getAuthValidationError(data, authType, instance)
+    if (authValidationError) {
+      toast.error("Missing Credentials", {
+        description: authValidationError,
+      })
+      return
+    }
+
     let submitData: InstanceFormData
 
     if (showBasicAuth) {
@@ -94,9 +123,11 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
     }
 
     if (authType === "apiKey") {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { username, password, ...rest } = submitData
-      submitData = rest
+      submitData = {
+        ...submitData,
+        username: "",
+        password: "",
+      }
       if (submitData.apiKey === "" || submitData.apiKey === "<redacted>") {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { apiKey, ...rest } = submitData
@@ -330,7 +361,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                   value={field.state.value}
                   onBlur={() => {
                     field.handleBlur()
-                    if (instance && field.state.value === "") {
+                    if (instance?.hasApiKey && field.state.value === "") {
                       field.handleChange("<redacted>")
                     }
                   }}
