@@ -42,9 +42,7 @@ export function PathCell({ path, className }: PathCellProps) {
         disabled={!hasPath}
         className={cn(
           "flex-shrink-0 p-0.5 rounded transition-colors",
-          hasPath
-            ? "text-muted-foreground hover:text-foreground cursor-pointer"
-            : "text-muted-foreground/40 cursor-not-allowed"
+          hasPath? "text-muted-foreground hover:text-foreground cursor-pointer": "text-muted-foreground/40 cursor-not-allowed"
         )}
         aria-label="Copy path"
         title={hasPath ? "Copy path" : undefined}
