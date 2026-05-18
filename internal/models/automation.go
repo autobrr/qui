@@ -884,6 +884,8 @@ type ShareLimitsAction struct {
 	Enabled            bool           `json:"enabled"`
 	RatioLimit         *float64       `json:"ratioLimit,omitempty"`
 	SeedingTimeMinutes *int64         `json:"seedingTimeMinutes,omitempty"`
+	ShareLimitAction   *string        `json:"shareLimitAction,omitempty"`
+	ShareLimitsMode    *string        `json:"shareLimitsMode,omitempty"`
 	Condition          *RuleCondition `json:"condition,omitempty"`
 }
 

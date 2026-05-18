@@ -461,6 +461,24 @@ type shareKey struct {
 	ratio    float64
 	seed     int64
 	inactive int64
+	action   string
+	mode     string
+}
+
+// normalizeShareLimitEnum canonicalizes qBittorrent share-limit enum strings for comparison.
+func normalizeShareLimitEnum(value string) string {
+	v := strings.TrimSpace(value)
+	if v == "" || strings.EqualFold(v, "Default") {
+		return ""
+	}
+	return v
+}
+
+func shareLimitRuleRef(primary, fallback ruleRef) ruleRef {
+	if primary.id != 0 {
+		return primary
+	}
+	return fallback
 }
 
 type tagChange struct {
@@ -2529,8 +2547,9 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			}
 		}
 
-		// Share limits
-		if state.ratioLimit != nil || state.seedingMinutes != nil {
+		// Share limits (ratio, seeding time, action, mode)
+		if state.ratioLimit != nil || state.seedingMinutes != nil ||
+			state.shareLimitAction != "" || state.shareLimitsMode != "" {
 			// Start with torrent's current values
 			ratio := torrent.RatioLimit
 			seedMinutes := torrent.SeedingTimeLimit
@@ -2558,15 +2577,25 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			// Check if update is needed (comparing normalized values)
 			ratioNeedsUpdate := state.ratioLimit != nil && currentRatio != ratio
 			seedingNeedsUpdate := state.seedingMinutes != nil && torrent.SeedingTimeLimit != seedMinutes
-			needsUpdate := ratioNeedsUpdate || seedingNeedsUpdate
+			actionNeedsUpdate := state.shareLimitAction != "" &&
+				normalizeShareLimitEnum(torrent.ShareLimitAction) != normalizeShareLimitEnum(state.shareLimitAction)
+			modeNeedsUpdate := state.shareLimitsMode != "" &&
+				normalizeShareLimitEnum(torrent.ShareLimitsMode) != normalizeShareLimitEnum(state.shareLimitsMode)
+			needsUpdate := ratioNeedsUpdate || seedingNeedsUpdate || actionNeedsUpdate || modeNeedsUpdate
 			if needsUpdate {
-				key := shareKey{ratio: ratio, seed: seedMinutes, inactive: inactiveMinutes}
+				key := shareKey{ratio: ratio, seed: seedMinutes, inactive: inactiveMinutes, action: state.shareLimitAction, mode: state.shareLimitsMode}
 				shareBatches[key] = append(shareBatches[key], hash)
 				if ratioNeedsUpdate {
 					shareRatioRuleByHash[hash] = state.ratioRule
 				}
 				if seedingNeedsUpdate {
 					shareSeedingRuleByHash[hash] = state.seedingRule
+				}
+				if actionNeedsUpdate {
+					shareRatioRuleByHash[hash] = shareLimitRuleRef(state.shareActionRule, state.ratioRule)
+				}
+				if modeNeedsUpdate {
+					shareSeedingRuleByHash[hash] = shareLimitRuleRef(state.shareModeRule, state.seedingRule)
 				}
 			}
 		}
@@ -2744,13 +2773,13 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	for key, hashes := range shareBatches {
 		limited := limitHashBatch(hashes, s.cfg.MaxBatchHashes)
 		for _, batch := range limited {
-			err := s.syncManager.SetTorrentShareLimit(ctx, instanceID, batch, key.ratio, key.seed, key.inactive)
+			err := s.syncManager.SetTorrentShareLimit(ctx, instanceID, batch, key.ratio, key.seed, key.inactive, key.action, key.mode)
 			if err == nil {
 				shareLimitSuccess[key] = append(shareLimitSuccess[key], batch...)
 				continue
 			}
-			log.Warn().Err(err).Int("instanceID", instanceID).Float64("ratio", key.ratio).Int64("seedMinutes", key.seed).Int64("inactiveMinutes", key.inactive).Int("count", len(batch)).Msg("automations: share limit failed")
-			detailsJSON, marshalErr := json.Marshal(map[string]any{"ratio": key.ratio, "seedMinutes": key.seed, "inactiveMinutes": key.inactive, "count": len(batch), "type": "share"})
+			log.Warn().Err(err).Int("instanceID", instanceID).Float64("ratio", key.ratio).Int64("seedMinutes", key.seed).Int64("inactiveMinutes", key.inactive).Str("action", key.action).Str("mode", key.mode).Int("count", len(batch)).Msg("automations: share limit failed")
+			detailsJSON, marshalErr := json.Marshal(map[string]any{"ratio": key.ratio, "seedMinutes": key.seed, "inactiveMinutes": key.inactive, "action": key.action, "mode": key.mode, "count": len(batch), "type": "share"})
 			if marshalErr != nil {
 				log.Warn().Err(marshalErr).Int("instanceID", instanceID).Msg("automations: failed to marshal share limit details")
 				continue

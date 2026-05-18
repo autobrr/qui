@@ -2282,7 +2282,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const handleSetShareLimitWrapper = useCallback((
     ratioLimit: number,
     seedingTimeLimit: number,
-    inactiveSeedingTimeLimit: number
+    inactiveSeedingTimeLimit: number,
+    shareLimitAction?: string,
+    shareLimitsMode?: string
   ) => {
     handleSetShareLimit(
       ratioLimit,
@@ -2293,7 +2295,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       selectAllFilters ?? filters,
       effectiveSearch,
       selectAllExcludeHashes,
-      contextClientMeta
+      contextClientMeta,
+      shareLimitAction,
+      shareLimitsMode
     )
   }, [handleSetShareLimit, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
@@ -3078,6 +3082,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           torrents={contextTorrents}
           onConfirm={handleSetShareLimitWrapper}
           isPending={isPending}
+          supportsShareLimitsAction={capabilities?.supportsShareLimitsAction}
+          supportsShareLimitsMode={capabilities?.supportsShareLimitsMode}
         />
 
         <SpeedLimitsDialog

@@ -46,6 +46,15 @@ import type { ChangeEvent, KeyboardEvent } from "react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { buildCategoryTree, type CategoryNode } from "./CategoryTree"
+import {
+  checkFieldConsistency,
+  LIMIT_UNLIMITED,
+  LIMIT_USE_GLOBAL,
+  shareLimitEnumFieldFromTorrents,
+  type TorrentLimitSnapshot,
+} from "./torrentLimitDialogHelpers"
+
+export type { TorrentLimitSnapshot } from "./torrentLimitDialogHelpers"
 
 interface TagEditorDialogProps {
   open: boolean
@@ -1557,34 +1566,21 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
   )
 })
 
-const LIMIT_USE_GLOBAL = -2
-const LIMIT_UNLIMITED = -1
 const SPEED_DEFAULT_LIMIT = 0
 
 // Helper function to safely get numeric values with fallback
 const safeNumber = (value: number | undefined, fallback: number) =>
   typeof value === "number" ? value : fallback
 
-// Single type for torrent limit fields used in dialogs
-type TorrentLimitSnapshot = Pick<
-  Torrent,
-  | "ratio_limit"
-  | "seeding_time_limit"
-  | "inactive_seeding_time_limit"
-  | "max_ratio"
-  | "max_seeding_time"
-  | "max_inactive_seeding_time"
-  | "dl_limit"
-  | "up_limit"
->
-
 interface ShareLimitDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   hashCount: number
   torrents?: TorrentLimitSnapshot[]
-  onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => void
+  onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, shareLimitAction?: string, shareLimitsMode?: string) => void
   isPending?: boolean
+  supportsShareLimitsAction?: boolean
+  supportsShareLimitsMode?: boolean
 }
 
 // Share limit mode: matches qBittorrent sentinel values
@@ -1607,20 +1603,6 @@ function valueToFieldState(value: number | undefined, defaultCustom: number): Om
   return { mode: "custom", customValue: value }
 }
 
-// Check if all torrents have the same value for a field
-function checkFieldConsistency(
-  torrents: TorrentLimitSnapshot[] | undefined,
-  getter: (t: TorrentLimitSnapshot) => number | undefined
-): { isMixed: boolean; commonValue: number | undefined } {
-  if (!torrents || torrents.length === 0) {
-    return { isMixed: false, commonValue: undefined }
-  }
-  const firstValue = getter(torrents[0])
-  const allSame = torrents.every(t => getter(t) === firstValue)
-  return { isMixed: !allSame, commonValue: allSame ? firstValue : undefined }
-}
-
-// Build initial state from selected torrents
 function buildShareLimitFieldStates(torrents?: TorrentLimitSnapshot[]): {
   ratio: ShareLimitFieldState
   seedTime: ShareLimitFieldState
@@ -1666,6 +1648,8 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
   torrents,
   onConfirm,
   isPending = false,
+  supportsShareLimitsAction = false,
+  supportsShareLimitsMode = false,
 }: ShareLimitDialogProps) {
   const [ratioMode, setRatioMode] = useState<ShareLimitMode>("global")
   const [ratioCustom, setRatioCustom] = useState(1.0)
@@ -1682,9 +1666,17 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
   const [inactiveTimeMixed, setInactiveTimeMixed] = useState(false)
   const [inactiveTimeTouched, setInactiveTimeTouched] = useState(false)
 
-  const wasOpen = useRef(false)
+  const [shareLimitAction, setShareLimitAction] = useState("default")
+  const [shareLimitActionMixed, setShareLimitActionMixed] = useState(false)
+  const [shareLimitActionTouched, setShareLimitActionTouched] = useState(false)
 
-  // Reset form when dialog opens with torrent values
+  const [shareLimitsMode, setShareLimitsMode] = useState("default")
+  const [shareLimitsModeMixed, setShareLimitsModeMixed] = useState(false)
+  const [shareLimitsModeTouched, setShareLimitsModeTouched] = useState(false)
+
+  const wasOpen = useRef(false)
+  const shareLimitsEdited = useRef(false)
+
   useEffect(() => {
     if (open && !wasOpen.current) {
       const states = buildShareLimitFieldStates(torrents)
@@ -1703,22 +1695,49 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
       setInactiveTimeCustom(states.inactiveTime.customValue)
       setInactiveTimeMixed(states.inactiveTime.isMixed)
       setInactiveTimeTouched(false)
+
+      setShareLimitActionTouched(false)
+      setShareLimitsModeTouched(false)
+    }
+    if (open && supportsShareLimitsAction && !shareLimitsEdited.current) {
+      const a = shareLimitEnumFieldFromTorrents(torrents, t => t.share_limit_action)
+      setShareLimitAction(a.value)
+      setShareLimitActionMixed(a.isMixed)
+      if (supportsShareLimitsMode) {
+        const m = shareLimitEnumFieldFromTorrents(torrents, t => t.share_limits_mode)
+        setShareLimitsMode(m.value)
+        setShareLimitsModeMixed(m.isMixed)
+      } else {
+        setShareLimitsMode("default")
+        setShareLimitsModeMixed(false)
+      }
+    }
+    if (open && !supportsShareLimitsAction) {
+      setShareLimitAction("default")
+      setShareLimitActionMixed(false)
+      setShareLimitsMode("default")
+      setShareLimitsModeMixed(false)
+    }
+    if (!open) {
+      shareLimitsEdited.current = false
     }
     wasOpen.current = open
-  }, [open, torrents])
+  }, [open, torrents, supportsShareLimitsAction, supportsShareLimitsMode])
 
-  // Check if any mixed field hasn't been explicitly addressed by the user
   const hasUnresolvedMixed = (ratioMixed && !ratioTouched) ||
     (seedTimeMixed && !seedTimeTouched) ||
-    (inactiveTimeMixed && !inactiveTimeTouched)
+    (inactiveTimeMixed && !inactiveTimeTouched) ||
+    (supportsShareLimitsAction && (shareLimitActionMixed && !shareLimitActionTouched)) ||
+    (supportsShareLimitsMode && (shareLimitsModeMixed && !shareLimitsModeTouched))
 
   const handleConfirm = useCallback((): void => {
     onConfirm(
       fieldStateToValue(ratioMode, ratioCustom, true),
       fieldStateToValue(seedTimeMode, seedTimeCustom, false),
-      fieldStateToValue(inactiveTimeMode, inactiveTimeCustom, false)
+      fieldStateToValue(inactiveTimeMode, inactiveTimeCustom, false),
+      shareLimitAction !== "default" ? shareLimitAction : undefined,
+      supportsShareLimitsMode && shareLimitsMode !== "default" ? shareLimitsMode : undefined
     )
-    // Reset form
     setRatioMode("global")
     setRatioCustom(1.0)
     setRatioMixed(false)
@@ -1731,8 +1750,26 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
     setInactiveTimeCustom(10080)
     setInactiveTimeMixed(false)
     setInactiveTimeTouched(false)
+    setShareLimitAction("default")
+    setShareLimitActionMixed(false)
+    setShareLimitActionTouched(false)
+    setShareLimitsMode("default")
+    setShareLimitsModeMixed(false)
+    setShareLimitsModeTouched(false)
     onOpenChange(false)
-  }, [onConfirm, ratioMode, ratioCustom, seedTimeMode, seedTimeCustom, inactiveTimeMode, inactiveTimeCustom, onOpenChange])
+  }, [
+    onConfirm,
+    onOpenChange,
+    ratioMode,
+    ratioCustom,
+    seedTimeMode,
+    seedTimeCustom,
+    inactiveTimeMode,
+    inactiveTimeCustom,
+    shareLimitAction,
+    shareLimitsMode,
+    supportsShareLimitsMode,
+  ])
 
   const handleCancel = useCallback((): void => {
     setRatioMode("global")
@@ -1747,10 +1784,15 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
     setInactiveTimeCustom(10080)
     setInactiveTimeMixed(false)
     setInactiveTimeTouched(false)
+    setShareLimitAction("default")
+    setShareLimitActionMixed(false)
+    setShareLimitActionTouched(false)
+    setShareLimitsMode("default")
+    setShareLimitsModeMixed(false)
+    setShareLimitsModeTouched(false)
     onOpenChange(false)
   }, [onOpenChange])
 
-  // Helper to set all fields to global (shortcut) - marks all as touched
   const setAllGlobal = useCallback(() => {
     setRatioMode("global")
     setRatioTouched(true)
@@ -1758,7 +1800,17 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
     setSeedTimeTouched(true)
     setInactiveTimeMode("global")
     setInactiveTimeTouched(true)
-  }, [])
+    if (supportsShareLimitsAction) {
+      setShareLimitAction("default")
+      setShareLimitActionTouched(true)
+      shareLimitsEdited.current = true
+    }
+    if (supportsShareLimitsMode) {
+      setShareLimitsMode("default")
+      setShareLimitsModeTouched(true)
+      shareLimitsEdited.current = true
+    }
+  }, [supportsShareLimitsAction, supportsShareLimitsMode])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1918,6 +1970,76 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
               {inactiveTimeMode === "global" ? "Follow qBittorrent global settings" :inactiveTimeMode === "unlimited" ? "No inactive limit" :"Minutes (10080 = 7 days)"}
             </p>
           </div>
+
+          {supportsShareLimitsAction && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">When limits are reached</Label>
+                {shareLimitActionMixed && !shareLimitActionTouched && (
+                  <span className="text-xs text-yellow-600">Select a value</span>
+                )}
+                {shareLimitActionMixed && shareLimitActionTouched && (
+                  <span className="text-xs text-muted-foreground">(was mixed)</span>
+                )}
+              </div>
+              <Select
+                value={shareLimitAction}
+                onValueChange={(v: string) => {
+                  shareLimitsEdited.current = true
+                  setShareLimitAction(v)
+                  setShareLimitActionTouched(true)
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Default (use global)</SelectItem>
+                  <SelectItem value="Stop">Stop torrent</SelectItem>
+                  <SelectItem value="Remove">Remove torrent</SelectItem>
+                  <SelectItem value="RemoveWithContent">Remove with content</SelectItem>
+                  <SelectItem value="EnableSuperSeeding">Enable super seeding</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Action when share limits are reached
+              </p>
+            </div>
+          )}
+
+          {supportsShareLimitsMode && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Limits matching mode</Label>
+                {shareLimitsModeMixed && !shareLimitsModeTouched && (
+                  <span className="text-xs text-yellow-600">Select a value</span>
+                )}
+                {shareLimitsModeMixed && shareLimitsModeTouched && (
+                  <span className="text-xs text-muted-foreground">(was mixed)</span>
+                )}
+              </div>
+              <Select
+                value={shareLimitsMode}
+                onValueChange={(v: string) => {
+                  shareLimitsEdited.current = true
+                  setShareLimitsMode(v)
+                  setShareLimitsModeTouched(true)
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Default (use global)</SelectItem>
+                  <SelectItem value="MatchAny">Match any limit</SelectItem>
+                  <SelectItem value="MatchAll">Match all limits</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Whether any or all limits must be reached (Web API 2.16.0+)
+              </p>
+            </div>
+          )}
         </div>
         <DialogFooter className="flex-col sm:flex-row gap-2">
           {hasUnresolvedMixed && (
@@ -1958,7 +2080,7 @@ interface SpeedLimitFormState {
   downloadLimit: number
 }
 
-const buildSpeedLimitInitialState = (torrents?: TorrentLimitSnapshot[]): SpeedLimitFormState => {
+export const buildSpeedLimitInitialState = (torrents?: TorrentLimitSnapshot[]): SpeedLimitFormState => {
   const base: SpeedLimitFormState = {
     uploadEnabled: false,
     uploadLimit: SPEED_DEFAULT_LIMIT,
