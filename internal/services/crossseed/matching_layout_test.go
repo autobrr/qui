@@ -157,7 +157,7 @@ type candidateSelectionSyncManager struct {
 }
 
 func (c *candidateSelectionSyncManager) GetTorrents(context.Context, int, qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (c *candidateSelectionSyncManager) GetTorrentFiles(_ context.Context, _ int, hash string) (*qbt.TorrentFiles, error) {
@@ -197,8 +197,8 @@ func (*candidateSelectionSyncManager) HasTorrentByAnyHash(context.Context, int, 
 	return nil, false, nil
 }
 
-func (c *candidateSelectionSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return fmt.Errorf("not implemented")
+func (c *candidateSelectionSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (c *candidateSelectionSyncManager) BulkAction(context.Context, int, []string, string) error {
