@@ -27,17 +27,25 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
   const { updateInstance, isUpdating } = useInstances()
   const [incognitoMode] = useIncognitoMode()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
-  const [useCredentials, setUseCredentials] = useState(instance?.username !== "")
-
-  useEffect(() => {
-    setUseCredentials(instance?.username !== "")
-  }, [instance?.username])
+  const [authType, setAuthType] = useState<"none" | "usernamePassword" | "apiKey">(
+    instance?.hasApiKey ? "apiKey" : instance?.username ? "usernamePassword" : "none"
+  )
 
   useEffect(() => {
     setShowBasicAuth(!!instance?.basicUsername)
   }, [instance?.basicUsername])
 
   const handleSubmit = (data: InstanceFormData) => {
+    if (authType === "apiKey") {
+      const hasPreservedAPIKey = instance.hasApiKey && data.apiKey === "<redacted>"
+      if (!hasPreservedAPIKey && !data.apiKey?.trim()) {
+        toast.error("Missing Credentials", {
+          description: "API key is required for API key authentication",
+        })
+        return
+      }
+    }
+
     let submitData: InstanceFormData
 
     if (showBasicAuth) {
@@ -56,17 +64,37 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
       }
     }
 
-    if (!useCredentials) {
+    if (authType === "none") {
+      submitData = {
+        ...submitData,
+        username: "",
+        password: "",
+        apiKey: "",
+      }
+    } else if (authType === "usernamePassword") {
+      submitData = {
+        ...submitData,
+        apiKey: "",
+      }
+      if (submitData.password === "") {
+        // Omit empty password to preserve existing credentials
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password, ...rest } = submitData
+        submitData = rest
+      }
+    } else {
       submitData = {
         ...submitData,
         username: "",
         password: "",
       }
-    } else if (submitData.password === "") {
-      // Omit empty password to preserve existing credentials
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { password, ...rest } = submitData
-      submitData = rest
+
+      if (submitData.apiKey === "<redacted>") {
+        // Omit redacted placeholder to preserve existing API key
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { apiKey, ...rest } = submitData
+        submitData = rest
+      }
     }
 
     updateInstance({ id: instance.id, data: submitData }, {
@@ -90,6 +118,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
       host: instance?.host ?? "http://localhost:8080",
       username: instance?.username ?? "",
       password: "",
+      apiKey: instance?.hasApiKey ? "<redacted>" : "",
       basicUsername: instance?.basicUsername ?? "",
       basicPassword: instance?.basicUsername ? "<redacted>" : "",
       tlsSkipVerify: instance?.tlsSkipVerify ?? false,
@@ -111,6 +140,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
         host: instance?.host ?? "http://localhost:8080",
         username: instance?.username ?? "",
         password: "",
+        apiKey: instance?.hasApiKey ? "<redacted>" : "",
         basicUsername: instance?.basicUsername ?? "",
         basicPassword: instance?.basicUsername ? "<redacted>" : "",
         tlsSkipVerify: instance?.tlsSkipVerify ?? false,
@@ -118,7 +148,7 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
         reannounceSettings: instance?.reannounceSettings ?? DEFAULT_REANNOUNCE_SETTINGS,
       })
       setShowBasicAuth(!!instance?.basicUsername)
-      setUseCredentials(instance?.username !== "")
+      setAuthType(instance?.hasApiKey ? "apiKey" : instance?.username ? "usernamePassword" : "none")
     }
   }, [instance, form])
 
@@ -265,22 +295,27 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
         {/* Authentication */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
           <div className="rounded-lg border bg-muted/40 p-4 flex flex-col">
-            <label htmlFor="credentials-toggle" className="flex items-center justify-between cursor-pointer">
+            <div className="space-y-2">
               <div className="space-y-0.5">
-                <span className="text-sm font-medium">qBittorrent Login</span>
-                <p id="credentials-toggle-desc" className="text-xs text-muted-foreground">
-                  Disable if qBittorrent bypasses authentication for localhost or whitelisted IPs.
+                <span className="text-sm font-medium">qBittorrent Authentication</span>
+                <p id="auth-type-desc" className="text-xs text-muted-foreground">
+                  Select how qui should authenticate to qBittorrent.
                 </p>
               </div>
-              <Switch
-                id="credentials-toggle"
-                checked={useCredentials}
-                onCheckedChange={setUseCredentials}
-                aria-describedby="credentials-toggle-desc"
-              />
-            </label>
+              <select
+                id="auth-type"
+                value={authType}
+                onChange={(e) => setAuthType(e.target.value as "none" | "usernamePassword" | "apiKey")}
+                aria-describedby="auth-type-desc"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+              >
+                <option value="none">None</option>
+                <option value="usernamePassword">Username and Password</option>
+                <option value="apiKey">API Key</option>
+              </select>
+            </div>
 
-            {useCredentials && (
+            {authType === "usernamePassword" && (
               <div className="grid grid-cols-1 gap-4 mt-4 pt-4 border-t">
                 <form.Field name="username">
                   {(field) => (
@@ -317,6 +352,33 @@ export function InstanceSettingsPanel({ instance, onSuccess }: InstanceSettingsP
                       {field.state.meta.isTouched && field.state.meta.errors[0] && (
                         <p className="text-sm text-destructive" role="alert">{field.state.meta.errors[0]}</p>
                       )}
+                    </div>
+                  )}
+                </form.Field>
+              </div>
+            )}
+
+            {authType === "apiKey" && (
+              <div className="grid grid-cols-1 gap-4 mt-4 pt-4 border-t">
+                <form.Field name="apiKey">
+                  {(field) => (
+                    <div className="space-y-2">
+                      <Label htmlFor={field.name} className="text-sm">API Key</Label>
+                      <Input
+                        id={field.name}
+                        type="password"
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onFocus={() => {
+                          if (field.state.value === "<redacted>") {
+                            field.handleChange("")
+                          }
+                        }}
+                        onChange={(e) => field.handleChange(e.target.value)}
+                        placeholder="Leave empty to keep current"
+                        data-1p-ignore
+                        autoComplete="off"
+                      />
                     </div>
                   )}
                 </form.Field>

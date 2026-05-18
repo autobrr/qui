@@ -54,6 +54,7 @@ export interface Instance {
   name: string
   host: string
   username: string
+  hasApiKey?: boolean
   basicUsername?: string
   tlsSkipVerify: boolean
   hasLocalFilesystemAccess: boolean
@@ -75,6 +76,7 @@ export interface InstanceFormData {
   host: string
   username?: string
   password?: string
+  apiKey?: string
   basicUsername?: string
   basicPassword?: string
   tlsSkipVerify: boolean
