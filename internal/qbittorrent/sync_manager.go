@@ -1995,13 +1995,17 @@ func (sm *SyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, u
 
 	resp, err := client.AddTorrentsFromUrlsCtx(ctx, urls, options)
 	if err != nil {
-		return nil, fmt.Errorf("failed to add torrent(s) from URLs %v: %w", urls, err)
+		return nil, fmt.Errorf("failed to add torrent(s) from %s: %w", addTorrentURLsErrorSummary(urls), err)
 	}
 
 	// Sync after modification
 	sm.syncAfterModification(instanceID, client, "add_torrent_from_urls")
 
 	return resp, nil
+}
+
+func addTorrentURLsErrorSummary(urls []string) string {
+	return fmt.Sprintf("%d URL(s)", len(urls))
 }
 
 // GetCategories gets all categories
