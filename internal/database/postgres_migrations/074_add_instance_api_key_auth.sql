@@ -3,7 +3,8 @@
 
 ALTER TABLE instances ADD COLUMN api_key_encrypted TEXT NOT NULL DEFAULT '';
 
-CREATE OR REPLACE VIEW instances_view AS
+DROP VIEW IF EXISTS instances_view;
+CREATE VIEW instances_view AS
 SELECT
     i.id,
     n.value AS name,
