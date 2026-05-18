@@ -2317,7 +2317,7 @@ export function TorrentCardsMobile({
                 </Button>
               )
             })()}
-            {onFilterChange && (
+            {onFilterChange && !isAllInstancesView && (
               <Button
                 variant="outline"
                 onClick={() => {
