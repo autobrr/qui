@@ -191,9 +191,7 @@ const ResponsiveCommandGroup = React.forwardRef<
       ref={ref}
       className={cn(
         "overflow-hidden text-foreground",
-        isMobile
-          ? "py-1 px-2 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-4 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:text-sm [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-foreground [&_[cmdk-group-heading]]:border-b [&_[cmdk-group-heading]]:border-border/50 [&_[cmdk-group-heading]]:mb-2"
-          : "p-1 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground",
+        isMobile? "py-1 px-2 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-4 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:text-sm [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-foreground [&_[cmdk-group-heading]]:border-b [&_[cmdk-group-heading]]:border-border/50 [&_[cmdk-group-heading]]:mb-2": "p-1 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground",
         className
       )}
       {...props}
@@ -262,12 +260,8 @@ const ResponsiveCommandItem = React.forwardRef<
       ref={ref}
       className={cn(
         "relative flex cursor-default select-none items-center outline-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
-        isMobile
-          ? "min-h-[48px] px-4 py-2.5 text-[15px] rounded-lg"
-          : "px-2 py-1.5 text-sm rounded-sm",
-        disableHighlight
-          ? "data-[selected='true']:bg-transparent"
-          : "data-[selected='true']:bg-accent data-[selected='true']:text-accent-foreground",
+        isMobile? "min-h-[48px] px-4 py-2.5 text-[15px] rounded-lg": "px-2 py-1.5 text-sm rounded-sm",
+        disableHighlight? "data-[selected='true']:bg-transparent": "data-[selected='true']:bg-accent data-[selected='true']:text-accent-foreground",
         className
       )}
       onSelect={handleSelect}
