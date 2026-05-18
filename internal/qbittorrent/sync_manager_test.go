@@ -16,6 +16,24 @@ import (
 	"github.com/autobrr/qui/internal/models"
 )
 
+func TestAddTorrentURLsErrorSummaryDoesNotExposeRawURLs(t *testing.T) {
+	t.Parallel()
+
+	urls := []string{
+		"https://tracker.example/download?passkey=secret-token",
+		"magnet:?xt=urn:btih:abcdef&dn=private-release",
+	}
+
+	summary := addTorrentURLsErrorSummary(urls)
+
+	require.Equal(t, "2 URL(s)", summary)
+	require.NotContains(t, summary, "secret-token")
+	require.NotContains(t, summary, "private-release")
+	require.NotContains(t, summary, "tracker.example")
+	require.NotContains(t, summary, urls[0])
+	require.NotContains(t, summary, urls[1])
+}
+
 func TestNormalizeHashes(t *testing.T) {
 	t.Parallel()
 

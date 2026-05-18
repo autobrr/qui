@@ -81,7 +81,7 @@ type qbittorrentSync interface {
 	HasTorrentByAnyHash(ctx context.Context, instanceID int, hashes []string) (*qbt.Torrent, bool, error)
 	GetTorrentProperties(ctx context.Context, instanceID int, hash string) (*qbt.TorrentProperties, error)
 	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
-	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
+	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 	GetCachedInstanceTorrents(ctx context.Context, instanceID int) ([]qbittorrent.CrossInstanceTorrentView, error)
 	ExtractDomainFromURL(urlStr string) string
@@ -4717,7 +4717,7 @@ func (s *Service) processCrossSeedCandidate(
 		Msg("[CROSSSEED] Adding cross-seed torrent")
 
 	// Add the torrent
-	err = s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
+	_, err = s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
 	if err != nil {
 		if req.SkipRecheck {
 			result.Status = "error"
@@ -4738,7 +4738,7 @@ func (s *Service) processCrossSeedCandidate(
 
 		// Remove skip_checking and add with recheck
 		delete(options, "skip_checking")
-		err = s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
+		_, err = s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options)
 		if err != nil {
 			result.Message = fmt.Sprintf("Failed to add torrent even with recheck: %v", err)
 			log.Error().
@@ -11420,7 +11420,7 @@ func (s *Service) processHardlinkMode(
 		Msg("[CROSSSEED] Hardlink mode: adding torrent")
 
 	// Add the torrent
-	if err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
+	if _, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
 		// Rollback hardlink tree on failure
 		if rollbackErr := hardlinktree.Rollback(plan); rollbackErr != nil {
 			log.Warn().
@@ -12022,7 +12022,7 @@ func (s *Service) processReflinkMode(
 		Msg("[CROSSSEED] Reflink mode: adding torrent")
 
 	// Add the torrent
-	if err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
+	if _, err := s.syncManager.AddTorrent(ctx, candidate.InstanceID, torrentBytes, options); err != nil {
 		// Rollback reflink tree on failure
 		if rollbackErr := reflinktree.Rollback(plan); rollbackErr != nil {
 			log.Warn().
