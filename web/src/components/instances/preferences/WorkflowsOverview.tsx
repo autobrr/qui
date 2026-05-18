@@ -191,6 +191,8 @@ function formatAction(action: AutomationActivity["action"]): string {
       return "Move"
     case "external_program":
       return "External program"
+    case "exported_to_instance":
+      return "Export to instance"
     case "dry_run_no_match":
       return "Dry-run"
     default:
@@ -279,6 +281,15 @@ function formatExternalProgramSummary(details: AutomationActivity["details"], ou
   return outcome === "failed" ? `${programName} failed` : `${programName} executed`
 }
 
+function formatExportedToInstanceSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const count = details?.count ?? 0
+  if (outcome === "failed") {
+    return formatCountWithVerb(count, "torrent", "failed to export")
+  }
+  const verb = outcome === "dry-run" ? "would be exported" : "exported"
+  return formatCountWithVerb(count, "torrent", verb)
+}
+
 function formatDeleteDryRunSummary(details: AutomationActivity["details"], action: AutomationActivity["action"]): string {
   const count = details?.count ?? 0
   const label = action === "deleted_ratio"
@@ -302,6 +313,7 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
   "reannounced",
   "auto_managed",
   "moved",
+  "exported_to_instance",
 ])
 
 function isRunSummary(event: AutomationActivity): boolean {
@@ -807,6 +819,7 @@ export function WorkflowsOverview({
     moved: "bg-green-500/10 text-green-500 border-green-500/20",
     external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
     auto_managed: "bg-rose-500/10 text-rose-500 border-rose-500/20",
+    exported_to_instance: "bg-blue-500/10 text-blue-500 border-blue-500/20",
     dry_run_no_match: "bg-slate-500/10 text-slate-500 border-slate-500/20",
   }
 
@@ -1240,6 +1253,10 @@ export function WorkflowsOverview({
                                           <span className="font-medium text-sm block">
                                             {formatExternalProgramSummary(event.details, event.outcome)}
                                           </span>
+                                        ) : event.action === "exported_to_instance" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatExportedToInstanceSummary(event.details, event.outcome)}
+                                          </span>
                                         ) : event.action === "dry_run_no_match" ? (
                                           <span className="font-medium text-sm block">
                                             No torrents matched this dry-run
@@ -1272,7 +1289,9 @@ export function WorkflowsOverview({
                                               ? "Dry run"
                                               : event.action === "external_program"
                                                 ? (event.outcome === "success" ? "Executed" : "Failed")
-                                                : (event.outcome === "success" ? "Removed" : "Failed")}
+                                                : event.action === "exported_to_instance"
+                                                  ? (event.outcome === "success" ? "Exported" : "Failed")
+                                                  : (event.outcome === "success" ? "Removed" : "Failed")}
                                           </Badge>
                                         )}
                                       </div>
