@@ -128,13 +128,10 @@ func newJackettServiceWithIndexers(indexers []*models.TorznabIndexer) *jackett.S
 	return jackett.NewService(&failingEnabledIndexerStore{indexers: indexers})
 }
 
-func TestNewServiceSkipsTypedNilARRService(t *testing.T) {
+func TestIsNilARRLookupServiceHandlesTypedNilARRService(t *testing.T) {
 	var arrService *arr.Service
 
-	svc := NewService(nil, nil, nil, nil, nil, nil, arrService, nil, nil, nil, nil, nil, false)
-	t.Cleanup(svc.recheckResumeCancel)
-
-	require.Nil(t, svc.arrService)
+	require.True(t, isNilARRLookupService(arrService))
 }
 
 func TestLookupARRExternalIDsSkipsTypedNilARRService(t *testing.T) {
