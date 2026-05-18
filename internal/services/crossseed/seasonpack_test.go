@@ -53,11 +53,11 @@ type seasonPackSyncManager struct {
 	bulkErr   error
 }
 
-func (s *seasonPackSyncManager) AddTorrent(_ context.Context, instanceID int, _ []byte, options map[string]string) error {
+func (s *seasonPackSyncManager) AddTorrent(_ context.Context, instanceID int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	copied := make(map[string]string, len(options))
 	maps.Copy(copied, options)
 	s.addCalls = append(s.addCalls, addTorrentRecord{instanceID: instanceID, options: copied})
-	return s.addErr
+	return nil, s.addErr
 }
 
 func (s *seasonPackSyncManager) BulkAction(_ context.Context, instanceID int, hashes []string, action string) error {

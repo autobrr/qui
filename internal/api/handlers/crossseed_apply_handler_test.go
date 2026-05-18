@@ -85,8 +85,8 @@ func (*seasonPackHandlerSyncManager) GetAppPreferences(context.Context, int) (qb
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (s *seasonPackHandlerSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return s.addErr
+func (s *seasonPackHandlerSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, s.addErr
 }
 
 func (*seasonPackHandlerSyncManager) BulkAction(context.Context, int, []string, string) error {

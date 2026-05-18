@@ -393,7 +393,7 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 	if tags := prep.settings.SeasonPackTags; len(tags) > 0 {
 		opts["tags"] = strings.Join(tags, ",")
 	}
-	if err := s.syncManager.AddTorrent(ctx, inst.ID, torrentBytes, opts); err != nil {
+	if _, err := s.syncManager.AddTorrent(ctx, inst.ID, torrentBytes, opts); err != nil {
 		if rollbackErr := rollbackSeasonPackTree(linkMode, planBuild.plan); rollbackErr != nil {
 			log.Warn().Err(rollbackErr).Str("torrentName", req.TorrentName).Msg("season pack: failed to rollback after add failure")
 		}
