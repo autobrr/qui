@@ -937,11 +937,23 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 
 				// Magnet links can be added directly to qBittorrent
 				if strings.HasPrefix(strings.ToLower(url), "magnet:") {
-					if _, err := h.addTorrentFromURLs(ctx, instanceID, []string{url}, options); err != nil {
+					resp, err := h.addTorrentFromURLs(ctx, instanceID, []string{url}, options)
+					if err != nil {
 						if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 							return
 						}
 						log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to add magnet link")
+						failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
+						failedCount++
+						lastError = err
+					} else if err := torrentURLAddFailureError(resp); err != nil {
+						log.Error().
+							Int("instanceID", instanceID).
+							Str("url", redact.URLString(url)).
+							Int64("successCount", resp.SuccessCount).
+							Int64("failureCount", resp.FailureCount).
+							Int64("pendingCount", resp.PendingCount).
+							Msg("qBittorrent reported failed magnet link add")
 						failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 						failedCount++
 						lastError = err
@@ -960,11 +972,23 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					var magnetErr *jackett.MagnetDownloadError
 					if errors.As(err, &magnetErr) && magnetErr.MagnetURL != "" {
 						magnetURL := strings.TrimSpace(magnetErr.MagnetURL)
-						if _, err := h.addTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options); err != nil {
+						resp, err := h.addTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options)
+						if err != nil {
 							if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 								return
 							}
 							log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(magnetURL)).Msg("Failed to add magnet link from indexer redirect")
+							failedURLs = append(failedURLs, failedURL{URL: magnetURL, Error: err.Error()})
+							failedCount++
+							lastError = err
+						} else if err := torrentURLAddFailureError(resp); err != nil {
+							log.Error().
+								Int("instanceID", instanceID).
+								Str("url", redact.URLString(magnetURL)).
+								Int64("successCount", resp.SuccessCount).
+								Int64("failureCount", resp.FailureCount).
+								Int64("pendingCount", resp.PendingCount).
+								Msg("qBittorrent reported failed magnet link from indexer redirect")
 							failedURLs = append(failedURLs, failedURL{URL: magnetURL, Error: err.Error()})
 							failedCount++
 							lastError = err
@@ -1025,8 +1049,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 
-				if resp != nil && resp.FailureCount > 0 {
-					err := errors.New("qBittorrent rejected torrent URL")
+				if err := torrentURLAddFailureError(resp); err != nil {
 					log.Error().
 						Int("instanceID", instanceID).
 						Str("url", redact.URLString(url)).
@@ -1081,6 +1104,13 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		response["failedFiles"] = failedFiles
 	}
 	RespondJSON(w, http.StatusCreated, response)
+}
+
+func torrentURLAddFailureError(resp *qbt.TorrentAddResponse) error {
+	if resp == nil || resp.FailureCount == 0 {
+		return nil
+	}
+	return errors.New("qBittorrent rejected torrent URL")
 }
 
 // BulkActionRequest represents a bulk action request
