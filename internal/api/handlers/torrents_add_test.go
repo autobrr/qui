@@ -27,6 +27,7 @@ type mockSyncManager struct {
 	addTorrentCalls         []addTorrentCall
 	addTorrentFromURLsCalls []addTorrentFromURLsCall
 	addTorrentErr           error
+	addTorrentFromURLsResp  *qbt.TorrentAddResponse
 	addTorrentFromURLsErr   error
 }
 
@@ -57,7 +58,7 @@ func (m *mockSyncManager) AddTorrentFromURLs(_ context.Context, instanceID int, 
 		urls:       urls,
 		options:    options,
 	})
-	return nil, m.addTorrentFromURLsErr
+	return m.addTorrentFromURLsResp, m.addTorrentFromURLsErr
 }
 
 // mockJackettService implements the DownloadTorrent method for testing
@@ -103,11 +104,17 @@ func addTorrentWithIndexer(
 
 			// Magnet links can be added directly to qBittorrent
 			if strings.HasPrefix(strings.ToLower(url), "magnet:") {
-				if _, err := syncManager.AddTorrentFromURLs(ctx, instanceID, []string{url}, options); err != nil {
+				resp, err := syncManager.AddTorrentFromURLs(ctx, instanceID, []string{url}, options)
+				if err != nil {
 					failedCount++
 					lastError = err
 				} else {
-					addedCount++
+					added, failed, err := torrentAddResponseCounts(resp, 1)
+					addedCount += added
+					failedCount += failed
+					if err != nil {
+						lastError = err
+					}
 				}
 				continue
 			}
@@ -121,11 +128,17 @@ func addTorrentWithIndexer(
 				var magnetErr *jackett.MagnetDownloadError
 				if errors.As(err, &magnetErr) && magnetErr.MagnetURL != "" {
 					magnetURL := strings.TrimSpace(magnetErr.MagnetURL)
-					if _, err := syncManager.AddTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options); err != nil {
+					resp, err := syncManager.AddTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options)
+					if err != nil {
 						failedCount++
 						lastError = err
 					} else {
-						addedCount++
+						added, failed, err := torrentAddResponseCounts(resp, 1)
+						addedCount += added
+						failedCount += failed
+						if err != nil {
+							lastError = err
+						}
 					}
 					continue
 				}
@@ -144,12 +157,29 @@ func addTorrentWithIndexer(
 		}
 	} else {
 		// No indexer_id or no jackett service - use URL method directly
-		if _, err := syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
+		resp, err := syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options)
+		if err != nil {
 			return 0, len(urls), err
 		}
-		addedCount = len(urls)
+		addedCount, failedCount, lastError = torrentAddResponseCounts(resp, len(urls))
 	}
 	return addedCount, failedCount, lastError
+}
+
+func torrentAddResponseCounts(resp *qbt.TorrentAddResponse, totalCount int) (addedCount int, failedCount int, err error) {
+	if resp == nil {
+		return totalCount, 0, nil
+	}
+
+	failedCount = int(resp.FailureCount)
+	addedCount = int(resp.SuccessCount)
+	if addedCount == 0 && failedCount <= totalCount {
+		addedCount = totalCount - failedCount
+	}
+	if failedCount > 0 {
+		return addedCount, failedCount, errors.New("qBittorrent rejected torrent URL")
+	}
+	return addedCount, failedCount, nil
 }
 
 func TestAddTorrentWithIndexer_DownloadsViaBackend(t *testing.T) {
@@ -322,6 +352,58 @@ func TestAddTorrentWithIndexer_MixedURLsAndMagnets(t *testing.T) {
 	// Verify downloaded torrent was added
 	require.Len(t, mockSync.addTorrentCalls, 1)
 	assert.Equal(t, []byte("fake torrent data"), mockSync.addTorrentCalls[0].fileContent)
+}
+
+func TestAddTorrentWithIndexer_MagnetResponseFailure(t *testing.T) {
+	t.Parallel()
+
+	mockSync := &mockSyncManager{
+		addTorrentFromURLsResp: &qbt.TorrentAddResponse{FailureCount: 1},
+	}
+	mockJackett := &mockJackettService{
+		downloadTorrentData: []byte("fake torrent data"),
+	}
+
+	ctx := context.Background()
+	magnetURL := "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678"
+	urls := []string{magnetURL}
+	options := map[string]string{"category": "movies"}
+
+	added, failed, err := addTorrentWithIndexer(ctx, mockSync, mockJackett, 1, urls, 42, options)
+
+	require.Error(t, err)
+	assert.Equal(t, 0, added)
+	assert.Equal(t, 1, failed)
+	assert.Equal(t, "qBittorrent rejected torrent URL", err.Error())
+	require.Len(t, mockSync.addTorrentFromURLsCalls, 1)
+	assert.Equal(t, []string{magnetURL}, mockSync.addTorrentFromURLsCalls[0].urls)
+}
+
+func TestAddTorrentWithIndexer_DirectURLResponseFailure(t *testing.T) {
+	t.Parallel()
+
+	mockSync := &mockSyncManager{
+		addTorrentFromURLsResp: &qbt.TorrentAddResponse{
+			SuccessCount: 1,
+			FailureCount: 1,
+		},
+	}
+
+	ctx := context.Background()
+	urls := []string{
+		"http://tracker.example.com/fail.torrent",
+		"http://tracker.example.com/success.torrent",
+	}
+	options := map[string]string{"category": "movies"}
+
+	added, failed, err := addTorrentWithIndexer(ctx, mockSync, nil, 1, urls, 0, options)
+
+	require.Error(t, err)
+	assert.Equal(t, 1, added)
+	assert.Equal(t, 1, failed)
+	assert.Equal(t, "qBittorrent rejected torrent URL", err.Error())
+	require.Len(t, mockSync.addTorrentFromURLsCalls, 1)
+	assert.Equal(t, urls, mockSync.addTorrentFromURLsCalls[0].urls)
 }
 
 func TestAddTorrentWithIndexer_DownloadFailureContinuesWithOthers(t *testing.T) {
@@ -1257,14 +1339,10 @@ func TestAddTorrentHandler_DirectMultiURLPartialFailure_Returns201WithFailedURLs
 	successURL := "http://tracker.example.com/success.torrent"
 	mockSync := &fullMockSyncManager{
 		addTorrentFromURLsFunc: func(urls []string) (*qbt.TorrentAddResponse, error) {
-			if len(urls) > 1 {
+			if urls[0] == failURL {
 				return &qbt.TorrentAddResponse{
-					SuccessCount: 1,
 					FailureCount: 1,
 				}, nil
-			}
-			if urls[0] == failURL {
-				return nil, errors.New("torrent URL rejected")
 			}
 			return &qbt.TorrentAddResponse{SuccessCount: 1}, nil
 		},
@@ -1292,7 +1370,7 @@ func TestAddTorrentHandler_DirectMultiURLPartialFailure_Returns201WithFailedURLs
 	assert.Contains(t, w.Body.String(), `"failed":1`)
 	assert.Contains(t, w.Body.String(), `"failedURLs"`)
 	assert.Contains(t, w.Body.String(), failURL)
-	assert.Contains(t, w.Body.String(), "torrent URL rejected")
+	assert.Contains(t, w.Body.String(), "qBittorrent rejected torrent URL")
 
 	require.Len(t, mockSync.addTorrentFromURLsCalls, 2)
 	assert.Equal(t, []string{failURL}, mockSync.addTorrentFromURLsCalls[0].urls)
