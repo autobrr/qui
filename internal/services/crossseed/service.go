@@ -4935,7 +4935,8 @@ func (s *Service) processCrossSeedCandidate(
 		// Trigger manual recheck for both alignment and hasExtraFiles cases.
 		// qBittorrent does NOT auto-recheck torrents added in stopped/paused state,
 		// even when skip_checking is not set. We must explicitly trigger recheck.
-		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, recheckHashes, "recheck"); err != nil {
+		recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
+		if err := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck"); err != nil {
 			log.Warn().
 				Err(err).
 				Int("instanceID", candidate.InstanceID).
@@ -11784,7 +11785,8 @@ func (s *Service) processHardlinkMode(
 
 		// Trigger recheck so qBittorrent discovers which pieces are present (hardlinked)
 		// and which are missing (extras to download)
-		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, recheckHashes, "recheck"); err != nil {
+		recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
+		if err := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck"); err != nil {
 			log.Warn().
 				Err(err).
 				Int("instanceID", candidate.InstanceID).
@@ -12386,7 +12388,8 @@ func (s *Service) processReflinkMode(
 
 		// Trigger recheck so qBittorrent discovers which pieces are present (cloned)
 		// and which are missing (extras to download)
-		if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, recheckHashes, "recheck"); err != nil {
+		recheckCtx := qbittorrent.WithPostAddBulkActionRetry(ctx)
+		if err := s.syncManager.BulkAction(recheckCtx, candidate.InstanceID, recheckHashes, "recheck"); err != nil {
 			log.Warn().
 				Err(err).
 				Int("instanceID", candidate.InstanceID).

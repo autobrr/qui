@@ -410,7 +410,7 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		switch {
 		case len(recheckHashes) == 0:
 			message = "torrent added paused; missing files require manual recheck"
-		case s.syncManager.BulkAction(ctx, inst.ID, recheckHashes, "recheck") != nil:
+		case s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), inst.ID, recheckHashes, "recheck") != nil:
 			message = "torrent added paused; automatic recheck failed"
 		default:
 			activeHash := seasonPackActiveHash(prep.meta)

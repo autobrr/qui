@@ -5,10 +5,12 @@ package qbittorrent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"sync"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -46,6 +48,110 @@ func TestNormalizeHashes(t *testing.T) {
 	}, normalized.canonicalSet)
 	require.Equal(t, "ABC123", normalized.canonicalToPreferred["abc123"])
 	require.Equal(t, []string{"ABC123", "abc123", "Def456", "def456", "DEF456"}, normalized.lookup)
+}
+
+func TestBulkActionRetryAttempts(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(ctx, 0, 1))
+	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(ctx, 1, 2))
+	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 0, 1))
+	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 1, 2))
+	require.Equal(t, 0, bulkActionRetryAttempts(ctx, 0, 0))
+}
+
+func TestBulkActionSyncRetryStopsAfterAttemptLimit(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{}
+	resolved, variants := bulkActionSyncRetry(
+		context.Background(),
+		syncer,
+		[]string{"missing"},
+		1,
+		"recheck",
+		3,
+		time.Nanosecond,
+		resolveBulkActionRetryTestHashes([]string{"missing"}),
+	)
+
+	require.Equal(t, 0, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, 3, syncer.syncCalls)
+	require.Equal(t, 3, syncer.mapCalls)
+}
+
+func TestBulkActionSyncRetryStopsWhenHashesResolve(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{},
+			{"abc": {Hash: "abc"}},
+		},
+	}
+	resolved, variants := bulkActionSyncRetry(
+		context.Background(),
+		syncer,
+		[]string{"abc"},
+		1,
+		"recheck",
+		3,
+		time.Nanosecond,
+		resolveBulkActionRetryTestHashes([]string{"abc"}),
+	)
+
+	require.Equal(t, 1, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestBulkActionSyncRetryStopsAfterAttemptLimitOnSyncFailure(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{syncErr: errors.New("sync failed")}
+	resolved, variants := bulkActionSyncRetry(
+		context.Background(),
+		syncer,
+		[]string{"missing"},
+		1,
+		"recheck",
+		2,
+		time.Nanosecond,
+		resolveBulkActionRetryTestHashes([]string{"missing"}),
+	)
+
+	require.Equal(t, 0, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestBulkActionSyncRetryStopsWhenCallerCancels(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	syncer := &bulkActionRetrySyncer{}
+	resolved, variants := bulkActionSyncRetry(
+		ctx,
+		syncer,
+		[]string{"missing"},
+		1,
+		"recheck",
+		bulkActionAddRetryAttempts,
+		time.Hour,
+		resolveBulkActionRetryTestHashes([]string{"missing"}),
+	)
+
+	require.Equal(t, 0, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, 0, syncer.syncCalls)
+	require.Equal(t, 0, syncer.mapCalls)
 }
 
 func TestGetTorrentFilesBatch_NormalizesAndCaches(t *testing.T) {
@@ -478,6 +584,42 @@ type stubTorrentLookup struct {
 func (s *stubTorrentLookup) GetTorrent(hash string) (qbt.Torrent, bool) {
 	torrent, ok := s.torrents[hash]
 	return torrent, ok
+}
+
+type bulkActionRetrySyncer struct {
+	maps      []map[string]qbt.Torrent
+	syncErr   error
+	syncCalls int
+	mapCalls  int
+}
+
+func (s *bulkActionRetrySyncer) Sync(context.Context) error {
+	s.syncCalls++
+	return s.syncErr
+}
+
+func (s *bulkActionRetrySyncer) GetTorrentMap(qbt.TorrentFilterOptions) map[string]qbt.Torrent {
+	s.mapCalls++
+	if len(s.maps) == 0 {
+		return nil
+	}
+	index := s.mapCalls - 1
+	if index >= len(s.maps) {
+		index = len(s.maps) - 1
+	}
+	return s.maps[index]
+}
+
+func resolveBulkActionRetryTestHashes(hashes []string) func(map[string]qbt.Torrent) (int, int) {
+	return func(torrents map[string]qbt.Torrent) (int, int) {
+		resolved := 0
+		for _, hash := range hashes {
+			if _, ok := torrents[hash]; ok {
+				resolved++
+			}
+		}
+		return resolved, 0
+	}
 }
 
 // stubTrackerCustomizationLister implements TrackerCustomizationLister for testing

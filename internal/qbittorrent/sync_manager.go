@@ -66,14 +66,38 @@ type TorrentAddedHandler func(ctx context.Context, instanceID int, torrent qbt.T
 var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute))
 
 type filesCacheContextKey struct{}
+type postAddBulkActionRetryContextKey struct{}
+
+const (
+	bulkActionSyncRetryTimeout  = 5 * time.Second
+	bulkActionSyncRetryInterval = 250 * time.Millisecond
+	bulkActionSyncRetryAttempts = 3
+	bulkActionAddRetryAttempts  = 12
+)
+
+type bulkActionTorrentSyncer interface {
+	Sync(ctx context.Context) error
+	GetTorrentMap(options qbt.TorrentFilterOptions) map[string]qbt.Torrent
+}
 
 // WithForceFilesRefresh returns a context that bypasses the cached torrent files snapshot.
 func WithForceFilesRefresh(ctx context.Context) context.Context {
 	return context.WithValue(ctx, filesCacheContextKey{}, true)
 }
 
+// WithPostAddBulkActionRetry lets a bulk action wait longer for a torrent that
+// was just added and may not be visible in qBittorrent sync data yet.
+func WithPostAddBulkActionRetry(ctx context.Context) context.Context {
+	return context.WithValue(ctx, postAddBulkActionRetryContextKey{}, true)
+}
+
 func forceFilesRefresh(ctx context.Context) bool {
 	value, ok := ctx.Value(filesCacheContextKey{}).(bool)
+	return ok && value
+}
+
+func postAddBulkActionRetry(ctx context.Context) bool {
+	value, ok := ctx.Value(postAddBulkActionRetryContextKey{}).(bool)
 	return ok && value
 }
 
@@ -1775,10 +1799,19 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		variantResolutions = variants
 	}
 
-	// If still missing (or no sync data), force sync and retry.
-	// This handles "just-added torrent not in sync cache yet" (e.g., cross-seed recheck after add).
+	// If still missing (or no sync data), force sync and retry. Most callers use
+	// the short budget; post-add paths can opt into a longer visibility wait.
 	if resolved < len(hashes) || len(torrentMap) == 0 {
-		_, variantResolutions = bulkActionSyncRetry(syncManager, hashes, instanceID, action, resolveAllHashes)
+		_, variantResolutions = bulkActionSyncRetry(
+			ctx,
+			syncManager,
+			hashes,
+			instanceID,
+			action,
+			bulkActionRetryAttempts(ctx, resolved, len(hashes)),
+			bulkActionSyncRetryInterval,
+			resolveAllHashes,
+		)
 	}
 
 	resolvedCount := len(canonicalHashes)
@@ -1906,6 +1939,16 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	return err
 }
 
+func bulkActionRetryAttempts(ctx context.Context, resolved, requested int) int {
+	if requested == 0 {
+		return 0
+	}
+	if resolved == 0 && postAddBulkActionRetry(ctx) {
+		return bulkActionAddRetryAttempts
+	}
+	return bulkActionSyncRetryAttempts
+}
+
 func (sm *SyncManager) buildManagedDeleteCleanupTargets(
 	ctx context.Context,
 	instanceID int,
@@ -1929,19 +1972,27 @@ func (sm *SyncManager) buildManagedDeleteCleanupTargets(
 	return buildManagedDeleteCleanupTargets(instance.HardlinkBaseDir, torrents)
 }
 
-// bulkActionSyncRetry forces a sync and retries hash resolution for just-added torrents.
+// bulkActionSyncRetry forces a sync and retries hash resolution.
 func bulkActionSyncRetry(
-	syncManager *qbt.SyncManager,
+	ctx context.Context,
+	syncManager bulkActionTorrentSyncer,
 	hashes []string,
 	instanceID int,
 	action string,
+	maxAttempts int,
+	retryInterval time.Duration,
 	resolveAllHashes func(map[string]qbt.Torrent) (int, int),
 ) (resolved, variants int) {
-	syncCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	syncCtx, cancel := context.WithTimeout(ctx, bulkActionSyncRetryTimeout)
 	defer cancel()
 
-	const maxAttempts = 3
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		select {
+		case <-syncCtx.Done():
+			return resolved, variants
+		default:
+		}
+
 		if syncErr := syncManager.Sync(syncCtx); syncErr != nil {
 			log.Debug().Err(syncErr).Int("instanceID", instanceID).Str("action", action).
 				Int("attempt", attempt).Msg("BulkAction: forced sync failed")
@@ -1954,14 +2005,17 @@ func bulkActionSyncRetry(
 			return resolved, variants
 		}
 
-		if attempt < maxAttempts {
-			select {
-			case <-syncCtx.Done():
-				return resolved, variants
-			case <-time.After(150 * time.Millisecond):
-			}
+		if attempt == maxAttempts {
+			return resolved, variants
+		}
+
+		select {
+		case <-syncCtx.Done():
+			return resolved, variants
+		case <-time.After(retryInterval):
 		}
 	}
+
 	return resolved, variants
 }
 
