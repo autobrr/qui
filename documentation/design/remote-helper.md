@@ -318,111 +318,54 @@ Instance form replaces `hasLocalFilesystemAccess` toggle with a RadioGroup:
 
 ## Implementation Plan
 
-### PR 1: Design doc + proto types
+### Phase 1: Foundation
 
+#### PR 1: Design doc + proto types
 - `documentation/design/remote-helper.md` (this document)
-- `pkg/agent/proto/proto.go` -- Command, Result, HelloBanner envelopes
-- `pkg/agent/proto/ops.go` -- all op request/response types
-- `pkg/agent/proto/proto_test.go` -- JSON round-trip tests
+- `pkg/agent/proto/` -- shared NDJSON wire types (Command, Result, HelloBanner, op payloads)
 
-Leaf package, zero `internal/` imports.
-
-### PR 2: Backend interface + local backend + pool
-
-- `internal/fsops/backend.go` -- Backend interface (17 methods)
-- `internal/fsops/types.go` -- value types (FileInfo, LstatInfo, WalkEntry, etc.)
-- `internal/fsops/errors.go` -- sentinel errors
-- `internal/fsops/noop.go` -- noop backend for instances without FS access
-- `internal/fsops/pool.go` -- Pool resolver (instance ID -> Backend)
+#### PR 2: Backend interface + local backend + pool
+- `internal/fsops/` -- Backend interface, value types, sentinel errors, noop backend, pool resolver
 - `internal/fsops/local/` -- local backend implementation + platform-specific Statfs
-- Tests for all of the above
+- No callsite changes. Services still use `os.*` directly.
 
-No callsite changes yet. Services still use `os.*` directly.
+### Phase 2: Feature-by-feature callsite migration
 
-### PR 3: Service callsite refactors
+Each PR migrates one user-visible feature to use the Backend interface. Zero behavioral change -- the local backend delegates to the same `os.*` calls as before. Ordered from simplest to most complex.
 
-Migrate all `os.*`/`unix.*` callsites to `backend.*`. Zero behavioral change. Could split by service area if too large:
+| PR | Feature | What users see | Backend ops | Files changed |
+|---|---|---|---|---|
+| 3 | Missing files detection | Automation condition: "torrent has missing files" | Stat | missing_files.go |
+| 4 | Free space monitoring | Automation condition: "path has < X GB free" | Statfs | free_space.go |
+| 5 | Managed delete cleanup | Empty parent dirs pruned after torrent deletion | Stat, Remove | delete_cleanup.go, sync_manager.go |
+| 6 | Hardlink scope detection | Automation condition: "files are hardlinked elsewhere" | Lstat, FileID | hardlink_index.go |
+| 7 | Orphan scan | Find and delete files no torrent claims | WalkDir, Lstat, FileID, Remove, ReadDir | walker.go, delete.go, service.go |
+| 8 | Cross-seed inject | Full pipeline: scan, index, match, link trees | WalkDir, ReadDir, SameFilesystem, MkdirAll, HardlinkTree, ReflinkTree, RemoveTree, SupportsReflink | scanner.go, fileid_index.go, inject.go, service.go |
 
-- `automations/missing_files.go` -- `os.Stat` -> `backend.Stat`
-- `automations/free_space.go` -- `unix.Statfs` -> `backend.Statfs`
-- `automations/hardlink_index.go` -- `os.Lstat` + FileID -> `backend.Lstat`
-- `qbittorrent/delete_cleanup.go` -- `os.Stat`/`os.Remove` -> `backend.Stat`/`backend.Remove`
-- `dirscan/fileid_index.go` -- FileID index via backend
-- `dirscan/inject.go` + `crossseed/FindMatchingBaseDir` -- link-tree ops via backend
-- `dirscan/scanner.go` -- `filepath.WalkDir` callback -> `backend.WalkDir` channel
-- `orphanscan/walker.go` + `delete.go` -- full walker + delete via backend
+PR 8 is developed as separate sub-PRs for reviewability (8a: dirscan walking + FileID, 8b: hardlink inject, 8c: reflink inject) but merged to develop as an atomic group.
 
-All existing tests must pass with zero behavioral diff.
+Each PR includes its main.go wiring changes.
 
-### PR 4: Schema + models
+### Phase 3: Remote helper infrastructure
 
-- Migration 077/078: 16 SSH/helper columns on `instances`
-- `internal/models/instance.go` -- extend Instance struct with SSH/helper fields
-- `internal/models/filesystem_access.go` -- `HasFilesystemAccess` helper
-- `internal/models/filesystem_access_test.go`
-- Update InstanceStore Create/Update to handle new fields
+After all local callsites are migrated:
 
-### PR 5: Path safety + SSH pool + helper binary
+- Schema + models -- migration adding SSH/helper columns to `instances`
+- `pkg/fsexec` -- path safety with `os.Root` wrapping
+- `internal/sshpool` -- SSH connection pool, transport, deploy, sweeper
+- `cmd/qui-helper` -- helper binary (NDJSON loop, executor)
+- API endpoints -- SSH test, helper deploy/redeploy/remove/status
+- `internal/fsops/remote` -- Remote backend backed by SSH pool
+- Wire first real op end-to-end, then remaining ops iteratively
 
-- `pkg/fsexec/` -- SafeRoot, Roots, ResolveSafe with os.Root wrapping, property tests
-- `internal/sshpool/` -- pool, transport (TOFU), deploy, sweeper
-- `cmd/qui-helper/` -- main.go, server (NDJSON loop, diag.echo), executor stub
-- `Makefile` -- `make helper` target
-- CI workflow for helper (import-graph guard, cross-compile)
+### Phase 4: Frontend
 
-### PR 6: API endpoints + wiring
-
-- `internal/api/handlers/helper.go` -- 6 endpoints
-- `internal/api/server.go` -- route registration
-- Wire sshpool into Dependencies struct
-- Wire fsops.Pool into services via `cmd/qui/main.go`
-
-### PR 7: First real op (fs.statfs) end-to-end
-
-- `internal/fsops/remote/remote.go` -- Remote backend backed by SSH pool
-- Wire `sshpool.Pool.Submit`/`Cancel` with real SSH session dispatch
-- Implement `fs.statfs` in helper executor
-- Pool resolver returns Remote backend for helper-configured instances
-- Dual-backend integration test
-
-### PR 8+: Remaining ops (one PR each)
-
-Read ops first, destructive ops later:
-
-1. `fs.stat` -- missing-files condition
-2. `fs.lstat` -- hardlink index, FileID index
-3. `fs.samefs` -- hardlink/reflink precondition
-4. `fs.readdir` -- disc-layout detection, orphanscan
-5. `fs.walk` (streaming) -- dirscan, orphanscan
-6. `fs.mkdir` -- link-tree materialization
-7. `fs.remove` -- managed delete cleanup, orphanscan
-8. `fs.removeall` -- orphanscan directory deletion
-9. `tree.hardlink` -- cross-seed inject
-10. `tree.reflink` -- cross-seed inject (capability-gated)
-11. `tree.remove` -- link-tree rollback
-
-Each PR adds: helper executor case + Remote backend method + dual-backend integration test.
-
-### Frontend PR (parallel with PR 7+)
+Held on a feature branch until UA tested:
 
 - Instance form RadioGroup (None / Local / Remote helper)
 - SSH credential fields + host key confirmation modal
 - Deploy button + progress UI
 - Helper status card
 - `authorized_keys` hardening snippet with copy button
-
-## Salvageable Code from PR #1820
-
-The following packages from the original `feat/fsops-backend-scaffold` branch are production-quality and can be cherry-picked onto fresh branches with minimal changes:
-
-| Package | Verdict | Tests |
-|---|---|---|
-| `pkg/agent/proto` | Use as-is | 38 tests |
-| `internal/fsops` (interface, pool, noop, types, errors) | Use as-is | 4 tests |
-| `internal/fsops/local` | Use as-is | 35+ tests |
-| `pkg/fsexec` | Use as-is | 17 tests |
-| `cmd/qui-helper` | Use as-is | 5 tests |
-| `internal/models/filesystem_access` | Use as-is | 6 tests |
-| `internal/sshpool` | Needs test coverage for deploy.go and sweeper.go | 12 tests |
 
 All packages have zero coupling to the unrelated changes in PR #1820 and will apply cleanly on develop.
