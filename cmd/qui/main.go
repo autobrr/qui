@@ -30,6 +30,8 @@ import (
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/dodo"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/fsops"
+	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/metrics"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
@@ -641,13 +643,18 @@ func (app *Application) runServer() {
 		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
-	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService)
+
+	backendPool := fsops.NewPool(instanceStore, localbackend.NewBackend())
+	crossSeedService.SetBackendPool(backendPool)
+	syncManager.SetBackendPool(backendPool)
+
+	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService, backendPool)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
-	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService)
+	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService, backendPool)
 
 	dirScanStore := models.NewDirScanStore(db)
-	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService)
+	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService, backendPool)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
 		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
