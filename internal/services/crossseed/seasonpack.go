@@ -667,7 +667,9 @@ func seasonPackNormalizer(s *Service) *stringutils.Normalizer[string, string] {
 	if s != nil && s.stringNormalizer != nil {
 		return s.stringNormalizer
 	}
-	return stringutils.NewDefaultNormalizer()
+	// Shared singleton: see normalizerForService - a fresh normalizer
+	// leaks a never-terminating ttlcache goroutine.
+	return stringutils.DefaultNormalizer
 }
 
 func parseSeasonPackEpisodePayload(
@@ -987,7 +989,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	candidates := make(map[episodeIdentity][]episodeMatch)
 	matcher := s
 	if matcher.stringNormalizer == nil {
-		matcher = &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+		matcher = &Service{stringNormalizer: stringutils.DefaultNormalizer}
 	}
 
 	for i := range cached {

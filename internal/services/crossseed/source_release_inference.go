@@ -78,7 +78,7 @@ func mergeSeasonPackSearchStructure(sourceRelease, inferredRelease *rls.Release)
 func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, files qbt.TorrentFiles) (series, episode int, isPack, ok bool) {
 	normalizer := s.stringNormalizer
 	if normalizer == nil {
-		normalizer = stringutils.NewDefaultNormalizer()
+		normalizer = stringutils.DefaultNormalizer
 	}
 
 	type seriesInfo struct {
