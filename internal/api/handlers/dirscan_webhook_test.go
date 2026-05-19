@@ -19,6 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/database"
+	"github.com/autobrr/qui/internal/fsops"
+	localbackend "github.com/autobrr/qui/internal/fsops/local"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/dirscan"
 )
@@ -167,7 +169,7 @@ func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -230,7 +232,7 @@ func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T
 		nil,
 		nil,
 		nil,
-		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -282,7 +284,7 @@ func TestWebhookTriggerScan_AcceptsArrTestPayloadWithoutScan(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -335,7 +337,7 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -417,7 +419,7 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -483,7 +485,7 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientMissingButFilterExists(t *tes
 		nil,
 		nil,
 		nil,
-		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -548,7 +550,7 @@ func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T)
 		nil,
 		nil,
 		nil,
-		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 
@@ -621,7 +623,7 @@ func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T)
 		nil,
 		nil,
 		nil,
-		nil,
+		fsops.NewPool(instanceStore, localbackend.NewBackend()),
 	)
 	handler := NewDirScanHandler(service, instanceStore)
 

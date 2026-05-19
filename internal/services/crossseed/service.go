@@ -665,7 +665,7 @@ func (s *Service) getBackendPool() *fsops.Pool {
 func (s *Service) getBackendForInstance(ctx context.Context, instanceID int) (fsops.Backend, error) {
 	pool := s.getBackendPool()
 	if pool == nil {
-		return nil, fmt.Errorf("backend pool not configured")
+		return nil, errors.New("backend pool not configured")
 	}
 	return pool.GetBackend(ctx, instanceID)
 }
