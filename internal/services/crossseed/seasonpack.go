@@ -1312,7 +1312,12 @@ func buildSeasonPackPlan(
 }
 
 func safeSeasonPackJoin(rootDir, relativePath string) (string, bool) {
-	cleanedPath := filepath.Clean(filepath.FromSlash(strings.ReplaceAll(relativePath, "\\", "/")))
+	slashPath := strings.ReplaceAll(relativePath, "\\", "/")
+	if strings.HasPrefix(slashPath, "/") {
+		return "", false
+	}
+
+	cleanedPath := filepath.Clean(filepath.FromSlash(slashPath))
 	if cleanedPath == "." ||
 		filepath.IsAbs(cleanedPath) ||
 		isWindowsDriveAbs(filepath.ToSlash(cleanedPath)) ||
