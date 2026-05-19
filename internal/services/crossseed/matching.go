@@ -169,7 +169,13 @@ func normalizerForService(s *Service) *stringutils.Normalizer[string, string] {
 	if s != nil && s.stringNormalizer != nil {
 		return s.stringNormalizer
 	}
-	return stringutils.NewDefaultNormalizer()
+	// Reuse the process-wide singleton instead of allocating a fresh
+	// normalizer here. Every NewDefaultNormalizer() spins up a ttlcache
+	// whose startExpirations goroutine never terminates (the throwaway
+	// cache is never closed), and this is on the cross-seed matching hot
+	// path - one call per release pair - so a fresh allocation leaks a
+	// goroutine on every comparison.
+	return stringutils.DefaultNormalizer
 }
 
 func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, sourceExtraTitles, candidateExtraTitles []string, isTV bool) (bool, string) {

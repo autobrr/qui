@@ -5341,7 +5341,7 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 
 	normalizer := s.stringNormalizer
 	if normalizer == nil {
-		normalizer = stringutils.NewDefaultNormalizer()
+		normalizer = stringutils.DefaultNormalizer
 	}
 
 	sourceTitle := normalizeLowerTrim(sourceRelease.Title)
