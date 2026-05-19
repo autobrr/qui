@@ -5687,7 +5687,7 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 			assert.Equal(t, tt.expectTags, captured.SourceFilterTags, "SourceFilterTags mismatch")
 			assert.Equal(t, tt.expectExcludeCategories, captured.SourceFilterExcludeCategories, "SourceFilterExcludeCategories mismatch")
 			assert.Equal(t, tt.expectExcludeTags, captured.SourceFilterExcludeTags, "SourceFilterExcludeTags mismatch")
-			assert.Equal(t, tt.expectTolerance, captured.SizeMismatchTolerancePercent, "SizeMismatchTolerancePercent mismatch")
+			assert.InDelta(t, tt.expectTolerance, captured.SizeMismatchTolerancePercent, 0.001, "SizeMismatchTolerancePercent mismatch")
 		})
 	}
 }

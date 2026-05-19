@@ -658,7 +658,7 @@ func TestProcessHardlinkMode_FailsOnInfrastructureError(t *testing.T) {
 		&CrossSeedRequest{},
 		&qbt.Torrent{ContentPath: "/also/nonexistent/path"},
 		"exact",
-		nil,
+		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
 		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
 		&qbt.TorrentProperties{SavePath: "/also/nonexistent"},
 		"category",
