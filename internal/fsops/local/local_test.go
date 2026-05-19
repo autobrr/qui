@@ -436,7 +436,8 @@ func TestHardlinkTree_CreateAndRemove(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(10), fi1.Size())
 
-	srcFi, _ := os.Stat(src1)
+	srcFi, err := os.Stat(src1)
+	require.NoError(t, err)
 	assert.True(t, os.SameFile(srcFi, fi1))
 
 	// Remove the tree.
