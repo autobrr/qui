@@ -4976,11 +4976,12 @@ func (s *Service) processCrossSeedCandidate(
 				Str("torrentHash", torrentHash).
 				Bool("forceRecheck", forceRecheck).
 				Msg("Queuing torrent for recheck resume")
+			resumeThreshold := s.requestResumeThreshold(ctx, req)
 			queueErr := error(nil)
 			if addPolicy.DiscLayout {
 				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, activeHash, 1.0)
 			} else {
-				queueErr = s.queueRecheckResume(ctx, candidate.InstanceID, activeHash)
+				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, activeHash, resumeThreshold)
 			}
 			if queueErr != nil {
 				result.Message += " - auto-resume queue full, manual resume required"
@@ -5092,20 +5093,6 @@ func dedupeHashes(hashes ...string) []string {
 
 func normalizeHash(hash string) string {
 	return normalizeLowerTrim(hash)
-}
-
-// queueRecheckResume adds a torrent to the recheck resume queue.
-// The resume threshold is calculated from the size mismatch tolerance setting.
-func (s *Service) queueRecheckResume(ctx context.Context, instanceID int, hash string) error {
-	// Get tolerance setting (GetAutomationSettings uses its own 5s timeout internally)
-	settings, err := s.GetAutomationSettings(ctx)
-
-	tolerancePercent := defaultSizeMismatchTolerancePercent
-	if err == nil && settings != nil {
-		tolerancePercent = settings.SizeMismatchTolerancePercent
-	}
-
-	return s.queueRecheckResumeWithThreshold(ctx, instanceID, hash, clampedResumeThresholdFromTolerance(tolerancePercent))
 }
 
 // queueRecheckResumeWithThreshold adds a torrent to the recheck resume queue using an explicit threshold.
@@ -7228,14 +7215,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 	}
 
-	// Load automation settings to get size tolerance percentage
-	settings, err := s.GetAutomationSettings(ctx)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to load cross-seed settings for size validation, using default tolerance")
-		settings = &models.CrossSeedAutomationSettings{
-			SizeMismatchTolerancePercent: 5.0, // Default to 5% tolerance
-		}
-	}
+	tolerancePercent := s.searchTolerancePercent(ctx, opts)
 
 	type scoredResult struct {
 		result jackett.SearchResult
@@ -7298,14 +7278,14 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		ignoreSizeCheck := opts.FindIndividualEpisodes && isTVSeasonPack(searchRelease) && isTVEpisode(candidateRelease)
 
 		// Size validation: check if candidate size is within tolerance of source size
-		if !ignoreSizeCheck && !s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, settings.SizeMismatchTolerancePercent) {
+		if !ignoreSizeCheck && !s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, tolerancePercent) {
 			sizeFilteredCount++
 			log.Debug().
 				Str("sourceTitle", sourceTorrent.Name).
 				Str("candidateTitle", res.Title).
 				Int64("sourceSize", sourceTorrent.Size).
 				Int64("candidateSize", res.Size).
-				Float64("tolerancePercent", settings.SizeMismatchTolerancePercent).
+				Float64("tolerancePercent", tolerancePercent).
 				Bool("ignoredSizeCheck", ignoreSizeCheck).
 				Msg("[CROSSSEED-SEARCH] Candidate filtered out due to size mismatch")
 			continue
@@ -7332,7 +7312,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		Int("releaseFiltered", releaseFilteredCount).
 		Int("sizeFiltered", sizeFilteredCount).
 		Int("finalMatches", matchedResults).
-		Float64("tolerancePercent", settings.SizeMismatchTolerancePercent).
+		Float64("tolerancePercent", tolerancePercent).
 		Msg("[CROSSSEED-SEARCH] Search filtering completed")
 
 	if releaseFilteredCount > 0 {
@@ -8418,9 +8398,11 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityBackground)
 
 	searchResp, err := s.searchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
-		DisableTorznab:         searchDisableTorznab,
-		IndexerIDs:             allowedIndexerIDs,
-		FindIndividualEpisodes: state.opts.FindIndividualEpisodes,
+		DisableTorznab:                  searchDisableTorznab,
+		IndexerIDs:                      allowedIndexerIDs,
+		FindIndividualEpisodes:          state.opts.FindIndividualEpisodes,
+		SizeMismatchTolerancePercent:    state.opts.SizeMismatchTolerancePercent,
+		SizeMismatchTolerancePercentSet: state.opts.SizeMismatchTolerancePercentSet,
 	}, state.gazelleClients)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -11495,6 +11477,25 @@ func clampedResumeThresholdFromTolerance(tolerancePercent float64) float64 {
 		return 0.9
 	}
 	return threshold
+}
+
+func (s *Service) searchTolerancePercent(ctx context.Context, opts TorrentSearchOptions) float64 {
+	if opts.SizeMismatchTolerancePercentSet && opts.SizeMismatchTolerancePercent >= 0 {
+		return opts.SizeMismatchTolerancePercent
+	}
+	if opts.SizeMismatchTolerancePercent > 0 {
+		return opts.SizeMismatchTolerancePercent
+	}
+
+	settings, err := s.GetAutomationSettings(ctx)
+	if err == nil && settings != nil {
+		return settings.SizeMismatchTolerancePercent
+	}
+
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load cross-seed settings for size validation, using default tolerance")
+	}
+	return defaultSizeMismatchTolerancePercent
 }
 
 func (s *Service) requestTolerancePercent(ctx context.Context, req *CrossSeedRequest) float64 {

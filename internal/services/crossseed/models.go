@@ -225,6 +225,10 @@ type TorrentSearchOptions struct {
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
 	// CacheMode forces cache behaviour when querying Torznab ("" = default, "bypass" = skip cache)
 	CacheMode string `json:"cache_mode,omitempty"`
+	// SizeMismatchTolerancePercent is the maximum size difference percentage for matching.
+	// SizeMismatchTolerancePercentSet distinguishes an explicit strict 0 from an omitted value.
+	SizeMismatchTolerancePercent    float64 `json:"size_mismatch_tolerance_percent,omitempty"`
+	SizeMismatchTolerancePercentSet bool    `json:"-"`
 	// DisableTorznab skips all Torznab search stages while still allowing Gazelle matching.
 	DisableTorznab bool `json:"disable_torznab,omitempty"`
 	// SkipGazelle disables Gazelle pre-search in mixed search mode.

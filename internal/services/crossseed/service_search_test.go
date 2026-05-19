@@ -188,6 +188,49 @@ func TestEffectiveTorznabCrossSeedSearchLimit(t *testing.T) {
 	}
 }
 
+func TestSearchTolerancePercentUsesRunOverride(t *testing.T) {
+	svc := &Service{
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SizeMismatchTolerancePercent = 5
+			return settings, nil
+		},
+	}
+
+	tests := []struct {
+		name string
+		opts TorrentSearchOptions
+		want float64
+	}{
+		{
+			name: "explicit zero",
+			opts: TorrentSearchOptions{
+				SizeMismatchTolerancePercent:    0,
+				SizeMismatchTolerancePercentSet: true,
+			},
+			want: 0,
+		},
+		{
+			name: "positive override without set flag",
+			opts: TorrentSearchOptions{
+				SizeMismatchTolerancePercent: 20,
+			},
+			want: 20,
+		},
+		{
+			name: "fallback settings",
+			opts: TorrentSearchOptions{},
+			want: 5,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, svc.searchTolerancePercent(context.Background(), tt.opts))
+		})
+	}
+}
+
 func TestLookupARRExternalIDsMapsContentType(t *testing.T) {
 	ids := &models.ExternalIDs{TMDbID: 27205, IMDbID: "tt1375666"}
 	tests := []struct {
