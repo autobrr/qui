@@ -5,18 +5,21 @@ package automations
 
 import (
 	"context"
-	"os"
+	"errors"
+	"fmt"
+	"io/fs"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 )
 
 // detectMissingFiles checks which completed torrents have missing files on disk.
-// Returns a map of torrent hash to missing files boolean.
-func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torrents []qbt.Torrent) map[string]bool {
+// Returns a map of torrent hash to missing files boolean, and an error if
+// the backend cannot be resolved.
+func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torrents []qbt.Torrent) (map[string]bool, error) {
 	result := make(map[string]bool)
 
-	// Only completed torrents
+	// Fast path: skip backend resolution when there are no completed torrents.
 	var completedHashes []string
 	torrentByHash := make(map[string]qbt.Torrent)
 	for _, t := range torrents {
@@ -27,14 +30,19 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 	}
 
 	if len(completedHashes) == 0 {
-		return result
+		return result, nil
+	}
+
+	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		return result, fmt.Errorf("get backend for missing files detection: %w", err)
 	}
 
 	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, completedHashes)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).
 			Msg("automations: failed to fetch files for missing files detection")
-		return result
+		return result, nil
 	}
 
 	for hash, files := range filesByHash {
@@ -47,12 +55,11 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 				continue
 			}
 			fullPath := buildFullPath(torrent.SavePath, f.Name)
-			if _, err := os.Stat(fullPath); err != nil {
-				if os.IsNotExist(err) {
+			if _, err := backend.Stat(ctx, fullPath); err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
 					hasMissing = true
 					break
 				}
-				// Log warning for other errors, continue checking
 				log.Trace().Err(err).Str("path", fullPath).Str("torrent", torrent.Name).
 					Msg("automations: error checking file existence")
 				continue
@@ -60,7 +67,6 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 			filesChecked++
 		}
 
-		// Only set result if we checked at least one file or found missing
 		if filesChecked > 0 || hasMissing {
 			result[hash] = hasMissing
 		}
@@ -72,5 +78,5 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 		Int("checked", len(result)).
 		Msg("automations: missing files detection completed")
 
-	return result
+	return result, nil
 }
