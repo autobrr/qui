@@ -73,6 +73,10 @@ For the `flat` preset, an isolation folder is always used to keep each torrent's
 
 By default, hardlink-added torrents start seeding immediately (since `skip_checking=true` means they're at 100% instantly). If you want hardlink-added torrents to remain paused, enable the "Skip auto-resume" option for your cross-seed source (Completion, RSS, Webhook, etc.).
 
+When hardlink/reflink mode creates a complete link tree with no extra files to download, qui adds the torrent with hash checking skipped and does not trigger an automatic recheck. If qBittorrent instead reports `missing files`, see [Hardlink/reflink cross-seed shows "missing files"](troubleshooting#hardlinkreflink-cross-seed-shows-missing-files).
+
+When the incoming torrent has extra files that are not present in the matched torrent, qui adds the torrent paused, triggers a recheck, and resumes it only after qBittorrent reports progress at or above the configured threshold.
+
 ## Notes
 
 - Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not necessarily free space until all links are removed.
@@ -116,7 +120,7 @@ On Linux, check the filesystem type with `df -T /path` (you want `xfs`/`btrfs`, 
 | Aspect | Hardlink Mode | Reflink Mode |
 |--------|--------------|--------------|
 | Piece-boundary check | Skips if unsafe | Never skips (safe to modify clones) |
-| Recheck | Only when extras exist | Only when extras exist |
+| Recheck | Only when extras or disc layouts require verification | Only when extras or disc layouts require verification |
 | Disk usage | Zero (shared blocks) | Starts near-zero; grows as modified |
 
 ### Disk Usage Implications

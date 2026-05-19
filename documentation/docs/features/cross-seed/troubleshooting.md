@@ -90,6 +90,22 @@ Common causes:
 - **Permissions**: qui cannot read the instance's content paths or write to the hardlink base directory.
 - **Invalid base directory**: The hardlink base directory path doesn't exist and couldn't be created.
 
+## Hardlink/reflink cross-seed shows "missing files"
+
+When hardlink or reflink mode creates every file needed by the incoming torrent, qui adds it with hash checking skipped and starts it immediately. No automatic recheck is triggered because there are no missing extras for qBittorrent to discover.
+
+If qBittorrent still marks the torrent as `missing files`, the new torrent file most likely does not fully match the existing source/candidate files, even though qui matched them by name and size. Review the matching torrent group on the tracker/s before resuming or rechecking the torrent, as one of the copies has corrupted hash/es.
+- **Hardlink mode**: Resuming the torrent will overwrite the bad hashes for that torrent, corrupting the existing torrent/s with the other piece hash/es.
+- **Reflink mode**: Resuming the torrent will leverage copy-on-write to protect the other torrent hash/es.
+
+:::tip
+Torrents with bad hash/es should be reported at their relevant sites.
+:::
+
+:::warning
+Ignoring the bad hash/es in hardlink mode and resuming, will cause repeated full torrent rechecks/downloading on torrents in the matching group, every time a peer requests the mis-matched hash/es and forces qBitTorrent to validate.
+:::
+
 ## "Files not found" after cross-seed (default mode)
 
 This typically occurs in default mode when the save path doesn't match where files actually exist:
