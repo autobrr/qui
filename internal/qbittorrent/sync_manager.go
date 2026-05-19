@@ -1943,7 +1943,7 @@ func bulkActionRetryAttempts(ctx context.Context, resolved, requested int) int {
 	if requested == 0 {
 		return 0
 	}
-	if resolved == 0 && postAddBulkActionRetry(ctx) {
+	if resolved < requested && postAddBulkActionRetry(ctx) {
 		return bulkActionAddRetryAttempts
 	}
 	return bulkActionSyncRetryAttempts

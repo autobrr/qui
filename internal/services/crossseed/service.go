@@ -11465,13 +11465,21 @@ func materializedCoverage(sourceFiles qbt.TorrentFiles, materializedFiles []hard
 
 func coverageThresholdFromTolerance(tolerancePercent float64) float64 {
 	if tolerancePercent < 0 {
-		tolerancePercent = defaultSizeMismatchTolerancePercent
+		tolerancePercent = 0
+	} else if tolerancePercent > 100 {
+		tolerancePercent = 100
 	}
 
 	return 1.0 - (tolerancePercent / 100.0)
 }
 
 func clampedResumeThresholdFromTolerance(tolerancePercent float64) float64 {
+	if tolerancePercent < 0 {
+		tolerancePercent = 0
+	} else if tolerancePercent > 100 {
+		tolerancePercent = 100
+	}
+
 	threshold := coverageThresholdFromTolerance(tolerancePercent)
 	if threshold < 0.9 {
 		return 0.9

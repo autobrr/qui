@@ -58,7 +58,8 @@ func TestBulkActionRetryAttempts(t *testing.T) {
 	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(ctx, 0, 1))
 	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(ctx, 1, 2))
 	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 0, 1))
-	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 1, 2))
+	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 1, 2))
+	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 2, 2))
 	require.Equal(t, 0, bulkActionRetryAttempts(ctx, 0, 0))
 }
 
@@ -104,6 +105,32 @@ func TestBulkActionSyncRetryStopsWhenHashesResolve(t *testing.T) {
 	)
 
 	require.Equal(t, 1, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestBulkActionSyncRetryMixedVisibility(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"a": {Hash: "a"}},
+			{"a": {Hash: "a"}, "b": {Hash: "b"}},
+		},
+	}
+	resolved, variants := bulkActionSyncRetry(
+		context.Background(),
+		syncer,
+		[]string{"a", "b"},
+		1,
+		"recheck",
+		2,
+		time.Nanosecond,
+		resolveBulkActionRetryTestHashes([]string{"a", "b"}),
+	)
+
+	require.Equal(t, 2, resolved)
 	require.Equal(t, 0, variants)
 	require.Equal(t, 2, syncer.syncCalls)
 	require.Equal(t, 2, syncer.mapCalls)

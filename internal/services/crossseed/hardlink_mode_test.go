@@ -787,16 +787,18 @@ func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
 	assert.Contains(t, result.Result.Message, "Skip recheck")
 }
 
-func TestThresholdFromTolerancePreservesStrictZero(t *testing.T) {
+func TestCoverageAndResumeThresholdsFromTolerance(t *testing.T) {
 	assert.InDelta(t, 1.0, coverageThresholdFromTolerance(0), 0.001)
 	assert.InDelta(t, 0.95, coverageThresholdFromTolerance(5), 0.001)
-	assert.InDelta(t, 0.95, coverageThresholdFromTolerance(-1), 0.001)
+	assert.InDelta(t, 1.0, coverageThresholdFromTolerance(-1), 0.001)
 	assert.InDelta(t, 0.8, coverageThresholdFromTolerance(20), 0.001)
+	assert.InDelta(t, 0.0, coverageThresholdFromTolerance(150), 0.001)
 
 	assert.InDelta(t, 1.0, clampedResumeThresholdFromTolerance(0), 0.001)
 	assert.InDelta(t, 0.95, clampedResumeThresholdFromTolerance(5), 0.001)
-	assert.InDelta(t, 0.95, clampedResumeThresholdFromTolerance(-1), 0.001)
+	assert.InDelta(t, 1.0, clampedResumeThresholdFromTolerance(-1), 0.001)
 	assert.InDelta(t, 0.9, clampedResumeThresholdFromTolerance(20), 0.001)
+	assert.InDelta(t, 0.9, clampedResumeThresholdFromTolerance(150), 0.001)
 }
 
 func TestRequestResumeThresholdPreservesStrictRequestZero(t *testing.T) {
