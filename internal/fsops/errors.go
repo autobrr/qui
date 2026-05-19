@@ -1,0 +1,21 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package fsops
+
+import "errors"
+
+// Sentinel errors returned by Backend implementations.
+var (
+	// ErrNoFilesystemAccess is returned by the NoopBackend for instances that
+	// have no filesystem access configured (neither local nor remote helper).
+	ErrNoFilesystemAccess = errors.New("filesystem access is not configured for this instance")
+
+	// ErrConnectionLost is returned by the Remote backend when the SSH
+	// connection to the helper drops mid-operation.
+	ErrConnectionLost = errors.New("connection to helper lost")
+
+	// ErrPathNotAllowed is returned when a requested path is outside the
+	// helper's allowed roots.
+	ErrPathNotAllowed = errors.New("path is not under any allowed root")
+)
