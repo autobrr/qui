@@ -5,16 +5,26 @@ package automations
 
 import (
 	"context"
-	"os"
+	"errors"
+	"fmt"
+	"io/fs"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 )
 
 // detectMissingFiles checks which completed torrents have missing files on disk.
-// Returns a map of torrent hash to missing files boolean.
-func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torrents []qbt.Torrent) map[string]bool {
+// Returns a map of torrent hash to missing files boolean, and an error if
+// the backend cannot be resolved (callers must not treat errors as "no missing files").
+func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torrents []qbt.Torrent) (map[string]bool, error) {
 	result := make(map[string]bool)
+
+	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instanceID", instanceID).
+			Msg("automations: failed to get backend for missing files detection")
+		return result, fmt.Errorf("failed to get backend for missing files detection: %w", err)
+	}
 
 	// Only completed torrents
 	var completedHashes []string
@@ -27,14 +37,14 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 	}
 
 	if len(completedHashes) == 0 {
-		return result
+		return result, nil
 	}
 
 	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, completedHashes)
 	if err != nil {
 		log.Warn().Err(err).Int("instanceID", instanceID).
 			Msg("automations: failed to fetch files for missing files detection")
-		return result
+		return result, fmt.Errorf("failed to fetch torrent files: %w", err)
 	}
 
 	for hash, files := range filesByHash {
@@ -47,8 +57,8 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 				continue
 			}
 			fullPath := buildFullPath(torrent.SavePath, f.Name)
-			if _, err := os.Stat(fullPath); err != nil {
-				if os.IsNotExist(err) {
+			if _, err := backend.Stat(ctx, fullPath); err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
 					hasMissing = true
 					break
 				}
@@ -72,5 +82,5 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 		Int("checked", len(result)).
 		Msg("automations: missing files detection completed")
 
-	return result
+	return result, nil
 }

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"io"
 	"maps"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -228,6 +227,13 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 		return index
 	}
 
+	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("automations: failed to get backend for hardlink index")
+		index.builtAt = time.Now()
+		return index
+	}
+
 	// Fetch file lists for all torrents in one batch
 	hashes := make([]string, 0, len(torrents))
 	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
@@ -291,17 +297,21 @@ func (s *Service) buildHardlinkIndex(ctx context.Context, instanceID int, torren
 				continue
 			}
 
-			fi, err := os.Lstat(fullPath)
+			lstatInfo, err := backend.Lstat(ctx, fullPath)
 			if err != nil {
+				if ctx.Err() != nil {
+					return index
+				}
 				info.allAccessible = false
 				continue
 			}
-			if !fi.Mode().IsRegular() {
+			if !lstatInfo.Mode.IsRegular() {
 				continue
 			}
 
-			fileID, nlink, err := hardlink.GetFileID(fi, fullPath)
-			if err != nil {
+			fileID := lstatInfo.FileID
+			nlink := lstatInfo.Nlinks
+			if fileID.IsZero() {
 				info.allAccessible = false
 				continue
 			}
@@ -479,7 +489,7 @@ func isPathInsideBase(basePath, fullPath string) bool {
 	// Check if the relative path escapes the base:
 	// - ".." means direct parent traversal
 	// - Paths starting with "../" traverse upward
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return false
 	}
 
@@ -692,6 +702,14 @@ func (s *Service) scanOtherInstancesForDeficits(
 			break
 		}
 
+		backend, backendErr := s.backendPool.GetBackend(ctx, otherID)
+		if backendErr != nil {
+			log.Warn().Err(backendErr).Int("instanceID", instanceID).Int("otherInstanceID", otherID).
+				Msg("automations: failed to get backend for cross-scope scan, skipping instance")
+			stats.skipped++
+			continue
+		}
+
 		views, err := s.syncManager.GetCachedInstanceTorrents(ctx, otherID)
 		if err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Int("otherInstanceID", otherID).
@@ -742,17 +760,17 @@ func (s *Service) scanOtherInstancesForDeficits(
 
 				stats.lstatCalls++
 
-				fi, err := os.Lstat(fullPath)
+				lstatInfo, err := backend.Lstat(ctx, fullPath)
 				if err != nil {
 					stats.lstatErrors++
 					continue
 				}
-				if !fi.Mode().IsRegular() {
+				if !lstatInfo.Mode.IsRegular() {
 					continue
 				}
 
-				fileID, _, err := hardlink.GetFileID(fi, fullPath)
-				if err != nil {
+				fileID := lstatInfo.FileID
+				if fileID.IsZero() {
 					stats.lstatErrors++
 					continue
 				}

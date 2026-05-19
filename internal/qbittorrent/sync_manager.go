@@ -29,9 +29,15 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/autobrr/qui/internal/fsops"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/trackericons"
 )
+
+// backendPoolGetter provides filesystem backends per instance.
+type backendPoolGetter interface {
+	GetBackend(ctx context.Context, instanceID int) (fsops.Backend, error)
+}
 
 // FilesManager interface for caching torrent files.
 // IMPORTANT: All returned qbt.TorrentFiles slices must be treated as read-only
@@ -215,6 +221,9 @@ type SyncManager struct {
 	trackerCustomizationStore TrackerCustomizationLister
 	// Cached tracker display name map (domain -> displayName), refreshed periodically
 	trackerDisplayNameCache *ttlcache.Cache[string, map[string]string]
+
+	// Backend pool for filesystem operations (managed delete cleanup).
+	backendPool backendPoolGetter
 }
 
 // ResumeWhenCompleteOptions configure resume monitoring behavior.
@@ -264,6 +273,11 @@ func NewSyncManager(clientPool *ClientPool, trackerCustomizationStore TrackerCus
 // SetFilesManager sets the files manager for caching in a thread-safe manner
 func (sm *SyncManager) SetFilesManager(fm FilesManager) {
 	sm.filesManager.Store(fm)
+}
+
+// SetBackendPool sets the filesystem backend pool for managed delete cleanup.
+func (sm *SyncManager) SetBackendPool(pool backendPoolGetter) {
+	sm.backendPool = pool
 }
 
 // GetClient returns a client for an instance, creating one if needed
@@ -1857,7 +1871,11 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, true)
 		// Invalidate caches for deleted torrents
 		if err == nil {
-			cleanupManagedDeleteTargets(managedDeleteCleanupTargets)
+			if sm.backendPool != nil {
+				if backend, backendErr := sm.backendPool.GetBackend(ctx, instanceID); backendErr == nil {
+					cleanupManagedDeleteTargets(ctx, managedDeleteCleanupTargets, backend)
+				}
+			}
 			sm.RemoveHashesFromTrackerHealthCache(instanceID, canonicalHashes)
 			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
 			if fm := sm.getFilesManager(); fm != nil {
@@ -1926,7 +1944,15 @@ func (sm *SyncManager) buildManagedDeleteCleanupTargets(
 		return nil
 	}
 
-	return buildManagedDeleteCleanupTargets(instance.HardlinkBaseDir, torrents)
+	if sm.backendPool == nil {
+		return nil
+	}
+	backend, err := sm.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		return nil
+	}
+
+	return buildManagedDeleteCleanupTargets(ctx, instance.HardlinkBaseDir, torrents, backend)
 }
 
 // bulkActionSyncRetry forces a sync and retries hash resolution for just-added torrents.
