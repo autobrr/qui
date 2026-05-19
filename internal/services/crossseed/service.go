@@ -1080,26 +1080,27 @@ type AutomationRunOptions struct {
 
 // SearchRunOptions configures how the library search automation operates.
 type SearchRunOptions struct {
-	InstanceID                   int
-	Categories                   []string
-	Tags                         []string
-	ExcludeCategories            []string // Categories to exclude from source filtering
-	ExcludeTags                  []string // Tags to exclude from source filtering
-	IntervalSeconds              int
-	IndexerIDs                   []int
-	DisableTorznab               bool
-	CooldownMinutes              int
-	FindIndividualEpisodes       bool
-	RequestedBy                  string
-	StartPaused                  bool
-	CategoryOverride             *string
-	TagsOverride                 []string
-	InheritSourceTags            bool
-	SpecificHashes               []string
-	SizeMismatchTolerancePercent float64
-	SkipAutoResume               bool
-	SkipRecheck                  bool
-	SkipPieceBoundarySafetyCheck bool
+	InstanceID                      int
+	Categories                      []string
+	Tags                            []string
+	ExcludeCategories               []string // Categories to exclude from source filtering
+	ExcludeTags                     []string // Tags to exclude from source filtering
+	IntervalSeconds                 int
+	IndexerIDs                      []int
+	DisableTorznab                  bool
+	CooldownMinutes                 int
+	FindIndividualEpisodes          bool
+	RequestedBy                     string
+	StartPaused                     bool
+	CategoryOverride                *string
+	TagsOverride                    []string
+	InheritSourceTags               bool
+	SpecificHashes                  []string
+	SizeMismatchTolerancePercent    float64
+	SizeMismatchTolerancePercentSet bool
+	SkipAutoResume                  bool
+	SkipRecheck                     bool
+	SkipPieceBoundarySafetyCheck    bool
 }
 
 // SearchSettingsPatch captures optional updates to seeded search defaults.
@@ -2810,8 +2811,13 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 		} else if !opts.FindIndividualEpisodes {
 			opts.FindIndividualEpisodes = settings.FindIndividualEpisodes
 		}
-		if opts.SizeMismatchTolerancePercent <= 0 {
+		switch {
+		case opts.SizeMismatchTolerancePercentSet:
+		case opts.SizeMismatchTolerancePercent > 0:
+			opts.SizeMismatchTolerancePercentSet = true
+		default:
 			opts.SizeMismatchTolerancePercent = settings.SizeMismatchTolerancePercent
+			opts.SizeMismatchTolerancePercentSet = true
 		}
 	}
 	opts.TagsOverride = normalizeStringSlice(opts.TagsOverride)
@@ -3286,7 +3292,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 
 func isSkippedCrossSeedResultStatus(status string) bool {
 	switch status {
-	case "no_match", "skipped", "rejected", "blocked", "requires_hardlink_reflink", "below_threshold":
+	case "no_match", "skipped", "rejected", "blocked", "requires_hardlink_reflink", "below_threshold", "skipped_recheck", "skipped_unsafe_pieces":
 		return true
 	default:
 		return false
@@ -3473,17 +3479,18 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 	skipIfExists := true
 	req := &CrossSeedRequest{
-		TorrentData:                  encodedTorrent,
-		TargetInstanceIDs:            append([]int(nil), settings.TargetInstanceIDs...),
-		Tags:                         append([]string(nil), settings.RSSAutomationTags...),
-		InheritSourceTags:            settings.InheritSourceTags,
-		SkipIfExists:                 &skipIfExists,
-		IndexerName:                  sourceIndexer,
-		FindIndividualEpisodes:       settings.FindIndividualEpisodes,
-		SizeMismatchTolerancePercent: settings.SizeMismatchTolerancePercent,
-		SkipAutoResume:               settings.SkipAutoResumeRSS,
-		SkipRecheck:                  settings.SkipRecheck,
-		SkipPieceBoundarySafetyCheck: settings.SkipPieceBoundarySafetyCheck,
+		TorrentData:                     encodedTorrent,
+		TargetInstanceIDs:               append([]int(nil), settings.TargetInstanceIDs...),
+		Tags:                            append([]string(nil), settings.RSSAutomationTags...),
+		InheritSourceTags:               settings.InheritSourceTags,
+		SkipIfExists:                    &skipIfExists,
+		IndexerName:                     sourceIndexer,
+		FindIndividualEpisodes:          settings.FindIndividualEpisodes,
+		SizeMismatchTolerancePercent:    settings.SizeMismatchTolerancePercent,
+		SizeMismatchTolerancePercentSet: true,
+		SkipAutoResume:                  settings.SkipAutoResumeRSS,
+		SkipRecheck:                     settings.SkipRecheck,
+		SkipPieceBoundarySafetyCheck:    settings.SkipPieceBoundarySafetyCheck,
 		// Pass RSS source filters so CrossSeed respects them when finding candidates
 		SourceFilterCategories:        append([]string(nil), settings.RSSSourceCategories...),
 		SourceFilterTags:              append([]string(nil), settings.RSSSourceTags...),
@@ -4156,11 +4163,6 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		inheritSourceTags = settings.InheritSourceTags
 	}
 
-	sizeTolerance := defaultSizeMismatchTolerancePercent
-	if settings != nil {
-		sizeTolerance = settings.SizeMismatchTolerancePercent
-	}
-
 	skipAutoResume := false
 	if settings != nil {
 		skipAutoResume = settings.SkipAutoResumeWebhook
@@ -4185,11 +4187,14 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		StartPaused:                  req.StartPaused,
 		SkipIfExists:                 req.SkipIfExists,
 		FindIndividualEpisodes:       findIndividualEpisodes,
-		SizeMismatchTolerancePercent: sizeTolerance,
 		SkipAutoResume:               skipAutoResume,
 		SkipRecheck:                  skipRecheck,
 		SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
 		IndexerName:                  req.Indexer,
+	}
+	if settings != nil {
+		crossReq.SizeMismatchTolerancePercent = settings.SizeMismatchTolerancePercent
+		crossReq.SizeMismatchTolerancePercentSet = true
 	}
 	// Pass webhook source filters so CrossSeed respects them when finding candidates
 	if settings != nil {
@@ -4346,10 +4351,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	candidateFilesByHash := s.batchLoadCandidateFiles(ctx, candidate.InstanceID, candidate.Torrents)
-	tolerancePercent := req.SizeMismatchTolerancePercent
-	if tolerancePercent <= 0 {
-		tolerancePercent = 5.0 // Default to 5% tolerance
-	}
+	tolerancePercent := s.requestTolerancePercent(ctx, req)
 	matchedTorrent, candidateFiles, matchType, rejectReason := s.findBestCandidateMatch(ctx, candidate, sourceRelease, sourceFiles, candidateFilesByHash, tolerancePercent)
 	if matchedTorrent == nil {
 		result.Status = "no_match"
@@ -7540,11 +7542,6 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				inheritSourceTags = settings.InheritSourceTags
 			}
 
-			sizeTolerance := defaultSizeMismatchTolerancePercent
-			if settings != nil {
-				sizeTolerance = settings.SizeMismatchTolerancePercent
-			}
-
 			// Determine skip auto-resume from seeded search setting (interactive dialog uses same setting)
 			skipAutoResume := false
 			if settings != nil {
@@ -7569,10 +7566,13 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				InheritSourceTags:            inheritSourceTags,
 				IndexerName:                  indexerName,
 				FindIndividualEpisodes:       req.FindIndividualEpisodes,
-				SizeMismatchTolerancePercent: sizeTolerance,
 				SkipAutoResume:               skipAutoResume,
 				SkipRecheck:                  skipRecheck,
 				SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
+			}
+			if settings != nil {
+				payload.SizeMismatchTolerancePercent = settings.SizeMismatchTolerancePercent
+				payload.SizeMismatchTolerancePercentSet = true
 			}
 
 			resp, err := s.invokeCrossSeed(ctx, payload)
@@ -8777,7 +8777,6 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		IndexerName:                  match.Indexer,
 		FindIndividualEpisodes:       state.opts.FindIndividualEpisodes,
 		SkipIfExists:                 &skipIfExists,
-		SizeMismatchTolerancePercent: state.opts.SizeMismatchTolerancePercent,
 		SkipAutoResume:               state.opts.SkipAutoResume,
 		SkipRecheck:                  state.opts.SkipRecheck,
 		SkipPieceBoundarySafetyCheck: state.opts.SkipPieceBoundarySafetyCheck,
@@ -8790,6 +8789,10 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	if state.opts.CategoryOverride != nil && strings.TrimSpace(*state.opts.CategoryOverride) != "" {
 		cat := *state.opts.CategoryOverride
 		request.Category = cat
+	}
+	if state.opts.SizeMismatchTolerancePercentSet || state.opts.SizeMismatchTolerancePercent > 0 {
+		request.SizeMismatchTolerancePercent = state.opts.SizeMismatchTolerancePercent
+		request.SizeMismatchTolerancePercentSet = true
 	}
 	resp, err := s.invokeCrossSeed(ctx, request)
 	if err != nil {
@@ -11495,8 +11498,13 @@ func clampedResumeThresholdFromTolerance(tolerancePercent float64) float64 {
 }
 
 func (s *Service) requestTolerancePercent(ctx context.Context, req *CrossSeedRequest) float64 {
-	if req != nil && req.SizeMismatchTolerancePercent >= 0 {
-		return req.SizeMismatchTolerancePercent
+	if req != nil {
+		if req.SizeMismatchTolerancePercentSet && req.SizeMismatchTolerancePercent >= 0 {
+			return req.SizeMismatchTolerancePercent
+		}
+		if req.SizeMismatchTolerancePercent > 0 {
+			return req.SizeMismatchTolerancePercent
+		}
 	}
 
 	settings, err := s.GetAutomationSettings(ctx)

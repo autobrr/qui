@@ -46,8 +46,9 @@ type CrossSeedRequest struct {
 	// If false (default), season packs will only match with other season packs.
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
 	// SizeMismatchTolerancePercent is the maximum size difference percentage for matching.
-	// If not set (0), defaults to 5%.
-	SizeMismatchTolerancePercent float64 `json:"size_mismatch_tolerance_percent,omitempty"`
+	// SizeMismatchTolerancePercentSet distinguishes an explicit strict 0 from an omitted value.
+	SizeMismatchTolerancePercent    float64 `json:"size_mismatch_tolerance_percent,omitempty"`
+	SizeMismatchTolerancePercentSet bool    `json:"-"`
 	// SkipAutoResume prevents automatic resume after hash check when true.
 	// Default behavior (false) resumes torrents after verification completes.
 	SkipAutoResume bool `json:"skip_auto_resume,omitempty"`

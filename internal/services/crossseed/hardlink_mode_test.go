@@ -808,9 +808,26 @@ func TestRequestResumeThresholdPreservesStrictRequestZero(t *testing.T) {
 		},
 	}
 
-	threshold := s.requestResumeThreshold(context.Background(), &CrossSeedRequest{SizeMismatchTolerancePercent: 0})
+	threshold := s.requestResumeThreshold(context.Background(), &CrossSeedRequest{
+		SizeMismatchTolerancePercent:    0,
+		SizeMismatchTolerancePercentSet: true,
+	})
 
 	assert.InDelta(t, 1.0, threshold, 0.001)
+}
+
+func TestRequestResumeThresholdFallsBackWhenRequestZeroUnset(t *testing.T) {
+	s := &Service{
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SizeMismatchTolerancePercent = 5.0
+			return settings, nil
+		},
+	}
+
+	threshold := s.requestResumeThreshold(context.Background(), &CrossSeedRequest{})
+
+	assert.InDelta(t, 0.95, threshold, 0.001)
 }
 
 func TestRequestCoverageThresholdAllowsLargerToleranceThanResumeThreshold(t *testing.T) {
