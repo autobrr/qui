@@ -745,6 +745,10 @@ func (s *Service) validateDirectory(ctx context.Context, directoryID int, runID 
 // runScanPhase executes the directory scanning phase.
 // Returns the raw scan result and true if successful, or nil and false on failure.
 func (s *Service) runScanPhase(ctx context.Context, dir *models.DirScanDirectory, scanRoot string, runID int64, l *zerolog.Logger) (*ScanResult, map[string]string, bool) {
+	if s.backendPool == nil {
+		l.Error().Msg("dirscan: backend pool not configured")
+		return nil, nil, false
+	}
 	backend, err := s.backendPool.GetBackend(ctx, dir.TargetInstanceID)
 	if err != nil {
 		l.Warn().Err(err).Msg("dirscan: no filesystem backend, skipping scan")

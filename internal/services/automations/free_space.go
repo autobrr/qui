@@ -89,9 +89,13 @@ func GetFreeSpaceBytesForSource(
 		if backend == nil {
 			return 0, errors.New("backend is required for path-based free space source")
 		}
-		result, err := backend.Statfs(ctx, resolved.Path)
+		p := filepath.Clean(strings.TrimSpace(resolved.Path))
+		if p == "" || p == "." {
+			return 0, errors.New("free space source path is empty")
+		}
+		result, err := backend.Statfs(ctx, p)
 		if err != nil {
-			return 0, fmt.Errorf("failed to get filesystem stats for %s: %w", resolved.Path, err)
+			return 0, fmt.Errorf("failed to get filesystem stats for %s: %w", p, err)
 		}
 		return result.BytesAvailable, nil
 

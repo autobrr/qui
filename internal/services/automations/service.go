@@ -2106,8 +2106,10 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 			// Get free space for this source
 			backend, backendErr := s.backendPool.GetBackend(ctx, instanceID)
 			if backendErr != nil {
-				log.Warn().Err(backendErr).Int("instanceID", instanceID).Msg("automations: no backend for free space")
-				continue
+				log.Warn().Err(backendErr).Int("instanceID", instanceID).Str("sourceKey", sourceKey).Msg("automations: no backend for free space")
+				wrapped := fmt.Errorf("failed to get backend for free space source %s: %w", sourceKey, backendErr)
+				s.notifyAutomationFailure(ctx, instanceID, wrapped)
+				return nil, wrapped
 			}
 			freeSpace, err := GetFreeSpaceBytesForSource(ctx, s.syncManager, instance, r.FreeSpaceSource, backend)
 			if err != nil {

@@ -558,6 +558,10 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 
+		if s.backendPool == nil {
+			s.failRun(ctx, runID, instanceID, "backend pool not configured")
+			return
+		}
 		backend, backendErr := s.backendPool.GetBackend(ctx, instanceID)
 		if backendErr != nil {
 			log.Error().Err(backendErr).Int("instanceID", instanceID).Msg("orphanscan: failed to get backend")
@@ -908,8 +912,9 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		cleanupBackend, _ := s.backendPool.GetBackend(ctx, instanceID)
-		if cleanupBackend == nil {
+		cleanupBackend, cleanupErr := s.backendPool.GetBackend(ctx, instanceID)
+		if cleanupErr != nil {
+			log.Warn().Err(cleanupErr).Int("instanceID", instanceID).Msg("orphanscan: failed to get backend for empty-dir cleanup")
 			continue
 		}
 		if err := safeDeleteEmptyDir(ctx, scanRoot, dir, cleanupBackend); err == nil {

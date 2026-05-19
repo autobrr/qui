@@ -1874,6 +1874,8 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			if sm.backendPool != nil {
 				if backend, backendErr := sm.backendPool.GetBackend(ctx, instanceID); backendErr == nil {
 					cleanupManagedDeleteTargets(ctx, managedDeleteCleanupTargets, backend)
+				} else {
+					log.Warn().Err(backendErr).Int("instanceID", instanceID).Msg("managed delete cleanup: failed to get backend")
 				}
 			}
 			sm.RemoveHashesFromTrackerHealthCache(instanceID, canonicalHashes)

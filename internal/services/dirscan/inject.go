@@ -208,10 +208,14 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	hasUnmatchedFiles := len(req.MatchResult.UnmatchedTorrentFiles) > 0
 	partialLinkTree := isLinkTreeMode(addMode) && hasUnmatchedFiles
 
-	// Get backend for potential rollback operations.
+	// Resolve backend once for rollback (materializeLinkTree already used it).
 	var backend fsops.Backend
-	if isLinkTreeMode(addMode) {
-		backend, _ = i.backendPool.GetBackend(ctx, instance.ID)
+	if isLinkTreeMode(addMode) && i.backendPool != nil {
+		if b, err := i.backendPool.GetBackend(ctx, instance.ID); err != nil {
+			log.Warn().Err(err).Int("instanceID", instance.ID).Msg("dirscan: failed to get backend for rollback")
+		} else {
+			backend = b
+		}
 	}
 
 	// Reject partial link tree injections when downloading missing files is disabled.

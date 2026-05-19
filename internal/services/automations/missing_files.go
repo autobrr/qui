@@ -19,14 +19,7 @@ import (
 func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torrents []qbt.Torrent) (map[string]bool, error) {
 	result := make(map[string]bool)
 
-	backend, err := s.backendPool.GetBackend(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).
-			Msg("automations: failed to get backend for missing files detection")
-		return result, fmt.Errorf("failed to get backend for missing files detection: %w", err)
-	}
-
-	// Only completed torrents
+	// Only completed torrents — fast path before backend resolution.
 	var completedHashes []string
 	torrentByHash := make(map[string]qbt.Torrent)
 	for _, t := range torrents {
@@ -38,6 +31,11 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 
 	if len(completedHashes) == 0 {
 		return result, nil
+	}
+
+	backend, err := s.backendPool.GetBackend(ctx, instanceID)
+	if err != nil {
+		return result, fmt.Errorf("failed to get backend for missing files detection: %w", err)
 	}
 
 	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, completedHashes)

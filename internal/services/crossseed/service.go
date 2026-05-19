@@ -11975,6 +11975,9 @@ func (s *Service) resolveTrackerDisplayName(ctx context.Context, incomingTracker
 // FindMatchingBaseDir returns the first configured base directory on the same
 // filesystem as the source path.
 func FindMatchingBaseDir(ctx context.Context, configuredDirs string, sourcePath string, backend fsops.Backend) (string, error) {
+	if backend == nil {
+		return "", errors.New("filesystem backend is nil")
+	}
 	if strings.TrimSpace(configuredDirs) == "" {
 		return "", errors.New("base directory not configured")
 	}

@@ -8,6 +8,7 @@ package automations
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/autobrr/qui/internal/fsops/local"
@@ -75,7 +76,7 @@ func TestGetFreeSpaceBytesForSource_PathViaBackend(t *testing.T) {
 
 func TestGetFreeSpaceBytesForSource_PathInvalidPath(t *testing.T) {
 	backend := local.NewBackend()
-	src := &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: "/nonexistent/path/that/should/not/exist"}
+	src := &models.FreeSpaceSource{Type: models.FreeSpaceSourcePath, Path: filepath.Join(t.TempDir(), "nonexistent")}
 	_, err := GetFreeSpaceBytesForSource(context.Background(), nil, nil, src, backend)
 	if err == nil {
 		t.Error("GetFreeSpaceBytesForSource with invalid path should return error")
