@@ -320,35 +320,19 @@ Instance form replaces `hasLocalFilesystemAccess` toggle with a RadioGroup:
 
 ### Phase 1: Foundation
 
-#### PR 1: Design doc + proto types
-- `documentation/design/remote-helper.md` (this document)
-- `pkg/agent/proto/` -- shared NDJSON wire types (Command, Result, HelloBanner, op payloads)
-
-#### PR 2: Backend interface + local backend + pool
-- `internal/fsops/` -- Backend interface, value types, sentinel errors, noop backend, pool resolver
-- `internal/fsops/local/` -- local backend implementation + platform-specific Statfs
+- Design doc + `pkg/agent/proto/` (shared NDJSON wire types)
+- `internal/fsops/` (Backend interface, local backend, pool resolver)
 - No callsite changes. Services still use `os.*` directly.
 
-### Phase 2: Feature-by-feature callsite migration
+### Phase 2: First feature migration
 
-Each PR migrates one user-visible feature to use the Backend interface. Zero behavioral change -- the local backend delegates to the same `os.*` calls as before. Ordered from simplest to most complex.
+Migrate missing files detection to prove the Backend pattern end-to-end with one user-visible feature. Zero behavioral change for local installs.
 
-| PR | Feature | What users see | Backend ops | Files changed |
-|---|---|---|---|---|
-| 3 | Missing files detection | Automation condition: "torrent has missing files" | Stat | missing_files.go |
-| 4 | Free space monitoring | Automation condition: "path has < X GB free" | Statfs | free_space.go |
-| 5 | Managed delete cleanup | Empty parent dirs pruned after torrent deletion | Stat, Remove | delete_cleanup.go, sync_manager.go |
-| 6 | Hardlink scope detection | Automation condition: "files are hardlinked elsewhere" | Lstat, FileID | hardlink_index.go |
-| 7 | Orphan scan | Find and delete files no torrent claims | WalkDir, Lstat, FileID, Remove, ReadDir | walker.go, delete.go, service.go |
-| 8 | Cross-seed inject | Full pipeline: scan, index, match, link trees | WalkDir, ReadDir, SameFilesystem, MkdirAll, HardlinkTree, ReflinkTree, RemoveTree, SupportsReflink | scanner.go, fileid_index.go, inject.go, service.go |
-
-PR 8 is developed as separate sub-PRs for reviewability (8a: dirscan walking + FileID, 8b: hardlink inject, 8c: reflink inject) but merged to develop as an atomic group.
-
-Each PR includes its main.go wiring changes.
+| Feature | What users see | Backend ops | Files changed |
+|---|---|---|---|
+| Missing files detection | Automation condition: "torrent has missing files" | Stat | missing_files.go, service.go, main.go |
 
 ### Phase 3: Remote helper infrastructure
-
-After all local callsites are migrated:
 
 - Schema + models -- migration adding SSH/helper columns to `instances`
 - `pkg/fsexec` -- path safety with `os.Root` wrapping
@@ -356,7 +340,7 @@ After all local callsites are migrated:
 - `cmd/qui-helper` -- helper binary (NDJSON loop, executor)
 - API endpoints -- SSH test, helper deploy/redeploy/remove/status
 - `internal/fsops/remote` -- Remote backend backed by SSH pool
-- Wire first real op end-to-end, then remaining ops iteratively
+- Wire `Stat` op end-to-end so missing files works on remote instances
 
 ### Phase 4: Frontend
 
@@ -368,4 +352,16 @@ Held on a feature branch until UA tested:
 - Helper status card
 - `authorized_keys` hardening snippet with copy button
 
-All packages have zero coupling to the unrelated changes in PR #1820 and will apply cleanly on develop.
+### Phase 5: Iterative feature rollout
+
+After the remote helper is released, migrate remaining features one at a time. Each adds new Backend ops and wires them through both local and remote backends. Ordered by user value and complexity:
+
+| Feature | What users see | Backend ops |
+|---|---|---|
+| Free space monitoring | Automation condition: "path has < X GB free" | Statfs |
+| Managed delete cleanup | Empty parent dirs pruned after torrent deletion | Stat, Remove |
+| Hardlink scope detection | Automation condition: "files are hardlinked elsewhere" | Lstat, FileID |
+| Orphan scan | Find and delete files no torrent claims | WalkDir, Lstat, FileID, Remove, ReadDir |
+| Cross-seed inject | Full pipeline: scan, index, match, hardlink/reflink trees | WalkDir, ReadDir, SameFilesystem, MkdirAll, HardlinkTree, ReflinkTree, RemoveTree, SupportsReflink |
+
+Cross-seed inject is developed as separate sub-PRs for reviewability (dirscan walking + FileID, hardlink inject, reflink inject) but merged as an atomic group.
