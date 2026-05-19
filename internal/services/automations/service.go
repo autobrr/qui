@@ -2170,7 +2170,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	s.buildAndExecuteBatches(instanceID, eligibleRules, torrents, evalCtx, skipCheck, ruleStats, states)
 
 	if len(states) == 0 {
-		log.Debug().
+		log.Trace().
 			Int("instanceID", instanceID).
 			Int("eligibleRules", len(eligibleRules)).
 			Int("torrents", len(torrents)).

@@ -189,6 +189,7 @@ CREATE TABLE arr_id_cache (
     tmdb_id INTEGER,
     tvdb_id INTEGER,
     tvmaze_id INTEGER,
+    titles_json TEXT,
     is_negative INTEGER DEFAULT 0,
     cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     expires_at TIMESTAMP NOT NULL,

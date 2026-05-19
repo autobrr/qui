@@ -21,14 +21,20 @@ import (
 // matching.go groups all heuristics and helpers that decide whether two torrents
 // describe the same underlying content.
 
-// isTVEpisode returns true if the release is a TV episode (has series and episode number).
-func isTVEpisode(r *rls.Release) bool {
-	return r != nil && r.Series > 0 && r.Episode > 0
+func isTVRelease(r *rls.Release) bool {
+	return r != nil && (r.Type == rls.Series || r.Type == rls.Episode || r.Series > 0 || r.Episode > 0)
 }
 
-// isTVSeasonPack returns true if the release is a TV season pack (has series but no episode number).
+// isTVEpisode returns true if the release is a TV episode, including anime-style
+// absolute-numbered episodes that do not carry a season number.
+func isTVEpisode(r *rls.Release) bool {
+	return isTVRelease(r) && r.Episode > 0
+}
+
+// isTVSeasonPack returns true if the release is a TV season pack, including
+// seasonless anime packs where file inspection marked the release as TV.
 func isTVSeasonPack(r *rls.Release) bool {
-	return r != nil && r.Series > 0 && r.Episode == 0
+	return isTVRelease(r) && (r.Series > 0 || r.Type == rls.Series) && r.Episode == 0
 }
 
 // rejectReasonSeasonPackFromEpisode is the reason returned when rejecting a season pack
@@ -124,36 +130,73 @@ func (s *Service) releasesMatch(source, candidate *rls.Release, findIndividualEp
 }
 
 func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIndividualEpisodes bool) (bool, string) {
+	return s.releasesMatchWithReasonAndNames(source, candidate, "", "", findIndividualEpisodes)
+}
+
+func (s *Service) releasesMatchWithReasonAndNames(source, candidate *rls.Release, sourceName, candidateName string, findIndividualEpisodes bool) (bool, string) {
+	return s.releasesMatchWithReasonAndNamesAndTitles(source, candidate, sourceName, candidateName, nil, nil, findIndividualEpisodes)
+}
+
+func (s *Service) releasesMatchWithReasonAndNamesAndTitles(source, candidate *rls.Release, sourceName, candidateName string, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) (bool, string) {
 	if source == candidate {
 		return true, ""
 	}
 
-	normalizer := stringutils.NewDefaultNormalizer()
-	if s != nil && s.stringNormalizer != nil {
-		normalizer = s.stringNormalizer
+	isTV := isTVRelease(source) || isTVRelease(candidate)
+	if ok, reason := s.validateTitleArtistAndDates(source, candidate, sourceName, candidateName, sourceTitles, candidateTitles, isTV); !ok {
+		return false, reason
 	}
+	if ok, reason := validateTVStructure(source, candidate, findIndividualEpisodes, isTV); !ok {
+		return false, reason
+	}
+	if ok, reason := s.validateGroupSiteAndChecksum(source, candidate); !ok {
+		return false, reason
+	}
+	if ok, reason := s.validateFormatAndCodec(source, candidate, isTV); !ok {
+		return false, reason
+	}
+	if ok, reason := s.validateMetadataFlags(source, candidate); !ok {
+		return false, reason
+	}
+	if ok, reason := validateReleaseVariants(source, candidate); !ok {
+		return false, reason
+	}
+
+	return true, ""
+}
+
+func normalizerForService(s *Service) *stringutils.Normalizer[string, string] {
+	if s != nil && s.stringNormalizer != nil {
+		return s.stringNormalizer
+	}
+	return stringutils.NewDefaultNormalizer()
+}
+
+func (s *Service) validateTitleArtistAndDates(source, candidate *rls.Release, sourceName, candidateName string, sourceExtraTitles, candidateExtraTitles []string, isTV bool) (bool, string) {
+	normalizer := normalizerForService(s)
 
 	// Title should match closely but not necessarily exactly.
 	// Use punctuation-stripping normalization to handle differences like
 	// "Bob's Burgers" vs "Bobs.Burgers" (apostrophes lost in dot notation).
-	sourceTitleNorm := stringutils.NormalizeForMatching(source.Title)
-	candidateTitleNorm := stringutils.NormalizeForMatching(candidate.Title)
-
-	if sourceTitleNorm == "" || candidateTitleNorm == "" {
+	sourceTitles := normalizedReleaseTitles(source, sourceName)
+	candidateTitles := normalizedReleaseTitles(candidate, candidateName)
+	addNormalizedTitles(sourceTitles, sourceExtraTitles)
+	addNormalizedTitles(candidateTitles, candidateExtraTitles)
+	if len(sourceTitles) == 0 || len(candidateTitles) == 0 {
 		return false, "empty normalized title"
 	}
 
-	// Require exact title match after normalization.
+	// Accept any overlap between normalized title sets. Each set contains complete
+	// normalized title entries from Title, Alt, and parsed AKA parts, so legitimate
+	// alternate titles can match without requiring strict equality of one parsed title.
 	//
-	// This is intentionally strict to avoid false positives between related-but-distinct
-	// TV franchises/spinoffs (e.g. "FBI" vs "FBI Most Wanted") where substring matching
-	// would incorrectly treat them as the same show.
-	if sourceTitleNorm != candidateTitleNorm {
+	// This still avoids false positives between related-but-distinct TV franchises
+	// (e.g. "FBI" vs "FBI Most Wanted") because overlap is checked on full normalized
+	// title entries, not arbitrary substrings.
+	if !normalizedTitleSetsOverlap(sourceTitles, candidateTitles) {
 		// Title mismatches are expected for most candidates - don't log to avoid noise
 		return false, "title mismatch"
 	}
-
-	isTV := source.Series > 0 || candidate.Series > 0
 
 	// Artist must match for content with artist metadata (music, 0day scene radio shows, etc.)
 	// This prevents matching different artists with the same show/album title.
@@ -186,53 +229,140 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 		return false, "content type mismatch"
 	}
 
-	// For TV shows, season and episode structure must match based on settings.
-	if source.Series > 0 || candidate.Series > 0 {
-		// Both must have series info if either does
-		if source.Series > 0 && candidate.Series == 0 {
-			return false, "candidate missing season"
-		}
-		if candidate.Series > 0 && source.Series == 0 {
-			return false, "source missing season"
-		}
+	return true, ""
+}
 
-		// Series numbers must match
-		if source.Series > 0 && candidate.Series > 0 && source.Series != candidate.Series {
-			return false, "season mismatch"
-		}
+func normalizedReleaseTitles(release *rls.Release, rawName string) map[string]struct{} {
+	titles := make(map[string]struct{})
+	addNormalizedTitle(titles, releaseTitle(release))
+	addNormalizedTitle(titles, releaseAlt(release))
 
-		// Episode structure matching depends on user setting
-		sourceIsPack := source.Series > 0 && source.Episode == 0
-		candidateIsPack := candidate.Series > 0 && candidate.Episode == 0
-
-		if !findIndividualEpisodes {
-			// Strict matching: season packs only match season packs, episodes only match episodes
-			if sourceIsPack != candidateIsPack {
-				return false, "season pack versus episode mismatch"
-			}
-
-			// If both are individual episodes, episodes must match
-			if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
-				return false, "episode mismatch"
-			}
-		} else {
-			// Flexible matching: allow season packs to match individual episodes
-			// But individual episodes still need exact episode matching
-			if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
-				return false, "episode mismatch"
-			}
-		}
+	for _, rawTitle := range rawAKATitleParts(rawName) {
+		parsed := rls.ParseString(rawTitle)
+		addNormalizedTitle(titles, parsed.Title)
+		addNormalizedTitle(titles, parsed.Alt)
 	}
 
+	return titles
+}
+
+func addNormalizedTitles(titles map[string]struct{}, extraTitles []string) {
+	for _, title := range extraTitles {
+		addNormalizedTitle(titles, title)
+	}
+}
+
+func releaseTitle(release *rls.Release) string {
+	if release == nil {
+		return ""
+	}
+	return release.Title
+}
+
+func releaseAlt(release *rls.Release) string {
+	if release == nil {
+		return ""
+	}
+	return release.Alt
+}
+
+func rawAKATitleParts(rawName string) []string {
+	if rawName == "" || !strings.Contains(rawName, " AKA ") {
+		return nil
+	}
+
+	const minAKATitleLength = 4
+	parts := strings.Split(rawName, " AKA ")
+	titles := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if len(part) >= minAKATitleLength {
+			titles = append(titles, part)
+		}
+	}
+	if len(titles) < 2 {
+		return nil
+	}
+	return titles
+}
+
+func addNormalizedTitle(titles map[string]struct{}, title string) {
+	normalized := stringutils.NormalizeForMatching(title)
+	if normalized != "" {
+		titles[normalized] = struct{}{}
+	}
+}
+
+func normalizedTitleSetsOverlap(sourceTitles, candidateTitles map[string]struct{}) bool {
+	for title := range sourceTitles {
+		if _, exists := candidateTitles[title]; exists {
+			return true
+		}
+	}
+	return false
+}
+
+func validateTVStructure(source, candidate *rls.Release, findIndividualEpisodes, isTV bool) (bool, string) {
+	if !isTV {
+		return true, ""
+	}
+
+	// For TV shows, season and episode structure must match based on settings.
+	sourceIsTV := isTVRelease(source)
+	candidateIsTV := isTVRelease(candidate)
+	sourceIsPack := isTVSeasonPack(source)
+	candidateIsPack := isTVSeasonPack(candidate)
+
+	if sourceIsTV && !candidateIsTV {
+		return false, "candidate not recognized as TV"
+	}
+	if candidateIsTV && !sourceIsTV {
+		return false, "source not recognized as TV"
+	}
+
+	if source.Series > 0 && candidate.Series > 0 && source.Series != candidate.Series {
+		return false, "season mismatch"
+	}
+
+	if !findIndividualEpisodes {
+		// Strict matching: season packs only match season packs, episodes only match episodes
+		if sourceIsPack != candidateIsPack {
+			return false, "season pack versus episode mismatch"
+		}
+
+		// If both are individual episodes, episodes must match
+		if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
+			return false, "episode mismatch"
+		}
+		return true, ""
+	}
+
+	// Flexible matching: allow season packs to match individual episodes.
+	// But individual episodes still need exact episode matching.
+	if !sourceIsPack && !candidateIsPack && source.Episode != candidate.Episode {
+		return false, "episode mismatch"
+	}
+
+	return true, ""
+}
+
+func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release) (bool, string) {
 	// Group tags should match for proper cross-seeding compatibility.
 	// Different release groups often have different encoding settings and file structures.
+	normalizer := normalizerForService(s)
 	sourceGroup := normalizer.Normalize((source.Group))
 	candidateGroup := normalizer.Normalize((candidate.Group))
+	sourceSite := normalizer.Normalize(source.Site)
+	candidateSite := normalizer.Normalize(candidate.Site)
 
 	// Only enforce group matching if the source has a group tag
 	if sourceGroup != "" {
+		candidateGroupIdentity := candidateGroup
+		if candidateGroupIdentity == "" {
+			candidateGroupIdentity = candidateSite
+		}
 		// If source has a group, candidate must have the same group
-		if candidateGroup == "" || sourceGroup != candidateGroup {
+		if candidateGroupIdentity == "" || sourceGroup != candidateGroupIdentity {
 			return false, "group mismatch"
 		}
 	}
@@ -243,10 +373,14 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 	// cross-seed, but many indexer titles omit the site tag entirely. Treat mismatched
 	// non-empty site tags as incompatible, but don't reject candidates that simply
 	// lack this metadata.
-	sourceSite := normalizer.Normalize(source.Site)
-	candidateSite := normalizer.Normalize(candidate.Site)
-	if sourceSite != "" && candidateSite != "" && sourceSite != candidateSite {
-		return false, "site mismatch"
+	if sourceSite != "" {
+		candidateSiteIdentity := candidateSite
+		if candidateSiteIdentity == "" {
+			candidateSiteIdentity = candidateGroup
+		}
+		if candidateSiteIdentity != "" && sourceSite != candidateSiteIdentity {
+			return false, "site mismatch"
+		}
 	}
 
 	// Sum field contains the CRC32 checksum for anime releases like [32ECE75A].
@@ -258,6 +392,12 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 			return false, "checksum mismatch"
 		}
 	}
+
+	return true, ""
+}
+
+func (s *Service) validateFormatAndCodec(source, candidate *rls.Release, isTV bool) (bool, string) {
+	normalizer := normalizerForService(s)
 
 	// Source must be compatible if both are present.
 	// WEB is ambiguous and matches both WEB-DL and WEBRip.
@@ -296,7 +436,13 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 	sourceCollection := normalizer.Normalize((source.Collection))
 	candidateCollection := normalizer.Normalize((candidate.Collection))
 	if sourceCollection != candidateCollection {
-		return false, "collection mismatch"
+		sourceMissingCollection := sourceCollection == ""
+		candidateMissingCollection := candidateCollection == ""
+		unknownSeasonTV := isTV && (source.Series == 0 || candidate.Series == 0)
+		missingCollectionAllowed := unknownSeasonTV && (sourceMissingCollection || candidateMissingCollection)
+		if !missingCollectionAllowed {
+			return false, "collection mismatch"
+		}
 	}
 
 	// Codec must match if both are present (AVC vs HEVC produce different files).
@@ -324,6 +470,12 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 	if sourceBitDepth != "" && candidateBitDepth != "" && sourceBitDepth != candidateBitDepth {
 		return false, "bit depth mismatch"
 	}
+
+	return true, ""
+}
+
+func (s *Service) validateMetadataFlags(source, candidate *rls.Release) (bool, string) {
+	normalizer := normalizerForService(s)
 
 	// NOTE: Audio codec and channel checks are intentionally omitted here.
 	// Indexer metadata can be inaccurate (e.g., BTN returning DDPA5.1 when the
@@ -392,6 +544,10 @@ func (s *Service) releasesMatchWithReason(source, candidate *rls.Release, findIn
 		return false, "architecture mismatch"
 	}
 
+	return true, ""
+}
+
+func validateReleaseVariants(source, candidate *rls.Release) (bool, string) {
 	// Certain variant tags must match for safe cross-seeding.
 	// IMAX/HYBRID always require exact match (different video masters).
 	// REPACK/PROPER require exact match for non-pack content, but season packs

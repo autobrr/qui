@@ -41,9 +41,12 @@ const (
 // ExternalIDsResult contains the result of an ID lookup
 type ExternalIDsResult struct {
 	IDs           *models.ExternalIDs `json:"ids,omitempty"`
+	Titles        []string            `json:"titles,omitempty"`
+	TitlesKnown   bool                `json:"-"`
 	FromCache     bool                `json:"from_cache"`
 	ArrInstanceID *int                `json:"arr_instance_id,omitempty"`
 	ContentType   ContentType         `json:"content_type"`
+	Source        string              `json:"source,omitempty"`
 }
 
 // SeasonEpisodeTotalResult contains the resolved episode count for a Sonarr season.
@@ -101,57 +104,48 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 	// Schedule opportunistic cache cleanup
 	defer s.maybeScheduleCacheCleanup()
 
-	// Compute cache key
 	titleHash := models.ComputeTitleHash(title)
 
-	// Check cache first
-	cacheEntry, err := s.cacheStore.Get(ctx, titleHash, string(contentType))
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		// Log real DB errors (not just "not found")
-		log.Warn().Err(err).
-			Str("title", title).
-			Str("contentType", string(contentType)).
-			Msg("[ARR-LOOKUP] Cache read error, proceeding as cache miss")
+	cacheResult, err := s.lookupCache(ctx, titleHash, title, contentType)
+	if err != nil {
+		return nil, err
 	}
-	if err == nil && cacheEntry != nil {
-		// Cache hit
-		if cacheEntry.IsNegative {
-			log.Debug().
-				Str("title", title).
-				Str("contentType", string(contentType)).
-				Msg("[ARR-LOOKUP] Cache hit (negative)")
-			return &ExternalIDsResult{
-				IDs:           nil,
-				FromCache:     true,
-				ArrInstanceID: cacheEntry.ArrInstanceID,
-				ContentType:   contentType,
-			}, nil
-		}
-
-		log.Debug().
-			Str("title", title).
-			Str("contentType", string(contentType)).
-			Str("imdbId", cacheEntry.ExternalIDs.IMDbID).
-			Int("tmdbId", cacheEntry.ExternalIDs.TMDbID).
-			Int("tvdbId", cacheEntry.ExternalIDs.TVDbID).
-			Int("tvmazeId", cacheEntry.ExternalIDs.TVMazeID).
-			Msg("[ARR-LOOKUP] Cache hit (positive)")
-
-		return &ExternalIDsResult{
-			IDs:           &cacheEntry.ExternalIDs,
-			FromCache:     true,
-			ArrInstanceID: cacheEntry.ArrInstanceID,
-			ContentType:   contentType,
-		}, nil
+	if cacheResult != nil && (cacheResult.IDs == nil || cacheResult.IDs.IsEmpty() || cacheResult.TitlesKnown) {
+		return cacheResult, nil
 	}
 
 	// Cache miss - determine which ARR type(s) to query
+	instances, err := s.enabledInstancesForContent(ctx, title, contentType)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(instances) == 0 {
+		if cacheResult != nil {
+			return cacheResult, nil
+		}
+		return nil, nil
+	}
+
+	result, err := s.lookupExternalIDsFromParse(ctx, titleHash, title, contentType, instances, cacheResult == nil)
+	if err != nil {
+		return nil, err
+	}
+	if result.IDs == nil || result.IDs.IsEmpty() {
+		if cacheResult != nil {
+			return cacheResult, nil
+		}
+		return result, nil
+	}
+	return result, nil
+}
+
+func (s *Service) enabledInstancesForContent(ctx context.Context, title string, contentType ContentType) ([]*models.ArrInstance, error) {
 	arrType := s.getArrTypeForContent(contentType)
 	if arrType == "" {
 		return nil, nil
 	}
 
-	// Get enabled instances of the appropriate type, ordered by priority
 	instances, err := s.instanceStore.ListEnabledByType(ctx, arrType)
 	if err != nil {
 		return nil, err
@@ -163,42 +157,68 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 			Str("contentType", string(contentType)).
 			Str("arrType", string(arrType)).
 			Msg("[ARR-LOOKUP] No enabled ARR instances found")
-		return nil, nil
 	}
 
-	// Query instances in priority order until we find IDs
-	// Track whether we successfully queried at least one instance
-	anyQueried := false
+	return instances, nil
+}
 
+func (s *Service) lookupCache(ctx context.Context, titleHash, title string, contentType ContentType) (*ExternalIDsResult, error) {
+	cacheEntry, err := s.cacheStore.Get(ctx, titleHash, string(contentType))
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		log.Warn().Err(err).
+			Str("title", title).
+			Str("contentType", string(contentType)).
+			Msg("[ARR-LOOKUP] Cache read error, proceeding as cache miss")
+	}
+	if err != nil || cacheEntry == nil {
+		return nil, nil
+	}
+	if cacheEntry.IsNegative {
+		log.Debug().
+			Str("title", title).
+			Str("contentType", string(contentType)).
+			Msg("[ARR-LOOKUP] Cache hit (negative)")
+		return &ExternalIDsResult{
+			IDs:           nil,
+			FromCache:     true,
+			ArrInstanceID: cacheEntry.ArrInstanceID,
+			ContentType:   contentType,
+			Source:        "cache",
+		}, nil
+	}
+	log.Debug().
+		Str("title", title).
+		Str("contentType", string(contentType)).
+		Str("imdbId", cacheEntry.ExternalIDs.IMDbID).
+		Int("tmdbId", cacheEntry.ExternalIDs.TMDbID).
+		Int("tvdbId", cacheEntry.ExternalIDs.TVDbID).
+		Int("tvmazeId", cacheEntry.ExternalIDs.TVMazeID).
+		Int("titles", len(cacheEntry.Titles)).
+		Strs("arrTitles", cacheEntry.Titles).
+		Msg("[ARR-LOOKUP] Cache hit (positive)")
+
+	return &ExternalIDsResult{
+		IDs:           &cacheEntry.ExternalIDs,
+		Titles:        cacheEntry.Titles,
+		TitlesKnown:   cacheEntry.HasTitles,
+		FromCache:     true,
+		ArrInstanceID: cacheEntry.ArrInstanceID,
+		ContentType:   contentType,
+		Source:        "cache",
+	}, nil
+}
+
+func (s *Service) lookupExternalIDsFromParse(ctx context.Context, titleHash, title string, contentType ContentType, instances []*models.ArrInstance, cacheNegative bool) (*ExternalIDsResult, error) {
+	anyQueried := false
 	for _, instance := range instances {
-		apiKey, err := s.instanceStore.GetDecryptedAPIKey(instance)
-		if err != nil {
-			log.Warn().Err(err).
-				Int("instanceId", instance.ID).
-				Str("instanceName", instance.Name).
-				Msg("[ARR-LOOKUP] Failed to decrypt API key")
+		client := s.clientForInstance(instance)
+		if client == nil {
 			continue
 		}
-
-		var basicPass string
-		if instance.BasicUsername != nil && *instance.BasicUsername != "" {
-			basicPass, err = s.instanceStore.GetDecryptedBasicPassword(instance)
-			if err != nil {
-				log.Warn().Err(err).
-					Int("instanceId", instance.ID).
-					Str("instanceName", instance.Name).
-					Msg("[ARR-LOOKUP] Failed to decrypt basic auth password")
-				continue
-			}
-		}
-		basicPassPtr := &basicPass
-		if basicPass == "" {
-			basicPassPtr = nil
-		}
-
-		client := NewClient(instance.BaseURL, apiKey, instance.BasicUsername, basicPassPtr, instance.Type, instance.TimeoutSeconds)
-
-		ids, err := client.ParseTitle(ctx, title)
+		result, err := client.ParseTitleLookupResult(ctx, title)
 		if err != nil {
 			log.Debug().Err(err).
 				Int("instanceId", instance.ID).
@@ -208,32 +228,9 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 			continue
 		}
 
-		// Successfully queried this instance
 		anyQueried = true
-
-		if ids != nil && !ids.IsEmpty() {
-			// Found IDs - cache and return
-			instanceID := instance.ID
-			if err := s.cacheStore.Set(ctx, titleHash, string(contentType), &instanceID, ids, false, s.positiveTTL); err != nil {
-				log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache positive result")
-			}
-
-			log.Debug().
-				Str("title", title).
-				Int("instanceId", instance.ID).
-				Str("instanceName", instance.Name).
-				Str("imdbId", ids.IMDbID).
-				Int("tmdbId", ids.TMDbID).
-				Int("tvdbId", ids.TVDbID).
-				Int("tvmazeId", ids.TVMazeID).
-				Msg("[ARR-LOOKUP] IDs found")
-
-			return &ExternalIDsResult{
-				IDs:           ids,
-				FromCache:     false,
-				ArrInstanceID: &instanceID,
-				ContentType:   contentType,
-			}, nil
+		if result != nil && result.IDs != nil && !result.IDs.IsEmpty() {
+			return s.cacheAndBuildResult(ctx, titleHash, title, contentType, instance, result, "parse"), nil
 		}
 
 		log.Debug().
@@ -243,14 +240,11 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 			Msg("[ARR-LOOKUP] No IDs returned from instance")
 	}
 
-	// Only cache negative result if we successfully queried at least one instance
-	// (don't cache if all instances failed to connect/decrypt)
-	if anyQueried {
+	if cacheNegative && anyQueried {
 		if err := s.cacheStore.Set(ctx, titleHash, string(contentType), nil, nil, true, s.negativeTTL); err != nil {
 			log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache negative result")
 		}
 	}
-
 	log.Debug().
 		Str("title", title).
 		Str("contentType", string(contentType)).
@@ -261,7 +255,68 @@ func (s *Service) LookupExternalIDs(ctx context.Context, title string, contentTy
 		IDs:         nil,
 		FromCache:   false,
 		ContentType: contentType,
+		Source:      "none",
 	}, nil
+}
+
+func (s *Service) cacheAndBuildResult(ctx context.Context, titleHash, title string, contentType ContentType, instance *models.ArrInstance, result *ExternalIDsLookupResult, source string) *ExternalIDsResult {
+	instanceID := instance.ID
+	titles := append([]string{}, result.Titles...)
+	if err := s.cacheStore.SetWithTitles(ctx, titleHash, string(contentType), &instanceID, result.IDs, titles, false, s.positiveTTL); err != nil {
+		log.Warn().Err(err).Msg("[ARR-LOOKUP] Failed to cache positive result")
+	}
+
+	log.Debug().
+		Str("title", title).
+		Int("instanceId", instance.ID).
+		Str("instanceName", instance.Name).
+		Str("source", source).
+		Str("imdbId", result.IDs.IMDbID).
+		Int("tmdbId", result.IDs.TMDbID).
+		Int("tvdbId", result.IDs.TVDbID).
+		Int("tvmazeId", result.IDs.TVMazeID).
+		Int("titles", len(result.Titles)).
+		Strs("arrTitles", result.Titles).
+		Msg("[ARR-LOOKUP] IDs found")
+
+	return &ExternalIDsResult{
+		IDs:           result.IDs,
+		Titles:        result.Titles,
+		TitlesKnown:   true,
+		FromCache:     false,
+		ArrInstanceID: &instanceID,
+		ContentType:   contentType,
+		Source:        source,
+	}
+}
+
+func (s *Service) clientForInstance(instance *models.ArrInstance) *Client {
+	apiKey, err := s.instanceStore.GetDecryptedAPIKey(instance)
+	if err != nil {
+		log.Warn().Err(err).
+			Int("instanceId", instance.ID).
+			Str("instanceName", instance.Name).
+			Msg("[ARR-LOOKUP] Failed to decrypt API key")
+		return nil
+	}
+
+	var basicPass string
+	if instance.BasicUsername != nil && *instance.BasicUsername != "" {
+		basicPass, err = s.instanceStore.GetDecryptedBasicPassword(instance)
+		if err != nil {
+			log.Warn().Err(err).
+				Int("instanceId", instance.ID).
+				Str("instanceName", instance.Name).
+				Msg("[ARR-LOOKUP] Failed to decrypt basic auth password")
+			return nil
+		}
+	}
+	basicPassPtr := &basicPass
+	if basicPass == "" {
+		basicPassPtr = nil
+	}
+
+	return NewClient(instance.BaseURL, apiKey, instance.BasicUsername, basicPassPtr, instance.Type, instance.TimeoutSeconds)
 }
 
 // LookupSeasonEpisodeTotal queries Sonarr instances for the episode count of a specific season.
@@ -285,32 +340,11 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 	}
 
 	for _, instance := range instances {
-		apiKey, err := s.instanceStore.GetDecryptedAPIKey(instance)
-		if err != nil {
-			log.Warn().Err(err).
-				Int("instanceId", instance.ID).
-				Str("instanceName", instance.Name).
-				Msg("[ARR-LOOKUP] Failed to decrypt API key for season total")
+		client := s.clientForInstance(instance)
+		if client == nil {
 			continue
 		}
 
-		var basicPass string
-		if instance.BasicUsername != nil && *instance.BasicUsername != "" {
-			basicPass, err = s.instanceStore.GetDecryptedBasicPassword(instance)
-			if err != nil {
-				log.Warn().Err(err).
-					Int("instanceId", instance.ID).
-					Str("instanceName", instance.Name).
-					Msg("[ARR-LOOKUP] Failed to decrypt basic auth password for season total")
-				continue
-			}
-		}
-		basicPassPtr := &basicPass
-		if basicPass == "" {
-			basicPassPtr = nil
-		}
-
-		client := NewClient(instance.BaseURL, apiKey, instance.BasicUsername, basicPassPtr, instance.Type, instance.TimeoutSeconds)
 		parseResp, err := client.ParseSonarrTitle(ctx, title)
 		if err != nil {
 			log.Debug().Err(err).

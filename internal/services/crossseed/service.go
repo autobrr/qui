@@ -26,6 +26,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -60,6 +61,7 @@ import (
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/pathcmp"
 	"github.com/autobrr/qui/pkg/pathutil"
+	"github.com/autobrr/qui/pkg/redact"
 	"github.com/autobrr/qui/pkg/reflinktree"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -72,6 +74,28 @@ type instanceProvider interface {
 
 type trackerCustomizationProvider interface {
 	List(ctx context.Context) ([]*models.TrackerCustomization, error)
+}
+
+type arrLookupService interface {
+	LookupExternalIDs(ctx context.Context, title string, contentType arr.ContentType) (*arr.ExternalIDsResult, error)
+	LookupSeasonEpisodeTotal(ctx context.Context, title string, seasonNumber int) (*arr.SeasonEpisodeTotalResult, error)
+}
+
+func isNilARRLookupService(service arrLookupService) bool {
+	if service == nil {
+		return true
+	}
+
+	value := reflect.ValueOf(service)
+	kind := value.Kind()
+	canBeNil := kind == reflect.Chan ||
+		kind == reflect.Func ||
+		kind == reflect.Interface ||
+		kind == reflect.Map ||
+		kind == reflect.Pointer ||
+		kind == reflect.Slice
+
+	return canBeNil && value.IsNil()
 }
 
 // seasonPackRunCreator persists season-pack run rows.
@@ -309,7 +333,7 @@ type Service struct {
 	blocklistStore           *models.CrossSeedBlocklistStore
 	automationSettingsLoader func(context.Context) (*models.CrossSeedAutomationSettings, error)
 	jackettService           *jackett.Service
-	arrService               *arr.Service // ARR service for ID lookup
+	arrService               arrLookupService // ARR service for ID lookup
 	notifier                 notifications.Notifier
 
 	// External program execution
@@ -458,6 +482,10 @@ func NewService(
 		SetDefaultTTL(5 * time.Minute))
 
 	recheckCtx, recheckCancel := context.WithCancel(context.Background())
+	var arrLookup arrLookupService
+	if !isNilARRLookupService(arrService) {
+		arrLookup = arrService
+	}
 
 	svc := &Service{
 		instanceStore:                 instanceStore,
@@ -472,7 +500,7 @@ func NewService(
 		automationStore:               automationStore,
 		blocklistStore:                blocklistStore,
 		jackettService:                jackettService,
-		arrService:                    arrService,
+		arrService:                    arrLookup,
 		notifier:                      notifier,
 		externalProgramStore:          externalProgramStore,
 		externalProgramService:        externalProgramService,
@@ -3192,7 +3220,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 
 		alreadyHandled, lastStatus, err := s.automationStore.HasProcessedFeedItem(ctx, result.GUID, result.IndexerID)
 		if err != nil {
-			log.Warn().Err(err).Str("guid", result.GUID).Msg("Failed to check feed item cache")
+			log.Warn().Err(err).Str("guid", redact.URLString(result.GUID)).Msg("Failed to check feed item cache")
 		}
 
 		run.TotalFeedItems++
@@ -3410,7 +3438,7 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 
 			log.Debug().
 				Str("title", result.Title).
-				Str("commentURL", commentURL).
+				Str("commentURL", redact.URLString(commentURL)).
 				Int("instances", len(existingResults)).
 				Msg("[RSS] Skipped download - torrent already exists on all candidate instances (comment URL pre-check)")
 
@@ -3556,7 +3584,7 @@ func (s *Service) markFeedItem(ctx context.Context, result jackett.SearchResult,
 	}
 
 	if err := s.automationStore.MarkFeedItem(ctx, item); err != nil {
-		log.Debug().Err(err).Str("guid", result.GUID).Msg("Failed to persist cross-seed feed item state")
+		log.Debug().Err(err).Str("guid", redact.URLString(result.GUID)).Msg("Failed to persist cross-seed feed item state")
 	}
 }
 
@@ -4385,7 +4413,7 @@ func (s *Service) processCrossSeedCandidate(
 		// This prevents corrupting existing good data with potentially different or corrupted files.
 		// Scene releases should be byte-for-byte identical across trackers - if sizes differ,
 		// it indicates either corruption or a different release that shouldn't be cross-seeded.
-		if hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(sourceFiles, candidateFiles, s.stringNormalizer); hasMismatch {
+		if hasMismatch, fileSizeMismatches := hasContentFileSizeMismatch(sourceFiles, candidateFiles, s.stringNormalizer); hasMismatch {
 			result.Status = "rejected"
 			result.Message = "Content file sizes do not match - possible corruption or different release"
 			log.Warn().
@@ -4394,7 +4422,8 @@ func (s *Service) processCrossSeedCandidate(
 				Str("torrentHash", torrentHash).
 				Str("matchedHash", matchedTorrent.Hash).
 				Str("matchType", matchType).
-				Strs("mismatchedFiles", mismatchedFiles).
+				Strs("mismatchedFiles", contentFileSizeMismatchSourceFiles(fileSizeMismatches)).
+				Interface("fileSizeMismatches", fileSizeMismatches).
 				Msg("Cross-seed rejected: content file size mismatch - refusing to proceed to avoid potential data corruption")
 			return false
 		}
@@ -6143,6 +6172,50 @@ func mapContentTypeToARR(contentType string) arr.ContentType {
 	}
 }
 
+func (s *Service) lookupARRExternalIDs(ctx context.Context, title, contentType string) *arr.ExternalIDsResult {
+	if isNilARRLookupService(s.arrService) {
+		return nil
+	}
+	arrContentType := mapContentTypeToARR(contentType)
+	if arrContentType == "" {
+		return nil
+	}
+
+	result, err := s.arrService.LookupExternalIDs(ctx, title, arrContentType)
+	if err != nil {
+		log.Debug().Err(err).
+			Str("torrentName", title).
+			Str("contentType", contentType).
+			Msg("[CROSSSEED-SEARCH] ARR ID lookup failed, continuing without IDs")
+		return nil
+	}
+	if result == nil {
+		return nil
+	}
+	if result.IDs == nil || result.IDs.IsEmpty() {
+		log.Debug().
+			Str("torrentName", title).
+			Str("source", result.Source).
+			Int("titles", len(result.Titles)).
+			Strs("arrTitles", result.Titles).
+			Msg("[CROSSSEED-SEARCH] ARR ID lookup returned no IDs")
+		return result
+	}
+
+	log.Debug().
+		Str("torrentName", title).
+		Str("imdbId", result.IDs.IMDbID).
+		Int("tmdbId", result.IDs.TMDbID).
+		Int("tvdbId", result.IDs.TVDbID).
+		Int("tvmazeId", result.IDs.TVMazeID).
+		Bool("fromCache", result.FromCache).
+		Str("source", result.Source).
+		Int("titles", len(result.Titles)).
+		Strs("arrTitles", result.Titles).
+		Msg("[CROSSSEED-SEARCH] ARR ID lookup succeeded")
+	return result
+}
+
 const (
 	gazelleIndexerIDRedacted = -1001
 	gazelleIndexerIDOrpheus  = -1002
@@ -6643,10 +6716,10 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	// Use unified content type detection with expanded categories for search
 	contentInfo := DetermineContentType(contentDetectionRelease)
-	searchRelease := sourceRelease
-	if contentInfo.ContentType == "tv" {
-		searchRelease = s.deriveSourceReleaseForSearch(sourceRelease, sourceFiles)
-	}
+	searchRelease := s.selectSourceReleaseForSearch(sourceRelease, contentDetectionRelease, sourceFiles, contentInfo)
+	// Keep contentInfo as the Torznab category decision; searchRelease is selected from it
+	// so later release matching follows the same search mode.
+	// Stops TV torznab searches from being miscategorized as movie when ARR/release matching.
 
 	// Detect disc layout for this torrent
 	isDiscLayout, discMarker := isDiscLayoutTorrent(sourceFiles)
@@ -6774,6 +6847,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	// Apply indexer filtering (capabilities first, then optionally content filtering async)
 	var filteredIndexerIDs []int
+	filteringResolved := false
 	cacheKey := asyncFilteringCacheKey(instanceID, hash)
 
 	// Check for cached content-filtered results first
@@ -6791,9 +6865,10 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 					Ints("providedIndexers", opts.IndexerIDs).
 					Msg("[CROSSSEED-SEARCH] Found cached filtering state")
 
-				if cachedSnapshot.ContentCompleted && len(cachedSnapshot.FilteredIndexers) > 0 {
+				if cachedSnapshot.ContentCompleted {
 					// Content filtering is complete, use the refined results
 					filteredIndexerIDs = append([]int(nil), cachedSnapshot.FilteredIndexers...)
+					filteringResolved = true
 					log.Debug().
 						Str("torrentHash", hash).
 						Int("instanceID", instanceID).
@@ -6805,6 +6880,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				} else if len(cachedSnapshot.CapabilityIndexers) > 0 {
 					// Content filtering not complete, but use capability results
 					filteredIndexerIDs = append([]int(nil), cachedSnapshot.CapabilityIndexers...)
+					filteringResolved = true
 					log.Debug().
 						Str("torrentHash", hash).
 						Int("instanceID", instanceID).
@@ -6823,8 +6899,8 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 	}
 
-	// Only perform new filtering if no cache found
-	if len(filteredIndexerIDs) == 0 {
+	// Only perform new filtering if cached state did not resolve the indexer set
+	if !filteringResolved {
 		log.Debug().
 			Str("torrentHash", hash).
 			Int("instanceID", instanceID).
@@ -6927,27 +7003,13 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	// ARR-driven ID lookup for enhanced Torznab searching
 	var externalIDs *models.ExternalIDs
-	if s.arrService != nil {
-		arrContentType := mapContentTypeToARR(contentInfo.ContentType)
-		if arrContentType != "" {
-			result, err := s.arrService.LookupExternalIDs(ctx, sourceTorrent.Name, arrContentType)
-			if err != nil {
-				log.Debug().Err(err).
-					Str("torrentName", sourceTorrent.Name).
-					Str("contentType", contentInfo.ContentType).
-					Msg("[CROSSSEED-SEARCH] ARR ID lookup failed, continuing without IDs")
-			} else if result != nil && result.IDs != nil && !result.IDs.IsEmpty() {
-				externalIDs = result.IDs
-				log.Debug().
-					Str("torrentName", sourceTorrent.Name).
-					Str("imdbId", externalIDs.IMDbID).
-					Int("tmdbId", externalIDs.TMDbID).
-					Int("tvdbId", externalIDs.TVDbID).
-					Int("tvmazeId", externalIDs.TVMazeID).
-					Bool("fromCache", result.FromCache).
-					Msg("[CROSSSEED-SEARCH] ARR ID lookup succeeded")
-			}
+	var arrTitles []string
+	arrResult := s.lookupARRExternalIDs(ctx, sourceTorrent.Name, contentInfo.ContentType)
+	if arrResult != nil {
+		if arrResult.IDs != nil && !arrResult.IDs.IsEmpty() {
+			externalIDs = arrResult.IDs
 		}
+		arrTitles = arrResult.Titles
 	}
 
 	searchReq := &jackett.TorznabSearchRequest{
@@ -7178,6 +7240,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	seen := make(map[string]struct{})
 	sizeFilteredCount := 0
 	releaseFilteredCount := 0
+	releaseFilterReasons := make(map[string]int)
 
 	for _, res := range searchResults {
 		key := res.GUID
@@ -7192,15 +7255,36 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
-		if !s.releasesMatch(searchRelease, candidateRelease, opts.FindIndividualEpisodes) {
+		match, mismatchReason := s.releasesMatchWithReasonAndNamesAndTitles(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, arrTitles, nil, opts.FindIndividualEpisodes)
+		if !match {
 			releaseFilteredCount++
+			recordReleaseRejection(
+				releaseFilterReasons,
+				mismatchReason,
+				sourceTorrent.Name,
+				res.Title,
+				opts.FindIndividualEpisodes,
+				releaseFilterDebugInfoFrom(searchRelease),
+				releaseFilterDebugInfoFrom(candidateRelease),
+				"[CROSSSEED-SEARCH] Candidate filtered out by release match",
+			)
 			continue
 		}
 
 		// Reject forbidden pairing: season pack candidate (new) vs single episode source (existing).
 		// In search context: candidateRelease is the new torrent, sourceRelease is the existing local torrent.
-		if reject, _ := rejectSeasonPackFromEpisode(candidateRelease, searchRelease, opts.FindIndividualEpisodes); reject {
+		if reject, reason := rejectSeasonPackFromEpisode(candidateRelease, searchRelease, opts.FindIndividualEpisodes); reject {
 			releaseFilteredCount++
+			recordReleaseRejection(
+				releaseFilterReasons,
+				reason,
+				sourceTorrent.Name,
+				res.Title,
+				opts.FindIndividualEpisodes,
+				releaseFilterDebugInfoFrom(searchRelease),
+				releaseFilterDebugInfoFrom(candidateRelease),
+				"[CROSSSEED-SEARCH] Candidate filtered out by release pairing rule",
+			)
 			continue
 		}
 
@@ -7243,6 +7327,14 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		Int("finalMatches", matchedResults).
 		Float64("tolerancePercent", settings.SizeMismatchTolerancePercent).
 		Msg("[CROSSSEED-SEARCH] Search filtering completed")
+
+	if releaseFilteredCount > 0 {
+		log.Debug().
+			Str("torrentName", sourceTorrent.Name).
+			Interface("sourceRelease", releaseFilterDebugInfoFrom(searchRelease)).
+			Interface("releaseFilterReasons", releaseFilterReasons).
+			Msg("[CROSSSEED-SEARCH] Release filtering rejection summary")
+	}
 
 	if len(scored) == 0 {
 		combined := mergeTorrentSearchResults(gazelleResults, nil)
@@ -10059,6 +10151,126 @@ func evaluateReleaseMatch(source, candidate *rls.Release) (float64, string) {
 	}
 
 	return score, strings.Join(reasons, ", ")
+}
+
+type releaseFilterDebugInfo struct {
+	Type       string   `json:"type,omitempty"`
+	Title      string   `json:"title,omitempty"`
+	Subtitle   string   `json:"subtitle,omitempty"`
+	Alt        string   `json:"alt,omitempty"`
+	Collection string   `json:"collection,omitempty"`
+	Year       int      `json:"year,omitempty"`
+	Month      int      `json:"month,omitempty"`
+	Day        int      `json:"day,omitempty"`
+	Series     int      `json:"series,omitempty"`
+	Episode    int      `json:"episode,omitempty"`
+	Group      string   `json:"group,omitempty"`
+	Site       string   `json:"site,omitempty"`
+	Sum        string   `json:"sum,omitempty"`
+	Source     string   `json:"source,omitempty"`
+	Resolution string   `json:"resolution,omitempty"`
+	Codec      []string `json:"codec,omitempty"`
+	HDR        []string `json:"hdr,omitempty"`
+	BitDepth   string   `json:"bit_depth,omitempty"`
+	Audio      []string `json:"audio,omitempty"`
+	Cut        []string `json:"cut,omitempty"`
+	Edition    []string `json:"edition,omitempty"`
+	Language   []string `json:"language,omitempty"`
+	Version    string   `json:"version,omitempty"`
+	Disc       string   `json:"disc,omitempty"`
+	Platform   string   `json:"platform,omitempty"`
+	Arch       string   `json:"arch,omitempty"`
+}
+
+func recordReleaseRejection(
+	releaseFilterReasons map[string]int,
+	reason string,
+	sourceTitle string,
+	candidateTitle string,
+	findIndividualEpisodes bool,
+	sourceRelease releaseFilterDebugInfo,
+	candidateRelease releaseFilterDebugInfo,
+	message string,
+) {
+	if reason == "" {
+		reason = "release mismatch"
+	}
+	releaseFilterReasons[reason]++
+	if trace := log.Trace(); trace.Enabled() {
+		trace.
+			Str("sourceTitle", sourceTitle).
+			Str("candidateTitle", candidateTitle).
+			Str("reason", reason).
+			Bool("findIndividualEpisodes", findIndividualEpisodes).
+			Interface("sourceRelease", sourceRelease).
+			Interface("candidateRelease", candidateRelease).
+			Msg(message)
+	}
+}
+
+func traceReleaseMatchDecision(
+	sourceTitle string,
+	candidateTitle string,
+	findIndividualEpisodes bool,
+	sourceRelease *rls.Release,
+	candidateRelease *rls.Release,
+	matched bool,
+	reason string,
+	message string,
+) {
+	if reason == "" {
+		if matched {
+			reason = "matched"
+		} else {
+			reason = "release mismatch"
+		}
+	}
+	if trace := log.Trace(); trace.Enabled() {
+		trace.
+			Str("sourceTitle", sourceTitle).
+			Str("candidateTitle", candidateTitle).
+			Bool("matched", matched).
+			Str("reason", reason).
+			Bool("findIndividualEpisodes", findIndividualEpisodes).
+			Interface("sourceRelease", releaseFilterDebugInfoFrom(sourceRelease)).
+			Interface("candidateRelease", releaseFilterDebugInfoFrom(candidateRelease)).
+			Msg(message)
+	}
+}
+
+func releaseFilterDebugInfoFrom(release *rls.Release) releaseFilterDebugInfo {
+	if release == nil {
+		return releaseFilterDebugInfo{}
+	}
+
+	return releaseFilterDebugInfo{
+		Type:       release.Type.String(),
+		Title:      release.Title,
+		Subtitle:   release.Subtitle,
+		Alt:        release.Alt,
+		Collection: release.Collection,
+		Year:       release.Year,
+		Month:      release.Month,
+		Day:        release.Day,
+		Series:     release.Series,
+		Episode:    release.Episode,
+		Group:      release.Group,
+		Site:       release.Site,
+		Sum:        release.Sum,
+		Source:     release.Source,
+		Resolution: release.Resolution,
+		Codec:      append([]string(nil), release.Codec...),
+		HDR:        append([]string(nil), release.HDR...),
+		BitDepth:   release.BitDepth,
+		Audio:      append([]string(nil), release.Audio...),
+		Cut:        append([]string(nil), release.Cut...),
+		Edition:    append([]string(nil), release.Edition...),
+		Language:   append([]string(nil), release.Language...),
+		Version:    release.Version,
+		Disc:       release.Disc,
+		Platform:   release.Platform,
+		Arch:       release.Arch,
+	}
 }
 
 // isSizeWithinTolerance checks if two torrent sizes are within the specified tolerance percentage.
