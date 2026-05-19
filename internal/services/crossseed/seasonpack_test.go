@@ -892,7 +892,7 @@ func TestApplySeasonPackWebhook_UsesHardlinkMode(t *testing.T) {
 
 	// Verify each file maps from source to the pack layout.
 	for _, fp := range capturedPlan.Files {
-		require.Contains(t, fp.SourcePath, "/media/")
+		require.Contains(t, filepath.ToSlash(fp.SourcePath), "/media/")
 		require.Contains(t, fp.TargetPath, fix.packName)
 	}
 
