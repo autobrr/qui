@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package fsops defines the Backend interface that abstracts filesystem
-// operations for qui's services. Two implementations exist: Local (delegates
-// to os.* on the qui host) and Remote (delegates over SSH to a qui-helper
-// process on a seedbox). Service code uses only this interface, making the
-// transport transparent.
+// operations for qui's services. Current implementations: Local (delegates
+// to os.* on the qui host) and Noop (returns ErrNoFilesystemAccess for
+// instances without filesystem access). A Remote implementation (SSH-backed)
+// is planned. Service code uses only this interface, making the transport
+// transparent.
 package fsops
 
 import (
