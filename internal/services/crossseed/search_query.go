@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -13,18 +16,23 @@ type SearchQuery struct {
 	Episode *int
 }
 
+type SearchQueryOptions struct {
+	IncludeResolution bool
+}
+
 var (
 	bracketSegment    = regexp.MustCompile(`\[[^\]]+\]`)
 	episodeAfterDash  = regexp.MustCompile(`-\s*(\d{1,4})\b`)
 	genericNumberFind = regexp.MustCompile(`\b(\d{2,4})\b`)
 	emptyParens       = regexp.MustCompile(`\(\s*\)`)
+	resolutionToken   = regexp.MustCompile(`(?i)\b(480|576|720|1080|2160|4320)p?\b`)
 )
 
 // buildSafeSearchQuery constructs a conservative Torznab query for TV/anime when parsing is weak.
 // It tries to preserve parsed season/episode from rls, but when parsing fails (common for anime
 // absolute numbering), it cleans the torrent name and extracts an absolute episode number to
 // avoid blasting the full filename at indexers.
-func buildSafeSearchQuery(name string, release *rls.Release, baseQuery string) SearchQuery {
+func buildSafeSearchQuery(name string, release *rls.Release, baseQuery string, opts SearchQueryOptions) SearchQuery {
 	// If rls already gave us structured series/episode info, keep it.
 	var seasonPtr, episodePtr *int
 	if release.Series > 0 {
@@ -38,7 +46,7 @@ func buildSafeSearchQuery(name string, release *rls.Release, baseQuery string) S
 
 	if strings.TrimSpace(baseQuery) != "" {
 		return SearchQuery{
-			Query:   baseQuery,
+			Query:   buildQueryWithOptions(baseQuery, release, opts),
 			Season:  seasonPtr,
 			Episode: episodePtr,
 		}
@@ -50,7 +58,7 @@ func buildSafeSearchQuery(name string, release *rls.Release, baseQuery string) S
 			cleanedTitle = strings.TrimSpace(name)
 		}
 		return SearchQuery{
-			Query:   cleanedTitle,
+			Query:   buildQueryWithOptions(cleanedTitle, release, opts),
 			Season:  seasonPtr,
 			Episode: episodePtr,
 		}
@@ -66,10 +74,46 @@ func buildSafeSearchQuery(name string, release *rls.Release, baseQuery string) S
 	}
 
 	return SearchQuery{
-		Query:   cleanedTitle,
+		Query:   buildQueryWithOptions(cleanedTitle, release, opts),
 		Season:  seasonPtr,
 		Episode: episodePtr,
 	}
+}
+
+func buildQueryWithOptions(query string, release *rls.Release, opts SearchQueryOptions) string {
+	if !opts.IncludeResolution {
+		return strings.TrimSpace(query)
+	}
+	return appendSearchResolution(query, release.Resolution)
+}
+
+func appendSearchResolution(query, resolution string) string {
+	query = strings.TrimSpace(query)
+	token := resolutionSearchToken(resolution)
+	if query == "" || token == "" {
+		return query
+	}
+	if queryHasResolutionToken(query, token) {
+		return query
+	}
+	return query + " " + token
+}
+
+func resolutionSearchToken(resolution string) string {
+	match := resolutionToken.FindStringSubmatch(resolution)
+	if len(match) != 2 {
+		return ""
+	}
+	return match[1]
+}
+
+func queryHasResolutionToken(query, token string) bool {
+	for _, match := range resolutionToken.FindAllStringSubmatch(query, -1) {
+		if len(match) == 2 && match[1] == token {
+			return true
+		}
+	}
+	return false
 }
 
 func cleanAnimeTitle(name string) (string, int) {

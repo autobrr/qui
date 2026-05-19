@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -60,5 +60,44 @@ func TestSanitizeTorrentExportFilename_IgnoreSubdomain(t *testing.T) {
 	filename = torrentname.SanitizeExportFilename("Show", "", "please.passthebeer.com", "abcdef1234")
 	if !strings.HasPrefix(filename, "[passthebeer] ") {
 		t.Fatalf("expected tracker tag to use registrable domain, got %q", filename)
+	}
+}
+
+func TestValidateTorrentFilePath(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		wantErr bool
+	}{
+		{
+			name:    "empty path allowed",
+			path:    "",
+			wantErr: false,
+		},
+		{
+			name:    "full torrent file path allowed",
+			path:    "/downloads/output/movie.torrent",
+			wantErr: false,
+		},
+		{
+			name:    "unix directory path rejected",
+			path:    "/downloads/output/",
+			wantErr: true,
+		},
+		{
+			name:    "windows directory path rejected",
+			path:    `C:\Downloads\Output\`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		err := validateTorrentFilePath(tt.path)
+		if tt.wantErr && err == nil {
+			t.Fatalf("%s: expected error, got nil", tt.name)
+		}
+		if !tt.wantErr && err != nil {
+			t.Fatalf("%s: expected nil error, got %v", tt.name, err)
+		}
 	}
 }

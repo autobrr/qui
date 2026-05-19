@@ -1,11 +1,11 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { createFileRoute } from '@tanstack/react-router'
-import { Search } from '@/pages/Search'
+import { createFileRoute } from "@tanstack/react-router"
+import { Search } from "@/pages/Search"
 
-export const Route = createFileRoute('/_authenticated/search')({
+export const Route = createFileRoute("/_authenticated/search")({
   component: Search,
 })

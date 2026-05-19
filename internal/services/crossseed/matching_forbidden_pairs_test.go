@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -38,6 +41,26 @@ func TestIsTVEpisode(t *testing.T) {
 		{
 			name:     "episode (series and episode)",
 			release:  &rls.Release{Series: 1, Episode: 5},
+			expected: true,
+		},
+		{
+			name:     "seasonless anime episode",
+			release:  &rls.Release{Type: rls.Episode, Episode: 5},
+			expected: true,
+		},
+		{
+			name:     "episode type without episode number",
+			release:  &rls.Release{Type: rls.Episode, Episode: 0},
+			expected: false,
+		},
+		{
+			name:     "episode type with series and episode",
+			release:  &rls.Release{Type: rls.Episode, Series: 1, Episode: 5},
+			expected: true,
+		},
+		{
+			name:     "series type with episode number",
+			release:  &rls.Release{Type: rls.Series, Episode: 5},
 			expected: true,
 		},
 		{
@@ -82,6 +105,21 @@ func TestIsTVSeasonPack(t *testing.T) {
 			name:     "season pack (series only)",
 			release:  &rls.Release{Series: 1, Episode: 0},
 			expected: true,
+		},
+		{
+			name:     "seasonless anime pack",
+			release:  &rls.Release{Type: rls.Series, Episode: 0},
+			expected: true,
+		},
+		{
+			name:     "series type with series and no episode",
+			release:  &rls.Release{Type: rls.Series, Series: 1, Episode: 0},
+			expected: true,
+		},
+		{
+			name:     "series type with episode number",
+			release:  &rls.Release{Type: rls.Series, Episode: 5},
+			expected: false,
 		},
 		{
 			name:     "episode (series and episode)",

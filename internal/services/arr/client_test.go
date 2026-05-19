@@ -1,0 +1,738 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+package arr
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+)
+
+func TestClient_Ping(t *testing.T) {
+	tests := []struct {
+		name           string
+		responseCode   int
+		responseBody   string
+		wantErr        bool
+		wantErrContain string
+	}{
+		{
+			name:         "successful ping",
+			responseCode: http.StatusOK,
+			responseBody: `{"appName":"Sonarr","version":"4.0.0.123"}`,
+			wantErr:      false,
+		},
+		{
+			name:           "unauthorized",
+			responseCode:   http.StatusUnauthorized,
+			responseBody:   `{"error":"Unauthorized"}`,
+			wantErr:        true,
+			wantErrContain: "authentication failed",
+		},
+		{
+			name:           "server error",
+			responseCode:   http.StatusInternalServerError,
+			responseBody:   `Internal Server Error`,
+			wantErr:        true,
+			wantErrContain: "unexpected status 500",
+		},
+		{
+			name:           "empty appName",
+			responseCode:   http.StatusOK,
+			responseBody:   `{"appName":"","version":"4.0.0"}`,
+			wantErr:        true,
+			wantErrContain: "missing appName",
+		},
+		{
+			name:           "invalid JSON",
+			responseCode:   http.StatusOK,
+			responseBody:   `not json`,
+			wantErr:        true,
+			wantErrContain: "failed to decode",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api/v3/system/status", r.URL.Path)
+				assert.Equal(t, "test-api-key", r.Header.Get("X-Api-Key"))
+				w.WriteHeader(tt.responseCode)
+				_, _ = w.Write([]byte(tt.responseBody))
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL, "test-api-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+			err := client.Ping(context.Background())
+
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.wantErrContain)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestClient_Ping_WithBasicAuth(t *testing.T) {
+	user := "alice"
+	pass := "secret"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUser, gotPass, ok := r.BasicAuth()
+		assert.True(t, ok)
+		assert.Equal(t, user, gotUser)
+		assert.Equal(t, pass, gotPass)
+
+		assert.Equal(t, "test-api-key", r.Header.Get("X-Api-Key"))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"appName":"Sonarr","version":"4.0.0.123"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-api-key", &user, &pass, models.ArrInstanceTypeSonarr, 15)
+	require.NoError(t, client.Ping(context.Background()))
+}
+
+func TestClient_ParseTitle_Sonarr(t *testing.T) {
+	tests := []struct {
+		name         string
+		responseCode int
+		responseBody string
+		wantIDs      *models.ExternalIDs
+		wantErr      bool
+	}{
+		{
+			name:         "full IDs from series",
+			responseCode: http.StatusOK,
+			responseBody: `{
+				"title": "Breaking Bad S01E01",
+				"parsedEpisodeInfo": {"seriesTitle": "Breaking Bad"},
+				"series": {
+					"id": 123,
+					"title": "Breaking Bad",
+					"tvdbId": 81189,
+					"tvMazeId": 169,
+					"tmdbId": 1396,
+					"imdbId": "tt0903747"
+				}
+			}`,
+			wantIDs: &models.ExternalIDs{
+				TVDbID:   81189,
+				TVMazeID: 169,
+				TMDbID:   1396,
+				IMDbID:   "tt0903747",
+			},
+			wantErr: false,
+		},
+		{
+			name:         "partial IDs - only TVDb",
+			responseCode: http.StatusOK,
+			responseBody: `{
+				"title": "Some Show S01E01",
+				"series": {"tvdbId": 12345}
+			}`,
+			wantIDs: &models.ExternalIDs{
+				TVDbID: 12345,
+			},
+			wantErr: false,
+		},
+		{
+			name:         "nil series returns nil IDs",
+			responseCode: http.StatusOK,
+			responseBody: `{
+				"title": "Unknown Show S01E01",
+				"parsedEpisodeInfo": {"seriesTitle": "Unknown Show"},
+				"series": null
+			}`,
+			wantIDs: nil,
+			wantErr: false,
+		},
+		{
+			name:         "series with zero IDs returns nil",
+			responseCode: http.StatusOK,
+			responseBody: `{
+				"title": "Empty Show",
+				"series": {"id": 1, "tvdbId": 0, "tvMazeId": 0, "tmdbId": 0, "imdbId": ""}
+			}`,
+			wantIDs: nil,
+			wantErr: false,
+		},
+		{
+			name:         "series with imdbId as 0 string ignored",
+			responseCode: http.StatusOK,
+			responseBody: `{
+				"title": "Show",
+				"series": {"tvdbId": 999, "imdbId": "0"}
+			}`,
+			wantIDs: &models.ExternalIDs{
+				TVDbID: 999,
+			},
+			wantErr: false,
+		},
+		{
+			name:         "unauthorized",
+			responseCode: http.StatusUnauthorized,
+			responseBody: ``,
+			wantIDs:      nil,
+			wantErr:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/v3/parse" {
+					assert.True(t, strings.HasPrefix(r.URL.Path, "/api/v3/series/"))
+					http.NotFound(w, r)
+					return
+				}
+				assert.Equal(t, "/api/v3/parse", r.URL.Path)
+				assert.NotEmpty(t, r.URL.Query().Get("title"))
+				w.WriteHeader(tt.responseCode)
+				_, _ = w.Write([]byte(tt.responseBody))
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+			ids, err := client.ParseTitle(context.Background(), "Test Title")
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantIDs, ids)
+		})
+	}
+}
+
+func TestClient_ParseTitleLookupResult_SonarrHydratesSeriesTitles(t *testing.T) {
+	seriesCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{
+				"title": "Haibara-kun no Tsuyokute Seishun New Game+ S01E01",
+				"series": {
+					"id": 123,
+					"title": "Haibara's Teenage New Game+",
+					"tvdbId": 447381,
+					"tmdbId": 250818
+				}
+			}`))
+		case "/api/v3/series/123":
+			seriesCalls++
+			_, _ = w.Write([]byte(`{
+				"id": 123,
+				"title": "Haibara's Teenage New Game+",
+				"alternateTitles": [
+					{"title": "Haibara-kun no Tsuyokute Seishun New Game"},
+					{"title": "Haibara-kun no Tsuyokute Seishun New Game+"}
+				],
+				"tvdbId": 447381,
+				"tmdbId": 250818
+			}`))
+		default:
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+	result, err := client.ParseTitleLookupResult(context.Background(), "Test Title")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, &models.ExternalIDs{TVDbID: 447381, TMDbID: 250818}, result.IDs)
+	require.Equal(t, []string{
+		"Haibara's Teenage New Game+",
+		"Haibara-kun no Tsuyokute Seishun New Game",
+		"Haibara-kun no Tsuyokute Seishun New Game+",
+	}, result.Titles)
+	require.Equal(t, 1, seriesCalls)
+}
+
+func TestClient_ParseTitleLookupResult_RadarrHydratesMovieTitles(t *testing.T) {
+	movieCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{
+				"title": "Rurouni Kenshin Part I Origins 2012",
+				"movie": {
+					"id": 456,
+					"title": "Rurouni Kenshin Part I: Origins",
+					"tmdbId": 127533,
+					"imdbId": "tt1979319"
+				}
+			}`))
+		case "/api/v3/movie/456":
+			movieCalls++
+			_, _ = w.Write([]byte(`{
+				"id": 456,
+				"title": "Rurouni Kenshin Part I: Origins",
+				"originalTitle": "Rurouni Kenshin",
+				"alternateTitles": [
+					{"title": "Rurouni Kenshin: Origins"},
+					{"title": "Samurai X: Origins"}
+				],
+				"tmdbId": 127533,
+				"imdbId": "tt1979319"
+			}`))
+		default:
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeRadarr, 15)
+	result, err := client.ParseTitleLookupResult(context.Background(), "Test Title")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, &models.ExternalIDs{TMDbID: 127533, IMDbID: "tt1979319"}, result.IDs)
+	require.Equal(t, []string{
+		"Rurouni Kenshin Part I: Origins",
+		"Rurouni Kenshin",
+		"Rurouni Kenshin: Origins",
+		"Samurai X: Origins",
+	}, result.Titles)
+	require.Equal(t, 1, movieCalls)
+}
+
+func TestClient_ParseTitleLookupResult_RadarrFallsBackWhenMovieHydrationFails(t *testing.T) {
+	movieCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{
+				"title": "Inception 2010",
+				"movie": {
+					"id": 456,
+					"title": "Inception",
+					"originalTitle": "Inception",
+					"tmdbId": 27205,
+					"imdbId": "tt1375666"
+				}
+			}`))
+		case "/api/v3/movie/456":
+			movieCalls++
+			http.Error(w, "server error", http.StatusInternalServerError)
+		default:
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeRadarr, 15)
+	result, err := client.ParseTitleLookupResult(context.Background(), "Test Title")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, &models.ExternalIDs{TMDbID: 27205, IMDbID: "tt1375666"}, result.IDs)
+	require.Equal(t, []string{"Inception"}, result.Titles)
+	require.Equal(t, 1, movieCalls)
+}
+
+func TestClient_SonarrHelpers(t *testing.T) {
+	tests := []struct {
+		name           string
+		path           string
+		query          map[string]string
+		responseCode   int
+		responseBody   string
+		wantErrContain string
+		assertResult   func(*testing.T, *Client)
+	}{
+		{
+			name:         "parse title success",
+			path:         "/api/v3/parse",
+			query:        map[string]string{"title": "Breaking Bad S01"},
+			responseCode: http.StatusOK,
+			responseBody: `{
+				"title": "Breaking Bad S01",
+				"parsedEpisodeInfo": {"seasonNumber": 1},
+				"series": {"id": 123, "title": "Breaking Bad", "tvdbId": 81189}
+			}`,
+			assertResult: func(t *testing.T, client *Client) {
+				resp, err := client.ParseSonarrTitle(context.Background(), "Breaking Bad S01")
+				require.NoError(t, err)
+				require.NotNil(t, resp)
+				require.NotNil(t, resp.Series)
+				require.NotNil(t, resp.ParsedEpisodeInfo)
+				assert.Equal(t, 123, resp.Series.ID)
+				assert.Equal(t, 1, resp.ParsedEpisodeInfo.SeasonNumber)
+			},
+		},
+		{
+			name:           "parse title non-200",
+			path:           "/api/v3/parse",
+			query:          map[string]string{"title": "Breaking Bad S01"},
+			responseCode:   http.StatusBadGateway,
+			responseBody:   "bad gateway",
+			wantErrContain: "unexpected status 502",
+			assertResult: func(t *testing.T, client *Client) {
+				resp, err := client.ParseSonarrTitle(context.Background(), "Breaking Bad S01")
+				require.Nil(t, resp)
+				require.ErrorContains(t, err, "unexpected status 502")
+			},
+		},
+		{
+			name:           "parse title invalid json",
+			path:           "/api/v3/parse",
+			query:          map[string]string{"title": "Breaking Bad S01"},
+			responseCode:   http.StatusOK,
+			responseBody:   `not json`,
+			wantErrContain: "failed to decode Sonarr parse response",
+			assertResult: func(t *testing.T, client *Client) {
+				resp, err := client.ParseSonarrTitle(context.Background(), "Breaking Bad S01")
+				require.Nil(t, resp)
+				require.ErrorContains(t, err, "failed to decode Sonarr parse response")
+			},
+		},
+		{
+			name:         "season episodes success",
+			path:         "/api/v3/episode",
+			query:        map[string]string{"seriesId": "123", "seasonNumber": "1"},
+			responseCode: http.StatusOK,
+			responseBody: `[
+				{"id": 1, "seasonNumber": 1, "episodeNumber": 1},
+				{"id": 2, "seasonNumber": 1, "episodeNumber": 2},
+				{"id": 3, "seasonNumber": 1, "episodeNumber": 3}
+			]`,
+			assertResult: func(t *testing.T, client *Client) {
+				episodes, err := client.GetSonarrSeasonEpisodes(context.Background(), 123, 1)
+				require.NoError(t, err)
+				require.Len(t, episodes, 3)
+				assert.Equal(t, 3, episodes[2].EpisodeNumber)
+			},
+		},
+		{
+			name:           "season episodes non-200",
+			path:           "/api/v3/episode",
+			query:          map[string]string{"seriesId": "123", "seasonNumber": "1"},
+			responseCode:   http.StatusServiceUnavailable,
+			responseBody:   "down",
+			wantErrContain: "unexpected status 503",
+			assertResult: func(t *testing.T, client *Client) {
+				episodes, err := client.GetSonarrSeasonEpisodes(context.Background(), 123, 1)
+				require.Nil(t, episodes)
+				require.ErrorContains(t, err, "unexpected status 503")
+			},
+		},
+		{
+			name:           "season episodes invalid json",
+			path:           "/api/v3/episode",
+			query:          map[string]string{"seriesId": "123", "seasonNumber": "1"},
+			responseCode:   http.StatusOK,
+			responseBody:   `not json`,
+			wantErrContain: "failed to decode Sonarr episode response",
+			assertResult: func(t *testing.T, client *Client) {
+				episodes, err := client.GetSonarrSeasonEpisodes(context.Background(), 123, 1)
+				require.Nil(t, episodes)
+				require.ErrorContains(t, err, "failed to decode Sonarr episode response")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, tt.path, r.URL.Path)
+				for key, value := range tt.query {
+					assert.Equal(t, value, r.URL.Query().Get(key))
+				}
+				w.WriteHeader(tt.responseCode)
+				_, _ = w.Write([]byte(tt.responseBody))
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeSonarr, 15)
+			tt.assertResult(t, client)
+		})
+	}
+}
+
+func TestClient_ParseTitle_Radarr(t *testing.T) {
+	tests := []struct {
+		name         string
+		responseBody string
+		wantIDs      *models.ExternalIDs
+	}{
+		{
+			name: "full IDs from movie",
+			responseBody: `{
+				"title": "Inception (2010)",
+				"parsedMovieInfo": {"movieTitle": "Inception", "year": 2010},
+				"movie": {
+					"id": 456,
+					"title": "Inception",
+					"tmdbId": 27205,
+					"imdbId": "tt1375666"
+				}
+			}`,
+			wantIDs: &models.ExternalIDs{
+				TMDbID: 27205,
+				IMDbID: "tt1375666",
+			},
+		},
+		{
+			name: "IDs from parsedMovieInfo when movie is nil",
+			responseBody: `{
+				"title": "Movie.2020.tt1234567.1080p",
+				"parsedMovieInfo": {
+					"movieTitle": "Movie",
+					"year": 2020,
+					"imdbId": "tt1234567",
+					"tmdbId": 99999
+				},
+				"movie": null
+			}`,
+			wantIDs: &models.ExternalIDs{
+				TMDbID: 99999,
+				IMDbID: "tt1234567",
+			},
+		},
+		{
+			name: "movie IDs take precedence over parsedMovieInfo",
+			responseBody: `{
+				"title": "Film",
+				"parsedMovieInfo": {"imdbId": "tt0000001", "tmdbId": 1},
+				"movie": {"tmdbId": 2, "imdbId": "tt0000002"}
+			}`,
+			wantIDs: &models.ExternalIDs{
+				TMDbID: 2,
+				IMDbID: "tt0000002",
+			},
+		},
+		{
+			name: "fallback to parsedMovieInfo for missing movie fields",
+			responseBody: `{
+				"title": "Film",
+				"parsedMovieInfo": {"imdbId": "tt1111111", "tmdbId": 111},
+				"movie": {"tmdbId": 222, "imdbId": ""}
+			}`,
+			wantIDs: &models.ExternalIDs{
+				TMDbID: 222,
+				IMDbID: "tt1111111",
+			},
+		},
+		{
+			name: "nil movie and empty parsedMovieInfo returns nil",
+			responseBody: `{
+				"title": "Unknown",
+				"parsedMovieInfo": {"movieTitle": "Unknown"},
+				"movie": null
+			}`,
+			wantIDs: nil,
+		},
+		{
+			name: "zero values ignored in parsedMovieInfo",
+			responseBody: `{
+				"title": "Zero",
+				"parsedMovieInfo": {"imdbId": "0", "tmdbId": 0},
+				"movie": null
+			}`,
+			wantIDs: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(tt.responseBody))
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL, "test-key", nil, nil, models.ArrInstanceTypeRadarr, 15)
+			ids, err := client.ParseTitle(context.Background(), "Test")
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantIDs, ids)
+		})
+	}
+}
+
+func TestSonarrParseResponse_ExtractExternalIDs(t *testing.T) {
+	tests := []struct {
+		name     string
+		response SonarrParseResponse
+		want     *models.ExternalIDs
+	}{
+		{
+			name: "all IDs present",
+			response: SonarrParseResponse{
+				Series: &SonarrSeries{
+					TVDbID:   81189,
+					TVMazeID: 169,
+					TMDbID:   1396,
+					IMDbID:   "tt0903747",
+				},
+			},
+			want: &models.ExternalIDs{
+				TVDbID:   81189,
+				TVMazeID: 169,
+				TMDbID:   1396,
+				IMDbID:   "tt0903747",
+			},
+		},
+		{
+			name: "nil series",
+			response: SonarrParseResponse{
+				Series: nil,
+			},
+			want: nil,
+		},
+		{
+			name: "all zero values",
+			response: SonarrParseResponse{
+				Series: &SonarrSeries{
+					TVDbID:   0,
+					TVMazeID: 0,
+					TMDbID:   0,
+					IMDbID:   "",
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "imdb as '0' string ignored",
+			response: SonarrParseResponse{
+				Series: &SonarrSeries{
+					TVDbID: 123,
+					IMDbID: "0",
+				},
+			},
+			want: &models.ExternalIDs{
+				TVDbID: 123,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.response.ExtractExternalIDs()
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestRadarrParseResponse_ExtractExternalIDs(t *testing.T) {
+	tests := []struct {
+		name     string
+		response RadarrParseResponse
+		want     *models.ExternalIDs
+	}{
+		{
+			name: "IDs from movie",
+			response: RadarrParseResponse{
+				Movie: &RadarrMovie{
+					TMDbID: 27205,
+					IMDbID: "tt1375666",
+				},
+			},
+			want: &models.ExternalIDs{
+				TMDbID: 27205,
+				IMDbID: "tt1375666",
+			},
+		},
+		{
+			name: "IDs from parsedMovieInfo when movie is nil",
+			response: RadarrParseResponse{
+				ParsedMovieInfo: &RadarrParsedMovieInfo{
+					TMDbID: 12345,
+					IMDbID: "tt9999999",
+				},
+				Movie: nil,
+			},
+			want: &models.ExternalIDs{
+				TMDbID: 12345,
+				IMDbID: "tt9999999",
+			},
+		},
+		{
+			name: "movie takes precedence",
+			response: RadarrParseResponse{
+				ParsedMovieInfo: &RadarrParsedMovieInfo{
+					TMDbID: 1,
+					IMDbID: "tt0000001",
+				},
+				Movie: &RadarrMovie{
+					TMDbID: 2,
+					IMDbID: "tt0000002",
+				},
+			},
+			want: &models.ExternalIDs{
+				TMDbID: 2,
+				IMDbID: "tt0000002",
+			},
+		},
+		{
+			name: "fallback for missing movie fields only",
+			response: RadarrParseResponse{
+				ParsedMovieInfo: &RadarrParsedMovieInfo{
+					TMDbID: 111,
+					IMDbID: "tt1111111",
+				},
+				Movie: &RadarrMovie{
+					TMDbID: 222,
+					IMDbID: "", // empty, should fallback
+				},
+			},
+			want: &models.ExternalIDs{
+				TMDbID: 222,
+				IMDbID: "tt1111111",
+			},
+		},
+		{
+			name: "parsedMovieInfo imdb '0' ignored",
+			response: RadarrParseResponse{
+				ParsedMovieInfo: &RadarrParsedMovieInfo{
+					TMDbID: 555,
+					IMDbID: "0",
+				},
+			},
+			want: &models.ExternalIDs{
+				TMDbID: 555,
+			},
+		},
+		{
+			name:     "both nil returns nil",
+			response: RadarrParseResponse{},
+			want:     nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.response.ExtractExternalIDs()
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestNewClient(t *testing.T) {
+	client := NewClient("http://localhost:8989/", "apikey123", nil, nil, models.ArrInstanceTypeSonarr, 30)
+
+	assert.Equal(t, "http://localhost:8989", client.BaseURL()) // trailing slash trimmed
+	assert.Equal(t, models.ArrInstanceTypeSonarr, client.InstanceType())
+}
+
+func TestNewClient_DefaultTimeout(t *testing.T) {
+	client := NewClient("http://localhost:8989", "key", nil, nil, models.ArrInstanceTypeRadarr, 0)
+
+	// Default timeout should be 15 seconds
+	assert.Equal(t, defaultTimeout, client.timeout)
+}

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -70,6 +70,11 @@ func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Re
 	if err := json.NewDecoder(r.Body).Decode(&prefs); err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Invalid request body")
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if err := h.syncManager.NormalizeScanDirsPreference(prefs); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Invalid scan_dirs value")
+		http.Error(w, "Invalid scan_dirs value", http.StatusBadRequest)
 		return
 	}
 

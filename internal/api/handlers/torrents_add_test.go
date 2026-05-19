@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -27,6 +27,7 @@ type mockSyncManager struct {
 	addTorrentCalls         []addTorrentCall
 	addTorrentFromURLsCalls []addTorrentFromURLsCall
 	addTorrentErr           error
+	addTorrentFromURLsResp  *qbt.TorrentAddResponse
 	addTorrentFromURLsErr   error
 }
 
@@ -42,22 +43,22 @@ type addTorrentFromURLsCall struct {
 	options    map[string]string
 }
 
-func (m *mockSyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
+func (m *mockSyncManager) AddTorrent(_ context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addTorrentCalls = append(m.addTorrentCalls, addTorrentCall{
 		instanceID:  instanceID,
 		fileContent: fileContent,
 		options:     options,
 	})
-	return m.addTorrentErr
+	return nil, m.addTorrentErr
 }
 
-func (m *mockSyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error {
+func (m *mockSyncManager) AddTorrentFromURLs(_ context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addTorrentFromURLsCalls = append(m.addTorrentFromURLsCalls, addTorrentFromURLsCall{
 		instanceID: instanceID,
 		urls:       urls,
 		options:    options,
 	})
-	return m.addTorrentFromURLsErr
+	return m.addTorrentFromURLsResp, m.addTorrentFromURLsErr
 }
 
 // mockJackettService implements the DownloadTorrent method for testing
@@ -74,8 +75,8 @@ func (m *mockJackettService) DownloadTorrent(ctx context.Context, req jackett.To
 
 // syncManagerAdapter wraps mockSyncManager to match the interface expected by TorrentsHandler
 type syncManagerAdapter interface {
-	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
-	AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error
+	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
+	AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error)
 }
 
 // jackettServiceAdapter wraps mockJackettService to match the interface expected by TorrentsHandler
@@ -103,11 +104,17 @@ func addTorrentWithIndexer(
 
 			// Magnet links can be added directly to qBittorrent
 			if strings.HasPrefix(strings.ToLower(url), "magnet:") {
-				if err := syncManager.AddTorrentFromURLs(ctx, instanceID, []string{url}, options); err != nil {
+				resp, err := syncManager.AddTorrentFromURLs(ctx, instanceID, []string{url}, options)
+				if err != nil {
 					failedCount++
 					lastError = err
 				} else {
-					addedCount++
+					added, failed, err := torrentAddResponseCounts(resp, 1)
+					addedCount += added
+					failedCount += failed
+					if err != nil {
+						lastError = err
+					}
 				}
 				continue
 			}
@@ -118,13 +125,30 @@ func addTorrentWithIndexer(
 				DownloadURL: url,
 			})
 			if err != nil {
+				var magnetErr *jackett.MagnetDownloadError
+				if errors.As(err, &magnetErr) && magnetErr.MagnetURL != "" {
+					magnetURL := strings.TrimSpace(magnetErr.MagnetURL)
+					resp, err := syncManager.AddTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options)
+					if err != nil {
+						failedCount++
+						lastError = err
+					} else {
+						added, failed, err := torrentAddResponseCounts(resp, 1)
+						addedCount += added
+						failedCount += failed
+						if err != nil {
+							lastError = err
+						}
+					}
+					continue
+				}
 				failedCount++
 				lastError = err
 				continue
 			}
 
 			// Add torrent from downloaded file content
-			if err := syncManager.AddTorrent(ctx, instanceID, torrentBytes, options); err != nil {
+			if _, err := syncManager.AddTorrent(ctx, instanceID, torrentBytes, options); err != nil {
 				failedCount++
 				lastError = err
 			} else {
@@ -133,12 +157,29 @@ func addTorrentWithIndexer(
 		}
 	} else {
 		// No indexer_id or no jackett service - use URL method directly
-		if err := syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
+		resp, err := syncManager.AddTorrentFromURLs(ctx, instanceID, urls, options)
+		if err != nil {
 			return 0, len(urls), err
 		}
-		addedCount = len(urls)
+		addedCount, failedCount, lastError = torrentAddResponseCounts(resp, len(urls))
 	}
 	return addedCount, failedCount, lastError
+}
+
+func torrentAddResponseCounts(resp *qbt.TorrentAddResponse, totalCount int) (addedCount int, failedCount int, err error) {
+	if resp == nil {
+		return totalCount, 0, nil
+	}
+
+	failedCount = int(resp.FailureCount)
+	addedCount = int(resp.SuccessCount)
+	if addedCount == 0 && failedCount <= totalCount {
+		addedCount = totalCount - failedCount
+	}
+	if failedCount > 0 {
+		return addedCount, failedCount, errors.New("qBittorrent rejected torrent URL")
+	}
+	return addedCount, failedCount, nil
 }
 
 func TestAddTorrentWithIndexer_DownloadsViaBackend(t *testing.T) {
@@ -224,6 +265,32 @@ func TestAddTorrentWithIndexer_FallsBackWithNilJackettService(t *testing.T) {
 	assert.Equal(t, urls, mockSync.addTorrentFromURLsCalls[0].urls)
 }
 
+func TestAddTorrentWithIndexer_AddsMagnetRedirect(t *testing.T) {
+	t.Parallel()
+
+	mockSync := &mockSyncManager{}
+	mockJackett := &mockJackettService{
+		downloadTorrentErr: &jackett.MagnetDownloadError{MagnetURL: "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678"},
+	}
+
+	ctx := context.Background()
+	urls := []string{"http://indexer.example.com/download/123"}
+	options := map[string]string{"category": "movies"}
+
+	added, failed, err := addTorrentWithIndexer(ctx, mockSync, mockJackett, 1, urls, 42, options)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, added)
+	assert.Equal(t, 0, failed)
+
+	require.Len(t, mockJackett.downloadTorrentCalls, 1)
+	assert.Equal(t, "http://indexer.example.com/download/123", mockJackett.downloadTorrentCalls[0].DownloadURL)
+
+	require.Len(t, mockSync.addTorrentFromURLsCalls, 1)
+	assert.Equal(t, []string{"magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678"}, mockSync.addTorrentFromURLsCalls[0].urls)
+	assert.Empty(t, mockSync.addTorrentCalls)
+}
+
 func TestAddTorrentWithIndexer_MagnetLinksPassedDirectly(t *testing.T) {
 	t.Parallel()
 
@@ -285,6 +352,58 @@ func TestAddTorrentWithIndexer_MixedURLsAndMagnets(t *testing.T) {
 	// Verify downloaded torrent was added
 	require.Len(t, mockSync.addTorrentCalls, 1)
 	assert.Equal(t, []byte("fake torrent data"), mockSync.addTorrentCalls[0].fileContent)
+}
+
+func TestAddTorrentWithIndexer_MagnetResponseFailure(t *testing.T) {
+	t.Parallel()
+
+	mockSync := &mockSyncManager{
+		addTorrentFromURLsResp: &qbt.TorrentAddResponse{FailureCount: 1},
+	}
+	mockJackett := &mockJackettService{
+		downloadTorrentData: []byte("fake torrent data"),
+	}
+
+	ctx := context.Background()
+	magnetURL := "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678"
+	urls := []string{magnetURL}
+	options := map[string]string{"category": "movies"}
+
+	added, failed, err := addTorrentWithIndexer(ctx, mockSync, mockJackett, 1, urls, 42, options)
+
+	require.Error(t, err)
+	assert.Equal(t, 0, added)
+	assert.Equal(t, 1, failed)
+	assert.Equal(t, "qBittorrent rejected torrent URL", err.Error())
+	require.Len(t, mockSync.addTorrentFromURLsCalls, 1)
+	assert.Equal(t, []string{magnetURL}, mockSync.addTorrentFromURLsCalls[0].urls)
+}
+
+func TestAddTorrentWithIndexer_DirectURLResponseFailure(t *testing.T) {
+	t.Parallel()
+
+	mockSync := &mockSyncManager{
+		addTorrentFromURLsResp: &qbt.TorrentAddResponse{
+			SuccessCount: 1,
+			FailureCount: 1,
+		},
+	}
+
+	ctx := context.Background()
+	urls := []string{
+		"http://tracker.example.com/fail.torrent",
+		"http://tracker.example.com/success.torrent",
+	}
+	options := map[string]string{"category": "movies"}
+
+	added, failed, err := addTorrentWithIndexer(ctx, mockSync, nil, 1, urls, 0, options)
+
+	require.Error(t, err)
+	assert.Equal(t, 1, added)
+	assert.Equal(t, 1, failed)
+	assert.Equal(t, "qBittorrent rejected torrent URL", err.Error())
+	require.Len(t, mockSync.addTorrentFromURLsCalls, 1)
+	assert.Equal(t, urls, mockSync.addTorrentFromURLsCalls[0].urls)
 }
 
 func TestAddTorrentWithIndexer_DownloadFailureContinuesWithOthers(t *testing.T) {
@@ -708,7 +827,7 @@ func TestAddTorrentHandler_InvalidIndexerID_Returns400(t *testing.T) {
 	t.Parallel()
 
 	// Create handler with nil dependencies - we won't reach them due to early return
-	handler := NewTorrentsHandler(nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil)
 
 	// Create multipart form with invalid indexer_id
 	body := &bytes.Buffer{}
@@ -738,7 +857,7 @@ func TestAddTorrentHandler_InvalidIndexerID_Returns400(t *testing.T) {
 func TestAddTorrentHandler_NegativeIndexerID_Returns400(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandler(nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -765,7 +884,7 @@ func TestAddTorrentHandler_NegativeIndexerID_Returns400(t *testing.T) {
 func TestAddTorrentHandler_ZeroIndexerID_Returns400(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandler(nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -795,7 +914,7 @@ func TestAddTorrentHandler_JackettServiceUnavailable_Returns503(t *testing.T) {
 	// Create handler with nil jackettService but valid syncManager
 	// We need a non-nil syncManager to get past the URL processing,
 	// but jackettService is nil to trigger the 503
-	handler := NewTorrentsHandler(nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -822,7 +941,7 @@ func TestAddTorrentHandler_JackettServiceUnavailable_Returns503(t *testing.T) {
 func TestAddTorrentHandler_NoURLsOrFiles_Returns400(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandler(nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -848,7 +967,7 @@ func TestAddTorrentHandler_NoURLsOrFiles_Returns400(t *testing.T) {
 func TestAddTorrentHandler_InvalidInstanceID_Returns400(t *testing.T) {
 	t.Parallel()
 
-	handler := NewTorrentsHandler(nil, nil)
+	handler := NewTorrentsHandler(nil, nil, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -879,8 +998,10 @@ type fullMockSyncManager struct {
 	addTorrentsCalls        []addTorrentsCall
 	addTorrentFromURLsCalls []addTorrentFromURLsCall
 	addTorrentErr           error
+	addTorrentsResp         *qbt.TorrentAddResponse
 	addTorrentsErr          error
 	addTorrentFromURLsErr   error
+	addTorrentFromURLsFunc  func(urls []string) (*qbt.TorrentAddResponse, error)
 }
 
 type addTorrentsCall struct {
@@ -889,31 +1010,34 @@ type addTorrentsCall struct {
 	options    map[string]string
 }
 
-func (m *fullMockSyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
+func (m *fullMockSyncManager) AddTorrent(_ context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addTorrentCalls = append(m.addTorrentCalls, addTorrentCall{
 		instanceID:  instanceID,
 		fileContent: fileContent,
 		options:     options,
 	})
-	return m.addTorrentErr
+	return nil, m.addTorrentErr
 }
 
-func (m *fullMockSyncManager) AddTorrents(ctx context.Context, instanceID int, files [][]byte, options map[string]string) error {
+func (m *fullMockSyncManager) AddTorrents(_ context.Context, instanceID int, files [][]byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addTorrentsCalls = append(m.addTorrentsCalls, addTorrentsCall{
 		instanceID: instanceID,
 		files:      files,
 		options:    options,
 	})
-	return m.addTorrentsErr
+	return m.addTorrentsResp, m.addTorrentsErr
 }
 
-func (m *fullMockSyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error {
+func (m *fullMockSyncManager) AddTorrentFromURLs(_ context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addTorrentFromURLsCalls = append(m.addTorrentFromURLsCalls, addTorrentFromURLsCall{
 		instanceID: instanceID,
 		urls:       urls,
 		options:    options,
 	})
-	return m.addTorrentFromURLsErr
+	if m.addTorrentFromURLsFunc != nil {
+		return m.addTorrentFromURLsFunc(urls)
+	}
+	return nil, m.addTorrentFromURLsErr
 }
 
 func (m *fullMockSyncManager) GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error) {
@@ -930,6 +1054,49 @@ type fullMockJackettService struct {
 func (m *fullMockJackettService) DownloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error) {
 	m.downloadTorrentCalls = append(m.downloadTorrentCalls, req)
 	return m.downloadTorrentData, m.downloadTorrentErr
+}
+
+func TestAddTorrentHandler_MultipleTorrentFiles_UsesSingleBatchRequest(t *testing.T) {
+	t.Parallel()
+
+	mockSync := &fullMockSyncManager{
+		addTorrentsResp: &qbt.TorrentAddResponse{SuccessCount: 2},
+	}
+	handler := NewTorrentsHandlerForTesting(mockSync, nil)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	firstFile, err := writer.CreateFormFile("torrent", "first.torrent")
+	require.NoError(t, err)
+	_, err = firstFile.Write([]byte("first torrent data"))
+	require.NoError(t, err)
+	secondFile, err := writer.CreateFormFile("torrent", "second.torrent")
+	require.NoError(t, err)
+	_, err = secondFile.Write([]byte("second torrent data"))
+	require.NoError(t, err)
+	err = writer.WriteField("category", "movies")
+	require.NoError(t, err)
+	err = writer.Close()
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/instances/1/torrents", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("instanceID", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	handler.AddTorrent(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	assert.Contains(t, w.Body.String(), `"added":2`)
+	assert.Contains(t, w.Body.String(), `"failed":0`)
+	assert.Empty(t, mockSync.addTorrentCalls)
+	require.Len(t, mockSync.addTorrentsCalls, 1)
+	assert.Equal(t, 1, mockSync.addTorrentsCalls[0].instanceID)
+	assert.Equal(t, [][]byte{[]byte("first torrent data"), []byte("second torrent data")}, mockSync.addTorrentsCalls[0].files)
+	assert.Equal(t, "movies", mockSync.addTorrentsCalls[0].options["category"])
 }
 
 // TestAddTorrentHandler_SuccessfulIndexerDownload_Returns201 verifies the full success path:
@@ -1049,7 +1216,7 @@ func TestAddTorrentHandler_MixedURLsAndMagnets_Returns201(t *testing.T) {
 	_ = writer.WriteField("indexer_id", "99")
 	_ = writer.Close()
 
-	req := httptest.NewRequest(http.MethodPost, "/api/instances/2/torrents", body)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/instances/2/torrents", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	rctx := chi.NewRouteContext()
@@ -1076,6 +1243,106 @@ func TestAddTorrentHandler_MixedURLsAndMagnets_Returns201(t *testing.T) {
 	// Verify downloaded torrent was added via AddTorrent
 	require.Len(t, mockSync.addTorrentCalls, 1)
 	assert.Equal(t, []byte("downloaded torrent data"), mockSync.addTorrentCalls[0].fileContent)
+}
+
+func TestAddTorrentHandler_MagnetWithIndexerPartialFailure_Returns201WithFailedURLs(t *testing.T) {
+	t.Parallel()
+
+	magnetURL := "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678"
+	httpURL := "http://indexer.example.com/download/456"
+	mockSync := &fullMockSyncManager{
+		addTorrentFromURLsFunc: func(urls []string) (*qbt.TorrentAddResponse, error) {
+			if urls[0] == magnetURL {
+				return &qbt.TorrentAddResponse{FailureCount: 1}, nil
+			}
+			return &qbt.TorrentAddResponse{SuccessCount: 1}, nil
+		},
+	}
+	mockJackett := &fullMockJackettService{
+		downloadTorrentData: []byte("downloaded torrent data"),
+	}
+
+	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("urls", magnetURL+"\n"+httpURL)
+	_ = writer.WriteField("indexer_id", "99")
+	_ = writer.Close()
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/instances/2/torrents", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("instanceID", "2")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	handler.AddTorrent(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	assert.Contains(t, w.Body.String(), `"added":1`)
+	assert.Contains(t, w.Body.String(), `"failed":1`)
+	assert.Contains(t, w.Body.String(), `"failedURLs"`)
+	assert.Contains(t, w.Body.String(), magnetURL)
+	assert.Contains(t, w.Body.String(), "qBittorrent rejected torrent URL")
+
+	require.Len(t, mockSync.addTorrentFromURLsCalls, 1)
+	assert.Equal(t, []string{magnetURL}, mockSync.addTorrentFromURLsCalls[0].urls)
+	require.Len(t, mockSync.addTorrentCalls, 1)
+	assert.Equal(t, []byte("downloaded torrent data"), mockSync.addTorrentCalls[0].fileContent)
+}
+
+func TestAddTorrentHandler_MagnetRedirectPartialFailure_Returns201WithFailedURLs(t *testing.T) {
+	t.Parallel()
+
+	sourceURL := "http://indexer.example.com/download/magnet"
+	successURL := "http://indexer.example.com/download/success"
+	magnetURL := "magnet:?xt=urn:btih:1234567890abcdef1234567890abcdef12345678"
+	mockSync := &fullMockSyncManager{
+		addTorrentFromURLsFunc: func(urls []string) (*qbt.TorrentAddResponse, error) {
+			if urls[0] == magnetURL {
+				return &qbt.TorrentAddResponse{FailureCount: 1}, nil
+			}
+			return &qbt.TorrentAddResponse{SuccessCount: 1}, nil
+		},
+	}
+	mockJackett := &customMockJackettServiceForHandler{
+		responses: []jackettResponse{
+			{err: &jackett.MagnetDownloadError{MagnetURL: magnetURL}},
+			{data: []byte("success torrent data")},
+		},
+	}
+
+	handler := NewTorrentsHandlerForTesting(mockSync, mockJackett)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("urls", sourceURL+"\n"+successURL)
+	_ = writer.WriteField("indexer_id", "99")
+	_ = writer.Close()
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/instances/2/torrents", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("instanceID", "2")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	handler.AddTorrent(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	assert.Contains(t, w.Body.String(), `"added":1`)
+	assert.Contains(t, w.Body.String(), `"failed":1`)
+	assert.Contains(t, w.Body.String(), `"failedURLs"`)
+	assert.Contains(t, w.Body.String(), magnetURL)
+	assert.Contains(t, w.Body.String(), "qBittorrent rejected torrent URL")
+
+	require.Len(t, mockSync.addTorrentFromURLsCalls, 1)
+	assert.Equal(t, []string{magnetURL}, mockSync.addTorrentFromURLsCalls[0].urls)
+	require.Len(t, mockSync.addTorrentCalls, 1)
+	assert.Equal(t, []byte("success torrent data"), mockSync.addTorrentCalls[0].fileContent)
 }
 
 // TestAddTorrentHandler_PartialFailure_Returns201WithFailedURLs verifies that
@@ -1124,6 +1391,51 @@ func TestAddTorrentHandler_PartialFailure_Returns201WithFailedURLs(t *testing.T)
 	// Verify only successful torrent was added
 	require.Len(t, mockSync.addTorrentCalls, 1)
 	assert.Equal(t, []byte("success torrent data"), mockSync.addTorrentCalls[0].fileContent)
+}
+
+func TestAddTorrentHandler_DirectMultiURLPartialFailure_Returns201WithFailedURLs(t *testing.T) {
+	t.Parallel()
+
+	failURL := "http://tracker.example.com/fail.torrent"
+	successURL := "http://tracker.example.com/success.torrent"
+	mockSync := &fullMockSyncManager{
+		addTorrentFromURLsFunc: func(urls []string) (*qbt.TorrentAddResponse, error) {
+			if urls[0] == failURL {
+				return &qbt.TorrentAddResponse{
+					FailureCount: 1,
+				}, nil
+			}
+			return &qbt.TorrentAddResponse{SuccessCount: 1}, nil
+		},
+	}
+
+	handler := NewTorrentsHandlerForTesting(mockSync, nil)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("urls", failURL+"\n"+successURL)
+	_ = writer.Close()
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/instances/1/torrents", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("instanceID", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	handler.AddTorrent(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	assert.Contains(t, w.Body.String(), `"added":1`)
+	assert.Contains(t, w.Body.String(), `"failed":1`)
+	assert.Contains(t, w.Body.String(), `"failedURLs"`)
+	assert.Contains(t, w.Body.String(), failURL)
+	assert.Contains(t, w.Body.String(), "qBittorrent rejected torrent URL")
+
+	require.Len(t, mockSync.addTorrentFromURLsCalls, 2)
+	assert.Equal(t, []string{failURL}, mockSync.addTorrentFromURLsCalls[0].urls)
+	assert.Equal(t, []string{successURL}, mockSync.addTorrentFromURLsCalls[1].urls)
 }
 
 // customMockJackettServiceForHandler is similar to customMockJackettService but

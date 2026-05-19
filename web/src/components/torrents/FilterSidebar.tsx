@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -40,7 +40,7 @@ import { usePersistedAccordion } from "@/hooks/usePersistedAccordion"
 import { usePersistedCollapsedCategories } from "@/hooks/usePersistedCollapsedCategories"
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { usePersistedShowEmptyState } from "@/hooks/usePersistedShowEmptyState"
-import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
+import { buildTrackerCustomizationMaps, useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { getLinuxCount, LINUX_CATEGORIES, LINUX_TAGS, LINUX_TRACKERS, useIncognitoMode } from "@/lib/incognito"
 import { cn, formatBytes } from "@/lib/utils"
@@ -109,6 +109,8 @@ function FilterBadge({ count, onClick }: FilterBadgeProps) {
 
 interface FilterSidebarProps {
   instanceId: number
+  readOnly?: boolean
+  supportsTrackerHealth?: boolean
   selectedFilters: TorrentFilters
   onFilterChange: (filters: TorrentFilters) => void
   torrentCounts?: Record<string, number>
@@ -176,6 +178,8 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
 
 const FilterSidebarComponent = ({
   instanceId,
+  readOnly = false,
+  supportsTrackerHealth: supportsTrackerHealthProp,
   selectedFilters,
   onFilterChange,
   torrentCounts,
@@ -189,9 +193,11 @@ const FilterSidebarComponent = ({
   isLoading = false,
   isMobile = false,
 }: FilterSidebarProps) => {
+  const isReadOnly = readOnly || instanceId <= 0
+  const isConcreteInstanceScope = instanceId > 0
   const { instances } = useInstances()
   const instanceMeta = instances?.find(instance => instance.id === instanceId)
-  const isInstanceActive = instanceMeta?.isActive ?? true
+  const isInstanceActive = !isConcreteInstanceScope || (instanceMeta?.isActive ?? true)
 
   // Use incognito mode hook
   const [incognitoMode] = useIncognitoMode()
@@ -199,19 +205,22 @@ const FilterSidebarComponent = ({
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: capabilities } = useInstanceCapabilities(
     instanceId,
-    { enabled: isInstanceActive }
+    { enabled: isConcreteInstanceScope && isInstanceActive }
   )
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
-  const supportsTrackerEditing = capabilities?.supportsTrackerEditing ?? false
-  const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const supportsTrackerHealth = supportsTrackerHealthProp ?? capabilities?.supportsTrackerHealth ?? false
+  const supportsTrackerEditing = !isReadOnly && (capabilities?.supportsTrackerEditing ?? false)
+  const supportsSubcategories = isConcreteInstanceScope
+    ? (capabilities?.supportsSubcategories ?? false)
+    : Boolean(useSubcategories)
+  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
   const { preferences } = useInstancePreferences(
     instanceId,
-    { enabled: isInstanceActive }
+    { enabled: isConcreteInstanceScope && isInstanceActive }
   )
   const preferenceUseSubcategories = preferences?.use_subcategories
-  const subcategoriesEnabled = Boolean(
-    supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false)
-  )
+  const subcategoriesEnabled = isConcreteInstanceScope
+    ? Boolean(supportsSubcategories && (subcategoriesAlwaysEnabled || (preferenceUseSubcategories ?? useSubcategories ?? false)))
+    : Boolean(useSubcategories)
 
   // View mode syncs with the torrent list (table on desktop, cards on mobile).
   // Desktop supports all modes including "dense" (compact table rows).
@@ -289,20 +298,24 @@ const FilterSidebarComponent = ({
   const [trackerToEdit, setTrackerToEdit] = useState("")
   const [trackerFullURLs, setTrackerFullURLs] = useState<string[]>([])
   const [loadingTrackerURLs, setLoadingTrackerURLs] = useState(false)
+  const [isConvertingScheme, setIsConvertingScheme] = useState(false)
 
   const visibleTorrentStates = useMemo(() => {
     let states = supportsTrackerHealth ? TORRENT_STATES : TORRENT_STATES.filter(state => state.value !== "unregistered" && state.value !== "tracker_down")
-    
+
     // Only show cross-seeds when there's an active cross-seed filter
     if (!selectedFilters.expr) {
       states = states.filter(state => state.value !== "cross-seeds")
     }
-    
+
     return states
   }, [supportsTrackerHealth, selectedFilters.expr])
 
   // Get selected torrents from context (not used for tracker editing, but keeping for future use)
   // const { selectedHashes } = useTorrentSelection()
+
+  // Base URL used purely for parsing scheme-less URLs, never used as network target
+  const URL_PARSE_BASE = "http://parse-base"
 
   // Function to fetch tracker URLs for a specific tracker domain
   // Scans multiple torrents to find ALL unique tracker URLs (handles cases where
@@ -340,24 +353,42 @@ const FilterSidebarComponent = ({
         // Collect unique URLs from multiple torrents
         const allUrls = new Set<string>()
 
-        // Fetch trackers from up to 20 torrents in parallel to find all unique URLs
-        // This handles cases where one torrent has wrong passkey while others are correct
-        const torrentsToCheck = torrentsList.torrents.slice(0, 20)
-        const trackerPromises = torrentsToCheck.map(t =>
-          api.getTorrentTrackers(instanceId, t.hash).catch(() => [])
-        )
-
-        const allTrackerResults = await Promise.all(trackerPromises)
-
-        for (const trackers of allTrackerResults) {
-          for (const t of trackers) {
+        // Helper to extract hostname from URL with fallback for scheme-less URLs
+        const extractHostname = (urlStr: string): string | null => {
+          const trimmed = urlStr.trim()
+          if (!trimmed) return null
+          try {
+            return new URL(trimmed).hostname.toLowerCase()
+          } catch {
+            // Try parsing as scheme-less URL (e.g., "tracker.example.com:6969/announce")
             try {
-              const url = new URL(t.url)
-              if (url.hostname === trackerDomain) {
-                allUrls.add(t.url)
-              }
+              return new URL("//" + trimmed, URL_PARSE_BASE).hostname.toLowerCase()
             } catch {
-              // Not a valid URL, skip
+              return null
+            }
+          }
+        }
+
+        // Fetch trackers from up to 50 torrents with concurrency limit of 10
+        // This handles cases where one torrent has wrong passkey while others are correct
+        // Also helps discover different URL variants (http vs https, different ports)
+        const torrentsToCheck = torrentsList.torrents.slice(0, 50)
+        const concurrencyLimit = 10
+        const normalizedDomain = trackerDomain.toLowerCase()
+
+        for (let i = 0; i < torrentsToCheck.length; i += concurrencyLimit) {
+          const batch = torrentsToCheck.slice(i, i + concurrencyLimit)
+          const batchPromises = batch.map(t =>
+            api.getTorrentTrackers(instanceId, t.hash).catch(() => [])
+          )
+          const batchResults = await Promise.all(batchPromises)
+
+          for (const trackers of batchResults) {
+            for (const t of trackers) {
+              const hostname = extractHostname(t.url)
+              if (hostname === normalizedDomain) {
+                allUrls.add(t.url.trim())
+              }
             }
           }
         }
@@ -406,6 +437,102 @@ const FilterSidebarComponent = ({
       })
     },
   })
+
+  // Handler for converting all HTTP URLs to HTTPS for the current tracker domain
+  const handleConvertHttpToHttps = useCallback(async () => {
+    const httpUrls = trackerFullURLs.filter((url) => url.startsWith("http://"))
+    if (httpUrls.length === 0) return
+
+    if (!trackerToEdit) {
+      toast.error("No tracker selected for conversion")
+      return
+    }
+
+    // Collect HTTPS samples to infer the correct port for each hostname/path
+    const httpsSamples = trackerFullURLs
+      .filter((url) => url.startsWith("https://"))
+      .map((url) => {
+        try {
+          return new URL(url)
+        } catch {
+          return null
+        }
+      })
+      .filter((u): u is URL => u !== null)
+
+    setIsConvertingScheme(true)
+    let successCount = 0
+    let failCount = 0
+    let firstError: string | null = null
+
+    for (const oldURL of httpUrls) {
+      // Use URL parsing to properly handle scheme and port conversion
+      let newURL: string
+      try {
+        const parsed = new URL(oldURL)
+        parsed.protocol = "https:"
+
+        // Find a matching HTTPS sample to infer the correct port
+        const matchingSample = httpsSamples.find(
+          (sample) =>
+            sample.hostname.toLowerCase() === parsed.hostname.toLowerCase() &&
+            sample.pathname === parsed.pathname
+        )
+
+        if (matchingSample) {
+          // Use the port from the matching HTTPS sample
+          parsed.port = matchingSample.port
+        } else {
+          // No sample found - clear port to default to 443
+          parsed.port = ""
+        }
+
+        newURL = parsed.toString()
+      } catch {
+        // Fall back to simple replacement if URL parsing fails
+        newURL = oldURL.replace(/^http:\/\//, "https://")
+      }
+      try {
+        await api.bulkAction(instanceId, {
+          hashes: [],
+          action: "editTrackers",
+          trackerOldURL: oldURL,
+          trackerNewURL: newURL,
+          selectAll: true,
+          filters: {
+            status: [],
+            excludeStatus: [],
+            categories: [],
+            excludeCategories: [],
+            tags: [],
+            excludeTags: [],
+            trackers: [trackerToEdit],
+            excludeTrackers: [],
+            expr: "",
+          },
+        })
+        successCount++
+      } catch (err) {
+        failCount++
+        if (!firstError) {
+          firstError = typeof err === "string"? err: (err as { message?: string })?.message ?? null
+        }
+      }
+    }
+
+    setIsConvertingScheme(false)
+
+    if (successCount > 0) {
+      toast.success(`Converted ${successCount} tracker URL${successCount > 1 ? "s" : ""} to HTTPS`)
+      // Refresh the tracker URLs to show updated state
+      await fetchTrackerURLs(trackerToEdit)
+    }
+    if (failCount > 0) {
+      toast.error(`Failed to convert ${failCount} URL${failCount > 1 ? "s" : ""}`, {
+        description: firstError ?? undefined,
+      })
+    }
+  }, [trackerFullURLs, trackerToEdit, instanceId, fetchTrackerURLs])
 
   // Debounce search terms for better performance
   const debouncedCategorySearch = useDebounce(categorySearch, 300)
@@ -645,36 +772,15 @@ const FilterSidebarComponent = ({
     return realTrackers
   }, [incognitoMode, torrentCounts, isLoading, isStaleData])
 
-  // Build lookup maps from tracker customizations for merging and nicknames
-  const trackerCustomizationMaps = useMemo(() => {
-    const domainToCustomization = new Map<string, { displayName: string; domains: string[]; id: number }>()
-    const secondaryDomains = new Set<string>()
-
-    for (const custom of trackerCustomizations ?? []) {
-      const domains = custom.domains
-      if (domains.length === 0) continue
-
-      for (let i = 0; i < domains.length; i++) {
-        const domain = domains[i].toLowerCase()
-        domainToCustomization.set(domain, {
-          displayName: custom.displayName,
-          domains: custom.domains,
-          id: custom.id,
-        })
-        // Secondary domains (not the first one) should be hidden/merged
-        if (i > 0) {
-          secondaryDomains.add(domain)
-        }
-      }
-    }
-
-    return { domainToCustomization, secondaryDomains }
-  }, [trackerCustomizations])
+  const trackerCustomizationMaps = useMemo(
+    () => buildTrackerCustomizationMaps(trackerCustomizations),
+    [trackerCustomizations]
+  )
 
   // Process trackers to apply customizations (nicknames and merged domains)
   // Returns a list of tracker groups with display names and all associated domains
   const processedTrackers = useMemo(() => {
-    const { domainToCustomization, secondaryDomains } = trackerCustomizationMaps
+    const { domainToCustomization } = trackerCustomizationMaps
 
     const processed: Array<{
       /** Unique key for React - uses primary domain */
@@ -693,11 +799,6 @@ const FilterSidebarComponent = ({
 
     for (const tracker of trackers) {
       const lowerTracker = tracker.toLowerCase()
-
-      // Skip secondary domains - they're merged into their primary
-      if (secondaryDomains.has(lowerTracker)) {
-        continue
-      }
 
       const customization = domainToCustomization.get(lowerTracker)
 
@@ -730,14 +831,14 @@ const FilterSidebarComponent = ({
     }
 
     // Sort by display name (case-insensitive) for consistent alphabetical ordering
-    processed.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: 'base' }))
+    processed.sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }))
 
     return processed
   }, [trackers, trackerCustomizationMaps])
 
-  // Helper to get count for a tracker group (uses primary domain's count)
-  // Merged trackers share the same torrents across multiple URLs, so we use the
-  // primary domain's count rather than summing (which would double-count)
+  // Helper to get count for a tracker group.
+  // Merged trackers can have activity on a non-primary domain, so we use the max count across
+  // all domains (and avoid summing, which can double-count).
   const getTrackerGroupCount = useCallback((domains: string[]): string => {
     if (incognitoMode) {
       return getLinuxCount(domains[0], 100).toString()
@@ -751,12 +852,12 @@ const FilterSidebarComponent = ({
       return "..."
     }
 
-    // Use the primary domain's count (first in the list)
-    return (torrentCounts[`tracker:${domains[0]}`] || 0).toString()
+    const maxCount = Math.max(0, ...domains.map(d => torrentCounts[`tracker:${d}`] || 0))
+    return maxCount.toString()
   }, [incognitoMode, isLoading, torrentCounts])
 
   // Use virtual scrolling for large lists to handle performance efficiently
-  const VIRTUAL_THRESHOLD = 30 // Use virtual scrolling for lists > 30 items
+  const VIRTUAL_THRESHOLD = 250 // Use virtual scrolling for lists > 250 items
 
   // Refs for virtual scrolling
   const categoryListRef = useRef<HTMLDivElement>(null)
@@ -834,7 +935,7 @@ const FilterSidebarComponent = ({
     if (status === "cross-seeds") {
       return selectedFilters.expr ? "include" : "neutral"
     }
-    
+
     if (includeStatusSet.has(status)) return "include"
     if (excludeStatusSet.has(status)) return "exclude"
     return "neutral"
@@ -854,7 +955,7 @@ const FilterSidebarComponent = ({
       // But do allow unchecking by returning after handling the neutral state
       return
     }
-    
+
     let nextIncluded = selectedFilters.status
     let nextExcluded = selectedFilters.excludeStatus
 
@@ -1146,7 +1247,7 @@ const FilterSidebarComponent = ({
     const activelyFilteredEntries = categoryEntries.filter(([name]) => getCategoryState(name) !== "neutral")
     const combined = new Map([
       ...categoryPartition.nonEmpty.map(entry => [entry[0], entry] as const),
-      ...activelyFilteredEntries.map(entry => [entry[0], entry] as const)
+      ...activelyFilteredEntries.map(entry => [entry[0], entry] as const),
     ])
     return Array.from(combined.values())
   }, [showHiddenCategories, categoryEntries, categoryPartition.nonEmpty, getCategoryState])
@@ -1158,7 +1259,7 @@ const FilterSidebarComponent = ({
     const activelyFilteredStates = visibleTorrentStates.filter(state => getStatusState(state.value) !== "neutral")
     const combined = new Map([
       ...statusPartition.nonEmpty.map(state => [state.value, state] as const),
-      ...activelyFilteredStates.map(state => [state.value, state] as const)
+      ...activelyFilteredStates.map(state => [state.value, state] as const),
     ])
     return Array.from(combined.values())
   }, [showHiddenStatuses, visibleTorrentStates, statusPartition.nonEmpty, getStatusState])
@@ -1413,7 +1514,7 @@ const FilterSidebarComponent = ({
 
   // Group-based tracker handlers for merged tracker customizations
   // These work with arrays of domains instead of single trackers
-  const handleTrackerGroupIncludeToggle = useCallback((domains: string[], _key: string) => {
+  const handleTrackerGroupIncludeToggle = useCallback((domains: string[]) => {
     const currentState = getTrackerGroupState(domains)
 
     if (currentState === "include" || currentState === "exclude") {
@@ -1438,7 +1539,7 @@ const FilterSidebarComponent = ({
     }
 
     skipNextToggleRef.current = null
-    handleTrackerGroupIncludeToggle(domains, key)
+    handleTrackerGroupIncludeToggle(domains)
   }, [handleTrackerGroupIncludeToggle, makeToggleKey])
 
   const handleTrackerGroupPointerDown = useCallback((event: React.PointerEvent<HTMLElement>, domains: string[], key: string) => {
@@ -1547,6 +1648,8 @@ const FilterSidebarComponent = ({
   const accordionTriggerClass = viewMode === "dense" ? "px-2 py-1" : "px-3 py-2"
   const accordionContentClass = viewMode === "dense" ? "px-2 pb-1" : "px-3 pb-2"
   const filterItemClass = viewMode === "dense" ? "px-1.5 py-0.5" : "px-2 py-1.5"
+  const filterRowClass = "grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2"
+  const filterRowWithIconClass = "grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-2"
 
   const categoryVirtualizer = useVirtualizer({
     count: filteredCategories.length,
@@ -1634,12 +1737,12 @@ const FilterSidebarComponent = ({
   }
 
   const handleCreateSubcategory = useCallback((categoryName: string) => {
-    if (!subcategoriesEnabled) {
+    if (isReadOnly || !subcategoriesEnabled) {
       return
     }
     setParentCategoryForNew(categoryName)
     setShowCreateCategoryDialog(true)
-  }, [subcategoriesEnabled])
+  }, [isReadOnly, subcategoriesEnabled])
 
   const handleToggleCollapse = useCallback((categoryName: string) => {
     setCollapsedCategories((prev) => {
@@ -1651,25 +1754,34 @@ const FilterSidebarComponent = ({
       }
       return next
     })
-  }, [])
+  }, [setCollapsedCategories])
 
   const handleEditCategoryByName = useCallback((categoryName: string) => {
+    if (isReadOnly) {
+      return
+    }
     const category = categories[categoryName]
     if (!category) {
       return
     }
     setCategoryToEdit(category)
     setShowEditCategoryDialog(true)
-  }, [categories, setCategoryToEdit, setShowEditCategoryDialog])
+  }, [categories, isReadOnly, setCategoryToEdit, setShowEditCategoryDialog])
 
   const handleDeleteCategoryByName = useCallback((categoryName: string) => {
+    if (isReadOnly) {
+      return
+    }
     setCategoryToDelete(categoryName)
     setShowDeleteCategoryDialog(true)
-  }, [setCategoryToDelete, setShowDeleteCategoryDialog])
+  }, [isReadOnly, setCategoryToDelete, setShowDeleteCategoryDialog])
 
   const handleRemoveEmptyCategories = useCallback(() => {
+    if (isReadOnly) {
+      return
+    }
     setShowDeleteEmptyCategoriesDialog(true)
-  }, [setShowDeleteEmptyCategoriesDialog])
+  }, [isReadOnly, setShowDeleteEmptyCategoriesDialog])
 
   // Track previous subcategories state to detect transitions
   const prevAllowSubcategories = useRef<boolean | null>(null)
@@ -1717,7 +1829,7 @@ const FilterSidebarComponent = ({
     selectedFilters.excludeTrackers.length > 0 ||
     Boolean(selectedFilters.expr)
 
-  if (!isInstanceActive) {
+  if (isConcreteInstanceScope && !isInstanceActive) {
     return (
       <div className={cn("flex h-full items-center justify-center text-center text-sm text-muted-foreground px-4", className)}>
         This instance is disabled. Enable it from Settings → Instances to use filters.
@@ -1738,7 +1850,7 @@ const FilterSidebarComponent = ({
       <ScrollArea className="h-full flex-1 overscroll-contain select-none">
         <div className={viewMode === "dense" ? "px-3 py-2" : "p-4"}>
           <div className={cn("flex items-center justify-between", viewMode === "dense" ? "mb-2" : "mb-4")}>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <h3 className="font-semibold">Filters</h3>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1761,7 +1873,7 @@ const FilterSidebarComponent = ({
             {hasActiveFilters && (
               <button
                 onClick={clearFilters}
-                className="text-xs text-muted-foreground hover:text-foreground"
+                className="text-xs text-muted-foreground hover:text-foreground shrink-0"
               >
                 Clear all
               </button>
@@ -1866,17 +1978,16 @@ const FilterSidebarComponent = ({
                     const statusItem = (
                       <label
                         key={state.value}
-                      className={cn(
-                        "flex items-center gap-2 rounded",
-                        filterItemClass,
-                        isCrossSeed && statusState === "neutral" ? "cursor-default" : "cursor-pointer",
-                        statusState === "exclude"
-                          ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                          : isCrossSeed && statusState === "neutral" ? "" : "hover:bg-muted"
-                      )}
-                      onPointerDown={isCrossSeed && statusState === "neutral" ? undefined : (event) => handleStatusPointerDown(event, state.value)}
-                      onPointerLeave={isCrossSeed && statusState === "neutral" ? undefined : handlePointerLeave}
-                    >
+                        className={cn(
+                          filterRowClass,
+                          "rounded w-full min-w-0",
+                          filterItemClass,
+                          isCrossSeed && statusState === "neutral" ? "cursor-default" : "cursor-pointer",
+                          statusState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": isCrossSeed && statusState === "neutral" ? "" : "hover:bg-muted"
+                        )}
+                        onPointerDown={isCrossSeed && statusState === "neutral" ? undefined : (event) => handleStatusPointerDown(event, state.value)}
+                        onPointerLeave={isCrossSeed && statusState === "neutral" ? undefined : handlePointerLeave}
+                      >
                         <Checkbox
                           checked={getCheckboxVisualState(statusState)}
                           onCheckedChange={isCrossSeed && statusState === "neutral" ? undefined : () => handleStatusCheckboxChange(state.value)}
@@ -1884,17 +1995,17 @@ const FilterSidebarComponent = ({
                         />
                         <span
                           className={cn(
-                            "text-sm flex-1 flex items-center gap-2",
+                            "text-sm flex-1 min-w-0 flex items-center gap-2",
                             statusState === "exclude" ? "text-destructive" : undefined,
                             isCrossSeed && statusState === "neutral" ? "text-muted-foreground" : undefined
                           )}
                         >
-                          <state.icon className="h-4 w-4" />
-                          <span>{state.label}</span>
+                          <state.icon className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{state.label}</span>
                         </span>
                         <span
                           className={cn(
-                            "text-xs",
+                            "text-xs tabular-nums shrink-0",
                             statusState === "exclude" ? "text-destructive" : "text-muted-foreground"
                           )}
                         >
@@ -1902,7 +2013,7 @@ const FilterSidebarComponent = ({
                         </span>
                       </label>
                     )
-                    
+
                     if (isCrossSeed) {
                       return (
                         <Tooltip key={state.value}>
@@ -1915,7 +2026,7 @@ const FilterSidebarComponent = ({
                         </Tooltip>
                       )
                     }
-                    
+
                     return statusItem
                   })}
                 </div>
@@ -1940,8 +2051,13 @@ const FilterSidebarComponent = ({
                   {/* Add new category button and show/hide empty toggle */}
                   <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", filterItemClass)}>
                     <button
-                      className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+                      className={cn("flex items-center gap-1.5 transition-colors", isReadOnly ? "cursor-not-allowed opacity-60" : "hover:text-foreground")}
+                      disabled={isReadOnly}
+                      title={isReadOnly ? "Unavailable in unified view" : undefined}
                       onClick={() => {
+                        if (isReadOnly) {
+                          return
+                        }
                         setParentCategoryForNew(undefined)
                         setShowCreateCategoryDialog(true)
                       }}
@@ -1988,7 +2104,8 @@ const FilterSidebarComponent = ({
                   {!allowSubcategories && (getRawCount("category:") > 0 || uncategorizedState !== "neutral") && (
                     <label
                       className={cn(
-                        "flex items-center gap-2 rounded cursor-pointer",
+                        filterRowClass,
+                        "rounded cursor-pointer w-full min-w-0",
                         filterItemClass,
                         uncategorizedState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                       )}
@@ -2002,7 +2119,7 @@ const FilterSidebarComponent = ({
                       />
                       <span
                         className={cn(
-                          "text-sm flex-1 italic",
+                          "text-sm flex-1 min-w-0 italic truncate",
                           uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                         )}
                       >
@@ -2012,7 +2129,7 @@ const FilterSidebarComponent = ({
                         <TooltipTrigger asChild>
                           <span
                             className={cn(
-                              "text-xs tabular-nums",
+                              "text-xs tabular-nums shrink-0",
                               uncategorizedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                             )}
                           >
@@ -2038,9 +2155,7 @@ const FilterSidebarComponent = ({
                   {/* No results message for categories */}
                   {hasReceivedCategoriesData && debouncedCategorySearch && filteredCategories.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      {!showHiddenCategories && hiddenCategorySearchMatches > 0
-                        ? 'All matching categories are empty. Click above to show them.'
-                        : `No categories found matching "${debouncedCategorySearch}"`}
+                      {!showHiddenCategories && hiddenCategorySearchMatches > 0? "All matching categories are empty. Click above to show them.": `No categories found matching "${debouncedCategorySearch}"`}
                     </div>
                   )}
 
@@ -2063,6 +2178,7 @@ const FilterSidebarComponent = ({
                     <CategoryTree
                       categories={categoriesForTree}
                       counts={torrentCounts ?? {}}
+                      readOnly={isReadOnly}
                       useSubcategories={allowSubcategories}
                       collapsedCategories={collapsedCategories}
                       onToggleCollapse={handleToggleCollapse}
@@ -2113,11 +2229,10 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center gap-2 rounded cursor-pointer",
+                                      filterRowClass,
+                                      "rounded cursor-pointer w-full min-w-0",
                                       filterItemClass,
-                                      categoryState === "exclude"
-                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                        : "hover:bg-muted"
+                                      categoryState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleCategoryPointerDown(event, name)}
                                     onPointerLeave={handlePointerLeave}
@@ -2134,7 +2249,7 @@ const FilterSidebarComponent = ({
                                     )}
                                     <TruncatedText
                                       className={cn(
-                                        "text-sm flex-1 w-8",
+                                        "text-sm flex-1 min-w-0",
                                         categoryState === "exclude" ? "text-destructive" : undefined
                                       )}
                                     >
@@ -2144,7 +2259,7 @@ const FilterSidebarComponent = ({
                                       <TooltipTrigger asChild>
                                         <span
                                           className={cn(
-                                            "text-xs tabular-nums",
+                                            "text-xs tabular-nums shrink-0",
                                             categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                           )}
                                         >
@@ -2162,7 +2277,10 @@ const FilterSidebarComponent = ({
                                 <ContextMenuContent>
                                   {allowSubcategories && (
                                     <>
-                                      <ContextMenuItem onClick={() => handleCreateSubcategory(name)}>
+                                      <ContextMenuItem
+                                        disabled={isReadOnly}
+                                        onClick={() => handleCreateSubcategory(name)}
+                                      >
                                         <FolderPlus className="mr-2 h-4 w-4" />
                                         Create Subcategory
                                       </ContextMenuItem>
@@ -2170,9 +2288,9 @@ const FilterSidebarComponent = ({
                                     </>
                                   )}
                                   <ContextMenuItem
-                                    disabled={isSynthetic}
+                                    disabled={isSynthetic || isReadOnly}
                                     onClick={() => {
-                                      if (isSynthetic) {
+                                      if (isSynthetic || isReadOnly) {
                                         return
                                       }
                                       setCategoryToEdit(category)
@@ -2184,9 +2302,9 @@ const FilterSidebarComponent = ({
                                   </ContextMenuItem>
                                   <ContextMenuSeparator />
                                   <ContextMenuItem
-                                    disabled={isSynthetic}
+                                    disabled={isSynthetic || isReadOnly}
                                     onClick={() => {
-                                      if (isSynthetic) {
+                                      if (isSynthetic || isReadOnly) {
                                         return
                                       }
                                       setCategoryToDelete(name)
@@ -2199,7 +2317,7 @@ const FilterSidebarComponent = ({
                                   </ContextMenuItem>
                                   <ContextMenuItem
                                     onClick={handleRemoveEmptyCategories}
-                                    disabled={!hasEmptyCategories}
+                                    disabled={isReadOnly || !hasEmptyCategories}
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
@@ -2222,16 +2340,15 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={name}>
                           <ContextMenuTrigger asChild>
                             <label
-                            className={cn(
-                              "flex items-center gap-2 rounded cursor-pointer",
-                              filterItemClass,
-                              categoryState === "exclude"
-                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                : "hover:bg-muted"
-                            )}
-                            onPointerDown={(event) => handleCategoryPointerDown(event, name)}
-                            onPointerLeave={handlePointerLeave}
-                          >
+                              className={cn(
+                                filterRowClass,
+                                "rounded cursor-pointer w-full min-w-0",
+                                filterItemClass,
+                                categoryState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                              )}
+                              onPointerDown={(event) => handleCategoryPointerDown(event, name)}
+                              onPointerLeave={handlePointerLeave}
+                            >
                               <Checkbox
                                 checked={getCheckboxVisualState(categoryState)}
                                 onCheckedChange={() => handleCategoryCheckboxChange(name)}
@@ -2244,7 +2361,7 @@ const FilterSidebarComponent = ({
                               )}
                               <TruncatedText
                                 className={cn(
-                                  "text-sm flex-1 w-8",
+                                  "text-sm flex-1 min-w-0",
                                   categoryState === "exclude" ? "text-destructive" : undefined
                                 )}
                               >
@@ -2254,7 +2371,7 @@ const FilterSidebarComponent = ({
                                 <TooltipTrigger asChild>
                                   <span
                                     className={cn(
-                                      "text-xs tabular-nums",
+                                      "text-xs tabular-nums shrink-0",
                                       categoryState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                     )}
                                   >
@@ -2272,7 +2389,10 @@ const FilterSidebarComponent = ({
                           <ContextMenuContent>
                             {allowSubcategories && (
                               <>
-                                <ContextMenuItem onClick={() => handleCreateSubcategory(name)}>
+                                <ContextMenuItem
+                                  disabled={isReadOnly}
+                                  onClick={() => handleCreateSubcategory(name)}
+                                >
                                   <FolderPlus className="mr-2 h-4 w-4" />
                                   Create Subcategory
                                 </ContextMenuItem>
@@ -2280,9 +2400,9 @@ const FilterSidebarComponent = ({
                               </>
                             )}
                             <ContextMenuItem
-                              disabled={isSynthetic}
+                              disabled={isSynthetic || isReadOnly}
                               onClick={() => {
-                                if (isSynthetic) {
+                                if (isSynthetic || isReadOnly) {
                                   return
                                 }
                                 setCategoryToEdit(category)
@@ -2294,9 +2414,9 @@ const FilterSidebarComponent = ({
                             </ContextMenuItem>
                             <ContextMenuSeparator />
                             <ContextMenuItem
-                              disabled={isSynthetic}
+                              disabled={isSynthetic || isReadOnly}
                               onClick={() => {
-                                if (isSynthetic) {
+                                if (isSynthetic || isReadOnly) {
                                   return
                                 }
                                 setCategoryToDelete(name)
@@ -2309,7 +2429,7 @@ const FilterSidebarComponent = ({
                             </ContextMenuItem>
                             <ContextMenuItem
                               onClick={handleRemoveEmptyCategories}
-                              disabled={!hasEmptyCategories}
+                              disabled={isReadOnly || !hasEmptyCategories}
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
@@ -2342,8 +2462,15 @@ const FilterSidebarComponent = ({
                   {/* Add new tag button and show/hide empty toggle */}
                   <div className={cn("flex items-center gap-1.5 text-xs text-muted-foreground", filterItemClass)}>
                     <button
-                      className="flex items-center gap-1.5 hover:text-foreground transition-colors"
-                      onClick={() => setShowCreateTagDialog(true)}
+                      className={cn("flex items-center gap-1.5 transition-colors", isReadOnly ? "cursor-not-allowed opacity-60" : "hover:text-foreground")}
+                      disabled={isReadOnly}
+                      title={isReadOnly ? "Unavailable in unified view" : undefined}
+                      onClick={() => {
+                        if (isReadOnly) {
+                          return
+                        }
+                        setShowCreateTagDialog(true)
+                      }}
                     >
                       <Plus className="h-3 w-3" />
                       <span>Add tag</span>
@@ -2387,7 +2514,8 @@ const FilterSidebarComponent = ({
                   {(getRawCount("tag:") > 0 || untaggedState !== "neutral") && (
                     <label
                       className={cn(
-                        "flex items-center gap-2 rounded cursor-pointer",
+                        filterRowClass,
+                        "rounded cursor-pointer w-full min-w-0",
                         filterItemClass,
                         untaggedState === "exclude" ? "bg-destructive/10 text-destructive hover:bg-destructive/15" : "hover:bg-muted"
                       )}
@@ -2401,7 +2529,7 @@ const FilterSidebarComponent = ({
                       />
                       <span
                         className={cn(
-                          "text-sm flex-1 italic",
+                          "text-sm flex-1 min-w-0 italic truncate",
                           untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                         )}
                       >
@@ -2411,7 +2539,7 @@ const FilterSidebarComponent = ({
                         <TooltipTrigger asChild>
                           <span
                             className={cn(
-                              "text-xs tabular-nums",
+                              "text-xs tabular-nums shrink-0",
                               untaggedState === "exclude" ? "text-destructive" : "text-muted-foreground"
                             )}
                           >
@@ -2437,9 +2565,7 @@ const FilterSidebarComponent = ({
                   {/* No results message for tags */}
                   {hasReceivedTagsData && debouncedTagSearch && filteredTags.length === 0 && (
                     <div className="text-xs text-muted-foreground px-2 py-3 text-center italic">
-                      {!showHiddenTags && hiddenTagSearchMatches > 0
-                        ? 'All matching tags are empty. Click above to show them.'
-                        : `No tags found matching "${debouncedTagSearch}"`}
+                      {!showHiddenTags && hiddenTagSearchMatches > 0? "All matching tags are empty. Click above to show them.": `No tags found matching "${debouncedTagSearch}"`}
                     </div>
                   )}
 
@@ -2486,11 +2612,10 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center gap-2 rounded cursor-pointer",
+                                      filterRowClass,
+                                      "rounded cursor-pointer w-full min-w-0",
                                       filterItemClass,
-                                      tagState === "exclude"
-                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                        : "hover:bg-muted"
+                                      tagState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleTagPointerDown(event, tag)}
                                     onPointerLeave={handlePointerLeave}
@@ -2501,7 +2626,7 @@ const FilterSidebarComponent = ({
                                     />
                                     <TruncatedText
                                       className={cn(
-                                        "text-sm flex-1 w-8",
+                                        "text-sm flex-1 min-w-0",
                                         tagState === "exclude" ? "text-destructive" : undefined
                                       )}
                                     >
@@ -2511,7 +2636,7 @@ const FilterSidebarComponent = ({
                                       <TooltipTrigger asChild>
                                         <span
                                           className={cn(
-                                            "text-xs tabular-nums",
+                                            "text-xs tabular-nums shrink-0",
                                             tagState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                           )}
                                         >
@@ -2529,9 +2654,13 @@ const FilterSidebarComponent = ({
                                 <ContextMenuContent>
                                   <ContextMenuItem
                                     onClick={() => {
+                                      if (isReadOnly) {
+                                        return
+                                      }
                                       setTagToDelete(tag)
                                       setShowDeleteTagDialog(true)
                                     }}
+                                    disabled={isReadOnly}
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
@@ -2539,7 +2668,13 @@ const FilterSidebarComponent = ({
                                   </ContextMenuItem>
                                   <ContextMenuSeparator />
                                   <ContextMenuItem
-                                    onClick={() => setShowDeleteUnusedTagsDialog(true)}
+                                    onClick={() => {
+                                      if (isReadOnly) {
+                                        return
+                                      }
+                                      setShowDeleteUnusedTagsDialog(true)
+                                    }}
+                                    disabled={isReadOnly}
                                     className="text-destructive"
                                   >
                                     <Trash2 className="mr-2 h-4 w-4" />
@@ -2559,23 +2694,22 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={tag}>
                           <ContextMenuTrigger asChild>
                             <label
-                            className={cn(
-                              "flex items-center gap-2 rounded cursor-pointer",
-                              filterItemClass,
-                              tagState === "exclude"
-                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                : "hover:bg-muted"
-                            )}
-                            onPointerDown={(event) => handleTagPointerDown(event, tag)}
-                            onPointerLeave={handlePointerLeave}
-                          >
+                              className={cn(
+                                filterRowClass,
+                                "rounded cursor-pointer w-full min-w-0",
+                                filterItemClass,
+                                tagState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                              )}
+                              onPointerDown={(event) => handleTagPointerDown(event, tag)}
+                              onPointerLeave={handlePointerLeave}
+                            >
                               <Checkbox
                                 checked={getCheckboxVisualState(tagState)}
                                 onCheckedChange={() => handleTagCheckboxChange(tag)}
                               />
                               <TruncatedText
                                 className={cn(
-                                  "text-sm flex-1 w-8",
+                                  "text-sm flex-1 min-w-0",
                                   tagState === "exclude" ? "text-destructive" : undefined
                                 )}
                               >
@@ -2585,7 +2719,7 @@ const FilterSidebarComponent = ({
                                 <TooltipTrigger asChild>
                                   <span
                                     className={cn(
-                                      "text-xs tabular-nums",
+                                      "text-xs tabular-nums shrink-0",
                                       tagState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                     )}
                                   >
@@ -2603,9 +2737,13 @@ const FilterSidebarComponent = ({
                           <ContextMenuContent>
                             <ContextMenuItem
                               onClick={() => {
+                                if (isReadOnly) {
+                                  return
+                                }
                                 setTagToDelete(tag)
                                 setShowDeleteTagDialog(true)
                               }}
+                              disabled={isReadOnly}
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
@@ -2613,7 +2751,13 @@ const FilterSidebarComponent = ({
                             </ContextMenuItem>
                             <ContextMenuSeparator />
                             <ContextMenuItem
-                              onClick={() => setShowDeleteUnusedTagsDialog(true)}
+                              onClick={() => {
+                                if (isReadOnly) {
+                                  return
+                                }
+                                setShowDeleteUnusedTagsDialog(true)
+                              }}
+                              disabled={isReadOnly}
                               className="text-destructive"
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
@@ -2657,11 +2801,10 @@ const FilterSidebarComponent = ({
                   {/* No tracker option */}
                   <label
                     className={cn(
-                      "flex items-center gap-2 rounded cursor-pointer",
+                      filterRowClass,
+                      "rounded cursor-pointer w-full min-w-0",
                       filterItemClass,
-                      noTrackerState === "exclude"
-                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                        : "hover:bg-muted"
+                      noTrackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                     )}
                     onPointerDown={(event) => handleTrackerPointerDown(event, "")}
                     onPointerLeave={handlePointerLeave}
@@ -2673,7 +2816,7 @@ const FilterSidebarComponent = ({
                     />
                     <span
                       className={cn(
-                        "text-sm flex-1 italic",
+                        "text-sm flex-1 min-w-0 italic truncate",
                         noTrackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                       )}
                     >
@@ -2681,7 +2824,7 @@ const FilterSidebarComponent = ({
                     </span>
                     <span
                       className={cn(
-                        "text-xs",
+                        "text-xs tabular-nums shrink-0",
                         noTrackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                       )}
                     >
@@ -2732,11 +2875,10 @@ const FilterSidebarComponent = ({
                                 <ContextMenuTrigger asChild>
                                   <label
                                     className={cn(
-                                      "flex items-center gap-2 rounded cursor-pointer",
+                                      filterRowWithIconClass,
+                                      "rounded cursor-pointer w-full min-w-0",
                                       filterItemClass,
-                                      trackerState === "exclude"
-                                        ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                        : "hover:bg-muted"
+                                      trackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
                                     )}
                                     onPointerDown={(event) => handleTrackerGroupPointerDown(event, trackerGroup.domains, trackerGroup.key)}
                                     onPointerLeave={handlePointerLeave}
@@ -2748,7 +2890,7 @@ const FilterSidebarComponent = ({
                                     <TrackerIconImage tracker={trackerGroup.iconDomain} trackerIcons={trackerIcons} />
                                     <TruncatedText
                                       className={cn(
-                                        "text-sm flex-1 w-8",
+                                        "text-sm flex-1 min-w-0",
                                         trackerState === "exclude" ? "text-destructive" : undefined
                                       )}
                                       tooltipContent={trackerGroup.isCustomized ? `${trackerGroup.displayName} (${trackerGroup.domains.join(", ")})` : undefined}
@@ -2757,7 +2899,7 @@ const FilterSidebarComponent = ({
                                     </TruncatedText>
                                     <span
                                       className={cn(
-                                        "text-xs",
+                                        "text-xs tabular-nums shrink-0",
                                         trackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                       )}
                                     >
@@ -2820,16 +2962,15 @@ const FilterSidebarComponent = ({
                         <ContextMenu key={trackerGroup.key}>
                           <ContextMenuTrigger asChild>
                             <label
-                            className={cn(
-                              "flex items-center gap-2 rounded cursor-pointer",
-                              filterItemClass,
-                              trackerState === "exclude"
-                                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
-                                : "hover:bg-muted"
-                            )}
-                            onPointerDown={(event) => handleTrackerGroupPointerDown(event, trackerGroup.domains, trackerGroup.key)}
-                            onPointerLeave={handlePointerLeave}
-                          >
+                              className={cn(
+                                filterRowWithIconClass,
+                                "rounded cursor-pointer w-full min-w-0",
+                                filterItemClass,
+                                trackerState === "exclude"? "bg-destructive/10 text-destructive hover:bg-destructive/15": "hover:bg-muted"
+                              )}
+                              onPointerDown={(event) => handleTrackerGroupPointerDown(event, trackerGroup.domains, trackerGroup.key)}
+                              onPointerLeave={handlePointerLeave}
+                            >
                               <Checkbox
                                 checked={getCheckboxVisualState(trackerState)}
                                 onCheckedChange={() => handleTrackerGroupCheckboxChange(trackerGroup.domains, trackerGroup.key)}
@@ -2837,7 +2978,7 @@ const FilterSidebarComponent = ({
                               <TrackerIconImage tracker={trackerGroup.iconDomain} trackerIcons={trackerIcons} />
                               <TruncatedText
                                 className={cn(
-                                  "text-sm flex-1 w-8",
+                                  "text-sm flex-1 min-w-0",
                                   trackerState === "exclude" ? "text-destructive" : undefined
                                 )}
                                 tooltipContent={trackerGroup.isCustomized ? `${trackerGroup.displayName} (${trackerGroup.domains.join(", ")})` : undefined}
@@ -2846,7 +2987,7 @@ const FilterSidebarComponent = ({
                               </TruncatedText>
                               <span
                                 className={cn(
-                                  "text-xs",
+                                  "text-xs tabular-nums shrink-0",
                                   trackerState === "exclude" ? "text-destructive" : "text-muted-foreground"
                                 )}
                               >
@@ -2909,20 +3050,20 @@ const FilterSidebarComponent = ({
 
       {/* Dialogs */}
       <CreateTagDialog
-        open={showCreateTagDialog}
+        open={!isReadOnly && showCreateTagDialog}
         onOpenChange={setShowCreateTagDialog}
         instanceId={instanceId}
       />
 
       <DeleteTagDialog
-        open={showDeleteTagDialog}
+        open={!isReadOnly && showDeleteTagDialog}
         onOpenChange={setShowDeleteTagDialog}
         instanceId={instanceId}
         tag={tagToDelete}
       />
 
       <CreateCategoryDialog
-        open={showCreateCategoryDialog}
+        open={!isReadOnly && showCreateCategoryDialog}
         onOpenChange={(open) => {
           setShowCreateCategoryDialog(open)
           if (!open) {
@@ -2935,7 +3076,7 @@ const FilterSidebarComponent = ({
 
       {categoryToEdit && (
         <EditCategoryDialog
-          open={showEditCategoryDialog}
+          open={!isReadOnly && showEditCategoryDialog}
           onOpenChange={setShowEditCategoryDialog}
           instanceId={instanceId}
           category={categoryToEdit}
@@ -2943,14 +3084,14 @@ const FilterSidebarComponent = ({
       )}
 
       <DeleteCategoryDialog
-        open={showDeleteCategoryDialog}
+        open={!isReadOnly && showDeleteCategoryDialog}
         onOpenChange={setShowDeleteCategoryDialog}
         instanceId={instanceId}
         categoryName={categoryToDelete}
       />
 
       <DeleteEmptyCategoriesDialog
-        open={showDeleteEmptyCategoriesDialog}
+        open={!isReadOnly && showDeleteEmptyCategoriesDialog}
         onOpenChange={setShowDeleteEmptyCategoriesDialog}
         instanceId={instanceId}
         categories={categories}
@@ -2958,7 +3099,7 @@ const FilterSidebarComponent = ({
       />
 
       <DeleteUnusedTagsDialog
-        open={showDeleteUnusedTagsDialog}
+        open={!isReadOnly && showDeleteUnusedTagsDialog}
         onOpenChange={setShowDeleteUnusedTagsDialog}
         instanceId={instanceId}
         tags={tags}
@@ -2966,7 +3107,7 @@ const FilterSidebarComponent = ({
       />
 
       <EditTrackerDialog
-        open={showEditTrackerDialog}
+        open={!isReadOnly && showEditTrackerDialog}
         onOpenChange={(open) => {
           setShowEditTrackerDialog(open)
           if (!open) {
@@ -2980,6 +3121,8 @@ const FilterSidebarComponent = ({
         selectedHashes={[]} // Not using selected hashes, will update all torrents with this tracker
         onConfirm={(oldURL, newURL) => editTrackersMutation.mutate({ oldURL, newURL, tracker: trackerToEdit })}
         isPending={editTrackersMutation.isPending}
+        onConvertHttpToHttps={handleConvertHttpToHttps}
+        isConverting={isConvertingScheme}
       />
     </div>
   )
@@ -2992,6 +3135,8 @@ export const FilterSidebar = memo(FilterSidebarComponent, (prevProps, nextProps)
   if (prevProps.isStaleData !== nextProps.isStaleData) return false
   if (prevProps.isLoading !== nextProps.isLoading) return false
   if (prevProps.isMobile !== nextProps.isMobile) return false
+  if ((prevProps.readOnly ?? false) !== (nextProps.readOnly ?? false)) return false
+  if ((prevProps.supportsTrackerHealth ?? false) !== (nextProps.supportsTrackerHealth ?? false)) return false
   if (prevProps.onFilterChange !== nextProps.onFilterChange) return false
   if ((prevProps.useSubcategories ?? false) !== (nextProps.useSubcategories ?? false)) return false
 

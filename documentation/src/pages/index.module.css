@@ -1,0 +1,217 @@
+/* Landing page styles - matches qui's minimal aesthetic */
+
+.main {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+/* Hero Section */
+.hero {
+  padding: 4rem 1rem 2rem;
+  text-align: center;
+}
+
+.heroContent {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.heroLogo {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 1.5rem;
+  display: block;
+  border-radius: 1rem;
+}
+
+.heroTitle {
+  font-size: 3.5rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+.heroTagline {
+  font-size: 1.25rem;
+  color: var(--ifm-color-content-secondary);
+  margin: 0 0 2rem;
+}
+
+.heroButtons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* Buttons */
+.buttonPrimary,
+.buttonSecondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: 0.5rem;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.buttonPrimary {
+  background-color: var(--ifm-color-primary);
+  color: var(--ifm-background-color);
+}
+
+.buttonPrimary:hover {
+  background-color: var(--ifm-color-primary-dark);
+  color: var(--ifm-background-color);
+  text-decoration: none;
+}
+
+.buttonSecondary {
+  background-color: transparent;
+  color: var(--ifm-color-content);
+  border: 1px solid var(--ifm-toc-border-color);
+}
+
+.buttonSecondary:hover {
+  background-color: var(--ifm-hover-overlay);
+  color: var(--ifm-color-content);
+  text-decoration: none;
+}
+
+.buttonIcon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+/* Screenshot Section */
+.screenshot {
+  padding: 0.5rem 1rem;
+}
+
+.screenshotContainer {
+  max-width: min(1400px, 95vw);
+  margin: 0 auto;
+  position: relative;
+}
+
+.screenshotImage {
+  width: 100%;
+  height: auto;
+  border-radius: clamp(0.5rem, 1vw, 0.75rem);
+}
+
+/* Features Section */
+.features {
+  padding: 0 1rem 1rem;
+}
+
+.featuresGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.featureCard {
+  display: flex;
+  flex-direction: column;
+  padding: 0.875rem;
+  background-color: var(--ifm-card-background-color);
+  border: 1px solid var(--ifm-toc-border-color);
+  border-radius: 0.5rem;
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.15s ease;
+}
+
+.featureCard:hover {
+  border-color: var(--ifm-color-primary);
+  text-decoration: none;
+  color: inherit;
+}
+
+.featureIcon {
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--ifm-color-content-secondary);
+}
+
+.featureIcon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.featureTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+}
+
+.featureDescription {
+  font-size: 0.75rem;
+  color: var(--ifm-color-content-secondary);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Responsive */
+@media (max-width: 996px) {
+  .heroTitle {
+    font-size: 2.5rem;
+  }
+
+  .featuresGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 576px) {
+  .hero {
+    padding: 2rem 1rem 1rem;
+  }
+
+  .heroLogo {
+    width: 64px;
+    height: 64px;
+  }
+
+  .heroTitle {
+    font-size: 2rem;
+  }
+
+  .heroTagline {
+    font-size: 1rem;
+  }
+
+  .heroButtons {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .buttonPrimary,
+  .buttonSecondary {
+    justify-content: center;
+  }
+
+  .screenshot {
+    padding: 1rem 0.5rem 2rem;
+  }
+
+  .screenshotImage {
+    border-radius: 0.5rem;
+  }
+
+  .featuresGrid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .features {
+    padding: 1.5rem 1rem 2rem;
+  }
+}

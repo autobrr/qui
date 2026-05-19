@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package qbittorrent
@@ -18,60 +18,73 @@ import (
 )
 
 var (
-	setTagsMinVersion          = semver.MustParse("2.11.4")
-	torrentCreationMinVersion  = semver.MustParse("2.11.2")
-	exportTorrentMinVersion    = semver.MustParse("2.8.11")
-	trackerEditingMinVersion   = semver.MustParse("2.2.0")
-	filePriorityMinVersion     = semver.MustParse("2.2.0")
-	renameTorrentMinVersion    = semver.MustParse("2.0.0")
-	renameFileMinVersion       = semver.MustParse("2.4.0")
-	renameFolderMinVersion     = semver.MustParse("2.7.0")
-	subcategoriesMinVersion    = semver.MustParse("2.9.0")
-	torrentTmpPathMinVersion   = semver.MustParse("2.8.4")
-	pathAutocompleteMinVersion = semver.MustParse("2.11.2")
+	setTagsMinVersion                    = semver.MustParse("2.11.4")
+	torrentCreationMinVersion            = semver.MustParse("2.11.2")
+	exportTorrentMinVersion              = semver.MustParse("2.8.11")
+	trackerEditingMinVersion             = semver.MustParse("2.2.0")
+	trackerIncludeMinVersion             = semver.MustParse("2.11.4")
+	filePriorityMinVersion               = semver.MustParse("2.2.0")
+	renameTorrentMinVersion              = semver.MustParse("2.0.0")
+	renameFileMinVersion                 = semver.MustParse("2.4.0")
+	renameFolderMinVersion               = semver.MustParse("2.7.0")
+	subcategoriesMinVersion              = semver.MustParse("2.9.0")
+	subcategoriesAlwaysEnabledMinVersion = semver.MustParse("2.15.0")
+	torrentTmpPathMinVersion             = semver.MustParse("2.8.4")
+	pathAutocompleteMinVersion           = semver.MustParse("2.11.2")
+	rssSetFeedURLMinVersion              = semver.MustParse("2.9.1")
+	shareLimitsActionMinVersion          = semver.MustParse("2.15.1")
+	shareLimitsModeMinVersion            = semver.MustParse("2.16.0") // unused still, Web API 2.16.0+
 )
 
 type Client struct {
 	*qbt.Client
-	instanceID               int
-	webAPIVersion            string
-	supportsSetTags          bool
-	supportsTorrentCreation  bool
-	supportsTorrentExport    bool
-	supportsTrackerEditing   bool
-	supportsRenameTorrent    bool
-	supportsRenameFile       bool
-	supportsRenameFolder     bool
-	supportsFilePriority     bool
-	supportsSubcategories    bool
-	supportsTorrentTmpPath   bool
-	supportsPathAutocomplete bool
-	lastHealthCheck          time.Time
-	isHealthy                bool
-	syncManager              *qbt.SyncManager
-	peerSyncManager          map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
+	instanceID                 int
+	webAPIVersion              string
+	supportsSetTags            bool
+	supportsTorrentCreation    bool
+	supportsTorrentExport      bool
+	supportsTrackerEditing     bool
+	supportsRenameTorrent      bool
+	supportsRenameFile         bool
+	supportsRenameFolder       bool
+	supportsFilePriority       bool
+	supportsSubcategories      bool
+	subcategoriesAlwaysEnabled bool
+	supportsTorrentTmpPath     bool
+	supportsPathAutocomplete   bool
+	trackerIncludeSupported    bool
+	supportsSetRSSFeedURL      bool
+	supportsShareLimitsAction  bool
+	supportsShareLimitsMode    bool
+	lastHealthCheck            time.Time
+	isHealthy                  bool
+	syncManager                *qbt.SyncManager
+	peerSyncManager            map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
 	// optimisticUpdates stores temporary optimistic state changes for this instance
 	optimisticUpdates *ttlcache.Cache[string, *OptimisticTorrentUpdate]
 	trackerExclusions map[string]map[string]struct{} // Domains to hide hashes from until fresh sync arrives
-	lastServerState   *qbt.ServerState
 	mu                sync.RWMutex
-	serverStateMu     sync.RWMutex
 	healthMu          sync.RWMutex
 	completionMu      sync.Mutex
 	completionState   map[string]bool
 	completionHandler TorrentCompletionHandler
 	completionInit    bool
+	addedMu           sync.Mutex
+	addedState        map[string]struct{}
+	addedHandler      TorrentAddedHandler
+	addedInit         bool
 }
 
-func NewClient(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
-	return NewClientWithTimeout(instanceID, instanceHost, username, password, basicUsername, basicPassword, tlsSkipVerify, 60*time.Second)
+func NewClient(instanceID int, instanceHost, username, password, apiKey string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
+	return NewClientWithTimeout(instanceID, instanceHost, username, password, apiKey, basicUsername, basicPassword, tlsSkipVerify, 60*time.Second)
 }
 
-func NewClientWithTimeout(instanceID int, instanceHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, timeout time.Duration) (*Client, error) {
+func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiKey string, basicUsername, basicPassword *string, tlsSkipVerify bool, timeout time.Duration) (*Client, error) {
 	cfg := qbt.Config{
 		Host:          instanceHost,
 		Username:      username,
 		Password:      password,
+		APIKey:        apiKey,
 		Timeout:       int(timeout.Seconds()),
 		TLSSkipVerify: tlsSkipVerify,
 	}
@@ -102,6 +115,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 		trackerExclusions: make(map[string]map[string]struct{}),
 		peerSyncManager:   make(map[string]*qbt.PeerSyncManager),
 		completionState:   make(map[string]bool),
+		addedState:        make(map[string]struct{}),
 	}
 
 	if err := client.RefreshCapabilities(ctx); err != nil {
@@ -122,14 +136,13 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password strin
 	// Set up health check callbacks
 	syncOpts.OnUpdate = func(data *qbt.MainData) {
 		client.updateHealthStatus(true)
-		client.updateServerState(data)
 		client.handleCompletionUpdates(data)
+		client.handleAddedUpdates(data)
 		log.Trace().Int("instanceID", instanceID).Int("torrentCount", len(data.Torrents)).Msg("Sync manager update received, marking client as healthy")
 	}
 
 	syncOpts.OnError = func(err error) {
 		client.updateHealthStatus(false)
-		client.clearServerState()
 		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Sync manager error received, marking client as unhealthy")
 	}
 
@@ -173,6 +186,7 @@ func (c *Client) GetLastSyncUpdate() time.Time {
 func (c *Client) updateHealthStatus(healthy bool) {
 	c.healthMu.Lock()
 	defer c.healthMu.Unlock()
+
 	c.isHealthy = healthy
 	c.lastHealthCheck = time.Now()
 }
@@ -216,14 +230,20 @@ func (c *Client) RefreshCapabilities(ctx context.Context) error {
 	c.mu.Lock()
 	previousVersion := c.webAPIVersion
 	c.applyCapabilitiesLocked(version)
+	supportsInclude := c.trackerIncludeSupported
 	c.mu.Unlock()
 
-	if previousVersion != version {
-		log.Trace().
+	// Update TrackerManager's include capability
+	if tm := c.trackerManager(); tm != nil {
+		tm.SetUseIncludeTrackers(supportsInclude)
+	}
+
+	if previousVersion != "" && previousVersion != version {
+		log.Info().
 			Int("instanceID", c.instanceID).
-			Str("previousWebAPIVersion", previousVersion).
-			Str("webAPIVersion", version).
-			Msg("Refreshed qBittorrent capabilities")
+			Str("previousVersion", previousVersion).
+			Str("newVersion", version).
+			Msg("qBittorrent version changed, refreshed capabilities")
 	}
 
 	return nil
@@ -246,65 +266,18 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	c.supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
 	c.supportsTorrentExport = !v.LessThan(exportTorrentMinVersion)
 	c.supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
+	c.trackerIncludeSupported = !v.LessThan(trackerIncludeMinVersion)
 	c.supportsFilePriority = !v.LessThan(filePriorityMinVersion)
 	c.supportsRenameTorrent = !v.LessThan(renameTorrentMinVersion)
 	c.supportsRenameFile = !v.LessThan(renameFileMinVersion)
 	c.supportsRenameFolder = !v.LessThan(renameFolderMinVersion)
 	c.supportsSubcategories = !v.LessThan(subcategoriesMinVersion)
+	c.subcategoriesAlwaysEnabled = !v.LessThan(subcategoriesAlwaysEnabledMinVersion)
 	c.supportsTorrentTmpPath = !v.LessThan(torrentTmpPathMinVersion)
 	c.supportsPathAutocomplete = !v.LessThan(pathAutocompleteMinVersion)
-}
-
-func (c *Client) updateServerState(data *qbt.MainData) {
-	c.serverStateMu.Lock()
-	defer c.serverStateMu.Unlock()
-
-	if data == nil || data.ServerState == (qbt.ServerState{}) {
-		c.lastServerState = nil
-		return
-	}
-
-	stateCopy := data.ServerState
-	c.lastServerState = &stateCopy
-}
-
-func (c *Client) clearServerState() {
-	c.serverStateMu.Lock()
-	defer c.serverStateMu.Unlock()
-
-	c.lastServerState = nil
-}
-
-func (c *Client) GetCachedServerState() *qbt.ServerState {
-	c.serverStateMu.RLock()
-	defer c.serverStateMu.RUnlock()
-
-	if c.lastServerState == nil {
-		return nil
-	}
-
-	copy := *c.lastServerState
-	return &copy
-}
-
-func (c *Client) GetCachedConnectionStatus() string {
-	state := c.GetCachedServerState()
-	if state == nil {
-		return ""
-	}
-
-	return state.ConnectionStatus
-}
-
-// UpdateWithMainData updates the client's cached state with fresh MainData
-// This is used when intercepting sync/maindata responses to keep local state in sync
-func (c *Client) UpdateWithMainData(data *qbt.MainData) {
-	c.updateServerState(data)
-	c.updateHealthStatus(true)
-	log.Debug().
-		Int("instanceID", c.instanceID).
-		Int("torrentCount", len(data.Torrents)).
-		Msg("Updated client state with fresh maindata from intercepted request")
+	c.supportsSetRSSFeedURL = !v.LessThan(rssSetFeedURLMinVersion)
+	c.supportsShareLimitsAction = !v.LessThan(shareLimitsActionMinVersion)
+	c.supportsShareLimitsMode = !v.LessThan(shareLimitsModeMinVersion)
 }
 
 // UpdateWithPeersData triggers a sync on the peer manager to keep it warm after intercepting peer data
@@ -367,6 +340,12 @@ func (c *Client) SupportsSubcategories() bool {
 	return c.supportsSubcategories
 }
 
+func (c *Client) SubcategoriesAlwaysEnabled() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.subcategoriesAlwaysEnabled
+}
+
 func (c *Client) SupportsTorrentTmpPath() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -392,7 +371,7 @@ func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
-	if c.isHealthy && time.Now().Add(-minHealthCheckInterval).Before(c.GetLastHealthCheck()) {
+	if c.IsHealthy() && time.Now().Add(-minHealthCheckInterval).Before(c.GetLastHealthCheck()) {
 		return nil
 	}
 
@@ -413,6 +392,28 @@ func (c *Client) SupportsSetTags() bool {
 
 func (c *Client) SupportsTrackerHealth() bool {
 	return c.supportsTrackerInclude()
+}
+
+func (c *Client) SupportsSetRSSFeedURL() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsSetRSSFeedURL
+}
+
+// SupportsShareLimitsAction reports whether extended setShareLimits is available for ratio,
+// seeding time, inactive seeding, and share-limit action (shareLimitsActionMinVersion, Web API 2.15.1+).
+func (c *Client) SupportsShareLimitsAction() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsShareLimitsAction
+}
+
+// SupportsShareLimitsMode reports whether setShareLimits accepts ShareLimitsMode (MatchAny / MatchAll).
+// Gated by shareLimitsModeMinVersion (Web API 2.16.0+).
+func (c *Client) SupportsShareLimitsMode() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsShareLimitsMode
 }
 
 func (c *Client) GetWebAPIVersion() string {
@@ -437,12 +438,9 @@ func (c *Client) trackerManager() *qbt.TrackerManager {
 }
 
 func (c *Client) supportsTrackerInclude() bool {
-	if c.trackerManager() == nil {
-		return false
-	}
-
-	// Check if the underlying client supports tracker include
-	return c.trackerManager().SupportsIncludeTrackers()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.trackerIncludeSupported
 }
 
 func (c *Client) hydrateTorrentsWithTrackers(ctx context.Context, torrents []qbt.Torrent) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string, error) {
@@ -471,6 +469,16 @@ func (c *Client) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
 	c.completionMu.Unlock()
 }
 
+// SetTorrentAddedHandler registers a callback to be invoked when torrents are first seen as new.
+func (c *Client) SetTorrentAddedHandler(handler TorrentAddedHandler) {
+	c.addedMu.Lock()
+	c.addedHandler = handler
+	if c.addedState == nil {
+		c.addedState = make(map[string]struct{})
+	}
+	c.addedMu.Unlock()
+}
+
 func (c *Client) StartSyncManager(ctx context.Context) error {
 	c.mu.RLock()
 	syncManager := c.syncManager
@@ -483,7 +491,7 @@ func (c *Client) StartSyncManager(ctx context.Context) error {
 	return syncManager.Start(ctx)
 }
 
-const completionProgressThreshold = 0.9999
+const torrentAddedGraceWindow = 60 * time.Second
 
 func (c *Client) handleCompletionUpdates(data *qbt.MainData) {
 	if data == nil {
@@ -547,32 +555,69 @@ func normalizeHashForCompletion(hash string) string {
 	return strings.ToUpper(strings.TrimSpace(hash))
 }
 
+func (c *Client) handleAddedUpdates(data *qbt.MainData) {
+	if data == nil {
+		return
+	}
+
+	c.addedMu.Lock()
+	if c.addedState == nil {
+		c.addedState = make(map[string]struct{})
+	}
+
+	handler := c.addedHandler
+
+	for _, removed := range data.TorrentsRemoved {
+		delete(c.addedState, normalizeHashForCompletion(removed))
+	}
+
+	if !c.addedInit {
+		if len(data.Torrents) == 0 {
+			c.addedMu.Unlock()
+			return
+		}
+		for hash := range data.Torrents {
+			c.addedState[normalizeHashForCompletion(hash)] = struct{}{}
+		}
+		c.addedInit = true
+		c.addedMu.Unlock()
+		return
+	}
+
+	ready := make([]qbt.Torrent, 0)
+	for hash, torrent := range data.Torrents {
+		normalized := normalizeHashForCompletion(hash)
+		if _, ok := c.addedState[normalized]; ok {
+			continue
+		}
+		c.addedState[normalized] = struct{}{}
+		ready = append(ready, torrent)
+	}
+	c.addedMu.Unlock()
+
+	if handler == nil || len(ready) == 0 {
+		return
+	}
+
+	now := time.Now()
+	for _, torrent := range ready {
+		if torrent.AddedOn > 0 {
+			addedAt := time.Unix(torrent.AddedOn, 0)
+			if now.Sub(addedAt) > torrentAddedGraceWindow {
+				continue
+			}
+		}
+		torrentCopy := torrent
+		go handler(context.Background(), c.instanceID, torrentCopy)
+	}
+}
+
 func isTorrentComplete(t *qbt.Torrent) bool {
 	if t == nil {
 		return false
 	}
 
-	if t.Progress < completionProgressThreshold {
-		return false
-	}
-
-	switch t.State {
-	case qbt.TorrentStateDownloading,
-		qbt.TorrentStateMetaDl,
-		qbt.TorrentStatePausedDl,
-		qbt.TorrentStateStoppedDl,
-		qbt.TorrentStateQueuedDl,
-		qbt.TorrentStateStalledDl,
-		qbt.TorrentStateCheckingDl,
-		qbt.TorrentStateForcedDl,
-		qbt.TorrentStateCheckingResumeData,
-		qbt.TorrentStateAllocating,
-		qbt.TorrentStateMoving,
-		qbt.TorrentStateUnknown:
-		return false
-	default:
-		return true
-	}
+	return t.CompletionOn > 0
 }
 
 // GetOrCreatePeerSyncManager gets or creates a PeerSyncManager for a specific torrent

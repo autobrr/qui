@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package jackett
@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 func (c *Client) GetIndexers() (Indexers, error) {
@@ -84,7 +86,7 @@ func (c *Client) GetEnclosure(enclosure string) ([]byte, error) {
 func (c *Client) GetEnclosureCtx(ctx context.Context, enclosure string) ([]byte, error) {
 	resp, err := c.getRawCtx(ctx, enclosure)
 	if err != nil {
-		return nil, errors.Wrap(err, enclosure)
+		return nil, errors.Wrap(err, redact.URLString(enclosure))
 	}
 
 	defer drainAndClose(resp.Body)

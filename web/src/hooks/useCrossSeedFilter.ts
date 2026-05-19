@@ -1,9 +1,13 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 import { useCallback, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import { api } from "@/lib/api"
-import { searchCrossSeedMatches, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
-import type { Instance, Torrent, TorrentFilters } from "@/types"
+import type { Torrent, TorrentFilters } from "@/types"
 
 interface UseCrossSeedFilterOptions {
   instanceId: number
@@ -35,67 +39,9 @@ export function useCrossSeedFilter({ instanceId, onFilterChange }: UseCrossSeedF
     toast.info("Identifying cross-seeded torrents...")
 
     try {
-      const [allInstances, torrentFiles] = await Promise.all([
-        api.getInstances(),
-        api.getTorrentFiles(instanceId, selectedTorrent.hash),
-      ])
-
-      const matches: CrossSeedTorrent[] = []
-
-      if (allInstances && Array.isArray(allInstances)) {
-        const searchWithTimeout = async (instance: Instance, timeoutMs = 15000) => {
-          let timeoutHandle: ReturnType<typeof setTimeout> | null = null
-
-          const timeoutPromise = new Promise<CrossSeedTorrent[]>((_, reject) => {
-            timeoutHandle = setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs)
-          })
-
-          const searchPromise = searchCrossSeedMatches(
-            selectedTorrent,
-            instance,
-            instanceId,
-            torrentFiles || [],
-            selectedTorrent.infohash_v1,
-            selectedTorrent.infohash_v2
-          )
-
-          try {
-            return await Promise.race([searchPromise, timeoutPromise])
-          } finally {
-            if (timeoutHandle) {
-              clearTimeout(timeoutHandle)
-            }
-          }
-        }
-
-        const searchPromises = allInstances.map(instance => searchWithTimeout(instance))
-        const results = await Promise.allSettled(searchPromises)
-
-        let successful = 0
-        let timedOut = 0
-        let failed = 0
-
-        results.forEach(result => {
-          if (result.status === "fulfilled") {
-            matches.push(...result.value)
-            successful++
-          } else if (result.reason?.message?.includes("Timeout")) {
-            timedOut++
-          } else {
-            failed++
-          }
-        })
-
-        if (timedOut > 0 || failed > 0) {
-          toast.info(
-            `Search completed with partial results`,
-            {
-              description: `${successful}/${allInstances.length} instances searched successfully. ${timedOut} timed out, ${failed} failed.`,
-              duration: 5000,
-            }
-          )
-        }
-      }
+      // Use backend API for proper release matching (rls library)
+      // This searches all instances in one call
+      const matches = await api.getLocalCrossSeedMatches(instanceId, selectedTorrent.hash)
 
       if (matches.length === 0) {
         toast.info("No cross-seeded torrents found")

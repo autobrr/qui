@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -43,14 +43,12 @@ export const StatRow = memo(function StatRow({
     }
   }
 
-  const highlightClass = highlight
-    ? {
-        green: "text-green-500",
-        blue: "text-blue-500",
-        yellow: "text-yellow-500",
-        red: "text-red-500",
-      }[highlight]
-    : ""
+  const highlightClass = highlight? {
+    green: "text-green-500",
+    blue: "text-blue-500",
+    yellow: "text-yellow-500",
+    red: "text-red-500",
+  }[highlight]: ""
 
   const content = (
     <div className={cn("flex items-center gap-1.5 text-xs", className)}>

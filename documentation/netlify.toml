@@ -1,0 +1,16 @@
+[build]
+  publish = "build"
+  command = "pnpm build"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/chrome-extension"
+  to = "https://chromewebstore.google.com/detail/kbjnjgihepmcoilegnghgpmijbecoili"
+  status = 301
+
+[[redirects]]
+  from = "/firefox-extension"
+  to = "https://addons.mozilla.org/en-US/firefox/addon/qui/"
+  status = 301

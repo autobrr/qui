@@ -1,11 +1,14 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package jackett
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -135,4 +138,38 @@ func TestDownloadError_ErrorsAs(t *testing.T) {
 	require.True(t, errors.As(wrapped, &dlErr), "errors.As should extract DownloadError from wrapped error")
 	assert.Equal(t, 429, dlErr.StatusCode)
 	assert.Equal(t, "https://example.com", dlErr.URL)
+}
+
+// TestDiscoverJackettIndexers_RedactsAPIKey is a regression test for issue #839.
+// It verifies that API keys in error messages are redacted when discovery fails.
+func TestDiscoverJackettIndexers_RedactsAPIKey(t *testing.T) {
+	const secretAPIKey = "SUPERSECRETAPIKEY12345"
+
+	// Create a test server that will be immediately closed to guarantee connection failure
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Should never reach here since we close the server
+		t.Error("Request should not reach handler")
+	}))
+	// Close immediately to guarantee connection failure
+	server.Close()
+
+	// Try to discover indexers against the closed server
+	_, err := DiscoverJackettIndexers(context.Background(), server.URL, secretAPIKey, nil, nil)
+
+	// We expect an error since the server is closed
+	require.Error(t, err, "Expected an error when connecting to closed server")
+
+	errStr := err.Error()
+
+	// The error message must NOT contain the secret API key
+	assert.False(t, strings.Contains(errStr, secretAPIKey),
+		"Error message should not contain the secret API key. Got: %s", errStr)
+
+	// The error message SHOULD contain REDACTED if it includes the URL with apikey param
+	// Note: depending on where the error occurs, it may or may not include URL params.
+	// If it does include URL params, they should be redacted.
+	if strings.Contains(errStr, "apikey=") {
+		assert.True(t, strings.Contains(errStr, "apikey=REDACTED"),
+			"Error message with apikey param should have value redacted. Got: %s", errStr)
+	}
 }

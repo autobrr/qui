@@ -1,7 +1,9 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
+
+import { useMemo } from "react"
 
 import { usePersistedDateTimePreferences } from "@/hooks/usePersistedDateTimePreferences"
 import { formatAddedOn, formatDate, formatDateOnly, formatISOTimestamp, formatTimeOnly, formatTimestamp } from "@/lib/dateTimeUtils"
@@ -13,11 +15,11 @@ import { formatAddedOn, formatDate, formatDateOnly, formatISOTimestamp, formatTi
 export function useDateTimeFormatters() {
   const { preferences } = usePersistedDateTimePreferences()
 
-  return {
+  return useMemo(() => ({
     /**
      * Format a Unix timestamp (seconds) to a full date/time string
      */
-    formatTimestamp: (timestamp: number) => formatTimestamp(timestamp, preferences),
+    formatTimestamp: (timestamp: number, includeSeconds = false) => formatTimestamp(timestamp, preferences, includeSeconds),
 
     /**
      * Format a Unix timestamp (seconds) to a date-only string
@@ -27,7 +29,7 @@ export function useDateTimeFormatters() {
     /**
      * Format a Unix timestamp (seconds) to a time-only string
      */
-    formatTimeOnly: (timestamp: number) => formatTimeOnly(timestamp, preferences),
+    formatTimeOnly: (timestamp: number, includeSeconds = false) => formatTimeOnly(timestamp, preferences, includeSeconds),
 
     /**
      * Format a JavaScript Date object to a full date/time string
@@ -48,5 +50,5 @@ export function useDateTimeFormatters() {
      * Get the current preferences (useful for conditional formatting)
      */
     preferences,
-  }
+  }), [preferences])
 }

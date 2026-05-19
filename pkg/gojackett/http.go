@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package jackett
@@ -13,6 +13,8 @@ import (
 
 	"github.com/autobrr/go-qbittorrent/errors"
 	"github.com/avast/retry-go"
+
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 func (c *Client) getRawCtx(ctx context.Context, reqUrl string) (*http.Response, error) {
@@ -27,7 +29,8 @@ func (c *Client) getRawCtx(ctx context.Context, reqUrl string) (*http.Response, 
 
 	resp, err := c.retryDo(ctx, req)
 	if err != nil {
-		return nil, errors.Wrap(err, "error making get request: %v", reqUrl)
+		err = redact.URLError(err)
+		return nil, errors.Wrap(err, "error making get request: %v", redact.URLString(reqUrl))
 	}
 
 	return resp, nil
@@ -118,9 +121,12 @@ func (c *Client) retryDo(ctx context.Context, req *http.Request) (*http.Response
 
 		retry.Delay(time.Second * 3)
 
-		return err
+		// Redact sensitive params from URL errors to prevent secret leakage in logs
+		return redact.URLError(err)
 	},
-		retry.OnRetry(func(n uint, err error) { c.log.Printf("%q: attempt %d - %v\n", err, n, req.URL.String()) }),
+		retry.OnRetry(func(n uint, err error) {
+			c.log.Printf("%q: attempt %d - %v\n", err, n, redact.URLString(req.URL.String()))
+		}),
 		retry.Attempts(5),
 		retry.MaxJitter(time.Second*1),
 	)

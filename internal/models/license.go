@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models
@@ -22,6 +22,8 @@ type ProductLicense struct {
 	ActivatedAt       time.Time  `json:"activatedAt"`
 	ExpiresAt         *time.Time `json:"expiresAt,omitempty"`
 	LastValidated     time.Time  `json:"lastValidated"`
+	Provider          string     `json:"provider,omitempty"`
+	DodoInstanceID    string     `json:"dodoInstanceId,omitempty"`
 	PolarCustomerID   *string    `json:"polarCustomerId,omitempty"`
 	PolarProductID    *string    `json:"polarProductId,omitempty"`
 	PolarActivationID string     `json:"polarActivationId,omitempty"`
@@ -45,4 +47,10 @@ type LicenseInfo struct {
 const (
 	LicenseStatusActive  = "active"
 	LicenseStatusInvalid = "invalid"
+)
+
+// LicenseProvider constants
+const (
+	LicenseProviderDodo  = "dodo"
+	LicenseProviderPolar = "polar"
 )

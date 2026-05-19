@@ -6,19 +6,28 @@ ifneq (,$(wildcard .env))
     export
 endif
 
+# Windows compatibility: run recipes through Git Bash so POSIX tools work
+ifeq ($(OS),Windows_NT)
+	GIT_BASH ?= C:/Progra~1/Git/bin/bash.exe
+	override SHELL := $(GIT_BASH)
+	override MAKESHELL := $(SHELL)
+	.SHELLFLAGS := -lc
+endif
+
 # Variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 GIT_COMMIT := $(shell git rev-parse HEAD 2> /dev/null)
 GIT_TAG := $(shell git describe --abbrev=0 --tags)
+BUILD_DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 BINARY_NAME = qui
 BUILD_DIR = build
 WEB_DIR = web
 INTERNAL_WEB_DIR = internal/web
 
 # Go build flags with Polar credentials
-LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X main.PolarOrgID=$(POLAR_ORG_ID)"
+LDFLAGS = -ldflags "-X github.com/autobrr/qui/internal/buildinfo.Version=$(VERSION) -X github.com/autobrr/qui/internal/buildinfo.Commit=$(GIT_COMMIT) -X github.com/autobrr/qui/internal/buildinfo.Date=$(BUILD_DATE) -X main.PolarOrgID=$(POLAR_ORG_ID)"
 
-.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean
+.PHONY: all build frontend backend dev dev-backend dev-frontend dev-expose clean test help themes-fetch themes-clean lint lint-full lint-json lint-fix fmt gofix-changed gofix-check-changed precommit deps docs-dev docs-build
 
 # Default target
 all: build
@@ -28,10 +37,10 @@ build: frontend backend
 
 build/docker:
 	@echo "Building docker image..."
-	docker build -t ghcr.io/autobrr/qui:dev -f Dockerfile . --build-arg  GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg POLAR_ORG_ID=$(POLAR_ORG_ID) --build-arg VERSION=$(VERSION)
+	docker build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) --build-arg POLAR_ORG_ID=$(POLAR_ORG_ID) --build-arg VERSION=$(VERSION)
 
 build/dockerx:
-	docker buildx build -t ghcr.io/autobrr/qui:dev -f Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
+	docker buildx build -t ghcr.io/autobrr/qui:dev -f distrib/docker/Dockerfile . --build-arg GIT_TAG=$(GIT_TAG) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) --build-arg VERSION=$(VERSION) --platform=linux/amd64,linux/arm64 --pull --load
 
 # Fetch premium themes from private repository
 themes-fetch:
@@ -107,22 +116,97 @@ test-openapi:
 	@echo "Validating OpenAPI specification..."
 	go test -v ./internal/web/swagger
 
-# Format code
+# Format changed code only (fast, for iteration)
 fmt:
-	@echo "Formatting code..."
-	go fmt ./...
-	cd $(WEB_DIR) && pnpm format
+	@echo "Formatting changed Go code..."
+	@gofiles=$$({ git diff --name-only --diff-filter=d; git diff --name-only --cached --diff-filter=d; } | sort -u | grep '\.go$$' || true); \
+		if [ -n "$$gofiles" ]; then echo "$$gofiles" | xargs gofmt -w; fi
+	@echo "Formatting changed frontend code..."
+	@webfiles=$$({ git diff --name-only --diff-filter=d -- '$(WEB_DIR)/'; git diff --name-only --cached --diff-filter=d -- '$(WEB_DIR)/'; } | sort -u | sed 's|^$(WEB_DIR)/||' | grep -E '\.(ts|tsx|js|jsx)$$' || true); \
+		if [ -n "$$webfiles" ]; then cd $(WEB_DIR) && echo "$$webfiles" | xargs pnpm eslint --fix; fi
 
-# Lint code
+# Apply go fix to changed Go files only
+gofix-changed:
+	@echo "Running go fix on changed Go files..."
+	@gofiles=$$({ git diff --name-only --diff-filter=d; git diff --name-only --cached --diff-filter=d; } | sort -u | grep '\.go$$' || true); \
+		if [ -z "$$gofiles" ]; then \
+			echo "No changed Go files for go fix."; \
+			exit 0; \
+		fi; \
+		gopkgs=$$(printf '%s\n' "$$gofiles" | xargs -n 1 dirname | sort -u); \
+		printf '%s\n' "$$gopkgs" | while IFS= read -r pkg; do \
+			[ -n "$$pkg" ] || continue; \
+			go fix "./$$pkg" || true; \
+		done; \
+		tmp=$$(mktemp); \
+		printf '%s\n' "$$gopkgs" | while IFS= read -r pkg; do \
+			[ -n "$$pkg" ] || continue; \
+			go fix -diff "./$$pkg" >> "$$tmp" || true; \
+		done; \
+		if [ -s "$$tmp" ]; then \
+			echo "go fix left pending changes for changed Go files:"; \
+			cat "$$tmp"; \
+			rm -f "$$tmp"; \
+			echo "Re-run 'make gofix-changed'."; \
+			exit 1; \
+		fi; \
+		rm -f "$$tmp"; \
+		echo "go fix applied."
+
+# Check go fix drift on changed Go files only (for CI/pre-commit)
+gofix-check-changed:
+	@echo "Checking go fix drift on changed Go files..."
+	@tmp=$$(mktemp); \
+		gofiles=$$({ git diff --name-only --diff-filter=d; git diff --name-only --cached --diff-filter=d; } | sort -u | grep '\.go$$' || true); \
+		if [ -z "$$gofiles" ]; then \
+			rm -f "$$tmp"; \
+			echo "No changed Go files for go fix check."; \
+			exit 0; \
+		fi; \
+		gopkgs=$$(printf '%s\n' "$$gofiles" | xargs -n 1 dirname | sort -u); \
+		printf '%s\n' "$$gopkgs" | while IFS= read -r pkg; do \
+			[ -n "$$pkg" ] || continue; \
+			go fix -diff "./$$pkg" >> "$$tmp" || true; \
+		done; \
+		if [ -s "$$tmp" ]; then \
+			echo "go fix changes required for changed Go files:"; \
+			cat "$$tmp"; \
+			rm -f "$$tmp"; \
+			echo "Run 'make gofix-changed'."; \
+			exit 1; \
+		fi; \
+		rm -f "$$tmp"; \
+		echo "go fix check clean."
+
+# Local pre-commit gate (changed files only)
+precommit: fmt gofix-changed lint
+	@echo "Pre-commit checks passed."
+
+# Lint code (changed files only - fast feedback for AI iteration)
 lint:
-	@echo "Linting code..."
-	golangci-lint run
+	@echo "Linting changed Go code..."
+	golangci-lint run --new-from-merge-base=develop --timeout=5m
+	@echo "Linting frontend..."
 	cd $(WEB_DIR) && pnpm lint
 
-# Modernize Go code (interface{} -> any, etc)
-modern:
-	@echo "Modernizing Go code..."
-	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -fix -test ./...
+# Full lint (entire codebase - use before commits/PRs)
+lint-full:
+	@echo "Linting entire Go codebase..."
+	golangci-lint run --timeout=10m
+	@echo "Linting frontend..."
+	cd $(WEB_DIR) && pnpm lint
+
+# Lint with JSON output (for AI agent consumption)
+lint-json:
+	@echo "Generating lint report..."
+	golangci-lint run --new-from-merge-base=main --output.json.path=./lint-report.json --timeout=5m || true
+	@echo "Lint report saved to lint-report.json"
+
+# Lint with auto-fix where possible
+lint-fix:
+	@echo "Running linters with auto-fix..."
+	golangci-lint run --fix --timeout=10m
+	cd $(WEB_DIR) && pnpm lint --fix
 
 # Install development dependencies
 deps:
@@ -130,23 +214,55 @@ deps:
 	go mod download
 	cd $(WEB_DIR) && pnpm install
 
+# Documentation development server
+docs-dev:
+	@echo "Starting documentation development server..."
+	cd documentation && pnpm start
+
+# Build documentation
+docs-build:
+	@echo "Building documentation..."
+	cd documentation && pnpm build
+
 # Help
 help:
 	@echo "Available targets:"
-	@echo "  make build        - Build both frontend and backend"
-	@echo "  make frontend     - Build frontend only"
-	@echo "  make backend      - Build backend only"
-	@echo "  make themes-fetch - Fetch premium themes from private repository"
-	@echo "  make themes-clean - Clean premium themes"
-	@echo "  make dev          - Run development servers"
-	@echo "  make dev-backend  - Run backend with hot reload"
-	@echo "  make dev-frontend - Run frontend development server"
-	@echo "  make dev-expose   - Run frontend dev server exposed on 0.0.0.0"
-	@echo "  make clean        - Clean build artifacts"
-	@echo "  make test         - Run all tests"
-	@echo "  make test-openapi - Validate OpenAPI specification"
-	@echo "  make fmt          - Format code"
-	@echo "  make lint         - Lint code"
-	@echo "  make modern       - Modernize Go code (interface{} -> any, etc)"
-	@echo "  make deps         - Install dependencies"
-	@echo "  make help         - Show this help message"
+	@echo ""
+	@echo "Build:"
+	@echo "  make build          - Build both frontend and backend"
+	@echo "  make frontend       - Build frontend only"
+	@echo "  make backend        - Build backend only"
+	@echo "  make build/docker   - Build Docker image"
+	@echo ""
+	@echo "Development:"
+	@echo "  make dev            - Run development servers (air + pnpm dev)"
+	@echo "  make dev-backend    - Run backend with hot reload"
+	@echo "  make dev-frontend   - Run frontend development server"
+	@echo "  make dev-expose     - Run frontend dev server exposed on 0.0.0.0"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test           - Run all tests with race detection"
+	@echo "  make test-openapi   - Validate OpenAPI specification"
+	@echo ""
+	@echo "Linting:"
+	@echo "  make lint           - Lint changed files only (fast, for iteration)"
+	@echo "  make lint-full      - Lint entire codebase"
+	@echo "  make lint-json      - Generate JSON lint report for AI agents"
+	@echo "  make lint-fix       - Auto-fix linting issues where possible"
+	@echo ""
+	@echo "Formatting:"
+	@echo "  make fmt            - Format changed files only (fast, for iteration)"
+	@echo "  make gofix-changed  - Apply go fix to changed Go files only"
+	@echo "  make gofix-check-changed - Check go fix drift on changed Go files only"
+	@echo "  make precommit      - Run local pre-commit gate (fmt + gofix + lint)"
+	@echo ""
+	@echo "Documentation:"
+	@echo "  make docs-dev       - Run documentation development server"
+	@echo "  make docs-build     - Build documentation for production"
+	@echo ""
+	@echo "Other:"
+	@echo "  make themes-fetch   - Fetch premium themes from private repository"
+	@echo "  make themes-clean   - Clean premium themes"
+	@echo "  make clean          - Clean build artifacts"
+	@echo "  make deps           - Install dependencies"
+	@echo "  make help           - Show this help message"

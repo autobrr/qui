@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -16,13 +16,56 @@ export interface AuthResponse {
   message?: string
 }
 
+export interface ApplicationDatabaseInfo {
+  engine: string
+  target: string
+}
+
+export interface ApplicationInfo {
+  version: string
+  commit?: string
+  commitShort?: string
+  buildDate?: string
+  startedAt: string
+  uptimeSeconds: number
+  goVersion: string
+  goOS: string
+  goArch: string
+  baseUrl: string
+  host: string
+  port: number
+  configDir: string
+  dataDir: string
+  authMode: "builtin" | "oidc" | "disabled"
+  oidcEnabled: boolean
+  builtInLoginEnabled: boolean
+  oidcIssuerHost?: string
+  checkForUpdates: boolean
+  database: ApplicationDatabaseInfo
+}
+
+// Generic warning response for operations that succeed with caveats
+export interface WarningResponse {
+  warning?: string
+}
+
 export interface Instance {
   id: number
   name: string
   host: string
   username: string
+  hasApiKey?: boolean
   basicUsername?: string
   tlsSkipVerify: boolean
+  hasLocalFilesystemAccess: boolean
+  // Hardlink mode settings (per-instance)
+  useHardlinks: boolean
+  hardlinkBaseDir: string
+  hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+  // Reflink mode (copy-on-write) - mutually exclusive with hardlink mode
+  useReflinks: boolean
+  // Fallback to regular mode when reflink/hardlink fails
+  fallbackToRegularMode: boolean
   sortOrder: number
   isActive: boolean
   reannounceSettings: InstanceReannounceSettings
@@ -33,9 +76,19 @@ export interface InstanceFormData {
   host: string
   username?: string
   password?: string
+  apiKey?: string
   basicUsername?: string
   basicPassword?: string
   tlsSkipVerify: boolean
+  hasLocalFilesystemAccess: boolean
+  // Hardlink mode settings (per-instance)
+  useHardlinks?: boolean
+  hardlinkBaseDir?: string
+  hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
+  // Reflink mode (copy-on-write) - mutually exclusive with hardlink mode
+  useReflinks?: boolean
+  // Fallback to regular mode when reflink/hardlink fails
+  fallbackToRegularMode?: boolean
   reannounceSettings: InstanceReannounceSettings
 }
 
@@ -72,6 +125,29 @@ export interface InstanceCrossSeedCompletionSettings {
   tags: string[]
   excludeCategories: string[]
   excludeTags: string[]
+  indexerIds: number[]
+  bypassTorznabCache: boolean
+  delaySeconds: number
+}
+
+/**
+ * A torrent match found by the backend using proper release metadata parsing (rls library).
+ */
+export interface LocalCrossSeedMatch {
+  instanceId: number
+  instanceName: string
+  hash: string
+  name: string
+  size: number
+  progress: number
+  savePath: string
+  contentPath: string
+  category: string
+  tags: string
+  state: string
+  tracker: string
+  trackerHealth?: string
+  matchType: "content_path" | "name" | "release"
 }
 
 export interface InstanceReannounceActivity {
@@ -105,36 +181,461 @@ export interface InstanceError {
   occurredAt: string
 }
 
-export interface TrackerRule {
+// Condition field types for expression-based automations
+export type ConditionField =
+  // String fields
+  | "NAME"
+  | "HASH"
+  | "INFOHASH_V1"
+  | "INFOHASH_V2"
+  | "MAGNET_URI"
+  | "CATEGORY"
+  | "TAGS"
+  | "SAVE_PATH"
+  | "CONTENT_PATH"
+  | "DOWNLOAD_PATH"
+  | "CREATED_BY"
+  | "TRACKERS"
+  | "CONTENT_TYPE"
+  | "EFFECTIVE_NAME"
+  | "RLS_SOURCE"
+  | "RLS_RESOLUTION"
+  | "RLS_CODEC"
+  | "RLS_HDR"
+  | "RLS_AUDIO"
+  | "RLS_CHANNELS"
+  | "RLS_GROUP"
+  | "STATE"
+  | "TRACKER"
+  | "COMMENT"
+  // Numeric fields (bytes)
+  | "SIZE"
+  | "TOTAL_SIZE"
+  | "COMPLETED"
+  | "DOWNLOADED"
+  | "DOWNLOADED_SESSION"
+  | "UPLOADED"
+  | "UPLOADED_SESSION"
+  | "AMOUNT_LEFT"
+  | "FREE_SPACE"
+  // Time fields (duration seconds and timestamp-backed ages)
+  | "ADDED_ON"
+  | "COMPLETION_ON"
+  | "LAST_ACTIVITY"
+  | "SEEN_COMPLETE"
+  | "ETA"
+  | "REANNOUNCE"
+  | "SEEDING_TIME"
+  | "TIME_ACTIVE"
+  | "MAX_SEEDING_TIME"
+  | "MAX_INACTIVE_SEEDING_TIME"
+  | "SEEDING_TIME_LIMIT"
+  | "INACTIVE_SEEDING_TIME_LIMIT"
+  // Legacy age aliases (duration type)
+  | "ADDED_ON_AGE"
+  | "COMPLETION_ON_AGE"
+  | "LAST_ACTIVITY_AGE"
+  // System Time fields
+  | "SYSTEM_HOUR"
+  | "SYSTEM_MINUTE"
+  | "SYSTEM_DAY_OF_WEEK"
+  | "SYSTEM_DAY"
+  | "SYSTEM_MONTH"
+  | "SYSTEM_YEAR"
+  // Numeric fields (float64)
+  | "RATIO"
+  | "RATIO_LIMIT"
+  | "MAX_RATIO"
+  | "UPLOADED_OVER_SIZE"
+  | "PROGRESS"
+  | "AVAILABILITY"
+  | "POPULARITY"
+  // Numeric fields (speeds)
+  | "DL_SPEED"
+  | "UP_SPEED"
+  | "DL_LIMIT"
+  | "UP_LIMIT"
+  // Numeric fields (counts/misc)
+  | "NUM_SEEDS"
+  | "NUM_LEECHS"
+  | "NUM_COMPLETE"
+  | "NUM_INCOMPLETE"
+  | "TRACKERS_COUNT"
+  | "PRIORITY"
+  | "GROUP_SIZE"
+  // Boolean fields
+  | "PRIVATE"
+  | "AUTO_MANAGED"
+  | "FIRST_LAST_PIECE_PRIO"
+  | "FORCE_START"
+  | "SEQUENTIAL_DOWNLOAD"
+  | "SUPER_SEEDING"
+  | "IS_UNREGISTERED"
+  | "HAS_MISSING_FILES"
+  | "IS_GROUPED"
+  | "EXISTS_ON_OTHER_INSTANCE"
+  | "SEEDING_ON_OTHER_INSTANCE"
+  | "EXISTS_ON_SAME_INSTANCE"
+  | "SEEDING_ON_SAME_INSTANCE"
+  // Enum-like fields
+  | "HARDLINK_SCOPE"
+  | "HARDLINK_SCOPE_CROSS"
+
+export type ConditionOperator =
+  // Logical operators (for groups)
+  | "AND"
+  | "OR"
+  // Comparison operators
+  | "EQUAL"
+  | "NOT_EQUAL"
+  | "CONTAINS"
+  | "NOT_CONTAINS"
+  | "STARTS_WITH"
+  | "ENDS_WITH"
+  | "GREATER_THAN"
+  | "GREATER_THAN_OR_EQUAL"
+  | "LESS_THAN"
+  | "LESS_THAN_OR_EQUAL"
+  | "BETWEEN"
+  | "MATCHES"
+  // Cross-category lookup operators (NAME field only)
+  | "EXISTS_IN"
+  | "CONTAINS_IN"
+
+export interface RuleCondition {
+  /** UI-only stable identifier (not persisted server-side) */
+  clientId?: string
+  field?: ConditionField
+  operator: ConditionOperator
+  groupId?: string
+  value?: string
+  minValue?: number
+  maxValue?: number
+  regex?: boolean
+  negate?: boolean
+  conditions?: RuleCondition[]
+}
+
+export interface SpeedLimitAction {
+  enabled: boolean
+  uploadKiB?: number
+  downloadKiB?: number
+  condition?: RuleCondition
+}
+
+export interface ShareLimitsAction {
+  enabled: boolean
+  ratioLimit?: number
+  seedingTimeMinutes?: number
+  shareLimitAction?: string
+  shareLimitsMode?: string
+  condition?: RuleCondition
+}
+
+export interface PauseAction {
+  enabled: boolean
+  condition?: RuleCondition
+}
+
+export interface ResumeAction {
+  enabled: boolean
+  condition?: RuleCondition
+}
+
+export interface RecheckAction {
+  enabled: boolean
+  condition?: RuleCondition
+}
+
+export interface ReannounceAction {
+  enabled: boolean
+  condition?: RuleCondition
+}
+
+export interface AutoManagementAction {
+  enabled: boolean
+  condition?: RuleCondition
+}
+
+export interface GroupDefinition {
+  id: string
+  keys: string[]
+  ambiguousPolicy?: "verify_overlap" | "skip"
+  minFileOverlapPercent?: number
+}
+
+export interface GroupingConfig {
+  defaultGroupId?: string
+  groups?: GroupDefinition[]
+}
+
+export interface DeleteAction {
+  enabled: boolean
+  mode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
+  includeHardlinks?: boolean // Only valid when mode is "deleteWithFilesIncludeCrossSeeds"
+  groupId?: string
+  atomic?: "all"
+  condition?: RuleCondition
+}
+
+export interface TagAction {
+  enabled: boolean
+  tags: string[]
+  mode: "full" | "add" | "remove"
+  deleteFromClient?: boolean
+  useTrackerAsTag?: boolean
+  useDisplayName?: boolean
+  condition?: RuleCondition
+}
+
+export interface CategoryAction {
+  enabled: boolean
+  category: string
+  includeCrossSeeds?: boolean
+  groupId?: string
+  blockIfCrossSeedInCategories?: string[]
+  condition?: RuleCondition
+}
+
+export interface MoveAction {
+  enabled: boolean
+  path: string
+  blockIfCrossSeed?: boolean
+  groupId?: string
+  atomic?: "all"
+  condition?: RuleCondition
+}
+
+export interface ExternalProgramAction {
+  enabled: boolean
+  programId: number
+  condition?: RuleCondition
+}
+
+export interface ExportToInstanceAction {
+  enabled: boolean
+  targetInstanceId: number
+  savePath: string
+  category?: string
+  tags?: string[]
+  paused?: boolean
+  skipChecking?: boolean
+  contentLayout?: string
+  condition?: RuleCondition
+}
+
+export interface ActionConditions {
+  schemaVersion: string
+  grouping?: GroupingConfig
+  speedLimits?: SpeedLimitAction
+  shareLimits?: ShareLimitsAction
+  pause?: PauseAction
+  resume?: ResumeAction
+  recheck?: RecheckAction
+  reannounce?: ReannounceAction
+  delete?: DeleteAction
+  // Legacy single-tag action (still accepted for existing automations)
+  tag?: TagAction
+  // Preferred multi-tag actions
+  tags?: TagAction[]
+  category?: CategoryAction
+  move?: MoveAction
+  externalProgram?: ExternalProgramAction
+  autoManagement?: AutoManagementAction
+  exportToInstance?: ExportToInstanceAction
+}
+
+export type FreeSpaceSource =
+  | { type: "qbittorrent" }
+  | { type: "path"; path: string }
+
+export type FreeSpaceSourceType = FreeSpaceSource["type"]
+
+export type ScoreRuleType = "field_multiplier" | "conditional"
+
+export interface FieldMultiplierScoreRule {
+  field: ConditionField
+  multiplier: number
+}
+
+export interface ConditionalScoreRule {
+  condition: RuleCondition
+  score: number
+}
+
+export type ScoreRule =
+  | { type: "field_multiplier"; fieldMultiplier: FieldMultiplierScoreRule }
+  | { type: "conditional"; conditional: ConditionalScoreRule }
+
+export type SortingConfig =
+  | {
+    schemaVersion: string
+    type: "simple"
+    field: ConditionField
+    direction: "ASC" | "DESC"
+  }
+  | {
+    schemaVersion: string
+    type: "score"
+    direction: "ASC" | "DESC"
+    scoreRules: ScoreRule[]
+  }
+
+export interface Automation {
   id: number
   instanceId: number
   name: string
   trackerPattern: string
   trackerDomains?: string[]
-  category?: string
-  tag?: string
-  uploadLimitKiB?: number
-  downloadLimitKiB?: number
-  ratioLimit?: number
-  seedingTimeLimitMinutes?: number
+  conditions: ActionConditions
+  freeSpaceSource?: FreeSpaceSource
+  sortingConfig?: SortingConfig
   enabled: boolean
+  dryRun: boolean
+  notify: boolean
   sortOrder: number
+  intervalSeconds?: number | null // null = use global default (15 minutes)
   createdAt?: string
   updatedAt?: string
 }
 
-export interface TrackerRuleInput {
+export interface AutomationInput {
   name: string
   trackerPattern?: string
   trackerDomains?: string[]
+  conditions: ActionConditions
+  freeSpaceSource?: FreeSpaceSource
+  sortingConfig?: SortingConfig
+  enabled?: boolean
+  dryRun?: boolean
+  notify?: boolean
+  sortOrder?: number
+  intervalSeconds?: number | null // null = use global default (15 minutes)
+}
+
+export type PreviewView = "needed" | "eligible"
+
+export interface AutomationPreviewInput extends AutomationInput {
+  previewLimit?: number
+  previewOffset?: number
+  previewView?: PreviewView
+}
+
+export interface AutomationDryRunResult {
+  status: string
+  activityIds?: number[]
+  activities?: AutomationActivity[]
+}
+
+export interface AutomationActivity {
+  id: number
+  instanceId: number
+  hash: string
+  torrentName?: string
+  trackerDomain?: string
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "auto_managed" | "moved" | "external_program" | "exported_to_instance" | "dry_run_no_match"
+  ruleId?: number
+  ruleName?: string
+  outcome: "success" | "failed" | "dry-run"
+  reason?: string
+  details?: {
+    ratio?: number
+    ratioLimit?: number
+    seedingMinutes?: number
+    seedingLimitMinutes?: number
+    filesKept?: boolean
+    deleteMode?: "delete" | "deleteWithFiles" | "deleteWithFilesPreserveCrossSeeds" | "deleteWithFilesIncludeCrossSeeds"
+    limitKiB?: number
+    count?: number
+    type?: string
+    programId?: number
+    programName?: string
+    // Tag activity details
+    added?: Record<string, number>   // tag -> count of torrents
+    removed?: Record<string, number> // tag -> count of torrents
+    // Category activity details
+    categories?: Record<string, number> // category -> count of torrents
+    // Speed/share limit activity details
+    limits?: Record<string, number> // "upload:1024" -> count, or "2.00:1440" -> count
+    // Move activity details
+    paths?: Record<string, number> // path -> count of torrents
+  }
+  createdAt: string
+}
+
+export interface AutomationActivityRunItem {
+  hash: string
+  name: string
+  trackerDomain?: string
+  tagsAdded?: string[]
+  tagsRemoved?: string[]
   category?: string
-  tag?: string
+  movePath?: string
+  size?: number
+  ratio?: number
+  addedOn?: number
   uploadLimitKiB?: number
   downloadLimitKiB?: number
   ratioLimit?: number
-  seedingTimeLimitMinutes?: number
-  enabled?: boolean
-  sortOrder?: number
+  seedingMinutes?: number
+}
+
+export interface AutomationActivityRun {
+  total: number
+  items: AutomationActivityRunItem[]
+}
+
+export interface AutomationPreviewTorrent {
+  name: string
+  hash: string
+  size: number
+  ratio: number
+  seedingTime: number
+  tracker: string
+  category: string
+  tags: string
+  state: string
+  addedOn: number
+  uploaded: number
+  downloaded: number
+  contentPath?: string
+  isUnregistered?: boolean
+  isCrossSeed?: boolean
+  isHardlinkCopy?: boolean // Included via hardlink expansion (not ContentPath match)
+  hardlinkScope?: string // none, torrents_only, outside_qbittorrent
+  hardlinkCrossScope?: string // cross-instance: none, torrents_only, outside_qbittorrent
+  // Additional fields for dynamic columns
+  numSeeds: number
+  numComplete: number
+  numLeechs: number
+  numIncomplete: number
+  progress: number
+  availability: number
+  timeActive: number
+  lastActivity: number
+  completionOn: number
+  totalSize: number
+  score?: number
+}
+
+export interface AutomationPreviewResult {
+  totalMatches: number
+  crossSeedCount?: number
+  examples: AutomationPreviewTorrent[]
+  warnings?: string[] // Warnings explaining why certain operations were skipped
+}
+
+export interface RegexValidationError {
+  path: string
+  message: string
+  pattern: string
+  field: string
+  operator: string
+}
+
+export interface RegexValidationResult {
+  valid: boolean
+  errors: RegexValidationError[]
 }
 
 export interface InstanceResponse extends Instance {
@@ -155,8 +656,13 @@ export interface InstanceCapabilities {
   supportsRenameFolder: boolean
   supportsFilePriority: boolean
   supportsSubcategories: boolean
+  subcategoriesAlwaysEnabled: boolean
   supportsTorrentTmpPath: boolean
   supportsPathAutocomplete: boolean
+  supportsFreeSpacePathSource: boolean
+  supportsSetRSSFeedURL: boolean
+  supportsShareLimitsAction: boolean
+  supportsShareLimitsMode?: boolean
   webAPIVersion?: string
 }
 
@@ -223,6 +729,23 @@ export interface TorrentFile {
   size: number
 }
 
+export interface TorrentFileMediaInfoField {
+  name: string
+  value: string
+}
+
+export interface TorrentFileMediaInfoStream {
+  kind: string
+  fields: TorrentFileMediaInfoField[]
+}
+
+export interface TorrentFileMediaInfoResponse {
+  fileIndex: number
+  relativePath: string
+  streams: TorrentFileMediaInfoStream[]
+  rawJSON: string
+}
+
 export interface Torrent {
   added_on: number
   amount_left: number
@@ -264,6 +787,8 @@ export interface Torrent {
   seeding_time: number
   seeding_time_limit: number
   inactive_seeding_time_limit?: number
+  share_limit_action?: string
+  share_limits_mode?: string
   seen_complete: number
   seq_dl: boolean
   size: number
@@ -352,6 +877,17 @@ export interface DashboardSettingsInput {
   trackerBreakdownSortColumn?: string
   trackerBreakdownSortDirection?: string
   trackerBreakdownItemsPerPage?: number
+}
+
+export interface LogExclusions {
+  id: number
+  patterns: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LogExclusionsInput {
+  patterns: string[]
 }
 
 export interface TorrentCounts {
@@ -459,6 +995,17 @@ export interface ServerState {
   write_cache_overload?: string
   last_external_address_v4?: string
   last_external_address_v6?: string
+}
+
+export interface TransferInfo {
+  connection_status: string
+  dht_nodes: number
+  dl_info_data: number
+  dl_info_speed: number
+  dl_rate_limit: number
+  up_info_data: number
+  up_info_speed: number
+  up_rate_limit: number
 }
 
 export interface TorrentPeer {
@@ -926,6 +1473,11 @@ export interface QBittorrentAppInfo {
   version: string
   webAPIVersion?: string
   buildInfo?: QBittorrentBuildInfo
+  processInfo?: QBittorrentProcessInfo
+}
+
+export interface QBittorrentProcessInfo {
+  launchTime: number
 }
 
 // Torrent Creation Types
@@ -1026,11 +1578,40 @@ export interface ExternalProgramExecuteResponse {
   results: ExternalProgramExecuteResult[]
 }
 
+export interface NotificationEventDefinition {
+  type: string
+  label: string
+  description: string
+}
+
+export interface NotificationTarget {
+  id: number
+  name: string
+  url: string
+  enabled: boolean
+  eventTypes: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NotificationTargetRequest {
+  name: string
+  url: string
+  enabled: boolean
+  eventTypes: string[]
+}
+
+export interface NotificationTestRequest {
+  title?: string
+  message?: string
+}
+
 export interface TorznabIndexer {
   id: number
   name: string
   base_url: string
   indexer_id: string
+  basic_username?: string
   backend: "jackett" | "prowlarr" | "native"
   enabled: boolean
   priority: number
@@ -1164,6 +1745,8 @@ export interface TorznabIndexerFormData {
   base_url: string
   indexer_id?: string
   api_key: string
+  basic_username?: string
+  basic_password?: string
   backend?: "jackett" | "prowlarr" | "native"
   enabled?: boolean
   priority?: number
@@ -1177,6 +1760,8 @@ export interface TorznabIndexerUpdate {
   base_url?: string
   api_key?: string
   indexer_id?: string
+  basic_username?: string
+  basic_password?: string
   backend?: "jackett" | "prowlarr" | "native"
   enabled?: boolean
   priority?: number
@@ -1276,6 +1861,8 @@ export interface JackettIndexer {
 export interface DiscoverJackettRequest {
   base_url: string
   api_key: string
+  basic_username?: string
+  basic_password?: string
 }
 
 export interface DiscoverJackettResponse {
@@ -1298,6 +1885,8 @@ export interface CrossSeedTorrentInfo {
   searchType?: string
   searchCategories?: number[]
   requiredCaps?: string[]
+  discLayout?: boolean
+  discMarker?: string
   // Pre-filtering information for UI context menu
   availableIndexers?: number[]
   filteredIndexers?: number[]
@@ -1369,6 +1958,7 @@ export interface CrossSeedApplyResult {
   title: string
   indexer: string
   torrentName?: string
+  infoHash?: string
   success: boolean
   instanceResults?: CrossSeedInstanceResult[]
   error?: string
@@ -1376,6 +1966,13 @@ export interface CrossSeedApplyResult {
 
 export interface CrossSeedApplyResponse {
   results: CrossSeedApplyResult[]
+}
+
+export interface CrossSeedBlocklistEntry {
+  instanceId: number
+  infoHash: string
+  note?: string
+  createdAt: string
 }
 
 export interface CrossSeedRunResult {
@@ -1412,7 +2009,6 @@ export interface CrossSeedAutomationSettings {
   runIntervalMinutes: number
   startPaused: boolean
   category?: string | null
-  ignorePatterns: string[]
   targetInstanceIds: number[]
   targetIndexerIds: number[]
   // RSS source filtering: filter which local torrents to search when checking RSS feeds
@@ -1428,7 +2024,11 @@ export interface CrossSeedAutomationSettings {
   findIndividualEpisodes: boolean
   sizeMismatchTolerancePercent: number
   useCategoryFromIndexer: boolean
-  useCrossCategorySuffix: boolean
+  useCrossCategoryAffix: boolean
+  categoryAffixMode: "prefix" | "suffix"
+  categoryAffix: string
+  useCustomCategory: boolean
+  customCategory: string
   runExternalProgramId?: number | null
   // Source-specific tagging
   rssAutomationTags: string[]
@@ -1442,6 +2042,26 @@ export interface CrossSeedAutomationSettings {
   skipAutoResumeCompletion: boolean
   skipAutoResumeWebhook: boolean
   skipRecheck: boolean
+  skipPieceBoundarySafetyCheck: boolean
+  // Hardlink mode settings
+  useHardlinks: boolean
+  hardlinkBaseDir: string
+  hardlinkDirPreset: "flat" | "by-tracker" | "by-instance"
+  // Gazelle (OPS/RED) cross-seed settings
+  gazelleEnabled: boolean
+  redactedApiKey: string
+  orpheusApiKey: string
+  // Season pack settings
+  seasonPackEnabled: boolean
+  seasonPackSkipRepackCompare: boolean
+  seasonPackSimplifyHdrCompare: boolean
+  seasonPackSimplifyWebCompare: boolean
+  seasonPackSkipYearCompare: boolean
+  seasonPackCoverageThreshold: number
+  seasonPackTags: string[]
+  seasonPackCategory: string
+  seasonPackTvdbApiKey?: string
+  seasonPackTvdbPin?: string
   createdAt?: string
   updatedAt?: string
 }
@@ -1451,7 +2071,6 @@ export interface CrossSeedAutomationSettingsPatch {
   runIntervalMinutes?: number
   startPaused?: boolean
   category?: string | null
-  ignorePatterns?: string[]
   targetInstanceIds?: number[]
   targetIndexerIds?: number[]
   // RSS source filtering: filter which local torrents to search when checking RSS feeds
@@ -1467,7 +2086,11 @@ export interface CrossSeedAutomationSettingsPatch {
   findIndividualEpisodes?: boolean
   sizeMismatchTolerancePercent?: number
   useCategoryFromIndexer?: boolean
-  useCrossCategorySuffix?: boolean
+  useCrossCategoryAffix?: boolean
+  categoryAffixMode?: "prefix" | "suffix"
+  categoryAffix?: string
+  useCustomCategory?: boolean
+  customCategory?: string
   runExternalProgramId?: number | null
   // Source-specific tagging
   rssAutomationTags?: string[]
@@ -1481,6 +2104,26 @@ export interface CrossSeedAutomationSettingsPatch {
   skipAutoResumeCompletion?: boolean
   skipAutoResumeWebhook?: boolean
   skipRecheck?: boolean
+  skipPieceBoundarySafetyCheck?: boolean
+  // Hardlink mode settings
+  useHardlinks?: boolean
+  hardlinkBaseDir?: string
+  hardlinkDirPreset?: "flat" | "by-tracker" | "by-instance"
+  // Gazelle (OPS/RED) cross-seed settings
+  gazelleEnabled?: boolean
+  redactedApiKey?: string
+  orpheusApiKey?: string
+  // Season pack settings
+  seasonPackEnabled?: boolean
+  seasonPackSkipRepackCompare?: boolean
+  seasonPackSimplifyHdrCompare?: boolean
+  seasonPackSimplifyWebCompare?: boolean
+  seasonPackSkipYearCompare?: boolean
+  seasonPackCoverageThreshold?: number
+  seasonPackTags?: string[]
+  seasonPackCategory?: string
+  seasonPackTvdbApiKey?: string
+  seasonPackTvdbPin?: string
 }
 
 export interface CrossSeedAutomationStatus {
@@ -1559,4 +2202,377 @@ export interface CrossSeedSearchStatus {
   currentTorrent?: CrossSeedSearchCandidate
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
+}
+
+export interface SeasonPackRun {
+  id: number
+  torrentName: string
+  phase: "check" | "apply"
+  status: "ready" | "skipped" | "applied" | "failed"
+  reason: string
+  message: string
+  instanceId?: number
+  matchedEpisodes: number
+  totalEpisodes: number
+  coverage: number
+  linkMode?: string
+  createdAt: string
+}
+
+// Orphan Scan types
+export type OrphanScanRunStatus =
+  | "pending"
+  | "scanning"
+  | "preview_ready"
+  | "deleting"
+  | "completed"
+  | "failed"
+  | "canceled"
+
+export type OrphanScanTriggerType = "manual" | "scheduled"
+
+export type OrphanScanFileStatus = "pending" | "deleted" | "skipped" | "failed"
+
+export type OrphanScanPreviewSort = "size_desc" | "directory_size_desc"
+
+export interface OrphanScanSettings {
+  id?: number
+  instanceId: number
+  enabled: boolean
+  gracePeriodMinutes: number
+  ignorePaths: string[]
+  scanIntervalHours: number
+  previewSort: OrphanScanPreviewSort
+  maxFilesPerRun: number
+  autoCleanupEnabled: boolean
+  autoCleanupMaxFiles: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface OrphanScanSettingsUpdate {
+  enabled?: boolean
+  gracePeriodMinutes?: number
+  ignorePaths?: string[]
+  scanIntervalHours?: number
+  previewSort?: OrphanScanPreviewSort
+  maxFilesPerRun?: number
+  autoCleanupEnabled?: boolean
+  autoCleanupMaxFiles?: number
+}
+
+export interface OrphanScanRun {
+  id: number
+  instanceId: number
+  status: OrphanScanRunStatus
+  triggeredBy: OrphanScanTriggerType
+  scanPaths: string[]
+  filesFound: number
+  filesDeleted: number
+  foldersDeleted: number
+  bytesReclaimed: number
+  truncated: boolean
+  errorMessage?: string | null
+  startedAt: string
+  completedAt?: string | null
+}
+
+export interface OrphanScanFile {
+  id: number
+  runId: number
+  filePath: string
+  fileSize: number
+  modifiedAt?: string | null
+  status: OrphanScanFileStatus
+  errorMessage?: string | null
+}
+
+export interface OrphanScanRunWithFiles extends OrphanScanRun {
+  files: OrphanScanFile[]
+}
+
+// Log Settings Types
+export interface LogSettings {
+  level: string
+  path: string
+  maxSize: number
+  maxBackups: number
+  configPath?: string
+  locked?: Record<string, string>
+}
+
+export interface LogSettingsUpdate {
+  level?: string
+  path?: string
+  maxSize?: number
+  maxBackups?: number
+}
+
+// Directory Scanner Types
+export type DirScanMatchMode = "strict" | "flexible"
+
+export type DirScanFileStatus =
+  | "pending"
+  | "matched"
+  | "no_match"
+  | "error"
+  | "already_seeding"
+  | "in_qbittorrent"
+
+export type DirScanRunStatus =
+  | "queued"
+  | "scanning"
+  | "searching"
+  | "injecting"
+  | "success"
+  | "failed"
+  | "canceled"
+
+export interface DirScanSettings {
+  id: number
+  enabled: boolean
+  matchMode: DirScanMatchMode
+  sizeTolerancePercent: number
+  minPieceRatio: number
+  maxSearcheesPerRun: number
+  maxSearcheeAgeDays: number
+  allowPartial: boolean
+  skipPieceBoundarySafetyCheck: boolean
+  startPaused: boolean
+  downloadMissingFiles: boolean
+  category: string
+  tags: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DirScanSettingsUpdate {
+  enabled?: boolean
+  matchMode?: DirScanMatchMode
+  sizeTolerancePercent?: number
+  minPieceRatio?: number
+  maxSearcheesPerRun?: number
+  maxSearcheeAgeDays?: number
+  allowPartial?: boolean
+  skipPieceBoundarySafetyCheck?: boolean
+  startPaused?: boolean
+  downloadMissingFiles?: boolean
+  category?: string
+  tags?: string[]
+}
+
+export interface DirScanDirectory {
+  id: number
+  path: string
+  qbitPathPrefix?: string
+  category?: string
+  tags: string[]
+  allowedDownloadClients: string[]
+  enabled: boolean
+  arrInstanceId?: number
+  targetInstanceId: number
+  scanIntervalMinutes: number
+  lastScanAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DirScanDirectoryCreate {
+  path: string
+  qbitPathPrefix?: string
+  category?: string
+  tags?: string[]
+  allowedDownloadClients?: string[]
+  enabled?: boolean
+  arrInstanceId?: number
+  targetInstanceId: number
+  scanIntervalMinutes?: number
+}
+
+export interface DirScanDirectoryUpdate {
+  path?: string
+  qbitPathPrefix?: string
+  category?: string
+  tags?: string[]
+  allowedDownloadClients?: string[]
+  enabled?: boolean
+  arrInstanceId?: number
+  targetInstanceId?: number
+  scanIntervalMinutes?: number
+}
+
+export interface DirScanRun {
+  id: number
+  directoryId: number
+  status: DirScanRunStatus
+  triggeredBy: string
+  scanRoot?: string
+  filesFound: number
+  filesSkipped: number
+  matchesFound: number
+  torrentsAdded: number
+  errorMessage?: string
+  startedAt: string
+  completedAt?: string
+}
+
+export interface DirScanTriggerResponse {
+  runId: number
+  directoryId: number
+  directoryPath: string
+  scanRoot: string
+}
+
+export type DirScanRunInjectionStatus = "added" | "failed"
+
+export interface DirScanRunInjection {
+  id: number
+  runId: number
+  directoryId: number
+  status: DirScanRunInjectionStatus
+  searcheeName: string
+  torrentName: string
+  infoHash: string
+  contentType: string
+  indexerName?: string
+  trackerDomain?: string
+  trackerDisplayName?: string
+  linkMode?: string
+  savePath?: string
+  category?: string
+  tags: string[]
+  errorMessage?: string
+  createdAt: string
+}
+
+export interface DirScanFile {
+  id: number
+  directoryId: number
+  filePath: string
+  fileSize: number
+  fileModTime: string
+  status: DirScanFileStatus
+  matchedTorrentHash?: string
+  matchedIndexerId?: number
+  lastProcessedAt?: string
+}
+
+// RSS Types
+
+export interface RSSArticle {
+  id: string
+  date: string
+  title: string
+  author?: string
+  description?: string
+  torrentURL?: string
+  link?: string
+  isRead: boolean
+}
+
+export interface RSSFeed {
+  uid: string
+  url: string
+  title?: string
+  lastBuildDate?: string
+  hasError: boolean
+  isLoading: boolean
+  articles?: RSSArticle[]
+}
+
+// Hierarchical structure returned by qBittorrent
+export interface RSSItems {
+  [key: string]: RSSFeed | RSSItems
+}
+
+// Helper type to distinguish feeds from folders
+export function isRSSFeed(item: RSSFeed | RSSItems): item is RSSFeed {
+  return "url" in item && typeof item.url === "string"
+}
+
+export interface RSSRuleTorrentParams {
+  category?: string
+  tags?: string[]
+  save_path?: string
+  download_path?: string
+  content_layout?: string
+  operating_mode?: string
+  skip_checking?: boolean
+  upload_limit?: number
+  download_limit?: number
+  seeding_time_limit?: number
+  inactive_seeding_time_limit?: number
+  share_limit_action?: string
+  ratio_limit?: number
+  stopped?: boolean
+  stop_condition?: string
+  use_auto_tmm?: boolean
+  use_download_path?: boolean
+  add_to_top_of_queue?: boolean
+}
+
+export interface RSSAutoDownloadRule {
+  enabled: boolean
+  priority: number
+  useRegex: boolean
+  mustContain: string
+  mustNotContain: string
+  episodeFilter?: string
+  affectedFeeds: string[]
+  lastMatch?: string
+  ignoreDays: number
+  smartFilter: boolean
+  previouslyMatchedEpisodes?: string[]
+  torrentParams?: RSSRuleTorrentParams
+  // Legacy fields
+  addPaused?: boolean | null
+  savePath?: string
+  assignedCategory?: string
+  torrentContentLayout?: string
+}
+
+export type RSSRules = Record<string, RSSAutoDownloadRule>
+
+export type RSSMatchingArticles = Record<string, string[]>
+
+// Request types for RSS API
+export interface AddRSSFolderRequest {
+  path: string
+}
+
+export interface AddRSSFeedRequest {
+  url: string
+  path?: string
+}
+
+export interface SetRSSFeedURLRequest {
+  path: string
+  url: string
+}
+
+export interface MoveRSSItemRequest {
+  itemPath: string
+  destPath?: string // Optional: empty moves item to root
+}
+
+export interface RemoveRSSItemRequest {
+  path: string
+}
+
+export interface RefreshRSSItemRequest {
+  itemPath: string
+}
+
+export interface MarkRSSAsReadRequest {
+  itemPath: string
+  articleId?: string
+}
+
+export interface SetRSSRuleRequest {
+  name: string
+  rule: RSSAutoDownloadRule
+}
+
+export interface RenameRSSRuleRequest {
+  newName: string
 }

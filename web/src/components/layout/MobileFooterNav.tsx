@@ -1,8 +1,9 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -24,10 +25,12 @@ import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
+import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
-import { cn } from "@/lib/utils"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
+import { normalizeUnifiedInstanceIds } from "@/lib/instances"
+import { cn } from "@/lib/utils"
 import {
   getCurrentTheme,
   getCurrentThemeMode,
@@ -39,15 +42,16 @@ import {
   type ThemeMode
 } from "@/utils/theme"
 import { useQuery } from "@tanstack/react-query"
-import { Link, useLocation } from "@tanstack/react-router"
+import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
 import {
   Archive,
   Check,
+  Code,
   Copyright,
   CornerDownRight,
   Download,
+  FileText,
   GitBranch,
-  Github,
   HardDrive,
   Home,
   Loader2,
@@ -60,8 +64,8 @@ import {
   Search as SearchIcon,
   Server,
   Settings,
-  Wrench,
-  Sun
+  Sun,
+  Zap
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -93,6 +97,8 @@ const useThemeChange = () => {
 
 export function MobileFooterNav() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const { logout } = useAuth()
   const { isSelectionMode } = useTorrentSelection()
   const { currentMode, currentTheme } = useThemeChange()
@@ -120,14 +126,50 @@ export function MobileFooterNav() {
     }
     return instances.filter(instance => instance.isActive)
   }, [instances])
+  const activeInstanceIds = useMemo(
+    () => activeInstances.map(instance => instance.id),
+    [activeInstances]
+  )
 
   const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
-  const isOnInstancePage = location.pathname.startsWith("/instances/")
+  const isOnAllInstancesPage = location.pathname === "/instances" || location.pathname === "/instances/"
+  const isOnInstancePage = isOnAllInstancesPage || location.pathname.startsWith("/instances/")
+  const [persistedUnifiedFilter, saveUnifiedFilter] = usePersistedUnifiedInstanceFilter()
+  const normalizedUnifiedInstanceIds = useMemo(
+    () => normalizeUnifiedInstanceIds(persistedUnifiedFilter, activeInstanceIds),
+    [persistedUnifiedFilter, activeInstanceIds]
+  )
+  const effectiveUnifiedInstanceIds = normalizedUnifiedInstanceIds.length > 0? normalizedUnifiedInstanceIds: activeInstanceIds
   const hasMultipleActiveInstances = activeInstances.length > 1
-  const singleActiveInstance = activeInstances.length === 1 ? activeInstances[0] : null
-  const currentInstanceId = isOnInstancePage? location.pathname.split("/")[2]: null
+  const applyUnifiedScope = useCallback((nextIds: number[]) => {
+    const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
+    saveUnifiedFilter(normalizedIds)
+    const nextSearch: Record<string, unknown> = isOnAllInstancesPage ? { ...(routeSearch || {}) } : {}
+
+    navigate({
+      to: "/instances",
+      search: nextSearch as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      replace: isOnAllInstancesPage,
+    })
+  }, [activeInstanceIds, isOnAllInstancesPage, navigate, routeSearch, saveUnifiedFilter])
+  const toggleUnifiedScopeInstance = useCallback((instanceId: number) => {
+    const currentlySelected = effectiveUnifiedInstanceIds.includes(instanceId)
+    const nextIds = currentlySelected? effectiveUnifiedInstanceIds.filter(id => id !== instanceId): [...effectiveUnifiedInstanceIds, instanceId]
+
+    if (nextIds.length === 0) {
+      return
+    }
+
+    applyUnifiedScope(nextIds)
+  }, [applyUnifiedScope, effectiveUnifiedInstanceIds])
+  const resetUnifiedScope = useCallback(() => {
+    applyUnifiedScope(activeInstanceIds)
+  }, [activeInstanceIds, applyUnifiedScope])
+  const hasActiveInstances = activeInstances.length > 0
+  const hasClientScopeEntry = isOnAllInstancesPage || hasActiveInstances
+  const currentInstanceId = !isOnAllInstancesPage && location.pathname.startsWith("/instances/") ? location.pathname.split("/")[2] : null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
-  const currentInstanceLabel = currentInstance && currentInstance.isActive ? currentInstance.name : null
+  const currentInstanceLabel = isOnAllInstancesPage? (hasMultipleActiveInstances ? "Unified" : (activeInstances[0]?.name ?? null)): (currentInstance && currentInstance.isActive ? currentInstance.name : null)
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode)
@@ -191,7 +233,7 @@ export function MobileFooterNav() {
           to="/dashboard"
           className={cn(
             "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
-            location.pathname === "/dashboard"? "text-primary": "text-muted-foreground hover:text-foreground"
+            location.pathname === "/dashboard" ? "text-primary" : "text-muted-foreground hover:text-foreground"
           )}
         >
           <Home className={cn(
@@ -202,14 +244,14 @@ export function MobileFooterNav() {
         </Link>
 
         {/* Clients access */}
-        {hasMultipleActiveInstances ? (
+        {hasClientScopeEntry ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
                 className={cn(
                   "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
-                  isOnInstancePage? "text-primary": "text-muted-foreground hover:text-foreground"
+                  isOnInstancePage ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <div className="relative">
@@ -235,89 +277,88 @@ export function MobileFooterNav() {
             <DropdownMenuContent align="center" side="top" className="w-56 mb-2">
               <DropdownMenuLabel>qBittorrent Clients</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {activeInstances.map((instance) => {
-                const csState = crossSeedInstanceState[instance.id]
-                const hasRss = csState?.rssEnabled || csState?.rssRunning
-                const hasSearch = csState?.searchRunning
+              {activeInstances.length > 0 ? (
+                <>
+                  <DropdownMenuLabel className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Instances
+                  </DropdownMenuLabel>
+                  {hasMultipleActiveInstances && (
+                    <UnifiedScopeDropdownSection
+                      activeInstances={activeInstances}
+                      effectiveUnifiedInstanceIds={effectiveUnifiedInstanceIds}
+                      isAllInstancesRoute={isOnAllInstancesPage}
+                      onResetUnifiedScope={resetUnifiedScope}
+                      onToggleUnifiedScopeInstance={toggleUnifiedScopeInstance}
+                      scopeKeyPrefix="mobile-scope"
+                    />
+                  )}
+                  {activeInstances.map((instance) => {
+                    const csState = crossSeedInstanceState[instance.id]
+                    const hasRss = csState?.rssEnabled || csState?.rssRunning
+                    const hasSearch = csState?.searchRunning
 
-                return (
-                  <DropdownMenuItem key={instance.id} asChild>
-                    <Link
-                      to="/instances/$instanceId"
-                      params={{ instanceId: instance.id.toString() }}
-                      className="flex items-center gap-2 min-w-0"
-                    >
-                      <HardDrive className="h-4 w-4" />
-                      <span
-                        className="flex-1 min-w-0 truncate"
-                        title={instance.name}
-                      >
-                        {instance.name}
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        {hasRss && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="flex items-center">
-                                {csState?.rssRunning ? (
-                                  <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
-                                ) : (
-                                  <Rss className="h-3 w-3 text-muted-foreground" />
-                                )}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="left" className="text-xs">
-                              RSS {csState?.rssRunning ? "running" : "enabled"}
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                        {hasSearch && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="flex items-center">
-                                <SearchCode className="h-3 w-3 text-muted-foreground" />
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent side="left" className="text-xs">
-                              Seeded search running
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                        <span
-                          className={cn(
-                            "h-2 w-2 rounded-full",
-                            instance.connected ? "bg-green-500" : "bg-red-500"
-                          )}
-                        />
-                      </span>
-                    </Link>
-                  </DropdownMenuItem>
-                )
-              })}
+                    return (
+                      <DropdownMenuItem key={instance.id} asChild>
+                        <Link
+                          to="/instances/$instanceId"
+                          params={{ instanceId: instance.id.toString() }}
+                          className="flex items-center gap-2 min-w-0"
+                        >
+                          <HardDrive className="h-4 w-4" />
+                          <span
+                            className="flex-1 min-w-0 truncate"
+                            title={instance.name}
+                          >
+                            {instance.name}
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            {hasRss && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="flex items-center">
+                                    {csState?.rssRunning ? (
+                                      <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                                    ) : (
+                                      <Rss className="h-3 w-3 text-muted-foreground" />
+                                    )}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="text-xs">
+                                  RSS {csState?.rssRunning ? "running" : "enabled"}
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            {hasSearch && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="flex items-center">
+                                    <SearchCode className="h-3 w-3 text-muted-foreground" />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="text-xs">
+                                  Scan running
+                                </TooltipContent>
+                              </Tooltip>
+                            )}
+                            <span
+                              className={cn(
+                                "h-2 w-2 rounded-full",
+                                instance.connected ? "bg-green-500" : "bg-red-500"
+                              )}
+                            />
+                          </span>
+                        </Link>
+                      </DropdownMenuItem>
+                    )
+                  })}
+                </>
+              ) : (
+                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                  No active instances
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : singleActiveInstance ? (
-          <Link
-            to="/instances/$instanceId"
-            params={{ instanceId: singleActiveInstance.id.toString() }}
-            className={cn(
-              "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1",
-              isOnInstancePage ? "text-primary" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <div className="relative">
-              <HardDrive className={cn(
-                "h-5 w-5",
-                isOnInstancePage && "text-primary"
-              )} />
-            </div>
-            <span
-              className="block max-w-[7.5rem] truncate text-center"
-              title={singleActiveInstance.name}
-            >
-              {singleActiveInstance.name}
-            </span>
-          </Link>
         ) : isLoadingInstances ? (
           <button
             className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium min-w-0 flex-1 text-muted-foreground"
@@ -344,7 +385,7 @@ export function MobileFooterNav() {
             <button
               className={cn(
                 "flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 hover:cursor-pointer",
-                location.pathname === "/settings"? "text-primary": "text-muted-foreground hover:text-foreground"
+                location.pathname === "/settings" ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
               <div className="relative">
@@ -405,11 +446,11 @@ export function MobileFooterNav() {
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
               <Link
-                to="/services"
+                to="/automations"
                 className="flex items-center gap-2"
               >
-                <Wrench className="h-4 w-4" />
-                Services
+                <Zap className="h-4 w-4" />
+                Automations
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -419,6 +460,15 @@ export function MobileFooterNav() {
               >
                 <Archive className="h-4 w-4" />
                 Instance Backups
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/rss"
+                className="flex items-center gap-2"
+              >
+                <Rss className="h-4 w-4" />
+                RSS
               </Link>
             </DropdownMenuItem>
 
@@ -443,6 +493,16 @@ export function MobileFooterNav() {
                 Manage Instances
               </Link>
             </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link
+                to="/settings"
+                search={{ tab: "logs" }}
+                className="flex items-center gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                Logs
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setShowThemeDialog(true)}>
               <Palette className="h-4 w-4" />
               Appearance
@@ -465,7 +525,7 @@ export function MobileFooterNav() {
                 aria-label="View on GitHub"
                 className="h-6 w-6 flex items-center justify-center text-muted-foreground/60 hover:text-foreground transition-colors"
               >
-                <Github className="h-3.5 w-3.5" />
+                <Code className="h-3.5 w-3.5" />
               </a>
             </div>
             <DropdownMenuSeparator />
@@ -609,9 +669,7 @@ export function MobileFooterNav() {
                                       }}
                                       className={cn(
                                         "w-8 h-8 rounded-full transition-all cursor-pointer",
-                                        isSelected
-                                          ? "ring-2 ring-black dark:ring-white"
-                                          : "ring-1 ring-black/10 dark:ring-white/10"
+                                        isSelected? "ring-2 ring-black dark:ring-white": "ring-1 ring-black/10 dark:ring-white/10"
                                       )}
                                       style={{
                                         backgroundColor: variation.color,

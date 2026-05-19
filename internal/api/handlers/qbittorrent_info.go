@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -8,12 +8,17 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"github.com/Masterminds/semver/v3"
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
 	internalqbittorrent "github.com/autobrr/qui/internal/qbittorrent"
 )
+
+var processInfoMinWebAPIVersion = semver.MustParse("2.15.1")
 
 type QBittorrentInfoHandler struct {
 	clientPool *internalqbittorrent.ClientPool
@@ -36,11 +41,23 @@ type QBittorrentBuildInfo struct {
 	Platform   string `json:"platform,omitempty"`
 }
 
+type QBittorrentProcessInfo struct {
+	LaunchTime int64 `json:"launchTime"`
+}
+
 // QBittorrentAppInfo represents qBittorrent application information
 type QBittorrentAppInfo struct {
-	Version       string                `json:"version"`
-	WebAPIVersion string                `json:"webAPIVersion,omitempty"`
-	BuildInfo     *QBittorrentBuildInfo `json:"buildInfo,omitempty"`
+	Version       string                  `json:"version"`
+	WebAPIVersion string                  `json:"webAPIVersion,omitempty"`
+	BuildInfo     *QBittorrentBuildInfo   `json:"buildInfo,omitempty"`
+	ProcessInfo   *QBittorrentProcessInfo `json:"processInfo,omitempty"`
+}
+
+type qbittorrentAppInfoClient interface {
+	GetAppVersionCtx(ctx context.Context) (string, error)
+	GetWebAPIVersionCtx(ctx context.Context) (string, error)
+	GetBuildInfoCtx(ctx context.Context) (qbt.BuildInfo, error)
+	GetProcessInfoCtx(ctx context.Context) (qbt.ProcessInfo, error)
 }
 
 // GetQBittorrentAppInfo returns qBittorrent application version and build information
@@ -64,7 +81,7 @@ func (h *QBittorrentInfoHandler) GetQBittorrentAppInfo(w http.ResponseWriter, r 
 	}
 
 	// Get qBittorrent version and build info
-	appInfo, err := h.getQBittorrentAppInfo(ctx, client)
+	appInfo, err := getQBittorrentAppInfo(ctx, client)
 	if err != nil {
 		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get qBittorrent application info")
 		RespondError(w, http.StatusInternalServerError, "Failed to get qBittorrent application info")
@@ -77,7 +94,7 @@ func (h *QBittorrentInfoHandler) GetQBittorrentAppInfo(w http.ResponseWriter, r 
 }
 
 // getQBittorrentAppInfo fetches application info from qBittorrent API
-func (h *QBittorrentInfoHandler) getQBittorrentAppInfo(ctx context.Context, client *internalqbittorrent.Client) (*QBittorrentAppInfo, error) {
+func getQBittorrentAppInfo(ctx context.Context, client qbittorrentAppInfoClient) (*QBittorrentAppInfo, error) {
 	// Get qBittorrent application version
 	version, err := client.GetAppVersionCtx(ctx)
 	if err != nil {
@@ -115,5 +132,25 @@ func (h *QBittorrentInfoHandler) getQBittorrentAppInfo(ctx context.Context, clie
 		},
 	}
 
+	if supportsProcessInfo(webAPIVersion) {
+		processInfo, err := client.GetProcessInfoCtx(ctx)
+		if err != nil {
+			log.Debug().Err(err).Str("webAPIVersion", webAPIVersion).Msg("Failed to get qBittorrent process info")
+		} else {
+			appInfo.ProcessInfo = &QBittorrentProcessInfo{
+				LaunchTime: processInfo.LaunchTime,
+			}
+		}
+	}
+
 	return appInfo, nil
+}
+
+func supportsProcessInfo(webAPIVersion string) bool {
+	version, err := semver.NewVersion(strings.TrimSpace(webAPIVersion))
+	if err != nil {
+		return false
+	}
+
+	return !version.LessThan(processInfoMinWebAPIVersion)
 }

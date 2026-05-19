@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -21,6 +21,7 @@ interface InstanceMetadata {
 export function useInstanceMetadata(instanceId: number) {
   const query = useQuery<InstanceMetadata>({
     queryKey: ["instance-metadata", instanceId],
+    enabled: instanceId > 0,
     queryFn: async () => {
       // Fetch metadata in parallel for efficiency
       const [categories, tags, preferences] = await Promise.all([

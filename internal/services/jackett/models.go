@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package jackett
@@ -19,6 +19,10 @@ type TorznabSearchRequest struct {
 	IMDbID string `json:"imdb_id,omitempty"`
 	// TVDbID for TV shows (optional)
 	TVDbID string `json:"tvdb_id,omitempty"`
+	// TMDbID for movies (optional, from ARR lookup)
+	TMDbID int `json:"tmdb_id,omitempty"`
+	// TVMazeID for TV shows (optional, from ARR lookup)
+	TVMazeID int `json:"tvmaze_id,omitempty"`
 	// Year for movies/shows/music (optional)
 	Year int `json:"year,omitempty"`
 	// Season for TV shows (optional)
@@ -37,8 +41,12 @@ type TorznabSearchRequest struct {
 	IndexerIDs []int `json:"indexer_ids,omitempty"`
 	// CacheMode controls cache behaviour (""=default, "bypass" = skip cache)
 	CacheMode string `json:"cache_mode,omitempty"`
+	// OmitQueryForIDs when true, omits the q parameter if IDs are present (for cross-seed ID-driven searches)
+	OmitQueryForIDs bool `json:"-"`
 	// SkipHistory prevents recording this search in the history buffer
 	SkipHistory bool `json:"-"`
+	// ReturnAllResults skips response pagination for internal callers that need the complete result set.
+	ReturnAllResults bool `json:"-"`
 	// OnComplete is called when a search job for an indexer completes
 	OnComplete func(jobID uint64, indexerID int, err error) `json:"-"`
 	// OnAllComplete is called when all search jobs complete with the final results
@@ -101,6 +109,14 @@ type SearchResult struct {
 	IMDbID string `json:"imdb_id,omitempty"`
 	// TVDb ID if available
 	TVDbID string `json:"tvdb_id,omitempty"`
+	// TMDb ID if available
+	TMDbID string `json:"tmdb_id,omitempty"`
+	// SearchIMDbID is the IMDb ID actually used in the per-indexer search request, if any.
+	SearchIMDbID string `json:"search_imdb_id,omitempty"`
+	// SearchTVDbID is the TVDb ID actually used in the per-indexer search request, if any.
+	SearchTVDbID string `json:"search_tvdb_id,omitempty"`
+	// SearchTMDbID is the TMDb ID actually used in the per-indexer search request, if any.
+	SearchTMDbID int `json:"search_tmdb_id,omitempty"`
 	// Source parsed from release name (e.g., "WEB-DL", "BluRay", "HDTV")
 	Source string `json:"source,omitempty"`
 	// Collection/streaming service parsed from release name (e.g., "AMZN", "NF", "HULU", "MAX")

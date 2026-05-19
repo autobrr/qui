@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package web
@@ -68,6 +68,21 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 	r.Get("/pwa-512x512.png", h.serveAssets)
 	r.Get("/swizzin.png", h.serveAssets)
 	r.Get("/napster.png", h.serveAssets)
+
+	// Redirect /index.html to the SPA root so SSO proxies that preserve
+	// the original request path (Pangolin, Cloudflare Access, etc.) don't
+	// land on a client-side 404.
+	spaRoot := h.baseURL
+	if spaRoot == "" {
+		spaRoot = "/"
+	}
+	r.Get("/index.html", func(w http.ResponseWriter, r *http.Request) {
+		target := spaRoot
+		if r.URL.RawQuery != "" {
+			target += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, target, http.StatusMovedPermanently)
+	})
 
 	// SPA routes
 	r.Get("/", h.serveSPA)

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package qbittorrent
@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -58,6 +59,9 @@ type torrentLookup interface {
 // TorrentCompletionHandler is invoked when a torrent transitions to a completed state.
 type TorrentCompletionHandler func(ctx context.Context, instanceID int, torrent qbt.Torrent)
 
+// TorrentAddedHandler is invoked when a torrent is first seen as new.
+type TorrentAddedHandler func(ctx context.Context, instanceID int, torrent qbt.Torrent)
+
 // Global URL cache for domain extraction - shared across all sync managers
 var urlCache = ttlcache.New(ttlcache.Options[string, string]{}.SetDefaultTTL(5 * time.Minute))
 
@@ -90,16 +94,23 @@ const (
 )
 
 // TorrentView extends qBittorrent's torrent with UI-specific metadata.
+// Uses pointer embedding to avoid unnecessary copies of the large qbt.Torrent struct.
 type TorrentView struct {
-	qbt.Torrent
+	*qbt.Torrent
 	TrackerHealth TrackerHealth `json:"tracker_health,omitempty"`
 }
 
 // CrossInstanceTorrentView extends TorrentView with cross-instance metadata.
+// Uses pointer embedding to avoid unnecessary copies of the large qbt.Torrent struct.
 type CrossInstanceTorrentView struct {
-	TorrentView
+	*TorrentView
 	InstanceID   int    `json:"instance_id"`
 	InstanceName string `json:"instance_name"`
+}
+
+type TorrentTarget struct {
+	InstanceID int
+	Hash       string
 }
 
 type TorrentResponse struct {
@@ -167,6 +178,11 @@ type ValidatedTrackerMapping struct {
 	UpdatedAt      time.Time
 }
 
+// TrackerCustomizationLister provides access to tracker customizations for sorting.
+type TrackerCustomizationLister interface {
+	List(ctx context.Context) ([]*models.TrackerCustomization, error)
+}
+
 type SyncManager struct {
 	clientPool   *ClientPool
 	exprCache    *ttlcache.Cache[string, *vm.Program]
@@ -194,6 +210,11 @@ type SyncManager struct {
 	// Validated tracker mapping cache - avoids stale MainData.Trackers entries
 	validatedTrackerMu      sync.RWMutex
 	validatedTrackerMapping map[int]*ValidatedTrackerMapping
+
+	// Tracker customization store for custom display names in sorting
+	trackerCustomizationStore TrackerCustomizationLister
+	// Cached tracker display name map (domain -> displayName), refreshed periodically
+	trackerDisplayNameCache *ttlcache.Cache[string, map[string]string]
 }
 
 // ResumeWhenCompleteOptions configure resume monitoring behavior.
@@ -212,20 +233,24 @@ type OptimisticTorrentUpdate struct {
 	Action        string           `json:"action"`
 }
 
-// NewSyncManager creates a new sync manager
-func NewSyncManager(clientPool *ClientPool) *SyncManager {
+// NewSyncManager creates a new sync manager.
+// The trackerCustomizationStore parameter enables custom display names for tracker sorting;
+// pass nil if custom tracker names are not needed.
+func NewSyncManager(clientPool *ClientPool, trackerCustomizationStore TrackerCustomizationLister) *SyncManager {
 	sm := &SyncManager{
-		clientPool:              clientPool,
-		exprCache:               ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
-		debouncedSyncTimers:     make(map[int]*time.Timer),
-		syncDebounceDelay:       200 * time.Millisecond,
-		syncDebounceMinJitter:   10 * time.Millisecond,
-		fileFetchSem:            make(map[int]chan struct{}),
-		fileFetchMaxConcurrent:  16,
-		trackerHealthCache:      make(map[int]*TrackerHealthCounts),
-		trackerHealthCancel:     make(map[int]context.CancelFunc),
-		trackerHealthRefresh:    60 * time.Second,
-		validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
+		clientPool:                clientPool,
+		trackerCustomizationStore: trackerCustomizationStore,
+		exprCache:                 ttlcache.New(ttlcache.Options[string, *vm.Program]{}.SetDefaultTTL(5 * time.Minute)),
+		debouncedSyncTimers:       make(map[int]*time.Timer),
+		syncDebounceDelay:         200 * time.Millisecond,
+		syncDebounceMinJitter:     10 * time.Millisecond,
+		fileFetchSem:              make(map[int]chan struct{}),
+		fileFetchMaxConcurrent:    16,
+		trackerHealthCache:        make(map[int]*TrackerHealthCounts),
+		trackerHealthCancel:       make(map[int]context.CancelFunc),
+		trackerHealthRefresh:      60 * time.Second,
+		validatedTrackerMapping:   make(map[int]*ValidatedTrackerMapping),
+		trackerDisplayNameCache:   ttlcache.New(ttlcache.Options[string, map[string]string]{}.SetDefaultTTL(60 * time.Second)),
 	}
 
 	// Set up bidirectional reference for background task notifications
@@ -241,6 +266,14 @@ func (sm *SyncManager) SetFilesManager(fm FilesManager) {
 	sm.filesManager.Store(fm)
 }
 
+// GetClient returns a client for an instance, creating one if needed
+func (sm *SyncManager) GetClient(ctx context.Context, instanceID int) (*Client, error) {
+	if sm == nil || sm.clientPool == nil {
+		return nil, fmt.Errorf("client pool unavailable")
+	}
+	return sm.clientPool.GetClient(ctx, instanceID)
+}
+
 // getFilesManager returns the current files manager in a thread-safe manner
 // Returns nil if no files manager is set
 func (sm *SyncManager) getFilesManager() FilesManager {
@@ -249,6 +282,60 @@ func (sm *SyncManager) getFilesManager() FilesManager {
 		return nil
 	}
 	return v.(FilesManager)
+}
+
+// InvalidateTrackerDisplayNameCache clears the cached tracker display name map.
+// Call this when tracker customizations are created, updated, or deleted to ensure
+// sorting uses the latest custom display names.
+func (sm *SyncManager) InvalidateTrackerDisplayNameCache() {
+	if sm == nil || sm.trackerDisplayNameCache == nil {
+		return
+	}
+	sm.trackerDisplayNameCache.Delete("tracker_display_names")
+}
+
+// getTrackerDisplayNameMap returns a cached map of lowercase domain -> display name.
+// The cache is refreshed every 60 seconds. Returns an empty map if no customizations are configured.
+func (sm *SyncManager) getTrackerDisplayNameMap() map[string]string {
+	const cacheKey = "tracker_display_names"
+
+	if sm == nil || sm.trackerDisplayNameCache == nil {
+		return make(map[string]string)
+	}
+
+	// Check cache first
+	if cached, found := sm.trackerDisplayNameCache.Get(cacheKey); found {
+		return cached
+	}
+
+	// No cached value or expired - build new map
+	if sm.trackerCustomizationStore == nil {
+		// Store empty map in cache to avoid repeated nil checks
+		empty := make(map[string]string)
+		sm.trackerDisplayNameCache.Set(cacheKey, empty, ttlcache.DefaultTTL)
+		return empty
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	customizations, err := sm.trackerCustomizationStore.List(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load tracker customizations for sorting")
+		// Return empty map on error (don't cache to allow retry)
+		return make(map[string]string)
+	}
+
+	// Build the map: each domain maps to its display name
+	result := make(map[string]string)
+	for _, c := range customizations {
+		for _, domain := range c.Domains {
+			result[strings.ToLower(domain)] = c.DisplayName
+		}
+	}
+
+	sm.trackerDisplayNameCache.Set(cacheKey, result, ttlcache.DefaultTTL)
+	return result
 }
 
 // StartTrackerHealthRefresh starts a background goroutine that periodically refreshes
@@ -351,18 +438,18 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 	}
 
 	for _, t := range enriched {
-		// Health counts
-		if sm.torrentIsUnregistered(t) {
+		// Health counts are mutually exclusive.
+		switch sm.determineTrackerHealth(&t) {
+		case TrackerHealthUnregistered:
 			counts.Unregistered++
 			counts.UnregisteredSet[t.Hash] = struct{}{}
-		}
-		if sm.torrentTrackerIsDown(t) {
+		case TrackerHealthDown:
 			counts.TrackerDown++
 			counts.TrackerDownSet[t.Hash] = struct{}{}
 		}
 
 		// Tracker domain mapping
-		domains := sm.getDomainsForTorrent(t)
+		domains := sm.getDomainsForTorrent(&t)
 		if len(domains) > 0 {
 			mapping.HashToDomains[t.Hash] = domains
 			for domain := range domains {
@@ -379,6 +466,13 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 	sm.trackerHealthMu.Unlock()
 
 	sm.setValidatedTrackerMapping(instanceID, mapping)
+
+	// Queue icon fetches for discovered tracker domains. We do this here (in the
+	// background refresh) so icons get fetched even when API requests use the
+	// validated mapping path (which doesn't walk MainData.Trackers).
+	for domain := range mapping.DomainToHashes {
+		trackericons.QueueFetch(domain, "")
+	}
 
 	log.Debug().
 		Int("instanceID", instanceID).
@@ -493,8 +587,11 @@ func (sm *SyncManager) setValidatedTrackerMapping(instanceID int, mapping *Valid
 
 // getDomainsForTorrent extracts all tracker domains from a torrent.
 // Uses the Trackers slice if populated, otherwise falls back to the Tracker field.
-func (sm *SyncManager) getDomainsForTorrent(t qbt.Torrent) map[string]struct{} {
+func (sm *SyncManager) getDomainsForTorrent(t *qbt.Torrent) map[string]struct{} {
 	domains := make(map[string]struct{})
+	if t == nil {
+		return domains
+	}
 	if len(t.Trackers) > 0 {
 		for _, tracker := range t.Trackers {
 			if domain := sm.ExtractDomainFromURL(tracker.Url); domain != "" && domain != "Unknown" {
@@ -667,6 +764,14 @@ func (sm *SyncManager) SetTorrentCompletionHandler(handler TorrentCompletionHand
 	sm.clientPool.SetTorrentCompletionHandler(handler)
 }
 
+// SetTorrentAddedHandler registers a callback for torrent added events across all clients.
+func (sm *SyncManager) SetTorrentAddedHandler(handler TorrentAddedHandler) {
+	if sm == nil || sm.clientPool == nil {
+		return
+	}
+	sm.clientPool.SetTorrentAddedHandler(handler)
+}
+
 // InvalidateFileCache invalidates the file cache for a torrent
 func (sm *SyncManager) InvalidateFileCache(ctx context.Context, instanceID int, hash string) error {
 	fm := sm.getFilesManager()
@@ -683,10 +788,12 @@ func (sm *SyncManager) GetErrorStore() *models.InstanceErrorStore {
 
 // GetTorrents gets torrents with the specified filter options
 func (sm *SyncManager) GetTorrents(ctx context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
-	// Get client and sync manager
-	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	_, syncManager, _, err := sm.readMainData(ctx, instanceID, mainDataRead)
 	if err != nil {
 		return nil, err
+	}
+	if syncManager == nil {
+		return nil, errors.New("sync manager not initialized")
 	}
 
 	// Get torrents with filters
@@ -758,10 +865,12 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	var allTorrentsForCounts []qbt.Torrent
 	var err error
 
-	// Get client and sync manager
-	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	client, syncManager, mainData, err := sm.readMainData(ctx, instanceID, mainDataRead)
 	if err != nil {
 		return nil, err
+	}
+	if syncManager == nil {
+		return nil, errors.New("sync manager not initialized")
 	}
 
 	skipTrackerHydration := shouldSkipTrackerHydration(ctx)
@@ -771,9 +880,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		trackerHealthSupported = false
 	}
 	needsTrackerHealthSorting := trackerHealthSupported && sort == "state"
-
-	// Get MainData for tracker filtering (if needed)
-	mainData := syncManager.GetData()
 
 	// Determine if we can use library filtering or need manual filtering
 	// Use library filtering only if we have single filters that the library supports
@@ -848,7 +954,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	supportsSubcategories := client.SupportsSubcategories()
-	useSubcategories := resolveUseSubcategories(supportsSubcategories, mainData, categories)
+	subcategoriesAlwaysEnabled := client.SubcategoriesAlwaysEnabled()
+	useSubcategories := resolveUseSubcategories(supportsSubcategories, subcategoriesAlwaysEnabled, mainData, categories)
 
 	if useManualFiltering {
 		// Use manual filtering - get all torrents and filter manually
@@ -877,9 +984,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 		filteredTorrents = syncManager.GetTorrents(torrentFilterOptions)
 
-		// Save all torrents for counts before applying manual filters
-		allTorrentsForCounts = make([]qbt.Torrent, len(filteredTorrents))
-		copy(allTorrentsForCounts, filteredTorrents)
+		// Keep reference to unfiltered torrents for counts (enrichment and filtering return new slices, so no copy needed)
+		allTorrentsForCounts = filteredTorrents
 
 		// Apply manual filtering for multiple selections
 		if trackerHealthSupported && needsTrackerHydration {
@@ -889,7 +995,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData, categories, useSubcategories)
 	} else {
 		// Use library filtering for single selections
-		log.Debug().
+		log.Trace().
 			Int("instanceID", instanceID).
 			Int("hashFilters", len(filters.Hashes)).
 			Msg("Using library filtering for single selections")
@@ -951,7 +1057,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		}
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("instanceID", instanceID).
 		Int("totalCount", len(filteredTorrents)).
 		Bool("useManualFiltering", useManualFiltering).
@@ -962,7 +1068,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		filteredTorrents = sm.filterTorrentsBySearch(filteredTorrents, search)
 	}
 
-	log.Debug().
+	log.Trace().
 		Int("instanceID", instanceID).
 		Int("filtered", len(filteredTorrents)).
 		Msg("Applied search filtering")
@@ -991,15 +1097,30 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		sm.sortTorrentsByETA(filteredTorrents, order == "desc")
 	}
 
+	// Apply custom sorting for timestamp fields with fallback to state, name, hash
+	if sort == "last_activity" {
+		// LastActivity doesn't always update every tick for active torrents, so truncate to 60s to ensure sort stability
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.LastActivity / 60 })
+	}
+
+	if sort == "added_on" {
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.AddedOn })
+	}
+
+	if sort == "completion_on" {
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.CompletionOn })
+	}
+
+	if sort == "seen_complete" {
+		sm.sortTorrentsByTimestamp(filteredTorrents, order == "desc", func(t qbt.Torrent) int64 { return t.SeenComplete })
+	}
+
 	// Calculate stats from filtered torrents
 	stats := sm.calculateStats(filteredTorrents)
 
 	// Apply pagination to filtered results; limit <= 0 means "unbounded"
 	totalTorrents := len(filteredTorrents)
-	start := max(offset, 0)
-	if start > totalTorrents {
-		start = totalTorrents
-	}
+	start := min(max(offset, 0), totalTorrents)
 
 	end := totalTorrents
 	if limit > 0 {
@@ -1019,8 +1140,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	} else {
 		allTorrents = syncManager.GetTorrents(qbt.TorrentFilterOptions{})
 	}
-
-	useSubcategories = resolveUseSubcategories(supportsSubcategories, mainData, categories)
 
 	var enrichedAll []qbt.Torrent
 
@@ -1072,9 +1191,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	if len(paginatedTorrents) > 0 {
 		paginatedViews = make([]TorrentView, len(paginatedTorrents))
 		for i, torrent := range paginatedTorrents {
-			view := TorrentView{Torrent: torrent}
+			view := TorrentView{Torrent: &torrent}
 			// First try to determine health from enriched tracker data
-			if health := sm.determineTrackerHealth(torrent); health != "" {
+			if health := sm.determineTrackerHealth(&torrent); health != "" {
 				view.TrackerHealth = health
 			} else if cachedHealth != nil {
 				// Fall back to cached hash sets if torrent wasn't enriched
@@ -1091,31 +1210,25 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// Determine cache metadata based on last sync update time
 	var cacheMetadata *CacheMetadata
 	var serverState *qbt.ServerState
-	client, clientErr := sm.clientPool.GetClient(ctx, instanceID)
-	if clientErr == nil {
-		syncManager := client.GetSyncManager()
-		if syncManager != nil {
-			lastSyncTime := syncManager.LastSyncTime()
-			now := time.Now()
-			age := int(now.Sub(lastSyncTime).Seconds())
-			isFresh := age <= 1 // Fresh if updated within the last second
+	if syncManager != nil {
+		lastSyncTime := syncManager.LastSyncTime()
+		now := time.Now()
+		age := int(time.Since(lastSyncTime).Seconds())
+		isFresh := age <= 1 // Fresh if updated within the last second
 
-			source := "cache"
-			if isFresh {
-				source = "fresh"
-			}
-
-			cacheMetadata = &CacheMetadata{
-				Source:      source,
-				Age:         age,
-				IsStale:     !isFresh,
-				NextRefresh: now.Add(time.Second).Format(time.RFC3339),
-			}
+		source := "cache"
+		if isFresh {
+			source = "fresh"
 		}
 
-		if cached := client.GetCachedServerState(); cached != nil {
-			serverState = cached
+		cacheMetadata = &CacheMetadata{
+			Source:      source,
+			Age:         age,
+			IsStale:     !isFresh,
+			NextRefresh: now.Add(time.Second).Format(time.RFC3339),
 		}
+
+		serverState = resolveServerState(syncManager, mainDataServerState(mainData))
 	}
 
 	response := &TorrentResponse{
@@ -1136,7 +1249,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// This ensures real-time updates are always reflected
 	// The sync manager is the single source of truth
 
-	log.Debug().
+	log.Trace().
 		Int("instanceID", instanceID).
 		Int("count", len(paginatedViews)).
 		Int("total", len(filteredTorrents)).
@@ -1146,6 +1259,145 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		Msg("Fresh torrent data fetched and cached")
 
 	return response, nil
+}
+
+type TorrentFieldResponse struct {
+	Values []string `json:"values"`
+	Total  int      `json:"total"`
+}
+
+// GetTorrentField returns field values for torrents matching the given filters.
+// Supported fields: "name", "hash", "full_path" (save_path/name), "tags", "magnet_uri".
+// excludeHashes and excludeTargets remove specific torrents from the result.
+func (sm *SyncManager) GetTorrentField(
+	ctx context.Context,
+	instanceID int,
+	field, sort, order, search string,
+	filters FilterOptions,
+	excludeHashes []string,
+	excludeTargets []TorrentTarget,
+) (*TorrentFieldResponse, error) {
+	response, err := sm.GetTorrentsWithFilters(ctx, instanceID, 0, 0, sort, order, search, filters)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build exclusion set
+	var excluded map[string]struct{}
+	if len(excludeHashes) > 0 {
+		excluded = make(map[string]struct{}, len(excludeHashes))
+		for _, h := range excludeHashes {
+			normalized := normalizeTorrentFieldHash(h)
+			if normalized != "" {
+				excluded[normalized] = struct{}{}
+			}
+		}
+	}
+
+	var excludedTargets map[string]struct{}
+	if len(excludeTargets) > 0 {
+		excludedTargets = make(map[string]struct{}, len(excludeTargets))
+		for _, target := range excludeTargets {
+			if target.InstanceID != instanceID {
+				continue
+			}
+			normalized := normalizeTorrentFieldHash(target.Hash)
+			if normalized != "" {
+				excludedTargets[normalized] = struct{}{}
+			}
+		}
+	}
+
+	values := make([]string, 0, len(response.Torrents))
+	for _, t := range response.Torrents {
+		if torrentFieldHashExcluded(excluded, excludedTargets, t.Hash, t.InfohashV1, t.InfohashV2) {
+			continue
+		}
+
+		var v string
+		switch field {
+		case "name":
+			v = t.Name
+		case "hash":
+			v = canonicalizeHash(t.InfohashV1)
+			if v == "" {
+				candidate := canonicalizeHash(t.Hash)
+				v2 := canonicalizeHash(t.InfohashV2)
+				if candidate != "" && (v2 == "" || v2 != candidate) {
+					v = candidate
+				} else if v2 != "" {
+					v = v2
+				}
+			}
+		case "full_path":
+			// Normalize backslashes from Windows qBittorrent instances
+			savePath := strings.ReplaceAll(t.SavePath, "\\", "/")
+			if savePath != "" && t.Name != "" {
+				if strings.HasSuffix(savePath, "/") {
+					v = savePath + t.Name
+				} else {
+					v = savePath + "/" + t.Name
+				}
+			}
+		case "tags":
+			v = t.Tags
+		case "magnet_uri":
+			v = strings.TrimSpace(t.MagnetURI)
+		}
+		if field == "tags" || v != "" {
+			values = append(values, v)
+		}
+	}
+
+	return &TorrentFieldResponse{
+		Values: values,
+		Total:  len(values),
+	}, nil
+}
+
+func normalizeTorrentFieldHash(hash string) string {
+	return strings.ToLower(strings.TrimSpace(hash))
+}
+
+func torrentFieldHashVariants(hash, infohashV1, infohashV2 string) []string {
+	candidates := []string{
+		hash,
+		infohashV1,
+		infohashV2,
+		canonicalizeHash(hash),
+		canonicalizeHash(infohashV1),
+		canonicalizeHash(infohashV2),
+	}
+	seen := make(map[string]struct{}, len(candidates))
+	var variants []string
+	for _, candidate := range candidates {
+		normalized := normalizeTorrentFieldHash(candidate)
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		variants = append(variants, normalized)
+	}
+	return variants
+}
+
+func torrentFieldHashExcluded(excluded, excludedTargets map[string]struct{}, hash, infohashV1, infohashV2 string) bool {
+	for _, candidate := range torrentFieldHashVariants(hash, infohashV1, infohashV2) {
+		if excluded != nil {
+			if _, skip := excluded[candidate]; skip {
+				return true
+			}
+		}
+		if excludedTargets != nil {
+			if _, skip := excludedTargets[candidate]; skip {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // GetCachedInstanceTorrents returns a snapshot of torrents for a single instance using cached sync data.
@@ -1170,12 +1422,25 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		return nil, nil
 	}
 
+	// Get cached tracker health counts for this instance
+	cachedHealth := sm.GetTrackerHealthCounts(instanceID)
+
 	views := make([]CrossInstanceTorrentView, len(torrents))
 	for i, torrent := range torrents {
+		view := &TorrentView{Torrent: &torrent}
+		// First try to determine health from enriched tracker data
+		if health := sm.determineTrackerHealth(&torrent); health != "" {
+			view.TrackerHealth = health
+		} else if cachedHealth != nil {
+			// Fall back to cached hash sets if torrent wasn't enriched
+			if _, ok := cachedHealth.UnregisteredSet[torrent.Hash]; ok {
+				view.TrackerHealth = TrackerHealthUnregistered
+			} else if _, ok := cachedHealth.TrackerDownSet[torrent.Hash]; ok {
+				view.TrackerHealth = TrackerHealthDown
+			}
+		}
 		views[i] = CrossInstanceTorrentView{
-			TorrentView: TorrentView{
-				Torrent: torrent,
-			},
+			TorrentView:  view,
 			InstanceID:   instance.ID,
 			InstanceName: instance.Name,
 		}
@@ -1191,13 +1456,22 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 	return views, nil
 }
 
-// GetCrossInstanceTorrentsWithFilters gets torrents matching filters from all instances
-func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
+// GetCrossInstanceTorrentsWithFilters gets torrents matching filters from active instances.
+// When instanceIDs is non-empty, only the provided active instance IDs are included.
+func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters FilterOptions, instanceIDs []int) (*TorrentResponse, error) {
 	// Get all instances
 	instances, err := sm.clientPool.instanceStore.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instances: %w", err)
 	}
+
+	selectedInstanceIDs := make(map[int]struct{}, len(instanceIDs))
+	for _, instanceID := range instanceIDs {
+		if instanceID > 0 {
+			selectedInstanceIDs[instanceID] = struct{}{}
+		}
+	}
+	hasScopedInstanceSelection := len(selectedInstanceIDs) > 0
 
 	// Sort instances by ID for deterministic processing order
 	slices.SortFunc(instances, func(a, b *models.Instance) int {
@@ -1207,9 +1481,25 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	var allTorrents []CrossInstanceTorrentView
 	var totalCount int
 	var partialResults bool
+	var aggregatedStats *TorrentStats
+	var aggregatedCounts *TorrentCounts
+	var trackerHealthSupported bool
+	var useSubcategories bool
+	aggregatedCategories := make(map[string]qbt.Category)
+	aggregatedTagSet := make(map[string]struct{})
 
 	// Iterate through all instances and collect matching torrents
 	for _, instance := range instances {
+		// Disabled instances are intentionally excluded from unified views.
+		if instance == nil || !instance.IsActive {
+			continue
+		}
+		if hasScopedInstanceSelection {
+			if _, selected := selectedInstanceIDs[instance.ID]; !selected {
+				continue
+			}
+		}
+
 		// Check for context cancellation before each network call
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -1234,79 +1524,26 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		// Convert TorrentView to CrossInstanceTorrentView
 		for _, torrentView := range instanceResponse.Torrents {
 			crossInstanceTorrent := CrossInstanceTorrentView{
-				TorrentView:  torrentView,
+				TorrentView:  &torrentView,
 				InstanceID:   instance.ID,
 				InstanceName: instance.Name,
 			}
 			allTorrents = append(allTorrents, crossInstanceTorrent)
 		}
+
+		aggregatedStats = mergeTorrentStats(aggregatedStats, instanceResponse.Stats)
+		aggregatedCounts = mergeTorrentCounts(aggregatedCounts, instanceResponse.Counts)
+		trackerHealthSupported = trackerHealthSupported || instanceResponse.TrackerHealthSupported
+		mergeTorrentCategories(aggregatedCategories, instanceResponse.Categories)
+		mergeTorrentTags(aggregatedTagSet, instanceResponse.Tags)
+		useSubcategories = useSubcategories || instanceResponse.UseSubcategories
+
 		totalCount += len(instanceResponse.Torrents)
 	}
 
 	// Apply sorting if specified - always use deterministic secondary sort
 	if sort != "" {
-		switch sort {
-		case "name":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := strings.Compare(a.Name, b.Name)
-				if result == 0 {
-					// Secondary sort by hash for deterministic ordering
-					result = strings.Compare(a.Hash, b.Hash)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		case "size":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := cmp.Compare(a.Size, b.Size)
-				if result == 0 {
-					// Secondary sort by name for deterministic ordering
-					result = strings.Compare(a.Name, b.Name)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		case "progress":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := cmp.Compare(a.Progress, b.Progress)
-				if result == 0 {
-					// Secondary sort by name for deterministic ordering
-					result = strings.Compare(a.Name, b.Name)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		case "added_on":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := cmp.Compare(a.AddedOn, b.AddedOn)
-				if result == 0 {
-					// Secondary sort by hash for deterministic ordering
-					result = strings.Compare(a.Hash, b.Hash)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		case "instance":
-			slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
-				result := strings.Compare(a.InstanceName, b.InstanceName)
-				if result == 0 {
-					// Secondary sort by name for deterministic ordering
-					result = strings.Compare(a.Name, b.Name)
-				}
-				if order == "desc" {
-					result = -result
-				}
-				return result
-			})
-		}
+		sm.sortCrossInstanceTorrents(allTorrents, sort, order == "desc")
 	} else {
 		// Default sort by name if no sort specified for consistent ordering
 		slices.SortFunc(allTorrents, func(a, b CrossInstanceTorrentView) int {
@@ -1320,23 +1557,14 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 
 	// Apply pagination
 	// Clamp offset to valid range [0, len(allTorrents)]
-	start := offset
-	if start < 0 {
-		start = 0
-	}
-	if start > len(allTorrents) {
-		start = len(allTorrents)
-	}
+	start := min(max(offset, 0), len(allTorrents))
 
 	// Handle limit: non-positive means "no limit"
 	var end int
 	if limit <= 0 {
 		end = len(allTorrents)
 	} else {
-		end = start + limit
-		if end > len(allTorrents) {
-			end = len(allTorrents)
-		}
+		end = min(start+limit, len(allTorrents))
 	}
 
 	// Ensure start <= end before slicing
@@ -1347,16 +1575,158 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 	paginatedTorrents := allTorrents[start:end]
 	hasMore := end < len(allTorrents)
 
+	var categories map[string]qbt.Category
+	if len(aggregatedCategories) > 0 {
+		categories = aggregatedCategories
+	}
+
 	response := &TorrentResponse{
 		CrossInstanceTorrents:  paginatedTorrents,
 		Total:                  totalCount,
+		Stats:                  aggregatedStats,
+		Counts:                 aggregatedCounts,
+		Categories:             categories,
+		Tags:                   sortedTagKeys(aggregatedTagSet),
+		UseSubcategories:       useSubcategories,
 		HasMore:                hasMore,
-		TrackerHealthSupported: false, // Cross-instance doesn't support tracker health
+		TrackerHealthSupported: trackerHealthSupported,
 		IsCrossInstance:        true,
 		PartialResults:         partialResults,
 	}
 
 	return response, nil
+}
+
+func mergeTorrentStats(base *TorrentStats, next *TorrentStats) *TorrentStats {
+	if next == nil {
+		return base
+	}
+
+	if base == nil {
+		copyStats := *next
+		return &copyStats
+	}
+
+	base.Total += next.Total
+	base.Downloading += next.Downloading
+	base.Seeding += next.Seeding
+	base.Paused += next.Paused
+	base.Error += next.Error
+	base.Checking += next.Checking
+	base.TotalDownloadSpeed += next.TotalDownloadSpeed
+	base.TotalUploadSpeed += next.TotalUploadSpeed
+	base.TotalSize += next.TotalSize
+	base.TotalRemainingSize += next.TotalRemainingSize
+	base.TotalSeedingSize += next.TotalSeedingSize
+
+	return base
+}
+
+func mergeTorrentCounts(base *TorrentCounts, next *TorrentCounts) *TorrentCounts {
+	if next == nil {
+		return base
+	}
+
+	if base == nil {
+		base = &TorrentCounts{
+			Status:           make(map[string]int, len(next.Status)),
+			Categories:       make(map[string]int, len(next.Categories)),
+			CategorySizes:    make(map[string]int64, len(next.CategorySizes)),
+			Tags:             make(map[string]int, len(next.Tags)),
+			TagSizes:         make(map[string]int64, len(next.TagSizes)),
+			Trackers:         make(map[string]int, len(next.Trackers)),
+			TrackerTransfers: make(map[string]TrackerTransferStats, len(next.TrackerTransfers)),
+		}
+	}
+
+	if base.Status == nil {
+		base.Status = make(map[string]int, len(next.Status))
+	}
+	if base.Categories == nil {
+		base.Categories = make(map[string]int, len(next.Categories))
+	}
+	if base.CategorySizes == nil {
+		base.CategorySizes = make(map[string]int64, len(next.CategorySizes))
+	}
+	if base.Tags == nil {
+		base.Tags = make(map[string]int, len(next.Tags))
+	}
+	if base.TagSizes == nil {
+		base.TagSizes = make(map[string]int64, len(next.TagSizes))
+	}
+	if base.Trackers == nil {
+		base.Trackers = make(map[string]int, len(next.Trackers))
+	}
+	if base.TrackerTransfers == nil {
+		base.TrackerTransfers = make(map[string]TrackerTransferStats, len(next.TrackerTransfers))
+	}
+
+	for key, value := range next.Status {
+		base.Status[key] += value
+	}
+	for key, value := range next.Categories {
+		base.Categories[key] += value
+	}
+	for key, value := range next.CategorySizes {
+		base.CategorySizes[key] += value
+	}
+	for key, value := range next.Tags {
+		base.Tags[key] += value
+	}
+	for key, value := range next.TagSizes {
+		base.TagSizes[key] += value
+	}
+	for key, value := range next.Trackers {
+		base.Trackers[key] += value
+	}
+	for key, value := range next.TrackerTransfers {
+		current := base.TrackerTransfers[key]
+		base.TrackerTransfers[key] = TrackerTransferStats{
+			Uploaded:   current.Uploaded + value.Uploaded,
+			Downloaded: current.Downloaded + value.Downloaded,
+			TotalSize:  current.TotalSize + value.TotalSize,
+			Count:      current.Count + value.Count,
+		}
+	}
+
+	base.Total += next.Total
+
+	return base
+}
+
+func mergeTorrentCategories(base map[string]qbt.Category, next map[string]qbt.Category) {
+	if len(next) == 0 {
+		return
+	}
+
+	for name, category := range next {
+		existing, ok := base[name]
+		if !ok || (existing.SavePath == "" && category.SavePath != "") {
+			base[name] = category
+		}
+	}
+}
+
+func mergeTorrentTags(base map[string]struct{}, next []string) {
+	for _, tag := range next {
+		base[tag] = struct{}{}
+	}
+}
+
+func sortedTagKeys(values map[string]struct{}) []string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	result := make([]string, 0, len(values))
+	for value := range values {
+		result = append(result, value)
+	}
+	slices.SortFunc(result, func(a, b string) int {
+		return strings.Compare(strings.ToLower(a), strings.ToLower(b))
+	})
+
+	return result
 }
 
 // GetQBittorrentSyncManager returns the underlying qBittorrent sync manager for an instance
@@ -1373,53 +1743,109 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		return err
 	}
 
-	// Validate that torrents exist before proceeding
-	torrentMap := syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes})
-	if len(torrentMap) == 0 {
-		return fmt.Errorf("no sync data available")
-	}
+	canonicalHashes := make([]string, 0, len(hashes)) // Hashes to send to qBittorrent API
+	variantResolutions := 0
 
-	existingTorrents := make([]*qbt.Torrent, 0, len(torrentMap))
-	missingHashes := make([]string, 0, len(hashes)-len(torrentMap))
-	for _, hash := range hashes {
-		if torrent, exists := torrentMap[hash]; exists {
-			existingTorrents = append(existingTorrents, &torrent)
-		} else {
-			missingHashes = append(missingHashes, hash)
+	// resolveAllHashes attempts to resolve all input hashes using variant-aware resolution.
+	// It resets canonicalHashes and returns the count of resolved and variant-resolved hashes.
+	resolveAllHashes := func(torrentMap map[string]qbt.Torrent) (resolved, variants int) {
+		canonicalHashes = canonicalHashes[:0] // reset slice, keep capacity
+		for _, hash := range hashes {
+			torrent, found := resolveTorrentByVariantHash(torrentMap, hash)
+			if found {
+				canonicalHashes = append(canonicalHashes, torrent.Hash)
+				if !strings.EqualFold(torrent.Hash, hash) {
+					variants++
+				}
+			}
 		}
+		return len(canonicalHashes), variants
 	}
 
-	if len(existingTorrents) == 0 {
+	// Fast path: try exact hash match with filtered lookup (efficient for large libraries)
+	torrentMap := syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes})
+	resolved, variants := resolveAllHashes(torrentMap)
+	variantResolutions = variants
+
+	// If not all found, try variant resolution with full torrent map.
+	// This handles hybrid v1+v2 torrents where caller provides v1 hash but qBittorrent indexes by v2.
+	if resolved < len(hashes) {
+		torrentMap = syncManager.GetTorrentMap(qbt.TorrentFilterOptions{})
+		resolved, variants = resolveAllHashes(torrentMap)
+		variantResolutions = variants
+	}
+
+	// If still missing (or no sync data), force sync and retry.
+	// This handles "just-added torrent not in sync cache yet" (e.g., cross-seed recheck after add).
+	if resolved < len(hashes) || len(torrentMap) == 0 {
+		_, variantResolutions = bulkActionSyncRetry(syncManager, hashes, instanceID, action, resolveAllHashes)
+	}
+
+	resolvedCount := len(canonicalHashes)
+	if resolvedCount == 0 {
 		return fmt.Errorf("no valid torrents found for bulk action: %s", action)
 	}
 
+	var managedDeleteCleanupTargets []managedDeleteCleanupTarget
+	if action == "deleteWithFiles" {
+		managedDeleteCleanupTargets = sm.buildManagedDeleteCleanupTargets(ctx, instanceID, syncManager, canonicalHashes)
+	}
+
+	// Log debug info when variant resolution was used (helps diagnose hybrid hash issues)
+	if variantResolutions > 0 {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Int("variantResolutions", variantResolutions).
+			Str("action", action).
+			Msg("BulkAction resolved hashes via InfohashV1/V2 variant lookup")
+	}
+
 	// Log warning for any missing torrents
-	if len(missingHashes) > 0 {
+	if resolvedCount < len(hashes) {
 		log.Warn().
 			Int("instanceID", instanceID).
 			Int("requested", len(hashes)).
-			Int("found", len(existingTorrents)).
+			Int("found", resolvedCount).
 			Str("action", action).
 			Msg("Some torrents not found for bulk action")
 	}
 
-	// Apply optimistic update immediately for instant UI feedback
-	sm.applyOptimisticCacheUpdate(instanceID, hashes, action, nil)
+	// Reduce canonical hash duplicates (e.g., hybrid v1+v2 inputs that resolve to the same torrent)
+	if len(canonicalHashes) > 1 {
+		seen := make(map[string]struct{}, len(canonicalHashes))
+		unique := canonicalHashes[:0]
+		for _, hash := range canonicalHashes {
+			key := canonicalizeHash(hash)
+			if key == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			unique = append(unique, hash)
+		}
+		canonicalHashes = unique
+	}
 
-	// Perform action based on type
+	// Apply optimistic update immediately for instant UI feedback
+	// Use canonical hashes for cache consistency
+	sm.applyOptimisticCacheUpdate(instanceID, canonicalHashes, action, nil)
+
+	// Perform action based on type - use canonicalHashes for API calls
 	switch action {
 	case "pause":
-		err = client.PauseCtx(ctx, hashes)
+		err = client.PauseCtx(ctx, canonicalHashes)
 	case "resume":
-		err = client.ResumeCtx(ctx, hashes)
+		err = client.ResumeCtx(ctx, canonicalHashes)
 	case "delete":
-		err = client.DeleteTorrentsCtx(ctx, hashes, false)
+		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, false)
 		// Invalidate caches for deleted torrents
 		if err == nil {
-			sm.RemoveHashesFromTrackerHealthCache(instanceID, hashes)
-			sm.removeHashFromAllTrackerMappings(instanceID, hashes)
+			sm.RemoveHashesFromTrackerHealthCache(instanceID, canonicalHashes)
+			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
 			if fm := sm.getFilesManager(); fm != nil {
-				for _, hash := range hashes {
+				for _, hash := range canonicalHashes {
 					if invalidateErr := fm.InvalidateCache(ctx, instanceID, hash); invalidateErr != nil {
 						log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
 							Msg("Failed to invalidate file cache after torrent deletion")
@@ -1428,13 +1854,14 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			}
 		}
 	case "deleteWithFiles":
-		err = client.DeleteTorrentsCtx(ctx, hashes, true)
+		err = client.DeleteTorrentsCtx(ctx, canonicalHashes, true)
 		// Invalidate caches for deleted torrents
 		if err == nil {
-			sm.RemoveHashesFromTrackerHealthCache(instanceID, hashes)
-			sm.removeHashFromAllTrackerMappings(instanceID, hashes)
+			cleanupManagedDeleteTargets(managedDeleteCleanupTargets)
+			sm.RemoveHashesFromTrackerHealthCache(instanceID, canonicalHashes)
+			sm.removeHashFromAllTrackerMappings(instanceID, canonicalHashes)
 			if fm := sm.getFilesManager(); fm != nil {
-				for _, hash := range hashes {
+				for _, hash := range canonicalHashes {
 					if invalidateErr := fm.InvalidateCache(ctx, instanceID, hash); invalidateErr != nil {
 						log.Warn().Err(invalidateErr).Int("instanceID", instanceID).Str("hash", hash).
 							Msg("Failed to invalidate file cache after torrent deletion")
@@ -1443,32 +1870,32 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			}
 		}
 	case "recheck":
-		err = client.RecheckCtx(ctx, hashes)
+		err = client.RecheckCtx(ctx, canonicalHashes)
 	case "reannounce":
 		// No cache update needed - no visible state change
-		err = client.ReAnnounceTorrentsCtx(ctx, hashes)
+		err = client.ReAnnounceTorrentsCtx(ctx, canonicalHashes)
 	case "increasePriority":
-		err = client.IncreasePriorityCtx(ctx, hashes)
+		err = client.IncreasePriorityCtx(ctx, canonicalHashes)
 		if err == nil {
 			sm.syncAfterModification(instanceID, client, action)
 		}
 	case "decreasePriority":
-		err = client.DecreasePriorityCtx(ctx, hashes)
+		err = client.DecreasePriorityCtx(ctx, canonicalHashes)
 		if err == nil {
 			sm.syncAfterModification(instanceID, client, action)
 		}
 	case "topPriority":
-		err = client.SetMaxPriorityCtx(ctx, hashes)
+		err = client.SetMaxPriorityCtx(ctx, canonicalHashes)
 		if err == nil {
 			sm.syncAfterModification(instanceID, client, action)
 		}
 	case "bottomPriority":
-		err = client.SetMinPriorityCtx(ctx, hashes)
+		err = client.SetMinPriorityCtx(ctx, canonicalHashes)
 		if err == nil {
 			sm.syncAfterModification(instanceID, client, action)
 		}
 	case "toggleSequentialDownload":
-		err = client.ToggleTorrentSequentialDownloadCtx(ctx, hashes)
+		err = client.ToggleTorrentSequentialDownloadCtx(ctx, canonicalHashes)
 		if err == nil {
 			sm.syncAfterModification(instanceID, client, action)
 		}
@@ -1479,71 +1906,129 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	return err
 }
 
+func (sm *SyncManager) buildManagedDeleteCleanupTargets(
+	ctx context.Context,
+	instanceID int,
+	syncManager *qbt.SyncManager,
+	hashes []string,
+) []managedDeleteCleanupTarget {
+	if sm == nil || sm.clientPool == nil || sm.clientPool.instanceStore == nil || syncManager == nil {
+		return nil
+	}
+
+	instance, err := sm.clientPool.instanceStore.Get(ctx, instanceID)
+	if err != nil || instance == nil || !instance.HasLocalFilesystemAccess || strings.TrimSpace(instance.HardlinkBaseDir) == "" {
+		return nil
+	}
+
+	torrents := syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
+	if len(torrents) == 0 {
+		return nil
+	}
+
+	return buildManagedDeleteCleanupTargets(instance.HardlinkBaseDir, torrents)
+}
+
+// bulkActionSyncRetry forces a sync and retries hash resolution for just-added torrents.
+func bulkActionSyncRetry(
+	syncManager *qbt.SyncManager,
+	hashes []string,
+	instanceID int,
+	action string,
+	resolveAllHashes func(map[string]qbt.Torrent) (int, int),
+) (resolved, variants int) {
+	syncCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	const maxAttempts = 3
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if syncErr := syncManager.Sync(syncCtx); syncErr != nil {
+			log.Debug().Err(syncErr).Int("instanceID", instanceID).Str("action", action).
+				Int("attempt", attempt).Msg("BulkAction: forced sync failed")
+			// Continue to retry even if sync failed
+		}
+
+		torrentMap := syncManager.GetTorrentMap(qbt.TorrentFilterOptions{})
+		resolved, variants = resolveAllHashes(torrentMap)
+		if resolved == len(hashes) {
+			return resolved, variants
+		}
+
+		if attempt < maxAttempts {
+			select {
+			case <-syncCtx.Done():
+				return resolved, variants
+			case <-time.After(150 * time.Millisecond):
+			}
+		}
+	}
+	return resolved, variants
+}
+
 // AddTorrent adds a new torrent from file content
-func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
+func (sm *SyncManager) AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	// Get client and sync manager
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Use AddTorrentFromMemoryCtx which accepts byte array
-	if err := client.AddTorrentFromMemoryCtx(ctx, fileContent, options); err != nil {
-		return err
+	resp, err := client.AddTorrentFromMemoryCtx(ctx, fileContent, options)
+	if err != nil {
+		return nil, err
 	}
 
 	// Sync after modification
 	sm.syncAfterModification(instanceID, client, "add_torrent_from_memory")
 
-	return nil
+	return resp, nil
 }
 
 // AddTorrents adds multiple torrents from file content in a single request.
 // This is more efficient than calling AddTorrent multiple times as it sends
 // all files to qBittorrent in one HTTP request.
-func (sm *SyncManager) AddTorrents(ctx context.Context, instanceID int, files [][]byte, options map[string]string) error {
+func (sm *SyncManager) AddTorrents(ctx context.Context, instanceID int, files [][]byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	if len(files) == 0 {
-		return nil
+		return &qbt.TorrentAddResponse{}, nil
 	}
 
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if err := client.AddTorrentsFromMemoryCtx(ctx, files, options); err != nil {
-		return err
+	resp, err := client.AddTorrentsFromMemoryCtx(ctx, files, options)
+	if err != nil {
+		return nil, err
 	}
 
 	sm.syncAfterModification(instanceID, client, "add_torrents_batch")
 
-	return nil
+	return resp, nil
 }
 
 // AddTorrentFromURLs adds new torrents from URLs or magnet links
-func (sm *SyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error {
+func (sm *SyncManager) AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	// Get client and sync manager
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// Add each URL/magnet link
-	for _, url := range urls {
-		url = strings.TrimSpace(url)
-		if url == "" {
-			continue
-		}
-
-		if err := client.AddTorrentFromUrlCtx(ctx, url, options); err != nil {
-			return fmt.Errorf("failed to add torrent from URL %s: %w", url, err)
-		}
+	resp, err := client.AddTorrentsFromUrlsCtx(ctx, urls, options)
+	if err != nil {
+		return nil, fmt.Errorf("failed to add torrent(s) from %s: %w", addTorrentURLsErrorSummary(urls), err)
 	}
 
 	// Sync after modification
 	sm.syncAfterModification(instanceID, client, "add_torrent_from_urls")
 
-	return nil
+	return resp, nil
+}
+
+func addTorrentURLsErrorSummary(urls []string) string {
+	return fmt.Sprintf("%d URL(s)", len(urls))
 }
 
 // GetCategories gets all categories
@@ -1556,6 +2041,9 @@ func (sm *SyncManager) GetCategories(ctx context.Context, instanceID int) (map[s
 
 	// Get categories from sync manager (real-time)
 	categories := syncManager.GetCategories()
+	if categories == nil {
+		categories = make(map[string]qbt.Category)
+	}
 
 	return categories, nil
 }
@@ -1570,12 +2058,49 @@ func (sm *SyncManager) GetTags(ctx context.Context, instanceID int) ([]string, e
 
 	// Get tags from sync manager (real-time)
 	tags := syncManager.GetTags()
+	if tags == nil {
+		tags = []string{}
+	}
 
 	slices.SortFunc(tags, func(a, b string) int {
 		return strings.Compare(strings.ToLower(a), strings.ToLower(b))
 	})
 
 	return tags, nil
+}
+
+// SetTorrentTags replaces all tags on torrents (for qBit 5.1+ / WebAPI 2.11.4+).
+// Returns an error wrapping qbt.ErrUnsupportedVersion if the client doesn't support SetTags.
+func (sm *SyncManager) SetTorrentTags(ctx context.Context, instanceID int, hashes []string, tags []string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	tagsStr := strings.Join(tags, ",")
+	return client.SetTags(ctx, hashes, tagsStr)
+}
+
+// AddTorrentTags adds tags to torrents (works with all qBittorrent versions).
+func (sm *SyncManager) AddTorrentTags(ctx context.Context, instanceID int, hashes []string, tags []string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	tagsStr := strings.Join(tags, ",")
+	return client.AddTagsCtx(ctx, hashes, tagsStr)
+}
+
+// RemoveTorrentTags removes tags from torrents (works with all qBittorrent versions).
+func (sm *SyncManager) RemoveTorrentTags(ctx context.Context, instanceID int, hashes []string, tags []string) error {
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+
+	tagsStr := strings.Join(tags, ",")
+	return client.RemoveTagsCtx(ctx, hashes, tagsStr)
 }
 
 // GetTorrentProperties gets detailed properties for a specific torrent
@@ -1655,6 +2180,22 @@ func (sm *SyncManager) GetTorrentPeers(ctx context.Context, instanceID int, hash
 
 	// Return the current peer data (already merged with incremental updates)
 	return peerSync.GetPeers(), nil
+}
+
+// GetTorrentPieceStates returns the download state of each piece for a torrent.
+// States: 0 = not downloaded, 1 = downloading, 2 = downloaded
+func (sm *SyncManager) GetTorrentPieceStates(ctx context.Context, instanceID int, hash string) ([]qbt.PieceState, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	pieceStates, err := client.GetTorrentPieceStatesCtx(ctx, hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get torrent piece states: %w", err)
+	}
+
+	return pieceStates, nil
 }
 
 // GetTorrentFilesBatch fetches file lists for many torrents using cache-aware batching.
@@ -1800,10 +2341,7 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 
 	elapsed := time.Since(start)
 	if elapsed > 200*time.Millisecond {
-		fetchedCount := len(filesByHash) - cacheHits
-		if fetchedCount < 0 {
-			fetchedCount = 0
-		}
+		fetchedCount := max(len(filesByHash)-cacheHits, 0)
 		log.Debug().
 			Int("instanceID", instanceID).
 			Int("requested", len(normalized.canonical)).
@@ -1864,13 +2402,7 @@ func fileFetchConcurrency(requestCount int) int {
 		return 0
 	}
 
-	limit := runtime.NumCPU()
-	if limit < 4 {
-		limit = 4
-	}
-	if limit > 16 {
-		limit = 16
-	}
+	limit := min(max(runtime.NumCPU(), 4), 16)
 	if requestCount < limit {
 		return requestCount
 	}
@@ -1945,6 +2477,43 @@ func matchesAnyHash(torrent qbt.Torrent, targetSet map[string]struct{}) bool {
 	}
 
 	return false
+}
+
+// resolveTorrentByVariantHash attempts to find a torrent by checking its Hash, InfohashV1, and InfohashV2 fields.
+// This handles hybrid v1+v2 torrents where the provided hash might be a v1 hash but qBittorrent indexes by v2 (or vice versa).
+// Returns the torrent and true if found, zero value and false otherwise.
+func resolveTorrentByVariantHash(torrentMap map[string]qbt.Torrent, inputHash string) (qbt.Torrent, bool) {
+	trimmed := strings.TrimSpace(inputHash)
+	if trimmed == "" {
+		return qbt.Torrent{}, false
+	}
+
+	// Try exact match variants (case-insensitive) - fast path for common case
+	// Maps are case-sensitive, so try original, lowercase, and uppercase
+	for _, variant := range []string{trimmed, strings.ToLower(trimmed), strings.ToUpper(trimmed)} {
+		if torrent, exists := torrentMap[variant]; exists {
+			return torrent, true
+		}
+	}
+
+	// Normalize for variant matching
+	normalized := canonicalizeHash(trimmed)
+
+	// Check all torrents for variant matches (InfohashV1, InfohashV2)
+	// Use map key to avoid copying torrent struct on each iteration
+	for key := range torrentMap {
+		torrent := torrentMap[key]
+		// Check if input matches InfohashV1
+		if torrent.InfohashV1 != "" && canonicalizeHash(torrent.InfohashV1) == normalized {
+			return torrent, true
+		}
+		// Check if input matches InfohashV2
+		if torrent.InfohashV2 != "" && canonicalizeHash(torrent.InfohashV2) == normalized {
+			return torrent, true
+		}
+	}
+
+	return qbt.Torrent{}, false
 }
 
 // ExportTorrent returns the raw .torrent data along with a display name suggestion
@@ -2033,7 +2602,10 @@ func filtersRequireTrackerData(filters FilterOptions) bool {
 		statusFiltersRequireTrackerData(filters.ExcludeStatus)
 }
 
-func (sm *SyncManager) torrentIsUnregistered(torrent qbt.Torrent) bool {
+func (sm *SyncManager) torrentIsUnregistered(torrent *qbt.Torrent) bool {
+	if torrent == nil {
+		return false
+	}
 	if torrent.AddedOn > 0 {
 		addedAt := time.Unix(torrent.AddedOn, 0)
 		if time.Since(addedAt) < time.Hour {
@@ -2051,7 +2623,7 @@ func (sm *SyncManager) torrentIsUnregistered(torrent qbt.Torrent) bool {
 			continue
 		case qbt.TrackerStatusOK:
 			hasWorking = true
-		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotWorking:
+		case qbt.TrackerStatusUpdating, qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError:
 			if trackerMessageMatches(tracker.Message, defaultUnregisteredStatuses) {
 				hasUnregistered = true
 			}
@@ -2061,7 +2633,10 @@ func (sm *SyncManager) torrentIsUnregistered(torrent qbt.Torrent) bool {
 	return hasUnregistered && !hasWorking
 }
 
-func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
+func (sm *SyncManager) torrentTrackerIsDown(torrent *qbt.Torrent) bool {
+	if torrent == nil {
+		return false
+	}
 	var hasWorking bool
 	var hasDown bool
 
@@ -2072,8 +2647,10 @@ func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
 			continue
 		case qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
 			hasWorking = true
-		case qbt.TrackerStatusNotWorking:
-			if trackerMessageMatches(tracker.Message, trackerDownStatuses) {
+		case qbt.TrackerStatusUnreachable:
+			hasDown = true
+		case qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError:
+			if TrackerMessageMatchesDown(tracker.Message) {
 				hasDown = true
 			}
 		default:
@@ -2085,7 +2662,10 @@ func (sm *SyncManager) torrentTrackerIsDown(torrent qbt.Torrent) bool {
 	return hasDown && !hasWorking
 }
 
-func (sm *SyncManager) determineTrackerHealth(torrent qbt.Torrent) TrackerHealth {
+func (sm *SyncManager) determineTrackerHealth(torrent *qbt.Torrent) TrackerHealth {
+	if torrent == nil {
+		return ""
+	}
 	if sm.torrentIsUnregistered(torrent) {
 		return TrackerHealthUnregistered
 	}
@@ -2160,12 +2740,6 @@ type TorrentCounts struct {
 	Total            int                             `json:"total"`
 }
 
-// InstanceSpeeds represents download/upload speeds for an instance
-type InstanceSpeeds struct {
-	Download int64 `json:"download"`
-	Upload   int64 `json:"upload"`
-}
-
 // ExtractDomainFromURL extracts the domain from a BitTorrent tracker URL with caching.
 // Handles multiple formats:
 //   - Standard URLs with schemes (http, https, udp, ws, wss)
@@ -2179,6 +2753,13 @@ type InstanceSpeeds struct {
 func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	urlStr = strings.TrimSpace(urlStr)
 	if urlStr == "" {
+		return ""
+	}
+
+	// qBittorrent may emit pseudo tracker labels (e.g. "[DHT]", "[PeX]", "[LSD]").
+	// These are peer-discovery mechanisms, not real tracker domains.
+	if isPseudoTrackerLabel(urlStr) {
+		urlCache.Set(urlStr, "", ttlcache.DefaultTTL)
 		return ""
 	}
 
@@ -2240,6 +2821,9 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	if domain != unknown {
 		domain = strings.Trim(domain, "[]")
 		domain = strings.ToLower(domain)
+		if isPseudoTrackerLabel(domain) {
+			domain = ""
+		}
 	} else {
 		domain = unknown
 	}
@@ -2247,6 +2831,24 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	// Cache the result
 	urlCache.Set(urlStr, domain, ttlcache.DefaultTTL)
 	return domain
+}
+
+func isPseudoTrackerLabel(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.Trim(normalized, "*")
+	normalized = strings.TrimSpace(normalized)
+	if strings.HasPrefix(normalized, "[") && strings.HasSuffix(normalized, "]") {
+		normalized = strings.TrimPrefix(normalized, "[")
+		normalized = strings.TrimSuffix(normalized, "]")
+		normalized = strings.TrimSpace(normalized)
+	}
+
+	switch normalized {
+	case "dht", "pex", "lsd":
+		return true
+	default:
+		return false
+	}
 }
 
 // torrentBelongsToTrackerDomain checks if a torrent currently has a tracker in the given domain.
@@ -2299,11 +2901,10 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 	// Count "all"
 	counts["all"]++
 
-	if sm.torrentIsUnregistered(torrent) {
+	switch sm.determineTrackerHealth(&torrent) {
+	case TrackerHealthUnregistered:
 		counts["unregistered"]++
-	}
-
-	if sm.torrentTrackerIsDown(torrent) {
+	case TrackerHealthDown:
 		counts["tracker_down"]++
 	}
 
@@ -2402,7 +3003,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 	}
 
 	if validatedMapping != nil {
-		log.Debug().
+		log.Trace().
 			Int("domainCount", len(validatedMapping.DomainToHashes)).
 			Time("updatedAt", validatedMapping.UpdatedAt).
 			Msg("Using validated tracker mapping for counting")
@@ -2689,10 +3290,12 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 
 // GetTorrentCounts gets all torrent counts for the filter sidebar
 func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*TorrentCounts, error) {
-	// Get client and sync manager
-	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	client, syncManager, mainData, err := sm.readMainData(ctx, instanceID, mainDataRead)
 	if err != nil {
 		return nil, err
+	}
+	if syncManager == nil {
+		return nil, errors.New("sync manager not initialized")
 	}
 
 	// Get all torrents from the same source the table uses (now fresh from sync manager)
@@ -2703,20 +3306,11 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 
 	log.Debug().Int("instanceID", instanceID).Int("torrents", len(allTorrents)).Msg("GetTorrentCounts: got fresh torrents from sync manager")
 
-	// Get the MainData which includes the Trackers map
-	mainData := syncManager.GetData()
-
 	// Calculate counts using the shared function - pass mainData for tracker information
 	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
 	supportsSubcategories := client.SupportsSubcategories()
-	useSubcategories := false
-	if supportsSubcategories {
-		if mainData != nil && mainData.ServerState != (qbt.ServerState{}) {
-			useSubcategories = mainData.ServerState.UseSubcategories
-		} else if mainData != nil && mainData.Categories != nil {
-			useSubcategories = hasNestedCategories(mainData.Categories)
-		}
-	}
+	subcategoriesAlwaysEnabled := client.SubcategoriesAlwaysEnabled()
+	useSubcategories := resolveUseSubcategories(supportsSubcategories, subcategoriesAlwaysEnabled, mainData, nil)
 	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(ctx, client, allTorrents, mainData, nil, trackerHealthSupported, useSubcategories)
 
 	// Don't cache counts separately - they're always derived from the cached torrent data
@@ -2732,33 +3326,6 @@ func (sm *SyncManager) GetTorrentCounts(ctx context.Context, instanceID int) (*T
 		Msg("Calculated torrent counts")
 
 	return counts, nil
-}
-
-// GetInstanceSpeeds gets total download/upload speeds efficiently using GetTransferInfo
-// This is MUCH faster than fetching all torrents for large instances
-func (sm *SyncManager) GetInstanceSpeeds(ctx context.Context, instanceID int) (*InstanceSpeeds, error) {
-	// Get client
-	client, err := sm.clientPool.GetClient(ctx, instanceID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get client: %w", err)
-	}
-
-	// Use GetTransferInfo - a lightweight API that returns just global speeds
-	// This doesn't fetch any torrents, making it perfect for dashboard stats
-	transferInfo, err := client.GetTransferInfoCtx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get transfer info: %w", err)
-	}
-
-	// Extract speeds from TransferInfo
-	speeds := &InstanceSpeeds{
-		Download: transferInfo.DlInfoSpeed,
-		Upload:   transferInfo.UpInfoSpeed,
-	}
-
-	log.Debug().Int("instanceID", instanceID).Int64("download", speeds.Download).Int64("upload", speeds.Upload).Msg("GetInstanceSpeeds: got from GetTransferInfo API")
-
-	return speeds, nil
 }
 
 // Helper methods
@@ -3702,9 +4269,13 @@ func hasNestedCategories(categories map[string]qbt.Category) bool {
 	return false
 }
 
-func resolveUseSubcategories(supports bool, mainData *qbt.MainData, categories map[string]qbt.Category) bool {
+func resolveUseSubcategories(supports bool, alwaysEnabled bool, mainData *qbt.MainData, categories map[string]qbt.Category) bool {
 	if !supports {
 		return false
+	}
+
+	if alwaysEnabled {
+		return true
 	}
 
 	if mainData != nil && mainData.ServerState != (qbt.ServerState{}) {
@@ -3855,9 +4426,9 @@ func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState
 func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bool {
 	switch strings.ToLower(status) {
 	case "unregistered":
-		return sm.torrentIsUnregistered(torrent)
+		return sm.determineTrackerHealth(&torrent) == TrackerHealthUnregistered
 	case "tracker_down":
-		return sm.torrentTrackerIsDown(torrent)
+		return sm.determineTrackerHealth(&torrent) == TrackerHealthDown
 	}
 
 	// Handle special cases first
@@ -3895,7 +4466,7 @@ func (sm *SyncManager) trackerHealthPriority(torrent qbt.Torrent, trackerHealthS
 		return 10
 	}
 
-	switch sm.determineTrackerHealth(torrent) {
+	switch sm.determineTrackerHealth(&torrent) {
 	case TrackerHealthUnregistered:
 		return 0
 	case TrackerHealthDown:
@@ -3950,7 +4521,7 @@ func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, t
 		}
 		label := strings.ToLower(string(t.State))
 		if trackerHealthSupported {
-			switch sm.determineTrackerHealth(t) {
+			switch sm.determineTrackerHealth(&t) {
 			case TrackerHealthUnregistered:
 				label = "unregistered"
 			case TrackerHealthDown:
@@ -4017,18 +4588,23 @@ func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, t
 	})
 }
 
-// sortTorrentsByTracker normalizes tracker values to compare by domain first, then full URL.
+// sortTorrentsByTracker normalizes tracker values to compare by display name first, then domain, then full URL.
+// Display names come from tracker customizations, allowing merged trackers to sort together.
 // This prevents qBittorrent's case-sensitive/raw string ordering from splitting identical hosts.
 func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) {
 	if len(torrents) <= 1 {
 		return
 	}
 
+	// Get display name lookup from cached tracker customizations
+	displayNameMap := sm.getTrackerDisplayNameMap()
+
 	type trackerSortKey struct {
-		hasDomain  bool
-		domain     string
-		normalized string
-		hash       string
+		hasDomain   bool
+		displayName string // custom name if configured, otherwise domain
+		domain      string
+		normalized  string
+		hash        string
 	}
 
 	keys := make([]trackerSortKey, len(torrents))
@@ -4057,6 +4633,12 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 
 			key.hasDomain = true
 			key.domain = domain
+			// Look up custom display name; fallback to domain
+			if customName, ok := displayNameMap[domain]; ok {
+				key.displayName = strings.ToLower(customName)
+			} else {
+				key.displayName = domain
+			}
 		}
 
 		addCandidate(torrent.Tracker)
@@ -4084,6 +4666,7 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 		a := keys[aIdx]
 		b := keys[bIdx]
 
+		// Sort torrents with trackers before those without
 		if a.hasDomain != b.hasDomain {
 			if a.hasDomain {
 				return -1
@@ -4091,6 +4674,15 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 			return 1
 		}
 
+		// Primary sort by display name (custom name or domain)
+		if cmp := strings.Compare(a.displayName, b.displayName); cmp != 0 {
+			if desc {
+				return -cmp
+			}
+			return cmp
+		}
+
+		// Secondary sort by domain for stable ordering when display names match
 		if cmp := strings.Compare(a.domain, b.domain); cmp != 0 {
 			if desc {
 				return -cmp
@@ -4098,6 +4690,7 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 			return cmp
 		}
 
+		// Tertiary sort by normalized URL
 		if cmp := strings.Compare(a.normalized, b.normalized); cmp != 0 {
 			if desc {
 				return -cmp
@@ -4105,6 +4698,7 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 			return cmp
 		}
 
+		// Final tiebreaker by hash for determinism
 		cmp := strings.Compare(a.hash, b.hash)
 		if desc {
 			return -cmp
@@ -4116,12 +4710,312 @@ func (sm *SyncManager) sortTorrentsByTracker(torrents []qbt.Torrent, desc bool) 
 		return compare(i, j)
 	})
 
-	// Apply the sorted order to the torrents slice
-	sorted := make([]qbt.Torrent, len(torrents))
-	for i, srcIdx := range indices {
-		sorted[i] = torrents[srcIdx]
+	// indices currently maps newPos -> oldPos; invert it to get elementPos -> targetPos,
+	// then apply in-place cycle permutation.
+	targets := make([]int, len(indices))
+	for newPos, oldPos := range indices {
+		targets[oldPos] = newPos
 	}
-	copy(torrents, sorted)
+
+	for i := range targets {
+		for targets[i] != i {
+			j := targets[i]
+			torrents[i], torrents[j] = torrents[j], torrents[i]
+			targets[i], targets[j] = targets[j], targets[i]
+		}
+	}
+}
+
+// sortCrossInstanceTorrents sorts unified torrents with parity to single-instance sort options.
+func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrentView, sort string, desc bool) {
+	if len(torrents) <= 1 {
+		return
+	}
+
+	if sort == "tracker" {
+		sm.sortCrossInstanceTorrentsByTracker(torrents, desc)
+		return
+	}
+
+	applyDirection := func(result int) int {
+		if desc {
+			return -result
+		}
+		return result
+	}
+
+	boolAsInt := func(value bool) int {
+		if value {
+			return 1
+		}
+		return 0
+	}
+
+	compareIdentity := func(a, b CrossInstanceTorrentView) int {
+		return cmp.Or(
+			strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)),
+			strings.Compare(strings.ToLower(a.Hash), strings.ToLower(b.Hash)),
+			strings.Compare(strings.ToLower(a.InstanceName), strings.ToLower(b.InstanceName)),
+			cmp.Compare(a.InstanceID, b.InstanceID),
+		)
+	}
+
+	compareTimestamp := func(a, b CrossInstanceTorrentView, getTimestamp func(CrossInstanceTorrentView) int64) int {
+		tsA := getTimestamp(a)
+		tsB := getTimestamp(b)
+		if tsA != tsB {
+			return applyDirection(cmp.Compare(tsA, tsB))
+		}
+
+		return compareIdentity(a, b)
+	}
+
+	slices.SortFunc(torrents, func(a, b CrossInstanceTorrentView) int {
+		switch sort {
+		case "name":
+			result := cmp.Or(
+				strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)),
+				strings.Compare(a.Name, b.Name),
+			)
+			if result != 0 {
+				return applyDirection(result)
+			}
+		case "size":
+			if result := cmp.Compare(a.Size, b.Size); result != 0 {
+				return applyDirection(result)
+			}
+		case "progress":
+			if result := cmp.Compare(a.Progress, b.Progress); result != 0 {
+				return applyDirection(result)
+			}
+		case "added_on":
+			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.AddedOn })
+		case "completion_on":
+			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.CompletionOn })
+		case "seen_complete":
+			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.SeenComplete })
+		case "last_activity":
+			return compareTimestamp(a, b, func(t CrossInstanceTorrentView) int64 { return t.LastActivity / 60 })
+		case "instance":
+			result := cmp.Or(
+				strings.Compare(strings.ToLower(a.InstanceName), strings.ToLower(b.InstanceName)),
+				cmp.Compare(a.InstanceID, b.InstanceID),
+			)
+			if result != 0 {
+				return applyDirection(result)
+			}
+		case "state":
+			result := cmp.Or(
+				cmp.Compare(stateSortPriority(a.State), stateSortPriority(b.State)),
+				strings.Compare(strings.ToLower(string(a.State)), strings.ToLower(string(b.State))),
+			)
+			if result != 0 {
+				return applyDirection(result)
+			}
+		case "priority":
+			// Keep non-queued torrents (priority=0) at the end regardless of order.
+			if a.Priority == 0 && b.Priority == 0 {
+				break
+			}
+			if a.Priority == 0 {
+				return 1
+			}
+			if b.Priority == 0 {
+				return -1
+			}
+			if desc {
+				if result := cmp.Compare(a.Priority, b.Priority); result != 0 {
+					return result
+				}
+			} else {
+				if result := cmp.Compare(b.Priority, a.Priority); result != 0 {
+					return result
+				}
+			}
+		case "eta":
+			const infinityETA int64 = 8640000
+			aInfinity := a.ETA == infinityETA
+			bInfinity := b.ETA == infinityETA
+			if aInfinity != bInfinity {
+				if aInfinity {
+					return 1
+				}
+				return -1
+			}
+			if !aInfinity {
+				if result := cmp.Compare(a.ETA, b.ETA); result != 0 {
+					return applyDirection(result)
+				}
+			}
+		case "num_complete":
+			if result := cmp.Compare(a.NumComplete, b.NumComplete); result != 0 {
+				return applyDirection(result)
+			}
+		case "num_incomplete":
+			if result := cmp.Compare(a.NumIncomplete, b.NumIncomplete); result != 0 {
+				return applyDirection(result)
+			}
+		case "num_seeds":
+			if result := cmp.Compare(a.NumSeeds, b.NumSeeds); result != 0 {
+				return applyDirection(result)
+			}
+		case "num_leechs":
+			if result := cmp.Compare(a.NumLeechs, b.NumLeechs); result != 0 {
+				return applyDirection(result)
+			}
+		case "dlspeed":
+			if result := cmp.Compare(a.DlSpeed, b.DlSpeed); result != 0 {
+				return applyDirection(result)
+			}
+		case "upspeed":
+			if result := cmp.Compare(a.UpSpeed, b.UpSpeed); result != 0 {
+				return applyDirection(result)
+			}
+		case "ratio":
+			if result := cmp.Compare(a.Ratio, b.Ratio); result != 0 {
+				return applyDirection(result)
+			}
+		case "popularity":
+			if result := cmp.Compare(a.Popularity, b.Popularity); result != 0 {
+				return applyDirection(result)
+			}
+		case "category":
+			if result := strings.Compare(strings.ToLower(a.Category), strings.ToLower(b.Category)); result != 0 {
+				return applyDirection(result)
+			}
+		case "tags":
+			if result := strings.Compare(strings.ToLower(a.Tags), strings.ToLower(b.Tags)); result != 0 {
+				return applyDirection(result)
+			}
+		case "dl_limit":
+			if result := cmp.Compare(a.DlLimit, b.DlLimit); result != 0 {
+				return applyDirection(result)
+			}
+		case "up_limit":
+			if result := cmp.Compare(a.UpLimit, b.UpLimit); result != 0 {
+				return applyDirection(result)
+			}
+		case "downloaded":
+			if result := cmp.Compare(a.Downloaded, b.Downloaded); result != 0 {
+				return applyDirection(result)
+			}
+		case "uploaded":
+			if result := cmp.Compare(a.Uploaded, b.Uploaded); result != 0 {
+				return applyDirection(result)
+			}
+		case "downloaded_session":
+			if result := cmp.Compare(a.DownloadedSession, b.DownloadedSession); result != 0 {
+				return applyDirection(result)
+			}
+		case "uploaded_session":
+			if result := cmp.Compare(a.UploadedSession, b.UploadedSession); result != 0 {
+				return applyDirection(result)
+			}
+		case "amount_left":
+			if result := cmp.Compare(a.AmountLeft, b.AmountLeft); result != 0 {
+				return applyDirection(result)
+			}
+		case "time_active":
+			if result := cmp.Compare(a.TimeActive, b.TimeActive); result != 0 {
+				return applyDirection(result)
+			}
+		case "seeding_time":
+			if result := cmp.Compare(a.SeedingTime, b.SeedingTime); result != 0 {
+				return applyDirection(result)
+			}
+		case "save_path":
+			if result := strings.Compare(strings.ToLower(a.SavePath), strings.ToLower(b.SavePath)); result != 0 {
+				return applyDirection(result)
+			}
+		case "completed":
+			if result := cmp.Compare(a.Completed, b.Completed); result != 0 {
+				return applyDirection(result)
+			}
+		case "ratio_limit":
+			if result := cmp.Compare(a.RatioLimit, b.RatioLimit); result != 0 {
+				return applyDirection(result)
+			}
+		case "availability":
+			if result := cmp.Compare(a.Availability, b.Availability); result != 0 {
+				return applyDirection(result)
+			}
+		case "infohash_v1":
+			if result := strings.Compare(strings.ToLower(a.InfohashV1), strings.ToLower(b.InfohashV1)); result != 0 {
+				return applyDirection(result)
+			}
+		case "infohash_v2":
+			if result := strings.Compare(strings.ToLower(a.InfohashV2), strings.ToLower(b.InfohashV2)); result != 0 {
+				return applyDirection(result)
+			}
+		case "reannounce":
+			if result := cmp.Compare(a.Reannounce, b.Reannounce); result != 0 {
+				return applyDirection(result)
+			}
+		case "private":
+			if result := cmp.Compare(boolAsInt(a.Private), boolAsInt(b.Private)); result != 0 {
+				return applyDirection(result)
+			}
+		}
+
+		return compareIdentity(a, b)
+	})
+}
+
+// sortCrossInstanceTorrentsByTracker sorts cross-instance torrents by tracker display name.
+// Uses the same hasDomain semantics as per-instance sorting: torrents without valid trackers
+// always go to the end, regardless of sort direction.
+func (sm *SyncManager) sortCrossInstanceTorrentsByTracker(torrents []CrossInstanceTorrentView, desc bool) {
+	if len(torrents) <= 1 {
+		return
+	}
+
+	displayNameMap := sm.getTrackerDisplayNameMap()
+
+	slices.SortFunc(torrents, func(a, b CrossInstanceTorrentView) int {
+		return sm.compareCrossInstanceByTracker(&a, &b, displayNameMap, desc)
+	})
+}
+
+// compareCrossInstanceByTracker compares two cross-instance torrents by tracker display name.
+func (sm *SyncManager) compareCrossInstanceByTracker(a, b *CrossInstanceTorrentView, displayNameMap map[string]string, desc bool) int {
+	domainA := strings.ToLower(sm.ExtractDomainFromURL(a.Tracker))
+	domainB := strings.ToLower(sm.ExtractDomainFromURL(b.Tracker))
+
+	hasDomainA := domainA != "" && domainA != "unknown"
+	hasDomainB := domainB != "" && domainB != "unknown"
+
+	// Sort torrents with trackers before those without (not reversed by desc)
+	if hasDomainA != hasDomainB {
+		if hasDomainA {
+			return -1
+		}
+		return 1
+	}
+
+	// Resolve display names from customizations
+	displayA := resolveDisplayName(domainA, displayNameMap)
+	displayB := resolveDisplayName(domainB, displayNameMap)
+
+	// Multi-field comparison: displayName -> domain -> instance -> name -> hash
+	result := cmp.Or(
+		strings.Compare(displayA, displayB),
+		strings.Compare(domainA, domainB),
+		strings.Compare(a.InstanceName, b.InstanceName),
+		strings.Compare(a.Name, b.Name),
+		strings.Compare(a.Hash, b.Hash),
+	)
+	if desc {
+		return -result
+	}
+	return result
+}
+
+// resolveDisplayName returns the display name for a domain, using custom name if available.
+func resolveDisplayName(domain string, displayNameMap map[string]string) string {
+	if customName, ok := displayNameMap[domain]; ok {
+		return strings.ToLower(customName)
+	}
+	return domain
 }
 
 // sortTorrentsByNameCaseInsensitive enforces a case-insensitive ordering for torrent names.
@@ -4218,6 +5112,39 @@ func (sm *SyncManager) sortTorrentsByETA(torrents []qbt.Torrent, desc bool) {
 			return 1
 		}
 		return 0
+	})
+}
+
+// compareByStateThenName provides deterministic ordering by state priority, name, then hash.
+func compareByStateThenName(a, b qbt.Torrent) int {
+	priorityA := stateSortPriority(a.State)
+	priorityB := stateSortPriority(b.State)
+	if priorityA != priorityB {
+		return cmp.Compare(priorityA, priorityB)
+	}
+
+	nameA := strings.ToLower(a.Name)
+	nameB := strings.ToLower(b.Name)
+	if result := strings.Compare(nameA, nameB); result != 0 {
+		return result
+	}
+
+	return strings.Compare(a.Hash, b.Hash)
+}
+
+// sortTorrentsByTimestamp sorts torrents by a timestamp field with fallback to state, name, and hash.
+// The getTimestamp function extracts the timestamp value from a torrent.
+// Special values (0 or -1 meaning "never") are treated as infinitely old and sort naturally.
+func (sm *SyncManager) sortTorrentsByTimestamp(torrents []qbt.Torrent, desc bool, getTimestamp func(qbt.Torrent) int64) {
+	slices.SortStableFunc(torrents, func(a, b qbt.Torrent) int {
+		tsA, tsB := getTimestamp(a), getTimestamp(b)
+		if tsA != tsB {
+			if desc {
+				return cmp.Compare(tsB, tsA)
+			}
+			return cmp.Compare(tsA, tsB)
+		}
+		return compareByStateThenName(a, b)
 	})
 }
 
@@ -4595,6 +5522,28 @@ func (sm *SyncManager) SetAppPreferences(ctx context.Context, instanceID int, pr
 	return nil
 }
 
+// NormalizeScanDirsPreference validates and normalizes the scan_dirs preference
+// using go-qbittorrent's typed monitored folder support.
+func (sm *SyncManager) NormalizeScanDirsPreference(prefs map[string]any) error {
+	rawScanDirs, ok := prefs["scan_dirs"]
+	if !ok {
+		return nil
+	}
+
+	encoded, err := json.Marshal(rawScanDirs)
+	if err != nil {
+		return err
+	}
+
+	var scanDirs qbt.MonitoredFolders
+	if err := json.Unmarshal(encoded, &scanDirs); err != nil {
+		return err
+	}
+
+	prefs["scan_dirs"] = scanDirs
+	return nil
+}
+
 // GetDirectoryContentCtx lists folders inside a directory (for autocomplete).
 func (sm *SyncManager) GetDirectoryContentCtx(ctx context.Context, instanceID int, dirPath string, withMetadata bool) (any, error) {
 	client, err := sm.clientPool.GetClient(ctx, instanceID)
@@ -4680,7 +5629,7 @@ func (sm *SyncManager) ToggleAlternativeSpeedLimits(ctx context.Context, instanc
 
 // GetActiveTrackers returns all active tracker domains with their URLs and counts
 func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (map[string]string, error) {
-	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -4692,7 +5641,6 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 
 	// Map of domain -> example tracker URL
 	trackerMap := make(map[string]string)
-	trackerExclusions := client.getTrackerExclusionsCopy()
 
 	for trackerURL, hashes := range mainData.Trackers {
 		domain := sm.ExtractDomainFromURL(trackerURL)
@@ -4700,31 +5648,25 @@ func (sm *SyncManager) GetActiveTrackers(ctx context.Context, instanceID int) (m
 			continue
 		}
 
-		// Skip if all hashes are excluded
-		hasValidHash := false
-		for _, hash := range hashes {
-			if hashesToSkip, ok := trackerExclusions[domain]; ok {
-				if _, skip := hashesToSkip[hash]; skip {
-					continue
-				}
-			}
-			hasValidHash = true
-			break
+		if len(hashes) == 0 {
+			continue
 		}
 
-		if hasValidHash {
-			// Store the first valid tracker URL we find for this domain
-			if _, exists := trackerMap[domain]; !exists {
-				trackerMap[domain] = trackerURL
-			}
+		// Store the first tracker URL we find for this domain.
+		// Keep selector options complete, even when some hashes are excluded elsewhere.
+		if _, exists := trackerMap[domain]; !exists {
+			trackerMap[domain] = trackerURL
 		}
 	}
 
 	return trackerMap, nil
 }
 
-// SetTorrentShareLimit sets share limits (ratio, seeding time) for torrents
-func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64) error {
+// SetTorrentShareLimit sets share limits (ratio, seeding time, action, mode) for torrents.
+// shareLimitAction is sent when SupportsShareLimitsAction (Web API >= 2.15.1).
+// shareLimitsMode (MatchAny / MatchAll) is sent only when SupportsShareLimitsMode (Web API >= 2.16.0).
+// Action and mode must be qBittorrent/Qt meta enum names (Default, Stop, Remove, …).
+func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int, hashes []string, ratioLimit float64, seedingTimeLimit, inactiveSeedingTimeLimit int64, shareLimitAction, shareLimitsMode string) error {
 	// Get client and sync manager
 	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
@@ -4736,7 +5678,24 @@ func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int,
 		return err
 	}
 
-	if err := client.SetTorrentShareLimitCtx(ctx, hashes, ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit); err != nil {
+	action := strings.TrimSpace(shareLimitAction)
+	if !client.SupportsShareLimitsAction() {
+		action = ""
+	}
+
+	mode := strings.TrimSpace(shareLimitsMode)
+	if !client.SupportsShareLimitsMode() {
+		mode = ""
+	}
+
+	opts := qbt.ShareLimitOptions{
+		RatioLimit:               ratioLimit,
+		SeedingTimeLimit:         seedingTimeLimit,
+		InactiveSeedingTimeLimit: inactiveSeedingTimeLimit,
+		ShareLimitAction:         action,
+		ShareLimitsMode:          mode,
+	}
+	if err := client.SetTorrentShareLimitCtx(ctx, hashes, opts); err != nil {
 		return fmt.Errorf("failed to set torrent share limit: %w", err)
 	}
 
@@ -4862,7 +5821,7 @@ func (sm *SyncManager) SetTorrentFilePriority(ctx context.Context, instanceID in
 		switch {
 		case errors.Is(err, qbt.ErrInvalidPriority):
 			return fmt.Errorf("invalid file priority or file indices: %w", err)
-		case errors.Is(err, qbt.ErrTorrentMetdataNotDownloadedYet):
+		case errors.Is(err, qbt.ErrTorrentMetadataNotDownloadedYet):
 			return fmt.Errorf("torrent metadata is not yet available, please try again once metadata has downloaded: %w", err)
 		default:
 			return fmt.Errorf("failed to set file priority: %w", err)
@@ -5341,4 +6300,217 @@ func (sm *SyncManager) DeleteTorrentCreationTask(ctx context.Context, instanceID
 	}
 
 	return client.DeleteTorrentCreationTaskCtx(ctx, taskID)
+}
+
+// GetFreeSpace returns the free space on the instance's filesystem.
+func (sm *SyncManager) GetFreeSpace(ctx context.Context, instanceID int) (int64, error) {
+	_, syncManager, mainData, err := sm.readMainData(ctx, instanceID, mainDataRead)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get client: %w", err)
+	}
+	if syncManager == nil {
+		return 0, errors.New("sync manager not initialized")
+	}
+
+	state := resolveServerState(syncManager, mainDataServerState(mainData))
+	if state == nil {
+		return 0, errors.New("server state not available")
+	}
+
+	return state.FreeSpaceOnDisk, nil
+}
+
+// RSS Methods - thin proxies to qBittorrent RSS API
+
+// GetRSSItems retrieves all RSS feeds and folders for an instance
+func (sm *SyncManager) GetRSSItems(ctx context.Context, instanceID int, withData bool) (qbt.RSSItems, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.GetRSSItemsCtx(ctx, withData)
+}
+
+// AddRSSFolder creates a new RSS folder
+func (sm *SyncManager) AddRSSFolder(ctx context.Context, instanceID int, path string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.AddRSSFolderCtx(ctx, path)
+}
+
+// AddRSSFeed adds a new RSS feed
+func (sm *SyncManager) AddRSSFeed(ctx context.Context, instanceID int, url, path string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.AddRSSFeedCtx(ctx, url, path)
+}
+
+// SetRSSFeedURL changes the URL of an existing feed
+func (sm *SyncManager) SetRSSFeedURL(ctx context.Context, instanceID int, path, url string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.SetRSSFeedURLCtx(ctx, path, url)
+}
+
+// RemoveRSSItem removes a feed or folder
+func (sm *SyncManager) RemoveRSSItem(ctx context.Context, instanceID int, path string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.RemoveRSSItemCtx(ctx, path)
+}
+
+// MoveRSSItem moves a feed or folder to a new location
+func (sm *SyncManager) MoveRSSItem(ctx context.Context, instanceID int, itemPath, destPath string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.MoveRSSItemCtx(ctx, itemPath, destPath)
+}
+
+// RefreshRSSItem triggers a manual refresh of a feed or folder
+func (sm *SyncManager) RefreshRSSItem(ctx context.Context, instanceID int, itemPath string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.RefreshRSSItemCtx(ctx, itemPath)
+}
+
+// MarkRSSItemAsRead marks articles as read
+func (sm *SyncManager) MarkRSSItemAsRead(ctx context.Context, instanceID int, itemPath, articleID string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.MarkRSSItemAsReadCtx(ctx, itemPath, articleID)
+}
+
+// GetRSSRules retrieves all RSS auto-download rules
+func (sm *SyncManager) GetRSSRules(ctx context.Context, instanceID int) (qbt.RSSRules, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.GetRSSRulesCtx(ctx)
+}
+
+// SetRSSRule creates or updates an auto-download rule
+func (sm *SyncManager) SetRSSRule(ctx context.Context, instanceID int, ruleName string, rule qbt.RSSAutoDownloadRule) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// qBittorrent < 5.0 silently ignores torrentParams and only reads the legacy flat
+	// fields. Mirror any torrentParams values to their flat equivalents so rules behave
+	// correctly on older instances.
+	if rule.TorrentParams != nil {
+		if rule.TorrentParams.Category != "" && rule.AssignedCategory == "" {
+			rule.AssignedCategory = rule.TorrentParams.Category
+		}
+		if rule.TorrentParams.SavePath != "" && rule.SavePath == "" {
+			rule.SavePath = rule.TorrentParams.SavePath
+		}
+		if rule.TorrentParams.Stopped != nil && rule.AddPaused == nil {
+			rule.AddPaused = rule.TorrentParams.Stopped
+		}
+		if rule.TorrentParams.ContentLayout != "" && rule.TorrentContentLayout == "" {
+			rule.TorrentContentLayout = rule.TorrentParams.ContentLayout
+		}
+	}
+
+	return client.SetRSSRuleCtx(ctx, ruleName, rule)
+}
+
+// RenameRSSRule renames an existing rule
+func (sm *SyncManager) RenameRSSRule(ctx context.Context, instanceID int, ruleName, newRuleName string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.RenameRSSRuleCtx(ctx, ruleName, newRuleName)
+}
+
+// RemoveRSSRule deletes an auto-download rule
+func (sm *SyncManager) RemoveRSSRule(ctx context.Context, instanceID int, ruleName string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.RemoveRSSRuleCtx(ctx, ruleName)
+}
+
+// GetRSSMatchingArticles gets articles matching a rule for preview
+func (sm *SyncManager) GetRSSMatchingArticles(ctx context.Context, instanceID int, ruleName string) (qbt.RSSMatchingArticles, error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
+	return client.GetRSSMatchingArticlesCtx(ctx, ruleName)
+}
+
+// ReprocessRSSRules triggers qBittorrent to reprocess all unread articles against rules.
+// It does this by toggling auto-downloading off then on, which calls startProcessing().
+// The original auto-downloading state is preserved after reprocessing.
+func (sm *SyncManager) ReprocessRSSRules(ctx context.Context, instanceID int) (retErr error) {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	// Get current preference to restore later
+	prefs, err := client.GetAppPreferencesCtx(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get app preferences: %w", err)
+	}
+	originalEnabled := prefs.RssAutoDownloadingEnabled
+
+	defer func() {
+		if retErr == nil {
+			return
+		}
+		if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, originalEnabled); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Bool("originalEnabled", originalEnabled).Msg("failed to restore RSS auto-downloading state after reprocess error")
+		}
+	}()
+
+	// Ensure it's disabled first (may already be disabled)
+	if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, false); err != nil {
+		return fmt.Errorf("failed to disable RSS auto-downloading: %w", err)
+	}
+
+	// Enable to trigger startProcessing() which processes all unread articles
+	if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, true); err != nil {
+		return fmt.Errorf("failed to enable RSS auto-downloading: %w", err)
+	}
+
+	// Restore original state if it was disabled
+	if !originalEnabled {
+		if err := client.SetRSSAutoDownloadingEnabledCtx(ctx, false); err != nil {
+			return fmt.Errorf("failed to restore RSS auto-downloading state: %w", err)
+		}
+	}
+
+	return nil
 }

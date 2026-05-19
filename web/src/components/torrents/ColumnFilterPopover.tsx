@@ -1,10 +1,17 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { Button } from "@/components/ui/button"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList
+} from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -71,28 +78,21 @@ const DURATION_UNITS: { value: DurationUnit; label: string }[] = [
   { value: "days", label: "Days" },
 ]
 
+// Grouped torrent states matching FilterSidebar categories
+// These are expanded to individual qBittorrent states in columnFilterToExpr
 const TORRENT_STATES: { value: string; label: string }[] = [
   { value: "downloading", label: "Downloading" },
   { value: "uploading", label: "Seeding" },
-  { value: "forcedUP", label: "Forced (UP)" },
-  { value: "forcedDL", label: "Forced (DL)" },
-  { value: "pausedUP", label: "Paused (UP)" },
-  { value: "pausedDL", label: "Paused (DL)" },
-  { value: "stoppedUP", label: "Stopped (UP)" },
-  { value: "stoppedDL", label: "Stopped (DL)" },
-  { value: "queuedUP", label: "Queued (UP)" },
-  { value: "queuedDL", label: "Queued (DL)" },
-  { value: "stalledUP", label: "Stalled (UP)" },
-  { value: "stalledDL", label: "Stalled (DL)" },
-  { value: "error", label: "Error" },
-  { value: "missingFiles", label: "Missing Files" },
-  { value: "checkingUP", label: "Checking (UP)" },
-  { value: "checkingDL", label: "Checking (DL)" },
+  { value: "completed", label: "Completed" },
+  { value: "stopped", label: "Stopped" },
+  { value: "paused", label: "Paused" },
+  { value: "active", label: "Active" },
+  { value: "stalled", label: "Stalled" },
+  { value: "stalled_uploading", label: "Stalled (Up)" },
+  { value: "stalled_downloading", label: "Stalled (Down)" },
+  { value: "errored", label: "Error" },
+  { value: "checking", label: "Checking" },
   { value: "moving", label: "Moving" },
-  { value: "checkingResumeData", label: "Checking Resume Data" },
-  { value: "allocating", label: "Allocating" },
-  { value: "metaDL", label: "Fetching Metadata" },
-  { value: "unknown", label: "Unknown" },
 ]
 
 interface ValueInputProps {
@@ -297,6 +297,7 @@ function ValueInput({
           </Command>
           {selectedValues.length > 0 && (
             <Button
+              type="button"
               variant="ghost"
               size="sm"
               onClick={() => onChange("")}
@@ -531,7 +532,7 @@ export function ColumnFilterPopover({
           size="icon"
           ref={triggerRef}
           className={`h-6 w-6 p-0 transition-opacity ${hasActiveFilter || open ? "opacity-100 text-primary" : "opacity-10 group-hover:opacity-100 focus:opacity-100 focus-visible:opacity-100 active:opacity-100 text-muted-foreground"
-            }`}
+          }`}
           onClick={(e) => {
             e.stopPropagation()
             setOpen(true)

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -27,117 +27,328 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import type { Category, Torrent } from "@/types"
+import { api } from "@/lib/api"
+import {
+  buildTagEditorItems,
+  buildTagUpdatePlan,
+  cycleTagSelectionState,
+  hasTagUpdatePlan,
+  sortTags,
+  type TagEditorItem,
+  type TagUpdatePlan
+} from "@/lib/tag-editor"
+import { cn } from "@/lib/utils"
+import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
+import type { Category, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { AlertTriangle, Loader2, Plus, X } from "lucide-react"
+import { AlertTriangle, Loader2, Plus } from "lucide-react"
 import type { ChangeEvent, KeyboardEvent } from "react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { toast } from "sonner"
 import { buildCategoryTree, type CategoryNode } from "./CategoryTree"
+import {
+  checkFieldConsistency,
+  LIMIT_UNLIMITED,
+  LIMIT_USE_GLOBAL,
+  shareLimitEnumFieldFromTorrents,
+  type TorrentLimitSnapshot,
+} from "./torrentLimitDialogHelpers"
 
-interface SetTagsDialogProps {
+export type { TorrentLimitSnapshot } from "./torrentLimitDialogHelpers"
+
+interface TagEditorDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   availableTags: string[] | null
+  selectedTorrents: Torrent[]
   hashCount: number
-  onConfirm: (tags: string[]) => void
+  selectionRequest?: {
+    instanceId: number
+    instanceIds?: number[]
+    hashes?: string[]
+    targets?: Array<{ instanceId: number; hash: string }>
+    selectAll?: boolean
+    filters?: TorrentFilters
+    search?: string
+    excludeHashes?: string[]
+    excludeTargets?: Array<{ instanceId: number; hash: string }>
+  }
+  onConfirm: (plan: TagUpdatePlan) => void
   isPending?: boolean
-  initialTags?: string[]
   isLoadingTags?: boolean
 }
 
-interface AddTagsDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  availableTags: string[] | null
-  hashCount: number
-  onConfirm: (tags: string[]) => void
-  isPending?: boolean
-  initialTags?: string[]
-  isLoadingTags?: boolean
-}
-
-export const AddTagsDialog = memo(function AddTagsDialog({
+export const TagEditorDialog = memo(function TagEditorDialog({
   open,
   onOpenChange,
   availableTags,
+  selectedTorrents,
   hashCount,
+  selectionRequest,
   onConfirm,
   isPending = false,
-  initialTags = [],
   isLoadingTags = false,
-}: AddTagsDialogProps) {
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
+}: TagEditorDialogProps) {
+  const [items, setItems] = useState<TagEditorItem[]>([])
   const [newTag, setNewTag] = useState("")
-  const [temporaryTags, setTemporaryTags] = useState<string[]>([])
-  const wasOpen = useRef(false)
+  const [selectionTagValues, setSelectionTagValues] = useState<string[]>([])
+  const [isLoadingSelectionTags, setIsLoadingSelectionTags] = useState(false)
+  const [selectionBaselineError, setSelectionBaselineError] = useState<string | null>(null)
+  const hasEditedRef = useRef(false)
+  const previousOpenRef = useRef(false)
+  const previousSelectionRequestKeyRef = useRef<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const selectionRequestKey = useMemo(() => JSON.stringify({
+    instanceId: selectionRequest?.instanceId,
+    instanceIds: selectionRequest?.instanceIds ?? [],
+    hashes: selectionRequest?.hashes ?? [],
+    targets: selectionRequest?.targets ?? [],
+    selectAll: selectionRequest?.selectAll ?? false,
+    filters: selectionRequest?.filters ?? null,
+    search: selectionRequest?.search ?? "",
+    excludeHashes: selectionRequest?.excludeHashes ?? [],
+    excludeTargets: selectionRequest?.excludeTargets ?? [],
+  }), [selectionRequest])
+  const selectionRequestSnapshot = useMemo(() => ({
+    instanceId: selectionRequest?.instanceId ?? -1,
+    instanceIds: selectionRequest?.instanceIds,
+    hashes: selectionRequest?.hashes,
+    targets: selectionRequest?.targets,
+    selectAll: selectionRequest?.selectAll,
+    filters: selectionRequest?.filters,
+    search: selectionRequest?.search,
+    excludeHashes: selectionRequest?.excludeHashes,
+    excludeTargets: selectionRequest?.excludeTargets,
+  }), [selectionRequestKey])
+  const selectedTorrentTagsKey = useMemo(
+    () => JSON.stringify(selectedTorrents.map(torrent => torrent.tags)),
+    [selectedTorrents]
+  )
+  const selectedTorrentTagValues = useMemo(
+    () => JSON.parse(selectedTorrentTagsKey) as string[],
+    [selectedTorrentTagsKey]
+  )
+  const requiresRemoteBaseline = hashCount > selectedTorrents.length
+  const hasValidInstance = selectionRequestSnapshot.instanceId >= 0
+  const hasExplicitSelection = (selectionRequestSnapshot.targets?.length ?? 0) > 0 || (selectionRequestSnapshot.hashes?.length ?? 0) > 0
+  const canFetchRemoteBaseline = hasValidInstance && (selectionRequestSnapshot.selectAll === true || hasExplicitSelection)
 
-  // Initialize selected tags only when dialog transitions from closed to open
   useEffect(() => {
-    if (open && !wasOpen.current) {
-      setSelectedTags([]) // Start with empty selection for add operation
-      setTemporaryTags([])
+    if (!open) {
+      setItems([])
+      setNewTag("")
+      setSelectionTagValues([])
+      setIsLoadingSelectionTags(false)
+      setSelectionBaselineError(null)
+      hasEditedRef.current = false
+      previousOpenRef.current = false
+      previousSelectionRequestKeyRef.current = null
+      return
     }
-    wasOpen.current = open
-  }, [open, initialTags])
 
-  // Combine server tags with temporary tags for display
-  const displayTags = [...(availableTags || []), ...temporaryTags].sort()
+    const didOpen = !previousOpenRef.current
+    const selectionRequestChanged = previousSelectionRequestKeyRef.current !== selectionRequestKey
+    if (didOpen || selectionRequestChanged) {
+      setNewTag("")
+      hasEditedRef.current = false
+      setItems([])
+    }
+    previousOpenRef.current = true
+    previousSelectionRequestKeyRef.current = selectionRequestKey
+    setSelectionBaselineError(null)
 
-  // Only use virtualization for large tag lists (>50 tags)
-  const shouldUseVirtualization = displayTags.length > 50
+    if (!requiresRemoteBaseline) {
+      setSelectionTagValues(selectedTorrentTagValues)
+      setIsLoadingSelectionTags(false)
+      return
+    }
 
-  // Virtualization for large tag lists
+    let cancelled = false
+
+    if (!canFetchRemoteBaseline) {
+      setIsLoadingSelectionTags(true)
+      setSelectionBaselineError("Could not build the full tag baseline for this selection")
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setIsLoadingSelectionTags(true)
+
+    void api.getTorrentField(selectionRequestSnapshot.instanceId, "tags", {
+      hashes: selectionRequestSnapshot.hashes,
+      targets: selectionRequestSnapshot.targets,
+      selectAll: selectionRequestSnapshot.selectAll,
+      filters: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.filters : undefined,
+      search: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.search : undefined,
+      excludeHashes: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.excludeHashes : undefined,
+      excludeTargets: selectionRequestSnapshot.selectAll ? selectionRequestSnapshot.excludeTargets : undefined,
+      instanceIds: selectionRequestSnapshot.instanceIds,
+    }).then((response) => {
+      if (cancelled) {
+        return
+      }
+
+      setSelectionTagValues(response.values)
+      setSelectionBaselineError(null)
+      setIsLoadingSelectionTags(false)
+    }).catch((error: Error) => {
+      if (cancelled) {
+        return
+      }
+
+      setSelectionBaselineError(error.message || "Could not build the full tag baseline")
+      setIsLoadingSelectionTags(false)
+      onOpenChange(false)
+      toast.error("Failed to load selected torrent tags", {
+        description: error.message || "Could not build the full tag baseline",
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [canFetchRemoteBaseline, hashCount, onOpenChange, open, requiresRemoteBaseline, selectedTorrentTagValues, selectionRequestKey, selectionRequestSnapshot])
+
+  useEffect(() => {
+    if (!open || isLoadingTags || isLoadingSelectionTags || hasEditedRef.current || selectionBaselineError) {
+      return
+    }
+
+    setItems(buildTagEditorItems(availableTags, selectionTagValues, hashCount))
+  }, [availableTags, hashCount, isLoadingSelectionTags, isLoadingTags, open, selectionBaselineError, selectionTagValues])
+
+  const knownTagSet = useMemo(() => new Set(availableTags ?? []), [availableTags])
+  const updatePlan = useMemo(() => buildTagUpdatePlan(items), [items])
+  const hasChanges = hasTagUpdatePlan(updatePlan)
+  const isLoadingState = isLoadingTags || isLoadingSelectionTags
+  const shouldUseVirtualization = items.length > 50
+
   const virtualizer = useVirtualizer({
-    count: shouldUseVirtualization ? displayTags.length : 0,
+    count: shouldUseVirtualization ? items.length : 0,
     getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 32, // Approximate height of each tag item
+    estimateSize: () => 40,
     overscan: 5,
   })
 
-  const handleConfirm = useCallback((): void => {
-    const allTags = [...selectedTags]
-    if (newTag.trim() && !allTags.includes(newTag.trim())) {
-      allTags.push(newTag.trim())
-    }
-    onConfirm(allTags)
-    setSelectedTags([])
+  const resetItems = useCallback(() => {
+    hasEditedRef.current = false
+    setItems(buildTagEditorItems(availableTags, selectionTagValues, hashCount))
     setNewTag("")
-    setTemporaryTags([])
-  }, [selectedTags, newTag, onConfirm])
+  }, [availableTags, hashCount, selectionTagValues])
+
+  const handleConfirm = useCallback((): void => {
+    if (!hasChanges) {
+      onOpenChange(false)
+      return
+    }
+
+    onConfirm(updatePlan)
+    setNewTag("")
+  }, [hasChanges, onConfirm, onOpenChange, updatePlan])
 
   const handleCancel = useCallback((): void => {
-    setSelectedTags([])
     setNewTag("")
-    setTemporaryTags([])
     onOpenChange(false)
   }, [onOpenChange])
 
-  const addNewTag = useCallback((tagToAdd: string): void => {
-    const trimmedTag = tagToAdd.trim()
-    if (trimmedTag && !displayTags.includes(trimmedTag)) {
-      // Add to temporary tags if it's not already in server tags
-      if (!availableTags?.includes(trimmedTag)) {
-        setTemporaryTags(prev => [...prev, trimmedTag])
-      }
-      // Add to selected tags
-      setSelectedTags(prev => [...prev, trimmedTag])
-      setNewTag("")
+  const toggleTag = useCallback((tag: string): void => {
+    if (!isLoadingTags && !isLoadingSelectionTags) {
+      hasEditedRef.current = true
     }
-  }, [displayTags, availableTags])
+    setItems(prev => prev.map((item) => {
+      if (item.tag !== tag) {
+        return item
+      }
+
+      return {
+        ...item,
+        state: cycleTagSelectionState(item.state),
+      }
+    }))
+  }, [isLoadingSelectionTags, isLoadingTags])
+
+  const clearAll = useCallback((): void => {
+    if (!isLoadingTags && !isLoadingSelectionTags) {
+      hasEditedRef.current = true
+    }
+    setItems(prev => prev.map(item => item.state === "off" ? item : { ...item, state: "off" }))
+  }, [isLoadingSelectionTags, isLoadingTags])
+
+  const addNewTag = useCallback((tagToAdd: string): void => {
+    if (isLoadingTags || isLoadingSelectionTags) {
+      return
+    }
+
+    const trimmedTag = tagToAdd.trim()
+    if (!trimmedTag) {
+      return
+    }
+
+    hasEditedRef.current = true
+    setItems((prev) => {
+      const existing = prev.find(item => item.tag === trimmedTag)
+      if (existing) {
+        return prev.map(item => item.tag === trimmedTag ? { ...item, state: "on" } : item)
+      }
+
+      return sortTags([...prev.map(item => item.tag), trimmedTag]).map((tag) => {
+        if (tag !== trimmedTag) {
+          return prev.find(item => item.tag === tag) as TagEditorItem
+        }
+
+        return {
+          tag,
+          initialState: "off",
+          state: "on",
+        }
+      })
+    })
+    setNewTag("")
+  }, [isLoadingSelectionTags, isLoadingTags])
+
+  const renderTagRow = useCallback((item: TagEditorItem) => {
+    const isNew = !knownTagSet.has(item.tag)
+
+    return (
+      <button
+        key={item.tag}
+        type="button"
+        onClick={() => toggleTag(item.tag)}
+        className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left hover:bg-muted/60"
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <Checkbox
+            checked={item.state === "mixed" ? "indeterminate" : item.state === "on"}
+            className="pointer-events-none"
+          />
+          <span className={cn("truncate text-sm font-medium", isNew && "text-primary italic")}>
+            {item.tag}
+          </span>
+          {isNew && <span className="text-xs text-muted-foreground">(new)</span>}
+        </div>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {item.state === "mixed" ? "Mixed" : item.state === "on" ? "On" : "Off"}
+        </span>
+      </button>
+    )
+  }, [knownTagSet, toggleTag])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Tags to {hashCount} torrent(s)</DialogTitle>
+          <DialogTitle>Set Tags for {hashCount} torrent(s)</DialogTitle>
           <DialogDescription>
-            Select tags to add to the selected torrents. These tags will be added to any existing tags on each torrent.
+            Mixed tags stay unchanged until clicked. Click a row to cycle Mixed to On, On to Off, and Off to On.
           </DialogDescription>
         </DialogHeader>
         <div className="py-4 space-y-4">
-          {/* Existing tags */}
-          {isLoadingTags ? (
+          {selectionBaselineError ? (
+            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+              {selectionBaselineError}
+            </div>
+          ) : isLoadingState ? (
             <div className="space-y-2">
               <Label>Available Tags</Label>
               <div className="h-48 border rounded-md p-3 flex items-center justify-center">
@@ -147,26 +358,24 @@ export const AddTagsDialog = memo(function AddTagsDialog({
                 </div>
               </div>
             </div>
-          ) : displayTags && displayTags.length > 0 ? (
+          ) : items.length > 0 ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Available Tags</Label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setSelectedTags([])}
-                  disabled={selectedTags.length === 0}
-                >
-                  Deselect All
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={resetItems} disabled={!hasChanges}>
+                    Reset
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={clearAll}>
+                    Clear All
+                  </Button>
+                </div>
               </div>
               <div
                 ref={scrollContainerRef}
                 className="h-48 border rounded-md p-3 overflow-y-auto"
               >
                 {shouldUseVirtualization ? (
-                  // Virtualized rendering for large tag lists
                   <div
                     style={{
                       height: `${virtualizer.getTotalSize()}px`,
@@ -175,11 +384,10 @@ export const AddTagsDialog = memo(function AddTagsDialog({
                     }}
                   >
                     {virtualizer.getVirtualItems().map((virtualRow) => {
-                      const tag = displayTags[virtualRow.index]
-                      const isTemporary = temporaryTags.includes(tag)
+                      const item = items[virtualRow.index]
                       return (
                         <div
-                          key={virtualRow.key}
+                          key={item.tag}
                           data-index={virtualRow.index}
                           ref={virtualizer.measureElement}
                           style={{
@@ -190,314 +398,24 @@ export const AddTagsDialog = memo(function AddTagsDialog({
                             transform: `translateY(${virtualRow.start}px)`,
                           }}
                         >
-                          <div className="flex items-center space-x-2 py-1">
-                            <Checkbox
-                              id={`add-tag-${tag}`}
-                              checked={selectedTags.includes(tag)}
-                              onCheckedChange={(checked: boolean | string) => {
-                                if (checked) {
-                                  setSelectedTags([...selectedTags, tag])
-                                } else {
-                                  setSelectedTags(selectedTags.filter((t: string) => t !== tag))
-                                }
-                              }}
-                            />
-                            <label
-                              htmlFor={`add-tag-${tag}`}
-                              className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
-                                isTemporary ? "text-primary italic" : ""
-                              }`}
-                            >
-                              {tag}
-                              {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
-                            </label>
-                          </div>
+                          {renderTagRow(item)}
                         </div>
                       )
                     })}
                   </div>
                 ) : (
-                  // Simple rendering for small tag lists - faster!
                   <div className="space-y-1">
-                    {displayTags.map((tag) => {
-                      const isTemporary = temporaryTags.includes(tag)
-                      return (
-                        <div key={tag} className="flex items-center space-x-2 py-1">
-                          <Checkbox
-                            id={`add-tag-${tag}`}
-                            checked={selectedTags.includes(tag)}
-                            onCheckedChange={(checked: boolean | string) => {
-                              if (checked) {
-                                setSelectedTags([...selectedTags, tag])
-                              } else {
-                                setSelectedTags(selectedTags.filter((t: string) => t !== tag))
-                              }
-                            }}
-                          />
-                          <label
-                            htmlFor={`add-tag-${tag}`}
-                            className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
-                              isTemporary ? "text-primary italic" : ""
-                            }`}
-                          >
-                            {tag}
-                            {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
-                          </label>
-                        </div>
-                      )
-                    })}
+                    {items.map(renderTagRow)}
                   </div>
                 )}
               </div>
             </div>
-          ) : null}
-
-          {/* Add new tag */}
-          <div className="space-y-2">
-            <Label htmlFor="newTag">Create New Tag</Label>
-            <div className="flex gap-2">
-              <Input
-                id="newTag"
-                value={newTag}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setNewTag(e.target.value)}
-                placeholder="Enter new tag"
-                onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
-                  if (e.key === "Enter" && newTag.trim()) {
-                    e.preventDefault()
-                    addNewTag(newTag)
-                  }
-                }}
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => addNewTag(newTag)}
-                disabled={!newTag.trim() || displayTags.includes(newTag.trim())}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-
-          {/* Selected tags summary */}
-          {selectedTags.length > 0 && (
-            <div className="text-sm text-muted-foreground">
-              Tags to add: {selectedTags.join(", ")}
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              No tags available yet. Add one below.
             </div>
           )}
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={handleCancel}>Cancel</Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={isPending || selectedTags.length === 0}
-          >
-            Add Tags
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-})
 
-export const SetTagsDialog = memo(function SetTagsDialog({
-  open,
-  onOpenChange,
-  availableTags,
-  hashCount,
-  onConfirm,
-  isPending = false,
-  initialTags = [],
-  isLoadingTags = false,
-}: SetTagsDialogProps) {
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
-  const [newTag, setNewTag] = useState("")
-  const [temporaryTags, setTemporaryTags] = useState<string[]>([]) // New state for temporarily created tags
-  const wasOpen = useRef(false)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-
-  // Initialize selected tags only when dialog transitions from closed to open
-  useEffect(() => {
-    if (open && !wasOpen.current) {
-      setSelectedTags(initialTags)
-      setTemporaryTags([]) // Clear temporary tags when opening dialog
-    }
-    wasOpen.current = open
-  }, [open, initialTags])
-
-  // Combine server tags with temporary tags for display
-  const displayTags = [...(availableTags || []), ...temporaryTags].sort()
-
-  // Only use virtualization for large tag lists (>50 tags)
-  const shouldUseVirtualization = displayTags.length > 50
-
-  // Virtualization for large tag lists
-  const virtualizer = useVirtualizer({
-    count: shouldUseVirtualization ? displayTags.length : 0,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 32, // Approximate height of each tag item
-    overscan: 5,
-  })
-
-  const handleConfirm = useCallback((): void => {
-    const allTags = [...selectedTags]
-    if (newTag.trim() && !allTags.includes(newTag.trim())) {
-      allTags.push(newTag.trim())
-    }
-    onConfirm(allTags)
-    setSelectedTags([])
-    setNewTag("")
-    setTemporaryTags([]) // Clear temporary tags after confirming
-  }, [selectedTags, newTag, onConfirm])
-
-  const handleCancel = useCallback((): void => {
-    setSelectedTags([])
-    setNewTag("")
-    setTemporaryTags([]) // Clear temporary tags when cancelling
-    onOpenChange(false)
-  }, [onOpenChange])
-
-  const addNewTag = useCallback((tagToAdd: string): void => {
-    const trimmedTag = tagToAdd.trim()
-    if (trimmedTag && !displayTags.includes(trimmedTag)) {
-      // Add to temporary tags if it's not already in server tags
-      if (!availableTags?.includes(trimmedTag)) {
-        setTemporaryTags(prev => [...prev, trimmedTag])
-      }
-      // Add to selected tags
-      setSelectedTags(prev => [...prev, trimmedTag])
-      setNewTag("")
-    }
-  }, [displayTags, availableTags])
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Replace Tags for {hashCount} torrent(s)</DialogTitle>
-          <DialogDescription>
-            Select tags from the list or add a new one. Selected tags will replace all existing tags on the torrents. Leave all unchecked to remove all tags.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="py-4 space-y-4">
-          {/* Existing tags */}
-          {isLoadingTags ? (
-            <div className="space-y-2">
-              <Label>Available Tags</Label>
-              <div className="h-48 border rounded-md p-3 flex items-center justify-center">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">Loading tags...</span>
-                </div>
-              </div>
-            </div>
-          ) : displayTags && displayTags.length > 0 ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Available Tags</Label>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setSelectedTags([])}
-                  disabled={selectedTags.length === 0}
-                >
-                  Deselect All
-                </Button>
-              </div>
-              <div
-                ref={scrollContainerRef}
-                className="h-48 border rounded-md p-3 overflow-y-auto"
-              >
-                {shouldUseVirtualization ? (
-                  // Virtualized rendering for large tag lists
-                  <div
-                    style={{
-                      height: `${virtualizer.getTotalSize()}px`,
-                      width: "100%",
-                      position: "relative",
-                    }}
-                  >
-                    {virtualizer.getVirtualItems().map((virtualRow) => {
-                      const tag = displayTags[virtualRow.index]
-                      const isTemporary = temporaryTags.includes(tag)
-                      return (
-                        <div
-                          key={virtualRow.key}
-                          data-index={virtualRow.index}
-                          ref={virtualizer.measureElement}
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            width: "100%",
-                            transform: `translateY(${virtualRow.start}px)`,
-                          }}
-                        >
-                          <div className="flex items-center space-x-2 py-1">
-                            <Checkbox
-                              id={`tag-${tag}`}
-                              checked={selectedTags.includes(tag)}
-                              onCheckedChange={(checked: boolean | string) => {
-                                if (checked) {
-                                  setSelectedTags([...selectedTags, tag])
-                                } else {
-                                  setSelectedTags(selectedTags.filter((t: string) => t !== tag))
-                                }
-                              }}
-                            />
-                            <label
-                              htmlFor={`tag-${tag}`}
-                              className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
-                                isTemporary ? "text-primary italic" : ""
-                              }`}
-                            >
-                              {tag}
-                              {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
-                            </label>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  // Simple rendering for small tag lists - faster!
-                  <div className="space-y-1">
-                    {displayTags.map((tag) => {
-                      const isTemporary = temporaryTags.includes(tag)
-                      return (
-                        <div key={tag} className="flex items-center space-x-2 py-1">
-                          <Checkbox
-                            id={`tag-${tag}`}
-                            checked={selectedTags.includes(tag)}
-                            onCheckedChange={(checked: boolean | string) => {
-                              if (checked) {
-                                setSelectedTags([...selectedTags, tag])
-                              } else {
-                                setSelectedTags(selectedTags.filter((t: string) => t !== tag))
-                              }
-                            }}
-                          />
-                          <label
-                            htmlFor={`tag-${tag}`}
-                            className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer ${
-                              isTemporary ? "text-primary italic" : ""
-                            }`}
-                          >
-                            {tag}
-                            {isTemporary && <span className="ml-1 text-xs text-muted-foreground">(new)</span>}
-                          </label>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : null}
-
-          {/* Add new tag */}
           <div className="space-y-2">
             <Label htmlFor="newTag">Add New Tag</Label>
             <div className="flex gap-2">
@@ -506,6 +424,7 @@ export const SetTagsDialog = memo(function SetTagsDialog({
                 value={newTag}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => setNewTag(e.target.value)}
                 placeholder="Enter new tag"
+                disabled={isLoadingState}
                 onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
                   if (e.key === "Enter" && newTag.trim()) {
                     e.preventDefault()
@@ -518,28 +437,31 @@ export const SetTagsDialog = memo(function SetTagsDialog({
                 size="sm"
                 variant="outline"
                 onClick={() => addNewTag(newTag)}
-                disabled={!newTag.trim() || displayTags.includes(newTag.trim())}
+                disabled={isLoadingState || !newTag.trim()}
               >
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
           </div>
 
-          {/* Selected tags summary */}
-          {selectedTags.length > 0 && (
+          {hasChanges ? (
             <div className="text-sm text-muted-foreground">
-              Selected: {selectedTags.join(", ")}
+              {updatePlan.add.length > 0 && (
+                <div>Add everywhere: {updatePlan.add.join(", ")}</div>
+              )}
+              {updatePlan.remove.length > 0 && (
+                <div>Remove everywhere: {updatePlan.remove.join(", ")}</div>
+              )}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              No tag changes.
             </div>
           )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={handleCancel}>Cancel</Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={isPending}
-          >
-            Replace Tags
-          </Button>
+          <Button onClick={handleConfirm} disabled={isPending || !hasChanges || isLoadingState || Boolean(selectionBaselineError)}>Apply</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -565,6 +487,8 @@ interface SetLocationDialogProps {
   onConfirm: (location: string) => void
   isPending?: boolean
   initialLocation?: string
+  instanceId?: number
+  capabilities?: InstanceCapabilities | null
 }
 
 export const SetLocationDialog = memo(function SetLocationDialog({
@@ -574,20 +498,40 @@ export const SetLocationDialog = memo(function SetLocationDialog({
   onConfirm,
   isPending = false,
   initialLocation = "",
+  instanceId = 0,
+  capabilities,
 }: SetLocationDialogProps) {
   const [location, setLocation] = useState("")
   const wasOpen = useRef(false)
+
+  const supportsPathAutocomplete = capabilities?.supportsPathAutocomplete ?? false
+
+  const {
+    suggestions,
+    handleInputChange: handleAutocompleteChange,
+    handleSelect,
+    handleKeyDown: handleAutocompleteKeyDown,
+    handleBlur: handleAutocompleteBlur,
+    highlightedIndex,
+    showSuggestions,
+    inputRef: autocompleteInputRef,
+  } = usePathAutocomplete(setLocation, instanceId)
+
   const inputRef = useRef<HTMLInputElement>(null)
+  const effectiveInputRef = supportsPathAutocomplete ? autocompleteInputRef : inputRef
 
   // Initialize location only when dialog transitions from closed to open
   useEffect(() => {
     if (open && !wasOpen.current) {
       setLocation(initialLocation)
+      if (supportsPathAutocomplete) {
+        handleAutocompleteChange(initialLocation)
+      }
       // Focus the input when dialog opens
-      setTimeout(() => inputRef.current?.focus(), 0)
+      setTimeout(() => effectiveInputRef.current?.focus(), 0)
     }
     wasOpen.current = open
-  }, [open, initialLocation])
+  }, [open, initialLocation, supportsPathAutocomplete, handleAutocompleteChange, effectiveInputRef])
 
   const handleConfirm = useCallback(() => {
     if (location.trim()) {
@@ -602,11 +546,14 @@ export const SetLocationDialog = memo(function SetLocationDialog({
   }, [onOpenChange])
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !isPending && location.trim()) {
+    if (supportsPathAutocomplete) {
+      handleAutocompleteKeyDown(e)
+    }
+    if (e.key === "Enter" && !e.defaultPrevented && !isPending && location.trim()) {
       e.preventDefault()
       handleConfirm()
     }
-  }, [isPending, location, handleConfirm])
+  }, [isPending, location, handleConfirm, supportsPathAutocomplete, handleAutocompleteKeyDown])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -621,15 +568,46 @@ export const SetLocationDialog = memo(function SetLocationDialog({
           <div className="space-y-2">
             <Label htmlFor="location">Location</Label>
             <Input
-              ref={inputRef}
+              ref={effectiveInputRef}
               id="location"
               type="text"
+              autoComplete="off"
+              spellCheck={false}
               value={location}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setLocation(e.target.value)}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                setLocation(e.target.value)
+                if (supportsPathAutocomplete) {
+                  handleAutocompleteChange(e.target.value)
+                }
+              }}
               onKeyDown={handleKeyDown}
+              onBlur={supportsPathAutocomplete ? handleAutocompleteBlur : undefined}
               placeholder="/path/to/save/location"
               disabled={isPending}
             />
+            {supportsPathAutocomplete && showSuggestions && suggestions.length > 0 && (
+              <div className="relative">
+                <div className="absolute z-50 mt-1 left-0 right-0 rounded-md border bg-popover text-popover-foreground shadow-md">
+                  <div className="max-h-55 overflow-y-auto py-1">
+                    {suggestions.map((entry, idx) => (
+                      <button
+                        key={entry}
+                        type="button"
+                        title={entry}
+                        className={cn(
+                          "w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground",
+                          (highlightedIndex === idx) ? "bg-accent text-accent-foreground" : "hover:bg-accent/70"
+                        )}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handleSelect(entry)}
+                      >
+                        <span className="block truncate text-left">{entry}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>
@@ -758,7 +736,7 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
     if (lastSlash === -1) return { folderPath: "", fileName: initialPath }
     return {
       folderPath: initialPath.slice(0, lastSlash),
-      fileName: initialPath.slice(lastSlash + 1)
+      fileName: initialPath.slice(lastSlash + 1),
     }
   }, [initialPath])
 
@@ -912,7 +890,7 @@ export const RenameTorrentFolderDialog = memo(function RenameTorrentFolderDialog
     if (lastSlash === -1) return { parentPath: "", folderName: path }
     return {
       parentPath: path.slice(0, lastSlash),
-      folderName: path.slice(lastSlash + 1)
+      folderName: path.slice(lastSlash + 1),
     }
   }, [selectedPath, initialPath])
 
@@ -1080,17 +1058,31 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
 }: SetCategoryDialogProps) {
   const [categoryInput, setCategoryInput] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
+  const [dialogCategories, setDialogCategories] = useState<Record<string, Category>>({})
+  const [dialogUseSubcategories, setDialogUseSubcategories] = useState(useSubcategories)
   const wasOpen = useRef(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const availableCategoryCount = Object.keys(availableCategories || {}).length
+  const dialogCategoryCount = Object.keys(dialogCategories).length
 
-  // Initialize category only when dialog transitions from closed to open
+  // Freeze the category list while the dialog is open so background table refreshes
+  // do not reshuffle the scroll container. If the dialog opened before categories
+  // finished loading, hydrate exactly once when the first non-empty list arrives.
   useEffect(() => {
     if (open && !wasOpen.current) {
       setCategoryInput(initialCategory)
       setSearchQuery("")
+      setDialogCategories(availableCategories || {})
+      setDialogUseSubcategories(useSubcategories)
+    } else if (open && dialogCategoryCount === 0 && availableCategoryCount > 0) {
+      setDialogCategories(availableCategories || {})
+      setDialogUseSubcategories(useSubcategories)
+    } else if (!open && wasOpen.current) {
+      setDialogCategories({})
+      setDialogUseSubcategories(useSubcategories)
     }
     wasOpen.current = open
-  }, [open, initialCategory])
+  }, [availableCategories, availableCategoryCount, dialogCategoryCount, initialCategory, open, useSubcategories])
 
   const handleConfirm = useCallback(() => {
     onConfirm(categoryInput)
@@ -1105,13 +1097,13 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
   }, [onOpenChange])
 
   // Filter categories based on search, with subcategory support
-  const categoryList = Object.keys(availableCategories || {}).sort()
+  const categoryList = useMemo(() => Object.keys(dialogCategories).sort(), [dialogCategories])
 
   const filteredCategories = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
 
-    if (useSubcategories) {
-      const tree = buildCategoryTree(availableCategories || {}, {})
+    if (dialogUseSubcategories) {
+      const tree = buildCategoryTree(dialogCategories, {})
       const shouldIncludeCache = new Map<CategoryNode, boolean>()
 
       const shouldIncludeNode = (node: CategoryNode): boolean => {
@@ -1164,16 +1156,10 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
       displayName: name,
       level: 0,
     }))
-  }, [availableCategories, categoryList, searchQuery, useSubcategories])
+  }, [categoryList, dialogCategories, dialogUseSubcategories, searchQuery])
 
-  const shouldUseVirtualization = filteredCategories.length > 50
-
-  const virtualizer = useVirtualizer({
-    count: shouldUseVirtualization ? filteredCategories.length : 0,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 36,
-    overscan: 5,
-  })
+  const showLoadingCategories = isLoadingCategories && dialogCategoryCount === 0
+  const showSearch = !showLoadingCategories && categoryList.length > 10
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1186,118 +1172,76 @@ export const SetCategoryDialog = memo(function SetCategoryDialog({
         </DialogHeader>
         <div className="py-4 space-y-4">
           {/* Search bar for categories */}
-          {!isLoadingCategories && categoryList.length > 10 && (
-            <div className="space-y-2">
-              <Label htmlFor="categorySearch">Search Categories</Label>
-              <Input
-                id="categorySearch"
-                placeholder="Type to search..."
-                value={searchQuery}
-                onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          )}
+          <div className={showSearch ? "space-y-2" : "hidden"} aria-hidden={!showSearch}>
+            {showSearch && (
+              <>
+                <Label htmlFor="categorySearch">Search Categories</Label>
+                <Input
+                  id="categorySearch"
+                  placeholder="Type to search..."
+                  value={searchQuery}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+                />
+              </>
+            )}
+          </div>
 
           {/* Category list with optional virtualization */}
           <div className="space-y-2">
             <Label>Select Category</Label>
-            {isLoadingCategories ? (
-              <div className="max-h-64 border rounded-md p-3 flex items-center justify-center">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  <span className="text-sm">Loading categories...</span>
-                </div>
-              </div>
-            ) : (
-              <div
-                ref={scrollContainerRef}
-                className="max-h-64 border rounded-md overflow-y-auto"
-              >
-              {/* No category option */}
-              <button
-                type="button"
-                onClick={() => setCategoryInput("")}
-                className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                  categoryInput === "" ? "bg-accent" : ""
-                }`}
-              >
-                <span className="text-sm text-muted-foreground italic">(No category)</span>
-              </button>
-
-              {shouldUseVirtualization ? (
-                // Virtualized rendering for large lists
-                <div
-                  style={{
-                    height: `${virtualizer.getTotalSize()}px`,
-                    width: "100%",
-                    position: "relative",
-                  }}
-                >
-                  {virtualizer.getVirtualItems().map((virtualRow) => {
-                    const category = filteredCategories[virtualRow.index]
-                    return (
-                      <div
-                        key={virtualRow.key}
-                        data-index={virtualRow.index}
-                        ref={virtualizer.measureElement}
-                        style={{
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          width: "100%",
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setCategoryInput(category.name)}
-                          className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                            categoryInput === category.name ? "bg-accent" : ""
-                          }`}
-                          title={category.name}
-                        >
-                          <span
-                            className="text-sm"
-                            style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
-                          >
-                            {category.displayName}
-                          </span>
-                        </button>
-                      </div>
-                    )
-                  })}
+            <div
+              ref={scrollContainerRef}
+              className="max-h-64 border rounded-md overflow-y-auto"
+            >
+              {showLoadingCategories ? (
+                <div className="p-3 flex items-center justify-center">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">Loading categories...</span>
+                  </div>
                 </div>
               ) : (
-                // Simple rendering for small lists - much faster!
-                <div>
-                  {filteredCategories.map((category) => (
-                    <button
-                      key={category.name}
-                      type="button"
-                      onClick={() => setCategoryInput(category.name)}
-                      className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
-                        categoryInput === category.name ? "bg-accent" : ""
-                      }`}
-                      title={category.name}
-                    >
-                      <span
-                        className="text-sm"
-                        style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
-                      >
-                        {category.displayName}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
+                <>
+                  {/* No category option */}
+                  <button
+                    type="button"
+                    onClick={() => setCategoryInput("")}
+                    className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                      categoryInput === "" ? "bg-accent" : ""
+                    }`}
+                  >
+                    <span className="text-sm text-muted-foreground italic">(No category)</span>
+                  </button>
 
-              {filteredCategories.length === 0 && searchQuery && (
-                <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  No categories found matching "{searchQuery}"
-                </div>
+                  <div>
+                    {filteredCategories.map((category) => (
+                      <button
+                        key={category.name}
+                        type="button"
+                        onClick={() => setCategoryInput(category.name)}
+                        className={`w-full text-left px-3 py-2 hover:bg-accent transition-colors ${
+                          categoryInput === category.name ? "bg-accent" : ""
+                        }`}
+                        title={category.name}
+                      >
+                        <span
+                          className="text-sm"
+                          style={category.level > 0 ? { paddingLeft: category.level * 12 } : undefined}
+                        >
+                          {category.displayName}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {filteredCategories.length === 0 && searchQuery && (
+                    <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                      No categories found matching "{searchQuery}"
+                    </div>
+                  )}
+                </>
               )}
-              </div>
-            )}
+            </div>
           </div>
 
           {/* Option to enter new category */}
@@ -1406,184 +1350,6 @@ export const CreateAndAssignCategoryDialog = memo(function CreateAndAssignCatego
   )
 })
 
-interface RemoveTagsDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  availableTags: string[] | null
-  hashCount: number
-  onConfirm: (tags: string[]) => void
-  isPending?: boolean
-  currentTags?: string[]
-}
-
-export const RemoveTagsDialog = memo(function RemoveTagsDialog({
-  open,
-  onOpenChange,
-  availableTags,
-  hashCount,
-  onConfirm,
-  isPending = false,
-  currentTags = [],
-}: RemoveTagsDialogProps) {
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
-  const wasOpen = useRef(false)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-
-  // Initialize with current tags when dialog opens
-  useEffect(() => {
-    if (open && !wasOpen.current) {
-      // Reset selection when dialog opens
-      setSelectedTags([])
-    }
-    wasOpen.current = open
-  }, [open, currentTags, availableTags])
-
-  const handleConfirm = useCallback(() => {
-    if (selectedTags.length > 0) {
-      onConfirm(selectedTags)
-      setSelectedTags([])
-    }
-  }, [selectedTags, onConfirm])
-
-  const handleCancel = useCallback(() => {
-    setSelectedTags([])
-    onOpenChange(false)
-  }, [onOpenChange])
-
-  // Filter available tags to only show those that are on the selected torrents
-  const relevantTags = (availableTags || []).filter(tag => currentTags.includes(tag))
-
-  // Only use virtualization for large tag lists (>50 tags)
-  const shouldUseVirtualization = relevantTags.length > 50
-
-  // Virtualization for large tag lists
-  const virtualizer = useVirtualizer({
-    count: shouldUseVirtualization ? relevantTags.length : 0,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 32, // Approximate height of each tag item
-    overscan: 5,
-  })
-
-  return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-md">
-        <AlertDialogHeader>
-          <AlertDialogTitle>Remove Tags from {hashCount} torrent(s)</AlertDialogTitle>
-          <AlertDialogDescription>
-            Select which tags to remove from the selected torrents.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <div className="py-4 space-y-4">
-          {relevantTags.length > 0 ? (
-            <div className="space-y-2">
-              <Label>Tags to Remove</Label>
-              <div
-                ref={scrollContainerRef}
-                className="h-48 border rounded-md p-3 overflow-y-auto"
-              >
-                {shouldUseVirtualization ? (
-                  // Virtualized rendering for large tag lists (>50 tags)
-                  <div
-                    style={{
-                      height: `${virtualizer.getTotalSize()}px`,
-                      width: "100%",
-                      position: "relative",
-                    }}
-                  >
-                    {virtualizer.getVirtualItems().map((virtualRow) => {
-                      const tag = relevantTags[virtualRow.index]
-                      return (
-                        <div
-                          key={virtualRow.key}
-                          data-index={virtualRow.index}
-                          ref={virtualizer.measureElement}
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            width: "100%",
-                            transform: `translateY(${virtualRow.start}px)`,
-                          }}
-                        >
-                          <div className="flex items-center space-x-2 py-1">
-                            <Checkbox
-                              id={`remove-tag-${tag}`}
-                              checked={selectedTags.includes(tag)}
-                              onCheckedChange={(checked) => {
-                                if (checked) {
-                                  setSelectedTags([...selectedTags, tag])
-                                } else {
-                                  setSelectedTags(selectedTags.filter(t => t !== tag))
-                                }
-                              }}
-                            />
-                            <label
-                              htmlFor={`remove-tag-${tag}`}
-                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                            >
-                              {tag}
-                            </label>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  // Simple rendering for small tag lists (≤50 tags)
-                  <div className="space-y-1">
-                    {relevantTags.map((tag) => (
-                      <div key={tag} className="flex items-center space-x-2 py-1">
-                        <Checkbox
-                          id={`remove-tag-${tag}`}
-                          checked={selectedTags.includes(tag)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setSelectedTags([...selectedTags, tag])
-                            } else {
-                              setSelectedTags(selectedTags.filter(t => t !== tag))
-                            }
-                          }}
-                        />
-                        <label
-                          htmlFor={`remove-tag-${tag}`}
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                        >
-                          {tag}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-muted-foreground">
-              No tags found on the selected torrents.
-            </div>
-          )}
-
-          {/* Selected tags summary */}
-          {selectedTags.length > 0 && (
-            <div className="text-sm text-muted-foreground">
-              Will remove: {selectedTags.join(", ")}
-            </div>
-          )}
-        </div>
-        <AlertDialogFooter>
-          <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={handleConfirm}
-            disabled={selectedTags.length === 0 || isPending}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-          >
-            <X className="mr-2 h-4 w-4" />
-            Remove Tags
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  )
-})
 
 interface EditTrackerDialogProps {
   open: boolean
@@ -1595,6 +1361,8 @@ interface EditTrackerDialogProps {
   selectedHashes: string[]
   onConfirm: (oldURL: string, newURL: string) => void
   isPending?: boolean
+  onConvertHttpToHttps?: () => void
+  isConverting?: boolean
 }
 
 export const EditTrackerDialog = memo(function EditTrackerDialog({
@@ -1607,6 +1375,8 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
   selectedHashes,
   onConfirm,
   isPending = false,
+  onConvertHttpToHttps,
+  isConverting = false,
 }: EditTrackerDialogProps) {
   const [oldURL, setOldURL] = useState("")
   const [newURL, setNewURL] = useState("")
@@ -1626,6 +1396,44 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
     wasOpen.current = open
   }, [open, tracker, trackerURLs])
 
+  // Update oldURL selection when trackerURLs refresh (e.g., after HTTP→HTTPS conversion)
+  // If the selected URL was converted, try to select its https equivalent or first available
+  useEffect(() => {
+    if (!open || !oldURL) return
+    // If current selection still exists, keep it
+    if (trackerURLs.includes(oldURL)) return
+    // If it was an http:// URL, try to find its https:// equivalent by matching hostname/pathname
+    if (oldURL.startsWith("http://")) {
+      try {
+        const parsed = new URL(oldURL)
+        // Find an HTTPS URL with matching hostname and pathname (port may differ)
+        const httpsMatch = trackerURLs.find((url) => {
+          if (!url.startsWith("https://")) return false
+          try {
+            const candidate = new URL(url)
+            return (
+              candidate.hostname.toLowerCase() === parsed.hostname.toLowerCase() &&
+              candidate.pathname === parsed.pathname &&
+              candidate.search === parsed.search
+            )
+          } catch {
+            return false
+          }
+        })
+        if (httpsMatch) {
+          setOldURL(httpsMatch)
+          return
+        }
+      } catch {
+        // Parsing failed, fall through to fallback
+      }
+    }
+    // Fall back to first available URL
+    if (trackerURLs.length > 0) {
+      setOldURL(trackerURLs[0])
+    }
+  }, [open, oldURL, trackerURLs])
+
   const handleConfirm = useCallback((): void => {
     if (oldURL.trim() && newURL.trim()) {
       onConfirm(oldURL.trim(), newURL.trim())
@@ -1642,6 +1450,12 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
 
   const hashCount = selectedHashes.length
   const isFilteredMode = hashCount === 0 // When no hashes provided, we're updating all torrents with this tracker
+
+  // Check if there are any HTTP URLs that could be converted to HTTPS
+  const hasHttpUrls = useMemo(
+    () => trackerURLs.some((url) => url.startsWith("http://")),
+    [trackerURLs]
+  )
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -1686,11 +1500,15 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
                   onChange={(e) => setOldURL(e.target.value)}
                   placeholder={trackerURLs.length === 0 ? `e.g., http://${tracker}:6969/announce` : ""}
                   className="font-mono text-sm"
-                  readOnly={trackerURLs.length === 1}
                 />
                 {trackerURLs.length === 0 && (
                   <p className="text-xs text-muted-foreground">
                     Enter the complete tracker URL including the announce path
+                  </p>
+                )}
+                {trackerURLs.length === 1 && (
+                  <p className="text-xs text-muted-foreground">
+                    Pre-populated from detected URL. Edit if needed (e.g., different scheme).
                   </p>
                 )}
               </>
@@ -1716,12 +1534,29 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
               </p>
             </div>
           )}
+          {hasHttpUrls && onConvertHttpToHttps && (
+            <div className="pt-2 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onConvertHttpToHttps}
+                disabled={isConverting || loadingURLs || isPending}
+                className="w-full"
+              >
+                {isConverting ? "Converting..." : "Convert all HTTP to HTTPS"}
+              </Button>
+              <p className="text-xs text-muted-foreground mt-1">
+                Upgrades all http:// tracker URLs to https:// for this domain
+              </p>
+            </div>
+          )}
         </div>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
-            disabled={!oldURL.trim() || !newURL.trim() || oldURL === newURL || isPending || loadingURLs}
+            disabled={!oldURL.trim() || !newURL.trim() || oldURL === newURL || isPending || loadingURLs || isConverting}
           >
             Update Tracker
           </AlertDialogAction>
@@ -1731,94 +1566,78 @@ export const EditTrackerDialog = memo(function EditTrackerDialog({
   )
 })
 
-const SHARE_DEFAULT_RATIO_LIMIT = 0
-const SHARE_DEFAULT_SEEDING_LIMIT = 0
-const SHARE_DEFAULT_INACTIVE_LIMIT = 0
-const LIMIT_USE_GLOBAL = -2
-const LIMIT_UNLIMITED = -1
 const SPEED_DEFAULT_LIMIT = 0
 
 // Helper function to safely get numeric values with fallback
 const safeNumber = (value: number | undefined, fallback: number) =>
   typeof value === "number" ? value : fallback
 
-// Single type for torrent limit fields used in dialogs
-type TorrentLimitSnapshot = Pick<
-  Torrent,
-  | "ratio_limit"
-  | "seeding_time_limit"
-  | "inactive_seeding_time_limit"
-  | "max_ratio"
-  | "max_seeding_time"
-  | "max_inactive_seeding_time"
-  | "dl_limit"
-  | "up_limit"
->
-
 interface ShareLimitDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   hashCount: number
   torrents?: TorrentLimitSnapshot[]
-  onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => void
+  onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, shareLimitAction?: string, shareLimitsMode?: string) => void
   isPending?: boolean
+  supportsShareLimitsAction?: boolean
+  supportsShareLimitsMode?: boolean
 }
 
-interface ShareLimitFormState {
-  ratioEnabled: boolean
-  ratioLimit: number
-  seedingTimeEnabled: boolean
-  seedingTimeLimit: number
-  inactiveSeedingTimeEnabled: boolean
-  inactiveSeedingTimeLimit: number
+// Share limit mode: matches qBittorrent sentinel values
+type ShareLimitMode = "global" | "unlimited" | "custom"
+
+interface ShareLimitFieldState {
+  mode: ShareLimitMode
+  customValue: number
+  isMixed: boolean // True when selection has different values
 }
 
-const normalizeShareSignature = (torrent: TorrentLimitSnapshot): string => {
-  return [
-    safeNumber(torrent.ratio_limit, LIMIT_USE_GLOBAL),
-    safeNumber(torrent.seeding_time_limit, LIMIT_USE_GLOBAL),
-    safeNumber(torrent.inactive_seeding_time_limit, LIMIT_USE_GLOBAL),
-    safeNumber(torrent.max_ratio, LIMIT_UNLIMITED),
-    safeNumber(torrent.max_seeding_time, LIMIT_UNLIMITED),
-    safeNumber(torrent.max_inactive_seeding_time, LIMIT_UNLIMITED),
-  ].join("|")
+// Convert a raw limit value to mode + custom value
+function valueToFieldState(value: number | undefined, defaultCustom: number): Omit<ShareLimitFieldState, "isMixed"> {
+  if (value === undefined || value === LIMIT_USE_GLOBAL) {
+    return { mode: "global", customValue: defaultCustom }
+  }
+  if (value === LIMIT_UNLIMITED) {
+    return { mode: "unlimited", customValue: defaultCustom }
+  }
+  return { mode: "custom", customValue: value }
 }
 
-const buildShareLimitInitialState = (torrents?: TorrentLimitSnapshot[]): ShareLimitFormState => {
-  const base: ShareLimitFormState = {
-    ratioEnabled: false,
-    ratioLimit: SHARE_DEFAULT_RATIO_LIMIT,
-    seedingTimeEnabled: false,
-    seedingTimeLimit: SHARE_DEFAULT_SEEDING_LIMIT,
-    inactiveSeedingTimeEnabled: false,
-    inactiveSeedingTimeLimit: SHARE_DEFAULT_INACTIVE_LIMIT,
-  }
-
-  if (!torrents || torrents.length === 0) {
-    return base
-  }
-
-  const signatures = torrents.map(normalizeShareSignature)
-  const allMatch = signatures.every((signature) => signature === signatures[0])
-
-  if (!allMatch) {
-    return base
-  }
-
-  const [first] = torrents
-  const ratioLimitValue = safeNumber(first.ratio_limit, LIMIT_UNLIMITED)
-  const seedingTimeLimitValue = safeNumber(first.seeding_time_limit, LIMIT_UNLIMITED)
-  const inactiveSeedingTimeLimitValue = safeNumber(first.inactive_seeding_time_limit, LIMIT_UNLIMITED)
+function buildShareLimitFieldStates(torrents?: TorrentLimitSnapshot[]): {
+  ratio: ShareLimitFieldState
+  seedTime: ShareLimitFieldState
+  inactiveTime: ShareLimitFieldState
+} {
+  const ratioCheck = checkFieldConsistency(torrents, t => t.ratio_limit)
+  const seedTimeCheck = checkFieldConsistency(torrents, t => t.seeding_time_limit)
+  const inactiveTimeCheck = checkFieldConsistency(torrents, t => t.inactive_seeding_time_limit)
 
   return {
-    ...base,
-    ratioEnabled: ratioLimitValue >= 0,
-    ratioLimit: ratioLimitValue >= 0 ? ratioLimitValue : base.ratioLimit,
-    seedingTimeEnabled: seedingTimeLimitValue >= 0,
-    seedingTimeLimit: seedingTimeLimitValue >= 0 ? seedingTimeLimitValue : base.seedingTimeLimit,
-    inactiveSeedingTimeEnabled: inactiveSeedingTimeLimitValue >= 0,
-    inactiveSeedingTimeLimit:
-      inactiveSeedingTimeLimitValue >= 0 ? inactiveSeedingTimeLimitValue : base.inactiveSeedingTimeLimit,
+    ratio: {
+      ...valueToFieldState(ratioCheck.commonValue, 1.0),
+      isMixed: ratioCheck.isMixed,
+    },
+    seedTime: {
+      ...valueToFieldState(seedTimeCheck.commonValue, 1440),
+      isMixed: seedTimeCheck.isMixed,
+    },
+    inactiveTime: {
+      ...valueToFieldState(inactiveTimeCheck.commonValue, 10080),
+      isMixed: inactiveTimeCheck.isMixed,
+    },
+  }
+}
+
+// Convert mode + custom value to API value
+function fieldStateToValue(mode: ShareLimitMode, customValue: number, isRatio: boolean): number {
+  switch (mode) {
+    case "global":
+      return LIMIT_USE_GLOBAL
+    case "unlimited":
+      return LIMIT_UNLIMITED
+    case "custom":
+      // Normalize ratio to 2 decimal places
+      return isRatio ? Math.round(customValue * 100) / 100 : customValue
   }
 }
 
@@ -1829,72 +1648,169 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
   torrents,
   onConfirm,
   isPending = false,
+  supportsShareLimitsAction = false,
+  supportsShareLimitsMode = false,
 }: ShareLimitDialogProps) {
-  const [useGlobalLimits, setUseGlobalLimits] = useState(false)
-  const [ratioEnabled, setRatioEnabled] = useState(false)
-  const [ratioLimit, setRatioLimit] = useState(SHARE_DEFAULT_RATIO_LIMIT)
-  const [seedingTimeEnabled, setSeedingTimeEnabled] = useState(false)
-  const [seedingTimeLimit, setSeedingTimeLimit] = useState(SHARE_DEFAULT_SEEDING_LIMIT) // 24 hours in minutes
-  const [inactiveSeedingTimeEnabled, setInactiveSeedingTimeEnabled] = useState(false)
-  const [inactiveSeedingTimeLimit, setInactiveSeedingTimeLimit] = useState(SHARE_DEFAULT_INACTIVE_LIMIT) // 7 days in minutes
+  const [ratioMode, setRatioMode] = useState<ShareLimitMode>("global")
+  const [ratioCustom, setRatioCustom] = useState(1.0)
+  const [ratioMixed, setRatioMixed] = useState(false)
+  const [ratioTouched, setRatioTouched] = useState(false) // User explicitly changed this field
+
+  const [seedTimeMode, setSeedTimeMode] = useState<ShareLimitMode>("global")
+  const [seedTimeCustom, setSeedTimeCustom] = useState(1440)
+  const [seedTimeMixed, setSeedTimeMixed] = useState(false)
+  const [seedTimeTouched, setSeedTimeTouched] = useState(false)
+
+  const [inactiveTimeMode, setInactiveTimeMode] = useState<ShareLimitMode>("global")
+  const [inactiveTimeCustom, setInactiveTimeCustom] = useState(10080)
+  const [inactiveTimeMixed, setInactiveTimeMixed] = useState(false)
+  const [inactiveTimeTouched, setInactiveTimeTouched] = useState(false)
+
+  const [shareLimitAction, setShareLimitAction] = useState("default")
+  const [shareLimitActionMixed, setShareLimitActionMixed] = useState(false)
+  const [shareLimitActionTouched, setShareLimitActionTouched] = useState(false)
+
+  const [shareLimitsMode, setShareLimitsMode] = useState("default")
+  const [shareLimitsModeMixed, setShareLimitsModeMixed] = useState(false)
+  const [shareLimitsModeTouched, setShareLimitsModeTouched] = useState(false)
+
   const wasOpen = useRef(false)
+  const shareLimitsEdited = useRef(false)
 
-  const shareInitialState = useMemo(() => buildShareLimitInitialState(torrents), [torrents])
-
-  // Reset form when dialog opens with torrent values
   useEffect(() => {
     if (open && !wasOpen.current) {
-      // Check if all torrents have global limits (-2 for all three)
-      const hasGlobalLimits = torrents && torrents.length > 0 &&
-        torrents.every(t =>
-          t.ratio_limit === LIMIT_USE_GLOBAL &&
-          t.seeding_time_limit === LIMIT_USE_GLOBAL &&
-          t.inactive_seeding_time_limit === LIMIT_USE_GLOBAL
-        )
+      const states = buildShareLimitFieldStates(torrents)
 
-      setUseGlobalLimits(hasGlobalLimits || false)
-      setRatioEnabled(!hasGlobalLimits && shareInitialState.ratioEnabled)
-      setRatioLimit(shareInitialState.ratioLimit)
-      setSeedingTimeEnabled(!hasGlobalLimits && shareInitialState.seedingTimeEnabled)
-      setSeedingTimeLimit(shareInitialState.seedingTimeLimit)
-      setInactiveSeedingTimeEnabled(!hasGlobalLimits && shareInitialState.inactiveSeedingTimeEnabled)
-      setInactiveSeedingTimeLimit(shareInitialState.inactiveSeedingTimeLimit)
+      setRatioMode(states.ratio.isMixed ? "global" : states.ratio.mode)
+      setRatioCustom(states.ratio.customValue)
+      setRatioMixed(states.ratio.isMixed)
+      setRatioTouched(false)
+
+      setSeedTimeMode(states.seedTime.isMixed ? "global" : states.seedTime.mode)
+      setSeedTimeCustom(states.seedTime.customValue)
+      setSeedTimeMixed(states.seedTime.isMixed)
+      setSeedTimeTouched(false)
+
+      setInactiveTimeMode(states.inactiveTime.isMixed ? "global" : states.inactiveTime.mode)
+      setInactiveTimeCustom(states.inactiveTime.customValue)
+      setInactiveTimeMixed(states.inactiveTime.isMixed)
+      setInactiveTimeTouched(false)
+
+      setShareLimitActionTouched(false)
+      setShareLimitsModeTouched(false)
+    }
+    if (open && supportsShareLimitsAction && !shareLimitsEdited.current) {
+      const a = shareLimitEnumFieldFromTorrents(torrents, t => t.share_limit_action)
+      setShareLimitAction(a.value)
+      setShareLimitActionMixed(a.isMixed)
+      if (supportsShareLimitsMode) {
+        const m = shareLimitEnumFieldFromTorrents(torrents, t => t.share_limits_mode)
+        setShareLimitsMode(m.value)
+        setShareLimitsModeMixed(m.isMixed)
+      } else {
+        setShareLimitsMode("default")
+        setShareLimitsModeMixed(false)
+      }
+    }
+    if (open && !supportsShareLimitsAction) {
+      setShareLimitAction("default")
+      setShareLimitActionMixed(false)
+      setShareLimitsMode("default")
+      setShareLimitsModeMixed(false)
+    }
+    if (!open) {
+      shareLimitsEdited.current = false
     }
     wasOpen.current = open
-  }, [open, shareInitialState, torrents])
+  }, [open, torrents, supportsShareLimitsAction, supportsShareLimitsMode])
+
+  const hasUnresolvedMixed = (ratioMixed && !ratioTouched) ||
+    (seedTimeMixed && !seedTimeTouched) ||
+    (inactiveTimeMixed && !inactiveTimeTouched) ||
+    (supportsShareLimitsAction && (shareLimitActionMixed && !shareLimitActionTouched)) ||
+    (supportsShareLimitsMode && (shareLimitsModeMixed && !shareLimitsModeTouched))
 
   const handleConfirm = useCallback((): void => {
-    if (useGlobalLimits) {
-      // When using global limits, set all to -2
-      onConfirm(LIMIT_USE_GLOBAL, LIMIT_USE_GLOBAL, LIMIT_USE_GLOBAL)
-    } else {
-      onConfirm(
-        ratioEnabled ? ratioLimit : -1,  // -1 means unlimited (no limit)
-        seedingTimeEnabled ? seedingTimeLimit : -1,
-        inactiveSeedingTimeEnabled ? inactiveSeedingTimeLimit : -1
-      )
-    }
-    // Reset form
-    setUseGlobalLimits(false)
-    setRatioEnabled(false)
-    setRatioLimit(SHARE_DEFAULT_RATIO_LIMIT)
-    setSeedingTimeEnabled(false)
-    setSeedingTimeLimit(SHARE_DEFAULT_SEEDING_LIMIT)
-    setInactiveSeedingTimeEnabled(false)
-    setInactiveSeedingTimeLimit(SHARE_DEFAULT_INACTIVE_LIMIT)
+    onConfirm(
+      fieldStateToValue(ratioMode, ratioCustom, true),
+      fieldStateToValue(seedTimeMode, seedTimeCustom, false),
+      fieldStateToValue(inactiveTimeMode, inactiveTimeCustom, false),
+      shareLimitAction !== "default" ? shareLimitAction : undefined,
+      supportsShareLimitsMode && shareLimitsMode !== "default" ? shareLimitsMode : undefined
+    )
+    setRatioMode("global")
+    setRatioCustom(1.0)
+    setRatioMixed(false)
+    setRatioTouched(false)
+    setSeedTimeMode("global")
+    setSeedTimeCustom(1440)
+    setSeedTimeMixed(false)
+    setSeedTimeTouched(false)
+    setInactiveTimeMode("global")
+    setInactiveTimeCustom(10080)
+    setInactiveTimeMixed(false)
+    setInactiveTimeTouched(false)
+    setShareLimitAction("default")
+    setShareLimitActionMixed(false)
+    setShareLimitActionTouched(false)
+    setShareLimitsMode("default")
+    setShareLimitsModeMixed(false)
+    setShareLimitsModeTouched(false)
     onOpenChange(false)
-  }, [onConfirm, useGlobalLimits, ratioEnabled, ratioLimit, seedingTimeEnabled, seedingTimeLimit, inactiveSeedingTimeEnabled, inactiveSeedingTimeLimit, onOpenChange])
+  }, [
+    onConfirm,
+    onOpenChange,
+    ratioMode,
+    ratioCustom,
+    seedTimeMode,
+    seedTimeCustom,
+    inactiveTimeMode,
+    inactiveTimeCustom,
+    shareLimitAction,
+    shareLimitsMode,
+    supportsShareLimitsMode,
+  ])
 
   const handleCancel = useCallback((): void => {
-    setUseGlobalLimits(false)
-    setRatioEnabled(false)
-    setRatioLimit(SHARE_DEFAULT_RATIO_LIMIT)
-    setSeedingTimeEnabled(false)
-    setSeedingTimeLimit(SHARE_DEFAULT_SEEDING_LIMIT)
-    setInactiveSeedingTimeEnabled(false)
-    setInactiveSeedingTimeLimit(SHARE_DEFAULT_INACTIVE_LIMIT)
+    setRatioMode("global")
+    setRatioCustom(1.0)
+    setRatioMixed(false)
+    setRatioTouched(false)
+    setSeedTimeMode("global")
+    setSeedTimeCustom(1440)
+    setSeedTimeMixed(false)
+    setSeedTimeTouched(false)
+    setInactiveTimeMode("global")
+    setInactiveTimeCustom(10080)
+    setInactiveTimeMixed(false)
+    setInactiveTimeTouched(false)
+    setShareLimitAction("default")
+    setShareLimitActionMixed(false)
+    setShareLimitActionTouched(false)
+    setShareLimitsMode("default")
+    setShareLimitsModeMixed(false)
+    setShareLimitsModeTouched(false)
     onOpenChange(false)
   }, [onOpenChange])
+
+  const setAllGlobal = useCallback(() => {
+    setRatioMode("global")
+    setRatioTouched(true)
+    setSeedTimeMode("global")
+    setSeedTimeTouched(true)
+    setInactiveTimeMode("global")
+    setInactiveTimeTouched(true)
+    if (supportsShareLimitsAction) {
+      setShareLimitAction("default")
+      setShareLimitActionTouched(true)
+      shareLimitsEdited.current = true
+    }
+    if (supportsShareLimitsMode) {
+      setShareLimitsMode("default")
+      setShareLimitsModeTouched(true)
+      shareLimitsEdited.current = true
+    }
+  }, [supportsShareLimitsAction, supportsShareLimitsMode])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1902,114 +1818,246 @@ export const ShareLimitDialog = memo(function ShareLimitDialog({
         <DialogHeader>
           <DialogTitle>Set Share Limits for {hashCount} torrent(s)</DialogTitle>
           <DialogDescription>
-            Configure seeding limits or use global defaults from qBittorrent settings.
+            Configure seeding limits for selected torrents. All three fields will be applied.
           </DialogDescription>
         </DialogHeader>
         <div className="py-2 space-y-4">
-          {/* Global limits toggle */}
-          <div className="space-y-2 pb-2 border-b">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="useGlobalLimits"
-                checked={useGlobalLimits}
-                onCheckedChange={setUseGlobalLimits}
-              />
-              <Label htmlFor="useGlobalLimits" className="text-sm font-medium">Use global limits</Label>
+          {/* Quick action: Set all to global */}
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={setAllGlobal}>
+              Set all to Global
+            </Button>
+          </div>
+
+          {/* Ratio limit */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Ratio limit</Label>
+              {ratioMixed && !ratioTouched && (
+                <span className="text-xs text-yellow-600">Select a value</span>
+              )}
+              {ratioMixed && ratioTouched && (
+                <span className="text-xs text-muted-foreground">(was mixed)</span>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground ml-6">
-              When enabled, torrents will follow the global share limits configured in qBittorrent settings
+            <div className="flex gap-2">
+              <Select
+                value={ratioMode}
+                onValueChange={(value: ShareLimitMode) => {
+                  setRatioMode(value)
+                  setRatioTouched(true)
+                }}
+              >
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global">Use global</SelectItem>
+                  <SelectItem value="unlimited">Unlimited</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+              {ratioMode === "custom" && (
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="flex-1"
+                  value={ratioCustom}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value)
+                    if (Number.isFinite(val)) setRatioCustom(val)
+                  }}
+                  placeholder="e.g. 2.0"
+                />
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {ratioMode === "global" ? "Follow qBittorrent global settings" :ratioMode === "unlimited" ? "No ratio limit" :"Stop seeding when ratio reaches this value"}
             </p>
           </div>
 
+          {/* Seeding time limit */}
           <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="ratioEnabled"
-                checked={ratioEnabled}
-                onCheckedChange={setRatioEnabled}
-                disabled={useGlobalLimits}
-              />
-              <Label htmlFor="ratioEnabled" className="text-sm">Set ratio limit</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Seeding time limit</Label>
+              {seedTimeMixed && !seedTimeTouched && (
+                <span className="text-xs text-yellow-600">Select a value</span>
+              )}
+              {seedTimeMixed && seedTimeTouched && (
+                <span className="text-xs text-muted-foreground">(was mixed)</span>
+              )}
             </div>
-            <div className="ml-6 space-y-1">
-              <Input
-                id="ratioLimit"
-                type="number"
-                min="0"
-                step="0.1"
-                value={ratioLimit}
-                disabled={!ratioEnabled || useGlobalLimits}
-                onChange={(e) => setRatioLimit(parseFloat(e.target.value) || 0)}
-                placeholder="0"
-              />
-              <p className="text-xs text-muted-foreground">
-                Stop seeding when ratio reaches this value
-              </p>
+            <div className="flex gap-2">
+              <Select
+                value={seedTimeMode}
+                onValueChange={(value: ShareLimitMode) => {
+                  setSeedTimeMode(value)
+                  setSeedTimeTouched(true)
+                }}
+              >
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global">Use global</SelectItem>
+                  <SelectItem value="unlimited">Unlimited</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+              {seedTimeMode === "custom" && (
+                <Input
+                  type="number"
+                  min="0"
+                  className="flex-1"
+                  value={seedTimeCustom}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10)
+                    if (Number.isFinite(val)) setSeedTimeCustom(val)
+                  }}
+                  placeholder="e.g. 1440"
+                />
+              )}
             </div>
+            <p className="text-xs text-muted-foreground">
+              {seedTimeMode === "global" ? "Follow qBittorrent global settings" :seedTimeMode === "unlimited" ? "No time limit" :"Minutes (1440 = 24 hours)"}
+            </p>
           </div>
 
+          {/* Inactive seeding time limit */}
           <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="seedingTimeEnabled"
-                checked={seedingTimeEnabled}
-                onCheckedChange={setSeedingTimeEnabled}
-                disabled={useGlobalLimits}
-              />
-              <Label htmlFor="seedingTimeEnabled" className="text-sm">Set seeding time limit</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">Inactive seeding limit</Label>
+              {inactiveTimeMixed && !inactiveTimeTouched && (
+                <span className="text-xs text-yellow-600">Select a value</span>
+              )}
+              {inactiveTimeMixed && inactiveTimeTouched && (
+                <span className="text-xs text-muted-foreground">(was mixed)</span>
+              )}
             </div>
-            <div className="ml-6 space-y-1">
-              <Input
-                id="seedingTimeLimit"
-                type="number"
-                min="0"
-                value={seedingTimeLimit}
-                disabled={!seedingTimeEnabled || useGlobalLimits}
-                onChange={(e) => setSeedingTimeLimit(parseInt(e.target.value) || 0)}
-                placeholder="0"
-              />
-              <p className="text-xs text-muted-foreground">
-                Minutes (1440 = 24 hours)
-              </p>
+            <div className="flex gap-2">
+              <Select
+                value={inactiveTimeMode}
+                onValueChange={(value: ShareLimitMode) => {
+                  setInactiveTimeMode(value)
+                  setInactiveTimeTouched(true)
+                }}
+              >
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global">Use global</SelectItem>
+                  <SelectItem value="unlimited">Unlimited</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+              {inactiveTimeMode === "custom" && (
+                <Input
+                  type="number"
+                  min="0"
+                  className="flex-1"
+                  value={inactiveTimeCustom}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10)
+                    if (Number.isFinite(val)) setInactiveTimeCustom(val)
+                  }}
+                  placeholder="e.g. 10080"
+                />
+              )}
             </div>
+            <p className="text-xs text-muted-foreground">
+              {inactiveTimeMode === "global" ? "Follow qBittorrent global settings" :inactiveTimeMode === "unlimited" ? "No inactive limit" :"Minutes (10080 = 7 days)"}
+            </p>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="inactiveSeedingTimeEnabled"
-                checked={inactiveSeedingTimeEnabled}
-                onCheckedChange={setInactiveSeedingTimeEnabled}
-                disabled={useGlobalLimits}
-              />
-              <Label htmlFor="inactiveSeedingTimeEnabled" className="text-sm">Set inactive seeding limit</Label>
-            </div>
-            <div className="ml-6 space-y-1">
-              <Input
-                id="inactiveSeedingTimeLimit"
-                type="number"
-                min="0"
-                value={inactiveSeedingTimeLimit}
-                disabled={!inactiveSeedingTimeEnabled || useGlobalLimits}
-                onChange={(e) => setInactiveSeedingTimeLimit(parseInt(e.target.value) || 0)}
-                placeholder="0"
-              />
+          {supportsShareLimitsAction && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">When limits are reached</Label>
+                {shareLimitActionMixed && !shareLimitActionTouched && (
+                  <span className="text-xs text-yellow-600">Select a value</span>
+                )}
+                {shareLimitActionMixed && shareLimitActionTouched && (
+                  <span className="text-xs text-muted-foreground">(was mixed)</span>
+                )}
+              </div>
+              <Select
+                value={shareLimitAction}
+                onValueChange={(v: string) => {
+                  shareLimitsEdited.current = true
+                  setShareLimitAction(v)
+                  setShareLimitActionTouched(true)
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Default (use global)</SelectItem>
+                  <SelectItem value="Stop">Stop torrent</SelectItem>
+                  <SelectItem value="Remove">Remove torrent</SelectItem>
+                  <SelectItem value="RemoveWithContent">Remove with content</SelectItem>
+                  <SelectItem value="EnableSuperSeeding">Enable super seeding</SelectItem>
+                </SelectContent>
+              </Select>
               <p className="text-xs text-muted-foreground">
-                Minutes (10080 = 7 days)
+                Action when share limits are reached
               </p>
             </div>
-          </div>
+          )}
+
+          {supportsShareLimitsMode && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Limits matching mode</Label>
+                {shareLimitsModeMixed && !shareLimitsModeTouched && (
+                  <span className="text-xs text-yellow-600">Select a value</span>
+                )}
+                {shareLimitsModeMixed && shareLimitsModeTouched && (
+                  <span className="text-xs text-muted-foreground">(was mixed)</span>
+                )}
+              </div>
+              <Select
+                value={shareLimitsMode}
+                onValueChange={(v: string) => {
+                  shareLimitsEdited.current = true
+                  setShareLimitsMode(v)
+                  setShareLimitsModeTouched(true)
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Default (use global)</SelectItem>
+                  <SelectItem value="MatchAny">Match any limit</SelectItem>
+                  <SelectItem value="MatchAll">Match all limits</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Whether any or all limits must be reached (Web API 2.16.0+)
+              </p>
+            </div>
+          )}
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={handleCancel}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={isPending}
-          >
-            {isPending ? "Setting..." : "Apply Limits"}
-          </Button>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          {hasUnresolvedMixed && (
+            <p className="text-xs text-yellow-600 text-left sm:flex-1">
+              Select values for all mixed fields before applying
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleCancel}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirm}
+              disabled={isPending || hasUnresolvedMixed}
+            >
+              {isPending ? "Setting..." : "Apply Limits"}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -2032,7 +2080,7 @@ interface SpeedLimitFormState {
   downloadLimit: number
 }
 
-const buildSpeedLimitInitialState = (torrents?: TorrentLimitSnapshot[]): SpeedLimitFormState => {
+export const buildSpeedLimitInitialState = (torrents?: TorrentLimitSnapshot[]): SpeedLimitFormState => {
   const base: SpeedLimitFormState = {
     uploadEnabled: false,
     uploadLimit: SPEED_DEFAULT_LIMIT,

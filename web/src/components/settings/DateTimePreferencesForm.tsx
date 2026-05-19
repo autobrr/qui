@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -215,7 +215,7 @@ export function DateTimePreferencesForm() {
       dateFormat,
     }
 
-    return formatTimestamp(Math.floor(now.getTime() / 1000), previewPreferences)
+    return formatTimestamp(Math.floor(now.getTime() / 1000), previewPreferences, true)
   }
 
   return (
