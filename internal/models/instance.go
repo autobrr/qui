@@ -84,6 +84,21 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		HardlinkDirPreset        string     `json:"hardlinkDirPreset"`
 		UseReflinks              bool       `json:"useReflinks"`
 		FallbackToRegularMode    bool       `json:"fallbackToRegularMode"`
+		SSHHost                  string     `json:"sshHost,omitempty"`
+		SSHPort                  int        `json:"sshPort,omitempty"`
+		SSHUsername              string     `json:"sshUsername,omitempty"`
+		SSHAuthType              string     `json:"sshAuthType,omitempty"`
+		SSHPassword              string     `json:"sshPassword,omitempty"`
+		SSHKey                   string     `json:"sshKey,omitempty"`
+		SSHKeyPassphrase         string     `json:"sshKeyPassphrase,omitempty"`
+		HelperPath               string     `json:"helperPath,omitempty"`
+		HelperVersion            string     `json:"helperVersion,omitempty"`
+		HelperCapabilities       []string   `json:"helperCapabilities,omitempty"`
+		HelperAllowedRoots       []string   `json:"helperAllowedRoots,omitempty"`
+		HelperReflinkRoots       []string   `json:"helperReflinkRoots,omitempty"`
+		HelperPlatform           string     `json:"helperPlatform,omitempty"`
+		HelperDeployedAt         *time.Time `json:"helperDeployedAt,omitempty"`
+		HelperLastActivityAt     *time.Time `json:"helperLastActivityAt,omitempty"`
 		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt                time.Time  `json:"created_at"`
 		UpdatedAt                time.Time  `json:"updated_at"`
@@ -111,6 +126,21 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		HardlinkDirPreset:        i.HardlinkDirPreset,
 		UseReflinks:              i.UseReflinks,
 		FallbackToRegularMode:    i.FallbackToRegularMode,
+		SSHHost:                  i.SSHHost,
+		SSHPort:                  i.SSHPort,
+		SSHUsername:              i.SSHUsername,
+		SSHAuthType:              i.SSHAuthType,
+		SSHPassword:              domain.RedactString(i.SSHPasswordEncrypted),
+		SSHKey:                   domain.RedactString(i.SSHKeyEncrypted),
+		SSHKeyPassphrase:         domain.RedactString(i.SSHKeyPassphraseEncrypted),
+		HelperPath:               i.HelperPath,
+		HelperVersion:            i.HelperVersion,
+		HelperCapabilities:       i.HelperCapabilities,
+		HelperAllowedRoots:       i.HelperAllowedRoots,
+		HelperReflinkRoots:       i.HelperReflinkRoots,
+		HelperPlatform:           i.HelperPlatform,
+		HelperDeployedAt:         i.HelperDeployedAt,
+		HelperLastActivityAt:     i.HelperLastActivityAt,
 	})
 }
 
@@ -133,6 +163,14 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		HardlinkDirPreset        *string    `json:"hardlinkDirPreset,omitempty"`
 		UseReflinks              *bool      `json:"useReflinks,omitempty"`
 		FallbackToRegularMode    *bool      `json:"fallbackToRegularMode,omitempty"`
+		SSHHost                  *string    `json:"sshHost,omitempty"`
+		SSHPort                  *int       `json:"sshPort,omitempty"`
+		SSHUsername              *string    `json:"sshUsername,omitempty"`
+		SSHAuthType              *string    `json:"sshAuthType,omitempty"`
+		SSHPassword              string     `json:"sshPassword,omitempty"`
+		SSHKey                   string     `json:"sshKey,omitempty"`
+		SSHKeyPassphrase         string     `json:"sshKeyPassphrase,omitempty"`
+		HelperAllowedRoots       []string   `json:"helperAllowedRoots,omitempty"`
 		LastConnectedAt          *time.Time `json:"last_connected_at,omitempty"`
 		CreatedAt                time.Time  `json:"created_at"`
 		UpdatedAt                time.Time  `json:"updated_at"`
@@ -184,6 +222,23 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		i.FallbackToRegularMode = *temp.FallbackToRegularMode
 	}
 
+	// SSH fields
+	if temp.SSHHost != nil {
+		i.SSHHost = *temp.SSHHost
+	}
+	if temp.SSHPort != nil {
+		i.SSHPort = *temp.SSHPort
+	}
+	if temp.SSHUsername != nil {
+		i.SSHUsername = *temp.SSHUsername
+	}
+	if temp.SSHAuthType != nil {
+		i.SSHAuthType = *temp.SSHAuthType
+	}
+	if temp.HelperAllowedRoots != nil {
+		i.HelperAllowedRoots = temp.HelperAllowedRoots
+	}
+
 	// Handle password - don't overwrite if redacted
 	if temp.Password != "" && !domain.IsRedactedString(temp.Password) {
 		i.PasswordEncrypted = temp.Password
@@ -197,6 +252,17 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 	// Handle basic password - don't overwrite if redacted
 	if temp.BasicPassword != "" && !domain.IsRedactedString(temp.BasicPassword) {
 		i.BasicPasswordEncrypted = &temp.BasicPassword
+	}
+
+	// Handle SSH secrets - don't overwrite if redacted
+	if temp.SSHPassword != "" && !domain.IsRedactedString(temp.SSHPassword) {
+		i.SSHPasswordEncrypted = temp.SSHPassword
+	}
+	if temp.SSHKey != "" && !domain.IsRedactedString(temp.SSHKey) {
+		i.SSHKeyEncrypted = temp.SSHKey
+	}
+	if temp.SSHKeyPassphrase != "" && !domain.IsRedactedString(temp.SSHKeyPassphrase) {
+		i.SSHKeyPassphraseEncrypted = temp.SSHKeyPassphrase
 	}
 
 	return nil
@@ -503,32 +569,32 @@ func scanInstance(scan func(dest ...any) error) (*Instance, error) {
 	}
 
 	instance := &Instance{
-		ID:                       instanceID,
-		Name:                     name,
-		Host:                     host,
-		Username:                 username,
-		PasswordEncrypted:        passwordEncrypted,
-		APIKeyEncrypted:          apiKeyEncrypted,
-		TLSSkipVerify:            SQLiteIntToBool(tlsSkipVerify),
-		SortOrder:                sortOrder,
-		IsActive:                 SQLiteIntToBool(isActive),
-		HasLocalFilesystemAccess: SQLiteIntToBool(hasLocalFilesystemAccess),
-		UseHardlinks:             SQLiteIntToBool(useHardlinks),
-		HardlinkBaseDir:          hardlinkBaseDir,
-		HardlinkDirPreset:        hardlinkDirPreset,
-		UseReflinks:              SQLiteIntToBool(useReflinks),
-		FallbackToRegularMode:    SQLiteIntToBool(fallbackToRegularMode),
-		SSHHost:                  sshHost,
-		SSHPort:                  sshPort,
+		ID:                        instanceID,
+		Name:                      name,
+		Host:                      host,
+		Username:                  username,
+		PasswordEncrypted:         passwordEncrypted,
+		APIKeyEncrypted:           apiKeyEncrypted,
+		TLSSkipVerify:             SQLiteIntToBool(tlsSkipVerify),
+		SortOrder:                 sortOrder,
+		IsActive:                  SQLiteIntToBool(isActive),
+		HasLocalFilesystemAccess:  SQLiteIntToBool(hasLocalFilesystemAccess),
+		UseHardlinks:              SQLiteIntToBool(useHardlinks),
+		HardlinkBaseDir:           hardlinkBaseDir,
+		HardlinkDirPreset:         hardlinkDirPreset,
+		UseReflinks:               SQLiteIntToBool(useReflinks),
+		FallbackToRegularMode:     SQLiteIntToBool(fallbackToRegularMode),
+		SSHHost:                   sshHost,
+		SSHPort:                   sshPort,
 		SSHUsername:               sshUsername,
-		SSHAuthType:              sshAuthType,
-		SSHKeyEncrypted:          sshKeyEncrypted,
+		SSHAuthType:               sshAuthType,
+		SSHKeyEncrypted:           sshKeyEncrypted,
 		SSHKeyPassphraseEncrypted: sshKeyPassphraseEncrypted,
-		SSHPasswordEncrypted:     sshPasswordEncrypted,
-		SSHHostKey:               sshHostKey,
-		HelperPath:               helperPath,
-		HelperVersion:            helperVersion,
-		HelperPlatform:           helperPlatform,
+		SSHPasswordEncrypted:      sshPasswordEncrypted,
+		SSHHostKey:                sshHostKey,
+		HelperPath:                helperPath,
+		HelperVersion:             helperVersion,
+		HelperPlatform:            helperPlatform,
 	}
 
 	if basicUsername.Valid {
@@ -544,9 +610,15 @@ func scanInstance(scan func(dest ...any) error) (*Instance, error) {
 		instance.HelperLastActivityAt = &helperLastActivityAt.Time
 	}
 
-	_ = json.Unmarshal([]byte(helperCapabilities), &instance.HelperCapabilities)
-	_ = json.Unmarshal([]byte(helperAllowedRoots), &instance.HelperAllowedRoots)
-	_ = json.Unmarshal([]byte(helperReflinkRoots), &instance.HelperReflinkRoots)
+	if err := json.Unmarshal([]byte(helperCapabilities), &instance.HelperCapabilities); err != nil {
+		return nil, fmt.Errorf("unmarshal helperCapabilities: %w", err)
+	}
+	if err := json.Unmarshal([]byte(helperAllowedRoots), &instance.HelperAllowedRoots); err != nil {
+		return nil, fmt.Errorf("unmarshal helperAllowedRoots: %w", err)
+	}
+	if err := json.Unmarshal([]byte(helperReflinkRoots), &instance.HelperReflinkRoots); err != nil {
+		return nil, fmt.Errorf("unmarshal helperReflinkRoots: %w", err)
+	}
 
 	return instance, nil
 }
