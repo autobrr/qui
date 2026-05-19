@@ -334,13 +334,12 @@ Migrate missing files detection to prove the Backend pattern end-to-end with one
 
 ### Phase 3: Remote helper infrastructure
 
-- Schema + models -- migration adding SSH/helper columns to `instances`
-- `pkg/fsexec` -- path safety with `os.Root` wrapping
-- `internal/sshpool` -- SSH connection pool, transport, deploy, sweeper
-- `cmd/qui-helper` -- helper binary (NDJSON loop, executor)
-- API endpoints -- SSH test, helper deploy/redeploy/remove/status
-- `internal/fsops/remote` -- Remote backend backed by SSH pool
-- Wire `Stat` op end-to-end so missing files works on remote instances
+Four PRs, ordered by dependency chain:
+
+1. **Schema + models** (~300 lines, independent) -- migration adding 16 SSH/helper columns to `instances`, `HasFilesystemAccess` helper, `scanInstance` shared query helper
+2. **pkg/fsexec** (~420 lines, independent) -- path safety with `os.Root` wrapping, allowed-roots validation, device-ID guard, property tests
+3. **sshpool + helper binary** (~1,120 lines, depends on #1 and #2) -- `internal/sshpool` (SSH connection pool, TOFU transport, deploy, sweeper) + `cmd/qui-helper` (NDJSON stdio loop, executor stub, `diag.echo`) + Makefile/CI for cross-compile
+4. **API + remote backend + wiring** (~575 lines, depends on #3) -- 6 API endpoints (SSH test, deploy, redeploy, remove, status, clear credentials) + `internal/fsops/remote` (Remote backend backed by SSH pool) + wire `Stat` end-to-end so missing files works on remote instances
 
 ### Phase 4: Frontend
 
