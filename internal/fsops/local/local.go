@@ -150,6 +150,12 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 				return fs.SkipAll
 			}
 
+			// d is nil when filepath.WalkDir cannot stat the root (TOCTOU
+			// between our pre-check and the walk's internal stat).
+			if d == nil {
+				return walkErr
+			}
+
 			// Skip hidden files/dirs if requested.
 			name := d.Name()
 			if opts.SkipHidden && len(name) > 0 && name[0] == '.' && path != root {
