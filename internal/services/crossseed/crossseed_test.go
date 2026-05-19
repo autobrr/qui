@@ -4279,6 +4279,14 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
 }
 
+func TestIsSkippedCrossSeedResultStatusIncludesBelowThreshold(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, isSkippedCrossSeedResultStatus("below_threshold"))
+	assert.True(t, isSkippedCrossSeedResultStatus("requires_hardlink_reflink"))
+	assert.False(t, isSkippedCrossSeedResultStatus("hardlink_error"))
+}
+
 func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) {
 	t.Parallel()
 
@@ -5557,6 +5565,7 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 		expectTags              []string
 		expectExcludeCategories []string
 		expectExcludeTags       []string
+		expectTolerance         float64
 	}{
 		{
 			name: "completion include categories passed through",
@@ -5616,6 +5625,18 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 			expectExcludeCategories: []string{"movies-Race"},
 			expectExcludeTags:       []string{"temporary"},
 		},
+		{
+			name: "strict zero tolerance passed through",
+			opts: SearchRunOptions{
+				InstanceID:                   instanceID,
+				SizeMismatchTolerancePercent: 0,
+			},
+			expectCategories:        nil,
+			expectTags:              nil,
+			expectExcludeCategories: nil,
+			expectExcludeTags:       nil,
+			expectTolerance:         0,
+		},
 	}
 
 	for _, tt := range tests {
@@ -5666,6 +5687,7 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 			assert.Equal(t, tt.expectTags, captured.SourceFilterTags, "SourceFilterTags mismatch")
 			assert.Equal(t, tt.expectExcludeCategories, captured.SourceFilterExcludeCategories, "SourceFilterExcludeCategories mismatch")
 			assert.Equal(t, tt.expectExcludeTags, captured.SourceFilterExcludeTags, "SourceFilterExcludeTags mismatch")
+			assert.Equal(t, tt.expectTolerance, captured.SizeMismatchTolerancePercent, "SizeMismatchTolerancePercent mismatch")
 		})
 	}
 }

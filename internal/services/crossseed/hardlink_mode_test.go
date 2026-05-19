@@ -787,6 +787,140 @@ func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
 	assert.Contains(t, result.Result.Message, "Skip recheck")
 }
 
+func TestThresholdFromTolerancePreservesStrictZero(t *testing.T) {
+	assert.InDelta(t, 1.0, coverageThresholdFromTolerance(0), 0.001)
+	assert.InDelta(t, 0.95, coverageThresholdFromTolerance(5), 0.001)
+	assert.InDelta(t, 0.95, coverageThresholdFromTolerance(-1), 0.001)
+	assert.InDelta(t, 0.8, coverageThresholdFromTolerance(20), 0.001)
+
+	assert.InDelta(t, 1.0, clampedResumeThresholdFromTolerance(0), 0.001)
+	assert.InDelta(t, 0.95, clampedResumeThresholdFromTolerance(5), 0.001)
+	assert.InDelta(t, 0.95, clampedResumeThresholdFromTolerance(-1), 0.001)
+	assert.InDelta(t, 0.9, clampedResumeThresholdFromTolerance(20), 0.001)
+}
+
+func TestRequestResumeThresholdPreservesStrictRequestZero(t *testing.T) {
+	s := &Service{
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SizeMismatchTolerancePercent = 5.0
+			return settings, nil
+		},
+	}
+
+	threshold := s.requestResumeThreshold(context.Background(), &CrossSeedRequest{SizeMismatchTolerancePercent: 0})
+
+	assert.InDelta(t, 1.0, threshold, 0.001)
+}
+
+func TestRequestCoverageThresholdAllowsLargerToleranceThanResumeThreshold(t *testing.T) {
+	s := &Service{}
+	req := &CrossSeedRequest{SizeMismatchTolerancePercent: 20}
+
+	assert.InDelta(t, 0.8, s.requestCoverageThreshold(context.Background(), req), 0.001)
+	assert.InDelta(t, 0.9, s.requestResumeThreshold(context.Background(), req), 0.001)
+}
+
+func TestProcessHardlinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "subtitle.srt"), []byte("subtitle"), 0o600))
+
+	sync := &rootlessSavePathSyncManager{}
+	s := &Service{
+		instanceStore: &mockInstanceStore{
+			instances: map[int]*models.Instance{
+				1: {
+					ID:                       1,
+					Name:                     "qbt1",
+					HasLocalFilesystemAccess: true,
+					UseHardlinks:             true,
+					HardlinkBaseDir:          filepath.Join(tempDir, "hardlinks"),
+				},
+			},
+		},
+		syncManager: sync,
+	}
+
+	result := s.processHardlinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{SizeMismatchTolerancePercent: 5.0},
+		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+		"partial-in-pack",
+		qbt.TorrentFiles{
+			{Name: "Movie/movie.mkv", Size: 1000},
+			{Name: "Movie/subtitle.srt", Size: 10},
+		},
+		qbt.TorrentFiles{{Name: "Movie/subtitle.srt", Size: 10}},
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"category",
+		"category.cross",
+	)
+
+	require.True(t, result.Used)
+	require.False(t, result.Success)
+	require.Equal(t, "below_threshold", result.Result.Status)
+	require.Contains(t, result.Result.Message, "matched files cover")
+	require.Contains(t, result.Result.Message, "below required 95.0% threshold")
+	require.Nil(t, sync.addedOptions, "torrent should not be added below threshold")
+}
+
+func TestProcessReflinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	require.NoError(t, os.MkdirAll(filepath.Join(downloadsDir, "Movie"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(downloadsDir, "Movie", "subtitle.srt"), []byte("subtitle"), 0o600))
+
+	sync := &rootlessSavePathSyncManager{}
+	s := &Service{
+		instanceStore: &mockInstanceStore{
+			instances: map[int]*models.Instance{
+				1: {
+					ID:                       1,
+					Name:                     "qbt1",
+					HasLocalFilesystemAccess: true,
+					UseReflinks:              true,
+					HardlinkBaseDir:          filepath.Join(tempDir, "reflinks"),
+				},
+			},
+		},
+		syncManager: sync,
+	}
+
+	result := s.processReflinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{SizeMismatchTolerancePercent: 5.0},
+		&qbt.Torrent{Hash: "matched", ContentPath: filepath.Join(downloadsDir, "Movie")},
+		"partial-in-pack",
+		qbt.TorrentFiles{
+			{Name: "Movie/movie.mkv", Size: 1000},
+			{Name: "Movie/subtitle.srt", Size: 10},
+		},
+		qbt.TorrentFiles{{Name: "Movie/subtitle.srt", Size: 10}},
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"category",
+		"category.cross",
+	)
+
+	require.True(t, result.Used)
+	require.False(t, result.Success)
+	require.Equal(t, "below_threshold", result.Result.Status)
+	require.Contains(t, result.Result.Message, "matched files cover")
+	require.Contains(t, result.Result.Message, "below required 95.0% threshold")
+	require.Nil(t, sync.addedOptions, "torrent should not be added below threshold")
+}
+
 func TestProcessHardlinkMode_FallbackEnabled(t *testing.T) {
 	// When FallbackToRegularMode is enabled, hardlink failures should return
 	// Used=false so that regular cross-seed mode can proceed.

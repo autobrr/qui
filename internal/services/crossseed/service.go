@@ -273,6 +273,7 @@ const (
 	defaultCompletionCheckingRetryDelay   = 30 * time.Second
 	defaultCompletionCheckingPollInterval = 2 * time.Second
 	defaultCompletionCheckingTimeout      = 5 * time.Minute
+	defaultSizeMismatchTolerancePercent   = 5.0
 
 	// User-facing message when cross-seed is skipped due to recheck requirement
 	skippedRecheckMessage = "Skipped: requires recheck. Disable 'Skip recheck' in Cross-Seed settings to allow"
@@ -3283,6 +3284,15 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 	return run, runErr
 }
 
+func isSkippedCrossSeedResultStatus(status string) bool {
+	switch status {
+	case "no_match", "skipped", "rejected", "blocked", "requires_hardlink_reflink", "below_threshold":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Service) processAutomationCandidate(ctx context.Context, run *models.CrossSeedRun, settings *models.CrossSeedAutomationSettings, autoCtx *automationContext, result jackett.SearchResult, opts AutomationRunOptions, indexerInfo map[int]jackett.EnabledIndexerInfo) (models.CrossSeedFeedItemStatus, *string, error) {
 	sourceIndexer := result.Indexer
 	if resolved := jackett.GetIndexerNameFromInfo(indexerInfo, result.IndexerID); resolved != "" {
@@ -3538,11 +3548,11 @@ func (s *Service) processAutomationCandidate(ctx context.Context, run *models.Cr
 			continue
 		}
 
-		switch instanceResult.Status {
-		case "exists":
+		switch {
+		case instanceResult.Status == "exists":
 			itemHadExisting = true
 			run.TorrentsSkipped++
-		case "no_match", "skipped", "rejected", "blocked", "requires_hardlink_reflink":
+		case isSkippedCrossSeedResultStatus(instanceResult.Status):
 			run.TorrentsSkipped++
 		default:
 			itemHasFailure = true
@@ -4146,8 +4156,8 @@ func (s *Service) AutobrrApply(ctx context.Context, req *AutobrrApplyRequest) (*
 		inheritSourceTags = settings.InheritSourceTags
 	}
 
-	sizeTolerance := 5.0 // Default
-	if settings != nil && settings.SizeMismatchTolerancePercent > 0 {
+	sizeTolerance := defaultSizeMismatchTolerancePercent
+	if settings != nil {
 		sizeTolerance = settings.SizeMismatchTolerancePercent
 	}
 
@@ -5088,18 +5098,12 @@ func (s *Service) queueRecheckResume(ctx context.Context, instanceID int, hash s
 	// Get tolerance setting (GetAutomationSettings uses its own 5s timeout internally)
 	settings, err := s.GetAutomationSettings(ctx)
 
-	tolerancePercent := 5.0 // Default
+	tolerancePercent := defaultSizeMismatchTolerancePercent
 	if err == nil && settings != nil {
 		tolerancePercent = settings.SizeMismatchTolerancePercent
 	}
 
-	// Calculate resume threshold (e.g., 95% for 5% tolerance)
-	resumeThreshold := 1.0 - (tolerancePercent / 100.0)
-	if resumeThreshold < 0.9 {
-		resumeThreshold = 0.9 // Safety floor
-	}
-
-	return s.queueRecheckResumeWithThreshold(ctx, instanceID, hash, resumeThreshold)
+	return s.queueRecheckResumeWithThreshold(ctx, instanceID, hash, clampedResumeThresholdFromTolerance(tolerancePercent))
 }
 
 // queueRecheckResumeWithThreshold adds a torrent to the recheck resume queue using an explicit threshold.
@@ -7536,8 +7540,8 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				inheritSourceTags = settings.InheritSourceTags
 			}
 
-			sizeTolerance := 5.0 // Default
-			if settings != nil && settings.SizeMismatchTolerancePercent > 0 {
+			sizeTolerance := defaultSizeMismatchTolerancePercent
+			if settings != nil {
 				sizeTolerance = settings.SizeMismatchTolerancePercent
 			}
 
@@ -8763,10 +8767,6 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	encoded := base64.StdEncoding.EncodeToString(data)
 	startPaused := state.opts.StartPaused
 	skipIfExists := true
-	sizeTolerance := state.opts.SizeMismatchTolerancePercent
-	if sizeTolerance <= 0 {
-		sizeTolerance = 5.0 // Default
-	}
 	request := &CrossSeedRequest{
 		TorrentData:                  encoded,
 		TargetInstanceIDs:            []int{state.opts.InstanceID},
@@ -8777,7 +8777,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		IndexerName:                  match.Indexer,
 		FindIndividualEpisodes:       state.opts.FindIndividualEpisodes,
 		SkipIfExists:                 &skipIfExists,
-		SizeMismatchTolerancePercent: sizeTolerance,
+		SizeMismatchTolerancePercent: state.opts.SizeMismatchTolerancePercent,
 		SkipAutoResume:               state.opts.SkipAutoResume,
 		SkipRecheck:                  state.opts.SkipRecheck,
 		SkipPieceBoundarySafetyCheck: state.opts.SkipPieceBoundarySafetyCheck,
@@ -11422,6 +11422,112 @@ type hardlinkModeResult struct {
 	Result InstanceCrossSeedResult
 }
 
+type normalizedFileKeySize struct {
+	key  string
+	size int64
+}
+
+func selectExistingSourceFiles(sourceFiles, candidateFiles qbt.TorrentFiles) []hardlinktree.TorrentFile {
+	candidateKeyMultiset := make(map[normalizedFileKeySize]int)
+	for _, cf := range candidateFiles {
+		key := normalizedFileKeySize{key: normalizeFileKey(cf.Name), size: cf.Size}
+		candidateKeyMultiset[key]++
+	}
+
+	existingSourceFiles := make([]hardlinktree.TorrentFile, 0, len(sourceFiles))
+	sourceKeyUsed := make(map[normalizedFileKeySize]int)
+	for _, f := range sourceFiles {
+		key := normalizedFileKeySize{key: normalizeFileKey(f.Name), size: f.Size}
+		if sourceKeyUsed[key] >= candidateKeyMultiset[key] {
+			continue
+		}
+
+		existingSourceFiles = append(existingSourceFiles, hardlinktree.TorrentFile{
+			Path: f.Name,
+			Size: f.Size,
+		})
+		sourceKeyUsed[key]++
+	}
+
+	return existingSourceFiles
+}
+
+func sourceFilesTotalSize(files qbt.TorrentFiles) int64 {
+	var total int64
+	for _, f := range files {
+		total += f.Size
+	}
+	return total
+}
+
+func treeFilesTotalSize(files []hardlinktree.TorrentFile) int64 {
+	var total int64
+	for _, f := range files {
+		total += f.Size
+	}
+	return total
+}
+
+func materializedCoverage(sourceFiles qbt.TorrentFiles, materializedFiles []hardlinktree.TorrentFile) (float64, int64, int64) {
+	totalBytes := sourceFilesTotalSize(sourceFiles)
+	if totalBytes <= 0 {
+		return 1, 0, 0
+	}
+
+	materializedBytes := treeFilesTotalSize(materializedFiles)
+	return float64(materializedBytes) / float64(totalBytes), materializedBytes, totalBytes
+}
+
+func coverageThresholdFromTolerance(tolerancePercent float64) float64 {
+	if tolerancePercent < 0 {
+		tolerancePercent = defaultSizeMismatchTolerancePercent
+	}
+
+	return 1.0 - (tolerancePercent / 100.0)
+}
+
+func clampedResumeThresholdFromTolerance(tolerancePercent float64) float64 {
+	threshold := coverageThresholdFromTolerance(tolerancePercent)
+	if threshold < 0.9 {
+		return 0.9
+	}
+	return threshold
+}
+
+func (s *Service) requestTolerancePercent(ctx context.Context, req *CrossSeedRequest) float64 {
+	if req != nil && req.SizeMismatchTolerancePercent >= 0 {
+		return req.SizeMismatchTolerancePercent
+	}
+
+	settings, err := s.GetAutomationSettings(ctx)
+	if err == nil && settings != nil {
+		return settings.SizeMismatchTolerancePercent
+	}
+
+	return defaultSizeMismatchTolerancePercent
+}
+
+func (s *Service) requestCoverageThreshold(ctx context.Context, req *CrossSeedRequest) float64 {
+	return coverageThresholdFromTolerance(s.requestTolerancePercent(ctx, req))
+}
+
+func (s *Service) requestResumeThreshold(ctx context.Context, req *CrossSeedRequest) float64 {
+	return clampedResumeThresholdFromTolerance(s.requestTolerancePercent(ctx, req))
+}
+
+func belowThresholdMessage(mode string, coverage, threshold float64, materializedBytes, totalBytes int64, materializedFiles, totalFiles int) string {
+	return fmt.Sprintf(
+		"Skipped %s mode: matched files cover %.1f%% of torrent bytes (%d/%d files, %d/%d bytes), below required %.1f%% threshold",
+		mode,
+		coverage*100,
+		materializedFiles,
+		totalFiles,
+		materializedBytes,
+		totalBytes,
+		threshold*100,
+	)
+}
+
 // processHardlinkMode attempts to add a cross-seed torrent using hardlink mode.
 // This creates a hardlinked file tree matching the incoming torrent's layout,
 // eliminating the need for reuse+rename alignment.
@@ -11531,6 +11637,43 @@ func (s *Service) processHardlinkMode(
 		return handleError("No candidate files available for hardlink matching")
 	}
 
+	// Build LINKABLE source files list (only files that have matching (normalizedKey, size) in candidate).
+	// When hasExtras=true, some source files won't be linked; qBittorrent will download them.
+	// We use a (normalizedKey, size) multiset to determine which source files have matches,
+	// but let BuildPlan handle the actual pairing by path/name similarity.
+	candidateTorrentFilesToLink := selectExistingSourceFiles(sourceFiles, candidateFiles)
+	if len(candidateTorrentFilesToLink) == 0 {
+		return handleError("No linkable files found (all source files are extras)")
+	}
+
+	coverageThreshold := s.requestCoverageThreshold(ctx, req)
+	coverage, linkedBytes, totalBytes := materializedCoverage(sourceFiles, candidateTorrentFilesToLink)
+	if hasExtras && coverage < coverageThreshold {
+		message := belowThresholdMessage("hardlink", coverage, coverageThreshold, linkedBytes, totalBytes, len(candidateTorrentFilesToLink), len(sourceFiles))
+		log.Info().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
+			Float64("coverage", coverage).
+			Float64("threshold", coverageThreshold).
+			Int64("linkedBytes", linkedBytes).
+			Int64("totalBytes", totalBytes).
+			Int("linkedFiles", len(candidateTorrentFilesToLink)).
+			Int("totalFiles", len(sourceFiles)).
+			Msg("[CROSSSEED] Hardlink mode: skipping below-threshold match before add")
+		return hardlinkModeResult{
+			Used:    true,
+			Success: false,
+			Result: InstanceCrossSeedResult{
+				InstanceID:   candidate.InstanceID,
+				InstanceName: candidate.InstanceName,
+				Success:      false,
+				Status:       "below_threshold",
+				Message:      message,
+			},
+		}
+	}
+	resumeThreshold := s.requestResumeThreshold(ctx, req)
+
 	// Build path to existing file (matched torrent's content)
 	var existingFilePath string
 	if matchedTorrent.ContentPath != "" {
@@ -11600,39 +11743,6 @@ func (s *Service) processHardlinkMode(
 			RelPath: f.Name,
 			Size:    f.Size,
 		})
-	}
-
-	// Build LINKABLE source files list (only files that have matching (normalizedKey, size) in candidate).
-	// When hasExtras=true, some source files won't be linked; qBittorrent will download them.
-	// We use a (normalizedKey, size) multiset to determine which source files have matches,
-	// but let BuildPlan handle the actual pairing by path/name similarity.
-	type fileKeySize struct {
-		key  string
-		size int64
-	}
-	candidateKeyMultiset := make(map[fileKeySize]int)
-	for _, cf := range candidateFiles {
-		key := fileKeySize{key: normalizeFileKey(cf.Name), size: cf.Size}
-		candidateKeyMultiset[key]++
-	}
-
-	var candidateTorrentFilesToLink []hardlinktree.TorrentFile
-	sourceKeyUsed := make(map[fileKeySize]int)
-	for _, f := range sourceFiles {
-		key := fileKeySize{key: normalizeFileKey(f.Name), size: f.Size}
-		if sourceKeyUsed[key] < candidateKeyMultiset[key] {
-			// This source file has a matching (normalizedKey, size) in candidate - include it for linking
-			candidateTorrentFilesToLink = append(candidateTorrentFilesToLink, hardlinktree.TorrentFile{
-				Path: f.Name,
-				Size: f.Size,
-			})
-			sourceKeyUsed[key]++
-		}
-		// else: no matching existing file - this is an extra that will be downloaded
-	}
-
-	if len(candidateTorrentFilesToLink) == 0 {
-		return handleError("No linkable files found (all source files are extras)")
 	}
 
 	// Build hardlink tree plan with only the linkable files
@@ -11817,7 +11927,7 @@ func (s *Service) processHardlinkMode(
 			if addPolicy.DiscLayout {
 				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, torrentHash, 1.0)
 			} else {
-				queueErr = s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
+				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, torrentHash, resumeThreshold)
 			}
 			if queueErr != nil {
 				statusMsg += " - auto-resume queue full, manual resume required"
@@ -12124,6 +12234,41 @@ func (s *Service) processReflinkMode(
 		return handleError("No candidate files available for reflink matching")
 	}
 
+	// Build CLONEABLE source files list (only files that have matching (normalizedKey, size) in candidate).
+	// Files without matches will be downloaded by qBittorrent.
+	candidateTorrentFilesToClone := selectExistingSourceFiles(sourceFiles, candidateFiles)
+	if len(candidateTorrentFilesToClone) == 0 {
+		return handleError("No cloneable files found (all source files would need to be downloaded)")
+	}
+
+	coverageThreshold := s.requestCoverageThreshold(ctx, req)
+	coverage, clonedBytes, totalBytes := materializedCoverage(sourceFiles, candidateTorrentFilesToClone)
+	if hasExtras && coverage < coverageThreshold {
+		message := belowThresholdMessage("reflink", coverage, coverageThreshold, clonedBytes, totalBytes, len(candidateTorrentFilesToClone), len(sourceFiles))
+		log.Info().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentName", torrentName).
+			Float64("coverage", coverage).
+			Float64("threshold", coverageThreshold).
+			Int64("clonedBytes", clonedBytes).
+			Int64("totalBytes", totalBytes).
+			Int("clonedFiles", len(candidateTorrentFilesToClone)).
+			Int("totalFiles", len(sourceFiles)).
+			Msg("[CROSSSEED] Reflink mode: skipping below-threshold match before add")
+		return reflinkModeResult{
+			Used:    true,
+			Success: false,
+			Result: InstanceCrossSeedResult{
+				InstanceID:   candidate.InstanceID,
+				InstanceName: candidate.InstanceName,
+				Success:      false,
+				Status:       "below_threshold",
+				Message:      message,
+			},
+		}
+	}
+	resumeThreshold := s.requestResumeThreshold(ctx, req)
+
 	// Build path to existing file (matched torrent's content)
 	var existingFilePath string
 	if matchedTorrent.ContentPath != "" {
@@ -12146,16 +12291,6 @@ func (s *Service) processReflinkMode(
 			Str("existingPath", existingFilePath).
 			Msg("[CROSSSEED] Reflink mode: no suitable base directory found")
 		return handleError(fmt.Sprintf("No suitable base directory: %v", err))
-	}
-
-	// Check reflink support
-	supported, reason := reflinktree.SupportsReflink(selectedBaseDir)
-	if !supported {
-		log.Warn().
-			Str("reason", reason).
-			Str("baseDir", selectedBaseDir).
-			Msg("[CROSSSEED] Reflink mode: filesystem does not support reflinks")
-		return handleError("Reflink not supported: " + reason)
 	}
 
 	// Reflink mode always uses Original layout to match the incoming torrent's structure exactly.
@@ -12201,35 +12336,15 @@ func (s *Service) processReflinkMode(
 		})
 	}
 
-	// Build CLONEABLE source files list (only files that have matching (normalizedKey, size) in candidate).
-	// Files without matches will be downloaded by qBittorrent.
-	type fileKeySize struct {
-		key  string
-		size int64
-	}
-	candidateKeyMultiset := make(map[fileKeySize]int)
-	for _, cf := range candidateFiles {
-		key := fileKeySize{key: normalizeFileKey(cf.Name), size: cf.Size}
-		candidateKeyMultiset[key]++
-	}
-
-	var candidateTorrentFilesToClone []hardlinktree.TorrentFile
-	sourceKeyUsed := make(map[fileKeySize]int)
-	for _, f := range sourceFiles {
-		key := fileKeySize{key: normalizeFileKey(f.Name), size: f.Size}
-		if sourceKeyUsed[key] < candidateKeyMultiset[key] {
-			// This source file has a matching (normalizedKey, size) in candidate - include it for cloning
-			candidateTorrentFilesToClone = append(candidateTorrentFilesToClone, hardlinktree.TorrentFile{
-				Path: f.Name,
-				Size: f.Size,
-			})
-			sourceKeyUsed[key]++
-		}
-		// else: no matching existing file - this will be downloaded
-	}
-
-	if len(candidateTorrentFilesToClone) == 0 {
-		return handleError("No cloneable files found (all source files would need to be downloaded)")
+	// Check reflink support after the coverage gate so clearly invalid partial
+	// matches are skipped before probing filesystem capabilities.
+	supported, reason := reflinktree.SupportsReflink(selectedBaseDir)
+	if !supported {
+		log.Warn().
+			Str("reason", reason).
+			Str("baseDir", selectedBaseDir).
+			Msg("[CROSSSEED] Reflink mode: filesystem does not support reflinks")
+		return handleError("Reflink not supported: " + reason)
 	}
 
 	// Build reflink tree plan with only the cloneable files
@@ -12420,7 +12535,7 @@ func (s *Service) processReflinkMode(
 			if addPolicy.DiscLayout {
 				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, torrentHash, 1.0)
 			} else {
-				queueErr = s.queueRecheckResume(ctx, candidate.InstanceID, torrentHash)
+				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, torrentHash, resumeThreshold)
 			}
 			if queueErr != nil {
 				statusMsg += " - auto-resume queue full, manual resume required"
