@@ -263,6 +263,7 @@ const (
 	recheckPollInterval                   = 3 * time.Second  // Batch API calls per instance
 	recheckAbsoluteTimeout                = 60 * time.Minute // Allow time for large recheck queues
 	recheckAPITimeout                     = 30 * time.Second
+	maxMissingFilesResumeAttempts         = 3
 	minSearchIntervalSecondsTorznab       = 60
 	minSearchIntervalSecondsGazelleOnly   = 5
 	minSearchCooldownMinutes              = 720
@@ -420,10 +421,13 @@ type Service struct {
 
 // pendingResume tracks a torrent waiting for recheck to complete before resuming.
 type pendingResume struct {
-	instanceID int
-	hash       string
-	threshold  float64
-	addedAt    time.Time
+	instanceID                    int
+	hash                          string
+	threshold                     float64
+	addedAt                       time.Time
+	recoverMissingFilesWithResume bool
+	missingFilesResumeAttempts    int
+	missingFilesResumeSucceeded   bool
 }
 
 type completionLane struct {
@@ -5098,18 +5102,28 @@ func normalizeHash(hash string) string {
 // queueRecheckResumeWithThreshold adds a torrent to the recheck resume queue using an explicit threshold.
 // Use threshold=1.0 to require a full (100%) recheck before resuming.
 func (s *Service) queueRecheckResumeWithThreshold(_ context.Context, instanceID int, hash string, threshold float64) error {
+	return s.queueRecheckResumeWithOptions(instanceID, hash, threshold, false)
+}
+
+func (s *Service) queueRecheckResumeWithMissingFilesRecovery(_ context.Context, instanceID int, hash string, threshold float64) error {
+	return s.queueRecheckResumeWithOptions(instanceID, hash, threshold, true)
+}
+
+func (s *Service) queueRecheckResumeWithOptions(instanceID int, hash string, threshold float64, recoverMissingFilesWithResume bool) error {
 	// Send to worker (non-blocking with buffer)
 	select {
 	case s.recheckResumeChan <- &pendingResume{
-		instanceID: instanceID,
-		hash:       hash,
-		threshold:  threshold,
-		addedAt:    time.Now(),
+		instanceID:                    instanceID,
+		hash:                          hash,
+		threshold:                     threshold,
+		addedAt:                       time.Now(),
+		recoverMissingFilesWithResume: recoverMissingFilesWithResume,
 	}:
 		log.Debug().
 			Int("instanceID", instanceID).
 			Str("hash", hash).
 			Float64("threshold", threshold).
+			Bool("recoverMissingFilesWithResume", recoverMissingFilesWithResume).
 			Int("pendingCount", len(s.recheckResumeChan)+1).
 			Msg("Added torrent to recheck resume queue")
 		return nil
@@ -5120,6 +5134,121 @@ func (s *Service) queueRecheckResumeWithThreshold(_ context.Context, instanceID 
 			Msg("Recheck resume channel full, skipping queue")
 		return errors.New("recheck resume queue full")
 	}
+}
+
+func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *pendingResume, torrent qbt.Torrent) bool {
+	progress := torrent.Progress
+	state := torrent.State
+
+	isChecking := state == qbt.TorrentStateCheckingUp ||
+		state == qbt.TorrentStateCheckingDl ||
+		state == qbt.TorrentStateCheckingResumeData
+
+	// qBittorrent can leave a newly added reflink-with-extras torrent in
+	// missingFiles until it is started. Nudge after transient failures, then keep watching.
+	if state == qbt.TorrentStateMissingFiles && req.recoverMissingFilesWithResume {
+		if req.missingFilesResumeSucceeded {
+			return true
+		}
+		if req.missingFilesResumeAttempts >= maxMissingFilesResumeAttempts {
+			log.Warn().
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Int("attempts", req.missingFilesResumeAttempts).
+				Msg("MissingFiles recheck recovery resume attempts exhausted")
+			return false
+		}
+
+		req.missingFilesResumeAttempts++
+		resumeCtx, resumeCancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
+		err := s.syncManager.BulkAction(resumeCtx, instanceID, []string{hash}, "resume")
+		resumeCancel()
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Float64("progress", progress).
+				Int("attempt", req.missingFilesResumeAttempts).
+				Int("maxAttempts", maxMissingFilesResumeAttempts).
+				Msg("Failed to resume missingFiles torrent during recheck recovery")
+			return req.missingFilesResumeAttempts < maxMissingFilesResumeAttempts
+		}
+
+		req.missingFilesResumeSucceeded = true
+		log.Debug().
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Float64("progress", progress).
+			Float64("threshold", req.threshold).
+			Int("attempt", req.missingFilesResumeAttempts).
+			Msg("Resumed missingFiles torrent to continue post-add recheck recovery")
+		return true
+	}
+
+	// Resume if threshold reached and not checking
+	if progress >= req.threshold && !isChecking {
+		resumeCtx, resumeCancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
+		err := s.syncManager.BulkAction(resumeCtx, instanceID, []string{hash}, "resume")
+		resumeCancel()
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Float64("progress", progress).
+				Msg("Failed to resume torrent after recheck")
+		} else {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Float64("progress", progress).
+				Float64("threshold", req.threshold).
+				Str("state", string(state)).
+				Msg("Resumed torrent after recheck completed")
+		}
+		return false
+	}
+
+	// Below-threshold torrents that are still queued/downloading can improve.
+	// Keep watching until they reach threshold or timeout.
+	if isDownloadingOrQueued(state) {
+		return true
+	}
+
+	// If recheck completed (not checking) with some progress but below threshold,
+	// the torrent won't improve - remove it from queue.
+	// Note: We can't do this for 0% progress since we can't distinguish
+	// "queued for recheck" from "recheck completed with 0 matches".
+	if !isChecking && progress > 0 && progress < req.threshold {
+		log.Warn().
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Float64("progress", progress).
+			Float64("threshold", req.threshold).
+			Msg("Recheck completed below threshold, torrent left paused for manual review")
+		return false
+	}
+
+	// Torrent not ready yet - either still checking or queued for recheck (0% progress).
+	// Keep in queue until absolute timeout.
+	return true
+}
+
+func (s *Service) recheckResumeBaseCtx() context.Context {
+	if s.recheckResumeCtx != nil {
+		return s.recheckResumeCtx
+	}
+	return context.Background()
+}
+
+func isDownloadingOrQueued(state qbt.TorrentState) bool {
+	return state == qbt.TorrentStateDownloading ||
+		state == qbt.TorrentStateStalledDl ||
+		state == qbt.TorrentStateMetaDl ||
+		state == qbt.TorrentStateQueuedDl ||
+		state == qbt.TorrentStateAllocating ||
+		state == qbt.TorrentStateForcedDl
 }
 
 // recheckResumeWorker is a single goroutine that processes all pending recheck resumes.
@@ -5142,6 +5271,7 @@ func (s *Service) recheckResumeWorker() {
 				Int("instanceID", req.instanceID).
 				Str("hash", req.hash).
 				Float64("threshold", req.threshold).
+				Bool("recoverMissingFilesWithResume", req.recoverMissingFilesWithResume).
 				Int("pendingCount", len(pending)).
 				Msg("Added torrent to recheck resume queue")
 
@@ -5167,7 +5297,7 @@ func (s *Service) recheckResumeWorker() {
 
 			// Second pass: one API call per instance with all pending hashes
 			for instanceID, hashes := range byInstance {
-				apiCtx, cancel := context.WithTimeout(s.recheckResumeCtx, recheckAPITimeout)
+				apiCtx, cancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
 				torrents, err := s.syncManager.GetTorrents(apiCtx, instanceID, qbt.TorrentFilterOptions{Hashes: hashes})
 				cancel()
 				if err != nil {
@@ -5198,56 +5328,10 @@ func (s *Service) recheckResumeWorker() {
 						continue
 					}
 
-					progress := torrent.Progress
-					state := torrent.State
-
-					// Check if still in checking state
-					isChecking := state == qbt.TorrentStateCheckingUp ||
-						state == qbt.TorrentStateCheckingDl ||
-						state == qbt.TorrentStateCheckingResumeData
-
-					// Resume if threshold reached and not checking
-					if progress >= req.threshold && !isChecking {
-						resumeCtx, resumeCancel := context.WithTimeout(s.recheckResumeCtx, recheckAPITimeout)
-						err := s.syncManager.BulkAction(resumeCtx, instanceID, []string{hash}, "resume")
-						resumeCancel()
-						if err != nil {
-							log.Warn().
-								Err(err).
-								Int("instanceID", instanceID).
-								Str("hash", hash).
-								Float64("progress", progress).
-								Msg("Failed to resume torrent after recheck")
-						} else {
-							log.Debug().
-								Int("instanceID", instanceID).
-								Str("hash", hash).
-								Float64("progress", progress).
-								Float64("threshold", req.threshold).
-								Str("state", string(state)).
-								Msg("Resumed torrent after recheck completed")
-						}
+					if !s.processPendingRecheckResume(instanceID, hash, req, torrent) {
 						delete(pending, hash)
 						continue
 					}
-
-					// If recheck completed (not checking) with some progress but below threshold,
-					// the torrent won't improve - remove it from queue.
-					// Note: We can't do this for 0% progress since we can't distinguish
-					// "queued for recheck" from "recheck completed with 0 matches".
-					if !isChecking && progress > 0 && progress < req.threshold {
-						log.Warn().
-							Int("instanceID", instanceID).
-							Str("hash", hash).
-							Float64("progress", progress).
-							Float64("threshold", req.threshold).
-							Msg("Recheck completed below threshold, torrent left paused for manual review")
-						delete(pending, hash)
-						continue
-					}
-
-					// Torrent not ready yet - either still checking or queued for recheck (0% progress).
-					// Keep in queue until absolute timeout.
 				}
 			}
 
@@ -11474,12 +11558,7 @@ func coverageThresholdFromTolerance(tolerancePercent float64) float64 {
 }
 
 func clampedResumeThresholdFromTolerance(tolerancePercent float64) float64 {
-	if tolerancePercent < 0 {
-		tolerancePercent = 0
-	} else if tolerancePercent > 100 {
-		tolerancePercent = 100
-	}
-
+	// coverageThresholdFromTolerance normalizes tolerance before converting it.
 	threshold := coverageThresholdFromTolerance(tolerancePercent)
 	if threshold < 0.9 {
 		return 0.9
@@ -12552,7 +12631,7 @@ func (s *Service) processReflinkMode(
 			if addPolicy.DiscLayout {
 				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, torrentHash, 1.0)
 			} else {
-				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, torrentHash, resumeThreshold)
+				queueErr = s.queueRecheckResumeWithMissingFilesRecovery(ctx, candidate.InstanceID, torrentHash, resumeThreshold)
 			}
 			if queueErr != nil {
 				statusMsg += " - auto-resume queue full, manual resume required"
