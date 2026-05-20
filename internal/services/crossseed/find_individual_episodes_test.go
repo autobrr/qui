@@ -176,6 +176,33 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	require.True(t, captured.SizeMismatchTolerancePercentSet)
 }
 
+func TestCacheSearchResultsEmptyResultsOverwritePrevious(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		searchResultCache: ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+	}
+
+	const (
+		instanceID = 3
+		hash       = "abc123"
+	)
+
+	service.cacheSearchResults(instanceID, hash, []TorrentSearchResult{
+		{
+			IndexerID:   99,
+			Title:       "Previous.Result",
+			DownloadURL: "https://example.invalid/previous.torrent",
+		},
+	}, 20)
+	service.cacheSearchResults(instanceID, hash, nil, 7)
+
+	cached := service.getCachedSearchResults(instanceID, hash)
+	require.NotNil(t, cached)
+	require.Empty(t, cached.results)
+	require.InDelta(t, 7, cached.sizeMismatchTolerancePercent, 0.001)
+}
+
 type episodeInstanceStore struct {
 	instances map[int]*models.Instance
 }

@@ -60,6 +60,7 @@ func TestBulkActionRetryAttempts(t *testing.T) {
 	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 0, 1))
 	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 1, 2))
 	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 2, 2))
+	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(context.WithoutCancel(WithPostAddBulkActionRetry(ctx)), 1, 2))
 	require.Equal(t, 0, bulkActionRetryAttempts(ctx, 0, 0))
 }
 
@@ -157,7 +158,7 @@ func TestBulkActionSyncRetryStopsAfterAttemptLimitOnSyncFailure(t *testing.T) {
 	require.Equal(t, 2, syncer.mapCalls)
 }
 
-func TestBulkActionSyncRetryStopsWhenCallerCancels(t *testing.T) {
+func TestBulkActionSyncRetryKeepsCriticalBudgetWithDecoupledContext(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -165,20 +166,20 @@ func TestBulkActionSyncRetryStopsWhenCallerCancels(t *testing.T) {
 
 	syncer := &bulkActionRetrySyncer{}
 	resolved, variants := bulkActionSyncRetry(
-		ctx,
+		context.WithoutCancel(ctx),
 		syncer,
 		[]string{"missing"},
 		1,
 		"recheck",
 		bulkActionAddRetryAttempts,
-		time.Hour,
+		time.Nanosecond,
 		resolveBulkActionRetryTestHashes([]string{"missing"}),
 	)
 
 	require.Equal(t, 0, resolved)
 	require.Equal(t, 0, variants)
-	require.Equal(t, 0, syncer.syncCalls)
-	require.Equal(t, 0, syncer.mapCalls)
+	require.Equal(t, bulkActionAddRetryAttempts, syncer.syncCalls)
+	require.Equal(t, bulkActionAddRetryAttempts, syncer.mapCalls)
 }
 
 func TestWaitForPostAddRecheckReadyWaitsForResumeDataCheck(t *testing.T) {

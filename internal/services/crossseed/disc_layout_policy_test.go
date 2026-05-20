@@ -24,11 +24,12 @@ import (
 // discPolicySyncManager is a mock sync manager for disc layout policy tests.
 // It records AddTorrent options and BulkAction calls to verify policy enforcement.
 type discPolicySyncManager struct {
-	files          map[string]qbt.TorrentFiles
-	props          map[string]*qbt.TorrentProperties
-	addedOptions   map[string]string
-	bulkActions    []string // records "action:hash" for each BulkAction call
-	matchedTorrent *qbt.Torrent
+	files           map[string]qbt.TorrentFiles
+	props           map[string]*qbt.TorrentProperties
+	addedOptions    map[string]string
+	bulkActions     []string // records "action:hash" for each BulkAction call
+	matchedTorrent  *qbt.Torrent
+	renameFolderErr error
 }
 
 func (m *discPolicySyncManager) GetTorrents(_ context.Context, _ int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
@@ -118,8 +119,8 @@ func (*discPolicySyncManager) RenameTorrentFile(context.Context, int, string, st
 	return nil
 }
 
-func (*discPolicySyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
-	return nil
+func (m *discPolicySyncManager) RenameTorrentFolder(context.Context, int, string, string, string) error {
+	return m.renameFolderErr
 }
 
 func (*discPolicySyncManager) GetCategories(context.Context, int) (map[string]qbt.Category, error) {
@@ -528,6 +529,104 @@ func TestLinkModeFilesystemFallback_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	for _, action := range mockSync.bulkActions {
 		assert.NotContains(t, action, "resume", "filesystem fallback must not resume immediately")
 	}
+
+	select {
+	case pending := <-service.recheckResumeChan:
+		require.NotNil(t, pending)
+		assert.Equal(t, instanceID, pending.instanceID)
+		assert.Equal(t, newHash, pending.hash)
+		assert.InDelta(t, 1.0, pending.threshold, 0.001)
+	default:
+		require.Fail(t, "expected filesystem fallback torrent to be queued for full recheck resume")
+	}
+}
+
+func TestLinkModeFilesystemFallback_RechecksWhenAlignmentFails(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	instanceID := 1
+	matchedHash := "matchedhash"
+	newHash := "newhash"
+	matchedName := "Movie.2024.1080p.BluRay.x264-GROUP"
+	sourceName := "Movie.2024.1080p.BluRay.x264-ALT"
+
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	invalidBaseDir := filepath.Join(tempDir, "not-a-directory")
+	require.NoError(t, os.MkdirAll(downloadsDir, 0o755))
+	require.NoError(t, os.WriteFile(invalidBaseDir, []byte("file"), 0o600))
+
+	candidateFiles := qbt.TorrentFiles{
+		{Name: matchedName + "/movie.mkv", Size: 1_000_000_000},
+	}
+	sourceFiles := qbt.TorrentFiles{
+		{Name: sourceName + "/movie.mkv", Size: 1_000_000_000},
+	}
+
+	matchedTorrent := qbt.Torrent{
+		Hash:        matchedHash,
+		Name:        matchedName,
+		ContentPath: filepath.Join(downloadsDir, matchedName),
+		Progress:    1.0,
+		Size:        1_000_000_000,
+	}
+
+	mockSync := &discPolicySyncManager{
+		files: map[string]qbt.TorrentFiles{
+			matchedHash: candidateFiles,
+		},
+		props: map[string]*qbt.TorrentProperties{
+			matchedHash: {
+				SavePath: downloadsDir,
+			},
+		},
+		matchedTorrent:  &matchedTorrent,
+		bulkActions:     make([]string, 0),
+		renameFolderErr: errors.New("rename failed"),
+	}
+
+	mockInstances := &discPolicyInstanceStore{
+		instances: map[int]*models.Instance{
+			instanceID: {
+				ID:                       instanceID,
+				UseHardlinks:             true,
+				FallbackToRegularMode:    true,
+				HasLocalFilesystemAccess: true,
+				HardlinkBaseDir:          invalidBaseDir,
+			},
+		},
+	}
+
+	service := &Service{
+		syncManager:       mockSync,
+		instanceStore:     mockInstances,
+		stringNormalizer:  stringutils.NewDefaultNormalizer(),
+		releaseCache:      NewReleaseCache(),
+		recheckResumeChan: make(chan *pendingResume, 10),
+		recheckResumeCtx:  context.Background(),
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SizeMismatchTolerancePercent = 5.0
+			return settings, nil
+		},
+	}
+
+	candidate := CrossSeedCandidate{
+		InstanceID:   instanceID,
+		InstanceName: "test-instance",
+		Torrents:     []qbt.Torrent{matchedTorrent},
+	}
+
+	startPausedFalse := false
+	req := &CrossSeedRequest{
+		StartPaused: &startPausedFalse,
+	}
+
+	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil)
+
+	require.True(t, result.Success, "Expected success, got: %s", result.Message)
+	require.Contains(t, mockSync.bulkActions, "recheck:"+newHash)
 
 	select {
 	case pending := <-service.recheckResumeChan:

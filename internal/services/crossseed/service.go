@@ -4968,9 +4968,9 @@ func (s *Service) processCrossSeedCandidate(
 	// Determine if we need to wait for verification and resume at threshold:
 	// - requiresAlignment: we used skip_checking but need to recheck after renaming paths
 	// - hasExtraFiles: we didn't use skip_checking, qBittorrent auto-verifies, but won't reach 100%
-	// - alignmentSucceeded: only proceed if alignment worked (or wasn't needed)
+	// - linkFallbackRequiresFullRecheck: regular-mode fallback was forced paused and must be rechecked
 	needsRecheckAndResume := (requiresAlignment || hasExtraFiles) && alignmentSucceeded
-	needsRecheck := ((addPolicy.DiscLayout || linkFallbackRequiresFullRecheck) && alignmentSucceeded) || needsRecheckAndResume
+	needsRecheck := (addPolicy.DiscLayout && alignmentSucceeded) || linkFallbackRequiresFullRecheck || needsRecheckAndResume
 
 	if needsRecheck {
 		recheckHashes := []string{torrentHash}
@@ -7716,7 +7716,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 }
 
 func (s *Service) cacheSearchResults(instanceID int, hash string, results []TorrentSearchResult, tolerancePercent float64) {
-	if s.searchResultCache == nil || len(results) == 0 {
+	if s.searchResultCache == nil {
 		return
 	}
 

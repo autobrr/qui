@@ -1795,6 +1795,11 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	torrentMap := syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes})
 	resolved, variants := resolveAllHashes(torrentMap)
 	variantResolutions = variants
+	postAddRetry := postAddBulkActionRetry(ctx)
+	retryCtx := ctx
+	if postAddRetry {
+		retryCtx = context.WithoutCancel(ctx)
+	}
 
 	// If not all found, try variant resolution with full torrent map.
 	// This handles hybrid v1+v2 torrents where caller provides v1 hash but qBittorrent indexes by v2.
@@ -1808,12 +1813,12 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	// the short budget; post-add paths can opt into a longer visibility wait.
 	if resolved < len(hashes) || len(torrentMap) == 0 {
 		_, variantResolutions = bulkActionSyncRetry(
-			ctx,
+			retryCtx,
 			syncManager,
 			hashes,
 			instanceID,
 			action,
-			bulkActionRetryAttempts(ctx, resolved, len(hashes)),
+			bulkActionRetryAttempts(retryCtx, resolved, len(hashes)),
 			bulkActionSyncRetryInterval,
 			resolveAllHashes,
 		)
@@ -1866,9 +1871,9 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		canonicalHashes = unique
 	}
 
-	if action == "recheck" && postAddBulkActionRetry(ctx) {
+	if action == "recheck" && postAddRetry {
 		if err := waitForPostAddRecheckReady(
-			ctx,
+			retryCtx,
 			syncManager,
 			canonicalHashes,
 			instanceID,
@@ -1925,7 +1930,7 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 			}
 		}
 	case "recheck":
-		err = client.RecheckCtx(ctx, canonicalHashes)
+		err = client.RecheckCtx(retryCtx, canonicalHashes)
 	case "reannounce":
 		// No cache update needed - no visible state change
 		err = client.ReAnnounceTorrentsCtx(ctx, canonicalHashes)
