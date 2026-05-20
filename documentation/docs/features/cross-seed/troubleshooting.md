@@ -110,7 +110,7 @@ Torrents with bad hash/es should be reported at their relevant sites.
 :::
 
 :::warning
-Ignoring the bad hash/es in hardlink mode and resuming, will cause repeated full torrent rechecks/downloading on torrents in the matching group, every time a peer requests the mis-matched hash/es and forces qBitTorrent to validate.
+Ignoring the bad hash/es in hardlink mode and resuming, will cause repeated full torrent rechecks, and downloading bad pieces, on torrents in the matching group, every time a peer requests the mis-matched hash/es and forces qBitTorrent to validate.
 :::
 
 ## "Files not found" after cross-seed (default mode)
