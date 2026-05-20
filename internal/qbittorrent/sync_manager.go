@@ -2086,17 +2086,17 @@ func bulkActionSyncRetry(
 	retryInterval time.Duration,
 	resolveAllHashes func(map[string]qbt.Torrent) (int, int),
 ) (resolved, variants int) {
-	syncCtx, cancel := context.WithTimeout(ctx, bulkActionSyncRetryTimeout)
-	defer cancel()
-
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		select {
-		case <-syncCtx.Done():
+		case <-ctx.Done():
 			return resolved, variants
 		default:
 		}
 
-		if syncErr := syncManager.Sync(syncCtx); syncErr != nil {
+		syncCtx, cancel := context.WithTimeout(ctx, bulkActionSyncRetryTimeout)
+		syncErr := syncManager.Sync(syncCtx)
+		cancel()
+		if syncErr != nil {
 			log.Debug().Err(syncErr).Int("instanceID", instanceID).Str("action", action).
 				Int("attempt", attempt).Msg("BulkAction: forced sync failed")
 			// Continue to retry even if sync failed
@@ -2113,7 +2113,7 @@ func bulkActionSyncRetry(
 		}
 
 		select {
-		case <-syncCtx.Done():
+		case <-ctx.Done():
 			return resolved, variants
 		case <-time.After(retryInterval):
 		}

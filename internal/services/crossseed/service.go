@@ -4970,7 +4970,7 @@ func (s *Service) processCrossSeedCandidate(
 	// - hasExtraFiles: we didn't use skip_checking, qBittorrent auto-verifies, but won't reach 100%
 	// - linkFallbackRequiresFullRecheck: regular-mode fallback was forced paused and must be rechecked
 	needsRecheckAndResume := (requiresAlignment || hasExtraFiles) && alignmentSucceeded
-	needsRecheck := (addPolicy.DiscLayout && alignmentSucceeded) || linkFallbackRequiresFullRecheck || needsRecheckAndResume
+	needsRecheck := addPolicy.DiscLayout || linkFallbackRequiresFullRecheck || needsRecheckAndResume
 
 	if needsRecheck {
 		recheckHashes := []string{torrentHash}
