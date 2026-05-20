@@ -76,10 +76,17 @@ When the cross-seed torrent has a different display name or root folder, qui ren
 
 When the source torrent contains files not on disk (NFO, SRT, samples not matching allowed extra file patterns), a recheck determines actual progress.
 
+### 3. Hardlink/reflink filesystem fallback
+
+When link-tree creation fails because the source files and link-tree base are on different filesystems, or because the filesystem does not support the requested link type, qui can fall back to regular mode if **Fallback to regular mode** is enabled. The torrent is added against the matched source files, not the link-tree directory.
+
+These fallback torrents are treated like disc-based content: they are added paused, rechecked, and only auto-resume after qBittorrent reports 100% complete. If **Skip recheck** is enabled, qui skips them instead.
+
 ### Auto-resume behavior
 
 - Default tolerance 5% → auto-resumes at ≥95% completion
 - Torrents below threshold stay paused for manual investigation
+- Filesystem fallback and disc-layout torrents require 100% completion before auto-resume
 - Configure via **Size mismatch tolerance** in Rules
 
 ## Hardlink mode failed
