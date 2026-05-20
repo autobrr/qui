@@ -33,6 +33,9 @@ func (s *Service) detectMissingFiles(ctx context.Context, instanceID int, torren
 		return result, nil
 	}
 
+	if s.backendPool == nil {
+		return result, errors.New("backend pool not configured for missing files detection")
+	}
 	backend, err := s.backendPool.GetBackend(ctx, instanceID)
 	if err != nil {
 		return result, fmt.Errorf("get backend for missing files detection: %w", err)
