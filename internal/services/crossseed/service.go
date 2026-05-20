@@ -325,7 +325,7 @@ type Service struct {
 	releaseCache              *ReleaseCache
 	// searchResultCache stores the most recent search results per torrent hash so that
 	// apply requests can be validated without trusting client-provided URLs.
-	searchResultCache *ttlcache.Cache[string, []TorrentSearchResult]
+	searchResultCache *ttlcache.Cache[string, cachedTorrentSearchResults]
 	// asyncFilteringCache stores async filtering state by torrent key for UI polling
 	asyncFilteringCache *ttlcache.Cache[string, *AsyncIndexerFilteringState]
 	indexerDomainCache  *ttlcache.Cache[string, string]
@@ -430,6 +430,11 @@ type pendingResume struct {
 	missingFilesResumeSucceeded   bool
 }
 
+type cachedTorrentSearchResults struct {
+	results                      []TorrentSearchResult
+	sizeMismatchTolerancePercent float64
+}
+
 type completionLane struct {
 	mu       sync.Mutex
 	searchMu sync.Mutex
@@ -474,7 +479,7 @@ func NewService(
 	metadataCredsRevisionLoader func(ctx context.Context) (time.Time, error),
 	metadataCredentialLoader func(ctx context.Context) (apiKey, pin string, err error),
 ) *Service {
-	searchCache := ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}.
+	searchCache := ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}.
 		SetDefaultTTL(searchResultCacheTTL))
 
 	asyncFilteringCache := ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}.
@@ -5124,6 +5129,10 @@ func normalizeHash(hash string) string {
 	return normalizeLowerTrim(hash)
 }
 
+func recheckResumeKey(instanceID int, hash string) string {
+	return fmt.Sprintf("%d:%s", instanceID, normalizeHash(hash))
+}
+
 // queueRecheckResumeWithThreshold adds a torrent to the recheck resume queue using an explicit threshold.
 // Use threshold=1.0 to require a full (100%) recheck before resuming.
 func (s *Service) queueRecheckResumeWithThreshold(_ context.Context, instanceID int, hash string, threshold float64) error {
@@ -5279,9 +5288,6 @@ func isDownloadingOrQueued(state qbt.TorrentState) bool {
 // recheckResumeWorker is a single goroutine that processes all pending recheck resumes.
 // Instead of spawning a goroutine per torrent, this worker manages all pending torrents
 // in a map and checks them periodically, avoiding goroutine accumulation.
-//
-// TODO: key by instanceID+hash if multi-instance background search is enabled,
-// currently we only run background search on one instance at a time so hash-only keys are safe.
 func (s *Service) recheckResumeWorker() {
 	pending := make(map[string]*pendingResume)
 	ticker := time.NewTicker(recheckPollInterval)
@@ -5291,7 +5297,7 @@ func (s *Service) recheckResumeWorker() {
 		select {
 		case req := <-s.recheckResumeChan:
 			// Add new pending resume request
-			pending[req.hash] = req
+			pending[recheckResumeKey(req.instanceID, req.hash)] = req
 			log.Debug().
 				Int("instanceID", req.instanceID).
 				Str("hash", req.hash).
@@ -5307,17 +5313,17 @@ func (s *Service) recheckResumeWorker() {
 
 			// First pass: check timeouts and group by instance for batched API calls
 			byInstance := make(map[int][]string)
-			for hash, req := range pending {
+			for key, req := range pending {
 				if time.Since(req.addedAt) > recheckAbsoluteTimeout {
 					log.Warn().
 						Int("instanceID", req.instanceID).
-						Str("hash", hash).
+						Str("hash", req.hash).
 						Dur("elapsed", time.Since(req.addedAt)).
 						Msg("Recheck resume absolute timeout reached, removing from queue")
-					delete(pending, hash)
+					delete(pending, key)
 					continue
 				}
-				byInstance[req.instanceID] = append(byInstance[req.instanceID], hash)
+				byInstance[req.instanceID] = append(byInstance[req.instanceID], req.hash)
 			}
 
 			// Second pass: one API call per instance with all pending hashes
@@ -5342,19 +5348,20 @@ func (s *Service) recheckResumeWorker() {
 
 				// Process each pending torrent for this instance
 				for _, hash := range hashes {
-					req := pending[hash]
+					key := recheckResumeKey(instanceID, hash)
+					req := pending[key]
 					torrent, found := torrentByHash[normalizeHash(hash)]
 					if !found {
 						log.Debug().
 							Int("instanceID", instanceID).
 							Str("hash", hash).
 							Msg("Torrent not found during recheck resume, removing from queue")
-						delete(pending, hash)
+						delete(pending, key)
 						continue
 					}
 
 					if !s.processPendingRecheckResume(instanceID, hash, req, torrent) {
-						delete(pending, hash)
+						delete(pending, key)
 						continue
 					}
 				}
@@ -6845,6 +6852,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	sourceSite, isGazelleSource := s.detectGazelleSourceSite(sourceTorrent)
 	gazelleResults := []TorrentSearchResult{}
+	tolerancePercent := s.searchTolerancePercent(ctx, opts)
 	if !opts.SkipGazelle {
 		gazelleResults, _ = s.searchGazelleMatches(ctx, instanceID, sourceTorrent, sourceFiles, sourceSite, isGazelleSource, gazelleClients)
 	}
@@ -6853,7 +6861,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		if gazelleClients == nil || len(gazelleClients.byHost) == 0 {
 			return nil, fmt.Errorf("%w: torznab disabled but gazelle not configured", ErrInvalidRequest)
 		}
-		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults, tolerancePercent)
 		return &TorrentSearchResponse{
 			SourceTorrent: sourceInfo,
 			Results:       gazelleResults,
@@ -6866,7 +6874,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		// No Torznab backend. Only succeed if *any* Gazelle client is configured.
 		// Per-torrent coverage can still be partial if the opposite-site key is missing.
 		if gazelleClients != nil && len(gazelleClients.byHost) > 0 {
-			s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
+			s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults, tolerancePercent)
 			return &TorrentSearchResponse{
 				SourceTorrent: sourceInfo,
 				Results:       gazelleResults,
@@ -6887,7 +6895,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		log.Debug().
 			Str("torrentName", sourceTorrent.Name).
 			Msg("[CROSSSEED-SEARCH] No eligible Torznab indexers after OPS/RED exclusion")
-		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults)
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults, tolerancePercent)
 		return &TorrentSearchResponse{
 			SourceTorrent: sourceInfo,
 			Results:       gazelleResults,
@@ -7058,7 +7066,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			Msg("[CROSSSEED-SEARCH] All indexers filtered out - no suitable indexers remain")
 
 		combined := mergeTorrentSearchResults(gazelleResults, nil)
-		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined, tolerancePercent)
 		return &TorrentSearchResponse{
 			SourceTorrent: sourceInfo,
 			Results:       combined,
@@ -7078,7 +7086,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				Msg("[CROSSSEED-SEARCH] Requested indexers removed after filtering, skipping search")
 
 			combined := mergeTorrentSearchResults(gazelleResults, nil)
-			s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
+			s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined, tolerancePercent)
 			return &TorrentSearchResponse{
 				SourceTorrent: sourceInfo,
 				Results:       combined,
@@ -7324,8 +7332,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		}
 	}
 
-	tolerancePercent := s.searchTolerancePercent(ctx, opts)
-
 	type scoredResult struct {
 		result jackett.SearchResult
 		score  float64
@@ -7434,7 +7440,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	if len(scored) == 0 {
 		combined := mergeTorrentSearchResults(gazelleResults, nil)
-		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined, tolerancePercent)
 		return &TorrentSearchResponse{
 			SourceTorrent: sourceInfo,
 			Results:       combined,
@@ -7489,7 +7495,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	combined := mergeTorrentSearchResults(gazelleResults, results)
-	s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined)
+	s.cacheSearchResults(instanceID, sourceTorrent.Hash, combined, tolerancePercent)
 
 	return &TorrentSearchResponse{
 		SourceTorrent: sourceInfo,
@@ -7516,10 +7522,11 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 		return nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
 
-	cachedSelections := s.getCachedSearchResults(instanceID, hash)
-	if len(cachedSelections) == 0 {
+	cachedSearchResults := s.getCachedSearchResults(instanceID, hash)
+	if cachedSearchResults == nil || len(cachedSearchResults.results) == 0 {
 		return nil, fmt.Errorf("%w: no cached cross-seed search results found for torrent %s; please run a search before applying selections", ErrInvalidRequest, hash)
 	}
+	cachedSelections := cachedSearchResults.results
 
 	settings, err := s.GetAutomationSettings(ctx)
 	if err != nil {
@@ -7659,10 +7666,8 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				SkipRecheck:                  skipRecheck,
 				SkipPieceBoundarySafetyCheck: skipPieceBoundarySafetyCheck,
 			}
-			if settings != nil {
-				payload.SizeMismatchTolerancePercent = settings.SizeMismatchTolerancePercent
-				payload.SizeMismatchTolerancePercentSet = true
-			}
+			payload.SizeMismatchTolerancePercent = cachedSearchResults.sizeMismatchTolerancePercent
+			payload.SizeMismatchTolerancePercentSet = true
 
 			resp, err := s.invokeCrossSeed(ctx, payload)
 			if err != nil {
@@ -7710,7 +7715,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 	}, nil
 }
 
-func (s *Service) cacheSearchResults(instanceID int, hash string, results []TorrentSearchResult) {
+func (s *Service) cacheSearchResults(instanceID int, hash string, results []TorrentSearchResult, tolerancePercent float64) {
 	if s.searchResultCache == nil || len(results) == 0 {
 		return
 	}
@@ -7720,17 +7725,25 @@ func (s *Service) cacheSearchResults(instanceID int, hash string, results []Torr
 	cloned := make([]TorrentSearchResult, len(results))
 	copy(cloned, results)
 
-	s.searchResultCache.Set(key, cloned, ttlcache.DefaultTTL)
+	s.searchResultCache.Set(key, cachedTorrentSearchResults{
+		results:                      cloned,
+		sizeMismatchTolerancePercent: tolerancePercent,
+	}, ttlcache.DefaultTTL)
 }
 
-func (s *Service) getCachedSearchResults(instanceID int, hash string) []TorrentSearchResult {
+func (s *Service) getCachedSearchResults(instanceID int, hash string) *cachedTorrentSearchResults {
 	if s.searchResultCache == nil {
 		return nil
 	}
 
 	key := searchResultCacheKey(instanceID, hash)
 	if cached, found := s.searchResultCache.Get(key); found {
-		return cached
+		cloned := make([]TorrentSearchResult, len(cached.results))
+		copy(cloned, cached.results)
+		return &cachedTorrentSearchResults{
+			results:                      cloned,
+			sizeMismatchTolerancePercent: cached.sizeMismatchTolerancePercent,
+		}
 	}
 
 	return nil

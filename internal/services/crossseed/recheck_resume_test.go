@@ -284,4 +284,12 @@ func TestQueueRecheckResumeWithThresholdDisablesMissingFilesRecovery(t *testing.
 	require.False(t, pending.recoverMissingFilesWithResume)
 }
 
+func TestRecheckResumeKeyScopesNormalizedHashByInstance(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "1:abcdef", recheckResumeKey(1, " ABCDEF "))
+	require.Equal(t, "2:abcdef", recheckResumeKey(2, "abcdef"))
+	require.NotEqual(t, recheckResumeKey(1, "abcdef"), recheckResumeKey(2, "abcdef"))
+}
+
 var _ qbittorrentSync = (*recheckResumeSyncManager)(nil)
