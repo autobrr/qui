@@ -181,6 +181,83 @@ func TestBulkActionSyncRetryStopsWhenCallerCancels(t *testing.T) {
 	require.Equal(t, 0, syncer.mapCalls)
 }
 
+func TestWaitForPostAddRecheckReadyWaitsForResumeDataCheck(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+			{"abc": {Hash: "abc", State: qbt.TorrentStatePausedDl}},
+		},
+	}
+
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 3, time.Nanosecond, time.Second)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyStopsAfterAttemptLimit(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+		},
+	}
+
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 2, time.Nanosecond, time.Second)
+
+	require.ErrorIs(t, err, errPostAddRecheckNotReady)
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 4, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyReturnsContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+		},
+	}
+
+	err := waitForPostAddRecheckReady(ctx, syncer, []string{"abc"}, 1, 3, time.Nanosecond, time.Second)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 0, syncer.syncCalls)
+	require.Equal(t, 1, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyBoundsSyncAttempt(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+		},
+		blockSyncUntilDone: true,
+	}
+
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 1, time.Hour, time.Nanosecond)
+
+	require.ErrorIs(t, err, errPostAddRecheckNotReady)
+	require.Equal(t, 1, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestPostAddRecheckReadyRejectsMissingTorrent(t *testing.T) {
+	t.Parallel()
+
+	ready := postAddRecheckReady(map[string]qbt.Torrent{}, []string{"abc"})
+
+	require.False(t, ready)
+}
+
 func TestGetTorrentFilesBatch_NormalizesAndCaches(t *testing.T) {
 	t.Parallel()
 
@@ -614,14 +691,19 @@ func (s *stubTorrentLookup) GetTorrent(hash string) (qbt.Torrent, bool) {
 }
 
 type bulkActionRetrySyncer struct {
-	maps      []map[string]qbt.Torrent
-	syncErr   error
-	syncCalls int
-	mapCalls  int
+	maps               []map[string]qbt.Torrent
+	syncErr            error
+	syncCalls          int
+	mapCalls           int
+	blockSyncUntilDone bool
 }
 
-func (s *bulkActionRetrySyncer) Sync(context.Context) error {
+func (s *bulkActionRetrySyncer) Sync(ctx context.Context) error {
 	s.syncCalls++
+	if s.blockSyncUntilDone {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	return s.syncErr
 }
 

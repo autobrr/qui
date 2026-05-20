@@ -73,7 +73,12 @@ const (
 	bulkActionSyncRetryInterval = 250 * time.Millisecond
 	bulkActionSyncRetryAttempts = 3
 	bulkActionAddRetryAttempts  = 12
+	postAddRecheckReadyAttempts = 60
+	postAddRecheckReadyInterval = 500 * time.Millisecond
+	postAddRecheckSyncTimeout   = 5 * time.Second
 )
+
+var errPostAddRecheckNotReady = errors.New("torrent still checking resume data after post-add wait")
 
 type bulkActionTorrentSyncer interface {
 	Sync(ctx context.Context) error
@@ -1861,6 +1866,23 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		canonicalHashes = unique
 	}
 
+	if action == "recheck" && postAddBulkActionRetry(ctx) {
+		if err := waitForPostAddRecheckReady(
+			ctx,
+			syncManager,
+			canonicalHashes,
+			instanceID,
+			postAddRecheckReadyAttempts,
+			postAddRecheckReadyInterval,
+			postAddRecheckSyncTimeout,
+		); err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return err
+			}
+			return fmt.Errorf("%w: %s", err, action)
+		}
+	}
+
 	// Apply optimistic update immediately for instant UI feedback
 	// Use canonical hashes for cache consistency
 	sm.applyOptimisticCacheUpdate(instanceID, canonicalHashes, action, nil)
@@ -1947,6 +1969,70 @@ func bulkActionRetryAttempts(ctx context.Context, resolved, requested int) int {
 		return bulkActionAddRetryAttempts
 	}
 	return bulkActionSyncRetryAttempts
+}
+
+func waitForPostAddRecheckReady(
+	ctx context.Context,
+	syncManager bulkActionTorrentSyncer,
+	hashes []string,
+	instanceID int,
+	maxAttempts int,
+	retryInterval time.Duration,
+	syncTimeout time.Duration,
+) error {
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if postAddRecheckReady(syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes}), hashes) {
+			return nil
+		}
+
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		syncCtx, cancel := context.WithTimeout(ctx, syncTimeout)
+		syncErr := syncManager.Sync(syncCtx)
+		cancel()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if syncErr != nil {
+			log.Debug().Err(syncErr).Int("instanceID", instanceID).
+				Int("attempt", attempt).Msg("Post-add recheck readiness sync failed")
+		}
+
+		if postAddRecheckReady(syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes}), hashes) {
+			return nil
+		}
+
+		if attempt == maxAttempts {
+			return errPostAddRecheckNotReady
+		}
+
+		log.Debug().Int("instanceID", instanceID).Int("attempt", attempt).
+			Int("maxAttempts", maxAttempts).Msg("Waiting for post-add resume-data check before recheck")
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(retryInterval):
+		}
+	}
+
+	return errPostAddRecheckNotReady
+}
+
+func postAddRecheckReady(torrentMap map[string]qbt.Torrent, hashes []string) bool {
+	for _, hash := range hashes {
+		torrent, found := resolveTorrentByVariantHash(torrentMap, hash)
+		if !found {
+			return false
+		}
+		if torrent.State == qbt.TorrentStateCheckingResumeData {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (sm *SyncManager) buildManagedDeleteCleanupTargets(
