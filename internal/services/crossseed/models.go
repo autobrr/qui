@@ -4,6 +4,8 @@
 package crossseed
 
 import (
+	"bytes"
+	"encoding/json"
 	"maps"
 	"sync"
 
@@ -71,6 +73,19 @@ type CrossSeedRequest struct {
 	// SourceFilterExcludeTags excludes candidate torrents with any of these tags.
 	// Internal-only, not exposed via JSON API.
 	SourceFilterExcludeTags []string `json:"-"`
+}
+
+func (r *CrossSeedRequest) UnmarshalJSON(data []byte) error {
+	type crossSeedRequestAlias CrossSeedRequest
+
+	var decoded crossSeedRequestAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	decoded.SizeMismatchTolerancePercentSet = jsonFieldProvided(data, "size_mismatch_tolerance_percent")
+
+	*r = CrossSeedRequest(decoded)
+	return nil
 }
 
 // CrossSeedResponse represents the result of a cross-seed operation
@@ -234,6 +249,29 @@ type TorrentSearchOptions struct {
 	// SkipGazelle disables Gazelle pre-search in mixed search mode.
 	// Internal-only (not exposed in API payloads).
 	SkipGazelle bool `json:"-"`
+}
+
+func (o *TorrentSearchOptions) UnmarshalJSON(data []byte) error {
+	type torrentSearchOptionsAlias TorrentSearchOptions
+
+	var decoded torrentSearchOptionsAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	decoded.SizeMismatchTolerancePercentSet = jsonFieldProvided(data, "size_mismatch_tolerance_percent")
+
+	*o = TorrentSearchOptions(decoded)
+	return nil
+}
+
+func jsonFieldProvided(data []byte, field string) bool {
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(data, &values); err != nil {
+		return false
+	}
+
+	value, ok := values[field]
+	return ok && !bytes.Equal(bytes.TrimSpace(value), []byte("null"))
 }
 
 // TorrentSearchResult represents an indexer search result that appears to match the seeded torrent.
