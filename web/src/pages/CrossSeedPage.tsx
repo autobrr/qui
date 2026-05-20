@@ -47,6 +47,7 @@ import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
   CrossSeedRun,
+  CrossSeedSearchResult,
   Instance,
   SeasonPackRun
 } from "@/types"
@@ -327,6 +328,25 @@ function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
       )}
     </Collapsible>
   )
+}
+
+function isCrossSeedSearchFailure(result: CrossSeedSearchResult): boolean {
+  if (result.status) {
+    return result.status === "failed"
+  }
+
+  const message = result.message?.trim().toLowerCase() ?? ""
+  return (
+    message.startsWith("resolve indexers:") ||
+    message.startsWith("analyze torrent:") ||
+    message.startsWith("search failed:") ||
+    message.startsWith("download failed:") ||
+    message.startsWith("cross-seed failed:")
+  )
+}
+
+function isCrossSeedSearchSkipped(result: CrossSeedSearchResult): boolean {
+  return !result.added && !isCrossSeedSearchFailure(result)
 }
 
 interface SeasonPackRunsPanelProps {
@@ -2603,7 +2623,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                         <div className="space-y-1">
                           {searchRuns.map(run => {
                             const successResults = run.results?.filter(r => r.added) ?? []
-                            const failedResults = run.results?.filter(r => !r.added) ?? []
+                            const failedResults = run.results?.filter(isCrossSeedSearchFailure) ?? []
+                            const skippedResults = run.results?.filter(isCrossSeedSearchSkipped) ?? []
                             const hasResults = (run.results?.length ?? 0) > 0
                             return (
                               <Collapsible key={run.id}>
@@ -2637,8 +2658,24 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                           <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                         </div>
                                       ))}
-                                      {successResults.length === 0 && failedResults.length === 0 && run.results && run.results.length > 0 && (
+                                      {successResults.length === 0 && failedResults.length === 0 && skippedResults.length === 0 && run.results && run.results.length > 0 && (
                                         <span className="text-xs text-muted-foreground">No results with details</span>
+                                      )}
+                                      {skippedResults.length > 0 && (
+                                        <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+                                          <span className="text-[10px] text-muted-foreground font-medium">Skipped:</span>
+                                          {skippedResults.map((result, i) => (
+                                            <div key={`skipped-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
+                                              <div className="flex items-center gap-2">
+                                                <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+                                                <span className="truncate text-muted-foreground">{result.torrentName}</span>
+                                              </div>
+                                              {result.message && (
+                                                <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message}</span>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
                                       )}
                                       {failedResults.length > 0 && (
                                         <div className="mt-2 pt-2 border-t border-border/50 space-y-1">

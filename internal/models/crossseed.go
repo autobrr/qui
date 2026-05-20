@@ -278,6 +278,7 @@ type CrossSeedSearchResult struct {
 	IndexerName  string    `json:"indexerName"`
 	ReleaseTitle string    `json:"releaseTitle"`
 	Added        bool      `json:"added"`
+	Status       string    `json:"status,omitempty"`
 	Message      string    `json:"message,omitempty"`
 	ProcessedAt  time.Time `json:"processedAt"`
 }

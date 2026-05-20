@@ -2164,6 +2164,7 @@ export interface CrossSeedSearchResult {
   indexerName: string
   releaseTitle: string
   added: boolean
+  status?: string
   message?: string
   processedAt: string
 }

@@ -8554,6 +8554,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			IndexerName:  "",
 			ReleaseTitle: "",
 			Added:        false,
+			Status:       "failed",
 			Message:      fmt.Sprintf("resolve indexers: %v", state.resolvedTorznabIndexerErr),
 			ProcessedAt:  processedAt,
 		})
@@ -8576,6 +8577,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				IndexerName:  "",
 				ReleaseTitle: "",
 				Added:        false,
+				Status:       "failed",
 				Message:      fmt.Sprintf("analyze torrent: %v", err),
 				ProcessedAt:  processedAt,
 			})
@@ -8643,6 +8645,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			IndexerName:  "",
 			ReleaseTitle: "",
 			Added:        false,
+			Status:       "skipped",
 			Message:      skipReasonForNoIndexers,
 			ProcessedAt:  processedAt,
 		})
@@ -8694,6 +8697,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				IndexerName:  "",
 				ReleaseTitle: "",
 				Added:        false,
+				Status:       "skipped",
 				Message:      fmt.Sprintf("search timed out after %s", timeoutDisplay),
 				ProcessedAt:  processedAt,
 			})
@@ -8709,6 +8713,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			IndexerName:  "",
 			ReleaseTitle: "",
 			Added:        false,
+			Status:       "failed",
 			Message:      fmt.Sprintf("search failed: %v", err),
 			ProcessedAt:  processedAt,
 		})
@@ -8726,6 +8731,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			IndexerName:  "",
 			ReleaseTitle: "",
 			Added:        false,
+			Status:       "skipped",
 			Message:      "no matches returned",
 			ProcessedAt:  processedAt,
 		})
@@ -9014,6 +9020,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		Size:        match.Size,
 	})
 	if err != nil {
+		result.Status = "failed"
 		result.Message = fmt.Sprintf("download failed: %v", err)
 		return result, fmt.Errorf("download failed: %w", err)
 	}
@@ -9050,17 +9057,20 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	}
 	resp, err := s.invokeCrossSeed(ctx, request)
 	if err != nil {
+		result.Status = "failed"
 		result.Message = fmt.Sprintf("cross-seed failed: %v", err)
 		return result, fmt.Errorf("cross-seed failed: %w", err)
 	}
 
 	if resp.Success {
 		result.Added = true
+		result.Status = "added"
 		result.Message = "added via " + match.Indexer
 		return result, nil
 	}
 
 	result.Added = false
+	result.Status = "skipped"
 	result.Message = extractFailureMessage(resp.Results, match.Indexer)
 	return result, nil
 }
