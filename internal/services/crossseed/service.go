@@ -4637,6 +4637,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Try reflink mode first if enabled - reflinks bypass piece-boundary restrictions
+	linkFallbackRequiresFullRecheck := false
 	if useReflinkMode {
 		rlResult := s.processReflinkMode(
 			ctx, candidate, torrentBytes, torrentHash, torrentHashV2, torrentName, req,
@@ -4646,6 +4647,9 @@ func (s *Service) processCrossSeedCandidate(
 		if rlResult.Used {
 			// Reflink mode was attempted (regardless of success/failure)
 			return rlResult.Result
+		}
+		if rlResult.RequiresFullRecheck {
+			linkFallbackRequiresFullRecheck = true
 		}
 
 		// Reflink mode was enabled but not used (e.g., fallback on error). Re-run reuse safety checks
@@ -4666,6 +4670,9 @@ func (s *Service) processCrossSeedCandidate(
 			// Hardlink mode was attempted (regardless of success/failure)
 			return hlResult.Result
 		}
+		if hlResult.RequiresFullRecheck {
+			linkFallbackRequiresFullRecheck = true
+		}
 	}
 
 	// If link mode fell through (Used=false), a category may already have been created
@@ -4678,6 +4685,21 @@ func (s *Service) processCrossSeedCandidate(
 			Msg("[CROSSSEED] Link-mode fallback to regular: skipping category to avoid inheriting link-mode save_path")
 		crossCategory = ""
 		categoryCreationFailed = true
+	}
+
+	if linkFallbackRequiresFullRecheck {
+		if req.SkipRecheck {
+			result.Status = "skipped_recheck"
+			result.Message = skippedRecheckMessage
+			log.Info().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Msg("[CROSSSEED] Link-mode filesystem fallback requires recheck and skip recheck is enabled")
+			return result
+		}
+
+		options["paused"] = "true"
+		options["stopped"] = "true"
 	}
 
 	// Regular mode: continue with reuse+rename alignment
@@ -4928,6 +4950,9 @@ func (s *Service) processCrossSeedCandidate(
 	if addPolicy.DiscLayout {
 		result.Message += addPolicy.StatusSuffix()
 	}
+	if linkFallbackRequiresFullRecheck {
+		result.Message += " - link-mode filesystem fallback, full recheck required"
+	}
 
 	// Attempt to align the new torrent's naming and file layout with the matched torrent
 	alignmentSucceeded, activeHash := s.alignCrossSeedContentPaths(ctx, candidate.InstanceID, torrentHash, torrentHashV2, torrentName, matchedTorrent, sourceFiles, candidateFiles)
@@ -4940,7 +4965,7 @@ func (s *Service) processCrossSeedCandidate(
 	// - hasExtraFiles: we didn't use skip_checking, qBittorrent auto-verifies, but won't reach 100%
 	// - alignmentSucceeded: only proceed if alignment worked (or wasn't needed)
 	needsRecheckAndResume := (requiresAlignment || hasExtraFiles) && alignmentSucceeded
-	needsRecheck := (addPolicy.DiscLayout && alignmentSucceeded) || needsRecheckAndResume
+	needsRecheck := ((addPolicy.DiscLayout || linkFallbackRequiresFullRecheck) && alignmentSucceeded) || needsRecheckAndResume
 
 	if needsRecheck {
 		recheckHashes := []string{torrentHash}
@@ -4974,7 +4999,7 @@ func (s *Service) processCrossSeedCandidate(
 			result.Message += " - auto-resume skipped per settings"
 		} else {
 			// Queue for background resume.
-			// Disc-layout torrents must only resume after a full (100%) recheck.
+			// Disc-layout and link-mode filesystem fallback torrents must only resume after a full (100%) recheck.
 			log.Debug().
 				Int("instanceID", candidate.InstanceID).
 				Str("torrentHash", torrentHash).
@@ -4982,7 +5007,7 @@ func (s *Service) processCrossSeedCandidate(
 				Msg("Queuing torrent for recheck resume")
 			resumeThreshold := s.requestResumeThreshold(ctx, req)
 			queueErr := error(nil)
-			if addPolicy.DiscLayout {
+			if addPolicy.DiscLayout || linkFallbackRequiresFullRecheck {
 				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, activeHash, 1.0)
 			} else {
 				queueErr = s.queueRecheckResumeWithThreshold(ctx, candidate.InstanceID, activeHash, resumeThreshold)
@@ -11486,6 +11511,9 @@ type hardlinkModeResult struct {
 	Used bool
 	// Success indicates the hardlink mode completed successfully.
 	Success bool
+	// RequiresFullRecheck indicates that fallback to regular mode is allowed,
+	// but the regular add must only auto-resume after a full 100% recheck.
+	RequiresFullRecheck bool
 	// Result is the final InstanceCrossSeedResult when hardlink mode is used.
 	// Only valid when Used is true.
 	Result InstanceCrossSeedResult
@@ -11674,6 +11702,16 @@ func (s *Service) processHardlinkMode(
 		}
 		return hardlinkError(message)
 	}
+	handleFullRecheckFallback := func(message string) hardlinkModeResult {
+		if fallbackEnabled {
+			log.Info().
+				Int("instanceID", candidate.InstanceID).
+				Str("reason", message).
+				Msg("[CROSSSEED] Hardlink mode filesystem fallback requires full regular-mode recheck")
+			return hardlinkModeResult{RequiresFullRecheck: true}
+		}
+		return hardlinkError(message)
+	}
 
 	// Check if source has extra files (files not present in candidate).
 	// If extras exist and piece-boundary check passed (checked earlier in processCrossSeedCandidate),
@@ -11775,7 +11813,7 @@ func (s *Service) processHardlinkMode(
 			Str("configuredDirs", instance.HardlinkBaseDir).
 			Str("existingPath", existingFilePath).
 			Msg("[CROSSSEED] Hardlink mode: no suitable base directory found")
-		return handleError(fmt.Sprintf("No suitable base directory: %v", err))
+		return handleFullRecheckFallback(fmt.Sprintf("No suitable base directory: %v", err))
 	}
 
 	// Hardlink mode always uses Original layout to match the incoming torrent's structure exactly.
@@ -11845,7 +11883,7 @@ func (s *Service) processHardlinkMode(
 			Str("torrentName", torrentName).
 			Str("destDir", destDir).
 			Msg("[CROSSSEED] Hardlink mode: failed to create hardlink tree, aborting")
-		return handleError(fmt.Sprintf("Failed to create hardlink tree: %v", err))
+		return handleFullRecheckFallback(fmt.Sprintf("Failed to create hardlink tree: %v", err))
 	}
 
 	log.Info().
@@ -12183,6 +12221,9 @@ type reflinkModeResult struct {
 	Used bool
 	// Success indicates the reflink mode completed successfully.
 	Success bool
+	// RequiresFullRecheck indicates that fallback to regular mode is allowed,
+	// but the regular add must only auto-resume after a full 100% recheck.
+	RequiresFullRecheck bool
 	// Result is the final InstanceCrossSeedResult when reflink mode is used.
 	// Only valid when Used is true.
 	Result InstanceCrossSeedResult
@@ -12269,6 +12310,16 @@ func (s *Service) processReflinkMode(
 				Str("reason", message).
 				Msg("[CROSSSEED] Reflink mode failed, falling back to regular mode")
 			return notUsed // Allow regular mode to proceed with piece boundary check
+		}
+		return reflinkError(message)
+	}
+	handleFullRecheckFallback := func(message string) reflinkModeResult {
+		if fallbackEnabled {
+			log.Info().
+				Int("instanceID", candidate.InstanceID).
+				Str("reason", message).
+				Msg("[CROSSSEED] Reflink mode filesystem fallback requires full regular-mode recheck")
+			return reflinkModeResult{RequiresFullRecheck: true}
 		}
 		return reflinkError(message)
 	}
@@ -12379,7 +12430,7 @@ func (s *Service) processReflinkMode(
 			Str("configuredDirs", instance.HardlinkBaseDir).
 			Str("existingPath", existingFilePath).
 			Msg("[CROSSSEED] Reflink mode: no suitable base directory found")
-		return handleError(fmt.Sprintf("No suitable base directory: %v", err))
+		return handleFullRecheckFallback(fmt.Sprintf("No suitable base directory: %v", err))
 	}
 
 	// Reflink mode always uses Original layout to match the incoming torrent's structure exactly.
@@ -12445,7 +12496,7 @@ func (s *Service) processReflinkMode(
 			Str("reason", reason).
 			Str("baseDir", selectedBaseDir).
 			Msg("[CROSSSEED] Reflink mode: filesystem does not support reflinks")
-		return handleError("Reflink not supported: " + reason)
+		return handleFullRecheckFallback("Reflink not supported: " + reason)
 	}
 
 	// Create reflink tree on disk
