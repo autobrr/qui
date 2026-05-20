@@ -60,8 +60,43 @@ func TestBulkActionRetryAttempts(t *testing.T) {
 	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 0, 1))
 	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 1, 2))
 	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 2, 2))
-	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(context.WithoutCancel(WithPostAddBulkActionRetry(ctx)), 1, 2))
+	retryCtx, cancelRetry := withoutCancelPreservingDeadline(WithPostAddBulkActionRetry(ctx))
+	defer cancelRetry()
+	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(retryCtx, 1, 2))
 	require.Equal(t, 0, bulkActionRetryAttempts(ctx, 0, 0))
+}
+
+func TestWithoutCancelPreservingDeadlineKeepsDeadlineAndRetryValue(t *testing.T) {
+	t.Parallel()
+
+	deadline := time.Now().Add(time.Hour)
+	parentCtx, cancelParent := context.WithDeadline(WithPostAddBulkActionRetry(context.Background()), deadline)
+	cancelParent()
+
+	retryCtx, cancelRetry := withoutCancelPreservingDeadline(parentCtx)
+	defer cancelRetry()
+
+	actualDeadline, ok := retryCtx.Deadline()
+	require.True(t, ok)
+	require.True(t, actualDeadline.Equal(deadline))
+	require.NoError(t, retryCtx.Err())
+	require.True(t, postAddBulkActionRetry(retryCtx))
+}
+
+func TestWithoutCancelPreservingDeadlineKeepsExpiredDeadline(t *testing.T) {
+	t.Parallel()
+
+	deadline := time.Now().Add(-time.Nanosecond)
+	parentCtx, cancelParent := context.WithDeadline(context.Background(), deadline)
+	defer cancelParent()
+
+	retryCtx, cancelRetry := withoutCancelPreservingDeadline(parentCtx)
+	defer cancelRetry()
+
+	actualDeadline, ok := retryCtx.Deadline()
+	require.True(t, ok)
+	require.True(t, actualDeadline.Equal(deadline))
+	require.ErrorIs(t, retryCtx.Err(), context.DeadlineExceeded)
 }
 
 func TestBulkActionSyncRetryStopsAfterAttemptLimit(t *testing.T) {
@@ -165,8 +200,10 @@ func TestBulkActionSyncRetryKeepsCriticalBudgetWithDecoupledContext(t *testing.T
 	cancel()
 
 	syncer := &bulkActionRetrySyncer{}
+	retryCtx, cancelRetry := withoutCancelPreservingDeadline(ctx)
+	defer cancelRetry()
 	resolved, variants := bulkActionSyncRetry(
-		context.WithoutCancel(ctx),
+		retryCtx,
 		syncer,
 		[]string{"missing"},
 		1,

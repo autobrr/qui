@@ -106,6 +106,14 @@ func postAddBulkActionRetry(ctx context.Context) bool {
 	return ok && value
 }
 
+func withoutCancelPreservingDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
+	detached := context.WithoutCancel(ctx)
+	if deadline, ok := ctx.Deadline(); ok {
+		return context.WithDeadline(detached, deadline)
+	}
+	return detached, func() {}
+}
+
 // CacheMetadata provides information about cache state
 type CacheMetadata struct {
 	Source      string `json:"source"`      // "cache" or "fresh"
@@ -1798,7 +1806,9 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 	postAddRetry := postAddBulkActionRetry(ctx)
 	retryCtx := ctx
 	if postAddRetry {
-		retryCtx = context.WithoutCancel(ctx)
+		var retryCancel context.CancelFunc
+		retryCtx, retryCancel = withoutCancelPreservingDeadline(ctx)
+		defer retryCancel()
 	}
 
 	// If not all found, try variant resolution with full torrent map.
