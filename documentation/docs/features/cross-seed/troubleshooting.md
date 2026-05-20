@@ -80,7 +80,7 @@ When the source torrent contains files not on disk (NFO, SRT, samples not matchi
 
 When link-tree creation fails because the source files and link-tree base are on different filesystems, or because the filesystem does not support the requested link type, qui can fall back to regular mode if **Fallback to regular mode** is enabled. The torrent is added against the matched source files, not the link-tree directory.
 
-These fallback torrents are treated like disc-based content: they are added paused, rechecked, and only auto-resume after qBittorrent reports 100% complete. If **Skip recheck** is enabled, qui skips them instead.
+These fallback torrents are treated like disc-based content: they are added paused, rechecked, and only auto-resume after qBittorrent reports 100% complete. If **Skip recheck** is enabled, qui skips them instead. With **Skip recheck** enabled, a better workflow would have **Fallback to regular mode** disabled, since all fallbacks require recheck.
 
 ### Auto-resume behavior
 
