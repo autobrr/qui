@@ -8,6 +8,7 @@ package local
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -255,6 +256,9 @@ func (b *Backend) Remove(ctx context.Context, path string, opts fsops.RemoveOpti
 		return err
 	}
 	if opts.Recursive {
+		if len(opts.IgnorePaths) > 0 {
+			return errors.New("recursive remove with IgnorePaths is not supported by the local backend")
+		}
 		return os.RemoveAll(path)
 	}
 	return os.Remove(path)
