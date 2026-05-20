@@ -109,7 +109,8 @@ func postAddBulkActionRetry(ctx context.Context) bool {
 func withoutCancelPreservingDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
 	detached := context.WithoutCancel(ctx)
 	if deadline, ok := ctx.Deadline(); ok {
-		return context.WithDeadline(detached, deadline)
+		deadlineCtx, cancel := context.WithDeadline(detached, deadline)
+		return deadlineCtx, cancel
 	}
 	return detached, func() {}
 }
