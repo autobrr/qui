@@ -940,6 +940,71 @@ func TestProcessReflinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.T
 	require.Nil(t, sync.addedOptions, "torrent should not be added below threshold")
 }
 
+func TestSelectExistingSourceFilesUsesAlignmentMatchingForRenamedFiles(t *testing.T) {
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Show/Sheriff.Hoot.Kloot.S01E01.mkv", Size: 1000},
+		{Name: "Show/Sheriff.Hoot.Kloot.S01E02.mkv", Size: 2000},
+		{Name: "Show/Sheriff.Hoot.Kloot.nfo", Size: 10},
+	}
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Show/Hoot.Kloot.S01E01.mkv", Size: 1000},
+		{Name: "Show/Hoot.Kloot.S01E02.mkv", Size: 2000},
+	}
+
+	selected := selectExistingSourceFiles(sourceFiles, candidateFiles)
+
+	require.Len(t, selected, 2)
+	assert.Equal(t, "Show/Sheriff.Hoot.Kloot.S01E01.mkv", selected[0].Path)
+	assert.Equal(t, "Show/Sheriff.Hoot.Kloot.S01E02.mkv", selected[1].Path)
+}
+
+func TestProcessReflinkMode_DoesNotFallbackToRegularAfterMaterializationError(t *testing.T) {
+	tempDir := t.TempDir()
+	downloadsDir := filepath.Join(tempDir, "downloads")
+	reflinkDir := filepath.Join(tempDir, "reflinks")
+	require.NoError(t, os.MkdirAll(downloadsDir, 0o755))
+
+	sync := &rootlessSavePathSyncManager{}
+	s := &Service{
+		instanceStore: &mockInstanceStore{
+			instances: map[int]*models.Instance{
+				1: {
+					ID:                       1,
+					Name:                     "qbt1",
+					HasLocalFilesystemAccess: true,
+					UseReflinks:              true,
+					FallbackToRegularMode:    true,
+					HardlinkBaseDir:          reflinkDir,
+				},
+			},
+		},
+		syncManager: sync,
+	}
+
+	result := s.processReflinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{Hash: "matched", ContentPath: downloadsDir},
+		"exact",
+		qbt.TorrentFiles{{Name: "../Movie/movie.mkv", Size: 1000}},
+		qbt.TorrentFiles{{Name: "Movie/movie.mkv", Size: 1000}},
+		&qbt.TorrentProperties{SavePath: downloadsDir},
+		"category",
+		"category.cross",
+	)
+
+	require.True(t, result.Used)
+	require.False(t, result.Success)
+	require.Equal(t, "reflink_error", result.Result.Status)
+	require.Contains(t, result.Result.Message, "Failed to build reflink plan")
+	require.Nil(t, sync.addedOptions, "regular fallback must not add into the matched torrent path")
+}
+
 func TestProcessHardlinkMode_FallbackEnabled(t *testing.T) {
 	// When FallbackToRegularMode is enabled, hardlink failures should return
 	// Used=false so that regular cross-seed mode can proceed.

@@ -25,6 +25,12 @@ type fileRenameInstruction struct {
 	newPath string
 }
 
+type fileMatchInstruction struct {
+	sourceIndex   int
+	sourcePath    string
+	candidatePath string
+}
+
 // alignCrossSeedContentPaths renames the incoming cross-seed torrent (display name, folders, files)
 // so that it matches the layout of the already-seeded torrent we're borrowing data from.
 // Returns true if alignment succeeded (or wasn't needed), false if alignment failed,
@@ -357,7 +363,7 @@ func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int
 	return ""
 }
 
-func buildFileRenamePlan(sourceFiles, candidateFiles qbt.TorrentFiles) ([]fileRenameInstruction, []string) {
+func matchSourceFilesToCandidates(sourceFiles, candidateFiles qbt.TorrentFiles) ([]fileMatchInstruction, []string) {
 	type candidateEntry struct {
 		path       string
 		size       int64
@@ -377,10 +383,10 @@ func buildFileRenamePlan(sourceFiles, candidateFiles qbt.TorrentFiles) ([]fileRe
 		candidateBuckets[cf.Size] = append(candidateBuckets[cf.Size], entry)
 	}
 
-	plan := make([]fileRenameInstruction, 0)
+	matches := make([]fileMatchInstruction, 0, len(sourceFiles))
 	unmatched := make([]string, 0)
 
-	for _, sf := range sourceFiles {
+	for sourceIndex, sf := range sourceFiles {
 		bucket := candidateBuckets[sf.Size]
 		if len(bucket) == 0 {
 			unmatched = append(unmatched, sf.Name)
@@ -449,13 +455,28 @@ func buildFileRenamePlan(sourceFiles, candidateFiles qbt.TorrentFiles) ([]fileRe
 		}
 
 		match.used = true
-		if sf.Name == match.path {
+		matches = append(matches, fileMatchInstruction{
+			sourceIndex:   sourceIndex,
+			sourcePath:    sf.Name,
+			candidatePath: match.path,
+		})
+	}
+
+	return matches, unmatched
+}
+
+func buildFileRenamePlan(sourceFiles, candidateFiles qbt.TorrentFiles) ([]fileRenameInstruction, []string) {
+	matches, unmatched := matchSourceFilesToCandidates(sourceFiles, candidateFiles)
+	plan := make([]fileRenameInstruction, 0, len(matches))
+
+	for _, match := range matches {
+		if match.sourcePath == match.candidatePath {
 			continue
 		}
 
 		plan = append(plan, fileRenameInstruction{
-			oldPath: sf.Name,
-			newPath: match.path,
+			oldPath: match.sourcePath,
+			newPath: match.candidatePath,
 		})
 	}
 

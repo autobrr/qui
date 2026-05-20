@@ -11491,31 +11491,15 @@ type hardlinkModeResult struct {
 	Result InstanceCrossSeedResult
 }
 
-type normalizedFileKeySize struct {
-	key  string
-	size int64
-}
-
 func selectExistingSourceFiles(sourceFiles, candidateFiles qbt.TorrentFiles) []hardlinktree.TorrentFile {
-	candidateKeyMultiset := make(map[normalizedFileKeySize]int)
-	for _, cf := range candidateFiles {
-		key := normalizedFileKeySize{key: normalizeFileKey(cf.Name), size: cf.Size}
-		candidateKeyMultiset[key]++
-	}
-
-	existingSourceFiles := make([]hardlinktree.TorrentFile, 0, len(sourceFiles))
-	sourceKeyUsed := make(map[normalizedFileKeySize]int)
-	for _, f := range sourceFiles {
-		key := normalizedFileKeySize{key: normalizeFileKey(f.Name), size: f.Size}
-		if sourceKeyUsed[key] >= candidateKeyMultiset[key] {
-			continue
-		}
-
+	matches, _ := matchSourceFilesToCandidates(sourceFiles, candidateFiles)
+	existingSourceFiles := make([]hardlinktree.TorrentFile, 0, len(matches))
+	for _, match := range matches {
+		f := sourceFiles[match.sourceIndex]
 		existingSourceFiles = append(existingSourceFiles, hardlinktree.TorrentFile{
 			Path: f.Name,
 			Size: f.Size,
 		})
-		sourceKeyUsed[key]++
 	}
 
 	return existingSourceFiles
@@ -12288,6 +12272,15 @@ func (s *Service) processReflinkMode(
 		}
 		return reflinkError(message)
 	}
+	handleMaterializationError := func(message string) reflinkModeResult {
+		if fallbackEnabled {
+			log.Warn().
+				Int("instanceID", candidate.InstanceID).
+				Str("reason", message).
+				Msg("[CROSSSEED] Reflink materialization failed; regular fallback disabled to avoid adding into the matched torrent path")
+		}
+		return reflinkError(message)
+	}
 
 	// Reflink mode only requires recheck when the incoming torrent has extra files
 	// (files not present in the matched torrent).
@@ -12432,17 +12425,6 @@ func (s *Service) processReflinkMode(
 		})
 	}
 
-	// Check reflink support after the coverage gate so clearly invalid partial
-	// matches are skipped before probing filesystem capabilities.
-	supported, reason := reflinktree.SupportsReflink(selectedBaseDir)
-	if !supported {
-		log.Warn().
-			Str("reason", reason).
-			Str("baseDir", selectedBaseDir).
-			Msg("[CROSSSEED] Reflink mode: filesystem does not support reflinks")
-		return handleError("Reflink not supported: " + reason)
-	}
-
 	// Build reflink tree plan with only the cloneable files
 	plan, err := hardlinktree.BuildPlan(candidateTorrentFilesToClone, existingFiles, layout, torrentName, destDir)
 	if err != nil {
@@ -12452,7 +12434,18 @@ func (s *Service) processReflinkMode(
 			Str("torrentName", torrentName).
 			Str("destDir", destDir).
 			Msg("[CROSSSEED] Reflink mode: failed to build plan, aborting")
-		return handleError(fmt.Sprintf("Failed to build reflink plan: %v", err))
+		return handleMaterializationError(fmt.Sprintf("Failed to build reflink plan: %v", err))
+	}
+
+	// Check reflink support after the coverage and plan gates so clearly invalid
+	// partial matches are skipped before probing filesystem capabilities.
+	supported, reason := reflinktree.SupportsReflink(selectedBaseDir)
+	if !supported {
+		log.Warn().
+			Str("reason", reason).
+			Str("baseDir", selectedBaseDir).
+			Msg("[CROSSSEED] Reflink mode: filesystem does not support reflinks")
+		return handleError("Reflink not supported: " + reason)
 	}
 
 	// Create reflink tree on disk
@@ -12467,7 +12460,7 @@ func (s *Service) processReflinkMode(
 			Str("torrentName", torrentName).
 			Str("destDir", destDir).
 			Msg("[CROSSSEED] Reflink mode: failed to create reflink tree, aborting")
-		return handleError(fmt.Sprintf("Failed to create reflink tree: %v", err))
+		return handleMaterializationError(fmt.Sprintf("Failed to create reflink tree: %v", err))
 	}
 
 	log.Info().
