@@ -142,7 +142,7 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 	go func() {
 		defer close(ch)
 		count := 0
-		_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 			if ctx.Err() != nil {
 				return fs.SkipAll
 			}
@@ -222,6 +222,17 @@ func (b *Backend) WalkDir(ctx context.Context, root string, opts fsops.WalkOptio
 			}
 			return nil
 		})
+		// Surface unrecoverable walk errors (permission denied, etc.) as a
+		// final entry so the caller knows the walk did not complete fully.
+		// Context cancellation is not an error — the caller initiated it.
+		if walkErr != nil && ctx.Err() == nil {
+			entry := fsops.WalkEntry{Err: walkErr}
+			entry.Path = root
+			select {
+			case ch <- entry:
+			case <-ctx.Done():
+			}
+		}
 	}()
 	return ch, nil
 }
