@@ -316,6 +316,12 @@ Instance form replaces `hasLocalFilesystemAccess` toggle with a RadioGroup:
 
 "Remote helper" reveals SSH credential fields, test connection button (TOFU host key confirmation), deploy button with progress UI, and helper status card.
 
+## Merge Strategy
+
+Backend PRs merge to develop as they're reviewed and approved — no user-visible changes until the frontend ships. Frontend is held on a feature branch until UA tested against the full backend stack.
+
+An integration branch (`integration/remote-helper-ua`) stacks all in-progress PRs for build/test verification before individual PRs merge.
+
 ## Implementation Plan
 
 ### Phase 1: Foundation
