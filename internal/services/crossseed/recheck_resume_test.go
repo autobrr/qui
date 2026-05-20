@@ -253,6 +253,147 @@ func TestProcessPendingRecheckResumeKeepsDownloadingBelowThreshold(t *testing.T)
 	require.Empty(t, sync.bulkActions)
 }
 
+func TestProcessPendingRecheckResumeConfirmsRunningAfterResume(t *testing.T) {
+	t.Parallel()
+
+	sync := &recheckResumeSyncManager{}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	pending := &pendingResume{
+		instanceID: 1,
+		hash:       "hash1",
+		threshold:  1.0,
+		addedAt:    time.Now(),
+	}
+
+	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:     "hash1",
+		Progress: 0.5,
+		State:    qbt.TorrentStateCheckingUp,
+	})
+	require.True(t, keep)
+	require.Empty(t, sync.bulkActions)
+
+	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:     "hash1",
+		Progress: 1.0,
+		State:    qbt.TorrentStatePausedUp,
+	})
+
+	require.True(t, keep)
+	require.True(t, pending.awaitingResumeConfirmation)
+	require.Equal(t, 1, pending.resumeAttempts)
+	require.Equal(t, []string{"resume:hash1"}, sync.bulkActions)
+
+	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:     "hash1",
+		Progress: 1.0,
+		State:    qbt.TorrentStateUploading,
+	})
+
+	require.True(t, keep)
+
+	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:     "hash1",
+		Progress: 1.0,
+		State:    qbt.TorrentStateUploading,
+	})
+
+	require.False(t, keep)
+	require.Equal(t, []string{"resume:hash1"}, sync.bulkActions)
+}
+
+func TestProcessPendingRecheckResumeRetriesStoppedAfterResume(t *testing.T) {
+	t.Parallel()
+
+	sync := &recheckResumeSyncManager{}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	pending := &pendingResume{
+		instanceID:  1,
+		hash:        "hash1",
+		threshold:   1.0,
+		addedAt:     time.Now(),
+		sawChecking: true,
+	}
+	stoppedTorrent := qbt.Torrent{
+		Hash:     "hash1",
+		Progress: 1.0,
+		State:    qbt.TorrentStateStoppedUp,
+	}
+
+	keep := service.processPendingRecheckResume(1, "hash1", pending, stoppedTorrent)
+	require.True(t, keep)
+	require.Equal(t, 1, pending.resumeAttempts)
+
+	keep = service.processPendingRecheckResume(1, "hash1", pending, stoppedTorrent)
+	require.True(t, keep)
+	require.Equal(t, 2, pending.resumeAttempts)
+	require.Equal(t, []string{"resume:hash1", "resume:hash1"}, sync.bulkActions)
+
+	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:     "hash1",
+		Progress: 1.0,
+		State:    qbt.TorrentStateQueuedUp,
+	})
+	require.True(t, keep)
+
+	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:     "hash1",
+		Progress: 1.0,
+		State:    qbt.TorrentStateQueuedUp,
+	})
+	require.False(t, keep)
+}
+
+func TestProcessPendingRecheckResumeStopsWhenConfirmationDropsBelowThreshold(t *testing.T) {
+	t.Parallel()
+
+	sync := &recheckResumeSyncManager{}
+	service := &Service{
+		syncManager:      sync,
+		recheckResumeCtx: context.Background(),
+	}
+	pending := &pendingResume{
+		instanceID:                 1,
+		hash:                       "hash1",
+		threshold:                  1.0,
+		addedAt:                    time.Now(),
+		awaitingResumeConfirmation: true,
+		resumeAttempts:             1,
+	}
+
+	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
+		Hash:     "hash1",
+		Progress: 0.95,
+		State:    qbt.TorrentStatePausedUp,
+	})
+
+	require.False(t, keep)
+	require.Equal(t, []string(nil), sync.bulkActions)
+}
+
+func TestBuildTorrentVariantLookupMatchesV1AndV2(t *testing.T) {
+	t.Parallel()
+
+	torrents := []qbt.Torrent{{
+		Hash:       "v2hash",
+		InfohashV1: "v1hash",
+		InfohashV2: "v2hash",
+		Name:       "hybrid",
+	}}
+
+	lookup := buildTorrentVariantLookup(torrents)
+
+	require.Equal(t, "hybrid", lookup["v1hash"].Name)
+	require.Equal(t, "hybrid", lookup["v2hash"].Name)
+	require.False(t, missingVariantLookupHash(lookup, []string{"v1hash", "v2hash"}))
+}
+
 func TestQueueRecheckResumeWithMissingFilesRecoverySetsPendingFlag(t *testing.T) {
 	t.Parallel()
 

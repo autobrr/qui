@@ -313,8 +313,19 @@ func (i *Injector) resumeAfterRecheck(instanceID int, hash string) {
 		// stopped/paused state (cache not yet refreshed) and resume before
 		// the recheck runs. qBit's StopCondition::FilesChecked would then
 		// re-stop the torrent after checking, leaving it stuck.
-		sawChecking := false
+		// Even after resume succeeds, keep polling until running state is
+		// stable so a late files-checked stop can be retried.
+		const (
+			maxResumeAttempts = 3
+			stablePolls       = 2
+		)
 
+		sawChecking := false
+		recheckComplete := false
+		awaitingResumeConfirmation := false
+		resumeAttempts := 0
+		readyPolls := 0
+		resumeConfirmedPolls := 0
 		for {
 			select {
 			case <-ctx.Done():
@@ -322,6 +333,8 @@ func (i *Injector) resumeAfterRecheck(instanceID int, hash string) {
 					Int("instanceID", instanceID).
 					Str("hash", hash).
 					Bool("sawChecking", sawChecking).
+					Bool("recheckComplete", recheckComplete).
+					Int("resumeAttempts", resumeAttempts).
 					Msg("dirscan: resumeAfterRecheck timed out")
 				return
 			case <-ticker.C:
@@ -334,7 +347,30 @@ func (i *Injector) resumeAfterRecheck(instanceID int, hash string) {
 
 			if isCheckingState(torrent.State) {
 				sawChecking = true
+				readyPolls = 0
+				resumeConfirmedPolls = 0
 				continue
+			}
+
+			if awaitingResumeConfirmation {
+				if isResumeConfirmedState(torrent.State) {
+					resumeConfirmedPolls++
+					if resumeConfirmedPolls < stablePolls {
+						continue
+					}
+					log.Info().
+						Int("instanceID", instanceID).
+						Str("hash", hash).
+						Str("state", string(torrent.State)).
+						Int("attempts", resumeAttempts).
+						Msg("dirscan: confirmed torrent resumed after partial link tree recheck")
+					return
+				}
+
+				resumeConfirmedPolls = 0
+				if !isPausedOrStoppedState(torrent.State) {
+					continue
+				}
 			}
 
 			// Two ways to know the recheck finished:
@@ -344,24 +380,73 @@ func (i *Injector) resumeAfterRecheck(instanceID int, hash string) {
 			//    A freshly added paused torrent has Completed == 0 until
 			//    the recheck runs.
 			if sawChecking || torrent.Completed > 0 {
-				break
+				recheckComplete = true
 			}
-		}
+			if !recheckComplete {
+				continue
+			}
+			readyPolls++
+			if !sawChecking && readyPolls < stablePolls {
+				continue
+			}
 
-		if err := i.syncManager.BulkAction(ctx, instanceID, []string{hash}, "resume"); err != nil {
-			log.Warn().
-				Err(err).
+			if resumeAttempts >= maxResumeAttempts {
+				log.Warn().
+					Int("instanceID", instanceID).
+					Str("hash", hash).
+					Str("state", string(torrent.State)).
+					Int("attempts", resumeAttempts).
+					Msg("dirscan: resume attempts after partial link tree recheck exhausted")
+				return
+			}
+
+			resumeAttempts++
+			if err := i.syncManager.BulkAction(ctx, instanceID, []string{hash}, "resume"); err != nil {
+				log.Warn().
+					Err(err).
+					Int("instanceID", instanceID).
+					Str("hash", hash).
+					Int("attempt", resumeAttempts).
+					Int("maxAttempts", maxResumeAttempts).
+					Msg("dirscan: failed to resume torrent after recheck")
+				continue
+			}
+
+			awaitingResumeConfirmation = true
+			log.Info().
 				Int("instanceID", instanceID).
 				Str("hash", hash).
-				Msg("dirscan: failed to resume torrent after recheck")
-			return
+				Int("attempt", resumeAttempts).
+				Msg("dirscan: resumed torrent after partial link tree recheck")
 		}
-
-		log.Info().
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Msg("dirscan: resumed torrent after partial link tree recheck")
 	}()
+}
+
+func isResumeConfirmedState(state qbt.TorrentState) bool {
+	switch state { //nolint:exhaustive // only running states confirm resume
+	case qbt.TorrentStateUploading,
+		qbt.TorrentStateStalledUp,
+		qbt.TorrentStateQueuedUp,
+		qbt.TorrentStateForcedUp,
+		qbt.TorrentStateDownloading,
+		qbt.TorrentStateStalledDl,
+		qbt.TorrentStateQueuedDl,
+		qbt.TorrentStateForcedDl,
+		qbt.TorrentStateMetaDl:
+		return true
+	}
+	return false
+}
+
+func isPausedOrStoppedState(state qbt.TorrentState) bool {
+	switch state { //nolint:exhaustive // only stopped states need resume retries
+	case qbt.TorrentStatePausedUp,
+		qbt.TorrentStateStoppedUp,
+		qbt.TorrentStatePausedDl,
+		qbt.TorrentStateStoppedDl:
+		return true
+	}
+	return false
 }
 
 func (i *Injector) triggerRecheckForPausedPartial(ctx context.Context, req *InjectRequest) {

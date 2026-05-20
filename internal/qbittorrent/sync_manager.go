@@ -264,6 +264,16 @@ type ResumeWhenCompleteOptions struct {
 	Timeout time.Duration
 }
 
+type resumeWhenCompletePending struct {
+	hash string
+	// A successful resume request is not final until qBittorrent reports
+	// a stable running state; files-checked handling can re-stop torrents.
+	resumeAttempts             int
+	awaitingResumeConfirmation bool
+	readyPolls                 int
+	resumeConfirmedPolls       int
+}
+
 // OptimisticTorrentUpdate represents a temporary optimistic update to a torrent
 type OptimisticTorrentUpdate struct {
 	State         qbt.TorrentState `json:"state"`
@@ -3604,7 +3614,7 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 		timeout = 10 * time.Minute
 	}
 
-	pending := make(map[string]string, len(hashes))
+	pending := make(map[string]*resumeWhenCompletePending, len(hashes))
 	for _, hash := range hashes {
 		canonicalHash := strings.TrimSpace(hash)
 		normalizedHash := strings.ToLower(canonicalHash)
@@ -3614,7 +3624,7 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 		if _, exists := pending[normalizedHash]; exists {
 			continue
 		}
-		pending[normalizedHash] = canonicalHash
+		pending[normalizedHash] = &resumeWhenCompletePending{hash: canonicalHash}
 	}
 
 	if len(pending) == 0 {
@@ -3648,29 +3658,68 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 			}
 
 			requested := make([]string, 0, len(pending))
-			for _, canonicalHash := range pending {
-				requested = append(requested, canonicalHash)
+			for _, req := range pending {
+				requested = append(requested, req.hash)
 			}
 
-			torrents := client.getTorrentsByHashes(requested)
-			if len(torrents) == 0 {
+			torrentMap := syncMgr.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: requested})
+			if len(torrentMap) < len(requested) {
+				torrentMap = syncMgr.GetTorrentMap(qbt.TorrentFilterOptions{})
+			}
+			if len(torrentMap) == 0 {
 				continue
 			}
 
 			var resumeList []string
-			for _, torrent := range torrents {
-				normalizedHash := strings.ToLower(strings.TrimSpace(torrent.Hash))
-				if _, watching := pending[normalizedHash]; !watching {
+			var resumeKeys []string
+			for key, req := range pending {
+				torrent, found := resolveTorrentByVariantHash(torrentMap, req.hash)
+				if !found {
 					continue
 				}
 
 				switch torrent.State {
 				case qbt.TorrentStateCheckingDl, qbt.TorrentStateCheckingUp, qbt.TorrentStateCheckingResumeData, qbt.TorrentStateAllocating, qbt.TorrentStateMoving:
+					req.readyPolls = 0
+					req.resumeConfirmedPolls = 0
 					continue
 				}
 
+				if req.awaitingResumeConfirmation {
+					if resumeWhenCompleteConfirmed(torrent.State) {
+						req.resumeConfirmedPolls++
+						if req.resumeConfirmedPolls < resumeWhenCompleteStablePolls {
+							continue
+						}
+						delete(pending, key)
+						continue
+					}
+					req.resumeConfirmedPolls = 0
+					if torrent.AmountLeft != 0 || !resumeWhenCompleteStopped(torrent.State) {
+						continue
+					}
+				}
+
 				if torrent.AmountLeft == 0 {
+					req.readyPolls++
+					if req.readyPolls < resumeWhenCompleteStablePolls {
+						continue
+					}
+					if req.resumeAttempts >= resumeWhenCompleteMaxAttempts {
+						log.Warn().
+							Int("instanceID", instanceID).
+							Str("hash", req.hash).
+							Str("state", string(torrent.State)).
+							Int("attempts", req.resumeAttempts).
+							Msg("ResumeWhenComplete: resume attempts exhausted")
+						delete(pending, key)
+						continue
+					}
+					req.resumeAttempts++
 					resumeList = append(resumeList, torrent.Hash)
+					resumeKeys = append(resumeKeys, key)
+				} else {
+					req.readyPolls = 0
 				}
 			}
 
@@ -3686,11 +3735,45 @@ func (sm *SyncManager) ResumeWhenComplete(instanceID int, hashes []string, opts 
 			sm.applyOptimisticCacheUpdate(instanceID, resumeList, "resume", nil)
 			sm.syncAfterModification(instanceID, client, "resume_when_complete")
 
-			for _, hash := range resumeList {
-				delete(pending, strings.ToLower(strings.TrimSpace(hash)))
+			for _, key := range resumeKeys {
+				if req := pending[key]; req != nil {
+					req.awaitingResumeConfirmation = true
+				}
 			}
 		}
 	}()
+}
+
+const (
+	resumeWhenCompleteMaxAttempts = 3
+	resumeWhenCompleteStablePolls = 2
+)
+
+func resumeWhenCompleteConfirmed(state qbt.TorrentState) bool {
+	switch state { //nolint:exhaustive // only running states confirm resume
+	case qbt.TorrentStateUploading,
+		qbt.TorrentStateStalledUp,
+		qbt.TorrentStateQueuedUp,
+		qbt.TorrentStateForcedUp,
+		qbt.TorrentStateDownloading,
+		qbt.TorrentStateStalledDl,
+		qbt.TorrentStateQueuedDl,
+		qbt.TorrentStateForcedDl,
+		qbt.TorrentStateMetaDl:
+		return true
+	}
+	return false
+}
+
+func resumeWhenCompleteStopped(state qbt.TorrentState) bool {
+	switch state { //nolint:exhaustive // only stopped states need resume retries
+	case qbt.TorrentStatePausedUp,
+		qbt.TorrentStateStoppedUp,
+		qbt.TorrentStatePausedDl,
+		qbt.TorrentStateStoppedDl:
+		return true
+	}
+	return false
 }
 
 // getAllTorrentsForStats gets all torrents for stats calculation (with optimistic updates)

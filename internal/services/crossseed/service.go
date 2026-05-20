@@ -263,6 +263,8 @@ const (
 	recheckPollInterval                   = 3 * time.Second  // Batch API calls per instance
 	recheckAbsoluteTimeout                = 60 * time.Minute // Allow time for large recheck queues
 	recheckAPITimeout                     = 30 * time.Second
+	maxRecheckResumeAttempts              = 3
+	recheckResumeStablePolls              = 2
 	maxMissingFilesResumeAttempts         = 3
 	minSearchIntervalSecondsTorznab       = 60
 	minSearchIntervalSecondsGazelleOnly   = 5
@@ -428,6 +430,13 @@ type pendingResume struct {
 	recoverMissingFilesWithResume bool
 	missingFilesResumeAttempts    int
 	missingFilesResumeSucceeded   bool
+	// qBittorrent may accept resume before its files-checked stop settles.
+	// Keep watching until running state is stable, and retry if it stops again.
+	resumeAttempts             int
+	awaitingResumeConfirmation bool
+	sawChecking                bool
+	readyPolls                 int
+	resumeConfirmedPolls       int
 }
 
 type cachedTorrentSearchResults struct {
@@ -5177,6 +5186,11 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 	isChecking := state == qbt.TorrentStateCheckingUp ||
 		state == qbt.TorrentStateCheckingDl ||
 		state == qbt.TorrentStateCheckingResumeData
+	if isChecking {
+		req.sawChecking = true
+		req.readyPolls = 0
+		req.resumeConfirmedPolls = 0
+	}
 
 	// qBittorrent can leave a newly added reflink-with-extras torrent in
 	// missingFiles until it is started. Nudge after transient failures, then keep watching.
@@ -5220,28 +5234,61 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 		return true
 	}
 
-	// Resume if threshold reached and not checking
-	if progress >= req.threshold && !isChecking {
-		resumeCtx, resumeCancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
-		err := s.syncManager.BulkAction(resumeCtx, instanceID, []string{hash}, "resume")
-		resumeCancel()
-		if err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", instanceID).
-				Str("hash", hash).
-				Float64("progress", progress).
-				Msg("Failed to resume torrent after recheck")
-		} else {
+	if req.awaitingResumeConfirmation {
+		if isRecheckResumeConfirmed(state) {
+			req.resumeConfirmedPolls++
+			if req.resumeConfirmedPolls < recheckResumeStablePolls {
+				return true
+			}
 			log.Debug().
 				Int("instanceID", instanceID).
 				Str("hash", hash).
 				Float64("progress", progress).
 				Float64("threshold", req.threshold).
 				Str("state", string(state)).
-				Msg("Resumed torrent after recheck completed")
+				Int("attempts", req.resumeAttempts).
+				Msg("Confirmed torrent resumed after recheck")
+			return false
 		}
-		return false
+
+		req.resumeConfirmedPolls = 0
+		if isChecking {
+			return true
+		}
+
+		if isPausedOrStopped(state) && progress < req.threshold {
+			log.Warn().
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Float64("progress", progress).
+				Float64("threshold", req.threshold).
+				Str("state", string(state)).
+				Msg("Recheck resume stopped below threshold, torrent left paused for manual review")
+			return false
+		}
+
+		if progress >= req.threshold && isPausedOrStopped(state) {
+			log.Debug().
+				Int("instanceID", instanceID).
+				Str("hash", hash).
+				Float64("progress", progress).
+				Float64("threshold", req.threshold).
+				Str("state", string(state)).
+				Int("attempts", req.resumeAttempts).
+				Msg("Torrent still stopped after recheck resume, retrying")
+			return s.resumePendingRecheck(instanceID, hash, req, progress, state)
+		}
+
+		return true
+	}
+
+	// Resume if threshold reached and not checking
+	if progress >= req.threshold && !isChecking {
+		req.readyPolls++
+		if !req.sawChecking && req.readyPolls < recheckResumeStablePolls {
+			return true
+		}
+		return s.resumePendingRecheck(instanceID, hash, req, progress, state)
 	}
 
 	// Below-threshold torrents that are still queued/downloading can improve.
@@ -5267,6 +5314,76 @@ func (s *Service) processPendingRecheckResume(instanceID int, hash string, req *
 	// Torrent not ready yet - either still checking or queued for recheck (0% progress).
 	// Keep in queue until absolute timeout.
 	return true
+}
+
+func (s *Service) resumePendingRecheck(instanceID int, hash string, req *pendingResume, progress float64, state qbt.TorrentState) bool {
+	if req.resumeAttempts >= maxRecheckResumeAttempts {
+		log.Warn().
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Float64("progress", progress).
+			Float64("threshold", req.threshold).
+			Str("state", string(state)).
+			Int("attempts", req.resumeAttempts).
+			Msg("Recheck resume attempts exhausted, torrent left for manual review")
+		return false
+	}
+
+	req.resumeAttempts++
+	resumeCtx, resumeCancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
+	err := s.syncManager.BulkAction(resumeCtx, instanceID, []string{hash}, "resume")
+	resumeCancel()
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Float64("progress", progress).
+			Float64("threshold", req.threshold).
+			Str("state", string(state)).
+			Int("attempt", req.resumeAttempts).
+			Int("maxAttempts", maxRecheckResumeAttempts).
+			Msg("Failed to resume torrent after recheck")
+		return req.resumeAttempts < maxRecheckResumeAttempts
+	}
+
+	req.awaitingResumeConfirmation = true
+	log.Debug().
+		Int("instanceID", instanceID).
+		Str("hash", hash).
+		Float64("progress", progress).
+		Float64("threshold", req.threshold).
+		Str("state", string(state)).
+		Int("attempt", req.resumeAttempts).
+		Msg("Resumed torrent after recheck completed, awaiting confirmation")
+	return true
+}
+
+func isRecheckResumeConfirmed(state qbt.TorrentState) bool {
+	switch state { //nolint:exhaustive // only running states confirm resume
+	case qbt.TorrentStateUploading,
+		qbt.TorrentStateStalledUp,
+		qbt.TorrentStateQueuedUp,
+		qbt.TorrentStateForcedUp,
+		qbt.TorrentStateDownloading,
+		qbt.TorrentStateStalledDl,
+		qbt.TorrentStateQueuedDl,
+		qbt.TorrentStateForcedDl,
+		qbt.TorrentStateMetaDl:
+		return true
+	}
+	return false
+}
+
+func isPausedOrStopped(state qbt.TorrentState) bool {
+	switch state { //nolint:exhaustive // only stopped states need resume retries
+	case qbt.TorrentStatePausedUp,
+		qbt.TorrentStateStoppedUp,
+		qbt.TorrentStatePausedDl,
+		qbt.TorrentStateStoppedDl:
+		return true
+	}
+	return false
 }
 
 func (s *Service) recheckResumeBaseCtx() context.Context {
@@ -5340,10 +5457,20 @@ func (s *Service) recheckResumeWorker() {
 					continue
 				}
 
-				// Build lookup map by hash
-				torrentByHash := make(map[string]qbt.Torrent, len(torrents))
-				for _, t := range torrents {
-					torrentByHash[normalizeHash(t.Hash)] = t
+				torrentByHash := buildTorrentVariantLookup(torrents)
+				if missingVariantLookupHash(torrentByHash, hashes) {
+					allCtx, allCancel := context.WithTimeout(s.recheckResumeBaseCtx(), recheckAPITimeout)
+					allTorrents, allErr := s.syncManager.GetTorrents(allCtx, instanceID, qbt.TorrentFilterOptions{})
+					allCancel()
+					if allErr != nil {
+						log.Debug().
+							Err(allErr).
+							Int("instanceID", instanceID).
+							Int("hashCount", len(hashes)).
+							Msg("Failed to get full torrent state map during recheck resume, using exact hash results")
+					} else {
+						torrentByHash = buildTorrentVariantLookup(allTorrents)
+					}
 				}
 
 				// Process each pending torrent for this instance
@@ -5374,6 +5501,29 @@ func (s *Service) recheckResumeWorker() {
 			return
 		}
 	}
+}
+
+func buildTorrentVariantLookup(torrents []qbt.Torrent) map[string]qbt.Torrent {
+	torrentByHash := make(map[string]qbt.Torrent, len(torrents))
+	for _, torrent := range torrents {
+		for _, hash := range []string{torrent.Hash, torrent.InfohashV1, torrent.InfohashV2} {
+			normalized := normalizeHash(hash)
+			if normalized == "" {
+				continue
+			}
+			torrentByHash[normalized] = torrent
+		}
+	}
+	return torrentByHash
+}
+
+func missingVariantLookupHash(torrentByHash map[string]qbt.Torrent, hashes []string) bool {
+	for _, hash := range hashes {
+		if _, found := torrentByHash[normalizeHash(hash)]; !found {
+			return true
+		}
+	}
+	return false
 }
 
 func cacheKeyForTorrentFiles(instanceID int, hash string) string {
