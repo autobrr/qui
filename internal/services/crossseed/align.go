@@ -487,10 +487,8 @@ func allowMaterializedSizeOnlyMatch(sourcePath, candidatePath string) bool {
 func isIgnoredMaterializedSizeOnlyFile(name string) bool {
 	lower := strings.ToLower(name)
 	ext := strings.ToLower(filepath.Ext(fileBaseName(name)))
-	for _, ignoredExt := range DefaultIgnoredExtensions {
-		if ext == ignoredExt {
-			return true
-		}
+	if slices.Contains(DefaultIgnoredExtensions, ext) {
+		return true
 	}
 
 	for _, keyword := range DefaultIgnoredPathKeywords {
