@@ -68,7 +68,7 @@ import {
   XCircle,
   Zap
 } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
 // RSS Automation settings
@@ -960,11 +960,32 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     refetchInterval: 5_000,
   })
 
+  const searchRunsRefetchInterval =
+    searchStatus?.running && searchStatus.run?.instanceId === searchInstanceId ? 5_000 : false
+
   const { data: searchRuns, refetch: refetchSearchRuns } = useQuery({
     queryKey: ["cross-seed", "search-runs", searchInstanceId],
     queryFn: () => searchInstanceId ? api.listCrossSeedSearchRuns(searchInstanceId, { limit: 10 }) : Promise.resolve([]),
     enabled: !!searchInstanceId,
+    refetchInterval: searchRunsRefetchInterval,
   })
+
+  const activeSearchInstanceIdRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const isRunning = searchStatus?.running ?? false
+    const activeInstanceId = searchStatus?.run?.instanceId
+
+    if (isRunning && activeInstanceId != null) {
+      activeSearchInstanceIdRef.current = activeInstanceId
+      return
+    }
+
+    if (activeSearchInstanceIdRef.current != null && activeSearchInstanceIdRef.current === searchInstanceId) {
+      void refetchSearchRuns()
+    }
+    activeSearchInstanceIdRef.current = null
+  }, [refetchSearchRuns, searchInstanceId, searchStatus?.running, searchStatus?.run?.instanceId])
 
   const { data: searchMetadata } = useQuery({
     queryKey: ["cross-seed", "search-metadata", searchInstanceId],
