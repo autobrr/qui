@@ -253,128 +253,174 @@ func TestProcessPendingRecheckResumeKeepsDownloadingBelowThreshold(t *testing.T)
 	require.Empty(t, sync.bulkActions)
 }
 
-func TestProcessPendingRecheckResumeConfirmsRunningAfterResume(t *testing.T) {
+func TestProcessPendingRecheckResumeConfirmationStates(t *testing.T) {
 	t.Parallel()
 
-	sync := &recheckResumeSyncManager{}
-	service := &Service{
-		syncManager:      sync,
-		recheckResumeCtx: context.Background(),
-	}
-	pending := &pendingResume{
-		instanceID: 1,
-		hash:       "hash1",
-		threshold:  1.0,
-		addedAt:    time.Now(),
+	now := time.Now()
+	type resumeStep struct {
+		torrent                    qbt.Torrent
+		keep                       bool
+		awaitingResumeConfirmation bool
+		resumeAttempts             int
+		bulkActions                []string
 	}
 
-	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
-		Hash:     "hash1",
-		Progress: 0.5,
-		State:    qbt.TorrentStateCheckingUp,
-	})
-	require.True(t, keep)
-	require.Empty(t, sync.bulkActions)
-
-	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
-		Hash:     "hash1",
-		Progress: 1.0,
-		State:    qbt.TorrentStatePausedUp,
-	})
-
-	require.True(t, keep)
-	require.True(t, pending.awaitingResumeConfirmation)
-	require.Equal(t, 1, pending.resumeAttempts)
-	require.Equal(t, []string{"resume:hash1"}, sync.bulkActions)
-
-	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
-		Hash:     "hash1",
-		Progress: 1.0,
-		State:    qbt.TorrentStateUploading,
-	})
-
-	require.True(t, keep)
-
-	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
-		Hash:     "hash1",
-		Progress: 1.0,
-		State:    qbt.TorrentStateUploading,
-	})
-
-	require.False(t, keep)
-	require.Equal(t, []string{"resume:hash1"}, sync.bulkActions)
-}
-
-func TestProcessPendingRecheckResumeRetriesStoppedAfterResume(t *testing.T) {
-	t.Parallel()
-
-	sync := &recheckResumeSyncManager{}
-	service := &Service{
-		syncManager:      sync,
-		recheckResumeCtx: context.Background(),
-	}
-	pending := &pendingResume{
-		instanceID:  1,
-		hash:        "hash1",
-		threshold:   1.0,
-		addedAt:     time.Now(),
-		sawChecking: true,
-	}
 	stoppedTorrent := qbt.Torrent{
 		Hash:     "hash1",
 		Progress: 1.0,
 		State:    qbt.TorrentStateStoppedUp,
 	}
-
-	keep := service.processPendingRecheckResume(1, "hash1", pending, stoppedTorrent)
-	require.True(t, keep)
-	require.Equal(t, 1, pending.resumeAttempts)
-
-	keep = service.processPendingRecheckResume(1, "hash1", pending, stoppedTorrent)
-	require.True(t, keep)
-	require.Equal(t, 2, pending.resumeAttempts)
-	require.Equal(t, []string{"resume:hash1", "resume:hash1"}, sync.bulkActions)
-
-	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
-		Hash:     "hash1",
-		Progress: 1.0,
-		State:    qbt.TorrentStateQueuedUp,
-	})
-	require.True(t, keep)
-
-	keep = service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
-		Hash:     "hash1",
-		Progress: 1.0,
-		State:    qbt.TorrentStateQueuedUp,
-	})
-	require.False(t, keep)
-}
-
-func TestProcessPendingRecheckResumeStopsWhenConfirmationDropsBelowThreshold(t *testing.T) {
-	t.Parallel()
-
-	sync := &recheckResumeSyncManager{}
-	service := &Service{
-		syncManager:      sync,
-		recheckResumeCtx: context.Background(),
+	tests := []struct {
+		name    string
+		initial pendingResume
+		steps   []resumeStep
+	}{
+		{
+			name: "confirms running after resume",
+			initial: pendingResume{
+				instanceID: 1,
+				hash:       "hash1",
+				threshold:  1.0,
+				addedAt:    now,
+			},
+			steps: []resumeStep{
+				{
+					torrent: qbt.Torrent{
+						Hash:     "hash1",
+						Progress: 0.5,
+						State:    qbt.TorrentStateCheckingUp,
+					},
+					keep: true,
+				},
+				{
+					torrent: qbt.Torrent{
+						Hash:     "hash1",
+						Progress: 1.0,
+						State:    qbt.TorrentStatePausedUp,
+					},
+					keep:                       true,
+					awaitingResumeConfirmation: true,
+					resumeAttempts:             1,
+					bulkActions:                []string{"resume:hash1"},
+				},
+				{
+					torrent: qbt.Torrent{
+						Hash:     "hash1",
+						Progress: 1.0,
+						State:    qbt.TorrentStateUploading,
+					},
+					keep:                       true,
+					awaitingResumeConfirmation: true,
+					resumeAttempts:             1,
+					bulkActions:                []string{"resume:hash1"},
+				},
+				{
+					torrent: qbt.Torrent{
+						Hash:     "hash1",
+						Progress: 1.0,
+						State:    qbt.TorrentStateUploading,
+					},
+					keep:                       false,
+					awaitingResumeConfirmation: true,
+					resumeAttempts:             1,
+					bulkActions:                []string{"resume:hash1"},
+				},
+			},
+		},
+		{
+			name: "retries stopped after resume",
+			initial: pendingResume{
+				instanceID:  1,
+				hash:        "hash1",
+				threshold:   1.0,
+				addedAt:     now,
+				sawChecking: true,
+			},
+			steps: []resumeStep{
+				{
+					torrent:                    stoppedTorrent,
+					keep:                       true,
+					awaitingResumeConfirmation: true,
+					resumeAttempts:             1,
+					bulkActions:                []string{"resume:hash1"},
+				},
+				{
+					torrent:                    stoppedTorrent,
+					keep:                       true,
+					awaitingResumeConfirmation: true,
+					resumeAttempts:             2,
+					bulkActions:                []string{"resume:hash1", "resume:hash1"},
+				},
+				{
+					torrent: qbt.Torrent{
+						Hash:     "hash1",
+						Progress: 1.0,
+						State:    qbt.TorrentStateQueuedUp,
+					},
+					keep:                       true,
+					awaitingResumeConfirmation: true,
+					resumeAttempts:             2,
+					bulkActions:                []string{"resume:hash1", "resume:hash1"},
+				},
+				{
+					torrent: qbt.Torrent{
+						Hash:     "hash1",
+						Progress: 1.0,
+						State:    qbt.TorrentStateQueuedUp,
+					},
+					keep:                       false,
+					awaitingResumeConfirmation: true,
+					resumeAttempts:             2,
+					bulkActions:                []string{"resume:hash1", "resume:hash1"},
+				},
+			},
+		},
+		{
+			name: "stops when confirmation drops below threshold",
+			initial: pendingResume{
+				instanceID:                 1,
+				hash:                       "hash1",
+				threshold:                  1.0,
+				addedAt:                    now,
+				awaitingResumeConfirmation: true,
+				resumeAttempts:             1,
+			},
+			steps: []resumeStep{
+				{
+					torrent: qbt.Torrent{
+						Hash:     "hash1",
+						Progress: 0.95,
+						State:    qbt.TorrentStatePausedUp,
+					},
+					keep:                       false,
+					awaitingResumeConfirmation: true,
+					resumeAttempts:             1,
+				},
+			},
+		},
 	}
-	pending := &pendingResume{
-		instanceID:                 1,
-		hash:                       "hash1",
-		threshold:                  1.0,
-		addedAt:                    time.Now(),
-		awaitingResumeConfirmation: true,
-		resumeAttempts:             1,
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			sync := &recheckResumeSyncManager{}
+			service := &Service{
+				syncManager:      sync,
+				recheckResumeCtx: context.Background(),
+			}
+			pending := tt.initial
+
+			for i, step := range tt.steps {
+				keep := service.processPendingRecheckResume(1, "hash1", &pending, step.torrent)
+
+				require.Equal(t, step.keep, keep, "step %d keep", i)
+				require.Equal(t, step.awaitingResumeConfirmation, pending.awaitingResumeConfirmation, "step %d awaiting confirmation", i)
+				require.Equal(t, step.resumeAttempts, pending.resumeAttempts, "step %d resume attempts", i)
+				require.Equal(t, step.bulkActions, sync.bulkActions, "step %d bulk actions", i)
+			}
+		})
 	}
-
-	keep := service.processPendingRecheckResume(1, "hash1", pending, qbt.Torrent{
-		Hash:     "hash1",
-		Progress: 0.95,
-		State:    qbt.TorrentStatePausedUp,
-	})
-
-	require.False(t, keep)
-	require.Equal(t, []string(nil), sync.bulkActions)
 }
 
 func TestBuildTorrentVariantLookupMatchesV1AndV2(t *testing.T) {
