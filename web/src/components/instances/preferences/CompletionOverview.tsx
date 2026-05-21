@@ -420,9 +420,7 @@ export function CompletionOverview() {
                                 disabled={isSaving}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.categories.length === 0
-                                  ? "All categories will be included."
-                                  : `Only ${form.categories.length} selected ${form.categories.length === 1 ? "category" : "categories"} will be matched.`}
+                                {form.categories.length === 0? "All categories will be included.": `Only ${form.categories.length} selected ${form.categories.length === 1 ? "category" : "categories"} will be matched.`}
                               </p>
                             </div>
                             <div className="space-y-2">
@@ -436,9 +434,7 @@ export function CompletionOverview() {
                                 disabled={isSaving}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.tags.length === 0
-                                  ? "All tags will be included."
-                                  : `Only ${form.tags.length} selected ${form.tags.length === 1 ? "tag" : "tags"} will be matched.`}
+                                {form.tags.length === 0? "All tags will be included.": `Only ${form.tags.length} selected ${form.tags.length === 1 ? "tag" : "tags"} will be matched.`}
                               </p>
                             </div>
                             <div className="space-y-2">
@@ -451,9 +447,7 @@ export function CompletionOverview() {
                                 disabled={isSaving || indexersQuery.isPending || (!hasEnabledIndexers && !indexersQuery.isPending)}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.indexerIds.length === 0
-                                  ? "All enabled indexers will be searched."
-                                  : `Only ${form.indexerIds.length} selected ${form.indexerIds.length === 1 ? "indexer" : "indexers"} will be queried.`}
+                                {form.indexerIds.length === 0? "All enabled indexers will be searched.": `Only ${form.indexerIds.length} selected ${form.indexerIds.length === 1 ? "indexer" : "indexers"} will be queried.`}
                               </p>
                             </div>
                           </div>

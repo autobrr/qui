@@ -9,7 +9,7 @@ import type { ConditionOperator, RuleCondition } from "@/types";
 import {
   SortableContext,
   useSortable,
-  verticalListSortingStrategy,
+  verticalListSortingStrategy
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Plus, X } from "lucide-react";
@@ -169,9 +169,7 @@ export function ConditionGroup({
 
   // Generate unique IDs for children
   const childIds = children.map((child, index) => child.clientId ?? `${id}-${index}`);
-  const nestedColorClasses = depth % 2 === 1
-    ? "border-cyan-500/40 bg-cyan-500/10"
-    : "border-amber-500/45 bg-amber-500/10";
+  const nestedColorClasses = depth % 2 === 1? "border-cyan-500/40 bg-cyan-500/10": "border-amber-500/45 bg-amber-500/10";
 
   return (
     <div
@@ -204,9 +202,7 @@ export function ConditionGroup({
           size="sm"
           className={cn(
             "h-7 px-3 font-mono text-xs font-semibold",
-            condition.operator === "AND"
-              ? "border-blue-500/50 bg-blue-500/10 text-blue-500"
-              : "border-orange-500/50 bg-orange-500/10 text-orange-500"
+            condition.operator === "AND"? "border-blue-500/50 bg-blue-500/10 text-blue-500": "border-orange-500/50 bg-orange-500/10 text-orange-500"
           )}
           onClick={toggleOperator}
         >

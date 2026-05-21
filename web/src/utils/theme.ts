@@ -105,7 +105,7 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
 
   // Clean up all variation variables to prevent stale values
   Array.from(root.style)
-    .filter(prop => prop.startsWith('--variation'))
+    .filter(prop => prop.startsWith("--variation"))
     .forEach(prop => root.style.removeProperty(prop));
 
   // Apply theme CSS variables (lightOnly themes always use light vars)
@@ -285,9 +285,7 @@ export const setTheme = async (themeId: string, mode?: ThemeMode, variation?: st
   }
 
   // Validate and store variation
-  const currentVariation = (variation && theme.variations?.includes(variation))
-    ? variation
-    : getThemeVariation(theme.id);
+  const currentVariation = (variation && theme.variations?.includes(variation))? variation: getThemeVariation(theme.id);
 
   if (currentVariation) {
     setStoredVariation(theme.id, currentVariation);
@@ -387,8 +385,8 @@ export const getThemeVariation = (themeId?: string): string | null => {
 // When colorVar is provided, return string
 export function getThemeColors(
   theme: Theme,
-  colorVar: '--primary' | '--secondary' | '--accent',
-  mode?: 'light' | 'dark'
+  colorVar: "--primary" | "--secondary" | "--accent",
+  mode?: "light" | "dark"
 ): string;
 
 // When colorVar is not provided, return object
@@ -403,8 +401,8 @@ export function getThemeColors(
 
 export function getThemeColors(
   theme: Theme,
-  colorVar?: '--primary' | '--secondary' | '--accent',
-  mode?: 'light' | 'dark'
+  colorVar?: "--primary" | "--secondary" | "--accent",
+  mode?: "light" | "dark"
 ): string | {
   primary: string;
   secondary: string;
@@ -412,11 +410,11 @@ export function getThemeColors(
   variations?: Array<{ id: string; color: string }>;
 } {
   // Use passed mode if specified
-  const isDark = mode ? mode === 'dark' : document.documentElement.classList.contains("dark");
+  const isDark = mode ? mode === "dark" : document.documentElement.classList.contains("dark");
   const cssVars = isDark ? theme.cssVars.dark : theme.cssVars.light;
 
   // Helper to resolve variation colors
-  const resolveColor = (varName: '--primary' | '--secondary' | '--accent'): string => {
+  const resolveColor = (varName: "--primary" | "--secondary" | "--accent"): string => {
     const colorValue = cssVars[varName];
 
     if (colorValue === "var(--variation-color)") {
@@ -435,9 +433,9 @@ export function getThemeColors(
 
   // Otherwise return all
   return {
-    primary: resolveColor('--primary'),
-    secondary: resolveColor('--secondary'),
-    accent: resolveColor('--accent'),
+    primary: resolveColor("--primary"),
+    secondary: resolveColor("--secondary"),
+    accent: resolveColor("--accent"),
     variations: theme.variations?.map(varId => ({
       id: varId,
       color: cssVars[`--variation-${varId}`],

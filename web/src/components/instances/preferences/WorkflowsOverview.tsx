@@ -200,6 +200,13 @@ function formatAction(action: AutomationActivity["action"]): string {
   }
 }
 
+function getOutcomeBadgeText(event: AutomationActivity): string {
+  if (event.outcome === "dry-run") return "Dry run"
+  if (event.action === "external_program") return event.outcome === "success" ? "Executed" : "Failed"
+  if (event.action === "exported_to_instance") return event.outcome === "success" ? "Exported" : "Failed"
+  return event.outcome === "success" ? "Removed" : "Failed"
+}
+
 function sumRecordValues(values: Record<string, number> | undefined): number {
   return Object.values(values ?? {}).reduce((sum, value) => {
     const asNumber = typeof value === "number" ? value : Number(value)
@@ -292,13 +299,7 @@ function formatExportedToInstanceSummary(details: AutomationActivity["details"],
 
 function formatDeleteDryRunSummary(details: AutomationActivity["details"], action: AutomationActivity["action"]): string {
   const count = details?.count ?? 0
-  const label = action === "deleted_ratio"
-    ? "ratio limit"
-    : action === "deleted_seeding"
-      ? "seeding limit"
-      : action === "deleted_unregistered"
-        ? "unregistered"
-        : "condition"
+  const label = action === "deleted_ratio"? "ratio limit": action === "deleted_seeding"? "seeding limit": action === "deleted_unregistered"? "unregistered": "condition"
   return `${count} torrent${count !== 1 ? "s" : ""} would be deleted (${label})`
 }
 
@@ -1285,13 +1286,7 @@ export function WorkflowsOverview({
                                               outcomeClasses[event.outcome]
                                             )}
                                           >
-                                            {event.outcome === "dry-run"
-                                              ? "Dry run"
-                                              : event.action === "external_program"
-                                                ? (event.outcome === "success" ? "Executed" : "Failed")
-                                                : event.action === "exported_to_instance"
-                                                  ? (event.outcome === "success" ? "Exported" : "Failed")
-                                                  : (event.outcome === "success" ? "Removed" : "Failed")}
+                                            {getOutcomeBadgeText(event)}
                                           </Badge>
                                         )}
                                       </div>

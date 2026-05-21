@@ -64,9 +64,7 @@ export function CrossSeedWarning({
       <div
         className={cn(
           "group relative rounded-lg border py-2 px-3 transition-all duration-300",
-          isHighRisk
-            ? "border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60 hover:bg-amber-500/10"
-            : "border-border/50 bg-muted/30 hover:border-border hover:bg-muted/50",
+          isHighRisk? "border-amber-500/40 bg-amber-500/5 hover:border-amber-500/60 hover:bg-amber-500/10": "border-border/50 bg-muted/30 hover:border-border hover:bg-muted/50",
           className
         )}
       >
@@ -92,9 +90,7 @@ export function CrossSeedWarning({
             onClick={onSearch}
             className={cn(
               "shrink-0 h-7 px-2 text-xs transition-all",
-              isHighRisk
-                ? "bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
-                : "hover:bg-accent"
+              isHighRisk? "bg-amber-600 hover:bg-amber-700 text-white shadow-sm": "hover:bg-accent"
             )}
           >
             <Search className="h-3 w-3 mr-1" />
@@ -177,9 +173,7 @@ export function CrossSeedWarning({
     <div
       className={cn(
         "rounded-lg border py-3 px-4 overflow-hidden",
-        isDestructive
-          ? "border-destructive/40 bg-destructive/5"
-          : "border-blue-500/30 bg-blue-500/5",
+        isDestructive? "border-destructive/40 bg-destructive/5": "border-blue-500/30 bg-blue-500/5",
         className
       )}
     >
@@ -195,27 +189,17 @@ export function CrossSeedWarning({
             "text-sm font-medium",
             isDestructive ? "text-destructive" : "text-blue-600 dark:text-blue-400"
           )}>
-            {deleteCrossSeeds
-              ? "These cross-seeds will also be deleted"
-              : deleteFiles
-                ? "Deleting files will break these cross-seeds"
-                : "Cross-seeds detected — data will be preserved"}
+            {deleteCrossSeeds? "These cross-seeds will also be deleted": deleteFiles? "Deleting files will break these cross-seeds": "Cross-seeds detected — data will be preserved"}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {affectedTorrents.length} {affectedTorrents.length === 1 ? "torrent shares" : "torrents share"} these files
             {instanceCount > 1 && ` across ${instanceCount} instances`}
             {uniqueTrackers.size > 0 && (
               <span className="ml-1">
-                on {uniqueTrackers.size === 1
-                  ? Array.from(uniqueTrackers)[0]
-                  : `${uniqueTrackers.size} trackers`}
+                on {uniqueTrackers.size === 1? Array.from(uniqueTrackers)[0]: `${uniqueTrackers.size} trackers`}
               </span>
             )}
-            {deleteCrossSeeds
-              ? " — will be removed along with selection"
-              : deleteFiles
-                ? " — they will need to redownload"
-                : " — unaffected by this removal"}
+            {deleteCrossSeeds? " — will be removed along with selection": deleteFiles? " — they will need to redownload": " — unaffected by this removal"}
           </p>
         </div>
       </div>
@@ -269,9 +253,7 @@ export function CrossSeedWarning({
                         className="flex items-center gap-2 py-0.5 text-xs min-w-0"
                       >
                         <span className="truncate min-w-0 flex-1">
-                          {incognitoMode
-                            ? getLinuxIsoName(torrent.hash)
-                            : torrent.name}
+                          {incognitoMode? getLinuxIsoName(torrent.hash): torrent.name}
                         </span>
                         {trackerDomain && (
                           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">

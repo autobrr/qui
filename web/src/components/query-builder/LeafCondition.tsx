@@ -148,9 +148,7 @@ export function LeafCondition({
   const fieldType = condition.field ? getFieldType(condition.field) : "string";
   const operators = condition.field ? getOperatorsForField(condition.field) : [];
   const isGroupingField = isGroupingConditionField(condition.field);
-  const availableGroupOptions = (groupOptions && groupOptions.length > 0)
-    ? groupOptions
-    : [{ id: DEFAULT_GROUP_ID, label: "Cross-seed (content + save path)" }];
+  const availableGroupOptions = (groupOptions && groupOptions.length > 0)? groupOptions: [{ id: DEFAULT_GROUP_ID, label: "Cross-seed (content + save path)" }];
   const groupIdValue = condition.groupId || DEFAULT_GROUP_ID;
 
   // Track duration unit separately so it persists when value is empty

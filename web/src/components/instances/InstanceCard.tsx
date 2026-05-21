@@ -81,11 +81,7 @@ export function InstanceCard({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const displayUrl = instance.host
 
-  const statusBadge = !instance.isActive
-    ? { label: "Disabled", variant: "secondary" as const }
-    : instance.connected
-      ? { label: "Connected", variant: "default" as const }
-      : { label: "Disconnected", variant: "destructive" as const }
+  const statusBadge = !instance.isActive? { label: "Disabled", variant: "secondary" as const }: instance.connected? { label: "Connected", variant: "default" as const }: { label: "Disconnected", variant: "destructive" as const }
 
   const handleTest = async () => {
     if (!instance.isActive) {
@@ -126,9 +122,7 @@ export function InstanceCard({
       onSuccess: () => {
         setTestResult(null)
         toast.success(nextState ? "Instance Enabled" : "Instance Disabled", {
-          description: nextState
-            ? "qui will resume connecting to this qBittorrent instance."
-            : "qui will stop attempting to reach this qBittorrent instance.",
+          description: nextState? "qui will resume connecting to this qBittorrent instance.": "qui will stop attempting to reach this qBittorrent instance.",
         })
       },
       onError: (error) => {
