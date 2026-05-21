@@ -197,6 +197,7 @@ type recordingTorrentManager struct {
 		instanceID int
 		hashes     []string
 		action     string
+		ctxErr     error
 	}
 	resumeCalls []struct {
 		instanceID int
@@ -210,12 +211,13 @@ func (m *recordingTorrentManager) AddTorrent(_ context.Context, _ int, _ []byte,
 	return nil, nil
 }
 
-func (m *recordingTorrentManager) BulkAction(_ context.Context, instanceID int, hashes []string, action string) error {
+func (m *recordingTorrentManager) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
 	m.bulkCalls = append(m.bulkCalls, struct {
 		instanceID int
 		hashes     []string
 		action     string
-	}{instanceID: instanceID, hashes: hashes, action: action})
+		ctxErr     error
+	}{instanceID: instanceID, hashes: hashes, action: action, ctxErr: ctx.Err()})
 	return nil
 }
 
@@ -227,7 +229,7 @@ func (m *recordingTorrentManager) ResumeWhenComplete(instanceID int, hashes []st
 	}{instanceID: instanceID, hashes: hashes, opts: opts})
 }
 
-func TestInjector_Inject_PausedPartial_TriggersRecheckAndResumeWhenComplete(t *testing.T) {
+func TestInjector_Inject_PausedPartial_TriggersRecheckWithoutResumeWhenComplete(t *testing.T) {
 	instance := &models.Instance{
 		ID:                       1,
 		Name:                     "test",
@@ -289,14 +291,8 @@ func TestInjector_Inject_PausedPartial_TriggersRecheckAndResumeWhenComplete(t *t
 		t.Fatalf("expected hash deadbeef, got %+v", manager.bulkCalls[0].hashes)
 	}
 
-	if len(manager.resumeCalls) != 1 {
-		t.Fatalf("expected 1 resume call, got %d", len(manager.resumeCalls))
-	}
-	if len(manager.resumeCalls[0].hashes) != 1 || manager.resumeCalls[0].hashes[0] != "deadbeef" {
-		t.Fatalf("expected hash deadbeef, got %+v", manager.resumeCalls[0].hashes)
-	}
-	if manager.resumeCalls[0].opts.Timeout != 60*time.Minute {
-		t.Fatalf("expected timeout 60m, got %v", manager.resumeCalls[0].opts.Timeout)
+	if len(manager.resumeCalls) != 0 {
+		t.Fatalf("expected no resume call, got %d", len(manager.resumeCalls))
 	}
 }
 
@@ -867,7 +863,7 @@ func TestInjector_PerfectMatch_UnaffectedByDownloadMissing(t *testing.T) {
 	}
 }
 
-func TestInjector_Inject_RunningPartial_DoesNotTriggerRecheck(t *testing.T) {
+func TestInjector_Inject_RunningPartial_TriggersRecheckAndResumeWhenComplete(t *testing.T) {
 	instance := &models.Instance{
 		ID:                       1,
 		Name:                     "test",
@@ -911,7 +907,10 @@ func TestInjector_Inject_RunningPartial_DoesNotTriggerRecheck(t *testing.T) {
 		StartPaused:  false,
 	}
 
-	res, err := injector.Inject(context.Background(), req)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	res, err := injector.Inject(ctx, req)
 	if err != nil {
 		t.Fatalf("inject: %v", err)
 	}
@@ -919,7 +918,22 @@ func TestInjector_Inject_RunningPartial_DoesNotTriggerRecheck(t *testing.T) {
 		t.Fatalf("expected success, got %+v", res)
 	}
 
-	if len(manager.bulkCalls) != 0 || len(manager.resumeCalls) != 0 {
-		t.Fatalf("expected no recheck/resume calls, got bulk=%d resume=%d", len(manager.bulkCalls), len(manager.resumeCalls))
+	if len(manager.bulkCalls) != 1 {
+		t.Fatalf("expected 1 bulk call, got %d", len(manager.bulkCalls))
+	}
+	if manager.bulkCalls[0].action != "recheck" {
+		t.Fatalf("expected action recheck, got %q", manager.bulkCalls[0].action)
+	}
+	if manager.bulkCalls[0].ctxErr != nil {
+		t.Fatalf("expected background recheck context, got ctx err %v", manager.bulkCalls[0].ctxErr)
+	}
+	if len(manager.resumeCalls) != 1 {
+		t.Fatalf("expected 1 resume call, got %d", len(manager.resumeCalls))
+	}
+	if len(manager.resumeCalls[0].hashes) != 1 || manager.resumeCalls[0].hashes[0] != "deadbeef" {
+		t.Fatalf("expected hash deadbeef, got %+v", manager.resumeCalls[0].hashes)
+	}
+	if manager.resumeCalls[0].opts.Timeout != 60*time.Minute {
+		t.Fatalf("expected timeout 60m, got %v", manager.resumeCalls[0].opts.Timeout)
 	}
 }

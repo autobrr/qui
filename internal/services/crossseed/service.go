@@ -5047,7 +5047,7 @@ func (s *Service) processCrossSeedCandidate(
 			result.Message += " - auto-resume skipped per settings"
 		} else {
 			// Resume immediately since there's nothing to wait for
-			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{activeHash}, "resume"); err != nil {
+			if err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), candidate.InstanceID, []string{activeHash}, "resume"); err != nil {
 				log.Warn().
 					Err(err).
 					Int("instanceID", candidate.InstanceID).
@@ -5061,7 +5061,7 @@ func (s *Service) processCrossSeedCandidate(
 		// Alignment failed - pause torrent to prevent unwanted downloads
 		if !startPaused {
 			// Torrent was added running - need to actually pause it
-			if err := s.syncManager.BulkAction(ctx, candidate.InstanceID, []string{activeHash}, "pause"); err != nil {
+			if err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), candidate.InstanceID, []string{activeHash}, "pause"); err != nil {
 				log.Warn().
 					Err(err).
 					Int("instanceID", candidate.InstanceID).

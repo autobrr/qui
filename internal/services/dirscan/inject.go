@@ -240,7 +240,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 			return result, fmt.Errorf("partial link tree recheck: %w", err)
 		}
 	} else {
-		i.triggerRecheckForPausedPartial(ctx, req)
+		i.triggerRecheckForPausedPartial(req)
 	}
 
 	result.Success = true
@@ -449,11 +449,8 @@ func isPausedOrStoppedState(state qbt.TorrentState) bool {
 	return false
 }
 
-func (i *Injector) triggerRecheckForPausedPartial(ctx context.Context, req *InjectRequest) {
+func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest) {
 	if i == nil || i.syncManager == nil || req == nil || req.ParsedTorrent == nil || req.MatchResult == nil {
-		return
-	}
-	if !req.StartPaused {
 		return
 	}
 	if len(req.MatchResult.UnmatchedTorrentFiles) == 0 {
@@ -461,6 +458,7 @@ func (i *Injector) triggerRecheckForPausedPartial(ctx context.Context, req *Inje
 	}
 
 	hash := req.ParsedTorrent.InfoHash
+	ctx := context.Background()
 	if err := i.syncManager.BulkAction(ctx, req.InstanceID, []string{hash}, "recheck"); err != nil {
 		log.Warn().
 			Err(err).
@@ -470,9 +468,11 @@ func (i *Injector) triggerRecheckForPausedPartial(ctx context.Context, req *Inje
 		return
 	}
 
-	i.syncManager.ResumeWhenComplete(req.InstanceID, []string{hash}, qbsync.ResumeWhenCompleteOptions{
-		Timeout: 60 * time.Minute,
-	})
+	if !req.StartPaused {
+		i.syncManager.ResumeWhenComplete(req.InstanceID, []string{hash}, qbsync.ResumeWhenCompleteOptions{
+			Timeout: 60 * time.Minute,
+		})
+	}
 }
 
 func (i *Injector) validateInjectRequest(req *InjectRequest) error {
