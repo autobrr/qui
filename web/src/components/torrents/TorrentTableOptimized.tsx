@@ -1657,7 +1657,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       return undefined
     }
 
-    const combinedExpr = columnFiltersExpr ?? filters?.expr
+    // Combine both column filters and filter expressions (e.g. cross-seed hash filters)
+    // so select-all operations target exactly the visible set.
+    // Using ?? here would drop filters.expr when columnFiltersExpr is present,
+    // causing bulk actions to match more torrents than the user sees.
+    const combinedExpr = (columnFiltersExpr && filters?.expr)
+      ? `(${columnFiltersExpr}) && (${filters.expr})`
+      : (columnFiltersExpr || filters?.expr)
 
     if (filters) {
       return {
