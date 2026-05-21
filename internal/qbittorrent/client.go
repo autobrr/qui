@@ -19,6 +19,7 @@ import (
 
 var (
 	setTagsMinVersion                    = semver.MustParse("2.11.4")
+	setCommentMinVersion                 = semver.MustParse("2.12.1")
 	torrentCreationMinVersion            = semver.MustParse("2.11.2")
 	exportTorrentMinVersion              = semver.MustParse("2.8.11")
 	trackerEditingMinVersion             = semver.MustParse("2.2.0")
@@ -41,6 +42,7 @@ type Client struct {
 	instanceID                 int
 	webAPIVersion              string
 	supportsSetTags            bool
+	supportsSetComment         bool
 	supportsTorrentCreation    bool
 	supportsTorrentExport      bool
 	supportsTrackerEditing     bool
@@ -153,6 +155,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 		Str("host", instanceHost).
 		Str("webAPIVersion", client.GetWebAPIVersion()).
 		Bool("supportsSetTags", client.SupportsSetTags()).
+		Bool("supportsSetComment", client.SupportsSetComment()).
 		Bool("supportsTorrentCreation", client.SupportsTorrentCreation()).
 		Bool("supportsTorrentExport", client.SupportsTorrentExport()).
 		Bool("supportsTrackerEditing", client.SupportsTrackerEditing()).
@@ -263,6 +266,7 @@ func (c *Client) applyCapabilitiesLocked(version string) {
 	}
 
 	c.supportsSetTags = !v.LessThan(setTagsMinVersion)
+	c.supportsSetComment = !v.LessThan(setCommentMinVersion)
 	c.supportsTorrentCreation = !v.LessThan(torrentCreationMinVersion)
 	c.supportsTorrentExport = !v.LessThan(exportTorrentMinVersion)
 	c.supportsTrackerEditing = !v.LessThan(trackerEditingMinVersion)
@@ -388,6 +392,12 @@ func (c *Client) SupportsSetTags() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.supportsSetTags
+}
+
+func (c *Client) SupportsSetComment() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.supportsSetComment
 }
 
 func (c *Client) SupportsTrackerHealth() bool {

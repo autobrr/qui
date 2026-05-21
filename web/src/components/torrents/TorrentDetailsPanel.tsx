@@ -920,7 +920,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             {displayCreatedBy && (
                               <div className="space-y-1">
                                 <p className="text-xs text-muted-foreground">Created By</p>
-                                <div className="text-xs">{renderTextWithLinks(displayCreatedBy)}</div>
+                                <p className="text-xs">{renderTextWithLinks(displayCreatedBy)}</p>
                               </div>
                             )}
 
@@ -928,7 +928,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             {displayComment && (
                               <div className="space-y-1">
                                 <p className="text-xs text-muted-foreground">Comment</p>
-                                <div className="text-xs">{renderTextWithLinks(displayComment)}</div>
+                                <p className="font-mono text-xs whitespace-pre-wrap break-words">{renderTextWithLinks(displayComment)}</p>
                               </div>
                             )}
                           </div>

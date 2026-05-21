@@ -140,7 +140,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
       <div className="p-3">
         {/* Row 1: Name + Size */}
         <div className="grid grid-cols-2 gap-6 h-5">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-start gap-2 min-w-0">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
               Name:
             </span>
@@ -158,7 +158,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
               </Button>
             )}
           </div>
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-start gap-2 min-w-0">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
               Size:
             </span>
@@ -170,7 +170,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
 
         {/* Row 2: Hash v1 + Hash v2 */}
         <div className="grid grid-cols-2 gap-6 h-5">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-start gap-2 min-w-0">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
               Hash v1:
             </span>
@@ -189,7 +189,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             )}
           </div>
           {displayInfohashV2 && (
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-start gap-2 min-w-0">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
                 Hash v2:
               </span>
@@ -210,7 +210,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
 
         {/* Row 3: Save Path + Temp Path (if enabled) */}
         <div className="grid grid-cols-2 gap-6 h-5">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-start gap-2 min-w-0">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
               Save Path:
             </span>
@@ -229,7 +229,7 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
             )}
           </div>
           {tempPathEnabled && displayTempPath ? (
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-start gap-2 min-w-0">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
                 Temp Path:
               </span>
@@ -251,23 +251,23 @@ export const GeneralTabHorizontal = memo(function GeneralTabHorizontal({
 
         {/* Row 4: Comment & Created By */}
         {(displayComment) && (
-          <div className="grid grid-cols-2 gap-6 h-5">
+          <div className="grid grid-cols-2 gap-6">
             {displayComment && (
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-start gap-2 min-w-0">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
                   Comment:
                 </span>
-                <span className="text-xs text-muted-foreground truncate" title={displayComment}>
+                <span className="min-w-0 flex-1 font-mono text-xs text-muted-foreground whitespace-pre-wrap break-words">
                   {renderTextWithLinks(displayComment)}
                 </span>
               </div>
             )}
             {displayCreatedBy && (
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-start gap-2 min-w-0">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0 whitespace-nowrap">
                   Created By:
                 </span>
-                <span className="text-xs text-muted-foreground truncate" title={displayCreatedBy}>
+                <span className="min-w-0 flex-1 text-xs text-muted-foreground truncate" title={displayCreatedBy}>
                   {renderTextWithLinks(displayCreatedBy)}
                 </span>
               </div>

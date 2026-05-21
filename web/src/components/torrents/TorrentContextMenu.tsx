@@ -32,6 +32,7 @@ import {
   FolderOpen,
   Gauge,
   GitBranch,
+  MessageSquare,
   Pause,
   Play,
   Radio,
@@ -63,6 +64,7 @@ interface TorrentContextMenuProps {
   onAction: (action: TorrentAction, hashes: string[], options?: { enable?: boolean; targets?: Array<{ instanceId: number; hash: string }> }) => void
   onPrepareDelete: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareTags: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareComment?: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareCategory: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareCreateCategory: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareShareLimit: (hashes: string[], torrents?: Torrent[]) => void
@@ -100,6 +102,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onAction,
   onPrepareDelete,
   onPrepareTags,
+  onPrepareComment,
   onPrepareShareLimit,
   onPrepareSpeedLimits,
   onPrepareRecheck,
@@ -348,6 +351,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   }, [onPrepareLocation, hashes, torrents, count])
 
   const supportsTorrentExport = capabilities?.supportsTorrentExport ?? true
+  const supportsSetComment = capabilities?.supportsSetComment ?? false
   const supportsInstanceScopedActions = _instanceId > 0
 
   return (
@@ -531,6 +535,15 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 isPending={isPending}
                 capabilities={capabilities}
               />
+            )}
+            {supportsSetComment && onPrepareComment && (
+              <ContextMenuItem
+                onClick={() => onPrepareComment(hashes, torrents)}
+                disabled={isPending}
+              >
+                <MessageSquare className="mr-2 h-4 w-4" />
+                Set Comment {count > 1 ? `(${count})` : ""}
+              </ContextMenuItem>
             )}
             <ContextMenuSeparator />
             <ContextMenuItem
