@@ -271,13 +271,16 @@ type CrossSeedSearchFilters struct {
 	Tags       []string `json:"tags"`
 }
 
-// CrossSeedSearchResultStatus records the outcome status for one searched torrent.
+// CrossSeedSearchResultStatus records the add outcome for one searched torrent.
 type CrossSeedSearchResultStatus string
 
 const (
-	CrossSeedSearchResultStatusAdded   CrossSeedSearchResultStatus = "added"
+	// CrossSeedSearchResultStatusAdded means the match was added to qBittorrent.
+	CrossSeedSearchResultStatusAdded CrossSeedSearchResultStatus = "added"
+	// CrossSeedSearchResultStatusSkipped means the match did not require or permit an add.
 	CrossSeedSearchResultStatusSkipped CrossSeedSearchResultStatus = "skipped"
-	CrossSeedSearchResultStatusFailed  CrossSeedSearchResultStatus = "failed"
+	// CrossSeedSearchResultStatusFailed means the match hit an add or preparation error.
+	CrossSeedSearchResultStatusFailed CrossSeedSearchResultStatus = "failed"
 )
 
 // CrossSeedSearchResult records the outcome of processing a single torrent during a search run.

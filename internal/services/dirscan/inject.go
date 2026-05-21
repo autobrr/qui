@@ -449,6 +449,8 @@ func isPausedOrStoppedState(state qbt.TorrentState) bool {
 	return false
 }
 
+// triggerRecheckForPausedPartial verifies regular-mode partial matches after
+// add, and only queues resume when the request did not ask to stay paused.
 func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest) {
 	if i == nil || i.syncManager == nil || req == nil || req.ParsedTorrent == nil || req.MatchResult == nil {
 		return

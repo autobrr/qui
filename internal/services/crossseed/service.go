@@ -9044,6 +9044,8 @@ func (s *Service) describeFilteringSkipReason(state *AsyncIndexerFilteringState)
 	return "no eligible indexers after filtering"
 }
 
+// executeCrossSeedSearchAttempt downloads a search match and applies it to the
+// target instance, returning the persisted automation result for that attempt.
 func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *searchRunState, torrent *qbt.Torrent, match TorrentSearchResult, processedAt time.Time) (*models.CrossSeedSearchResult, error) {
 	result := &models.CrossSeedSearchResult{
 		TorrentHash:  torrent.Hash,
@@ -9116,6 +9118,8 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	return result, nil
 }
 
+// classifyFailedCrossSeedSearchResult separates harmless no-add outcomes from
+// failures that should count against the automation run.
 func classifyFailedCrossSeedSearchResult(results []InstanceCrossSeedResult) models.CrossSeedSearchResultStatus {
 	if len(results) == 0 {
 		return models.CrossSeedSearchResultStatusFailed
