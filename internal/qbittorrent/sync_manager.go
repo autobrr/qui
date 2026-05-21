@@ -107,13 +107,7 @@ func postAddBulkActionRetry(ctx context.Context) bool {
 }
 
 func withoutCancelPreservingDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
-	detached := context.WithoutCancel(ctx)
-	if deadline, ok := ctx.Deadline(); ok {
-		//nolint:gosec // G118: cancel is returned to caller and deferred by the retry path.
-		deadlineCtx, cancel := context.WithDeadline(detached, deadline)
-		return deadlineCtx, cancel
-	}
-	return detached, func() {}
+	return context.WithoutCancel(ctx), func() {}
 }
 
 // CacheMetadata provides information about cache state

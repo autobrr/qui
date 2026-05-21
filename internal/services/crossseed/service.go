@@ -11791,6 +11791,10 @@ func materializedCoverage(sourceFiles qbt.TorrentFiles, materializedFiles []hard
 	return float64(materializedBytes) / float64(totalBytes), materializedBytes, totalBytes
 }
 
+func hasUnmaterializedSourceFiles(sourceFiles qbt.TorrentFiles, materializedFiles []hardlinktree.TorrentFile) bool {
+	return len(sourceFiles) != len(materializedFiles)
+}
+
 func coverageThresholdFromTolerance(tolerancePercent float64) float64 {
 	if tolerancePercent < 0 {
 		tolerancePercent = 0
@@ -11945,10 +11949,11 @@ func (s *Service) processHardlinkMode(
 		return hardlinkError(message)
 	}
 
-	// Check if source has extra files (files not present in candidate).
-	// If extras exist and piece-boundary check passed (checked earlier in processCrossSeedCandidate),
-	// we'll hardlink content files and let qBittorrent download the safe extras via recheck.
-	hasExtras := hasExtraSourceFiles(sourceFiles, candidateFiles)
+	// Build LINKABLE source files list. The selector keeps rename-friendly
+	// matching for content files but does not materialize sidecars on size alone.
+	// Files omitted by the selector will be downloaded by qBittorrent after recheck.
+	candidateTorrentFilesToLink := selectExistingSourceFiles(sourceFiles, candidateFiles)
+	hasExtras := hasUnmaterializedSourceFiles(sourceFiles, candidateTorrentFilesToLink)
 
 	// Early guard: if SkipRecheck is enabled and we have extras, skip before any plan building
 	if req.SkipRecheck && hasExtras {
@@ -11987,10 +11992,6 @@ func (s *Service) processHardlinkMode(
 		return handleError("No candidate files available for hardlink matching")
 	}
 
-	// Build LINKABLE source files list. The selector keeps rename-friendly
-	// matching for content files but does not materialize sidecars on size alone.
-	// When hasExtras=true, some source files won't be linked; qBittorrent will download them.
-	candidateTorrentFilesToLink := selectExistingSourceFiles(sourceFiles, candidateFiles)
 	if len(candidateTorrentFilesToLink) == 0 {
 		return handleError("No linkable files found (all source files are extras)")
 	}
@@ -12564,9 +12565,11 @@ func (s *Service) processReflinkMode(
 		return reflinkError(message)
 	}
 
-	// Reflink mode only requires recheck when the incoming torrent has extra files
-	// (files not present in the matched torrent).
-	hasExtras := hasExtraSourceFiles(sourceFiles, candidateFiles)
+	// Build CLONEABLE source files list. The selector keeps rename-friendly
+	// matching for content files but does not materialize sidecars on size alone.
+	// Files omitted by the selector will be downloaded by qBittorrent after recheck.
+	candidateTorrentFilesToClone := selectExistingSourceFiles(sourceFiles, candidateFiles)
+	hasExtras := hasUnmaterializedSourceFiles(sourceFiles, candidateTorrentFilesToClone)
 
 	// Early guard: if SkipRecheck is enabled and we have extras, skip before any plan building
 	if req.SkipRecheck && hasExtras {
@@ -12605,10 +12608,6 @@ func (s *Service) processReflinkMode(
 		return handleError("No candidate files available for reflink matching")
 	}
 
-	// Build CLONEABLE source files list. The selector keeps rename-friendly
-	// matching for content files but does not materialize sidecars on size alone.
-	// Files without matches will be downloaded by qBittorrent.
-	candidateTorrentFilesToClone := selectExistingSourceFiles(sourceFiles, candidateFiles)
 	if len(candidateTorrentFilesToClone) == 0 {
 		return handleError("No cloneable files found (all source files would need to be downloaded)")
 	}

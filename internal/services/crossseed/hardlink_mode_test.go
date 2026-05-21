@@ -994,6 +994,22 @@ func TestSelectExistingSourceFilesDoesNotUseSizeOnlyFallbackForSidecars(t *testi
 	assert.Equal(t, "Movie/movie.mkv", selected[0].Path)
 }
 
+func TestHasUnmaterializedSourceFilesUsesSelectorResult(t *testing.T) {
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+		{Name: "Movie/english.srt", Size: 1024},
+	}
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+		{Name: "Movie/spanish.srt", Size: 1024},
+	}
+
+	selected := selectExistingSourceFiles(sourceFiles, candidateFiles)
+
+	require.Len(t, selected, 1)
+	assert.True(t, hasUnmaterializedSourceFiles(sourceFiles, selected))
+}
+
 func TestSelectExistingSourceFilesDoesNotMatchContentToSidecarBySizeOnly(t *testing.T) {
 	sourceFiles := qbt.TorrentFiles{
 		{Name: "Movie/movie.mkv", Size: 1024},

@@ -66,7 +66,7 @@ func TestBulkActionRetryAttempts(t *testing.T) {
 	require.Equal(t, 0, bulkActionRetryAttempts(ctx, 0, 0))
 }
 
-func TestWithoutCancelPreservingDeadlineKeepsDeadlineAndRetryValue(t *testing.T) {
+func TestWithoutCancelPreservingDeadlineDetachesDeadlineAndKeepsRetryValue(t *testing.T) {
 	t.Parallel()
 
 	deadline := time.Now().Add(time.Hour)
@@ -76,14 +76,13 @@ func TestWithoutCancelPreservingDeadlineKeepsDeadlineAndRetryValue(t *testing.T)
 	retryCtx, cancelRetry := withoutCancelPreservingDeadline(parentCtx)
 	defer cancelRetry()
 
-	actualDeadline, ok := retryCtx.Deadline()
-	require.True(t, ok)
-	require.True(t, actualDeadline.Equal(deadline))
+	_, ok := retryCtx.Deadline()
+	require.False(t, ok)
 	require.NoError(t, retryCtx.Err())
 	require.True(t, postAddBulkActionRetry(retryCtx))
 }
 
-func TestWithoutCancelPreservingDeadlineKeepsExpiredDeadline(t *testing.T) {
+func TestWithoutCancelPreservingDeadlineDropsExpiredDeadline(t *testing.T) {
 	t.Parallel()
 
 	deadline := time.Now().Add(-time.Nanosecond)
@@ -93,10 +92,9 @@ func TestWithoutCancelPreservingDeadlineKeepsExpiredDeadline(t *testing.T) {
 	retryCtx, cancelRetry := withoutCancelPreservingDeadline(parentCtx)
 	defer cancelRetry()
 
-	actualDeadline, ok := retryCtx.Deadline()
-	require.True(t, ok)
-	require.True(t, actualDeadline.Equal(deadline))
-	require.ErrorIs(t, retryCtx.Err(), context.DeadlineExceeded)
+	_, ok := retryCtx.Deadline()
+	require.False(t, ok)
+	require.NoError(t, retryCtx.Err())
 }
 
 func TestBulkActionSyncRetryStopsAfterAttemptLimit(t *testing.T) {
