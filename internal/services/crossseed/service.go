@@ -11760,7 +11760,7 @@ type hardlinkModeResult struct {
 }
 
 func selectExistingSourceFiles(sourceFiles, candidateFiles qbt.TorrentFiles) []hardlinktree.TorrentFile {
-	matches, _ := matchSourceFilesToCandidates(sourceFiles, candidateFiles)
+	matches, _ := matchMaterializedSourceFilesToCandidates(sourceFiles, candidateFiles)
 	existingSourceFiles := make([]hardlinktree.TorrentFile, 0, len(matches))
 	for _, match := range matches {
 		f := sourceFiles[match.sourceIndex]
@@ -11995,10 +11995,9 @@ func (s *Service) processHardlinkMode(
 		return handleError("No candidate files available for hardlink matching")
 	}
 
-	// Build LINKABLE source files list (only files that have matching (normalizedKey, size) in candidate).
+	// Build LINKABLE source files list. The selector keeps rename-friendly
+	// matching for content files but does not materialize sidecars on size alone.
 	// When hasExtras=true, some source files won't be linked; qBittorrent will download them.
-	// We use a (normalizedKey, size) multiset to determine which source files have matches,
-	// but let BuildPlan handle the actual pairing by path/name similarity.
 	candidateTorrentFilesToLink := selectExistingSourceFiles(sourceFiles, candidateFiles)
 	if len(candidateTorrentFilesToLink) == 0 {
 		return handleError("No linkable files found (all source files are extras)")
@@ -12614,7 +12613,8 @@ func (s *Service) processReflinkMode(
 		return handleError("No candidate files available for reflink matching")
 	}
 
-	// Build CLONEABLE source files list (only files that have matching (normalizedKey, size) in candidate).
+	// Build CLONEABLE source files list. The selector keeps rename-friendly
+	// matching for content files but does not materialize sidecars on size alone.
 	// Files without matches will be downloaded by qBittorrent.
 	candidateTorrentFilesToClone := selectExistingSourceFiles(sourceFiles, candidateFiles)
 	if len(candidateTorrentFilesToClone) == 0 {

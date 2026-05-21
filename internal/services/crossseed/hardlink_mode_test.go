@@ -958,6 +958,55 @@ func TestSelectExistingSourceFilesUsesAlignmentMatchingForRenamedFiles(t *testin
 	assert.Equal(t, "Show/Sheriff.Hoot.Kloot.S01E02.mkv", selected[1].Path)
 }
 
+func TestSelectExistingSourceFilesUsesSizeOnlyFallbackForNonIgnoredContent(t *testing.T) {
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Music/Artist - Track 01.flac", Size: 1000},
+		{Name: "Books/Author - Book.epub", Size: 2000},
+		{Name: "Games/Game Disc.iso", Size: 3000},
+	}
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Music/01 - Track.flac", Size: 1000},
+		{Name: "Books/Book - Author.epub", Size: 2000},
+		{Name: "Games/Disc 1.iso", Size: 3000},
+	}
+
+	selected := selectExistingSourceFiles(sourceFiles, candidateFiles)
+
+	require.Len(t, selected, 3)
+	assert.Equal(t, "Music/Artist - Track 01.flac", selected[0].Path)
+	assert.Equal(t, "Books/Author - Book.epub", selected[1].Path)
+	assert.Equal(t, "Games/Game Disc.iso", selected[2].Path)
+}
+
+func TestSelectExistingSourceFilesDoesNotUseSizeOnlyFallbackForSidecars(t *testing.T) {
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+		{Name: "Movie/english.srt", Size: 1024},
+	}
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1000},
+		{Name: "Movie/spanish.srt", Size: 1024},
+	}
+
+	selected := selectExistingSourceFiles(sourceFiles, candidateFiles)
+
+	require.Len(t, selected, 1)
+	assert.Equal(t, "Movie/movie.mkv", selected[0].Path)
+}
+
+func TestSelectExistingSourceFilesDoesNotMatchContentToSidecarBySizeOnly(t *testing.T) {
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.mkv", Size: 1024},
+	}
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "Movie/movie.nfo", Size: 1024},
+	}
+
+	selected := selectExistingSourceFiles(sourceFiles, candidateFiles)
+
+	require.Empty(t, selected)
+}
+
 func TestProcessReflinkMode_DoesNotFallbackToRegularAfterMaterializationError(t *testing.T) {
 	tempDir := t.TempDir()
 	downloadsDir := filepath.Join(tempDir, "downloads")

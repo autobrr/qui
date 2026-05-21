@@ -364,6 +364,20 @@ func (s *Service) waitForTorrentAvailability(ctx context.Context, instanceID int
 }
 
 func matchSourceFilesToCandidates(sourceFiles, candidateFiles qbt.TorrentFiles) ([]fileMatchInstruction, []string) {
+	return matchSourceFilesToCandidatesWithPolicy(sourceFiles, candidateFiles, func(_, _ string) bool {
+		return true
+	})
+}
+
+func matchMaterializedSourceFilesToCandidates(sourceFiles, candidateFiles qbt.TorrentFiles) ([]fileMatchInstruction, []string) {
+	return matchSourceFilesToCandidatesWithPolicy(sourceFiles, candidateFiles, allowMaterializedSizeOnlyMatch)
+}
+
+func matchSourceFilesToCandidatesWithPolicy(
+	sourceFiles,
+	candidateFiles qbt.TorrentFiles,
+	allowSoleCandidateMatch func(sourcePath, candidatePath string) bool,
+) ([]fileMatchInstruction, []string) {
 	type candidateEntry struct {
 		path       string
 		size       int64
@@ -444,8 +458,9 @@ func matchSourceFilesToCandidates(sourceFiles, candidateFiles qbt.TorrentFiles) 
 			}
 		}
 
-		// If only one candidate remains for this size, use it.
-		if match == nil && len(available) == 1 {
+		// If only one candidate remains for this size, use it when the caller
+		// accepts size-only matching for this pair.
+		if match == nil && len(available) == 1 && allowSoleCandidateMatch(sf.Name, available[0].path) {
 			match = available[0]
 		}
 
@@ -463,6 +478,28 @@ func matchSourceFilesToCandidates(sourceFiles, candidateFiles qbt.TorrentFiles) 
 	}
 
 	return matches, unmatched
+}
+
+func allowMaterializedSizeOnlyMatch(sourcePath, candidatePath string) bool {
+	return !isIgnoredMaterializedSizeOnlyFile(sourcePath) && !isIgnoredMaterializedSizeOnlyFile(candidatePath)
+}
+
+func isIgnoredMaterializedSizeOnlyFile(name string) bool {
+	lower := strings.ToLower(name)
+	ext := strings.ToLower(filepath.Ext(fileBaseName(name)))
+	for _, ignoredExt := range DefaultIgnoredExtensions {
+		if ext == ignoredExt {
+			return true
+		}
+	}
+
+	for _, keyword := range DefaultIgnoredPathKeywords {
+		if strings.Contains(lower, keyword) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func buildFileRenamePlan(sourceFiles, candidateFiles qbt.TorrentFiles) ([]fileRenameInstruction, []string) {
