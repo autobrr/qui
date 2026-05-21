@@ -271,16 +271,25 @@ type CrossSeedSearchFilters struct {
 	Tags       []string `json:"tags"`
 }
 
+// CrossSeedSearchResultStatus records the outcome status for one searched torrent.
+type CrossSeedSearchResultStatus string
+
+const (
+	CrossSeedSearchResultStatusAdded   CrossSeedSearchResultStatus = "added"
+	CrossSeedSearchResultStatusSkipped CrossSeedSearchResultStatus = "skipped"
+	CrossSeedSearchResultStatusFailed  CrossSeedSearchResultStatus = "failed"
+)
+
 // CrossSeedSearchResult records the outcome of processing a single torrent during a search run.
 type CrossSeedSearchResult struct {
-	TorrentHash  string    `json:"torrentHash"`
-	TorrentName  string    `json:"torrentName"`
-	IndexerName  string    `json:"indexerName"`
-	ReleaseTitle string    `json:"releaseTitle"`
-	Added        bool      `json:"added"`
-	Status       string    `json:"status,omitempty"`
-	Message      string    `json:"message,omitempty"`
-	ProcessedAt  time.Time `json:"processedAt"`
+	TorrentHash  string                      `json:"torrentHash"`
+	TorrentName  string                      `json:"torrentName"`
+	IndexerName  string                      `json:"indexerName"`
+	ReleaseTitle string                      `json:"releaseTitle"`
+	Added        bool                        `json:"added"`
+	Status       CrossSeedSearchResultStatus `json:"status,omitempty"`
+	Message      string                      `json:"message,omitempty"`
+	ProcessedAt  time.Time                   `json:"processedAt"`
 }
 
 // CrossSeedSearchRun stores metadata for library search automation runs.

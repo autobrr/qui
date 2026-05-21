@@ -2665,12 +2665,18 @@ func (s *Service) executeCompletionSearch(ctx context.Context, instanceID int, t
 		result, attemptErr := s.executeCrossSeedSearchAttempt(ctx, searchState, torrent, match, time.Now().UTC())
 		if result != nil {
 			results = append(results, *result)
-			switch {
-			case result.Added:
+			switch result.Status {
+			case models.CrossSeedSearchResultStatusAdded:
 				successCount++
-			case attemptErr != nil:
+			case models.CrossSeedSearchResultStatusFailed:
 				failedCount++
-			default:
+				if msg := strings.TrimSpace(result.Message); msg != "" {
+					if _, ok := completionErrorsSeen[msg]; !ok && len(completionErrors) < 3 {
+						completionErrorsSeen[msg] = struct{}{}
+						completionErrors = append(completionErrors, msg)
+					}
+				}
+			case models.CrossSeedSearchResultStatusSkipped:
 				skippedCount++
 			}
 		}
@@ -8582,7 +8588,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			IndexerName:  "",
 			ReleaseTitle: "",
 			Added:        false,
-			Status:       "failed",
+			Status:       models.CrossSeedSearchResultStatusFailed,
 			Message:      fmt.Sprintf("resolve indexers: %v", state.resolvedTorznabIndexerErr),
 			ProcessedAt:  processedAt,
 		})
@@ -8605,7 +8611,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				IndexerName:  "",
 				ReleaseTitle: "",
 				Added:        false,
-				Status:       "failed",
+				Status:       models.CrossSeedSearchResultStatusFailed,
 				Message:      fmt.Sprintf("analyze torrent: %v", err),
 				ProcessedAt:  processedAt,
 			})
@@ -8673,7 +8679,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			IndexerName:  "",
 			ReleaseTitle: "",
 			Added:        false,
-			Status:       "skipped",
+			Status:       models.CrossSeedSearchResultStatusSkipped,
 			Message:      skipReasonForNoIndexers,
 			ProcessedAt:  processedAt,
 		})
@@ -8725,7 +8731,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				IndexerName:  "",
 				ReleaseTitle: "",
 				Added:        false,
-				Status:       "skipped",
+				Status:       models.CrossSeedSearchResultStatusSkipped,
 				Message:      fmt.Sprintf("search timed out after %s", timeoutDisplay),
 				ProcessedAt:  processedAt,
 			})
@@ -8741,7 +8747,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			IndexerName:  "",
 			ReleaseTitle: "",
 			Added:        false,
-			Status:       "failed",
+			Status:       models.CrossSeedSearchResultStatusFailed,
 			Message:      fmt.Sprintf("search failed: %v", err),
 			ProcessedAt:  processedAt,
 		})
@@ -8759,7 +8765,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			IndexerName:  "",
 			ReleaseTitle: "",
 			Added:        false,
-			Status:       "skipped",
+			Status:       models.CrossSeedSearchResultStatusSkipped,
 			Message:      "no matches returned",
 			ProcessedAt:  processedAt,
 		})
@@ -8778,6 +8784,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	}
 
 	successCount := 0
+	failedAttempt := false
 	nonSuccessAttempt := false
 	var attemptErrors []string
 
@@ -8796,6 +8803,9 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				indexerAdds[match.IndexerID]++
 			} else {
 				nonSuccessAttempt = true
+				if attemptResult.Status == models.CrossSeedSearchResultStatusFailed {
+					failedAttempt = true
+				}
 				indexerFails[match.IndexerID]++
 			}
 			s.appendSearchResult(state, *attemptResult)
@@ -8814,12 +8824,15 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return nil
 	}
 
-	if len(attemptErrors) > 0 {
+	if len(attemptErrors) > 0 || failedAttempt {
 		s.searchMu.Lock()
 		state.run.TorrentsFailed++
 		s.searchMu.Unlock()
 		s.persistSearchRun(state)
-		return fmt.Errorf("cross-seed matches failed: %s", attemptErrors[0])
+		if len(attemptErrors) > 0 {
+			return fmt.Errorf("cross-seed matches failed: %s", attemptErrors[0])
+		}
+		return nil
 	}
 
 	if nonSuccessAttempt {
@@ -9048,7 +9061,7 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		Size:        match.Size,
 	})
 	if err != nil {
-		result.Status = "failed"
+		result.Status = models.CrossSeedSearchResultStatusFailed
 		result.Message = fmt.Sprintf("download failed: %v", err)
 		return result, fmt.Errorf("download failed: %w", err)
 	}
@@ -9085,22 +9098,35 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	}
 	resp, err := s.invokeCrossSeed(ctx, request)
 	if err != nil {
-		result.Status = "failed"
+		result.Status = models.CrossSeedSearchResultStatusFailed
 		result.Message = fmt.Sprintf("cross-seed failed: %v", err)
 		return result, fmt.Errorf("cross-seed failed: %w", err)
 	}
 
 	if resp.Success {
 		result.Added = true
-		result.Status = "added"
+		result.Status = models.CrossSeedSearchResultStatusAdded
 		result.Message = "added via " + match.Indexer
 		return result, nil
 	}
 
 	result.Added = false
-	result.Status = "skipped"
 	result.Message = extractFailureMessage(resp.Results, match.Indexer)
+	result.Status = classifyFailedCrossSeedSearchResult(resp.Results)
 	return result, nil
+}
+
+func classifyFailedCrossSeedSearchResult(results []InstanceCrossSeedResult) models.CrossSeedSearchResultStatus {
+	if len(results) == 0 {
+		return models.CrossSeedSearchResultStatusFailed
+	}
+	for _, result := range results {
+		if result.Status == "exists" || isSkippedCrossSeedResultStatus(result.Status) {
+			continue
+		}
+		return models.CrossSeedSearchResultStatusFailed
+	}
+	return models.CrossSeedSearchResultStatusSkipped
 }
 
 // extractFailureMessage returns a descriptive message from instance results.

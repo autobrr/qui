@@ -4287,6 +4287,59 @@ func TestIsSkippedCrossSeedResultStatusIncludesBelowThreshold(t *testing.T) {
 	assert.False(t, isSkippedCrossSeedResultStatus("hardlink_error"))
 }
 
+func TestClassifyFailedCrossSeedSearchResult(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		results []InstanceCrossSeedResult
+		want    models.CrossSeedSearchResultStatus
+	}{
+		{
+			name: "existing torrent is skipped",
+			results: []InstanceCrossSeedResult{{
+				Status: "exists",
+			}},
+			want: models.CrossSeedSearchResultStatusSkipped,
+		},
+		{
+			name: "no match is skipped",
+			results: []InstanceCrossSeedResult{{
+				Status: "no_match",
+			}},
+			want: models.CrossSeedSearchResultStatusSkipped,
+		},
+		{
+			name: "hardlink error is failed",
+			results: []InstanceCrossSeedResult{{
+				Status: "hardlink_error",
+			}},
+			want: models.CrossSeedSearchResultStatusFailed,
+		},
+		{
+			name: "mixed skip and hard failure is failed",
+			results: []InstanceCrossSeedResult{
+				{Status: "exists"},
+				{Status: "no_save_path"},
+			},
+			want: models.CrossSeedSearchResultStatusFailed,
+		},
+		{
+			name:    "empty instance results are failed",
+			results: nil,
+			want:    models.CrossSeedSearchResultStatusFailed,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.want, classifyFailedCrossSeedSearchResult(tt.results))
+		})
+	}
+}
+
 func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) {
 	t.Parallel()
 
