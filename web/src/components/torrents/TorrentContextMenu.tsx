@@ -22,7 +22,7 @@ import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
 import type { Category, ExternalProgram, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQueries, useQuery } from "@tanstack/react-query"
 import {
   Blocks,
   CheckCircle,
@@ -139,6 +139,26 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   [useSelection, selectedTorrents, torrent]
   )
   const actionTargets = useMemo(() => buildTorrentActionTargets(torrents, _instanceId), [torrents, _instanceId])
+
+  const targetInstanceIds = useMemo(() => {
+    const ids = new Set<number>()
+    for (const target of actionTargets) {
+      if (target.instanceId > 0) {
+        ids.add(target.instanceId)
+      }
+    }
+    return Array.from(ids).sort((a, b) => a - b)
+  }, [actionTargets])
+
+  const shouldResolveSetCommentSupport = capabilities === undefined && _instanceId <= 0 && targetInstanceIds.length > 0
+  const setCommentCapabilityQueries = useQueries({
+    queries: targetInstanceIds.map(id => ({
+      queryKey: ["instance-capabilities", id],
+      queryFn: () => api.getInstanceCapabilities(id),
+      staleTime: 60_000,
+      enabled: shouldResolveSetCommentSupport,
+    })),
+  })
 
   const count = isAllSelected ? effectiveSelectionCount : hashes.length
 
@@ -351,7 +371,11 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   }, [onPrepareLocation, hashes, torrents, count])
 
   const supportsTorrentExport = capabilities?.supportsTorrentExport ?? true
-  const supportsSetComment = capabilities?.supportsSetComment ?? false
+  const supportsSetComment = capabilities?.supportsSetComment ?? (
+    shouldResolveSetCommentSupport
+      ? setCommentCapabilityQueries.some(query => query.data?.supportsSetComment === true)
+      : false
+  )
   const supportsInstanceScopedActions = _instanceId > 0
 
   return (
