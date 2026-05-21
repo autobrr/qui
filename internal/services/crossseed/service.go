@@ -8786,6 +8786,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	successCount := 0
 	failedAttempt := false
 	nonSuccessAttempt := false
+	var classifiedFailures []string
 	var attemptErrors []string
 
 	// Track outcomes per indexer for search history
@@ -8805,6 +8806,11 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				nonSuccessAttempt = true
 				if attemptResult.Status == models.CrossSeedSearchResultStatusFailed {
 					failedAttempt = true
+					message := strings.TrimSpace(attemptResult.Message)
+					if message == "" {
+						message = "classified apply failure"
+					}
+					classifiedFailures = append(classifiedFailures, fmt.Sprintf("%s %q: %s", match.Indexer, match.Title, message))
 				}
 				indexerFails[match.IndexerID]++
 			}
@@ -8832,7 +8838,10 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		if len(attemptErrors) > 0 {
 			return fmt.Errorf("cross-seed matches failed: %s", attemptErrors[0])
 		}
-		return nil
+		if len(classifiedFailures) > 0 {
+			return fmt.Errorf("cross-seed matches failed: %s", classifiedFailures[0])
+		}
+		return errors.New("cross-seed matches failed: classified apply failures")
 	}
 
 	if nonSuccessAttempt {

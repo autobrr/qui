@@ -331,8 +331,14 @@ function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
 }
 
 function isCrossSeedSearchFailure(result: CrossSeedSearchResult): boolean {
-  if (result.status) {
-    return result.status === "failed"
+  switch (result.status) {
+    case "failed":
+      return true
+    case "added":
+    case "skipped":
+    case "success":
+    case "succeeded":
+      return false
   }
 
   const message = result.message?.trim().toLowerCase() ?? ""
