@@ -69,9 +69,7 @@ function buildFileTree(
       let node = nodeMap.get(currentPath)
 
       if (!node) {
-        const displayName = incognitoMode && isLeaf
-          ? getLinuxFileName(torrentHash, file.index).split("/").pop() || segment
-          : segment
+        const displayName = incognitoMode && isLeaf? getLinuxFileName(torrentHash, file.index).split("/").pop() || segment: segment
 
         node = {
           id: currentPath,
@@ -386,15 +384,9 @@ export const TorrentFileTree = memo(function TorrentFileTree({
           }
 
           // Folder row
-          const progressPercent = node.totalSize > 0
-            ? (node.totalProgress / node.totalSize) * 100
-            : 0
+          const progressPercent = node.totalSize > 0? (node.totalProgress / node.totalSize) * 100: 0
           const isFolderComplete = progressPercent === 100
-          const checkState: boolean | "indeterminate" = node.selectedCount === 0
-            ? false
-            : node.selectedCount === node.totalCount
-              ? true
-              : "indeterminate"
+          const checkState: boolean | "indeterminate" = node.selectedCount === 0? false: node.selectedCount === node.totalCount? true: "indeterminate"
           const indent = depth * 20 + 4
 
           const handleCheckChange = () => {

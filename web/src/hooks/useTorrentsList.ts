@@ -104,9 +104,7 @@ export function useTorrentsList(
     placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
     // Only poll the first page to get fresh data - don't poll pagination pages
     // Reduce polling frequency for cross-instance calls since they're more expensive
-    refetchInterval: currentPage === 0
-      ? (pollingEnabled ? (useCrossInstanceEndpoint ? 10000 : 3000) : false)
-      : false,
+    refetchInterval: currentPage === 0? (pollingEnabled ? (useCrossInstanceEndpoint ? 10000 : 3000) : false): false,
     refetchIntervalInBackground, // Controls background polling behavior
     refetchOnWindowFocus: currentPage === 0,
     enabled: shouldEnableQuery,
@@ -146,9 +144,7 @@ export function useTorrentsList(
     }
 
     // Handle both regular torrents and cross-instance torrents
-    const torrentsData = data.isCrossInstance
-      ? (data.crossInstanceTorrents || data.cross_instance_torrents)
-      : data.torrents
+    const torrentsData = data.isCrossInstance? (data.crossInstanceTorrents || data.cross_instance_torrents): data.torrents
 
     if (!torrentsData) {
       setIsLoadingMore(false)
@@ -249,9 +245,7 @@ export function useTorrentsList(
   const effectiveTotalCount = currentPage > 0 && !data?.total ? lastKnownTotal : (data?.total ?? 0)
 
   const responseUseSubcategories = data?.useSubcategories ?? data?.serverState?.use_subcategories ?? false
-  const supportsSubcategories = isAllInstancesView
-    ? responseUseSubcategories
-    : (capabilities?.supportsSubcategories ?? false)
+  const supportsSubcategories = isAllInstancesView? responseUseSubcategories: (capabilities?.supportsSubcategories ?? false)
 
   return {
     torrents: allTorrents,
@@ -264,9 +258,7 @@ export function useTorrentsList(
     supportsTorrentCreation: isAllInstancesView ? false : capabilities?.supportsTorrentCreation ?? true,
     capabilities: isAllInstancesView ? undefined : capabilities,
     serverState: data?.serverState ?? null,
-    useSubcategories: isAllInstancesView
-      ? responseUseSubcategories
-      : (supportsSubcategories ? responseUseSubcategories : false),
+    useSubcategories: isAllInstancesView? responseUseSubcategories: (supportsSubcategories ? responseUseSubcategories : false),
     isLoading: isLoading && currentPage === 0,
     isFetching,
     isLoadingMore,

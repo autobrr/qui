@@ -1026,13 +1026,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     capabilitySupport: capabilities?.supportsTrackerHealth,
     responseSupport: trackerHealthSupported,
   })
-  const supportsSubcategories = isAllInstancesView
-    ? Boolean(subcategoriesFromData)
-    : (capabilities?.supportsSubcategories ?? false)
+  const supportsSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (capabilities?.supportsSubcategories ?? false)
   const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
-  const allowSubcategories = isAllInstancesView
-    ? Boolean(subcategoriesFromData)
-    : (supportsSubcategories && (subcategoriesAlwaysEnabled || (preferences?.use_subcategories ?? subcategoriesFromData ?? false)))
+  const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (supportsSubcategories && (subcategoriesAlwaysEnabled || (preferences?.use_subcategories ?? subcategoriesFromData ?? false)))
   const availableTags = isCrossInstanceEndpoint ? (tags ?? metadataTags) : metadataTags
   const availableCategories = isCrossInstanceEndpoint ? (categories ?? metadataCategories) : metadataCategories
   const isLoadingTags = isMetadataLoading && availableTags.length === 0
@@ -1657,7 +1653,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       return undefined
     }
 
-    const combinedExpr = columnFiltersExpr ?? filters?.expr
+    // Combine both column filters and filter expressions (e.g. cross-seed hash filters)
+    // so select-all operations target exactly the visible set.
+    // Using ?? here would drop filters.expr when columnFiltersExpr is present,
+    // causing bulk actions to match more torrents than the user sees.
+    const combinedExpr = (columnFiltersExpr && filters?.expr)
+      ? `(${columnFiltersExpr}) && (${filters.expr})`
+      : (columnFiltersExpr || filters?.expr)
 
     if (filters) {
       return {

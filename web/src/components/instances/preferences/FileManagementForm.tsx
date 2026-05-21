@@ -107,11 +107,7 @@ function toScanDirs(watchFolders: WatchFolderConfig[]): Record<string, number | 
       return acc
     }
 
-    acc[path] = folder.destination === "default-save-location"
-      ? OVERRIDE_WATCH_FOLDER_SAVE_MODE
-      : folder.destination === "other"
-        ? folder.otherPath
-        : DEFAULT_WATCH_FOLDER_MODE
+    acc[path] = folder.destination === "default-save-location"? OVERRIDE_WATCH_FOLDER_SAVE_MODE: folder.destination === "other"? folder.otherPath: DEFAULT_WATCH_FOLDER_MODE
 
     return acc
   }, {})

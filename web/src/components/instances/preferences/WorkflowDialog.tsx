@@ -924,7 +924,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
   const nonSelfInstances = useMemo(
     () => instances ? instances.filter(i => i.id !== instanceId) : undefined,
-    [instances, instanceId],
+    [instances, instanceId]
   )
 
   const targetCategories = useMemo(() => {
@@ -1136,9 +1136,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
             exprExportPaused = conditions.exportToInstance.paused ?? false
             exprExportSkipChecking = conditions.exportToInstance.skipChecking ?? true
             const rawLayout = conditions.exportToInstance.contentLayout ?? ""
-            exprExportContentLayout = CONTENT_LAYOUT_VALUES.includes(rawLayout as typeof CONTENT_LAYOUT_VALUES[number])
-              ? rawLayout as FormState["exprExportContentLayout"]
-              : ""
+            exprExportContentLayout = CONTENT_LAYOUT_VALUES.includes(rawLayout as typeof CONTENT_LAYOUT_VALUES[number])? rawLayout as FormState["exprExportContentLayout"]: ""
           }
         }
 

@@ -32,9 +32,7 @@ export function SelectAllHotkey({
     }
 
     const platformIsMac =
-      typeof isMac === "boolean"
-        ? isMac
-        : typeof window !== "undefined" &&
+      typeof isMac === "boolean"? isMac: typeof window !== "undefined" &&
           /Mac|iPhone|iPad|iPod/.test(window.navigator.userAgent)
 
     const handleSelectAllHotkey = (event: KeyboardEvent) => {

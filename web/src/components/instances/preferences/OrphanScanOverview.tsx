@@ -17,7 +17,7 @@ import {
   useOrphanScanRuns,
   useOrphanScanSettings,
   useTriggerOrphanScan,
-  useUpdateOrphanScanSettings,
+  useUpdateOrphanScanSettings
 } from "@/hooks/useOrphanScan"
 import { cn, copyTextToClipboard, formatBytes } from "@/lib/utils"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
@@ -223,14 +223,10 @@ function InstanceOrphanScanItem({
           <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
             <div className="space-y-0.5">
               <p className="text-sm text-muted-foreground">
-                {settings
-                  ? `Grace ${settings.gracePeriodMinutes}min · Interval ${settings.scanIntervalHours}h · Max ${settings.maxFilesPerRun} files`
-                  : "Loading..."}
+                {settings? `Grace ${settings.gracePeriodMinutes}min · Interval ${settings.scanIntervalHours}h · Max ${settings.maxFilesPerRun} files`: "Loading..."}
               </p>
               <p className="text-xs text-muted-foreground/70">
-                {settings?.autoCleanupEnabled
-                  ? `Auto-cleanup enabled (≤${settings.autoCleanupMaxFiles} files)`
-                  : "Auto-cleanup disabled"}
+                {settings?.autoCleanupEnabled? `Auto-cleanup enabled (≤${settings.autoCleanupMaxFiles} files)`: "Auto-cleanup disabled"}
                 {settings?.ignorePaths && settings.ignorePaths.length > 0 && (
                   <> · {settings.ignorePaths.length} path{settings.ignorePaths.length !== 1 ? "s" : ""} ignored</>
                 )}
@@ -395,9 +391,7 @@ function InstanceOrphanScanItem({
                         <div className="px-3 pb-3 pt-0">
                           <div className={cn(
                             "relative p-3 rounded-md text-sm font-mono whitespace-pre-wrap break-all",
-                            run.status === "failed"
-                              ? "bg-destructive/10 text-destructive border border-destructive/20"
-                              : "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20"
+                            run.status === "failed"? "bg-destructive/10 text-destructive border border-destructive/20": "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border border-yellow-500/20"
                           )}>
                             <Button
                               variant="ghost"
