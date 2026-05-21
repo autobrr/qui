@@ -331,28 +331,11 @@ function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
 }
 
 function isCrossSeedSearchFailure(result: CrossSeedSearchResult): boolean {
-  switch (result.status) {
-    case "failed":
-      return true
-    case "added":
-    case "skipped":
-    case "success":
-    case "succeeded":
-      return false
-  }
-
-  const message = result.message?.trim().toLowerCase() ?? ""
-  return (
-    message.startsWith("resolve indexers:") ||
-    message.startsWith("analyze torrent:") ||
-    message.startsWith("search failed:") ||
-    message.startsWith("download failed:") ||
-    message.startsWith("cross-seed failed:")
-  )
+  return result.status === "failed"
 }
 
 function isCrossSeedSearchSkipped(result: CrossSeedSearchResult): boolean {
-  return !result.added && !isCrossSeedSearchFailure(result)
+  return result.status === "skipped"
 }
 
 interface SeasonPackRunsPanelProps {
@@ -2628,7 +2611,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       {searchRuns && searchRuns.length > 0 ? (
                         <div className="space-y-1">
                           {searchRuns.map(run => {
-                            const successResults = run.results?.filter(r => r.added) ?? []
+                            const successResults = run.results?.filter(r => r.status === "added") ?? []
                             const failedResults = run.results?.filter(isCrossSeedSearchFailure) ?? []
                             const skippedResults = run.results?.filter(isCrossSeedSearchSkipped) ?? []
                             const hasResults = (run.results?.length ?? 0) > 0

@@ -5,6 +5,7 @@ package models_test
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -88,8 +89,8 @@ func TestCrossSeedStore_SettingsRoundTrip(t *testing.T) {
 		RSSAutomationTags:    []string{"cross-seed", "automation"},
 		SeededSearchTags:     []string{"seeded"},
 		CompletionSearchTags: []string{"completion"},
-		WebhookTags:       []string{"webhook"},
-		TargetInstanceIDs: []int{1, 2},
+		WebhookTags:          []string{"webhook"},
+		TargetInstanceIDs:    []int{1, 2},
 		TargetIndexerIDs:     []int{11, 42},
 		MaxResultsPerRun:     25,
 	})
@@ -156,6 +157,62 @@ func TestCrossSeedStore_RunLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, runs, 1)
 	assert.Equal(t, updated.ID, runs[0].ID)
+}
+
+func TestCrossSeedStore_SearchRunResultSerializationUsesStatus(t *testing.T) {
+	db := setupCrossSeedTestDB(t)
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	ctx := context.Background()
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	now := time.Now().UTC()
+	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{
+		InstanceID:      instance.ID,
+		Status:          models.CrossSeedSearchRunStatusRunning,
+		StartedAt:       now,
+		Filters:         models.CrossSeedSearchFilters{},
+		IndexerIDs:      []int{10},
+		IntervalSeconds: 60,
+		CooldownMinutes: 720,
+	})
+	require.NoError(t, err)
+
+	run.Status = models.CrossSeedSearchRunStatusSuccess
+	run.Processed = 1
+	run.TorrentsAdded = 1
+	run.Results = []models.CrossSeedSearchResult{{
+		TorrentHash:  "abc123",
+		TorrentName:  "Source.Release",
+		IndexerName:  "Indexer",
+		ReleaseTitle: "Target.Release",
+		Status:       models.CrossSeedSearchResultStatusAdded,
+		Message:      "added via Indexer",
+		ProcessedAt:  now,
+	}}
+
+	updated, err := store.UpdateSearchRun(ctx, run)
+	require.NoError(t, err)
+	require.Len(t, updated.Results, 1)
+	assert.Equal(t, models.CrossSeedSearchResultStatusAdded, updated.Results[0].Status)
+
+	data, err := json.Marshal(updated.Results[0])
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"status":"added"`)
+	assert.NotContains(t, string(data), `"added":`)
+
+	var resultsJSON string
+	err = db.QueryRowContext(ctx, "SELECT results_json FROM cross_seed_search_runs WHERE id = ?", run.ID).Scan(&resultsJSON)
+	require.NoError(t, err)
+	assert.Contains(t, resultsJSON, `"status":"added"`)
+	assert.NotContains(t, resultsJSON, `"added":`)
 }
 
 func TestCrossSeedStore_FeedItems(t *testing.T) {

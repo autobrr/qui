@@ -8587,7 +8587,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			TorrentName:  torrent.Name,
 			IndexerName:  "",
 			ReleaseTitle: "",
-			Added:        false,
 			Status:       models.CrossSeedSearchResultStatusFailed,
 			Message:      fmt.Sprintf("resolve indexers: %v", state.resolvedTorznabIndexerErr),
 			ProcessedAt:  processedAt,
@@ -8610,7 +8609,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				TorrentName:  torrent.Name,
 				IndexerName:  "",
 				ReleaseTitle: "",
-				Added:        false,
 				Status:       models.CrossSeedSearchResultStatusFailed,
 				Message:      fmt.Sprintf("analyze torrent: %v", err),
 				ProcessedAt:  processedAt,
@@ -8678,7 +8676,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			TorrentName:  torrent.Name,
 			IndexerName:  "",
 			ReleaseTitle: "",
-			Added:        false,
 			Status:       models.CrossSeedSearchResultStatusSkipped,
 			Message:      skipReasonForNoIndexers,
 			ProcessedAt:  processedAt,
@@ -8730,7 +8727,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				TorrentName:  torrent.Name,
 				IndexerName:  "",
 				ReleaseTitle: "",
-				Added:        false,
 				Status:       models.CrossSeedSearchResultStatusSkipped,
 				Message:      fmt.Sprintf("search timed out after %s", timeoutDisplay),
 				ProcessedAt:  processedAt,
@@ -8746,7 +8742,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			TorrentName:  torrent.Name,
 			IndexerName:  "",
 			ReleaseTitle: "",
-			Added:        false,
 			Status:       models.CrossSeedSearchResultStatusFailed,
 			Message:      fmt.Sprintf("search failed: %v", err),
 			ProcessedAt:  processedAt,
@@ -8764,7 +8759,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 			TorrentName:  torrent.Name,
 			IndexerName:  "",
 			ReleaseTitle: "",
-			Added:        false,
 			Status:       models.CrossSeedSearchResultStatusSkipped,
 			Message:      "no matches returned",
 			ProcessedAt:  processedAt,
@@ -8796,7 +8790,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	for _, match := range searchResp.Results {
 		attemptResult, err := s.executeCrossSeedSearchAttempt(ctx, state, torrent, match, processedAt)
 		if attemptResult != nil {
-			if attemptResult.Added {
+			if attemptResult.Status == models.CrossSeedSearchResultStatusAdded {
 				s.searchMu.Lock()
 				state.run.TorrentsAdded++
 				s.searchMu.Unlock()
@@ -8811,8 +8805,8 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 						message = "classified apply failure"
 					}
 					classifiedFailures = append(classifiedFailures, fmt.Sprintf("%s %q: %s", match.Indexer, match.Title, message))
+					indexerFails[match.IndexerID]++
 				}
-				indexerFails[match.IndexerID]++
 			}
 			s.appendSearchResult(state, *attemptResult)
 		}
@@ -9115,13 +9109,11 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 	}
 
 	if resp.Success {
-		result.Added = true
 		result.Status = models.CrossSeedSearchResultStatusAdded
 		result.Message = "added via " + match.Indexer
 		return result, nil
 	}
 
-	result.Added = false
 	result.Message = extractFailureMessage(resp.Results, match.Indexer)
 	result.Status = classifyFailedCrossSeedSearchResult(resp.Results)
 	return result, nil
@@ -9760,7 +9752,7 @@ func (s *Service) appendSearchResult(state *searchRunState, result models.CrossS
 	// Only track successfully added torrents in recentResults so the UI
 	// shows a stable sliding window of actual additions rather than being
 	// diluted by skipped/failed results.
-	if s.searchState == state && result.Added {
+	if s.searchState == state && result.Status == models.CrossSeedSearchResultStatusAdded {
 		state.recentResults = append(state.recentResults, result)
 		if len(state.recentResults) > 10 {
 			state.recentResults = state.recentResults[len(state.recentResults)-10:]
@@ -9974,7 +9966,7 @@ func collectSearchResultSamples(results []models.CrossSeedSearchResult, limit in
 	seen := make(map[string]struct{}, capHint)
 	samples := make([]string, 0, capHint)
 	for _, result := range results {
-		if !result.Added {
+		if result.Status != models.CrossSeedSearchResultStatusAdded {
 			continue
 		}
 		label := strings.TrimSpace(result.TorrentName)

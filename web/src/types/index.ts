@@ -2158,13 +2158,14 @@ export interface CrossSeedSearchSettingsPatch {
   cooldownMinutes?: number
 }
 
+export type CrossSeedSearchResultStatus = "added" | "skipped" | "failed"
+
 export interface CrossSeedSearchResult {
   torrentHash: string
   torrentName: string
   indexerName: string
   releaseTitle: string
-  added: boolean
-  status?: string
+  status: CrossSeedSearchResultStatus
   message?: string
   processedAt: string
 }

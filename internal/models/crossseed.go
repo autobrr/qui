@@ -289,8 +289,7 @@ type CrossSeedSearchResult struct {
 	TorrentName  string                      `json:"torrentName"`
 	IndexerName  string                      `json:"indexerName"`
 	ReleaseTitle string                      `json:"releaseTitle"`
-	Added        bool                        `json:"added"`
-	Status       CrossSeedSearchResultStatus `json:"status,omitempty"`
+	Status       CrossSeedSearchResultStatus `json:"status"`
 	Message      string                      `json:"message,omitempty"`
 	ProcessedAt  time.Time                   `json:"processedAt"`
 }

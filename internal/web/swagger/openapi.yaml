@@ -3828,22 +3828,12 @@ paths:
                   type: integer
                   description: Cooldown period between searches for the same torrent
       responses:
-        '200':
+        '202':
           description: Search run started
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: integer
-                  instance_id:
-                    type: integer
-                  status:
-                    type: string
-                  started_at:
-                    type: string
-                    format: date-time
+                $ref: '#/components/schemas/CrossSeedSearchRun'
         '400':
           description: Invalid request body
         '500':
@@ -3871,13 +3861,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  running:
-                    type: boolean
-                  current_run:
-                    type: object
-                    nullable: true
+                $ref: '#/components/schemas/CrossSeedSearchStatus'
         '500':
           description: Failed to get search run status
 
@@ -3917,7 +3901,7 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
+                  $ref: '#/components/schemas/CrossSeedSearchRun'
         '400':
           description: Invalid query parameters
         '500':
@@ -6894,6 +6878,136 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    CrossSeedSearchResultStatus:
+      type: string
+      enum:
+        - added
+        - skipped
+        - failed
+
+    CrossSeedSearchRunStatus:
+      type: string
+      enum:
+        - running
+        - success
+        - failed
+        - canceled
+
+    CrossSeedSearchFilters:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    CrossSeedSearchResult:
+      type: object
+      properties:
+        torrentHash:
+          type: string
+        torrentName:
+          type: string
+        indexerName:
+          type: string
+        releaseTitle:
+          type: string
+        status:
+          $ref: '#/components/schemas/CrossSeedSearchResultStatus'
+        message:
+          type: string
+        processedAt:
+          type: string
+          format: date-time
+
+    CrossSeedSearchRun:
+      type: object
+      properties:
+        id:
+          type: integer
+        instanceId:
+          type: integer
+        status:
+          $ref: '#/components/schemas/CrossSeedSearchRunStatus'
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        totalTorrents:
+          type: integer
+        processed:
+          type: integer
+        torrentsAdded:
+          type: integer
+        torrentsFailed:
+          type: integer
+        torrentsSkipped:
+          type: integer
+        message:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        filters:
+          $ref: '#/components/schemas/CrossSeedSearchFilters'
+        indexerIds:
+          type: array
+          items:
+            type: integer
+        intervalSeconds:
+          type: integer
+        cooldownMinutes:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedSearchResult'
+        createdAt:
+          type: string
+          format: date-time
+
+    CrossSeedSearchCandidate:
+      type: object
+      properties:
+        torrentHash:
+          type: string
+        torrentName:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    CrossSeedSearchStatus:
+      type: object
+      properties:
+        running:
+          type: boolean
+        run:
+          $ref: '#/components/schemas/CrossSeedSearchRun'
+          nullable: true
+        currentTorrent:
+          $ref: '#/components/schemas/CrossSeedSearchCandidate'
+          nullable: true
+        recentResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedSearchResult'
+        nextRunAt:
+          type: string
+          format: date-time
+          nullable: true
 
     CrossSeedRunRequest:
       type: object
