@@ -288,6 +288,23 @@ func TestWaitForPostAddRecheckReadyBoundsSyncAttempt(t *testing.T) {
 	require.Equal(t, 2, syncer.mapCalls)
 }
 
+func TestWaitForPostAddRecheckReadyBoundsOverallWait(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+		},
+		blockSyncUntilDone: true,
+	}
+
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 3, 10*time.Millisecond, 50*time.Millisecond)
+
+	require.ErrorIs(t, err, errPostAddRecheckNotReady)
+	require.Equal(t, 1, syncer.syncCalls)
+	require.LessOrEqual(t, syncer.mapCalls, 2)
+}
+
 func TestPostAddRecheckReadyRejectsMissingTorrent(t *testing.T) {
 	t.Parallel()
 

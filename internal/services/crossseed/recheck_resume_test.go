@@ -394,6 +394,32 @@ func TestBuildTorrentVariantLookupMatchesV1AndV2(t *testing.T) {
 	require.False(t, missingVariantLookupHash(lookup, []string{"v1hash", "v2hash"}))
 }
 
+func TestRekeyPendingRecheckResumeUsesCanonicalTorrentHash(t *testing.T) {
+	t.Parallel()
+
+	req := &pendingResume{
+		instanceID: 1,
+		hash:       "v1hash",
+		threshold:  1.0,
+		addedAt:    time.Now(),
+	}
+	pending := map[string]*pendingResume{
+		recheckResumeKey(1, "v1hash"): req,
+	}
+
+	canonicalHash, canonicalKey := rekeyPendingRecheckResume(pending, 1, "v1hash", req, qbt.Torrent{
+		Hash:       "v2hash",
+		InfohashV1: "v1hash",
+		InfohashV2: "v2hash",
+	})
+
+	require.Equal(t, "v2hash", canonicalHash)
+	require.Equal(t, recheckResumeKey(1, "v2hash"), canonicalKey)
+	require.Equal(t, "v2hash", req.hash)
+	require.NotContains(t, pending, recheckResumeKey(1, "v1hash"))
+	require.Same(t, req, pending[recheckResumeKey(1, "v2hash")])
+}
+
 func TestQueueRecheckResumeWithMissingFilesRecoverySetsPendingFlag(t *testing.T) {
 	t.Parallel()
 

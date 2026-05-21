@@ -5487,8 +5487,11 @@ func (s *Service) recheckResumeWorker() {
 						continue
 					}
 
-					if !s.processPendingRecheckResume(instanceID, hash, req, torrent) {
+					canonicalHash, canonicalKey := rekeyPendingRecheckResume(pending, instanceID, hash, req, torrent)
+
+					if !s.processPendingRecheckResume(instanceID, canonicalHash, req, torrent) {
 						delete(pending, key)
+						delete(pending, canonicalKey)
 						continue
 					}
 				}
@@ -5501,6 +5504,31 @@ func (s *Service) recheckResumeWorker() {
 			return
 		}
 	}
+}
+
+func rekeyPendingRecheckResume(
+	pending map[string]*pendingResume,
+	instanceID int,
+	queuedHash string,
+	req *pendingResume,
+	torrent qbt.Torrent,
+) (string, string) {
+	canonicalHash := canonicalRecheckResumeHash(queuedHash, torrent)
+	canonicalKey := recheckResumeKey(instanceID, canonicalHash)
+	key := recheckResumeKey(instanceID, queuedHash)
+	if canonicalKey != key {
+		delete(pending, key)
+		pending[canonicalKey] = req
+	}
+	req.hash = canonicalHash
+	return canonicalHash, canonicalKey
+}
+
+func canonicalRecheckResumeHash(queuedHash string, torrent qbt.Torrent) string {
+	if canonicalHash := normalizeHash(torrent.Hash); canonicalHash != "" {
+		return canonicalHash
+	}
+	return normalizeHash(queuedHash)
 }
 
 func buildTorrentVariantLookup(torrents []qbt.Torrent) map[string]qbt.Torrent {

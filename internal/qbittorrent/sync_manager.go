@@ -2007,19 +2007,32 @@ func waitForPostAddRecheckReady(
 	retryInterval time.Duration,
 	syncTimeout time.Duration,
 ) error {
+	overallCtx, cancel := context.WithTimeout(ctx, postAddRecheckReadyTimeout(maxAttempts, retryInterval, syncTimeout))
+	defer cancel()
+
+	waitErr := func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := overallCtx.Err(); err != nil {
+			return errPostAddRecheckNotReady
+		}
+		return nil
+	}
+
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		if postAddRecheckReady(syncManager.GetTorrentMap(qbt.TorrentFilterOptions{Hashes: hashes}), hashes) {
 			return nil
 		}
 
-		if err := ctx.Err(); err != nil {
+		if err := waitErr(); err != nil {
 			return err
 		}
 
-		syncCtx, cancel := context.WithTimeout(ctx, syncTimeout)
+		syncCtx, cancel := context.WithTimeout(overallCtx, syncTimeout)
 		syncErr := syncManager.Sync(syncCtx)
 		cancel()
-		if err := ctx.Err(); err != nil {
+		if err := waitErr(); err != nil {
 			return err
 		}
 		if syncErr != nil {
@@ -2039,13 +2052,21 @@ func waitForPostAddRecheckReady(
 			Int("maxAttempts", maxAttempts).Msg("Waiting for post-add resume-data check before recheck")
 
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-overallCtx.Done():
+			return waitErr()
 		case <-time.After(retryInterval):
 		}
 	}
 
 	return errPostAddRecheckNotReady
+}
+
+func postAddRecheckReadyTimeout(maxAttempts int, retryInterval, syncTimeout time.Duration) time.Duration {
+	retryBudget := time.Duration(maxAttempts) * retryInterval
+	if retryBudget > syncTimeout {
+		return retryBudget
+	}
+	return syncTimeout
 }
 
 func postAddRecheckReady(torrentMap map[string]qbt.Torrent, hashes []string) bool {
