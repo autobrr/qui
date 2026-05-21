@@ -40,6 +40,7 @@ package-lock.json
 web/build
 bin/
 dist/
+/web-dist.tar.gz
 .run/
 .dev/
 tmp/

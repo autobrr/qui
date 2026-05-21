@@ -20,14 +20,14 @@
     "@docusaurus/preset-classic": "3.10.1",
     "@docusaurus/theme-common": "3.10.1",
     "@easyops-cn/docusaurus-search-local": "0.52.2",
-    "@mdx-js/react": "^3.0.0",
+    "@mdx-js/react": "^3.1.1",
     "@tailwindcss/postcss": "^4.1.18",
-    "clsx": "^2.0.0",
+    "clsx": "^2.1.1",
     "docusaurus-plugin-llms": "^0.3.0",
     "postcss": "^8.5.14",
-    "prism-react-renderer": "^2.3.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "prism-react-renderer": "^2.4.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
     "redoc": "^2.5.2",
     "tailwindcss": "^4.1.18"
   },
@@ -36,7 +36,7 @@
     "@docusaurus/tsconfig": "3.10.1",
     "@docusaurus/types": "3.10.1",
     "raw-loader": "^4.0.2",
-    "typescript": "~5.6.2"
+    "typescript": "~5.6.3"
   },
   "browserslist": {
     "production": [
