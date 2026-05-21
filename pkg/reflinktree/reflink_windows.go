@@ -15,8 +15,9 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/autobrr/qui/pkg/fsutil"
 	"golang.org/x/sys/windows"
+
+	"github.com/autobrr/qui/pkg/fsutil"
 )
 
 const (
