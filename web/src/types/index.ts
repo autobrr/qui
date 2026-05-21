@@ -649,6 +649,7 @@ export interface InstanceCapabilities {
   supportsTorrentCreation: boolean
   supportsTorrentExport: boolean
   supportsSetTags: boolean
+  supportsSetComment: boolean
   supportsTrackerHealth: boolean
   supportsTrackerEditing: boolean
   supportsRenameTorrent: boolean
