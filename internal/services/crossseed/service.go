@@ -12024,13 +12024,10 @@ func (s *Service) processHardlinkMode(
 	}
 	resumeThreshold := s.requestResumeThreshold(ctx, req)
 
-	// Build path to existing file (matched torrent's content)
-	var existingFilePath string
-	if matchedTorrent.ContentPath != "" {
-		existingFilePath = matchedTorrent.ContentPath
-	} else if props.SavePath != "" {
-		existingFilePath = props.SavePath
-	} else {
+	// Pick an actual matched file when available so symlinked file sources are
+	// resolved before choosing the hardlink base directory.
+	existingFilePath, ok := matchedFilesystemProbePath(matchedTorrent, props, candidateFiles)
+	if !ok {
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Str("matchedHash", matchedTorrent.Hash).
@@ -12447,6 +12444,68 @@ func FindMatchingBaseDir(configuredDirs string, sourcePath string) (string, erro
 	return "", errors.New("no base directory on same filesystem as source")
 }
 
+func matchedFilesystemProbePath(matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties, candidateFiles qbt.TorrentFiles) (string, bool) {
+	if props != nil && props.SavePath != "" && len(candidateFiles) > 0 && candidateFiles[0].Name != "" {
+		relativePath, ok := safeTorrentRelativeFilePath(candidateFiles[0].Name)
+		if !ok {
+			return fallbackMatchedFilesystemProbePath(matchedTorrent, props)
+		}
+		filePath := filepath.Join(props.SavePath, filepath.FromSlash(relativePath))
+		if _, err := os.Stat(filePath); err == nil {
+			return filePath, true
+		}
+	}
+	return fallbackMatchedFilesystemProbePath(matchedTorrent, props)
+}
+
+func fallbackMatchedFilesystemProbePath(matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties) (string, bool) {
+	if matchedTorrent != nil && matchedTorrent.ContentPath != "" {
+		return matchedTorrent.ContentPath, true
+	}
+	if props != nil && props.SavePath != "" {
+		return props.SavePath, true
+	}
+	return "", false
+}
+
+func safeTorrentRelativeFilePath(name string) (string, bool) {
+	if name == "" || strings.Contains(name, `\`) || path.IsAbs(name) || isWindowsPathForm(name) || hasDotDotSegment(name) {
+		return "", false
+	}
+
+	cleaned := path.Clean(name)
+	if cleaned == "." ||
+		path.IsAbs(cleaned) ||
+		strings.HasPrefix(cleaned, "/") ||
+		strings.HasPrefix(cleaned, `\`) ||
+		isWindowsPathForm(cleaned) ||
+		hasDotDotSegment(cleaned) {
+		return "", false
+	}
+
+	return cleaned, true
+}
+
+func isWindowsPathForm(p string) bool {
+	if strings.HasPrefix(p, `\\`) || strings.HasPrefix(p, "//") {
+		return true
+	}
+	if len(p) < 2 {
+		return false
+	}
+	c := p[0]
+	return ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) && p[1] == ':'
+}
+
+func hasDotDotSegment(p string) bool {
+	for part := range strings.SplitSeq(p, "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
+}
+
 // reflinkModeResult represents the outcome of reflink mode processing.
 type reflinkModeResult struct {
 	// Used indicates whether reflink mode was used for this cross-seed.
@@ -12640,13 +12699,10 @@ func (s *Service) processReflinkMode(
 	}
 	resumeThreshold := s.requestResumeThreshold(ctx, req)
 
-	// Build path to existing file (matched torrent's content)
-	var existingFilePath string
-	if matchedTorrent.ContentPath != "" {
-		existingFilePath = matchedTorrent.ContentPath
-	} else if props.SavePath != "" {
-		existingFilePath = props.SavePath
-	} else {
+	// Pick an actual matched file when available so symlinked file sources are
+	// resolved before choosing the reflink base directory.
+	existingFilePath, ok := matchedFilesystemProbePath(matchedTorrent, props, candidateFiles)
+	if !ok {
 		log.Warn().
 			Int("instanceID", candidate.InstanceID).
 			Str("matchedHash", matchedTorrent.Hash).

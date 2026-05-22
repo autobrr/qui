@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -437,6 +438,65 @@ func TestFindMatchingBaseDir_SkipsInvalidDirAndFindsNextMatch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, validDir, result)
 	assert.DirExists(t, validDir)
+}
+
+func TestMatchedFilesystemProbePath_PrefersActualFilePath(t *testing.T) {
+	savePath := t.TempDir()
+	contentPath := filepath.Join(savePath, "Movie.2024")
+	candidateFiles := qbt.TorrentFiles{{Name: path.Join("Movie.2024", "Movie.2024.mkv")}}
+	filePath := filepath.Join(savePath, candidateFiles[0].Name)
+	require.NoError(t, os.MkdirAll(filepath.Dir(filePath), 0o755))
+	require.NoError(t, os.WriteFile(filePath, []byte("movie"), 0o600))
+
+	got, ok := matchedFilesystemProbePath(
+		&qbt.Torrent{ContentPath: contentPath},
+		&qbt.TorrentProperties{SavePath: savePath},
+		candidateFiles,
+	)
+
+	require.True(t, ok)
+	assert.Equal(t, filepath.Join(savePath, candidateFiles[0].Name), got)
+}
+
+func TestMatchedFilesystemProbePath_FallsBackToContentPath(t *testing.T) {
+	contentPath := "/mnt/cross_linked/HDBits/Movie.2024"
+
+	got, ok := matchedFilesystemProbePath(
+		&qbt.Torrent{ContentPath: contentPath},
+		&qbt.TorrentProperties{},
+		nil,
+	)
+
+	require.True(t, ok)
+	assert.Equal(t, contentPath, got)
+}
+
+func TestSafeTorrentRelativeFilePath(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+		ok   bool
+	}{
+		{name: "Movie.2024/Movie.2024.mkv", want: "Movie.2024/Movie.2024.mkv", ok: true},
+		{name: "Movie.2024/./Movie.2024.mkv", want: "Movie.2024/Movie.2024.mkv", ok: true},
+		{name: "../evil.mkv"},
+		{name: "Movie.2024/../../evil.mkv"},
+		{name: "/absolute.mkv"},
+		{name: `\absolute.mkv`},
+		{name: "C:/absolute.mkv"},
+		{name: "C:relative.mkv"},
+		{name: "//server/share/file.mkv"},
+		{name: `Movie.2024\Movie.2024.mkv`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := safeTorrentRelativeFilePath(tt.name)
+
+			require.Equal(t, tt.ok, ok)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestProcessHardlinkMode_NotUsedWhenDisabled(t *testing.T) {
