@@ -305,6 +305,19 @@ func computeAutomationSearchTimeout(indexerCount int) time.Duration {
 	return timeouts.AdaptiveSearchTimeout(indexerCount)
 }
 
+func automationTorrentSearchContext(ctx context.Context, disableTorznab bool) (context.Context, context.CancelFunc, time.Duration) {
+	searchCtx := ctx
+	var cancel context.CancelFunc
+	var timeout time.Duration
+
+	if disableTorznab {
+		timeout = timeouts.MaxSearchTimeout
+		searchCtx, cancel = context.WithTimeout(ctx, timeout)
+	}
+
+	return jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityBackground), cancel, timeout
+}
+
 // initializeDomainMappings returns a hardcoded mapping of tracker domains to indexer domains.
 // This helps map tracker domains (from existing torrents) to indexer domains (from Jackett/Prowlarr)
 // for better indexer matching when tracker has no correlation with indexer name/domain.
@@ -8684,24 +8697,10 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		return nil
 	}
 
-	searchCtx := ctx
-	var searchCancel context.CancelFunc
-	indexerCountForTimeout := len(allowedIndexerIDs)
-	if searchDisableTorznab {
-		indexerCountForTimeout = 1
-	}
-	searchTimeout := computeAutomationSearchTimeout(max(1, indexerCountForTimeout))
-	if searchDisableTorznab {
-		// Gazelle-only matching can require multiple rate-limited API calls; give it the full budget.
-		searchTimeout = timeouts.MaxSearchTimeout
-	}
-	if searchTimeout > 0 {
-		searchCtx, searchCancel = context.WithTimeout(ctx, searchTimeout)
-	}
+	searchCtx, searchCancel, searchTimeout := automationTorrentSearchContext(ctx, searchDisableTorznab)
 	if searchCancel != nil {
 		defer searchCancel()
 	}
-	searchCtx = jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityBackground)
 
 	searchResp, err := s.searchTorrentMatches(searchCtx, state.opts.InstanceID, torrent.Hash, TorrentSearchOptions{
 		DisableTorznab:                  searchDisableTorznab,

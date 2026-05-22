@@ -168,6 +168,35 @@ func TestComputeAutomationSearchTimeout(t *testing.T) {
 	}
 }
 
+func TestAutomationTorrentSearchContext(t *testing.T) {
+	t.Run("torznab search keeps scheduler-owned deadline", func(t *testing.T) {
+		ctx, cancel, timeout := automationTorrentSearchContext(context.Background(), false)
+
+		require.Nil(t, cancel)
+		require.Zero(t, timeout)
+		_, hasDeadline := ctx.Deadline()
+		require.False(t, hasDeadline)
+		priority, ok := jackett.SearchPriority(ctx)
+		require.True(t, ok)
+		require.Equal(t, jackett.RateLimitPriorityBackground, priority)
+	})
+
+	t.Run("gazelle-only search keeps bounded timeout", func(t *testing.T) {
+		start := time.Now()
+		ctx, cancel, timeout := automationTorrentSearchContext(context.Background(), true)
+		require.NotNil(t, cancel)
+		defer cancel()
+
+		require.Equal(t, timeouts.MaxSearchTimeout, timeout)
+		deadline, hasDeadline := ctx.Deadline()
+		require.True(t, hasDeadline)
+		require.WithinDuration(t, start.Add(timeouts.MaxSearchTimeout), deadline, time.Second)
+		priority, ok := jackett.SearchPriority(ctx)
+		require.True(t, ok)
+		require.Equal(t, jackett.RateLimitPriorityBackground, priority)
+	})
+}
+
 func TestEffectiveTorznabCrossSeedSearchLimit(t *testing.T) {
 	tests := []struct {
 		name  string
