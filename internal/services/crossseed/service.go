@@ -312,7 +312,7 @@ func automationTorrentSearchContext(ctx context.Context, disableTorznab bool) (c
 
 	if disableTorznab {
 		timeout = timeouts.MaxSearchTimeout
-		searchCtx, cancel = context.WithTimeout(ctx, timeout)
+		searchCtx, cancel = timeouts.WithSearchTimeout(ctx, timeout)
 	}
 
 	return jackett.WithSearchPriority(searchCtx, jackett.RateLimitPriorityBackground), cancel, timeout
