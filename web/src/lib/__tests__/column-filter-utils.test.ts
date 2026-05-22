@@ -26,6 +26,9 @@ afterEach(() => {
   warnSpy.mockRestore()
 })
 
+// Intent: binary (1024-based) byte conversion. Catches anyone who switches
+// to decimal (1000-based) units, which would silently misrepresent torrent
+// sizes against qBittorrent's binary semantics.
 describe("convertSizeToBytes", () => {
   it.each([
     ["B", 1, 1],
@@ -48,6 +51,9 @@ describe("convertSizeToBytes", () => {
   })
 })
 
+// Intent: produce the exact qBittorrent expression syntax the backend
+// expects. The spacing and operator characters are part of the wire
+// contract — divergence breaks server-side filtering silently.
 describe("columnFilterToExpr — numeric comparison ops", () => {
   it.each<[ColumnFilter, string]>([
     [{ columnId: "ratio", operation: "gt", value: "2" }, "Ratio > 2"],
@@ -61,6 +67,9 @@ describe("columnFilterToExpr — numeric comparison ops", () => {
   })
 })
 
+// Intent: UI shows the user "10 GiB" but the backend wants bytes. Conversion
+// must use the binary multipliers from convertSizeToBytes. Catches anyone
+// who drops the unit conversion or passes the raw user input through.
 describe("columnFilterToExpr — size unit conversion", () => {
   it.each<[ColumnFilter, string]>([
     [{ columnId: "size", operation: "gt", value: "10", sizeUnit: "GiB" }, "Size > 10737418240"],
@@ -78,6 +87,7 @@ describe("columnFilterToExpr — size unit conversion", () => {
   })
 })
 
+// Intent: same as size — UI displays "1 MiB/s", backend wants bytes/s.
 describe("columnFilterToExpr — speed unit conversion", () => {
   it.each<[ColumnFilter, string]>([
     [{ columnId: "dlspeed", operation: "gt", value: "1", speedUnit: "MiB/s" }, "DlSpeed > 1048576"],
@@ -88,6 +98,7 @@ describe("columnFilterToExpr — speed unit conversion", () => {
   })
 })
 
+// Intent: user enters "2 hours", backend wants seconds.
 describe("columnFilterToExpr — duration unit conversion", () => {
   it.each<[ColumnFilter, string]>([
     [{ columnId: "eta", operation: "gt", value: "1", durationUnit: "seconds" }, "ETA > 1"],
@@ -99,6 +110,9 @@ describe("columnFilterToExpr — duration unit conversion", () => {
   })
 })
 
+// Intent: dates → unix-seconds timestamps. The qBittorrent backend stores
+// timestamps as unix-seconds; sending raw ISO strings or millisecond values
+// would silently misfilter.
 describe("columnFilterToExpr — date filters", () => {
   it("converts ISO date to UTC unix-seconds timestamp", () => {
     expect(columnFilterToExpr({ columnId: "added_on", operation: "gt", value: "2024-01-01" })).toBe("AddedOn > 1704067200")
@@ -112,8 +126,18 @@ describe("columnFilterToExpr — date filters", () => {
   it("returns null for invalid date string", () => {
     expect(columnFilterToExpr({ columnId: "added_on", operation: "gt", value: "not-a-date" })).toBeNull()
   })
+
+  it("respects timezone offsets in ISO dates", () => {
+    // "2024-01-01T00:00:00+05:00" is 2023-12-31 19:00 UTC = 1704049200 unix-seconds.
+    // Pins current behavior: new Date(...) parses the offset, the user's local
+    // timezone does NOT affect the result.
+    expect(columnFilterToExpr({ columnId: "added_on", operation: "gt", value: "2024-01-01T00:00:00+05:00" })).toBe("AddedOn > 1704049200")
+  })
 })
 
+// Intent: range filters use `(A >= lo && A <= hi)` form, applying unit
+// conversion to BOTH endpoints. Allows mixed units between endpoints
+// (e.g. 1 MiB to 1 GiB).
 describe("columnFilterToExpr — between operation", () => {
   it.each<[ColumnFilter, string]>([
     [
@@ -157,6 +181,9 @@ describe("columnFilterToExpr — between operation", () => {
   })
 })
 
+// Intent: escape user input before embedding in the expression string.
+// Without escaping, a torrent name containing `"` could break the expression
+// parser or be exploited to inject extra clauses.
 describe("columnFilterToExpr — string filters and escaping", () => {
   it.each<[ColumnFilter, string]>([
     [{ columnId: "name", operation: "contains", value: "linux" }, "Name contains \"linux\""],
@@ -185,6 +212,10 @@ describe("columnFilterToExpr — string filters and escaping", () => {
   })
 })
 
+// Intent: the FilterSidebar shows categories like "Seeding" / "Downloading",
+// which map to MULTIPLE qBittorrent state strings. Equal-to filters expand
+// into an OR chain so any state in the category matches. Order matches
+// STATE_CATEGORY_MAP and the exact format is the wire contract.
 describe("columnFilterToExpr — state expansion (eq → OR)", () => {
   it("expands 'uploading' to all seeding states", () => {
     expect(columnFilterToExpr({ columnId: "state", operation: "eq", value: "uploading" })).toBe(
@@ -211,6 +242,10 @@ describe("columnFilterToExpr — state expansion (eq → OR)", () => {
   })
 })
 
+// Intent (#1925-class): not-equal must use && to EXCLUDE every state in
+// the category. If someone naively reuses the OR joiner from eq, ne
+// becomes "matches if it's not state X OR not state Y" which is always
+// true — silently breaking the filter.
 describe("columnFilterToExpr — state expansion (ne → AND)", () => {
   it("uses && to exclude all states in the category", () => {
     expect(columnFilterToExpr({ columnId: "state", operation: "ne", value: "uploading" })).toBe(
@@ -219,6 +254,9 @@ describe("columnFilterToExpr — state expansion (ne → AND)", () => {
   })
 })
 
+// Intent: "completed" isn't a qBittorrent state — it's progress == 1.
+// Mapping it as if it were a state would produce a filter that matches
+// nothing. Catches anyone who adds "completed" to STATE_CATEGORY_MAP.
 describe("columnFilterToExpr — completed special case", () => {
   it("eq 'completed' uses Progress == 1, not state expansion", () => {
     expect(columnFilterToExpr({ columnId: "state", operation: "eq", value: "completed" })).toBe("Progress == 1")
@@ -229,6 +267,9 @@ describe("columnFilterToExpr — completed special case", () => {
   })
 })
 
+// Intent: only eq/ne use category expansion. Other operators (contains,
+// startsWith, etc.) treat the value literally so power users can match
+// specific qBittorrent state strings.
 describe("columnFilterToExpr — state with non-eq/ne falls through to string handling", () => {
   it("contains operation treats state value literally", () => {
     expect(columnFilterToExpr({ columnId: "state", operation: "contains", value: "down" })).toBe("string(State) contains \"down\"")
@@ -239,6 +280,9 @@ describe("columnFilterToExpr — state with non-eq/ne falls through to string ha
   })
 })
 
+// Intent: boolean values come from the UI as strings ("true" / "false"),
+// possibly capitalized. They must serialize to JSON-style booleans
+// (lowercase) and tolerate any input casing.
 describe("columnFilterToExpr — boolean filters", () => {
   it.each<[ColumnFilter, string]>([
     [{ columnId: "private", operation: "eq", value: "true" }, "Private == true"],
@@ -250,6 +294,8 @@ describe("columnFilterToExpr — boolean filters", () => {
   })
 })
 
+// Intent: UI shows progress as a percentage (0–100) but the backend stores
+// it as a fraction (0–1). Catches anyone who removes the /100 conversion.
 describe("columnFilterToExpr — progress percent → fraction", () => {
   it.each<[ColumnFilter, string]>([
     [{ columnId: "progress", operation: "gt", value: "50" }, "Progress > 0.5"],
@@ -265,6 +311,10 @@ describe("columnFilterToExpr — progress percent → fraction", () => {
   })
 })
 
+// Intent: the visible column "Seeds" is qBittorrent's connected-peer count.
+// When *filtering* we want total seeders/leechers (NumComplete / NumIncomplete)
+// to match the sorting behavior. Catches anyone who removes FILTER_COLUMN_REMAP
+// and silently changes filter semantics.
 describe("columnFilterToExpr — column remapping (num_seeds → num_complete)", () => {
   it("remaps num_seeds to NumComplete (total, not connected)", () => {
     expect(columnFilterToExpr({ columnId: "num_seeds", operation: "gt", value: "5" })).toBe("NumComplete > 5")
@@ -275,6 +325,9 @@ describe("columnFilterToExpr — column remapping (num_seeds → num_complete)",
   })
 })
 
+// Intent: bad input never reaches the backend as a partial / corrupt
+// expression. Unknown columns / operations log a warning and return null
+// so callers (e.g. columnFiltersToExpr) can drop the bad filter cleanly.
 describe("columnFilterToExpr — edge cases", () => {
   it("returns null and warns on unknown columnId", () => {
     expect(columnFilterToExpr({ columnId: "nope", operation: "gt", value: "1" })).toBeNull()
@@ -285,8 +338,20 @@ describe("columnFilterToExpr — edge cases", () => {
     expect(columnFilterToExpr({ columnId: "ratio", operation: "nope" as never, value: "1" })).toBeNull()
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Unknown operation"))
   })
+
+  it("treats empty value as a literal empty-string match on string columns", () => {
+    // Pins current behavior: empty value isn't a UX-level "no filter" signal —
+    // it produces a real expression matching torrents whose field equals "".
+    // If the UI wants empty-as-no-filter, it must skip the filter at the call
+    // site, not rely on this layer.
+    expect(columnFilterToExpr({ columnId: "name", operation: "contains", value: "" })).toBe("Name contains \"\"")
+  })
 })
 
+// Intent: combine multiple column filters into a single expression. The
+// AND default mirrors the user's mental model ("I'm narrowing the list").
+// Filters that fail individually (return null) are dropped silently rather
+// than aborting the whole filter set.
 describe("columnFiltersToExpr", () => {
   it("returns null for empty filter list", () => {
     expect(columnFiltersToExpr([])).toBeNull()
@@ -336,6 +401,9 @@ describe("columnFiltersToExpr", () => {
   })
 })
 
+// Intent: type classification drives which filter UI is shown (size picker,
+// date picker, etc.) and which operations are valid. Default to "string" so
+// unknown columns get the broadest UI rather than an empty operation list.
 describe("getColumnType", () => {
   it.each([
     ["ratio", "number"],
@@ -353,6 +421,9 @@ describe("getColumnType", () => {
   })
 })
 
+// Intent: when a user opens the filter UI for a column, prefill the most
+// common operation for that type. Numeric → "greater than", enum/bool →
+// "equals", string → "contains".
 describe("getDefaultOperation", () => {
   it.each([
     ["size", "gt"],
@@ -369,6 +440,9 @@ describe("getDefaultOperation", () => {
   })
 })
 
+// Intent: each column type exposes only the operations that make sense
+// (e.g. dates don't support contains/startsWith). Catches anyone who
+// fans out wider operation lists than the UI can handle.
 describe("getOperations", () => {
   it("returns NUMERIC_OPERATIONS for numeric-family types", () => {
     expect(getOperations("size").map(o => o.value)).toContain("between")
@@ -393,6 +467,10 @@ describe("getOperations", () => {
   })
 })
 
+// Intent: TorznabSearchResult filtering happens client-side (no backend
+// expression involved). Unknown columns and missing data should never
+// hide a result the user might want to see — except where the schema
+// guarantees the field exists.
 describe("filterSearchResult", () => {
   const baseResult: TorznabSearchResult = {
     title: "Ubuntu Linux ISO",
@@ -448,6 +526,13 @@ describe("filterSearchResult", () => {
 
   it("returns true when freeleech filter has no selected values", () => {
     expect(filterSearchResult(baseResult, { columnId: "freeleech", operation: "eq", value: "" }, categoryMap)).toBe(true)
+  })
+
+  it("rejects freeleech rows when the filter value matches none of the known patterns", () => {
+    // Intent: unknown freeleech values (not "true"/"false" and not a numeric
+    // factor) hide the row. Catches anyone who flips the default to "match"
+    // and silently shows all results when an unrecognized filter is selected.
+    expect(filterSearchResult(baseResult, { columnId: "freeleech", operation: "eq", value: "unknown" }, categoryMap)).toBe(false)
   })
 
   it("string contains is case-insensitive by default", () => {
