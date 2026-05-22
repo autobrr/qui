@@ -76,3 +76,6 @@ analyses/*
 # Local reference dumps
 dodopayments.txt
 polar.txt
+
+# Local-only planning notes
+plans/
