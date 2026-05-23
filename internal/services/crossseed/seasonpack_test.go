@@ -16,9 +16,9 @@ import (
 	"github.com/moistari/rls"
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -674,11 +674,7 @@ func TestApplySeasonPackWebhook_ReturnsAlreadyExistsWhenTorrentPresent(t *testin
 
 func TestApplySeasonPackWebhook_LoadsPersistedAutomationSettingsWithoutLoader(t *testing.T) {
 	fix := newSeasonPackFixture(t)
-	db, err := database.New(filepath.Join(t.TempDir(), "qui.db"))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "qui")
 
 	automationStore, err := models.NewCrossSeedStore(db, make([]byte, 32))
 	require.NoError(t, err)

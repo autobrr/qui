@@ -6,7 +6,6 @@ package models_test
 import (
 	"context"
 	"encoding/json"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -15,19 +14,13 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func setupCrossSeedTestDB(t *testing.T) *database.DB {
 	t.Helper()
 
-	dbPath := filepath.Join(t.TempDir(), "crossseed.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
-
-	return db
+	return testdb.NewMigratedSQLite(t, "crossseed")
 }
 
 func ensureStringPoolValue(t *testing.T, db *database.DB, value string) int64 {
