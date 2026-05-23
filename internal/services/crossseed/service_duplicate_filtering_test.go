@@ -159,6 +159,162 @@ func TestBuildTorrentSearchResultsPropagatesContextErrors(t *testing.T) {
 	require.Zero(t, duplicateFiltered)
 }
 
+func TestContentFilteringWaitTimeoutDefault(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, 20*time.Second, contentFilteringWaitTimeout)
+}
+
+func TestFilterSearchResultsByLateContentFilterMissingOrIncompleteStateLeavesResults(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	source := &qbt.Torrent{Hash: "sourcehash", Name: "Source.Movie.2015.1080p.BluRay-GROUP"}
+	results := []jackett.SearchResult{
+		{Indexer: "Indexer One", IndexerID: 1, Title: "Source.Movie.2015.1080p.BluRay-GROUP"},
+	}
+	svc := &Service{
+		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+	}
+
+	filtered, snapshot, dropped := svc.filterSearchResultsByLateContentFilter(instanceID, source, results)
+	require.Equal(t, results, filtered)
+	require.Nil(t, snapshot)
+	require.Zero(t, dropped)
+
+	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, source.Hash), &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: true,
+		ContentCompleted:      false,
+		CapabilityIndexers:    []int{1},
+		FilteredIndexers:      []int{1},
+	}, ttlcache.DefaultTTL)
+
+	filtered, snapshot, dropped = svc.filterSearchResultsByLateContentFilter(instanceID, source, results)
+	require.Equal(t, results, filtered)
+	require.Nil(t, snapshot)
+	require.Zero(t, dropped)
+}
+
+func TestFilterSearchResultsByLateContentFilterCompletedStateNoExcludedResultIndexers(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	source := &qbt.Torrent{Hash: "sourcehash", Name: "Source.Movie.2015.1080p.BluRay-GROUP"}
+	results := []jackett.SearchResult{
+		{Indexer: "Indexer One", IndexerID: 1, Title: "Source.Movie.2015.1080p.BluRay-GROUP"},
+		{Indexer: "Indexer Two", IndexerID: 2, Title: "Source.Movie.2015.1080p.BluRay-GROUP"},
+	}
+	svc := &Service{
+		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+	}
+	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, source.Hash), &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: true,
+		ContentCompleted:      true,
+		CapabilityIndexers:    []int{1, 2, 3},
+		FilteredIndexers:      []int{1, 2},
+		ExcludedIndexers:      map[int]string{3: "already seeded from Tracker Three"},
+	}, ttlcache.DefaultTTL)
+
+	filtered, snapshot, dropped := svc.filterSearchResultsByLateContentFilter(instanceID, source, results)
+	require.Equal(t, results, filtered)
+	require.NotNil(t, snapshot)
+	require.Zero(t, dropped)
+}
+
+func TestFilterSearchResultsByLateContentFilterCompletedStateWithNoResultsReturnsSnapshot(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	source := &qbt.Torrent{Hash: "sourcehash", Name: "Source.Movie.2015.1080p.BluRay-GROUP"}
+	svc := &Service{
+		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+	}
+	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, source.Hash), &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: true,
+		ContentCompleted:      true,
+		CapabilityIndexers:    []int{1, 2},
+		FilteredIndexers:      []int{2},
+		ExcludedIndexers:      map[int]string{1: "already seeded from Tracker One"},
+		ContentMatches:        []string{"Existing.Movie.2015.1080p.BluRay-GROUP"},
+	}, ttlcache.DefaultTTL)
+
+	filtered, snapshot, dropped := svc.filterSearchResultsByLateContentFilter(instanceID, source, nil)
+	require.Empty(t, filtered)
+	require.NotNil(t, snapshot)
+	require.True(t, snapshot.ContentCompleted)
+	require.Equal(t, []int{2}, snapshot.FilteredIndexers)
+	require.Equal(t, map[int]string{1: "already seeded from Tracker One"}, snapshot.ExcludedIndexers)
+	require.Equal(t, []string{"Existing.Movie.2015.1080p.BluRay-GROUP"}, snapshot.ContentMatches)
+	require.Zero(t, dropped)
+}
+
+func TestFilterSearchResultsByLateContentFilterDropsExcludedIndexers(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	source := &qbt.Torrent{Hash: "sourcehash", Name: "Source.Movie.2015.1080p.BluRay-GROUP"}
+	results := []jackett.SearchResult{
+		{Indexer: "Indexer One", IndexerID: 1, Title: "Source.Movie.2015.1080p.BluRay-GROUP"},
+		{Indexer: "Indexer Two", IndexerID: 2, Title: "Source.Movie.2015.1080p.BluRay-GROUP"},
+		{Indexer: "Indexer Three", IndexerID: 3, Title: "Source.Movie.2015.1080p.BluRay-GROUP"},
+	}
+	svc := &Service{
+		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+	}
+	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, source.Hash), &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: true,
+		ContentCompleted:      true,
+		CapabilityIndexers:    []int{1, 2, 3},
+		FilteredIndexers:      []int{2},
+		ExcludedIndexers: map[int]string{
+			1: "already seeded from Tracker One",
+			3: "already seeded from Tracker Three",
+		},
+	}, ttlcache.DefaultTTL)
+
+	filtered, snapshot, dropped := svc.filterSearchResultsByLateContentFilter(instanceID, source, results)
+	require.NotNil(t, snapshot)
+	require.Equal(t, 2, dropped)
+	require.Len(t, filtered, 1)
+	require.Equal(t, 2, filtered[0].IndexerID)
+}
+
+func TestFilterSearchResultsByLateContentFilterNearMissRegression(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	const releaseTitle = "Example.Release.2015.1080p.BluRay.Remux-GROUP"
+	source := &qbt.Torrent{
+		Hash: "0123456789abcdef0123456789abcdef01234567",
+		Name: releaseTitle + ".mkv",
+	}
+	results := []jackett.SearchResult{
+		{Indexer: "ExcludedIndexerOne", IndexerID: 1, Title: releaseTitle},
+		{Indexer: "ExcludedIndexerTwo", IndexerID: 8, Title: releaseTitle},
+		{Indexer: "AllowedIndexer", IndexerID: 34, Title: releaseTitle},
+	}
+	svc := &Service{
+		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+	}
+	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, source.Hash), &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: true,
+		ContentCompleted:      true,
+		CapabilityIndexers:    []int{1, 8, 34},
+		FilteredIndexers:      []int{34},
+		ExcludedIndexers: map[int]string{
+			1: "already seeded from ExcludedIndexerOne",
+			8: "already seeded from ExcludedIndexerTwo",
+		},
+	}, ttlcache.DefaultTTL)
+
+	filtered, snapshot, dropped := svc.filterSearchResultsByLateContentFilter(instanceID, source, results)
+	require.NotNil(t, snapshot)
+	require.Equal(t, 2, dropped)
+	require.Len(t, filtered, 1)
+	require.Equal(t, "AllowedIndexer", filtered[0].Indexer)
+	require.Equal(t, 34, filtered[0].IndexerID)
+}
+
 func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenInfohashExists(t *testing.T) {
 	t.Parallel()
 

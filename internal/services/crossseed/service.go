@@ -253,8 +253,9 @@ type automationContext struct {
 const (
 	searchResultCacheTTL                  = 5 * time.Minute
 	indexerDomainCacheTTL                 = 1 * time.Minute
-	contentFilteringWaitTimeout           = 5 * time.Second
+	contentFilteringWaitTimeout           = 20 * time.Second
 	contentFilteringPollInterval          = 150 * time.Millisecond
+	lateContentFilterExclusionReason      = "late content filter exclusion"
 	selectedIndexerContentSkipReason      = "selected indexers were filtered out"
 	selectedIndexerCapabilitySkipReason   = "selected indexers do not support required caps"
 	crossSeedRenameWaitTimeout            = 15 * time.Second
@@ -7549,6 +7550,8 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	}
 
 	searchResults := searchResp.Results
+	var lateFilterSnapshot *AsyncIndexerFilteringState
+	var lateExcludedCount int
 
 	// Retry without year for single-indexer searches when the first pass returned zero.
 	if len(searchResults) == 0 && searchReq.Year > 0 && len(filteredIndexerIDs) <= 1 {
@@ -7592,6 +7595,15 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			}
 			return nil, wrapCrossSeedSearchError(waitCtx.Err())
 		}
+	}
+
+	searchResults, lateFilterSnapshot, lateExcludedCount = s.filterSearchResultsByLateContentFilter(instanceID, sourceTorrent, searchResults)
+	if lateFilterSnapshot != nil {
+		sourceInfo.AvailableIndexers = lateFilterSnapshot.CapabilityIndexers
+		sourceInfo.FilteredIndexers = lateFilterSnapshot.FilteredIndexers
+		sourceInfo.ExcludedIndexers = lateFilterSnapshot.ExcludedIndexers
+		sourceInfo.ContentMatches = lateFilterSnapshot.ContentMatches
+		sourceInfo.ContentFilteringCompleted = true
 	}
 
 	scored := make([]scoredTorrentSearchResult, 0, len(searchResults))
@@ -7682,6 +7694,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		Int("totalResults", totalResults).
 		Int("releaseFiltered", releaseFilteredCount).
 		Int("sizeFiltered", sizeFilteredCount).
+		Int("lateContentFiltered", lateExcludedCount).
 		Int("finalMatches", matchedResults).
 		Float64("tolerancePercent", tolerancePercent).
 		Msg("[CROSSSEED-SEARCH] Search filtering completed")
@@ -7748,6 +7761,74 @@ type scoredTorrentSearchResult struct {
 	result jackett.SearchResult
 	score  float64
 	reason string
+}
+
+func (s *Service) completedAsyncContentFilterSnapshot(instanceID int, hash string) (*AsyncIndexerFilteringState, string, bool) {
+	if s == nil || s.asyncFilteringCache == nil {
+		return nil, "", false
+	}
+
+	cacheKey := asyncFilteringCacheKey(instanceID, hash)
+	cached, found := s.asyncFilteringCache.Get(cacheKey)
+	if !found {
+		return nil, cacheKey, false
+	}
+
+	snapshot := cached.Clone()
+	if snapshot == nil || !snapshot.ContentCompleted {
+		return nil, cacheKey, false
+	}
+
+	return snapshot, cacheKey, true
+}
+
+func (s *Service) filterSearchResultsByLateContentFilter(instanceID int, sourceTorrent *qbt.Torrent, results []jackett.SearchResult) ([]jackett.SearchResult, *AsyncIndexerFilteringState, int) {
+	if sourceTorrent == nil {
+		return results, nil, 0
+	}
+
+	snapshot, cacheKey, ok := s.completedAsyncContentFilterSnapshot(instanceID, sourceTorrent.Hash)
+	if !ok {
+		return results, nil, 0
+	}
+	if len(results) == 0 {
+		return results, snapshot, 0
+	}
+
+	allowed := make(map[int]struct{}, len(snapshot.FilteredIndexers))
+	for _, indexerID := range snapshot.FilteredIndexers {
+		allowed[indexerID] = struct{}{}
+	}
+
+	filtered := make([]jackett.SearchResult, 0, len(results))
+	dropped := 0
+	for _, result := range results {
+		if _, ok := allowed[result.IndexerID]; ok {
+			filtered = append(filtered, result)
+			continue
+		}
+
+		dropped++
+		event := log.Debug().
+			Str("sourceHash", sourceTorrent.Hash).
+			Str("sourceName", sourceTorrent.Name).
+			Str("resultTitle", result.Title).
+			Int("indexerID", result.IndexerID).
+			Str("indexerName", result.Indexer).
+			Str("cacheKey", cacheKey).
+			Ints("filteredIndexers", snapshot.FilteredIndexers).
+			Str("reason", lateContentFilterExclusionReason)
+		if excludedReason := strings.TrimSpace(snapshot.ExcludedIndexers[result.IndexerID]); excludedReason != "" {
+			event = event.Str("excludedIndexerReason", excludedReason)
+		}
+		event.Msg("[CROSSSEED-SEARCH] Late content filter exclusion")
+	}
+
+	if dropped == 0 {
+		return results, snapshot, 0
+	}
+
+	return filtered, snapshot, dropped
 }
 
 func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int, scored []scoredTorrentSearchResult, limit int) ([]TorrentSearchResult, int, error) {
