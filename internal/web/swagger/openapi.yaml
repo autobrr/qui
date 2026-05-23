@@ -1566,6 +1566,7 @@ paths:
                     - addTags
                     - removeTags
                     - setTags
+                    - setComment
                     - setCategory
                     - toggleAutoTMM
                     - setShareLimit
@@ -1582,6 +1583,9 @@ paths:
                 tags:
                   type: string
                   description: Comma-separated list of tags for tag-related actions.
+                comment:
+                  type: string
+                  description: Comment text for setComment action (empty clears the comment).
                 category:
                   type: string
                   description: Category name for setCategory action.
@@ -5754,6 +5758,9 @@ components:
         supportsSetTags:
           type: boolean
           description: Whether the instance supports replacing tags on torrents.
+        supportsSetComment:
+          type: boolean
+          description: Whether the instance supports setting torrent comments (Web API 2.12.1+, qBittorrent 5.2+).
         supportsTrackerHealth:
           type: boolean
           description: Whether the instance exposes tracker health metadata (unregistered/tracker down states).

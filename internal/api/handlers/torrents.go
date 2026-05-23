@@ -1120,6 +1120,7 @@ type BulkActionRequest struct {
 	Action                   string                     `json:"action"`
 	DeleteFiles              bool                       `json:"deleteFiles,omitempty"`              // For delete action
 	Tags                     string                     `json:"tags,omitempty"`                     // For tag operations (comma-separated)
+	Comment                  string                     `json:"comment,omitempty"`                  // For setComment action
 	Category                 string                     `json:"category,omitempty"`                 // For category operations
 	Enable                   bool                       `json:"enable,omitempty"`                   // For toggleAutoTMM action
 	SelectAll                bool                       `json:"selectAll,omitempty"`                // When true, apply to all torrents matching filters
@@ -1368,7 +1369,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	validActions := []string{
 		"pause", "resume", "delete", "deleteWithFiles",
 		"recheck", "reannounce", "increasePriority", "decreasePriority",
-		"topPriority", "bottomPriority", "addTags", "removeTags", "setTags", "setCategory",
+		"topPriority", "bottomPriority", "addTags", "removeTags", "setTags", "setComment", "setCategory",
 		"toggleAutoTMM", "forceStart", "setShareLimit", "setUploadLimit", "setDownloadLimit", "setLocation",
 		"editTrackers", "addTrackers", "removeTrackers", "toggleSequentialDownload",
 	}
@@ -1646,6 +1647,8 @@ func (h *TorrentsHandler) executeBulkActionForInstance(ctx context.Context, inst
 	case "setTags":
 		// allow empty tags to clear all tags from torrents
 		return h.syncManager.SetTags(ctx, instanceID, hashes, req.Tags)
+	case "setComment":
+		return h.syncManager.SetComment(ctx, instanceID, hashes, req.Comment)
 	case "setCategory":
 		return h.syncManager.SetCategory(ctx, instanceID, hashes, req.Category)
 	case "toggleAutoTMM":

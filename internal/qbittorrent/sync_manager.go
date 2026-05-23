@@ -5567,6 +5567,29 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 	return nil
 }
 
+// SetComment sets the comment on the specified torrents (qBittorrent 5.2+, Web API 2.12.1+).
+func (sm *SyncManager) SetComment(ctx context.Context, instanceID int, hashes []string, comment string) error {
+	client, err := sm.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	if !client.SupportsSetComment() {
+		return fmt.Errorf("set comment requires qBittorrent 5.2 and Web API 2.12.1 or newer (current: %s)", client.GetWebAPIVersion())
+	}
+
+	if err := sm.validateTorrentsExist(client, hashes, "set comment"); err != nil {
+		return err
+	}
+
+	if err := client.SetCommentCtx(ctx, hashes, comment); err != nil {
+		return err
+	}
+
+	sm.syncAfterModification(instanceID, client, "set_comment")
+	return nil
+}
+
 // SetCategory sets the category for the specified torrents
 func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes []string, category string) error {
 	// Get client and sync manager

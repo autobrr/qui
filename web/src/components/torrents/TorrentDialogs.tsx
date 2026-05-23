@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
@@ -633,6 +634,131 @@ interface RenameTorrentDialogProps {
   onConfirm: (name: string) => void | Promise<void>
   isPending?: boolean
 }
+
+interface SetCommentDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  hashCount: number
+  instanceId: number
+  torrentHash?: string
+  onConfirm: (comment: string) => void | Promise<void>
+  isPending?: boolean
+}
+
+export const SetCommentDialog = memo(function SetCommentDialog({
+  open,
+  onOpenChange,
+  hashCount,
+  instanceId,
+  torrentHash,
+  onConfirm,
+  isPending = false,
+}: SetCommentDialogProps) {
+  const [comment, setComment] = useState("")
+  const [isLoadingComment, setIsLoadingComment] = useState(false)
+  const wasOpen = useRef(false)
+
+  const focusCommentField = useCallback(() => {
+    setTimeout(() => document.getElementById("torrentComment")?.focus({ preventScroll: true }), 0)
+  }, [])
+
+  useEffect(() => {
+    if (!open) {
+      setComment("")
+      setIsLoadingComment(false)
+      wasOpen.current = false
+      return
+    }
+
+    const didOpen = !wasOpen.current
+    wasOpen.current = true
+
+    if (!didOpen || hashCount !== 1 || !torrentHash) {
+      setComment("")
+      setIsLoadingComment(false)
+      if (didOpen) {
+        focusCommentField()
+      }
+      return
+    }
+
+    let cancelled = false
+    setIsLoadingComment(true)
+
+    void api.getTorrentProperties(instanceId, torrentHash).then((properties) => {
+      if (cancelled) {
+        return
+      }
+      setComment(properties.comment ?? "")
+      setIsLoadingComment(false)
+      focusCommentField()
+    }).catch(() => {
+      if (cancelled) {
+        return
+      }
+      setComment("")
+      setIsLoadingComment(false)
+      focusCommentField()
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, hashCount, instanceId, torrentHash, focusCommentField])
+
+  const handleConfirm = useCallback(() => {
+    onConfirm(comment)
+  }, [comment, onConfirm])
+
+  const handleClose = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setComment("")
+    }
+    onOpenChange(nextOpen)
+  }, [onOpenChange])
+
+  const countLabel = hashCount > 1 ? ` (${hashCount})` : ""
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Set Comment{countLabel}</DialogTitle>
+          <DialogDescription>
+            {hashCount > 1
+              ? "Apply the same comment to all selected torrents. Leave empty to clear comments."
+              : "Set the torrent comment shown in qBittorrent. Leave empty to clear the comment."}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4 space-y-2">
+          <Label htmlFor="torrentComment">Comment</Label>
+          <Textarea
+            id="torrentComment"
+            value={comment}
+            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setComment(e.target.value)}
+            placeholder={isLoadingComment ? "Loading current comment..." : "Enter comment"}
+            disabled={isPending || isLoadingComment}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => handleClose(false)} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button onClick={handleConfirm} disabled={isPending || isLoadingComment}>
+            {isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              "Save"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+})
 
 export const RenameTorrentDialog = memo(function RenameTorrentDialog({
   open,
