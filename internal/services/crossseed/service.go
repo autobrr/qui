@@ -9659,34 +9659,9 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		return indexerIDs, nil, nil, fmt.Errorf("failed to get cached instance torrents: %w", err)
 	}
 
-	type matchedTorrent struct {
-		view           qbittorrent.CrossInstanceTorrentView
-		trackerDomains []string
-	}
-
-	var (
-		matchedContent []matchedTorrent
-		contentMatches []string
-	)
-
-	for _, crossTorrent := range instanceTorrents {
-		// Skip the source torrent itself
-		if crossTorrent.InstanceID == instanceID && crossTorrent.Hash == sourceTorrent.Hash {
-			continue
-		}
-
-		// Parse the existing torrent to see if it matches the content we're looking for
-		existingRelease := s.releaseCache.Parse(crossTorrent.Name)
-		if !s.releasesMatch(sourceRelease, existingRelease, false) {
-			continue
-		}
-
-		contentMatches = append(contentMatches, fmt.Sprintf("%s (%s)", crossTorrent.Name, crossTorrent.InstanceName))
-		trackerDomains := s.extractTrackerDomainsFromTorrent(crossTorrent.Torrent)
-		matchedContent = append(matchedContent, matchedTorrent{
-			view:           crossTorrent,
-			trackerDomains: trackerDomains,
-		})
+	matchedContent, contentMatches, err := s.findLayoutAwareContentPrefilterMatches(ctx, instanceID, hash, sourceTorrent, sourceRelease, instanceTorrents)
+	if err != nil {
+		return indexerIDs, nil, nil, err
 	}
 
 	// Check each indexer to see if we already have content that matches what it would provide
@@ -9753,9 +9728,11 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 						Str("indexerName", indexerName).
 						Str("indexerDomain", indexerDomain).
 						Str("matchedTrackerDomain", trackerDomain).
+						Strs("trackerDomains", match.trackerDomains).
 						Str("existingTorrentHash", match.view.Hash).
 						Str("existingTorrentName", match.view.Name).
 						Str("existingTorrentInstance", match.view.InstanceName).
+						Str("matchType", match.matchType).
 						Msg("crossseed: excluding indexer because matching content already exists from this tracker")
 					break
 				}

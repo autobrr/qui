@@ -20,6 +20,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 func TestFilterIndexersByExistingContentUsesConfiguredIndexerDomains(t *testing.T) {
@@ -28,7 +29,7 @@ func TestFilterIndexersByExistingContentUsesConfiguredIndexerDomains(t *testing.
 	const instanceID = 1
 	source := qbt.Torrent{
 		Hash:     "sourcehash",
-		Name:     "Mr.Beans.Holiday.2007.720p.BluRay.DTS.x264-CRiSC",
+		Name:     "Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC",
 		Progress: 1,
 		Tracker:  "https://source.example/announce",
 	}
@@ -41,12 +42,14 @@ func TestFilterIndexersByExistingContentUsesConfiguredIndexerDomains(t *testing.
 				{Hash: "hdbhash", Name: source.Name, Progress: 1, Tracker: "https://hdbits.org/announce"},
 			},
 		},
+		files: map[string]qbt.TorrentFiles{
+			"sourcehash": {{Name: "Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC.mkv", Size: 1024}},
+			"uploadhash": {{Name: "Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC.mkv", Size: 1024}},
+			"mttvhash":   {{Name: "Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC.mkv", Size: 1024}},
+			"hdbhash":    {{Name: "Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC.mkv", Size: 1024}},
+		},
 	}
-	svc := &Service{
-		syncManager:    sync,
-		releaseCache:   NewReleaseCache(),
-		domainMappings: initializeDomainMappings(),
-	}
+	svc := newDuplicateFilteringContentFilterService(sync)
 
 	indexerIDs := []int{101, 202, 303, 404}
 	indexerInfo := map[int]jackett.EnabledIndexerInfo{
@@ -64,6 +67,183 @@ func TestFilterIndexersByExistingContentUsesConfiguredIndexerDomains(t *testing.
 	require.Contains(t, excluded, 303)
 	require.NotContains(t, excluded, 404)
 	require.NotEmpty(t, contentMatches)
+}
+
+func TestFilterIndexersByExistingContentMatchesFolderSourceToRootlessExisting(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	const sourceHash = "sourcehash"
+	const retroHash = "830214dd915a3b57843d0f369d06bc9ad5253c6f"
+	const mediaFile = "Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC.mkv"
+	const mediaSize = int64(4_294_967_296)
+
+	source := qbt.Torrent{
+		Hash:     sourceHash,
+		Name:     "Dummy Movie 2007 720p BluRay DTS x264-CRiSC",
+		Progress: 1,
+		Tracker:  "https://source.example/announce",
+	}
+	existing := qbt.Torrent{
+		Hash:     retroHash,
+		Name:     "Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC",
+		Progress: 1,
+		Tracker:  "https://retroflix.club/announce",
+	}
+	sync := &duplicateFilteringSyncManager{
+		torrents: map[int][]qbt.Torrent{
+			instanceID: {source, existing},
+		},
+		files: map[string]qbt.TorrentFiles{
+			sourceHash: {{Name: "Dummy Movie 2007 720p BluRay DTS x264-CRiSC/" + mediaFile, Size: mediaSize}},
+			retroHash:  {{Name: mediaFile, Size: mediaSize}},
+		},
+	}
+	svc := newDuplicateFilteringContentFilterService(sync)
+
+	indexerIDs := []int{10, 20}
+	indexerInfo := map[int]jackett.EnabledIndexerInfo{
+		10: {ID: 10, Name: "RetroFlix", Domain: "retroflix.club"},
+		20: {ID: 20, Name: "Other", Domain: "other.example"},
+	}
+
+	filtered, excluded, contentMatches, err := svc.filterIndexersByExistingContent(context.Background(), instanceID, source.Hash, indexerIDs, indexerInfo)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []int{20}, filtered)
+	require.Contains(t, excluded, 10)
+	require.NotContains(t, excluded, 20)
+	require.Equal(t, []string{"Dummy.Movie.2007.720p.BluRay.DTS.x264-CRiSC (Main)"}, contentMatches)
+}
+
+func TestFilterIndexersByExistingContentMatchesRootlessSourceToFolderExisting(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	const sourceHash = "sourcehash"
+	const existingHash = "folderhash"
+	const mediaFile = "Movie.2024.1080p.BluRay.x264-GROUP.mkv"
+	const mediaSize = int64(2048)
+
+	source := qbt.Torrent{
+		Hash:     sourceHash,
+		Name:     "Movie.2024.1080p.BluRay.x264-GROUP",
+		Progress: 1,
+		Tracker:  "https://source.example/announce",
+	}
+	existing := qbt.Torrent{
+		Hash:     existingHash,
+		Name:     "Movie.2024.1080p.BluRay.x264-GROUP",
+		Progress: 1,
+		Tracker:  "https://tracker.example/announce",
+	}
+	sync := &duplicateFilteringSyncManager{
+		torrents: map[int][]qbt.Torrent{
+			instanceID: {source, existing},
+		},
+		files: map[string]qbt.TorrentFiles{
+			sourceHash:   {{Name: mediaFile, Size: mediaSize}},
+			existingHash: {{Name: "Movie.2024.1080p.BluRay.x264-GROUP/" + mediaFile, Size: mediaSize}},
+		},
+	}
+	svc := newDuplicateFilteringContentFilterService(sync)
+
+	indexerIDs := []int{10, 20}
+	indexerInfo := map[int]jackett.EnabledIndexerInfo{
+		10: {ID: 10, Name: "Tracker", Domain: "tracker.example"},
+		20: {ID: 20, Name: "Other", Domain: "other.example"},
+	}
+
+	filtered, excluded, contentMatches, err := svc.filterIndexersByExistingContent(context.Background(), instanceID, source.Hash, indexerIDs, indexerInfo)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []int{20}, filtered)
+	require.Contains(t, excluded, 10)
+	require.NotContains(t, excluded, 20)
+	require.Equal(t, []string{"Movie.2024.1080p.BluRay.x264-GROUP (Main)"}, contentMatches)
+}
+
+func TestFilterIndexersByExistingContentRejectsDifferentFileSize(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	const sourceHash = "sourcehash"
+	const existingHash = "existinghash"
+	const mediaFile = "Movie.2024.1080p.BluRay.x264-GROUP.mkv"
+
+	source := qbt.Torrent{
+		Hash:     sourceHash,
+		Name:     "Movie.2024.1080p.BluRay.x264-GROUP",
+		Progress: 1,
+		Tracker:  "https://source.example/announce",
+	}
+	existing := qbt.Torrent{
+		Hash:     existingHash,
+		Name:     source.Name,
+		Progress: 1,
+		Tracker:  "https://tracker.example/announce",
+	}
+	sync := &duplicateFilteringSyncManager{
+		torrents: map[int][]qbt.Torrent{
+			instanceID: {source, existing},
+		},
+		files: map[string]qbt.TorrentFiles{
+			sourceHash:   {{Name: mediaFile, Size: 1024}},
+			existingHash: {{Name: mediaFile, Size: 2048}},
+		},
+	}
+	svc := newDuplicateFilteringContentFilterService(sync)
+
+	indexerIDs := []int{10}
+	indexerInfo := map[int]jackett.EnabledIndexerInfo{
+		10: {ID: 10, Name: "Tracker", Domain: "tracker.example"},
+	}
+
+	filtered, excluded, contentMatches, err := svc.filterIndexersByExistingContent(context.Background(), instanceID, source.Hash, indexerIDs, indexerInfo)
+	require.NoError(t, err)
+	require.Equal(t, indexerIDs, filtered)
+	require.Empty(t, excluded)
+	require.Empty(t, contentMatches)
+}
+
+func TestFilterIndexersByExistingContentRejectsSidecarOnlyExisting(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	const sourceHash = "sourcehash"
+	const existingHash = "existinghash"
+
+	source := qbt.Torrent{
+		Hash:     sourceHash,
+		Name:     "Movie.2024.1080p.BluRay.x264-GROUP",
+		Progress: 1,
+		Tracker:  "https://source.example/announce",
+	}
+	existing := qbt.Torrent{
+		Hash:     existingHash,
+		Name:     source.Name,
+		Progress: 1,
+		Tracker:  "https://tracker.example/announce",
+	}
+	sync := &duplicateFilteringSyncManager{
+		torrents: map[int][]qbt.Torrent{
+			instanceID: {source, existing},
+		},
+		files: map[string]qbt.TorrentFiles{
+			sourceHash:   {{Name: "Movie.2024.1080p.BluRay.x264-GROUP.mkv", Size: 1024}},
+			existingHash: {{Name: "Movie.2024.1080p.BluRay.x264-GROUP.nfo", Size: 1024}},
+		},
+	}
+	svc := newDuplicateFilteringContentFilterService(sync)
+
+	indexerIDs := []int{10}
+	indexerInfo := map[int]jackett.EnabledIndexerInfo{
+		10: {ID: 10, Name: "Tracker", Domain: "tracker.example"},
+	}
+
+	filtered, excluded, contentMatches, err := svc.filterIndexersByExistingContent(context.Background(), instanceID, source.Hash, indexerIDs, indexerInfo)
+	require.NoError(t, err)
+	require.Equal(t, indexerIDs, filtered)
+	require.Empty(t, excluded)
+	require.Empty(t, contentMatches)
 }
 
 func TestBuildTorrentSearchResultsFiltersExistingInfohashes(t *testing.T) {
@@ -473,8 +653,18 @@ func (s *duplicateFilteringInstanceStore) List(context.Context) ([]*models.Insta
 
 type duplicateFilteringSyncManager struct {
 	torrents       map[int][]qbt.Torrent
+	files          map[string]qbt.TorrentFiles
 	existingByHash map[string]qbt.Torrent
 	hashErr        error
+}
+
+func newDuplicateFilteringContentFilterService(sync *duplicateFilteringSyncManager) *Service {
+	return &Service{
+		syncManager:      sync,
+		releaseCache:     NewReleaseCache(),
+		domainMappings:   initializeDomainMappings(),
+		stringNormalizer: stringutils.DefaultNormalizer,
+	}
 }
 
 func (m *duplicateFilteringSyncManager) GetTorrents(_ context.Context, instanceID int, filter qbt.TorrentFilterOptions) ([]qbt.Torrent, error) {
@@ -510,8 +700,19 @@ func (m *duplicateFilteringSyncManager) GetTorrents(_ context.Context, instanceI
 	return filtered, nil
 }
 
-func (*duplicateFilteringSyncManager) GetTorrentFilesBatch(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-	return map[string]qbt.TorrentFiles{}, nil
+func (m *duplicateFilteringSyncManager) GetTorrentFilesBatch(_ context.Context, _ int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	result := make(map[string]qbt.TorrentFiles, len(hashes))
+	for _, hash := range hashes {
+		normalized := normalizeHash(hash)
+		files, ok := m.files[normalized]
+		if !ok {
+			continue
+		}
+		copied := make(qbt.TorrentFiles, len(files))
+		copy(copied, files)
+		result[normalized] = copied
+	}
+	return result, nil
 }
 
 func (*duplicateFilteringSyncManager) ExportTorrent(context.Context, int, string) ([]byte, string, string, error) {
