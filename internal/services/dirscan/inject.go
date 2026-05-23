@@ -203,7 +203,9 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	result.Mode = addMode
 	result.SavePath = savePath
 
+	addPolicy := addPolicyForInjectRequest(req)
 	hasUnmatchedFiles := len(req.MatchResult.UnmatchedTorrentFiles) > 0
+	regularAddNeedsRecheck := hasUnmatchedFiles || addPolicy.ForcePaused
 	partialLinkTree := isLinkTreeMode(addMode) && hasUnmatchedFiles
 
 	// Reject partial link tree injections when downloading missing files is disabled.
@@ -225,7 +227,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		options["stopped"] = qbitBoolTrue
 	}
 
-	i.applyAddPolicy(options, req)
+	applyAddPolicy(options, addPolicy)
 
 	// Add the torrent to qBittorrent
 	if _, err := i.syncManager.AddTorrent(ctx, req.InstanceID, req.TorrentBytes, options); err != nil {
@@ -240,7 +242,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 			return result, fmt.Errorf("partial link tree recheck: %w", err)
 		}
 	} else {
-		i.triggerRecheckForPausedPartial(req)
+		i.triggerRecheckForPausedPartial(req, regularAddNeedsRecheck)
 	}
 
 	result.Success = true
@@ -449,13 +451,14 @@ func isPausedOrStoppedState(state qbt.TorrentState) bool {
 	return false
 }
 
-// triggerRecheckForPausedPartial verifies regular-mode partial matches after
-// add, and only queues resume when the request did not ask to stay paused.
-func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest) {
+// triggerRecheckForPausedPartial verifies regular-mode partial or policy-forced
+// full-recheck matches after add, and only queues resume when the request did
+// not ask to stay paused.
+func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest, needsRecheck bool) {
 	if i == nil || i.syncManager == nil || req == nil || req.ParsedTorrent == nil || req.MatchResult == nil {
 		return
 	}
-	if len(req.MatchResult.UnmatchedTorrentFiles) == 0 {
+	if !needsRecheck {
 		return
 	}
 
@@ -653,6 +656,22 @@ func (i *Injector) buildAddOptions(req *InjectRequest, savePath string) map[stri
 	}
 
 	return options
+}
+
+func addPolicyForInjectRequest(req *InjectRequest) crossseed.AddPolicy {
+	if req == nil || req.ParsedTorrent == nil {
+		return crossseed.AddPolicy{}
+	}
+
+	files := make(qbt.TorrentFiles, 0, len(req.ParsedTorrent.Files))
+	for _, f := range req.ParsedTorrent.Files {
+		files = append(files, qbt.TorrentFile{
+			Name: f.Path,
+			Size: f.Size,
+		})
+	}
+
+	return crossseed.PolicyForSourceFiles(files)
 }
 
 func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Instance, req *InjectRequest) (*hardlinktree.TreePlan, string, error) {
@@ -883,20 +902,7 @@ func buildLinkDestDir(baseDir string, instance *models.Instance, torrentHash, to
 	}
 }
 
-func (i *Injector) applyAddPolicy(options map[string]string, req *InjectRequest) {
-	if req == nil || req.ParsedTorrent == nil {
-		return
-	}
-
-	files := make(qbt.TorrentFiles, 0, len(req.ParsedTorrent.Files))
-	for _, f := range req.ParsedTorrent.Files {
-		files = append(files, qbt.TorrentFiles{{
-			Name: f.Path,
-			Size: f.Size,
-		}}...)
-	}
-
-	policy := crossseed.PolicyForSourceFiles(files)
+func applyAddPolicy(options map[string]string, policy crossseed.AddPolicy) {
 	policy.ApplyToAddOptions(options)
 }
 

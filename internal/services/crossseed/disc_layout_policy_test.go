@@ -541,7 +541,7 @@ func TestLinkModeFilesystemFallback_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	}
 }
 
-func TestLinkModeFilesystemFallback_RechecksWhenAlignmentFails(t *testing.T) {
+func TestLinkModeFilesystemFallback_DoesNotRecheckWhenAlignmentFails(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()

@@ -305,6 +305,8 @@ func TestSearchScheduler_FreshTaskKeepsOriginalContextDeadline(t *testing.T) {
 	deadlineCh := make(chan bool, 1)
 	done := make(chan struct{})
 	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 
 	exec := func(ctx context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
 		_, hasDeadline := ctx.Deadline()
@@ -312,7 +314,7 @@ func TestSearchScheduler_FreshTaskKeepsOriginalContextDeadline(t *testing.T) {
 		return []Result{{Title: "test"}}, []int{1}, nil
 	}
 
-	_, err := s.Submit(context.Background(), SubmitRequest{
+	_, err := s.Submit(ctx, SubmitRequest{
 		Indexers: []*models.TorznabIndexer{indexer},
 		ExecFn:   exec,
 		Callbacks: JobCallbacks{
@@ -324,7 +326,7 @@ func TestSearchScheduler_FreshTaskKeepsOriginalContextDeadline(t *testing.T) {
 	require.NoError(t, err)
 
 	<-done
-	require.False(t, <-deadlineCh)
+	require.True(t, <-deadlineCh)
 }
 
 func TestSearchScheduler_RSSDeduplication(t *testing.T) {

@@ -459,7 +459,7 @@ func TestMatchedFilesystemProbePath_PrefersActualFilePath(t *testing.T) {
 }
 
 func TestMatchedFilesystemProbePath_FallsBackToContentPath(t *testing.T) {
-	contentPath := "/mnt/cross_linked/HDBits/Movie.2024"
+	contentPath := filepath.Join(string(filepath.Separator), "mnt", "cross_linked", "HDBits", "Movie.2024")
 
 	got, ok := matchedFilesystemProbePath(
 		&qbt.Torrent{ContentPath: contentPath},
@@ -468,7 +468,7 @@ func TestMatchedFilesystemProbePath_FallsBackToContentPath(t *testing.T) {
 	)
 
 	require.True(t, ok)
-	assert.Equal(t, contentPath, got)
+	assert.Equal(t, filepath.ToSlash(contentPath), filepath.ToSlash(got))
 }
 
 func TestSafeTorrentRelativeFilePath(t *testing.T) {

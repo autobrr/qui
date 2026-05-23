@@ -4310,6 +4310,20 @@ func TestClassifyFailedCrossSeedSearchResult(t *testing.T) {
 			want: models.CrossSeedSearchResultStatusSkipped,
 		},
 		{
+			name: "below threshold is skipped",
+			results: []InstanceCrossSeedResult{{
+				Status: "below_threshold",
+			}},
+			want: models.CrossSeedSearchResultStatusSkipped,
+		},
+		{
+			name: "requires hardlink or reflink is skipped",
+			results: []InstanceCrossSeedResult{{
+				Status: "requires_hardlink_reflink",
+			}},
+			want: models.CrossSeedSearchResultStatusSkipped,
+		},
+		{
 			name: "hardlink error is failed",
 			results: []InstanceCrossSeedResult{{
 				Status: "hardlink_error",

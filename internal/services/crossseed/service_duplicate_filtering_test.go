@@ -71,11 +71,13 @@ func TestBuildTorrentSearchResultsFiltersExistingInfohashes(t *testing.T) {
 
 	const instanceID = 1
 	duplicateHash := strings.Repeat("a", 40)
+	duplicateHashV2 := strings.Repeat("c", 64)
 	uniqueHash := strings.Repeat("b", 40)
 	svc := &Service{
 		syncManager: &duplicateFilteringSyncManager{
 			existingByHash: map[string]qbt.Torrent{
-				duplicateHash: {Hash: duplicateHash, Name: "Already.Seeded.2007.720p.BluRay-GROUP", Progress: 1},
+				duplicateHash:   {Hash: duplicateHash, Name: "Already.Seeded.2007.720p.BluRay-GROUP", Progress: 1},
+				duplicateHashV2: {Hash: duplicateHashV2, Name: "Already.Seeded.V2.2007.720p.BluRay-GROUP", Progress: 1},
 			},
 		},
 	}
@@ -89,6 +91,19 @@ func TestBuildTorrentSearchResultsFiltersExistingInfohashes(t *testing.T) {
 				DownloadURL: "https://example.invalid/duplicate.torrent",
 				GUID:        "duplicate-guid",
 				InfoHashV1:  duplicateHash,
+				PublishDate: time.Now(),
+			},
+			score:  1,
+			reason: "exact",
+		},
+		{
+			result: jackett.SearchResult{
+				Indexer:     "V2Only",
+				IndexerID:   304,
+				Title:       "Already.Seeded.V2.2007.720p.BluRay-GROUP",
+				DownloadURL: "https://example.invalid/duplicate-v2.torrent",
+				GUID:        "duplicate-v2-guid",
+				InfoHashV2:  duplicateHashV2,
 				PublishDate: time.Now(),
 			},
 			score:  1,
@@ -124,7 +139,7 @@ func TestBuildTorrentSearchResultsFiltersExistingInfohashes(t *testing.T) {
 	results, duplicateFiltered, err := svc.buildTorrentSearchResults(context.Background(), instanceID, scored, 10)
 
 	require.NoError(t, err)
-	require.Equal(t, 1, duplicateFiltered)
+	require.Equal(t, 2, duplicateFiltered)
 	require.Len(t, results, 2)
 	require.Equal(t, "No.Hash.2007.720p.BluRay-GROUP", results[0].Title)
 	require.Equal(t, "Unique.2007.720p.BluRay-GROUP", results[1].Title)
@@ -140,6 +155,16 @@ func TestBuildTorrentSearchResultsPropagatesContextErrors(t *testing.T) {
 		},
 	}
 	scored := []scoredTorrentSearchResult{
+		{
+			result: jackett.SearchResult{
+				Indexer:    "V2Only",
+				IndexerID:  304,
+				Title:      "Already.Seeded.V2.2007.720p.BluRay-GROUP",
+				InfoHashV2: strings.Repeat("f", 64),
+			},
+			score:  1,
+			reason: "exact",
+		},
 		{
 			result: jackett.SearchResult{
 				Indexer:    "HDBits",

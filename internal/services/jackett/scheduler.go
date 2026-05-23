@@ -799,7 +799,7 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 	execCtx := task.ctx
 	execCancel := func() {}
 	if task.ctxCancel != nil {
-		execCtx, execCancel = context.WithTimeout(task.ctx, s.getExecutionTimeout(item))
+		execCancel = task.ctxCancel
 	}
 	defer execCancel()
 

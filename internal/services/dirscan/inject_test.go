@@ -431,6 +431,73 @@ func TestInjector_Inject_PausedPerfect_DoesNotTriggerRecheck(t *testing.T) {
 	}
 }
 
+func TestInjector_Inject_DiscLayoutPerfect_TriggersRecheckAndResumeWhenComplete(t *testing.T) {
+	sourceDir := t.TempDir()
+	sourceFile := filepath.Join(sourceDir, "Movie", "BDMV", "index.bdmv")
+	if err := os.MkdirAll(filepath.Dir(sourceFile), 0o755); err != nil {
+		t.Fatalf("mkdir source: %v", err)
+	}
+	if err := os.WriteFile(sourceFile, []byte("bdmv"), 0o600); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	instance := &models.Instance{
+		ID:                       1,
+		Name:                     "test",
+		HasLocalFilesystemAccess: true,
+	}
+
+	manager := &recordingTorrentManager{}
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:        "Movie",
+			InfoHash:    "deadbeef",
+			Files:       []TorrentFile{{Path: "Movie/BDMV/index.bdmv", Size: 4, Offset: 0}},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name: "Movie",
+			Path: sourceDir,
+			Files: []*ScannedFile{{
+				Path:    sourceFile,
+				RelPath: filepath.ToSlash(filepath.Join("Movie", "BDMV", "index.bdmv")),
+				Size:    4,
+			}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles: []MatchedFilePair{{
+				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "Movie/BDMV/index.bdmv", Size: 4},
+				TorrentFile:  TorrentFile{Path: "Movie/BDMV/index.bdmv", Size: 4},
+			}},
+			IsMatch:        true,
+			IsPerfectMatch: true,
+		},
+		SearchResult: &jackett.SearchResult{Indexer: "Test"},
+	}
+
+	res, err := injector.Inject(context.Background(), req)
+	if err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got %+v", res)
+	}
+	if manager.addOptions["paused"] != "true" || manager.addOptions["stopped"] != "true" {
+		t.Fatalf("expected disc layout to force paused/stopped, got paused=%q stopped=%q",
+			manager.addOptions["paused"], manager.addOptions["stopped"])
+	}
+	if len(manager.bulkCalls) != 1 || manager.bulkCalls[0].action != "recheck" {
+		t.Fatalf("expected one recheck call, got %+v", manager.bulkCalls)
+	}
+	if len(manager.resumeCalls) != 1 || len(manager.resumeCalls[0].hashes) != 1 || manager.resumeCalls[0].hashes[0] != "deadbeef" {
+		t.Fatalf("expected ResumeWhenComplete for deadbeef, got %+v", manager.resumeCalls)
+	}
+}
+
 // fakeTorrentChecker simulates state transitions. It returns states from the
 // list in order, staying on the last state once exhausted. This lets tests
 // model the recheck flow: checking -> paused/downloading.

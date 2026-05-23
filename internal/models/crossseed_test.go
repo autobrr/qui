@@ -241,33 +241,43 @@ func TestCrossSeedStore_SearchRunResultDecodeLegacyAdded(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	legacyResults, err := json.Marshal([]map[string]any{
+	type LegacyResult struct {
+		TorrentHash  string    `json:"torrentHash"`
+		TorrentName  string    `json:"torrentName"`
+		IndexerName  string    `json:"indexerName"`
+		ReleaseTitle string    `json:"releaseTitle"`
+		Added        bool      `json:"added"`
+		Message      string    `json:"message"`
+		ProcessedAt  time.Time `json:"processedAt"`
+	}
+
+	legacyResults, err := json.Marshal([]LegacyResult{
 		{
-			"torrentHash":  "added-hash",
-			"torrentName":  "Added.Source",
-			"indexerName":  "Indexer",
-			"releaseTitle": "Added.Target",
-			"added":        true,
-			"message":      "added via Indexer",
-			"processedAt":  now,
+			TorrentHash:  "added-hash",
+			TorrentName:  "Added.Source",
+			IndexerName:  "Indexer",
+			ReleaseTitle: "Added.Target",
+			Added:        true,
+			Message:      "added via Indexer",
+			ProcessedAt:  now,
 		},
 		{
-			"torrentHash":  "skipped-hash",
-			"torrentName":  "Skipped.Source",
-			"indexerName":  "",
-			"releaseTitle": "",
-			"added":        false,
-			"message":      "no matches returned",
-			"processedAt":  now,
+			TorrentHash:  "skipped-hash",
+			TorrentName:  "Skipped.Source",
+			IndexerName:  "",
+			ReleaseTitle: "",
+			Added:        false,
+			Message:      "no matches returned",
+			ProcessedAt:  now,
 		},
 		{
-			"torrentHash":  "failed-hash",
-			"torrentName":  "Failed.Source",
-			"indexerName":  "Indexer",
-			"releaseTitle": "Failed.Target",
-			"added":        false,
-			"message":      "cross-seed failed: bad torrent data",
-			"processedAt":  now,
+			TorrentHash:  "failed-hash",
+			TorrentName:  "Failed.Source",
+			IndexerName:  "Indexer",
+			ReleaseTitle: "Failed.Target",
+			Added:        false,
+			Message:      "cross-seed failed: bad torrent data",
+			ProcessedAt:  now,
 		},
 	})
 	require.NoError(t, err)
