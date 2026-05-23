@@ -82,6 +82,8 @@ When link-tree creation fails because the source files and link-tree base are on
 
 These fallback torrents are treated like disc-based content: they are added paused, rechecked, and only auto-resume after qBittorrent reports 100% complete. If **Skip recheck** is enabled, qui skips them instead. With **Skip recheck** enabled, a better workflow would have **Fallback to regular mode** disabled, since all fallbacks require recheck.
 
+For partial-in-pack, size-based, renamed, or otherwise non-perfect matches, qui also runs piece-boundary protection before the fallback add. This check is always enforced for link-mode fallback, even when **Skip piece boundary safety check** is enabled for regular reuse mode. If the check fails, qui skips the torrent before adding it to qBittorrent.
+
 ### Auto-resume behavior
 
 - Default tolerance 5% → auto-resumes at ≥95% completion
@@ -131,7 +133,7 @@ Common causes:
 
 ## Cross-seed skipped: "extra files share pieces with content"
 
-This only occurs when you have enabled the piece boundary safety check (disabled "Skip piece boundary safety check" in Rules).
+In regular reuse mode, this occurs when you have enabled the piece boundary safety check (disabled "Skip piece boundary safety check" in Rules). Link-mode fallback is stricter: for partial or otherwise non-perfect matches, qui always performs the check before adding the torrent to qBittorrent.
 
 The incoming torrent has files not present in your matched torrent, and those files share torrent pieces with your existing content. Downloading them could overwrite parts of your existing files.
 

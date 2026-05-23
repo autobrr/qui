@@ -4673,6 +4673,7 @@ func (s *Service) processCrossSeedCandidate(
 	}
 
 	// Try reflink mode first if enabled - reflinks bypass piece-boundary restrictions
+	linkFallbackToRegular := false
 	linkFallbackRequiresFullRecheck := false
 	if useReflinkMode {
 		rlResult := s.processReflinkMode(
@@ -4686,6 +4687,9 @@ func (s *Service) processCrossSeedCandidate(
 		}
 		if rlResult.RequiresFullRecheck {
 			linkFallbackRequiresFullRecheck = true
+		}
+		if rlResult.FallbackToRegular {
+			linkFallbackToRegular = true
 		}
 
 		// Reflink mode was enabled but not used (e.g., fallback on error). Re-run reuse safety checks
@@ -4709,6 +4713,9 @@ func (s *Service) processCrossSeedCandidate(
 		if hlResult.RequiresFullRecheck {
 			linkFallbackRequiresFullRecheck = true
 		}
+		if hlResult.FallbackToRegular {
+			linkFallbackToRegular = true
+		}
 	}
 
 	// If link mode fell through (Used=false), a category may already have been created
@@ -4721,6 +4728,44 @@ func (s *Service) processCrossSeedCandidate(
 			Msg("[CROSSSEED] Link-mode fallback to regular: skipping category to avoid inheriting link-mode save_path")
 		crossCategory = ""
 		categoryCreationFailed = true
+	}
+
+	linkFallbackNeedsBoundaryProtection := linkFallbackToRegular &&
+		(matchType != "exact" || requiresAlignment || hasExtraFiles)
+	if linkFallbackNeedsBoundaryProtection {
+		if torrentInfo != nil {
+			unsafe, safetyResult := HasUnsafeUnmaterializedSourcePieces(torrentInfo, sourceFiles, candidateFiles)
+			if unsafe {
+				result.Status = "skipped_unsafe_pieces"
+				result.Message = "Skipped: link-mode fallback files share pieces with unmaterialized files"
+				log.Warn().
+					Int("instanceID", candidate.InstanceID).
+					Str("torrentHash", torrentHash).
+					Str("matchedHash", matchedTorrent.Hash).
+					Str("matchType", matchType).
+					Int("violationCount", len(safetyResult.UnsafeBoundaries)).
+					Int64("pieceLength", torrentInfo.PieceLength).
+					Msg("[CROSSSEED] Link-mode fallback skipped: piece boundary violation")
+				if len(safetyResult.UnsafeBoundaries) > 0 {
+					v := safetyResult.UnsafeBoundaries[0]
+					log.Debug().
+						Int64("boundaryOffset", v.Offset).
+						Int("pieceIndex", v.PieceIndex).
+						Str("contentFile", v.ContentFile).
+						Str("ignoredFile", v.IgnoredFile).
+						Msg("[CROSSSEED] First link-mode fallback piece boundary violation detail")
+				}
+				return result
+			}
+		} else {
+			log.Debug().
+				Int("instanceID", candidate.InstanceID).
+				Str("torrentHash", torrentHash).
+				Str("matchType", matchType).
+				Msg("[CROSSSEED] Link-mode fallback piece boundary check skipped because torrent metadata is unavailable")
+		}
+
+		linkFallbackRequiresFullRecheck = true
 	}
 
 	if linkFallbackRequiresFullRecheck {
@@ -11765,6 +11810,8 @@ type hardlinkModeResult struct {
 	// RequiresFullRecheck indicates that fallback to regular mode is allowed,
 	// but the regular add must only auto-resume after a full 100% recheck.
 	RequiresFullRecheck bool
+	// FallbackToRegular indicates hardlink mode explicitly fell through to regular mode.
+	FallbackToRegular bool
 	// Result is the final InstanceCrossSeedResult when hardlink mode is used.
 	// Only valid when Used is true.
 	Result InstanceCrossSeedResult
@@ -11953,7 +12000,7 @@ func (s *Service) processHardlinkMode(
 				Int("instanceID", candidate.InstanceID).
 				Str("reason", message).
 				Msg("[CROSSSEED] Hardlink mode failed, falling back to regular mode")
-			return notUsed // Allow regular mode to proceed with piece boundary check
+			return hardlinkModeResult{FallbackToRegular: true}
 		}
 		return hardlinkError(message)
 	}
@@ -11963,7 +12010,7 @@ func (s *Service) processHardlinkMode(
 				Int("instanceID", candidate.InstanceID).
 				Str("reason", message).
 				Msg("[CROSSSEED] Hardlink mode filesystem fallback requires full regular-mode recheck")
-			return hardlinkModeResult{RequiresFullRecheck: true}
+			return hardlinkModeResult{RequiresFullRecheck: true, FallbackToRegular: true}
 		}
 		return hardlinkError(message)
 	}
@@ -12534,6 +12581,8 @@ type reflinkModeResult struct {
 	// RequiresFullRecheck indicates that fallback to regular mode is allowed,
 	// but the regular add must only auto-resume after a full 100% recheck.
 	RequiresFullRecheck bool
+	// FallbackToRegular indicates reflink mode explicitly fell through to regular mode.
+	FallbackToRegular bool
 	// Result is the final InstanceCrossSeedResult when reflink mode is used.
 	// Only valid when Used is true.
 	Result InstanceCrossSeedResult
@@ -12619,7 +12668,7 @@ func (s *Service) processReflinkMode(
 				Int("instanceID", candidate.InstanceID).
 				Str("reason", message).
 				Msg("[CROSSSEED] Reflink mode failed, falling back to regular mode")
-			return notUsed // Allow regular mode to proceed with piece boundary check
+			return reflinkModeResult{FallbackToRegular: true}
 		}
 		return reflinkError(message)
 	}
@@ -12629,7 +12678,7 @@ func (s *Service) processReflinkMode(
 				Int("instanceID", candidate.InstanceID).
 				Str("reason", message).
 				Msg("[CROSSSEED] Reflink mode filesystem fallback requires full regular-mode recheck")
-			return reflinkModeResult{RequiresFullRecheck: true}
+			return reflinkModeResult{RequiresFullRecheck: true, FallbackToRegular: true}
 		}
 		return reflinkError(message)
 	}

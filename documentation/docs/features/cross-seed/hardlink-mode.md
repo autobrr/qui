@@ -35,6 +35,7 @@ Example: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
 - Torrents added via hardlink/reflink mode always use an explicit `savepath` (the link-tree root), which forces **AutoTMM off**. Enabling AutoTMM after adding can move files out of the link tree.
 - By default, if a hardlink cannot be created (no local access, filesystem mismatch, invalid base dir, etc.), the cross-seed **fails**.
 - Enable **"Fallback to regular mode"** to allow failed hardlink operations to use regular cross-seed mode instead of failing. Filesystem fallback uses a full recheck; see [troubleshooting](troubleshooting#when-rechecks-are-required-reuse-mode).
+- When fallback handles a partial or otherwise non-perfect match, qui runs a piece-boundary safety check before adding the torrent to qBittorrent. This fallback check is always enforced, even if **Skip piece boundary safety check** is enabled for regular reuse mode.
 - Hardlinked torrents are still categorized using your existing cross-seed category rules (category affix, indexer name, or custom category); the hardlink preset only affects on-disk folder layout.
 
 ## Directory Layout
@@ -76,6 +77,8 @@ By default, hardlink-added torrents start seeding immediately (since `skip_check
 When hardlink/reflink mode creates a complete link tree with no extra files to download, qui adds the torrent with hash checking skipped and does not trigger an automatic recheck. If qBittorrent instead reports `missing files`, see [Hardlink/reflink cross-seed shows "missing files"](troubleshooting#hardlinkreflink-cross-seed-shows-missing-files).
 
 When the incoming torrent has extra files that are not present in the matched torrent, qui adds the torrent paused, triggers a recheck, and resumes it only after qBittorrent reports progress at or above the configured threshold.
+
+If hardlink/reflink mode falls back to regular mode for a partial or non-perfect match, the fallback add is stricter: qui first checks piece boundaries, then adds the torrent paused only when the check passes. Safe fallback adds require a full 100% recheck before auto-resume.
 
 ## Notes
 
