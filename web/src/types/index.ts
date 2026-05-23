@@ -1934,6 +1934,8 @@ export interface CrossSeedTorrentSearchResult {
   downloadVolumeFactor: number
   uploadVolumeFactor: number
   guid: string
+  infoHashV1?: string
+  infoHashV2?: string
   imdbId?: string
   tvdbId?: string
   matchReason?: string

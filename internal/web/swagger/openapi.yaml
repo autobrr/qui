@@ -7160,6 +7160,12 @@ components:
           type: number
         guid:
           type: string
+        infohash_v1:
+          type: string
+          nullable: true
+        infohash_v2:
+          type: string
+          nullable: true
         imdb_id:
           type: string
           nullable: true
@@ -7242,6 +7248,9 @@ components:
         indexer:
           type: string
         torrent_name:
+          type: string
+          nullable: true
+        info_hash:
           type: string
           nullable: true
         success:

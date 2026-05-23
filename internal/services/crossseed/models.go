@@ -290,6 +290,8 @@ type TorrentSearchResult struct {
 	DownloadVolumeFactor float64 `json:"download_volume_factor"`
 	UploadVolumeFactor   float64 `json:"upload_volume_factor"`
 	GUID                 string  `json:"guid"`
+	InfoHashV1           string  `json:"infohash_v1,omitempty"`
+	InfoHashV2           string  `json:"infohash_v2,omitempty"`
 	IMDbID               string  `json:"imdb_id,omitempty"`
 	TVDbID               string  `json:"tvdb_id,omitempty"`
 	MatchReason          string  `json:"match_reason,omitempty"`
