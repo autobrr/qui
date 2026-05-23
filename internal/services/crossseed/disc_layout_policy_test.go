@@ -625,16 +625,15 @@ func TestLinkModeFilesystemFallback_RechecksWhenAlignmentFails(t *testing.T) {
 
 	result := service.processCrossSeedCandidate(ctx, candidate, []byte("torrent"), newHash, "", sourceName, req, service.releaseCache.Parse(sourceName), sourceFiles, nil)
 
-	require.True(t, result.Success, "Expected success, got: %s", result.Message)
-	require.Contains(t, mockSync.bulkActions, "recheck:"+newHash)
+	require.False(t, result.Success)
+	require.Equal(t, "alignment_failed", result.Status)
+	require.Contains(t, result.Message, "alignment failed")
+	require.Contains(t, mockSync.bulkActions, "pause:"+newHash)
+	require.NotContains(t, mockSync.bulkActions, "recheck:"+newHash)
 
 	select {
 	case pending := <-service.recheckResumeChan:
-		require.NotNil(t, pending)
-		assert.Equal(t, instanceID, pending.instanceID)
-		assert.Equal(t, newHash, pending.hash)
-		assert.InDelta(t, 1.0, pending.threshold, 0.001)
+		require.Failf(t, "did not expect failed alignment to queue full recheck resume", "pending=%+v", pending)
 	default:
-		require.Fail(t, "expected filesystem fallback torrent to be queued for full recheck resume")
 	}
 }

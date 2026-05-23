@@ -4389,8 +4389,8 @@ func (s *Service) processCrossSeedCandidate(
 
 	candidateFilesByHash := s.batchLoadCandidateFiles(ctx, candidate.InstanceID, candidate.Torrents)
 	tolerancePercent := s.requestTolerancePercent(ctx, req)
-	matchedTorrent, candidateFiles, matchType, rejectReason := s.findBestCandidateMatch(ctx, candidate, sourceRelease, sourceFiles, candidateFilesByHash, tolerancePercent)
-	if matchedTorrent == nil {
+	addPlan, rejectReason := s.selectBestCandidateAddPlan(ctx, candidate, sourceRelease, sourceFiles, candidateFilesByHash, tolerancePercent)
+	if addPlan == nil {
 		result.Status = "no_match"
 		result.Message = rejectReason
 
@@ -4403,6 +4403,9 @@ func (s *Service) processCrossSeedCandidate(
 
 		return result
 	}
+	matchedTorrent := &addPlan.torrent
+	candidateFiles := addPlan.files
+	matchType := addPlan.matchType
 
 	// Get torrent properties to extract save path
 	props, err := s.syncManager.GetTorrentProperties(ctx, candidate.InstanceID, matchedTorrent.Hash)
@@ -4787,27 +4790,26 @@ func (s *Service) processCrossSeedCandidate(
 	//   EXCEPT for episodes in packs: these use ContentPath directly, no layout change needed
 	// - Folder source + bare candidate: use NoSubfolder to strip source's folder
 	// - Same layout: use Original to preserve structure
-	if sourceRoot == "" && candidateRoot != "" && !isEpisodeInPack {
-		// Source is bare file, candidate has folder - wrap source in folder to match
-		options["contentLayout"] = "Subfolder"
+	switch addPlan.contentLayout {
+	case "Subfolder":
+		options["contentLayout"] = addPlan.contentLayout
 		log.Debug().
 			Str("sourceRoot", sourceRoot).
 			Str("candidateRoot", candidateRoot).
 			Bool("isEpisodeInPack", isEpisodeInPack).
-			Str("contentLayout", "Subfolder").
+			Str("contentLayout", addPlan.contentLayout).
 			Msg("[CROSSSEED] Layout mismatch: bare file source, folder candidate - wrapping in subfolder")
-	} else if sourceRoot != "" && candidateRoot == "" {
-		// Source has folder, candidate is bare file - strip source's folder to match
-		options["contentLayout"] = "NoSubfolder"
+	case "NoSubfolder":
+		options["contentLayout"] = addPlan.contentLayout
 		log.Debug().
 			Str("sourceRoot", sourceRoot).
 			Str("candidateRoot", candidateRoot).
-			Str("contentLayout", "NoSubfolder").
+			Str("contentLayout", addPlan.contentLayout).
 			Msg("[CROSSSEED] Layout mismatch: folder source, bare file candidate - stripping folder")
-	} else {
+	default:
 		// Same layout - explicitly set Original to override qBittorrent's default preference
 		// (prevents qBittorrent from wrapping bare files in folders if user has "Create subfolder" as default)
-		options["contentLayout"] = "Original"
+		options["contentLayout"] = addPlan.contentLayout
 	}
 
 	// Check if UseCategoryFromIndexer or UseCustomCategory is enabled (affects TMM decision)
@@ -4993,6 +4995,44 @@ func (s *Service) processCrossSeedCandidate(
 		activeHash = torrentHash
 	}
 
+	if !alignmentSucceeded {
+		// Alignment failed - pause torrent to prevent unwanted downloads
+		if !startPaused {
+			// Torrent was added running - need to actually pause it
+			if err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), candidate.InstanceID, []string{activeHash}, "pause"); err != nil {
+				log.Warn().
+					Err(err).
+					Int("instanceID", candidate.InstanceID).
+					Str("torrentHash", torrentHash).
+					Msg("Failed to pause misaligned cross-seed torrent")
+				result.Message += fmt.Sprintf(" - alignment failed and failed to pause torrent: %v", err)
+				result.Success = false
+				result.Status = "pause_failed"
+				result.MatchedTorrent = &MatchedTorrent{
+					Hash:     matchedTorrent.Hash,
+					Name:     matchedTorrent.Name,
+					Progress: matchedTorrent.Progress,
+					Size:     matchedTorrent.Size,
+				}
+				return result
+			}
+		}
+		result.Message += " - alignment failed, left paused"
+		result.Success = false
+		result.Status = "alignment_failed"
+		result.MatchedTorrent = &MatchedTorrent{
+			Hash:     matchedTorrent.Hash,
+			Name:     matchedTorrent.Name,
+			Progress: matchedTorrent.Progress,
+			Size:     matchedTorrent.Size,
+		}
+		log.Warn().
+			Int("instanceID", candidate.InstanceID).
+			Str("torrentHash", torrentHash).
+			Msg("Cross-seed alignment failed, leaving torrent paused to prevent download")
+		return result
+	}
+
 	// Determine if we need to wait for verification and resume at threshold:
 	// - requiresAlignment: we used skip_checking but need to recheck after renaming paths
 	// - hasExtraFiles: we didn't use skip_checking, qBittorrent auto-verifies, but won't reach 100%
@@ -5076,23 +5116,6 @@ func (s *Service) processCrossSeedCandidate(
 				result.Message += " - auto-resume failed, manual resume required"
 			}
 		}
-	} else if !alignmentSucceeded {
-		// Alignment failed - pause torrent to prevent unwanted downloads
-		if !startPaused {
-			// Torrent was added running - need to actually pause it
-			if err := s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), candidate.InstanceID, []string{activeHash}, "pause"); err != nil {
-				log.Warn().
-					Err(err).
-					Int("instanceID", candidate.InstanceID).
-					Str("torrentHash", torrentHash).
-					Msg("Failed to pause misaligned cross-seed torrent")
-			}
-		}
-		result.Message += " - alignment failed, left paused"
-		log.Warn().
-			Int("instanceID", candidate.InstanceID).
-			Str("torrentHash", torrentHash).
-			Msg("Cross-seed alignment failed, leaving torrent paused to prevent download")
 	} else if !startPaused && addPolicy.ShouldSkipAutoResume() {
 		// User wanted auto-start, but policy forces paused
 		result.Message += addPolicy.StatusSuffix()
@@ -5706,13 +5729,13 @@ func (s *Service) selectContentDetectionRelease(torrentName string, sourceReleas
 func matchTypePriority(matchType string) int {
 	switch matchType {
 	case "exact":
-		return 3
+		return 4
 	case "partial-in-pack":
-		return 2
+		return 3
 	case "partial-contains":
 		// Allows cross-seeding when folder structures differ but content matches
 		// (e.g., /movie1/movie1.mkv vs /movie1.mkv)
-		return 1
+		return 2
 	case "size":
 		return 1
 	default:
@@ -5762,26 +5785,22 @@ func (s *Service) batchLoadCandidateFiles(ctx context.Context, instanceID int, t
 	return filesByHash
 }
 
-func (s *Service) findBestCandidateMatch(
+func (s *Service) selectBestCandidateAddPlan(
 	ctx context.Context,
 	candidate CrossSeedCandidate,
 	sourceRelease *rls.Release,
 	sourceFiles qbt.TorrentFiles,
 	filesByHash map[string]qbt.TorrentFiles,
 	tolerancePercent float64,
-) (*qbt.Torrent, qbt.TorrentFiles, string, string) {
+) (*crossSeedAddPlan, string) {
 	var (
-		matchedTorrent   *qbt.Torrent
-		candidateFiles   qbt.TorrentFiles
-		matchType        string
-		bestScore        int
-		bestHasRoot      bool
-		bestFileCount    int
+		bestPlan         crossSeedAddPlan
+		hasBestPlan      bool
 		bestRejectReason string // Track the most informative rejection reason
 	)
 
 	if len(filesByHash) == 0 {
-		return nil, nil, "", "No candidate torrents with files to match against"
+		return nil, "No candidate torrents with files to match against"
 	}
 
 	incompleteTorrents := 0
@@ -5841,33 +5860,15 @@ func (s *Service) findBestCandidateMatch(
 			continue
 		}
 
-		hasRootFolder := detectCommonRoot(files) != ""
-		fileCount := len(files)
-
-		shouldPromote := matchedTorrent == nil || score > bestScore
-		if !shouldPromote && score == bestScore {
-			// Prefer candidates with a top-level folder so cross-seeded torrents inherit cleaner layouts.
-			if hasRootFolder && !bestHasRoot {
-				shouldPromote = true
-			} else if hasRootFolder == bestHasRoot && fileCount > bestFileCount {
-				// Fall back to the candidate that carries more files (season packs vs single files).
-				shouldPromote = true
-			}
-		}
-
-		if shouldPromote {
-			copyTorrent := torrent
-			matchedTorrent = &copyTorrent
-			candidateFiles = files
-			matchType = actualMatchType
-			bestScore = score
-			bestHasRoot = hasRootFolder
-			bestFileCount = fileCount
+		plan := buildCrossSeedAddPlan(torrent, files, actualMatchType, sourceRelease, candidateRelease, sourceFiles)
+		if plan.betterThan(bestPlan, hasBestPlan) {
+			bestPlan = plan
+			hasBestPlan = true
 		}
 	}
 
 	// If no match found, provide helpful context
-	if matchedTorrent == nil && bestRejectReason == "" {
+	if !hasBestPlan && bestRejectReason == "" {
 		if incompleteTorrents > 0 && incompleteTorrents == len(candidate.Torrents) {
 			bestRejectReason = "All candidate torrents are incomplete (still downloading)"
 		} else {
@@ -5875,7 +5876,26 @@ func (s *Service) findBestCandidateMatch(
 		}
 	}
 
-	return matchedTorrent, candidateFiles, matchType, bestRejectReason
+	if !hasBestPlan {
+		return nil, bestRejectReason
+	}
+
+	return &bestPlan, bestRejectReason
+}
+
+func (s *Service) findBestCandidateMatch(
+	ctx context.Context,
+	candidate CrossSeedCandidate,
+	sourceRelease *rls.Release,
+	sourceFiles qbt.TorrentFiles,
+	filesByHash map[string]qbt.TorrentFiles,
+	tolerancePercent float64,
+) (*qbt.Torrent, qbt.TorrentFiles, string, string) {
+	plan, rejectReason := s.selectBestCandidateAddPlan(ctx, candidate, sourceRelease, sourceFiles, filesByHash, tolerancePercent)
+	if plan == nil {
+		return nil, nil, "", rejectReason
+	}
+	return &plan.torrent, plan.files, plan.matchType, ""
 }
 
 // decodeTorrentData decodes base64-encoded torrent data
