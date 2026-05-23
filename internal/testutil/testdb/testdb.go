@@ -6,6 +6,7 @@ package testdb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -90,13 +91,21 @@ func buildMigratedTemplate() (string, error) {
 		return "", fmt.Errorf("close migrated template database: %w", err)
 	}
 
-	removeSQLiteSidecars(dbPath)
+	if err := removeSQLiteSidecars(dbPath); err != nil {
+		return "", err
+	}
 	return dbPath, nil
 }
 
-func removeSQLiteSidecars(dbPath string) {
-	_ = os.Remove(dbPath + "-wal")
-	_ = os.Remove(dbPath + "-shm")
+func removeSQLiteSidecars(dbPath string) error {
+	var errs []error
+	for _, suffix := range []string{"-wal", "-shm"} {
+		path := dbPath + suffix
+		if err := os.Remove(path); err != nil {
+			errs = append(errs, fmt.Errorf("remove sqlite sidecar %s: %w", path, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func copyFile(src, dst string) error {
