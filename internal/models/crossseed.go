@@ -1919,6 +1919,17 @@ func encodeSearchResults(results []CrossSeedSearchResult) (string, error) {
 	return string(data), nil
 }
 
+type crossSeedSearchResultPayload struct {
+	TorrentHash  string                      `json:"torrentHash"`
+	TorrentName  string                      `json:"torrentName"`
+	IndexerName  string                      `json:"indexerName"`
+	ReleaseTitle string                      `json:"releaseTitle"`
+	Added        *bool                       `json:"added,omitempty"`
+	Status       CrossSeedSearchResultStatus `json:"status,omitempty"`
+	Message      string                      `json:"message,omitempty"`
+	ProcessedAt  time.Time                   `json:"processedAt"`
+}
+
 func decodeSearchResults(src sql.NullString, dest *[]CrossSeedSearchResult) error {
 	if dest == nil {
 		return fmt.Errorf("destination cannot be nil")
@@ -1927,10 +1938,56 @@ func decodeSearchResults(src sql.NullString, dest *[]CrossSeedSearchResult) erro
 		*dest = []CrossSeedSearchResult{}
 		return nil
 	}
-	var tmp []CrossSeedSearchResult
-	if err := json.Unmarshal([]byte(src.String), &tmp); err != nil {
+	var payloads []crossSeedSearchResultPayload
+	if err := json.Unmarshal([]byte(src.String), &payloads); err != nil {
 		return err
 	}
-	*dest = tmp
+	results := make([]CrossSeedSearchResult, 0, len(payloads))
+	for _, payload := range payloads {
+		status := payload.Status
+		if status == "" {
+			status = legacyCrossSeedSearchResultStatus(payload.Added, payload.Message)
+		}
+		results = append(results, CrossSeedSearchResult{
+			TorrentHash:  payload.TorrentHash,
+			TorrentName:  payload.TorrentName,
+			IndexerName:  payload.IndexerName,
+			ReleaseTitle: payload.ReleaseTitle,
+			Status:       status,
+			Message:      payload.Message,
+			ProcessedAt:  payload.ProcessedAt,
+		})
+	}
+	*dest = results
 	return nil
+}
+
+func legacyCrossSeedSearchResultStatus(added *bool, message string) CrossSeedSearchResultStatus {
+	if added == nil {
+		return ""
+	}
+	if *added {
+		return CrossSeedSearchResultStatusAdded
+	}
+	if isLegacyCrossSeedSearchFailure(message) {
+		return CrossSeedSearchResultStatusFailed
+	}
+	return CrossSeedSearchResultStatusSkipped
+}
+
+func isLegacyCrossSeedSearchFailure(message string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(message))
+	failurePrefixes := []string{
+		"resolve indexers:",
+		"analyze torrent:",
+		"search failed:",
+		"download failed:",
+		"cross-seed failed:",
+	}
+	for _, prefix := range failurePrefixes {
+		if strings.HasPrefix(normalized, prefix) {
+			return true
+		}
+	}
+	return false
 }

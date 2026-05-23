@@ -215,6 +215,79 @@ func TestCrossSeedStore_SearchRunResultSerializationUsesStatus(t *testing.T) {
 	assert.NotContains(t, resultsJSON, `"added":`)
 }
 
+func TestCrossSeedStore_SearchRunResultDecodeLegacyAdded(t *testing.T) {
+	db := setupCrossSeedTestDB(t)
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	ctx := context.Background()
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	now := time.Now().UTC()
+	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{
+		InstanceID:      instance.ID,
+		Status:          models.CrossSeedSearchRunStatusRunning,
+		StartedAt:       now,
+		Filters:         models.CrossSeedSearchFilters{},
+		IndexerIDs:      []int{10},
+		IntervalSeconds: 60,
+		CooldownMinutes: 720,
+	})
+	require.NoError(t, err)
+
+	legacyResults, err := json.Marshal([]map[string]any{
+		{
+			"torrentHash":  "added-hash",
+			"torrentName":  "Added.Source",
+			"indexerName":  "Indexer",
+			"releaseTitle": "Added.Target",
+			"added":        true,
+			"message":      "added via Indexer",
+			"processedAt":  now,
+		},
+		{
+			"torrentHash":  "skipped-hash",
+			"torrentName":  "Skipped.Source",
+			"indexerName":  "",
+			"releaseTitle": "",
+			"added":        false,
+			"message":      "no matches returned",
+			"processedAt":  now,
+		},
+		{
+			"torrentHash":  "failed-hash",
+			"torrentName":  "Failed.Source",
+			"indexerName":  "Indexer",
+			"releaseTitle": "Failed.Target",
+			"added":        false,
+			"message":      "cross-seed failed: bad torrent data",
+			"processedAt":  now,
+		},
+	})
+	require.NoError(t, err)
+
+	_, err = db.ExecContext(ctx, `
+		UPDATE cross_seed_search_runs
+		SET status = ?, completed_at = ?, processed = ?, torrents_added = ?, torrents_skipped = ?, torrents_failed = ?, results_json = ?
+		WHERE id = ?
+	`, models.CrossSeedSearchRunStatusSuccess, now, 3, 1, 1, 1, string(legacyResults), run.ID)
+	require.NoError(t, err)
+
+	runs, err := store.ListSearchRuns(ctx, instance.ID, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, runs, 1)
+	require.Len(t, runs[0].Results, 3)
+	assert.Equal(t, models.CrossSeedSearchResultStatusAdded, runs[0].Results[0].Status)
+	assert.Equal(t, models.CrossSeedSearchResultStatusSkipped, runs[0].Results[1].Status)
+	assert.Equal(t, models.CrossSeedSearchResultStatusFailed, runs[0].Results[2].Status)
+}
+
 func TestCrossSeedStore_FeedItems(t *testing.T) {
 	db := setupCrossSeedTestDB(t)
 	key := make([]byte, 32)
