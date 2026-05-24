@@ -7743,7 +7743,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		return scored[i].score > scored[j].score
 	})
 
-	results, duplicateFilteredCount, err := s.buildTorrentSearchResults(ctx, instanceID, scored, limit)
+	results, duplicateFilteredCount, err := s.buildTorrentSearchResults(ctx, instanceID, sourceTorrent.Hash, scored, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -7912,7 +7912,7 @@ func (s *Service) filterSearchResultsByLateContentFilter(instanceID int, sourceT
 	return filtered, snapshot, dropped
 }
 
-func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int, scored []scoredTorrentSearchResult, limit int) ([]TorrentSearchResult, int, error) {
+func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int, sourceHash string, scored []scoredTorrentSearchResult, limit int) ([]TorrentSearchResult, int, error) {
 	if limit <= 0 || limit > len(scored) {
 		limit = len(scored)
 	}
@@ -7937,6 +7937,28 @@ func (s *Service) buildTorrentSearchResults(ctx context.Context, instanceID int,
 					Strs("infoHashes", hashes).
 					Msg("[CROSSSEED-SEARCH] Failed duplicate infohash check; keeping result")
 			} else if exists {
+				if rejection, rejected := s.contentPrefilterRejectionForHashes(instanceID, sourceHash, res.IndexerID, hashes); rejected {
+					event := log.Debug().
+						Int("instanceID", instanceID).
+						Str("sourceHash", sourceHash).
+						Int("indexerID", res.IndexerID).
+						Str("indexer", res.Indexer).
+						Str("title", res.Title).
+						Strs("infoHashes", hashes).
+						Str("rejectionReason", rejection.Reason)
+					if existing != nil {
+						event = event.
+							Str("existingHash", existing.Hash).
+							Str("existingName", existing.Name)
+					}
+					event.Msg("[CROSSSEED-SEARCH] Keeping duplicate search result because existing torrent was rejected by content prefilter")
+					results = append(results, torrentSearchResultFromJackett(res, item.reason, item.score))
+					if len(results) >= limit {
+						break
+					}
+					continue
+				}
+
 				duplicateFilteredCount++
 				event := log.Debug().
 					Int("instanceID", instanceID).
@@ -9519,6 +9541,22 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		IndexerName:  match.Indexer,
 		ReleaseTitle: match.Title,
 		ProcessedAt:  processedAt,
+	}
+
+	if rejection, rejected := s.contentPrefilterRejectionForHashes(state.opts.InstanceID, torrent.Hash, match.IndexerID, torrentSearchResultInfoHashes(match.InfoHashV1, match.InfoHashV2)); rejected {
+		result.Status = models.CrossSeedSearchResultStatusSkipped
+		if contentPrefilterRejectedExistingStatus(rejection) == contentPrefilterRejectedSizeStatus {
+			result.Status = models.CrossSeedSearchResultStatusFailed
+		}
+		result.Message = contentPrefilterRejectedExistingMessage(rejection)
+		log.Debug().
+			Int("instanceID", state.opts.InstanceID).
+			Str("sourceHash", torrent.Hash).
+			Str("matchIndexer", match.Indexer).
+			Str("matchTitle", match.Title).
+			Str("rejectionReason", rejection.Reason).
+			Msg("[CROSSSEED-SEARCH-AUTO] Search result failed due to prior content prefilter rejection")
+		return result, nil
 	}
 
 	data, err := s.downloadTorrent(ctx, jackett.TorrentDownloadRequest{
