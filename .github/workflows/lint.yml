@@ -28,7 +28,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: web
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Lint frontend
         working-directory: web
