@@ -5,6 +5,7 @@ package testdb
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -52,6 +53,34 @@ func BenchmarkClonedMigratedTestDB(b *testing.B) {
 			b.Fatalf("close cloned migration db: %v", err)
 		}
 	}
+}
+
+func TestRemoveSQLiteSidecars(t *testing.T) {
+	t.Run("ignores missing sidecars", func(t *testing.T) {
+		dbPath := filepath.Join(t.TempDir(), "template.db")
+
+		if err := removeSQLiteSidecars(dbPath); err != nil {
+			t.Fatalf("remove missing sidecars: %v", err)
+		}
+	})
+
+	t.Run("removes existing sidecars", func(t *testing.T) {
+		dbPath := filepath.Join(t.TempDir(), "template.db")
+		for _, suffix := range []string{"-wal", "-shm"} {
+			if err := os.WriteFile(dbPath+suffix, []byte("sidecar"), 0o600); err != nil {
+				t.Fatalf("create sidecar %s: %v", suffix, err)
+			}
+		}
+
+		if err := removeSQLiteSidecars(dbPath); err != nil {
+			t.Fatalf("remove sidecars: %v", err)
+		}
+		for _, suffix := range []string{"-wal", "-shm"} {
+			if _, err := os.Stat(dbPath + suffix); !os.IsNotExist(err) {
+				t.Fatalf("sidecar %s still exists: %v", suffix, err)
+			}
+		}
+	})
 }
 
 func disableBenchmarkLogs(b *testing.B) {

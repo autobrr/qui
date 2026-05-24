@@ -102,6 +102,9 @@ func removeSQLiteSidecars(dbPath string) error {
 	for _, suffix := range []string{"-wal", "-shm"} {
 		path := dbPath + suffix
 		if err := os.Remove(path); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
 			errs = append(errs, fmt.Errorf("remove sqlite sidecar %s: %w", path, err))
 		}
 	}
