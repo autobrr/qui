@@ -48,6 +48,10 @@ Library scan and completion search rows use **added**, **skipped**, or **failed*
 
 Failed search or completion runs can trigger notification events. See [Notifications](../notifications#event-types) for the event keys.
 
+:::tip
+`size_mismatch` failures are generated from the size reported inside of torrent files, not the content on disk. These failures are strong indicators that the cross seeded content has mismatching piece hashes between trackers. One or more trackers had a bad hash copy.
+:::
+
 ## Why did my season-pack check return 404?
 
 The season-pack check webhook returns `404 Not Found` whenever the pack is not ready to apply. In autobrr this usually appears as `[external webhook status code] not matching: got 404 want: 200`.
