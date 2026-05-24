@@ -104,16 +104,16 @@ func TestNewIsIsolated(t *testing.T) {
 	first := NewMigratedSQLite(t, "isolated-first")
 	second := NewMigratedSQLite(t, "isolated-second")
 
-	insertIsolationProbe(t, ctx, first, "first")
-	insertIsolationProbe(t, ctx, second, "second")
+	insertIsolationProbe(ctx, t, first, "first")
+	insertIsolationProbe(ctx, t, second, "second")
 
-	assertIsolationProbe(t, ctx, first, "first")
-	assertIsolationProbe(t, ctx, second, "second")
+	assertIsolationProbe(ctx, t, first, "first")
+	assertIsolationProbe(ctx, t, second, "second")
 }
 
 func TestNewParallel(t *testing.T) {
 	disableTestLogs(t)
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		t.Run(fmt.Sprintf("db-%d", i), func(t *testing.T) {
 			t.Parallel()
 
@@ -125,7 +125,7 @@ func TestNewParallel(t *testing.T) {
 	}
 }
 
-func insertIsolationProbe(t *testing.T, ctx context.Context, db *database.DB, value string) {
+func insertIsolationProbe(ctx context.Context, t *testing.T, db *database.DB, value string) {
 	t.Helper()
 
 	if _, err := db.Conn().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS isolation_probe (value TEXT NOT NULL)"); err != nil {
@@ -136,7 +136,7 @@ func insertIsolationProbe(t *testing.T, ctx context.Context, db *database.DB, va
 	}
 }
 
-func assertIsolationProbe(t *testing.T, ctx context.Context, db *database.DB, want string) {
+func assertIsolationProbe(ctx context.Context, t *testing.T, db *database.DB, want string) {
 	t.Helper()
 
 	var total int
