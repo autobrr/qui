@@ -50,7 +50,13 @@ Failed search or completion runs can trigger notification events. See [Notificat
 
 :::tip
 `size_mismatch` failures are generated from the size reported inside of torrent files, not the content on disk. These failures are strong indicators that the cross seeded content has mismatching piece hashes between trackers. One or more trackers had a bad hash copy.
+
+The failures are the size mismatches against the selected source torrent used for cross seed searching (typically content in a folder), they are not reports of which trackers actually have bad hashes.
+If the source torrent is the bad hash, the hash in `debug` logging `[CROSSSEED-ASYNC] Starting async torrent analysis` shows the source hash that was used.
 :::
+
+:::tip
+Use [piece boundary protection](rules#matching) to protect content against bad hash torrents.
 
 ## Why did my season-pack check return 404?
 
