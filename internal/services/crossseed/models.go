@@ -103,7 +103,7 @@ type InstanceCrossSeedResult struct {
 	InstanceID   int    `json:"instance_id"`
 	InstanceName string `json:"instance_name"`
 	Success      bool   `json:"success"`
-	// Status describes the result: "added", "exists", "no_match", "error"
+	// Status describes the result (examples: "added", "exists", "no_match", "size_mismatch", "content_mismatch", "error"); this list is not exhaustive and additional statuses may be used.
 	Status  string `json:"status"`
 	Message string `json:"message,omitempty"`
 	// MatchedTorrent is the existing torrent that matched (if any)
@@ -376,6 +376,8 @@ type AsyncIndexerFilteringState struct {
 	ExcludedIndexers      map[int]string `json:"excluded_indexers,omitempty"`
 	ContentMatches        []string       `json:"content_matches,omitempty"`
 	Error                 string         `json:"error,omitempty"`
+
+	rejectedContentCandidates map[string]contentPrefilterRejectedTorrent
 }
 
 // cloneLocked assumes the caller has already acquired at least a read lock.
@@ -400,6 +402,10 @@ func (s *AsyncIndexerFilteringState) cloneLocked() *AsyncIndexerFilteringState {
 	if len(s.ExcludedIndexers) > 0 {
 		clone.ExcludedIndexers = make(map[int]string, len(s.ExcludedIndexers))
 		maps.Copy(clone.ExcludedIndexers, s.ExcludedIndexers)
+	}
+	if len(s.rejectedContentCandidates) > 0 {
+		clone.rejectedContentCandidates = make(map[string]contentPrefilterRejectedTorrent, len(s.rejectedContentCandidates))
+		maps.Copy(clone.rejectedContentCandidates, s.rejectedContentCandidates)
 	}
 	return clone
 }

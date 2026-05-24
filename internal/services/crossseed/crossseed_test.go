@@ -4331,6 +4331,13 @@ func TestClassifyFailedCrossSeedSearchResult(t *testing.T) {
 			want: models.CrossSeedSearchResultStatusFailed,
 		},
 		{
+			name: "content prefilter size mismatch is failed",
+			results: []InstanceCrossSeedResult{{
+				Status: "size_mismatch",
+			}},
+			want: models.CrossSeedSearchResultStatusFailed,
+		},
+		{
 			name: "mixed skip and hard failure is failed",
 			results: []InstanceCrossSeedResult{
 				{Status: "exists"},
@@ -4341,6 +4348,11 @@ func TestClassifyFailedCrossSeedSearchResult(t *testing.T) {
 		{
 			name:    "empty instance results are failed",
 			results: nil,
+			want:    models.CrossSeedSearchResultStatusFailed,
+		},
+		{
+			name:    "empty slice instance results are failed",
+			results: []InstanceCrossSeedResult{},
 			want:    models.CrossSeedSearchResultStatusFailed,
 		},
 	}

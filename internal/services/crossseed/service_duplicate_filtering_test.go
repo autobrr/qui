@@ -59,7 +59,7 @@ func TestFilterIndexersByExistingContentUsesConfiguredIndexerDomains(t *testing.
 		404: {ID: 404, Name: "Other", Domain: "other.example"},
 	}
 
-	filtered, excluded, contentMatches, err := svc.filterIndexersByExistingContent(context.Background(), instanceID, source.Hash, indexerIDs, indexerInfo)
+	filtered, excluded, contentMatches, _, err := svc.filterIndexersByExistingContent(context.Background(), instanceID, source.Hash, indexerIDs, indexerInfo)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []int{404}, filtered)
 	require.Contains(t, excluded, 101)
@@ -107,7 +107,7 @@ func TestFilterIndexersByExistingContentMatchesFolderSourceToRootlessExisting(t 
 		20: {ID: 20, Name: "Other", Domain: "other.example"},
 	}
 
-	filtered, excluded, contentMatches, err := svc.filterIndexersByExistingContent(context.Background(), instanceID, source.Hash, indexerIDs, indexerInfo)
+	filtered, excluded, contentMatches, _, err := svc.filterIndexersByExistingContent(context.Background(), instanceID, source.Hash, indexerIDs, indexerInfo)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []int{20}, filtered)
 	require.Contains(t, excluded, 10)
@@ -153,7 +153,7 @@ func TestFilterIndexersByExistingContentMatchesRootlessSourceToFolderExisting(t 
 		20: {ID: 20, Name: "Other", Domain: "other.example"},
 	}
 
-	filtered, excluded, contentMatches, err := svc.filterIndexersByExistingContent(context.Background(), instanceID, source.Hash, indexerIDs, indexerInfo)
+	filtered, excluded, contentMatches, _, err := svc.filterIndexersByExistingContent(context.Background(), instanceID, source.Hash, indexerIDs, indexerInfo)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []int{20}, filtered)
 	require.Contains(t, excluded, 10)
@@ -197,11 +197,14 @@ func TestFilterIndexersByExistingContentRejectsDifferentFileSize(t *testing.T) {
 		10: {ID: 10, Name: "Tracker", Domain: "tracker.example"},
 	}
 
-	filtered, excluded, contentMatches, err := svc.filterIndexersByExistingContent(context.Background(), instanceID, source.Hash, indexerIDs, indexerInfo)
+	filtered, excluded, contentMatches, rejected, err := svc.filterIndexersByExistingContent(context.Background(), instanceID, source.Hash, indexerIDs, indexerInfo)
 	require.NoError(t, err)
 	require.Equal(t, indexerIDs, filtered)
 	require.Empty(t, excluded)
 	require.Empty(t, contentMatches)
+	rejectionKey := contentPrefilterRejectedContentKey(10, existingHash)
+	require.Contains(t, rejected, rejectionKey)
+	require.Contains(t, rejected[rejectionKey].Reason, "Size mismatch")
 }
 
 func TestFilterIndexersByExistingContentRejectsSidecarOnlyExisting(t *testing.T) {
@@ -239,7 +242,7 @@ func TestFilterIndexersByExistingContentRejectsSidecarOnlyExisting(t *testing.T)
 		10: {ID: 10, Name: "Tracker", Domain: "tracker.example"},
 	}
 
-	filtered, excluded, contentMatches, err := svc.filterIndexersByExistingContent(context.Background(), instanceID, source.Hash, indexerIDs, indexerInfo)
+	filtered, excluded, contentMatches, _, err := svc.filterIndexersByExistingContent(context.Background(), instanceID, source.Hash, indexerIDs, indexerInfo)
 	require.NoError(t, err)
 	require.Equal(t, indexerIDs, filtered)
 	require.Empty(t, excluded)
@@ -583,6 +586,230 @@ func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenInfohashExists(t *test
 	require.NotNil(t, resp.Results[0].InstanceResults[0].MatchedTorrent)
 	require.False(t, downloadCalled.Load())
 	require.False(t, invokerCalled.Load())
+}
+
+func TestApplyTorrentSearchResultsFailsCachedSelectionWhenRejectedInfohashExists(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	sourceHash := strings.Repeat("c", 40)
+	duplicateHash := strings.Repeat("d", 40)
+	source := qbt.Torrent{Hash: sourceHash, Name: "Source.2007.720p.BluRay-GROUP", Progress: 1}
+	existing := qbt.Torrent{Hash: duplicateHash, Name: "Already.Seeded.2007.720p.BluRay-GROUP", Progress: 1, Size: 2048}
+
+	sync := &duplicateFilteringSyncManager{
+		torrents: map[int][]qbt.Torrent{
+			instanceID: {source, existing},
+		},
+		existingByHash: map[string]qbt.Torrent{
+			duplicateHash: existing,
+		},
+	}
+	var downloadCalled atomic.Bool
+	var invokerCalled atomic.Bool
+	svc := &Service{
+		instanceStore: &duplicateFilteringInstanceStore{
+			instances: map[int]*models.Instance{
+				instanceID: {ID: instanceID, Name: "Main"},
+			},
+		},
+		syncManager:         sync,
+		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+		searchResultCache:   ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+			downloadCalled.Store(true)
+			return []byte("torrent"), nil
+		},
+		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+			invokerCalled.Store(true)
+			return &CrossSeedResponse{Success: true}, nil
+		},
+	}
+	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, sourceHash), &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: true,
+		ContentCompleted:      true,
+		rejectedContentCandidates: map[string]contentPrefilterRejectedTorrent{
+			contentPrefilterRejectedContentKey(303, duplicateHash): {
+				Hash:   duplicateHash,
+				Name:   existing.Name,
+				Reason: "Size mismatch: source 1.00 KB vs existing 2.00 KB",
+			},
+		},
+	}, ttlcache.DefaultTTL)
+
+	cached := TorrentSearchResult{
+		Indexer:     "HDBits",
+		IndexerID:   303,
+		Title:       existing.Name,
+		DownloadURL: "https://example.invalid/duplicate.torrent",
+		GUID:        "duplicate-guid",
+		InfoHashV1:  duplicateHash,
+		Size:        existing.Size,
+	}
+	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached}, 5)
+
+	resp, err := svc.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
+		Selections: []TorrentSearchSelection{
+			{IndexerID: cached.IndexerID, DownloadURL: cached.DownloadURL, GUID: cached.GUID},
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Results, 1)
+	require.False(t, resp.Results[0].Success)
+	require.Contains(t, resp.Results[0].Error, "rejected by content prefilter")
+	require.Contains(t, resp.Results[0].Error, "Size mismatch")
+	require.Equal(t, existing.Name, resp.Results[0].TorrentName)
+	require.Len(t, resp.Results[0].InstanceResults, 1)
+	require.Equal(t, "size_mismatch", resp.Results[0].InstanceResults[0].Status)
+	require.NotNil(t, resp.Results[0].InstanceResults[0].MatchedTorrent)
+	require.False(t, downloadCalled.Load())
+	require.False(t, invokerCalled.Load())
+}
+
+func TestApplyTorrentSearchResultsSkipsCachedSelectionWhenRejectedInfohashExistsForDifferentIndexer(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	sourceHash := strings.Repeat("c", 40)
+	duplicateHash := strings.Repeat("d", 40)
+	source := qbt.Torrent{Hash: sourceHash, Name: "Source.2007.720p.BluRay-GROUP", Progress: 1}
+	existing := qbt.Torrent{Hash: duplicateHash, Name: "Already.Seeded.2007.720p.BluRay-GROUP", Progress: 1, Size: 2048}
+
+	sync := &duplicateFilteringSyncManager{
+		torrents: map[int][]qbt.Torrent{
+			instanceID: {source, existing},
+		},
+		existingByHash: map[string]qbt.Torrent{
+			duplicateHash: existing,
+		},
+	}
+	var downloadCalled atomic.Bool
+	var invokerCalled atomic.Bool
+	svc := &Service{
+		instanceStore: &duplicateFilteringInstanceStore{
+			instances: map[int]*models.Instance{
+				instanceID: {ID: instanceID, Name: "Main"},
+			},
+		},
+		syncManager:         sync,
+		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+		searchResultCache:   ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+			downloadCalled.Store(true)
+			return []byte("torrent"), nil
+		},
+		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+			invokerCalled.Store(true)
+			return &CrossSeedResponse{Success: true}, nil
+		},
+	}
+	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, sourceHash), &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: true,
+		ContentCompleted:      true,
+		rejectedContentCandidates: map[string]contentPrefilterRejectedTorrent{
+			contentPrefilterRejectedContentKey(404, duplicateHash): {
+				Hash:   duplicateHash,
+				Name:   existing.Name,
+				Reason: "Size mismatch: source 1.00 KB vs existing 2.00 KB",
+			},
+		},
+	}, ttlcache.DefaultTTL)
+
+	cached := TorrentSearchResult{
+		Indexer:     "HDBits",
+		IndexerID:   303,
+		Title:       existing.Name,
+		DownloadURL: "https://example.invalid/duplicate.torrent",
+		GUID:        "duplicate-guid",
+		InfoHashV1:  duplicateHash,
+		Size:        existing.Size,
+	}
+	svc.cacheSearchResults(instanceID, sourceHash, []TorrentSearchResult{cached}, 5)
+
+	resp, err := svc.ApplyTorrentSearchResults(context.Background(), instanceID, sourceHash, &ApplyTorrentSearchRequest{
+		Selections: []TorrentSearchSelection{
+			{IndexerID: cached.IndexerID, DownloadURL: cached.DownloadURL, GUID: cached.GUID},
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Results, 1)
+	require.False(t, resp.Results[0].Success)
+	require.Equal(t, "Torrent already exists in this instance", resp.Results[0].Error)
+	require.Len(t, resp.Results[0].InstanceResults, 1)
+	require.Equal(t, "exists", resp.Results[0].InstanceResults[0].Status)
+	require.False(t, downloadCalled.Load())
+	require.False(t, invokerCalled.Load())
+}
+
+func TestExecuteCrossSeedSearchAttemptFailsExistingRejectedByPrefilterWithoutPersistedRun(t *testing.T) {
+	t.Parallel()
+
+	const instanceID = 1
+	sourceHash := strings.Repeat("a", 40)
+	duplicateHash := strings.Repeat("b", 40)
+	source := qbt.Torrent{Hash: sourceHash, Name: "Source.2007.720p.BluRay-GROUP", Progress: 1}
+	existingName := "Already.Seeded.2007.720p.BluRay-GROUP"
+
+	var downloadCalled atomic.Bool
+	var invokerCalled atomic.Bool
+	svc := &Service{
+		asyncFilteringCache: ttlcache.New(ttlcache.Options[string, *AsyncIndexerFilteringState]{}),
+		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) {
+			downloadCalled.Store(true)
+			return []byte("torrent"), nil
+		},
+		crossSeedInvoker: func(context.Context, *CrossSeedRequest) (*CrossSeedResponse, error) {
+			invokerCalled.Store(true)
+			return &CrossSeedResponse{
+				Success: false,
+				TorrentInfo: &TorrentInfo{
+					Hash: duplicateHash,
+					Name: existingName,
+				},
+				Results: []InstanceCrossSeedResult{{
+					InstanceID: instanceID,
+					Success:    false,
+					Status:     "exists",
+					Message:    "Torrent already exists in this instance",
+					MatchedTorrent: &MatchedTorrent{
+						Hash: duplicateHash,
+						Name: existingName,
+					},
+				}},
+			}, nil
+		},
+	}
+	svc.asyncFilteringCache.Set(asyncFilteringCacheKey(instanceID, sourceHash), &AsyncIndexerFilteringState{
+		CapabilitiesCompleted: true,
+		ContentCompleted:      true,
+		rejectedContentCandidates: map[string]contentPrefilterRejectedTorrent{
+			contentPrefilterRejectedContentKey(303, duplicateHash): {
+				Hash:   duplicateHash,
+				Name:   existingName,
+				Reason: "Size mismatch: source 1.00 KB vs existing 2.00 KB",
+			},
+		},
+	}, ttlcache.DefaultTTL)
+
+	state := &searchRunState{
+		opts: SearchRunOptions{
+			InstanceID: instanceID,
+		},
+	}
+	result, err := svc.executeCrossSeedSearchAttempt(context.Background(), state, &source, TorrentSearchResult{
+		Indexer:     "HDBits",
+		IndexerID:   303,
+		Title:       existingName,
+		DownloadURL: "https://example.invalid/duplicate.torrent",
+	}, time.Now().UTC())
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, models.CrossSeedSearchResultStatusFailed, result.Status)
+	require.Contains(t, result.Message, "rejected by content prefilter")
+	require.Contains(t, result.Message, "Size mismatch")
+	require.True(t, downloadCalled.Load())
+	require.True(t, invokerCalled.Load())
 }
 
 func TestApplyTorrentSearchResultsPropagatesCachedDuplicateContextError(t *testing.T) {

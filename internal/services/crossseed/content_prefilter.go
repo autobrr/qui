@@ -28,6 +28,13 @@ type contentPrefilterMatchedTorrent struct {
 	matchType      string
 }
 
+type contentPrefilterRejectedTorrent struct {
+	Hash           string
+	Name           string
+	Reason         string
+	trackerDomains []string
+}
+
 func (s *Service) findLayoutAwareContentPrefilterMatches(
 	ctx context.Context,
 	instanceID int,
@@ -35,17 +42,17 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 	sourceTorrent *qbt.Torrent,
 	sourceRelease *rls.Release,
 	instanceTorrents []internalqb.CrossInstanceTorrentView,
-) ([]contentPrefilterMatchedTorrent, []string, error) {
+) ([]contentPrefilterMatchedTorrent, []string, map[string]contentPrefilterRejectedTorrent, error) {
 	sourceFiles, err := s.getTorrentFilesCached(ctx, instanceID, sourceHash)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to load source torrent files for content filtering: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to load source torrent files for content filtering: %w", err)
 	}
 
 	normalizer := normalizerForService(s)
 	sourceLayout := contentPrefilterLayoutSummary(sourceFiles, normalizer)
 	candidates := s.collectContentPrefilterCandidates(instanceID, sourceHash, sourceTorrent, sourceRelease, sourceFiles, instanceTorrents)
 	if len(candidates) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	candidateTorrents := make([]qbt.Torrent, 0, len(candidates))
@@ -56,6 +63,7 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 
 	matchedContent := make([]contentPrefilterMatchedTorrent, 0, len(candidates))
 	contentMatches := make([]string, 0, len(candidates))
+	rejectedContent := make(map[string]contentPrefilterRejectedTorrent)
 	for _, candidate := range candidates {
 		hashKey := normalizeHash(candidate.view.Hash)
 		candidateFiles, ok := filesByHash[hashKey]
@@ -73,6 +81,17 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 		matchResult := s.getMatchTypeWithReason(sourceRelease, candidate.release, sourceFiles, candidateFiles, contentPrefilterSizeTolerancePercent)
 		candidateLayout := contentPrefilterLayoutSummary(candidateFiles, normalizer)
 		if !contentPrefilterAcceptsMatchType(matchResult.MatchType) {
+			trackerDomains := s.extractTrackerDomainsFromTorrent(candidate.view.Torrent)
+			rejection := contentPrefilterRejectedTorrent{
+				Hash:           candidate.view.Hash,
+				Name:           candidate.view.Name,
+				Reason:         matchResult.Reason,
+				trackerDomains: trackerDomains,
+			}
+			for _, key := range contentPrefilterHashKeys(candidate.view) {
+				rejectedContent[key] = rejection
+			}
+
 			log.Debug().
 				Str("sourceHash", sourceHash).
 				Str("sourceName", sourceTorrent.Name).
@@ -105,7 +124,11 @@ func (s *Service) findLayoutAwareContentPrefilterMatches(
 			Msg("crossseed: accepted existing content prefilter candidate after file-level matching")
 	}
 
-	return matchedContent, contentMatches, nil
+	if len(rejectedContent) == 0 {
+		rejectedContent = nil
+	}
+
+	return matchedContent, contentMatches, rejectedContent, nil
 }
 
 func (s *Service) collectContentPrefilterCandidates(
@@ -174,6 +197,28 @@ func contentPrefilterSameTorrent(sourceHash string, sourceTorrent, candidateTorr
 	}
 
 	return false
+}
+
+func contentPrefilterHashKeys(view internalqb.CrossInstanceTorrentView) []string {
+	if view.TorrentView == nil || view.Torrent == nil {
+		return nil
+	}
+	values := []string{view.Hash, view.InfohashV1, view.InfohashV2}
+
+	seen := make(map[string]struct{}, len(values))
+	keys := make([]string, 0, len(values))
+	for _, value := range values {
+		key := normalizeHash(value)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	return keys
 }
 
 func contentPrefilterAcceptsMatchType(matchType string) bool {

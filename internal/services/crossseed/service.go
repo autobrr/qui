@@ -258,6 +258,8 @@ const (
 	lateContentFilterExclusionReason      = "late content filter exclusion"
 	selectedIndexerContentSkipReason      = "selected indexers were filtered out"
 	selectedIndexerCapabilitySkipReason   = "selected indexers do not support required caps"
+	contentPrefilterRejectedContentStatus = "content_mismatch"
+	contentPrefilterRejectedSizeStatus    = "size_mismatch"
 	crossSeedRenameWaitTimeout            = 15 * time.Second
 	crossSeedRenamePollInterval           = 200 * time.Millisecond
 	automationSettingsQueryTimeout        = 5 * time.Second
@@ -6373,7 +6375,7 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 		Ints("indexerIDs", indexerIDs).
 		Msg("[CROSSSEED-ASYNC] Starting background content filtering")
 
-	filteredIndexers, excludedIndexers, contentMatches, err := s.filterIndexersByExistingContent(ctx, instanceID, hash, indexerIDs, indexerInfo)
+	filteredIndexers, excludedIndexers, contentMatches, rejectedContent, err := s.filterIndexersByExistingContent(ctx, instanceID, hash, indexerIDs, indexerInfo)
 
 	state.Lock()
 	var snapshot *AsyncIndexerFilteringState
@@ -6383,6 +6385,7 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 		state.FilteredIndexers = append([]int(nil), indexerIDs...)
 		state.ExcludedIndexers = nil
 		state.ContentMatches = nil
+		state.rejectedContentCandidates = nil
 	} else {
 		state.Error = ""
 		state.FilteredIndexers = append([]int(nil), filteredIndexers...)
@@ -6393,6 +6396,12 @@ func (s *Service) performAsyncContentFiltering(ctx context.Context, instanceID i
 			state.ExcludedIndexers = nil
 		}
 		state.ContentMatches = append([]string(nil), contentMatches...)
+		if len(rejectedContent) > 0 {
+			state.rejectedContentCandidates = make(map[string]contentPrefilterRejectedTorrent, len(rejectedContent))
+			maps.Copy(state.rejectedContentCandidates, rejectedContent)
+		} else {
+			state.rejectedContentCandidates = nil
+		}
 	}
 
 	// Mark content filtering as completed (this should be the last operation)
@@ -7782,6 +7791,78 @@ func (s *Service) completedAsyncContentFilterSnapshot(instanceID int, hash strin
 	return snapshot, cacheKey, true
 }
 
+func (s *Service) contentPrefilterRejectionForCrossSeedResponse(instanceID int, sourceHash string, indexerID int, resp *CrossSeedResponse) (contentPrefilterRejectedTorrent, bool) {
+	if resp == nil {
+		return contentPrefilterRejectedTorrent{}, false
+	}
+
+	hasExistingResult := false
+	hashes := make([]string, 0, len(resp.Results)+1)
+	if resp.TorrentInfo != nil {
+		hashes = append(hashes, resp.TorrentInfo.Hash)
+	}
+	for _, result := range resp.Results {
+		if result.Status != "exists" {
+			continue
+		}
+		hasExistingResult = true
+		if result.MatchedTorrent != nil {
+			hashes = append(hashes, result.MatchedTorrent.Hash)
+		}
+	}
+	if !hasExistingResult {
+		return contentPrefilterRejectedTorrent{}, false
+	}
+
+	return s.contentPrefilterRejectionForHashes(instanceID, sourceHash, indexerID, hashes)
+}
+
+func (s *Service) contentPrefilterRejectionForHashes(instanceID int, sourceHash string, indexerID int, hashes []string) (contentPrefilterRejectedTorrent, bool) {
+	snapshot, _, ok := s.completedAsyncContentFilterSnapshot(instanceID, sourceHash)
+	if !ok || len(snapshot.rejectedContentCandidates) == 0 {
+		return contentPrefilterRejectedTorrent{}, false
+	}
+
+	for _, hash := range hashes {
+		key := contentPrefilterRejectedContentKey(indexerID, hash)
+		if key == "" {
+			continue
+		}
+		if rejection, ok := snapshot.rejectedContentCandidates[key]; ok {
+			return rejection, true
+		}
+	}
+	return contentPrefilterRejectedTorrent{}, false
+}
+
+func contentPrefilterRejectedContentKey(indexerID int, hash string) string {
+	normalized := normalizeHash(hash)
+	if indexerID <= 0 || normalized == "" {
+		return ""
+	}
+	return fmt.Sprintf("%d|%s", indexerID, normalized)
+}
+
+func contentPrefilterRejectedExistingStatus(rejection contentPrefilterRejectedTorrent) string {
+	if strings.Contains(strings.ToLower(rejection.Reason), "size mismatch") {
+		return contentPrefilterRejectedSizeStatus
+	}
+	return contentPrefilterRejectedContentStatus
+}
+
+func contentPrefilterRejectedExistingMessage(rejection contentPrefilterRejectedTorrent) string {
+	reason := strings.TrimSpace(rejection.Reason)
+	if reason == "" {
+		reason = "file-level content prefilter rejected this torrent"
+	}
+
+	name := strings.TrimSpace(rejection.Name)
+	if name == "" {
+		return "Torrent already exists in this instance but was rejected by content prefilter: " + reason
+	}
+	return fmt.Sprintf("Torrent already exists in this instance but was rejected by content prefilter (%s): %s", name, reason)
+}
+
 func (s *Service) filterSearchResultsByLateContentFilter(instanceID int, sourceTorrent *qbt.Torrent, results []jackett.SearchResult) ([]jackett.SearchResult, *AsyncIndexerFilteringState, int) {
 	if sourceTorrent == nil {
 		return results, nil, 0
@@ -8022,7 +8103,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 				title = cachedResult.Title
 			}
 
-			duplicateResult, duplicate, err := s.cachedSelectionDuplicateResult(ctx, instanceID, title, indexerName, cachedResult)
+			duplicateResult, duplicate, err := s.cachedSelectionDuplicateResult(ctx, instanceID, hash, title, indexerName, cachedResult)
 			if err != nil {
 				resultChan <- selectionResult{
 					index: idx,
@@ -8160,7 +8241,7 @@ func (s *Service) ApplyTorrentSearchResults(ctx context.Context, instanceID int,
 	}, nil
 }
 
-func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID int, title, indexerName string, cachedResult *TorrentSearchResult) (TorrentSearchAddResult, bool, error) {
+func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID int, sourceHash, title, indexerName string, cachedResult *TorrentSearchResult) (TorrentSearchAddResult, bool, error) {
 	if cachedResult == nil {
 		return TorrentSearchAddResult{}, false, nil
 	}
@@ -8190,6 +8271,57 @@ func (s *Service) cachedSelectionDuplicateResult(ctx context.Context, instanceID
 	}
 
 	const existsMessage = "Torrent already exists in this instance"
+	resultHashes := append([]string(nil), hashes...)
+	if existing != nil {
+		resultHashes = append(resultHashes, existing.Hash, existing.InfohashV1, existing.InfohashV2)
+	}
+	if rejection, rejected := s.contentPrefilterRejectionForHashes(instanceID, sourceHash, cachedResult.IndexerID, resultHashes); rejected {
+		message := contentPrefilterRejectedExistingMessage(rejection)
+		result := TorrentSearchAddResult{
+			Title:   title,
+			Indexer: indexerName,
+			Success: false,
+			Error:   message,
+		}
+		instanceResult := InstanceCrossSeedResult{
+			InstanceID:   instanceID,
+			InstanceName: s.instanceNameForResult(ctx, instanceID),
+			Success:      false,
+			Status:       contentPrefilterRejectedExistingStatus(rejection),
+			Message:      message,
+		}
+		if existing != nil {
+			result.TorrentName = existing.Name
+			result.InfoHash = existing.Hash
+			instanceResult.MatchedTorrent = &MatchedTorrent{
+				Hash:     existing.Hash,
+				Name:     existing.Name,
+				Progress: existing.Progress,
+				Size:     existing.Size,
+			}
+		} else if len(hashes) > 0 {
+			result.InfoHash = hashes[0]
+		}
+		result.InstanceResults = []InstanceCrossSeedResult{instanceResult}
+
+		event := log.Debug().
+			Int("instanceID", instanceID).
+			Int("indexerID", cachedResult.IndexerID).
+			Str("indexer", indexerName).
+			Str("title", title).
+			Strs("infoHashes", hashes).
+			Str("sourceHash", sourceHash).
+			Str("rejectionReason", rejection.Reason)
+		if existing != nil {
+			event = event.
+				Str("existingHash", existing.Hash).
+				Str("existingName", existing.Name)
+		}
+		event.Msg("[CROSSSEED-APPLY] Failed cached search selection already present after content prefilter rejection")
+
+		return result, true, nil
+	}
+
 	result := TorrentSearchAddResult{
 		Title:   title,
 		Indexer: indexerName,
@@ -9445,6 +9577,21 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 		return result, nil
 	}
 
+	if state != nil {
+		if rejection, rejected := s.contentPrefilterRejectionForCrossSeedResponse(state.opts.InstanceID, torrent.Hash, match.IndexerID, resp); rejected {
+			result.Status = models.CrossSeedSearchResultStatusFailed
+			result.Message = contentPrefilterRejectedExistingMessage(rejection)
+			log.Debug().
+				Int("instanceID", state.opts.InstanceID).
+				Str("sourceHash", torrent.Hash).
+				Str("matchIndexer", match.Indexer).
+				Str("matchTitle", match.Title).
+				Str("rejectionReason", rejection.Reason).
+				Msg("[CROSSSEED-SEARCH-AUTO] Existing search result failed due to prior content prefilter rejection")
+			return result, nil
+		}
+	}
+
 	result.Message = extractFailureMessage(resp.Results, match.Indexer)
 	result.Status = classifyFailedCrossSeedSearchResult(resp.Results)
 	return result, nil
@@ -9614,9 +9761,9 @@ func (s *Service) GetAsyncFilteringStatus(ctx context.Context, instanceID int, h
 //
 // This is similar to how indexers are filtered for tracker capability mismatches,
 // but focuses on content duplication rather than technical capabilities.
-func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceID int, hash string, indexerIDs []int, indexerInfo map[int]jackett.EnabledIndexerInfo) ([]int, map[int]string, []string, error) {
+func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceID int, hash string, indexerIDs []int, indexerInfo map[int]jackett.EnabledIndexerInfo) ([]int, map[int]string, []string, map[string]contentPrefilterRejectedTorrent, error) {
 	if len(indexerIDs) == 0 {
-		return indexerIDs, nil, nil, nil
+		return indexerIDs, nil, nil, nil, nil
 	}
 
 	// If indexer info not provided, fetch it ourselves
@@ -9625,7 +9772,7 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		indexerInfo, err = s.jackettService.GetEnabledIndexersInfo(ctx)
 		if err != nil {
 			log.Warn().Err(err).Msg("Failed to fetch indexer info for content filtering, proceeding without filtering")
-			return indexerIDs, nil, nil, nil
+			return indexerIDs, nil, nil, nil, nil
 		}
 	}
 	if indexerInfo == nil {
@@ -9643,10 +9790,10 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 		Hashes: []string{hash},
 	})
 	if err != nil {
-		return indexerIDs, nil, nil, err
+		return indexerIDs, nil, nil, nil, err
 	}
 	if len(torrents) == 0 {
-		return indexerIDs, nil, nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
+		return indexerIDs, nil, nil, nil, fmt.Errorf("%w: torrent %s not found in instance %d", ErrTorrentNotFound, hash, instanceID)
 	}
 	sourceTorrent := &torrents[0]
 
@@ -9656,13 +9803,14 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 	// Get cached torrents from the active instance only
 	instanceTorrents, err := s.syncManager.GetCachedInstanceTorrents(ctx, instanceID)
 	if err != nil {
-		return indexerIDs, nil, nil, fmt.Errorf("failed to get cached instance torrents: %w", err)
+		return indexerIDs, nil, nil, nil, fmt.Errorf("failed to get cached instance torrents: %w", err)
 	}
 
-	matchedContent, contentMatches, err := s.findLayoutAwareContentPrefilterMatches(ctx, instanceID, hash, sourceTorrent, sourceRelease, instanceTorrents)
+	matchedContent, contentMatches, rejectedContentByHash, err := s.findLayoutAwareContentPrefilterMatches(ctx, instanceID, hash, sourceTorrent, sourceRelease, instanceTorrents)
 	if err != nil {
-		return indexerIDs, nil, nil, err
+		return indexerIDs, nil, nil, nil, err
 	}
+	rejectedContent := s.scopeContentPrefilterRejectionsByIndexer(rejectedContentByHash, indexerIDs, indexerInfo)
 
 	// Check each indexer to see if we already have content that matches what it would provide
 	var filteredIndexerIDs []int
@@ -9755,7 +9903,42 @@ func (s *Service) filterIndexersByExistingContent(ctx context.Context, instanceI
 			Msg("filtered indexers by existing content")
 	}
 
-	return filteredIndexerIDs, excludedIndexers, contentMatches, nil
+	return filteredIndexerIDs, excludedIndexers, contentMatches, rejectedContent, nil
+}
+
+func (s *Service) scopeContentPrefilterRejectionsByIndexer(rejectedByHash map[string]contentPrefilterRejectedTorrent, indexerIDs []int, indexerInfo map[int]jackett.EnabledIndexerInfo) map[string]contentPrefilterRejectedTorrent {
+	if len(rejectedByHash) == 0 || len(indexerIDs) == 0 {
+		return nil
+	}
+
+	scoped := make(map[string]contentPrefilterRejectedTorrent)
+	for hash, rejection := range rejectedByHash {
+		if normalizeHash(hash) == "" || len(rejection.trackerDomains) == 0 {
+			continue
+		}
+
+		for _, indexerID := range indexerIDs {
+			indexerName := jackett.GetIndexerNameFromInfo(indexerInfo, indexerID)
+			indexerDomain := jackett.GetIndexerDomainFromInfo(indexerInfo, indexerID)
+			if indexerDomain == "" {
+				indexerDomain = s.getCachedIndexerDomain(indexerName)
+			}
+			if indexerName == "" && indexerDomain == "" {
+				continue
+			}
+
+			if matched, _ := s.trackerDomainsMatchIndexerWithDomain(rejection.trackerDomains, indexerName, indexerDomain); matched {
+				if key := contentPrefilterRejectedContentKey(indexerID, hash); key != "" {
+					scoped[key] = rejection
+				}
+			}
+		}
+	}
+
+	if len(scoped) == 0 {
+		return nil
+	}
+	return scoped
 }
 
 // torrentMatchesIndexer checks if a torrent came from a tracker associated with the given indexer.
