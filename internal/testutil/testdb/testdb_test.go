@@ -4,10 +4,12 @@
 package testdb
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -80,6 +82,80 @@ func TestRemoveSQLiteSidecars(t *testing.T) {
 				t.Fatalf("sidecar %s still exists: %v", suffix, err)
 			}
 		}
+	})
+}
+
+func TestNewIsFast(t *testing.T) {
+	disableTestLogs(t)
+	NewMigratedSQLite(t, "fast-warm")
+
+	start := time.Now()
+	NewMigratedSQLite(t, "fast-second")
+	elapsed := time.Since(start)
+
+	if elapsed > 250*time.Millisecond {
+		t.Fatalf("second migrated sqlite creation took %s, want under 250ms", elapsed)
+	}
+}
+
+func TestNewIsIsolated(t *testing.T) {
+	disableTestLogs(t)
+	ctx := context.Background()
+	first := NewMigratedSQLite(t, "isolated-first")
+	second := NewMigratedSQLite(t, "isolated-second")
+
+	insertIsolationProbe(t, ctx, first, "first")
+	insertIsolationProbe(t, ctx, second, "second")
+
+	assertIsolationProbe(t, ctx, first, "first")
+	assertIsolationProbe(t, ctx, second, "second")
+}
+
+func TestNewParallel(t *testing.T) {
+	disableTestLogs(t)
+	for i := 0; i < 8; i++ {
+		t.Run(fmt.Sprintf("db-%d", i), func(t *testing.T) {
+			t.Parallel()
+
+			db := NewMigratedSQLite(t, t.Name())
+			if err := db.Conn().PingContext(context.Background()); err != nil {
+				t.Fatalf("ping migrated sqlite: %v", err)
+			}
+		})
+	}
+}
+
+func insertIsolationProbe(t *testing.T, ctx context.Context, db *database.DB, value string) {
+	t.Helper()
+
+	if _, err := db.Conn().ExecContext(ctx, "CREATE TABLE IF NOT EXISTS isolation_probe (value TEXT NOT NULL)"); err != nil {
+		t.Fatalf("create isolation probe table: %v", err)
+	}
+	if _, err := db.Conn().ExecContext(ctx, "INSERT INTO isolation_probe (value) VALUES (?)", value); err != nil {
+		t.Fatalf("insert isolation probe: %v", err)
+	}
+}
+
+func assertIsolationProbe(t *testing.T, ctx context.Context, db *database.DB, want string) {
+	t.Helper()
+
+	var total int
+	var value string
+	if err := db.Conn().QueryRowContext(ctx, "SELECT COUNT(*), MAX(value) FROM isolation_probe").Scan(&total, &value); err != nil {
+		t.Fatalf("query isolation probe: %v", err)
+	}
+	if total != 1 || value != want {
+		t.Fatalf("isolation probe = count %d, value %q; want count 1, value %q", total, value, want)
+	}
+}
+
+func disableTestLogs(t *testing.T) {
+	t.Helper()
+
+	original := log.Logger
+	log.Logger = zerolog.Nop()
+	t.Cleanup(func() {
+		log.Logger = original
 	})
 }
 
