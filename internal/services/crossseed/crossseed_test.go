@@ -4284,6 +4284,8 @@ func TestIsSkippedCrossSeedResultStatusIncludesBelowThreshold(t *testing.T) {
 
 	assert.True(t, isSkippedCrossSeedResultStatus("below_threshold"))
 	assert.True(t, isSkippedCrossSeedResultStatus("requires_hardlink_reflink"))
+	assert.True(t, isSkippedCrossSeedResultStatus("content_mismatch"))
+	assert.False(t, isSkippedCrossSeedResultStatus("size_mismatch"))
 	assert.False(t, isSkippedCrossSeedResultStatus("hardlink_error"))
 }
 
@@ -4329,6 +4331,13 @@ func TestClassifyFailedCrossSeedSearchResult(t *testing.T) {
 				Status: "hardlink_error",
 			}},
 			want: models.CrossSeedSearchResultStatusFailed,
+		},
+		{
+			name: "content prefilter content mismatch is skipped",
+			results: []InstanceCrossSeedResult{{
+				Status: "content_mismatch",
+			}},
+			want: models.CrossSeedSearchResultStatusSkipped,
 		},
 		{
 			name: "content prefilter size mismatch is failed",

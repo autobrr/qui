@@ -3332,7 +3332,7 @@ func (s *Service) executeAutomationRun(ctx context.Context, run *models.CrossSee
 
 func isSkippedCrossSeedResultStatus(status string) bool {
 	switch status {
-	case "no_match", "skipped", "rejected", "blocked", "requires_hardlink_reflink", "below_threshold", "skipped_recheck", "skipped_unsafe_pieces":
+	case "no_match", "skipped", "rejected", "blocked", "requires_hardlink_reflink", "below_threshold", "skipped_recheck", "skipped_unsafe_pieces", contentPrefilterRejectedContentStatus:
 		return true
 	default:
 		return false
@@ -9579,7 +9579,10 @@ func (s *Service) executeCrossSeedSearchAttempt(ctx context.Context, state *sear
 
 	if state != nil {
 		if rejection, rejected := s.contentPrefilterRejectionForCrossSeedResponse(state.opts.InstanceID, torrent.Hash, match.IndexerID, resp); rejected {
-			result.Status = models.CrossSeedSearchResultStatusFailed
+			result.Status = models.CrossSeedSearchResultStatusSkipped
+			if contentPrefilterRejectedExistingStatus(rejection) == contentPrefilterRejectedSizeStatus {
+				result.Status = models.CrossSeedSearchResultStatusFailed
+			}
 			result.Message = contentPrefilterRejectedExistingMessage(rejection)
 			log.Debug().
 				Int("instanceID", state.opts.InstanceID).
