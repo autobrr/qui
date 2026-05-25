@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -85,16 +84,21 @@ func TestRemoveSQLiteSidecars(t *testing.T) {
 	})
 }
 
-func TestNewIsFast(t *testing.T) {
+func TestTemplatePathIsCached(t *testing.T) {
 	disableTestLogs(t)
-	NewMigratedSQLite(t, "fast-warm")
 
-	start := time.Now()
-	NewMigratedSQLite(t, "fast-second")
-	elapsed := time.Since(start)
+	first, err := migratedTemplatePath()
+	if err != nil {
+		t.Fatalf("first migrated template path: %v", err)
+	}
 
-	if elapsed > 250*time.Millisecond {
-		t.Fatalf("second migrated sqlite creation took %s, want under 250ms", elapsed)
+	second, err := migratedTemplatePath()
+	if err != nil {
+		t.Fatalf("second migrated template path: %v", err)
+	}
+
+	if first != second {
+		t.Fatalf("migrated template path differs across calls: first=%q, second=%q", first, second)
 	}
 }
 
