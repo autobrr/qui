@@ -262,7 +262,7 @@ func TestProxyContextApplyAuthHeaders_APIKey(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "http://example.com/api/v2/torrents/info", nil)
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/api/v2/torrents/info", nil)
 			if tc.incomingAuth != "" {
 				req.Header.Set("Authorization", tc.incomingAuth)
 			}
