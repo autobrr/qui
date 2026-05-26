@@ -2679,6 +2679,8 @@ func (sm *SyncManager) torrentHasTrackerError(torrent *qbt.Torrent) bool {
 			continue
 		case qbt.TrackerStatusNotWorking, qbt.TrackerStatusTrackerError, qbt.TrackerStatusUnreachable:
 			erroredTrackers++
+		case qbt.TrackerStatusNotContacted, qbt.TrackerStatusOK, qbt.TrackerStatusUpdating:
+			return false
 		default:
 			// Any non-disabled tracker that is not in an error state means the torrent
 			// does not belong in the "all trackers errored" bucket.
