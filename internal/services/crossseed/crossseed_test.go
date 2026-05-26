@@ -405,8 +405,8 @@ func TestDetermineSavePath(t *testing.T) {
 			matchType:      "partial-in-pack",
 			sourceFiles:    qbt.TorrentFiles{{Name: "The.Movie.2020-GRP.mkv", Size: 5 << 30}},
 			candidateFiles: qbt.TorrentFiles{{Name: "The.Movie.2020-GRP/The.Movie.2020-GRP.mkv", Size: 5 << 30}},
-			wantPath:       "/movies",
-			description:    "Loose file uses SavePath, Subfolder layout creates folder",
+			wantPath:       "/movies/The.Movie.2020-GRP",
+			description:    "Rootless single file uses matched folder ContentPath",
 		},
 
 		// M2: We seed loose file, match on folder
@@ -520,6 +520,18 @@ func TestDetermineSavePath(t *testing.T) {
 			}},
 			wantPath:    "/movies/Movie.2020.1080p.BluRay-OTHER",
 			description: "Both have folders - uses ContentPath (folder path)",
+		},
+		{
+			name:               "M8b: rootless single file source to folder candidate",
+			newTorrentName:     "Movie.2020.1080p.WEB-GRP.mkv",
+			matchedTorrentName: "Movie.2020.1080p.BluRay-OTHER",
+			matchedContentPath: "/movies/Movie.2020.1080p.BluRay-OTHER",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "partial-in-pack",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2020.1080p.WEB-GRP.mkv", Size: 8 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2020.1080p.BluRay-OTHER/Movie.2020.1080p.BluRay-OTHER.mkv", Size: 8 << 30}},
+			wantPath:       "/movies/Movie.2020.1080p.BluRay-OTHER",
+			description:    "Rootless single file source uses matched folder ContentPath instead of qBittorrent-created subfolder",
 		},
 
 		// M9: Single file movie with extras folder matched against single file

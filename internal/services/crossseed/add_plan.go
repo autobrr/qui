@@ -58,9 +58,10 @@ func buildCrossSeedAddPlan(
 	isEpisodeInPack := matchType == "partial-in-pack" &&
 		isTVEpisode(sourceRelease) &&
 		isTVSeasonPack(candidateRelease)
+	isRootlessSingleFileIntoFolder := sourceRoot == "" && candidateRoot != "" && len(sourceFiles) == 1 && !isEpisodeInPack
 
 	contentLayout := "Original"
-	if sourceRoot == "" && candidateRoot != "" && !isEpisodeInPack {
+	if sourceRoot == "" && candidateRoot != "" && !isEpisodeInPack && !isRootlessSingleFileIntoFolder {
 		contentLayout = "Subfolder"
 	} else if sourceRoot != "" && candidateRoot == "" {
 		contentLayout = "NoSubfolder"

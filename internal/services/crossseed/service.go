@@ -6033,6 +6033,16 @@ func (s *Service) determineSavePath(newTorrentName string, matchedTorrent *qbt.T
 				return filepath.ToSlash(matchedTorrent.ContentPath)
 			}
 
+			if contentLayout == "Original" && len(sourceFiles) == 1 && len(candidateFiles) == 1 && matchedTorrent.ContentPath != "" {
+				log.Debug().
+					Str("newTorrent", newTorrentName).
+					Str("matchedTorrent", matchedTorrent.Name).
+					Str("candidateRoot", candidateRoot).
+					Str("contentPath", matchedTorrent.ContentPath).
+					Msg("Cross-seeding rootless single file into matched folder, using ContentPath")
+				return filepath.ToSlash(matchedTorrent.ContentPath)
+			}
+
 			// Non-TV (movies, etc.): use SavePath with Subfolder layout
 			// The contentLayout will be set to "Subfolder" which makes qBittorrent
 			// create a folder based on the renamed torrent name (which matches candidateRoot)
