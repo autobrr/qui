@@ -1432,8 +1432,11 @@ export function Search() {
                             <DropdownMenuItem
                               onSelect={(event) => {
                                 event.preventDefault()
-                                handleDownload(selectedResult)
+                                if (selectedResult.downloadUrl) {
+                                  handleDownload(selectedResult)
+                                }
                               }}
+                              disabled={!selectedResult.downloadUrl}
                             >
                               <Download className="mr-2 h-4 w-4" /> Download
                             </DropdownMenuItem>
