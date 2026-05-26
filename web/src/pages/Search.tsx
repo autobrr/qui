@@ -901,7 +901,7 @@ export function Search() {
   }, [applyIndexerSelectionFromSuggestion, closeSuggestions, runSearch, validateSearchInputs])
 
   const handleDownload = useCallback((result: TorznabSearchResult) => {
-    window.open(result.downloadUrl, "_blank")
+    window.open(result.downloadUrl, "_blank", "noopener,noreferrer")
   }, [])
 
   const handleAddTorrent = useCallback((result: TorznabSearchResult, overrideInstanceId?: number) => {
@@ -943,7 +943,7 @@ export function Search() {
       return
     }
 
-    window.open(result.infoUrl, "_blank")
+    window.open(result.infoUrl, "_blank", "noopener,noreferrer")
   }, [])
 
   const handleToggleResultSelection = useCallback((result: TorznabSearchResult) => {
