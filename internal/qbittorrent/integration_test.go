@@ -192,6 +192,7 @@ func TestSyncManager_TorrentHasTrackerError(t *testing.T) {
 		}
 
 		assert.True(t, sm.torrentHasTrackerError(&torrent))
+		assert.Equal(t, TrackerHealthError, sm.determineTrackerHealth(&torrent))
 	})
 
 	t.Run("ignores tracker errors when a working tracker is present", func(t *testing.T) {

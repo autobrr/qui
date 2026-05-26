@@ -91,6 +91,7 @@ type TrackerHealth string
 const (
 	TrackerHealthUnregistered TrackerHealth = "unregistered"
 	TrackerHealthDown         TrackerHealth = "tracker_down"
+	TrackerHealthError        TrackerHealth = "tracker_error"
 )
 
 // TorrentView extends qBittorrent's torrent with UI-specific metadata.
@@ -450,11 +451,9 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 		case TrackerHealthDown:
 			counts.TrackerDown++
 			counts.TrackerDownSet[t.Hash] = struct{}{}
-		default:
-			if sm.torrentHasTrackerError(&t) {
-				counts.TrackerError++
-				counts.TrackerErrorSet[t.Hash] = struct{}{}
-			}
+		case TrackerHealthError:
+			counts.TrackerError++
+			counts.TrackerErrorSet[t.Hash] = struct{}{}
 		}
 
 		// Tracker domain mapping
@@ -1223,6 +1222,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 					view.TrackerHealth = TrackerHealthUnregistered
 				} else if _, ok := cachedHealth.TrackerDownSet[torrent.Hash]; ok {
 					view.TrackerHealth = TrackerHealthDown
+				} else if _, ok := cachedHealth.TrackerErrorSet[torrent.Hash]; ok {
+					view.TrackerHealth = TrackerHealthError
 				}
 			}
 			paginatedViews[i] = view
@@ -1459,6 +1460,8 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 				view.TrackerHealth = TrackerHealthUnregistered
 			} else if _, ok := cachedHealth.TrackerDownSet[torrent.Hash]; ok {
 				view.TrackerHealth = TrackerHealthDown
+			} else if _, ok := cachedHealth.TrackerErrorSet[torrent.Hash]; ok {
+				view.TrackerHealth = TrackerHealthError
 			}
 		}
 		views[i] = CrossInstanceTorrentView{
@@ -2703,6 +2706,10 @@ func (sm *SyncManager) determineTrackerHealth(torrent *qbt.Torrent) TrackerHealt
 		return TrackerHealthDown
 	}
 
+	if sm.torrentHasTrackerError(torrent) {
+		return TrackerHealthError
+	}
+
 	return ""
 }
 
@@ -2935,10 +2942,8 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 		counts["unregistered"]++
 	case TrackerHealthDown:
 		counts["tracker_down"]++
-	default:
-		if sm.torrentHasTrackerError(&torrent) {
-			counts["tracker_error"]++
-		}
+	case TrackerHealthError:
+		counts["tracker_error"]++
 	}
 
 	// Count "completed"
@@ -4464,7 +4469,7 @@ func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bo
 	case "tracker_down":
 		return sm.determineTrackerHealth(&torrent) == TrackerHealthDown
 	case "tracker_error":
-		return sm.torrentHasTrackerError(&torrent)
+		return sm.determineTrackerHealth(&torrent) == TrackerHealthError
 	}
 
 	// Handle special cases first
@@ -4507,6 +4512,8 @@ func (sm *SyncManager) trackerHealthPriority(torrent qbt.Torrent, trackerHealthS
 		return 0
 	case TrackerHealthDown:
 		return 1
+	case TrackerHealthError:
+		return 2
 	default:
 		return 10
 	}
@@ -4562,6 +4569,8 @@ func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, t
 				label = "unregistered"
 			case TrackerHealthDown:
 				label = "tracker_down"
+			case TrackerHealthError:
+				label = "tracker_error"
 			}
 		}
 		meta := statusSortMeta{
