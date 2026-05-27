@@ -386,6 +386,7 @@ const AMBIGUOUS_POLICY_NONE_VALUE = "__none__"
 
 // Speed limit mode: no_change = omit, unlimited = 0, custom = user value (>0)
 type SpeedLimitMode = "no_change" | "unlimited" | "custom"
+type TrackerMatchMode = "include" | "exclude"
 
 // Local form types that allow strings for intermediate input states (e.g. during typing "-")
 interface FormFieldMultiplierScoreRule {
@@ -429,6 +430,7 @@ type FormState = {
   name: string
   trackerPattern: string
   trackerDomains: string[]
+  trackerMatchMode: TrackerMatchMode
   applyToAllTrackers: boolean
   enabled: boolean
   dryRun: boolean
@@ -507,6 +509,7 @@ const emptyFormState: FormState = {
   name: "",
   trackerPattern: "",
   trackerDomains: [],
+  trackerMatchMode: "include",
   applyToAllTrackers: false,
   enabled: false,
   dryRun: false,
@@ -871,6 +874,15 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }))
   }, [trackersQuery.data, trackerCustomizationMaps, trackerIcons, rule])
 
+  const getTrackerMatchMode = useCallback((pattern: string): TrackerMatchMode => {
+    const tokens = pattern
+      .split(/[|,;]/)
+      .map((token) => token.trim())
+      .filter(Boolean)
+    if (tokens.length === 0) return "include"
+    return tokens.every((token) => token.startsWith("!")) ? "exclude" : "include"
+  }, [])
+
   // Map individual domains to merged option values
   const mapDomainsToOptionValues = useMemo(() => {
     const { domainToCustomization } = trackerCustomizationMaps
@@ -945,6 +957,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         const isAllTrackers = rule.trackerPattern === "*"
         const rawDomains = isAllTrackers ? [] : parseTrackerDomains(rule)
         const mappedDomains = mapDomainsToOptionValues(rawDomains)
+        const trackerMatchMode = isAllTrackers ? "include" : getTrackerMatchMode(rule.trackerPattern)
 
         // Parse existing conditions into form state
         const conditions = rule.conditions
@@ -1144,6 +1157,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           name: rule.name,
           trackerPattern: rule.trackerPattern,
           trackerDomains: mappedDomains,
+          trackerMatchMode,
           applyToAllTrackers: isAllTrackers,
           enabled: rule.enabled,
           dryRun: rule.dryRun ?? false,
@@ -1221,7 +1235,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
 
     return () => { cancelled = true }
-  }, [open, rule, mapDomainsToOptionValues])
+  }, [open, rule, mapDomainsToOptionValues, getTrackerMatchMode])
 
   useEffect(() => {
     if (!open) {
@@ -1556,11 +1570,14 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
 
     const trackerDomains = input.applyToAllTrackers ? [] : normalizeTrackerDomains(input.trackerDomains)
+    const normalizedTrackerDomains = input.trackerMatchMode === "exclude"
+      ? trackerDomains.map((domain) => `!${domain}`)
+      : trackerDomains
 
     return {
       name: input.name,
-      trackerDomains,
-      trackerPattern: input.applyToAllTrackers ? "*" : trackerDomains.join(","),
+      trackerDomains: normalizedTrackerDomains,
+      trackerPattern: input.applyToAllTrackers ? "*" : normalizedTrackerDomains.join(","),
       enabled: input.enabled,
       dryRun: input.dryRun,
       notify: input.notify,
@@ -2190,7 +2207,30 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               {/* Trackers */}
               {!formState.applyToAllTrackers && (
                 <div className="space-y-1.5">
-                  <Label>Trackers</Label>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <Label>Trackers</Label>
+                    <div className="flex items-center border rounded-md">
+                      <Button
+                        type="button"
+                        variant={formState.trackerMatchMode === "include" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="px-2 h-7 rounded-r-none text-xs"
+                        onClick={() => setFormState(prev => ({ ...prev, trackerMatchMode: "include" }))}
+                      >
+                        Include
+                      </Button>
+                      <div className="w-[1px] bg-border h-4" />
+                      <Button
+                        type="button"
+                        variant={formState.trackerMatchMode === "exclude" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="px-2 h-7 rounded-l-none text-xs"
+                        onClick={() => setFormState(prev => ({ ...prev, trackerMatchMode: "exclude" }))}
+                      >
+                        Exclude
+                      </Button>
+                    </div>
+                  </div>
                   <MultiSelect
                     options={trackerOptions}
                     selected={formState.trackerDomains}

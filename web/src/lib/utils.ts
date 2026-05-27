@@ -177,14 +177,16 @@ export function formatErrorReason(reason: string): string {
  * @returns Array of tracker domain strings
  */
 export function parseTrackerDomains(rule: Automation): string[] {
-  if (rule.trackerDomains && rule.trackerDomains.length > 0) {
-    return rule.trackerDomains
-  }
-  if (!rule.trackerPattern) return []
-  return rule.trackerPattern
+  const values = rule.trackerDomains && rule.trackerDomains.length > 0
+    ? rule.trackerDomains
+    : !rule.trackerPattern
+      ? []
+      : rule.trackerPattern
     .split(/[|,;]/)
     .map((item) => item.trim())
     .filter(Boolean)
+
+  return values.map((value) => value.startsWith("!") ? value.slice(1) : value)
 }
 
 /**
