@@ -4370,8 +4370,8 @@ func matchesTracker(pattern string, domains []string) bool {
 		if normalized == "" {
 			continue
 		}
-		if strings.HasPrefix(normalized, "!") {
-			negated := normalizeLowerTrim(strings.TrimPrefix(normalized, "!"))
+		if after, ok := strings.CutPrefix(normalized, "!"); ok {
+			negated := normalizeLowerTrim(after)
 			if negated != "" {
 				excludeTokens = append(excludeTokens, negated)
 			}
@@ -4402,21 +4402,14 @@ func matchesTracker(pattern string, domains []string) bool {
 		return false
 	}
 
-	for _, token := range excludeTokens {
-		if matchesToken(token) {
-			return false
-		}
+	if slices.ContainsFunc(excludeTokens, matchesToken) {
+		return false
 	}
 
 	if len(includeTokens) == 0 {
 		return len(excludeTokens) > 0
 	}
-	for _, token := range includeTokens {
-		if matchesToken(token) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(includeTokens, matchesToken)
 }
 
 func collectTrackerDomains(t qbt.Torrent, sm *qbittorrent.SyncManager) []string {
