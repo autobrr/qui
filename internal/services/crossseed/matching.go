@@ -884,9 +884,11 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 		s.metrics.GetMatchTypeCalls.Inc()
 	}
 
+	normalizer := normalizerForService(s)
+
 	// Check layout compatibility first (RAR vs extracted files)
-	sourceLayout := classifyTorrentLayout(sourceFiles, s.stringNormalizer)
-	candidateLayout := classifyTorrentLayout(candidateFiles, s.stringNormalizer)
+	sourceLayout := classifyTorrentLayout(sourceFiles, normalizer)
+	candidateLayout := classifyTorrentLayout(candidateFiles, normalizer)
 	if sourceLayout != LayoutUnknown && candidateLayout != LayoutUnknown && sourceLayout != candidateLayout {
 		if s.metrics != nil {
 			s.metrics.GetMatchTypeNoMatch.Inc()
@@ -907,7 +909,7 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 
 	// Process source files
 	for _, sf := range sourceFiles {
-		if !shouldIgnoreFile(sf.Name, s.stringNormalizer) {
+		if !shouldIgnoreFile(sf.Name, normalizer) {
 			filteredSourceFiles = append(filteredSourceFiles, TorrentFile{
 				Name: sf.Name,
 				Size: sf.Size,
@@ -927,7 +929,7 @@ func (s *Service) getMatchTypeWithReason(sourceRelease, candidateRelease *rls.Re
 
 	// Process candidate files
 	for _, cf := range candidateFiles {
-		if !shouldIgnoreFile(cf.Name, s.stringNormalizer) {
+		if !shouldIgnoreFile(cf.Name, normalizer) {
 			filteredCandidateFiles = append(filteredCandidateFiles, TorrentFile{
 				Name: cf.Name,
 				Size: cf.Size,

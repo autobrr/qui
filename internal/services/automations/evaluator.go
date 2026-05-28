@@ -53,6 +53,8 @@ type EvalContext struct {
 	UnregisteredSet map[string]struct{}
 	// TrackerDownSet contains hashes of torrents whose trackers are down (from SyncManager health counts)
 	TrackerDownSet map[string]struct{}
+	// TrackerErrorSet contains hashes of torrents with tracker errors (from SyncManager health counts)
+	TrackerErrorSet map[string]struct{}
 	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent)
 	HardlinkScopeByHash map[string]string
 	// HardlinkCrossScopeByHash maps torrent hash to its cross-instance hardlink scope.
@@ -747,6 +749,12 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 			return false
 		}
 		_, ok := ctx.TrackerDownSet[torrent.Hash]
+		return ok
+	case "tracker_error":
+		if ctx == nil || ctx.TrackerErrorSet == nil {
+			return false
+		}
+		_, ok := ctx.TrackerErrorSet[torrent.Hash]
 		return ok
 	}
 

@@ -362,6 +362,10 @@ See:
 
 When link-tree creation fails (hardlinking across filesystems, permission issues), Dir Scan falls back to regular add behavior **if** the instance has **Fallback to regular mode** enabled. Otherwise, the candidate fails.
 
+Filesystem fallback adds the torrent against the matched source files instead of the link-tree directory, so qui requires a full 100% recheck before auto-resume. If **Skip recheck** is enabled, the fallback candidate is skipped.
+
+For partial or otherwise non-perfect fallback matches, qui runs piece-boundary protection before adding the torrent. This fallback check is always enforced, even when **Skip piece boundary safety check** is enabled for regular reuse mode.
+
 ## Scanning Your *arr Library
 
 Dir Scan can scan Sonarr/Radarr library folders, but be careful with partial matches:

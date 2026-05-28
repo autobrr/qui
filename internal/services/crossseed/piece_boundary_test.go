@@ -40,7 +40,7 @@ func buildMultiFileTorrent(t *testing.T, rootName string, pieceLength int64, fil
 
 	for name, content := range files {
 		path := filepath.Join(root, name)
-		require.NoError(t, os.WriteFile(path, content, 0o644))
+		require.NoError(t, os.WriteFile(path, content, 0o600))
 	}
 
 	info := metainfo.Info{
