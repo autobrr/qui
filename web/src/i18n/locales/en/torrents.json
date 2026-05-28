@@ -69,6 +69,8 @@
     "copyName": "Copy Name",
     "copyHash": "Copy Hash",
     "copyFullPath": "Copy Full Path",
+    "copyMagnetLink": "Copy Magnet Link",
+    "setComment": "Set Comment",
     "delete": "Delete",
     "loadingPrograms": "Loading programs...",
     "toast": {
@@ -77,6 +79,8 @@
       "nameNotAvailable": "Name not available",
       "hashNotAvailable": "Hash not available",
       "fullPathNotAvailable": "Full path not available",
+      "magnetNotAvailable": "Magnet link not available",
+      "failedToFetchMagnets": "Failed to fetch torrent magnet links",
       "noTorrentsFoundToExport": "No torrents found to export",
       "noTorrentsExported": "No torrents exported",
       "torrentExported": "Torrent exported",
@@ -123,15 +127,15 @@
     "noCrossSeeds": "No cross-seeds found",
     "deleteCrossSeeds": "These cross-seeds will also be deleted",
     "deletingFilesBreaks": "Deleting files will break these cross-seeds",
-    "dataPreserved": "Cross-seeds detected \u2014 data will be preserved",
+    "dataPreserved": "Cross-seeds detected — data will be preserved",
     "torrentShares": "{{count}} torrent shares these files",
     "torrentsShare": "{{count}} torrents share these files",
     "acrossInstances": "across {{count}} instances",
     "onTracker": "on {{tracker}}",
     "onTrackers": "on {{count}} trackers",
-    "willBeRemoved": "\u2014 will be removed along with selection",
-    "willNeedRedownload": "\u2014 they will need to redownload",
-    "unaffected": "\u2014 unaffected by this removal",
+    "willBeRemoved": "— will be removed along with selection",
+    "willNeedRedownload": "— they will need to redownload",
+    "unaffected": "— unaffected by this removal",
     "alsoDeleteCrossSeeds": "Also delete these cross-seeded torrents",
     "showAffected": "Show affected torrents",
     "hideAffected": "Hide affected torrents",
@@ -226,7 +230,9 @@
       "toggleSequentialDownloadEnable_one": "Enabled sequential download for {{count}} torrent",
       "toggleSequentialDownloadEnable_other": "Enabled sequential download for {{count}} torrents",
       "toggleSequentialDownloadDisable_one": "Disabled sequential download for {{count}} torrent",
-      "toggleSequentialDownloadDisable_other": "Disabled sequential download for {{count}} torrents"
+      "toggleSequentialDownloadDisable_other": "Disabled sequential download for {{count}} torrents",
+      "setComment_one": "Updated comment for {{count}} torrent",
+      "setComment_other": "Updated comment for {{count}} torrents"
     },
     "failed": {
       "resume_one": "Failed to resume {{count}} torrent",
@@ -465,7 +471,8 @@
     "pieceSizeHelp": "Auto calculates optimal size based on content",
     "saveTorrentTo": "Save .torrent to (optional)",
     "saveTorrentToPlaceholder": "/path/to/save/file.torrent",
-    "saveTorrentToHelp": "Where to save the .torrent file on the server",
+    "saveTorrentToHelp": "Full .torrent file path on the server; directory alone is invalid",
+    "saveTorrentToInvalid": "Enter a full .torrent file path, not a directory",
     "saveTorrentToTooltip": "qBittorrent needs write access to this directory. Best to leave blank and download the .torrent file from the tasks modal later.",
     "webSeeds": "Web Seeds (HTTP/HTTPS)",
     "webSeedsPlaceholder": "https://mirror1.example.com/path\nhttps://mirror2.example.com/path",
@@ -495,6 +502,17 @@
       "taskDeleted": "Torrent creation task deleted",
       "taskDeleteFailed": "Failed to delete torrent creation task"
     }
+  },
+  "commentDialog": {
+    "title": "Set Comment",
+    "descriptionMultiple": "Apply the same comment to all selected torrents. Leave empty to clear comments.",
+    "descriptionSingle": "Set the torrent comment shown in qBittorrent. Leave empty to clear the comment.",
+    "label": "Comment",
+    "loadingPlaceholder": "Loading current comment...",
+    "placeholder": "Enter comment",
+    "cancel": "Cancel",
+    "saving": "Saving...",
+    "save": "Save"
   },
   "fileTree": {
     "renameFile": "Rename file",
@@ -663,7 +681,7 @@
     "contentFilteringDescription": "Checking your existing torrents to find duplicates and exclude redundant trackers. This helps avoid downloading the same content multiple times.",
     "excludedDescription": "You already seed this release from these trackers, so they're excluded from the search.",
     "noContentDuplicates": "Content filtering completed. No duplicate content found on your enabled trackers.",
-    "searchingIndexers": "Searching indexers\u2026",
+    "searchingIndexers": "Searching indexers…",
     "noMatchesFound": "No matches found in your search.",
     "selectReleasesToAdd": "Select the releases you want to add",
     "selectAll": "Select All",
@@ -673,7 +691,7 @@
     "latestAddAttempt": "Latest add attempt",
     "close": "Close",
     "addSelected": "Add Selected",
-    "adding": "Adding\u2026",
+    "adding": "Adding…",
     "retry": "Retry",
     "seeders": "{{count}} seeders",
     "match": "Match: {{reason}}",
@@ -692,7 +710,7 @@
       "selectAllIndexers": "Select all",
       "clearSelection": "Clear selection",
       "search": "Search",
-      "filtering": "Filtering\u2026",
+      "filtering": "Filtering…",
       "searching": "Searching",
       "noneSelected": "None selected",
       "enabledIndexers": "{{count}} enabled {{suffix}}",
@@ -714,7 +732,8 @@
       "requiresHardlinkReflink": "Skipped - Requires Hardlink/Reflink Mode",
       "error": "Error",
       "queued": "Queued",
-      "check": "Check"
+      "check": "Check",
+      "belowThreshold": "Skipped - below threshold"
     },
     "rateLimitHelp": {
       "why": "Why this happens:",
@@ -779,7 +798,7 @@
     "customFilterHelp": "Active custom expression filter (e.g., cross-seed results)",
     "filterTips": "Left click cycles include and neutral. Cmd/Ctrl + click or a long press toggles exclusion.",
     "filterSelectionTips": "Filter selection tips",
-    "instanceDisabled": "This instance is disabled. Enable it from Settings \u2192 Instances to use filters.",
+    "instanceDisabled": "This instance is disabled. Enable it from Settings → Instances to use filters.",
     "unavailableUnifiedView": "Unavailable in unified view",
     "viewMode": "View Mode",
     "viewModeNormal": "Normal",
@@ -850,7 +869,8 @@
       "moving": "Moving",
       "unregistered": "Unregistered",
       "trackerDown": "Tracker Down",
-      "crossSeeds": "Cross Seeds"
+      "crossSeeds": "Cross Seeds",
+      "trackerError": "Tracker Error"
     }
   },
   "statusBar": {
@@ -1166,7 +1186,8 @@
     "deleteThis": "Delete This",
     "statusLabels": {
       "trackerDown": "Tracker Down",
-      "unregistered": "Unregistered"
+      "unregistered": "Unregistered",
+      "trackerError": "Tracker Error"
     },
     "matchTypes": {
       "contentPath": {
@@ -1292,6 +1313,21 @@
       "rejectedMany": "{{count}} files rejected (not .torrent files)"
     }
   },
+  "shareLimits": {
+    "whenLimitsReached": "When limits are reached",
+    "actionWhenReached": "Action when share limits are reached",
+    "defaultUseGlobal": "Default (use global)",
+    "stopTorrent": "Stop torrent",
+    "removeTorrent": "Remove torrent",
+    "removeWithContent": "Remove with content",
+    "enableSuperSeeding": "Enable super seeding",
+    "limitsMatchingMode": "Limits matching mode",
+    "matchAnyLimit": "Match any limit",
+    "matchAllLimits": "Match all limits",
+    "matchingModeHelp": "Whether any or all limits must be reached (Web API 2.16.0+)",
+    "selectValue": "Select a value",
+    "wasMixed": "(was mixed)"
+  },
   "mobileCards": {
     "noTorrentsFound": "No torrents found",
     "sort": "Sort",
@@ -1403,6 +1439,7 @@
     "instance": "Instance",
     "trackerDown": "Tracker Down",
     "unregistered": "Unregistered",
+    "trackerError": "Tracker Error",
     "now": "now",
     "yes": "Yes",
     "no": "No"

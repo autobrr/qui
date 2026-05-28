@@ -17,7 +17,6 @@ import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
@@ -29,8 +28,9 @@ import { extractImdbId, extractTvdbId } from "@/lib/search-id-parsing"
 import { cn, formatBytes } from "@/lib/utils"
 import type { TorznabIndexer, TorznabRecentSearch, TorznabSearchRequest, TorznabSearchResponse, TorznabSearchResult } from "@/types"
 import { Link } from "@tanstack/react-router"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { Check, ChevronDown, ChevronUp, Download, ExternalLink, Plus, RefreshCw, Search as SearchIcon, SlidersHorizontal, X } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -90,6 +90,159 @@ const ADVANCED_PARAM_CONFIG: AdvancedParamConfig[] = [
 
 const LAST_USED_INSTANCE_KEY = "qui:search:lastInstanceId"
 
+const SEARCH_TABLE_GRID_TEMPLATE =
+  "minmax(240px, 1fr) 140px 100px 100px 140px 110px 140px 110px 100px 150px 80px"
+const SEARCH_TABLE_MIN_WIDTH = 1410
+const SEARCH_ROW_HEIGHT = 40
+const SEARCH_CARD_HEIGHT = 158
+
+const getSearchResultKey = (result: TorznabSearchResult) => {
+  const resultId = result.guid.trim() === "" ? result.downloadUrl : result.guid
+  return `${result.indexerId}-${resultId}`
+}
+
+type SearchTableRowProps = {
+  result: TorznabSearchResult
+  isSelected: boolean
+  isEven: boolean
+  height: number
+  translateY: number
+  categoryLabel: string
+  publishedLabel: string
+  onToggleSelection: (result: TorznabSearchResult) => void
+  onDownload: (result: TorznabSearchResult) => void
+  onViewDetails: (result: TorznabSearchResult) => void
+}
+
+const SearchTableRow = memo(function SearchTableRow({
+  result,
+  isSelected,
+  isEven,
+  height,
+  translateY,
+  categoryLabel,
+  publishedLabel,
+  onToggleSelection,
+  onDownload,
+  onViewDetails,
+}: SearchTableRowProps) {
+  const { t } = useTranslation("search")
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-selected={isSelected}
+      className={cn(
+        "grid cursor-pointer select-none transition-colors border-b",
+        isSelected? "bg-accent text-accent-foreground hover:bg-accent/90": isEven? "hover:bg-muted/60 bg-card/90 dark:bg-card/80": "hover:bg-muted/60 bg-background/70 dark:bg-background/30"
+      )}
+      style={{
+        gridTemplateColumns: SEARCH_TABLE_GRID_TEMPLATE,
+        position: "absolute",
+        top: 0,
+        left: 0,
+        width: "100%",
+        height: `${height}px`,
+        transform: `translateY(${translateY}px)`,
+        contain: "layout style paint",
+      }}
+      onClick={() => onToggleSelection(result)}
+      onKeyDown={(event) => {
+        if (event.currentTarget !== event.target) {
+          return
+        }
+
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault()
+          onToggleSelection(result)
+        }
+      }}
+    >
+      <div className={cn("px-2 flex items-center min-w-0 text-sm font-medium", isSelected && "text-accent-foreground")}>
+        <div className="truncate" title={result.title}>
+          {result.title}
+        </div>
+      </div>
+      <div className={cn("px-2 flex items-center min-w-0 text-sm truncate", isSelected && "text-accent-foreground")}>{result.indexer}</div>
+      <div className={cn("px-2 flex items-center text-sm", isSelected && "text-accent-foreground")}>{formatBytes(result.size)}</div>
+      <div className={cn("px-2 flex items-center", isSelected && "text-accent-foreground")}>
+        <Badge variant={result.seeders > 0 ? "default" : "secondary"}>
+          {result.seeders}
+        </Badge>
+      </div>
+      <div className={cn("px-2 flex items-center min-w-0 text-sm text-muted-foreground truncate", isSelected && "text-accent-foreground")}>
+        {categoryLabel}
+      </div>
+      <div className={cn("px-2 flex items-center min-w-0 text-sm", isSelected && "text-accent-foreground")}>
+        {result.source ? (
+          <Badge variant="outline">{result.source}</Badge>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        )}
+      </div>
+      <div className={cn("px-2 flex items-center min-w-0 text-sm", isSelected && "text-accent-foreground")}>
+        {result.collection ? (
+          <Badge variant="outline" className="truncate max-w-full">{result.collection}</Badge>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        )}
+      </div>
+      <div className={cn("px-2 flex items-center min-w-0 text-sm", isSelected && "text-accent-foreground")}>
+        {result.group ? (
+          <Badge variant="outline" className="truncate max-w-full">{result.group}</Badge>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        )}
+      </div>
+      <div className={cn("px-2 flex items-center", isSelected && "text-accent-foreground")}>
+        {result.downloadVolumeFactor === 0 && (
+          <Badge variant="default">{t("results.free")}</Badge>
+        )}
+        {result.downloadVolumeFactor > 0 && result.downloadVolumeFactor < 1 && (
+          <Badge variant="secondary">{result.downloadVolumeFactor * 100}%</Badge>
+        )}
+      </div>
+      <div className={cn("px-2 flex items-center text-sm text-muted-foreground", isSelected && "text-accent-foreground")}>
+        {publishedLabel}
+      </div>
+      <div className="px-2 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => onDownload(result)}
+              disabled={!result.downloadUrl}
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span className="sr-only">{t("card.download")}</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t("table.downloadTorrent")}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => onViewDetails(result)}
+              disabled={!result.infoUrl}
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              <span className="sr-only">{t("card.viewDetails")}</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{result.infoUrl ? t("table.viewDetails") : t("table.noInfoUrl")}</TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
+  )
+})
+
 export function Search() {
   const { t } = useTranslation("search")
   const SUGGESTION_BLUR_DELAY_MS = 100
@@ -119,7 +272,7 @@ export function Search() {
   const [queryFocused, setQueryFocused] = useState(false)
   const [showAdvancedParams, setShowAdvancedParams] = useState(false)
   const [advancedParams, setAdvancedParams] = useState<AdvancedParamsState>(() => ({ ...ADVANCED_PARAM_DEFAULTS }))
-  const [selectedResultGuid, setSelectedResultGuid] = useState<string | null>(null)
+  const [selectedResultKey, setSelectedResultKey] = useState<string | null>(null)
   const searchTypeOptions = useMemo(() => getSearchTypeOptions(t), [t])
   const searchPlaceholder = useMemo(() => t(SEARCH_PLACEHOLDER_KEYS[searchType]), [searchType, t])
   const advancedParamConfig = useMemo(
@@ -133,6 +286,9 @@ export function Search() {
   const hasAdvancedParams = useMemo(() => Object.values(advancedParams).some(value => value.trim() !== ""), [advancedParams])
   const queryInputRef = useRef<HTMLInputElement | null>(null)
   const blurTimeoutRef = useRef<number | null>(null)
+  const rafIdRef = useRef<number | null>(null)
+  const tableScrollRef = useRef<HTMLDivElement | null>(null)
+  const cardsScrollRef = useRef<HTMLDivElement | null>(null)
   const { formatDate } = useDateTimeFormatters()
   const closeSuggestions = useCallback(() => {
     if (blurTimeoutRef.current !== null) {
@@ -171,6 +327,9 @@ export function Search() {
     return () => {
       if (blurTimeoutRef.current !== null) {
         window.clearTimeout(blurTimeoutRef.current)
+      }
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current)
       }
     }
   }, [])
@@ -280,7 +439,7 @@ export function Search() {
       const detectedTvdbId = extractTvdbId(searchQuery)
       setLoading(true)
       setCacheMetadata(null)
-      setSelectedResultGuid(null)
+      setSelectedResultKey(null)
       setResults([])
       setTotal(0)
 
@@ -585,7 +744,7 @@ export function Search() {
   const getSortIcon = (column: Exclude<typeof sortColumn, null>) => {
     if (sortColumn !== column) return null
 
-    return sortOrder === "asc" ? <ChevronUp className="h-4 w-4 flex-shrink-0" /> : <ChevronDown className="h-4 w-4 flex-shrink-0" />
+    return sortOrder === "asc" ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />
   }
 
   // Filter and sort results
@@ -671,22 +830,49 @@ export function Search() {
     return sorted
   }, [results, resultsFilter, columnFilters, sortColumn, sortOrder, categoryMap])
 
-  const selectedResult = useMemo(() => {
-    if (!selectedResultGuid) {
-      return null
-    }
-    return results.find(result => result.guid === selectedResultGuid) ?? null
-  }, [results, selectedResultGuid])
+  const tableVirtualizer = useVirtualizer({
+    count: filteredAndSortedResults.length,
+    getScrollElement: () => tableScrollRef.current,
+    estimateSize: () => SEARCH_ROW_HEIGHT,
+    overscan: filteredAndSortedResults.length > 50000 ? 3 : filteredAndSortedResults.length > 10000 ? 5 : filteredAndSortedResults.length > 1000 ? 15 : 30,
+    getItemKey: useCallback(
+      (index: number) => getSearchResultKey(filteredAndSortedResults[index]),
+      [filteredAndSortedResults]
+    ),
+  })
+
+  const cardsVirtualizer = useVirtualizer({
+    count: filteredAndSortedResults.length,
+    getScrollElement: () => cardsScrollRef.current,
+    estimateSize: () => SEARCH_CARD_HEIGHT,
+    overscan: filteredAndSortedResults.length > 1000 ? 5 : 10,
+    getItemKey: useCallback(
+      (index: number) => getSearchResultKey(filteredAndSortedResults[index]),
+      [filteredAndSortedResults]
+    ),
+  })
 
   useEffect(() => {
-    if (!selectedResultGuid) {
+    tableVirtualizer.measure()
+    cardsVirtualizer.measure()
+  }, [filteredAndSortedResults.length, tableVirtualizer, cardsVirtualizer])
+
+  const selectedResult = useMemo(() => {
+    if (!selectedResultKey) {
+      return null
+    }
+    return results.find(result => getSearchResultKey(result) === selectedResultKey) ?? null
+  }, [results, selectedResultKey])
+
+  useEffect(() => {
+    if (!selectedResultKey) {
       return
     }
-    const stillVisible = filteredAndSortedResults.some(result => result.guid === selectedResultGuid)
+    const stillVisible = filteredAndSortedResults.some(result => getSearchResultKey(result) === selectedResultKey)
     if (!stillVisible) {
-      setSelectedResultGuid(null)
+      setSelectedResultKey(null)
     }
-  }, [filteredAndSortedResults, selectedResultGuid])
+  }, [filteredAndSortedResults, selectedResultKey])
 
   const suggestionMatches = useMemo(() => {
     const searches = recentSearches ?? []
@@ -731,9 +917,9 @@ export function Search() {
     void runSearch({ queryOverride: normalized, searchTypeOverride: derivedType })
   }, [applyIndexerSelectionFromSuggestion, closeSuggestions, runSearch, validateSearchInputs])
 
-  const handleDownload = (result: TorznabSearchResult) => {
-    window.open(result.downloadUrl, "_blank")
-  }
+  const handleDownload = useCallback((result: TorznabSearchResult) => {
+    window.open(result.downloadUrl, "_blank", "noopener,noreferrer")
+  }, [])
 
   const handleAddTorrent = useCallback((result: TorznabSearchResult, overrideInstanceId?: number) => {
     const targetId = overrideInstanceId ?? selectedInstanceId
@@ -758,7 +944,7 @@ export function Search() {
     setAddDialogOpen(true)
   }, [hasInstances, persistSelectedInstanceId, selectedInstanceId, setInstanceMenuOpen, t])
 
-  const handleViewDetails = (result: TorznabSearchResult) => {
+  const handleViewDetails = useCallback((result: TorznabSearchResult) => {
     if (!result.infoUrl) {
       toast.error(t("toast.noInfoUrl"))
       return
@@ -774,15 +960,16 @@ export function Search() {
       return
     }
 
-    window.open(result.infoUrl, "_blank")
-  }
+    window.open(result.infoUrl, "_blank", "noopener,noreferrer")
+  }, [t])
 
-  const toggleResultSelection = (result: TorznabSearchResult) => {
-    setSelectedResultGuid(prev => prev === result.guid ? null : result.guid)
-  }
+  const handleToggleResultSelection = useCallback((result: TorznabSearchResult) => {
+    const resultKey = getSearchResultKey(result)
+    setSelectedResultKey(prev => prev === resultKey ? null : resultKey)
+  }, [])
 
   const handleClearSelection = () => {
-    setSelectedResultGuid(null)
+    setSelectedResultKey(null)
   }
 
   const handleDialogOpenChange = (open: boolean) => {
@@ -841,7 +1028,7 @@ export function Search() {
                 </Button>
               </SheetTrigger>
 
-              <SheetContent side="right" className="flex h-full max-h-[100dvh] max-w-xl flex-col overflow-hidden p-0">
+              <SheetContent side="right" className="flex h-full max-h-dvh max-w-xl flex-col overflow-hidden p-0">
                 <SheetHeader>
                   <SheetTitle>{t("indexerSheet.title")}</SheetTitle>
                   <SheetDescription>{t("indexerSheet.description")}</SheetDescription>
@@ -986,7 +1173,7 @@ export function Search() {
             <form onSubmit={handleSearch} className="space-y-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
                 <div className="flex items-center gap-2">
-                  <div className="flex-shrink-0 min-w-[120px] max-w-[180px]">
+                  <div className="shrink-0 min-w-30 max-w-45">
                     <Label htmlFor="search-type" className="sr-only">{t("searchForm.searchType")}</Label>
                     <Select value={searchType} onValueChange={(value) => setSearchType(value as SearchType)}>
                       <SelectTrigger id="search-type" className="w-full">
@@ -1001,13 +1188,13 @@ export function Search() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="flex flex-shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     <Button
                       type="button"
                       variant={showAdvancedParams ? "default" : "outline"}
                       size="default"
                       className={cn(
-                        "!border !px-4 !py-2.5 h-9",
+                        "border! px-4! py-2.5! h-9",
                         showAdvancedParams? "border-primary bg-primary text-primary-foreground shadow-xs hover:bg-primary/90": "border-input dark:border-input"
                       )}
                       onClick={() => setShowAdvancedParams(prev => !prev)}
@@ -1095,7 +1282,7 @@ export function Search() {
                   <Button
                     type="submit"
                     disabled={loading || (!query.trim() && !hasAdvancedParams) || selectedIndexers.size === 0}
-                    className="flex-shrink-0"
+                    className="shrink-0"
                   >
                     <SearchIcon className="mr-2 h-4 w-4" />
                     {loading ? t("searchForm.searching") : t("searchForm.search")}
@@ -1147,7 +1334,7 @@ export function Search() {
                   {t("results.showing", { filtered: filteredAndSortedResults.length, total })}
                 </div>
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-                  <div className="w-full sm:min-w-[200px] sm:flex-1 min-w-0 relative">
+                  <div className="w-full sm:min-w-50 sm:flex-1 min-w-0 relative">
                     <Input
                       type="text"
                       placeholder={t("results.filterPlaceholder")}
@@ -1242,28 +1429,6 @@ export function Search() {
                         </div>
                         <Button
                           type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDownload(selectedResult)}
-                          disabled={!selectedResult.downloadUrl}
-                          title={t("results.download")}
-                          className="h-9"
-                        >
-                          <Download className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleViewDetails(selectedResult)}
-                          disabled={!selectedResult.infoUrl}
-                          title={selectedResult.infoUrl ? t("results.viewDetails") : t("results.noInfoUrlAvailable")}
-                          className="h-9"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          type="button"
                           variant="ghost"
                           size="sm"
                           onClick={handleClearSelection}
@@ -1311,8 +1476,11 @@ export function Search() {
                             <DropdownMenuItem
                               onSelect={(event) => {
                                 event.preventDefault()
-                                handleDownload(selectedResult)
+                                if (selectedResult.downloadUrl) {
+                                  handleDownload(selectedResult)
+                                }
                               }}
+                              disabled={!selectedResult.downloadUrl}
                             >
                               <Download className="mr-2 h-4 w-4" /> {t("results.download")}
                             </DropdownMenuItem>
@@ -1326,15 +1494,6 @@ export function Search() {
                               disabled={!selectedResult.infoUrl}
                             >
                               <ExternalLink className="mr-2 h-4 w-4" /> {t("results.viewDetails")}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onSelect={(event) => {
-                                event.preventDefault()
-                                handleClearSelection()
-                              }}
-                            >
-                              {t("results.clearSelectionButton")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1378,349 +1537,321 @@ export function Search() {
                   </div>
                 </div>
                 {/* Mobile: Card-based view */}
-                <div className="sm:hidden space-y-2 max-h-[600px] overflow-auto">
-                  {filteredAndSortedResults.map((result) => (
-                    <SearchResultCard
-                      key={result.guid}
-                      result={result}
-                      isSelected={selectedResultGuid === result.guid}
-                      onSelect={() => toggleResultSelection(result)}
-                      onAddTorrent={(overrideInstanceId) => handleAddTorrent(result, overrideInstanceId)}
-                      onDownload={() => handleDownload(result)}
-                      onViewDetails={() => handleViewDetails(result)}
-                      categoryName={categoryMap.get(result.categoryId) || result.categoryName || t("results.categoryFallback", { id: result.categoryId })}
-                      formatSize={formatBytes}
-                      formatDate={formatCacheTimestamp}
-                      instances={instances}
-                      hasInstances={hasInstances}
-                      targetInstanceName={targetInstance?.name}
-                    />
-                  ))}
+                <div ref={cardsScrollRef} className="sm:hidden max-h-150 overflow-auto will-change-transform contain-paint">
+                  <div style={{ height: `${cardsVirtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}>
+                    {cardsVirtualizer.getVirtualItems().map((virtualRow) => {
+                      const result = filteredAndSortedResults[virtualRow.index]
+                      return (
+                        <div
+                          key={virtualRow.key}
+                          data-index={virtualRow.index}
+                          ref={cardsVirtualizer.measureElement}
+                          style={{
+                            position: "absolute",
+                            top: 0,
+                            left: 0,
+                            width: "100%",
+                            transform: `translateY(${virtualRow.start}px)`,
+                            paddingBottom: "8px",
+                            contain: "layout style",
+                          }}
+                        >
+                          <SearchResultCard
+                            result={result}
+                            isSelected={selectedResultKey === getSearchResultKey(result)}
+                            onSelect={() => handleToggleResultSelection(result)}
+                            onAddTorrent={(overrideInstanceId) => handleAddTorrent(result, overrideInstanceId)}
+                            onDownload={() => handleDownload(result)}
+                            onViewDetails={() => handleViewDetails(result)}
+                            categoryName={categoryMap.get(result.categoryId) || result.categoryName || t("results.categoryFallback", { id: result.categoryId })}
+                            formatSize={formatBytes}
+                            formatDate={formatCacheTimestamp}
+                            instances={instances}
+                            hasInstances={hasInstances}
+                            targetInstanceName={targetInstance?.name}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 {/* Desktop: Full table view */}
-                <div className="hidden sm:block max-h-[600px] overflow-auto border rounded-md">
-                  <Table>
-                    <TableHeader className="sticky top-0 z-20 bg-card">
-                      <TableRow className="bg-card">
-                        <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("title")}>
-                            <span className="select-none">{t("table.title")}</span>
-                            <div className="flex items-center gap-1">
-                              {getSortIcon("title")}
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <ColumnFilterPopover
-                                  columnId="title"
-                                  columnName={t("table.title")}
-                                  columnType="string"
-                                  currentFilter={columnFilters.title}
-                                  onApply={(filter) => {
-                                    setColumnFilters(prev => {
-                                      const next = { ...prev }
-                                      if (filter) next.title = filter
-                                      else delete next.title
-                                      return next
-                                    })
-                                  }}
-                                />
-                              </div>
+                <div ref={tableScrollRef} className="hidden sm:block max-h-150 overflow-auto border rounded-md will-change-transform contain-paint">
+                  <div style={{ position: "relative", minWidth: `${SEARCH_TABLE_MIN_WIDTH}px` }}>
+                    <div
+                      className="sticky top-0 z-20 grid bg-card border-b"
+                      style={{ gridTemplateColumns: SEARCH_TABLE_GRID_TEMPLATE }}
+                    >
+                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("title")}>
+                          <span className="select-none">{t("table.title")}</span>
+                          <div className="flex items-center gap-1">
+                            {getSortIcon("title")}
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <ColumnFilterPopover
+                                columnId="title"
+                                columnName={t("table.title")}
+                                columnType="string"
+                                currentFilter={columnFilters.title}
+                                onApply={(filter) => {
+                                  setColumnFilters(prev => {
+                                    const next = { ...prev }
+                                    if (filter) next.title = filter
+                                    else delete next.title
+                                    return next
+                                  })
+                                }}
+                              />
                             </div>
                           </div>
-                        </TableHead>
-                        <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("indexer")}>
-                            <span className="select-none">{t("table.indexer")}</span>
-                            <div className="flex items-center gap-1">
-                              {getSortIcon("indexer")}
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <ColumnFilterPopover
-                                  columnId="indexer"
-                                  columnName={t("table.indexer")}
-                                  columnType="enum"
-                                  options={indexerOptions}
-                                  currentFilter={columnFilters.indexer}
-                                  multiSelect={true}
-                                  onApply={(filter) => {
-                                    setColumnFilters(prev => {
-                                      const next = { ...prev }
-                                      if (filter) next.indexer = filter
-                                      else delete next.indexer
-                                      return next
-                                    })
-                                  }}
-                                />
-                              </div>
+                        </div>
+                      </div>
+                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("indexer")}>
+                          <span className="select-none">{t("table.indexer")}</span>
+                          <div className="flex items-center gap-1">
+                            {getSortIcon("indexer")}
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <ColumnFilterPopover
+                                columnId="indexer"
+                                columnName={t("table.indexer")}
+                                columnType="enum"
+                                options={indexerOptions}
+                                currentFilter={columnFilters.indexer}
+                                multiSelect={true}
+                                onApply={(filter) => {
+                                  setColumnFilters(prev => {
+                                    const next = { ...prev }
+                                    if (filter) next.indexer = filter
+                                    else delete next.indexer
+                                    return next
+                                  })
+                                }}
+                              />
                             </div>
                           </div>
-                        </TableHead>
-                        <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("size")}>
-                            <span className="select-none">{t("table.size")}</span>
-                            <div className="flex items-center gap-1">
-                              {getSortIcon("size")}
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <ColumnFilterPopover
-                                  columnId="size"
-                                  columnName={t("table.size")}
-                                  columnType="size"
-                                  currentFilter={columnFilters.size}
-                                  onApply={(filter) => {
-                                    setColumnFilters(prev => {
-                                      const next = { ...prev }
-                                      if (filter) next.size = filter
-                                      else delete next.size
-                                      return next
-                                    })
-                                  }}
-                                />
-                              </div>
+                        </div>
+                      </div>
+                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("size")}>
+                          <span className="select-none">{t("table.size")}</span>
+                          <div className="flex items-center gap-1">
+                            {getSortIcon("size")}
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <ColumnFilterPopover
+                                columnId="size"
+                                columnName={t("table.size")}
+                                columnType="size"
+                                currentFilter={columnFilters.size}
+                                onApply={(filter) => {
+                                  setColumnFilters(prev => {
+                                    const next = { ...prev }
+                                    if (filter) next.size = filter
+                                    else delete next.size
+                                    return next
+                                  })
+                                }}
+                              />
                             </div>
                           </div>
-                        </TableHead>
-                        <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("seeders")}>
-                            <span className="select-none">{t("table.seeders")}</span>
-                            <div className="flex items-center gap-1">
-                              {getSortIcon("seeders")}
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <ColumnFilterPopover
-                                  columnId="seeders"
-                                  columnName={t("table.seeders")}
-                                  columnType="number"
-                                  currentFilter={columnFilters.seeders}
-                                  onApply={(filter) => {
-                                    setColumnFilters(prev => {
-                                      const next = { ...prev }
-                                      if (filter) next.seeders = filter
-                                      else delete next.seeders
-                                      return next
-                                    })
-                                  }}
-                                />
-                              </div>
+                        </div>
+                      </div>
+                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("seeders")}>
+                          <span className="select-none">{t("table.seeders")}</span>
+                          <div className="flex items-center gap-1">
+                            {getSortIcon("seeders")}
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <ColumnFilterPopover
+                                columnId="seeders"
+                                columnName={t("table.seeders")}
+                                columnType="number"
+                                currentFilter={columnFilters.seeders}
+                                onApply={(filter) => {
+                                  setColumnFilters(prev => {
+                                    const next = { ...prev }
+                                    if (filter) next.seeders = filter
+                                    else delete next.seeders
+                                    return next
+                                  })
+                                }}
+                              />
                             </div>
                           </div>
-                        </TableHead>
-                        <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("category")}>
-                            <span className="select-none">{t("table.category")}</span>
-                            <div className="flex items-center gap-1">
-                              {getSortIcon("category")}
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <ColumnFilterPopover
-                                  columnId="category"
-                                  columnName={t("table.category")}
-                                  columnType="enum"
-                                  options={categoryOptions}
-                                  currentFilter={columnFilters.category}
-                                  multiSelect={true}
-                                  onApply={(filter) => {
-                                    setColumnFilters(prev => {
-                                      const next = { ...prev }
-                                      if (filter) next.category = filter
-                                      else delete next.category
-                                      return next
-                                    })
-                                  }}
-                                />
-                              </div>
+                        </div>
+                      </div>
+                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("category")}>
+                          <span className="select-none">{t("table.category")}</span>
+                          <div className="flex items-center gap-1">
+                            {getSortIcon("category")}
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <ColumnFilterPopover
+                                columnId="category"
+                                columnName={t("table.category")}
+                                columnType="enum"
+                                options={categoryOptions}
+                                currentFilter={columnFilters.category}
+                                multiSelect={true}
+                                onApply={(filter) => {
+                                  setColumnFilters(prev => {
+                                    const next = { ...prev }
+                                    if (filter) next.category = filter
+                                    else delete next.category
+                                    return next
+                                  })
+                                }}
+                              />
                             </div>
                           </div>
-                        </TableHead>
-                        <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("source")}>
-                            <span className="select-none">{t("table.source")}</span>
-                            <div className="flex items-center gap-1">
-                              {getSortIcon("source")}
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <ColumnFilterPopover
-                                  columnId="source"
-                                  columnName={t("table.source")}
-                                  columnType="enum"
-                                  options={sourceOptions}
-                                  currentFilter={columnFilters.source}
-                                  multiSelect={true}
-                                  onApply={(filter) => {
-                                    setColumnFilters(prev => {
-                                      const next = { ...prev }
-                                      if (filter) next.source = filter
-                                      else delete next.source
-                                      return next
-                                    })
-                                  }}
-                                />
-                              </div>
+                        </div>
+                      </div>
+                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("source")}>
+                          <span className="select-none">{t("table.source")}</span>
+                          <div className="flex items-center gap-1">
+                            {getSortIcon("source")}
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <ColumnFilterPopover
+                                columnId="source"
+                                columnName={t("table.source")}
+                                columnType="enum"
+                                options={sourceOptions}
+                                currentFilter={columnFilters.source}
+                                multiSelect={true}
+                                onApply={(filter) => {
+                                  setColumnFilters(prev => {
+                                    const next = { ...prev }
+                                    if (filter) next.source = filter
+                                    else delete next.source
+                                    return next
+                                  })
+                                }}
+                              />
                             </div>
                           </div>
-                        </TableHead>
-                        <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("collection")}>
-                            <span className="select-none">{t("table.collection")}</span>
-                            <div className="flex items-center gap-1">
-                              {getSortIcon("collection")}
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <ColumnFilterPopover
-                                  columnId="collection"
-                                  columnName={t("table.collection")}
-                                  columnType="string"
-                                  currentFilter={columnFilters.collection}
-                                  onApply={(filter) => {
-                                    setColumnFilters(prev => {
-                                      const next = { ...prev }
-                                      if (filter) next.collection = filter
-                                      else delete next.collection
-                                      return next
-                                    })
-                                  }}
-                                />
-                              </div>
+                        </div>
+                      </div>
+                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("collection")}>
+                          <span className="select-none">{t("table.collection")}</span>
+                          <div className="flex items-center gap-1">
+                            {getSortIcon("collection")}
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <ColumnFilterPopover
+                                columnId="collection"
+                                columnName={t("table.collection")}
+                                columnType="string"
+                                currentFilter={columnFilters.collection}
+                                onApply={(filter) => {
+                                  setColumnFilters(prev => {
+                                    const next = { ...prev }
+                                    if (filter) next.collection = filter
+                                    else delete next.collection
+                                    return next
+                                  })
+                                }}
+                              />
                             </div>
                           </div>
-                        </TableHead>
-                        <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("group")}>
-                            <span className="select-none">{t("table.group")}</span>
-                            <div className="flex items-center gap-1">
-                              {getSortIcon("group")}
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <ColumnFilterPopover
-                                  columnId="group"
-                                  columnName={t("table.group")}
-                                  columnType="string"
-                                  currentFilter={columnFilters.group}
-                                  onApply={(filter) => {
-                                    setColumnFilters(prev => {
-                                      const next = { ...prev }
-                                      if (filter) next.group = filter
-                                      else delete next.group
-                                      return next
-                                    })
-                                  }}
-                                />
-                              </div>
+                        </div>
+                      </div>
+                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("group")}>
+                          <span className="select-none">{t("table.group")}</span>
+                          <div className="flex items-center gap-1">
+                            {getSortIcon("group")}
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <ColumnFilterPopover
+                                columnId="group"
+                                columnName={t("table.group")}
+                                columnType="string"
+                                currentFilter={columnFilters.group}
+                                onApply={(filter) => {
+                                  setColumnFilters(prev => {
+                                    const next = { ...prev }
+                                    if (filter) next.group = filter
+                                    else delete next.group
+                                    return next
+                                  })
+                                }}
+                              />
                             </div>
                           </div>
-                        </TableHead>
-                        <TableHead>
-                          <div className="group flex items-center justify-between gap-2 select-none text-muted-foreground">
-                            <span>{t("table.freeleech")}</span>
-                            <ColumnFilterPopover
-                              columnId="freeleech"
-                              columnName={t("table.freeleech")}
-                              columnType="enum"
-                              options={freeleechOptions}
-                              currentFilter={columnFilters.freeleech}
-                              multiSelect={true}
-                              onApply={(filter) => {
-                                setColumnFilters(prev => {
-                                  const next = { ...prev }
-                                  if (filter) next.freeleech = filter
-                                  else delete next.freeleech
-                                  return next
-                                })
-                              }}
-                            />
-                          </div>
-                        </TableHead>
-                        <TableHead>
-                          <div className="group flex items-center justify-between gap-2 cursor-pointer select-none text-muted-foreground" onClick={() => handleSort("published")}>
-                            <span className="select-none">{t("table.published")}</span>
-                            <div className="flex items-center gap-1">
-                              {getSortIcon("published")}
-                              <div onClick={(e) => e.stopPropagation()}>
-                                <ColumnFilterPopover
-                                  columnId="published"
-                                  columnName={t("table.published")}
-                                  columnType="date"
-                                  currentFilter={columnFilters.published}
-                                  onApply={(filter) => {
-                                    setColumnFilters(prev => {
-                                      const next = { ...prev }
-                                      if (filter) next.published = filter
-                                      else delete next.published
-                                      return next
-                                    })
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredAndSortedResults.map((result) => {
-                        const isSelected = selectedResultGuid === result.guid
-                        return (
-                          <TableRow
-                            key={result.guid}
-                            className={cn(
-                              "cursor-pointer transition-colors",
-                              isSelected? "bg-accent text-accent-foreground hover:bg-accent/90": "hover:bg-muted/60 odd:bg-background/70 even:bg-card/90 dark:odd:bg-background/30 dark:even:bg-card/80"
-                            )}
-                            role="button"
-                            tabIndex={0}
-                            aria-selected={isSelected}
-                            onClick={() => toggleResultSelection(result)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault()
-                                toggleResultSelection(result)
-                              }
+                        </div>
+                      </div>
+                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                        <div className="group flex w-full items-center justify-between gap-2 select-none">
+                          <span>{t("table.freeleech")}</span>
+                          <ColumnFilterPopover
+                            columnId="freeleech"
+                            columnName={t("table.freeleech")}
+                            columnType="enum"
+                            options={freeleechOptions}
+                            currentFilter={columnFilters.freeleech}
+                            multiSelect={true}
+                            onApply={(filter) => {
+                              setColumnFilters(prev => {
+                                const next = { ...prev }
+                                if (filter) next.freeleech = filter
+                                else delete next.freeleech
+                                return next
+                              })
                             }}
-                          >
-                            <TableCell className={cn("font-medium max-w-md", isSelected && "text-accent-foreground")}>
-                              <div className="truncate" title={result.title}>
-                                {result.title}
-                              </div>
-                            </TableCell>
-                            <TableCell className={cn(isSelected && "text-accent-foreground")}>{result.indexer}</TableCell>
-                            <TableCell className={cn(isSelected && "text-accent-foreground")}>{formatBytes(result.size)}</TableCell>
-                            <TableCell className={cn(isSelected && "text-accent-foreground")}>
-                              <Badge variant={result.seeders > 0 ? "default" : "secondary"}>
-                                {result.seeders}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className={cn("text-sm text-muted-foreground", isSelected && "text-accent-foreground")}>
-                              {categoryMap.get(result.categoryId) || result.categoryName || t("results.categoryFallback", { id: result.categoryId })}
-                            </TableCell>
-                            <TableCell className={cn("text-sm", isSelected && "text-accent-foreground")}>
-                              {result.source ? (
-                                <Badge variant="outline">{result.source}</Badge>
-                              ) : (
-                                <span className="text-muted-foreground">{t("results.noValue")}</span>
-                              )}
-                            </TableCell>
-                            <TableCell className={cn("text-sm", isSelected && "text-accent-foreground")}>
-                              {result.collection ? (
-                                <Badge variant="outline">{result.collection}</Badge>
-                              ) : (
-                                <span className="text-muted-foreground">{t("results.noValue")}</span>
-                              )}
-                            </TableCell>
-                            <TableCell className={cn("text-sm", isSelected && "text-accent-foreground")}>
-                              {result.group ? (
-                                <Badge variant="outline">{result.group}</Badge>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell className={cn(isSelected && "text-accent-foreground")}>
-                              {result.downloadVolumeFactor === 0 && (
-                                <Badge variant="default">{t("results.free")}</Badge>
-                              )}
-                              {result.downloadVolumeFactor > 0 && result.downloadVolumeFactor < 1 && (
-                                <Badge variant="secondary">{result.downloadVolumeFactor * 100}%</Badge>
-                              )}
-                            </TableCell>
-                            <TableCell className={cn("text-sm text-muted-foreground", isSelected && "text-accent-foreground")}>
-                              {formatCacheTimestamp(result.publishDate)}
-                            </TableCell>
-                          </TableRow>
+                          />
+                        </div>
+                      </div>
+                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                        <div className="group flex w-full items-center justify-between gap-2 cursor-pointer select-none" onClick={() => handleSort("published")}>
+                          <span className="select-none">{t("table.published")}</span>
+                          <div className="flex items-center gap-1">
+                            {getSortIcon("published")}
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <ColumnFilterPopover
+                                columnId="published"
+                                columnName={t("table.published")}
+                                columnType="date"
+                                currentFilter={columnFilters.published}
+                                onApply={(filter) => {
+                                  setColumnFilters(prev => {
+                                    const next = { ...prev }
+                                    if (filter) next.published = filter
+                                    else delete next.published
+                                    return next
+                                  })
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="h-10 px-2 flex items-center text-sm font-medium text-muted-foreground">
+                        <span className="sr-only">{t("table.actions")}</span>
+                      </div>
+                    </div>
+
+                    <div style={{ height: `${tableVirtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}>
+                      {tableVirtualizer.getVirtualItems().map((virtualRow) => {
+                        const result = filteredAndSortedResults[virtualRow.index]
+                        return (
+                          <SearchTableRow
+                            key={virtualRow.key}
+                            result={result}
+                            isSelected={selectedResultKey === getSearchResultKey(result)}
+                            isEven={virtualRow.index % 2 === 0}
+                            height={virtualRow.size}
+                            translateY={virtualRow.start}
+                            categoryLabel={categoryMap.get(result.categoryId) || result.categoryName || t("results.categoryFallback", { id: result.categoryId })}
+                            publishedLabel={formatCacheTimestamp(result.publishDate)}
+                            onToggleSelection={handleToggleResultSelection}
+                            onDownload={handleDownload}
+                            onViewDetails={handleViewDetails}
+                          />
                         )
                       })}
-                    </TableBody>
-                  </Table>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

@@ -6,6 +6,7 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect } from "@/components/ui/multi-select"
 import { Switch } from "@/components/ui/switch"
@@ -21,6 +22,8 @@ import { useMemo, useState } from "react"
 import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
+const MAX_COMPLETION_DELAY_SECONDS = 600
+
 interface CompletionFormState {
   enabled: boolean
   categories: string[]
@@ -29,6 +32,7 @@ interface CompletionFormState {
   excludeTags: string[]
   indexerIds: number[]
   bypassTorznabCache: boolean
+  delaySeconds: number
 }
 
 const DEFAULT_COMPLETION_FORM: CompletionFormState = {
@@ -39,6 +43,7 @@ const DEFAULT_COMPLETION_FORM: CompletionFormState = {
   excludeTags: [],
   indexerIds: [],
   bypassTorznabCache: false,
+  delaySeconds: 0,
 }
 
 function settingsToForm(settings: InstanceCrossSeedCompletionSettings | undefined): CompletionFormState {
@@ -51,6 +56,7 @@ function settingsToForm(settings: InstanceCrossSeedCompletionSettings | undefine
     excludeTags: settings.excludeTags ?? [],
     indexerIds: settings.indexerIds ?? [],
     bypassTorznabCache: settings.bypassTorznabCache ?? false,
+    delaySeconds: settings.delaySeconds ?? 0,
   }
 }
 
@@ -63,6 +69,7 @@ function formToSettings(form: CompletionFormState): Omit<InstanceCrossSeedComple
     excludeTags: form.excludeTags,
     indexerIds: form.indexerIds,
     bypassTorznabCache: form.bypassTorznabCache,
+    delaySeconds: form.delaySeconds,
   }
 }
 
@@ -174,7 +181,7 @@ export function CompletionOverview() {
   const handleFormChange = (
     instanceId: number,
     field: keyof CompletionFormState,
-    value: string[] | number[] | boolean,
+    value: string[] | number[] | boolean | number,
     currentForm: CompletionFormState
   ) => {
     setFormMap((prev) => ({
@@ -376,6 +383,34 @@ export function CompletionOverview() {
                           />
                         </div>
 
+                        <div className="flex items-center justify-between gap-4 rounded-md border border-border/50 bg-muted/30 p-3">
+                          <div className="space-y-0.5">
+                            <Label htmlFor={`completion-delay-${instance.id}`} className="text-sm font-medium">
+                              {t("preferences.completionOverview.searchDelay")}
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                              {t("preferences.completionOverview.searchDelayDescription")}
+                            </p>
+                          </div>
+                          <Input
+                            id={`completion-delay-${instance.id}`}
+                            type="number"
+                            min={0}
+                            max={MAX_COMPLETION_DELAY_SECONDS}
+                            step={1}
+                            value={form.delaySeconds}
+                            onChange={(event) => {
+                              const raw = event.target.value
+                              const parsed = raw === "" ? 0 : Number(raw)
+                              if (!Number.isFinite(parsed)) return
+                              const clamped = Math.min(MAX_COMPLETION_DELAY_SECONDS, Math.max(0, Math.floor(parsed)))
+                              handleFormChange(instance.id, "delaySeconds", clamped, form)
+                            }}
+                            disabled={isSaving}
+                            className="w-24 text-right"
+                          />
+                        </div>
+
                         <div className="grid gap-4 md:grid-cols-2">
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">
                             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("preferences.completionOverview.includeFilters")}</p>
@@ -390,9 +425,7 @@ export function CompletionOverview() {
                                 disabled={isSaving}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.categories.length === 0
-                                  ? t("preferences.completionOverview.allCategoriesIncluded")
-                                  : t("preferences.completionOverview.selectedCategories", { count: form.categories.length })}
+                                {form.categories.length === 0? t("preferences.completionOverview.allCategoriesIncluded"): t("preferences.completionOverview.selectedCategories", { count: form.categories.length })}
                               </p>
                             </div>
                             <div className="space-y-2">
@@ -406,9 +439,7 @@ export function CompletionOverview() {
                                 disabled={isSaving}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.tags.length === 0
-                                  ? t("preferences.completionOverview.allTagsIncluded")
-                                  : t("preferences.completionOverview.selectedTags", { count: form.tags.length })}
+                                {form.tags.length === 0? t("preferences.completionOverview.allTagsIncluded"): t("preferences.completionOverview.selectedTags", { count: form.tags.length })}
                               </p>
                             </div>
                             <div className="space-y-2">
@@ -421,9 +452,7 @@ export function CompletionOverview() {
                                 disabled={isSaving || indexersQuery.isPending || (!hasEnabledIndexers && !indexersQuery.isPending)}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.indexerIds.length === 0
-                                  ? t("preferences.completionOverview.allIndexersSearched")
-                                  : t("preferences.completionOverview.selectedIndexers", { count: form.indexerIds.length })}
+                                {form.indexerIds.length === 0? t("preferences.completionOverview.allIndexersSearched"): t("preferences.completionOverview.selectedIndexers", { count: form.indexerIds.length })}
                               </p>
                             </div>
                           </div>

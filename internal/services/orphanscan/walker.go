@@ -38,6 +38,7 @@ var ignoredOrphanFileNamePrefixes = []string{
 // torrent clients and should not be treated as orphan content (e.g. "*.parts" from qBittorrent).
 var ignoredOrphanFileNameSuffixes = []string{
 	".parts",
+	".!qB",
 }
 
 // ignoredOrphanDirNames are directory names that should be skipped entirely during scanning.

@@ -112,9 +112,10 @@ function formatRelativeToNow(date: Date, addSuffix = true): string {
   return formatRelativeUnit(value, unit, addSuffix, isFuture)
 }
 
-function formatDateAndTime(date: Date, preferences: DateTimePreferences): string {
+function formatDateAndTime(date: Date, preferences: DateTimePreferences, includeSeconds = false): string {
   const timeZone = preferences.timezone
   const hour12 = preferences.timeFormat === "12h"
+  const secondOption = includeSeconds ? { second: "2-digit" as const } : {}
 
   switch (preferences.dateFormat) {
     case "iso": {
@@ -128,6 +129,7 @@ function formatDateAndTime(date: Date, preferences: DateTimePreferences): string
         timeZone,
         hour: "2-digit",
         minute: "2-digit",
+        ...secondOption,
         hour12,
       })
       return `${dateFormatter.format(date)} ${timeFormatter.format(date)}`
@@ -140,6 +142,7 @@ function formatDateAndTime(date: Date, preferences: DateTimePreferences): string
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        ...secondOption,
         hour12,
       })
     case "eu":
@@ -150,6 +153,7 @@ function formatDateAndTime(date: Date, preferences: DateTimePreferences): string
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        ...secondOption,
         hour12,
       })
     default:
@@ -157,6 +161,7 @@ function formatDateAndTime(date: Date, preferences: DateTimePreferences): string
         timeZone,
         hour: "2-digit",
         minute: "2-digit",
+        ...secondOption,
         hour12,
       })
   }
@@ -196,9 +201,10 @@ function formatDateOnlyAbsolute(date: Date, preferences: DateTimePreferences): s
  * Format a timestamp using user preferences
  * @param timestamp Unix timestamp in seconds
  * @param preferences Optional preferences (will use stored if not provided)
+ * @param includeSeconds Whether to include seconds in absolute timestamps
  * @returns Formatted date/time string
  */
-export function formatTimestamp(timestamp: number, preferences?: DateTimePreferences): string {
+export function formatTimestamp(timestamp: number, preferences?: DateTimePreferences, includeSeconds = false): string {
   if (!timestamp || timestamp === 0) return getNotAvailable()
 
   const prefs = preferences || getStoredPreferences()
@@ -209,7 +215,7 @@ export function formatTimestamp(timestamp: number, preferences?: DateTimePrefere
   }
 
   try {
-    return formatDateAndTime(date, prefs)
+    return formatDateAndTime(date, prefs, includeSeconds)
   } catch (error) {
     console.error("Error formatting timestamp:", error)
     return new Date(timestamp * 1000).toLocaleString(getDisplayLocales())
@@ -251,9 +257,10 @@ export function formatDateOnly(timestamp: number, preferences?: DateTimePreferen
  * Format time only (without date) using user preferences
  * @param timestamp Unix timestamp in seconds
  * @param preferences Optional preferences (will use stored if not provided)
+ * @param includeSeconds Whether to include seconds in the formatted time
  * @returns Formatted time string
  */
-export function formatTimeOnly(timestamp: number, preferences?: DateTimePreferences): string {
+export function formatTimeOnly(timestamp: number, preferences?: DateTimePreferences, includeSeconds = false): string {
   if (!timestamp || timestamp === 0) return getNotAvailable()
 
   const prefs = preferences || getStoredPreferences()
@@ -264,6 +271,7 @@ export function formatTimeOnly(timestamp: number, preferences?: DateTimePreferen
       timeZone: prefs.timezone,
       hour: "2-digit",
       minute: "2-digit",
+      ...(includeSeconds ? { second: "2-digit" } : {}),
       hour12: prefs.timeFormat === "12h",
     })
   } catch (error) {
@@ -316,14 +324,23 @@ export function formatISOTimestamp(isoTimestamp: string, preferences?: DateTimeP
 }
 
 /**
- * Format relative time from a date (e.g., "5 minutes ago" or "3 minutes")
+ * Format relative time from a date-like value.
  * Always returns relative time, independent of user preferences.
  * Use this for status displays where relative time is always appropriate.
- * @param date Date to format
+ * @param value Date, ISO string, or Unix timestamp in seconds
  * @param addSuffix Whether to add suffix text (default: true)
- * @returns Relative time string
+ * @returns Relative time string or "—" for invalid input
  */
-export function formatRelativeTime(date: Date, addSuffix = true): string {
+export function formatRelativeTime(value?: string | number | Date | null, addSuffix = true): string {
+  if (value === undefined || value === null) {
+    return "—"
+  }
+
+  const date = value instanceof Date ? value : new Date(typeof value === "number" ? value * 1000 : value)
+  if (Number.isNaN(date.getTime())) {
+    return "—"
+  }
+
   return formatRelativeToNow(date, addSuffix)
 }
 

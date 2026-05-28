@@ -122,6 +122,9 @@
   },
   "apiKeys": {
     "cardTitle": "API 密钥",
+    "loadingAuthMode": "正在加载认证模式...",
+    "authDisabledTitle": "内置认证已禁用，API 密钥不可用",
+    "authDisabledDescription": "通过反向代理和 CIDR 允许列表的请求可以直接使用 qui API。",
     "cardDescription": "管理用于外部访问的 API 密钥",
     "apiDocs": "API 文档",
     "description": "API 密钥允许外部应用访问您的 qBittorrent 实例。",
@@ -491,7 +494,7 @@
       },
       "deleteDialog": {
         "title": "移除许可证？",
-        "description": "确定要从此设备移除此许可证吗？这将在此处停用许可证以释放一个激活名额。",
+        "description": "确定要从此设备移除此许可证吗？qui 也会尝试释放远程激活名额，但即使该请求失败，本地移除仍会完成。",
         "keyLabel": "要移除的许可证密钥：",
         "recoverPrefix": "如有需要，您可以稍后从"
       },

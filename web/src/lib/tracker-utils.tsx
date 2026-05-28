@@ -21,7 +21,7 @@ export function isValidTrackerUrl(url: string): boolean {
 
 /**
  * Get a status badge for a tracker based on its status code.
- * @param status - The tracker status code (0-4)
+ * @param status - The tracker status code (0-6)
  * @param compact - Whether to use compact styling (for tables)
  */
 export function getTrackerStatusBadge(status: number, compact = false) {
@@ -39,6 +39,10 @@ export function getTrackerStatusBadge(status: number, compact = false) {
       return <Badge variant="default" className={compactClass}>{i18n.t("status.updating", { ns: "common" })}</Badge>
     case 4:
       return <Badge variant="destructive" className={compactClass}>{i18n.t("status.error", { ns: "common" })}</Badge>
+    case 5:
+      return <Badge variant="destructive" className={compactClass}>{i18n.t("status.trackerError", { ns: "common" })}</Badge>
+    case 6:
+      return <Badge variant="destructive" className={compactClass}>{i18n.t("status.unreachable", { ns: "common" })}</Badge>
     default:
       return <Badge variant="outline" className={compactClass}>{i18n.t("status.unknown", { ns: "common" })}</Badge>
   }

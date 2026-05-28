@@ -31,6 +31,7 @@ You need Prowlarr or Jackett to provide Torznab indexer feeds. Add your indexers
 Optional: qui can also query OPS/RED via the trackers' Gazelle JSON APIs. This complements Torznab (and excludes OPS/RED Torznab indexers for per-torrent searches only when **both** Gazelle keys are configured). See [OPS/RED (Gazelle)](gazelle-ops-red).
 
 **Optional but recommended:** Configure Sonarr/Radarr instances in **Settings → Integrations** to enable external ID lookups (IMDb, TMDb, TVDb, TVMaze). When configured, qui queries your *arr instances to resolve IDs for cross-seed searches, improving match accuracy on indexers that support ID-based queries.
+- This is especially helpful for content that is "AKA" type, and can have differing names depending on locale.
 
 ## Discovery Methods
 
@@ -67,6 +68,9 @@ Triggers a cross-seed search when torrents finish downloading. Configure in the 
 - **Target indexers** - Limit completion searches to specific indexers (empty means all enabled)
 - **Exclude categories/tags** - Skip torrents matching these filters
 - **Bypass Torznab cache** - When enabled for an instance, completion searches for that instance always perform a fresh Torznab search instead of using cached indexer results. Default: off. Does not affect Gazelle (OPS/RED) searches, which do not use the Torznab cache.
+- **Search delay** - Wait 0-600 seconds after completion before searching. Default: 0. Use this when post-completion file moves or sister-torrent injection tools need a short head start before qui searches trackers.
+
+If a torrent is still **checking** or **moving**, qui waits and runs the completion search afterward instead of searching immediately against an unstable path/state.
 
 ### Manual Search
 
@@ -74,6 +78,10 @@ Right-click any torrent in the list to access cross-seed actions:
 
 - **Search Cross-Seeds** - Query indexers for matching torrents on other trackers
 - **Filter Cross-Seeds** - Show torrents in your library that share content with the selected torrent (useful for identifying existing cross-seeds)
+
+### Season Pack Assembly
+
+Assemble season-pack torrents from individual episodes you already seed. When autobrr announces a season pack, qui checks your qBittorrent instances for matching episodes, links whatever is already local, and lets qBittorrent download the remainder after recheck when coverage passes the configured threshold (default 75%). Sonarr, TVDB, and TVMaze improve the threshold decision when available. Requires local filesystem access and hardlink/reflink mode. See [Season Packs](season-packs) for setup.
 
 ## Blocklist
 

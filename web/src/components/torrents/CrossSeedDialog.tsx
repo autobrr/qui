@@ -31,7 +31,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { api } from "@/lib/api"
-import { formatBytes, formatRelativeTime } from "@/lib/utils"
+import { formatRelativeTime } from "@/lib/dateTimeUtils"
+import { formatBytes } from "@/lib/utils"
 import type {
   CrossSeedApplyResponse,
   CrossSeedTorrentSearchResponse,
@@ -614,6 +615,8 @@ function getInstanceStatusDisplay(
       return { text: t("crossSeedDialog.status.invalidContentPath"), variant: "destructive" }
     case "skipped_recheck":
       return { text: t("crossSeedDialog.status.skippedRecheck"), variant: "destructive" }
+    case "below_threshold":
+      return { text: t("crossSeedDialog.status.belowThreshold"), variant: "destructive" }
     case "skipped_unsafe_pieces":
       return { text: t("crossSeedDialog.status.skippedUnsafePieces"), variant: "destructive" }
     case "requires_hardlink_reflink":

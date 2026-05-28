@@ -29,22 +29,56 @@ func (s *Service) deriveSourceReleaseForSearch(sourceRelease *rls.Release, files
 	}
 
 	// Trust file structure when it indicates a season pack.
-	if inferredIsPack && derived.Series > 0 {
+	if inferredIsPack {
+		derived.Type = rls.Series
 		derived.Episode = 0
 		return &derived
 	}
 
-	if derived.Series > 0 && derived.Episode == 0 && inferredEpisode > 0 {
+	if derived.Episode == 0 && inferredEpisode > 0 {
 		derived.Episode = inferredEpisode
+	}
+	if inferredEpisode > 0 {
+		derived.Type = rls.Episode
 	}
 
 	return &derived
 }
 
+func (s *Service) selectSourceReleaseForSearch(sourceRelease, contentDetectionRelease *rls.Release, files qbt.TorrentFiles, contentInfo ContentTypeInfo) *rls.Release {
+	if contentInfo.ContentType != "tv" {
+		return sourceRelease
+	}
+
+	baseRelease := sourceRelease
+	if isTVRelease(contentDetectionRelease) {
+		baseRelease = contentDetectionRelease
+	}
+
+	searchRelease := s.deriveSourceReleaseForSearch(baseRelease, files)
+	if isTVSeasonPack(searchRelease) {
+		return mergeSeasonPackSearchStructure(sourceRelease, searchRelease)
+	}
+
+	return searchRelease
+}
+
+func mergeSeasonPackSearchStructure(sourceRelease, inferredRelease *rls.Release) *rls.Release {
+	if sourceRelease == nil || inferredRelease == nil {
+		return inferredRelease
+	}
+
+	merged := *sourceRelease
+	merged.Type = rls.Series
+	merged.Series = inferredRelease.Series
+	merged.Episode = 0
+	return &merged
+}
+
 func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, files qbt.TorrentFiles) (series, episode int, isPack, ok bool) {
 	normalizer := s.stringNormalizer
 	if normalizer == nil {
-		normalizer = stringutils.NewDefaultNormalizer()
+		normalizer = stringutils.DefaultNormalizer
 	}
 
 	type seriesInfo struct {
@@ -53,6 +87,8 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 	}
 
 	bySeries := make(map[int]*seriesInfo)
+	absoluteEpisodes := make(map[int]struct{})
+	seasonlessEpisodeFiles := 0
 	for _, file := range files {
 		if shouldIgnoreFile(file.Name, normalizer) {
 			continue
@@ -61,6 +97,10 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 		fileRelease := s.releaseCache.Parse(file.Name)
 		fileRelease = enrichReleaseFromTorrent(fileRelease, torrentRelease)
 		if fileRelease.Series <= 0 {
+			if fileRelease.Episode > 0 {
+				seasonlessEpisodeFiles++
+				absoluteEpisodes[fileRelease.Episode] = struct{}{}
+			}
 			continue
 		}
 
@@ -88,6 +128,20 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 	}
 
 	if bestSeries == 0 {
+		if isYearBearingMovieRelease(torrentRelease) {
+			return 0, 0, false, false
+		}
+
+		// Multiple seasonless episode files indicate a pack even if parsing
+		// collapses them to the same absolute episode number.
+		if seasonlessEpisodeFiles >= 2 {
+			return 0, 0, true, true
+		}
+		if len(absoluteEpisodes) == 1 {
+			for ep := range absoluteEpisodes {
+				return 0, ep, false, true
+			}
+		}
 		return 0, 0, false, false
 	}
 
@@ -107,4 +161,8 @@ func (s *Service) inferTVSeriesEpisodeFromFiles(torrentRelease *rls.Release, fil
 	}
 
 	return bestSeries, 0, false, true
+}
+
+func isYearBearingMovieRelease(release *rls.Release) bool {
+	return release != nil && release.Type == rls.Movie && release.Year > 0
 }

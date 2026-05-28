@@ -179,12 +179,12 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 	switch release.Type {
 	case rls.Movie:
 		info.ContentType = "movie"
-		info.Categories = []int{2000} // Movies
+		info.Categories = []int{2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080} // Movies
 		info.SearchType = "movie"
 		info.RequiredCaps = []string{"movie-search"}
 	case rls.Episode, rls.Series:
 		info.ContentType = "tv"
-		info.Categories = []int{5000} // TV
+		info.Categories = []int{5000, 5010, 5020, 5030, 5040, 5045, 5070, 5080} // TV
 		info.SearchType = "tvsearch"
 		info.RequiredCaps = []string{"tv-search"}
 	case rls.Music:
@@ -223,12 +223,12 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 		// Fallback logic based on series/episode/year detection for unknown types
 		if release.Series > 0 || release.Episode > 0 {
 			info.ContentType = "tv"
-			info.Categories = []int{5000}
+			info.Categories = []int{5000, 5010, 5020, 5030, 5040, 5045, 5070, 5080}
 			info.SearchType = "tvsearch"
 			info.RequiredCaps = []string{"tv-search"}
 		} else if release.Year > 0 {
 			info.ContentType = "movie"
-			info.Categories = []int{2000}
+			info.Categories = []int{2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080}
 			info.SearchType = "movie"
 			info.RequiredCaps = []string{"movie-search"}
 		} else {
@@ -253,7 +253,7 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 			case "dvd-video", "bluray", "hd-dvd", "ld-30cm", "ld-20cm", "vhs", "umd-video", "video-cd":
 				// Assume movie unless we have better detection
 				info.ContentType = "movie"
-				info.Categories = []int{2000}
+				info.Categories = []int{2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080}
 				info.SearchType = "movie"
 				info.RequiredCaps = []string{"movie-search"}
 			case "dvd-audio":
@@ -684,16 +684,7 @@ func extractDomainFromAnnounce(announceURL string) string {
 
 // FindLargestFile returns the file with the largest size from a list of torrent files.
 // This is useful for content type detection as the largest file usually represents the main content.
-func FindLargestFile(files qbt.TorrentFiles) *struct {
-	Availability float32 `json:"availability"`
-	Index        int     `json:"index"`
-	IsSeed       bool    `json:"is_seed,omitempty"`
-	Name         string  `json:"name"`
-	PieceRange   []int   `json:"piece_range"`
-	Priority     int     `json:"priority"`
-	Progress     float32 `json:"progress"`
-	Size         int64   `json:"size"`
-} {
+func FindLargestFile(files qbt.TorrentFiles) *qbt.TorrentFile {
 	if len(files) == 0 {
 		return nil
 	}

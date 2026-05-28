@@ -118,8 +118,8 @@ func (m *completionGazelleSyncMock) GetAppPreferences(context.Context, int) (qbt
 	return qbt.AppPreferences{}, nil
 }
 
-func (m *completionGazelleSyncMock) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (m *completionGazelleSyncMock) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (m *completionGazelleSyncMock) BulkAction(context.Context, int, []string, string) error {
@@ -194,6 +194,7 @@ func TestHandleTorrentCompletion_AllowsGazelleWhenJackettMissing(t *testing.T) {
 			exclude_tags_json TEXT NOT NULL,
 			indexer_ids_json TEXT NOT NULL,
 			bypass_torznab_cache INTEGER NOT NULL DEFAULT 0,
+			completion_delay_seconds INTEGER NOT NULL DEFAULT 0,
 			updated_at DATETIME NOT NULL
 		);
 	`)

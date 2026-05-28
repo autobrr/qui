@@ -192,6 +192,9 @@ const getTrackerAwareStatusLabel = (torrent: Torrent, supportsTrackerHealth: boo
     if (torrent.tracker_health === "tracker_down") {
       return t?.("tableColumns.trackerDown") ?? "Tracker Down"
     }
+    if (torrent.tracker_health === "tracker_error") {
+      return t?.("tableColumns.trackerError") ?? "Tracker Error"
+    }
   }
 
   return getStateLabel(torrent.state)
@@ -213,6 +216,13 @@ const getTrackerAwareStatusSortMeta = (torrent: Torrent, supportsTrackerHealth: 
         label: t?.("tableColumns.trackerDown") ?? "Tracker Down",
       }
     }
+    if (torrent.tracker_health === "tracker_error") {
+      return {
+        priority: 2,
+        statePriority: -1,
+        label: t?.("tableColumns.trackerError") ?? "Tracker Error",
+      }
+    }
   }
 
   const statePriority = STATUS_SORT_ORDER[torrent.state] ?? 1000
@@ -232,6 +242,9 @@ const getStatusIcon = (state: string, trackerHealth?: string | null, supportsTra
     }
     if (trackerHealth === "tracker_down") {
       return AlertCircle
+    }
+    if (trackerHealth === "tracker_error") {
+      return XCircle
     }
   }
 

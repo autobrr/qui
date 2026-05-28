@@ -114,7 +114,9 @@
     "working": "工作中",
     "updating": "更新中",
     "error": "错误",
-    "unknown": "未知"
+    "unknown": "未知",
+    "trackerError": "Tracker 错误",
+    "unreachable": "无法连接"
   },
   "themeToggle": {
     "changeTheme": "切换主题",

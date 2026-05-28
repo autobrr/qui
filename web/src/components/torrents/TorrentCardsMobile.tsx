@@ -24,6 +24,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
 import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -80,7 +87,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
-import { LocationWarningDialog, SetCategoryDialog, SetLocationDialog, TagEditorDialog, TmmConfirmDialog } from "./TorrentDialogs"
+import {
+  buildSpeedLimitInitialState,
+  LocationWarningDialog,
+  SetCategoryDialog,
+  SetLocationDialog,
+  TagEditorDialog,
+  TmmConfirmDialog
+} from "./TorrentDialogs"
+import {
+  buildMobileShareLimitInitialState,
+  type MobileShareLimitFormState
+} from "./mobileShareLimitDialogState"
+import type { TorrentLimitSnapshot } from "./torrentLimitDialogHelpers"
 // import { createPortal } from 'react-dom'
 // Columns dropdown removed on mobile
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
@@ -101,14 +120,20 @@ function MobileShareLimitsDialog({
   open,
   onOpenChange,
   hashCount,
+  torrents,
   onConfirm,
   isPending,
+  supportsShareLimitsAction = false,
+  supportsShareLimitsMode = false,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   hashCount: number
-  onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => void
+  torrents?: TorrentLimitSnapshot[]
+  onConfirm: (ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, shareLimitAction?: string, shareLimitsMode?: string) => void
   isPending: boolean
+  supportsShareLimitsAction?: boolean
+  supportsShareLimitsMode?: boolean
 }) {
   const { t } = useTranslation("torrents")
   const [ratioEnabled, setRatioEnabled] = useState(false)
@@ -117,20 +142,56 @@ function MobileShareLimitsDialog({
   const [seedingTimeLimit, setSeedingTimeLimit] = useState(1440)
   const [inactiveSeedingTimeEnabled, setInactiveSeedingTimeEnabled] = useState(false)
   const [inactiveSeedingTimeLimit, setInactiveSeedingTimeLimit] = useState(10080)
+  const [shareLimitAction, setShareLimitAction] = useState("default")
+  const [shareLimitsMode, setShareLimitsMode] = useState("default")
+  const wasOpen = useRef(false)
 
-  const handleSubmit = () => {
-    onConfirm(
-      ratioEnabled ? ratioLimit : -1,
-      seedingTimeEnabled ? seedingTimeLimit : -1,
-      inactiveSeedingTimeEnabled ? inactiveSeedingTimeLimit : -1
-    )
-    // Reset form
+  const shareLimitInitialState = useMemo(
+    () => buildMobileShareLimitInitialState(torrents),
+    [torrents]
+  )
+
+  const resetForm = useCallback(() => {
     setRatioEnabled(false)
     setRatioLimit(1.5)
     setSeedingTimeEnabled(false)
     setSeedingTimeLimit(1440)
     setInactiveSeedingTimeEnabled(false)
     setInactiveSeedingTimeLimit(10080)
+    setShareLimitAction("default")
+    setShareLimitsMode("default")
+  }, [])
+
+  const applyInitialState = useCallback((state: MobileShareLimitFormState) => {
+    setRatioEnabled(state.ratioEnabled)
+    setRatioLimit(state.ratioLimit)
+    setSeedingTimeEnabled(state.seedingTimeEnabled)
+    setSeedingTimeLimit(state.seedingTimeLimit)
+    setInactiveSeedingTimeEnabled(state.inactiveSeedingTimeEnabled)
+    setInactiveSeedingTimeLimit(state.inactiveSeedingTimeLimit)
+    setShareLimitAction(state.shareLimitAction)
+    setShareLimitsMode(state.shareLimitsMode)
+  }, [])
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      applyInitialState(shareLimitInitialState)
+    }
+    if (!open) {
+      resetForm()
+    }
+    wasOpen.current = open
+  }, [open, shareLimitInitialState, applyInitialState, resetForm])
+
+  const handleSubmit = () => {
+    onConfirm(
+      ratioEnabled ? ratioLimit : -1,
+      seedingTimeEnabled ? seedingTimeLimit : -1,
+      inactiveSeedingTimeEnabled ? inactiveSeedingTimeLimit : -1,
+      supportsShareLimitsAction && shareLimitAction !== "default" ? shareLimitAction : undefined,
+      supportsShareLimitsMode && shareLimitsMode !== "default" ? shareLimitsMode : undefined
+    )
+    resetForm()
   }
 
   return (
@@ -203,6 +264,40 @@ function MobileShareLimitsDialog({
               />
             )}
           </div>
+
+          {supportsShareLimitsAction && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">{t("shareLimits.whenLimitsReached")}</Label>
+              <Select value={shareLimitAction} onValueChange={setShareLimitAction}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">{t("shareLimits.defaultUseGlobal")}</SelectItem>
+                  <SelectItem value="Stop">{t("shareLimits.stopTorrent")}</SelectItem>
+                  <SelectItem value="Remove">{t("shareLimits.removeTorrent")}</SelectItem>
+                  <SelectItem value="RemoveWithContent">{t("shareLimits.removeWithContent")}</SelectItem>
+                  <SelectItem value="EnableSuperSeeding">{t("shareLimits.enableSuperSeeding")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {supportsShareLimitsMode && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">{t("shareLimits.limitsMatchingMode")}</Label>
+              <Select value={shareLimitsMode} onValueChange={setShareLimitsMode}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">{t("shareLimits.defaultUseGlobal")}</SelectItem>
+                  <SelectItem value="MatchAny">{t("shareLimits.matchAnyLimit")}</SelectItem>
+                  <SelectItem value="MatchAll">{t("shareLimits.matchAllLimits")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -222,31 +317,55 @@ function MobileSpeedLimitsDialog({
   open,
   onOpenChange,
   hashCount,
+  torrents,
   onConfirm,
   isPending,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   hashCount: number
+  torrents?: TorrentLimitSnapshot[]
   onConfirm: (uploadLimit: number, downloadLimit: number) => void
   isPending: boolean
 }) {
   const { t } = useTranslation("torrents")
   const [uploadEnabled, setUploadEnabled] = useState(false)
-  const [uploadLimit, setUploadLimit] = useState(1024)
+  const [uploadLimit, setUploadLimit] = useState(0)
   const [downloadEnabled, setDownloadEnabled] = useState(false)
-  const [downloadLimit, setDownloadLimit] = useState(1024)
+  const [downloadLimit, setDownloadLimit] = useState(0)
+  const wasOpen = useRef(false)
+
+  const speedInitialState = useMemo(
+    () => buildSpeedLimitInitialState(torrents),
+    [torrents]
+  )
+
+  const resetForm = useCallback(() => {
+    setUploadEnabled(false)
+    setUploadLimit(0)
+    setDownloadEnabled(false)
+    setDownloadLimit(0)
+  }, [])
+
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      setUploadEnabled(speedInitialState.uploadEnabled)
+      setUploadLimit(speedInitialState.uploadLimit)
+      setDownloadEnabled(speedInitialState.downloadEnabled)
+      setDownloadLimit(speedInitialState.downloadLimit)
+    }
+    if (!open) {
+      resetForm()
+    }
+    wasOpen.current = open
+  }, [open, speedInitialState, resetForm])
 
   const handleSubmit = () => {
     onConfirm(
-      uploadEnabled ? uploadLimit : -1,
-      downloadEnabled ? downloadLimit : -1
+      uploadEnabled ? uploadLimit : 0,
+      downloadEnabled ? downloadLimit : 0
     )
-    // Reset form
-    setUploadEnabled(false)
-    setUploadLimit(1024)
-    setDownloadEnabled(false)
-    setDownloadLimit(1024)
+    resetForm()
   }
 
   return (
@@ -383,6 +502,10 @@ function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean): 
       label = "Tracker Down"
       variant = "outline"
       className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+    } else if (trackerHealth === "tracker_error") {
+      label = "Tracker Error"
+      variant = "outline"
+      className = "text-orange-500 border-orange-500/40 bg-orange-500/10"
     } else if (trackerHealth === "unregistered") {
       label = "Unregistered"
       variant = "outline"
@@ -1258,9 +1381,10 @@ export function TorrentCardsMobile({
   })
   const supportsTorrentCreation = isAllInstancesView ? false : (capabilities?.supportsTorrentCreation ?? true)
   const supportsSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (capabilities?.supportsSubcategories ?? false)
+  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
   // subcategoriesFromData reflects backend/server state; allowSubcategories
   // additionally respects user preferences for UI surfaces like dialogs.
-  const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false))
+  const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (supportsSubcategories && (subcategoriesAlwaysEnabled || (preferences?.use_subcategories ?? subcategoriesFromData ?? false)))
 
   const getSelectionIdentity = useCallback((torrent: Torrent): string => {
     if (!isAllInstancesView) {
@@ -1995,9 +2119,7 @@ export function TorrentCardsMobile({
                 <X className="h-4 w-4" />
               </button>
               <span className="text-sm font-medium flex items-center gap-2">
-                {isAllSelected
-                  ? t("mobileCards.selection.allSelectedCount", { count: effectiveSelectionCount })
-                  : t("mobileCards.selection.selectedCount", { count: effectiveSelectionCount })}
+                {isAllSelected? t("mobileCards.selection.allSelectedCount", { count: effectiveSelectionCount }): t("mobileCards.selection.selectedCount", { count: effectiveSelectionCount })}
                 {selectedTotalSize > 0 && (
                   <span className="text-xs text-primary-foreground/80">
                     • {selectedFormattedSize}
@@ -2153,9 +2275,7 @@ export function TorrentCardsMobile({
         <SheetContent side="bottom" className="h-auto pb-8">
           <SheetHeader>
             <SheetTitle>
-              {isAllSelected
-                ? t("mobileCards.actionsForAll", { count: effectiveSelectionCount })
-                : t("mobileCards.actionsForCount", { count: effectiveSelectionCount })}
+              {isAllSelected? t("mobileCards.actionsForAll", { count: effectiveSelectionCount }): t("mobileCards.actionsForCount", { count: effectiveSelectionCount })}
             </SheetTitle>
           </SheetHeader>
           <div className="grid gap-2 py-4 px-4">
@@ -2189,7 +2309,7 @@ export function TorrentCardsMobile({
                 </Button>
               )
             })()}
-            {onFilterChange && (
+            {onFilterChange && !isAllInstancesView && (
               <Button
                 variant="outline"
                 onClick={() => {
@@ -2434,7 +2554,10 @@ export function TorrentCardsMobile({
         open={showShareLimitDialog}
         onOpenChange={setShowShareLimitDialog}
         hashCount={effectiveSelectionCount}
-        onConfirm={async (ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit) => {
+        torrents={getSelectedTorrents}
+        supportsShareLimitsAction={capabilities?.supportsShareLimitsAction}
+        supportsShareLimitsMode={capabilities?.supportsShareLimitsMode}
+        onConfirm={async (ratioLimit, seedingTimeLimit, inactiveSeedingTimeLimit, shareLimitAction, shareLimitsMode) => {
           const hashes = isAllSelected ? [] : selectedRequestHashes
           const visibleHashes = isAllSelected ? torrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t))).map(t => t.hash) : selectedRequestHashes
           const totalSelected = isAllSelected ? effectiveSelectionCount : visibleHashes.length || 1
@@ -2452,7 +2575,9 @@ export function TorrentCardsMobile({
               totalSelected,
               actionTargets: isAllSelected ? undefined : selectedActionTargets,
               excludeTargets: isAllSelected? buildTorrentActionTargets(excludedTorrents, instanceId): undefined,
-            }
+            },
+            shareLimitAction,
+            shareLimitsMode
           )
           setShowShareLimitDialog(false)
         }}
@@ -2464,6 +2589,7 @@ export function TorrentCardsMobile({
         open={showSpeedLimitDialog}
         onOpenChange={setShowSpeedLimitDialog}
         hashCount={effectiveSelectionCount}
+        torrents={getSelectedTorrents}
         onConfirm={async (uploadLimit, downloadLimit) => {
           const hashes = isAllSelected ? [] : selectedRequestHashes
           const visibleHashes = isAllSelected ? torrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t))).map(t => t.hash) : selectedRequestHashes

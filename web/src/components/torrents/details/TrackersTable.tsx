@@ -35,6 +35,17 @@ interface TrackersTableProps {
 
 const columnHelper = createColumnHelper<TorrentTracker>()
 
+function getColumnStyle(meta: unknown, size?: number) {
+  const columnMeta = meta as { fullWidth?: boolean }
+  if (columnMeta?.fullWidth) {
+    return { width: "100%" }
+  }
+  if (size) {
+    return { width: size }
+  }
+  return undefined
+}
+
 export const TrackersTable = memo(function TrackersTable({
   trackers,
   loading,
@@ -183,9 +194,7 @@ export const TrackersTable = memo(function TrackersTable({
                       "px-3 py-2 text-left font-medium text-muted-foreground select-none whitespace-nowrap",
                       header.column.getCanSort() && "cursor-pointer hover:bg-muted/50"
                     )}
-                    style={
-                      (header.column.columnDef.meta as { fullWidth?: boolean })?.fullWidth? { width: "100%" }: header.column.columnDef.size? { width: header.getSize() }: undefined
-                    }
+                    style={getColumnStyle(header.column.columnDef.meta, header.column.columnDef.size ? header.getSize() : undefined)}
                     onClick={header.column.getToggleSortingHandler()}
                   >
                     <div className="flex items-center gap-1">
@@ -215,9 +224,7 @@ export const TrackersTable = memo(function TrackersTable({
                       <td
                         key={cell.id}
                         className="px-3 py-2"
-                        style={
-                          (cell.column.columnDef.meta as { fullWidth?: boolean })?.fullWidth? { width: "100%" }: cell.column.columnDef.size? { width: cell.column.getSize() }: undefined
-                        }
+                        style={getColumnStyle(cell.column.columnDef.meta, cell.column.columnDef.size ? cell.column.getSize() : undefined)}
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>

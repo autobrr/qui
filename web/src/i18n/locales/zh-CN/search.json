@@ -146,7 +146,11 @@
     "collection": "合集",
     "group": "分组",
     "freeleech": "Freeleech",
-    "published": "发布时间"
+    "published": "发布时间",
+    "actions": "操作",
+    "downloadTorrent": "下载 .torrent",
+    "viewDetails": "查看详情",
+    "noInfoUrl": "无信息链接"
   },
   "refreshDialog": {
     "title": "跳过缓存？",

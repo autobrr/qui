@@ -84,6 +84,17 @@ Keep Go code `gofmt`-clean with PascalCase exports, camelCase locals, and packag
 - Do not add documentation-only branches unless they enforce something mechanically via compiler, linter, or tests.
 - When a branch only enumerates known states, ask whether it changes behavior, improves safety, or provides exhaustiveness checking. If not, delete it.
 
+## Cross-Platform Path Handling
+
+qui must work on Windows and Unix-like hosts. Do not assume POSIX path behavior in Go code or tests unless the value is explicitly a torrent-internal path or remote qBittorrent path.
+
+- Use `filepath.Join`, `filepath.Clean`, `filepath.Rel`, and `filepath.Separator` for local filesystem paths.
+- Use `path` only for slash-delimited data formats such as torrent-internal file names, URLs, or API payloads that are defined to use `/`.
+- At boundaries between torrent/API paths and local filesystem paths, normalize deliberately: validate slash paths first, then convert with `filepath.FromSlash`.
+- Security/path traversal checks must reject both POSIX and Windows absolute/escaping forms on every OS: leading `/`, leading `\`, drive-letter paths, UNC paths, and `..` segments.
+- Tests should not assert raw `"/foo/"` substrings against local filesystem paths. Use `filepath.ToSlash(path)` for cross-platform assertions, or build expected paths with `filepath.Join`.
+- When adding path traversal tests, include both POSIX-style and Windows-style cases, even if the test is running on only one OS.
+
 ## React Effects
 
 - Use `useEffect` only to sync with external systems (DOM, subscriptions, network).
@@ -128,6 +139,7 @@ Load secrets such as `THEMES_REPO_TOKEN` via `.env` so the Makefile can fetch pr
 ## API & Database Change Rules
 
 - Database schema changes must ship as migrations under `internal/database/migrations`, include matching model/store updates in the same PR, and add both SQLite and Postgres migrations.
+- For an open PR, keep schema work consolidated to at most one new SQLite migration and one new Postgres migration. If the PR needs more schema changes before merge, edit the draft migration files for that PR instead of adding more migration files.
 - API contract changes must update OpenAPI content under `internal/web/swagger` and pass `make test-openapi`.
 - Prefer minimal, reviewable diffs in high-churn areas (`internal/services/crossseed`, `internal/qbittorrent`, `internal/models`).
 

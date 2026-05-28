@@ -35,6 +35,7 @@ import type {
   CrossSeedSearchSettings,
   CrossSeedSearchSettingsPatch,
   CrossSeedSearchStatus,
+  SeasonPackRun,
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
@@ -587,7 +588,6 @@ class ApiClient {
   async getOIDCConfig(): Promise<{
     enabled: boolean
     authorizationUrl: string
-    state: string
     disableBuiltInLogin: boolean
     issuerUrl: string
   }> {
@@ -598,7 +598,6 @@ class ApiClient {
       return {
         enabled: false,
         authorizationUrl: "",
-        state: "",
         disableBuiltInLogin: false,
         issuerUrl: "",
       }
@@ -836,7 +835,7 @@ class ApiClient {
 
   async getTorrentField(
     instanceId: number,
-    field: "name" | "hash" | "full_path" | "tags",
+    field: "name" | "hash" | "full_path" | "tags" | "magnet_uri",
     params: {
       sort?: string
       order?: "asc" | "desc"
@@ -1043,10 +1042,11 @@ class ApiClient {
     data: {
       hashes: string[]
       targets?: Array<{ instanceId: number; hash: string }>
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "setComment" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
       deleteFiles?: boolean
       category?: string
       tags?: string  // Comma-separated tags string
+      comment?: string  // For setComment action
       enable?: boolean  // For toggleAutoTMM
       selectAll?: boolean  // When true, apply to all torrents matching filters
       filters?: TorrentFilters
@@ -1057,6 +1057,8 @@ class ApiClient {
       ratioLimit?: number  // For setShareLimit action
       seedingTimeLimit?: number  // For setShareLimit action (minutes)
       inactiveSeedingTimeLimit?: number  // For setShareLimit action (minutes)
+      shareLimitAction?: string  // setShareLimit: Qt enum Stop, Remove, etc.; omit for default
+      shareLimitsMode?: string  // setShareLimit: Qt enum MatchAny, MatchAll; omit for default
       uploadLimit?: number  // For setUploadLimit action (KB/s)
       downloadLimit?: number  // For setDownloadLimit action (KB/s)
       location?: string  // For setLocation action
@@ -1280,6 +1282,8 @@ class ApiClient {
       download_volume_factor: number
       upload_volume_factor: number
       guid: string
+      infohash_v1?: string
+      infohash_v2?: string
       imdb_id?: string
       tvdb_id?: string
       match_reason?: string
@@ -1337,6 +1341,8 @@ class ApiClient {
         downloadVolumeFactor: result.download_volume_factor,
         uploadVolumeFactor: result.upload_volume_factor,
         guid: result.guid,
+        infoHashV1: result.infohash_v1 ?? undefined,
+        infoHashV2: result.infohash_v2 ?? undefined,
         imdbId: result.imdb_id ?? undefined,
         tvdbId: result.tvdb_id ?? undefined,
         matchReason: result.match_reason ?? undefined,
@@ -1552,6 +1558,14 @@ class ApiClient {
     if (params?.limit !== undefined) search.set("limit", params.limit.toString())
     if (params?.offset !== undefined) search.set("offset", params.offset.toString())
     return this.request<CrossSeedSearchRun[]>(`/cross-seed/search/runs?${search.toString()}`)
+  }
+
+  async listSeasonPackRuns(params?: { limit?: number }): Promise<SeasonPackRun[]> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<SeasonPackRun[]>(`/cross-seed/season-pack/runs${suffix}`)
   }
 
   async triggerCrossSeedRun(payload: { dryRun?: boolean } = {}): Promise<CrossSeedRun> {

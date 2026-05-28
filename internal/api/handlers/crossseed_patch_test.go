@@ -208,3 +208,24 @@ func TestApplyAutomationSettingsPatch_CustomCategory(t *testing.T) {
 		t.Fatalf("expected customCategory to be 'cross-seed', got %q", existing.CustomCategory)
 	}
 }
+
+func TestApplyAutomationSettingsPatch_SeasonPackCategory(t *testing.T) {
+	existing := models.CrossSeedAutomationSettings{
+		SeasonPackCategory: "",
+	}
+
+	category := " tv-uhd "
+	patch := automationSettingsPatchRequest{
+		SeasonPackCategory: &category,
+	}
+
+	if patch.isEmpty() {
+		t.Fatalf("expected seasonPackCategory patch to be non-empty")
+	}
+
+	applyAutomationSettingsPatch(&existing, patch)
+
+	if existing.SeasonPackCategory != "tv-uhd" {
+		t.Fatalf("expected trimmed seasonPackCategory, got %q", existing.SeasonPackCategory)
+	}
+}

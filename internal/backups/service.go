@@ -105,7 +105,7 @@ type backupTagMutator interface {
 }
 
 type backupTorrentMutator interface {
-	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
+	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
 	SetCategory(ctx context.Context, instanceID int, hashes []string, category string) error
 	SetTags(ctx context.Context, instanceID int, hashes []string, tags string) error
 	ResumeWhenComplete(instanceID int, hashes []string, opts qbittorrent.ResumeWhenCompleteOptions)
@@ -1059,7 +1059,7 @@ func isExportMetadataUnavailable(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, qbt.ErrTorrentMetdataNotDownloadedYet) {
+	if errors.Is(err, qbt.ErrTorrentMetadataNotDownloadedYet) {
 		return true
 	}
 	return strings.Contains(err.Error(), "status code: 409")

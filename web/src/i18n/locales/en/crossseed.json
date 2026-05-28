@@ -145,6 +145,7 @@
     "noSearchRunsRecorded": "No search runs recorded yet.",
     "noResultsWithDetails": "No results with details",
     "failed": "Failed:",
+    "skippedLabel": "Skipped:",
     "startRun": "Start run",
     "runningUpper": "RUNNING",
     "idleUpper": "IDLE",
@@ -181,6 +182,39 @@
     "fallbackDescription": "If {{mode}} fails (e.g., different filesystems), fall back to regular mode using existing files.",
     "saveChanges": "Save Changes",
     "noLocalAccess": "No local access",
+    "sections": {
+      "matching": "Matching",
+      "organization": "Organization",
+      "afterInjection": "After injection"
+    },
+    "seasonPack": {
+      "title": "Season packs",
+      "description": "When autobrr grabs a season pack, qui checks whether you already have enough local data to inject it, then lets qBittorrent download anything still missing.",
+      "enable": "Enable season pack matching",
+      "enableDescription": "Allow autobrr to call qui for season pack check and apply.",
+      "coverageThreshold": "Coverage threshold (%)",
+      "coverageThresholdDescription": "Minimum local coverage before qui injects a season pack. If Sonarr resolves the show, qui uses the larger season total; otherwise it falls back to playable files in the pack. Incomplete packs are added paused, rechecked, then resumed automatically.",
+      "matchingTitle": "Matching settings",
+      "matchingDescription": "Season-pack webhook matching rules. These settings only affect season-pack checks and applies.",
+      "ignoreRepackProper": "Ignore REPACK/PROPER differences",
+      "ignoreRepackProperDescription": "Treat REPACK and PROPER episodes as compatible with the season pack.",
+      "simplifyHdr": "Simplify HDR matching",
+      "simplifyHdrDescription": "Treat HDR10, HDR10+, and HDR+ as HDR for season-pack matching.",
+      "simplifyWeb": "Simplify WEB source matching",
+      "simplifyWebDescription": "Treat WEB-DL as WEB for season-pack matching.",
+      "ignoreYear": "Ignore year differences",
+      "ignoreYearDescription": "Allow matches when one release includes a year and the other does not.",
+      "tvdbApiKey": "TVDB API Key",
+      "pasteTvdbApiKey": "Paste TVDB API key",
+      "enableToConfigure": "Enable to configure",
+      "tvdbPin": "TVDB Subscriber PIN",
+      "pasteTvdbPin": "Paste TVDB PIN",
+      "tvdbDescription": "Optional. Improves threshold accuracy when the check endpoint is called without torrent data. TVMaze is used automatically as a free fallback.",
+      "categoryOverride": "Category override",
+      "categoryPlaceholder": "e.g. tv-hd",
+      "categoryDescriptionBefore": "Optional. Fixed qBittorrent category for season pack injects. Set this to your Sonarr download-client category (e.g. ",
+      "categoryDescriptionAfter": ") so Sonarr imports the pack and preserves hardlinks between the library and your seeded episodes. Leave empty to follow the Category Mode below."
+    },
     "gazelle": {
       "title": "Gazelle (OPS/RED)",
       "description": "Enable direct API matching against Orpheus and Redacted. This runs alongside Torznab; OPS/RED Torznab indexers are ignored.",
@@ -253,7 +287,10 @@
       "tagSeededSearch": "seeded-search",
       "tagCompletion": "completion",
       "tagWebhook": "webhook",
-      "tagAutobrr": "autobrr"
+      "tagAutobrr": "autobrr",
+      "seasonPackTags": "Season pack tags",
+      "selectSeasonPackTags": "Select tags...",
+      "tagSeasonPack": "season-pack"
     },
     "postInjection": {
       "title": "Post-injection behavior",
@@ -284,6 +321,29 @@
       "lastUsed": "Last used {{timestamp}}"
     },
     "saveGlobalSettings": "Save global cross-seed settings"
+  },
+  "seasonPackRuns": {
+    "title": "Recent season pack runs",
+    "noRunsYet": "No runs yet",
+    "runsCount_one": "{{count}} run",
+    "runsCount_other": "{{count}} runs",
+    "appliedCount_one": "{{count}} applied",
+    "appliedCount_other": "{{count}} applied",
+    "failedCount_one": "{{count}} failed",
+    "failedCount_other": "{{count}} failed",
+    "filterByName": "Filter by name…",
+    "showSkipped": "Show skipped",
+    "refresh": "Refresh",
+    "loadError": "Failed to load season pack runs.",
+    "loading": "Loading season pack runs...",
+    "noActivity": "No season pack webhook activity yet.",
+    "noMatches": "No runs match your filters.",
+    "showSkippedCount_one": "Show {{count}} skipped",
+    "showSkippedCount_other": "Show {{count}} skipped",
+    "coverage": "Coverage",
+    "episodes": "Episodes",
+    "instance": "Instance",
+    "mode": "Mode"
   },
   "cancelDialog": {
     "title": "Cancel RSS Automation Run?",
@@ -550,7 +610,10 @@
       "regularModeAcknowledge": "I understand the risks of using regular mode with media directories",
       "cancel": "Cancel",
       "addButton": "Add Directory",
-      "saveButton": "Save Changes"
+      "saveButton": "Save Changes",
+      "allowedDownloadClientsLabel": "Allowed Download Clients",
+      "allowedDownloadClientsPlaceholder": "All clients (leave empty for all)",
+      "allowedDownloadClientsHelp": "Only trigger webhook scans when the Sonarr/Radarr download client name matches. Exact names are copied from Sonarr/Radarr; matching is case-insensitive."
     },
     "deleteDialog": {
       "title": "Delete Directory?",

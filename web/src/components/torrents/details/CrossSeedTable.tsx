@@ -57,6 +57,8 @@ function getStatusInfo(match: CrossSeedTorrent, t: (key: string, options?: Recor
     return { label: t("crossSeedTable.statusLabels.unregistered"), variant: "outline", className: "text-destructive border-destructive/40 bg-destructive/10" }
   } else if (trackerHealth === "tracker_down") {
     return { label: t("crossSeedTable.statusLabels.trackerDown"), variant: "outline", className: "text-yellow-500 border-yellow-500/40 bg-yellow-500/10" }
+  } else if (trackerHealth === "tracker_error") {
+    return { label: t("crossSeedTable.statusLabels.trackerError"), variant: "outline", className: "text-orange-500 border-orange-500/40 bg-orange-500/10" }
   }
 
   if (match.state === "downloading" || match.state === "uploading") {

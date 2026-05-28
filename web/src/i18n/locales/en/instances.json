@@ -73,7 +73,9 @@
       "httpBasicAuth": "HTTP Basic Authentication",
       "httpBasicAuthDescription": "Enable if your qBittorrent is behind a reverse proxy with Basic Auth",
       "basicAuthUsername": "Basic Auth Username",
-      "basicAuthPassword": "Basic Auth Password"
+      "basicAuthPassword": "Basic Auth Password",
+      "authType": "Authentication Type",
+      "authTypeDescription": "Select how qui should authenticate to qBittorrent."
     },
     "placeholders": {
       "instanceName": "e.g., Main Server or Home qBittorrent",
@@ -82,7 +84,9 @@
       "passwordNew": "qBittorrent password",
       "passwordExisting": "Leave empty to keep current password",
       "basicAuthUsername": "Basic auth username",
-      "basicAuthPassword": "Enter basic auth password (required)"
+      "basicAuthPassword": "Enter basic auth password (required)",
+      "apiKeyNew": "qBittorrent API key",
+      "apiKeyExisting": "Leave empty to keep current API key"
     },
     "validation": {
       "nameRequired": "Instance name is required",
@@ -95,6 +99,7 @@
       "cancel": "Cancel"
     },
     "toast": {
+      "missingCredentialsTitle": "Missing Credentials",
       "instanceUpdatedTitle": "Instance Updated",
       "instanceUpdatedDescription": "Instance updated successfully. Connection testing in background...",
       "updateFailedTitle": "Update Failed",
@@ -103,6 +108,11 @@
       "instanceCreatedDescription": "Instance created successfully. Connection testing in background...",
       "createFailedTitle": "Create Failed",
       "createFailedDescription": "Failed to create instance"
+    },
+    "authType": {
+      "none": "None",
+      "usernamePassword": "Username and Password",
+      "apiKey": "API Key"
     }
   },
   "settingsButton": {
@@ -227,7 +237,9 @@
         "httpBasicAuth": "HTTP Basic Authentication",
         "httpBasicAuthDescription": "Enable if your qBittorrent is behind a reverse proxy with Basic Auth",
         "username": "Username",
-        "password": "Password"
+        "password": "Password",
+        "qbittorrentAuth": "qBittorrent Authentication",
+        "qbittorrentAuthDescription": "Select how qui should authenticate to qBittorrent."
       },
       "placeholders": {
         "instanceName": "e.g., Main Server",
@@ -239,9 +251,11 @@
       },
       "validation": {
         "nameRequired": "Instance name is required",
-        "passwordRequired": "Password required"
+        "passwordRequired": "Password required",
+        "apiKeyRequired": "API key is required for API key authentication"
       },
       "toast": {
+        "missingCredentialsTitle": "Missing Credentials",
         "updatedTitle": "Instance Updated",
         "updatedDescription": "Instance settings updated successfully.",
         "updateFailedTitle": "Update Failed",
@@ -371,6 +385,22 @@
         "infoHashV2Optional": "Info hash v2 (or \"-\")",
         "torrentId": "Torrent ID"
       },
+      "watchFolders": {
+        "title": "Watch Folders",
+        "description": "Add one or more monitored folders and choose where discovered torrents should be saved.",
+        "addFolder": "Add Folder",
+        "noFolders": "No watch folders configured.",
+        "monitoredFolderLabel": "Monitored Folder",
+        "monitoredFolderPlaceholder": "/watchfolder",
+        "destinationLabel": "Torrent Destination",
+        "selectDestination": "Select destination",
+        "destinationMonitored": "Monitored folder",
+        "destinationDefault": "Default save location",
+        "destinationOther": "Other",
+        "customSavePathLabel": "Custom Save Path",
+        "customSavePathPlaceholder": "foldername",
+        "remove": "Remove"
+      },
       "toast": {
         "success": "File management settings updated successfully",
         "error": "Failed to update file management settings"
@@ -408,12 +438,12 @@
       "protocolSettings": "Protocol Settings",
       "bittorrentProtocol": "BitTorrent Protocol",
       "protocolDescription": "Protocol to use for peer connections",
-      "protocolTcpUtp": "TCP and \u03bcTP",
+      "protocolTcpUtp": "TCP and μTP",
       "protocolTcp": "TCP",
-      "protocolUtp": "\u03bcTP",
-      "utpTcpMixedMode": "\u03bcTP-TCP Mixed Mode",
+      "protocolUtp": "μTP",
+      "utpTcpMixedMode": "μTP-TCP Mixed Mode",
       "selectMode": "Select mode",
-      "utpTcpMixedModeDescription": "How to handle mixed \u03bcTP/TCP connections",
+      "utpTcpMixedModeDescription": "How to handle mixed μTP/TCP connections",
       "preferTcp": "Prefer TCP",
       "peerProportional": "Peer proportional",
       "networkInterface": "Network Interface",
@@ -502,12 +532,12 @@
       "announceIp": "IP address reported to trackers (requires restart)",
       "announceIpDescription": "IP address to announce to trackers (leave empty for auto-detect)",
       "performanceOptimization": "Performance Optimization",
-      "limitUtpProtocol": "Apply rate limit to \u03bcTP protocol",
-      "limitUtpProtocolDescription": "Limit \u03bcTP connections to prevent flooding LAN peers",
+      "limitUtpProtocol": "Apply rate limit to μTP protocol",
+      "limitUtpProtocolDescription": "Limit μTP connections to prevent flooding LAN peers",
       "limitTcpOverhead": "Apply rate limit to transport overhead",
       "limitTcpOverheadDescription": "Include protocol overhead in rate limiting calculations",
-      "limitUtpConnections": "Apply rate limit to \u03bcTP connections",
-      "limitUtpConnectionsDescription": "Apply upload/download limits to \u03bcTP connections",
+      "limitUtpConnections": "Apply rate limit to μTP connections",
+      "limitUtpConnectionsDescription": "Apply upload/download limits to μTP connections",
       "peerTosByte": "Peer ToS Byte",
       "peerTosDescription": "Type of Service byte for peer connections",
       "maxHttpAnnounces": "Max HTTP Announces",
@@ -730,7 +760,8 @@
         "autoManagement": "Auto management",
         "move": "Move",
         "externalProgram": "External program",
-        "dryRun": "Dry-run"
+        "dryRun": "Dry-run",
+        "exportToInstance": "Export to instance"
       },
       "shareLimit": {
         "global": "Global",
@@ -777,7 +808,13 @@
         "deleteLabelRatio": "ratio limit",
         "deleteLabelSeeding": "seeding limit",
         "deleteLabelUnregistered": "unregistered",
-        "deleteLabelCondition": "condition"
+        "deleteLabelCondition": "condition",
+        "exported_one": "Exported {{count}} torrent",
+        "exported_other": "Exported {{count}} torrents",
+        "exportedDryRun_one": "{{count}} torrent would be exported",
+        "exportedDryRun_other": "{{count}} torrents would be exported",
+        "exportFailed_one": "{{count}} torrent failed to export",
+        "exportFailed_other": "{{count}} torrents failed to export"
       },
       "deleteDialog": {
         "title": "Delete Rule",
@@ -821,7 +858,8 @@
         "deletedActivityEntries": "Deleted {{count}} activity entries",
         "deleteActivityFailed": "Failed to delete activity",
         "hashCopied": "Hash copied"
-      }
+      },
+      "exported": "Exported"
     },
     "workflowPreview": {
       "loadingPreview": "Loading preview. This might take a while...",
@@ -845,6 +883,7 @@
       "active": "Active",
       "state": "State",
       "hardlinks": "Hardlinks",
+      "hardlinksCross": "Hardlinks (Cross)",
       "status": "Status",
       "score": "Score",
       "category": "Category",
@@ -994,6 +1033,8 @@
       "noIndexersWarning": "No enabled Torznab indexers found. Enable at least one in Settings → Indexers.",
       "bypassTorznabCache": "Bypass Torznab cache",
       "bypassTorznabCacheDescription": "When on, completion searches for this instance always hit indexers (no cached results). Default off.",
+      "searchDelay": "Search delay (seconds)",
+      "searchDelayDescription": "Wait this long after a torrent completes before searching trackers. 0 disables the delay. Common values: 5–10s if you use UploadAssistant; 60–120s if files move into place after completion.",
       "includeFilters": "Include filters",
       "excludeFilters": "Exclude filters",
       "categories": "Categories",
@@ -1065,7 +1106,8 @@
         "moved": "Moved",
         "external_program": "External program",
         "auto_managed": "Auto managed",
-        "dry_run_no_match": "Dry-run (no match)"
+        "dry_run_no_match": "Dry-run (no match)",
+        "exported_to_instance": "Export to instance"
       }
     },
     "reannounceOverview": {
@@ -1189,6 +1231,48 @@
       "confirmSaveAndEnable": "Confirming will save and enable this rule.",
       "confirmSave": "Confirming will save this rule.",
       "noTorrentsCurrentlyMatch": "No torrents currently match this rule.",
+      "contentLayout": {
+        "original": "Original",
+        "subfolder": "Subfolder",
+        "noSubfolder": "No subfolder"
+      },
+      "shareLimitAction": {
+        "label": "When limits are reached",
+        "default": "Default (use global)",
+        "stop": "Stop torrent",
+        "remove": "Remove torrent",
+        "removeWithContent": "Remove with content",
+        "enableSuperSeeding": "Enable super seeding"
+      },
+      "shareLimitsMode": {
+        "label": "Limits matching mode",
+        "default": "Default (use global)",
+        "matchAny": "Match any limit",
+        "matchAll": "Match all limits"
+      },
+      "export": {
+        "title": "Export to instance",
+        "targetInstance": "Target instance",
+        "loadingInstances": "Loading instances...",
+        "loadInstancesFailed": "Failed to load instances.",
+        "selectTargetPlaceholder": "Select target instance...",
+        "noOtherInstances": "No other instances available.",
+        "savePathLabel": "Save path on target (optional)",
+        "savePathPlaceholder": "e.g. /data/torrents",
+        "savePathHelp": "Parent directory for torrent content. Leave empty to use category default. Supports templates:",
+        "categoryLabel": "Category on target (optional)",
+        "selectTargetFirst": "Select a target instance first",
+        "loadingCategories": "Loading categories...",
+        "noCategory": "No category",
+        "noCategoriesFound": "No categories found on target",
+        "tagsLabel": "Tags on target (optional, comma-separated)",
+        "tagsPlaceholder": "e.g. seedbox, migrated",
+        "contentLayoutLabel": "Content layout (optional)",
+        "contentLayoutDefaultPlaceholder": "Default (no preference)",
+        "contentLayoutDefault": "Default",
+        "skipChecking": "Skip checking",
+        "addPaused": "Add paused"
+      },
       "priority": {
         "title": "Torrent Priority",
         "description": "Controls the order in which torrents are processed.",
@@ -1226,7 +1310,8 @@
         "tag": "Tag",
         "category": "Category",
         "move": "Move",
-        "externalProgram": "Run external program"
+        "externalProgram": "Run external program",
+        "exportToInstance": "Export to instance"
       },
       "option": {
         "noChange": "No change",
@@ -1466,7 +1551,8 @@
           "autoManaged": "Auto management",
           "moved": "Move",
           "externalProgram": "External program",
-          "noMatches": "No matches"
+          "noMatches": "No matches",
+          "exportedToInstance": "Export to instance"
         },
         "summary": {
           "tagsChangedBoth": "{{added}} would be tagged, {{removed}} would be untagged",
@@ -1491,6 +1577,8 @@
         "workflowSaved": "Workflow {{action}}",
         "saveFailed": "Failed to save automation",
         "nameRequired": "Name is required",
+        "selectTargetInstance": "Select a target instance",
+        "targetInstanceMissing": "Selected target instance no longer exists",
         "selectTracker": "Select at least one tracker",
         "enableAction": "Enable at least one action",
         "deleteRequiresCondition": "Delete requires at least one condition",
@@ -1527,7 +1615,9 @@
         "selectGroupKey": "Select at least one key",
         "groupExists": "A group with this ID already exists",
         "customGroupAdded": "Custom group added"
-      }
+      },
+      "trackerMatchInclude": "Include",
+      "trackerMatchExclude": "Exclude"
     },
     "shareLimit": {
       "global": "Global",

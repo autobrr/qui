@@ -22,7 +22,7 @@ import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { getTorrentDisplayHash } from "@/lib/torrent-utils"
 import { copyTextToClipboard } from "@/lib/utils"
 import type { Category, ExternalProgram, InstanceCapabilities, Torrent, TorrentFilters } from "@/types"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQueries, useQuery } from "@tanstack/react-query"
 import {
   Blocks,
   CheckCircle,
@@ -32,6 +32,7 @@ import {
   FolderOpen,
   Gauge,
   GitBranch,
+  MessageSquare,
   Pause,
   Play,
   Radio,
@@ -64,6 +65,7 @@ interface TorrentContextMenuProps {
   onAction: (action: TorrentAction, hashes: string[], options?: { enable?: boolean; targets?: Array<{ instanceId: number; hash: string }> }) => void
   onPrepareDelete: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareTags: (hashes: string[], torrents?: Torrent[]) => void
+  onPrepareComment?: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareCategory: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareCreateCategory: (hashes: string[], torrents?: Torrent[]) => void
   onPrepareShareLimit: (hashes: string[], torrents?: Torrent[]) => void
@@ -73,8 +75,6 @@ interface TorrentContextMenuProps {
   onPrepareLocation: (hashes: string[], torrents?: Torrent[], count?: number) => void
   onPrepareTmm?: (hashes: string[], count: number, enable: boolean) => void
   onPrepareRenameTorrent: (hashes: string[], torrents?: Torrent[]) => void
-  onPrepareRenameFile: (hashes: string[], torrents?: Torrent[]) => void
-  onPrepareRenameFolder: (hashes: string[], torrents?: Torrent[]) => void
   availableCategories?: Record<string, Category>
   onSetCategory?: (category: string, hashes: string[], targets?: Array<{ instanceId: number; hash: string }>) => void
   isPending?: boolean
@@ -86,7 +86,7 @@ interface TorrentContextMenuProps {
   onCrossSeedSearch?: (torrent: Torrent) => void
   isCrossSeedSearching?: boolean
   onFilterChange?: (filters: TorrentFilters) => void
-  onFetchAllField?: (field: "name" | "hash" | "full_path") => Promise<string[]>
+  onFetchAllField?: (field: "name" | "hash" | "full_path" | "magnet_uri") => Promise<string[]>
 }
 
 export const TorrentContextMenu = memo(function TorrentContextMenu({
@@ -103,14 +103,13 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   onAction,
   onPrepareDelete,
   onPrepareTags,
+  onPrepareComment,
   onPrepareShareLimit,
   onPrepareSpeedLimits,
   onPrepareRecheck,
   onPrepareReannounce,
   onPrepareLocation,
   onPrepareRenameTorrent,
-  onPrepareRenameFile: _onPrepareRenameFile,
-  onPrepareRenameFolder: _onPrepareRenameFolder,
   onPrepareTmm,
   availableCategories = {},
   onSetCategory,
@@ -143,6 +142,26 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   )
   const actionTargets = useMemo(() => buildTorrentActionTargets(torrents, _instanceId), [torrents, _instanceId])
 
+  const targetInstanceIds = useMemo(() => {
+    const ids = new Set<number>()
+    for (const target of actionTargets) {
+      if (target.instanceId > 0) {
+        ids.add(target.instanceId)
+      }
+    }
+    return Array.from(ids).sort((a, b) => a - b)
+  }, [actionTargets])
+
+  const shouldResolveSetCommentSupport = capabilities === undefined && _instanceId <= 0 && targetInstanceIds.length > 0
+  const setCommentCapabilityQueries = useQueries({
+    queries: targetInstanceIds.map(id => ({
+      queryKey: ["instance-capabilities", id],
+      queryFn: () => api.getInstanceCapabilities(id),
+      staleTime: 60_000,
+      enabled: shouldResolveSetCommentSupport,
+    })),
+  })
+
   const count = isAllSelected ? effectiveSelectionCount : hashes.length
 
   // State for cross-seed search
@@ -155,13 +174,14 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     filterCrossSeeds(torrents)
   }, [filterCrossSeeds, torrents])
 
-  const copyToClipboard = useCallback(async (text: string, type: "name" | "hash" | "full path", itemCount: number) => {
+  const copyToClipboard = useCallback(async (text: string, type: "name" | "hash" | "full path" | "magnet link", itemCount: number) => {
     try {
       await copyTextToClipboard(text)
-      const pluralTypes: Record<"name" | "hash" | "full path", string> = {
+      const pluralTypes: Record<"name" | "hash" | "full path" | "magnet link", string> = {
         name: "names",
         hash: "hashes",
         "full path": "full paths",
+        "magnet link": "magnet links",
       }
       const label = itemCount > 1 ? pluralTypes[type] : type
       toast.success(t("contextMenu.toast.torrentCopied", { label }))
@@ -273,6 +293,31 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
     void copyToClipboard(values.join("\n"), "full path", values.length)
   }, [copyToClipboard, incognitoMode, torrents, isAllSelected, effectiveSelectionCount, onFetchAllField, t])
 
+  const handleCopyMagnetLinks = useCallback(async () => {
+    if (isAllSelected && onFetchAllField && torrents.length < effectiveSelectionCount) {
+      try {
+        const values = await onFetchAllField("magnet_uri")
+        if (values.length === 0) { toast.error(t("contextMenu.toast.magnetNotAvailable")); return }
+        void copyToClipboard(values.join("\n"), "magnet link", values.length)
+      } catch (error) {
+        console.error("Failed to fetch torrent magnet links:", error)
+        toast.error(t("contextMenu.toast.failedToFetchMagnets"))
+      }
+      return
+    }
+
+    const values = torrents
+      .map(t => (t.magnet_uri ?? "").trim())
+      .filter(Boolean)
+
+    if (values.length === 0) {
+      toast.error(t("contextMenu.toast.magnetNotAvailable"))
+      return
+    }
+
+    void copyToClipboard(values.join("\n"), "magnet link", values.length)
+  }, [copyToClipboard, torrents, isAllSelected, effectiveSelectionCount, onFetchAllField, t])
+
   const handleExport = useCallback(() => {
     if (!onExport) {
       return
@@ -328,6 +373,9 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
   }, [onPrepareLocation, hashes, torrents, count])
 
   const supportsTorrentExport = capabilities?.supportsTorrentExport ?? true
+  const supportsSetComment = capabilities?.supportsSetComment ?? (
+    shouldResolveSetCommentSupport? setCommentCapabilityQueries.some(query => query.data?.supportsSetComment === true): false
+  )
   const supportsInstanceScopedActions = _instanceId > 0
 
   return (
@@ -354,6 +402,9 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
             </ContextMenuItem>
             <ContextMenuItem onClick={handleCopyFullPaths}>
               {t("contextMenu.copyFullPath")}
+            </ContextMenuItem>
+            <ContextMenuItem onClick={handleCopyMagnetLinks}>
+              {t("contextMenu.copyMagnetLink")}
             </ContextMenuItem>
           </>
         ) : (
@@ -459,7 +510,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 {t("contextMenu.searchCrossSeeds")}
               </ContextMenuItem>
             )}
-            {onFilterChange && (
+            {onFilterChange && supportsInstanceScopedActions && (
               <ContextMenuItem
                 onClick={handleFilterCrossSeeds}
                 disabled={isPending || isFilteringCrossSeeds || count > 1}
@@ -474,7 +525,7 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 {isFilteringCrossSeeds && <span className="ml-1 text-xs text-muted-foreground">...</span>}
               </ContextMenuItem>
             )}
-            {(canCrossSeedSearch || onFilterChange) && <ContextMenuSeparator />}
+            {(canCrossSeedSearch || (onFilterChange && supportsInstanceScopedActions)) && <ContextMenuSeparator />}
             <ContextMenuItem
               onClick={() => onPrepareTags(hashes, torrents)}
               disabled={isPending}
@@ -508,6 +559,15 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 isPending={isPending}
                 capabilities={capabilities}
               />
+            )}
+            {supportsSetComment && onPrepareComment && (
+              <ContextMenuItem
+                onClick={() => onPrepareComment(hashes, torrents)}
+                disabled={isPending}
+              >
+                <MessageSquare className="mr-2 h-4 w-4" />
+                {t("contextMenu.setComment")} {count > 1 ? `(${count})` : ""}
+              </ContextMenuItem>
             )}
             <ContextMenuSeparator />
             <ContextMenuItem
@@ -585,6 +645,9 @@ export const TorrentContextMenu = memo(function TorrentContextMenu({
                 </ContextMenuItem>
                 <ContextMenuItem onClick={handleCopyFullPaths}>
                   {t("contextMenu.copyFullPath")}
+                </ContextMenuItem>
+                <ContextMenuItem onClick={handleCopyMagnetLinks}>
+                  {t("contextMenu.copyMagnetLink")}
                 </ContextMenuItem>
               </ContextMenuSubContent>
             </ContextMenuSub>

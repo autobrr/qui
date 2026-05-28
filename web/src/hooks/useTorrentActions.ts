@@ -27,6 +27,7 @@ export const TORRENT_ACTIONS = {
   ADD_TAGS: "addTags",
   REMOVE_TAGS: "removeTags",
   SET_TAGS: "setTags",
+  SET_COMMENT: "setComment",
   SET_CATEGORY: "setCategory",
   TOGGLE_AUTO_TMM: "toggleAutoTMM",
   FORCE_START: "forceStart",
@@ -59,11 +60,14 @@ interface TorrentActionData {
   targets?: Array<{ instanceId: number; hash: string }>
   deleteFiles?: boolean
   tags?: string
+  comment?: string
   category?: string
   enable?: boolean
   ratioLimit?: number
   seedingTimeLimit?: number
   inactiveSeedingTimeLimit?: number
+  shareLimitAction?: string
+  shareLimitsMode?: string
   uploadLimit?: number
   downloadLimit?: number
   location?: string
@@ -138,6 +142,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
   const { blockCrossSeeds, setBlockCrossSeeds } = usePersistedCrossSeedBlocklist(instanceId, false)
   const [deleteCrossSeeds, setDeleteCrossSeeds] = useState(false)
   const [showTagsDialog, setShowTagsDialog] = useState(false)
+  const [showCommentDialog, setShowCommentDialog] = useState(false)
   const [showCategoryDialog, setShowCategoryDialog] = useState(false)
   const [showCreateCategoryDialog, setShowCreateCategoryDialog] = useState(false)
   const [showShareLimitDialog, setShowShareLimitDialog] = useState(false)
@@ -174,11 +179,14 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
         action: payload.action,
         deleteFiles: payload.deleteFiles,
         tags: payload.tags,
+        comment: payload.comment,
         category: payload.category,
         enable: payload.enable,
         ratioLimit: payload.ratioLimit,
         seedingTimeLimit: payload.seedingTimeLimit,
         inactiveSeedingTimeLimit: payload.inactiveSeedingTimeLimit,
+        shareLimitAction: payload.shareLimitAction,
+        shareLimitsMode: payload.shareLimitsMode,
         uploadLimit: payload.uploadLimit,
         downloadLimit: payload.downloadLimit,
         location: payload.location,
@@ -274,6 +282,8 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       if (variables.action === "delete") {
         setShowDeleteDialog(false)
         setDeleteCrossSeeds(false)
+      } else if (variables.action === "setComment") {
+        setShowCommentDialog(false)
       } else if (variables.action === "setCategory") {
         setShowCategoryDialog(false)
         setShowCreateCategoryDialog(false)
@@ -602,6 +612,37 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     })
   }, [updateTagsMutation, instanceIds])
 
+  const handleSetComment = useCallback(async (
+    comment: string,
+    hashes: string[],
+    isAllSelected?: boolean,
+    filters?: TorrentActionData["filters"],
+    search?: string,
+    excludeHashes?: string[],
+    clientMeta?: ClientMeta
+  ) => {
+    const clientHashes = clientMeta?.clientHashes ?? hashes
+    const clientCount = clientMeta?.totalSelected
+      ?? (clientHashes?.length ?? hashes.length)
+    await mutation.mutateAsync({
+      action: "setComment",
+      instanceIds,
+      targets: isAllSelected ? undefined : clientMeta?.actionTargets,
+      comment,
+      hashes: isAllSelected ? [] : hashes,
+      selectAll: isAllSelected,
+      filters: isAllSelected ? filters : undefined,
+      search: isAllSelected ? search : undefined,
+      excludeHashes: isAllSelected ? excludeHashes : undefined,
+      excludeTargets: isAllSelected ? clientMeta?.excludeTargets : undefined,
+      clientHashes,
+      clientCount,
+    })
+    setShowCommentDialog(false)
+    setContextHashes([])
+    setContextTorrents([])
+  }, [mutation, instanceIds])
+
   const handleSetCategory = useCallback(async (
     category: string,
     hashes: string[],
@@ -642,7 +683,9 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     filters?: TorrentActionData["filters"],
     search?: string,
     excludeHashes?: string[],
-    clientMeta?: ClientMeta
+    clientMeta?: ClientMeta,
+    shareLimitAction?: string,
+    shareLimitsMode?: string
   ) => {
     const clientHashes = clientMeta?.clientHashes ?? hashes
     const clientCount = clientMeta?.totalSelected
@@ -660,6 +703,8 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       ratioLimit,
       seedingTimeLimit,
       inactiveSeedingTimeLimit,
+      shareLimitAction,
+      shareLimitsMode,
       clientHashes,
       clientCount,
     })
@@ -865,6 +910,12 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     setShowTagsDialog(true)
   }, [])
 
+  const prepareCommentAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
+    setContextHashes(hashes)
+    if (torrents) setContextTorrents(torrents)
+    setShowCommentDialog(true)
+  }, [])
+
   const prepareCategoryAction = useCallback((hashes: string[], torrents?: Torrent[]) => {
     setContextHashes(hashes)
     if (torrents) setContextTorrents(torrents)
@@ -993,6 +1044,8 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     setDeleteCrossSeeds,
     showTagsDialog,
     setShowTagsDialog,
+    showCommentDialog,
+    setShowCommentDialog,
     showCategoryDialog,
     setShowCategoryDialog,
     showCreateCategoryDialog,
@@ -1028,6 +1081,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     handleAction,
     handleDelete,
     handleUpdateTags,
+    handleSetComment,
     handleSetCategory,
     handleSetShareLimit,
     handleSetSpeedLimits,
@@ -1041,6 +1095,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     // Preparation handlers (for showing dialogs)
     prepareDeleteAction,
     prepareTagsAction,
+    prepareCommentAction,
     prepareCategoryAction,
     prepareCreateCategoryAction,
     prepareShareLimitAction,
@@ -1142,6 +1197,9 @@ function showSuccessToast(t: Translate, action: TorrentAction, count: number, de
       break
     case "setTags":
       toast.success(t("actionToasts.success.setTags", { count }))
+      break
+    case "setComment":
+      toast.success(t("actionToasts.success.setComment", { count }))
       break
     case "setCategory":
       toast.success(t("actionToasts.success.setCategory", { count }))

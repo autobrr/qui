@@ -52,13 +52,13 @@ import { Switch } from "@/components/ui/switch"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
-import { api } from "@/lib/api"
+import { APIError, api } from "@/lib/api"
 
 import { withBasePath } from "@/lib/base-url"
 import { canRegisterProtocolHandler, getMagnetHandlerRegistrationGuidance, registerMagnetHandler } from "@/lib/protocol-handler"
 import { copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
 import type { SettingsSearch } from "@/routes/_authenticated/settings"
-import type { Instance, TorznabSearchCacheStats, User } from "@/types"
+import type { ApplicationInfo, Instance, TorznabSearchCacheStats, User } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Bell, Clock, Copy, Database, ExternalLink, FileText, Info, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
@@ -95,6 +95,18 @@ function LanguageSelector() {
       </Select>
     </div>
   )
+}
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof APIError && error.message) {
+    return error.message
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  return fallback
 }
 
 function ChangePasswordForm() {
@@ -228,18 +240,25 @@ function ChangePasswordForm() {
   )
 }
 
-function ApiKeysManager() {
+interface ApiKeysManagerProps {
+  authMode?: ApplicationInfo["authMode"]
+  authModeLoading: boolean
+}
+
+function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
   const { t } = useTranslation("settings")
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
   const [newKey, setNewKey] = useState<{ name: string; key: string } | null>(null)
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
+  const authDisabled = authMode === "disabled"
 
   // Fetch API keys from backend
   const { data: apiKeys, isLoading } = useQuery({
     queryKey: ["apiKeys"],
     queryFn: () => api.getApiKeys(),
+    enabled: !authModeLoading && !authDisabled,
     staleTime: 30 * 1000, // 30 seconds
   })
 
@@ -255,8 +274,8 @@ function ApiKeysManager() {
       queryClient.invalidateQueries({ queryKey: ["apiKeys"] })
       toast.success(t("apiKeys.toasts.created"))
     },
-    onError: () => {
-      toast.error(t("apiKeys.toasts.createFailed"))
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, t("apiKeys.toasts.createFailed")))
     },
   })
 
@@ -269,8 +288,8 @@ function ApiKeysManager() {
       setDeleteKeyId(null)
       toast.success(t("apiKeys.toasts.deleted"))
     },
-    onError: () => {
-      toast.error(t("apiKeys.toasts.deleteFailed"))
+    onError: (error) => {
+      toast.error(getApiErrorMessage(error, t("apiKeys.toasts.deleteFailed")))
     },
   })
 
@@ -283,6 +302,25 @@ function ApiKeysManager() {
       form.reset()
     },
   })
+
+  if (authModeLoading) {
+    return (
+      <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+        {t("apiKeys.loadingAuthMode")}
+      </div>
+    )
+  }
+
+  if (authDisabled) {
+    return (
+      <div className="rounded-md border border-border bg-muted/30 p-4">
+        <h3 className="text-sm font-medium">{t("apiKeys.authDisabledTitle")}</h3>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {t("apiKeys.authDisabledDescription")}
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -1189,6 +1227,11 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
   const { t } = useTranslation("settings")
   const activeTab: SettingsTab = search.tab ?? "application"
   const scrollPanelContentClassName = "space-y-4"
+  const appInfoQuery = useQuery({
+    queryKey: ["application-info"],
+    queryFn: () => api.getApplicationInfo(),
+    staleTime: 30 * 1000,
+  })
 
   const handleTabChange = (tab: SettingsTab) => {
     onSearchChange({ tab })
@@ -1511,7 +1554,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <ApiKeysManager />
+                  <ApiKeysManager authMode={appInfoQuery.data?.authMode} authModeLoading={appInfoQuery.isLoading} />
                 </CardContent>
               </Card>
             </SettingsScrollPanel>

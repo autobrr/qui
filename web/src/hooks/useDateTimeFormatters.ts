@@ -27,9 +27,9 @@ export function useDateTimeFormatters() {
       /**
        * Format a Unix timestamp (seconds) to a full date/time string
        */
-      formatTimestamp: (timestamp: number) => {
+      formatTimestamp: (timestamp: number, includeSeconds = false) => {
         void activeLocale
-        return formatTimestamp(timestamp, preferences)
+        return formatTimestamp(timestamp, preferences, includeSeconds)
       },
 
       /**
@@ -43,9 +43,9 @@ export function useDateTimeFormatters() {
       /**
        * Format a Unix timestamp (seconds) to a time-only string
        */
-      formatTimeOnly: (timestamp: number) => {
+      formatTimeOnly: (timestamp: number, includeSeconds = false) => {
         void activeLocale
-        return formatTimeOnly(timestamp, preferences)
+        return formatTimeOnly(timestamp, preferences, includeSeconds)
       },
 
       /**

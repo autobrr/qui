@@ -138,8 +138,9 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   // Get capabilities to check subcategory support
   const { data: capabilities } = useInstanceCapabilities(metadataInstanceId, { enabled: metadataInstanceId > 0 })
   const supportsSubcategories = capabilities?.supportsSubcategories ?? false
+  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
   const allowSubcategories =
-    supportsSubcategories && (preferences?.use_subcategories ?? false)
+    supportsSubcategories && (subcategoriesAlwaysEnabled || (preferences?.use_subcategories ?? false))
 
   // Get instance name for cross-seed warning
   const { instances } = useInstances()
@@ -446,7 +447,7 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
     triggerAction(actionMap[action])
   }, [triggerAction])
 
-  const handleSetShareLimitWrapper = useCallback((ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number) => {
+  const handleSetShareLimitWrapper = useCallback((ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number, shareLimitAction?: string, shareLimitsMode?: string) => {
     handleSetShareLimit(
       ratioLimit,
       seedingTimeLimit,
@@ -456,7 +457,9 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
       filters,
       search,
       excludeHashes,
-      clientMeta
+      clientMeta,
+      shareLimitAction,
+      shareLimitsMode
     )
   }, [handleSetShareLimit, selectedHashes, isAllSelected, filters, search, excludeHashes, clientMeta])
 
@@ -834,6 +837,8 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
         torrents={selectedTorrents}
         onConfirm={handleSetShareLimitWrapper}
         isPending={isPending}
+        supportsShareLimitsAction={capabilities?.supportsShareLimitsAction}
+        supportsShareLimitsMode={capabilities?.supportsShareLimitsMode}
       />
 
       <SpeedLimitsDialog

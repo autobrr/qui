@@ -21,6 +21,29 @@ import (
 	"github.com/autobrr/qui/internal/services/notifications"
 )
 
+func TestNormalizeShareLimitEnum(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{in: "", want: ""},
+		{in: "  ", want: ""},
+		{in: "Default", want: ""},
+		{in: "default", want: ""},
+		{in: "Stop", want: "Stop"},
+		{in: " MatchAny ", want: "MatchAny"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, normalizeShareLimitEnum(tc.in))
+		})
+	}
+}
+
 // -----------------------------------------------------------------------------
 // matchesTracker tests
 // -----------------------------------------------------------------------------
@@ -155,6 +178,36 @@ func TestMatchesTracker(t *testing.T) {
 			domains: []string{"tracker.example.com"},
 			want:    false,
 		},
+		{
+			name:    "exclude single tracker match",
+			pattern: "!tracker.example.com",
+			domains: []string{"tracker.example.com"},
+			want:    false,
+		},
+		{
+			name:    "exclude single tracker non-match",
+			pattern: "!tracker.example.com",
+			domains: []string{"other.tracker.com"},
+			want:    true,
+		},
+		{
+			name:    "include and exclude where exclude wins",
+			pattern: "tracker.example.com,!tracker.example.com",
+			domains: []string{"tracker.example.com"},
+			want:    false,
+		},
+		{
+			name:    "include and exclude where include matches",
+			pattern: "tracker.example.com,!other.tracker.com",
+			domains: []string{"tracker.example.com"},
+			want:    true,
+		},
+		{
+			name:    "exclude supports glob",
+			pattern: "!*.example.com",
+			domains: []string{"tracker.example.com"},
+			want:    false,
+		},
 
 		// Multiple domains
 		{
@@ -275,7 +328,7 @@ func TestDetectCrossSeeds(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := detectCrossSeeds(tc.target, tc.allTorrents)
+			got := detectCrossSeeds(tc.target, buildContentPathIndex(tc.allTorrents))
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -1142,8 +1195,8 @@ func TestCategoryLastRuleWins(t *testing.T) {
 	}
 
 	// Process rules in order
-	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
-	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil, nil)
 
 	// Last rule wins - category should be "completed"
 	require.NotNil(t, state.category)
@@ -1187,8 +1240,8 @@ func TestCategoryLastRuleWinsEvenWhenMatchesCurrent(t *testing.T) {
 	}
 
 	// Process rules in order
-	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
-	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil, nil)
 
 	// Last rule wins - category should be "movies"
 	// Even though it matches current, the processor should set it (service filters no-op)
@@ -1230,7 +1283,7 @@ func TestCategoryWithCondition(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil, nil)
 
 	// Condition matched, category should be set
 	require.NotNil(t, state.category)
@@ -1271,7 +1324,7 @@ func TestCategoryConditionNotMet(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil, nil)
 
 	// Condition not met, category should not be set
 	assert.Nil(t, state.category)
@@ -1431,7 +1484,7 @@ func TestFindCrossSeedGroup(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.scenario, func(t *testing.T) {
-			got := findCrossSeedGroup(tc.target, tc.allTorrents)
+			got := findCrossSeedGroup(tc.target, buildContentPathIndex(tc.allTorrents))
 			if tc.wantHashes == nil {
 				assert.Nil(t, got)
 			} else {
@@ -1783,9 +1836,10 @@ func TestDeleteFreesSpace_IncludeCrossSeeds(t *testing.T) {
 		},
 	}
 
+	cpIndex := buildContentPathIndex(allTorrents)
 	for _, tc := range tests {
 		t.Run(tc.scenario, func(t *testing.T) {
-			got := deleteFreesSpace(tc.mode, target, allTorrents)
+			got := deleteFreesSpace(tc.mode, target, cpIndex)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -1817,9 +1871,10 @@ func TestDeleteFreesSpace_NoCrossSeeds(t *testing.T) {
 		},
 	}
 
+	cpIndex := buildContentPathIndex(allTorrents)
 	for _, tc := range tests {
 		t.Run(tc.scenario, func(t *testing.T) {
-			got := deleteFreesSpace(tc.mode, target, allTorrents)
+			got := deleteFreesSpace(tc.mode, target, cpIndex)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -1844,13 +1899,14 @@ func TestUpdateCumulativeFreeSpaceCleared_NeededView(t *testing.T) {
 	}
 
 	// Simulate "needed" mode processing: each deletion updates SpaceToClear
-	updateCumulativeFreeSpaceCleared(allTorrents[0], evalCtx, DeleteModeWithFiles, allTorrents)
+	cpIndex := buildContentPathIndex(allTorrents)
+	updateCumulativeFreeSpaceCleared(allTorrents[0], evalCtx, DeleteModeWithFiles, cpIndex)
 	assert.Equal(t, int64(100*1024*1024*1024), evalCtx.SpaceToClear)
 
-	updateCumulativeFreeSpaceCleared(allTorrents[1], evalCtx, DeleteModeWithFiles, allTorrents)
+	updateCumulativeFreeSpaceCleared(allTorrents[1], evalCtx, DeleteModeWithFiles, cpIndex)
 	assert.Equal(t, int64(150*1024*1024*1024), evalCtx.SpaceToClear)
 
-	updateCumulativeFreeSpaceCleared(allTorrents[2], evalCtx, DeleteModeWithFiles, allTorrents)
+	updateCumulativeFreeSpaceCleared(allTorrents[2], evalCtx, DeleteModeWithFiles, cpIndex)
 	assert.Equal(t, int64(180*1024*1024*1024), evalCtx.SpaceToClear)
 }
 
@@ -1888,7 +1944,7 @@ func TestPreviewViewBehavior_CrossSeedExpansion(t *testing.T) {
 	}
 
 	// findCrossSeedGroup should return both a and b for target a
-	group := findCrossSeedGroup(allTorrents[0], allTorrents)
+	group := findCrossSeedGroup(allTorrents[0], buildContentPathIndex(allTorrents))
 	require.NotNil(t, group)
 	assert.Len(t, group, 2)
 
@@ -2067,6 +2123,7 @@ func TestRecordDryRunActivities_Deletes(t *testing.T) {
 		nil,
 		pending,
 		nil,
+		nil,
 		map[string]qbt.Torrent{"abc123": torrent},
 		[]qbt.Torrent{torrent},
 		map[string]*torrentDesiredState{},
@@ -2108,6 +2165,7 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 		nil,
 		nil,
 		[]string{"abc123", "abc123"},
+		nil,
 		nil,
 		nil,
 		nil,
@@ -2210,6 +2268,7 @@ func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireCondi
 		nil,
 		nil,
 		nil,
+		nil,
 		torrentByHash,
 		torrents,
 		states,
@@ -2245,6 +2304,7 @@ func TestRecordDryRunActivities_NoMatches_LogsSummary(t *testing.T) {
 	activities := s.recordDryRunActivities(
 		context.Background(),
 		1,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -2323,6 +2383,7 @@ func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *t
 			nil,
 			nil,
 			map[string][]string{"movies": {"abc123"}},
+			nil,
 			nil,
 			nil,
 			nil,
@@ -2427,6 +2488,7 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 		map[string][]string{"/data/moved": {"a"}},
 		nil,
 		nil,
+		nil,
 		torrentByHash,
 		torrents,
 		states,
@@ -2455,6 +2517,7 @@ func TestRecordDryRunActivities_NoMatches_DoesNotLogSummaryWhenDisabled(t *testi
 	activities := s.recordDryRunActivities(
 		context.Background(),
 		1,
+		nil,
 		nil,
 		nil,
 		nil,

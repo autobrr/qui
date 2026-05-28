@@ -50,12 +50,12 @@ import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-route
 import {
   Archive,
   Check,
+  Code,
   Copyright,
   CornerDownRight,
   Download,
   FileText,
   GitBranch,
-  Github,
   HardDrive,
   Home,
   Loader2,
@@ -532,7 +532,7 @@ export function MobileFooterNav() {
                 aria-label={t("mobileNav.viewOnGitHub")}
                 className="h-6 w-6 flex items-center justify-center text-muted-foreground/60 hover:text-foreground transition-colors"
               >
-                <Github className="h-3.5 w-3.5" />
+                <Code className="h-3.5 w-3.5" />
               </a>
             </div>
             <DropdownMenuSeparator />

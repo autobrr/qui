@@ -75,6 +75,7 @@ export const CONDITION_FIELDS = {
   RATIO: { label: "Ratio", type: "float" as const, description: "Upload/download ratio" },
   RATIO_LIMIT: { label: "Ratio Limit", type: "float" as const, description: "Configured ratio limit" },
   MAX_RATIO: { label: "Max Ratio", type: "float" as const, description: "Maximum ratio value from qBittorrent" },
+  UPLOADED_OVER_SIZE: { label: "Uploaded / Size", type: "float" as const, description: "Uploaded / total torrent size. Cross-seed-safe alternative to RATIO." },
   PROGRESS: { label: "Progress", type: "percentage" as const, description: "Download progress (0-100%)" },
   AVAILABILITY: { label: "Availability", type: "float" as const, description: "Distributed copies" },
   POPULARITY: { label: "Popularity", type: "float" as const, description: "Swarm popularity metric" },
@@ -104,13 +105,14 @@ export const CONDITION_FIELDS = {
   IS_UNREGISTERED: { label: "Unregistered", type: "boolean" as const, description: "Tracker reports torrent as unregistered" },
   HAS_MISSING_FILES: { label: "Has Missing Files", type: "boolean" as const, description: "Completed torrent has files missing on disk. Requires Local Filesystem Access." },
   IS_GROUPED: { label: "Is Grouped", type: "boolean" as const, description: "True when group size > 1 for the selected group in this condition" },
-  EXISTS_ON_OTHER_INSTANCE: { label: "Exists on Other Instance", type: "boolean" as const, description: "A matching torrent exists on at least one other active instance" },
-  SEEDING_ON_OTHER_INSTANCE: { label: "Seeding on Other Instance", type: "boolean" as const, description: "A matching torrent is actively seeding on at least one other active instance" },
-  EXISTS_ON_SAME_INSTANCE: { label: "Cross-seed Exists on Same Instance", type: "boolean" as const, description: "A cross-seed (same content, different hash) exists on this instance" },
-  SEEDING_ON_SAME_INSTANCE: { label: "Cross-seed Seeding on Same Instance", type: "boolean" as const, description: "A cross-seed is actively seeding on this instance" },
+  EXISTS_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Exists on Other Instance", type: "boolean" as const, description: "A matching torrent exists on at least one other active instance" },
+  SEEDING_ON_OTHER_INSTANCE: { label: "Cross-seed(s) Seeding on Other Instance", type: "boolean" as const, description: "A matching torrent is actively seeding on at least one other active instance" },
+  EXISTS_ON_SAME_INSTANCE: { label: "Cross-seed(s) Exists on Same Instance", type: "boolean" as const, description: "A cross-seed (same content, different hash) exists on this instance" },
+  SEEDING_ON_SAME_INSTANCE: { label: "Cross-seed(s) Seeding on Same Instance", type: "boolean" as const, description: "A cross-seed is actively seeding on this instance" },
 
   // Enum-like fields
   HARDLINK_SCOPE: { label: "Hardlink scope", type: "hardlinkScope" as const, description: "Where hardlinks for this torrent's files exist. Requires Local Filesystem Access." },
+  HARDLINK_SCOPE_CROSS: { label: "Hardlink scope (cross-instance)", type: "hardlinkScope" as const, description: "Where hardlinks exist considering ALL instances. Requires Local Filesystem Access on all relevant instances." },
 } as const;
 
 export type FieldType = "string" | "state" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope";
@@ -216,6 +218,7 @@ export const TORRENT_STATES = [
   { value: "stalled_downloading", label: "Stalled Down" },
   { value: "errored", label: "Error" },
   { value: "tracker_down", label: "Tracker Down" },
+  { value: "tracker_error", label: "Tracker Error" },
   { value: "checking", label: "Checking" },
   { value: "checkingResumeData", label: "Checking Resume Data" },
   { value: "moving", label: "Moving" },
@@ -264,7 +267,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Progress",
-    fields: ["RATIO", "RATIO_LIMIT", "MAX_RATIO", "PROGRESS", "AVAILABILITY", "POPULARITY"],
+    fields: ["RATIO", "RATIO_LIMIT", "MAX_RATIO", "UPLOADED_OVER_SIZE", "PROGRESS", "AVAILABILITY", "POPULARITY"],
   },
   {
     label: "Speed",
@@ -288,7 +291,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Files",
-    fields: ["HARDLINK_SCOPE", "HAS_MISSING_FILES"],
+    fields: ["HARDLINK_SCOPE", "HARDLINK_SCOPE_CROSS", "HAS_MISSING_FILES"],
   },
 ];
 
@@ -364,10 +367,12 @@ export const FIELD_REQUIREMENTS = {
   IS_UNREGISTERED: "trackerHealth",
   HAS_MISSING_FILES: "localFilesystemAccess",
   HARDLINK_SCOPE: "localFilesystemAccess",
+  HARDLINK_SCOPE_CROSS: "localFilesystemAccess",
 } as const;
 
 export const STATE_VALUE_REQUIREMENTS = {
   tracker_down: "trackerHealth",
+  tracker_error: "trackerHealth",
 } as const;
 
 // Uncategorized sentinel (Radix Select requires non-empty values)

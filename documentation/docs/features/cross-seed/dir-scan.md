@@ -169,8 +169,8 @@ Open **Dir Scan > Settings**:
 
 | Setting | Description |
 |---------|-------------|
-| Match Mode | `Strict` matches by filename + size. `Flexible` matches by size only. |
-| Size Tolerance (%) | Allows small size differences when matching. |
+| Match Mode | `Strict` matches by filename + exact file size. `Flexible` ignores filenames for primary matching, but matched files must still have the same exact file size. |
+| Size Tolerance (%) | Allows small differences in total torrent size when filtering candidates before file matching. |
 | Minimum Piece Ratio (%) | For partial matches, minimum percent of torrent data that must exist on disk. |
 | Max searchees per run | Limits how many eligible searchees are processed per run. `0` = unlimited. Useful for making progress across restarts. |
 | Only process items changed within the last (days) | Excludes stale work items before search. Uses video/audio mtimes only for manual/scheduled scans. Webhook-triggered scans ignore this cutoff. `0` = disabled. |
@@ -179,6 +179,13 @@ Open **Dir Scan > Settings**:
 | Skip piece boundary safety check | Allow partial matches where downloading missing files could modify pieces containing existing content. |
 | Start torrents paused | Add injected torrents in paused state. |
 | Default Category / Tags | Applied to all injected torrents. Directory-level settings add to these. |
+
+In practice:
+
+- **Strict** is best when filenames on disk are still close to the release layout.
+- **Flexible** is best for renamed libraries, but it still requires exact file-size matches for the files it pairs.
+- **Size Tolerance** only affects which search results are considered based on **total torrent size**. It does **not** allow per-file size mismatches.
+- Flexible single-file matches may still be rejected when the candidate lacks corroborating title or external ID evidence. This prevents false positives when an indexer falls back from ID-based search to plain title search.
 
 ### "Max searchees per run" explained
 
@@ -262,6 +269,8 @@ POST /api/dir-scan/webhook/scan?apikey=YOUR_API_KEY
 
 qui extracts the path from the *arr payload (`series.path`, `movie.folderPath`, `artist.path`, or `author.path`), matches it against the Dir Scan **Directory Path** values configured in qui, and uses the provided path itself as the scan root. It does not use qBittorrent path prefixes for this lookup. On success, the response includes `runId`, `directoryId`, `directoryPath`, and `scanRoot`.
 
+Each Dir Scan directory can also define **Allowed Download Clients**. When set, native *arr webhook scans only run if the webhook `downloadClient` matches one of those names. Leave the list empty to accept all clients. Matching is case-insensitive and trims surrounding whitespace. Direct simple-mode `{"path": ...}` callers are not filtered by download client.
+
 #### Setting up in Sonarr / Radarr
 
 1. Go to **Settings → Connect → Add → Webhook**.
@@ -291,16 +300,27 @@ In split-mount setups, the *arr app must send the same library path that qui see
 
 | Status Code | Meaning |
 |-------------|---------|
+| `200` | Webhook accepted but skipped by directory filters. Example: `{"skipped": true, "reason": "download client not allowed"}` |
 | `202` | Scan accepted. If the directory is idle, qui starts the run immediately. If a webhook scan is already running for that directory, qui keeps one follow-up queued run and merges later webhook paths into it. Example: `{"runId": 42, "directoryId": 3, "directoryPath": "/data/media/tv", "scanRoot": "/data/media/tv/Show Name"}` |
 | `204` | Test webhook accepted. No scan started |
 | `400` | Invalid JSON payload, or no supported path field was found in the request body |
 | `404` | No enabled directory matches the path in the payload |
-| `409` | Multiple directories match the given path |
+| `409` | Request conflicts with directory state, such as multiple matching directories |
 | `500` | Internal server error — scan could not be started due to an internal failure |
 
 If a second webhook arrives while the same directory is already scanning, qui returns `202` again. It does not reject the request or require client-side retries. Instead, it updates one queued follow-up run for that directory and expands the queued `scanRoot` to the nearest common ancestor when needed.
 
 Webhook-triggered scans also ignore the global age cutoff. This avoids false skips when Sonarr/Radarr imports files that preserve old filesystem mtimes.
+
+#### Allowed download clients
+
+Use **Allowed Download Clients** on a Dir Scan directory when only specific Sonarr/Radarr clients should trigger scans for that path.
+
+- Leave it empty to allow all webhook clients.
+- Add exact client names as shown in Sonarr or Radarr, such as `SABnzbd`, `NZBGet`, or `qBittorrent`.
+- Matching is case-insensitive and ignores leading/trailing whitespace.
+- If the webhook is otherwise valid but the client is missing or not allowed, qui returns `200` and skips starting a scan.
+- Direct simple-mode callers using `{"path": ...}` bypass this filter because they do not provide *arr download client metadata.
 
 #### Simple mode
 
@@ -341,6 +361,10 @@ See:
 ### Fallback to regular mode
 
 When link-tree creation fails (hardlinking across filesystems, permission issues), Dir Scan falls back to regular add behavior **if** the instance has **Fallback to regular mode** enabled. Otherwise, the candidate fails.
+
+Filesystem fallback adds the torrent against the matched source files instead of the link-tree directory, so qui requires a full 100% recheck before auto-resume. If **Skip recheck** is enabled, the fallback candidate is skipped.
+
+For partial or otherwise non-perfect fallback matches, qui runs piece-boundary protection before adding the torrent. This fallback check is always enforced, even when **Skip piece boundary safety check** is enabled for regular reuse mode.
 
 ## Scanning Your *arr Library
 

@@ -1224,6 +1224,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
     qbitPathPrefix: directory?.qbitPathPrefix ?? "",
     category: directory?.category ?? "",
     tags: directory?.tags ?? [],
+    allowedDownloadClients: directory?.allowedDownloadClients ?? [],
     enabled: directory?.enabled ?? true,
     targetInstanceId: directory?.targetInstanceId ?? defaultTargetInstanceId,
     scanIntervalMinutes: directory?.scanIntervalMinutes ?? 1440,
@@ -1262,6 +1263,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
         qbitPathPrefix: directory.qbitPathPrefix ?? "",
         category: directory.category ?? "",
         tags: directory.tags ?? [],
+        allowedDownloadClients: directory.allowedDownloadClients ?? [],
         enabled: directory.enabled,
         targetInstanceId: directory.targetInstanceId,
         scanIntervalMinutes: directory.scanIntervalMinutes,
@@ -1272,6 +1274,7 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
         qbitPathPrefix: "",
         category: "",
         tags: [],
+        allowedDownloadClients: [],
         enabled: true,
         targetInstanceId: defaultTargetInstanceId,
         scanIntervalMinutes: 1440,
@@ -1432,6 +1435,23 @@ function DirectoryDialog({ open, onOpenChange, directory, instances }: Directory
                   needsReview: <span className="font-mono" />,
                 }}
               />
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>{t("dirScan.directoryDialog.allowedDownloadClientsLabel")}</Label>
+            <MultiSelect
+              options={(form.allowedDownloadClients ?? []).map((value) => ({ label: value, value }))}
+              selected={form.allowedDownloadClients ?? []}
+              onChange={(values) =>
+                setForm((prev) => ({ ...prev, allowedDownloadClients: values }))
+              }
+              placeholder={t("dirScan.directoryDialog.allowedDownloadClientsPlaceholder")}
+              creatable
+              disabled={isPending}
+            />
+            <p className="text-xs text-muted-foreground">
+              {t("dirScan.directoryDialog.allowedDownloadClientsHelp")}
             </p>
           </div>
 

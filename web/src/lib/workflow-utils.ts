@@ -5,6 +5,8 @@
 
 import type { Automation, AutomationInput, ActionConditions, SortingConfig } from "@/types"
 
+export type TrackerMatchMode = "include" | "exclude" | "mixed"
+
 /**
  * Export format for workflows. This is the clipboard JSON format.
  * - Includes trackerDomains (primary) and derived trackerPattern
@@ -64,9 +66,40 @@ export function toExportFormat(workflow: Automation): WorkflowExport {
  */
 function deriveTrackerPattern(domains: string[], existingPattern?: string): string {
   if (domains.length === 0) {
-    return existingPattern === "*" ? "*" : ""
+    return existingPattern?.trim() ?? ""
   }
   return domains.join(",")
+}
+
+export function getTrackerTokens(source: { trackerDomains?: string[]; trackerPattern?: string }): string[] {
+  let values: string[] = []
+  if (source.trackerDomains && source.trackerDomains.length > 0) {
+    values = source.trackerDomains
+  } else if (source.trackerPattern) {
+    values = [source.trackerPattern]
+  }
+
+  const tokens: string[] = []
+  const seen = new Set<string>()
+  for (const value of values) {
+    for (const part of value.split(/[|,;]/)) {
+      const token = part.trim()
+      if (!token) continue
+      const key = token.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      tokens.push(token)
+    }
+  }
+  return tokens
+}
+
+export function getTrackerMatchMode(tokens: string[]): TrackerMatchMode {
+  if (tokens.length === 0) return "include"
+  const hasExclude = tokens.some((token) => token.startsWith("!"))
+  const hasInclude = tokens.some((token) => !token.startsWith("!"))
+  if (hasExclude && hasInclude) return "mixed"
+  return hasExclude ? "exclude" : "include"
 }
 
 /**

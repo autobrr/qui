@@ -53,7 +53,7 @@ type JackettDownloader interface {
 
 // TorrentAdder is the interface for adding torrents to qBittorrent.
 type TorrentAdder interface {
-	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
+	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 	ResumeWhenComplete(instanceID int, hashes []string, opts qbsync.ResumeWhenCompleteOptions)
 }
@@ -203,7 +203,9 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	result.Mode = addMode
 	result.SavePath = savePath
 
+	addPolicy := addPolicyForInjectRequest(req)
 	hasUnmatchedFiles := len(req.MatchResult.UnmatchedTorrentFiles) > 0
+	regularAddNeedsRecheck := hasUnmatchedFiles || addPolicy.ForcePaused
 	partialLinkTree := isLinkTreeMode(addMode) && hasUnmatchedFiles
 
 	// Reject partial link tree injections when downloading missing files is disabled.
@@ -225,10 +227,10 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		options["stopped"] = qbitBoolTrue
 	}
 
-	i.applyAddPolicy(options, req)
+	applyAddPolicy(options, addPolicy)
 
 	// Add the torrent to qBittorrent
-	if err := i.syncManager.AddTorrent(ctx, req.InstanceID, req.TorrentBytes, options); err != nil {
+	if _, err := i.syncManager.AddTorrent(ctx, req.InstanceID, req.TorrentBytes, options); err != nil {
 		i.rollbackLinkTree(addMode, linkPlan)
 		result.ErrorMessage = fmt.Sprintf("failed to add torrent: %v", err)
 		return result, fmt.Errorf("add torrent: %w", err)
@@ -240,7 +242,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 			return result, fmt.Errorf("partial link tree recheck: %w", err)
 		}
 	} else {
-		i.triggerRecheckForPausedPartial(ctx, req)
+		i.triggerRecheckForPausedPartial(req, regularAddNeedsRecheck)
 	}
 
 	result.Success = true
@@ -313,8 +315,19 @@ func (i *Injector) resumeAfterRecheck(instanceID int, hash string) {
 		// stopped/paused state (cache not yet refreshed) and resume before
 		// the recheck runs. qBit's StopCondition::FilesChecked would then
 		// re-stop the torrent after checking, leaving it stuck.
-		sawChecking := false
+		// Even after resume succeeds, keep polling until running state is
+		// stable so a late files-checked stop can be retried.
+		const (
+			maxResumeAttempts = 3
+			stablePolls       = 2
+		)
 
+		sawChecking := false
+		recheckComplete := false
+		awaitingResumeConfirmation := false
+		resumeAttempts := 0
+		readyPolls := 0
+		resumeConfirmedPolls := 0
 		for {
 			select {
 			case <-ctx.Done():
@@ -322,6 +335,8 @@ func (i *Injector) resumeAfterRecheck(instanceID int, hash string) {
 					Int("instanceID", instanceID).
 					Str("hash", hash).
 					Bool("sawChecking", sawChecking).
+					Bool("recheckComplete", recheckComplete).
+					Int("resumeAttempts", resumeAttempts).
 					Msg("dirscan: resumeAfterRecheck timed out")
 				return
 			case <-ticker.C:
@@ -334,7 +349,30 @@ func (i *Injector) resumeAfterRecheck(instanceID int, hash string) {
 
 			if isCheckingState(torrent.State) {
 				sawChecking = true
+				readyPolls = 0
+				resumeConfirmedPolls = 0
 				continue
+			}
+
+			if awaitingResumeConfirmation {
+				if isResumeConfirmedState(torrent.State) {
+					resumeConfirmedPolls++
+					if resumeConfirmedPolls < stablePolls {
+						continue
+					}
+					log.Info().
+						Int("instanceID", instanceID).
+						Str("hash", hash).
+						Str("state", string(torrent.State)).
+						Int("attempts", resumeAttempts).
+						Msg("dirscan: confirmed torrent resumed after partial link tree recheck")
+					return
+				}
+
+				resumeConfirmedPolls = 0
+				if !isPausedOrStoppedState(torrent.State) {
+					continue
+				}
 			}
 
 			// Two ways to know the recheck finished:
@@ -344,38 +382,88 @@ func (i *Injector) resumeAfterRecheck(instanceID int, hash string) {
 			//    A freshly added paused torrent has Completed == 0 until
 			//    the recheck runs.
 			if sawChecking || torrent.Completed > 0 {
-				break
+				recheckComplete = true
 			}
-		}
+			if !recheckComplete {
+				continue
+			}
+			readyPolls++
+			if !sawChecking && readyPolls < stablePolls {
+				continue
+			}
 
-		if err := i.syncManager.BulkAction(ctx, instanceID, []string{hash}, "resume"); err != nil {
-			log.Warn().
-				Err(err).
+			if resumeAttempts >= maxResumeAttempts {
+				log.Warn().
+					Int("instanceID", instanceID).
+					Str("hash", hash).
+					Str("state", string(torrent.State)).
+					Int("attempts", resumeAttempts).
+					Msg("dirscan: resume attempts after partial link tree recheck exhausted")
+				return
+			}
+
+			resumeAttempts++
+			if err := i.syncManager.BulkAction(ctx, instanceID, []string{hash}, "resume"); err != nil {
+				log.Warn().
+					Err(err).
+					Int("instanceID", instanceID).
+					Str("hash", hash).
+					Int("attempt", resumeAttempts).
+					Int("maxAttempts", maxResumeAttempts).
+					Msg("dirscan: failed to resume torrent after recheck")
+				continue
+			}
+
+			awaitingResumeConfirmation = true
+			log.Info().
 				Int("instanceID", instanceID).
 				Str("hash", hash).
-				Msg("dirscan: failed to resume torrent after recheck")
-			return
+				Int("attempt", resumeAttempts).
+				Msg("dirscan: resumed torrent after partial link tree recheck")
 		}
-
-		log.Info().
-			Int("instanceID", instanceID).
-			Str("hash", hash).
-			Msg("dirscan: resumed torrent after partial link tree recheck")
 	}()
 }
 
-func (i *Injector) triggerRecheckForPausedPartial(ctx context.Context, req *InjectRequest) {
+func isResumeConfirmedState(state qbt.TorrentState) bool {
+	switch state { //nolint:exhaustive // only running states confirm resume
+	case qbt.TorrentStateUploading,
+		qbt.TorrentStateStalledUp,
+		qbt.TorrentStateQueuedUp,
+		qbt.TorrentStateForcedUp,
+		qbt.TorrentStateDownloading,
+		qbt.TorrentStateStalledDl,
+		qbt.TorrentStateQueuedDl,
+		qbt.TorrentStateForcedDl,
+		qbt.TorrentStateMetaDl:
+		return true
+	}
+	return false
+}
+
+func isPausedOrStoppedState(state qbt.TorrentState) bool {
+	switch state { //nolint:exhaustive // only stopped states need resume retries
+	case qbt.TorrentStatePausedUp,
+		qbt.TorrentStateStoppedUp,
+		qbt.TorrentStatePausedDl,
+		qbt.TorrentStateStoppedDl:
+		return true
+	}
+	return false
+}
+
+// triggerRecheckForPausedPartial verifies regular-mode partial or policy-forced
+// full-recheck matches after add, and only queues resume when the request did
+// not ask to stay paused.
+func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest, needsRecheck bool) {
 	if i == nil || i.syncManager == nil || req == nil || req.ParsedTorrent == nil || req.MatchResult == nil {
 		return
 	}
-	if !req.StartPaused {
-		return
-	}
-	if len(req.MatchResult.UnmatchedTorrentFiles) == 0 {
+	if !needsRecheck {
 		return
 	}
 
 	hash := req.ParsedTorrent.InfoHash
+	ctx := context.Background()
 	if err := i.syncManager.BulkAction(ctx, req.InstanceID, []string{hash}, "recheck"); err != nil {
 		log.Warn().
 			Err(err).
@@ -385,9 +473,11 @@ func (i *Injector) triggerRecheckForPausedPartial(ctx context.Context, req *Inje
 		return
 	}
 
-	i.syncManager.ResumeWhenComplete(req.InstanceID, []string{hash}, qbsync.ResumeWhenCompleteOptions{
-		Timeout: 60 * time.Minute,
-	})
+	if !req.StartPaused {
+		i.syncManager.ResumeWhenComplete(req.InstanceID, []string{hash}, qbsync.ResumeWhenCompleteOptions{
+			Timeout: 60 * time.Minute,
+		})
+	}
 }
 
 func (i *Injector) validateInjectRequest(req *InjectRequest) error {
@@ -566,6 +656,22 @@ func (i *Injector) buildAddOptions(req *InjectRequest, savePath string) map[stri
 	}
 
 	return options
+}
+
+func addPolicyForInjectRequest(req *InjectRequest) crossseed.AddPolicy {
+	if req == nil || req.ParsedTorrent == nil {
+		return crossseed.AddPolicy{}
+	}
+
+	files := make(qbt.TorrentFiles, 0, len(req.ParsedTorrent.Files))
+	for _, f := range req.ParsedTorrent.Files {
+		files = append(files, qbt.TorrentFile{
+			Name: f.Path,
+			Size: f.Size,
+		})
+	}
+
+	return crossseed.PolicyForSourceFiles(files)
 }
 
 func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Instance, req *InjectRequest) (*hardlinktree.TreePlan, string, error) {
@@ -796,20 +902,7 @@ func buildLinkDestDir(baseDir string, instance *models.Instance, torrentHash, to
 	}
 }
 
-func (i *Injector) applyAddPolicy(options map[string]string, req *InjectRequest) {
-	if req == nil || req.ParsedTorrent == nil {
-		return
-	}
-
-	files := make(qbt.TorrentFiles, 0, len(req.ParsedTorrent.Files))
-	for _, f := range req.ParsedTorrent.Files {
-		files = append(files, qbt.TorrentFiles{{
-			Name: f.Path,
-			Size: f.Size,
-		}}...)
-	}
-
-	policy := crossseed.PolicyForSourceFiles(files)
+func applyAddPolicy(options map[string]string, policy crossseed.AddPolicy) {
 	policy.ApplyToAddOptions(options)
 }
 

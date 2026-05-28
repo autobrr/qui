@@ -49,6 +49,7 @@
     "freeSpace": "可用空间",
     "showMore": "展开更多",
     "showLess": "收起",
+    "uptime": "运行时间",
     "peerConnections": "节点连接数",
     "queuedIOJobs": "I/O 队列任务",
     "bufferSize": "缓冲区大小",

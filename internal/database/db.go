@@ -136,12 +136,116 @@ var sqliteMigrationFilenameRenames = []migrationFilenameRename{
 		from: "065_add_completion_bypass_torznab_cache.sql",
 		to:   "066_add_completion_bypass_torznab_cache.sql",
 	},
+	{
+		from: "073_add_instance_api_key_auth.sql",
+		to:   "074_add_instance_api_key_auth.sql",
+	},
+	{
+		from: "068_add_season_pack_settings_and_runs.sql",
+		to:   "075_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "069_add_season_pack_settings_and_runs.sql",
+		to:   "075_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "069_add_season_pack_tags.sql",
+		to:   "075_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "070_add_season_pack_settings_and_runs.sql",
+		to:   "075_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "070_add_season_pack_tags.sql",
+		to:   "075_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "070_add_season_pack_metadata_settings.sql",
+		to:   "075_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "071_add_season_pack_settings_and_runs.sql",
+		to:   "075_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "071_add_season_pack_metadata_settings.sql",
+		to:   "075_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "072_add_season_pack_settings_and_runs.sql",
+		to:   "075_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "073_add_season_pack_settings_and_runs.sql",
+		to:   "075_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "074_add_season_pack_settings_and_runs.sql",
+		to:   "075_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "075_add_season_pack_category.sql",
+		to:   "076_add_season_pack_category.sql",
+	},
 }
 
 var postgresMigrationFilenameRenames = []migrationFilenameRename{
 	{
 		from: "066_add_completion_bypass_torznab_cache.sql",
 		to:   "067_add_completion_bypass_torznab_cache.sql",
+	},
+	{
+		from: "074_add_instance_api_key_auth.sql",
+		to:   "075_add_instance_api_key_auth.sql",
+	},
+	{
+		from: "069_add_season_pack_settings_and_runs.sql",
+		to:   "076_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "070_add_season_pack_settings_and_runs.sql",
+		to:   "076_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "070_add_season_pack_tags.sql",
+		to:   "076_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "071_add_season_pack_settings_and_runs.sql",
+		to:   "076_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "071_add_season_pack_tags.sql",
+		to:   "076_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "071_add_season_pack_metadata_settings.sql",
+		to:   "076_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "072_add_season_pack_settings_and_runs.sql",
+		to:   "076_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "072_add_season_pack_metadata_settings.sql",
+		to:   "076_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "073_add_season_pack_settings_and_runs.sql",
+		to:   "076_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "074_add_season_pack_settings_and_runs.sql",
+		to:   "076_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "075_add_season_pack_settings_and_runs.sql",
+		to:   "076_add_season_pack_settings_and_runs.sql",
+	},
+	{
+		from: "076_add_season_pack_category.sql",
+		to:   "077_add_season_pack_category.sql",
 	},
 }
 

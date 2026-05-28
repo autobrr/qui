@@ -126,6 +126,7 @@ import {
   SetCategoryDialog,
   SetLocationDialog,
   TagEditorDialog,
+  SetCommentDialog,
   ShareLimitDialog,
   SpeedLimitsDialog,
   TmmConfirmDialog
@@ -271,6 +272,10 @@ function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean): 
       label = "Tracker Down"
       variant = "outline"
       className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+    } else if (trackerHealth === "tracker_error") {
+      label = "Tracker Error"
+      variant = "outline"
+      className = "text-orange-500 border-orange-500/40 bg-orange-500/10"
     } else if (trackerHealth === "unregistered") {
       label = "Unregistered"
       variant = "outline"
@@ -771,6 +776,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setDeleteCrossSeeds,
     showTagsDialog,
     setShowTagsDialog,
+    showCommentDialog,
+    setShowCommentDialog,
     showCategoryDialog,
     setShowCategoryDialog,
     showCreateCategoryDialog,
@@ -802,6 +809,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     handleAction,
     handleDelete,
     handleUpdateTags,
+    handleSetComment,
     handleSetCategory,
     handleSetLocation,
     handleRenameTorrent,
@@ -815,14 +823,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     proceedToLocationDialog,
     prepareDeleteAction,
     prepareTagsAction,
+    prepareCommentAction,
     prepareCategoryAction,
     prepareCreateCategoryAction,
     prepareShareLimitAction,
     prepareSpeedLimitAction,
     prepareLocationAction,
     prepareRenameTorrentAction,
-    prepareRenameFileAction,
-    prepareRenameFolderAction,
     prepareRecheckAction,
     prepareReannounceAction,
     prepareTmmAction,
@@ -1032,7 +1039,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     responseSupport: trackerHealthSupported,
   })
   const supportsSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (capabilities?.supportsSubcategories ?? false)
-  const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false))
+  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
+  const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (supportsSubcategories && (subcategoriesAlwaysEnabled || (preferences?.use_subcategories ?? subcategoriesFromData ?? false)))
   const availableTags = isCrossInstanceEndpoint ? (tags ?? metadataTags) : metadataTags
   const availableCategories = isCrossInstanceEndpoint ? (categories ?? metadataCategories) : metadataCategories
   const isLoadingTags = isMetadataLoading && availableTags.length === 0
@@ -1358,7 +1366,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       getSelectionIdentity,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isUnifiedView && isCrossInstanceEndpoint, desktopViewMode as TableViewMode, trackerCustomizationLookup, !isReadOnly, t),
+    }, speedUnit, trackerIcons, (timestamp: number) => formatTimestamp(timestamp, true), preferences, supportsTrackerHealth, isUnifiedView && isCrossInstanceEndpoint, desktopViewMode as TableViewMode, trackerCustomizationLookup, !isReadOnly, t),
     [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, getSelectionIdentity, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isUnifiedView, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly, t]
   )
 
@@ -1657,7 +1665,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       return undefined
     }
 
-    const combinedExpr = columnFiltersExpr ?? filters?.expr
+    // Combine both column filters and filter expressions (e.g. cross-seed hash filters)
+    // so select-all operations target exactly the visible set.
+    // Using ?? here would drop filters.expr when columnFiltersExpr is present,
+    // causing bulk actions to match more torrents than the user sees.
+    const combinedExpr = (columnFiltersExpr && filters?.expr)
+      ? `(${columnFiltersExpr}) && (${filters.expr})`
+      : (columnFiltersExpr || filters?.expr)
 
     if (filters) {
       return {
@@ -1716,7 +1730,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, selectAllExcludeHashes, selectAllExcludedTargets, selectedTotalSize, selectAllFilters, filters])
 
   // Callback for context menu to fetch field for matching torrents
-  const fetchAllTorrentField = useCallback(async (field: "name" | "hash" | "full_path"): Promise<string[]> => {
+  const fetchAllTorrentField = useCallback(async (field: "name" | "hash" | "full_path" | "magnet_uri"): Promise<string[]> => {
     const response = await api.getTorrentField(instanceId, field, {
       sort: activeSortField,
       order: activeSortOrder,
@@ -2155,6 +2169,18 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     shouldBlockCrossSeeds,
   ])
 
+  const handleSetCommentWrapper = useCallback((comment: string) => {
+    handleSetComment(
+      comment,
+      contextHashes,
+      isAllSelected,
+      normalizedSelectionFilters ?? selectAllFilters ?? filters,
+      effectiveSearch,
+      selectAllExcludeHashes,
+      contextClientMeta
+    )
+  }, [handleSetComment, contextHashes, isAllSelected, normalizedSelectionFilters, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
+
   const handleTagsWrapper = useCallback((plan: Parameters<typeof handleUpdateTags>[0]) => {
     handleUpdateTags(
       plan,
@@ -2282,7 +2308,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const handleSetShareLimitWrapper = useCallback((
     ratioLimit: number,
     seedingTimeLimit: number,
-    inactiveSeedingTimeLimit: number
+    inactiveSeedingTimeLimit: number,
+    shareLimitAction?: string,
+    shareLimitsMode?: string
   ) => {
     handleSetShareLimit(
       ratioLimit,
@@ -2293,7 +2321,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       selectAllFilters ?? filters,
       effectiveSearch,
       selectAllExcludeHashes,
-      contextClientMeta
+      contextClientMeta,
+      shareLimitAction,
+      shareLimitsMode
     )
   }, [handleSetShareLimit, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
@@ -2691,14 +2721,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                         onAction={runAction}
                         onPrepareDelete={prepareDeleteAction}
                         onPrepareTags={prepareTagsAction}
+                        onPrepareComment={prepareCommentAction}
                         onPrepareCategory={prepareCategoryAction}
                         onPrepareCreateCategory={prepareCreateCategoryAction}
                         onPrepareShareLimit={prepareShareLimitAction}
                         onPrepareSpeedLimits={prepareSpeedLimitAction}
                         onPrepareLocation={prepareLocationAction}
                         onPrepareRenameTorrent={prepareRenameTorrentAction}
-                        onPrepareRenameFile={prepareRenameFileAction}
-                        onPrepareRenameFolder={prepareRenameFolderAction}
                         onPrepareRecheck={prepareRecheckAction}
                         onPrepareReannounce={prepareReannounceAction}
                         onPrepareTmm={prepareTmmAction}
@@ -2843,14 +2872,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       onAction={runAction}
                       onPrepareDelete={prepareDeleteAction}
                       onPrepareTags={prepareTagsAction}
+                      onPrepareComment={prepareCommentAction}
                       onPrepareCategory={prepareCategoryAction}
                       onPrepareCreateCategory={prepareCreateCategoryAction}
                       onPrepareShareLimit={prepareShareLimitAction}
                       onPrepareSpeedLimits={prepareSpeedLimitAction}
                       onPrepareLocation={prepareLocationAction}
                       onPrepareRenameTorrent={prepareRenameTorrentAction}
-                      onPrepareRenameFile={prepareRenameFileAction}
-                      onPrepareRenameFolder={prepareRenameFolderAction}
                       onPrepareRecheck={prepareRecheckAction}
                       onPrepareReannounce={prepareReannounceAction}
                       onPrepareTmm={prepareTmmAction}
@@ -2979,6 +3007,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           return (
                             <div
                               key={cell.id}
+                              data-torrent-column-measure={cell.column.id}
                               style={{
                                 width: cell.column.getSize(),
                                 flexShrink: 0,
@@ -3028,6 +3057,20 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           onDeleteCrossSeedsChange={setDeleteCrossSeeds}
           crossSeedWarning={crossSeedWarning}
           onConfirm={handleDeleteWrapper}
+        />
+
+        <SetCommentDialog
+          open={showCommentDialog}
+          onOpenChange={setShowCommentDialog}
+          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+          instanceId={
+            contextTorrents.length === 1
+              ? ((contextTorrents[0] as CrossInstanceTorrent).instanceId ?? instanceId)
+              : instanceId
+          }
+          torrentHash={contextHashes.length === 1 ? contextHashes[0] : undefined}
+          onConfirm={handleSetCommentWrapper}
+          isPending={isPending}
         />
 
         <TagEditorDialog
@@ -3081,6 +3124,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           torrents={contextTorrents}
           onConfirm={handleSetShareLimitWrapper}
           isPending={isPending}
+          supportsShareLimitsAction={capabilities?.supportsShareLimitsAction}
+          supportsShareLimitsMode={capabilities?.supportsShareLimitsMode}
         />
 
         <SpeedLimitsDialog

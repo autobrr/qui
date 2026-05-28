@@ -224,6 +224,19 @@ function createDynamicColumns(
       ),
     },
     {
+      key: "hardlinkCrossScope",
+      header: t("preferences.workflowPreview.hardlinksCross"),
+      align: "center",
+      triggerFields: ["HARDLINK_SCOPE_CROSS"],
+      render: (torrent) => (
+        torrent.hardlinkCrossScope ? (
+          <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+            {translateHardlinkScope(torrent.hardlinkCrossScope)}
+          </span>
+        ) : null
+      ),
+    },
+    {
       key: "status",
       header: t("preferences.workflowPreview.status"),
       align: "center",

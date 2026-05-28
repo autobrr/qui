@@ -114,7 +114,9 @@
     "working": "Working",
     "updating": "Updating",
     "error": "Error",
-    "unknown": "Unknown"
+    "unknown": "Unknown",
+    "trackerError": "Tracker error",
+    "unreachable": "Unreachable"
   },
   "themeToggle": {
     "changeTheme": "Change theme",
@@ -130,7 +132,7 @@
     "switchedToThemeVariation": "Switched to {{theme}} theme ({{variation}})",
     "unableToVerifyLicense": "Unable to verify license",
     "licenseCheckFailed": "License check failed. Premium theme switching is temporarily unavailable.",
-    "premiumThemeError": "This is a premium theme. Open Settings \u2192 Themes to activate a license."
+    "premiumThemeError": "This is a premium theme. Open Settings → Themes to activate a license."
   },
   "updateBanner": {
     "updateAvailable": "Update Available",

@@ -91,6 +91,7 @@ export function LicenseManager({
     accessTitle = t("themes.license.status.activationRequiredTitle")
     accessDescription = t("themes.license.status.activationRequiredDescription")
   }
+  const canAddLicense = !hasStoredLicense || hasInvalidLicense
   const checkoutUrl = useMemo(() => {
     const returnPath = withBasePath("settings?tab=themes&checkout=success")
     const returnUrl = new URL(returnPath, window.location.origin).toString()
@@ -180,7 +181,7 @@ export function LicenseManager({
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              {!hasStoredLicense && (
+              {canAddLicense && (
                 <Button
                   size="sm"
                   onClick={() => setShowAddLicense(true)}

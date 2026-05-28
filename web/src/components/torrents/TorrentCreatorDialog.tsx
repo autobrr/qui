@@ -9,6 +9,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, ChevronDown, Info, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { z } from "zod"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -53,6 +54,10 @@ import { pieceSizeOptions, TorrentPieceSize } from "./piece-size"
 function parseLines(input: string): string[] {
   return input.split("\n").map((line) => line.trim()).filter(Boolean)
 }
+
+const torrentFilePathSchema = z.string().trim().refine(
+  (value) => value === "" || (!value.endsWith("/") && !value.endsWith("\\"))
+)
 
 interface PathSuggestionsProps {
   suggestions: string[]
@@ -489,7 +494,15 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                 </form.Field>
 
                 {/* Torrent File Path */}
-                <form.Field name="torrentFilePath">
+                <form.Field
+                  name="torrentFilePath"
+                  validators={{
+                    onChange: ({ value }) => {
+                      const result = torrentFilePathSchema.safeParse(value)
+                      return result.success ? undefined : t("creatorDialog.saveTorrentToInvalid")
+                    },
+                  }}
+                >
                   {(field) => (
                     <div className="space-y-2">
                       <Label htmlFor="torrentFilePath">{t("creatorDialog.saveTorrentTo")}</Label>
@@ -500,6 +513,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                         autoComplete="off"
                         spellCheck={false}
                         value={field.state.value}
+                        aria-invalid={field.state.meta.isTouched && !!field.state.meta.errors[0]}
                         onBlur={field.handleBlur}
                         onKeyDown={supportsPathAutocomplete ? handleTorrentFilePathKeyDown : undefined}
                         onChange={(e) => {
@@ -529,6 +543,9 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                           </TooltipContent>
                         </Tooltip>
                       </div>
+                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                      )}
                     </div>
                   )}
                 </form.Field>

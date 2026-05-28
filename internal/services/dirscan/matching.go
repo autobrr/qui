@@ -66,21 +66,16 @@ type TorrentFile struct {
 
 // Matcher handles matching searchees against torrent file lists.
 type Matcher struct {
-	mode             MatchMode
-	sizeTolerancePct float64
+	mode MatchMode
 }
 
 // NewMatcher creates a new matcher.
-func NewMatcher(mode MatchMode, sizeTolerancePct float64) *Matcher {
+func NewMatcher(mode MatchMode, _ float64) *Matcher {
 	if mode == "" {
 		mode = MatchModeStrict
 	}
-	if sizeTolerancePct <= 0 {
-		sizeTolerancePct = 0 // Exact size match
-	}
 	return &Matcher{
-		mode:             mode,
-		sizeTolerancePct: sizeTolerancePct,
+		mode: mode,
 	}
 }
 
@@ -167,8 +162,9 @@ func (m *Matcher) matchStrict(searchee *Searchee, torrentFiles []TorrentFile, re
 				continue
 			}
 
-			// Check size match
-			if m.sizesMatch(sf.Size, tf.Size) {
+			// File-level matching requires exact sizes. Tolerance only applies when
+			// prefiltering candidate torrents by total size before matching starts.
+			if sizesMatchExactly(sf.Size, tf.Size) {
 				result.MatchedFiles = append(result.MatchedFiles, MatchedFilePair{
 					SearcheeFile: sf,
 					TorrentFile:  tf,
@@ -254,7 +250,7 @@ func (m *Matcher) findSizeCandidates(
 ) []TorrentFile {
 	var candidates []TorrentFile
 	for size, files := range torrentBySize {
-		if !m.sizesMatch(sf.Size, size) {
+		if !sizesMatchExactly(sf.Size, size) {
 			continue
 		}
 		for _, tf := range files {
@@ -294,22 +290,8 @@ func collectUnmatchedTorrentFiles(torrentFiles []TorrentFile, matched map[int]bo
 	}
 }
 
-// sizesMatch checks if two sizes match within the configured tolerance.
-func (m *Matcher) sizesMatch(size1, size2 int64) bool {
-	if m.sizeTolerancePct <= 0 {
-		return size1 == size2
-	}
-
-	// Calculate tolerance based on the larger size
-	larger := max(size1, size2)
-
-	tolerance := float64(larger) * (m.sizeTolerancePct / 100.0)
-	diff := size1 - size2
-	if diff < 0 {
-		diff = -diff
-	}
-
-	return float64(diff) <= tolerance
+func sizesMatchExactly(size1, size2 int64) bool {
+	return size1 == size2
 }
 
 // normalizeFileName normalizes a file path for comparison.

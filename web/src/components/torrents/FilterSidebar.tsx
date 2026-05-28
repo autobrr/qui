@@ -173,6 +173,7 @@ const TORRENT_STATES: Array<{ value: string; labelKey: string; icon: LucideIcon 
   { value: "moving", labelKey: "filterSidebar.states.moving", icon: MoveRight },
   { value: "unregistered", labelKey: "filterSidebar.states.unregistered", icon: XCircle },
   { value: "tracker_down", labelKey: "filterSidebar.states.trackerDown", icon: AlertCircle },
+  { value: "tracker_error", labelKey: "filterSidebar.states.trackerError", icon: XCircle },
   { value: "cross-seeds", labelKey: "filterSidebar.states.crossSeeds", icon: GitBranch },
 ]
 
@@ -212,12 +213,13 @@ const FilterSidebarComponent = ({
   const supportsTrackerHealth = supportsTrackerHealthProp ?? capabilities?.supportsTrackerHealth ?? false
   const supportsTrackerEditing = !isReadOnly && (capabilities?.supportsTrackerEditing ?? false)
   const supportsSubcategories = isConcreteInstanceScope? (capabilities?.supportsSubcategories ?? false): Boolean(useSubcategories)
+  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
   const { preferences } = useInstancePreferences(
     instanceId,
     { enabled: isConcreteInstanceScope && isInstanceActive }
   )
   const preferenceUseSubcategories = preferences?.use_subcategories
-  const subcategoriesEnabled = isConcreteInstanceScope? Boolean(supportsSubcategories && (preferenceUseSubcategories ?? useSubcategories ?? false)): Boolean(useSubcategories)
+  const subcategoriesEnabled = isConcreteInstanceScope? Boolean(supportsSubcategories && (subcategoriesAlwaysEnabled || (preferenceUseSubcategories ?? useSubcategories ?? false))): Boolean(useSubcategories)
 
   // View mode syncs with the torrent list (table on desktop, cards on mobile).
   // Desktop supports all modes including "dense" (compact table rows).
@@ -298,7 +300,12 @@ const FilterSidebarComponent = ({
   const [isConvertingScheme, setIsConvertingScheme] = useState(false)
 
   const visibleTorrentStates = useMemo(() => {
-    let states = supportsTrackerHealth ? TORRENT_STATES : TORRENT_STATES.filter(state => state.value !== "unregistered" && state.value !== "tracker_down")
+    let states = TORRENT_STATES
+    if (!supportsTrackerHealth) {
+      states = TORRENT_STATES.filter(
+        state => state.value !== "unregistered" && state.value !== "tracker_down" && state.value !== "tracker_error"
+      )
+    }
 
     // Only show cross-seeds when there's an active cross-seed filter
     if (!selectedFilters.expr) {

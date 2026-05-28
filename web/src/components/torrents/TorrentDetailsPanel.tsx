@@ -929,7 +929,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             {displayComment && (
                               <div className="space-y-1">
                                 <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.comment")}</p>
-                                <div className="text-xs">{renderTextWithLinks(displayComment)}</div>
+                                <div className="font-mono text-xs whitespace-pre-wrap break-words">{renderTextWithLinks(displayComment)}</div>
                               </div>
                             )}
                           </div>
@@ -1080,18 +1080,18 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div className="space-y-1">
                               <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.added")}</p>
-                              <p className="text-sm">{formatTimestamp(properties.addition_date)}</p>
+                              <p className="text-sm">{formatTimestamp(properties.addition_date, true)}</p>
                             </div>
                             {properties.completion_date && properties.completion_date !== -1 && (
                               <div className="space-y-1">
                                 <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.completed")}</p>
-                                <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
+                                <p className="text-sm">{formatTimestamp(properties.completion_date, true)}</p>
                               </div>
                             )}
                             {properties.creation_date && properties.creation_date !== -1 && (
                               <div className="space-y-1">
                                 <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.created")}</p>
-                                <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
+                                <p className="text-sm">{formatTimestamp(properties.creation_date, true)}</p>
                               </div>
                             )}
                           </div>
@@ -1682,6 +1682,10 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             statusLabel = t("crossSeedTable.statusLabels.trackerDown")
                             statusVariant = "outline"
                             statusClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+                          } else if (trackerHealth === "tracker_error") {
+                            statusLabel = "Tracker Error"
+                            statusVariant = "outline"
+                            statusClass = "text-orange-500 border-orange-500/40 bg-orange-500/10"
                           } else {
                             // Normal state-based styling
                             if (match.state === "downloading" || match.state === "uploading") {

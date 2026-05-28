@@ -5,31 +5,38 @@ package qbittorrent
 
 import (
 	"testing"
-	"time"
 
-	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/require"
 )
 
-func TestClientUpdateServerStateDoesNotBlockOnClientMutex(t *testing.T) {
+func TestClientSubcategoriesAlwaysEnabledCapability(t *testing.T) {
 	t.Parallel()
 
-	client := &Client{}
-	client.mu.RLock()
-	defer client.mu.RUnlock()
+	tests := []struct {
+		name     string
+		version  string
+		expected bool
+	}{
+		{
+			name:     "legacy optional setting",
+			version:  "2.14.1",
+			expected: false,
+		},
+		{
+			name:     "subcategories unconditional",
+			version:  "2.15.0",
+			expected: true,
+		},
+	}
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		client.updateServerState(&qbt.MainData{
-			ServerState: qbt.ServerState{
-				ConnectionStatus: "connected",
-			},
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := &Client{}
+			client.applyCapabilitiesLocked(tc.version)
+
+			require.Equal(t, tc.expected, client.SubcategoriesAlwaysEnabled())
 		})
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("updateServerState blocked waiting for Client.mu write lock")
 	}
 }

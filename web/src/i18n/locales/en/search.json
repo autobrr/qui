@@ -146,7 +146,11 @@
     "collection": "Collection",
     "group": "Group",
     "freeleech": "Freeleech",
-    "published": "Published"
+    "published": "Published",
+    "actions": "Actions",
+    "downloadTorrent": "Download .torrent",
+    "viewDetails": "View details",
+    "noInfoUrl": "No info URL"
   },
   "refreshDialog": {
     "title": "Bypass the cache?",

@@ -39,6 +39,7 @@ type candidateEntry struct {
 // releaseCandidate extends candidateEntry with parsed release metadata for rls matching.
 type releaseCandidate struct {
 	candidateEntry
+	name    string
 	release *rls.Release
 }
 
@@ -208,6 +209,7 @@ func (s *Service) indexView(idx *matchIndex, view *qbittorrent.CrossInstanceTorr
 		key := makeReleaseKey(release)
 		idx.byReleaseKey[key] = append(idx.byReleaseKey[key], releaseCandidate{
 			candidateEntry: entry,
+			name:           view.Name,
 			release:        release,
 		})
 	}
@@ -263,7 +265,18 @@ func (s *Service) matchAgainstIndex(source *qbt.Torrent, idx *matchIndex, exclud
 				if excludeSelf && c.hash == sourceHash {
 					continue
 				}
-				if s.releasesMatch(sourceRelease, c.release, false) {
+				match, reason := s.releasesMatchWithReason(sourceRelease, c.release, false)
+				traceReleaseMatchDecision(
+					source.Name,
+					c.name,
+					false,
+					sourceRelease,
+					c.release,
+					match,
+					reason,
+					"crossseed: release metadata candidate evaluated",
+				)
+				if match {
 					matched = true
 					if c.seeding {
 						matchSeeding = true

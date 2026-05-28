@@ -73,7 +73,9 @@
       "httpBasicAuth": "HTTP 基本认证",
       "httpBasicAuthDescription": "如果你的 qBittorrent 位于启用了基本认证的反向代理之后，请启用此选项",
       "basicAuthUsername": "基本认证用户名",
-      "basicAuthPassword": "基本认证密码"
+      "basicAuthPassword": "基本认证密码",
+      "authType": "认证方式",
+      "authTypeDescription": "选择 qui 连接 qBittorrent 时使用的认证方式。"
     },
     "placeholders": {
       "instanceName": "例如：主服务器 或 家用 qBittorrent",
@@ -82,7 +84,9 @@
       "passwordNew": "qBittorrent 密码",
       "passwordExisting": "留空则保持当前密码",
       "basicAuthUsername": "基本认证用户名",
-      "basicAuthPassword": "输入基本认证密码（必填）"
+      "basicAuthPassword": "输入基本认证密码（必填）",
+      "apiKeyNew": "qBittorrent API 密钥",
+      "apiKeyExisting": "留空则保持当前 API 密钥"
     },
     "validation": {
       "nameRequired": "实例名称为必填项",
@@ -95,6 +99,7 @@
       "cancel": "取消"
     },
     "toast": {
+      "missingCredentialsTitle": "缺少凭据",
       "instanceUpdatedTitle": "实例已更新",
       "instanceUpdatedDescription": "实例更新成功。正在后台测试连接...",
       "updateFailedTitle": "更新失败",
@@ -103,6 +108,11 @@
       "instanceCreatedDescription": "实例创建成功。正在后台测试连接...",
       "createFailedTitle": "创建失败",
       "createFailedDescription": "无法创建实例"
+    },
+    "authType": {
+      "none": "无",
+      "usernamePassword": "用户名和密码",
+      "apiKey": "API 密钥"
     }
   },
   "settingsButton": {
@@ -227,7 +237,9 @@
         "httpBasicAuth": "HTTP 基本认证",
         "httpBasicAuthDescription": "如果你的 qBittorrent 位于启用了基本认证的反向代理之后，请启用此选项",
         "username": "用户名",
-        "password": "密码"
+        "password": "密码",
+        "qbittorrentAuth": "qBittorrent 认证",
+        "qbittorrentAuthDescription": "选择 qui 连接 qBittorrent 时使用的认证方式。"
       },
       "placeholders": {
         "instanceName": "例如：主服务器",
@@ -239,9 +251,11 @@
       },
       "validation": {
         "nameRequired": "实例名称为必填项",
-        "passwordRequired": "密码为必填项"
+        "passwordRequired": "密码为必填项",
+        "apiKeyRequired": "API 密钥认证需要 API 密钥"
       },
       "toast": {
+        "missingCredentialsTitle": "缺少凭据",
         "updatedTitle": "实例已更新",
         "updatedDescription": "实例设置更新成功。",
         "updateFailedTitle": "更新失败",
@@ -370,6 +384,22 @@
         "infoHashV1Optional": "信息哈希 v1（或\"-\"）",
         "infoHashV2Optional": "信息哈希 v2（或\"-\"）",
         "torrentId": "种子 ID"
+      },
+      "watchFolders": {
+        "title": "监视文件夹",
+        "description": "添加一个或多个监视文件夹，并选择发现的种子应保存到何处。",
+        "addFolder": "添加文件夹",
+        "noFolders": "未配置监视文件夹。",
+        "monitoredFolderLabel": "监视文件夹",
+        "monitoredFolderPlaceholder": "/watchfolder",
+        "destinationLabel": "种子目标位置",
+        "selectDestination": "选择目标位置",
+        "destinationMonitored": "监视文件夹",
+        "destinationDefault": "默认保存位置",
+        "destinationOther": "其他",
+        "customSavePathLabel": "自定义保存路径",
+        "customSavePathPlaceholder": "foldername",
+        "remove": "移除"
       },
       "toast": {
         "success": "文件管理设置更新成功",
@@ -729,7 +759,8 @@
         "autoManagement": "自动管理",
         "move": "移动",
         "externalProgram": "外部程序",
-        "dryRun": "模拟运行"
+        "dryRun": "模拟运行",
+        "exportToInstance": "导出到实例"
       },
       "shareLimit": {
         "global": "全局",
@@ -762,7 +793,10 @@
         "deleteLabelRatio": "分享率限制",
         "deleteLabelSeeding": "做种时间限制",
         "deleteLabelUnregistered": "未注册",
-        "deleteLabelCondition": "条件"
+        "deleteLabelCondition": "条件",
+        "exported_other": "已导出 {{count}} 个种子",
+        "exportedDryRun_other": "将导出 {{count}} 个种子",
+        "exportFailed_other": "{{count}} 个种子导出失败"
       },
       "deleteDialog": {
         "title": "删除规则",
@@ -806,7 +840,8 @@
         "deletedActivityEntries": "已删除 {{count}} 条活动记录",
         "deleteActivityFailed": "删除活动失败",
         "hashCopied": "哈希已复制"
-      }
+      },
+      "exported": "已导出"
     },
     "workflowPreview": {
       "loadingPreview": "正在加载预览，这可能需要一些时间...",
@@ -830,6 +865,7 @@
       "active": "活跃",
       "state": "状态",
       "hardlinks": "硬链接",
+      "hardlinksCross": "硬链接（跨实例）",
       "status": "状态",
       "score": "得分",
       "category": "分类",
@@ -979,6 +1015,8 @@
       "noIndexersWarning": "未找到已启用的 Torznab 索引器。请在设置 → 索引器中至少启用一个。",
       "bypassTorznabCache": "绕过 Torznab 缓存",
       "bypassTorznabCacheDescription": "开启后，此实例的完成搜索将始终直接查询索引器（不使用缓存结果）。默认关闭。",
+      "searchDelay": "搜索延迟（秒）",
+      "searchDelayDescription": "种子完成后等待此时长再搜索 Tracker。0 表示禁用延迟。常用值：使用 UploadAssistant 时为 5–10 秒；若文件在完成后才移动到位则为 60–120 秒。",
       "includeFilters": "包含筛选器",
       "excludeFilters": "排除筛选器",
       "categories": "分类",
@@ -1050,7 +1088,8 @@
         "moved": "已移动",
         "external_program": "外部程序",
         "auto_managed": "自动管理",
-        "dry_run_no_match": "模拟运行（无匹配）"
+        "dry_run_no_match": "模拟运行（无匹配）",
+        "exported_to_instance": "导出到实例"
       }
     },
     "reannounceOverview": {
@@ -1174,6 +1213,48 @@
       "confirmSaveAndEnable": "确认后将保存并启用此规则。",
       "confirmSave": "确认后将保存此规则。",
       "noTorrentsCurrentlyMatch": "当前没有种子匹配此规则。",
+      "contentLayout": {
+        "original": "原始",
+        "subfolder": "子文件夹",
+        "noSubfolder": "不使用子文件夹"
+      },
+      "shareLimitAction": {
+        "label": "达到限制时",
+        "default": "默认（使用全局）",
+        "stop": "停止种子",
+        "remove": "移除种子",
+        "removeWithContent": "移除并清除内容",
+        "enableSuperSeeding": "启用超级做种"
+      },
+      "shareLimitsMode": {
+        "label": "限制匹配模式",
+        "default": "默认（使用全局）",
+        "matchAny": "匹配任一限制",
+        "matchAll": "匹配所有限制"
+      },
+      "export": {
+        "title": "导出到实例",
+        "targetInstance": "目标实例",
+        "loadingInstances": "正在加载实例...",
+        "loadInstancesFailed": "加载实例失败。",
+        "selectTargetPlaceholder": "选择目标实例...",
+        "noOtherInstances": "没有其他可用实例。",
+        "savePathLabel": "目标上的保存路径（可选）",
+        "savePathPlaceholder": "例如 /data/torrents",
+        "savePathHelp": "种子内容的父目录。留空则使用分类默认值。支持模板：",
+        "categoryLabel": "目标上的分类（可选）",
+        "selectTargetFirst": "请先选择目标实例",
+        "loadingCategories": "正在加载分类...",
+        "noCategory": "无分类",
+        "noCategoriesFound": "在目标上未找到分类",
+        "tagsLabel": "目标上的标签（可选，以逗号分隔）",
+        "tagsPlaceholder": "例如 seedbox, migrated",
+        "contentLayoutLabel": "内容布局（可选）",
+        "contentLayoutDefaultPlaceholder": "默认（无偏好）",
+        "contentLayoutDefault": "默认",
+        "skipChecking": "跳过校验",
+        "addPaused": "以暂停状态添加"
+      },
       "priority": {
         "title": "种子优先级",
         "description": "控制种子的处理顺序。",
@@ -1211,7 +1292,8 @@
         "tag": "标签",
         "category": "分类",
         "move": "移动",
-        "externalProgram": "执行外部程序"
+        "externalProgram": "执行外部程序",
+        "exportToInstance": "导出到实例"
       },
       "option": {
         "noChange": "不更改",
@@ -1451,7 +1533,8 @@
           "autoManaged": "自动管理",
           "moved": "移动",
           "externalProgram": "外部程序",
-          "noMatches": "无匹配"
+          "noMatches": "无匹配",
+          "exportedToInstance": "导出到实例"
         },
         "summary": {
           "tagsChangedBoth": "{{added}} 将被标记，{{removed}} 将被取消标记",
@@ -1476,6 +1559,8 @@
         "workflowSaved": "工作流{{action}}",
         "saveFailed": "保存自动化失败",
         "nameRequired": "名称为必填项",
+        "selectTargetInstance": "请选择目标实例",
+        "targetInstanceMissing": "所选目标实例已不存在",
         "selectTracker": "请至少选择一个 Tracker",
         "enableAction": "请至少启用一个操作",
         "deleteRequiresCondition": "删除操作需要至少一个条件",
@@ -1512,7 +1597,9 @@
         "selectGroupKey": "请至少选择一个键",
         "groupExists": "已存在具有此 ID 的分组",
         "customGroupAdded": "已添加自定义分组"
-      }
+      },
+      "trackerMatchInclude": "包含",
+      "trackerMatchExclude": "排除"
     },
     "shareLimit": {
       "global": "全局",

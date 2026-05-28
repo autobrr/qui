@@ -69,6 +69,8 @@
     "copyName": "复制名称",
     "copyHash": "复制哈希值",
     "copyFullPath": "复制完整路径",
+    "copyMagnetLink": "复制磁力链接",
+    "setComment": "设置备注",
     "delete": "删除",
     "loadingPrograms": "正在加载程序...",
     "toast": {
@@ -77,6 +79,8 @@
       "nameNotAvailable": "名称不可用",
       "hashNotAvailable": "哈希值不可用",
       "fullPathNotAvailable": "完整路径不可用",
+      "magnetNotAvailable": "磁力链接不可用",
+      "failedToFetchMagnets": "获取种子磁力链接失败",
       "noTorrentsFoundToExport": "未找到可导出的种子",
       "noTorrentsExported": "未导出任何种子",
       "torrentExported": "种子已导出",
@@ -199,7 +203,8 @@
       "setDownloadLimit_other": "已设置 {{count}} 个种子的下载限制",
       "setLocation_other": "已设置 {{count}} 个种子的位置",
       "toggleSequentialDownloadEnable_other": "已为 {{count}} 个种子启用按顺序下载",
-      "toggleSequentialDownloadDisable_other": "已为 {{count}} 个种子禁用按顺序下载"
+      "toggleSequentialDownloadDisable_other": "已为 {{count}} 个种子禁用按顺序下载",
+      "setComment_other": "已更新 {{count}} 个种子的备注"
     },
     "failed": {
       "resume_other": "继续 {{count}} 个种子失败",
@@ -418,7 +423,8 @@
     "pieceSizeHelp": "自动根据内容计算最佳大小",
     "saveTorrentTo": "保存 .torrent 到（可选）",
     "saveTorrentToPlaceholder": "/path/to/save/file.torrent",
-    "saveTorrentToHelp": "在服务器上保存 .torrent 文件的位置",
+    "saveTorrentToHelp": "服务器上 .torrent 文件的完整路径；仅提供目录无效",
+    "saveTorrentToInvalid": "请输入完整的 .torrent 文件路径，而不是目录",
     "saveTorrentToTooltip": "qBittorrent 需要对此目录有写入权限。建议留空，稍后从任务窗口下载 .torrent 文件。",
     "webSeeds": "Web 种子（HTTP/HTTPS）",
     "webSeedsPlaceholder": "https://mirror1.example.com/path\nhttps://mirror2.example.com/path",
@@ -448,6 +454,17 @@
       "taskDeleted": "种子创建任务已删除",
       "taskDeleteFailed": "删除种子创建任务失败"
     }
+  },
+  "commentDialog": {
+    "title": "设置备注",
+    "descriptionMultiple": "将相同的备注应用于所有选中的种子。留空以清除备注。",
+    "descriptionSingle": "设置在 qBittorrent 中显示的种子备注。留空以清除备注。",
+    "label": "备注",
+    "loadingPlaceholder": "正在加载当前备注...",
+    "placeholder": "输入备注",
+    "cancel": "取消",
+    "saving": "正在保存...",
+    "save": "保存"
   },
   "fileTree": {
     "renameFile": "重命名文件",
@@ -667,7 +684,8 @@
       "requiresHardlinkReflink": "已跳过 - 需要硬链接/引用链接模式",
       "error": "错误",
       "queued": "排队中",
-      "check": "检查"
+      "check": "检查",
+      "belowThreshold": "已跳过 - 低于阈值"
     },
     "rateLimitHelp": {
       "why": "为什么会这样：",
@@ -801,7 +819,8 @@
       "moving": "移动中",
       "unregistered": "未注册",
       "trackerDown": "Tracker 离线",
-      "crossSeeds": "辅种"
+      "crossSeeds": "辅种",
+      "trackerError": "Tracker 错误"
     }
   },
   "statusBar": {
@@ -1108,7 +1127,8 @@
     "deleteThis": "删除此项",
     "statusLabels": {
       "trackerDown": "Tracker 离线",
-      "unregistered": "未注册"
+      "unregistered": "未注册",
+      "trackerError": "Tracker 错误"
     },
     "matchTypes": {
       "contentPath": {
@@ -1231,6 +1251,21 @@
       "rejectedMany": "{{count}} 个文件被拒绝（不是 .torrent 文件）"
     }
   },
+  "shareLimits": {
+    "whenLimitsReached": "达到限制时",
+    "actionWhenReached": "达到分享限制时的操作",
+    "defaultUseGlobal": "默认（使用全局）",
+    "stopTorrent": "停止种子",
+    "removeTorrent": "移除种子",
+    "removeWithContent": "移除种子及内容",
+    "enableSuperSeeding": "启用超级做种",
+    "limitsMatchingMode": "限制匹配模式",
+    "matchAnyLimit": "匹配任一限制",
+    "matchAllLimits": "匹配所有限制",
+    "matchingModeHelp": "需要达到任一还是所有限制（Web API 2.16.0+）",
+    "selectValue": "选择一个值",
+    "wasMixed": "（原为混合）"
+  },
   "mobileCards": {
     "noTorrentsFound": "未找到种子",
     "sort": "排序",
@@ -1337,6 +1372,7 @@
     "instance": "实例",
     "trackerDown": "Tracker 离线",
     "unregistered": "未注册",
+    "trackerError": "Tracker 错误",
     "now": "现在",
     "yes": "是",
     "no": "否"

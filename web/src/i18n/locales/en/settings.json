@@ -122,6 +122,9 @@
   },
   "apiKeys": {
     "cardTitle": "API Keys",
+    "loadingAuthMode": "Loading authentication mode...",
+    "authDisabledTitle": "API keys are unavailable while built-in auth is disabled",
+    "authDisabledDescription": "Requests that pass your reverse proxy and CIDR allowlist can use the qui API directly.",
     "cardDescription": "Manage API keys for external access",
     "apiDocs": "API Docs",
     "description": "API keys allow external applications to access your qBittorrent instances.",
@@ -493,7 +496,7 @@
       },
       "deleteDialog": {
         "title": "Remove license?",
-        "description": "Are you sure you want to remove this license from this machine? This will deactivate it here to free up an activation slot.",
+        "description": "Are you sure you want to remove this license from this machine? qui will try to free the remote activation slot too, but local removal will still finish if that request fails.",
         "keyLabel": "License Key to Remove:",
         "recoverPrefix": "If needed, you can recover it later from your"
       },

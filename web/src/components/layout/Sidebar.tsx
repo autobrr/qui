@@ -31,10 +31,10 @@ import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-route
 import {
   Archive,
   Check,
+  Code,
   Copyright,
   FileText,
   GitBranch,
-  Github,
   Globe,
   HardDrive,
   Home,
@@ -184,7 +184,7 @@ export function Sidebar() {
         </h2>
       </div>
 
-      <nav className="flex flex-1 min-h-0 flex-col px-3">
+      <nav className="flex flex-1 min-h-0 flex-col overflow-y-auto px-3">
         <div className="space-y-1">
           {navigation.map((item) => {
             const Icon = item.icon
@@ -210,115 +210,113 @@ export function Sidebar() {
 
         <Separator className="my-4" />
 
-        <div className="flex-1 min-h-0">
-          <div className="flex h-full min-h-0 flex-col">
-            <p className="px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/70">
-              {t("sidebar.instances")}
-            </p>
-            <div className="mt-1 flex-1 overflow-y-auto space-y-1 pr-1">
-              {hasMultipleActiveInstances && (
-                <>
-                  <UnifiedScopeDropdownSection
-                    activeInstances={activeInstances}
-                    effectiveUnifiedInstanceIds={effectiveUnifiedInstanceIds}
-                    isAllInstancesRoute={isAllInstancesActive}
-                    onResetUnifiedScope={() => applyUnifiedScope(activeInstanceIds)}
-                    onToggleUnifiedScopeInstance={toggleUnifiedScopeInstance}
-                    scopeKeyPrefix="sidebar-scope"
-                    variant="sidebar"
-                  />
-                  <Separator className="my-2" />
-                </>
-              )}
-              {activeInstances.map((instance) => {
-                const instancePath = `/instances/${instance.id}`
-                const isActive = location.pathname === instancePath || location.pathname.startsWith(`${instancePath}/`)
-                const csState = crossSeedInstanceState[instance.id]
-                const hasRss = csState?.rssEnabled || csState?.rssRunning
-                const hasSearch = csState?.searchRunning
+        <p className="px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/70">
+          {t("sidebar.instances")}
+        </p>
+        <div className="mt-1 space-y-1 pr-1">
+          {hasMultipleActiveInstances && (
+            <>
+              <UnifiedScopeDropdownSection
+                activeInstances={activeInstances}
+                effectiveUnifiedInstanceIds={effectiveUnifiedInstanceIds}
+                isAllInstancesRoute={isAllInstancesActive}
+                onResetUnifiedScope={() => applyUnifiedScope(activeInstanceIds)}
+                onToggleUnifiedScopeInstance={toggleUnifiedScopeInstance}
+                scopeKeyPrefix="sidebar-scope"
+                variant="sidebar"
+              />
+              <Separator className="my-2" />
+            </>
+          )}
+          {activeInstances.map((instance) => {
+            const instancePath = `/instances/${instance.id}`
+            const isActive = location.pathname === instancePath || location.pathname.startsWith(`${instancePath}/`)
+            const csState = crossSeedInstanceState[instance.id]
+            const hasRss = csState?.rssEnabled || csState?.rssRunning
+            const hasSearch = csState?.searchRunning
 
-                return (
-                  <Link
-                    key={instance.id}
-                    to="/instances/$instanceId"
-                    params={{ instanceId: instance.id.toString() }}
+            return (
+              <Link
+                key={instance.id}
+                to="/instances/$instanceId"
+                params={{ instanceId: instance.id.toString() }}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
+                  isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                )}
+              >
+                <HardDrive className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate max-w-36" title={instance.name}>{instance.name}</span>
+                <span className="ml-auto flex items-center gap-1.5">
+                  {hasRss && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center">
+                          {csState?.rssRunning ? (
+                            <Loader2 className={cn(
+                              "h-3 w-3 animate-spin",
+                              isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
+                            )} />
+                          ) : (
+                            <Rss className={cn(
+                              "h-3 w-3",
+                              isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
+                            )} />
+                          )}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="text-xs">
+                        {csState?.rssRunning ? t("sidebar.rssRunning") : t("sidebar.rssEnabled")}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {hasSearch && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center">
+                          <SearchCode className={cn(
+                            "h-3 w-3",
+                            isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
+                          )} />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="text-xs">
+                        {t("sidebar.scanRunning")}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  <span
                     className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
-                      isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      "h-2 w-2 rounded-full flex-shrink-0",
+                      instance.connected ? "bg-green-500" : "bg-red-500"
                     )}
-                  >
-                    <HardDrive className="h-4 w-4 flex-shrink-0" />
-                    <span className="truncate max-w-36" title={instance.name}>{instance.name}</span>
-                    <span className="ml-auto flex items-center gap-1.5">
-                      {hasRss && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="flex items-center">
-                              {csState?.rssRunning ? (
-                                <Loader2 className={cn(
-                                  "h-3 w-3 animate-spin",
-                                  isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
-                                )} />
-                              ) : (
-                                <Rss className={cn(
-                                  "h-3 w-3",
-                                  isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
-                                )} />
-                              )}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className="text-xs">
-                            {csState?.rssRunning ? t("sidebar.rssRunning") : t("sidebar.rssEnabled")}
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                      {hasSearch && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="flex items-center">
-                              <SearchCode className={cn(
-                                "h-3 w-3",
-                                isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
-                              )} />
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className="text-xs">
-                            {t("sidebar.scanRunning")}
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                      <span
-                        className={cn(
-                          "h-2 w-2 rounded-full flex-shrink-0",
-                          instance.connected ? "bg-green-500" : "bg-red-500"
-                        )}
-                      />
-                    </span>
-                  </Link>
-                )
-              })}
-              {activeInstances.length === 0 && (
-                <p className="px-3 py-2 text-sm text-sidebar-foreground/50">
-                  {hasConfiguredInstances ? t("sidebar.allInstancesDisabled") : t("sidebar.noInstancesConfigured")}
-                </p>
-              )}
-            </div>
-          </div>
+                  />
+                </span>
+              </Link>
+            )
+          })}
+          {activeInstances.length === 0 && (
+            <p className="px-3 py-2 text-sm text-sidebar-foreground/50">
+              {hasConfiguredInstances ? t("sidebar.allInstancesDisabled") : t("sidebar.noInstancesConfigured")}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-auto space-y-3 pt-3">
+          <UpdateBanner />
+
+          <Button
+            variant="ghost"
+            className="w-full justify-start"
+            onClick={() => logout()}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            {t("sidebar.logout")}
+          </Button>
         </div>
       </nav>
 
-      <div className="mt-auto space-y-3 p-3">
-        <UpdateBanner />
-
-        <Button
-          variant="ghost"
-          className="w-full justify-start"
-          onClick={() => logout()}
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          {t("sidebar.logout")}
-        </Button>
-
+      <div className="flex-shrink-0 p-3">
         <Separator className="mx-3 mb-3" />
 
         <div className="flex items-center justify-between px-3 pb-3">
@@ -372,7 +370,7 @@ export function Sidebar() {
                 rel="noopener noreferrer"
                 aria-label={t("sidebar.viewOnGitHub")}
               >
-                <Github className="h-3.5 w-3.5" />
+                <Code className="h-3.5 w-3.5" />
               </a>
             </Button>
           </div>

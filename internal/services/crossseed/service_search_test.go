@@ -22,9 +22,29 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
 )
+
+type spyARRLookupService struct {
+	title       string
+	contentType arr.ContentType
+	result      *arr.ExternalIDsResult
+	err         error
+	called      bool
+}
+
+func (s *spyARRLookupService) LookupExternalIDs(_ context.Context, title string, contentType arr.ContentType) (*arr.ExternalIDsResult, error) {
+	s.called = true
+	s.title = title
+	s.contentType = contentType
+	return s.result, s.err
+}
+
+func (s *spyARRLookupService) LookupSeasonEpisodeTotal(context.Context, string, int) (*arr.SeasonEpisodeTotalResult, error) {
+	return nil, nil
+}
 
 type failingEnabledIndexerStore struct {
 	err      error
@@ -112,6 +132,21 @@ func newJackettServiceWithIndexers(indexers []*models.TorznabIndexer) *jackett.S
 	return jackett.NewService(&failingEnabledIndexerStore{indexers: indexers})
 }
 
+func TestIsNilARRLookupServiceHandlesTypedNilARRService(t *testing.T) {
+	var arrService *arr.Service
+
+	require.True(t, isNilARRLookupService(arrService))
+}
+
+func TestLookupARRExternalIDsSkipsTypedNilARRService(t *testing.T) {
+	var arrService *arr.Service
+	svc := &Service{arrService: arrService}
+
+	got := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", "movie")
+
+	require.Nil(t, got)
+}
+
 func TestComputeAutomationSearchTimeout(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -131,6 +166,202 @@ func TestComputeAutomationSearchTimeout(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAutomationTorrentSearchContext(t *testing.T) {
+	t.Run("torznab search keeps scheduler-owned deadline", func(t *testing.T) {
+		ctx, cancel, timeout := automationTorrentSearchContext(context.Background(), false)
+
+		require.Nil(t, cancel)
+		require.Zero(t, timeout)
+		_, hasDeadline := ctx.Deadline()
+		require.False(t, hasDeadline)
+		priority, ok := jackett.SearchPriority(ctx)
+		require.True(t, ok)
+		require.Equal(t, jackett.RateLimitPriorityBackground, priority)
+	})
+
+	t.Run("gazelle-only search keeps bounded timeout", func(t *testing.T) {
+		start := time.Now()
+		ctx, cancel, timeout := automationTorrentSearchContext(context.Background(), true)
+		require.NotNil(t, cancel)
+		defer cancel()
+
+		require.Equal(t, timeouts.MaxSearchTimeout, timeout)
+		deadline, hasDeadline := ctx.Deadline()
+		require.True(t, hasDeadline)
+		require.WithinDuration(t, start.Add(timeouts.MaxSearchTimeout), deadline, time.Second)
+		priority, ok := jackett.SearchPriority(ctx)
+		require.True(t, ok)
+		require.Equal(t, jackett.RateLimitPriorityBackground, priority)
+	})
+}
+
+func TestEffectiveTorznabCrossSeedSearchLimit(t *testing.T) {
+	tests := []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{name: "unset uses cross seed max", limit: 0, want: torznabCrossSeedSearchLimit},
+		{name: "negative uses cross seed max", limit: -1, want: torznabCrossSeedSearchLimit},
+		{name: "below max", limit: 25, want: 25},
+		{name: "at max", limit: torznabCrossSeedSearchLimit, want: torznabCrossSeedSearchLimit},
+		{name: "above max clamps", limit: torznabCrossSeedSearchLimit + 1, want: torznabCrossSeedSearchLimit},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, effectiveTorznabCrossSeedSearchLimit(tt.limit))
+		})
+	}
+}
+
+func TestSearchTolerancePercentUsesRunOverride(t *testing.T) {
+	svc := &Service{
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SizeMismatchTolerancePercent = 5
+			return settings, nil
+		},
+	}
+
+	tests := []struct {
+		name string
+		opts TorrentSearchOptions
+		want float64
+	}{
+		{
+			name: "explicit zero",
+			opts: TorrentSearchOptions{
+				SizeMismatchTolerancePercent:    0,
+				SizeMismatchTolerancePercentSet: true,
+			},
+			want: 0,
+		},
+		{
+			name: "positive override without set flag",
+			opts: TorrentSearchOptions{
+				SizeMismatchTolerancePercent: 20,
+			},
+			want: 20,
+		},
+		{
+			name: "fallback settings",
+			opts: TorrentSearchOptions{},
+			want: 5,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.InDelta(t, tt.want, svc.searchTolerancePercent(context.Background(), tt.opts), 0.0001)
+		})
+	}
+}
+
+func TestLookupARRExternalIDsMapsContentType(t *testing.T) {
+	ids := &models.ExternalIDs{TMDbID: 27205, IMDbID: "tt1375666"}
+	tests := []struct {
+		name            string
+		contentType     string
+		wantContentType arr.ContentType
+		lookupErr       error
+		wantResult      bool
+		wantCalled      bool
+	}{
+		{
+			name:            "movie maps to Radarr",
+			contentType:     "movie",
+			wantContentType: arr.ContentTypeMovie,
+			wantResult:      true,
+			wantCalled:      true,
+		},
+		{
+			name:            "tv maps to Sonarr",
+			contentType:     "tv",
+			wantContentType: arr.ContentTypeTV,
+			wantResult:      true,
+			wantCalled:      true,
+		},
+		{
+			name:            "anime maps to Sonarr anime",
+			contentType:     "anime",
+			wantContentType: arr.ContentTypeAnime,
+			wantResult:      true,
+			wantCalled:      true,
+		},
+		{
+			name:        "unsupported content type skips lookup",
+			contentType: "music",
+		},
+		{
+			name:        "invalid content type skips lookup",
+			contentType: "invalid",
+		},
+		{
+			name: "empty content type skips lookup",
+		},
+		{
+			name:            "lookup error returns nil",
+			contentType:     "movie",
+			wantContentType: arr.ContentTypeMovie,
+			lookupErr:       errors.New("lookup failed"),
+			wantCalled:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spy := &spyARRLookupService{
+				result: &arr.ExternalIDsResult{
+					IDs:         ids,
+					ContentType: tt.wantContentType,
+					Source:      "parse",
+				},
+				err: tt.lookupErr,
+			}
+			svc := &Service{arrService: spy}
+
+			got := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", tt.contentType)
+
+			require.Equal(t, tt.wantCalled, spy.called)
+			if !tt.wantCalled {
+				require.Nil(t, got)
+				return
+			}
+
+			require.Equal(t, "Inception.2010", spy.title)
+			require.Equal(t, tt.wantContentType, spy.contentType)
+			if !tt.wantResult {
+				require.Nil(t, got)
+				return
+			}
+
+			require.NotNil(t, got)
+			require.Same(t, ids, got.IDs)
+		})
+	}
+}
+
+func TestLookupARRExternalIDsPreservesTitleOnlyResult(t *testing.T) {
+	titles := []string{"Frieren: Beyond Journey's End", "Sousou no Frieren"}
+	spy := &spyARRLookupService{
+		result: &arr.ExternalIDsResult{
+			IDs:         &models.ExternalIDs{},
+			Titles:      titles,
+			ContentType: arr.ContentTypeAnime,
+			Source:      "parse",
+		},
+	}
+	svc := &Service{arrService: spy}
+
+	got := svc.lookupARRExternalIDs(context.Background(), "Sousou.no.Frieren.S01", "anime")
+
+	require.NotNil(t, got)
+	require.True(t, got.IDs.IsEmpty())
+	require.Equal(t, titles, got.Titles)
+	require.Equal(t, arr.ContentTypeAnime, spy.contentType)
 }
 
 func TestGazelleTargetsForSource(t *testing.T) {
@@ -1062,8 +1293,8 @@ func (*queueTestSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.Ap
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (*queueTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (*queueTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (*queueTestSyncManager) BulkAction(context.Context, int, []string, string) error {
@@ -1156,8 +1387,8 @@ func (*gazelleSkipHashSyncManager) GetAppPreferences(_ context.Context, _ int) (
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (*gazelleSkipHashSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (*gazelleSkipHashSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (*gazelleSkipHashSyncManager) BulkAction(context.Context, int, []string, string) error {

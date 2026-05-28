@@ -49,6 +49,7 @@
     "freeSpace": "Free Space",
     "showMore": "Show more",
     "showLess": "Show less",
+    "uptime": "Uptime",
     "peerConnections": "Peer Connections",
     "queuedIOJobs": "Queued I/O Jobs",
     "bufferSize": "Buffer Size",

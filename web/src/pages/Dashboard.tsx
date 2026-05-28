@@ -45,11 +45,11 @@ import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
-import { copyTextToClipboard, formatBytes, getRatioColor } from "@/lib/utils"
+import { copyTextToClipboard, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type { InstanceResponse, ServerState, TorrentCounts, TorrentResponse, TorrentStats } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
+import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -220,6 +220,8 @@ function InstanceCard({
   const appVersion = qbittorrentAppInfo?.version || qbittorrentVersionInfo?.appVersion || ""
   const webAPIVersion = qbittorrentAppInfo?.webAPIVersion || qbittorrentVersionInfo?.webAPIVersion || ""
   const libtorrentVersion = qbittorrentAppInfo?.buildInfo?.libtorrent || ""
+  const launchTime = qbittorrentAppInfo?.processInfo?.launchTime
+  const uptimeSeconds = typeof launchTime === "number" && launchTime > 0 ? Math.max(0, Math.floor(Date.now() / 1000) - launchTime) : null
   const displayUrl = instance.host
 
   // Determine card state
@@ -560,6 +562,14 @@ function InstanceCard({
                   <span>{isAdvancedMetricsOpen ? t("instanceCard.showLess") : t("instanceCard.showMore")}</span>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="space-y-2 mt-2">
+                  {uptimeSeconds !== null && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <Clock className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground">{t("instanceCard.uptime")}</span>
+                      <span className="ml-auto font-medium">{formatDuration(uptimeSeconds)}</span>
+                    </div>
+                  )}
+
                   {serverState?.total_peer_connections !== undefined && (
                     <div className="flex items-center gap-2 text-xs">
                       <Activity className="h-3 w-3 text-muted-foreground" />

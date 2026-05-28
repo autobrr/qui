@@ -48,9 +48,10 @@ import { useInstances } from "@/hooks/useInstances"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
+import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { downloadBlob, toCsv, type CsvColumn } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
-import { cn, copyTextToClipboard, formatBytes, formatRelativeTime, parseTrackerDomains } from "@/lib/utils"
+import { cn, copyTextToClipboard, formatBytes, parseTrackerDomains } from "@/lib/utils"
 import {
   fromImportFormat,
   parseImportJSON,
@@ -174,10 +175,20 @@ function formatAction(action: AutomationActivity["action"]): string {
     auto_managed: "autoManagement",
     moved: "move",
     external_program: "externalProgram",
+    exported_to_instance: "exportToInstance",
     dry_run_no_match: "dryRun",
   }
   const key = actionKeys[action]
   return key ? i18n.t(`preferences.workflowsOverview.actions.${key}`, { ns: "instances" }) : action
+}
+
+function getOutcomeBadgeText(event: AutomationActivity): string {
+  const s = "preferences.workflowsOverview"
+  const ns = "instances"
+  if (event.outcome === "dry-run") return i18n.t(`${s}.dryRun`, { ns })
+  if (event.action === "external_program") return i18n.t(`${s}.${event.outcome === "success" ? "executed" : "failed"}`, { ns })
+  if (event.action === "exported_to_instance") return i18n.t(`${s}.${event.outcome === "success" ? "exported" : "failed"}`, { ns })
+  return i18n.t(`${s}.${event.outcome === "success" ? "removed" : "failed"}`, { ns })
 }
 
 function sumRecordValues(values: Record<string, number> | undefined): number {
@@ -260,6 +271,16 @@ function formatExternalProgramSummary(details: AutomationActivity["details"], ou
   return outcome === "failed" ? i18n.t(`${s}.programFailed`, { ns, name: programName }) : i18n.t(`${s}.programExecuted`, { ns, name: programName })
 }
 
+function formatExportedToInstanceSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const count = details?.count ?? 0
+  const s = "preferences.workflowsOverview.summary"
+  const ns = "instances"
+  if (outcome === "failed") {
+    return i18n.t(`${s}.exportFailed`, { ns, count })
+  }
+  return i18n.t(outcome === "dry-run" ? `${s}.exportedDryRun` : `${s}.exported`, { ns, count })
+}
+
 function formatDeleteDryRunSummary(details: AutomationActivity["details"], action: AutomationActivity["action"]): string {
   const count = details?.count ?? 0
   const s = "preferences.workflowsOverview.summary"
@@ -284,6 +305,7 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
   "reannounced",
   "auto_managed",
   "moved",
+  "exported_to_instance",
 ])
 
 function isRunSummary(event: AutomationActivity): boolean {
@@ -793,6 +815,7 @@ export function WorkflowsOverview({
     moved: "bg-green-500/10 text-green-500 border-green-500/20",
     external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
     auto_managed: "bg-rose-500/10 text-rose-500 border-rose-500/20",
+    exported_to_instance: "bg-blue-500/10 text-blue-500 border-blue-500/20",
     dry_run_no_match: "bg-slate-500/10 text-slate-500 border-slate-500/20",
   }
 
@@ -1020,9 +1043,7 @@ export function WorkflowsOverview({
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground">
-                            {allFilteredEvents.length === events.length
-                              ? t("preferences.workflowsOverview.events", { count: events.length })
-                              : t("preferences.workflowsOverview.eventsFiltered", { filtered: allFilteredEvents.length, total: events.length })}
+                            {allFilteredEvents.length === events.length? t("preferences.workflowsOverview.events", { count: events.length }): t("preferences.workflowsOverview.eventsFiltered", { filtered: allFilteredEvents.length, total: events.length })}
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1223,6 +1244,10 @@ export function WorkflowsOverview({
                                           <span className="font-medium text-sm block">
                                             {formatExternalProgramSummary(event.details, event.outcome)}
                                           </span>
+                                        ) : event.action === "exported_to_instance" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatExportedToInstanceSummary(event.details, event.outcome)}
+                                          </span>
                                         ) : event.action === "dry_run_no_match" ? (
                                           <span className="font-medium text-sm block">
                                             {t("preferences.workflowsOverview.noDryRunMatches")}
@@ -1251,11 +1276,7 @@ export function WorkflowsOverview({
                                               outcomeClasses[event.outcome]
                                             )}
                                           >
-                                            {event.outcome === "dry-run"
-                                              ? t("preferences.workflowsOverview.dryRun")
-                                              : event.action === "external_program"
-                                                ? (event.outcome === "success" ? t("preferences.workflowsOverview.executed") : t("preferences.workflowsOverview.failed"))
-                                                : (event.outcome === "success" ? t("preferences.workflowsOverview.removed") : t("preferences.workflowsOverview.failed"))}
+                                            {getOutcomeBadgeText(event)}
                                           </Badge>
                                         )}
                                       </div>
@@ -1552,9 +1573,7 @@ export function WorkflowsOverview({
         open={!!enableConfirm}
         onOpenChange={(open) => !open && setEnableConfirm(null)}
         title={
-          enableConfirm && isCategoryRule(enableConfirm.rule)
-            ? t("preferences.workflowsOverview.enableCategoryRule", { category: enableConfirm.rule.conditions?.category?.category })
-            : t("preferences.workflowsOverview.enableDeleteRule")
+          enableConfirm && isCategoryRule(enableConfirm.rule)? t("preferences.workflowsOverview.enableCategoryRule", { category: enableConfirm.rule.conditions?.category?.category }): t("preferences.workflowsOverview.enableDeleteRule")
         }
         description={
           enableConfirm?.preview && enableConfirm.preview.totalMatches > 0 ? (
@@ -1862,13 +1881,7 @@ function RulePreview({
         {rule.conditions?.delete?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
             <Trash2 className="h-3 w-3" />
-            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"
-              ? t("preferences.workflowsOverview.xsSafe")
-              : rule.conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"
-                ? t("preferences.workflowsOverview.plusXs")
-                : rule.conditions.delete.mode === "deleteWithFiles"
-                  ? t("preferences.workflowsOverview.plusFiles")
-                  : ""}
+            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? t("preferences.workflowsOverview.xsSafe"): rule.conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"? t("preferences.workflowsOverview.plusXs"): rule.conditions.delete.mode === "deleteWithFiles"? t("preferences.workflowsOverview.plusFiles"): ""}
           </Badge>
         )}
         {tagActions.some((action) => action.enabled) && (
