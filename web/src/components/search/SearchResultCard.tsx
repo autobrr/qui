@@ -90,7 +90,7 @@ export function SearchResultCard({
     >
       <div className="space-y-2">
         {/* Title */}
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start justify-between gap-2 h-10">
           <h3 className="text-sm font-medium leading-tight line-clamp-2">
             {result.title}
           </h3>
@@ -142,31 +142,31 @@ export function SearchResultCard({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span className="font-medium text-foreground">{result.indexer}</span>
           <span>{formatSize(result.size)}</span>
-          <Badge variant={result.seeders > 0 ? "default" : "secondary"} className="text-[10px]">
+          <Badge variant={result.seeders > 0 ? "default" : "secondary"} className="text-xs">
             {result.seeders} seeders
           </Badge>
         </div>
 
         {/* Category and Metadata */}
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="outline" className="text-xs">
             {categoryName}
           </Badge>
           {result.source && (
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-xs">
               {result.source}
             </Badge>
           )}
           {result.group && (
-            <Badge variant="outline" className="text-[10px]">
+            <Badge variant="outline" className="text-xs">
               {result.group}
             </Badge>
           )}
           {result.downloadVolumeFactor === 0 && (
-            <Badge variant="default" className="text-[10px]">Free</Badge>
+            <Badge variant="default" className="text-xs">Free</Badge>
           )}
           {result.downloadVolumeFactor > 0 && result.downloadVolumeFactor < 1 && (
-            <Badge variant="secondary" className="text-[10px]">{result.downloadVolumeFactor * 100}%</Badge>
+            <Badge variant="secondary" className="text-xs">{result.downloadVolumeFactor * 100}%</Badge>
           )}
         </div>
 
