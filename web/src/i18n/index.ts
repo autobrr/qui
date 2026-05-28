@@ -53,6 +53,19 @@ function isAppLanguage(value: string | null): value is AppLanguage {
   return value !== null && supportedLanguages.includes(value as AppLanguage)
 }
 
+function detectBrowserLanguage(): AppLanguage | null {
+  const browserLanguages = navigator.languages ?? [navigator.language]
+  for (const lang of browserLanguages) {
+    // Exact match (e.g. "fr" → "fr", "zh-CN" → "zh-CN")
+    if (isAppLanguage(lang)) return lang
+    // Prefix match (e.g. "fr-FR" → "fr", "zh-Hans" → skip if no match)
+    const prefix = lang.split("-")[0]
+    const match = supportedLanguages.find((s) => s === prefix || s.startsWith(`${prefix}-`))
+    if (match) return match
+  }
+  return null
+}
+
 function getStoredLanguage(): AppLanguage | null {
   try {
     const storedLanguage = localStorage.getItem(LANGUAGE_STORAGE_KEY)
@@ -128,7 +141,7 @@ i18n.use(initReactI18next).init({
       automations: frAutomations,
     },
   },
-  lng: getStoredLanguage() ?? "en",
+  lng: getStoredLanguage() ?? detectBrowserLanguage() ?? "en",
   fallbackLng: "en",
   defaultNS: "common",
   ns: [...namespaces],
