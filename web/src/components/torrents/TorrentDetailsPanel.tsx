@@ -1669,7 +1669,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
                           // Get enriched status (tracker-aware)
                           const trackerHealth = match.tracker_health ?? null
-                          let statusLabel = getStateLabel(match.state)
+                          let statusLabel = getStateLabel(match.state, t)
                           let statusVariant: "default" | "secondary" | "destructive" | "outline" = "outline"
                           let statusClass = ""
 
@@ -1683,7 +1683,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             statusVariant = "outline"
                             statusClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
                           } else if (trackerHealth === "tracker_error") {
-                            statusLabel = "Tracker Error"
+                            statusLabel = t("crossSeedTable.statusLabels.trackerError")
                             statusVariant = "outline"
                             statusClass = "text-orange-500 border-orange-500/40 bg-orange-500/10"
                           } else {

@@ -47,6 +47,7 @@ import {
   useReactTable
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
+import type { TFunction } from "i18next"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
@@ -256,28 +257,28 @@ function getStatusBadgeVariant(state: string): "default" | "secondary" | "destru
   }
 }
 
-function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean): {
+function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean, t: TFunction): {
   variant: "default" | "secondary" | "destructive" | "outline"
   label: string
   className: string
 } {
   const baseVariant = getStatusBadgeVariant(torrent.state)
   let variant = baseVariant
-  let label = getStateLabel(torrent.state)
+  let label = getStateLabel(torrent.state, t)
   let className = ""
 
   if (supportsTrackerHealth) {
     const trackerHealth = torrent.tracker_health ?? null
     if (trackerHealth === "tracker_down") {
-      label = "Tracker Down"
+      label = t("tableColumns.trackerDown")
       variant = "outline"
       className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
     } else if (trackerHealth === "tracker_error") {
-      label = "Tracker Error"
+      label = t("tableColumns.trackerError")
       variant = "outline"
       className = "text-orange-500 border-orange-500/40 bg-orange-500/10"
     } else if (trackerHealth === "unregistered") {
-      label = "Unregistered"
+      label = t("tableColumns.unregistered")
       variant = "outline"
       className = "text-destructive border-destructive/40 bg-destructive/10"
     }
@@ -385,8 +386,8 @@ const CompactRow = memo(({
   const displayRatio = incognitoMode ? getLinuxRatio(torrent.hash) : torrent.ratio
 
   const { variant: statusBadgeVariant, label: statusBadgeLabel, className: statusBadgeClass } = useMemo(
-    () => getStatusBadgeProps(torrent, supportsTrackerHealth),
-    [torrent, supportsTrackerHealth]
+    () => getStatusBadgeProps(torrent, supportsTrackerHealth, t),
+    [torrent, supportsTrackerHealth, t]
   )
 
   // Resolve tracker display name and icon using customizations
