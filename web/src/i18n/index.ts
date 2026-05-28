@@ -6,38 +6,18 @@
 import i18n from "i18next"
 import { initReactI18next } from "react-i18next"
 
-import common from "./locales/en/common.json"
-import auth from "./locales/en/auth.json"
-import settings from "./locales/en/settings.json"
-import torrents from "./locales/en/torrents.json"
-import dashboard from "./locales/en/dashboard.json"
-import crossseed from "./locales/en/crossseed.json"
-import rss from "./locales/en/rss.json"
-import search from "./locales/en/search.json"
-import instances from "./locales/en/instances.json"
-import automations from "./locales/en/automations.json"
+const localeFiles = import.meta.glob("./locales/**/*.json", { eager: true, import: "default" })
 
-import zhCNCommon from "./locales/zh-CN/common.json"
-import zhCNAuth from "./locales/zh-CN/auth.json"
-import zhCNSettings from "./locales/zh-CN/settings.json"
-import zhCNTorrents from "./locales/zh-CN/torrents.json"
-import zhCNDashboard from "./locales/zh-CN/dashboard.json"
-import zhCNCrossseed from "./locales/zh-CN/crossseed.json"
-import zhCNRss from "./locales/zh-CN/rss.json"
-import zhCNSearch from "./locales/zh-CN/search.json"
-import zhCNInstances from "./locales/zh-CN/instances.json"
-import zhCNAutomations from "./locales/zh-CN/automations.json"
+const resources: Record<string, Record<string, unknown>> = {}
 
-import frCommon from "./locales/fr/common.json"
-import frAuth from "./locales/fr/auth.json"
-import frSettings from "./locales/fr/settings.json"
-import frTorrents from "./locales/fr/torrents.json"
-import frDashboard from "./locales/fr/dashboard.json"
-import frCrossseed from "./locales/fr/crossseed.json"
-import frRss from "./locales/fr/rss.json"
-import frSearch from "./locales/fr/search.json"
-import frInstances from "./locales/fr/instances.json"
-import frAutomations from "./locales/fr/automations.json"
+for (const [path, module] of Object.entries(localeFiles)) {
+  const match = path.match(/\.\/locales\/([^/]+)\/([^/]+)\.json$/)
+  if (match) {
+    const [, lng, ns] = match
+    if (!resources[lng]) resources[lng] = {}
+    resources[lng][ns] = module
+  }
+}
 
 export const supportedLanguages = ["en", "zh-CN", "fr"] as const
 export type AppLanguage = (typeof supportedLanguages)[number]
@@ -103,44 +83,7 @@ export const namespaces = [
 ] as const
 
 i18n.use(initReactI18next).init({
-  resources: {
-    en: {
-      common,
-      auth,
-      settings,
-      torrents,
-      dashboard,
-      crossseed,
-      rss,
-      search,
-      instances,
-      automations,
-    },
-    "zh-CN": {
-      common: zhCNCommon,
-      auth: zhCNAuth,
-      settings: zhCNSettings,
-      torrents: zhCNTorrents,
-      dashboard: zhCNDashboard,
-      crossseed: zhCNCrossseed,
-      rss: zhCNRss,
-      search: zhCNSearch,
-      instances: zhCNInstances,
-      automations: zhCNAutomations,
-    },
-    fr: {
-      common: frCommon,
-      auth: frAuth,
-      settings: frSettings,
-      torrents: frTorrents,
-      dashboard: frDashboard,
-      crossseed: frCrossseed,
-      rss: frRss,
-      search: frSearch,
-      instances: frInstances,
-      automations: frAutomations,
-    },
-  },
+  resources,
   lng: getStoredLanguage() ?? detectBrowserLanguage() ?? "en",
   fallbackLng: "en",
   defaultNS: "common",

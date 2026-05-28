@@ -13,7 +13,7 @@ const checks = [
     required: [
       "function getStoredLanguage()",
       "function persistLanguage(",
-      "lng: getStoredLanguage() ?? \"en\"",
+      "lng: getStoredLanguage() ?? ",
       "persistLanguage(lng)",
     ],
     message: "i18n bootstrap must route storage access through guarded helpers",
