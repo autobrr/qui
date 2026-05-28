@@ -4,6 +4,7 @@
  */
 
 import type { Automation } from "@/types"
+import { getTrackerTokens } from "@/lib/workflow-utils"
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -177,17 +178,7 @@ export function formatErrorReason(reason: string): string {
  * @returns Array of tracker domain strings
  */
 export function parseTrackerDomains(rule: Automation): string[] {
-  let values: string[] = []
-  if (rule.trackerDomains && rule.trackerDomains.length > 0) {
-    values = rule.trackerDomains
-  } else if (rule.trackerPattern) {
-    values = rule.trackerPattern
-      .split(/[|,;]/)
-      .map((item) => item.trim())
-      .filter(Boolean)
-  }
-
-  return values.map((value) => value.startsWith("!") ? value.slice(1) : value)
+  return getTrackerTokens(rule).map((token) => token.startsWith("!") ? token.slice(1) : token)
 }
 
 /**
