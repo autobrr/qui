@@ -177,14 +177,15 @@ export function formatErrorReason(reason: string): string {
  * @returns Array of tracker domain strings
  */
 export function parseTrackerDomains(rule: Automation): string[] {
-  const values = rule.trackerDomains && rule.trackerDomains.length > 0
-    ? rule.trackerDomains
-    : !rule.trackerPattern
-      ? []
-      : rule.trackerPattern
-    .split(/[|,;]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
+  let values: string[] = []
+  if (rule.trackerDomains && rule.trackerDomains.length > 0) {
+    values = rule.trackerDomains
+  } else if (rule.trackerPattern) {
+    values = rule.trackerPattern
+      .split(/[|,;]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
 
   return values.map((value) => value.startsWith("!") ? value.slice(1) : value)
 }

@@ -63,7 +63,8 @@ import { withBasePath } from "@/lib/base-url"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
-import { cn, formatBytes, normalizeTrackerDomains, parseTrackerDomains } from "@/lib/utils"
+import { getTrackerMatchMode, getTrackerTokens, type TrackerMatchMode } from "@/lib/workflow-utils"
+import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
 import type {
   ActionConditions,
   Automation,
@@ -386,7 +387,6 @@ const AMBIGUOUS_POLICY_NONE_VALUE = "__none__"
 
 // Speed limit mode: no_change = omit, unlimited = 0, custom = user value (>0)
 type SpeedLimitMode = "no_change" | "unlimited" | "custom"
-type TrackerMatchMode = "include" | "exclude"
 
 // Local form types that allow strings for intermediate input states (e.g. during typing "-")
 interface FormFieldMultiplierScoreRule {
@@ -424,6 +424,10 @@ function createDefaultTagAction(): TagActionForm {
     useTrackerAsTag: false,
     useDisplayName: false,
   }
+}
+
+function stripTrackerNegation(token: string): string {
+  return token.startsWith("!") ? token.slice(1) : token
 }
 
 type FormState = {
@@ -854,7 +858,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     // Add trackers from the workflow being edited (so they persist even if no torrents use them)
     if (rule && rule.trackerPattern !== "*") {
-      const savedDomains = parseTrackerDomains(rule)
+      const savedDomains = getTrackerTokens(rule).map(stripTrackerNegation).filter(Boolean)
       for (const domain of savedDomains) {
         addTracker(domain)
       }
@@ -873,15 +877,6 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       icon: option.icon,
     }))
   }, [trackersQuery.data, trackerCustomizationMaps, trackerIcons, rule])
-
-  const getTrackerMatchMode = useCallback((pattern: string): TrackerMatchMode => {
-    const tokens = pattern
-      .split(/[|,;]/)
-      .map((token) => token.trim())
-      .filter(Boolean)
-    if (tokens.length === 0) return "include"
-    return tokens.every((token) => token.startsWith("!")) ? "exclude" : "include"
-  }, [])
 
   // Map individual domains to merged option values
   const mapDomainsToOptionValues = useMemo(() => {
@@ -955,9 +950,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (open) {
       if (rule) {
         const isAllTrackers = rule.trackerPattern === "*"
-        const rawDomains = isAllTrackers ? [] : parseTrackerDomains(rule)
+        const trackerTokens = isAllTrackers ? [] : getTrackerTokens(rule)
+        const rawDomains = trackerTokens.map(stripTrackerNegation).filter(Boolean)
         const mappedDomains = mapDomainsToOptionValues(rawDomains)
-        const trackerMatchMode = isAllTrackers ? "include" : getTrackerMatchMode(rule.trackerPattern)
+        const trackerMatchMode = isAllTrackers ? "include" : getTrackerMatchMode(trackerTokens)
 
         // Parse existing conditions into form state
         const conditions = rule.conditions
@@ -1235,7 +1231,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
 
     return () => { cancelled = true }
-  }, [open, rule, mapDomainsToOptionValues, getTrackerMatchMode])
+  }, [open, rule, mapDomainsToOptionValues])
 
   useEffect(() => {
     if (!open) {
@@ -1570,14 +1566,22 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
 
     const trackerDomains = input.applyToAllTrackers ? [] : normalizeTrackerDomains(input.trackerDomains)
-    const normalizedTrackerDomains = input.trackerMatchMode === "exclude"
-      ? trackerDomains.map((domain) => `!${domain}`)
-      : trackerDomains
+    let normalizedTrackerDomains = trackerDomains
+    if (input.trackerMatchMode === "exclude") {
+      normalizedTrackerDomains = trackerDomains.map((domain) => `!${domain}`)
+    }
+
+    let trackerPattern = normalizedTrackerDomains.join(",")
+    if (input.applyToAllTrackers) {
+      trackerPattern = "*"
+    } else if (input.trackerMatchMode === "mixed") {
+      trackerPattern = input.trackerPattern
+    }
 
     return {
       name: input.name,
-      trackerDomains: normalizedTrackerDomains,
-      trackerPattern: input.applyToAllTrackers ? "*" : normalizedTrackerDomains.join(","),
+      trackerDomains: input.trackerMatchMode === "mixed" ? [] : normalizedTrackerDomains,
+      trackerPattern,
       enabled: input.enabled,
       dryRun: input.dryRun,
       notify: input.notify,
@@ -2234,10 +2238,18 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                   <MultiSelect
                     options={trackerOptions}
                     selected={formState.trackerDomains}
-                    onChange={(next) => setFormState(prev => ({ ...prev, trackerDomains: next }))}
+                    onChange={(next) => setFormState(prev => ({
+                      ...prev,
+                      trackerDomains: next,
+                      trackerMatchMode: prev.trackerMatchMode === "mixed" ? "include" : prev.trackerMatchMode,
+                    }))}
                     placeholder="Select trackers..."
                     creatable
-                    onCreateOption={(value) => setFormState(prev => ({ ...prev, trackerDomains: [...prev.trackerDomains, value] }))}
+                    onCreateOption={(value) => setFormState(prev => ({
+                      ...prev,
+                      trackerDomains: [...prev.trackerDomains, value],
+                      trackerMatchMode: prev.trackerMatchMode === "mixed" ? "include" : prev.trackerMatchMode,
+                    }))}
                     disabled={trackersQuery.isLoading}
                     hideCheckIcon
                   />
