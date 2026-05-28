@@ -1444,6 +1444,28 @@
     "yes": "Oui",
     "no": "Non"
   },
+  "stateLabels": {
+    "downloading": "Téléchargement",
+    "metaDL": "Récupération des métadonnées",
+    "allocating": "Allocation",
+    "stalledDL": "En attente",
+    "queuedDL": "File d'attente",
+    "checkingDL": "Vérification",
+    "forcedDL": "(F) Téléchargement",
+    "uploading": "En partage",
+    "stalledUP": "En partage",
+    "queuedUP": "File d'attente",
+    "checkingUP": "Vérification",
+    "forcedUP": "(F) Partage",
+    "pausedDL": "En pause",
+    "pausedUP": "Terminé",
+    "stoppedDL": "Arrêté",
+    "stoppedUP": "Terminé",
+    "error": "Erreur",
+    "missingFiles": "Fichiers manquants",
+    "checkingResumeData": "Vérification des données de reprise",
+    "moving": "Déplacement"
+  },
   "details": {
     "failedToUpdatePriorities": "Échec de la mise à jour des priorités des fichiers",
     "failedToRenameFile": "Échec du renommage du fichier",
