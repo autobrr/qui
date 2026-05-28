@@ -884,6 +884,9 @@ func (s *Service) initPreviewEvalContext(ctx context.Context, instanceID int, to
 		if len(healthCounts.TrackerDownSet) > 0 {
 			evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
 		}
+		if len(healthCounts.TrackerErrorSet) > 0 {
+			evalCtx.TrackerErrorSet = healthCounts.TrackerErrorSet
+		}
 	}
 
 	return evalCtx, instance
@@ -2019,6 +2022,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
 		evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
 		evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
+		evalCtx.TrackerErrorSet = healthCounts.TrackerErrorSet
 	}
 
 	// On-demand hardlink index (if rules use HARDLINK_SCOPE condition OR includeHardlinks)

@@ -1687,6 +1687,10 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             statusLabel = "Tracker Down"
                             statusVariant = "outline"
                             statusClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+                          } else if (trackerHealth === "tracker_error") {
+                            statusLabel = "Tracker Error"
+                            statusVariant = "outline"
+                            statusClass = "text-orange-500 border-orange-500/40 bg-orange-500/10"
                           } else {
                             // Normal state-based styling
                             if (match.state === "downloading" || match.state === "uploading") {

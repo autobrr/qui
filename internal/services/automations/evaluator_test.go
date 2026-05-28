@@ -1165,6 +1165,36 @@ func TestEvaluateCondition_StateTrackerDown_WithContext(t *testing.T) {
 	})
 }
 
+func TestEvaluateCondition_StateTrackerError_WithContext(t *testing.T) {
+	cond := &RuleCondition{
+		Field:    FieldState,
+		Operator: OperatorEqual,
+		Value:    "tracker_error",
+	}
+
+	torrent := qbt.Torrent{
+		Hash:  "hash1",
+		State: qbt.TorrentStateUploading,
+	}
+
+	t.Run("matches when in TrackerErrorSet", func(t *testing.T) {
+		ctx := &EvalContext{
+			TrackerErrorSet: map[string]struct{}{"hash1": {}},
+		}
+		got := EvaluateConditionWithContext(cond, torrent, ctx, 0)
+		if !got {
+			t.Fatalf("expected true, got false")
+		}
+	})
+
+	t.Run("does not match without TrackerErrorSet", func(t *testing.T) {
+		got := EvaluateConditionWithContext(cond, torrent, &EvalContext{}, 0)
+		if got {
+			t.Fatalf("expected false, got true")
+		}
+	})
+}
+
 //go:fix inline
 func float64Ptr(v float64) *float64 {
 	return new(v)
