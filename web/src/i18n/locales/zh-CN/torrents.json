@@ -1377,6 +1377,28 @@
     "yes": "是",
     "no": "否"
   },
+  "stateLabels": {
+    "downloading": "下载中",
+    "metaDL": "获取元数据中",
+    "allocating": "分配空间中",
+    "stalledDL": "停滞",
+    "queuedDL": "排队中",
+    "checkingDL": "校验中",
+    "forcedDL": "(强制) 下载中",
+    "uploading": "做种中",
+    "stalledUP": "做种中",
+    "queuedUP": "排队中",
+    "checkingUP": "校验中",
+    "forcedUP": "(强制) 做种中",
+    "pausedDL": "已暂停",
+    "pausedUP": "已完成",
+    "stoppedDL": "已停止",
+    "stoppedUP": "已完成",
+    "error": "错误",
+    "missingFiles": "文件丢失",
+    "checkingResumeData": "校验恢复数据中",
+    "moving": "移动中"
+  },
   "sort": {
     "label": "排序",
     "ascending": "升序",
