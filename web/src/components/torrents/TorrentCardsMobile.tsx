@@ -499,6 +499,10 @@ function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean): 
       label = "Tracker Down"
       variant = "outline"
       className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+    } else if (trackerHealth === "tracker_error") {
+      label = "Tracker Error"
+      variant = "outline"
+      className = "text-orange-500 border-orange-500/40 bg-orange-500/10"
     } else if (trackerHealth === "unregistered") {
       label = "Unregistered"
       variant = "outline"

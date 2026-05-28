@@ -63,7 +63,8 @@ import { withBasePath } from "@/lib/base-url"
 import { buildCategorySelectOptions, buildTagSelectOptions } from "@/lib/category-utils"
 import { type CsvColumn, downloadBlob, toCsv } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
-import { cn, formatBytes, normalizeTrackerDomains, parseTrackerDomains } from "@/lib/utils"
+import { getTrackerMatchMode, getTrackerTokens, type TrackerMatchMode } from "@/lib/workflow-utils"
+import { cn, formatBytes, normalizeTrackerDomains } from "@/lib/utils"
 import type {
   ActionConditions,
   Automation,
@@ -425,10 +426,15 @@ function createDefaultTagAction(): TagActionForm {
   }
 }
 
+function stripTrackerNegation(token: string): string {
+  return token.startsWith("!") ? token.slice(1) : token
+}
+
 type FormState = {
   name: string
   trackerPattern: string
   trackerDomains: string[]
+  trackerMatchMode: TrackerMatchMode
   applyToAllTrackers: boolean
   enabled: boolean
   dryRun: boolean
@@ -507,6 +513,7 @@ const emptyFormState: FormState = {
   name: "",
   trackerPattern: "",
   trackerDomains: [],
+  trackerMatchMode: "include",
   applyToAllTrackers: false,
   enabled: false,
   dryRun: false,
@@ -851,7 +858,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
 
     // Add trackers from the workflow being edited (so they persist even if no torrents use them)
     if (rule && rule.trackerPattern !== "*") {
-      const savedDomains = parseTrackerDomains(rule)
+      const savedDomains = getTrackerTokens(rule).map(stripTrackerNegation).filter(Boolean)
       for (const domain of savedDomains) {
         addTracker(domain)
       }
@@ -943,8 +950,10 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     if (open) {
       if (rule) {
         const isAllTrackers = rule.trackerPattern === "*"
-        const rawDomains = isAllTrackers ? [] : parseTrackerDomains(rule)
+        const trackerTokens = isAllTrackers ? [] : getTrackerTokens(rule)
+        const rawDomains = trackerTokens.map(stripTrackerNegation).filter(Boolean)
         const mappedDomains = mapDomainsToOptionValues(rawDomains)
+        const trackerMatchMode = isAllTrackers ? "include" : getTrackerMatchMode(trackerTokens)
 
         // Parse existing conditions into form state
         const conditions = rule.conditions
@@ -1144,6 +1153,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
           name: rule.name,
           trackerPattern: rule.trackerPattern,
           trackerDomains: mappedDomains,
+          trackerMatchMode,
           applyToAllTrackers: isAllTrackers,
           enabled: rule.enabled,
           dryRun: rule.dryRun ?? false,
@@ -1556,11 +1566,22 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     }
 
     const trackerDomains = input.applyToAllTrackers ? [] : normalizeTrackerDomains(input.trackerDomains)
+    let normalizedTrackerDomains = trackerDomains
+    if (input.trackerMatchMode === "exclude") {
+      normalizedTrackerDomains = trackerDomains.map((domain) => `!${domain}`)
+    }
+
+    let trackerPattern = normalizedTrackerDomains.join(",")
+    if (input.applyToAllTrackers) {
+      trackerPattern = "*"
+    } else if (input.trackerMatchMode === "mixed") {
+      trackerPattern = input.trackerPattern
+    }
 
     return {
       name: input.name,
-      trackerDomains,
-      trackerPattern: input.applyToAllTrackers ? "*" : trackerDomains.join(","),
+      trackerDomains: input.trackerMatchMode === "mixed" ? [] : normalizedTrackerDomains,
+      trackerPattern,
       enabled: input.enabled,
       dryRun: input.dryRun,
       notify: input.notify,
@@ -2190,14 +2211,45 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
               {/* Trackers */}
               {!formState.applyToAllTrackers && (
                 <div className="space-y-1.5">
-                  <Label>Trackers</Label>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <Label>Trackers</Label>
+                    <div className="flex items-center border rounded-md">
+                      <Button
+                        type="button"
+                        variant={formState.trackerMatchMode === "include" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="px-2 h-7 rounded-r-none text-xs"
+                        onClick={() => setFormState(prev => ({ ...prev, trackerMatchMode: "include" }))}
+                      >
+                        Include
+                      </Button>
+                      <div className="w-[1px] bg-border h-4" />
+                      <Button
+                        type="button"
+                        variant={formState.trackerMatchMode === "exclude" ? "secondary" : "ghost"}
+                        size="sm"
+                        className="px-2 h-7 rounded-l-none text-xs"
+                        onClick={() => setFormState(prev => ({ ...prev, trackerMatchMode: "exclude" }))}
+                      >
+                        Exclude
+                      </Button>
+                    </div>
+                  </div>
                   <MultiSelect
                     options={trackerOptions}
                     selected={formState.trackerDomains}
-                    onChange={(next) => setFormState(prev => ({ ...prev, trackerDomains: next }))}
+                    onChange={(next) => setFormState(prev => ({
+                      ...prev,
+                      trackerDomains: next,
+                      trackerMatchMode: prev.trackerMatchMode === "mixed" ? "include" : prev.trackerMatchMode,
+                    }))}
                     placeholder="Select trackers..."
                     creatable
-                    onCreateOption={(value) => setFormState(prev => ({ ...prev, trackerDomains: [...prev.trackerDomains, value] }))}
+                    onCreateOption={(value) => setFormState(prev => ({
+                      ...prev,
+                      trackerDomains: [...prev.trackerDomains, value],
+                      trackerMatchMode: prev.trackerMatchMode === "mixed" ? "include" : prev.trackerMatchMode,
+                    }))}
                     disabled={trackersQuery.isLoading}
                     hideCheckIcon
                   />
