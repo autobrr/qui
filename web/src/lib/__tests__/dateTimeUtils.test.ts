@@ -21,12 +21,54 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 // substrings. 2024-06-15 14:30:45 UTC -> 1718461845.
 const TS_2024_06_15_14_30_45_UTC = 1718461845
 
+const originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage")
+
 const utcPrefs = (overrides: Partial<DateTimePreferences> = {}): DateTimePreferences => ({
   timezone: "UTC",
   timeFormat: "24h",
   dateFormat: "iso",
   ...overrides,
 })
+
+const createStorageStub = (): Storage => {
+  const entries = new Map<string, string>()
+
+  return {
+    get length() {
+      return entries.size
+    },
+    clear: () => {
+      entries.clear()
+    },
+    getItem: (key: string) => entries.get(key) ?? null,
+    key: (index: number) => Array.from(entries.keys())[index] ?? null,
+    removeItem: (key: string) => {
+      entries.delete(key)
+    },
+    setItem: (key: string, value: string) => {
+      entries.set(key, value)
+    },
+  }
+}
+
+// Node 26 exposes an experimental global localStorage accessor that returns
+// undefined unless Node is started with --localstorage-file. Keep this test on
+// the browser Storage contract without depending on runtime-specific globals.
+const installTestLocalStorage = () => {
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: createStorageStub(),
+  })
+}
+
+const restoreOriginalLocalStorage = () => {
+  if (originalLocalStorageDescriptor) {
+    Object.defineProperty(globalThis, "localStorage", originalLocalStorageDescriptor)
+    return
+  }
+
+  Reflect.deleteProperty(globalThis, "localStorage")
+}
 
 // Intent: Unix-seconds timestamp -> formatted string using the user's
 // timezone + date/time format preferences. Tests pass explicit preferences
@@ -252,7 +294,12 @@ describe("formatTimeHMS", () => {
 // the UI.
 describe("formatTimestamp localStorage fallback", () => {
   beforeEach(() => {
+    installTestLocalStorage()
     localStorage.clear()
+  })
+
+  afterEach(() => {
+    restoreOriginalLocalStorage()
   })
 
   it("uses the runtime's resolved timezone when localStorage is empty", () => {
