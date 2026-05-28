@@ -298,11 +298,12 @@ const FilterSidebarComponent = ({
   const [isConvertingScheme, setIsConvertingScheme] = useState(false)
 
   const visibleTorrentStates = useMemo(() => {
-    let states = supportsTrackerHealth
-      ? TORRENT_STATES
-      : TORRENT_STATES.filter(
-          state => state.value !== "unregistered" && state.value !== "tracker_down" && state.value !== "tracker_error"
-        )
+    let states = TORRENT_STATES
+    if (!supportsTrackerHealth) {
+      states = TORRENT_STATES.filter(
+        state => state.value !== "unregistered" && state.value !== "tracker_down" && state.value !== "tracker_error"
+      )
+    }
 
     // Only show cross-seeds when there's an active cross-seed filter
     if (!selectedFilters.expr) {
