@@ -34,7 +34,8 @@ func BenchmarkFullMigrationTestDB(b *testing.B) {
 
 func BenchmarkClonedMigratedTestDB(b *testing.B) {
 	disableBenchmarkLogs(b)
-	if _, err := migratedTemplatePath(); err != nil {
+	templatePath, err := migratedTemplatePath()
+	if err != nil {
 		b.Fatalf("prepare migrated template: %v", err)
 	}
 
