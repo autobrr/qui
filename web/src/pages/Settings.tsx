@@ -76,8 +76,6 @@ function LanguageSelector() {
 
   return (
     <div className="space-y-2">
-      <Label>{t("language.label")}</Label>
-      <p className="text-sm text-muted-foreground">{t("language.description")}</p>
       <Select
         value={i18n.language}
         onValueChange={(value) => changeLanguage(value as AppLanguage)}
