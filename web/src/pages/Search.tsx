@@ -1498,15 +1498,15 @@ export function Search() {
                         <div
                           key={virtualRow.key}
                           data-index={virtualRow.index}
+                          ref={cardsVirtualizer.measureElement}
                           style={{
                             position: "absolute",
                             top: 0,
                             left: 0,
                             width: "100%",
-                            height: `${virtualRow.size}px`,
                             transform: `translateY(${virtualRow.start}px)`,
                             paddingBottom: "8px",
-                            contain: "layout style paint",
+                            contain: "layout style",
                           }}
                         >
                           <SearchResultCard
