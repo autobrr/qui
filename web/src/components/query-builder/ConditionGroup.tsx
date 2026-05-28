@@ -14,6 +14,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Plus, X } from "lucide-react";
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type { DisabledField, DisabledStateValue } from "./constants";
 import { DropZone } from "./DropZone";
 import { LeafCondition } from "./LeafCondition";
@@ -63,6 +64,7 @@ export function ConditionGroup({
   disabledStateValues,
   groupOptions,
 }: ConditionGroupProps) {
+  const { t } = useTranslation("automations");
   const isGroup = condition.operator === "AND" || condition.operator === "OR";
   const children = condition.conditions ?? [];
   const {
@@ -190,7 +192,7 @@ export function ConditionGroup({
             className="cursor-grab touch-none text-muted-foreground hover:text-foreground"
             {...attributes}
             {...listeners}
-            aria-label="Drag group"
+            aria-label={t("queryBuilder.dragGroup")}
           >
             <GripVertical className="size-4" />
           </button>
@@ -209,7 +211,7 @@ export function ConditionGroup({
           {condition.operator}
         </Button>
         <span className="text-xs text-muted-foreground">
-          {condition.operator === "AND" ? "All conditions must match" : "Any condition must match"}
+          {condition.operator === "AND" ? t("queryBuilder.allConditionsMustMatch") : t("queryBuilder.anyConditionMustMatch")}
         </span>
 
         {/* Remove group button (not for root) */}
@@ -278,7 +280,7 @@ export function ConditionGroup({
           onClick={addCondition}
         >
           <Plus className="mr-1 size-3" />
-          Condition
+          {t("queryBuilder.condition")}
         </Button>
         {depth < MAX_DEPTH && (
           <Button
@@ -289,7 +291,7 @@ export function ConditionGroup({
             onClick={addGroup}
           >
             <Plus className="mr-1 size-3" />
-            Group
+            {t("queryBuilder.group")}
           </Button>
         )}
       </div>

@@ -3,13 +3,18 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import i18n from "@/i18n"
 import {
   getCategoriesForSearchType,
   getSearchTypeLabel,
-  inferSearchTypeFromCategories,
-  SEARCH_TYPE_OPTIONS
+  getSearchTypeOptions,
+  inferSearchTypeFromCategories
 } from "@/lib/search-derived-params"
 import { describe, expect, it } from "vitest"
+
+// Label helpers now resolve through i18n; bind a fixed English translator
+// scoped to the search namespace so assertions stay deterministic.
+const t = i18n.getFixedT("en", "search")
 
 // Intent: SearchType -> Torznab category IDs. 'auto' means "don't constrain"
 // (returns undefined so the backend chooses). Returns a NEW array so callers
@@ -85,20 +90,20 @@ describe("getSearchTypeLabel", () => {
     ["apps", "Apps & games"],
     ["xxx", "Adult"],
   ] as const)("labels %s as %s", (type, expected) => {
-    expect(getSearchTypeLabel(type)).toBe(expected)
+    expect(getSearchTypeLabel(type, t)).toBe(expected)
   })
 
   it("falls back to 'Auto detect' for unknown values", () => {
-    expect(getSearchTypeLabel("unknown" as never)).toBe("Auto detect")
+    expect(getSearchTypeLabel("unknown" as never, t)).toBe("Auto detect")
   })
 })
 
 // Intent: each option in the dropdown must be a known SearchType so the
 // types stay in sync with the data shape. Catches anyone who adds an
 // option label without adding the corresponding type entry.
-describe("SEARCH_TYPE_OPTIONS", () => {
+describe("getSearchTypeOptions", () => {
   it("includes exactly the known SearchType values", () => {
-    expect(SEARCH_TYPE_OPTIONS.map(o => o.value).sort()).toEqual(
+    expect(getSearchTypeOptions(t).map(o => o.value).sort()).toEqual(
       ["apps", "auto", "books", "movies", "music", "tv", "xxx"]
     )
   })

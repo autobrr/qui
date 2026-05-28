@@ -84,6 +84,7 @@ import {
   X
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { AddTorrentDialog } from "./AddTorrentDialog"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import {
@@ -134,6 +135,7 @@ function MobileShareLimitsDialog({
   supportsShareLimitsAction?: boolean
   supportsShareLimitsMode?: boolean
 }) {
+  const { t } = useTranslation("torrents")
   const [ratioEnabled, setRatioEnabled] = useState(false)
   const [ratioLimit, setRatioLimit] = useState(1.5)
   const [seedingTimeEnabled, setSeedingTimeEnabled] = useState(false)
@@ -196,9 +198,9 @@ function MobileShareLimitsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Set Share Limits for {hashCount} torrent(s)</DialogTitle>
+          <DialogTitle>{t("mobileCards.shareLimit.title", { count: hashCount })}</DialogTitle>
           <DialogDescription>
-            Configure seeding limits. Use -1 or disable to remove limits.
+            {t("mobileCards.shareLimit.description")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -209,7 +211,7 @@ function MobileShareLimitsDialog({
                 checked={ratioEnabled}
                 onCheckedChange={setRatioEnabled}
               />
-              <Label htmlFor="ratioEnabled">Set ratio limit</Label>
+              <Label htmlFor="ratioEnabled">{t("mobileCards.shareLimit.setRatioLimit")}</Label>
             </div>
             {ratioEnabled && (
               <Input
@@ -230,7 +232,7 @@ function MobileShareLimitsDialog({
                 checked={seedingTimeEnabled}
                 onCheckedChange={setSeedingTimeEnabled}
               />
-              <Label htmlFor="seedingTimeEnabled">Set seeding time limit (minutes)</Label>
+              <Label htmlFor="seedingTimeEnabled">{t("mobileCards.shareLimit.setSeedingTimeLimit")}</Label>
             </div>
             {seedingTimeEnabled && (
               <Input
@@ -250,7 +252,7 @@ function MobileShareLimitsDialog({
                 checked={inactiveSeedingTimeEnabled}
                 onCheckedChange={setInactiveSeedingTimeEnabled}
               />
-              <Label htmlFor="inactiveSeedingTimeEnabled">Set inactive seeding limit (minutes)</Label>
+              <Label htmlFor="inactiveSeedingTimeEnabled">{t("mobileCards.shareLimit.setInactiveSeedingLimit")}</Label>
             </div>
             {inactiveSeedingTimeEnabled && (
               <Input
@@ -265,17 +267,17 @@ function MobileShareLimitsDialog({
 
           {supportsShareLimitsAction && (
             <div className="space-y-2">
-              <Label className="text-sm font-medium">When limits are reached</Label>
+              <Label className="text-sm font-medium">{t("shareLimits.whenLimitsReached")}</Label>
               <Select value={shareLimitAction} onValueChange={setShareLimitAction}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="default">Default (use global)</SelectItem>
-                  <SelectItem value="Stop">Stop torrent</SelectItem>
-                  <SelectItem value="Remove">Remove torrent</SelectItem>
-                  <SelectItem value="RemoveWithContent">Remove with content</SelectItem>
-                  <SelectItem value="EnableSuperSeeding">Enable super seeding</SelectItem>
+                  <SelectItem value="default">{t("shareLimits.defaultUseGlobal")}</SelectItem>
+                  <SelectItem value="Stop">{t("shareLimits.stopTorrent")}</SelectItem>
+                  <SelectItem value="Remove">{t("shareLimits.removeTorrent")}</SelectItem>
+                  <SelectItem value="RemoveWithContent">{t("shareLimits.removeWithContent")}</SelectItem>
+                  <SelectItem value="EnableSuperSeeding">{t("shareLimits.enableSuperSeeding")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -283,15 +285,15 @@ function MobileShareLimitsDialog({
 
           {supportsShareLimitsMode && (
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Limits matching mode</Label>
+              <Label className="text-sm font-medium">{t("shareLimits.limitsMatchingMode")}</Label>
               <Select value={shareLimitsMode} onValueChange={setShareLimitsMode}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="default">Default (use global)</SelectItem>
-                  <SelectItem value="MatchAny">Match any limit</SelectItem>
-                  <SelectItem value="MatchAll">Match all limits</SelectItem>
+                  <SelectItem value="default">{t("shareLimits.defaultUseGlobal")}</SelectItem>
+                  <SelectItem value="MatchAny">{t("shareLimits.matchAnyLimit")}</SelectItem>
+                  <SelectItem value="MatchAll">{t("shareLimits.matchAllLimits")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -299,10 +301,10 @@ function MobileShareLimitsDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("mobileCards.shareLimit.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={isPending}>
-            {isPending ? "Setting..." : "Apply Limits"}
+            {isPending ? t("mobileCards.shareLimit.setting") : t("mobileCards.shareLimit.applyLimits")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -326,6 +328,7 @@ function MobileSpeedLimitsDialog({
   onConfirm: (uploadLimit: number, downloadLimit: number) => void
   isPending: boolean
 }) {
+  const { t } = useTranslation("torrents")
   const [uploadEnabled, setUploadEnabled] = useState(false)
   const [uploadLimit, setUploadLimit] = useState(0)
   const [downloadEnabled, setDownloadEnabled] = useState(false)
@@ -369,9 +372,9 @@ function MobileSpeedLimitsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Set Speed Limits for {hashCount} torrent(s)</DialogTitle>
+          <DialogTitle>{t("mobileCards.speedLimit.title", { count: hashCount })}</DialogTitle>
           <DialogDescription>
-            Set upload and download speed limits in KB/s. Disable a field to use global limits.
+            {t("mobileCards.speedLimit.description")}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -382,7 +385,7 @@ function MobileSpeedLimitsDialog({
                 checked={uploadEnabled}
                 onCheckedChange={setUploadEnabled}
               />
-              <Label htmlFor="uploadEnabled">Set upload limit (KB/s)</Label>
+              <Label htmlFor="uploadEnabled">{t("mobileCards.speedLimit.setUploadLimit")}</Label>
             </div>
             {uploadEnabled && (
               <Input
@@ -402,7 +405,7 @@ function MobileSpeedLimitsDialog({
                 checked={downloadEnabled}
                 onCheckedChange={setDownloadEnabled}
               />
-              <Label htmlFor="downloadEnabled">Set download limit (KB/s)</Label>
+              <Label htmlFor="downloadEnabled">{t("mobileCards.speedLimit.setDownloadLimit")}</Label>
             </div>
             {downloadEnabled && (
               <Input
@@ -417,10 +420,10 @@ function MobileSpeedLimitsDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("mobileCards.speedLimit.cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={isPending}>
-            {isPending ? "Setting..." : "Apply Limits"}
+            {isPending ? t("mobileCards.speedLimit.setting") : t("mobileCards.speedLimit.applyLimits")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -652,6 +655,7 @@ function SwipeableCard({
   trackerIcons?: Record<string, string>
   trackerCustomizationLookup?: TrackerCustomizationLookup
 }) {
+  const { t } = useTranslation("torrents")
 
   // Use number for timeoutId in browser
   const [longPressTimer, setLongPressTimer] = useState<number | null>(null)
@@ -843,7 +847,7 @@ function SwipeableCard({
               {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
             </span>
             <div className="flex items-center gap-1">
-              <span className="text-muted-foreground">Ratio:</span>
+              <span className="text-muted-foreground">{t("mobileCards.ratio")}</span>
               <span
                 className="font-medium"
                 style={{ color: getRatioColor(displayRatio) }}
@@ -897,7 +901,7 @@ function SwipeableCard({
             <div className="flex items-center gap-3">
               {/* Ratio on the left */}
               <div className="flex items-center gap-1">
-                <span className="text-muted-foreground">Ratio:</span>
+                <span className="text-muted-foreground">{t("mobileCards.ratio")}</span>
                 <span
                   className="font-medium"
                   style={{ color: getRatioColor(displayRatio) }}
@@ -1044,6 +1048,7 @@ export function TorrentCardsMobile({
   onCrossSeedSearch,
   isCrossSeedSearching,
 }: TorrentCardsMobileProps) {
+  const { t } = useTranslation("torrents")
   const isAllInstancesView = isAllInstancesScope(instanceId)
   // State
   const [sortState, setSortState] = useState<MobileSortState>(() => {
@@ -2010,17 +2015,17 @@ export function TorrentCardsMobile({
         <div className="flex items-center justify-between text-xs mb-3">
           <div className="text-muted-foreground">
             {torrents.length === 0 && isLoading ? (
-              "Loading torrents..."
+              t("statusBar.loadingTorrents")
             ) : totalCount === 0 ? (
-              "No torrents found"
+              t("mobileCards.noTorrentsFound")
             ) : (
               <>
                 {hasLoadedAll ? (
-                  `${torrents.length} torrent${torrents.length !== 1 ? "s" : ""}`
+                  t("statusBar.torrentCount", { count: torrents.length, plural: torrents.length !== 1 ? "s" : "" })
                 ) : isLoadingMore ? (
-                  "Loading more torrents..."
+                  t("statusBar.loadingMore")
                 ) : (
-                  `${safeLoadedRows} of ${totalCount} torrents loaded`
+                  t("statusBar.torrentsLoaded", { loaded: safeLoadedRows, total: totalCount })
                 )}
               </>
             )}
@@ -2033,11 +2038,11 @@ export function TorrentCardsMobile({
                   size="sm"
                   className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-foreground md:hidden"
                 >
-                  Sort: {currentSortOption.label}
+                  {t("mobileCards.sort")}: {currentSortOption.label}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48 max-h-100 overflow-y-auto">
-                <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                <DropdownMenuLabel>{t("mobileCards.sortBy")}</DropdownMenuLabel>
                 <DropdownMenuRadioGroup
                   value={sortField}
                   onValueChange={(value) => handleSortFieldChange(value as TorrentSortOptionValue)}
@@ -2055,8 +2060,8 @@ export function TorrentCardsMobile({
               size="sm"
               onClick={toggleSortOrder}
               className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground md:hidden"
-              aria-label={`Sort ${sortOrder === "desc" ? "descending" : "ascending"}`}
-              title={`Sort ${sortOrder === "desc" ? "descending" : "ascending"}`}
+              aria-label={`${t("sort.label")} ${sortOrder === "desc" ? t("sort.descending") : t("sort.ascending")}`}
+              title={`${t("sort.label")} ${sortOrder === "desc" ? t("sort.descending") : t("sort.ascending")}`}
             >
               {sortOrder === "desc" ? (
                 <ChevronDown className="h-3.5 w-3.5" />
@@ -2089,9 +2094,9 @@ export function TorrentCardsMobile({
               size="sm"
               onClick={handleClearSearch}
               className="h-7 px-2 text-xs font-medium text-primary hover:text-primary"
-              aria-label="Clear search filter"
+              aria-label={t("mobileCards.clearSearchFilter")}
             >
-              Clear
+              {t("mobileCards.clear")}
               <X className="ml-1 h-3 w-3" aria-hidden="true" />
             </Button>
           </div>
@@ -2114,7 +2119,7 @@ export function TorrentCardsMobile({
                 <X className="h-4 w-4" />
               </button>
               <span className="text-sm font-medium flex items-center gap-2">
-                {isAllSelected ? `All ${effectiveSelectionCount}` : effectiveSelectionCount} selected
+                {isAllSelected? t("mobileCards.selection.allSelectedCount", { count: effectiveSelectionCount }): t("mobileCards.selection.selectedCount", { count: effectiveSelectionCount })}
                 {selectedTotalSize > 0 && (
                   <span className="text-xs text-primary-foreground/80">
                     • {selectedFormattedSize}
@@ -2126,7 +2131,7 @@ export function TorrentCardsMobile({
               onClick={handleSelectAll}
               className="text-sm font-medium"
             >
-              {effectiveSelectionCount === totalCount ? "Deselect All" : "Select All"}
+              {effectiveSelectionCount === totalCount ? t("detailsPanel.deselectAll") : t("detailsPanel.selectAll")}
             </button>
           </div>
         )}
@@ -2192,7 +2197,7 @@ export function TorrentCardsMobile({
               disabled={isLoadingMoreRows}
               className="text-muted-foreground"
             >
-              {isLoadingMoreRows ? "Loading..." : "Load More"}
+              {isLoadingMoreRows ? t("statusBar.loading") : t("mobileCards.loadMore")}
             </Button>
           </div>
         )}
@@ -2200,7 +2205,7 @@ export function TorrentCardsMobile({
         {isLoadingMore && (
           <div className="p-4 text-center text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2" />
-            <p className="text-sm">Loading more torrents...</p>
+            <p className="text-sm">{t("statusBar.loadingMore")}</p>
           </div>
         )}
       </div>
@@ -2221,7 +2226,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Play className="h-5 w-5" />
-              <span className="truncate">Resume</span>
+              <span className="truncate">{t("managementBar.resume")}</span>
             </button>
 
             <button
@@ -2229,7 +2234,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Pause className="h-5 w-5" />
-              <span className="truncate">Pause</span>
+              <span className="truncate">{t("managementBar.pause")}</span>
             </button>
 
             <button
@@ -2240,7 +2245,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Folder className="h-5 w-5" />
-              <span className="truncate">Category</span>
+              <span className="truncate">{t("managementBar.setCategory")}</span>
             </button>
 
             <button
@@ -2251,7 +2256,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <Tag className="h-5 w-5" />
-              <span className="truncate">Tags</span>
+              <span className="truncate">{t("managementBar.setTags")}</span>
             </button>
 
             <button
@@ -2259,7 +2264,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-1 px-3 py-2 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground"
             >
               <MoreVertical className="h-5 w-5" />
-              <span className="truncate">More</span>
+              <span className="truncate">{t("mobileCards.more")}</span>
             </button>
           </div>
         </div>
@@ -2269,8 +2274,9 @@ export function TorrentCardsMobile({
       <Sheet open={showActionsSheet} onOpenChange={setShowActionsSheet}>
         <SheetContent side="bottom" className="h-auto pb-8">
           <SheetHeader>
-            <SheetTitle>Actions
-              for {isAllSelected ? `all ${effectiveSelectionCount}` : effectiveSelectionCount} torrent(s)</SheetTitle>
+            <SheetTitle>
+              {isAllSelected? t("mobileCards.actionsForAll", { count: effectiveSelectionCount }): t("mobileCards.actionsForCount", { count: effectiveSelectionCount })}
+            </SheetTitle>
           </SheetHeader>
           <div className="grid gap-2 py-4 px-4">
             <Button
@@ -2279,7 +2285,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <CheckCircle2 className="mr-2 h-4 w-4" />
-              Force Recheck
+              {t("managementBar.forceRecheck")}
             </Button>
             <Button
               variant="outline"
@@ -2287,7 +2293,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <Radio className="mr-2 h-4 w-4" />
-              Reannounce
+              {t("managementBar.reannounce")}
             </Button>
             {(() => {
               const seqDlStates = getSelectedTorrents?.map(t => t.seq_dl) ?? []
@@ -2299,7 +2305,7 @@ export function TorrentCardsMobile({
                   className="justify-start"
                 >
                   <Blocks className="mr-2 h-4 w-4" />
-                  {allSeqDlEnabled ? "Disable" : "Enable"} Sequential Download
+                  {allSeqDlEnabled ? t("managementBar.sequentialDownload.disable") : t("managementBar.sequentialDownload.enable")}
                 </Button>
               )
             })()}
@@ -2314,7 +2320,7 @@ export function TorrentCardsMobile({
                 className="justify-start"
               >
                 <GitBranch className="mr-2 h-4 w-4" />
-                Filter Cross-Seeds
+                {t("contextMenu.filterCrossSeeds")}
               </Button>
             )}
             {canCrossSeedSearch && onCrossSeedSearch && (
@@ -2331,7 +2337,7 @@ export function TorrentCardsMobile({
                 className="justify-start"
               >
                 <Search className="mr-2 h-4 w-4" />
-                Search Cross-Seeds
+                {t("contextMenu.searchCrossSeeds")}
               </Button>
             )}
             <Button
@@ -2340,7 +2346,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <ChevronUp className="mr-2 h-4 w-4" />
-              Increase Priority
+              {t("managementBar.increasePriority")}
             </Button>
             <Button
               variant="outline"
@@ -2348,7 +2354,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <ChevronDown className="mr-2 h-4 w-4" />
-              Decrease Priority
+              {t("managementBar.decreasePriority")}
             </Button>
             <Button
               variant="outline"
@@ -2356,7 +2362,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <ChevronUp className="mr-2 h-4 w-4" />
-              Top Priority
+              {t("managementBar.topPriority")}
             </Button>
             <Button
               variant="outline"
@@ -2364,7 +2370,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <ChevronDown className="mr-2 h-4 w-4" />
-              Bottom Priority
+              {t("managementBar.bottomPriority")}
             </Button>
             {(() => {
               // Check TMM state across selected torrents
@@ -2386,7 +2392,7 @@ export function TorrentCardsMobile({
                       className="justify-start"
                     >
                       <Settings2 className="mr-2 h-4 w-4" />
-                      Enable TMM (Mixed)
+                      {t("mobileCards.enableTmmMixed")}
                     </Button>
                     <Button
                       variant="outline"
@@ -2398,7 +2404,7 @@ export function TorrentCardsMobile({
                       className="justify-start"
                     >
                       <Settings2 className="mr-2 h-4 w-4" />
-                      Disable TMM (Mixed)
+                      {t("mobileCards.disableTmmMixed")}
                     </Button>
                   </>
                 )
@@ -2417,12 +2423,12 @@ export function TorrentCardsMobile({
                   {allEnabled ? (
                     <>
                       <Settings2 className="mr-2 h-4 w-4" />
-                      Disable TMM
+                      {t("managementBar.tmm.disable")}
                     </>
                   ) : (
                     <>
                       <Settings2 className="mr-2 h-4 w-4" />
-                      Enable TMM
+                      {t("managementBar.tmm.enable")}
                     </>
                   )}
                 </Button>
@@ -2437,7 +2443,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <Sprout className="mr-2 h-4 w-4" />
-              Set Share Limits
+              {t("contextMenu.setShareLimits")}
             </Button>
             <Button
               variant="outline"
@@ -2448,7 +2454,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <Gauge className="mr-2 h-4 w-4" />
-              Set Speed Limits
+              {t("contextMenu.setSpeedLimits")}
             </Button>
             <Button
               variant="outline"
@@ -2463,7 +2469,7 @@ export function TorrentCardsMobile({
               className="justify-start"
             >
               <FolderOpen className="mr-2 h-4 w-4" />
-              Set Location
+              {t("managementBar.setLocation")}
             </Button>
             <Button
               variant="destructive"
@@ -2477,7 +2483,7 @@ export function TorrentCardsMobile({
               className="justify-start !bg-destructive !text-destructive-foreground"
             >
               <Trash2 className="mr-2 h-4 w-4" />
-              Delete
+              {t("managementBar.delete")}
             </Button>
           </div>
         </SheetContent>
@@ -2643,16 +2649,16 @@ export function TorrentCardsMobile({
       <Dialog open={showSearchModal} onOpenChange={setShowSearchModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Search Torrents</DialogTitle>
+            <DialogTitle>{t("mobileCards.searchModal.title")}</DialogTitle>
             <DialogDescription>
-              Search by name, category, or tags. Supports glob patterns like *.mkv or *1080p*.
+              {t("mobileCards.searchModal.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
-                placeholder="Search torrents..."
+                placeholder={t("mobileCards.searchModal.placeholder")}
                 value={globalFilter}
                 onChange={(e) => setGlobalFilter(e.target.value)}
                 onKeyDown={(e) => {
@@ -2672,7 +2678,7 @@ export function TorrentCardsMobile({
                   type="button"
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-muted rounded-sm transition-colors"
                   onClick={handleClearSearch}
-                  aria-label="Clear search"
+                  aria-label={t("common:header.clearSearch")}
                 >
                   <X className="h-3.5 w-3.5 text-muted-foreground" />
                 </button>
@@ -2683,12 +2689,12 @@ export function TorrentCardsMobile({
               <div className="flex items-start gap-2">
                 <Info className="h-4 w-4 flex-shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <p className="font-semibold">Search Features:</p>
+                  <p className="font-semibold">{t("common:header.smartSearchTitle")}</p>
                   <ul className="space-y-1 ml-2">
-                    <li>• <strong>Glob patterns:</strong> *.mkv, *1080p*, S??E??</li>
-                    <li>• <strong>Fuzzy matching:</strong> "breaking bad" finds "Breaking.Bad"</li>
-                    <li>• Searches name, category, and tags</li>
-                    <li>• Auto-searches after typing</li>
+                    <li>• <strong>{t("common:header.smartSearchGlob")}</strong> {t("mobileCards.searchModal.globExamples")}</li>
+                    <li>• <strong>{t("common:header.smartSearchFuzzy")}</strong> {t("common:header.smartSearchFuzzyExample")}</li>
+                    <li>• {t("common:header.smartSearchFields")}</li>
+                    <li>• {t("mobileCards.searchModal.autoSearches")}</li>
                   </ul>
                 </div>
               </div>
@@ -2696,10 +2702,10 @@ export function TorrentCardsMobile({
           </div>
           <DialogFooter className="sm:justify-between">
             <Button variant="outline" onClick={handleClearSearchAndClose}>
-              Clear
+              {t("mobileCards.clear")}
             </Button>
             <Button onClick={() => setShowSearchModal(false)}>
-              Done
+              {t("mobileCards.done")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2728,7 +2734,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
             >
               <Search className="h-5 w-5" />
-              <span className="truncate text-[10px]">Search</span>
+              <span className="truncate text-[10px]">{t("common:actions.search")}</span>
             </button>
 
             <button
@@ -2736,7 +2742,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
             >
               {incognitoMode ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-              <span className="truncate text-[10px]">Incognito</span>
+              <span className="truncate text-[10px]">{t("mobileCards.incognito")}</span>
             </button>
 
             <button
@@ -2744,7 +2750,7 @@ export function TorrentCardsMobile({
               className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
             >
               <Filter className="h-5 w-5" />
-              <span className="truncate text-[10px]">Filters</span>
+              <span className="truncate text-[10px]">{t("filterSidebar.title")}</span>
             </button>
 
             {!isAllInstancesView && (
@@ -2753,7 +2759,7 @@ export function TorrentCardsMobile({
                 className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
               >
                 <Plus className="h-5 w-5" />
-                <span className="truncate text-[10px]">Add</span>
+                <span className="truncate text-[10px]">{t("mobileCards.add")}</span>
               </button>
             )}
 
@@ -2766,7 +2772,7 @@ export function TorrentCardsMobile({
                 className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
               >
                 <FileEdit className="h-5 w-5" />
-                <span className="truncate text-[10px]">Create</span>
+                <span className="truncate text-[10px]">{t("common:actions.create")}</span>
               </button>
             )}
 
@@ -2784,7 +2790,7 @@ export function TorrentCardsMobile({
                     {activeTaskCount}
                   </Badge>
                 )}
-                <span className="truncate text-[10px]">Tasks</span>
+                <span className="truncate text-[10px]">{t("mobileCards.tasks")}</span>
               </button>
             )}
           </div>

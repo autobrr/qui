@@ -3,14 +3,15 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useCallback, useRef } from "react"
+import { useTranslation } from "react-i18next"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import type { InstanceResponse, TorznabSearchResult } from "@/types"
 import { Download, ExternalLink, MoreVertical, Plus } from "lucide-react"
-import { useCallback, useRef } from "react"
 
 type SearchResultCardProps = {
   result: TorznabSearchResult
@@ -41,7 +42,8 @@ export function SearchResultCard({
   hasInstances,
   targetInstanceName,
 }: SearchResultCardProps) {
-  const primaryAddLabel = targetInstanceName ? `Add to ${targetInstanceName}` : "Add to instance"
+  const { t } = useTranslation("search")
+  const primaryAddLabel = targetInstanceName ? t("card.addToNamed", { name: targetInstanceName }) : t("card.addToInstance")
   const menuCooldownRef = useRef(false)
   const menuCooldownTimerRef = useRef<number | null>(null)
 
@@ -104,7 +106,7 @@ export function SearchResultCard({
                 onClick={(e) => e.stopPropagation()}
               >
                 <MoreVertical className="h-4 w-4" />
-                <span className="sr-only">Actions</span>
+                <span className="sr-only">{t("card.actions")}</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" onCloseAutoFocus={(e) => e.preventDefault()}>
@@ -114,7 +116,7 @@ export function SearchResultCard({
               {hasInstances && instances && instances.length > 1 && (
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger>
-                    Quick add to...
+                    {t("card.quickAddTo")}
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent>
                     {instances.map(instance => (
@@ -122,18 +124,43 @@ export function SearchResultCard({
                         key={instance.id}
                         onSelect={() => onAddTorrent(instance.id)}
                       >
-                        {instance.name}{!instance.connected ? " (offline)" : ""}
+                        {instance.connected ? instance.name : t("card.addToNamedOffline", { name: instance.name })}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuSubContent>
                 </DropdownMenuSub>
               )}
-              <DropdownMenuItem onSelect={() => onDownload()} disabled={!result.downloadUrl}>
-                <Download className="mr-2 h-4 w-4" /> Download
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.preventDefault()
+                  onDownload()
+                }}
+                disabled={!result.downloadUrl}
+              >
+                <Download className="mr-2 h-4 w-4" /> {t("card.download")}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onViewDetails()} disabled={!result.infoUrl}>
-                <ExternalLink className="mr-2 h-4 w-4" /> View details
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.preventDefault()
+                  onViewDetails()
+                }}
+                disabled={!result.infoUrl}
+              >
+                <ExternalLink className="mr-2 h-4 w-4" /> {t("card.viewDetails")}
               </DropdownMenuItem>
+              {isSelected && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      onSelect()
+                    }}
+                  >
+                    {t("card.clearSelection")}
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -143,7 +170,7 @@ export function SearchResultCard({
           <span className="font-medium text-foreground">{result.indexer}</span>
           <span>{formatSize(result.size)}</span>
           <Badge variant={result.seeders > 0 ? "default" : "secondary"} className="text-xs">
-            {result.seeders} seeders
+            {t("card.seeders", { count: result.seeders })}
           </Badge>
         </div>
 
@@ -163,7 +190,7 @@ export function SearchResultCard({
             </Badge>
           )}
           {result.downloadVolumeFactor === 0 && (
-            <Badge variant="default" className="text-xs">Free</Badge>
+            <Badge variant="default" className="text-xs">{t("results.free")}</Badge>
           )}
           {result.downloadVolumeFactor > 0 && result.downloadVolumeFactor < 1 && (
             <Badge variant="secondary" className="text-xs">{result.downloadVolumeFactor * 100}%</Badge>
@@ -172,7 +199,7 @@ export function SearchResultCard({
 
         {/* Published Date */}
         <div className="text-xs text-muted-foreground">
-          Published {formatDate(result.publishDate)}
+          {t("card.published", { date: formatDate(result.publishDate) })}
         </div>
       </div>
     </Card>

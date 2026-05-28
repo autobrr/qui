@@ -7,6 +7,7 @@ import { useCallback, useState } from "react"
 import { api } from "@/lib/api"
 import { getLinuxIsoName } from "@/lib/incognito"
 import type { Torrent, TorrentFilters } from "@/types"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface UseTorrentExporterOptions {
@@ -27,6 +28,7 @@ interface ExportSelection {
 }
 
 export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExporterOptions) {
+  const { t } = useTranslation("torrents")
   const [isExporting, setIsExporting] = useState(false)
 
   const exportTorrents = useCallback(async (selection: ExportSelection) => {
@@ -68,7 +70,7 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
       }
 
       if (targets.length === 0) {
-        toast.info("No torrents found to export")
+        toast.info(t("contextMenu.toast.noTorrentsFoundToExport"))
         return
       }
 
@@ -90,17 +92,19 @@ export function useTorrentExporter({ instanceId, incognitoMode }: UseTorrentExpo
       }
 
       if (exportedCount === 0) {
-        toast.info("No torrents exported")
+        toast.info(t("contextMenu.toast.noTorrentsExported"))
       } else {
-        toast.success(exportedCount === 1 ? "Torrent exported" : `${exportedCount} torrents exported`)
+        toast.success(exportedCount === 1
+          ? t("contextMenu.toast.torrentExported")
+          : t("contextMenu.toast.torrentsExported", { count: exportedCount }))
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to export torrent"
+      const message = error instanceof Error ? error.message : t("contextMenu.toast.exportFailed")
       toast.error(message)
     } finally {
       setIsExporting(false)
     }
-  }, [incognitoMode, instanceId])
+  }, [incognitoMode, instanceId, t])
 
   return { exportTorrents, isExporting }
 }
