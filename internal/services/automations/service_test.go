@@ -178,6 +178,36 @@ func TestMatchesTracker(t *testing.T) {
 			domains: []string{"tracker.example.com"},
 			want:    false,
 		},
+		{
+			name:    "exclude single tracker match",
+			pattern: "!tracker.example.com",
+			domains: []string{"tracker.example.com"},
+			want:    false,
+		},
+		{
+			name:    "exclude single tracker non-match",
+			pattern: "!tracker.example.com",
+			domains: []string{"other.tracker.com"},
+			want:    true,
+		},
+		{
+			name:    "include and exclude where exclude wins",
+			pattern: "tracker.example.com,!tracker.example.com",
+			domains: []string{"tracker.example.com"},
+			want:    false,
+		},
+		{
+			name:    "include and exclude where include matches",
+			pattern: "tracker.example.com,!other.tracker.com",
+			domains: []string{"tracker.example.com"},
+			want:    true,
+		},
+		{
+			name:    "exclude supports glob",
+			pattern: "!*.example.com",
+			domains: []string{"tracker.example.com"},
+			want:    false,
+		},
 
 		// Multiple domains
 		{

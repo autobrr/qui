@@ -884,6 +884,9 @@ func (s *Service) initPreviewEvalContext(ctx context.Context, instanceID int, to
 		if len(healthCounts.TrackerDownSet) > 0 {
 			evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
 		}
+		if len(healthCounts.TrackerErrorSet) > 0 {
+			evalCtx.TrackerErrorSet = healthCounts.TrackerErrorSet
+		}
 	}
 
 	return evalCtx, instance
@@ -2019,6 +2022,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
 		evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
 		evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
+		evalCtx.TrackerErrorSet = healthCounts.TrackerErrorSet
 	}
 
 	// On-demand hardlink index (if rules use HARDLINK_SCOPE condition OR includeHardlinks)
@@ -4362,34 +4366,54 @@ func matchesTracker(pattern string, domains []string) bool {
 	tokens := strings.FieldsFunc(pattern, func(r rune) bool {
 		return r == ',' || r == ';' || r == '|'
 	})
+	includeTokens := make([]string, 0, len(tokens))
+	excludeTokens := make([]string, 0, len(tokens))
 
 	for _, token := range tokens {
 		normalized := normalizeLowerTrim(token)
 		if normalized == "" {
 			continue
 		}
-		isGlob := strings.ContainsAny(normalized, "*?")
+		if after, ok := strings.CutPrefix(normalized, "!"); ok {
+			negated := normalizeLowerTrim(after)
+			if negated != "" {
+				excludeTokens = append(excludeTokens, negated)
+			}
+			continue
+		}
+		includeTokens = append(includeTokens, normalized)
+	}
 
+	matchesToken := func(token string) bool {
+		isGlob := strings.ContainsAny(token, "*?")
 		for _, domain := range domains {
 			d := normalizeLower(domain)
 			if isGlob {
-				ok, err := path.Match(normalized, d)
+				ok, err := path.Match(token, d)
 				if err != nil {
-					log.Error().Err(err).Str("pattern", normalized).Msg("automations: invalid glob pattern")
+					log.Error().Err(err).Str("pattern", token).Msg("automations: invalid glob pattern")
 					continue
 				}
 				if ok {
 					return true
 				}
-			} else if d == normalized {
-				return true
-			} else if strings.HasPrefix(normalized, ".") && strings.HasSuffix(d, normalized) {
+				continue
+			}
+			if d == token || (strings.HasPrefix(token, ".") && strings.HasSuffix(d, token)) {
 				return true
 			}
 		}
+		return false
 	}
 
-	return false
+	if slices.ContainsFunc(excludeTokens, matchesToken) {
+		return false
+	}
+
+	if len(includeTokens) == 0 {
+		return len(excludeTokens) > 0
+	}
+	return slices.ContainsFunc(includeTokens, matchesToken)
 }
 
 func collectTrackerDomains(t qbt.Torrent, sm *qbittorrent.SyncManager) []string {

@@ -35,7 +35,7 @@ function TabsList({
     const list = listRef.current
     if (!list) return
 
-    const activeTab = list.querySelector<HTMLElement>('[data-state="active"]')
+    const activeTab = list.querySelector<HTMLElement>("[data-state=\"active\"]")
     if (!activeTab) return
 
     setIndicatorStyle({
@@ -114,4 +114,3 @@ function TabsContent({
 }
 
 export { Tabs, TabsContent, TabsList, TabsTrigger }
-

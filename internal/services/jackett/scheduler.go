@@ -99,9 +99,16 @@ func (e *RateLimitWaitError) Is(target error) bool {
 }
 
 type indexerRateState struct {
-	lastRequest     time.Duration
+	lastStarted     time.Duration
+	lastCompleted   time.Duration
 	cooldownUntil   time.Duration
 	escalationLevel int
+}
+
+type taskExecResult struct {
+	results  []Result
+	coverage []int
+	err      error
 }
 
 // RateLimiter tracks per-indexer request timing and computes wait times.
@@ -124,7 +131,7 @@ func NewRateLimiter(minInterval time.Duration) *RateLimiter {
 	}
 }
 
-func (r *RateLimiter) RecordRequest(indexerID int, ts time.Time) {
+func (r *RateLimiter) RecordRequestStart(indexerID int, ts time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -134,11 +141,27 @@ func (r *RateLimiter) RecordRequest(indexerID int, ts time.Time) {
 	} else {
 		dur = ts.Sub(r.startTime)
 	}
-	r.recordLocked(indexerID, dur)
+	state := r.getStateLocked(indexerID)
+	state.lastStarted = dur
+}
+
+func (r *RateLimiter) RecordRequestComplete(indexerID int, ts time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var dur time.Duration
+	if ts.IsZero() {
+		dur = time.Since(r.startTime)
+	} else {
+		dur = ts.Sub(r.startTime)
+	}
+	state := r.getStateLocked(indexerID)
+	state.lastCompleted = dur
 }
 
 // WaitForMinInterval blocks until a new request slot is available for the given indexer according to the
-// configured min interval and priority multiplier, then reserves the slot by recording the request time.
+// configured min interval and priority multiplier, then reserves the slot for callers that do not report
+// request completion separately.
 //
 // Note: this intentionally does NOT wait for cooldown windows. Callers that care about cooldowns should
 // check IsInCooldown separately (downloads typically return immediately when in cooldown).
@@ -159,8 +182,8 @@ func (r *RateLimiter) WaitForMinInterval(ctx context.Context, indexer *models.To
 		now := time.Since(r.startTime)
 
 		wait := time.Duration(0)
-		if cfg.MinInterval > 0 && state.lastRequest >= 0 {
-			next := state.lastRequest + cfg.MinInterval
+		if cfg.MinInterval > 0 && state.lastCompleted >= 0 {
+			next := state.lastCompleted + cfg.MinInterval
 			if next > now {
 				wait = next - now
 			}
@@ -171,7 +194,8 @@ func (r *RateLimiter) WaitForMinInterval(ctx context.Context, indexer *models.To
 				r.mu.Unlock()
 				return ctx.Err()
 			}
-			r.recordLocked(indexer.ID, now)
+			state.lastStarted = now
+			state.lastCompleted = now
 			r.mu.Unlock()
 			return nil
 		}
@@ -296,8 +320,8 @@ func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time
 		wait = state.cooldownUntil - now
 	}
 
-	if minInterval > 0 && state.lastRequest >= 0 {
-		next := state.lastRequest + minInterval
+	if minInterval > 0 && state.lastCompleted >= 0 {
+		next := state.lastCompleted + minInterval
 		if next > now {
 			delay := next - now
 			if delay > wait {
@@ -312,15 +336,10 @@ func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time
 func (r *RateLimiter) getStateLocked(indexerID int) *indexerRateState {
 	state, ok := r.states[indexerID]
 	if !ok {
-		state = &indexerRateState{lastRequest: -1}
+		state = &indexerRateState{lastStarted: -1, lastCompleted: -1}
 		r.states[indexerID] = state
 	}
 	return state
-}
-
-func (r *RateLimiter) recordLocked(indexerID int, ts time.Duration) {
-	state := r.getStateLocked(indexerID)
-	state.lastRequest = ts
 }
 
 // NextWait returns the amount of time the caller would need to wait before a request could be made
@@ -736,8 +755,14 @@ func (s *searchScheduler) dispatchTasks() {
 func (s *searchScheduler) executeTask(item *taskItem) {
 	task := item.task
 	var panicked bool
+	var requestStarted bool
+	var requestCompleted bool
 
 	defer func() {
+		if requestStarted && !requestCompleted {
+			s.rateLimiter.RecordRequestComplete(task.indexer.ID, time.Time{})
+		}
+
 		// Cancel fresh context if one was created for this task
 		if task.ctxCancel != nil {
 			task.ctxCancel()
@@ -765,14 +790,46 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 		}
 	}()
 
-	// Record request BEFORE execution (reserve slot)
-	s.rateLimiter.RecordRequest(task.indexer.ID, time.Time{})
+	s.rateLimiter.RecordRequestStart(task.indexer.ID, time.Time{})
+	requestStarted = true
 
 	// Capture start time for duration tracking
 	item.started = time.Now()
 
-	// Execute the search
-	results, coverage, err := task.exec(task.ctx, []*models.TorznabIndexer{task.indexer}, task.params, task.meta)
+	execCtx := task.ctx
+	execCancel := func() {}
+	if task.ctxCancel != nil {
+		execCancel = task.ctxCancel
+	}
+	defer execCancel()
+
+	done := make(chan taskExecResult, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- taskExecResult{err: fmt.Errorf("scheduler worker panic: %v", r)}
+			}
+		}()
+
+		results, coverage, err := task.exec(execCtx, []*models.TorznabIndexer{task.indexer}, task.params, task.meta)
+		done <- taskExecResult{results: results, coverage: coverage, err: err}
+	}()
+
+	var (
+		results  []Result
+		coverage []int
+		err      error
+	)
+	select {
+	case result := <-done:
+		results = result.results
+		coverage = result.coverage
+		err = result.err
+	case <-execCtx.Done():
+		err = execCtx.Err()
+	}
+	s.rateLimiter.RecordRequestComplete(task.indexer.ID, time.Time{})
+	requestCompleted = true
 
 	// Handle completion (only if we didn't panic)
 	if !panicked {

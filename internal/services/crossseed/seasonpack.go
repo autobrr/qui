@@ -410,7 +410,7 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		switch {
 		case len(recheckHashes) == 0:
 			message = "torrent added paused; missing files require manual recheck"
-		case s.syncManager.BulkAction(ctx, inst.ID, recheckHashes, "recheck") != nil:
+		case s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), inst.ID, recheckHashes, "recheck") != nil:
 			message = "torrent added paused; automatic recheck failed"
 		default:
 			activeHash := seasonPackActiveHash(prep.meta)
@@ -667,7 +667,9 @@ func seasonPackNormalizer(s *Service) *stringutils.Normalizer[string, string] {
 	if s != nil && s.stringNormalizer != nil {
 		return s.stringNormalizer
 	}
-	return stringutils.NewDefaultNormalizer()
+	// Shared singleton: see normalizerForService - a fresh normalizer
+	// leaks a never-terminating ttlcache goroutine.
+	return stringutils.DefaultNormalizer
 }
 
 func parseSeasonPackEpisodePayload(
@@ -987,7 +989,7 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 	candidates := make(map[episodeIdentity][]episodeMatch)
 	matcher := s
 	if matcher.stringNormalizer == nil {
-		matcher = &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+		matcher = &Service{stringNormalizer: stringutils.DefaultNormalizer}
 	}
 
 	for i := range cached {
@@ -1310,7 +1312,12 @@ func buildSeasonPackPlan(
 }
 
 func safeSeasonPackJoin(rootDir, relativePath string) (string, bool) {
-	cleanedPath := filepath.Clean(filepath.FromSlash(strings.ReplaceAll(relativePath, "\\", "/")))
+	slashPath := strings.ReplaceAll(relativePath, "\\", "/")
+	if strings.HasPrefix(slashPath, "/") {
+		return "", false
+	}
+
+	cleanedPath := filepath.Clean(filepath.FromSlash(slashPath))
 	if cleanedPath == "." ||
 		filepath.IsAbs(cleanedPath) ||
 		isWindowsDriveAbs(filepath.ToSlash(cleanedPath)) ||

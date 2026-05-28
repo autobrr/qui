@@ -104,6 +104,8 @@ For other currencies or donation methods, [reach out on Discord](https://discord
 
 Contributions are welcome. Note: this repo restricts pull request creation to **collaborators only**. Please start with a Discussion/Issue (or Discord) so we can coordinate changes.
 
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development and test workflow.
+
 ## License
 
 GPL-2.0-or-later

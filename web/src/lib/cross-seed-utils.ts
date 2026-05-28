@@ -101,7 +101,7 @@ export function toCompatibleMatch(m: LocalCrossSeedMatch): CrossSeedTorrent {
     tags: m.tags,
     state: m.state,
     tracker: m.tracker,
-    tracker_health: m.trackerHealth as "unregistered" | "tracker_down" | undefined,
+    tracker_health: m.trackerHealth as "unregistered" | "tracker_down" | "tracker_error" | undefined,
     instanceId: m.instanceId,
     instanceName: m.instanceName,
     matchType: m.matchType,

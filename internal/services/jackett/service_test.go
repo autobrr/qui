@@ -1994,8 +1994,8 @@ func TestSearch_AllIndexersSkippedByRateLimitWaitReturnsError(t *testing.T) {
 	}
 
 	// Prime both indexers so wait exceeds MaxWait for every task.
-	service.rateLimiter.RecordRequest(1, time.Now())
-	service.rateLimiter.RecordRequest(2, time.Now())
+	service.rateLimiter.RecordRequestComplete(1, time.Now())
+	service.rateLimiter.RecordRequestComplete(2, time.Now())
 
 	done := make(chan struct{})
 	completeErrs := make(chan error, len(indexers))

@@ -1042,10 +1042,11 @@ class ApiClient {
     data: {
       hashes: string[]
       targets?: Array<{ instanceId: number; hash: string }>
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "setComment" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
       deleteFiles?: boolean
       category?: string
       tags?: string  // Comma-separated tags string
+      comment?: string  // For setComment action
       enable?: boolean  // For toggleAutoTMM
       selectAll?: boolean  // When true, apply to all torrents matching filters
       filters?: TorrentFilters
@@ -1281,6 +1282,8 @@ class ApiClient {
       download_volume_factor: number
       upload_volume_factor: number
       guid: string
+      infohash_v1?: string
+      infohash_v2?: string
       imdb_id?: string
       tvdb_id?: string
       match_reason?: string
@@ -1338,6 +1341,8 @@ class ApiClient {
         downloadVolumeFactor: result.download_volume_factor,
         uploadVolumeFactor: result.upload_volume_factor,
         guid: result.guid,
+        infoHashV1: result.infohash_v1 ?? undefined,
+        infoHashV2: result.infohash_v2 ?? undefined,
         imdbId: result.imdb_id ?? undefined,
         tvdbId: result.tvdb_id ?? undefined,
         matchReason: result.match_reason ?? undefined,

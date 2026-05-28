@@ -25,6 +25,7 @@ import { api } from "@/lib/api"
 import type { TorznabIndexer } from "@/types"
 import { ChevronDown, Database, Plus, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { AutodiscoveryDialog } from "./AutodiscoveryDialog"
 import { IndexerActivityPanel } from "./IndexerActivityPanel"
@@ -37,6 +38,7 @@ interface IndexersPageProps {
 }
 
 export function IndexersPage({ withContainer = true }: IndexersPageProps) {
+  const { t } = useTranslation("settings")
   const [indexers, setIndexers] = useState<TorznabIndexer[]>([])
   const [loading, setLoading] = useState(true)
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -53,7 +55,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
       const data = await api.listTorznabIndexers()
       setIndexers(data || [])
     } catch (error) {
-      toast.error("Failed to load indexers")
+      toast.error(t("indexers.toast.loadFailed"))
       setIndexers([])
     } finally {
       setLoading(false)
@@ -78,11 +80,11 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
 
     try {
       await api.deleteTorznabIndexer(deleteIndexerId)
-      toast.success("Indexer deleted successfully")
+      toast.success(t("indexers.toast.deletedSuccess"))
       setDeleteIndexerId(null)
       loadIndexers()
     } catch (error) {
-      toast.error("Failed to delete indexer")
+      toast.error(t("indexers.toast.deleteFailed"))
     }
   }
 
@@ -97,17 +99,17 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
       )
     )
 
-    const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length
+    const successCount = results.filter(r => r.status === "fulfilled" && r.value.success).length
     const failCount = indexers.length - successCount
 
     if (failCount === 0) {
-      toast.success(`Deleted all ${indexers.length} indexers`)
+      toast.success(t("indexers.toast.deleteAllSuccess", { count: indexers.length }))
     } else {
       const failedNames = results
-        .filter(r => r.status === 'fulfilled' && !r.value.success)
-        .map(r => r.status === 'fulfilled' ? r.value.name : '')
-        .join(', ')
-      toast.warning(`Deleted ${successCount} indexers, ${failCount} failed: ${failedNames}`)
+        .filter(r => r.status === "fulfilled" && !r.value.success)
+        .map(r => r.status === "fulfilled" ? r.value.name : "")
+        .join(", ")
+      toast.warning(t("indexers.toast.deleteAllPartial", { success: successCount, failed: failCount, names: failedNames }))
     }
 
     setShowDeleteAllDialog(false)
@@ -119,7 +121,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
     try {
       await api.testTorznabIndexer(id)
       updateIndexerTestState(id, "ok", undefined)
-      toast.success("Connection test successful")
+      toast.success(t("indexers.toast.testSuccess"))
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Connection test failed"
       updateIndexerTestState(id, "error", errorMsg)
@@ -129,11 +131,11 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
 
   const handleTestAll = async (indexersToTest: TorznabIndexer[]) => {
     if (indexersToTest.length === 0) {
-      toast.info("No indexers to test")
+      toast.info(t("indexers.toast.noIndexersToTest"))
       return
     }
 
-    const toastId = toast.loading(`Testing ${indexersToTest.length} indexers...`)
+    const toastId = toast.loading(t("indexers.toast.testing", { count: indexersToTest.length }))
     // mark all as in-flight immediately to avoid stale status while we fire requests
     indexersToTest.forEach(idx => updateIndexerTestState(idx.id, "testing", undefined))
 
@@ -156,11 +158,11 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
     const failCount = results.length - successCount
 
     if (failCount === 0) {
-      toast.success(`All ${successCount} indexers tested successfully`, { id: toastId })
+      toast.success(t("indexers.toast.testAllSuccess", { count: successCount }), { id: toastId })
     } else {
-      toast.warning(`${successCount} passed, ${failCount} failed`, { id: toastId })
+      toast.warning(t("indexers.toast.testAllPartial", { success: successCount, failed: failCount }), { id: toastId })
       const failedNames = results.filter((result) => !result.success).map((result) => result.name).join(", ")
-      toast.error(`Failed indexers: ${failedNames}`)
+      toast.error(t("indexers.toast.failedIndexers", { names: failedNames }))
     }
   }
 
@@ -175,7 +177,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
           ...idx,
           last_test_status: status,
           last_test_error: errorMsg,
-          last_test_at: now
+          last_test_at: now,
         }
       })
     )
@@ -201,10 +203,10 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
           <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-4 hover:cursor-pointer text-left hover:bg-muted/50 transition-colors rounded-xl">
             <div className="flex items-center gap-2">
               <Database className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Torznab Indexers</span>
+              <span className="text-sm font-medium">{t("indexers.title")}</span>
               {indexers.length > 0 && (
                 <span className="text-xs text-muted-foreground">
-                  {enabledCount} enabled, {capsCount} with capabilities
+                  {t("indexers.page.summary", { enabled: enabledCount, capabilities: capsCount })}
                 </span>
               )}
             </div>
@@ -215,7 +217,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
             <div className="px-4 pb-4 space-y-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <p className="text-sm text-muted-foreground">
-                  Manage Torznab indexers powered by Jackett, Prowlarr, or native tracker endpoints
+                  {t("indexers.page.description")}
                 </p>
                 <div className="flex flex-wrap gap-2 shrink-0">
                   <Button
@@ -225,7 +227,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
                     disabled={loading || indexers.length === 0}
                   >
                     <Trash2 className="h-4 w-4" />
-                    Delete All
+                    {t("indexers.page.deleteAll")}
                   </Button>
                   <div className="flex">
                     <Button
@@ -234,7 +236,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
                       className="rounded-r-none"
                     >
                       <RefreshCw className="h-4 w-4" />
-                      Discover
+                      {t("indexers.page.discover")}
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -245,7 +247,7 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setAddDialogOpen(true)}>
                           <Plus className="h-4 w-4 mr-2" />
-                          Add single
+                          {t("indexers.page.addSingle")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -262,10 +264,10 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
                 onSyncCaps={async (id) => {
                   try {
                     const updated = await api.syncTorznabCaps(id)
-                    toast.success("Capabilities synced from backend")
+                    toast.success(t("indexers.toast.capsSynced"))
                     setIndexers((prev) => prev.map((idx) => (idx.id === updated.id ? updated : idx)))
                   } catch (error) {
-                    const message = error instanceof Error ? error.message : "Failed to sync caps"
+                    const message = error instanceof Error ? error.message : t("indexers.toast.failedToSyncCaps")
                     toast.error(message)
                   }
                 }}
@@ -299,18 +301,18 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
       <AlertDialog open={!!deleteIndexerId} onOpenChange={() => setDeleteIndexerId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Indexer?</AlertDialogTitle>
+            <AlertDialogTitle>{t("indexers.deleteIndexer")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the indexer.
+              {t("indexers.deleteIndexerDescription", { name: indexers.find(i => i.id === deleteIndexerId)?.name ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("indexers.dialog.buttons.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("indexers.deleteIndexer")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -319,18 +321,18 @@ export function IndexersPage({ withContainer = true }: IndexersPageProps) {
       <AlertDialog open={showDeleteAllDialog} onOpenChange={setShowDeleteAllDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete All Indexers?</AlertDialogTitle>
+            <AlertDialogTitle>{t("indexers.deleteAllIndexers")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete all {indexers.length} indexers.
+              {t("indexers.deleteAllDescription", { count: indexers.length })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("indexers.dialog.buttons.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteAll}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete All
+              {t("indexers.deleteAllIndexers")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

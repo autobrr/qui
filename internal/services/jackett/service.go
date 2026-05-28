@@ -1985,8 +1985,7 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		}
 	}
 
-	// Rate limiting is handled at dispatch time by the scheduler.
-	// BeforeRequest was removed - scheduler calls NextWait() before dispatching.
+	// Rate limiting is handled by the scheduler, which dispatches from the previous completion time.
 
 	start := time.Now()
 	results, err := searchFn()

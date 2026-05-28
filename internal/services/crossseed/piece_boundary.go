@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/anacrolix/torrent/metainfo"
+	qbt "github.com/autobrr/go-qbittorrent"
 )
 
 // PieceBoundarySafetyResult contains the outcome of a piece-boundary safety check.
@@ -246,4 +247,35 @@ func HasUnsafeIgnoredExtras(
 
 	result = CheckPieceBoundarySafety(files, info.PieceLength)
 	return !result.Safe, result
+}
+
+func unmaterializedSourceFilePaths(sourceFiles, candidateFiles qbt.TorrentFiles) map[string]bool {
+	matches, _ := matchMaterializedSourceFilesToCandidates(sourceFiles, candidateFiles)
+	materialized := make(map[string]bool, len(matches))
+	for _, match := range matches {
+		materialized[match.sourcePath] = true
+	}
+
+	unmaterialized := make(map[string]bool)
+	for _, file := range sourceFiles {
+		if !materialized[file.Name] {
+			unmaterialized[file.Name] = true
+		}
+	}
+	return unmaterialized
+}
+
+func HasUnsafeUnmaterializedSourcePieces(
+	info *metainfo.Info,
+	sourceFiles,
+	candidateFiles qbt.TorrentFiles,
+) (unsafe bool, result PieceBoundarySafetyResult) {
+	unmaterialized := unmaterializedSourceFilePaths(sourceFiles, candidateFiles)
+	if len(unmaterialized) == 0 {
+		return false, PieceBoundarySafetyResult{Safe: true, Reason: "no unmaterialized files"}
+	}
+
+	return HasUnsafeIgnoredExtras(info, func(path string) bool {
+		return unmaterialized[path]
+	})
 }
