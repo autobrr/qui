@@ -61,7 +61,7 @@ import type { SettingsSearch } from "@/routes/_authenticated/settings"
 import type { ApplicationInfo, Instance, TorznabSearchCacheStats, User } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Bell, Clock, Copy, Database, ExternalLink, FileText, Info, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
+import { Bell, Globe, Copy, Database, ExternalLink, FileText, Info, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
 import type { FormEvent, ReactNode } from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -1310,7 +1310,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             </SelectItem>
             <SelectItem value="datetime">
               <div className="flex items-center">
-                <Clock className="w-4 h-4 mr-2" />
+                <Globe className="w-4 h-4 mr-2" />
                 {t("tabs.dateTime")}
               </div>
             </SelectItem>
@@ -1427,7 +1427,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                 activeTab === "datetime" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground"
               }`}
             >
-              <Clock className="w-4 h-4 mr-2" />
+              <Globe className="w-4 h-4 mr-2" />
               {t("tabs.dateTime")}
             </button>
             <button
