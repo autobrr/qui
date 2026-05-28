@@ -1935,6 +1935,8 @@ export interface CrossSeedTorrentSearchResult {
   downloadVolumeFactor: number
   uploadVolumeFactor: number
   guid: string
+  infoHashV1?: string
+  infoHashV2?: string
   imdbId?: string
   tvdbId?: string
   matchReason?: string
@@ -2159,12 +2161,14 @@ export interface CrossSeedSearchSettingsPatch {
   cooldownMinutes?: number
 }
 
+export type CrossSeedSearchResultStatus = "added" | "skipped" | "failed"
+
 export interface CrossSeedSearchResult {
   torrentHash: string
   torrentName: string
   indexerName: string
   releaseTitle: string
-  added: boolean
+  status: CrossSeedSearchResultStatus
   message?: string
   processedAt: string
 }

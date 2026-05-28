@@ -1282,6 +1282,8 @@ class ApiClient {
       download_volume_factor: number
       upload_volume_factor: number
       guid: string
+      infohash_v1?: string
+      infohash_v2?: string
       imdb_id?: string
       tvdb_id?: string
       match_reason?: string
@@ -1339,6 +1341,8 @@ class ApiClient {
         downloadVolumeFactor: result.download_volume_factor,
         uploadVolumeFactor: result.upload_volume_factor,
         guid: result.guid,
+        infoHashV1: result.infohash_v1 ?? undefined,
+        infoHashV2: result.infohash_v2 ?? undefined,
         imdbId: result.imdb_id ?? undefined,
         tvdbId: result.tvdb_id ?? undefined,
         matchReason: result.match_reason ?? undefined,

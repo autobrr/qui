@@ -609,6 +609,8 @@ function getInstanceStatusDisplay(status: string, success: boolean): { text: str
       return { text: "Invalid path", variant: "destructive" }
     case "skipped_recheck":
       return { text: "Skipped - recheck required", variant: "destructive" }
+    case "below_threshold":
+      return { text: "Skipped - below threshold", variant: "destructive" }
     case "skipped_unsafe_pieces":
       return { text: "Skipped - unsafe pieces", variant: "destructive" }
     case "requires_hardlink_reflink":

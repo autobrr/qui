@@ -47,6 +47,7 @@ import type {
   CrossSeedAutomationSettingsPatch,
   CrossSeedAutomationStatus,
   CrossSeedRun,
+  CrossSeedSearchResult,
   Instance,
   SeasonPackRun
 } from "@/types"
@@ -67,7 +68,7 @@ import {
   XCircle,
   Zap
 } from "lucide-react"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 
 // RSS Automation settings
@@ -327,6 +328,14 @@ function RSSRunItem({ run, formatDateValue }: RSSRunItemProps) {
       )}
     </Collapsible>
   )
+}
+
+function isCrossSeedSearchFailure(result: CrossSeedSearchResult): boolean {
+  return result.status === "failed"
+}
+
+function isCrossSeedSearchSkipped(result: CrossSeedSearchResult): boolean {
+  return result.status === "skipped"
 }
 
 interface SeasonPackRunsPanelProps {
@@ -951,11 +960,32 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     refetchInterval: 5_000,
   })
 
+  const searchRunsRefetchInterval =
+    searchStatus?.running && searchStatus.run?.instanceId === searchInstanceId ? 5_000 : false
+
   const { data: searchRuns, refetch: refetchSearchRuns } = useQuery({
     queryKey: ["cross-seed", "search-runs", searchInstanceId],
     queryFn: () => searchInstanceId ? api.listCrossSeedSearchRuns(searchInstanceId, { limit: 10 }) : Promise.resolve([]),
     enabled: !!searchInstanceId,
+    refetchInterval: searchRunsRefetchInterval,
   })
+
+  const activeSearchInstanceIdRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const isRunning = searchStatus?.running ?? false
+    const activeInstanceId = searchStatus?.run?.instanceId
+
+    if (isRunning && activeInstanceId != null) {
+      activeSearchInstanceIdRef.current = activeInstanceId
+      return
+    }
+
+    if (activeSearchInstanceIdRef.current != null && activeSearchInstanceIdRef.current === searchInstanceId) {
+      void refetchSearchRuns()
+    }
+    activeSearchInstanceIdRef.current = null
+  }, [refetchSearchRuns, searchInstanceId, searchStatus?.running, searchStatus?.run?.instanceId])
 
   const { data: searchMetadata } = useQuery({
     queryKey: ["cross-seed", "search-metadata", searchInstanceId],
@@ -2602,8 +2632,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                       {searchRuns && searchRuns.length > 0 ? (
                         <div className="space-y-1">
                           {searchRuns.map(run => {
-                            const successResults = run.results?.filter(r => r.added) ?? []
-                            const failedResults = run.results?.filter(r => !r.added) ?? []
+                            const successResults = run.results?.filter(r => r.status === "added") ?? []
+                            const failedResults = run.results?.filter(isCrossSeedSearchFailure) ?? []
+                            const skippedResults = run.results?.filter(isCrossSeedSearchSkipped) ?? []
                             const hasResults = (run.results?.length ?? 0) > 0
                             return (
                               <Collapsible key={run.id}>
@@ -2637,8 +2668,24 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                                           <span className="truncate text-muted-foreground">{result.torrentName}</span>
                                         </div>
                                       ))}
-                                      {successResults.length === 0 && failedResults.length === 0 && run.results && run.results.length > 0 && (
+                                      {successResults.length === 0 && failedResults.length === 0 && skippedResults.length === 0 && run.results && run.results.length > 0 && (
                                         <span className="text-xs text-muted-foreground">No results with details</span>
+                                      )}
+                                      {skippedResults.length > 0 && (
+                                        <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+                                          <span className="text-[10px] text-muted-foreground font-medium">Skipped:</span>
+                                          {skippedResults.map((result, i) => (
+                                            <div key={`skipped-${result.torrentHash}-${i}`} className="flex flex-col gap-0.5 text-xs">
+                                              <div className="flex items-center gap-2">
+                                                <Badge variant="secondary" className="text-[10px] shrink-0 w-24 justify-center truncate" title={result.indexerName}>{result.indexerName || "Unknown"}</Badge>
+                                                <span className="truncate text-muted-foreground">{result.torrentName}</span>
+                                              </div>
+                                              {result.message && (
+                                                <span className="text-muted-foreground/70 pl-[104px] text-[10px]">{result.message}</span>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
                                       )}
                                       {failedResults.length > 0 && (
                                         <div className="mt-2 pt-2 border-t border-border/50 space-y-1">

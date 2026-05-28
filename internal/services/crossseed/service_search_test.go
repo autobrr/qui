@@ -168,6 +168,35 @@ func TestComputeAutomationSearchTimeout(t *testing.T) {
 	}
 }
 
+func TestAutomationTorrentSearchContext(t *testing.T) {
+	t.Run("torznab search keeps scheduler-owned deadline", func(t *testing.T) {
+		ctx, cancel, timeout := automationTorrentSearchContext(context.Background(), false)
+
+		require.Nil(t, cancel)
+		require.Zero(t, timeout)
+		_, hasDeadline := ctx.Deadline()
+		require.False(t, hasDeadline)
+		priority, ok := jackett.SearchPriority(ctx)
+		require.True(t, ok)
+		require.Equal(t, jackett.RateLimitPriorityBackground, priority)
+	})
+
+	t.Run("gazelle-only search keeps bounded timeout", func(t *testing.T) {
+		start := time.Now()
+		ctx, cancel, timeout := automationTorrentSearchContext(context.Background(), true)
+		require.NotNil(t, cancel)
+		defer cancel()
+
+		require.Equal(t, timeouts.MaxSearchTimeout, timeout)
+		deadline, hasDeadline := ctx.Deadline()
+		require.True(t, hasDeadline)
+		require.WithinDuration(t, start.Add(timeouts.MaxSearchTimeout), deadline, time.Second)
+		priority, ok := jackett.SearchPriority(ctx)
+		require.True(t, ok)
+		require.Equal(t, jackett.RateLimitPriorityBackground, priority)
+	})
+}
+
 func TestEffectiveTorznabCrossSeedSearchLimit(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -184,6 +213,49 @@ func TestEffectiveTorznabCrossSeedSearchLimit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, effectiveTorznabCrossSeedSearchLimit(tt.limit))
+		})
+	}
+}
+
+func TestSearchTolerancePercentUsesRunOverride(t *testing.T) {
+	svc := &Service{
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SizeMismatchTolerancePercent = 5
+			return settings, nil
+		},
+	}
+
+	tests := []struct {
+		name string
+		opts TorrentSearchOptions
+		want float64
+	}{
+		{
+			name: "explicit zero",
+			opts: TorrentSearchOptions{
+				SizeMismatchTolerancePercent:    0,
+				SizeMismatchTolerancePercentSet: true,
+			},
+			want: 0,
+		},
+		{
+			name: "positive override without set flag",
+			opts: TorrentSearchOptions{
+				SizeMismatchTolerancePercent: 20,
+			},
+			want: 20,
+		},
+		{
+			name: "fallback settings",
+			opts: TorrentSearchOptions{},
+			want: 5,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.InDelta(t, tt.want, svc.searchTolerancePercent(context.Background(), tt.opts), 0.0001)
 		})
 	}
 }
