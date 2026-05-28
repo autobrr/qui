@@ -998,6 +998,7 @@ type fullMockSyncManager struct {
 	addTorrentsCalls        []addTorrentsCall
 	addTorrentFromURLsCalls []addTorrentFromURLsCall
 	addTorrentErr           error
+	addTorrentFunc          func(callIndex int) (*qbt.TorrentAddResponse, error)
 	addTorrentsResp         *qbt.TorrentAddResponse
 	addTorrentsErr          error
 	addTorrentFromURLsErr   error
@@ -1011,12 +1012,19 @@ type addTorrentsCall struct {
 }
 
 func (m *fullMockSyncManager) AddTorrent(_ context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
+	callIndex := len(m.addTorrentCalls)
 	m.addTorrentCalls = append(m.addTorrentCalls, addTorrentCall{
 		instanceID:  instanceID,
 		fileContent: fileContent,
 		options:     options,
 	})
-	return nil, m.addTorrentErr
+	if m.addTorrentFunc != nil {
+		return m.addTorrentFunc(callIndex)
+	}
+	if m.addTorrentErr != nil {
+		return nil, m.addTorrentErr
+	}
+	return &qbt.TorrentAddResponse{SuccessCount: 1}, nil
 }
 
 func (m *fullMockSyncManager) AddTorrents(_ context.Context, instanceID int, files [][]byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
@@ -1056,11 +1064,16 @@ func (m *fullMockJackettService) DownloadTorrent(ctx context.Context, req jacket
 	return m.downloadTorrentData, m.downloadTorrentErr
 }
 
-func TestAddTorrentHandler_MultipleTorrentFiles_UsesSingleBatchRequest(t *testing.T) {
+func TestAddTorrentHandler_MultipleTorrentFiles_PreservesPartialFailures(t *testing.T) {
 	t.Parallel()
 
 	mockSync := &fullMockSyncManager{
-		addTorrentsResp: &qbt.TorrentAddResponse{SuccessCount: 2},
+		addTorrentFunc: func(callIndex int) (*qbt.TorrentAddResponse, error) {
+			if callIndex == 1 {
+				return nil, errors.New("torrent file not valid")
+			}
+			return &qbt.TorrentAddResponse{SuccessCount: 1}, nil
+		},
 	}
 	handler := NewTorrentsHandlerForTesting(mockSync, nil)
 
@@ -1090,13 +1103,59 @@ func TestAddTorrentHandler_MultipleTorrentFiles_UsesSingleBatchRequest(t *testin
 	handler.AddTorrent(w, req)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
-	assert.Contains(t, w.Body.String(), `"added":2`)
-	assert.Contains(t, w.Body.String(), `"failed":0`)
+	assert.Contains(t, w.Body.String(), `"added":1`)
+	assert.Contains(t, w.Body.String(), `"failed":1`)
+	assert.Contains(t, w.Body.String(), `"filename":"second.torrent"`)
+	assert.Empty(t, mockSync.addTorrentsCalls)
+	require.Len(t, mockSync.addTorrentCalls, 2)
+	assert.Equal(t, 1, mockSync.addTorrentCalls[0].instanceID)
+	assert.Equal(t, []byte("first torrent data"), mockSync.addTorrentCalls[0].fileContent)
+	assert.Equal(t, []byte("second torrent data"), mockSync.addTorrentCalls[1].fileContent)
+	assert.Equal(t, "movies", mockSync.addTorrentCalls[0].options["category"])
+}
+
+func TestAddTorrentHandler_CanceledContextReturnsError(t *testing.T) {
+	t.Parallel()
+
+	mockSync := &fullMockSyncManager{}
+	handler := NewTorrentsHandlerForTesting(mockSync, nil)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	file, err := writer.CreateFormFile("torrent", "cancelled.torrent")
+	require.NoError(t, err)
+	_, err = file.Write([]byte("torrent data"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/instances/1/torrents", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("instanceID", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	w := httptest.NewRecorder()
+	handler.AddTorrent(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "Failed to add all torrents")
+	assert.Contains(t, w.Body.String(), context.Canceled.Error())
 	assert.Empty(t, mockSync.addTorrentCalls)
-	require.Len(t, mockSync.addTorrentsCalls, 1)
-	assert.Equal(t, 1, mockSync.addTorrentsCalls[0].instanceID)
-	assert.Equal(t, [][]byte{[]byte("first torrent data"), []byte("second torrent data")}, mockSync.addTorrentsCalls[0].files)
-	assert.Equal(t, "movies", mockSync.addTorrentsCalls[0].options["category"])
+	assert.Empty(t, mockSync.addTorrentsCalls)
+}
+
+func TestTorrentFileAddResponseCounts_NilResponseReturnsError(t *testing.T) {
+	t.Parallel()
+
+	added, failed, err := torrentFileAddResponseCounts(nil, 2)
+
+	require.Error(t, err)
+	assert.Equal(t, 0, added)
+	assert.Equal(t, 0, failed)
 }
 
 // TestAddTorrentHandler_SuccessfulIndexerDownload_Returns201 verifies the full success path:

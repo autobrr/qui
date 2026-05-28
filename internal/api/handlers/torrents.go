@@ -35,7 +35,6 @@ import (
 // torrentAdder is the interface for adding torrents (used for testing)
 type torrentAdder interface {
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
-	AddTorrents(ctx context.Context, instanceID int, files [][]byte, options map[string]string) (*qbt.TorrentAddResponse, error)
 	AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error)
 	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 }
@@ -118,14 +117,6 @@ func (h *TorrentsHandler) addTorrent(ctx context.Context, instanceID int, fileCo
 		return h.torrentAdder.AddTorrent(ctx, instanceID, fileContent, options)
 	}
 	return h.syncManager.AddTorrent(ctx, instanceID, fileContent, options)
-}
-
-// addTorrents wraps batch torrent addition to support both production and test modes
-func (h *TorrentsHandler) addTorrents(ctx context.Context, instanceID int, files [][]byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
-	if h.torrentAdder != nil {
-		return h.torrentAdder.AddTorrents(ctx, instanceID, files, options)
-	}
-	return h.syncManager.AddTorrents(ctx, instanceID, files, options)
 }
 
 // addTorrentFromURLs wraps URL-based torrent addition to support both production and test modes
@@ -695,7 +686,11 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var torrentFiles [][]byte
+	type torrentFile struct {
+		filename string
+		content  []byte
+	}
+	var torrentFiles []torrentFile
 	var urls []string
 
 	// Track file processing failures for response
@@ -724,7 +719,10 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					fileReadFailures = append(fileReadFailures, fileReadFailure{filename: fileHeader.Filename, err: "Failed to read file"})
 					continue
 				}
-				torrentFiles = append(torrentFiles, fileContent)
+				torrentFiles = append(torrentFiles, torrentFile{
+					filename: fileHeader.Filename,
+					content:  fileContent,
+				})
 			}
 		}
 	}
@@ -893,30 +891,39 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 
 	// Add torrent(s)
 	if len(torrentFiles) > 0 {
-		if ctx.Err() != nil {
-			log.Warn().Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
-		} else if resp, err := h.addTorrents(ctx, instanceID, torrentFiles, options); err != nil {
-			if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
-				return
+		for i, torrentFile := range torrentFiles {
+			if err := ctx.Err(); err != nil {
+				log.Warn().Err(err).Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
+				for _, pendingFile := range torrentFiles[i:] {
+					failedFiles = append(failedFiles, failedFile{Filename: pendingFile.filename, Error: err.Error()})
+					failedCount++
+				}
+				lastError = err
+				break
 			}
-			log.Error().Err(err).Int("instanceID", instanceID).Int("fileCount", len(torrentFiles)).Msg("Failed to add torrent files")
-			failedFiles = append(failedFiles, failedFile{Filename: "batch", Error: err.Error()})
-			failedCount = len(torrentFiles)
-			lastError = err
-		} else {
-			added, failed, err := torrentFileAddResponseCounts(resp, len(torrentFiles))
+
+			resp, err := h.addTorrent(ctx, instanceID, torrentFile.content, options)
+			if err != nil {
+				if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
+					return
+				}
+				log.Error().Err(err).Int("instanceID", instanceID).Str("filename", torrentFile.filename).Msg("Failed to add torrent file")
+				failedFiles = append(failedFiles, failedFile{Filename: torrentFile.filename, Error: err.Error()})
+				failedCount++
+				lastError = err
+				continue
+			}
+
+			added, failed, err := torrentFileAddResponseCounts(resp, 1)
 			addedCount += added
 			failedCount += failed
 			if err != nil {
 				log.Error().
 					Err(err).
 					Int("instanceID", instanceID).
-					Int("fileCount", len(torrentFiles)).
-					Int64("successCount", resp.SuccessCount).
-					Int64("failureCount", resp.FailureCount).
-					Int64("pendingCount", resp.PendingCount).
+					Str("filename", torrentFile.filename).
 					Msg("qBittorrent reported failed torrent files")
-				failedFiles = append(failedFiles, failedFile{Filename: "batch", Error: err.Error()})
+				failedFiles = append(failedFiles, failedFile{Filename: torrentFile.filename, Error: err.Error()})
 				lastError = err
 			}
 		}
@@ -1131,7 +1138,7 @@ func torrentURLAddFailureError(resp *qbt.TorrentAddResponse) error {
 
 func torrentFileAddResponseCounts(resp *qbt.TorrentAddResponse, totalCount int) (addedCount int, failedCount int, err error) {
 	if resp == nil {
-		return totalCount, 0, nil
+		return 0, 0, errors.New("unexpected nil response from torrent add")
 	}
 
 	failedCount = int(resp.FailureCount)
