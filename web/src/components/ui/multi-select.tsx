@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils"
 import { Check, ChevronsUpDown, X } from "lucide-react"
 import * as React from "react"
+import { useTranslation } from "react-i18next"
 
 export interface Option {
   label: string
@@ -45,16 +46,19 @@ export function MultiSelect({
   options,
   selected,
   onChange,
-  placeholder = "Select items...",
+  placeholder,
   className,
   creatable = false,
   onCreateOption,
   disabled = false,
   hideCheckIcon = false,
-  title = "Select",
+  title,
 }: MultiSelectProps) {
+  const { t } = useTranslation("common")
   const [open, setOpen] = React.useState(false)
   const [inputValue, setInputValue] = React.useState("")
+  const resolvedPlaceholder = placeholder ?? t("placeholders.selectItems")
+  const resolvedTitle = title ?? t("actions.select")
 
   const selectedSet = React.useMemo(() => new Set(selected), [selected])
 
@@ -131,7 +135,7 @@ export function MultiSelect({
             )
           })
         ) : (
-          <span className="text-muted-foreground font-normal">{placeholder}</span>
+          <span className="text-muted-foreground font-normal">{resolvedPlaceholder}</span>
         )}
       </div>
       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -143,7 +147,7 @@ export function MultiSelect({
       open={open}
       onOpenChange={setOpen}
       trigger={triggerButton}
-      title={title}
+      title={resolvedTitle}
       popoverWidth="100%"
       popoverAlign="start"
     >
@@ -180,6 +184,7 @@ function MultiSelectContent({
   creatable: boolean
   hideCheckIcon: boolean
 }) {
+  const { t } = useTranslation("common")
   const isMobile = useResponsiveMobile()
 
   const displayOptions = isMobile ? options : options.filter((option) => !selectedSet.has(option.value))
@@ -187,7 +192,7 @@ function MultiSelectContent({
   return (
     <ResponsiveCommand>
       <ResponsiveCommandInput
-        placeholder="Search..."
+        placeholder={t("placeholders.search")}
         value={inputValue}
         onValueChange={setInputValue}
       />
@@ -201,10 +206,10 @@ function MultiSelectContent({
               )}
               onClick={handleCreate}
             >
-              Create "{inputValue}"
+              {t("actions.create")} "{inputValue}"
             </div>
           ) : (
-            "No results found."
+            t("feedback.noResultsFound")
           )}
 
         </ResponsiveCommandEmpty>

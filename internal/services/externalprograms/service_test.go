@@ -524,7 +524,7 @@ func TestExecuteRequest_Validate(t *testing.T) {
 				ProgramID:  1,
 				Torrent:    torrent,
 				InstanceID: 1,
-				RuleID:     intPtr(42),
+				RuleID:     new(42),
 				RuleName:   "Test Rule",
 			},
 			wantErr: false,
@@ -570,8 +570,10 @@ func TestExecuteResult_Constructors(t *testing.T) {
 }
 
 // Helper function
+//
+//go:fix inline
 func intPtr(i int) *int {
-	return &i
+	return new(i)
 }
 
 // =============================================================================
@@ -1381,6 +1383,10 @@ func TestBuildCommand_Windows(t *testing.T) {
 
 	service := &Service{}
 	ctx := context.Background()
+	assertWindowsCmdPath := func(t *testing.T, path string) {
+		t.Helper()
+		assert.Equal(t, "cmd.exe", strings.ToLower(filepath.Base(path)))
+	}
 
 	t.Run("terminal mode uses cmd.exe with start cmd /k", func(t *testing.T) {
 		program := &models.ExternalProgram{
@@ -1389,7 +1395,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd := service.buildCommand(ctx, program, []string{"arg1", "arg2"})
 
-		assert.Equal(t, "cmd.exe", cmd.Path)
+		assertWindowsCmdPath(t, cmd.Path)
 		// Args should be: [cmd.exe, /c, start, "", cmd, /k, C:\Programs\test.exe, arg1, arg2]
 		assert.Contains(t, cmd.Args, "/c")
 		assert.Contains(t, cmd.Args, "start")
@@ -1405,7 +1411,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd := service.buildCommand(ctx, program, []string{"arg1"})
 
-		assert.Equal(t, "cmd.exe", cmd.Path)
+		assertWindowsCmdPath(t, cmd.Path)
 		// Args should be: [cmd.exe, /c, start, "", /b, C:\Programs\test.exe, arg1]
 		assert.Contains(t, cmd.Args, "/c")
 		assert.Contains(t, cmd.Args, "start")
@@ -1433,7 +1439,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd := service.buildCommand(ctx, program, nil)
 
-		assert.Equal(t, "cmd.exe", cmd.Path)
+		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "/c")
 		assert.Contains(t, cmd.Args, "start")
 		assert.Contains(t, cmd.Args, "cmd")
@@ -1448,7 +1454,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd := service.buildCommand(ctx, program, nil)
 
-		assert.Equal(t, "cmd.exe", cmd.Path)
+		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "/c")
 		assert.Contains(t, cmd.Args, "start")
 		assert.Contains(t, cmd.Args, "/b")
@@ -1462,7 +1468,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd := service.buildCommand(ctx, program, []string{"--arg", "value"})
 
-		assert.Equal(t, "cmd.exe", cmd.Path)
+		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "C:\\Program Files\\My App\\test.exe")
 	})
 
@@ -1473,7 +1479,7 @@ func TestBuildCommand_Windows(t *testing.T) {
 		}
 		cmd := service.buildCommand(ctx, program, []string{"--arg", "value"})
 
-		assert.Equal(t, "cmd.exe", cmd.Path)
+		assertWindowsCmdPath(t, cmd.Path)
 		assert.Contains(t, cmd.Args, "C:\\Program Files\\My App\\test.exe")
 	})
 

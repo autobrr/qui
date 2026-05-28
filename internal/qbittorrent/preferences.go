@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -25,6 +26,10 @@ func cloneAppPreferences(prefs *qbt.AppPreferences) *qbt.AppPreferences {
 
 // GetAppPreferences returns cached qBittorrent app preferences, refreshing them when stale.
 func (c *Client) GetAppPreferences(ctx context.Context) (*qbt.AppPreferences, error) {
+	if c == nil || c.Client == nil {
+		return nil, errors.New("qbittorrent client unavailable")
+	}
+
 	if ctx == nil {
 		ctx = context.Background()
 	}

@@ -1025,10 +1025,7 @@ func (h *JackettHandler) GetSearchHistory(w http.ResponseWriter, r *http.Request
 	limit := 50
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
-			limit = parsed
-			if limit > 500 {
-				limit = 500
-			}
+			limit = min(parsed, 500)
 		}
 	}
 

@@ -381,10 +381,8 @@ export function columnFilterToExpr(filter: ColumnFilter): string | null {
   const needsStringCast = filter.columnId === "state"
   const effectiveFieldName = needsStringCast ? `string(${fieldName})` : fieldName
 
-  let escapedValue = filter.value
-
   if (needsQuotes) {
-    escapedValue = escapeExprValue(filter.value)
+    const escapedValue = escapeExprValue(filter.value)
     if (useLowerCase) {
       return `lower(${effectiveFieldName}) ${operator} "${escapedValue.toLowerCase()}"`
     }

@@ -36,7 +36,7 @@ type fileRow struct {
 	size            int64
 	progress        float64
 	priority        int
-	isSeed          interface{}
+	isSeed          any
 	pieceRangeStart int64
 	pieceRangeEnd   int64
 	availability    float64
@@ -83,7 +83,7 @@ func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes [
 		for rows.Next() {
 			var (
 				f      CachedFile
-				isSeed sql.NullBool
+				isSeed sql.NullInt64
 			)
 			if err := rows.Scan(
 				&f.ID,
@@ -104,9 +104,7 @@ func (r *Repository) GetFilesBatch(ctx context.Context, instanceID int, hashes [
 				return nil, err
 			}
 
-			if isSeed.Valid {
-				f.IsSeed = &isSeed.Bool
-			}
+			f.IsSeed = decodeNullableBoolFromInt(isSeed)
 
 			results[f.TorrentHash] = append(results[f.TorrentHash], f)
 		}
@@ -130,7 +128,7 @@ func (r *Repository) GetFilesTx(ctx context.Context, tx dbinterface.TxQuerier, i
 // getFiles is the internal implementation that works with any querier (db or tx)
 func (r *Repository) getFiles(ctx context.Context, q querier, instanceID int, hash string) ([]CachedFile, error) {
 	query := `
-		SELECT id, instance_id, torrent_hash, file_index, name, size, progress, 
+		SELECT id, instance_id, torrent_hash, file_index, name, size, progress,
 		       priority, is_seed, piece_range_start, piece_range_end, availability, cached_at
 		FROM torrent_files_cache_view
 		WHERE instance_id = ? AND torrent_hash = ?
@@ -146,7 +144,7 @@ func (r *Repository) getFiles(ctx context.Context, q querier, instanceID int, ha
 	var files []CachedFile
 	for rows.Next() {
 		var f CachedFile
-		var isSeed sql.NullBool
+		var isSeed sql.NullInt64
 		err := rows.Scan(
 			&f.ID,
 			&f.InstanceID,
@@ -166,9 +164,7 @@ func (r *Repository) getFiles(ctx context.Context, q querier, instanceID int, ha
 			return nil, err
 		}
 
-		if isSeed.Valid {
-			f.IsSeed = &isSeed.Bool
-		}
+		f.IsSeed = decodeNullableBoolFromInt(isSeed)
 
 		files = append(files, f)
 	}
@@ -232,7 +228,7 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	}
 	defer tx.Rollback()
 
-	if err := dbinterface.DeferForeignKeyChecks(tx); err != nil {
+	if err := dbinterface.DeferForeignKeyChecks(ctx, tx); err != nil {
 		return fmt.Errorf("failed to defer foreign keys: %w", err)
 	}
 
@@ -265,11 +261,6 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 				return fmt.Errorf("missing interned ID for file %s", f.Name)
 			}
 
-			var isSeed interface{}
-			if f.IsSeed != nil {
-				isSeed = *f.IsSeed
-			}
-
 			allRows = append(allRows, fileRow{
 				instanceID:      f.InstanceID,
 				hashID:          hashID,
@@ -278,7 +269,7 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 				size:            f.Size,
 				progress:        f.Progress,
 				priority:        f.Priority,
-				isSeed:          isSeed,
+				isSeed:          encodeNullableBoolAsInt(f.IsSeed),
 				pieceRangeStart: f.PieceRangeStart,
 				pieceRangeEnd:   f.PieceRangeEnd,
 				availability:    f.Availability,
@@ -288,8 +279,8 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 
 	// Pre-build the full query for full batches
 	queryTemplate := `
-			INSERT INTO torrent_files_cache 
-			(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority, 
+			INSERT INTO torrent_files_cache
+			(instance_id, torrent_hash_id, file_index, name_id, size, progress, priority,
 			 is_seed, piece_range_start, piece_range_end, availability, cached_at)
 			VALUES %s
 			ON CONFLICT(instance_id, torrent_hash_id, file_index) DO UPDATE SET
@@ -307,14 +298,11 @@ func (r *Repository) UpsertFiles(ctx context.Context, files []CachedFile) error 
 	t := time.Now()
 
 	// Pre-allocate args slice to reuse across batches
-	args := make([]interface{}, 0, fileBatchSize*12)
+	args := make([]any, 0, fileBatchSize*12)
 
 	// Batch insert files
 	for i := 0; i < len(allRows); i += fileBatchSize {
-		end := i + fileBatchSize
-		if end > len(allRows) {
-			end = len(allRows)
-		}
+		end := min(i+fileBatchSize, len(allRows))
 		batch := allRows[i:end]
 
 		// Reset args for this batch
@@ -397,6 +385,25 @@ func (r *Repository) DeleteFiles(ctx context.Context, instanceID int, hash strin
 	}
 
 	return nil
+}
+
+func encodeNullableBoolAsInt(value *bool) any {
+	if value == nil {
+		return nil
+	}
+	if *value {
+		return 1
+	}
+	return 0
+}
+
+func decodeNullableBoolFromInt(value sql.NullInt64) *bool {
+	if !value.Valid {
+		return nil
+	}
+
+	result := value.Int64 != 0
+	return &result
 }
 
 // GetSyncInfo retrieves sync metadata for a torrent
@@ -503,7 +510,7 @@ func (r *Repository) UpsertSyncInfo(ctx context.Context, info SyncInfo) error {
 	hashID := ids[0]
 
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO torrent_files_sync 
+		INSERT INTO torrent_files_sync
 		(instance_id, torrent_hash_id, last_synced_at, torrent_progress, file_count)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(instance_id, torrent_hash_id) DO UPDATE SET
@@ -568,14 +575,11 @@ func (r *Repository) UpsertSyncInfoBatch(ctx context.Context, infos []SyncInfo) 
 	fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 5, syncBatchSize)
 
 	// Pre-allocate args slice to reuse across batches
-	args := make([]interface{}, 0, syncBatchSize*5)
+	args := make([]any, 0, syncBatchSize*5)
 
 	// Batch insert sync infos
 	for i := 0; i < len(infos); i += syncBatchSize {
-		end := i + syncBatchSize
-		if end > len(infos) {
-			end = len(infos)
-		}
+		end := min(i+syncBatchSize, len(infos))
 		batch := infos[i:end]
 
 		// Reset args for this batch
@@ -713,17 +717,14 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 	}
 
 	// Insert current hashes into temp table in batches
-	queryTemplate := `INSERT OR IGNORE INTO current_hashes (hash) VALUES %s`
+	queryTemplate := `INSERT INTO current_hashes (hash) VALUES %s ON CONFLICT(hash) DO NOTHING`
 	const hashBatchSize = 900 // Keep under SQLite's 999 variable limit
 	fullBatchQuery := dbinterface.BuildQueryWithPlaceholders(queryTemplate, 1, hashBatchSize)
 
 	args := make([]any, 0, hashBatchSize)
 
 	for i := 0; i < len(currentHashes); i += hashBatchSize {
-		end := i + hashBatchSize
-		if end > len(currentHashes) {
-			end = len(currentHashes)
-		}
+		end := min(i+hashBatchSize, len(currentHashes))
 		batch := currentHashes[i:end]
 
 		// Reset args for this batch
@@ -784,28 +785,54 @@ func (r *Repository) DeleteCacheForRemovedTorrents(ctx context.Context, instance
 
 // GetCacheStats returns statistics about the cache for an instance
 func (r *Repository) GetCacheStats(ctx context.Context, instanceID int) (*CacheStats, error) {
-	query := `
-		SELECT 
-			COUNT(DISTINCT torrent_hash) as cached_torrents,
-			COUNT(*) as total_files,
-			MIN(julianday('now') - julianday(last_synced_at)) * 86400 as oldest_seconds,
-			MAX(julianday('now') - julianday(last_synced_at)) * 86400 as newest_seconds,
-			AVG(julianday('now') - julianday(last_synced_at)) * 86400 as avg_seconds
-		FROM torrent_files_sync_view
-		WHERE instance_id = ?
-	`
-
 	var stats CacheStats
-	var oldestSecs, newestSecs, avgSecs sql.NullFloat64
-
-	err := r.db.QueryRowContext(ctx, query, instanceID).Scan(
-		&stats.CachedTorrents,
-		&stats.TotalFiles,
-		&oldestSecs,
-		&newestSecs,
-		&avgSecs,
+	var (
+		oldestSecs sql.NullFloat64
+		newestSecs sql.NullFloat64
+		avgSecs    sql.NullFloat64
+		err        error
 	)
 
+	switch dbinterface.DialectOf(r.db) {
+	case "postgres":
+		now := time.Now().UTC()
+		query := `
+			SELECT
+				COUNT(DISTINCT torrent_hash) as cached_torrents,
+				COUNT(*) as total_files,
+				MAX(EXTRACT(EPOCH FROM (? - last_synced_at))) as oldest_seconds,
+				MIN(EXTRACT(EPOCH FROM (? - last_synced_at))) as newest_seconds,
+				AVG(EXTRACT(EPOCH FROM (? - last_synced_at))) as avg_seconds
+			FROM torrent_files_sync_view
+			WHERE instance_id = ?
+		`
+		err = r.db.QueryRowContext(ctx, query, now, now, now, instanceID).Scan(
+			&stats.CachedTorrents,
+			&stats.TotalFiles,
+			&oldestSecs,
+			&newestSecs,
+			&avgSecs,
+		)
+	default:
+		nowJulian := float64(time.Now().UTC().UnixNano())/86400e9 + 2440587.5
+		query := `
+			SELECT
+				COUNT(DISTINCT torrent_hash) as cached_torrents,
+				COUNT(*) as total_files,
+				MAX((? - julianday(last_synced_at)) * 86400) as oldest_seconds,
+				MIN((? - julianday(last_synced_at)) * 86400) as newest_seconds,
+				AVG((? - julianday(last_synced_at)) * 86400) as avg_seconds
+			FROM torrent_files_sync_view
+			WHERE instance_id = ?
+		`
+		err = r.db.QueryRowContext(ctx, query, nowJulian, nowJulian, nowJulian, instanceID).Scan(
+			&stats.CachedTorrents,
+			&stats.TotalFiles,
+			&oldestSecs,
+			&newestSecs,
+			&avgSecs,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -814,12 +841,10 @@ func (r *Repository) GetCacheStats(ctx context.Context, instanceID int) (*CacheS
 		dur := time.Duration(oldestSecs.Float64 * float64(time.Second))
 		stats.OldestCacheAge = &dur
 	}
-
 	if newestSecs.Valid {
 		dur := time.Duration(newestSecs.Float64 * float64(time.Second))
 		stats.NewestCacheAge = &dur
 	}
-
 	if avgSecs.Valid {
 		dur := time.Duration(avgSecs.Float64 * float64(time.Second))
 		stats.AverageCacheAge = &dur
@@ -851,10 +876,7 @@ func chunkHashes(hashes []string, size int) [][]string {
 	}
 	var chunks [][]string
 	for start := 0; start < len(hashes); start += size {
-		end := start + size
-		if end > len(hashes) {
-			end = len(hashes)
-		}
+		end := min(start+size, len(hashes))
 		chunks = append(chunks, hashes[start:end])
 	}
 	return chunks
@@ -866,10 +888,7 @@ func chunkInts(ints []int64, size int) [][]int64 {
 	}
 	var chunks [][]int64
 	for start := 0; start < len(ints); start += size {
-		end := start + size
-		if end > len(ints) {
-			end = len(ints)
-		}
+		end := min(start+size, len(ints))
 		chunks = append(chunks, ints[start:end])
 	}
 	return chunks
@@ -880,7 +899,7 @@ func buildPlaceholders(count int) string {
 		return ""
 	}
 	var sb strings.Builder
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if i > 0 {
 			sb.WriteString(",")
 		}

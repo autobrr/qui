@@ -14,6 +14,7 @@ Automations are evaluated in **sort order** (first match wins for exclusive acti
 
 - **Automatic** - Background service scans torrents every 20 seconds
 - **Per-Rule Intervals** - Each rule can have its own interval (minimum 60 seconds, default 15 minutes)
+- **Per-Rule Notifications** - If notification targets are configured, each rule can opt in or out of sending automation notifications
 - **Manual** - Click "Apply Now" to trigger immediately (bypasses interval checks)
 - **Manual dry-run** - Run "Dry-run now" from the workflow dialog or "Run dry-run now" from the workflow menu
 - **Debouncing** - Same torrent won't be re-processed within 2 minutes
@@ -77,6 +78,19 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 | Seeding Time Limit       | Torrent seeding time limit            |
 | Inactive Seeding Time Limit | Torrent inactive seeding time limit |
 
+#### System Time Fields
+
+These fields use qui's current system time when the rule is evaluated. They are useful for time-window automations such as "only run at night" or "apply different actions on weekends."
+
+| Field              | Description                               |
+| ------------------ | ----------------------------------------- |
+| System Hour        | Current hour (`0-23`)                     |
+| System Minute      | Current minute (`0-59`)                   |
+| System Day of Week | Current weekday (`0=Sun` to `6=Sat`)      |
+| System Day         | Current day of month (`1-31`)             |
+| System Month       | Current month (`1-12`)                    |
+| System Year        | Current year                              |
+
 #### Progress Fields
 
 | Field       | Description                  |
@@ -84,6 +98,7 @@ The query builder supports complex nested conditions with AND/OR groups. Drag co
 | Ratio       | Upload/download ratio        |
 | Ratio Limit | Configured ratio limit       |
 | Max Ratio   | qBittorrent max ratio value  |
+| Uploaded / Size | Uploaded bytes divided by total torrent size. Use this instead of Ratio for cross-seeded torrents. |
 | Progress    | Download progress (0-100%)   |
 | Availability | Distributed copies available |
 | Popularity  | Swarm popularity metric      |
@@ -146,12 +161,22 @@ Note: if you have **Settings → Tracker Customizations** configured, the **Trac
 | Group Size         | Size of the selected group for this condition (requires grouping; see [Grouping](#grouping)) |
 | Is Grouped         | Boolean - true when selected group size > 1 (requires grouping; see [Grouping](#grouping)) |
 
+#### Cross-Seed Fields
+
+| Field                              | Description                                                                      |
+| ---------------------------------- | -------------------------------------------------------------------------------- |
+| Exists on Other Instance           | Boolean - a matching torrent exists on at least one other active instance       |
+| Seeding on Other Instance          | Boolean - a matching torrent is actively seeding on at least one other active instance |
+| Cross-seed Exists on Same Instance | Boolean - another matching torrent exists on this instance                      |
+| Cross-seed Seeding on Same Instance | Boolean - another matching torrent is actively seeding on this instance        |
+
 #### Filesystem Fields
 
-| Field             | Description                                                                                |
-| ----------------- | ------------------------------------------------------------------------------------------ |
-| Hardlink Scope    | `none`, `torrents_only`, or `outside_qbittorrent` (requires local filesystem access)     |
-| Has Missing Files | Boolean - completed torrent has files missing on disk (requires local filesystem access)  |
+| Field                            | Description                                                                                                    |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Hardlink Scope                   | `none`, `torrents_only`, or `outside_qbittorrent` (requires local filesystem access)                         |
+| Hardlink Scope (Cross-Instance)  | `none`, `torrents_only`, or `outside_qbittorrent` considering ALL instances (requires local filesystem access) |
+| Has Missing Files                | Boolean - completed torrent has files missing on disk (requires local filesystem access)                      |
 
 ### State Values
 
@@ -293,6 +318,28 @@ No-match behavior:
 - Manual dry-runs still log a `dry_run_no_match` summary row when nothing matches.
 - Scheduled dry-run rules do **not** log no-match rows (to avoid event noise).
 
+## Torrent Sorting & Scoring
+
+By default, torrents matched by an automation are processed oldest-first. However, you can customize the **Torrent Priority** to control exactly which torrents are processed first. This is useful for actions like **Delete** combined with **Free Space**, where the priority determines which torrents are removed first to free up space.
+
+### Priority Types
+
+| Type       | Description                                                                                                                                  |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Default**| Standard oldest-first priority.                                                                                     |
+| **Simple** | Prioritize by a single numeric, duration, or string field (e.g., `Size`, `Added Age`, `Name`) in ascending or descending order.                           |
+| **Score**  | Advanced rule-based priority. Torrents are scored based on custom rules, and prioritized in ascending or descending order of their total score. |
+
+### Score-Based Priority
+
+Score-based priority allows you to rank torrents using multiple combined factors. You define **Score Rules** that evaluate each torrent and contribute to its total score.
+
+Available score rule types:
+- **Field Multiplier**: Extracts a numeric value from the torrent (like `Size` or `Time Active`), multiplies it by a specified multiplier, and adds it to the score.
+- **Conditional**: Evaluates a standard query condition (see [Query Builder](#query-builder)). If the condition is true, a static value is added to the score.
+
+Torrents are then processed by their final computed score. The computed scores are displayed in the **Live impact preview** so you can verify your scoring logic.
+
 ## Tracker Matching
 
 This is sort of not needed, since you can already scope trackers outside the workflows. But its available either way.
@@ -389,6 +436,32 @@ Set ratio limit and/or seeding time limit. Each field supports these modes:
 
 Torrents stop seeding when any enabled limit is reached.
 
+#### Share limit action (Web API 2.15.1+)
+
+On instances whose qBittorrent Web API is **2.15.1** or newer, **When limits are reached** is available in the torrent share limit dialog and in automation workflows. It controls what happens when a torrent hits its configured ratio, seeding time, or inactive seeding limits. Stored and sent as the same **string enum names** qBittorrent expects for `setShareLimits` (Qt meta-object names, not numeric codes):
+
+| Option                  | Value (`shareLimitAction`) | Description                                 |
+| ----------------------- | -------------------------- | ------------------------------------------- |
+| Default (use global)    | omit or `default`          | Follow qBittorrent's global setting         |
+| Stop torrent            | `Stop`                     | Pause the torrent                           |
+| Remove torrent          | `Remove`                   | Remove from client, keep files              |
+| Remove with content     | `RemoveWithContent`        | Remove from client and delete files         |
+| Enable super seeding    | `EnableSuperSeeding`       | Switch to super seeding mode                |
+
+#### Share limits matching mode (Web API 2.16.0+)
+
+**Limits matching mode** (match **any** limit vs **all** limits) is a separate Web API capability and requires **2.16.0** or newer. On slightly older 5.2 builds that only expose **2.15.1**, qui still shows the action above but hides this control until you upgrade qBittorrent. Values use **string enum names** for `setShareLimits`:
+
+| Option               | Value (`shareLimitsMode`) | Description                              |
+| -------------------- | ------------------------- | ---------------------------------------- |
+| Default (use global) | omit or `default`         | Follow qBittorrent's global setting      |
+| Match any limit      | `MatchAny`                | Trigger when any single limit is reached |
+| Match all limits     | `MatchAll`                | Trigger only when all limits are reached |
+
+These options are hidden when the instance does not report the required Web API version (see [qBittorrent Version Compatibility](../advanced/compatibility.md)). Ratio and seeding time limits above still apply on older instances; only the extra controls are gated.
+
+These fields appear in both the torrent share limit dialog and the automation workflow editor when the connected qBittorrent instance supports them. On older instances, the fields are hidden and only the classic ratio/seeding time limits are sent.
+
 ### Pause
 
 Pause matching torrents. Only pauses if not already stopped.
@@ -468,11 +541,28 @@ Manage tags on torrents. You can add multiple Tag actions in one workflow.
 `mode: remove` removes tags from torrents that match the tag action condition. It does not remove from non-matches.
 :::
 
+`mode: full` is evaluated within the rule's scope for that run (enabled rule, tracker pattern match, and run eligibility). It is not a client-wide sweep by itself.
+
 Options:
 
-- **Managed / Replace in Client** - `Managed` (default) keeps tag set in sync without hard-resetting client tags. `Replace in client` deletes managed tags from qBittorrent first, then reapplies to current matches.
+- **Managed / Replace in Client** - `Managed` (default) applies per-torrent add/remove diffs only. `Replace in client` deletes managed tags from qBittorrent first, then reapplies to current matches.
 - **Use Tracker as Tag** - Derive tag from tracker domain
 - **Use Display Name** - Use tracker customization display name instead of raw domain
+
+Behavior reference:
+
+| Configuration                  | Behavior |
+| ----------------------------- | -------- |
+| `mode: full` + `Managed`      | Adds/removes tag for torrents this rule evaluates. No client-wide reset. |
+| `mode: full` + `Replace in client` | Deletes selected tag(s) client-wide first, then re-adds only current matches. |
+
+If you see repeated activity like `+tag=696` every run, that usually means **Replace in client** is enabled for that tag action.
+
+Quick troubleshooting:
+
+1. Check logs for `automations: deleted managed tags from client before retagging`.
+2. In Automations UI, open enabled rules and verify whether "Replace in client" is enabled on any tag action.
+3. Confirm the activity entry's rule list matches the rule you expect.
 
 ### Category
 
@@ -522,6 +612,19 @@ The move path is evaluated as a **Go template** for each torrent. You can use a 
 - By isolation folder: `/data/{{.IsolationFolderName}}`
 - By tracker: `/data/{{.Tracker}}` (when tracker display name is configured)
 
+### Auto Management
+
+Enable or disable qBittorrent's Automatic Torrent Management (AutoTMM) on matching torrents.
+
+| Mode      | Description                                      |
+| --------- | ------------------------------------------------ |
+| `enable`  | Enable automatic torrent management on matches   |
+| `disable` | Disable automatic torrent management on matches  |
+
+When AutoTMM is enabled, qBittorrent automatically moves torrents to the save path configured for their category. Disabling it allows manual control of save paths.
+
+If multiple rules match the same torrent with Auto Management actions, the **last matching rule** (by sort order) wins.
+
 ### External Program
 
 Run a pre-configured external program when torrents match the automation rule. Uses the same programs configured in **Settings → External Programs**.
@@ -557,11 +660,66 @@ The program's executable path must be present in the application's allowlist. Pr
 - Trigger media library scans after category changes
 - Execute cleanup scripts for old or stalled torrents
 
+### Export to Instance
+
+Export a torrent's `.torrent` file from the current instance and add it to a different qBittorrent instance. This is useful for migrating torrents between instances — for example, moving from a seedbox to a local instance for long-term seeding.
+
+This action assumes the data already exists on the target (via rclone, Quickdrop for Deluge, etc.) and uses `skip_checking=true` by default.
+
+| Field              | Description                                                              |
+| ------------------ | ------------------------------------------------------------------------ |
+| **Target instance** | Destination qBittorrent instance (cannot be the same as source)         |
+| **Save path**       | Save path on target instance (Go template supported, see below)         |
+| **Category**        | Category to assign on target instance (dropdown from target's categories) |
+| **Tags**            | Tags to apply on target instance                                        |
+| **Skip checking**   | Skip hash check on target (default: enabled)                            |
+| **Paused**          | Add torrent paused on target                                            |
+| **Content layout**  | `Original`, `Subfolder`, or `NoSubfolder`                               |
+| **Condition Override** | Optional condition specific to this action                           |
+
+**Behavior:**
+
+- Executes asynchronously to avoid blocking automation processing
+- **Cannot combine with Delete** — the API rejects rules that have both export and delete enabled
+- Duplicate detection: before exporting, qui checks if the torrent already exists on the target instance and skips it if found
+- After adding to the target, qui verifies the torrent appeared and is healthy. If verification fails, the torrent is automatically cleaned up from the target so it can be retried on the next run
+- Cross-seed group members are **not** automatically exported. To export a group, chain with Category/Tag actions using group expansion
+- Activity is logged with rule name, torrent details, target instance, and success/failure status
+- Dry-run is supported — shows what would be exported without actually transferring
+
+:::note
+When multiple rules match the same torrent with Export to Instance actions, the **last matching rule** (by sort order) determines the export configuration for that torrent. Only one export runs per torrent per automation cycle.
+:::
+
+#### Save path templates
+
+The save path field supports Go templates, the same as the [Move action](#move-path-templates).
+
+| Variable               | Description                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| `.Name`                | Torrent display name                                                                     |
+| `.Hash`                | Info hash                                                                                |
+| `.Category`            | qBittorrent category (on source instance)                                                |
+| `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name)                                     |
+| `.Tracker`             | Tracker display name (when available from instance config), otherwise the tracker domain |
+
+| Function   | Description                                                                 |
+| ---------- | --------------------------------------------------------------------------- |
+| `sanitize` | Makes a string safe for use as a path segment (removes invalid characters). |
+
+**Examples:**
+
+- Fixed path: `/data/torrents`
+- By category: `/data/{{.Category}}`
+- By tracker: `/data/{{.Tracker}}`
+
+If no save path is set but a category is configured, qBittorrent's Automatic Torrent Management is enabled so the target uses the category's configured path.
+
 ## Cross-Seed Awareness
 
 Automations detect cross-seeded torrents (same content/files) and can handle them specially:
 
-- **Detection** - Matches via ContentPath (and SavePath for category moves)
+- **Detection** - Cross-seed condition fields use the same matching logic as **Filter Cross-Seeds**: content path, exact name, and release metadata. Same-instance checks exclude the current torrent itself.
 - **Delete Rules**:
   - Use `deleteWithFilesPreserveCrossSeeds` to keep files if cross-seeds exist
   - Use `deleteWithFilesIncludeCrossSeeds` to delete matching torrents and all their cross-seeds together
@@ -696,6 +854,87 @@ If the automation is matching torrents you expect to be protected, verify:
 2. Your filesystem reports accurate nlink values (`stat <file>` should show Links > 1 for hardlinked files).
 3. Your Docker volume mounts do not overlap or subdivide the storage in a way that breaks inode consistency.
 
+### Cross-Instance Hardlink Detection
+
+The `HARDLINK_SCOPE_CROSS` field extends hardlink detection across **all** configured qBittorrent instances. While `HARDLINK_SCOPE` only considers torrents within a single instance, `HARDLINK_SCOPE_CROSS` accounts for hardlinks to files managed by any instance with local filesystem access enabled.
+
+This is essential for multi-instance setups where cross-seeds are hardlinked across instances. Without cross-instance awareness, those hardlinks appear as `outside_qbittorrent` even though they point to files managed by another qBittorrent instance.
+
+#### Scope values
+
+| Scope                 | Meaning                                                                  |
+| --------------------- | ------------------------------------------------------------------------ |
+| `none`                | No hardlinks detected.                                                   |
+| `torrents_only`       | All hardlinks are accounted for across all qBittorrent instances.        |
+| `outside_qbittorrent` | Hardlinks exist to files outside all qBittorrent instances.              |
+
+#### Combining with HARDLINK_SCOPE
+
+Use both fields together to distinguish cross-instance hardlinks from truly external links:
+
+| Combination | Interpretation |
+| --- | --- |
+| `HARDLINK_SCOPE = outside_qbittorrent` AND `HARDLINK_SCOPE_CROSS = torrents_only` | Hardlinks point to other qBittorrent instances only (cross-seeds). No media library copy. |
+| `HARDLINK_SCOPE = outside_qbittorrent` AND `HARDLINK_SCOPE_CROSS = outside_qbittorrent` | Hardlinks point outside all instances — typically a media library import. |
+| `HARDLINK_SCOPE = torrents_only` | All hardlinks within this instance. `HARDLINK_SCOPE_CROSS` will also be `torrents_only`. |
+
+#### Prerequisites
+
+`HARDLINK_SCOPE_CROSS` requires:
+
+1. **Local Filesystem Access** enabled on **all** instances whose files you want considered. Instances without it are skipped — their files won't be scanned, and unresolved hardlinks will conservatively show as `outside_qbittorrent`.
+2. **Same filesystem** across all instances. Hardlinks cannot cross filesystem boundaries.
+3. **Matching paths in Docker** — same volume mount requirements as `HARDLINK_SCOPE`, applied to every instance.
+
+#### Performance
+
+Cross-instance scanning only runs when:
+- A rule uses `HARDLINK_SCOPE_CROSS`
+- The single-instance scan found torrents with unresolved outside links
+
+When triggered, it uses cached torrent and file data from other instances (no extra API calls) and only calls `Lstat()` on files that might resolve the unaccounted hardlinks. Scanning stops as soon as all deficits are resolved.
+
+A safety budget of 500,000 `Lstat()` calls limits the cross-instance scan. If the budget is exhausted before all deficits are resolved, the remaining torrents conservatively report `outside_qbittorrent`. This prevents excessive filesystem operations in large multi-instance setups. A warning is logged if the budget is reached.
+
+#### Example: noHL tagging in multi-instance setups
+
+This rule tags torrents with `noHL` when they have no media library hardlinks, even if they have cross-instance hardlinks to other qBittorrent instances:
+
+```json
+{
+  "name": "Tag noHL (multi-instance)",
+  "trackerPattern": "*",
+  "trackerDomains": ["*"],
+  "conditions": {
+    "schemaVersion": "1",
+    "tags": [
+      {
+        "enabled": true,
+        "mode": "add",
+        "tags": ["noHL"],
+        "condition": {
+          "operator": "AND",
+          "conditions": [
+            {
+              "field": "HARDLINK_SCOPE_CROSS",
+              "operator": "NOT_EQUAL",
+              "value": "outside_qbittorrent"
+            },
+            {
+              "field": "STATE",
+              "operator": "EQUAL",
+              "value": "uploading"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+```
+
+This works because `HARDLINK_SCOPE_CROSS != outside_qbittorrent` matches both `none` (no hardlinks) and `torrents_only` (hardlinks only between qBittorrent instances). Torrents with a media library copy (`outside_qbittorrent`) are excluded from the tag.
+
 ## Missing Files Detection
 
 The `Has Missing Files` field detects whether any files belonging to a completed torrent are missing from disk.
@@ -720,16 +959,16 @@ Only sends API calls when the torrent's current setting differs from the desired
 ### Processing Order
 
 - **First match wins** for delete actions (delete ends torrent processing, no further rules evaluated)
-- **Last rule wins** for speed limits, share limits, category, and external program actions
+- **Last rule wins** for speed limits, share limits, category, external program, and export to instance actions
 - **Accumulative** for tag actions (tags are combined across matching rules)
 
 ### Free Space Condition Behavior
 
 When using the **Free Space** condition in delete rules, the system uses intelligent cumulative tracking:
 
-1. **Oldest-first processing** - Torrents are sorted by age (oldest first) for deterministic, predictable cleanup
-2. **Cumulative space tracking** - As each torrent is marked for deletion, its size is added to the projected free space (only when the delete mode actually frees disk bytes)
-3. **Stop when satisfied** - Once `Free Space + Space To Be Cleared` exceeds your threshold, remaining torrents no longer match
+1. **Configurable processing order** - Torrents are processed according to the automation's Torrent Priority (Default, Simple, or Score). This allows you to prioritize cleanups (e.g., largest files first, or lowest score first).
+2. **Cumulative space tracking** - As each torrent is marked for deletion, its size is added to the projected free space (only when the delete mode actually frees disk bytes).
+3. **Stop when satisfied** - Once `Free Space + Space To Be Cleared` exceeds your threshold, remaining torrents no longer match.
 4. **Cross-seed aware** - Cross-seeded torrents sharing the same files are only counted once to avoid overestimating freed space
 
 **Preview Views for Free Space Rules**
@@ -819,7 +1058,7 @@ Remove torrents completed over 30 days ago when disk space is low:
 - Condition: `Completion On Age > 30 days` AND `State is completed` AND `Free Space < 500GB`
 - Action: Remove with files
 
-Deletes oldest matching torrents first, stopping once enough space would be freed to exceed 500GB.
+Deletes matching torrents in the configured priority order (e.g., oldest first), stopping once enough space would be freed to exceed 500GB.
 
 ### Speed Limit Private Trackers
 
@@ -853,7 +1092,7 @@ Keep at least 200GB free by removing oldest completed torrents:
 - Condition: `Free Space < 200GB` AND `State is completed`
 - Action: Remove with files (preserve cross-seeds)
 
-Removes torrents from the client, oldest first, until enough space is projected to be freed. Cross-seeded torrents keep their files on disk and don't contribute to the projection. If only cross-seeded torrents match, this may remove many torrents without freeing any disk space.
+Removes torrents from the client in the configured priority order, until enough space is projected to be freed. Cross-seeded torrents keep their files on disk and don't contribute to the projection. If only cross-seeded torrents match, this may remove many torrents without freeing any disk space.
 
 ### Clean Up Old Content with Cross-Seeds
 

@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -33,6 +34,8 @@ type ArrIDCacheEntry struct {
 	ContentType   string      `json:"content_type"`
 	ArrInstanceID *int        `json:"arr_instance_id,omitempty"`
 	ExternalIDs   ExternalIDs `json:"external_ids"`
+	Titles        []string    `json:"titles,omitempty"`
+	HasTitles     bool        `json:"has_titles"`
 	IsNegative    bool        `json:"is_negative"`
 	CachedAt      time.Time   `json:"cached_at"`
 	ExpiresAt     time.Time   `json:"expires_at"`
@@ -58,14 +61,15 @@ func ComputeTitleHash(title string) string {
 // Get retrieves a cached ID entry if it exists and hasn't expired
 func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string) (*ArrIDCacheEntry, error) {
 	query := `
-		SELECT id, title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, is_negative, cached_at, expires_at
+		SELECT id, title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, titles_json, is_negative, cached_at, expires_at
 		FROM arr_id_cache
 		WHERE title_hash = ? AND content_type = ? AND expires_at > CURRENT_TIMESTAMP
 	`
 
 	var entry ArrIDCacheEntry
-	var imdbID *string
+	var imdbID, titlesJSON *string
 	var tmdbID, tvdbID, tvmazeID *int
+	var isNegative int
 
 	err := s.db.QueryRowContext(ctx, query, titleHash, contentType).Scan(
 		&entry.ID,
@@ -76,7 +80,8 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 		&tmdbID,
 		&tvdbID,
 		&tvmazeID,
-		&entry.IsNegative,
+		&titlesJSON,
+		&isNegative,
 		&entry.CachedAt,
 		&entry.ExpiresAt,
 	)
@@ -97,16 +102,28 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 	if tvmazeID != nil {
 		entry.ExternalIDs.TVMazeID = *tvmazeID
 	}
+	if titlesJSON != nil {
+		entry.HasTitles = true
+		if err := json.Unmarshal([]byte(*titlesJSON), &entry.Titles); err != nil {
+			return nil, fmt.Errorf("failed to decode arr id cache titles: %w", err)
+		}
+	}
+	entry.IsNegative = SQLiteIntToBool(isNegative)
 
 	return &entry, nil
 }
 
 // Set creates or updates a cache entry (upsert)
 func (s *ArrIDCacheStore) Set(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, isNegative bool, ttl time.Duration) error {
+	return s.SetWithTitles(ctx, titleHash, contentType, arrInstanceID, ids, nil, isNegative, ttl)
+}
+
+// SetWithTitles creates or updates a cache entry with known ARR title aliases.
+func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, titles []string, isNegative bool, ttl time.Duration) error {
 	expiresAt := time.Now().Add(ttl)
 
 	// Prepare nullable values
-	var imdbID *string
+	var imdbID, titlesJSON *string
 	var tmdbID, tvdbID, tvmazeID *int
 
 	if ids != nil {
@@ -123,22 +140,31 @@ func (s *ArrIDCacheStore) Set(ctx context.Context, titleHash, contentType string
 			tvmazeID = &ids.TVMazeID
 		}
 	}
+	if titles != nil {
+		encodedTitles, err := json.Marshal(titles)
+		if err != nil {
+			return fmt.Errorf("failed to encode arr id cache titles: %w", err)
+		}
+		titlesValue := string(encodedTitles)
+		titlesJSON = &titlesValue
+	}
 
 	query := `
-		INSERT INTO arr_id_cache (title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, is_negative, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO arr_id_cache (title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, titles_json, is_negative, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(title_hash, content_type) DO UPDATE SET
 			arr_instance_id = excluded.arr_instance_id,
 			imdb_id = excluded.imdb_id,
 			tmdb_id = excluded.tmdb_id,
 			tvdb_id = excluded.tvdb_id,
 			tvmaze_id = excluded.tvmaze_id,
+			titles_json = excluded.titles_json,
 			is_negative = excluded.is_negative,
 			cached_at = CURRENT_TIMESTAMP,
 			expires_at = excluded.expires_at
 	`
 
-	_, err := s.db.ExecContext(ctx, query, titleHash, contentType, arrInstanceID, imdbID, tmdbID, tvdbID, tvmazeID, isNegative, expiresAt)
+	_, err := s.db.ExecContext(ctx, query, titleHash, contentType, arrInstanceID, imdbID, tmdbID, tvdbID, tvmazeID, titlesJSON, BoolToSQLite(isNegative), expiresAt)
 	if err != nil {
 		return fmt.Errorf("failed to set arr id cache entry: %w", err)
 	}

@@ -36,7 +36,7 @@ Avoid placing qui in `C:\Program Files` — it can cause permission issues with 
 
 ### Configuration
 
-qui stores its configuration and database in `%APPDATA%\qui\` by default. For more details, see the [Configuration](/docs/configuration/environment) section.
+qui stores its configuration and runtime data in `%APPDATA%\qui\` by default. With the default SQLite engine, `qui.db` is stored there too. For more details, see the [Configuration](/docs/configuration/environment) section.
 
 ## Create a Windows Task
 

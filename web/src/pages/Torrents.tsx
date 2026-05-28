@@ -19,35 +19,61 @@ import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewSta
 import { usePersistedFilters } from "@/hooks/usePersistedFilters"
 import { usePersistedFilterSidebarState } from "@/hooks/usePersistedFilterSidebarState"
 import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
+import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
+import { isAllInstancesScope, normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
-import type { Category, Torrent, TorrentCounts } from "@/types"
+import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts } from "@/types"
 import { useNavigate } from "@tanstack/react-router"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels"
 
 interface TorrentsProps {
   instanceId: number
   instanceName: string
+  isAllInstancesView?: boolean
   search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined; torrent?: string; tab?: string }
   onSearchChange: (search: { modal?: "add-torrent" | "create-torrent" | "tasks" | undefined; torrent?: string; tab?: string }) => void
 }
 
-export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) {
+export function Torrents({ instanceId, instanceName, isAllInstancesView = false, search, onSearchChange }: TorrentsProps) {
+  const { t } = useTranslation("torrents")
+  const isAllInstances = isAllInstancesView || isAllInstancesScope(instanceId)
   const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
   const { viewMode } = usePersistedCompactViewState("normal")
   const { clearSelection } = useTorrentSelection()
   const { instances } = useInstances()
-  const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
+  const [persistedUnifiedFilter] = usePersistedUnifiedInstanceFilter()
+  const activeInstanceIds = useMemo(
+    () => (instances ?? []).filter(current => current.isActive).map(current => current.id),
+    [instances]
+  )
+  const unifiedScopeInstanceIds = useMemo(() => {
+    if (!isAllInstances) {
+      return undefined
+    }
+
+    const normalized = normalizeUnifiedInstanceIds(persistedUnifiedFilter, activeInstanceIds)
+    return normalized.length > 0 ? normalized : undefined
+  }, [isAllInstances, persistedUnifiedFilter, activeInstanceIds])
+  const instance = useMemo(() => {
+    if (isAllInstances) {
+      return undefined
+    }
+    return instances?.find(i => i.id === instanceId)
+  }, [instances, instanceId, isAllInstances])
   const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
 
   useTitleBarSpeeds({
     mode: "instance",
-    enabled: titleBarSpeedsEnabled,
+    enabled: titleBarSpeedsEnabled && !isAllInstances,
     instanceId,
-    instanceName: instance?.name,
+    instanceName: instance?.name ?? instanceName,
+    // Foreground speeds come from the SSE stream inside useTitleBarSpeeds itself,
+    // so no page-level serverState plumbing is needed here.
   })
 
   // Sidebar width: 320px normal, 260px dense (fixed px to avoid issues with non-16px root font size)
@@ -57,18 +83,33 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const handleInitialTabConsumed = useCallback(() => setInitialDetailsTab(undefined), [])
   const navigate = useNavigate()
+  const getTorrentInstanceId = useCallback((torrent: Torrent | null | undefined) => {
+    if (!torrent) {
+      return instanceId
+    }
+
+    const crossInstanceId = (torrent as Partial<CrossInstanceTorrent>).instanceId
+    if (typeof crossInstanceId === "number" && crossInstanceId > 0) {
+      return crossInstanceId
+    }
+
+    return instanceId
+  }, [instanceId])
+  const selectedTorrentInstanceId = getTorrentInstanceId(selectedTorrent)
 
   // Handle deep link to a specific torrent (from cross-seed navigation)
   useEffect(() => {
     if (!search.torrent) return
+    let cancelled = false
 
     const hash = search.torrent
     const tab = search.tab
+    const escapedHash = hash.replaceAll("\"", "\\\"")
 
     // Fetch the torrent by hash and select it
-    api.getTorrents(instanceId, {
+    const fetchTorrentByHash = isAllInstances? api.getCrossInstanceTorrents({
       filters: {
-        expr: `Hash == "${hash}"`,
+        expr: `Hash == "${escapedHash}"`,
         status: [],
         excludeStatus: [],
         categories: [],
@@ -79,8 +120,27 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
         excludeTrackers: [],
       },
       limit: 1,
-    }).then((response) => {
-      const torrent = response.torrents[0]
+      // Deep links should resolve even when the saved unified scope excludes the owning instance.
+      instanceIds: activeInstanceIds.length > 0 ? activeInstanceIds : undefined,
+    }).then((response) => response.crossInstanceTorrents?.[0] ?? response.cross_instance_torrents?.[0] ?? null): api.getTorrents(instanceId, {
+      filters: {
+        expr: `Hash == "${escapedHash}"`,
+        status: [],
+        excludeStatus: [],
+        categories: [],
+        excludeCategories: [],
+        tags: [],
+        excludeTags: [],
+        trackers: [],
+        excludeTrackers: [],
+      },
+      limit: 1,
+    }).then((response) => response.torrents[0] ?? null)
+
+    fetchTorrentByHash.then((torrent) => {
+      if (cancelled) {
+        return
+      }
       if (torrent) {
         setSelectedTorrent(torrent)
         if (tab) {
@@ -88,16 +148,31 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
         }
       }
       // Clear the search params after consuming
-      onSearchChange({ modal: search.modal })
+      onSearchChange({
+        ...search,
+        torrent: undefined,
+        tab: undefined,
+      })
     }).catch(() => {
+      if (cancelled) {
+        return
+      }
       // Silently fail - torrent might not exist
-      onSearchChange({ modal: search.modal })
+      onSearchChange({
+        ...search,
+        torrent: undefined,
+        tab: undefined,
+      })
     })
-  }, [instanceId, search, onSearchChange])
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeInstanceIds, instanceId, isAllInstances, onSearchChange, search])
 
   // Navigate to a cross-seed match torrent
   const handleNavigateToTorrent = useCallback((targetInstanceId: number, torrentHash: string) => {
-    if (targetInstanceId === instanceId) {
+    if (!isAllInstances && targetInstanceId === instanceId) {
       // Same instance - fetch and select the torrent directly
       api.getTorrents(instanceId, {
         filters: {
@@ -127,7 +202,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
         search: { torrent: torrentHash, tab: "general" },
       })
     }
-  }, [instanceId, navigate])
+  }, [instanceId, isAllInstances, navigate])
 
   // Mobile detection for responsive layout
   const isMobile = useIsMobile()
@@ -149,7 +224,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   // Navigation is handled by parent component via onSearchChange prop
 
   // Check if add torrent modal should be open
-  const isAddTorrentModalOpen = search?.modal === "add-torrent"
+  const isAddTorrentModalOpen = !isAllInstances && search?.modal === "add-torrent"
 
   const handleAddTorrentModalChange = (open: boolean) => {
     if (open) {
@@ -163,7 +238,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   }
 
   // Check if create torrent modal should be open
-  const isCreateTorrentModalOpen = search?.modal === "create-torrent"
+  const isCreateTorrentModalOpen = !isAllInstances && search?.modal === "create-torrent"
 
   const handleCreateTorrentModalChange = (open: boolean) => {
     if (open) {
@@ -177,7 +252,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   }
 
   // Check if tasks modal should be open
-  const isTasksModalOpen = search?.modal === "tasks"
+  const isTasksModalOpen = !isAllInstances && search?.modal === "tasks"
 
   const handleTasksModalChange = (open: boolean) => {
     if (open) {
@@ -197,18 +272,27 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   const [categories, setCategories] = useState<Record<string, Category> | undefined>(undefined)
   const [tags, setTags] = useState<string[] | undefined>(undefined)
   const [useSubcategories, setUseSubcategories] = useState<boolean>(false)
+  const [supportsTrackerHealth, setSupportsTrackerHealth] = useState<boolean>(false)
   const [lastInstanceId, setLastInstanceId] = useState<number | null>(null)
+
+  const isSameTorrent = useCallback((left: Torrent | null, right: Torrent | null) => {
+    if (!left || !right) {
+      return false
+    }
+
+    return left.hash === right.hash && getTorrentInstanceId(left) === getTorrentInstanceId(right)
+  }, [getTorrentInstanceId])
 
   const handleTorrentSelect = useCallback((torrent: Torrent | null, initialTab?: string) => {
     // Toggle selection: if the same torrent is clicked without a tab override, deselect it
-    if (torrent && selectedTorrent?.hash === torrent.hash && !initialTab) {
+    if (torrent && isSameTorrent(selectedTorrent, torrent) && !initialTab) {
       setSelectedTorrent(null)
       setInitialDetailsTab(undefined)
     } else {
       setSelectedTorrent(torrent)
       setInitialDetailsTab(initialTab)
     }
-  }, [selectedTorrent?.hash])
+  }, [isSameTorrent, selectedTorrent])
 
   // Clear selected torrent and mark data as potentially stale when instance changes
   // Don't immediately clear torrentCounts/categories/tags to prevent showing 0 values
@@ -219,7 +303,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
   }, [instanceId])
 
   // Callback when filtered data updates - now receives counts, categories, tags, and useSubcategories from backend
-  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: TorrentCounts, categoriesData?: Record<string, Category>, tagsData?: string[], subcategoriesEnabled?: boolean) => {
+  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: TorrentCounts, categoriesData?: Record<string, Category>, tagsData?: string[], subcategoriesEnabled?: boolean, trackerHealthEnabled?: boolean) => {
     // Update the last instance ID when we receive new data
     setLastInstanceId(instanceId)
 
@@ -272,6 +356,9 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
     // Update subcategories flag when provided
     if (subcategoriesEnabled !== undefined) {
       setUseSubcategories(subcategoriesEnabled)
+    }
+    if (trackerHealthEnabled !== undefined) {
+      setSupportsTrackerHealth(trackerHealthEnabled)
     }
   }, [instanceId])
 
@@ -346,6 +433,8 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
           <FilterSidebar
             key={`filter-sidebar-${instanceId}`}
             instanceId={instanceId}
+            readOnly={isAllInstances}
+            supportsTrackerHealth={isAllInstances ? supportsTrackerHealth : undefined}
             selectedFilters={filters}
             onFilterChange={setFilters}
             torrentCounts={torrentCounts}
@@ -375,12 +464,14 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
           }}
         >
           <SheetHeader className="px-4 py-3 border-b">
-            <SheetTitle className="text-lg font-semibold">Filters</SheetTitle>
+            <SheetTitle className="text-lg font-semibold">{t("filterSidebar.title")}</SheetTitle>
           </SheetHeader>
           <div className="flex-1 min-h-0 overflow-hidden">
             <FilterSidebar
               key={`filter-sidebar-mobile-${instanceId}`}
               instanceId={instanceId}
+              readOnly={isAllInstances}
+              supportsTrackerHealth={isAllInstances ? supportsTrackerHealth : undefined}
               selectedFilters={filters}
               onFilterChange={setFilters}
               torrentCounts={torrentCounts}
@@ -415,6 +506,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
                 <div className="h-full">
                   <TorrentTableResponsive
                     instanceId={instanceId}
+                    instanceIds={unifiedScopeInstanceIds}
                     filters={filters}
                     selectedTorrent={selectedTorrent}
                     onTorrentSelect={handleTorrentSelect}
@@ -453,7 +545,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
                   >
                     <div className="h-full border-t bg-background">
                       <TorrentDetailsPanel
-                        instanceId={instanceId}
+                        instanceId={selectedTorrentInstanceId}
                         torrent={selectedTorrent}
                         initialTab={initialDetailsTab}
                         onInitialTabConsumed={handleInitialTabConsumed}
@@ -474,6 +566,7 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
           <div className="flex flex-col h-full px-4">
             <TorrentTableResponsive
               instanceId={instanceId}
+              instanceIds={unifiedScopeInstanceIds}
               filters={filters}
               selectedTorrent={selectedTorrent}
               onTorrentSelect={handleTorrentSelect}
@@ -504,13 +597,13 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
             <SheetHeader className="sr-only">
               <VisuallyHidden>
                 <SheetTitle>
-                  {selectedTorrent ? `Torrent Details: ${selectedTorrent.name}` : "Torrent Details"}
+                  {selectedTorrent ? t("page.torrentDetailsWithName", { name: selectedTorrent.name }) : t("page.torrentDetails")}
                 </SheetTitle>
               </VisuallyHidden>
             </SheetHeader>
             {selectedTorrent && (
               <TorrentDetailsPanel
-                instanceId={instanceId}
+                instanceId={selectedTorrentInstanceId}
                 torrent={selectedTorrent}
                 initialTab={initialDetailsTab}
                 onInitialTabConsumed={handleInitialTabConsumed}
@@ -523,23 +616,27 @@ export function Torrents({ instanceId, search, onSearchChange }: TorrentsProps) 
       )}
 
       {/* Torrent Creator Dialog */}
-      <TorrentCreatorDialog
-        instanceId={instanceId}
-        open={isCreateTorrentModalOpen}
-        onOpenChange={handleCreateTorrentModalChange}
-      />
+      {!isAllInstances && (
+        <TorrentCreatorDialog
+          instanceId={instanceId}
+          open={isCreateTorrentModalOpen}
+          onOpenChange={handleCreateTorrentModalChange}
+        />
+      )}
 
       {/* Torrent Creation Tasks Modal */}
-      <Dialog open={isTasksModalOpen} onOpenChange={handleTasksModalChange}>
-        <DialogContent className="w-full sm:max-w-screen-sm md:max-w-screen-md lg:max-w-screen-xl xl:max-w-screen-xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Torrent Creation Tasks</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-auto">
-            <TorrentCreationTasks instanceId={instanceId} />
-          </div>
-        </DialogContent>
-      </Dialog>
+      {!isAllInstances && (
+        <Dialog open={isTasksModalOpen} onOpenChange={handleTasksModalChange}>
+          <DialogContent className="w-full sm:max-w-screen-sm md:max-w-screen-md lg:max-w-screen-xl xl:max-w-screen-xl max-h-[85vh] overflow-hidden flex flex-col">
+            <DialogHeader>
+              <DialogTitle>{t("creationTasks.dialogTitle")}</DialogTitle>
+            </DialogHeader>
+            <div className="flex-1 overflow-auto">
+              <TorrentCreationTasks instanceId={instanceId} />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

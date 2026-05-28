@@ -6,6 +6,7 @@
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useCrossSeedSearch } from "@/hooks/useCrossSeedSearch"
 import { useIsMobile } from "@/hooks/useMediaQuery"
+import { isAllInstancesScope } from "@/lib/instances"
 import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useEffect } from "react"
 import { TorrentCardsMobile } from "./TorrentCardsMobile"
@@ -13,6 +14,8 @@ import { TorrentTableOptimized } from "./TorrentTableOptimized"
 
 interface TorrentTableResponsiveProps {
   instanceId: number
+  instanceIds?: number[]
+  readOnly?: boolean
   filters?: TorrentFilters
   selectedTorrent?: Torrent | null
   onTorrentSelect?: (torrent: Torrent | null) => void
@@ -24,7 +27,8 @@ interface TorrentTableResponsiveProps {
     counts?: TorrentCounts,
     categories?: Record<string, Category>,
     tags?: string[],
-    useSubcategories?: boolean
+    useSubcategories?: boolean,
+    supportsTrackerHealth?: boolean
   ) => void
   onFilterChange?: (filters: TorrentFilters) => void
 }
@@ -32,7 +36,10 @@ interface TorrentTableResponsiveProps {
 export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
   const isMobile = useIsMobile()
   const { updateSelection, setFiltersAndInstance, setResetHandler } = useTorrentSelection()
+  const readOnly = props.readOnly ?? false
+  const isAllInstancesView = isAllInstancesScope(props.instanceId)
   const crossSeed = useCrossSeedSearch(props.instanceId)
+  const allowCrossSeedSearch = !readOnly && !isAllInstancesView
 
   // Update context with current filters and instance
   useEffect(() => {
@@ -42,16 +49,16 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
   // Memoize props to avoid unnecessary re-renders
   const memoizedProps = props // If props are stable, this is fine; otherwise use useMemo
 
-  if (isMobile) {
+  if (isMobile && !readOnly) {
     return (
       <>
         <TorrentCardsMobile
           {...memoizedProps}
-          canCrossSeedSearch={crossSeed.canCrossSeedSearch}
-          onCrossSeedSearch={crossSeed.openCrossSeedSearch}
-          isCrossSeedSearching={crossSeed.isCrossSeedSearching}
+          canCrossSeedSearch={allowCrossSeedSearch ? crossSeed.canCrossSeedSearch : false}
+          onCrossSeedSearch={allowCrossSeedSearch ? crossSeed.openCrossSeedSearch : undefined}
+          isCrossSeedSearching={allowCrossSeedSearch ? crossSeed.isCrossSeedSearching : false}
         />
-        {crossSeed.crossSeedDialog}
+        {allowCrossSeedSearch && crossSeed.crossSeedDialog}
       </>
     )
   }
@@ -59,13 +66,14 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
     <>
       <TorrentTableOptimized
         {...memoizedProps}
+        readOnly={readOnly}
         onSelectionChange={updateSelection}
         onResetSelection={setResetHandler}
-        canCrossSeedSearch={crossSeed.canCrossSeedSearch}
-        onCrossSeedSearch={crossSeed.openCrossSeedSearch}
-        isCrossSeedSearching={crossSeed.isCrossSeedSearching}
+        canCrossSeedSearch={allowCrossSeedSearch ? crossSeed.canCrossSeedSearch : false}
+        onCrossSeedSearch={allowCrossSeedSearch ? crossSeed.openCrossSeedSearch : undefined}
+        isCrossSeedSearching={allowCrossSeedSearch ? crossSeed.isCrossSeedSearching : false}
       />
-      {crossSeed.crossSeedDialog}
+      {allowCrossSeedSearch && crossSeed.crossSeedDialog}
     </>
   )
 }

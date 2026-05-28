@@ -70,6 +70,7 @@ multiple qBittorrent instances with support for 10k+ torrents.`,
 	rootCmd.AddCommand(RunServeCommand())
 	rootCmd.AddCommand(RunVersionCommand(buildinfo.Version))
 	rootCmd.AddCommand(RunGenerateConfigCommand())
+	rootCmd.AddCommand(RunDBCommand())
 	rootCmd.AddCommand(RunCreateUserCommand())
 	rootCmd.AddCommand(RunChangePasswordCommand())
 	rootCmd.AddCommand(RunUpdateCommand())
@@ -214,7 +215,7 @@ If no --config-dir is specified, uses the OS-specific default location:
 				cfg.SetDataDir(dataDir)
 			}
 
-			db, err := database.New(cfg.GetDatabasePath())
+			db, err := database.OpenFromConfig(cfg.Config, cfg.GetDatabasePath())
 			if err != nil {
 				return fmt.Errorf("failed to initialize database: %w", err)
 			}
@@ -301,11 +302,13 @@ If no --config-dir is specified, uses the OS-specific default location:
 			}
 
 			dbPath := cfg.GetDatabasePath()
-			if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-				return fmt.Errorf("database not found at %s. Create a user first with 'create-user' command", dbPath)
+			if strings.EqualFold(strings.TrimSpace(cfg.Config.DatabaseEngine), "sqlite") {
+				if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+					return fmt.Errorf("database not found at %s. Create a user first with 'create-user' command", dbPath)
+				}
 			}
 
-			db, err := database.New(dbPath)
+			db, err := database.OpenFromConfig(cfg.Config, dbPath)
 			if err != nil {
 				return fmt.Errorf("failed to initialize database: %w", err)
 			}
@@ -457,6 +460,10 @@ func (app *Application) runServer() {
 		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
 	}
 
+	if err := cfg.Config.NormalizeCORSAllowedOrigins(); err != nil {
+		log.Fatal().Err(err).Msg("Invalid corsAllowedOrigins configuration")
+	}
+
 	trackerIconService, err := trackericons.NewService(cfg.GetDataDir(), buildinfo.UserAgent)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to prepare tracker icon cache")
@@ -494,7 +501,7 @@ func (app *Application) runServer() {
 		Msg("Initialized Dodo Payments client")
 
 	// Initialize database
-	db, err := database.New(cfg.GetDatabasePath())
+	db, err := database.OpenFromConfig(cfg.Config, cfg.GetDatabasePath())
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to initialize database")
 	}
@@ -570,10 +577,7 @@ func (app *Application) runServer() {
 	if cacheSettings, err := torznabSearchCache.GetSettings(context.Background()); err != nil {
 		log.Warn().Err(err).Msg("Using default torznab search cache TTL (failed to load settings)")
 	} else if cacheSettings != nil && cacheSettings.TTLMinutes > 0 {
-		cacheTTL = time.Duration(cacheSettings.TTLMinutes) * time.Minute
-		if cacheTTL < jackett.MinSearchCacheTTL {
-			cacheTTL = jackett.MinSearchCacheTTL
-		}
+		cacheTTL = max(time.Duration(cacheSettings.TTLMinutes)*time.Minute, jackett.MinSearchCacheTTL)
 
 		if rebased, err := torznabSearchCache.RebaseTTL(context.Background(), int(cacheTTL/time.Minute)); err != nil {
 			log.Warn().Err(err).Msg("Failed to rebase torznab search cache TTL to persisted settings")
@@ -617,6 +621,7 @@ func (app *Application) runServer() {
 	}
 	instanceCrossSeedCompletionStore := models.NewInstanceCrossSeedCompletionStore(db)
 	crossSeedBlocklistStore := models.NewCrossSeedBlocklistStore(db)
+	seasonPackRunStore := models.NewSeasonPackRunStore(db)
 	crossSeedService := crossseed.NewService(
 		instanceStore,
 		syncManager,
@@ -631,9 +636,12 @@ func (app *Application) runServer() {
 		trackerCustomizationStore,
 		notificationService,
 		cfg.Config.CrossSeedRecoverErroredTorrents,
+		seasonPackRunStore,
+		crossSeedStore.GetSeasonPackTVDBCredentialsUpdatedAt,
+		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
-	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService)
+	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService)
@@ -643,67 +651,11 @@ func (app *Application) runServer() {
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
 		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
-		trackerDomain := ""
-		if torrent.Tracker != "" {
-			trackerDomain = syncManager.ExtractDomainFromURL(torrent.Tracker)
-		}
-		tags := []string{}
-		if strings.TrimSpace(torrent.Tags) != "" {
-			for tag := range strings.SplitSeq(torrent.Tags, ",") {
-				trimmed := strings.TrimSpace(tag)
-				if trimmed == "" {
-					continue
-				}
-				tags = append(tags, trimmed)
-			}
-		}
-		notificationService.Notify(ctx, notifications.Event{
-			Type:          notifications.EventTorrentCompleted,
-			InstanceID:    instanceID,
-			TorrentName:   torrent.Name,
-			TorrentHash:   torrent.Hash,
-			TrackerDomain: trackerDomain,
-			Category:      torrent.Category,
-			Tags:          tags,
-		})
+		notificationService.Notify(ctx, buildTorrentCompletedEvent(syncManager, instanceID, torrent))
 	})
 
 	syncManager.SetTorrentAddedHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
-		trackerDomain := ""
-		if torrent.Tracker != "" {
-			trackerDomain = syncManager.ExtractDomainFromURL(torrent.Tracker)
-		}
-		tags := []string{}
-		if strings.TrimSpace(torrent.Tags) != "" {
-			for tag := range strings.SplitSeq(torrent.Tags, ",") {
-				trimmed := strings.TrimSpace(tag)
-				if trimmed == "" {
-					continue
-				}
-				tags = append(tags, trimmed)
-			}
-		}
-		notificationService.Notify(ctx, notifications.Event{
-			Type:                   notifications.EventTorrentAdded,
-			InstanceID:             instanceID,
-			TorrentName:            torrent.Name,
-			TorrentHash:            torrent.Hash,
-			TorrentAddedOn:         torrent.AddedOn,
-			TorrentETASeconds:      torrent.ETA,
-			TorrentState:           string(torrent.State),
-			TorrentProgress:        torrent.Progress,
-			TorrentRatio:           torrent.Ratio,
-			TorrentTotalSizeBytes:  torrent.TotalSize,
-			TorrentDownloadedBytes: torrent.Downloaded,
-			TorrentAmountLeftBytes: torrent.AmountLeft,
-			TorrentDlSpeedBps:      torrent.DlSpeed,
-			TorrentUpSpeedBps:      torrent.UpSpeed,
-			TorrentNumSeeds:        torrent.NumSeeds,
-			TorrentNumLeechs:       torrent.NumLeechs,
-			TrackerDomain:          trackerDomain,
-			Category:               torrent.Category,
-			Tags:                   tags,
-		})
+		notifyTorrentAddedWithDelay(ctx, syncManager, notificationService, instanceID, torrent)
 	})
 
 	automationCtx, automationCancel := context.WithCancel(context.Background())
@@ -823,6 +775,7 @@ func (app *Application) runServer() {
 		NotificationTargetStore:          notificationTargetStore,
 		NotificationService:              notificationService,
 		InstanceCrossSeedCompletionStore: instanceCrossSeedCompletionStore,
+		SeasonPackRunStore:               seasonPackRunStore,
 		OrphanScanStore:                  orphanScanStore,
 		OrphanScanService:                orphanScanService,
 		DirScanService:                   dirScanService,

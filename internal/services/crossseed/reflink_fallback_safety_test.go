@@ -67,10 +67,10 @@ func (*reflinkFallbackSafetySyncManager) GetAppPreferences(context.Context, int)
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (m *reflinkFallbackSafetySyncManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) error {
+func (m *reflinkFallbackSafetySyncManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addTorrentOpts = make(map[string]string, len(options))
 	maps.Copy(m.addTorrentOpts, options)
-	return nil
+	return nil, nil
 }
 
 func (*reflinkFallbackSafetySyncManager) BulkAction(context.Context, int, []string, string) error {

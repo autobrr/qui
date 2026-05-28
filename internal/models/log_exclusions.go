@@ -5,10 +5,14 @@ package models
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/dbinterface"
 )
@@ -37,6 +41,7 @@ func (s *LogExclusionsStore) Get(ctx context.Context) (*LogExclusions, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, patterns, created_at, updated_at
 		FROM log_exclusions
+		ORDER BY id ASC
 		LIMIT 1
 	`)
 
@@ -52,14 +57,7 @@ func (s *LogExclusionsStore) Get(ctx context.Context) (*LogExclusions, error) {
 		return nil, err
 	}
 
-	// Parse JSON field
-	if patternsJSON != "" && patternsJSON != "[]" {
-		if err := json.Unmarshal([]byte(patternsJSON), &le.Patterns); err != nil {
-			le.Patterns = []string{}
-		}
-	} else {
-		le.Patterns = []string{}
-	}
+	le.Patterns = parseLogExclusionPatterns(patternsJSON)
 
 	return &le, nil
 }
@@ -103,23 +101,63 @@ func (s *LogExclusionsStore) Update(ctx context.Context, input *LogExclusionsInp
 
 // createDefault creates empty log exclusions
 func (s *LogExclusionsStore) createDefault(ctx context.Context) (*LogExclusions, error) {
-	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO log_exclusions (patterns)
-		VALUES ('[]')
+	switch dbinterface.DialectOf(s.db) {
+	case "postgres":
+		_, err := s.db.ExecContext(ctx, `
+			INSERT INTO log_exclusions (id, patterns)
+			VALUES (1, '[]')
+			ON CONFLICT (id) DO NOTHING
+		`)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		_, err := s.db.ExecContext(ctx, `
+			INSERT OR IGNORE INTO log_exclusions (id, patterns)
+			VALUES (1, '[]')
+		`)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, patterns, created_at, updated_at
+		FROM log_exclusions
+		WHERE id = 1
 	`)
-	if err != nil {
+
+	var le LogExclusions
+	var patternsJSON string
+	if err := row.Scan(&le.ID, &patternsJSON, &le.CreatedAt, &le.UpdatedAt); err != nil {
 		return nil, err
 	}
+	le.Patterns = parseLogExclusionPatterns(patternsJSON)
+	return &le, nil
+}
 
-	id, err := res.LastInsertId()
-	if err != nil {
-		return nil, err
+func parseLogExclusionPatterns(patternsJSON string) []string {
+	if patternsJSON == "" || patternsJSON == "[]" {
+		return []string{}
 	}
 
-	return &LogExclusions{
-		ID:        int(id),
-		Patterns:  []string{},
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}, nil
+	var patterns []string
+	if err := json.Unmarshal([]byte(patternsJSON), &patterns); err != nil {
+		sum := sha256.Sum256([]byte(patternsJSON))
+		patternsHash := hex.EncodeToString(sum[:])
+		if len(patternsHash) > 12 {
+			patternsHash = patternsHash[:12]
+		}
+
+		log.Warn().
+			Err(err).
+			Int("patterns_json_len", len(patternsJSON)).
+			Str("patterns_json_sha256", patternsHash).
+			Msg("Failed to parse log exclusion patterns")
+		return []string{}
+	}
+	if patterns == nil {
+		return []string{}
+	}
+	return patterns
 }

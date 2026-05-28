@@ -144,11 +144,11 @@ func (r *LicenseRepo) HasPremiumAccess(ctx context.Context) (bool, error) {
 		FROM licenses
 		WHERE product_name = 'premium-access'
 		AND status = ?
-		AND (expires_at IS NULL OR expires_at > datetime('now'))
+		AND (expires_at IS NULL OR expires_at > ?)
 	`
 
 	var count int
-	err := r.db.QueryRowContext(ctx, query, models.LicenseStatusActive).Scan(&count)
+	err := r.db.QueryRowContext(ctx, query, models.LicenseStatusActive, time.Now().UTC()).Scan(&count)
 	if err != nil {
 		return false, err
 	}

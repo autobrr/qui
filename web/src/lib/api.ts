@@ -7,6 +7,7 @@ import type {
   AddRSSFeedRequest,
   AddRSSFolderRequest,
   AddTorrentResponse,
+  ApplicationInfo,
   AppPreferences,
   AsyncIndexerFilteringState,
   AuthResponse,
@@ -34,6 +35,7 @@ import type {
   CrossSeedSearchSettings,
   CrossSeedSearchSettingsPatch,
   CrossSeedSearchStatus,
+  SeasonPackRun,
   CrossSeedTorrentInfo,
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
@@ -41,6 +43,7 @@ import type {
   DashboardSettingsInput,
   DirScanDirectory,
   DirScanDirectoryCreate,
+  DirScanTriggerResponse,
   DirScanDirectoryUpdate,
   DirScanFile,
   DirScanRun,
@@ -96,6 +99,7 @@ import type {
   TorrentCreationTask,
   TorrentCreationTaskResponse,
   TorrentFile,
+  TorrentFileMediaInfoResponse,
   TorrentFilters,
   TorrentProperties,
   TorrentResponse,
@@ -319,14 +323,36 @@ async function attemptSSORecoveryNavigation(options?: { bypassGuard?: boolean; t
   sessionStorage.setItem(SSO_RECOVERY_GUARD_KEY, "1")
   sessionStorage.setItem(SSO_RECOVERY_TS_KEY, Date.now().toString())
 
-  // Clear all caches (including the service worker's precache) so the next
-  // navigation goes to the network. The SW stays registered but will fall back
-  // to the network on cache miss, letting the SSO proxy intercept the request.
-  // Unregistering the SW entirely can break the SSO proxy's auth flow.
+  // Scope cleanup to qui's own service worker and caches to avoid disrupting
+  // other apps on a shared origin (e.g. https://host/qui alongside https://host/photos).
+  const quiScope = new URL(withBasePath("/"), window.location.origin).href
+
+  // Unregister qui's service worker so its NavigationRoute cannot intercept the
+  // recovery navigation. Without this, Workbox's createHandlerBoundToURL tries
+  // to fetch index.html from the network on cache miss, which Badger/Pangolin
+  // redirect cross-origin — the SW can't handle that response for a navigation
+  // request, and some mobile browsers don't fall back to the network properly.
+  // The SW re-registers automatically on the next page load via pwa.ts.
+  if ("serviceWorker" in navigator) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(
+        registrations.filter(r => r.scope === quiScope).map(r => r.unregister())
+      )
+    } catch {
+      // ignore unregister errors
+    }
+  }
+
+  // Clear qui's caches so the next navigation goes straight to the network,
+  // letting the SSO proxy intercept. Workbox names its precache after the SW
+  // scope, so filtering by quiScope avoids touching other apps' caches.
   if ("caches" in window) {
     try {
       const names = await caches.keys()
-      await Promise.all(names.map(name => caches.delete(name)))
+      await Promise.all(
+        names.filter(name => name.endsWith(quiScope)).map(name => caches.delete(name))
+      )
     } catch {
       // ignore cache clear errors
     }
@@ -562,7 +588,6 @@ class ApiClient {
   async getOIDCConfig(): Promise<{
     enabled: boolean
     authorizationUrl: string
-    state: string
     disableBuiltInLogin: boolean
     issuerUrl: string
   }> {
@@ -573,7 +598,6 @@ class ApiClient {
       return {
         enabled: false,
         authorizationUrl: "",
-        state: "",
         disableBuiltInLogin: false,
         issuerUrl: "",
       }
@@ -778,6 +802,12 @@ class ApiClient {
     document.body.removeChild(a)
   }
 
+  async getTorrentFileMediaInfo(instanceId: number, hash: string, fileIndex: number): Promise<TorrentFileMediaInfoResponse> {
+    return this.request<TorrentFileMediaInfoResponse>(
+      `/instances/${instanceId}/torrents/${encodeURIComponent(hash)}/files/${fileIndex}/mediainfo`
+    )
+  }
+
   // Torrent endpoints
   async getTorrents(
     instanceId: number,
@@ -834,13 +864,18 @@ class ApiClient {
 
   async getTorrentField(
     instanceId: number,
-    field: "name" | "hash" | "full_path",
+    field: "name" | "hash" | "full_path" | "tags" | "magnet_uri",
     params: {
       sort?: string
       order?: "asc" | "desc"
+      hashes?: string[]
+      targets?: Array<{ instanceId: number; hash: string }>
+      selectAll?: boolean
       search?: string
       filters?: TorrentFilters
       excludeHashes?: string[]
+      excludeTargets?: Array<{ instanceId: number; hash: string }>
+      instanceIds?: number[]
     }
   ): Promise<{ values: string[]; total: number }> {
     return this.request(
@@ -851,9 +886,14 @@ class ApiClient {
           field,
           sort: params.sort,
           order: params.order,
+          hashes: params.hashes,
+          targets: params.targets,
+          selectAll: params.selectAll,
           search: params.search,
           filters: params.filters,
           excludeHashes: params.excludeHashes,
+          excludeTargets: params.excludeTargets,
+          instanceIds: params.instanceIds,
         }),
       }
     )
@@ -867,6 +907,7 @@ class ApiClient {
       order?: "asc" | "desc"
       search?: string
       filters?: TorrentFilters
+      instanceIds?: number[]
     }
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
@@ -876,6 +917,9 @@ class ApiClient {
     if (params.order) searchParams.set("order", params.order)
     if (params.search) searchParams.set("search", params.search)
     if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
+    if (params.instanceIds && params.instanceIds.length > 0) {
+      searchParams.set("instanceIds", params.instanceIds.join(","))
+    }
 
     type RawCrossInstanceTorrent = Omit<CrossInstanceTorrent, "instanceId" | "instanceName"> & {
       instanceId?: number
@@ -1026,18 +1070,24 @@ class ApiClient {
     instanceId: number,
     data: {
       hashes: string[]
-      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
+      targets?: Array<{ instanceId: number; hash: string }>
+      action: "pause" | "resume" | "delete" | "recheck" | "reannounce" | "increasePriority" | "decreasePriority" | "topPriority" | "bottomPriority" | "setCategory" | "addTags" | "removeTags" | "setTags" | "setComment" | "toggleAutoTMM" | "forceStart" | "setShareLimit" | "setUploadLimit" | "setDownloadLimit" | "setLocation" | "editTrackers" | "addTrackers" | "removeTrackers" | "toggleSequentialDownload"
       deleteFiles?: boolean
       category?: string
       tags?: string  // Comma-separated tags string
+      comment?: string  // For setComment action
       enable?: boolean  // For toggleAutoTMM
       selectAll?: boolean  // When true, apply to all torrents matching filters
       filters?: TorrentFilters
       search?: string  // Search query when selectAll is true
       excludeHashes?: string[]  // Hashes to exclude when selectAll is true
+      excludeTargets?: Array<{ instanceId: number; hash: string }>
+      instanceIds?: number[]
       ratioLimit?: number  // For setShareLimit action
       seedingTimeLimit?: number  // For setShareLimit action (minutes)
       inactiveSeedingTimeLimit?: number  // For setShareLimit action (minutes)
+      shareLimitAction?: string  // setShareLimit: Qt enum Stop, Remove, etc.; omit for default
+      shareLimitsMode?: string  // setShareLimit: Qt enum MatchAny, MatchAll; omit for default
       uploadLimit?: number  // For setUploadLimit action (KB/s)
       downloadLimit?: number  // For setDownloadLimit action (KB/s)
       location?: string  // For setLocation action
@@ -1261,6 +1311,8 @@ class ApiClient {
       download_volume_factor: number
       upload_volume_factor: number
       guid: string
+      infohash_v1?: string
+      infohash_v2?: string
       imdb_id?: string
       tvdb_id?: string
       match_reason?: string
@@ -1318,6 +1370,8 @@ class ApiClient {
         downloadVolumeFactor: result.download_volume_factor,
         uploadVolumeFactor: result.upload_volume_factor,
         guid: result.guid,
+        infoHashV1: result.infohash_v1 ?? undefined,
+        infoHashV2: result.infohash_v2 ?? undefined,
         imdbId: result.imdb_id ?? undefined,
         tvdbId: result.tvdb_id ?? undefined,
         matchReason: result.match_reason ?? undefined,
@@ -1533,6 +1587,14 @@ class ApiClient {
     if (params?.limit !== undefined) search.set("limit", params.limit.toString())
     if (params?.offset !== undefined) search.set("offset", params.offset.toString())
     return this.request<CrossSeedSearchRun[]>(`/cross-seed/search/runs?${search.toString()}`)
+  }
+
+  async listSeasonPackRuns(params?: { limit?: number }): Promise<SeasonPackRun[]> {
+    const search = new URLSearchParams()
+    if (params?.limit !== undefined) search.set("limit", params.limit.toString())
+    const query = search.toString()
+    const suffix = query ? `?${query}` : ""
+    return this.request<SeasonPackRun[]>(`/cross-seed/season-pack/runs${suffix}`)
   }
 
   async triggerCrossSeedRun(payload: { dryRun?: boolean } = {}): Promise<CrossSeedRun> {
@@ -2000,6 +2062,10 @@ class ApiClient {
 
   async getQBittorrentAppInfo(instanceId: number): Promise<QBittorrentAppInfo> {
     return this.request<QBittorrentAppInfo>(`/instances/${instanceId}/app-info`)
+  }
+
+  async getApplicationInfo(): Promise<ApplicationInfo> {
+    return this.request<ApplicationInfo>("/application/info")
   }
 
   async getLatestVersion(): Promise<{
@@ -2483,8 +2549,8 @@ class ApiClient {
     return this.request(`/dir-scan/directories/${directoryId}/reset-files`, { method: "POST" })
   }
 
-  async triggerDirScan(directoryId: number): Promise<{ runId: number }> {
-    return this.request<{ runId: number }>(`/dir-scan/directories/${directoryId}/scan`, {
+  async triggerDirScan(directoryId: number): Promise<DirScanTriggerResponse> {
+    return this.request<DirScanTriggerResponse>(`/dir-scan/directories/${directoryId}/scan`, {
       method: "POST",
     })
   }

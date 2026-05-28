@@ -8,6 +8,8 @@ description: How qui lays out hardlink/reflink trees on disk.
 
 When **Hardlink mode** or **Reflink mode** is enabled for a qBittorrent instance, qui creates a directory tree that matches the incoming torrent’s expected layout, then adds the torrent pointing at that tree.
 
+Because these modes add torrents with an explicit `savepath` (the link-tree root), AutoTMM is always disabled for torrents added via hardlink/reflink mode.
+
 This applies to:
 - Cross-seed searches (RSS, completion, manual, scan)
 - Directory scan (dirscan) injections
@@ -55,5 +57,7 @@ For `flat`, an isolation folder is always used.
 If **Fallback to regular mode** is enabled, qui will fall back to adding the torrent with a normal `savepath` (pointing at the matched source files) when link-tree creation fails.
 
 This is particularly useful when hardlinking can intermittently fail due to filesystem/device boundaries (for example: pooled mounts where two paths look the same but resolve to different underlying devices).
+
+Because this fallback uses regular source-file paths instead of the link-tree directory, qui adds the torrent paused, rechecks it, and only auto-resumes after qBittorrent reports 100% complete. If **Skip recheck** is enabled, these fallback candidates are skipped.
 
 If fallback is disabled, qui skips/fails the candidate when link-tree creation fails.

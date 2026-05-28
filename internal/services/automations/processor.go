@@ -5,9 +5,12 @@ package automations
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"text/template"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
@@ -30,10 +33,14 @@ type torrentDesiredState struct {
 	downloadRule     ruleRef
 
 	// Share limits (last rule wins)
-	ratioLimit     *float64
-	seedingMinutes *int64
-	ratioRule      ruleRef
-	seedingRule    ruleRef
+	ratioLimit       *float64
+	seedingMinutes   *int64
+	shareLimitAction string
+	shareLimitsMode  string
+	ratioRule        ruleRef
+	seedingRule      ruleRef
+	shareActionRule  ruleRef
+	shareModeRule    ruleRef
 
 	// Pause (OR - any rule can trigger)
 	shouldPause bool
@@ -50,6 +57,11 @@ type torrentDesiredState struct {
 	// Reannounce (OR - any rule can trigger)
 	shouldReannounce bool
 	reannounceRule   ruleRef
+
+	// Auto management (last rule wins)
+	shouldAutoManage bool
+	autoManageValue  bool // true = enable ATM, false = disable ATM
+	autoManageRule   ruleRef
 
 	// Tags (accumulated, last action per tag wins)
 	currentTags  map[string]struct{}
@@ -88,6 +100,11 @@ type torrentDesiredState struct {
 	externalProgramID *int
 	programRuleID     int
 	programRuleName   string
+
+	// Export to instance (last rule wins)
+	exportToInstance         *models.ExportToInstanceAction
+	exportToInstanceRuleID   int
+	exportToInstanceRuleName string
 }
 
 type ruleRef struct {
@@ -109,6 +126,8 @@ type ruleRunStats struct {
 	RecheckConditionNotMet           int
 	ReannounceApplied                int
 	ReannounceConditionNotMet        int
+	AutoManageApplied                int
+	AutoManageConditionNotMet        int
 	TagConditionMet                  int
 	TagConditionNotMet               int
 	TagSkippedMissingUnregisteredSet int
@@ -122,13 +141,15 @@ type ruleRunStats struct {
 	MoveBlockedByCrossSeed           int
 	ExternalProgramApplied           int
 	ExternalProgramConditionNotMet   int
+	ExportToInstanceApplied          int
+	ExportToInstanceConditionNotMet  int
 }
 
 func (s *ruleRunStats) totalApplied() int {
 	if s == nil {
 		return 0
 	}
-	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.RecheckApplied + s.ReannounceApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied
+	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.RecheckApplied + s.ReannounceApplied + s.AutoManageApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied + s.ExportToInstanceApplied
 }
 
 func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *ruleRunStats {
@@ -170,17 +191,17 @@ func processTorrents(
 	sm *qbittorrent.SyncManager,
 	skipCheck func(hash string) bool,
 	stats map[int]*ruleRunStats,
+	existingStates map[string]*torrentDesiredState,
 ) map[string]*torrentDesiredState {
-	states := make(map[string]*torrentDesiredState)
-	crossSeedIndex := buildCrossSeedIndex(torrents)
+	var states map[string]*torrentDesiredState
+	if existingStates != nil {
+		states = existingStates
+	} else {
+		states = make(map[string]*torrentDesiredState)
+	}
 
-	// Stable sort for deterministic pagination: oldest first, then by hash
-	sort.Slice(torrents, func(i, j int) bool {
-		if torrents[i].AddedOn != torrents[j].AddedOn {
-			return torrents[i].AddedOn < torrents[j].AddedOn
-		}
-		return torrents[i].Hash < torrents[j].Hash
-	})
+	crossSeedIndex := buildCrossSeedIndex(torrents)
+	cpIndex := buildContentPathIndex(torrents)
 
 	for _, torrent := range torrents {
 		// Skip if recently processed
@@ -193,13 +214,18 @@ func processTorrents(
 			continue
 		}
 
-		// Initialize state for this torrent
-		state := &torrentDesiredState{
-			hash:         torrent.Hash,
-			name:         torrent.Name,
-			currentTags:  parseTorrentTags(torrent.Tags),
-			tagActions:   make(map[string]string),
-			tagRuleByTag: make(map[string]ruleRef),
+		// Initialize or retrieve existing state for this torrent
+		var state *torrentDesiredState
+		if existing, ok := states[torrent.Hash]; ok {
+			state = existing
+		} else {
+			state = &torrentDesiredState{
+				hash:         torrent.Hash,
+				name:         torrent.Name,
+				currentTags:  parseTorrentTags(torrent.Tags),
+				tagActions:   make(map[string]string),
+				tagRuleByTag: make(map[string]ruleRef),
+			}
 		}
 
 		// Get all tracker domains for this torrent
@@ -215,7 +241,7 @@ func processTorrents(
 			if ruleStats != nil {
 				ruleStats.MatchedTrackers++
 			}
-			processRuleForTorrent(rule, torrent, state, evalCtx, sm, crossSeedIndex, ruleStats, torrents)
+			processRuleForTorrent(rule, torrent, state, evalCtx, sm, crossSeedIndex, ruleStats, torrents, cpIndex)
 		}
 
 		// Only store if there are actions to take
@@ -233,7 +259,7 @@ func processTorrents(
 }
 
 // processRuleForTorrent applies a single rule to the torrent state.
-func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, allTorrents []qbt.Torrent) {
+func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, allTorrents []qbt.Torrent, cpIndex contentPathIndex) {
 	conditions := rule.Conditions
 	if conditions == nil {
 		return
@@ -288,6 +314,14 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			if conditions.ShareLimits.SeedingTimeMinutes != nil {
 				state.seedingMinutes = conditions.ShareLimits.SeedingTimeMinutes
 				state.seedingRule = ruleRef{id: rule.ID, name: rule.Name}
+			}
+			if conditions.ShareLimits.ShareLimitAction != nil {
+				state.shareLimitAction = *conditions.ShareLimits.ShareLimitAction
+				state.shareActionRule = ruleRef{id: rule.ID, name: rule.Name}
+			}
+			if conditions.ShareLimits.ShareLimitsMode != nil {
+				state.shareLimitsMode = *conditions.ShareLimits.ShareLimitsMode
+				state.shareModeRule = ruleRef{id: rule.ID, name: rule.Name}
 			}
 		} else if stats != nil {
 			stats.ShareConditionNotMet++
@@ -376,6 +410,26 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 	}
 
+	// Auto management (last rule wins)
+	if conditions.AutoManagement != nil {
+		shouldApply := conditions.AutoManagement.Condition == nil ||
+			EvaluateConditionWithContext(conditions.AutoManagement.Condition, torrent, evalCtx, 0)
+
+		if shouldApply {
+			if stats != nil {
+				stats.AutoManageApplied++
+			}
+			// Always record the last matching rule's desired state so later
+			// rules can override earlier ones (last rule wins). The actual
+			// API call is skipped when the torrent already has the desired state.
+			state.autoManageValue = conditions.AutoManagement.Enabled
+			state.autoManageRule = ruleRef{id: rule.ID, name: rule.Name}
+			state.shouldAutoManage = torrent.AutoManaged != state.autoManageValue
+		} else if stats != nil {
+			stats.AutoManageConditionNotMet++
+		}
+	}
+
 	// Tags
 	for _, tagAction := range conditions.TagActions() {
 		if tagAction == nil || !tagAction.Enabled || (len(tagAction.Tags) == 0 && !tagAction.UseTrackerAsTag) {
@@ -441,6 +495,23 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 	}
 
+	// Export to instance (last rule wins)
+	if conditions.ExportToInstance != nil && conditions.ExportToInstance.Enabled && conditions.ExportToInstance.TargetInstanceID > 0 {
+		shouldApply := conditions.ExportToInstance.Condition == nil ||
+			EvaluateConditionWithContext(conditions.ExportToInstance.Condition, torrent, evalCtx, 0)
+
+		if shouldApply {
+			if stats != nil {
+				stats.ExportToInstanceApplied++
+			}
+			state.exportToInstance = conditions.ExportToInstance
+			state.exportToInstanceRuleID = rule.ID
+			state.exportToInstanceRuleName = rule.Name
+		} else if stats != nil {
+			stats.ExportToInstanceConditionNotMet++
+		}
+	}
+
 	// Delete
 	if conditions.Delete != nil && conditions.Delete.Enabled {
 		// Safety: delete must always have an explicit condition.
@@ -470,7 +541,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 				// Only call this when the delete condition uses FREE_SPACE, otherwise we might
 				// accidentally mutate a previously-loaded rule's projection state.
 				if evalCtx != nil && ConditionUsesField(conditions.Delete.Condition, FieldFreeSpace) {
-					updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, allTorrents)
+					updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, cpIndex)
 				}
 			} else if stats != nil {
 				stats.DeleteConditionNotMet++
@@ -750,11 +821,13 @@ func hasActions(state *torrentDesiredState) bool {
 		state.shouldResume ||
 		state.shouldRecheck ||
 		state.shouldReannounce ||
+		state.shouldAutoManage ||
 		len(state.tagActions) > 0 ||
 		state.category != nil ||
 		state.shouldDelete ||
 		state.shouldMove ||
-		state.externalProgramID != nil
+		state.externalProgramID != nil ||
+		state.exportToInstance != nil
 }
 
 // selectTrackerTag picks the best tracker domain to use as a tag.
@@ -794,7 +867,7 @@ func getTrackerDisplayName(domains []string, evalCtx *EvalContext) (displayName 
 // parseTorrentTags parses the comma-separated tag string into a set.
 func parseTorrentTags(tags string) map[string]struct{} {
 	result := make(map[string]struct{})
-	for _, t := range strings.Split(tags, ",") {
+	for t := range strings.SplitSeq(tags, ",") {
 		if t = strings.TrimSpace(t); t != "" {
 			result[t] = struct{}{}
 		}
@@ -805,15 +878,15 @@ func parseTorrentTags(tags string) map[string]struct{} {
 // updateCumulativeFreeSpaceCleared updates the cumulative free space cleared for the "free space" condition.
 // Only increments SpaceToClear when deleteFreesSpace returns true for the given mode/torrent.
 // This ensures keep-files and preserve-cross-seeds modes don't over-project freed disk space.
-// When HardlinkSignatureByHash is populated, also dedupes by hardlink signature to avoid
+// When DeleteSafeHardlinkSignatureByHash is populated, also dedupes by hardlink signature to avoid
 // double-counting torrents that share the same physical files via hardlinks.
-func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, allTorrents []qbt.Torrent) {
+func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, cpIndex contentPathIndex) {
 	if evalCtx == nil || evalCtx.FilesToClear == nil {
 		return
 	}
 
 	// Only count toward free space if this delete will actually free disk bytes
-	if !deleteFreesSpace(deleteMode, torrent, allTorrents) {
+	if !deleteFreesSpace(deleteMode, torrent, cpIndex) {
 		return
 	}
 
@@ -821,8 +894,8 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 	// Hardlink signature dedupe only makes sense when the delete mode can actually delete the
 	// whole hardlink group via expansion; this avoids affecting other delete modes.
 	if deleteMode == DeleteModeWithFilesIncludeCrossSeeds &&
-		evalCtx.HardlinkSignatureByHash != nil && evalCtx.HardlinkSignaturesToClear != nil {
-		if sig, ok := evalCtx.HardlinkSignatureByHash[torrent.Hash]; ok && sig != "" {
+		evalCtx.DeleteSafeHardlinkSignatureByHash != nil && evalCtx.HardlinkSignaturesToClear != nil {
+		if sig, ok := evalCtx.DeleteSafeHardlinkSignatureByHash[torrent.Hash]; ok && sig != "" {
 			if _, counted := evalCtx.HardlinkSignaturesToClear[sig]; counted {
 				// Already counted this hardlink group
 				return
@@ -850,4 +923,282 @@ func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext,
 	// This is a new torrent, so we add the file size to the cumulative space to clear
 	evalCtx.SpaceToClear += torrent.Size
 	evalCtx.FilesToClear[crossSeedKey] = struct{}{}
+}
+
+// CalculateScore computes the weighted score for a torrent based on configuration.
+func CalculateScore(torrent qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext) float64 {
+	var totalScore float64
+
+	if config == nil {
+		return 0
+	}
+
+	for _, rule := range config.ScoreRules {
+		switch rule.Type {
+		case models.ScoreRuleTypeFieldMultiplier:
+			if rule.FieldMultiplier != nil && rule.FieldMultiplier.Field != "" {
+				val := getNumericFieldValue(torrent, rule.FieldMultiplier.Field, evalCtx)
+				points := val * rule.FieldMultiplier.Multiplier
+				totalScore += points
+			}
+
+		case models.ScoreRuleTypeConditional:
+			if rule.Conditional != nil && rule.Conditional.Condition != nil {
+				if EvaluateConditionWithContext(rule.Conditional.Condition, torrent, evalCtx, 0) {
+					totalScore += rule.Conditional.Score
+				}
+			}
+		}
+	}
+
+	return totalScore
+}
+
+// SortTorrents sorts the slice in-place based on the configuration.
+// Always applies Hash (ASC) as a deterministic tiebreaker.
+// Returns an error if the sorting configuration is invalid (e.g. unsupported field).
+func SortTorrents(torrents []qbt.Torrent, config *models.SortingConfig, evalCtx *EvalContext) error {
+	if config != nil {
+		if config.SchemaVersion != "1" {
+			return fmt.Errorf("invalid schema version: %s", config.SchemaVersion)
+		}
+		if config.Direction != models.SortDirectionASC && config.Direction != models.SortDirectionDESC {
+			return fmt.Errorf("invalid direction: %s", config.Direction)
+		}
+
+		switch config.Type {
+		case models.SortingTypeSimple:
+			if !config.Field.IsNumeric() {
+				if !config.Field.IsString() {
+					return fmt.Errorf("unsupported sort field: %s", config.Field)
+				}
+			}
+		case models.SortingTypeScore:
+			if len(config.ScoreRules) == 0 {
+				return errors.New("score sort requires at least one rule")
+			}
+			for i, r := range config.ScoreRules {
+				switch r.Type {
+				case models.ScoreRuleTypeFieldMultiplier:
+					if r.FieldMultiplier == nil {
+						return fmt.Errorf("score rule %d: content missing for field multiplier", i)
+					}
+					if !r.FieldMultiplier.Field.IsNumeric() {
+						return fmt.Errorf("field multiplier requires numeric field, got: %s", r.FieldMultiplier.Field)
+					}
+				case models.ScoreRuleTypeConditional:
+					if r.Conditional == nil {
+						return fmt.Errorf("score rule %d: content missing for conditional", i)
+					}
+					if r.Conditional.Condition == nil {
+						return fmt.Errorf("score rule %d: condition missing", i)
+					}
+				default:
+					return fmt.Errorf("score rule %d: unknown type %s", i, r.Type)
+				}
+			}
+		default:
+			return fmt.Errorf("unsupported sorting type: %s", config.Type)
+		}
+	}
+
+	// Optimization: Pre-calculate scores if using score mode to avoid re-evaluating in sort loop
+	var scores map[string]float64
+	if config != nil && config.Type == models.SortingTypeScore {
+		scores = make(map[string]float64, len(torrents))
+		for _, t := range torrents {
+			scores[t.Hash] = CalculateScore(t, config, evalCtx)
+		}
+	}
+
+	sort.Slice(torrents, func(i, j int) bool {
+		return compareTorrents(torrents[i], torrents[j], config, scores, evalCtx)
+	})
+
+	return nil
+}
+
+// compareTorrents is a helper function that returns true if t1 should sort before t2.
+func compareTorrents(t1, t2 qbt.Torrent, config *models.SortingConfig, scores map[string]float64, evalCtx *EvalContext) bool {
+	// 1. Primary Sort
+	if config != nil {
+		switch config.Type {
+		case models.SortingTypeSimple:
+			if config.Field.IsNumeric() {
+				v1 := getNumericFieldValue(t1, config.Field, evalCtx)
+				v2 := getNumericFieldValue(t2, config.Field, evalCtx)
+				if v1 != v2 {
+					if config.Direction == models.SortDirectionASC {
+						return v1 < v2
+					}
+					return v1 > v2
+				}
+			} else {
+				v1, _ := extractStringValue(t1, config.Field)
+				v2, _ := extractStringValue(t2, config.Field)
+				if v1 != v2 {
+					if config.Direction == models.SortDirectionASC {
+						return v1 < v2
+					}
+					return v1 > v2
+				}
+			}
+		case models.SortingTypeScore:
+			s1 := scores[t1.Hash]
+			s2 := scores[t2.Hash]
+			if s1 != s2 {
+				if config.Direction == models.SortDirectionASC {
+					return s1 < s2
+				}
+				return s1 > s2
+			}
+		default:
+			// Fallback for unknown config.Type. Should not happen.
+			if t1.AddedOn != t2.AddedOn {
+				return t1.AddedOn < t2.AddedOn
+			}
+		}
+	} else if t1.AddedOn != t2.AddedOn {
+		// Default sort: Oldest first (AddedOn ASC)
+		return t1.AddedOn < t2.AddedOn
+	}
+
+	// 2. Tiebreaker: Hash ASC
+	return t1.Hash < t2.Hash
+}
+
+// getNowUnix returns the current time from context or system time.
+func getNowUnix(evalCtx *EvalContext) int64 {
+	if evalCtx != nil && evalCtx.NowUnix != 0 {
+		return evalCtx.NowUnix
+	}
+	return time.Now().Unix()
+}
+
+// getNumericFieldValue returns the float64 representation of a field for scoring.
+// Returns 0 if field is not numeric or not found.
+//
+//nolint:exhaustive // Only numeric sort fields are supported.
+func getNumericFieldValue(t qbt.Torrent, field models.ConditionField, evalCtx *EvalContext) float64 {
+	switch field {
+	case models.FieldSize:
+		return float64(t.Size)
+	case models.FieldTotalSize:
+		return float64(t.TotalSize)
+	case models.FieldDownloaded:
+		return float64(t.Downloaded)
+	case models.FieldUploaded:
+		return float64(t.Uploaded)
+	case models.FieldAmountLeft:
+		return float64(t.AmountLeft)
+	case models.FieldFreeSpace:
+		if evalCtx != nil && evalCtx.FreeSpace > 0 {
+			return float64(evalCtx.FreeSpace)
+		}
+		return 0
+	case models.FieldAddedOn:
+		if t.AddedOn <= 0 {
+			return 0
+		}
+		return float64(t.AddedOn)
+	case models.FieldCompletionOn:
+		if t.CompletionOn <= 0 {
+			return 0
+		}
+		return float64(t.CompletionOn)
+	case models.FieldLastActivity:
+		if t.LastActivity <= 0 {
+			return 0
+		}
+		return float64(t.LastActivity)
+	case models.FieldSeedingTime:
+		if t.SeedingTime <= 0 {
+			return 0
+		}
+		return float64(t.SeedingTime)
+	case models.FieldTimeActive:
+		if t.TimeActive <= 0 {
+			return 0
+		}
+		return float64(t.TimeActive)
+	case models.FieldAddedOnAge, models.FieldCompletionOnAge, models.FieldLastActivityAge:
+		return getAgeFieldValue(evalCtx, field, t)
+	case models.FieldRatio:
+		return t.Ratio
+	case models.FieldProgress:
+		return t.Progress * 100
+	case models.FieldAvailability:
+		return t.Availability
+	case models.FieldDlSpeed:
+		return float64(t.DlSpeed)
+	case models.FieldUpSpeed:
+		return float64(t.UpSpeed)
+	case models.FieldNumSeeds:
+		return float64(t.NumSeeds)
+	case models.FieldNumLeechs:
+		return float64(t.NumLeechs)
+	case models.FieldNumComplete:
+		return float64(t.NumComplete)
+	case models.FieldNumIncomplete:
+		return float64(t.NumIncomplete)
+	case models.FieldTrackersCount:
+		return float64(t.TrackersCount)
+	case models.FieldSystemHour:
+		return float64(evaluateTime(evalCtx).Hour())
+	case models.FieldSystemMinute:
+		return float64(evaluateTime(evalCtx).Minute())
+	case models.FieldSystemDayOfWeek:
+		return float64(evaluateTime(evalCtx).Weekday())
+	case models.FieldSystemDay:
+		return float64(evaluateTime(evalCtx).Day())
+	case models.FieldSystemMonth:
+		return float64(evaluateTime(evalCtx).Month())
+	case models.FieldSystemYear:
+		return float64(evaluateTime(evalCtx).Year())
+	default:
+		return 0
+	}
+}
+
+//nolint:exhaustive // Only age-backed fields are supported.
+func getAgeFieldValue(evalCtx *EvalContext, field models.ConditionField, t qbt.Torrent) float64 {
+	var ts int64
+	switch field {
+	case models.FieldAddedOnAge:
+		ts = t.AddedOn
+	case models.FieldCompletionOnAge:
+		ts = t.CompletionOn
+	case models.FieldLastActivityAge:
+		ts = t.LastActivity
+	default:
+		return 0
+	}
+	if ts <= 0 {
+		return 0
+	}
+	return float64(getNowUnix(evalCtx) - ts)
+}
+
+//nolint:exhaustive // Only string sort fields are supported.
+func extractStringValue(t qbt.Torrent, field models.ConditionField) (string, bool) {
+	switch field {
+	case models.FieldName:
+		return strings.ToLower(t.Name), true
+	case models.FieldCategory:
+		return strings.ToLower(t.Category), true
+	case models.FieldTags:
+		return strings.ToLower(t.Tags), true
+	case models.FieldTracker:
+		return strings.ToLower(t.Tracker), true
+	case models.FieldState:
+		return strings.ToLower(string(t.State)), true
+	case models.FieldSavePath:
+		return strings.ToLower(t.SavePath), true
+	case models.FieldContentPath:
+		return strings.ToLower(t.ContentPath), true
+	case models.FieldComment:
+		return strings.ToLower(t.Comment), true
+	default:
+		return "", false
+	}
 }

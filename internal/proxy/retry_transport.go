@@ -4,6 +4,7 @@
 package proxy
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net"
@@ -23,6 +24,8 @@ const (
 	maxRetries       = 3
 	initialRetryWait = 50 * time.Millisecond
 	maxRetryWait     = 500 * time.Millisecond
+	// Small qBittorrent form posts should be replayable after re-login.
+	maxAuthReplayBodySize = 10 * 1024 * 1024
 )
 
 // RetryTransport wraps an http.RoundTripper with retry logic for transient network errors
@@ -120,6 +123,79 @@ func waitForRetry(req *http.Request, backoff time.Duration) error {
 	}
 }
 
+type requestReplayState struct {
+	replayable bool
+}
+
+func prepareRequestReplay(req *http.Request) (requestReplayState, error) {
+	if req == nil || req.Body == nil {
+		return requestReplayState{replayable: true}, nil
+	}
+
+	if req.ContentLength < 0 || req.ContentLength > maxAuthReplayBodySize {
+		return requestReplayState{}, nil
+	}
+
+	if req.GetBody != nil {
+		return requestReplayState{replayable: true}, nil
+	}
+
+	originalBody := req.Body
+	body, err := io.ReadAll(originalBody)
+	closeErr := originalBody.Close()
+	if err != nil {
+		return requestReplayState{}, err
+	}
+	if closeErr != nil {
+		return requestReplayState{}, closeErr
+	}
+
+	req.Body = io.NopCloser(bytes.NewReader(body))
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(body)), nil
+	}
+
+	return requestReplayState{replayable: true}, nil
+}
+
+func cloneRequestForAttempt(req *http.Request, attempt int) (*http.Request, error) {
+	reqClone := req.Clone(req.Context())
+	if attempt == 0 || req.Body == nil {
+		return reqClone, nil
+	}
+
+	if req.GetBody != nil {
+		body, err := req.GetBody()
+		if err != nil {
+			return nil, err
+		}
+		reqClone.Body = body
+	}
+
+	return reqClone, nil
+}
+
+func closeResponseBody(resp *http.Response) {
+	if resp == nil || resp.Body == nil {
+		return
+	}
+
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+}
+
+func canRetryForbidden(req *http.Request, proxyCtx *proxyContext, replay requestReplayState, authRetried bool) bool {
+	if authRetried || proxyCtx == nil || proxyCtx.session == nil {
+		return false
+	}
+
+	if req == nil || req.Body == nil {
+		return true
+	}
+
+	return replay.replayable && req.GetBody != nil
+}
+
 // RoundTrip implements http.RoundTripper with retry logic for transient errors
 //
 //nolint:wrapcheck // RoundTrip should not wrap errors - callers expect unwrapped transport errors
@@ -127,15 +203,34 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var lastErr error
 
 	base := t.transportFor(req)
+	proxyCtx, _ := getProxyContext(req.Context())
+	replay, err := prepareRequestReplay(req)
+	if err != nil {
+		return nil, err
+	}
+	authRetried := false
 
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		// Clone the request for retry attempts to ensure body can be replayed if needed
-		reqClone := req.Clone(req.Context())
+	for attempt, sendAttempt := 0, 0; attempt <= maxRetries; sendAttempt++ {
+		reqClone, err := cloneRequestForAttempt(req, sendAttempt)
+		if err != nil {
+			return nil, err
+		}
+		if proxyCtx != nil {
+			proxyCtx.applyAuthHeaders(reqClone)
+		}
 
 		resp, err := base.RoundTrip(reqClone)
 
 		// Success case
 		if err == nil {
+			if resp != nil && resp.StatusCode == http.StatusForbidden && canRetryForbidden(req, proxyCtx, replay, authRetried) {
+				closeResponseBody(resp)
+				if err := proxyCtx.refreshSession(req.Context()); err != nil {
+					return nil, err
+				}
+				authRetried = true
+				continue
+			}
 			if attempt > 0 {
 				log.Debug().
 					Str("method", req.Method).
@@ -156,6 +251,8 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		if err := waitForRetry(req, backoff); err != nil {
 			return nil, err
 		}
+
+		attempt++
 	}
 
 	return nil, lastErr

@@ -1,0 +1,194 @@
+{
+  "pageTitle": "Search Indexers",
+  "pageDescription": "Search across all enabled indexers. Pick a query type or leave Auto to have categories detected automatically.",
+  "indexerSummary": {
+    "label": "Indexers",
+    "noEnabled": "No enabled indexers",
+    "allEnabled": "All enabled ({{count}})",
+    "selected": "{{selected}} of {{total}} selected"
+  },
+  "indexerSheet": {
+    "title": "Indexer selection",
+    "description": "Pick which indexers to include in searches.",
+    "selectAll": "Select all",
+    "clearSelection": "Clear selection",
+    "noCategories": "No categories",
+    "backend": {
+      "prowlarr": "Prowlarr",
+      "native": "Native",
+      "jackett": "Jackett"
+    },
+    "footer": "{{selected}} of {{total}} enabled indexers selected",
+    "done": "Done"
+  },
+  "instanceSelector": {
+    "chooseTarget": "Choose target instance",
+    "noInstances": "No instances",
+    "offline": "Offline",
+    "targetNamed": "Target: {{name}}",
+    "targetNamedOffline": "Target: {{name}} (offline)",
+    "clearSelection": "Clear selection",
+    "noInstancesConfigured": "No instances configured",
+    "addInstanceNote": "Add a download instance under Settings > Instances."
+  },
+  "searchForm": {
+    "advanced": "Advanced",
+    "active": "Active",
+    "clear": "Clear",
+    "searching": "Searching...",
+    "search": "Search",
+    "advancedNote": "Optional (but recommended) Torznab parameters.",
+    "searchType": "Search type",
+    "searchQuery": "Search Query",
+    "noIndexers": "No enabled indexers available. Please add and enable indexers in the",
+    "indexersPage": "Indexers page"
+  },
+  "searchTypes": {
+    "auto": {
+      "label": "Auto detect",
+      "description": "Automatically infer the right categories",
+      "placeholder": "Try: \"Sample Movie 2024\", \"tt1234567\", \"tvdb 123456\", or \"Example Artist – Example Album\""
+    },
+    "movies": {
+      "label": "Movies",
+      "placeholder": "e.g., \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""
+    },
+    "tv": {
+      "label": "TV",
+      "placeholder": "e.g., \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\""
+    },
+    "music": {
+      "label": "Music",
+      "placeholder": "e.g., \"Example Artist – Example Album\", \"Sample Band – Debut EP\""
+    },
+    "books": {
+      "label": "Books & comics",
+      "placeholder": "e.g., \"Example Book Title\", \"Fictional Series Book 1\""
+    },
+    "apps": {
+      "label": "Apps & games",
+      "placeholder": "e.g., \"Sample OS ISO\", \"Example App 2025\""
+    },
+    "xxx": {
+      "label": "Adult",
+      "placeholder": "Enter a specific adult release name"
+    }
+  },
+  "advanced": {
+    "imdbId": {
+      "label": "IMDb ID",
+      "placeholder": "tt1234567"
+    },
+    "tvdbId": {
+      "label": "TVDb ID",
+      "placeholder": "12345"
+    },
+    "year": {
+      "label": "Year",
+      "placeholder": "2024"
+    },
+    "season": {
+      "label": "Season",
+      "placeholder": "1"
+    },
+    "episode": {
+      "label": "Episode",
+      "placeholder": "2"
+    },
+    "artist": {
+      "label": "Artist",
+      "placeholder": "Nine Inch Nails"
+    },
+    "album": {
+      "label": "Album",
+      "placeholder": "The Fragile"
+    },
+    "limit": {
+      "label": "Limit",
+      "placeholder": "100"
+    },
+    "offset": {
+      "label": "Offset",
+      "placeholder": "0"
+    }
+  },
+  "results": {
+    "showing": "Showing {{filtered}} of {{total}} results",
+    "filterPlaceholder": "Filter results...",
+    "clearSearch": "Clear search",
+    "clearAllFilters": "Clear all column filters",
+    "pickInstance": "Pick instance",
+    "download": "Download",
+    "viewDetails": "View details",
+    "clearSelectionButton": "Clear selection",
+    "actions": "Actions",
+    "quickAddTo": "Quick add to...",
+    "cachedSummary": "Cached {{cached}} · Expires {{expires}}",
+    "cacheSource": "Source: {{source}} · Scope: {{scope}}",
+    "refreshReadyIn": "Ready in {{seconds}}s",
+    "refreshFromIndexers": "Refresh from indexers",
+    "noValue": "-",
+    "categoryFallback": "Category {{id}}",
+    "noResultsFor": "No results found for \"{{query}}\"",
+    "enterQuery": "Enter a search query to get started",
+    "free": "Free",
+    "freeNeutral": "Neutral",
+    "noInfoUrlAvailable": "No info URL available"
+  },
+  "historyMeta": "{{type}} · {{count}} results · {{timestamp}}",
+  "table": {
+    "title": "Title",
+    "indexer": "Indexer",
+    "size": "Size",
+    "seeders": "Seeders",
+    "category": "Category",
+    "source": "Source",
+    "collection": "Collection",
+    "group": "Group",
+    "freeleech": "Freeleech",
+    "published": "Published",
+    "actions": "Actions",
+    "downloadTorrent": "Download .torrent",
+    "viewDetails": "View details",
+    "noInfoUrl": "No info URL"
+  },
+  "refreshDialog": {
+    "title": "Bypass the cache?",
+    "description": "This will send the request directly to every selected indexer. Use sparingly to avoid rate limits. You can refresh again after a short cooldown.",
+    "cancel": "Cancel",
+    "refreshNow": "Refresh now"
+  },
+  "cache": {
+    "cacheAndLive": "Cache + live",
+    "cacheHit": "Cache hit",
+    "liveFetch": "Live fetch"
+  },
+  "card": {
+    "actions": "Actions",
+    "addToInstance": "Add to instance",
+    "addToNamed": "Add to {{name}}",
+    "addToNamedOffline": "Add to {{name}} (offline)",
+    "quickAddTo": "Quick add to...",
+    "download": "Download",
+    "viewDetails": "View details",
+    "clearSelection": "Clear selection",
+    "seeders": "{{count}} seeders",
+    "published": "Published {{date}}"
+  },
+  "toast": {
+    "enterSearchQuery": "Please enter a search query or fill in advanced parameters",
+    "selectIndexer": "Please select at least one indexer",
+    "noEnabledIndexers": "No enabled indexers available. Please add and enable indexers first.",
+    "noResults": "No results found",
+    "foundResults": "Found {{total}} results{{suffix}}",
+    "cached": " (cached)",
+    "searchFailed": "Search failed: {{error}}",
+    "failedToLoadIndexers": "Failed to load indexers",
+    "addInstanceFirst": "Add a download instance under Settings -> Instances",
+    "chooseInstance": "Choose an instance to add torrents",
+    "noDownloadUrl": "No download URL available for this result",
+    "noInfoUrl": "No additional info available for this result",
+    "invalidProtocol": "Invalid URL protocol",
+    "invalidUrl": "Invalid URL format"
+  }
+}

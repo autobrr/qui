@@ -5,15 +5,36 @@ package qbittorrent
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
 )
+
+func TestAddTorrentURLsErrorSummaryDoesNotExposeRawURLs(t *testing.T) {
+	t.Parallel()
+
+	urls := []string{
+		"https://tracker.example/download?passkey=secret-token",
+		"magnet:?xt=urn:btih:abcdef&dn=private-release",
+	}
+
+	summary := addTorrentURLsErrorSummary(urls)
+
+	require.Equal(t, "2 URL(s)", summary)
+	require.NotContains(t, summary, "secret-token")
+	require.NotContains(t, summary, "private-release")
+	require.NotContains(t, summary, "tracker.example")
+	require.NotContains(t, summary, urls[0])
+	require.NotContains(t, summary, urls[1])
+}
 
 func TestNormalizeHashes(t *testing.T) {
 	t.Parallel()
@@ -27,6 +48,267 @@ func TestNormalizeHashes(t *testing.T) {
 	}, normalized.canonicalSet)
 	require.Equal(t, "ABC123", normalized.canonicalToPreferred["abc123"])
 	require.Equal(t, []string{"ABC123", "abc123", "Def456", "def456", "DEF456"}, normalized.lookup)
+}
+
+func TestBulkActionRetryAttempts(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(ctx, 0, 1))
+	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(ctx, 1, 2))
+	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 0, 1))
+	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 1, 2))
+	require.Equal(t, bulkActionSyncRetryAttempts, bulkActionRetryAttempts(WithPostAddBulkActionRetry(ctx), 2, 2))
+	retryCtx, cancelRetry := withoutCancelPreservingDeadline(WithPostAddBulkActionRetry(ctx))
+	defer cancelRetry()
+	require.Equal(t, bulkActionAddRetryAttempts, bulkActionRetryAttempts(retryCtx, 1, 2))
+	require.Equal(t, 0, bulkActionRetryAttempts(ctx, 0, 0))
+}
+
+func TestWithoutCancelPreservingDeadlineDetachesDeadlineAndKeepsRetryValue(t *testing.T) {
+	t.Parallel()
+
+	deadline := time.Now().Add(time.Hour)
+	parentCtx, cancelParent := context.WithDeadline(WithPostAddBulkActionRetry(context.Background()), deadline)
+	cancelParent()
+
+	retryCtx, cancelRetry := withoutCancelPreservingDeadline(parentCtx)
+	defer cancelRetry()
+
+	_, ok := retryCtx.Deadline()
+	require.False(t, ok)
+	require.NoError(t, retryCtx.Err())
+	require.True(t, postAddBulkActionRetry(retryCtx))
+}
+
+func TestWithoutCancelPreservingDeadlineDropsExpiredDeadline(t *testing.T) {
+	t.Parallel()
+
+	deadline := time.Now().Add(-time.Nanosecond)
+	parentCtx, cancelParent := context.WithDeadline(context.Background(), deadline)
+	defer cancelParent()
+
+	retryCtx, cancelRetry := withoutCancelPreservingDeadline(parentCtx)
+	defer cancelRetry()
+
+	_, ok := retryCtx.Deadline()
+	require.False(t, ok)
+	require.NoError(t, retryCtx.Err())
+}
+
+func TestBulkActionSyncRetryStopsAfterAttemptLimit(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{}
+	resolved, variants := bulkActionSyncRetry(
+		context.Background(),
+		syncer,
+		[]string{"missing"},
+		1,
+		"recheck",
+		3,
+		time.Nanosecond,
+		resolveBulkActionRetryTestHashes([]string{"missing"}),
+	)
+
+	require.Equal(t, 0, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, 3, syncer.syncCalls)
+	require.Equal(t, 3, syncer.mapCalls)
+}
+
+func TestBulkActionSyncRetryStopsWhenHashesResolve(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{},
+			{"abc": {Hash: "abc"}},
+		},
+	}
+	resolved, variants := bulkActionSyncRetry(
+		context.Background(),
+		syncer,
+		[]string{"abc"},
+		1,
+		"recheck",
+		3,
+		time.Nanosecond,
+		resolveBulkActionRetryTestHashes([]string{"abc"}),
+	)
+
+	require.Equal(t, 1, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestBulkActionSyncRetryMixedVisibility(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"a": {Hash: "a"}},
+			{"a": {Hash: "a"}, "b": {Hash: "b"}},
+		},
+	}
+	resolved, variants := bulkActionSyncRetry(
+		context.Background(),
+		syncer,
+		[]string{"a", "b"},
+		1,
+		"recheck",
+		2,
+		time.Nanosecond,
+		resolveBulkActionRetryTestHashes([]string{"a", "b"}),
+	)
+
+	require.Equal(t, 2, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestBulkActionSyncRetryStopsAfterAttemptLimitOnSyncFailure(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{syncErr: errors.New("sync failed")}
+	resolved, variants := bulkActionSyncRetry(
+		context.Background(),
+		syncer,
+		[]string{"missing"},
+		1,
+		"recheck",
+		2,
+		time.Nanosecond,
+		resolveBulkActionRetryTestHashes([]string{"missing"}),
+	)
+
+	require.Equal(t, 0, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestBulkActionSyncRetryKeepsCriticalBudgetWithDecoupledContext(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	syncer := &bulkActionRetrySyncer{}
+	retryCtx, cancelRetry := withoutCancelPreservingDeadline(ctx)
+	defer cancelRetry()
+	resolved, variants := bulkActionSyncRetry(
+		retryCtx,
+		syncer,
+		[]string{"missing"},
+		1,
+		"recheck",
+		bulkActionAddRetryAttempts,
+		time.Nanosecond,
+		resolveBulkActionRetryTestHashes([]string{"missing"}),
+	)
+
+	require.Equal(t, 0, resolved)
+	require.Equal(t, 0, variants)
+	require.Equal(t, bulkActionAddRetryAttempts, syncer.syncCalls)
+	require.Equal(t, bulkActionAddRetryAttempts, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyWaitsForResumeDataCheck(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+			{"abc": {Hash: "abc", State: qbt.TorrentStatePausedDl}},
+		},
+	}
+
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 3, time.Nanosecond, time.Second)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyStopsAfterAttemptLimit(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+		},
+	}
+
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 2, time.Nanosecond, time.Second)
+
+	require.ErrorIs(t, err, errPostAddRecheckNotReady)
+	require.Equal(t, 2, syncer.syncCalls)
+	require.Equal(t, 4, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyReturnsContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+		},
+	}
+
+	err := waitForPostAddRecheckReady(ctx, syncer, []string{"abc"}, 1, 3, time.Nanosecond, time.Second)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 0, syncer.syncCalls)
+	require.Equal(t, 1, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyBoundsSyncAttempt(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+		},
+		blockSyncUntilDone: true,
+	}
+
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 1, time.Hour, time.Nanosecond)
+
+	require.ErrorIs(t, err, errPostAddRecheckNotReady)
+	require.Equal(t, 1, syncer.syncCalls)
+	require.Equal(t, 2, syncer.mapCalls)
+}
+
+func TestWaitForPostAddRecheckReadyBoundsOverallWait(t *testing.T) {
+	t.Parallel()
+
+	syncer := &bulkActionRetrySyncer{
+		maps: []map[string]qbt.Torrent{
+			{"abc": {Hash: "abc", State: qbt.TorrentStateCheckingResumeData}},
+		},
+		blockSyncUntilDone: true,
+	}
+
+	err := waitForPostAddRecheckReady(context.Background(), syncer, []string{"abc"}, 1, 3, 10*time.Millisecond, 50*time.Millisecond)
+
+	require.ErrorIs(t, err, errPostAddRecheckNotReady)
+	require.Equal(t, 1, syncer.syncCalls)
+	require.LessOrEqual(t, syncer.mapCalls, 2)
+}
+
+func TestPostAddRecheckReadyRejectsMissingTorrent(t *testing.T) {
+	t.Parallel()
+
+	ready := postAddRecheckReady(map[string]qbt.Torrent{}, []string{"abc"})
+
+	require.False(t, ready)
 }
 
 func TestGetTorrentFilesBatch_NormalizesAndCaches(t *testing.T) {
@@ -444,9 +726,7 @@ func (fm *aliasingFilesManager) CacheFiles(_ context.Context, _ int, hash string
 }
 
 func (fm *aliasingFilesManager) CacheFilesBatch(_ context.Context, _ int, files map[string]qbt.TorrentFiles) error {
-	for hash, torrentFiles := range files {
-		fm.cached[hash] = torrentFiles
-	}
+	maps.Copy(fm.cached, files)
 	return nil
 }
 
@@ -461,6 +741,47 @@ type stubTorrentLookup struct {
 func (s *stubTorrentLookup) GetTorrent(hash string) (qbt.Torrent, bool) {
 	torrent, ok := s.torrents[hash]
 	return torrent, ok
+}
+
+type bulkActionRetrySyncer struct {
+	maps               []map[string]qbt.Torrent
+	syncErr            error
+	syncCalls          int
+	mapCalls           int
+	blockSyncUntilDone bool
+}
+
+func (s *bulkActionRetrySyncer) Sync(ctx context.Context) error {
+	s.syncCalls++
+	if s.blockSyncUntilDone {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return s.syncErr
+}
+
+func (s *bulkActionRetrySyncer) GetTorrentMap(qbt.TorrentFilterOptions) map[string]qbt.Torrent {
+	s.mapCalls++
+	if len(s.maps) == 0 {
+		return nil
+	}
+	index := s.mapCalls - 1
+	if index >= len(s.maps) {
+		index = len(s.maps) - 1
+	}
+	return s.maps[index]
+}
+
+func resolveBulkActionRetryTestHashes(hashes []string) func(map[string]qbt.Torrent) (int, int) {
+	return func(torrents map[string]qbt.Torrent) (int, int) {
+		resolved := 0
+		for _, hash := range hashes {
+			if _, ok := torrents[hash]; ok {
+				resolved++
+			}
+		}
+		return resolved, 0
+	}
 }
 
 // stubTrackerCustomizationLister implements TrackerCustomizationLister for testing
@@ -640,6 +961,94 @@ func TestSortCrossInstanceTorrentsByTracker_UnknownTrackersGoToEnd(t *testing.T)
 
 	require.Equal(t, "hash2", torrents[0].Hash, "valid tracker should come first")
 	require.Equal(t, "hash1", torrents[1].Hash, "unknown tracker should go to end")
+}
+
+func TestSortCrossInstanceTorrents_CommonFields(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+
+	build := func() []CrossInstanceTorrentView {
+		return []CrossInstanceTorrentView{
+			{
+				TorrentView: &TorrentView{
+					Torrent: &qbt.Torrent{
+						Hash:        "hash-alpha",
+						Name:        "Alpha",
+						State:       qbt.TorrentStatePausedUp,
+						AddedOn:     100,
+						DlSpeed:     50,
+						NumComplete: 10,
+						Priority:    1,
+						ETA:         60,
+						Private:     false,
+					},
+				},
+				InstanceID:   1,
+				InstanceName: "One",
+			},
+			{
+				TorrentView: &TorrentView{
+					Torrent: &qbt.Torrent{
+						Hash:        "hash-beta",
+						Name:        "beta",
+						State:       qbt.TorrentStateDownloading,
+						AddedOn:     200,
+						DlSpeed:     10,
+						NumComplete: 5,
+						Priority:    0,
+						ETA:         8640000, // infinity ETA
+						Private:     true,
+					},
+				},
+				InstanceID:   2,
+				InstanceName: "Two",
+			},
+			{
+				TorrentView: &TorrentView{
+					Torrent: &qbt.Torrent{
+						Hash:        "hash-gamma",
+						Name:        "Gamma",
+						State:       qbt.TorrentStateUploading,
+						AddedOn:     150,
+						DlSpeed:     100,
+						NumComplete: 20,
+						Priority:    2,
+						ETA:         120,
+						Private:     false,
+					},
+				},
+				InstanceID:   3,
+				InstanceName: "Three",
+			},
+		}
+	}
+
+	testCases := []struct {
+		name      string
+		sort      string
+		desc      bool
+		firstHash string
+		lastHash  string
+	}{
+		{name: "state asc", sort: "state", desc: false, firstHash: "hash-beta", lastHash: "hash-alpha"},
+		{name: "added_on desc", sort: "added_on", desc: true, firstHash: "hash-beta", lastHash: "hash-alpha"},
+		{name: "dlspeed desc", sort: "dlspeed", desc: true, firstHash: "hash-gamma", lastHash: "hash-beta"},
+		{name: "num_complete asc", sort: "num_complete", desc: false, firstHash: "hash-beta", lastHash: "hash-gamma"},
+		{name: "priority asc keeps zero last", sort: "priority", desc: false, firstHash: "hash-gamma", lastHash: "hash-beta"},
+		{name: "eta asc keeps infinity last", sort: "eta", desc: false, firstHash: "hash-alpha", lastHash: "hash-beta"},
+		{name: "private desc", sort: "private", desc: true, firstHash: "hash-beta", lastHash: "hash-gamma"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			torrents := build()
+			sm.sortCrossInstanceTorrents(torrents, tc.sort, tc.desc)
+			require.Equal(t, tc.firstHash, torrents[0].Hash)
+			require.Equal(t, tc.lastHash, torrents[len(torrents)-1].Hash)
+		})
+	}
 }
 
 func TestSortTorrentsByTimestamp_Tiebreaker(t *testing.T) {

@@ -862,8 +862,6 @@ paths:
               required:
                 - name
                 - host
-                - username
-                - password
               properties:
                 name:
                   type: string
@@ -876,6 +874,10 @@ paths:
                   type: string
                   writeOnly: true
                   description: Password for qBittorrent instance. Will be encrypted and never returned in responses.
+                apiKey:
+                  type: string
+                  writeOnly: true
+                  description: Optional qBittorrent API key. When provided, username/password login is bypassed.
                 basicUsername:
                   type: string
                   nullable: true
@@ -975,6 +977,10 @@ paths:
                   type: string
                   writeOnly: true
                   description: Password for qBittorrent instance. Optional for updates - only updates if provided and not masked.
+                apiKey:
+                  type: string
+                  writeOnly: true
+                  description: Optional qBittorrent API key. Provide an empty string to clear it.
                 basicUsername:
                   type: string
                   nullable: true
@@ -1392,7 +1398,7 @@ paths:
             schema:
               type: object
               properties:
-                torrentFile:
+                torrent:
                   type: string
                   format: binary
                 urls:
@@ -1560,6 +1566,7 @@ paths:
                     - addTags
                     - removeTags
                     - setTags
+                    - setComment
                     - setCategory
                     - toggleAutoTMM
                     - setShareLimit
@@ -1576,6 +1583,9 @@ paths:
                 tags:
                   type: string
                   description: Comma-separated list of tags for tag-related actions.
+                comment:
+                  type: string
+                  description: Comment text for setComment action (empty clears the comment).
                 category:
                   type: string
                   description: Category name for setCategory action.
@@ -1594,6 +1604,12 @@ paths:
                   type: integer
                   format: int64
                   description: Inactive seeding time limit (minutes) for setShareLimit action.
+                shareLimitAction:
+                  type: string
+                  description: Action when share limits are reached (qBittorrent Web API 2.12+). Qt enum names Default, Stop, Remove, EnableSuperSeeding, RemoveWithContent. Omit or empty for global default.
+                shareLimitsMode:
+                  type: string
+                  description: Whether any or all limits must be reached (Web API 2.12+). Qt enum names Default, MatchAny, MatchAll. Omit or empty for global default.
                 uploadLimit:
                   type: integer
                   format: int64
@@ -1623,7 +1639,7 @@ paths:
       tags:
         - Torrents
       summary: Get torrent field values
-      description: Returns field values for torrents matching the given filters. Used for select all copy operations (copy name, hash, or full path).
+      description: Returns field values for torrents matching the given filters. Used for select all copy operations and bulk tag baselines.
       parameters:
         - $ref: '#/components/parameters/instanceID'
       requestBody:
@@ -1637,11 +1653,12 @@ paths:
               properties:
                 field:
                   type: string
-                  description: The torrent field to retrieve.
+                  description: The torrent field to retrieve. When set to `tags`, the 200 response `values` array contains one raw comma-separated tag string per matching torrent, and empty strings represent untagged torrents.
                   enum:
                     - name
                     - hash
                     - full_path
+                    - tags
                 sort:
                   type: string
                   description: Sort field. Defaults to added_on.
@@ -1651,6 +1668,27 @@ paths:
                   enum:
                     - asc
                     - desc
+                hashes:
+                  type: array
+                  description: Explicit torrent hashes to query when not using filter scope.
+                  items:
+                    type: string
+                targets:
+                  type: array
+                  description: Explicit instance/hash targets to query when not using filter scope.
+                  items:
+                    type: object
+                    required:
+                      - instanceId
+                      - hash
+                    properties:
+                      instanceId:
+                        type: integer
+                      hash:
+                        type: string
+                selectAll:
+                  type: boolean
+                  description: When true, query all torrents matching filters/search/exclusions.
                 search:
                   type: string
                   description: Optional search query to filter torrents.
@@ -1691,7 +1729,10 @@ paths:
                     type: array
                     items:
                       type: string
-                    description: List of field values for matching torrents.
+                    description: |
+                      List of per-torrent field values for the matching torrents. When `field=tags`, each item is the raw
+                      comma-separated tag string returned for one matching torrent, and an empty string indicates
+                      an untagged torrent.
 
   /api/instances/{instanceID}/torrents/{hash}/export:
     get:
@@ -1976,6 +2017,144 @@ paths:
           description: Instance does not have local filesystem access
         '404':
           description: Torrent, file index, or file on disk not found
+        '500':
+          description: Internal server error
+
+  /api/instances/{instanceID}/torrents/{hash}/files/{fileIndex}/mediainfo:
+    get:
+      tags:
+        - Torrent Details
+      summary: Get MediaInfo for a torrent content file
+      description: >
+        Analyzes a single file from the torrent's content on the local filesystem and returns a human-readable
+        stream/field report plus the raw MediaInfo JSON output.
+        Requires the instance to have local filesystem access enabled.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - $ref: '#/components/parameters/hash'
+        - $ref: '#/components/parameters/fileIndex'
+      responses:
+        '200':
+          description: MediaInfo report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TorrentFileMediaInfoResponse'
+        '400':
+          description: Invalid instance ID, hash, or file index
+        '403':
+          description: Instance does not have local filesystem access
+        '404':
+          description: Torrent, file index, or file on disk not found
+        '500':
+          description: Internal server error
+
+  /api/instances/{instanceID}/mediainfo:
+    get:
+      tags:
+        - Torrent Details
+      summary: Get MediaInfo for an instance content path
+      description: >
+        Analyzes a file from an instance-relative content path and returns both text summary and parsed
+        MediaInfo JSON output.
+        Requires the instance to have local filesystem access enabled.
+      parameters:
+        - $ref: '#/components/parameters/instanceID'
+        - name: contentPath
+          in: query
+          required: true
+          description: "Canonical instance-relative content path parameter (legacy alias: content_path)"
+          schema:
+            type: string
+        - name: content_path
+          in: query
+          deprecated: true
+          required: false
+          description: Legacy alias for contentPath (maps to the canonical contentPath parameter)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: MediaInfo summary and JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentPathMediaInfoResponse'
+        '400':
+          description: Invalid instance ID or content path
+        '403':
+          description: Instance does not have local filesystem access
+        '404':
+          description: File not found on disk
+        '500':
+          description: Internal server error
+
+  /proxy/{api-key}/api/v2/torrents/mediainfo:
+    get:
+      tags:
+        - Proxy
+      summary: Get MediaInfo via proxy API key
+      description: >
+        Returns MediaInfo summary text and JSON output for an instance-relative content path using
+        a client API key in the proxy path.
+      security: []
+      parameters:
+        - name: api-key
+          in: path
+          required: true
+          description: Client API key created in qui client API keys.
+          schema:
+            type: string
+        - name: contentPath
+          in: query
+          required: false
+          description: "Canonical instance-relative content path (legacy alias: content_path)"
+          schema:
+            type: string
+        - name: content_path
+          in: query
+          required: false
+          description: Legacy alias of contentPath
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                contentPath:
+                  type: string
+                  description: Canonical instance-relative content path
+                content_path:
+                  type: string
+                  description: Legacy alias for contentPath
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                contentPath:
+                  type: string
+                  description: Canonical instance-relative content path
+                content_path:
+                  type: string
+                  description: Legacy alias for contentPath
+      responses:
+        '200':
+          description: MediaInfo summary and JSON
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentPathMediaInfoResponse'
+        '400':
+          description: Invalid content path
+        '401':
+          description: Missing or invalid client API key
+        '403':
+          description: Instance does not have local filesystem access
+        '404':
+          description: Instance or file not found
         '500':
           description: Internal server error
 
@@ -3152,6 +3331,138 @@ paths:
         '500':
           description: Failed to cancel scan
 
+  /api/dir-scan/webhook/scan:
+    post:
+      tags:
+        - Dir Scan
+      summary: Trigger a directory scan from an external webhook
+      description: |
+        Accepts a plain `path` payload or native Sonarr, Radarr, Lidarr, or Readarr webhook payloads.
+        qui accepts `eventType: test` payloads as a no-op health check. For real events,
+        it extracts the path, matches it against enabled scan directories using longest-prefix matching,
+        and starts a scan rooted at the provided path subtree.
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+        - ApiKeyQuery: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: Plain path payload or native *arr webhook payload.
+              oneOf:
+                - type: object
+                  required:
+                    - path
+                  properties:
+                    path:
+                      type: string
+                      description: Plain path to match against configured scan directories.
+                      example: "/data/media/movies/Movie Name (2024)"
+                    downloadClient:
+                      type: string
+                      description: Optional *arr download client name used for per-directory webhook filtering.
+                - type: object
+                  required:
+                    - series
+                  properties:
+                    eventType:
+                      type: string
+                    downloadClient:
+                      type: string
+                    series:
+                      type: object
+                      required:
+                        - path
+                      properties:
+                        path:
+                          type: string
+                - type: object
+                  required:
+                    - movie
+                  properties:
+                    eventType:
+                      type: string
+                    downloadClient:
+                      type: string
+                    movie:
+                      type: object
+                      required:
+                        - folderPath
+                      properties:
+                        folderPath:
+                          type: string
+                - type: object
+                  required:
+                    - artist
+                  properties:
+                    eventType:
+                      type: string
+                    downloadClient:
+                      type: string
+                    artist:
+                      type: object
+                      required:
+                        - path
+                      properties:
+                        path:
+                          type: string
+                - type: object
+                  required:
+                    - author
+                  properties:
+                    eventType:
+                      type: string
+                    downloadClient:
+                      type: string
+                    author:
+                      type: object
+                      required:
+                        - path
+                      properties:
+                        path:
+                          type: string
+                - type: object
+                  required:
+                    - eventType
+                  properties:
+                    eventType:
+                      type: string
+                      enum:
+                        - test
+      responses:
+        '200':
+          description: Webhook accepted but scan skipped by directory filters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skipped:
+                    type: boolean
+                  reason:
+                    type: string
+                required:
+                  - skipped
+                  - reason
+        '202':
+          description: Scan started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DirScanTriggerResponse'
+        '204':
+          description: Test webhook accepted; no scan started
+        '400':
+          description: Invalid request body or no supported path found in payload
+        '404':
+          description: No enabled directory matched the provided path
+        '409':
+          description: Request conflicts with directory state, such as ambiguous path matches or an active scan
+        '500':
+          description: Failed to start scan
+
   /api/dir-scan/directories/{directoryID}/status:
     get:
       tags:
@@ -3521,22 +3832,12 @@ paths:
                   type: integer
                   description: Cooldown period between searches for the same torrent
       responses:
-        '200':
+        '202':
           description: Search run started
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  id:
-                    type: integer
-                  instance_id:
-                    type: integer
-                  status:
-                    type: string
-                  started_at:
-                    type: string
-                    format: date-time
+                $ref: '#/components/schemas/CrossSeedSearchRun'
         '400':
           description: Invalid request body
         '500':
@@ -3564,13 +3865,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  running:
-                    type: boolean
-                  current_run:
-                    type: object
-                    nullable: true
+                $ref: '#/components/schemas/CrossSeedSearchStatus'
         '500':
           description: Failed to get search run status
 
@@ -3610,7 +3905,7 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
+                  $ref: '#/components/schemas/CrossSeedSearchRun'
         '400':
           description: Invalid query parameters
         '500':
@@ -3672,6 +3967,114 @@ paths:
         '503':
           description: Completion settings store not configured
 
+  /api/cross-seed/season-pack/check:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Check whether a season pack can be assembled from existing episodes
+      description: |
+        Checks if enough local episode data exists to inject a season pack using hardlinks or reflinks.
+        `torrentData` (base64-encoded torrent file) is optional. When provided, coverage uses the larger of the playable episode count in the pack and the episode total from metadata providers (Sonarr, TVDB, TVMaze).
+        When omitted, episode coverage is computed using metadata providers only. If no metadata source is available, the check only verifies that matching episodes exist and skips the coverage threshold.
+        * `200 OK` - coverage meets threshold; ready to apply
+        * `404 Not Found` - not enough episodes or not eligible
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+        - ApiKeyQuery: []
+      parameters:
+        - name: apikey
+          in: query
+          required: false
+          schema:
+            type: string
+          description: API key (prefer X-API-Key header; query supported for autobrr webhook).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeasonPackCheckRequest'
+      responses:
+        '200':
+          description: Season pack is ready to be assembled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeasonPackCheckResponse'
+        '400':
+          description: Invalid request body
+        '404':
+          description: Not enough episodes or not eligible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeasonPackCheckResponse'
+        '500':
+          description: Internal error during check
+
+  /api/cross-seed/season-pack/apply:
+    post:
+      tags:
+        - Cross-Seed
+      summary: Apply a season pack torrent using linked episode data
+      description: Links the matched local episodes, adds the season pack torrent to the best matching instance, and queues a recheck when episodes or extras are still missing.
+      security:
+        - ApiKeyAuth: []
+        - SessionAuth: []
+        - ApiKeyQuery: []
+      parameters:
+        - name: apikey
+          in: query
+          required: false
+          schema:
+            type: string
+          description: API key (prefer X-API-Key header; query supported for autobrr webhook).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeasonPackApplyRequest'
+      responses:
+        '200':
+          description: Season pack apply result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeasonPackApplyResponse'
+        '400':
+          description: Invalid request body
+        '500':
+          description: Internal error during apply
+
+  /api/cross-seed/season-pack/runs:
+    get:
+      tags:
+        - Cross-Seed
+      summary: List recent season-pack processing activity
+      description: Returns recent season-pack check and apply runs ordered by most recent first.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
+          description: Maximum number of runs to return
+      responses:
+        '200':
+          description: List of season pack runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SeasonPackRun'
+        '500':
+          description: Failed to list season pack runs
   /api/cross-seed/webhook/check:
     post:
       tags:
@@ -3713,6 +4116,10 @@ paths:
                   type: integer
                   format: uint64
                   description: Total torrent size in bytes (optional - enables size validation when provided)
+                indexer:
+                  type: string
+                  minLength: 1
+                  description: Optional autobrr indexer identifier (for example "hdb"). Required if you want qui's HDBits-specific missing collection fallback on webhook checks.
                 findIndividualEpisodes:
                   type: boolean
                   description: Optional override for matching season packs vs episodes. Defaults to the Cross-Seed automation setting when omitted.
@@ -3784,9 +4191,10 @@ paths:
                   type: boolean
                 findIndividualEpisodes:
                   type: boolean
-                indexerName:
+                indexer:
                   type: string
-                  description: Indexer display name (e.g., "TorrentDB"). Only used when "Use indexer name as category" mode is enabled; ignored otherwise. Webhook applies cannot derive the indexer from the torrent file, so this field is required for that mode.
+                  minLength: 1
+                  description: autobrr indexer identifier (for example "hdb"). Only used when "Use indexer name as category" mode is enabled; when provided in that mode, qui uses this identifier as the category value. If omitted, qui falls back to the matched torrent category. Webhook applies cannot derive tracker identity from the torrent file.
       responses:
         '200':
           description: Torrent processed
@@ -5016,6 +5424,11 @@ components:
       in: header
       name: X-API-Key
       description: API key for authentication
+    ApiKeyQuery:
+      type: apiKey
+      in: query
+      name: apikey
+      description: API key via query parameter for external webhook integrations
     SessionAuth:
       type: apiKey
       in: cookie
@@ -5274,6 +5687,9 @@ components:
           type: string
           description: Always masked with asterisks in responses. Only used for input.
           readOnly: true
+        hasApiKey:
+          type: boolean
+          description: True when an API key is configured for this instance.
         basic_username:
           type: string
           nullable: true
@@ -5342,6 +5758,9 @@ components:
         supportsSetTags:
           type: boolean
           description: Whether the instance supports replacing tags on torrents.
+        supportsSetComment:
+          type: boolean
+          description: Whether the instance supports setting torrent comments (Web API 2.12.1+, qBittorrent 5.2+).
         supportsTrackerHealth:
           type: boolean
           description: Whether the instance exposes tracker health metadata (unregistered/tracker down states).
@@ -5363,6 +5782,15 @@ components:
         supportsSubcategories:
           type: boolean
           description: Whether the instance supports nested torrent categories (requires WebAPI 2.9.0+, qBittorrent 4.6.0+).
+        subcategoriesAlwaysEnabled:
+          type: boolean
+          description: Whether nested torrent categories are always enabled by qBittorrent (WebAPI 2.15.0+).
+        supportsShareLimitsAction:
+          type: boolean
+          description: Whether extended per-torrent share limits are available (Web API 2.15.1+; ratio, seeding time, inactive seeding, and share-limit action).
+        supportsShareLimitsMode:
+          type: boolean
+          description: Whether setShareLimits accepts ShareLimitsMode (MatchAny / MatchAll); requires Web API 2.16.0+.
         webAPIVersion:
           type: string
           nullable: true
@@ -5507,6 +5935,79 @@ components:
           type: boolean
         availability:
           type: number
+
+    TorrentFileMediaInfoField:
+      type: object
+      required:
+        - name
+        - value
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+
+    TorrentFileMediaInfoStream:
+      type: object
+      required:
+        - kind
+        - fields
+      properties:
+        kind:
+          type: string
+          description: Stream kind (General, Video, Audio, Text, etc.)
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/TorrentFileMediaInfoField'
+
+    TorrentFileMediaInfoResponse:
+      type: object
+      required:
+        - fileIndex
+        - relativePath
+        - streams
+        - rawJSON
+      properties:
+        fileIndex:
+          type: integer
+        relativePath:
+          type: string
+          description: Torrent-relative path from qBittorrent file list
+        streams:
+          type: array
+          items:
+            $ref: '#/components/schemas/TorrentFileMediaInfoStream'
+        rawJSON:
+          type: string
+          description: Raw MediaInfo JSON output
+
+    ContentPathMediaInfoRequest:
+      type: object
+      required:
+        - contentPath
+      properties:
+        contentPath:
+          type: string
+          description: Instance-relative file path to analyze
+
+    ContentPathMediaInfoResponse:
+      type: object
+      required:
+        - contentPath
+        - summaryTxt
+        - mediaInfoJson
+      properties:
+        contentPath:
+          type: string
+          description: Normalized instance-relative file path that was analyzed
+        summaryTxt:
+          type: string
+          description: Human-readable MediaInfo text summary
+        mediaInfoJson:
+          type: object
+          description: Parsed MediaInfo JSON output
+          additionalProperties: true
 
     DuplicateTorrentMatch:
       type: object
@@ -5712,6 +6213,18 @@ components:
           example: "2.11.4"
         buildInfo:
           $ref: '#/components/schemas/QBittorrentBuildInfo'
+        processInfo:
+          $ref: '#/components/schemas/QBittorrentProcessInfo'
+
+    QBittorrentProcessInfo:
+      type: object
+      description: qBittorrent process information
+      properties:
+        launchTime:
+          type: integer
+          format: int64
+          description: Process launch time as UTC epoch seconds
+          example: 1769331513
 
     CrossSeedInstanceResult:
       type: object
@@ -5854,6 +6367,16 @@ components:
           items:
             type: integer
           description: Limit completion searches to these Torznab indexer IDs (empty means all)
+        bypassTorznabCache:
+          type: boolean
+          default: false
+          description: When true, completion searches for this instance bypass the Torznab search cache and always perform a fresh search. Default false.
+        delaySeconds:
+          type: integer
+          minimum: 0
+          maximum: 600
+          default: 0
+          description: Seconds to wait after a torrent completes before starting the cross-seed search. 0 disables the delay.
 
     InstanceCrossSeedCompletionSettingsRequest:
       type: object
@@ -5887,6 +6410,16 @@ components:
           items:
             type: integer
           description: Limit completion searches to these Torznab indexer IDs (empty means all)
+        bypassTorznabCache:
+          type: boolean
+          default: false
+          description: When true, completion searches for this instance bypass the Torznab search cache and always perform a fresh search. Default false.
+        delaySeconds:
+          type: integer
+          minimum: 0
+          maximum: 600
+          default: 0
+          description: Seconds to wait after a torrent completes before starting the cross-seed search. 0 disables the delay.
 
     CrossSeedAutomationSettingsPatch:
       type: object
@@ -5984,6 +6517,37 @@ components:
           type: string
           enum: [flat, by-tracker, by-instance]
           description: Directory organization preset for hardlink trees
+        seasonPackEnabled:
+          type: boolean
+          description: Enable season pack webhook flow
+        seasonPackSkipRepackCompare:
+          type: boolean
+        seasonPackSimplifyHdrCompare:
+          type: boolean
+        seasonPackSimplifyWebCompare:
+          type: boolean
+        seasonPackSkipYearCompare:
+          type: boolean
+        seasonPackCoverageThreshold:
+          type: number
+          format: double
+          exclusiveMinimum: 0
+          maximum: 1
+          description: Minimum local coverage ratio (0..1, default 0.75) before injecting a season pack. Uses episode totals from Sonarr, TVDB, or TVMaze when available, otherwise playable files in the pack.
+        seasonPackTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to season-pack injections
+        seasonPackCategory:
+          type: string
+          description: Fixed qBittorrent category for season-pack injections. Empty uses the global category mode.
+        seasonPackTvdbApiKey:
+          type: string
+          description: TVDB API key for season pack metadata resolution. Redacted in API responses.
+        seasonPackTvdbPin:
+          type: string
+          description: TVDB subscriber PIN for season pack metadata resolution. Redacted in API responses.
 
     CrossSeedAutomationSettings:
       type: object
@@ -6081,6 +6645,37 @@ components:
           type: string
           enum: [flat, by-tracker, by-instance]
           description: Directory organization preset for hardlink trees
+        seasonPackEnabled:
+          type: boolean
+          description: Enable season pack webhook flow
+        seasonPackSkipRepackCompare:
+          type: boolean
+        seasonPackSimplifyHdrCompare:
+          type: boolean
+        seasonPackSimplifyWebCompare:
+          type: boolean
+        seasonPackSkipYearCompare:
+          type: boolean
+        seasonPackCoverageThreshold:
+          type: number
+          format: double
+          exclusiveMinimum: 0
+          maximum: 1
+          description: Minimum local coverage ratio (0..1, default 0.75) before injecting a season pack. Uses episode totals from Sonarr, TVDB, or TVMaze when available, otherwise playable files in the pack.
+        seasonPackTags:
+          type: array
+          items:
+            type: string
+          description: Tags applied to season-pack injections
+        seasonPackCategory:
+          type: string
+          description: Fixed qBittorrent category for season-pack injections. Empty uses the global category mode.
+        seasonPackTvdbApiKey:
+          type: string
+          description: TVDB API key for season pack metadata resolution. Redacted in API responses.
+        seasonPackTvdbPin:
+          type: string
+          description: TVDB subscriber PIN for season pack metadata resolution. Redacted in API responses.
         createdAt:
           type: string
           format: date-time
@@ -6102,6 +6697,142 @@ components:
           nullable: true
         running:
           type: boolean
+
+    SeasonPackCheckRequest:
+      type: object
+      required:
+        - torrentName
+      properties:
+        torrentName:
+          type: string
+          description: Season pack release name
+        torrentData:
+          type: string
+          description: Optional base64-encoded torrent file. When omitted, coverage uses metadata providers (TVDB/TVMaze) instead of the torrent file contents.
+        instanceIds:
+          type: array
+          items:
+            type: integer
+          description: Optional list of instance IDs to check (empty means all)
+        indexer:
+          type: string
+          description: Optional indexer identifier
+
+    SeasonPackCheckResponse:
+      type: object
+      properties:
+        ready:
+          type: boolean
+          description: Whether enough local data exists to inject the season pack
+        reason:
+          type: string
+          description: Machine-readable reason code
+        message:
+          type: string
+          description: Human-readable explanation
+        thresholdSkipped:
+          type: boolean
+          description: "True when coverage threshold was not enforced because no episode total was available. The check only verified that matching episodes exist."
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeasonPackCheckMatch'
+
+    SeasonPackCheckMatch:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+        matchedEpisodes:
+          type: integer
+        totalEpisodes:
+          type: integer
+          description: "Coverage denominator: episode total from Sonarr, TVDB, or TVMaze when available, otherwise playable files in the pack"
+        coverage:
+          type: number
+          format: double
+
+    SeasonPackApplyRequest:
+      type: object
+      required:
+        - torrentName
+        - torrentData
+      properties:
+        torrentName:
+          type: string
+          description: Season pack release name
+        torrentData:
+          type: string
+          description: Base64-encoded torrent file
+        instanceIds:
+          type: array
+          items:
+            type: integer
+          description: Optional list of instance IDs to target (empty means all)
+        indexer:
+          type: string
+          description: Optional indexer identifier
+
+    SeasonPackApplyResponse:
+      type: object
+      properties:
+        applied:
+          type: boolean
+          description: Whether the season pack was added to qBittorrent
+        reason:
+          type: string
+          description: Machine-readable reason code
+        message:
+          type: string
+          description: Human-readable explanation
+        instanceId:
+          type: integer
+          description: Instance the torrent was added to
+        matchedEpisodes:
+          type: integer
+        totalEpisodes:
+          type: integer
+          description: Coverage denominator used for the winning match
+        coverage:
+          type: number
+          format: double
+        linkMode:
+          type: string
+          description: Link strategy used (hardlink, reflink, etc.)
+
+    SeasonPackRun:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        torrentName:
+          type: string
+        phase:
+          type: string
+          description: Processing phase (check or apply)
+        status:
+          type: string
+          description: Outcome status
+        reason:
+          type: string
+        message:
+          type: string
+        instanceId:
+          type: integer
+          nullable: true
+        matchedEpisodes:
+          type: integer
+        totalEpisodes:
+          type: integer
+        coverage:
+          type: number
+          format: double
+        linkMode:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
 
     CrossSeedSearchSettingsPatch:
       type: object
@@ -6154,6 +6885,136 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    CrossSeedSearchResultStatus:
+      type: string
+      enum:
+        - added
+        - skipped
+        - failed
+
+    CrossSeedSearchRunStatus:
+      type: string
+      enum:
+        - running
+        - success
+        - failed
+        - canceled
+
+    CrossSeedSearchFilters:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    CrossSeedSearchResult:
+      type: object
+      properties:
+        torrentHash:
+          type: string
+        torrentName:
+          type: string
+        indexerName:
+          type: string
+        releaseTitle:
+          type: string
+        status:
+          $ref: '#/components/schemas/CrossSeedSearchResultStatus'
+        message:
+          type: string
+        processedAt:
+          type: string
+          format: date-time
+
+    CrossSeedSearchRun:
+      type: object
+      properties:
+        id:
+          type: integer
+        instanceId:
+          type: integer
+        status:
+          $ref: '#/components/schemas/CrossSeedSearchRunStatus'
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        totalTorrents:
+          type: integer
+        processed:
+          type: integer
+        torrentsAdded:
+          type: integer
+        torrentsFailed:
+          type: integer
+        torrentsSkipped:
+          type: integer
+        message:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        filters:
+          $ref: '#/components/schemas/CrossSeedSearchFilters'
+        indexerIds:
+          type: array
+          items:
+            type: integer
+        intervalSeconds:
+          type: integer
+        cooldownMinutes:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedSearchResult'
+        createdAt:
+          type: string
+          format: date-time
+
+    CrossSeedSearchCandidate:
+      type: object
+      properties:
+        torrentHash:
+          type: string
+        torrentName:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    CrossSeedSearchStatus:
+      type: object
+      properties:
+        running:
+          type: boolean
+        run:
+          $ref: '#/components/schemas/CrossSeedSearchRun'
+          nullable: true
+        currentTorrent:
+          $ref: '#/components/schemas/CrossSeedSearchCandidate'
+          nullable: true
+        recentResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossSeedSearchResult'
+        nextRunAt:
+          type: string
+          format: date-time
+          nullable: true
 
     CrossSeedRunRequest:
       type: object
@@ -6306,6 +7167,12 @@ components:
           type: number
         guid:
           type: string
+        infohash_v1:
+          type: string
+          nullable: true
+        infohash_v2:
+          type: string
+          nullable: true
         imdb_id:
           type: string
           nullable: true
@@ -6390,6 +7257,9 @@ components:
         torrent_name:
           type: string
           nullable: true
+        info_hash:
+          type: string
+          nullable: true
         success:
           type: boolean
         instance_results:
@@ -6452,7 +7322,7 @@ components:
           description: Primary tracker URL
         trackerHealth:
           type: string
-          enum: [unregistered, tracker_down]
+          enum: [unregistered, tracker_down, tracker_error]
           description: Tracker health status (only present if unhealthy)
         matchType:
           type: string
@@ -6888,6 +7758,12 @@ components:
           nullable: true
         external_ids:
           $ref: '#/components/schemas/ArrExternalIDs'
+        titles:
+          type: array
+          items:
+            type: string
+        has_titles:
+          type: boolean
         is_negative:
           type: boolean
         cached_at:
@@ -6991,6 +7867,8 @@ components:
           type: boolean
         startPaused:
           type: boolean
+        downloadMissingFiles:
+          type: boolean
         category:
           type: string
         tags:
@@ -7014,6 +7892,7 @@ components:
         - allowPartial
         - skipPieceBoundarySafetyCheck
         - startPaused
+        - downloadMissingFiles
         - category
         - tags
         - createdAt
@@ -7042,6 +7921,8 @@ components:
           type: boolean
         startPaused:
           type: boolean
+        downloadMissingFiles:
+          type: boolean
         category:
           type: string
         tags:
@@ -7063,6 +7944,10 @@ components:
           type: string
           nullable: true
         tags:
+          type: array
+          items:
+            type: string
+        allowedDownloadClients:
           type: array
           items:
             type: string
@@ -7089,6 +7974,7 @@ components:
         - id
         - path
         - tags
+        - allowedDownloadClients
         - enabled
         - targetInstanceId
         - scanIntervalMinutes
@@ -7105,6 +7991,10 @@ components:
         category:
           type: string
         tags:
+          type: array
+          items:
+            type: string
+        allowedDownloadClients:
           type: array
           items:
             type: string
@@ -7134,6 +8024,10 @@ components:
           type: array
           items:
             type: string
+        allowedDownloadClients:
+          type: array
+          items:
+            type: string
         enabled:
           type: boolean
         arrInstanceId:
@@ -7155,6 +8049,9 @@ components:
           $ref: '#/components/schemas/DirScanRunStatus'
         triggeredBy:
           type: string
+        scanRoot:
+          type: string
+          description: Effective scan root for the run. Empty when the run scanned the configured directory path.
         filesFound:
           type: integer
         filesSkipped:
@@ -7289,8 +8186,22 @@ components:
       properties:
         runId:
           type: integer
+          format: int64
+          description: Started scan run ID.
+        directoryId:
+          type: integer
+          description: Matched dir-scan directory ID.
+        directoryPath:
+          type: string
+          description: Matched dir-scan directory path.
+        scanRoot:
+          type: string
+          description: Effective scan root for this run.
       required:
         - runId
+        - directoryId
+        - directoryPath
+        - scanRoot
 
     DirScanIdleStatus:
       type: object
@@ -7475,3 +8386,5 @@ tags:
     description: RSS feed and auto-download rule management
   - name: Theme Licenses
     description: Theme license management (optional feature)
+  - name: Proxy
+    description: qBittorrent-compatible proxy endpoints authenticated by client API key

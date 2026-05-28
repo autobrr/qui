@@ -111,10 +111,10 @@ export function useInstancePreferences(
         queryClient.setQueryData(preferencesQueryKey, optimistic)
 
         if (previousMetadata) {
-          queryClient.setQueryData<InstanceMetadata | undefined>(metadataQueryKey, {
-            ...previousMetadata,
-            preferences: optimistic,
-          })
+          queryClient.setQueryData<InstanceMetadata | undefined>(
+            metadataQueryKey,
+            previous => (previous ? { ...previous, preferences: optimistic } : previous)
+          )
         }
       }
 

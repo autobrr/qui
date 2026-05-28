@@ -11,12 +11,18 @@ Configure matching behavior in the **Rules** tab on the Cross-Seed page.
 
 - **Find individual episodes** - When enabled, season packs also match individual episodes. When disabled, season packs only match other season packs. Episodes are added with AutoTMM disabled to prevent save path conflicts.
 - **Size mismatch tolerance** - Maximum size difference percentage (default: 5%). Also determines auto-resume threshold after recheck.
-- **Skip recheck** - When enabled, skips any cross-seed that would require a recheck (alignment needed, extra files, or disc layouts like `BDMV`/`VIDEO_TS`). Applies to all modes including hardlink/reflink.
+- **Skip recheck** - When enabled, skips any cross-seed that would require a recheck (alignment needed, extra files, filesystem fallback, or disc layouts like `BDMV`/`VIDEO_TS`). Applies to all modes including hardlink/reflink.
 - **Skip piece boundary safety check** - Enabled by default. When enabled, allows cross-seeds even if extra files share torrent pieces with content files. **Warning:** This may corrupt your existing seeded data if content differs. Uncheck this to enable the safety check, or use reflink mode which safely handles these cases.
 
 :::note
-Disc layouts (`BDMV`/`VIDEO_TS`) are treated more strictly: they only auto-resume after a full recheck reaches 100%.
+Filesystem fallback and disc layouts (`BDMV`/`VIDEO_TS`) are treated more strictly: they only auto-resume after a full recheck reaches 100%.
 :::
+
+## Season Pack Threshold
+
+The season-pack webhook uses a separate coverage threshold (default 75%) to decide whether enough local data exists to inject a pack. Season episode totals are sourced from Sonarr first, then TVDB or TVMaze when Sonarr cannot resolve the release. When torrent data is available, qui never uses a total lower than the playable file count in the pack torrent. Incomplete packs are added paused, rechecked, then resumed automatically when qBittorrent reports progress at or above the season-pack threshold. This is configured in **Rules > Season packs**. Instances must have local filesystem access and hardlink or reflink mode enabled to qualify. See [Season Packs](season-packs) for details.
+
+Season-pack matching rules live in **Rules > Season packs** and affect only the season-pack webhook flow.
 
 ## Categories
 
@@ -24,7 +30,7 @@ Choose one of three mutually exclusive category modes:
 
 ### Category Affix (default)
 
-Adds a configurable affix to the matched torrent's category. Prevents Sonarr/Radarr from importing cross-seeded files as duplicates. AutoTMM is inherited from the matched torrent.
+Adds a configurable affix to the matched torrent's category. Prevents Sonarr/Radarr from importing cross-seeded files as duplicates. In **regular mode** (no hardlink/reflink), AutoTMM is inherited from the matched torrent.
 
 **Affix Mode:**
 - **Suffix** (default): Appends the affix to the category (e.g., `movies` → `movies.cross`)
@@ -78,7 +84,7 @@ autoTMM behavior depends on which category mode is active:
 
 | Category Mode | autoTMM Behavior |
 |---------------|------------------|
-| **Category Affix** | Inherited from matched torrent |
+| **Category Affix** | Inherited from matched torrent (regular mode only; hardlink/reflink disables autoTMM) |
 | **Indexer name** | Always disabled (explicit save paths) |
 | **Custom** | Always disabled (explicit save paths) |
 
@@ -87,6 +93,11 @@ When autoTMM is inherited (affix mode):
 - If matched torrent has manual path, cross-seed uses same manual path
 
 When autoTMM is disabled (indexer/custom modes), cross-seeds always use explicit save paths derived from the matched torrent's location.
+
+:::note
+Hardlink/reflink mode always adds torrents with an explicit `savepath` pointing at the link tree, which forces autoTMM off.
+Dir Scan injections are separate from cross-seed rules and also always add with explicit `savepath` (autoTMM off).
+:::
 
 ### Save Path Determination
 

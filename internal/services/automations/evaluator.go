@@ -16,6 +16,7 @@ import (
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -52,8 +53,13 @@ type EvalContext struct {
 	UnregisteredSet map[string]struct{}
 	// TrackerDownSet contains hashes of torrents whose trackers are down (from SyncManager health counts)
 	TrackerDownSet map[string]struct{}
+	// TrackerErrorSet contains hashes of torrents with tracker errors (from SyncManager health counts)
+	TrackerErrorSet map[string]struct{}
 	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent)
 	HardlinkScopeByHash map[string]string
+	// HardlinkCrossScopeByHash maps torrent hash to its cross-instance hardlink scope.
+	// Same values as HardlinkScopeByHash but considers files from all instances.
+	HardlinkCrossScopeByHash map[string]string
 	// HasMissingFilesByHash maps torrent hash to whether or not it has missing files on disk
 	HasMissingFilesByHash map[string]bool
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
@@ -65,8 +71,11 @@ type EvalContext struct {
 	// FilesToClear is a map of cross-seed keys to the amount of disk space that will be cleared by the "free space" condition, ensuring we don't double count cross-seeds (current active source)
 	FilesToClear map[crossSeedKey]struct{}
 	// HardlinkSignatureByHash maps torrent hash to its hardlink signature (sorted file IDs joined with ";").
-	// Only populated when includeHardlinks is enabled for FREE_SPACE rules.
+	// Used for hardlink_signature grouping and grouped-condition evaluation.
 	HardlinkSignatureByHash map[string]string
+	// DeleteSafeHardlinkSignatureByHash maps torrent hash to its hardlink signature for torrents whose
+	// hardlinks stay fully inside qBittorrent. Used only by delete/include-hardlinks FREE_SPACE dedupe.
+	DeleteSafeHardlinkSignatureByHash map[string]string
 	// HardlinkSignaturesToClear tracks hardlink signatures already counted in space projection (current active source).
 	// Torrents with the same signature share physical files and should only be counted once.
 	HardlinkSignaturesToClear map[string]struct{}
@@ -88,6 +97,20 @@ type EvalContext struct {
 	// NowUnix is the current Unix timestamp, used for age field evaluation.
 	// If zero, time.Now().Unix() is used. Set this for deterministic tests.
 	NowUnix int64
+
+	// CrossInstanceHashSet contains hashes of torrents that exist on at least one other instance.
+	// Built from SyncManager cached data when rules use EXISTS_ON_OTHER_INSTANCE.
+	CrossInstanceHashSet map[string]struct{}
+	// CrossInstanceSeedingHashSet contains hashes of torrents that are actively seeding on at least one other instance.
+	// Built from SyncManager cached data when rules use SEEDING_ON_OTHER_INSTANCE.
+	CrossInstanceSeedingHashSet map[string]struct{}
+
+	// SameInstanceCrossSeedHashSet contains hashes of torrents that have a cross-seed
+	// (same content path, different hash) on the same instance.
+	SameInstanceCrossSeedHashSet map[string]struct{}
+	// SameInstanceCrossSeedSeedingHashSet contains hashes of torrents that have a cross-seed
+	// seeding (Progress >= 1.0) on the same instance.
+	SameInstanceCrossSeedSeedingHashSet map[string]struct{}
 
 	// TrackerDisplayNameByDomain maps lowercase tracker domains to their display names.
 	// Used for UseTrackerAsTag with UseDisplayName option.
@@ -249,6 +272,14 @@ func ConditionUsesField(cond *RuleCondition, field ConditionField) bool {
 		}
 	}
 	return false
+}
+
+// evaluateTime returns the current time, using ctx.NowUnix if provided.
+func evaluateTime(ctx *EvalContext) time.Time {
+	if ctx != nil && ctx.NowUnix > 0 {
+		return time.Unix(ctx.NowUnix, 0)
+	}
+	return time.Now()
 }
 
 // EvaluateCondition recursively evaluates a condition against a torrent.
@@ -443,6 +474,15 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareFloat64(torrent.RatioLimit, cond)
 	case FieldMaxRatio:
 		return compareFloat64(torrent.MaxRatio, cond)
+	case FieldUploadedOverSize:
+		// Cross-seed-safe alternative to FieldRatio: qBittorrent's Ratio is
+		// uploaded/downloaded, which explodes for cross-seeded torrents
+		// whose downloaded is near zero. Comparing against total_size
+		// sidesteps the broken denominator.
+		if torrent.TotalSize == 0 {
+			return false
+		}
+		return compareFloat64(float64(torrent.Uploaded)/float64(torrent.TotalSize), cond)
 	case FieldProgress:
 		return compareFloat64(torrent.Progress, normalizeProgressCondition(cond))
 	case FieldAvailability:
@@ -479,6 +519,20 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			size = int64(idx.SizeForHash(torrent.Hash))
 		}
 		return compareInt64(size, cond)
+
+	// System time fields
+	case models.FieldSystemHour:
+		return compareInt64(int64(evaluateTime(ctx).Hour()), cond)
+	case models.FieldSystemMinute:
+		return compareInt64(int64(evaluateTime(ctx).Minute()), cond)
+	case models.FieldSystemDayOfWeek:
+		return compareInt64(int64(evaluateTime(ctx).Weekday()), cond)
+	case models.FieldSystemDay:
+		return compareInt64(int64(evaluateTime(ctx).Day()), cond)
+	case models.FieldSystemMonth:
+		return compareInt64(int64(evaluateTime(ctx).Month()), cond)
+	case models.FieldSystemYear:
+		return compareInt64(int64(evaluateTime(ctx).Year()), cond)
 
 	// Boolean fields
 	case FieldPrivate:
@@ -518,6 +572,19 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		}
 		return compareHardlinkScope(scope, cond)
 
+	case FieldHardlinkScopeCross:
+		if ctx == nil || !ctx.InstanceHasLocalAccess {
+			return false
+		}
+		if ctx.HardlinkCrossScopeByHash == nil {
+			return false
+		}
+		scope, ok := ctx.HardlinkCrossScopeByHash[torrent.Hash]
+		if !ok {
+			return false
+		}
+		return compareHardlinkScope(scope, cond)
+
 	case FieldHasMissingFiles:
 		// Instances without local filesystem access cannot detect missing files.
 		// Return false so the condition doesn't match and rules won't trigger unintended actions.
@@ -541,6 +608,34 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			grouped = idx.SizeForHash(torrent.Hash) > 1
 		}
 		return compareBool(grouped, cond)
+
+	case FieldExistsOnOtherInstance:
+		exists := false
+		if ctx != nil && ctx.CrossInstanceHashSet != nil {
+			_, exists = ctx.CrossInstanceHashSet[torrent.Hash]
+		}
+		return compareBool(exists, cond)
+
+	case FieldSeedingOnOtherInstance:
+		seeding := false
+		if ctx != nil && ctx.CrossInstanceSeedingHashSet != nil {
+			_, seeding = ctx.CrossInstanceSeedingHashSet[torrent.Hash]
+		}
+		return compareBool(seeding, cond)
+
+	case FieldExistsOnSameInstance:
+		exists := false
+		if ctx != nil && ctx.SameInstanceCrossSeedHashSet != nil {
+			_, exists = ctx.SameInstanceCrossSeedHashSet[torrent.Hash]
+		}
+		return compareBool(exists, cond)
+
+	case FieldSeedingOnSameInstance:
+		seeding := false
+		if ctx != nil && ctx.SameInstanceCrossSeedSeedingHashSet != nil {
+			_, seeding = ctx.SameInstanceCrossSeedSeedingHashSet[torrent.Hash]
+		}
+		return compareBool(seeding, cond)
 
 	default:
 		return false
@@ -654,6 +749,12 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 			return false
 		}
 		_, ok := ctx.TrackerDownSet[torrent.Hash]
+		return ok
+	case "tracker_error":
+		if ctx == nil || ctx.TrackerErrorSet == nil {
+			return false
+		}
+		_, ok := ctx.TrackerErrorSet[torrent.Hash]
 		return ok
 	}
 

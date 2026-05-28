@@ -17,6 +17,14 @@ QUI__PORT=7476           # Port number
 QUI__BASE_URL=/qui/      # Optional: serve from subdirectory
 ```
 
+## CORS
+
+```bash
+QUI__CORS_ALLOWED_ORIGINS=https://sso.example.com,https://panel.example.com  # Optional: explicit CORS allowlist (empty disables CORS)
+```
+
+`QUI__CORS_ALLOWED_ORIGINS` accepts comma/space-separated origins. Entries must be explicit `http(s)://host[:port]` values, without wildcards, paths, query strings, fragments, or userinfo.
+
 ## Security
 
 ```bash
@@ -38,7 +46,26 @@ When `logPath` is set the server writes to disk using size-based rotation. Adjus
 ## Storage
 
 ```bash
-QUI__DATA_DIR=...        # Optional: custom data directory (default: next to config)
+QUI__DATA_DIR=...        # Optional: custom runtime data directory (default: next to config)
+```
+
+`QUI__DATA_DIR` is always used for runtime assets (logs, tracker icon cache, etc.). With `QUI__DATABASE_ENGINE=sqlite`, `qui.db` is also stored there.
+
+## Database
+
+```bash
+QUI__DATABASE_ENGINE=sqlite            # sqlite or postgres (default: sqlite)
+QUI__DATABASE_DSN=...                  # Full Postgres DSN (preferred for Postgres)
+QUI__DATABASE_HOST=localhost           # Postgres host when not using DATABASE_DSN
+QUI__DATABASE_PORT=5432                # Postgres port when not using DATABASE_DSN
+QUI__DATABASE_USER=...                 # Postgres user when not using DATABASE_DSN
+QUI__DATABASE_PASSWORD=...             # Postgres password when not using DATABASE_DSN
+QUI__DATABASE_NAME=qui                 # Postgres database name when not using DATABASE_DSN
+QUI__DATABASE_SSL_MODE=disable         # disable, require, verify-ca, verify-full
+QUI__DATABASE_CONNECT_TIMEOUT=10       # Connect timeout in seconds
+QUI__DATABASE_MAX_OPEN_CONNS=25        # Postgres pool max open connections
+QUI__DATABASE_MAX_IDLE_CONNS=5         # Postgres pool max idle connections
+QUI__DATABASE_CONN_MAX_LIFETIME=300    # Max connection lifetime in seconds
 ```
 
 ## Cross-Seed
@@ -97,6 +124,8 @@ Non-canonical CIDRs with host bits set (for example `10.0.0.5/8`) are rejected.
 `QUI__OIDC_ENABLED=true` cannot be combined with auth-disabled mode.
 
 Only use this when qui runs behind a reverse proxy that already handles authentication (e.g., Authelia, Authentik, Caddy with forward_auth). See the [Configuration Reference](./reference#authentication) for a full explanation of the risks.
+
+Built-in health endpoints (`/health`, `/healthz/readiness`, `/healthz/liveness`) always allow loopback probes, so the official Docker image healthcheck continues to work even if your allowlist only includes the reverse proxy subnet(s).
 
 ## External Programs
 

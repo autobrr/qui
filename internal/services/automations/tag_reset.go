@@ -4,8 +4,6 @@
 package automations
 
 import (
-	"strings"
-
 	"github.com/autobrr/qui/internal/models"
 )
 
@@ -18,10 +16,5 @@ func shouldResetTagActionInClient(action *models.TagAction) bool {
 		return false
 	}
 
-	mode := strings.ToLower(strings.TrimSpace(action.Mode))
-	if mode == "" {
-		mode = models.TagModeFull
-	}
-
-	return action.DeleteFromClient || mode == models.TagModeFull
+	return action.DeleteFromClient
 }

@@ -51,6 +51,7 @@ type Server struct {
 	logger  zerolog.Logger
 	config  *config.AppConfig
 	version string
+	started time.Time
 
 	authService                      *auth.Service
 	sessionManager                   *scs.SessionManager
@@ -81,6 +82,7 @@ type Server struct {
 	notificationTargetStore          *models.NotificationTargetStore
 	notificationService              *notifications.Service
 	instanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
+	seasonPackRunStore               *models.SeasonPackRunStore
 	orphanScanStore                  *models.OrphanScanStore
 	orphanScanService                *orphanscan.Service
 	dirScanService                   *dirscan.Service
@@ -120,6 +122,7 @@ type Dependencies struct {
 	NotificationTargetStore          *models.NotificationTargetStore
 	NotificationService              *notifications.Service
 	InstanceCrossSeedCompletionStore *models.InstanceCrossSeedCompletionStore
+	SeasonPackRunStore               *models.SeasonPackRunStore
 	OrphanScanStore                  *models.OrphanScanStore
 	OrphanScanService                *orphanscan.Service
 	DirScanService                   *dirscan.Service
@@ -143,6 +146,7 @@ func NewServer(deps *Dependencies) *Server {
 		logger:                           log.Logger.With().Str("module", "api").Logger(),
 		config:                           deps.Config,
 		version:                          deps.Version,
+		started:                          time.Now().UTC(),
 		authService:                      deps.AuthService,
 		sessionManager:                   deps.SessionManager,
 		instanceStore:                    deps.InstanceStore,
@@ -172,6 +176,7 @@ func NewServer(deps *Dependencies) *Server {
 		notificationTargetStore:          deps.NotificationTargetStore,
 		notificationService:              deps.NotificationService,
 		instanceCrossSeedCompletionStore: deps.InstanceCrossSeedCompletionStore,
+		seasonPackRunStore:               deps.SeasonPackRunStore,
 		orphanScanStore:                  deps.OrphanScanStore,
 		orphanScanService:                deps.OrphanScanService,
 		dirScanService:                   deps.DirScanService,
@@ -292,16 +297,18 @@ func (s *Server) Handler() (*chi.Mux, error) {
 		r.Use(compressor)
 	}
 
-	// CORS - mirror autobrr's permissive credentials setup
-	corsMiddleware := cors.New(cors.Options{
-		AllowCredentials: true,
-		AllowedMethods:   []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key", "X-Requested-With"},
-		AllowOriginFunc:  func(origin string) bool { return true },
-		MaxAge:           300,
-		Debug:            false,
-	})
-	r.Use(corsMiddleware.Handler)
+	// CORS is disabled by default. Enable only for explicit trusted origins.
+	if len(s.config.Config.CORSAllowedOrigins) > 0 {
+		corsMiddleware := cors.New(cors.Options{
+			AllowCredentials: true,
+			AllowedOrigins:   s.config.Config.CORSAllowedOrigins,
+			AllowedMethods:   []string{"HEAD", "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE"},
+			AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-API-Key", "X-Requested-With"},
+			MaxAge:           300,
+			Debug:            false,
+		})
+		r.Use(corsMiddleware.Handler)
+	}
 
 	// Session middleware - must be added before any session-dependent middleware
 	r.Use(s.sessionManager.LoadAndSave)
@@ -319,12 +326,18 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	externalProgramsHandler := handlers.NewExternalProgramsHandler(s.externalProgramStore, s.externalProgramService, s.clientPool, s.automationStore)
 	arrHandler := handlers.NewArrHandler(s.arrInstanceStore, s.arrService)
 	versionHandler := handlers.NewVersionHandler(s.updateService)
+	applicationHandler := handlers.NewApplicationHandler(s.config, s.started)
 	qbittorrentInfoHandler := handlers.NewQBittorrentInfoHandler(s.clientPool)
 	backupsHandler := handlers.NewBackupsHandler(s.backupService)
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
-	crossSeedHandler := handlers.NewCrossSeedHandler(s.crossSeedService, s.instanceCrossSeedCompletionStore, s.instanceStore)
+	crossSeedHandler := handlers.NewCrossSeedHandler(
+		s.crossSeedService,
+		s.instanceCrossSeedCompletionStore,
+		s.instanceStore,
+		s.seasonPackRunStore,
+	)
 	automationsHandler := handlers.NewAutomationHandler(s.automationStore, s.automationActivityStore, s.instanceStore, s.externalProgramStore, s.automationService)
 	orphanScanHandler := handlers.NewOrphanScanHandler(s.orphanScanStore, s.instanceStore, s.orphanScanService)
 	var dirScanHandler *handlers.DirScanHandler
@@ -375,6 +388,13 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 		// Cross-seed routes (query param auth for select endpoints)
 		crossSeedHandler.Routes(r, authMiddleware, apiKeyQueryMiddleware)
+
+		// Dir scan webhook (query param auth for external triggers like *arr custom scripts)
+		if dirScanHandler != nil {
+			r.Route("/dir-scan/webhook", func(r chi.Router) {
+				r.With(apiKeyQueryMiddleware, authMiddleware).Post("/scan", dirScanHandler.WebhookTriggerScan)
+			})
+		}
 
 		r.Group(func(r chi.Router) {
 			r.Use(authMiddleware)
@@ -459,6 +479,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 
 			// Version endpoint for update checks
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
+			r.Get("/application/info", applicationHandler.GetInfo)
 
 			if s.streamManager != nil {
 				r.Get("/stream", s.streamManager.Serve)
@@ -475,6 +496,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 					r.Put("/", instancesHandler.UpdateInstance)
 					r.Delete("/", instancesHandler.DeleteInstance)
 					r.Post("/test", instancesHandler.TestConnection)
+					r.Get("/mediainfo", torrentsHandler.GetContentPathMediaInfo)
 
 					// Torrent operations
 					r.Route("/torrents", func(r chi.Router) {
@@ -503,6 +525,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 							r.Put("/rename-file", torrentsHandler.RenameTorrentFile)
 							r.Put("/rename-folder", torrentsHandler.RenameTorrentFolder)
 							r.Get("/files/{fileIndex}/download", torrentsHandler.DownloadTorrentContentFile)
+							r.Get("/files/{fileIndex}/mediainfo", torrentsHandler.GetTorrentFileMediaInfo)
 						})
 					})
 

@@ -45,6 +45,8 @@ type TorznabSearchRequest struct {
 	OmitQueryForIDs bool `json:"-"`
 	// SkipHistory prevents recording this search in the history buffer
 	SkipHistory bool `json:"-"`
+	// ReturnAllResults skips response pagination for internal callers that need the complete result set.
+	ReturnAllResults bool `json:"-"`
 	// OnComplete is called when a search job for an indexer completes
 	OnComplete func(jobID uint64, indexerID int, err error) `json:"-"`
 	// OnAllComplete is called when all search jobs complete with the final results
@@ -107,6 +109,14 @@ type SearchResult struct {
 	IMDbID string `json:"imdb_id,omitempty"`
 	// TVDb ID if available
 	TVDbID string `json:"tvdb_id,omitempty"`
+	// TMDb ID if available
+	TMDbID string `json:"tmdb_id,omitempty"`
+	// SearchIMDbID is the IMDb ID actually used in the per-indexer search request, if any.
+	SearchIMDbID string `json:"search_imdb_id,omitempty"`
+	// SearchTVDbID is the TVDb ID actually used in the per-indexer search request, if any.
+	SearchTVDbID string `json:"search_tvdb_id,omitempty"`
+	// SearchTMDbID is the TMDb ID actually used in the per-indexer search request, if any.
+	SearchTMDbID int `json:"search_tmdb_id,omitempty"`
 	// Source parsed from release name (e.g., "WEB-DL", "BluRay", "HDTV")
 	Source string `json:"source,omitempty"`
 	// Collection/streaming service parsed from release name (e.g., "AMZN", "NF", "HULU", "MAX")

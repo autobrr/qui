@@ -302,17 +302,15 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
               clearTimeout(entry.handoffTimer)
             }
           }
-          const timer = (typeof window !== "undefined"
-            ? window.setTimeout
-            : (setTimeout as unknown as (handler: () => void, timeout: number) => number))(() => {
-              entry.handoffTimer = undefined
-              if (!entry.handoffPending) {
-                return
-              }
-              entry.handoffPending = false
-              entry.connected = false
-              notifyStateSubscribers(entry.key)
-            }, HANDOFF_GRACE_PERIOD_MS)
+          const timer = (typeof window !== "undefined"? window.setTimeout: (setTimeout as unknown as (handler: () => void, timeout: number) => number))(() => {
+            entry.handoffTimer = undefined
+            if (!entry.handoffPending) {
+              return
+            }
+            entry.handoffPending = false
+            entry.connected = false
+            notifyStateSubscribers(entry.key)
+          }, HANDOFF_GRACE_PERIOD_MS)
           entry.handoffTimer = timer
         })
       } else {
@@ -451,9 +449,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
       if (pending.timer === undefined) {
         const schedule =
-          typeof window !== "undefined"
-            ? window.setTimeout
-            : (setTimeout as unknown as (handler: () => void, timeout: number) => number)
+          typeof window !== "undefined"? window.setTimeout: (setTimeout as unknown as (handler: () => void, timeout: number) => number)
         pending.timer = schedule(() => {
           const { preserveState, resetRetry } = pendingConnectionUpdateRef.current ?? {}
           pendingConnectionUpdateRef.current = null
@@ -490,21 +486,19 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
     connection.nextRetryAt = Date.now() + delay
 
-    const timer = (typeof window !== "undefined"
-      ? window.setTimeout
-      : (setTimeout as unknown as (handler: () => void, timeout: number) => number))(() => {
-        connection.retryTimer = undefined
-        connection.nextRetryAt = undefined
+    const timer = (typeof window !== "undefined"? window.setTimeout: (setTimeout as unknown as (handler: () => void, timeout: number) => number))(() => {
+      connection.retryTimer = undefined
+      connection.nextRetryAt = undefined
 
-        if (Object.keys(streamsRef.current).length === 0) {
-          clearConnectionRetryState()
-          notifyAllStateSubscribers()
-          return
-        }
-
-        ensureConnection({ preserveState: false })
+      if (Object.keys(streamsRef.current).length === 0) {
+        clearConnectionRetryState()
         notifyAllStateSubscribers()
-      }, delay)
+        return
+      }
+
+      ensureConnection({ preserveState: false })
+      notifyAllStateSubscribers()
+    }, delay)
 
     connection.retryTimer = timer
     notifyAllStateSubscribers()
@@ -545,9 +539,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     (entry: StreamEntry) => {
       clearEntryTeardown(entry)
       const schedule =
-        typeof window !== "undefined"
-          ? window.setTimeout
-          : (setTimeout as unknown as (handler: () => void, timeout: number) => number)
+        typeof window !== "undefined"? window.setTimeout: (setTimeout as unknown as (handler: () => void, timeout: number) => number)
 
       const timer = schedule(() => {
         entry.teardownTimer = undefined

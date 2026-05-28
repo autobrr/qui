@@ -4,6 +4,7 @@
 package hardlinktree
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -225,6 +226,17 @@ func TestBuildPlan_NoMatchingFile(t *testing.T) {
 	_, err := BuildPlan(candidateFiles, existingFiles, LayoutOriginal, "Movie", "/dest")
 	if err == nil {
 		t.Error("Expected error when no matching file for size")
+	}
+	if !errors.Is(err, ErrNoMatchingFile) {
+		t.Fatalf("expected ErrNoMatchingFile, got %v", err)
+	}
+
+	var linkErr *LinkPlanError
+	if !errors.As(err, &linkErr) {
+		t.Fatalf("expected LinkPlanError, got %v", err)
+	}
+	if linkErr.File != "movie.mkv" {
+		t.Fatalf("expected file movie.mkv, got %q", linkErr.File)
 	}
 }
 

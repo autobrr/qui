@@ -11,7 +11,10 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Radar, Users, Shield } from "lucide-react"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
+
+import { PreferencesFormShell } from "./PreferencesFormShell"
 
 interface NetworkDiscoveryFormProps {
   instanceId: number
@@ -54,6 +57,7 @@ function SwitchSetting({
 }
 
 export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscoveryFormProps) {
+  const { t } = useTranslation("instances")
   const { preferences, isLoading, updatePreferences, isUpdating } = useInstancePreferences(instanceId)
 
   const form = useForm({
@@ -70,10 +74,10 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
     onSubmit: async ({ value }) => {
       try {
         await updatePreferences(value)
-        toast.success("Network discovery settings updated successfully")
+        toast.success(t("preferences.networkDiscovery.toast.success"))
         onSuccess?.()
       } catch (error) {
-        toast.error("Failed to update network discovery settings")
+        toast.error(t("preferences.networkDiscovery.toast.error"))
         console.error("Failed to update network discovery settings:", error)
       }
     },
@@ -96,160 +100,26 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
   if (isLoading || !preferences) {
     return (
       <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
-        <p className="text-sm text-muted-foreground">Loading network discovery settings...</p>
+        <p className="text-sm text-muted-foreground">{t("preferences.networkDiscovery.loading")}</p>
       </div>
     )
   }
 
   const getEncryptionLabel = (value: number) => {
     switch (value) {
-      case 0: return "Prefer encryption"
-      case 1: return "Require encryption"
-      case 2: return "Disable encryption"
-      default: return "Prefer encryption"
+      case 1: return t("preferences.networkDiscovery.requireEncryption")
+      case 2: return t("preferences.networkDiscovery.disableEncryption")
+      default: return t("preferences.networkDiscovery.preferEncryption")
     }
   }
 
   return (
-    <form
+    <PreferencesFormShell
       onSubmit={(e) => {
         e.preventDefault()
         form.handleSubmit()
       }}
-      className="space-y-6"
-    >
-      {/* Peer Discovery Section */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Radar className="h-4 w-4" />
-          <h3 className="text-lg font-medium">Peer Discovery</h3>
-        </div>
-
-        <div className="space-y-4">
-          <form.Field name="dht">
-            {(field) => (
-              <SwitchSetting
-                label="Enable DHT (decentralized network)"
-                description="Distributed Hash Table for finding peers without trackers"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
-
-          <form.Field name="pex">
-            {(field) => (
-              <SwitchSetting
-                label="Enable PeX (Peer Exchange)"
-                description="Exchange peer lists with other peers"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
-
-          <form.Field name="lsd">
-            {(field) => (
-              <SwitchSetting
-                label="Enable LSD (Local Service Discovery)"
-                description="Find peers on your local network"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
-        </div>
-      </div>
-
-      {/* Tracker Settings Section */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Users className="h-4 w-4" />
-          <h3 className="text-lg font-medium">Tracker Settings</h3>
-        </div>
-
-        <div className="space-y-4">
-          <form.Field name="announce_to_all_tiers">
-            {(field) => (
-              <SwitchSetting
-                label="Always announce to all tiers"
-                description="Announce to all tracker tiers simultaneously"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
-
-          <form.Field name="announce_to_all_trackers">
-            {(field) => (
-              <SwitchSetting
-                label="Always announce to all trackers in a tier"
-                description="Announce to all trackers in a tier simultaneously"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
-        </div>
-      </div>
-
-      {/* Security & Privacy Section */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Shield className="h-4 w-4" />
-          <h3 className="text-lg font-medium">Security & Privacy</h3>
-        </div>
-
-        <div className="space-y-4">
-          <form.Field name="encryption">
-            {(field) => (
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Protocol Encryption</Label>
-                <Select
-                  value={field.state.value.toString()}
-                  onValueChange={(value) => field.handleChange(parseInt(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">{getEncryptionLabel(0)}</SelectItem>
-                    <SelectItem value="1">{getEncryptionLabel(1)}</SelectItem>
-                    <SelectItem value="2">{getEncryptionLabel(2)}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Protocol encryption helps bypass ISP traffic shaping
-                </p>
-              </div>
-            )}
-          </form.Field>
-
-          <form.Field name="anonymous_mode">
-            {(field) => (
-              <SwitchSetting
-                label="Enable anonymous mode"
-                description="Hide your client identification and version"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
-
-          <form.Field name="resolve_peer_countries">
-            {(field) => (
-              <SwitchSetting
-                label="Resolve peer countries"
-                description="Show country flags for peers (requires additional bandwidth)"
-                checked={field.state.value}
-                onChange={(checked) => field.handleChange(checked)}
-              />
-            )}
-          </form.Field>
-        </div>
-      </div>
-
-      <div className="flex justify-end pt-4">
+      footer={(
         <form.Subscribe
           selector={(state) => [state.canSubmit, state.isSubmitting]}
         >
@@ -259,11 +129,144 @@ export function NetworkDiscoveryForm({ instanceId, onSuccess }: NetworkDiscovery
               disabled={!canSubmit || isSubmitting || isUpdating}
               className="min-w-32"
             >
-              {isSubmitting || isUpdating ? "Saving..." : "Save Changes"}
+              {isSubmitting || isUpdating ? t("preferences.common.saving") : t("preferences.common.saveChanges")}
             </Button>
           )}
         </form.Subscribe>
+      )}
+    >
+      <div className="space-y-6">
+        {/* Peer Discovery Section */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Radar className="h-4 w-4" />
+            <h3 className="text-lg font-medium">{t("preferences.networkDiscovery.peerDiscovery")}</h3>
+          </div>
+
+          <div className="space-y-4">
+            <form.Field name="dht">
+              {(field) => (
+                <SwitchSetting
+                  label={t("preferences.networkDiscovery.enableDht")}
+                  description={t("preferences.networkDiscovery.enableDhtDescription")}
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
+
+            <form.Field name="pex">
+              {(field) => (
+                <SwitchSetting
+                  label={t("preferences.networkDiscovery.enablePex")}
+                  description={t("preferences.networkDiscovery.enablePexDescription")}
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
+
+            <form.Field name="lsd">
+              {(field) => (
+                <SwitchSetting
+                  label={t("preferences.networkDiscovery.enableLsd")}
+                  description={t("preferences.networkDiscovery.enableLsdDescription")}
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
+          </div>
+        </div>
+
+        {/* Tracker Settings Section */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            <h3 className="text-lg font-medium">{t("preferences.networkDiscovery.trackerSettings")}</h3>
+          </div>
+
+          <div className="space-y-4">
+            <form.Field name="announce_to_all_tiers">
+              {(field) => (
+                <SwitchSetting
+                  label={t("preferences.networkDiscovery.announceToAllTiers")}
+                  description={t("preferences.networkDiscovery.announceToAllTiersDescription")}
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
+
+            <form.Field name="announce_to_all_trackers">
+              {(field) => (
+                <SwitchSetting
+                  label={t("preferences.networkDiscovery.announceToAllTrackers")}
+                  description={t("preferences.networkDiscovery.announceToAllTrackersDescription")}
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
+          </div>
+        </div>
+
+        {/* Security & Privacy Section */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            <h3 className="text-lg font-medium">{t("preferences.networkDiscovery.securityPrivacy")}</h3>
+          </div>
+
+          <div className="space-y-4">
+            <form.Field name="encryption">
+              {(field) => (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">{t("preferences.networkDiscovery.protocolEncryption")}</Label>
+                  <Select
+                    value={field.state.value.toString()}
+                    onValueChange={(value) => field.handleChange(parseInt(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">{getEncryptionLabel(0)}</SelectItem>
+                      <SelectItem value="1">{getEncryptionLabel(1)}</SelectItem>
+                      <SelectItem value="2">{getEncryptionLabel(2)}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {t("preferences.networkDiscovery.encryptionDescription")}
+                  </p>
+                </div>
+              )}
+            </form.Field>
+
+            <form.Field name="anonymous_mode">
+              {(field) => (
+                <SwitchSetting
+                  label={t("preferences.networkDiscovery.enableAnonymousMode")}
+                  description={t("preferences.networkDiscovery.enableAnonymousModeDescription")}
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
+
+            <form.Field name="resolve_peer_countries">
+              {(field) => (
+                <SwitchSetting
+                  label={t("preferences.networkDiscovery.resolvePeerCountries")}
+                  description={t("preferences.networkDiscovery.resolvePeerCountriesDescription")}
+                  checked={field.state.value}
+                  onChange={(checked) => field.handleChange(checked)}
+                />
+              )}
+            </form.Field>
+          </div>
+        </div>
       </div>
-    </form>
+    </PreferencesFormShell>
   )
 }

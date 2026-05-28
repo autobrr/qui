@@ -122,11 +122,7 @@ export function useTitleBarSpeeds({
         : (streamSpeeds ?? backgroundSpeedsQuery)
     )
   const cachedBackgroundSpeeds = lastBackgroundSpeedsRef.current
-  const effectiveSpeeds = isHiddenDelayed
-    ? (backgroundSpeeds ?? cachedBackgroundSpeeds)
-    : (isForegroundStale
-      ? (cachedBackgroundSpeeds ?? backgroundSpeeds)
-      : (foregroundSpeeds ?? cachedBackgroundSpeeds ?? backgroundSpeeds))
+  const effectiveSpeeds = isHiddenDelayed? (backgroundSpeeds ?? cachedBackgroundSpeeds): (isForegroundStale? (cachedBackgroundSpeeds ?? backgroundSpeeds): (foregroundSpeeds ?? cachedBackgroundSpeeds ?? backgroundSpeeds))
   const shouldSetTitle = enabled && (isHiddenDelayed || isVisible)
 
   useEffect(() => {

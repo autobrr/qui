@@ -119,10 +119,12 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	service := &Service{
 		syncManager:         sync,
 		releaseCache:        NewReleaseCache(),
-		searchResultCache:   ttlcache.New(ttlcache.Options[string, []TorrentSearchResult]{}),
+		searchResultCache:   ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
 		torrentDownloadFunc: func(context.Context, jackett.TorrentDownloadRequest) ([]byte, error) { return []byte("torrent"), nil },
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
-			return &models.CrossSeedAutomationSettings{}, nil
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SizeMismatchTolerancePercent = 5
+			return settings, nil
 		},
 	}
 
@@ -134,7 +136,7 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 		GUID:        "guid-2",
 		Size:        2048,
 	}
-	service.cacheSearchResults(instanceID, sourceTorrent.Hash, []TorrentSearchResult{cached})
+	service.cacheSearchResults(instanceID, sourceTorrent.Hash, []TorrentSearchResult{cached}, 20)
 
 	var captured *CrossSeedRequest
 	service.crossSeedInvoker = func(ctx context.Context, req *CrossSeedRequest) (*CrossSeedResponse, error) {
@@ -170,6 +172,35 @@ func TestApplyTorrentSearchResultsPropagatesEpisodeFlag(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.True(t, captured.FindIndividualEpisodes, "apply requests must propagate episode flag")
+	require.InDelta(t, 20, captured.SizeMismatchTolerancePercent, 0.001, "apply must reuse the search tolerance cached with the selected result")
+	require.True(t, captured.SizeMismatchTolerancePercentSet)
+}
+
+func TestCacheSearchResultsEmptyResultsOverwritePrevious(t *testing.T) {
+	t.Parallel()
+
+	service := &Service{
+		searchResultCache: ttlcache.New(ttlcache.Options[string, cachedTorrentSearchResults]{}),
+	}
+
+	const (
+		instanceID = 3
+		hash       = "abc123"
+	)
+
+	service.cacheSearchResults(instanceID, hash, []TorrentSearchResult{
+		{
+			IndexerID:   99,
+			Title:       "Previous.Result",
+			DownloadURL: "https://example.invalid/previous.torrent",
+		},
+	}, 20)
+	service.cacheSearchResults(instanceID, hash, nil, 7)
+
+	cached := service.getCachedSearchResults(instanceID, hash)
+	require.NotNil(t, cached)
+	require.Empty(t, cached.results)
+	require.InDelta(t, 7, cached.sizeMismatchTolerancePercent, 0.001)
 }
 
 type episodeInstanceStore struct {
@@ -252,8 +283,8 @@ func (f *episodeSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.Ap
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (f *episodeSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (f *episodeSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (f *episodeSyncManager) BulkAction(context.Context, int, []string, string) error {

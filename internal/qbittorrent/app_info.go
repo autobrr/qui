@@ -10,11 +10,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/rs/zerolog/log"
 )
 
 const appInfoCacheTTL = 5 * time.Minute
 const appInfoRequestTimeout = 10 * time.Second
+
+// processInfoMinWebAPIVersion is the lowest Web API version that exposes process info (launch time).
+var processInfoMinWebAPIVersion = semver.MustParse("2.15.1")
 
 // AppBuildInfo represents the qBittorrent build information reported by the API.
 type AppBuildInfo struct {
@@ -27,11 +32,17 @@ type AppBuildInfo struct {
 	Platform   string `json:"platform,omitempty"`
 }
 
+// AppProcessInfo represents qBittorrent process information (e.g. launch time).
+type AppProcessInfo struct {
+	LaunchTime int64 `json:"launchTime"`
+}
+
 // AppInfo captures the qBittorrent application metadata exposed via the API.
 type AppInfo struct {
-	Version       string        `json:"version"`
-	WebAPIVersion string        `json:"webAPIVersion,omitempty"`
-	BuildInfo     *AppBuildInfo `json:"buildInfo,omitempty"`
+	Version       string          `json:"version"`
+	WebAPIVersion string          `json:"webAPIVersion,omitempty"`
+	BuildInfo     *AppBuildInfo   `json:"buildInfo,omitempty"`
+	ProcessInfo   *AppProcessInfo `json:"processInfo,omitempty"`
 }
 
 func cloneAppInfo(info *AppInfo) *AppInfo {
@@ -44,11 +55,45 @@ func cloneAppInfo(info *AppInfo) *AppInfo {
 		buildClone := *info.BuildInfo
 		clone.BuildInfo = &buildClone
 	}
+	if info.ProcessInfo != nil {
+		processClone := *info.ProcessInfo
+		clone.ProcessInfo = &processClone
+	}
 	return &clone
+}
+
+// supportsProcessInfo reports whether the given Web API version exposes process info.
+func supportsProcessInfo(webAPIVersion string) bool {
+	version, err := semver.NewVersion(strings.TrimSpace(webAPIVersion))
+	if err != nil {
+		return false
+	}
+
+	return !version.LessThan(processInfoMinWebAPIVersion)
+}
+
+// buildProcessInfo fetches process info when the Web API version supports it,
+// returning nil when unsupported or when the lookup fails (best-effort metadata).
+func buildProcessInfo(webAPIVersion string, fetch func() (qbt.ProcessInfo, error)) *AppProcessInfo {
+	if !supportsProcessInfo(webAPIVersion) {
+		return nil
+	}
+
+	processInfo, err := fetch()
+	if err != nil {
+		log.Debug().Err(err).Str("webAPIVersion", webAPIVersion).Msg("Failed to get qBittorrent process info")
+		return nil
+	}
+
+	return &AppProcessInfo{LaunchTime: processInfo.LaunchTime}
 }
 
 // GetAppInfo returns cached qBittorrent app information, refreshing it when stale.
 func (c *Client) GetAppInfo(ctx context.Context) (*AppInfo, error) {
+	if c == nil || c.Client == nil {
+		return nil, errors.New("qbittorrent client unavailable")
+	}
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -100,6 +145,9 @@ func (c *Client) refreshAppInfo(ctx context.Context) (*AppInfo, error) {
 			Bitness:    buildInfo.Bitness,
 			Platform:   buildInfo.Platform,
 		},
+		ProcessInfo: buildProcessInfo(webAPIVersion, func() (qbt.ProcessInfo, error) {
+			return c.GetProcessInfoCtx(requestCtx)
+		}),
 	}
 
 	c.mu.Lock()

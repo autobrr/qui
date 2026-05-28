@@ -24,6 +24,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/releases"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -404,8 +405,8 @@ func TestDetermineSavePath(t *testing.T) {
 			matchType:      "partial-in-pack",
 			sourceFiles:    qbt.TorrentFiles{{Name: "The.Movie.2020-GRP.mkv", Size: 5 << 30}},
 			candidateFiles: qbt.TorrentFiles{{Name: "The.Movie.2020-GRP/The.Movie.2020-GRP.mkv", Size: 5 << 30}},
-			wantPath:       "/movies",
-			description:    "Loose file uses SavePath, Subfolder layout creates folder",
+			wantPath:       "/movies/The.Movie.2020-GRP",
+			description:    "Rootless single file uses matched folder ContentPath",
 		},
 
 		// M2: We seed loose file, match on folder
@@ -519,6 +520,18 @@ func TestDetermineSavePath(t *testing.T) {
 			}},
 			wantPath:    "/movies/Movie.2020.1080p.BluRay-OTHER",
 			description: "Both have folders - uses ContentPath (folder path)",
+		},
+		{
+			name:               "M8b: rootless single file source to folder candidate",
+			newTorrentName:     "Movie.2020.1080p.WEB-GRP.mkv",
+			matchedTorrentName: "Movie.2020.1080p.BluRay-OTHER",
+			matchedContentPath: "/movies/Movie.2020.1080p.BluRay-OTHER",
+			baseSavePath:       "/movies", contentLayout: "Original",
+			matchType:      "partial-in-pack",
+			sourceFiles:    qbt.TorrentFiles{{Name: "Movie.2020.1080p.WEB-GRP.mkv", Size: 8 << 30}},
+			candidateFiles: qbt.TorrentFiles{{Name: "Movie.2020.1080p.BluRay-OTHER/Movie.2020.1080p.BluRay-OTHER.mkv", Size: 8 << 30}},
+			wantPath:       "/movies/Movie.2020.1080p.BluRay-OTHER",
+			description:    "Rootless single file source uses matched folder ContentPath instead of qBittorrent-created subfolder",
 		},
 
 		// M9: Single file movie with extras folder matched against single file
@@ -1285,7 +1298,56 @@ func TestPartialInPackMovieCollectionIntegration(t *testing.T) {
 		"partial-in-pack single file into folder uses SavePath, Subfolder layout creates folder")
 }
 
-// TestCrossSeed_TorrentCreationAndParsing tests creating torrents and extracting info
+func TestFindBestCandidateMatch_SingleFileSourceVsPackWithSample(t *testing.T) {
+	t.Parallel()
+
+	svc := &Service{
+		releaseCache:     releases.NewDefaultParser(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "A.Real.File.That.Exists.1998.S11E11.1080p.WEB.h264-SOMEGROUP.mkv", Size: 2276921754},
+	}
+
+	candidateFiles := qbt.TorrentFiles{
+		{Name: "A.Real.File.That.Exists.1998.S11E11.1080p.WEB.h264-SOMEGROUP/A.Real.File.That.Exists.1998.S11E11.1080p.WEB.h264-SOMEGROUP.mkv", Size: 2276921754},
+		{Name: "A.Real.File.That.Exists.1998.S11E11.1080p.WEB.h264-SOMEGROUP/Sample/a.real.file.that.exists.1998.s11e11.1080p.web.h264-somegroup.sample.mkv", Size: 52936909},
+		{Name: "A.Real.File.That.Exists.1998.S11E11.1080p.WEB.h264-SOMEGROUP/a.real.file.that.exists.1998.s11e11.1080p.web.h264-somegroup.nfo", Size: 494},
+		{Name: "A.Real.File.That.Exists.1998.S11E11.1080p.WEB.h264-SOMEGROUP/a.Real.file.that.exists.1998.s11e11.1080p.web.h264-somegroup.srr", Size: 4956},
+	}
+
+	sourceRelease := svc.releaseCache.Parse("A.Real.File.That.Exists.1998.S11E11.1080p.WEB.h264-SOMEGROUP")
+
+	candidate := CrossSeedCandidate{
+		InstanceID:   1,
+		InstanceName: "test",
+		Torrents: []qbt.Torrent{{
+			Hash:     "abc123",
+			Name:     "A.Real.File.That.Exists.1998.S11E11.1080p.WEB.h264-SOMEGROUP",
+			Progress: 1.0,
+		}},
+	}
+
+	filesByHash := map[string]qbt.TorrentFiles{
+		"abc123": candidateFiles,
+	}
+
+	matchedTorrent, _, matchType, _ := svc.findBestCandidateMatch(
+		context.Background(),
+		candidate,
+		sourceRelease,
+		sourceFiles,
+		filesByHash,
+		5.0,
+	)
+
+	require.NotNil(t, matchedTorrent,
+		"single-file source should match candidate pack containing same episode with extra files")
+	require.Equal(t, "partial-contains", matchType,
+		"single-file source matched against pack with extras should produce partial-contains match")
+}
+
 func TestCrossSeed_TorrentCreationAndParsing(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -2116,6 +2178,116 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 			wantMatchType:      "metadata",
 		},
 		{
+			name: "discussion title matches filename HDR10P alias",
+			request: &WebhookCheckRequest{
+				InstanceIDs: instanceIDs,
+				TorrentName: "End of Watch 2012 Hybrid 2160p UHD BluRay REMUX DV HDR10+ HEVC DTS-HD MA 5.1-FraMeSToR",
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash:     "framestor",
+					Name:     "End.of.Watch.2012.UHD.BluRay.2160p.DTS-HD.MA.5.1.DV.HDR10P.HEVC.HYBRID.REMUX-FraMeSToR.mkv",
+					Progress: 1.0,
+				},
+			},
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+			wantMatchType:      "metadata",
+		},
+		{
+			name: "tv webhook tolerates missing incoming collection for hdb when group matches",
+			request: &WebhookCheckRequest{
+				InstanceIDs: instanceIDs,
+				TorrentName: "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264-NTb",
+				Indexer:     "hdb",
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash:     "sample-show-dsnp",
+					Name:     "Sample.Show.S08E11.Episode.Title.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb",
+					Progress: 1.0,
+				},
+			},
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+			wantMatchType:      "metadata",
+		},
+		{
+			name: "tv webhook missing collection stays strict for non-hdb even when group matches",
+			request: &WebhookCheckRequest{
+				InstanceIDs: instanceIDs,
+				TorrentName: "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264-NTb",
+				Indexer:     "btn",
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash:     "sample-show-dsnp-non-hdb",
+					Name:     "Sample.Show.S08E11.Episode.Title.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb",
+					Progress: 1.0,
+				},
+			},
+			wantCanCrossSeed:   false,
+			wantMatchCount:     0,
+			wantRecommendation: "skip",
+		},
+		{
+			name: "tv webhook missing collection still requires matching group or site",
+			request: &WebhookCheckRequest{
+				InstanceIDs: instanceIDs,
+				TorrentName: "Sample Show S08E11 1080p WEB-DL DD+5.1 H.264",
+				Indexer:     "hdb",
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash:     "sample-show-dsnp-no-group",
+					Name:     "Sample.Show.S08E11.Episode.Title.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb",
+					Progress: 1.0,
+				},
+			},
+			wantCanCrossSeed:   false,
+			wantMatchCount:     0,
+			wantRecommendation: "skip",
+		},
+		{
+			name: "movie webhook tolerates missing incoming collection for hdb when group matches",
+			request: &WebhookCheckRequest{
+				InstanceIDs: instanceIDs,
+				TorrentName: "Sample Movie 2024 1080p WEB-DL DD+5.1 H.264-NTb",
+				Indexer:     "hdb",
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash:     "sample-movie-dsnp",
+					Name:     "Sample.Movie.2024.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb",
+					Progress: 1.0,
+				},
+			},
+			wantCanCrossSeed:   true,
+			wantMatchCount:     1,
+			wantRecommendation: "download",
+			wantMatchType:      "metadata",
+		},
+		{
+			name: "movie webhook missing collection still requires matching group or site",
+			request: &WebhookCheckRequest{
+				InstanceIDs: instanceIDs,
+				TorrentName: "Sample Movie 2024 1080p WEB-DL DD+5.1 H.264",
+				Indexer:     "hdb",
+			},
+			existingTorrents: []qbt.Torrent{
+				{
+					Hash:     "sample-movie-dsnp-no-group",
+					Name:     "Sample.Movie.2024.1080p.DSNP.WEB-DL.DDP5.1.H.264-NTb",
+					Progress: 1.0,
+				},
+			},
+			wantCanCrossSeed:   false,
+			wantMatchCount:     0,
+			wantRecommendation: "skip",
+		},
+		{
 			name: "pending match when torrent still downloading",
 			request: &WebhookCheckRequest{
 				InstanceIDs: instanceIDs,
@@ -2270,6 +2442,150 @@ func TestCheckWebhook_AutobrrPayload(t *testing.T) {
 				}
 				assert.True(t, hasComplete, "expected at least one completed match")
 			}
+		})
+	}
+}
+
+func TestCheckWebhook_NotificationRequiresCompleteMatch(t *testing.T) {
+	t.Parallel()
+
+	instance := &models.Instance{
+		ID:   1,
+		Name: "Test Instance",
+	}
+	store := &fakeInstanceStore{
+		instances: map[int]*models.Instance{
+			instance.ID: instance,
+		},
+	}
+
+	tests := []struct {
+		name              string
+		progress          float64
+		wantCanCrossSeed  bool
+		wantNotificationN int
+	}{
+		{
+			name:              "pending-only match does not notify",
+			progress:          0.5,
+			wantCanCrossSeed:  false,
+			wantNotificationN: 0,
+		},
+		{
+			name:              "complete match notifies once",
+			progress:          1.0,
+			wantCanCrossSeed:  true,
+			wantNotificationN: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			notifier := &recordingNotifier{}
+			svc := &Service{
+				instanceStore:    store,
+				syncManager:      newFakeSyncManager(instance, []qbt.Torrent{{Hash: "abc123", Name: "Notify.Test.2025.1080p.BluRay.x264-GRP", Progress: tt.progress}}, nil),
+				releaseCache:     NewReleaseCache(),
+				stringNormalizer: stringutils.NewDefaultNormalizer(),
+				notifier:         notifier,
+			}
+
+			resp, err := svc.CheckWebhook(context.Background(), &WebhookCheckRequest{
+				InstanceIDs: []int{instance.ID},
+				TorrentName: "Notify.Test.2025.1080p.BluRay.x264-GRP",
+			})
+			require.NoError(t, err)
+			require.NotNil(t, resp)
+			assert.Equal(t, tt.wantCanCrossSeed, resp.CanCrossSeed)
+			assert.Equal(t, "download", resp.Recommendation)
+
+			events := notifier.Events()
+			assert.Len(t, events, tt.wantNotificationN)
+			if tt.wantNotificationN > 0 {
+				assert.Equal(t, notifications.EventCrossSeedWebhookSucceeded, events[0].Type)
+			}
+		})
+	}
+}
+
+func TestNotifyAutomationRun_SuccessRequiresMeaningfulChange(t *testing.T) {
+	t.Parallel()
+
+	completedAt := time.Now().UTC()
+
+	tests := []struct {
+		name          string
+		run           *models.CrossSeedRun
+		wantEvent     bool
+		wantEventType notifications.EventType
+	}{
+		{
+			name: "successful skipped-only run does not notify",
+			run: &models.CrossSeedRun{
+				ID:              42,
+				Mode:            models.CrossSeedRunModeAuto,
+				Status:          models.CrossSeedRunStatusSuccess,
+				StartedAt:       time.Now().UTC().Add(-2 * time.Minute),
+				CompletedAt:     &completedAt,
+				TotalFeedItems:  885,
+				CandidatesFound: 0,
+				TorrentsAdded:   0,
+				TorrentsFailed:  0,
+				TorrentsSkipped: 885,
+			},
+			wantEvent: false,
+		},
+		{
+			name: "successful run with additions still notifies",
+			run: &models.CrossSeedRun{
+				ID:              43,
+				Mode:            models.CrossSeedRunModeAuto,
+				Status:          models.CrossSeedRunStatusSuccess,
+				StartedAt:       time.Now().UTC().Add(-2 * time.Minute),
+				CompletedAt:     &completedAt,
+				TotalFeedItems:  10,
+				CandidatesFound: 2,
+				TorrentsAdded:   1,
+				TorrentsFailed:  0,
+				TorrentsSkipped: 9,
+			},
+			wantEvent:     true,
+			wantEventType: notifications.EventCrossSeedAutomationSucceeded,
+		},
+		{
+			name: "failed run still notifies",
+			run: &models.CrossSeedRun{
+				ID:              44,
+				Mode:            models.CrossSeedRunModeAuto,
+				Status:          models.CrossSeedRunStatusFailed,
+				StartedAt:       time.Now().UTC().Add(-2 * time.Minute),
+				CompletedAt:     &completedAt,
+				TotalFeedItems:  10,
+				CandidatesFound: 3,
+				TorrentsAdded:   0,
+				TorrentsFailed:  2,
+				TorrentsSkipped: 8,
+			},
+			wantEvent:     true,
+			wantEventType: notifications.EventCrossSeedAutomationFailed,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			notifier := &recordingNotifier{}
+			svc := &Service{notifier: notifier}
+
+			svc.notifyAutomationRun(context.Background(), tt.run, nil)
+
+			events := notifier.Events()
+			if tt.wantEvent {
+				require.Len(t, events, 1)
+				assert.Equal(t, tt.wantEventType, events[0].Type)
+				return
+			}
+
+			assert.Empty(t, events)
 		})
 	}
 }
@@ -2481,13 +2797,87 @@ func TestFindCandidates_NonTVDoesNotMatchUnrelatedTorrents(t *testing.T) {
 	require.Empty(t, resp.Candidates, "unrelated non-TV torrents should not be treated as matches")
 }
 
+func TestFindCandidates_MatchesHDR10PlusAliasAcrossNameFormats(t *testing.T) {
+	instance := &models.Instance{
+		ID:   1,
+		Name: "main",
+	}
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "framestor",
+			Name:        "End.of.Watch.2012.UHD.BluRay.2160p.DTS-HD.MA.5.1.DV.HDR10P.HEVC.HYBRID.REMUX-FraMeSToR.mkv",
+			Progress:    1.0,
+			ContentPath: "/downloads/End.of.Watch.2012.UHD.BluRay.2160p.DTS-HD.MA.5.1.DV.HDR10P.HEVC.HYBRID.REMUX-FraMeSToR.mkv",
+			SavePath:    "/downloads",
+		},
+	}
+
+	files := map[string]qbt.TorrentFiles{
+		"framestor": {
+			{Name: "End.of.Watch.2012.UHD.BluRay.2160p.DTS-HD.MA.5.1.DV.HDR10P.HEVC.HYBRID.REMUX-FraMeSToR.mkv", Size: 50 << 30},
+		},
+	}
+
+	store := &fakeInstanceStore{
+		instances: map[int]*models.Instance{
+			instance.ID: instance,
+		},
+	}
+
+	svc := &Service{
+		instanceStore:    store,
+		syncManager:      newFakeSyncManager(instance, torrents, files),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	resp, err := svc.FindCandidates(context.Background(), &FindCandidatesRequest{
+		TorrentName:       "End of Watch 2012 Hybrid 2160p UHD BluRay REMUX DV HDR10+ HEVC DTS-HD MA 5.1-FraMeSToR",
+		TargetInstanceIDs: []int{instance.ID},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Candidates, 1)
+	require.Len(t, resp.Candidates[0].Torrents, 1)
+	require.Equal(t, "framestor", resp.Candidates[0].Torrents[0].Hash)
+	require.NotEmpty(t, resp.Candidates[0].MatchType)
+}
+
 type fakeInstanceStore struct {
 	instances map[int]*models.Instance
 }
 
+func cloneFakeInstance(instance *models.Instance) *models.Instance {
+	if instance == nil {
+		return nil
+	}
+
+	clone := *instance
+	if !clone.IsActive {
+		// Test fixtures in this file usually omit IsActive; production defaults those instances to active.
+		clone.IsActive = true
+	}
+
+	return &clone
+}
+
+type recordingNotifier struct {
+	events []notifications.Event
+}
+
+func (r *recordingNotifier) Notify(_ context.Context, event notifications.Event) {
+	r.events = append(r.events, event)
+}
+
+func (r *recordingNotifier) Events() []notifications.Event {
+	result := make([]notifications.Event, len(r.events))
+	copy(result, r.events)
+	return result
+}
+
 func (f *fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, error) {
 	if inst, ok := f.instances[id]; ok {
-		return inst, nil
+		return cloneFakeInstance(inst), nil
 	}
 	return nil, models.ErrInstanceNotFound
 }
@@ -2495,7 +2885,7 @@ func (f *fakeInstanceStore) Get(_ context.Context, id int) (*models.Instance, er
 func (f *fakeInstanceStore) List(_ context.Context) ([]*models.Instance, error) {
 	result := make([]*models.Instance, 0, len(f.instances))
 	for _, inst := range f.instances {
-		result = append(result, inst)
+		result = append(result, cloneFakeInstance(inst))
 	}
 	return result, nil
 }
@@ -2608,8 +2998,8 @@ func (f *fakeSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.AppPr
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (f *fakeSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) error {
-	return fmt.Errorf("AddTorrent not implemented in fakeSyncManager")
+func (f *fakeSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, _ map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, errors.New("AddTorrent not implemented in fakeSyncManager")
 }
 
 func (f *fakeSyncManager) BulkAction(_ context.Context, _ int, _ []string, _ string) error {
@@ -3152,7 +3542,7 @@ func (m *mockRecoverSyncManager) simulateRecheckComplete(hash string, finalProgr
 }
 
 func (m *mockRecoverSyncManager) GetTorrentFilesBatch(context.Context, int, []string) (map[string]qbt.TorrentFiles, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) HasTorrentByAnyHash(context.Context, int, []string) (*qbt.Torrent, bool, error) {
@@ -3169,8 +3559,8 @@ func (m *mockRecoverSyncManager) GetAppPreferences(context.Context, int) (qbt.Ap
 	}, nil
 }
 
-func (m *mockRecoverSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return fmt.Errorf("not implemented")
+func (m *mockRecoverSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (m *mockRecoverSyncManager) RenameTorrent(context.Context, int, string, string) error {
@@ -3552,8 +3942,8 @@ func (f *infohashTestSyncManager) GetAppPreferences(context.Context, int) (qbt.A
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (f *infohashTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (f *infohashTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (f *infohashTestSyncManager) BulkAction(context.Context, int, []string, string) error {
@@ -3899,6 +4289,102 @@ func TestProcessAutomationCandidate_ProceedsOnHashCheckError(t *testing.T) {
 	// Should proceed with download on error (graceful degradation)
 	assert.True(t, downloadCalled, "should download torrent when hash check fails")
 	assert.Equal(t, models.CrossSeedFeedItemStatusProcessed, status)
+}
+
+func TestIsSkippedCrossSeedResultStatusIncludesBelowThreshold(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, isSkippedCrossSeedResultStatus("below_threshold"))
+	assert.True(t, isSkippedCrossSeedResultStatus("requires_hardlink_reflink"))
+	assert.True(t, isSkippedCrossSeedResultStatus("content_mismatch"))
+	assert.False(t, isSkippedCrossSeedResultStatus("size_mismatch"))
+	assert.False(t, isSkippedCrossSeedResultStatus("hardlink_error"))
+}
+
+func TestClassifyFailedCrossSeedSearchResult(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		results []InstanceCrossSeedResult
+		want    models.CrossSeedSearchResultStatus
+	}{
+		{
+			name: "existing torrent is skipped",
+			results: []InstanceCrossSeedResult{{
+				Status: "exists",
+			}},
+			want: models.CrossSeedSearchResultStatusSkipped,
+		},
+		{
+			name: "no match is skipped",
+			results: []InstanceCrossSeedResult{{
+				Status: "no_match",
+			}},
+			want: models.CrossSeedSearchResultStatusSkipped,
+		},
+		{
+			name: "below threshold is skipped",
+			results: []InstanceCrossSeedResult{{
+				Status: "below_threshold",
+			}},
+			want: models.CrossSeedSearchResultStatusSkipped,
+		},
+		{
+			name: "requires hardlink or reflink is skipped",
+			results: []InstanceCrossSeedResult{{
+				Status: "requires_hardlink_reflink",
+			}},
+			want: models.CrossSeedSearchResultStatusSkipped,
+		},
+		{
+			name: "hardlink error is failed",
+			results: []InstanceCrossSeedResult{{
+				Status: "hardlink_error",
+			}},
+			want: models.CrossSeedSearchResultStatusFailed,
+		},
+		{
+			name: "content prefilter content mismatch is skipped",
+			results: []InstanceCrossSeedResult{{
+				Status: "content_mismatch",
+			}},
+			want: models.CrossSeedSearchResultStatusSkipped,
+		},
+		{
+			name: "content prefilter size mismatch is failed",
+			results: []InstanceCrossSeedResult{{
+				Status: "size_mismatch",
+			}},
+			want: models.CrossSeedSearchResultStatusFailed,
+		},
+		{
+			name: "mixed skip and hard failure is failed",
+			results: []InstanceCrossSeedResult{
+				{Status: "exists"},
+				{Status: "no_save_path"},
+			},
+			want: models.CrossSeedSearchResultStatusFailed,
+		},
+		{
+			name:    "empty instance results are failed",
+			results: nil,
+			want:    models.CrossSeedSearchResultStatusFailed,
+		},
+		{
+			name:    "empty slice instance results are failed",
+			results: []InstanceCrossSeedResult{},
+			want:    models.CrossSeedSearchResultStatusFailed,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tt.want, classifyFailedCrossSeedSearchResult(tt.results))
+		})
+	}
 }
 
 func TestProcessAutomationCandidate_PropagatesContextCancellation(t *testing.T) {
@@ -5089,8 +5575,8 @@ func (m *rssFilterTestSyncManager) GetAppPreferences(context.Context, int) (qbt.
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (m *rssFilterTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (m *rssFilterTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (m *rssFilterTestSyncManager) BulkAction(context.Context, int, []string, string) error {
@@ -5179,6 +5665,8 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 		expectTags              []string
 		expectExcludeCategories []string
 		expectExcludeTags       []string
+		expectTolerance         float64
+		expectToleranceSet      bool
 	}{
 		{
 			name: "completion include categories passed through",
@@ -5238,6 +5726,33 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 			expectExcludeCategories: []string{"movies-Race"},
 			expectExcludeTags:       []string{"temporary"},
 		},
+		{
+			name: "strict zero tolerance passed through",
+			opts: SearchRunOptions{
+				InstanceID:                      instanceID,
+				SizeMismatchTolerancePercent:    0,
+				SizeMismatchTolerancePercentSet: true,
+			},
+			expectCategories:        nil,
+			expectTags:              nil,
+			expectExcludeCategories: nil,
+			expectExcludeTags:       nil,
+			expectTolerance:         0,
+			expectToleranceSet:      true,
+		},
+		{
+			name: "nonzero tolerance passed through without set flag",
+			opts: SearchRunOptions{
+				InstanceID:                   instanceID,
+				SizeMismatchTolerancePercent: 20,
+			},
+			expectCategories:        nil,
+			expectTags:              nil,
+			expectExcludeCategories: nil,
+			expectExcludeTags:       nil,
+			expectTolerance:         20,
+			expectToleranceSet:      true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -5288,6 +5803,8 @@ func TestExecuteCrossSeedSearchAttempt_RespectsCompletionFilters(t *testing.T) {
 			assert.Equal(t, tt.expectTags, captured.SourceFilterTags, "SourceFilterTags mismatch")
 			assert.Equal(t, tt.expectExcludeCategories, captured.SourceFilterExcludeCategories, "SourceFilterExcludeCategories mismatch")
 			assert.Equal(t, tt.expectExcludeTags, captured.SourceFilterExcludeTags, "SourceFilterExcludeTags mismatch")
+			assert.InDelta(t, tt.expectTolerance, captured.SizeMismatchTolerancePercent, 0.001, "SizeMismatchTolerancePercent mismatch")
+			assert.Equal(t, tt.expectToleranceSet, captured.SizeMismatchTolerancePercentSet, "SizeMismatchTolerancePercentSet mismatch")
 		})
 	}
 }

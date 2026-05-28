@@ -14,6 +14,7 @@ type InstanceCapabilitiesResponse struct {
 	SupportsTorrentCreation     bool   `json:"supportsTorrentCreation"`
 	SupportsTorrentExport       bool   `json:"supportsTorrentExport"`
 	SupportsSetTags             bool   `json:"supportsSetTags"`
+	SupportsSetComment          bool   `json:"supportsSetComment"`
 	SupportsTrackerHealth       bool   `json:"supportsTrackerHealth"`
 	SupportsTrackerEditing      bool   `json:"supportsTrackerEditing"`
 	SupportsRenameTorrent       bool   `json:"supportsRenameTorrent"`
@@ -21,10 +22,13 @@ type InstanceCapabilitiesResponse struct {
 	SupportsRenameFolder        bool   `json:"supportsRenameFolder"`
 	SupportsFilePriority        bool   `json:"supportsFilePriority"`
 	SupportsSubcategories       bool   `json:"supportsSubcategories"`
+	SubcategoriesAlwaysEnabled  bool   `json:"subcategoriesAlwaysEnabled"`
 	SupportsTorrentTmpPath      bool   `json:"supportsTorrentTmpPath"`
 	SupportsPathAutocomplete    bool   `json:"supportsPathAutocomplete"`
 	SupportsFreeSpacePathSource bool   `json:"supportsFreeSpacePathSource"`
 	SupportsSetRSSFeedURL       bool   `json:"supportsSetRSSFeedURL"`
+	SupportsShareLimitsAction   bool   `json:"supportsShareLimitsAction"`
+	SupportsShareLimitsMode     bool   `json:"supportsShareLimitsMode"`
 	WebAPIVersion               string `json:"webAPIVersion,omitempty"`
 }
 
@@ -34,6 +38,7 @@ func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) Instanc
 		SupportsTorrentCreation:     client.SupportsTorrentCreation(),
 		SupportsTorrentExport:       client.SupportsTorrentExport(),
 		SupportsSetTags:             client.SupportsSetTags(),
+		SupportsSetComment:          client.SupportsSetComment(),
 		SupportsTrackerHealth:       client.SupportsTrackerHealth(),
 		SupportsTrackerEditing:      client.SupportsTrackerEditing(),
 		SupportsRenameTorrent:       client.SupportsRenameTorrent(),
@@ -41,10 +46,13 @@ func NewInstanceCapabilitiesResponse(client *internalqbittorrent.Client) Instanc
 		SupportsRenameFolder:        client.SupportsRenameFolder(),
 		SupportsFilePriority:        client.SupportsFilePriority(),
 		SupportsSubcategories:       client.SupportsSubcategories(),
+		SubcategoriesAlwaysEnabled:  client.SubcategoriesAlwaysEnabled(),
 		SupportsTorrentTmpPath:      client.SupportsTorrentTmpPath(),
 		SupportsPathAutocomplete:    client.SupportsPathAutocomplete(),
 		SupportsFreeSpacePathSource: runtime.GOOS != osWindows,
 		SupportsSetRSSFeedURL:       client.SupportsSetRSSFeedURL(),
+		SupportsShareLimitsAction:   client.SupportsShareLimitsAction(),
+		SupportsShareLimitsMode:     client.SupportsShareLimitsMode(),
 	}
 
 	if version := client.GetWebAPIVersion(); version != "" {
