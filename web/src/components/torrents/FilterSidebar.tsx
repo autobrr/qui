@@ -172,6 +172,7 @@ const TORRENT_STATES: Array<{ value: string; label: string; icon: LucideIcon }> 
   { value: "moving", label: "Moving", icon: MoveRight },
   { value: "unregistered", label: "Unregistered", icon: XCircle },
   { value: "tracker_down", label: "Tracker Down", icon: AlertCircle },
+  { value: "tracker_error", label: "Tracker Error", icon: XCircle },
   { value: "cross-seeds", label: "Cross Seeds", icon: GitBranch },
 ]
 
@@ -297,7 +298,12 @@ const FilterSidebarComponent = ({
   const [isConvertingScheme, setIsConvertingScheme] = useState(false)
 
   const visibleTorrentStates = useMemo(() => {
-    let states = supportsTrackerHealth ? TORRENT_STATES : TORRENT_STATES.filter(state => state.value !== "unregistered" && state.value !== "tracker_down")
+    let states = TORRENT_STATES
+    if (!supportsTrackerHealth) {
+      states = TORRENT_STATES.filter(
+        state => state.value !== "unregistered" && state.value !== "tracker_down" && state.value !== "tracker_error"
+      )
+    }
 
     // Only show cross-seeds when there's an active cross-seed filter
     if (!selectedFilters.expr) {
