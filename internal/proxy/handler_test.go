@@ -227,6 +227,53 @@ func TestHandler_ProxyUsesInstanceHTTPClientTransport(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
+func TestProxyContextApplyAuthHeaders_APIKey(t *testing.T) {
+	t.Helper()
+
+	cases := []struct {
+		name              string
+		pc                *proxyContext
+		incomingAuth      string
+		wantAuthorization string
+	}{
+		{
+			name:              "api key sets bearer header",
+			pc:                &proxyContext{apiKey: "secret-key"},
+			wantAuthorization: "Bearer secret-key",
+		},
+		{
+			name:              "api key overrides incoming authorization",
+			pc:                &proxyContext{apiKey: "secret-key"},
+			incomingAuth:      "Basic ZGFuZ2VyOnp1bw==",
+			wantAuthorization: "Bearer secret-key",
+		},
+		{
+			name:              "api key overrides basic auth",
+			pc:                &proxyContext{apiKey: "secret-key", basicAuth: &basicAuthCredentials{username: "u", password: "p"}},
+			wantAuthorization: "Bearer secret-key",
+		},
+		{
+			name:              "no api key and no basic auth strips authorization",
+			pc:                &proxyContext{},
+			incomingAuth:      "Bearer should-be-removed",
+			wantAuthorization: "",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/api/v2/torrents/info", nil)
+			if tc.incomingAuth != "" {
+				req.Header.Set("Authorization", tc.incomingAuth)
+			}
+
+			tc.pc.applyAuthHeaders(req)
+
+			require.Equal(t, tc.wantAuthorization, req.Header.Get("Authorization"))
+		})
+	}
+}
+
 func TestParseCSVQueryValues(t *testing.T) {
 	t.Helper()
 
