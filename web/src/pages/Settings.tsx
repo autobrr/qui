@@ -11,6 +11,7 @@ import { InstancePreferencesDialog } from "@/components/instances/preferences/In
 import { ArrInstancesManager } from "@/components/settings/ArrInstancesManager"
 import { ClientApiKeysManager } from "@/components/settings/ClientApiKeysManager"
 import { DateTimePreferencesForm } from "@/components/settings/DateTimePreferencesForm"
+import { supportedLanguages, languageNames, changeLanguage, type AppLanguage } from "@/i18n"
 import { ExternalProgramsManager } from "@/components/settings/ExternalProgramsManager"
 import { LogSettingsPanel } from "@/components/settings/LogSettingsPanel"
 import { NotificationsManager } from "@/components/settings/NotificationsManager"
@@ -63,11 +64,38 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Bell, Clock, Copy, Database, ExternalLink, FileText, Info, Key, Layers, Link2, Loader2, Palette, Plus, RefreshCw, Server, Share2, Shield, Terminal, Trash2 } from "lucide-react"
 import type { FormEvent, ReactNode } from "react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 type SettingsTab = NonNullable<SettingsSearch["tab"]>
 
 const TORZNAB_CACHE_MIN_TTL_MINUTES = 1440
+
+function LanguageSelector() {
+  const { t, i18n } = useTranslation("settings")
+
+  return (
+    <div className="space-y-2">
+      <Label>{t("language.label")}</Label>
+      <p className="text-sm text-muted-foreground">{t("language.description")}</p>
+      <Select
+        value={i18n.language}
+        onValueChange={(value) => changeLanguage(value as AppLanguage)}
+      >
+        <SelectTrigger className="w-[200px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {supportedLanguages.map((lng) => (
+            <SelectItem key={lng} value={lng}>
+              {languageNames[lng]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
 
 function getApiErrorMessage(error: unknown, fallback: string) {
   if (error instanceof APIError && error.message) {
@@ -82,16 +110,17 @@ function getApiErrorMessage(error: unknown, fallback: string) {
 }
 
 function ChangePasswordForm() {
+  const { t } = useTranslation("settings")
   const mutation = useMutation({
     mutationFn: async (data: { currentPassword: string; newPassword: string }) => {
       return api.changePassword(data.currentPassword, data.newPassword)
     },
     onSuccess: () => {
-      toast.success("Password changed successfully")
+      toast.success(t("changePassword.toasts.success"))
       form.reset()
     },
     onError: () => {
-      toast.error("Failed to change password. Please check your current password.")
+      toast.error(t("changePassword.toasts.error"))
     },
   })
 
@@ -120,12 +149,12 @@ function ChangePasswordForm() {
       <form.Field
         name="currentPassword"
         validators={{
-          onChange: ({ value }) => !value ? "Current password is required" : undefined,
+          onChange: ({ value }) => !value ? t("changePassword.validation.currentRequired") : undefined,
         }}
       >
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor="currentPassword">Current Password</Label>
+            <Label htmlFor="currentPassword">{t("changePassword.currentPassword")}</Label>
             <Input
               id="currentPassword"
               type="password"
@@ -144,15 +173,15 @@ function ChangePasswordForm() {
         name="newPassword"
         validators={{
           onChange: ({ value }) => {
-            if (!value) return "New password is required"
-            if (value.length < 8) return "Password must be at least 8 characters"
+            if (!value) return t("changePassword.validation.newRequired")
+            if (value.length < 8) return t("changePassword.validation.minLength")
             return undefined
           },
         }}
       >
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor="newPassword">New Password</Label>
+            <Label htmlFor="newPassword">{t("changePassword.newPassword")}</Label>
             <Input
               id="newPassword"
               type="password"
@@ -172,15 +201,15 @@ function ChangePasswordForm() {
         validators={{
           onChange: ({ value, fieldApi }) => {
             const newPassword = fieldApi.form.getFieldValue("newPassword")
-            if (!value) return "Please confirm your password"
-            if (value !== newPassword) return "Passwords do not match"
+            if (!value) return t("changePassword.validation.confirmRequired")
+            if (value !== newPassword) return t("changePassword.validation.mismatch")
             return undefined
           },
         }}
       >
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm New Password</Label>
+            <Label htmlFor="confirmPassword">{t("changePassword.confirmPassword")}</Label>
             <Input
               id="confirmPassword"
               type="password"
@@ -203,7 +232,7 @@ function ChangePasswordForm() {
             type="submit"
             disabled={!canSubmit || isSubmitting || mutation.isPending}
           >
-            {isSubmitting || mutation.isPending ? "Changing..." : "Change Password"}
+            {isSubmitting || mutation.isPending ? t("changePassword.submitting") : t("changePassword.submit")}
           </Button>
         )}
       </form.Subscribe>
@@ -217,6 +246,7 @@ interface ApiKeysManagerProps {
 }
 
 function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
+  const { t } = useTranslation("settings")
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null)
   const [newKey, setNewKey] = useState<{ name: string; key: string } | null>(null)
@@ -242,10 +272,10 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
     onSuccess: (data) => {
       setNewKey(data)
       queryClient.invalidateQueries({ queryKey: ["apiKeys"] })
-      toast.success("API key created successfully")
+      toast.success(t("apiKeys.toasts.created"))
     },
     onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Failed to create API key"))
+      toast.error(getApiErrorMessage(error, t("apiKeys.toasts.createFailed")))
     },
   })
 
@@ -256,10 +286,10 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["apiKeys"] })
       setDeleteKeyId(null)
-      toast.success("API key deleted successfully")
+      toast.success(t("apiKeys.toasts.deleted"))
     },
     onError: (error) => {
-      toast.error(getApiErrorMessage(error, "Failed to delete API key"))
+      toast.error(getApiErrorMessage(error, t("apiKeys.toasts.deleteFailed")))
     },
   })
 
@@ -276,7 +306,7 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
   if (authModeLoading) {
     return (
       <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        Loading authentication mode...
+        {t("apiKeys.loadingAuthMode")}
       </div>
     )
   }
@@ -284,9 +314,9 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
   if (authDisabled) {
     return (
       <div className="rounded-md border border-border bg-muted/30 p-4">
-        <h3 className="text-sm font-medium">API keys are unavailable while built-in auth is disabled</h3>
+        <h3 className="text-sm font-medium">{t("apiKeys.authDisabledTitle")}</h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          Requests that pass your reverse proxy and CIDR allowlist can use the qui API directly.
+          {t("apiKeys.authDisabledDescription")}
         </p>
       </div>
     )
@@ -296,7 +326,7 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          API keys allow external applications to access your qBittorrent instances.
+          {t("apiKeys.description")}
         </p>
         <Dialog
           open={showCreateDialog}
@@ -310,14 +340,14 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="mr-2 h-4 w-4" />
-              Create API Key
+              {t("apiKeys.createButton")}
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg max-h-[90dvh] flex flex-col">
             <DialogHeader className="flex-shrink-0">
-              <DialogTitle>Create API Key</DialogTitle>
+              <DialogTitle>{t("apiKeys.createDialog.title")}</DialogTitle>
               <DialogDescription>
-                Give your API key a descriptive name to remember its purpose.
+                {t("apiKeys.createDialog.description")}
               </DialogDescription>
             </DialogHeader>
 
@@ -325,7 +355,7 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
               {newKey ? (
                 <div className="space-y-4">
                   <div>
-                    <Label>Your new API key</Label>
+                    <Label>{t("apiKeys.newKey.label")}</Label>
                     <div className="mt-2 flex items-center gap-2">
                       <code className="flex-1 rounded bg-muted px-2 py-1 text-sm font-mono break-all">
                         {newKey.key}
@@ -336,9 +366,9 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
                         onClick={async () => {
                           try {
                             await copyTextToClipboard(newKey.key)
-                            toast.success("API key copied to clipboard")
+                            toast.success(t("apiKeys.toasts.copied"))
                           } catch {
-                            toast.error("Failed to copy to clipboard")
+                            toast.error(t("apiKeys.toasts.copyFailed"))
                           }
                         }}
                       >
@@ -346,7 +376,7 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
                       </Button>
                     </div>
                     <p className="mt-2 text-sm text-destructive">
-                      Save this key now. You won't be able to see it again.
+                      {t("apiKeys.newKey.warning")}
                     </p>
                   </div>
                   <Button
@@ -356,7 +386,7 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
                     }}
                     className="w-full"
                   >
-                    Done
+                    {t("apiKeys.newKey.done")}
                   </Button>
                 </div>
               ) : (
@@ -370,15 +400,15 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
                   <form.Field
                     name="name"
                     validators={{
-                      onChange: ({ value }) => !value ? "Name is required" : undefined,
+                      onChange: ({ value }) => !value ? t("apiKeys.createDialog.nameRequired") : undefined,
                     }}
                   >
                     {(field) => (
                       <div className="space-y-2">
-                        <Label htmlFor="name">Name</Label>
+                        <Label htmlFor="name">{t("apiKeys.createDialog.nameLabel")}</Label>
                         <Input
                           id="name"
-                          placeholder="e.g., Automation Script"
+                          placeholder={t("apiKeys.createDialog.namePlaceholder")}
                           value={field.state.value}
                           onBlur={field.handleBlur}
                           onChange={(e) => field.handleChange(e.target.value)}
@@ -401,7 +431,7 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
                         disabled={!canSubmit || isSubmitting || createMutation.isPending}
                         className="w-full"
                       >
-                        {isSubmitting || createMutation.isPending ? "Creating..." : "Create API Key"}
+                        {isSubmitting || createMutation.isPending ? t("apiKeys.createDialog.creating") : t("apiKeys.createDialog.submit")}
                       </Button>
                     )}
                   </form.Subscribe>
@@ -415,7 +445,7 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
       <div className="space-y-2">
         {isLoading ? (
           <p className="text-center text-sm text-muted-foreground py-8">
-            Loading API keys...
+            {t("apiKeys.loading")}
           </p>
         ) : (
           <>
@@ -428,13 +458,13 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{key.name}</span>
                     <Badge variant="outline" className="text-xs">
-                      ID: {key.id}
+                      {t("clientApiKeys.idLabel", { id: key.id })}
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Created: {formatDate(new Date(key.createdAt))}
+                    {t("clientApiKeys.labels.created")} {formatDate(new Date(key.createdAt))}
                     {key.lastUsedAt && (
-                      <> • Last used: {formatDate(new Date(key.lastUsedAt))}</>
+                      <> • {t("clientApiKeys.labels.lastUsed")} {formatDate(new Date(key.lastUsedAt))}</>
                     )}
                   </p>
                 </div>
@@ -450,7 +480,7 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
 
             {keys.length === 0 && (
               <p className="text-center text-sm text-muted-foreground py-8">
-                No API keys created yet
+                {t("apiKeys.empty")}
               </p>
             )}
           </>
@@ -460,18 +490,18 @@ function ApiKeysManager({ authMode, authModeLoading }: ApiKeysManagerProps) {
       <AlertDialog open={!!deleteKeyId} onOpenChange={() => setDeleteKeyId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete API Key?</AlertDialogTitle>
+            <AlertDialogTitle>{t("apiKeys.deleteDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. Any applications using this key will lose access.
+              {t("apiKeys.deleteDialog.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("apiKeys.deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteKeyId && deleteMutation.mutate(deleteKeyId)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("apiKeys.deleteDialog.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -488,6 +518,7 @@ interface InstancesManagerProps {
 const INSTANCE_FORM_ID = "instance-form"
 
 function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
+  const { t } = useTranslation("settings")
   const { instances, isLoading, reorderInstances, isReordering, isCreating } = useInstances()
   const [titleBarSpeedsEnabled, setTitleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
   const isDialogOpen = search.tab === "instances" && search.modal === "add-instance"
@@ -528,7 +559,7 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
 
     reorderInstances(orderedIds, {
       onError: (error) => {
-        toast.error("Failed to update instance order", {
+        toast.error(t("instances.toasts.reorderFailed"), {
           description: error instanceof Error ? error.message : undefined,
         })
       },
@@ -540,7 +571,7 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-end">
         <Button onClick={handleOpenAddDialog} size="sm" className="w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" />
-          Add Instance
+          {t("instances.addButton")}
         </Button>
       </div>
 
@@ -549,7 +580,7 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
       <div className="space-y-2">
         {isLoading ? (
           <p className="text-center text-sm text-muted-foreground py-8">
-            Loading instances...
+            {t("instances.loading")}
           </p>
         ) : (
           <>
@@ -569,14 +600,14 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
               </div>
             ) : (
               <div className="rounded-lg border border-dashed p-12 text-center">
-                <p className="text-muted-foreground">No instances configured</p>
+                <p className="text-muted-foreground">{t("instances.empty")}</p>
                 <Button
                   onClick={handleOpenAddDialog}
                   className="mt-4"
                   variant="outline"
                 >
                   <Plus className="mr-2 h-4 w-4" />
-                  Add your first instance
+                  {t("instances.addFirst")}
                 </Button>
               </div>
             )}
@@ -587,9 +618,9 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
       <div className="rounded-lg border p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="space-y-1">
-            <Label className="text-sm font-medium">Title bar speeds</Label>
+            <Label className="text-sm font-medium">{t("instances.titleBarSpeeds.label")}</Label>
             <p className="text-xs text-muted-foreground">
-              Show download and upload speeds in the browser title bar.
+              {t("instances.titleBarSpeeds.description")}
             </p>
           </div>
           <Switch
@@ -602,9 +633,9 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
       <Dialog open={isDialogOpen} onOpenChange={(open) => open ? handleOpenAddDialog() : handleCloseDialog()}>
         <DialogContent className="sm:max-w-[425px] max-h-[90dvh] flex flex-col">
           <DialogHeader className="flex-shrink-0">
-            <DialogTitle>Add Instance</DialogTitle>
+            <DialogTitle>{t("instances.addDialog.title")}</DialogTitle>
             <DialogDescription>
-              Add a new qBittorrent instance to manage
+              {t("instances.addDialog.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto min-h-0">
@@ -616,10 +647,10 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
           </div>
           <DialogFooter className="flex-shrink-0">
             <Button type="button" variant="outline" onClick={handleCloseDialog}>
-              Cancel
+              {t("instances.addDialog.cancel")}
             </Button>
             <Button type="submit" form={INSTANCE_FORM_ID} disabled={isCreating}>
-              {isCreating ? "Adding..." : "Add Instance"}
+              {isCreating ? t("instances.addDialog.adding") : t("instances.addDialog.submit")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -640,6 +671,7 @@ function InstancesManager({ search, onSearchChange }: InstancesManagerProps) {
 }
 
 function TorznabSearchCachePanel() {
+  const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
   const statsQuery = useQuery({
     queryKey: ["torznab", "search-cache", "stats"],
@@ -674,7 +706,7 @@ function TorznabSearchCachePanel() {
       return api.updateTorznabSearchCacheSettings(nextTTL)
     },
     onSuccess: (updatedStats) => {
-      toast.success(`Cache TTL updated to ${updatedStats.ttlMinutes} minutes`)
+      toast.success(t("searchCache.toasts.ttlUpdated", { minutes: updatedStats.ttlMinutes }))
       setTtlInput(String(updatedStats.ttlMinutes))
       queryClient.setQueryData(["torznab", "search-cache", "stats"], updatedStats)
       queryClient.invalidateQueries({
@@ -683,7 +715,7 @@ function TorznabSearchCachePanel() {
       })
     },
     onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "Failed to update cache TTL"
+      const message = error instanceof Error ? error.message : t("searchCache.toasts.ttlUpdateFailed")
       toast.error(message)
     },
   })
@@ -692,12 +724,12 @@ function TorznabSearchCachePanel() {
     event.preventDefault()
     const parsed = Number(ttlInput)
     if (!Number.isFinite(parsed)) {
-      toast.error("Enter a valid number of minutes")
+      toast.error(t("searchCache.toasts.invalidNumber"))
       return
     }
     const normalized = Math.floor(parsed)
     if (normalized < TORZNAB_CACHE_MIN_TTL_MINUTES) {
-      toast.error(`Cache TTL must be at least ${TORZNAB_CACHE_MIN_TTL_MINUTES} minutes`)
+      toast.error(t("searchCache.toasts.ttlMinimum", { min: TORZNAB_CACHE_MIN_TTL_MINUTES }))
       return
     }
     updateTTLMutation.mutate(normalized)
@@ -706,18 +738,18 @@ function TorznabSearchCachePanel() {
   const ttlMinutes = stats?.ttlMinutes ?? 0
   const approxSize = stats?.approxSizeBytes ?? 0
 
-  const cacheStatusText = stats?.enabled ? "Enabled" : "Disabled"
+  const cacheStatusText = stats?.enabled ? t("searchCache.enabled") : t("searchCache.disabled")
 
   const rows = useMemo(
     () => [
-      { label: "Entries", value: stats?.entries?.toLocaleString() ?? "0" },
-      { label: "Hit count", value: stats?.totalHits?.toLocaleString() ?? "0" },
-      { label: "Approx. size", value: approxSize > 0 ? formatBytes(approxSize) : "—" },
-      { label: "TTL", value: ttlMinutes > 0 ? `${ttlMinutes} minutes` : "—" },
-      { label: "Newest entry", value: formatCacheTimestamp(stats?.newestCachedAt) },
-      { label: "Last used", value: formatCacheTimestamp(stats?.lastUsedAt) },
+      { label: t("searchCache.entries"), value: stats?.entries?.toLocaleString() ?? "0" },
+      { label: t("searchCache.hitCount"), value: stats?.totalHits?.toLocaleString() ?? "0" },
+      { label: t("searchCache.approxSize"), value: approxSize > 0 ? formatBytes(approxSize) : "—" },
+      { label: t("searchCache.ttl"), value: ttlMinutes > 0 ? t("searchCache.ttlValue", { minutes: ttlMinutes }) : "—" },
+      { label: t("searchCache.newestEntry"), value: formatCacheTimestamp(stats?.newestCachedAt) },
+      { label: t("searchCache.lastUsed"), value: formatCacheTimestamp(stats?.lastUsedAt) },
     ],
-    [approxSize, formatCacheTimestamp, stats?.entries, stats?.lastUsedAt, stats?.newestCachedAt, stats?.totalHits, ttlMinutes]
+    [t, approxSize, formatCacheTimestamp, stats?.entries, stats?.lastUsedAt, stats?.newestCachedAt, stats?.totalHits, ttlMinutes]
   )
 
   return (
@@ -725,8 +757,8 @@ function TorznabSearchCachePanel() {
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle>Torznab Search Cache</CardTitle>
-            <CardDescription>Reduce repeated searches by reusing recent Torznab responses.</CardDescription>
+            <CardTitle>{t("searchCache.title")}</CardTitle>
+            <CardDescription>{t("searchCache.description")}</CardDescription>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant={stats?.enabled ? "default" : "secondary"}>{cacheStatusText}</Badge>
@@ -737,7 +769,7 @@ function TorznabSearchCachePanel() {
               disabled={statsQuery.isFetching}
             >
               <RefreshCw className={`mr-2 h-4 w-4 ${statsQuery.isFetching ? "animate-spin" : ""}`} />
-              Refresh stats
+              {t("searchCache.refreshStats")}
             </Button>
           </div>
         </CardHeader>
@@ -753,13 +785,13 @@ function TorznabSearchCachePanel() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Configuration</CardTitle>
-          <CardDescription>Control how long cached searches remain valid.</CardDescription>
+          <CardTitle>{t("searchCache.configTitle")}</CardTitle>
+          <CardDescription>{t("searchCache.configDescription")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleUpdateTTL} className="space-y-3">
             <div className="space-y-2">
-              <Label htmlFor="torznab-cache-ttl">Cache TTL (minutes)</Label>
+              <Label htmlFor="torznab-cache-ttl">{t("searchCache.cacheTTL")}</Label>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
                   id="torznab-cache-ttl"
@@ -773,16 +805,16 @@ function TorznabSearchCachePanel() {
                   {updateTTLMutation.isPending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Saving…
+                      {t("searchCache.saving")}
                     </>
                   ) : (
-                    "Save TTL"
+                    t("searchCache.saveTTL")
                   )}
                 </Button>
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Minimum {TORZNAB_CACHE_MIN_TTL_MINUTES} minutes (24 hours). Larger values reduce load on your indexers at the expense of fresher results.
+              {t("searchCache.ttlHelper", { min: TORZNAB_CACHE_MIN_TTL_MINUTES })}
             </p>
           </form>
         </CardContent>
@@ -812,7 +844,7 @@ function formatApplicationDate(value?: string): string {
   })
 }
 
-function formatRelativeDate(value?: string): string {
+function formatRelativeDate(value: string | undefined, t: (key: string, options?: Record<string, string>) => string): string {
   if (!value || value.trim() === "") {
     return "—"
   }
@@ -824,20 +856,20 @@ function formatRelativeDate(value?: string): string {
 
   const secondsDiff = Math.floor((Date.now() - date.getTime()) / 1000)
   if (Math.abs(secondsDiff) < 1) {
-    return "just now"
+    return t("searchCache.timestamps.justNow")
   }
 
   const duration = formatDuration(Math.abs(secondsDiff))
   if (secondsDiff >= 0) {
-    return `${duration} ago`
+    return t("searchCache.timestamps.ago", { duration })
   }
 
-  return `in ${duration}`
+  return t("searchCache.timestamps.inFuture", { duration })
 }
 
-function formatCurrentSessionAuth(user?: User): string {
+function formatCurrentSessionAuth(user: User | undefined, t: (key: string) => string): string {
   if (!user) {
-    return "Unknown"
+    return t("application.auth.unknown")
   }
 
   const methodRaw = user.auth_method?.trim() || ""
@@ -878,6 +910,7 @@ interface ApplicationSectionProps {
 }
 
 function ApplicationSection({ title, description, fields, onCopy, headerAction }: ApplicationSectionProps) {
+  const { t } = useTranslation("settings")
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -914,7 +947,7 @@ function ApplicationSection({ title, description, fields, onCopy, headerAction }
                         onClick={() => {
                           void onCopy(field.copyValue || "", field.label)
                         }}
-                        title={`Copy ${field.label}`}
+                        title={t("application.copyTitle", { label: field.label })}
                       >
                         <Copy className="h-3.5 w-3.5" />
                       </Button>
@@ -931,6 +964,7 @@ function ApplicationSection({ title, description, fields, onCopy, headerAction }
 }
 
 function ApplicationInfoPanel() {
+  const { t } = useTranslation("settings")
   const appInfoQuery = useQuery({
     queryKey: ["application-info"],
     queryFn: () => api.getApplicationInfo(),
@@ -973,72 +1007,70 @@ function ApplicationInfoPanel() {
     }
   }, [info])
 
-  let currentSessionAuth: string
+  let currentSessionAuth = formatCurrentSessionAuth(user, t)
   if (currentUserQuery.isLoading) {
-    currentSessionAuth = "Loading…"
+    currentSessionAuth = t("application.auth.loading")
   } else if (currentUserQuery.isError) {
-    currentSessionAuth = "Unavailable"
-  } else {
-    currentSessionAuth = formatCurrentSessionAuth(user)
+    currentSessionAuth = t("application.auth.unavailable")
   }
 
   const updateStatus = useMemo(() => {
     if (!info) {
-      return { label: "Unknown", detail: "Waiting for application metadata." }
+      return { label: t("application.build.statuses.unknown"), detail: t("application.build.statuses.unknownDetail") }
     }
     if (!info.checkForUpdates) {
-      return { label: "Disabled", detail: "Update checks are disabled in config." }
+      return { label: t("application.build.statuses.disabled"), detail: t("application.build.statuses.disabledDetail") }
     }
     if (isDevVersion(info.version)) {
-      return { label: "Dev build", detail: "" }
+      return { label: t("application.build.statuses.devBuild"), detail: "" }
     }
     if (latestVersionQuery.isLoading || latestVersionQuery.isFetching) {
-      return { label: "Checking", detail: "Checking GitHub release cache." }
+      return { label: t("application.build.statuses.checking"), detail: t("application.build.statuses.checkingDetail") }
     }
     if (latestVersionQuery.data) {
-      return { label: "Update available", detail: latestVersionQuery.data.tag_name }
+      return { label: t("application.build.statuses.updateAvailable"), detail: latestVersionQuery.data.tag_name }
     }
-    return { label: "Up to date", detail: "No newer release is currently cached." }
-  }, [info, latestVersionQuery.data, latestVersionQuery.isFetching, latestVersionQuery.isLoading])
+    return { label: t("application.build.statuses.upToDate"), detail: t("application.build.statuses.upToDateDetail") }
+  }, [t, info, latestVersionQuery.data, latestVersionQuery.isFetching, latestVersionQuery.isLoading])
 
-  const updateCheckedAt = latestVersionQuery.dataUpdatedAt > 0 ? formatApplicationDate(new Date(latestVersionQuery.dataUpdatedAt).toISOString()) : "Not checked yet"
+  const updateCheckedAt = latestVersionQuery.dataUpdatedAt > 0 ? formatApplicationDate(new Date(latestVersionQuery.dataUpdatedAt).toISOString()) : t("application.build.statuses.notCheckedYet")
 
   const buildFields: ApplicationField[] = info ? [
-    { label: "Version", value: info.version || "—", monospace: true },
-    { label: "Commit", value: info.commitShort || info.commit || "—", copyValue: info.commit || "", monospace: true },
+    { label: t("application.build.version"), value: info.version || "—", monospace: true },
+    { label: t("application.build.commit"), value: info.commitShort || info.commit || "—", copyValue: info.commit || "", monospace: true },
     {
-      label: "Build date",
+      label: t("application.build.buildDate"),
       value: formatApplicationDate(info.buildDate),
-      secondary: formatRelativeDate(info.buildDate),
+      secondary: formatRelativeDate(info.buildDate, t),
     },
     {
-      label: "Update status",
+      label: t("application.build.updateStatus"),
       value: updateStatus.label,
-      secondary: [updateStatus.detail, `Last checked: ${updateCheckedAt}`].filter(Boolean).join(" • "),
+      secondary: [updateStatus.detail, t("application.build.statuses.lastChecked", { date: updateCheckedAt })].filter(Boolean).join(" • "),
     },
   ] : []
 
   const runtimeFields: ApplicationField[] = info ? [
-    { label: "Uptime", value: formatDuration(liveUptimeSeconds) },
-    { label: "Runtime", value: `${info.goVersion} • ${info.goOS}/${info.goArch}`, monospace: true },
+    { label: t("application.runtime.uptime"), value: formatDuration(liveUptimeSeconds) },
+    { label: t("application.runtime.runtime"), value: `${info.goVersion} • ${info.goOS}/${info.goArch}`, monospace: true },
   ] : []
 
   const authFields: ApplicationField[] = info ? [
-    { label: "Current session auth", value: currentSessionAuth, monospace: true },
-    { label: "OIDC enabled", value: info.oidcEnabled ? "Yes" : "No" },
-    { label: "Built-in login enabled", value: info.builtInLoginEnabled ? "Yes" : "No" },
-    { label: "OIDC issuer host", value: info.oidcIssuerHost || "—", monospace: true },
+    { label: t("application.auth.currentSessionAuth"), value: currentSessionAuth, monospace: true },
+    { label: t("application.auth.oidcEnabled"), value: info.oidcEnabled ? t("application.auth.yes") : t("application.auth.no") },
+    { label: t("application.auth.builtInLoginEnabled"), value: info.builtInLoginEnabled ? t("application.auth.yes") : t("application.auth.no") },
+    { label: t("application.auth.oidcIssuerHost"), value: info.oidcIssuerHost || "—", monospace: true },
   ] : []
 
   const storageFields: ApplicationField[] = info ? [
     {
-      label: "Database",
+      label: t("application.storage.database"),
       value: `${info.database.engine}${info.database.target ? ` (${info.database.target})` : ""}`,
       monospace: true,
     },
-    { label: "Bind", value: `${info.host}:${info.port}${info.baseUrl}`, monospace: true },
-    { label: "Config dir", value: info.configDir || "—", copyValue: info.configDir || "", monospace: true },
-    { label: "Data dir", value: info.dataDir || "—", copyValue: info.dataDir || "", monospace: true },
+    { label: t("application.storage.bind"), value: `${info.host}:${info.port}${info.baseUrl}`, monospace: true },
+    { label: t("application.storage.configDir"), value: info.configDir || "—", copyValue: info.configDir || "", monospace: true },
+    { label: t("application.storage.dataDir"), value: info.dataDir || "—", copyValue: info.dataDir || "", monospace: true },
   ] : []
 
   const handleCopy = useCallback(async (value: string, label: string) => {
@@ -1048,11 +1080,11 @@ function ApplicationInfoPanel() {
 
     try {
       await copyTextToClipboard(value)
-      toast.success(`${label} copied`)
+      toast.success(t("application.toasts.copied", { label }))
     } catch {
-      toast.error(`Failed to copy ${label.toLowerCase()}`)
+      toast.error(t("application.toasts.copyFailed", { label: label.toLowerCase() }))
     }
-  }, [])
+  }, [t])
 
   return (
     <div className="space-y-4">
@@ -1061,7 +1093,7 @@ function ApplicationInfoPanel() {
           <CardContent className="py-8">
             <div className="flex items-center justify-center text-sm text-muted-foreground">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading application info…
+              {t("application.loading")}
             </div>
           </CardContent>
         </Card>
@@ -1071,7 +1103,7 @@ function ApplicationInfoPanel() {
         <Card>
           <CardContent className="py-6">
             <p className="text-sm text-destructive">
-              {appInfoQuery.error instanceof Error ? appInfoQuery.error.message : "Failed to load application info"}
+              {appInfoQuery.error instanceof Error ? appInfoQuery.error.message : t("application.loadFailed")}
             </p>
           </CardContent>
         </Card>
@@ -1080,8 +1112,8 @@ function ApplicationInfoPanel() {
       {info && (
         <>
           <ApplicationSection
-            title="Build"
-            description="Build identity and traceability."
+            title={t("application.build.title")}
+            description={t("application.build.description")}
             fields={buildFields}
             onCopy={handleCopy}
             headerAction={(
@@ -1096,25 +1128,25 @@ function ApplicationInfoPanel() {
                 disabled={appInfoQuery.isFetching || latestVersionQuery.isFetching || currentUserQuery.isFetching}
               >
                 <RefreshCw className={`mr-2 h-4 w-4 ${(appInfoQuery.isFetching || latestVersionQuery.isFetching || currentUserQuery.isFetching) ? "animate-spin" : ""}`} />
-                Refresh
+                {t("application.build.refresh")}
               </Button>
             )}
           />
           <ApplicationSection
-            title="Runtime"
-            description="Process runtime and host platform."
+            title={t("application.runtime.title")}
+            description={t("application.runtime.description")}
             fields={runtimeFields}
             onCopy={handleCopy}
           />
           <ApplicationSection
-            title="Authentication"
-            description="Authentication settings and current session."
+            title={t("application.auth.title")}
+            description={t("application.auth.description")}
             fields={authFields}
             onCopy={handleCopy}
           />
           <ApplicationSection
-            title="Storage & Network"
-            description="Active paths, bind target, and database endpoint."
+            title={t("application.storage.title")}
+            description={t("application.storage.description")}
             fields={storageFields}
             onCopy={handleCopy}
           />
@@ -1192,6 +1224,7 @@ function SettingsScrollPanel({ children, contentClassName }: SettingsScrollPanel
 }
 
 export function Settings({ search, onSearchChange }: SettingsProps) {
+  const { t } = useTranslation("settings")
   const activeTab: SettingsTab = search.tab ?? "application"
   const scrollPanelContentClassName = "space-y-4"
   const appInfoQuery = useQuery({
@@ -1207,9 +1240,9 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
   return (
     <div className="container mx-auto flex h-full min-h-0 flex-col overflow-hidden p-4 md:p-6">
       <div className="mb-4 shrink-0 md:mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold">Settings</h1>
+        <h1 className="text-2xl md:text-3xl font-bold">{t("title")}</h1>
         <p className="text-muted-foreground mt-1 md:mt-2 text-sm md:text-base">
-          Manage your application preferences and security
+          {t("description")}
         </p>
       </div>
 
@@ -1226,79 +1259,79 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <SelectItem value="application">
               <div className="flex items-center">
                 <Info className="w-4 h-4 mr-2" />
-                Application
+                {t("tabs.application")}
               </div>
             </SelectItem>
             <SelectItem value="instances">
               <div className="flex items-center">
                 <Server className="w-4 h-4 mr-2" />
-                Instances
+                {t("tabs.instances")}
               </div>
             </SelectItem>
             <SelectItem value="indexers">
               <div className="flex items-center">
                 <Database className="w-4 h-4 mr-2" />
-                Indexers
+                {t("tabs.indexers")}
               </div>
             </SelectItem>
             <SelectItem value="search-cache">
               <div className="flex items-center">
                 <Layers className="w-4 h-4 mr-2" />
-                Search Cache
+                {t("tabs.searchCache")}
               </div>
             </SelectItem>
             <SelectItem value="integrations">
               <div className="flex items-center">
                 <Link2 className="w-4 h-4 mr-2" />
-                Integrations
+                {t("tabs.integrations")}
               </div>
             </SelectItem>
             <SelectItem value="client-api">
               <div className="flex items-center">
                 <Share2 className="w-4 h-4 mr-2" />
-                Client Proxy
+                {t("tabs.clientProxy")}
               </div>
             </SelectItem>
             <SelectItem value="api">
               <div className="flex items-center">
                 <Key className="w-4 h-4 mr-2" />
-                API Keys
+                {t("tabs.apiKeys")}
               </div>
             </SelectItem>
             <SelectItem value="external-programs">
               <div className="flex items-center">
                 <Terminal className="w-4 h-4 mr-2" />
-                External Programs
+                {t("tabs.externalPrograms")}
               </div>
             </SelectItem>
             <SelectItem value="notifications">
               <div className="flex items-center">
                 <Bell className="w-4 h-4 mr-2" />
-                Notifications
+                {t("tabs.notifications")}
               </div>
             </SelectItem>
             <SelectItem value="datetime">
               <div className="flex items-center">
                 <Clock className="w-4 h-4 mr-2" />
-                Date & Time
+                {t("tabs.dateTime")}
               </div>
             </SelectItem>
             <SelectItem value="themes">
               <div className="flex items-center">
                 <Palette className="w-4 h-4 mr-2" />
-                Premium Themes
+                {t("tabs.premiumThemes")}
               </div>
             </SelectItem>
             <SelectItem value="security">
               <div className="flex items-center">
                 <Shield className="w-4 h-4 mr-2" />
-                Security
+                {t("tabs.security")}
               </div>
             </SelectItem>
             <SelectItem value="logs">
               <div className="flex items-center">
                 <FileText className="w-4 h-4 mr-2" />
-                Logs
+                {t("tabs.logs")}
               </div>
             </SelectItem>
           </SelectContent>
@@ -1316,7 +1349,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               }`}
             >
               <Info className="w-4 h-4 mr-2" />
-              Application
+              {t("tabs.application")}
             </button>
             <button
               onClick={() => handleTabChange("instances")}
@@ -1325,7 +1358,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               }`}
             >
               <Server className="w-4 h-4 mr-2" />
-              Instances
+              {t("tabs.instances")}
             </button>
             <button
               onClick={() => handleTabChange("indexers")}
@@ -1334,7 +1367,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               }`}
             >
               <Database className="w-4 h-4 mr-2" />
-              Indexers
+              {t("tabs.indexers")}
             </button>
             <button
               onClick={() => handleTabChange("search-cache")}
@@ -1343,7 +1376,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               }`}
             >
               <Layers className="w-4 h-4 mr-2" />
-              Search Cache
+              {t("tabs.searchCache")}
             </button>
             <button
               onClick={() => handleTabChange("integrations")}
@@ -1352,7 +1385,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               }`}
             >
               <Link2 className="w-4 h-4 mr-2" />
-              Integrations
+              {t("tabs.integrations")}
             </button>
             <button
               onClick={() => handleTabChange("client-api")}
@@ -1361,7 +1394,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               }`}
             >
               <Share2 className="w-4 h-4 mr-2" />
-              Client Proxy
+              {t("tabs.clientProxy")}
             </button>
             <button
               onClick={() => handleTabChange("api")}
@@ -1370,7 +1403,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               }`}
             >
               <Key className="w-4 h-4 mr-2" />
-              API Keys
+              {t("tabs.apiKeys")}
             </button>
             <button
               onClick={() => handleTabChange("external-programs")}
@@ -1379,7 +1412,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               }`}
             >
               <Terminal className="w-4 h-4 mr-2" />
-              External Programs
+              {t("tabs.externalPrograms")}
             </button>
             <button
               onClick={() => handleTabChange("notifications")}
@@ -1388,7 +1421,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               }`}
             >
               <Bell className="w-4 h-4 mr-2" />
-              Notifications
+              {t("tabs.notifications")}
             </button>
             <button
               onClick={() => handleTabChange("datetime")}
@@ -1397,7 +1430,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               }`}
             >
               <Clock className="w-4 h-4 mr-2" />
-              Date & Time
+              {t("tabs.dateTime")}
             </button>
             <button
               onClick={() => handleTabChange("themes")}
@@ -1406,7 +1439,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               }`}
             >
               <Palette className="w-4 h-4 mr-2" />
-              Premium Themes
+              {t("tabs.premiumThemes")}
             </button>
             <button
               onClick={() => handleTabChange("security")}
@@ -1415,7 +1448,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               }`}
             >
               <Shield className="w-4 h-4 mr-2" />
-              Security
+              {t("tabs.security")}
             </button>
             <button
               onClick={() => handleTabChange("logs")}
@@ -1424,7 +1457,7 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               }`}
             >
               <FileText className="w-4 h-4 mr-2" />
-              Logs
+              {t("tabs.logs")}
             </button>
           </nav>
         </div>
@@ -1441,9 +1474,9 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card className="flex min-h-full flex-col">
                 <CardHeader>
-                  <CardTitle>Instances</CardTitle>
+                  <CardTitle>{t("instances.title")}</CardTitle>
                   <CardDescription>
-                    Manage your qBittorrent connection settings
+                    {t("instances.description")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="min-h-0 flex-1">
@@ -1469,9 +1502,9 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card>
                 <CardHeader>
-                  <CardTitle>ARR Integrations</CardTitle>
+                  <CardTitle>{t("integrations.title")}</CardTitle>
                   <CardDescription>
-                    Configure Sonarr and Radarr instances for enhanced cross-seed searches using external IDs
+                    {t("integrations.description")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1485,9 +1518,9 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card>
                 <CardHeader>
-                  <CardTitle>Client Proxy API Keys</CardTitle>
+                  <CardTitle>{t("clientApiKeys.cardTitle")}</CardTitle>
                   <CardDescription>
-                    Manage API keys for external applications to connect to qBittorrent instances through qui
+                    {t("clientApiKeys.cardDescription")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1503,9 +1536,9 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="space-y-1.5">
-                      <CardTitle>API Keys</CardTitle>
+                      <CardTitle>{t("apiKeys.cardTitle")}</CardTitle>
                       <CardDescription>
-                        Manage API keys for external access
+                        {t("apiKeys.cardDescription")}
                       </CardDescription>
                     </div>
                     <a
@@ -1513,9 +1546,9 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                      title="View API documentation"
+                      title={t("apiKeys.apiDocs")}
                     >
-                      <span className="hidden sm:inline">API Docs</span>
+                      <span className="hidden sm:inline">{t("apiKeys.apiDocs")}</span>
                       <ExternalLink className="h-3.5 w-3.5" />
                     </a>
                   </div>
@@ -1531,9 +1564,9 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card>
                 <CardHeader>
-                  <CardTitle>External Programs</CardTitle>
+                  <CardTitle>{t("externalPrograms.cardTitle")}</CardTitle>
                   <CardDescription>
-                    Configure external programs or scripts that can be executed from the torrent context menu
+                    {t("externalPrograms.cardDescription")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1547,9 +1580,9 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card>
                 <CardHeader>
-                  <CardTitle>Notifications</CardTitle>
+                  <CardTitle>{t("notifications.cardTitle")}</CardTitle>
                   <CardDescription>
-                    Send alerts and status updates via any Shoutrrr-supported service
+                    {t("notifications.cardDescription")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1563,9 +1596,20 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card>
                 <CardHeader>
-                  <CardTitle>Date & Time Preferences</CardTitle>
+                  <CardTitle>{t("language.cardTitle")}</CardTitle>
                   <CardDescription>
-                    Configure timezone, date format, and time display preferences
+                    {t("language.cardDescription")}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <LanguageSelector />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t("dateTime.cardTitle")}</CardTitle>
+                  <CardDescription>
+                    {t("dateTime.cardDescription")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1590,9 +1634,9 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
             <SettingsScrollPanel contentClassName={scrollPanelContentClassName}>
               <Card>
                 <CardHeader>
-                  <CardTitle>Change Password</CardTitle>
+                  <CardTitle>{t("security.changePassword.title")}</CardTitle>
                   <CardDescription>
-                    Update your account password
+                    {t("security.changePassword.description")}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1603,32 +1647,31 @@ export function Settings({ search, onSearchChange }: SettingsProps) {
               {canRegisterProtocolHandler() && (
                 <Card>
                   <CardHeader>
-                    <CardTitle>Browser Integration</CardTitle>
+                    <CardTitle>{t("security.browserIntegration.title")}</CardTitle>
                     <CardDescription>
-                      Configure how your browser handles magnet links
+                      {t("security.browserIntegration.description")}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <p className="text-sm text-muted-foreground">
-                        Register qui as your browser's handler for magnet links.
-                        This allows you to open magnet links directly in qui.
+                        {t("security.browserIntegration.registerDescription")}
                       </p>
                       <Button
                         variant="secondary"
                         onClick={() => {
                           const success = registerMagnetHandler()
                           if (success) {
-                            toast.success("Magnet handler registration requested", {
+                            toast.success(t("security.browserIntegration.toasts.requested"), {
                               description: getMagnetHandlerRegistrationGuidance(),
                             })
                           } else {
-                            toast.error("Failed to register magnet handler")
+                            toast.error(t("security.browserIntegration.toasts.failed"))
                           }
                         }}
                         className="w-fit"
                       >
-                        Register as Handler
+                        {t("security.browserIntegration.registerButton")}
                       </Button>
                     </div>
                   </CardContent>

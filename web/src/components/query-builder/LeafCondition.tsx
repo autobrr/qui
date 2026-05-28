@@ -23,12 +23,15 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Info, ToggleLeft, ToggleRight, X } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import {
   CATEGORY_UNCATEGORIZED_VALUE,
   getFieldType,
   getOperatorsForField,
-  HARDLINK_SCOPE_VALUES,
-  TORRENT_STATES,
+  getTranslatedOperatorsForField,
+  getTranslatedTorrentStates,
+  getTranslatedHardlinkScopes,
   type DisabledField,
   type DisabledStateValue
 } from "./constants";
@@ -36,11 +39,13 @@ import { DisabledOption } from "./DisabledOption";
 import { FieldCombobox } from "./FieldCombobox";
 import type { GroupOption } from "./QueryBuilder";
 
-const DURATION_INPUT_UNITS = [
-  { value: 60, label: "minutes" },
-  { value: 3600, label: "hours" },
-  { value: 86400, label: "days" },
-];
+function getDurationInputUnits() {
+  return [
+    { value: 60, label: i18n.t("queryBuilder.durationUnits.minutes", { ns: "automations" }) },
+    { value: 3600, label: i18n.t("queryBuilder.durationUnits.hours", { ns: "automations" }) },
+    { value: 86400, label: i18n.t("queryBuilder.durationUnits.days", { ns: "automations" }) },
+  ];
+}
 
 // Detect best duration unit from seconds value
 function detectDurationUnit(secs: number): number {
@@ -133,6 +138,7 @@ export function LeafCondition({
   disabledStateValues,
   groupOptions,
 }: LeafConditionProps) {
+  const { t } = useTranslation("automations");
   const {
     attributes,
     listeners,
@@ -146,9 +152,9 @@ export function LeafCondition({
   };
 
   const fieldType = condition.field ? getFieldType(condition.field) : "string";
-  const operators = condition.field ? getOperatorsForField(condition.field) : [];
+  const operators = condition.field ? getTranslatedOperatorsForField(condition.field, t) : [];
   const isGroupingField = isGroupingConditionField(condition.field);
-  const availableGroupOptions = (groupOptions && groupOptions.length > 0)? groupOptions: [{ id: DEFAULT_GROUP_ID, label: "Cross-seed (content + save path)" }];
+  const availableGroupOptions = (groupOptions && groupOptions.length > 0)? groupOptions: [{ id: DEFAULT_GROUP_ID, label: t("queryBuilder.defaultGroupLabel") }];
   const groupIdValue = condition.groupId || DEFAULT_GROUP_ID;
 
   // Track duration unit separately so it persists when value is empty
@@ -233,7 +239,7 @@ export function LeafCondition({
     if (!isCategoryEqualityOperator) return categoryOptions;
     const filtered = categoryOptions.filter((opt) => opt.value !== CATEGORY_UNCATEGORIZED_VALUE);
     return [
-      { label: "Uncategorized", value: CATEGORY_UNCATEGORIZED_VALUE },
+      { label: t("queryBuilder.uncategorized"), value: CATEGORY_UNCATEGORIZED_VALUE },
       ...filtered,
     ];
   })();
@@ -462,11 +468,11 @@ export function LeafCondition({
             )}
             onClick={toggleNegate}
           >
-            {condition.negate ? "NOT" : "IF"}
+            {condition.negate ? t("queryBuilder.not") : t("queryBuilder.if")}
           </Button>
         </TooltipTrigger>
         <TooltipContent>
-          {condition.negate ? "Condition is negated" : "Click to negate"}
+          {condition.negate ? t("queryBuilder.conditionNegated") : t("queryBuilder.clickToNegate")}
         </TooltipContent>
       </Tooltip>
 
@@ -481,7 +487,7 @@ export function LeafCondition({
           disabled={!condition.field}
         >
           <SelectTrigger className="h-8 w-full sm:w-fit min-w-[80px]">
-            <SelectValue placeholder="Operator" />
+            <SelectValue placeholder={t("queryBuilder.operatorPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
             {operators.map((op) => (
@@ -496,8 +502,8 @@ export function LeafCondition({
       {isGroupingField && (
         <div className="order-3 sm:order-none w-full sm:w-auto flex items-center gap-1">
           <Select value={groupIdValue} onValueChange={handleGroupIDChange}>
-            <SelectTrigger className="h-8 w-full sm:w-[240px]" aria-label="Group for this grouped condition">
-              <SelectValue placeholder="Group for this condition" />
+            <SelectTrigger className="h-8 w-full sm:w-[240px]" aria-label={t("queryBuilder.groupForConditionAriaLabel")}>
+              <SelectValue placeholder={t("queryBuilder.groupForConditionPlaceholder")} />
             </SelectTrigger>
             <SelectContent>
               {availableGroupOptions.map((option) => (
@@ -519,14 +525,14 @@ export function LeafCondition({
               <button
                 type="button"
                 className="inline-flex items-center text-muted-foreground hover:text-foreground"
-                aria-label="About grouped condition group selection"
+                aria-label={t("queryBuilder.aboutGroupSelectionAriaLabel")}
               >
                 <Info className="size-3.5" />
               </button>
             </TooltipTrigger>
             <TooltipContent className="max-w-[320px]">
               <p>
-                This group applies only to this condition row. Use different groups on other GROUP_SIZE/IS_GROUPED rows if needed.
+                {t("queryBuilder.groupTooltip")}
               </p>
             </TooltipContent>
           </Tooltip>
@@ -542,7 +548,7 @@ export function LeafCondition({
               className="h-8 w-20"
               value={betweenDurationDisplay.minValue}
               onChange={(e) => handleBetweenDurationChange(e.target.value, betweenDurationDisplay.maxValue, betweenDurationDisplay.unit)}
-              placeholder="Min"
+              placeholder={t("queryBuilder.min")}
             />
             <span className="text-muted-foreground">-</span>
             <Input
@@ -550,7 +556,7 @@ export function LeafCondition({
               className="h-8 w-20"
               value={betweenDurationDisplay.maxValue}
               onChange={(e) => handleBetweenDurationChange(betweenDurationDisplay.minValue, e.target.value, betweenDurationDisplay.unit)}
-              placeholder="Max"
+              placeholder={t("queryBuilder.max")}
             />
             <Select
               value={String(betweenDurationDisplay.unit)}
@@ -560,7 +566,7 @@ export function LeafCondition({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {DURATION_INPUT_UNITS.map((u) => (
+                {getDurationInputUnits().map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
                     {u.label}
                   </SelectItem>
@@ -575,7 +581,7 @@ export function LeafCondition({
               className="h-8 w-20"
               value={betweenBytesDisplay.minValue}
               onChange={(e) => handleBetweenBytesChange(e.target.value, betweenBytesDisplay.maxValue, betweenBytesDisplay.unit)}
-              placeholder="Min"
+              placeholder={t("queryBuilder.min")}
             />
             <span className="text-muted-foreground">-</span>
             <Input
@@ -583,7 +589,7 @@ export function LeafCondition({
               className="h-8 w-20"
               value={betweenBytesDisplay.maxValue}
               onChange={(e) => handleBetweenBytesChange(betweenBytesDisplay.minValue, e.target.value, betweenBytesDisplay.unit)}
-              placeholder="Max"
+              placeholder={t("queryBuilder.max")}
             />
             <Select
               value={String(betweenBytesDisplay.unit)}
@@ -611,7 +617,7 @@ export function LeafCondition({
               min={0}
               max={100}
               step="0.01"
-              placeholder="Min"
+              placeholder={t("queryBuilder.min")}
             />
             <span className="text-muted-foreground">-</span>
             <Input
@@ -622,7 +628,7 @@ export function LeafCondition({
               min={0}
               max={100}
               step="0.01"
-              placeholder="Max"
+              placeholder={t("queryBuilder.max")}
             />
             <span className="text-sm text-muted-foreground">%</span>
           </div>
@@ -633,7 +639,7 @@ export function LeafCondition({
               className="h-8 w-20"
               value={condition.minValue ?? ""}
               onChange={(e) => handleMinValueChange(e.target.value)}
-              placeholder="Min"
+              placeholder={t("queryBuilder.min")}
             />
             <span className="text-muted-foreground">-</span>
             <Input
@@ -641,16 +647,16 @@ export function LeafCondition({
               className="h-8 w-20"
               value={condition.maxValue ?? ""}
               onChange={(e) => handleMaxValueChange(e.target.value)}
-              placeholder="Max"
+              placeholder={t("queryBuilder.max")}
             />
           </div>
         ) : fieldType === "state" ? (
           <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
             <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[160px]">
-              <SelectValue placeholder="Select state" />
+              <SelectValue placeholder={t("queryBuilder.selectState")} />
             </SelectTrigger>
             <SelectContent>
-              {TORRENT_STATES.map((state) => {
+              {getTranslatedTorrentStates(t).map((state) => {
                 const disabledInfo = disabledStateValues?.find(d => d.value === state.value);
                 const isDisabled = disabledInfo !== undefined;
 
@@ -673,10 +679,10 @@ export function LeafCondition({
         ) : fieldType === "hardlinkScope" ? (
           <Select value={condition.value ?? "outside_qbittorrent"} onValueChange={handleValueChange}>
             <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[240px]">
-              <SelectValue placeholder="Select scope" />
+              <SelectValue placeholder={t("queryBuilder.selectScope")} />
             </SelectTrigger>
             <SelectContent>
-              {HARDLINK_SCOPE_VALUES.map((scope) => (
+              {getTranslatedHardlinkScopes(t).map((scope) => (
                 <SelectItem key={scope.value} value={scope.value}>
                   {scope.label}
                 </SelectItem>
@@ -689,8 +695,8 @@ export function LeafCondition({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="true">True</SelectItem>
-              <SelectItem value="false">False</SelectItem>
+              <SelectItem value="true">{t("queryBuilder.true")}</SelectItem>
+              <SelectItem value="false">{t("queryBuilder.false")}</SelectItem>
             </SelectContent>
           </Select>
         ) : fieldType === "duration" && durationDisplay ? (
@@ -710,7 +716,7 @@ export function LeafCondition({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {DURATION_INPUT_UNITS.map((u) => (
+                {getDurationInputUnits().map((u) => (
                   <SelectItem key={u.value} value={String(u.value)}>
                     {u.label}
                   </SelectItem>
@@ -785,7 +791,7 @@ export function LeafCondition({
         ) : ((condition.operator === "EXISTS_IN" || condition.operator === "CONTAINS_IN" || isCategoryEqualityOperator) && categorySelectOptions && categorySelectOptions.length > 0) ? (
           <Select value={getCategoryDisplayValue()} onValueChange={handleCategoryValueChange}>
             <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[160px]">
-              <SelectValue placeholder="Select category" />
+              <SelectValue placeholder={t("queryBuilder.selectCategory")} />
             </SelectTrigger>
             <SelectContent>
               {categorySelectOptions!.map((cat) => (
@@ -806,7 +812,7 @@ export function LeafCondition({
               className="h-8 min-w-0 flex-1"
               value={condition.value ?? ""}
               onChange={(e) => handleValueChange(e.target.value)}
-              placeholder={getPlaceholder(fieldType)}
+              placeholder={getPlaceholder(fieldType, t)}
             />
             {/* Regex toggle for string fields - hide for EXISTS_IN/CONTAINS_IN */}
             {fieldType === "string" &&
@@ -834,7 +840,7 @@ export function LeafCondition({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {condition.regex ? "Regex enabled" : "Enable regex"}
+                  {condition.regex ? t("queryBuilder.regexEnabled") : t("queryBuilder.enableRegex")}
                 </TooltipContent>
               </Tooltip>
             )}
@@ -861,21 +867,21 @@ function isNumericType(type: string): boolean {
   return ["bytes", "duration", "float", "percentage", "speed", "integer"].includes(type);
 }
 
-function getPlaceholder(type: string): string {
+function getPlaceholder(type: string, t: (key: string) => string): string {
   switch (type) {
     case "bytes":
-      return "Size in bytes";
+      return t("queryBuilder.placeholder.bytes");
     case "duration":
-      return "Seconds";
+      return t("queryBuilder.placeholder.duration");
     case "float":
-      return "0.0";
+      return t("queryBuilder.placeholder.float");
     case "percentage":
-      return "0-100";
+      return t("queryBuilder.placeholder.percentage");
     case "speed":
-      return "Bytes/s";
+      return t("queryBuilder.placeholder.speed");
     case "integer":
-      return "0";
+      return t("queryBuilder.placeholder.integer");
     default:
-      return "Value";
+      return t("queryBuilder.placeholder.default");
   }
 }

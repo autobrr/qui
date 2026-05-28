@@ -116,7 +116,7 @@ describe("formatTimestamp", () => {
     vi.useFakeTimers()
     try {
       vi.setSystemTime(new Date("2024-06-15T14:30:50Z")) // 5 seconds after
-      expect(formatTimestamp(TS_2024_06_15_14_30_45_UTC, utcPrefs({ dateFormat: "relative" }))).toBe("just now")
+      expect(formatTimestamp(TS_2024_06_15_14_30_45_UTC, utcPrefs({ dateFormat: "relative" }))).toBe("Just now")
     } finally {
       vi.useRealTimers()
     }
@@ -143,11 +143,11 @@ describe("formatDateOnly", () => {
     expect(formatDateOnly(TS_2024_06_15_14_30_45_UTC, utcPrefs({ dateFormat: "eu" }))).toBe("15/06/2024")
   })
 
-  it("delegates to formatRelativeTime for relative format", () => {
+  it("returns a relative day label for relative format", () => {
     vi.useFakeTimers()
     try {
       vi.setSystemTime(new Date("2024-06-15T14:30:50Z"))
-      expect(formatDateOnly(TS_2024_06_15_14_30_45_UTC, utcPrefs({ dateFormat: "relative" }))).toBe("just now")
+      expect(formatDateOnly(TS_2024_06_15_14_30_45_UTC, utcPrefs({ dateFormat: "relative" }))).toBe("Today")
     } finally {
       vi.useRealTimers()
     }
@@ -236,9 +236,9 @@ describe("formatRelativeTime", () => {
     expect(formatRelativeTime(input as Parameters<typeof formatRelativeTime>[0])).toBe(expected)
   })
 
-  it("returns 'just now' for the present and the recent past (no suffix)", () => {
-    expect(formatRelativeTime(new Date("2024-06-15T12:00:00Z"))).toBe("just now")
-    expect(formatRelativeTime(new Date("2024-06-15T11:59:30Z"))).toBe("just now")
+  it("returns 'Just now' for the present and the recent past (no suffix)", () => {
+    expect(formatRelativeTime(new Date("2024-06-15T12:00:00Z"))).toBe("Just now")
+    expect(formatRelativeTime(new Date("2024-06-15T11:59:30Z"))).toBe("Just now")
   })
 
   it("formats past intervals with 'ago' suffix", () => {
