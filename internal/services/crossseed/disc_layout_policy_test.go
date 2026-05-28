@@ -187,6 +187,7 @@ func TestDiscLayoutPolicy_ForcePausedEvenWhenStartPausedFalse(t *testing.T) {
 	mockSync := &discPolicySyncManager{
 		files: map[string]qbt.TorrentFiles{
 			matchedHash: candidateFiles,
+			newHash:     sourceFiles,
 		},
 		props: map[string]*qbt.TorrentProperties{
 			matchedHash: {
@@ -284,6 +285,7 @@ func TestDiscLayoutPolicy_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	mockSync := &discPolicySyncManager{
 		files: map[string]qbt.TorrentFiles{
 			matchedHash: candidateFiles,
+			newHash:     sourceFiles,
 		},
 		props: map[string]*qbt.TorrentProperties{
 			matchedHash: {
@@ -380,6 +382,7 @@ func TestDiscLayoutPolicy_NonDiscTorrentAllowsAutoResume(t *testing.T) {
 	mockSync := &discPolicySyncManager{
 		files: map[string]qbt.TorrentFiles{
 			matchedHash: candidateFiles,
+			newHash:     sourceFiles,
 		},
 		props: map[string]*qbt.TorrentProperties{
 			matchedHash: {
@@ -471,6 +474,7 @@ func TestLinkModeFilesystemFallback_ResumeOnlyAfterFullRecheck(t *testing.T) {
 	mockSync := &discPolicySyncManager{
 		files: map[string]qbt.TorrentFiles{
 			matchedHash: candidateFiles,
+			newHash:     sourceFiles,
 		},
 		props: map[string]*qbt.TorrentProperties{
 			matchedHash: {
@@ -575,6 +579,7 @@ func TestLinkModeFilesystemFallback_DoesNotRecheckWhenAlignmentFails(t *testing.
 	mockSync := &discPolicySyncManager{
 		files: map[string]qbt.TorrentFiles{
 			matchedHash: candidateFiles,
+			newHash:     sourceFiles,
 		},
 		props: map[string]*qbt.TorrentProperties{
 			matchedHash: {
