@@ -216,6 +216,7 @@ export const TORRENT_STATES = [
   { value: "stalled_downloading", label: "Stalled Down" },
   { value: "errored", label: "Error" },
   { value: "tracker_down", label: "Tracker Down" },
+  { value: "tracker_error", label: "Tracker Error" },
   { value: "checking", label: "Checking" },
   { value: "checkingResumeData", label: "Checking Resume Data" },
   { value: "moving", label: "Moving" },
@@ -369,6 +370,7 @@ export const FIELD_REQUIREMENTS = {
 
 export const STATE_VALUE_REQUIREMENTS = {
   tracker_down: "trackerHealth",
+  tracker_error: "trackerHealth",
 } as const;
 
 // Uncategorized sentinel (Radix Select requires non-empty values)

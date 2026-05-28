@@ -7199,7 +7199,7 @@ components:
           description: Primary tracker URL
         trackerHealth:
           type: string
-          enum: [unregistered, tracker_down]
+          enum: [unregistered, tracker_down, tracker_error]
           description: Tracker health status (only present if unhealthy)
         matchType:
           type: string
