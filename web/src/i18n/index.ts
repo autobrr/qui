@@ -28,13 +28,25 @@ import zhCNSearch from "./locales/zh-CN/search.json"
 import zhCNInstances from "./locales/zh-CN/instances.json"
 import zhCNAutomations from "./locales/zh-CN/automations.json"
 
-export const supportedLanguages = ["en", "zh-CN"] as const
+import frCommon from "./locales/fr/common.json"
+import frAuth from "./locales/fr/auth.json"
+import frSettings from "./locales/fr/settings.json"
+import frTorrents from "./locales/fr/torrents.json"
+import frDashboard from "./locales/fr/dashboard.json"
+import frCrossseed from "./locales/fr/crossseed.json"
+import frRss from "./locales/fr/rss.json"
+import frSearch from "./locales/fr/search.json"
+import frInstances from "./locales/fr/instances.json"
+import frAutomations from "./locales/fr/automations.json"
+
+export const supportedLanguages = ["en", "zh-CN", "fr"] as const
 export type AppLanguage = (typeof supportedLanguages)[number]
 const LANGUAGE_STORAGE_KEY = "qui.language"
 
 export const languageNames: Record<AppLanguage, string> = {
   en: "English",
   "zh-CN": "\u7B80\u4F53\u4E2D\u6587",
+  fr: "Français",
 }
 
 function isAppLanguage(value: string | null): value is AppLanguage {
@@ -102,6 +114,18 @@ i18n.use(initReactI18next).init({
       search: zhCNSearch,
       instances: zhCNInstances,
       automations: zhCNAutomations,
+    },
+    fr: {
+      common: frCommon,
+      auth: frAuth,
+      settings: frSettings,
+      torrents: frTorrents,
+      dashboard: frDashboard,
+      crossseed: frCrossseed,
+      rss: frRss,
+      search: frSearch,
+      instances: frInstances,
+      automations: frAutomations,
     },
   },
   lng: getStoredLanguage() ?? "en",

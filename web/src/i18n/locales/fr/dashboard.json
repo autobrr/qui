@@ -1,0 +1,212 @@
+{
+  "title": "Tableau de bord",
+  "description": "Aperçu de toutes vos instances qBittorrent",
+  "settingsDialog": {
+    "button": "Paramètres d'affichage",
+    "title": "Paramètres du tableau de bord",
+    "description": "Personnalisez quelles sections sont visibles et leur ordre.",
+    "sections": "Sections",
+    "sectionLabels": {
+      "server-stats": "Statistiques du Serveur",
+      "tracker-breakdown": "Répartition par Tracker",
+      "global-stats": "Cartes de Stats Globales",
+      "instances": "Cartes d'Instances"
+    },
+    "trackerDefaults": "Valeurs par défaut de la Répartition par Tracker",
+    "defaultSort": "Tri par défaut",
+    "direction": "Direction",
+    "descending": "Décroissant",
+    "ascending": "Croissant",
+    "itemsPerPage": "Éléments par page",
+    "sortColumnLabels": {
+      "tracker": "Nom du Tracker",
+      "uploaded": "Envoyé",
+      "downloaded": "Téléchargé",
+      "ratio": "Ratio",
+      "buffer": "Tampon",
+      "count": "Torrents",
+      "size": "Taille",
+      "performance": "Partagé"
+    }
+  },
+  "speedLimits": {
+    "title": "Limites de vitesse",
+    "download": "Téléchargement",
+    "upload": "Envoi",
+    "current": "Actuelle : {{speed}}",
+    "unlimited": "Illimité"
+  },
+  "instanceCard": {
+    "loadingStats": "Chargement des statistiques...",
+    "failedToLoadStats": "Échec du chargement des statistiques",
+    "downloading": "En téléchargement",
+    "active": "Actifs",
+    "total": "Total",
+    "download": "Téléchargement",
+    "upload": "Envoi",
+    "totalSize": "Taille Totale",
+    "totalSizeTooltip": "Taille totale de tous les torrents, y compris les cross-seeds",
+    "freeSpace": "Espace Libre",
+    "showMore": "Afficher plus",
+    "showLess": "Afficher moins",
+    "uptime": "Disponibilité",
+    "peerConnections": "Connexions Pairs",
+    "queuedIOJobs": "Tâches E/S en file",
+    "bufferSize": "Taille Tampon",
+    "totalQueued": "Total en file",
+    "avgQueueTime": "Temps moyen en file",
+    "externalIPv4": "IPv4 externe",
+    "externalIPv6": "IPv6 externe",
+    "unregisteredTorrents": "Torrents non enregistrés",
+    "trackerDown": "Tracker hors ligne",
+    "errors": "Erreurs",
+    "reannounceTooltip": "Réannonce automatique au tracker activée",
+    "altSpeedLimits": "Limites de vitesse alternatives : {{status}}",
+    "localFileAccess": "Accès aux fichiers locaux activé",
+    "connectable": "Connectable",
+    "portInfo": ". Port : {{port}}",
+    "connectionStatus": "Statut de connexion qBittorrent : {{status}}",
+    "altSpeedDialog": {
+      "enableTitle": "Activer les limites de vitesse alternatives ?",
+      "disableTitle": "Désactiver les limites de vitesse alternatives ?",
+      "enableDescription": "Ceci activera les limites de vitesse alternatives pour {{name}}, ce qui réduira les vitesses de transfert selon vos limites configurées.",
+      "disableDescription": "Ceci désactivera les limites de vitesse alternatives pour {{name}} et reviendra aux limites de vitesse normales.",
+      "enable": "Activer",
+      "disable": "Désactiver",
+      "cancel": "Annuler"
+    }
+  },
+  "mobileOverview": {
+    "title": "Aperçu",
+    "instances": "Instances",
+    "connected": "Connecté",
+    "torrents": "Torrents",
+    "activeCount": "{{count}} actifs",
+    "download": "Téléchargement",
+    "upload": "Envoi"
+  },
+  "globalStats": {
+    "instances": "Instances",
+    "connectedInstances": "Instances connectées",
+    "totalTorrents": "Torrents Totaux",
+    "activeTotal": "{{active}} actifs - {{size}} taille totale",
+    "totalDownload": "Téléchargement Total",
+    "downloadingActive": "{{count}} actifs - {{size}} restants",
+    "totalUpload": "Envoi Total",
+    "seedingActive": "{{count}} actifs - {{size}} en partage"
+  },
+  "serverStats": {
+    "title": "Statistiques du Serveur",
+    "ratio": "Ratio :",
+    "peers": "Pairs :",
+    "tableHeaders": {
+      "instance": "Instance",
+      "downloaded": "Téléchargé",
+      "uploaded": "Envoyé",
+      "ratio": "Ratio",
+      "peers": "Pairs"
+    }
+  },
+  "trackerBreakdown": {
+    "title": "Répartition par Tracker",
+    "trackersCount": "{{count}} trackers",
+    "importTooltip": "Importer les personnalisations",
+    "exportTooltip": "Exporter les personnalisations",
+    "sort": "Trier : {{column}}",
+    "sortOptions": {
+      "tracker": "Tracker",
+      "uploaded": "Envoyé",
+      "downloaded": "Téléchargé",
+      "ratio": "Ratio",
+      "torrents": "Torrents",
+      "size": "Taille",
+      "seeded": "Partagé"
+    },
+    "tableHeaders": {
+      "tracker": "Tracker",
+      "uploaded": "Envoyé",
+      "downloaded": "Téléchargé",
+      "ratio": "Ratio",
+      "buffer": "Tampon",
+      "torrents": "Torrents",
+      "size": "Taille",
+      "seeded": "Partagé"
+    },
+    "seededTooltip": "Envoyé ÷ Taille du contenu — combien de fois vous avez partagé votre contenu",
+    "mergedFrom": "Fusionné de : {{domains}}",
+    "original": "Original : {{domain}}",
+    "mergeTooltip": "Fusionner les trackers sélectionnés dans ce groupe",
+    "mergeIntoGroup": "Fusionner dans le groupe",
+    "addToMerge": "Ajouter à la fusion",
+    "rename": "Renommer",
+    "pagination": {
+      "range": "{{start}}-{{end}} sur {{total}} trackers",
+      "previous": "Précédent",
+      "next": "Suivant"
+    },
+    "customizeDialog": {
+      "editTitle": "Modifier le nom du Tracker",
+      "renameTitle": "Renommer le Tracker",
+      "mergeTitle": "Fusionner les Trackers",
+      "editDescription": "Mettre à jour le nom d'affichage pour ce tracker.",
+      "renameDescription": "Donner à ce tracker un nom d'affichage personnalisé.",
+      "mergeDescription": "Combiner ces trackers en une seule entrée avec un nom personnalisé.",
+      "displayName": "Nom d'affichage",
+      "displayNamePlaceholder": "ex: TorrentLeech",
+      "domains": "Domaine(s)",
+      "selectedTrackers": "Tracker(s) Sélectionné(s)",
+      "uncheckDuplicate": "Décochez les URL de trackers en double pour éviter de compter les mêmes torrents deux fois.",
+      "primary": "Principal",
+      "cancel": "Annuler",
+      "saving": "Sauvegarde...",
+      "save": "Sauvegarder",
+      "renameAction": "Renommer",
+      "mergeAction": "Fusionner"
+    },
+    "importDialog": {
+      "title": "Importer des personnalisations de trackers",
+      "description": "Collez du JSON pour importer des personnalisations de trackers (renommages et fusions).",
+      "jsonData": "Données JSON",
+      "invalidFormat": "Format invalide : expected trackerCustomizations array",
+      "missingDisplayName": "Entrée invalide : displayName manquant",
+      "invalidDomains": "Entrée invalide : domains doit être un tableau non vide",
+      "invalidJson": "JSON Invalide",
+      "newCount": "{{count}} nouveau(x)",
+      "conflictCount": "{{count}} conflit",
+      "conflictCount_plural": "{{count}} conflits",
+      "unchangedCount": "{{count}} inchangé(s)",
+      "resolveConflicts": "Résoudre les conflits",
+      "conflictsWith": "En conflit avec : {{name}}",
+      "skip": "Ignorer",
+      "overwrite": "Écraser",
+      "cancel": "Annuler",
+      "importing": "Importation...",
+      "import": "Importer"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "Aucune personnalisation à exporter",
+      "copiedToClipboard": "Copié dans le presse-papiers",
+      "failedToCopy": "Échec de la copie dans le presse-papiers",
+      "createFailed": "Échec de la création de la personnalisation du tracker",
+      "updateFailed": "Échec de la mise à jour de la personnalisation du tracker",
+      "deleteFailed": "Échec de la suppression de la personnalisation du tracker",
+      "failedToImport": "Échec de l'importation : {{names}}",
+      "importedAndSkipped": "Importés {{imported}}, ignorés {{skipped}}",
+      "importedCount": "{{count}} personnalisation importée",
+      "importedCount_plural": "{{count}} personnalisations importées",
+      "noCustomizationsImported": "Aucune personnalisation importée"
+    }
+  },
+  "quickActions": {
+    "addTorrent": "Ajouter un Torrent",
+    "addTo": "Ajouter à {{name}}"
+  },
+  "addInstance": "Ajouter une instance",
+  "emptyState": {
+    "noInstances": "Aucune instance configurée",
+    "getStarted": "Commencez par ajouter votre première instance qBittorrent",
+    "allDisabled": "Toutes les instances sont désactivées",
+    "enableInstance": "Activez une instance depuis Paramètres → Instances pour voir les statistiques du tableau de bord.",
+    "manageInstances": "Gérer les instances"
+  }
+}
