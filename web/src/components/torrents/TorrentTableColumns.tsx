@@ -197,7 +197,7 @@ const getTrackerAwareStatusLabel = (torrent: Torrent, supportsTrackerHealth: boo
     }
   }
 
-  return getStateLabel(torrent.state)
+  return getStateLabel(torrent.state, t)
 }
 
 const getTrackerAwareStatusSortMeta = (torrent: Torrent, supportsTrackerHealth: boolean, t?: TFunction) => {
@@ -230,7 +230,7 @@ const getTrackerAwareStatusSortMeta = (torrent: Torrent, supportsTrackerHealth: 
   return {
     priority: 10,
     statePriority,
-    label: getStateLabel(torrent.state),
+    label: getStateLabel(torrent.state, t),
   }
 }
 

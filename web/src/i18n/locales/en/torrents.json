@@ -1444,6 +1444,28 @@
     "yes": "Yes",
     "no": "No"
   },
+  "stateLabels": {
+    "downloading": "Downloading",
+    "metaDL": "Fetching Metadata",
+    "allocating": "Allocating",
+    "stalledDL": "Stalled",
+    "queuedDL": "Queued",
+    "checkingDL": "Checking",
+    "forcedDL": "(F) Downloading",
+    "uploading": "Seeding",
+    "stalledUP": "Seeding",
+    "queuedUP": "Queued",
+    "checkingUP": "Checking",
+    "forcedUP": "(F) Seeding",
+    "pausedDL": "Paused",
+    "pausedUP": "Completed",
+    "stoppedDL": "Stopped",
+    "stoppedUP": "Completed",
+    "error": "Error",
+    "missingFiles": "Missing Files",
+    "checkingResumeData": "Checking Resume Data",
+    "moving": "Moving"
+  },
   "details": {
     "failedToUpdatePriorities": "Failed to update file priorities",
     "failedToRenameFile": "Failed to rename file",

@@ -26,6 +26,7 @@ import {
   useReactTable,
   type SortingState
 } from "@tanstack/react-table"
+import type { TFunction } from "i18next"
 import { Copy, Loader2, Trash2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -47,9 +48,9 @@ interface CrossSeedTableProps {
 
 const columnHelper = createColumnHelper<CrossSeedTorrent>()
 
-function getStatusInfo(match: CrossSeedTorrent, t: (key: string, options?: Record<string, unknown>) => string): { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string } {
+function getStatusInfo(match: CrossSeedTorrent, t: TFunction): { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string } {
   const trackerHealth = match.tracker_health ?? null
-  const label = getStateLabel(match.state)
+  const label = getStateLabel(match.state, t)
   let variant: "default" | "secondary" | "destructive" | "outline" = "outline"
   const className = ""
 
