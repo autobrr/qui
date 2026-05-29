@@ -85,6 +85,15 @@ type Client struct {
 	addedState           map[string]struct{}
 	addedHandler         TorrentAddedHandler
 	addedInit            bool
+
+	// activeTaskCount caches the number of running/queued torrent-creation tasks.
+	// It is refreshed at most once per activeTaskCountTTL with single-flight, so the
+	// per-tick SSE fan-out reuses one result instead of issuing an uncached HTTP
+	// request per stream group.
+	activeTaskCount      int
+	activeTaskCountAt    time.Time
+	activeTaskRefreshing bool
+	activeTaskMu         sync.Mutex
 }
 
 func NewClient(instanceID int, instanceHost, username, password, apiKey string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {

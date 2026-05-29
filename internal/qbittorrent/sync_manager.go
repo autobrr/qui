@@ -6691,25 +6691,10 @@ func (sm *SyncManager) GetActiveTaskCount(ctx context.Context, instanceID int) i
 	if err != nil {
 		return 0
 	}
-	if client == nil || client.Client == nil {
-		return 0
-	}
-
-	tasks, err := client.GetTorrentCreationStatusCtx(ctx, "")
-	if err != nil {
-		// Return 0 on error to avoid breaking the response
-		// This is expected if qBittorrent version doesn't support torrent creation
-		return 0
-	}
-
-	count := 0
-	for _, task := range tasks {
-		if task.Status == qbt.TorrentCreationStatusRunning || task.Status == qbt.TorrentCreationStatusQueued {
-			count++
-		}
-	}
-
-	return count
+	// Client.GetActiveTaskCount is cached + single-flighted so the per-tick SSE
+	// fan-out (one call per stream group) collapses to at most one HTTP request
+	// per instance per activeTaskCountTTL.
+	return client.GetActiveTaskCount(ctx)
 }
 
 // GetTorrentCreationFile downloads the torrent file for a completed torrent creation task
