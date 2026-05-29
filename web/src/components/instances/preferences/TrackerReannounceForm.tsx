@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
+import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
@@ -312,12 +313,15 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     }
   }
 
+  // Reannounce activity is pushed via SSE (reannounce.activity events invalidate
+  // this key), so there is no polling interval.
+  useActivityStream(variant !== "embedded" && Boolean(instance && settings.enabled))
+
   // Only fetch activity in card mode (embedded mode shows activity in overview)
   const activityQuery = useQuery({
     queryKey: ["instance-reannounce-activity", instanceId],
     queryFn: () => api.getInstanceReannounceActivity(instanceId, 100),
     enabled: variant !== "embedded" && Boolean(instance && settings.enabled),
-    refetchInterval: activeTab === "activity" ? 5000 : false,
   })
 
   if (!instance) {

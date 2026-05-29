@@ -34,6 +34,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
@@ -614,6 +615,13 @@ func (app *Application) runServer() {
 		notificationService.Start(notificationCtx)
 	}
 
+	// activityHub fans qui-owned server events (reannounce, scans, cross-seed,
+	// backups, automations, indexer activity, etc.) onto the SSE stream so the
+	// frontend can stop polling those endpoints. Background services publish to it;
+	// the StreamManager (wired via api.Dependencies) forwards events to clients.
+	activityHub := activity.NewHub()
+	defer activityHub.Close()
+
 	// Initialize cross-seed automation store and service
 	crossSeedStore, err := models.NewCrossSeedStore(db, cfg.GetEncryptionKey())
 	if err != nil {
@@ -641,6 +649,7 @@ func (app *Application) runServer() {
 		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
+	reannounceService.SetActivityPublisher(activityHub)
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
@@ -781,6 +790,7 @@ func (app *Application) runServer() {
 		DirScanService:                   dirScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
+		ActivityHub:                      activityHub,
 	})
 
 	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.

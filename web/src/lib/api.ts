@@ -846,22 +846,34 @@ class ApiClient {
       order: "asc" | "desc"
       search?: string
       filters?: TorrentFilters | null
-    }>
+    }>,
+    options: { activity?: boolean } = {}
   ): string {
-    const normalized = streams.map(stream => ({
-      key: stream.key,
-      instanceId: stream.instanceId,
-      instanceIds: stream.instanceIds ?? null,
-      page: stream.page,
-      limit: stream.limit,
-      sort: stream.sort,
-      order: stream.order,
-      search: stream.search ?? "",
-      filters: stream.filters ?? null,
-    }))
+    const params = new URLSearchParams()
 
-    const payload = encodeURIComponent(JSON.stringify(normalized))
-    return withBasePath(`/api/stream?streams=${payload}`)
+    if (streams.length > 0) {
+      const normalized = streams.map(stream => ({
+        key: stream.key,
+        instanceId: stream.instanceId,
+        instanceIds: stream.instanceIds ?? null,
+        page: stream.page,
+        limit: stream.limit,
+        sort: stream.sort,
+        order: stream.order,
+        search: stream.search ?? "",
+        filters: stream.filters ?? null,
+      }))
+      params.set("streams", JSON.stringify(normalized))
+    }
+
+    // Activity events (qui-owned server signals) ride the same multiplexed
+    // EventSource; the flag lets a connection with no torrent streams stay open
+    // purely to receive them.
+    if (options.activity) {
+      params.set("activity", "1")
+    }
+
+    return withBasePath(`/api/stream?${params.toString()}`)
   }
 
   async getTorrentField(

@@ -12,9 +12,23 @@ import {
   type StreamState
 } from "@/contexts/SyncStreamContext"
 import type { TorrentStreamPayload } from "@/types"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, render } from "@testing-library/react"
 import { useState, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+
+// SyncStreamProvider now reads a QueryClient (to invalidate queries on activity
+// events), so every render must be wrapped in one.
+function TestProviders({ children }: { children: ReactNode }) {
+  const [client] = useState(() => new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  }))
+  return (
+    <QueryClientProvider client={client}>
+      <SyncStreamProvider>{children}</SyncStreamProvider>
+    </QueryClientProvider>
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Controllable EventSource mock
@@ -155,7 +169,7 @@ function renderSubscriber(params: StreamParams | null, enabled = true) {
   }
 
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <SyncStreamProvider>{children}</SyncStreamProvider>
+    <TestProviders>{children}</TestProviders>
   )
 
   let utils: ReturnType<typeof render>
@@ -192,7 +206,7 @@ function renderToggleableSubscriber(params: StreamParams) {
   function Root() {
     const [mounted, setMountedState] = useState(true)
     setMounted = setMountedState
-    return <SyncStreamProvider>{mounted ? <Subscriber /> : null}</SyncStreamProvider>
+    return <TestProviders>{mounted ? <Subscriber /> : null}</TestProviders>
   }
 
   act(() => {
@@ -432,9 +446,9 @@ describe("SyncStreamContext", () => {
 
       act(() => {
         render(
-          <SyncStreamProvider>
+          <TestProviders>
             <TwoSubscribers />
-          </SyncStreamProvider>
+          </TestProviders>
         )
       })
       flushConnectionQueue()
@@ -468,9 +482,9 @@ describe("SyncStreamContext", () => {
 
       act(() => {
         render(
-          <SyncStreamProvider>
+          <TestProviders>
             <TwoSubscribers />
-          </SyncStreamProvider>
+          </TestProviders>
         )
       })
       flushConnectionQueue()

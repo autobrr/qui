@@ -4,7 +4,9 @@
  */
 
 import { api } from "@/lib/api"
-import type { TorrentFilters, TorrentStreamMeta, TorrentStreamPayload } from "@/types"
+import { invalidateForActivity } from "@/lib/activity-invalidation"
+import type { ActivityStreamPayload, TorrentFilters, TorrentStreamMeta, TorrentStreamPayload } from "@/types"
+import { useQueryClient } from "@tanstack/react-query"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 
 const RETRY_BASE_DELAY_MS = 4000
@@ -60,6 +62,10 @@ interface SyncStreamContextValue {
   ) => () => void
   getState: (key: string | null) => StreamState | undefined
   subscribe: (key: string, listener: (state: StreamState) => void) => () => void
+  // registerActivity keeps the multiplexed EventSource open to receive qui-owned
+  // server activity events even when no torrent view is mounted. Returns an
+  // unsubscribe that releases that interest.
+  registerActivity: () => () => void
 }
 
 interface StreamEntry {
@@ -80,6 +86,7 @@ interface StreamConnection {
     payload: (event: MessageEvent | Event) => void
     networkError: (event: Event) => void
     heartbeat: (event: MessageEvent | Event) => void
+    activity: (event: MessageEvent | Event) => void
   }
   signature?: string
   retryAttempt: number
@@ -110,6 +117,15 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   const connectionRef = useRef<StreamConnection>({ retryAttempt: 0 })
   const scheduleReconnectRef = useRef<() => void>(() => {})
   const pendingConnectionUpdateRef = useRef<PendingConnectionUpdate | null>(null)
+  // Count of active activity subscribers. While > 0 the EventSource stays open
+  // (in activity-only mode if there are no torrent streams) so server events keep
+  // flowing. When 0, behaviour is identical to before this feature.
+  const activityCountRef = useRef(0)
+  const queryClient = useQueryClient()
+  const queryClientRef = useRef(queryClient)
+  useEffect(() => {
+    queryClientRef.current = queryClient
+  }, [queryClient])
   const clearEntryTeardown = useCallback((entry: StreamEntry) => {
     if (entry.teardownTimer === undefined) {
       return
@@ -250,6 +266,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         source.removeEventListener("update", handlers.payload)
         source.removeEventListener("stream-error", handlers.payload)
         source.removeEventListener("heartbeat", handlers.heartbeat)
+        source.removeEventListener("activity", handlers.activity)
       }
 
       source.onopen = null
@@ -294,11 +311,12 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     ) => {
       const normalized = buildStreamPayload(entries)
       const connection = connectionRef.current
+      const wantActivity = activityCountRef.current > 0
 
-      if (normalized.length === 0) {
-        // No streamable entries (e.g. only invalid instanceId <= 0 entries). Tear the
-        // connection down instead of opening a doomed one that the backend rejects and
-        // the client reconnects against forever.
+      if (normalized.length === 0 && !wantActivity) {
+        // No streamable entries (e.g. only invalid instanceId <= 0 entries) and no
+        // activity interest. Tear the connection down instead of opening a doomed one
+        // that the backend rejects and the client reconnects against forever.
         entries.forEach(entry => {
           if (entry.connected) {
             entry.connected = false
@@ -310,7 +328,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         return
       }
 
-      const signature = JSON.stringify(normalized)
+      const signature = JSON.stringify({ streams: normalized, activity: wantActivity })
 
       if (connection.signature === signature && connection.source) {
         return
@@ -374,7 +392,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         })
       }
 
-      const url = api.getTorrentsStreamBatchUrl(normalized)
+      const url = api.getTorrentsStreamBatchUrl(normalized, { activity: wantActivity })
       closeConnection({ preserveRetry: true })
 
       const handleNetworkError = (_event?: Event) => {
@@ -473,11 +491,40 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         resetStaleTimer()
       }
 
+      // Activity events are qui-owned server signals (not torrent data). They keep
+      // the watchdog alive and invalidate the matching cached query so it refetches
+      // on demand instead of polling.
+      const activityHandler = (event: MessageEvent | Event) => {
+        resetStaleTimer()
+        if (!("data" in event)) {
+          return
+        }
+        const rawData = typeof event.data === "string" ? event.data.trim() : ""
+        if (rawData.length === 0) {
+          return
+        }
+
+        let payload: ActivityStreamPayload
+        try {
+          payload = JSON.parse(rawData) as ActivityStreamPayload
+        } catch (parseErr) {
+          console.error("Failed to parse SSE activity payload JSON:", parseErr)
+          return
+        }
+
+        if (payload.type !== "activity" || !payload.activity) {
+          return
+        }
+
+        invalidateForActivity(queryClientRef.current, payload.activity)
+      }
+
       const source = new EventSource(url, { withCredentials: true })
       source.addEventListener("init", payloadHandler)
       source.addEventListener("update", payloadHandler)
       source.addEventListener("stream-error", payloadHandler)
       source.addEventListener("heartbeat", heartbeatHandler)
+      source.addEventListener("activity", activityHandler)
       source.onopen = () => {
         resetStaleTimer()
         clearConnectionRetryState()
@@ -501,6 +548,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         payload: payloadHandler,
         networkError: handleNetworkError,
         heartbeat: heartbeatHandler,
+        activity: activityHandler,
       }
       connection.signature = signature
     },
@@ -510,7 +558,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   const ensureConnection = useCallback(
     (options: { preserveState?: boolean; resetRetry?: boolean } = {}) => {
       const entries = Object.values(streamsRef.current)
-      if (entries.length === 0) {
+      if (entries.length === 0 && activityCountRef.current === 0) {
         closeConnection()
         clearConnectionRetryState()
         notifyAllStateSubscribers()
@@ -576,7 +624,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       connection.retryTimer = undefined
       connection.nextRetryAt = undefined
 
-      if (Object.keys(streamsRef.current).length === 0) {
+      if (Object.keys(streamsRef.current).length === 0 && activityCountRef.current === 0) {
         clearConnectionRetryState()
         notifyAllStateSubscribers()
         return
@@ -687,13 +735,32 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     []
   )
 
+  const registerActivity = useCallback(() => {
+    activityCountRef.current += 1
+    if (activityCountRef.current === 1) {
+      // First subscriber: ensure the connection exists (opening it in activity-only
+      // mode if no torrent view is mounted).
+      queueConnectionUpdate({ preserveState: true })
+    }
+
+    return () => {
+      activityCountRef.current = Math.max(0, activityCountRef.current - 1)
+      if (activityCountRef.current === 0) {
+        // Last subscriber gone: re-evaluate; the connection closes only if there are
+        // also no torrent streams.
+        queueConnectionUpdate({ preserveState: true })
+      }
+    }
+  }, [queueConnectionUpdate])
+
   const contextValue = useMemo<SyncStreamContextValue>(
     () => ({
       connect,
       getState,
       subscribe: subscribeToState,
+      registerActivity,
     }),
-    [connect, getState, subscribeToState]
+    [connect, getState, subscribeToState, registerActivity]
   )
 
   useEffect(() => {
@@ -725,7 +792,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       const connection = connectionRef.current
       const hasStreams = Object.keys(streamsRef.current).length > 0
 
-      if (!hasStreams) {
+      if (!hasStreams && activityCountRef.current === 0) {
         return
       }
 
@@ -863,6 +930,28 @@ export function useSyncStreamManager(): SyncStreamContextValue {
     throw new Error("useSyncStreamManager must be used within a SyncStreamProvider")
   }
   return context
+}
+
+// useActivityStream registers interest in qui-owned server activity events for
+// the lifetime of the calling component. While at least one component is
+// registered, the shared EventSource stays open (in activity-only mode if no
+// torrent view is mounted) and incoming events invalidate the matching cached
+// queries. Hooks that previously polled qui-owned state call this and drop their
+// idle refetch interval.
+export function useActivityStream(enabled: boolean = true): void {
+  const context = useContext(SyncStreamContext)
+  if (!context) {
+    throw new Error("useActivityStream must be used within a SyncStreamProvider")
+  }
+
+  const { registerActivity } = context
+
+  useEffect(() => {
+    if (!enabled) {
+      return
+    }
+    return registerActivity()
+  }, [enabled, registerActivity])
 }
 
 export function createStreamKey(params: StreamParams): string {

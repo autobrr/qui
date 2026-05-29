@@ -24,6 +24,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 )
 
 const (
@@ -33,6 +34,7 @@ const (
 	streamEventUpdate    = "update"
 	streamEventError     = "stream-error"
 	streamEventHeartbeat = "heartbeat"
+	streamEventActivity  = "activity"
 	defaultSyncInterval  = 2 * time.Second
 	maxSyncInterval      = 30 * time.Second
 	heartbeatInterval    = 5 * time.Second
@@ -54,7 +56,10 @@ var (
 
 type ctxKey string
 
-const subscriptionIDsContextKey ctxKey = "qui.sse.subscriptionIDs"
+const (
+	subscriptionIDsContextKey ctxKey = "qui.sse.subscriptionIDs"
+	activityTopicContextKey   ctxKey = "qui.sse.activityTopic"
+)
 
 // StreamOptions captures the torrent view that the subscriber wants to keep in sync.
 //
@@ -148,6 +153,13 @@ type StreamManager struct {
 	syncManager syncProvider
 	instanceDB  *models.InstanceStore
 
+	// activityHub feeds qui-owned server events (backups, scans, cross-seed, etc.)
+	// onto connected SSE sessions. nil disables the activity channel entirely, in
+	// which case Serve/onSession behave exactly as before.
+	activityHub     *activity.Hub
+	activityUnsub   func()
+	activityCounter atomic.Uint64
+
 	counter atomic.Uint64
 	closing atomic.Bool
 	mu      sync.RWMutex
@@ -164,6 +176,10 @@ type StreamManager struct {
 	syncLoops      map[int]*syncLoopState
 	heartbeatLoops map[int]*heartbeatLoopState
 	syncBackoff    map[int]*backoffState
+
+	// activityTopics is the set of per-connection go-sse topics that should receive
+	// activity events (and activity heartbeats). One topic per open SSE session.
+	activityTopics map[string]struct{}
 
 	ctx    context.Context //nolint:containedctx // lifecycle root context used only for coordinated shutdown
 	cancel context.CancelFunc
@@ -223,6 +239,16 @@ type StreamMeta struct {
 	StreamKey      string    `json:"streamKey,omitempty"`
 }
 
+// ActivityPayload is the message envelope for qui-owned server activity events.
+// It is intentionally distinct from StreamPayload (whose Data is a torrent
+// response) so the frontend's torrent-stream router never sees activity events:
+// they are delivered as a separate named "activity" SSE event with their own
+// handler that invalidates cached queries.
+type ActivityPayload struct {
+	Type     string          `json:"type"`
+	Activity *activity.Event `json:"activity,omitempty"`
+}
+
 // NewStreamManager constructs a manager with a configured SSE server.
 func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvider, instanceStore *models.InstanceStore) *StreamManager {
 	replayer, err := sse.NewFiniteReplayer(4, true)
@@ -248,12 +274,30 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvid
 		syncLoops:      make(map[int]*syncLoopState),
 		heartbeatLoops: make(map[int]*heartbeatLoopState),
 		syncBackoff:    make(map[int]*backoffState),
+		activityTopics: make(map[string]struct{}),
 		ctx:            ctx,
 		cancel:         cancel,
 	}
 
 	m.server.OnSession = m.onSession
 	return m
+}
+
+// SetActivityHub wires the qui-owned server-event hub and starts forwarding its
+// events (plus keep-alive heartbeats) to connected SSE sessions. It must be
+// called once during startup before the manager begins serving. A nil hub is
+// ignored, leaving the activity channel disabled.
+func (m *StreamManager) SetActivityHub(hub *activity.Hub) {
+	if m == nil || hub == nil || m.activityHub != nil {
+		return
+	}
+
+	m.activityHub = hub
+	ch, unsubscribe := hub.Subscribe()
+	m.activityUnsub = unsubscribe
+
+	go m.forwardActivity(ch)
+	go m.activityHeartbeatLoop()
 }
 
 // Server exposes the underlying SSE HTTP handler.
@@ -519,9 +563,22 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	requests, err := parseStreamRequests(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	// An activity-only connection (no torrent streams) is permitted so pages that
+	// mount no torrent view still receive qui-owned server events. The torrent
+	// stream path below is skipped entirely when no streams are requested.
+	query := r.URL.Query()
+	activityRequested := m.activityHub != nil && query.Get("activity") == "1"
+
+	var requests []streamRequest
+	if raw := query.Get("streams"); raw != "" {
+		parsed, err := parseStreamRequests(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		requests = parsed
+	} else if !activityRequested {
+		http.Error(w, "missing streams parameter", http.StatusBadRequest)
 		return
 	}
 
@@ -547,17 +604,28 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	ctx, subscriptionIDs, err := m.PrepareBatch(r.Context(), requests)
-	if err != nil {
-		status := http.StatusInternalServerError
-		if errors.Is(err, errInvalidInstanceID) || errors.Is(err, errNoStreamRequests) {
-			status = http.StatusBadRequest
+	ctx := r.Context()
+	if len(requests) > 0 {
+		preparedCtx, subscriptionIDs, err := m.PrepareBatch(ctx, requests)
+		if err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, errInvalidInstanceID) || errors.Is(err, errNoStreamRequests) {
+				status = http.StatusBadRequest
+			}
+			log.Error().Err(err).Msg("failed to prepare SSE subscriptions")
+			http.Error(w, "failed to prepare SSE stream", status)
+			return
 		}
-		log.Error().Err(err).Msg("failed to prepare SSE subscriptions")
-		http.Error(w, "failed to prepare SSE stream", status)
-		return
+		ctx = preparedCtx
+		defer m.unregisterMany(subscriptionIDs)
 	}
-	defer m.unregisterMany(subscriptionIDs)
+
+	if activityRequested {
+		activityTopic := fmt.Sprintf("qui-activity-%d", m.activityCounter.Add(1))
+		m.registerActivityTopic(activityTopic)
+		defer m.unregisterActivityTopic(activityTopic)
+		ctx = context.WithValue(ctx, activityTopicContextKey, activityTopic)
+	}
 
 	req := r.WithContext(ctx)
 
@@ -607,7 +675,9 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 	}
 
 	raw, _ := r.Context().Value(subscriptionIDsContextKey).([]string)
-	if len(raw) == 0 {
+	activityTopic, _ := r.Context().Value(activityTopicContextKey).(string)
+
+	if len(raw) == 0 && activityTopic == "" {
 		http.Error(w, "missing subscription context", http.StatusBadRequest)
 		return nil, false
 	}
@@ -631,7 +701,12 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 		go m.publishInitToSubscriber(sub, group)
 	}
 
-	return raw, true
+	// Subscribe the session to its activity topic (if any) in addition to its
+	// torrent-stream topics, so activity events and activity heartbeats reach it.
+	if activityTopic == "" {
+		return raw, true
+	}
+	return append(append([]string(nil), raw...), activityTopic), true
 }
 
 // publishInitToSubscriber builds the current snapshot for the group and delivers
@@ -1023,6 +1098,129 @@ func (m *StreamManager) getSubscription(id string) *subscriptionState {
 	return m.subscriptions[id]
 }
 
+// forwardActivity drains the hub subscription and fans each event out to every
+// connected SSE session. It exits when the hub channel closes or the manager
+// shuts down.
+func (m *StreamManager) forwardActivity(ch <-chan activity.Event) {
+	for {
+		select {
+		case <-m.ctx.Done():
+			return
+		case ev, ok := <-ch:
+			if !ok {
+				return
+			}
+			m.broadcastActivity(ev)
+		}
+	}
+}
+
+// activityHeartbeatLoop keeps activity-only connections (which have no per-instance
+// sync loop, and therefore no instance heartbeat) alive so the frontend stale
+// watchdog does not force needless reconnects.
+func (m *StreamManager) activityHeartbeatLoop() {
+	ticker := time.NewTicker(heartbeatInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-m.ctx.Done():
+			return
+		case <-ticker.C:
+			m.broadcastActivityHeartbeat()
+		}
+	}
+}
+
+func (m *StreamManager) broadcastActivity(ev activity.Event) {
+	if m.closing.Load() {
+		return
+	}
+
+	evCopy := ev
+	payload := &ActivityPayload{Type: streamEventActivity, Activity: &evCopy}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		m.eventsDropped.Add(1)
+		log.Error().Err(err).Str("kind", string(ev.Kind)).Msg("Failed to marshal SSE activity payload")
+		return
+	}
+
+	m.publishToActivityTopics(streamEventActivity, encoded)
+}
+
+func (m *StreamManager) broadcastActivityHeartbeat() {
+	if m.closing.Load() {
+		return
+	}
+
+	payload := &StreamPayload{
+		Type: streamEventHeartbeat,
+		Meta: &StreamMeta{Timestamp: time.Now()},
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		m.eventsDropped.Add(1)
+		return
+	}
+
+	m.publishToActivityTopics(streamEventHeartbeat, encoded)
+}
+
+// publishToActivityTopics writes an already-encoded message to every active
+// activity topic in a single go-sse publish (delivered once per session).
+func (m *StreamManager) publishToActivityTopics(eventType string, encoded []byte) {
+	topics := m.snapshotActivityTopics()
+	if len(topics) == 0 {
+		return
+	}
+
+	message := &sse.Message{Type: sse.Type(eventType)}
+	message.AppendData(string(encoded))
+
+	if err := m.server.Publish(message, topics...); err != nil {
+		m.eventsDropped.Add(1)
+		if !errors.Is(err, sse.ErrProviderClosed) {
+			log.Error().Err(err).Str("eventType", eventType).Msg("Failed to publish SSE activity message")
+		}
+		return
+	}
+
+	m.eventsPublished.Add(1)
+}
+
+func (m *StreamManager) snapshotActivityTopics() []string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if len(m.activityTopics) == 0 {
+		return nil
+	}
+	topics := make([]string, 0, len(m.activityTopics))
+	for topic := range m.activityTopics {
+		topics = append(topics, topic)
+	}
+	return topics
+}
+
+func (m *StreamManager) registerActivityTopic(topic string) {
+	if topic == "" {
+		return
+	}
+	m.mu.Lock()
+	m.activityTopics[topic] = struct{}{}
+	m.mu.Unlock()
+}
+
+func (m *StreamManager) unregisterActivityTopic(topic string) {
+	if topic == "" {
+		return
+	}
+	m.mu.Lock()
+	delete(m.activityTopics, topic)
+	m.mu.Unlock()
+}
+
 func cloneMeta(meta *StreamMeta) *StreamMeta {
 	if meta == nil {
 		return nil
@@ -1073,6 +1271,12 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 		Uint64("eventsDropped", stats.EventsDropped).
 		Uint64("syncErrors", stats.SyncErrors).
 		Msg("Shutting down SSE stream manager")
+
+	// Stop forwarding activity events (the forwarder/heartbeat goroutines also exit
+	// on m.cancel below; unsubscribing closes the hub channel they range over).
+	if m.activityUnsub != nil {
+		m.activityUnsub()
+	}
 
 	m.cancel()
 

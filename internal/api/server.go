@@ -28,6 +28,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
@@ -128,12 +129,16 @@ type Dependencies struct {
 	DirScanService                   *dirscan.Service
 	ArrInstanceStore                 *models.ArrInstanceStore
 	ArrService                       *arr.Service
+	ActivityHub                      *activity.Hub
 }
 
 func NewServer(deps *Dependencies) *Server {
 	streamManager := sse.NewStreamManager(deps.ClientPool, deps.SyncManager, deps.InstanceStore)
 	if deps.ClientPool != nil {
 		deps.ClientPool.SetSyncEventSink(streamManager)
+	}
+	if deps.ActivityHub != nil {
+		streamManager.SetActivityHub(deps.ActivityHub)
 	}
 
 	s := Server{
