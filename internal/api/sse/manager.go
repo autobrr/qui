@@ -83,6 +83,15 @@ func streamOptionsKey(opts StreamOptions) string {
 	)
 }
 
+// syncProvider is the subset of *qbittorrent.SyncManager that the StreamManager
+// depends on. Declared on the consumer side so payload building, coalescing, and
+// delivery can be exercised with injected fakes in tests.
+type syncProvider interface {
+	GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters qbittorrent.FilterOptions) (*qbittorrent.TorrentResponse, error)
+	GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters qbittorrent.FilterOptions, instanceIDs []int) (*qbittorrent.TorrentResponse, error)
+	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
+}
+
 // StreamManager owns the SSE server and keeps subscriptions in sync with qBittorrent updates.
 //
 // Lock hierarchy (acquire in this order to prevent deadlock):
@@ -92,7 +101,7 @@ func streamOptionsKey(opts StreamOptions) string {
 type StreamManager struct {
 	server      *sse.Server
 	clientPool  *qbittorrent.ClientPool
-	syncManager *qbittorrent.SyncManager
+	syncManager syncProvider
 	instanceDB  *models.InstanceStore
 
 	counter atomic.Uint64
@@ -166,7 +175,7 @@ type StreamMeta struct {
 }
 
 // NewStreamManager constructs a manager with a configured SSE server.
-func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager *qbittorrent.SyncManager, instanceStore *models.InstanceStore) *StreamManager {
+func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvider, instanceStore *models.InstanceStore) *StreamManager {
 	replayer, err := sse.NewFiniteReplayer(4, true)
 	if err != nil {
 		// Constructor only errors on invalid parameters; fall back to nil replayer just in case.
