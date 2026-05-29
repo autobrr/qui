@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"slices"
 	"strconv"
@@ -35,6 +36,9 @@ const (
 	defaultSyncInterval  = 2 * time.Second
 	maxSyncInterval      = 30 * time.Second
 	heartbeatInterval    = 5 * time.Second
+	// maxStreamRequests caps the number of stream subscriptions a single SSE
+	// connection may request, bounding per-connection fan-out and resource use.
+	maxStreamRequests = 64
 	// streamWriteTimeout bounds a single SSE write. It is refreshed before every
 	// write, so a healthy stream (which writes at least every heartbeatInterval)
 	// is never force-closed, while a client that stops reading times out and is
@@ -43,8 +47,9 @@ const (
 )
 
 var (
-	errInvalidInstanceID = errors.New("invalid instance id")
-	errNoStreamRequests  = errors.New("no stream subscriptions requested")
+	errInvalidInstanceID     = errors.New("invalid instance id")
+	errNoStreamRequests      = errors.New("no stream subscriptions requested")
+	errTooManyStreamRequests = errors.New("too many stream subscriptions requested")
 )
 
 type ctxKey string
@@ -266,6 +271,13 @@ func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey strin
 	}
 
 	m.mu.Lock()
+	// Re-check under the lock: Shutdown sets closing before draining the loop maps,
+	// so without this a registration that passed the pre-lock check could repopulate
+	// the drained maps and leave orphaned loop entries.
+	if m.closing.Load() {
+		m.mu.Unlock()
+		return "", errors.New("stream manager shutting down")
+	}
 	group, ok := m.groups[state.groupKey]
 	if !ok {
 		group = &subscriptionGroup{
@@ -526,15 +538,34 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 			return nil, false
 		}
 
-		// Send initial snapshot once the subscription is active.
-		m.enqueueGroup(group, streamEventInit, &StreamMeta{
-			InstanceID: sub.options.InstanceID,
-			FullUpdate: true,
-			Timestamp:  time.Now(),
-		})
+		// Send the initial snapshot to the newly-connected subscriber only. Routing
+		// it through the shared group fan-out would also push a spurious init event
+		// to peers that are already live on the same group.
+		go m.publishInitToSubscriber(sub, group)
 	}
 
 	return raw, true
+}
+
+// publishInitToSubscriber builds the current snapshot for the group and delivers
+// it as an init event to a single subscriber.
+func (m *StreamManager) publishInitToSubscriber(sub *subscriptionState, group *subscriptionGroup) {
+	if sub == nil || group == nil || m.closing.Load() {
+		return
+	}
+
+	meta := &StreamMeta{
+		InstanceID: sub.options.InstanceID,
+		FullUpdate: true,
+		Timestamp:  time.Now(),
+	}
+
+	payload := m.buildGroupPayload(group, group.options, streamEventInit, meta)
+	if payload == nil || m.closing.Load() {
+		return
+	}
+
+	m.publish(sub.id, clonePayloadForSubscriber(payload, sub))
 }
 
 func (m *StreamManager) publishInstance(instanceID int, eventType string, meta *StreamMeta) {
@@ -624,6 +655,13 @@ func (m *StreamManager) processGroup(groupKey string) {
 		payload := m.buildGroupPayload(group, opts, eventType, meta)
 		if payload == nil {
 			continue
+		}
+
+		// buildGroupPayload can block for up to its timeout; if shutdown began in the
+		// meantime, drop the result rather than publishing a spurious "cancelled"
+		// error event to clients that are about to disconnect anyway.
+		if m.closing.Load() {
+			return
 		}
 
 		for _, sub := range subs {
@@ -1026,7 +1064,7 @@ func (m *StreamManager) startSyncLoop(instanceID int, interval time.Duration) *s
 	}
 
 	go func(wait time.Duration) {
-		timer := time.NewTimer(wait)
+		timer := time.NewTimer(jitteredInterval(wait))
 		defer timer.Stop()
 
 		for {
@@ -1034,14 +1072,17 @@ func (m *StreamManager) startSyncLoop(instanceID int, interval time.Duration) *s
 			case <-ctx.Done():
 				return
 			case <-timer.C:
-				// Timer ensures each sync is spaced out, even if the previous run took longer than wait.
-				m.forceSync(instanceID)
+				// Pass the loop ctx so a cancelled/restarted loop (e.g. backoff change
+				// or shutdown) aborts an in-flight sync instead of running to completion.
+				m.forceSync(ctx, instanceID)
 
 				if ctx.Err() != nil {
 					return
 				}
 
-				timer.Reset(wait)
+				// Jitter each interval so sync loops for different instances do not
+				// align into a synchronized burst of load against qBittorrent.
+				timer.Reset(jitteredInterval(wait))
 			}
 		}
 	}(interval)
@@ -1049,12 +1090,22 @@ func (m *StreamManager) startSyncLoop(instanceID int, interval time.Duration) *s
 	return loop
 }
 
-func (m *StreamManager) forceSync(instanceID int) {
+// jitteredInterval returns the interval with up to +10% random jitter applied,
+// spreading per-instance sync loops so they do not fire in lockstep.
+func jitteredInterval(interval time.Duration) time.Duration {
+	if interval <= 0 {
+		return defaultSyncInterval
+	}
+	jitter := time.Duration(rand.Int64N(int64(interval) / 10))
+	return interval + jitter
+}
+
+func (m *StreamManager) forceSync(parent context.Context, instanceID int) {
 	if m.closing.Load() {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 
 	syncMgr, err := m.syncManager.GetQBittorrentSyncManager(ctx, instanceID)
@@ -1151,6 +1202,13 @@ func parseStreamRequests(r *http.Request) ([]streamRequest, error) {
 
 	if len(payloads) == 0 {
 		return nil, errNoStreamRequests
+	}
+
+	// Bound the number of stream subscriptions per connection so a single
+	// authenticated request cannot fan out into an unbounded number of distinct
+	// groups (each of which spawns its own coalescing/build work per tick).
+	if len(payloads) > maxStreamRequests {
+		return nil, errTooManyStreamRequests
 	}
 
 	requests := make([]streamRequest, 0, len(payloads))

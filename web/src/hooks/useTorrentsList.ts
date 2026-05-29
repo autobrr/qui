@@ -189,11 +189,11 @@ export function useTorrentsList(
         const totalFromPayload =
           typeof payload.data?.total === "number" ? payload.data.total : undefined
 
-        const pageFromMeta =
-          typeof payload.meta?.page === "number" && payload.meta.page >= 0? payload.meta.page: undefined
-        const pageIndex = pageFromMeta ?? 0
-        const pageStart = Math.max(0, pageIndex * pageSize)
-        const pageEnd = pageStart + nextTorrents.length
+        // The stream only ever serves page 0 (paginated views fall back to polling),
+        // so the incoming torrents replace the head of the list and the remainder is
+        // deduped and preserved.
+        const pageStart = 0
+        const pageEnd = nextTorrents.length
 
         const seen = new Set(nextTorrents.map(torrent => torrent.hash))
 

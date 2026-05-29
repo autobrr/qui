@@ -437,8 +437,11 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
         clearHandoffState(entry)
 
-        // Notify listeners with individual error handling to prevent one failure from affecting others
-        entry.listeners.forEach((listener, index) => {
+        // Notify listeners with individual error handling to prevent one failure from affecting others.
+        // listeners is a Set, whose forEach yields the value as the second arg (not an index), so track it manually.
+        let listenerIndex = 0
+        entry.listeners.forEach(listener => {
+          const index = listenerIndex++
           try {
             listener(payload)
           } catch (listenerErr) {

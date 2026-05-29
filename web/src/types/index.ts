@@ -973,7 +973,6 @@ export interface TorrentStreamMeta {
   fullUpdate?: boolean
   timestamp: string
   retryInSeconds?: number
-  page?: number
   streamKey?: string
 }
 
