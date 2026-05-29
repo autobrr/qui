@@ -118,6 +118,11 @@ type StreamManager struct {
 	closing atomic.Bool
 	mu      sync.RWMutex
 
+	// Observability counters (lifetime totals).
+	eventsPublished atomic.Uint64
+	eventsDropped   atomic.Uint64
+	syncErrorsTotal atomic.Uint64
+
 	subscriptions  map[string]*subscriptionState
 	instanceIndex  map[int]map[string]*subscriptionState
 	groups         map[string]*subscriptionGroup
@@ -220,6 +225,33 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvid
 // Server exposes the underlying SSE HTTP handler.
 func (m *StreamManager) Server() http.Handler {
 	return m.server
+}
+
+// StreamStats is a point-in-time snapshot of SSE subsystem activity. It is
+// exported so the metrics layer can surface it (e.g. as Prometheus gauges/counters).
+type StreamStats struct {
+	ActiveSubscriptions int    // currently connected subscribers
+	ActiveGroups        int    // distinct view groups being served
+	ActiveSyncLoops     int    // per-instance sync loops running
+	EventsPublished     uint64 // lifetime SSE messages successfully published
+	EventsDropped       uint64 // lifetime messages dropped (marshal/publish failures)
+	SyncErrors          uint64 // lifetime sync errors propagated to subscribers
+}
+
+// Stats returns a snapshot of current SSE activity and lifetime counters.
+func (m *StreamManager) Stats() StreamStats {
+	m.mu.RLock()
+	stats := StreamStats{
+		ActiveSubscriptions: len(m.subscriptions),
+		ActiveGroups:        len(m.groups),
+		ActiveSyncLoops:     len(m.syncLoops),
+	}
+	m.mu.RUnlock()
+
+	stats.EventsPublished = m.eventsPublished.Load()
+	stats.EventsDropped = m.eventsDropped.Load()
+	stats.SyncErrors = m.syncErrorsTotal.Load()
+	return stats
 }
 
 // PrepareBatch registers one or more subscribers and returns a context that carries their session ids.
@@ -401,6 +433,8 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 	if m.closing.Load() {
 		return
 	}
+
+	m.syncErrorsTotal.Add(1)
 
 	backoff := m.markSyncFailure(instanceID)
 	retrySeconds := int(backoff.Seconds())
@@ -863,6 +897,7 @@ func (m *StreamManager) publish(id string, payload *StreamPayload) {
 
 	encoded, err := json.Marshal(payload)
 	if err != nil {
+		m.eventsDropped.Add(1)
 		log.Error().Err(err).Str("subscriptionID", id).Msg("Failed to marshal SSE payload")
 
 		// Send error event to client so they know something went wrong
@@ -890,9 +925,15 @@ func (m *StreamManager) publish(id string, payload *StreamPayload) {
 
 	message.AppendData(string(encoded))
 
-	if err := m.server.Publish(message, id); err != nil && !errors.Is(err, sse.ErrProviderClosed) {
-		log.Error().Err(err).Str("subscriptionID", id).Msg("Failed to publish SSE message")
+	if err := m.server.Publish(message, id); err != nil {
+		m.eventsDropped.Add(1)
+		if !errors.Is(err, sse.ErrProviderClosed) {
+			log.Error().Err(err).Str("subscriptionID", id).Msg("Failed to publish SSE message")
+		}
+		return
 	}
+
+	m.eventsPublished.Add(1)
 }
 
 func (m *StreamManager) getSubscription(id string) *subscriptionState {
@@ -941,6 +982,16 @@ func (m *StreamManager) Shutdown(ctx context.Context) error {
 	if !m.closing.CompareAndSwap(false, true) {
 		return nil
 	}
+
+	stats := m.Stats()
+	log.Info().
+		Int("activeSubscriptions", stats.ActiveSubscriptions).
+		Int("activeGroups", stats.ActiveGroups).
+		Int("activeSyncLoops", stats.ActiveSyncLoops).
+		Uint64("eventsPublished", stats.EventsPublished).
+		Uint64("eventsDropped", stats.EventsDropped).
+		Uint64("syncErrors", stats.SyncErrors).
+		Msg("Shutting down SSE stream manager")
 
 	m.cancel()
 
