@@ -622,6 +622,10 @@ func (app *Application) runServer() {
 	activityHub := activity.NewHub()
 	defer activityHub.Close()
 
+	// Wire services constructed earlier (before the hub) as activity publishers.
+	trackerIconService.SetActivityPublisher(activityHub)
+	jackettService.SetActivityPublisher(activityHub)
+
 	// Initialize cross-seed automation store and service
 	crossSeedStore, err := models.NewCrossSeedStore(db, cfg.GetEncryptionKey())
 	if err != nil {
@@ -648,15 +652,19 @@ func (app *Application) runServer() {
 		crossSeedStore.GetSeasonPackTVDBCredentialsUpdatedAt,
 		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
+	crossSeedService.SetActivityPublisher(activityHub)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
 	reannounceService.SetActivityPublisher(activityHub)
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService)
+	automationService.SetActivityPublisher(activityHub)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService)
+	orphanScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
 	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService)
+	dirScanService.SetActivityPublisher(activityHub)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
 		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
@@ -693,6 +701,7 @@ func (app *Application) runServer() {
 
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()}, notificationService)
+	backupService.SetActivityPublisher(activityHub)
 	backupService.Start(context.Background())
 	defer backupService.Stop()
 

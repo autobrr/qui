@@ -22,6 +22,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/notifications"
@@ -552,6 +553,8 @@ type Service struct {
 	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
 	inFlightExports       map[string]struct{}          // "targetInstanceID:hash" -> in-progress export
 	mu                    sync.RWMutex
+
+	activityPublisher activity.Publisher
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher) *Service {
@@ -589,7 +592,17 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		lastRuleRun:               make(map[ruleKey]time.Time),
 		lastFreeSpaceDeleteAt:     make(map[int]time.Time),
 		inFlightExports:           make(map[string]struct{}),
+		activityPublisher:         activity.NopPublisher{},
 	}
+}
+
+// SetActivityPublisher wires the qui server-event hub so automation activity is
+// pushed to connected clients instead of polled. Safe to call once at startup.
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
 }
 
 // cleanupStaleEntries removes entries from lastApplied and lastRuleRun maps
@@ -1910,11 +1923,25 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 	}
 
-	if _, err := s.applyRulesForInstance(ctx, instanceID, force, dryRunRules, true); err != nil {
+	dryActivity, err := s.applyRulesForInstance(ctx, instanceID, force, dryRunRules, true)
+	if err != nil {
 		return err
 	}
-	if _, err := s.applyRulesForInstance(ctx, instanceID, force, liveRules, false); err != nil {
+	liveActivity, err := s.applyRulesForInstance(ctx, instanceID, force, liveRules, false)
+	if err != nil {
 		return err
+	}
+
+	// Signal connected clients that this instance's automation activity changed so
+	// they refetch instead of polling. Emitted only when activity rows were actually
+	// written this cycle (not on idle ticks), after writes and with no lock held.
+	if len(dryActivity) > 0 || len(liveActivity) > 0 {
+		if s.activityPublisher != nil {
+			s.activityPublisher.Publish(activity.Event{
+				Kind:       activity.KindAutomationActivity,
+				InstanceID: instanceID,
+			})
+		}
 	}
 
 	return nil

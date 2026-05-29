@@ -39,6 +39,7 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
@@ -845,6 +846,9 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const queryClient = useQueryClient()
   const { formatDate } = useDateTimeFormatters()
 
+  // Keep the shared SSE stream open so qui activity events drive cache invalidation.
+  useActivityStream()
+
   // RSS Automation state
   const [automationForm, setAutomationForm] = useState<AutomationFormState>(DEFAULT_AUTOMATION_FORM)
   const [globalSettings, setGlobalSettings] = useState<GlobalCrossSeedSettings>(DEFAULT_GLOBAL_SETTINGS)
@@ -886,7 +890,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const { data: status, refetch: refetchStatus } = useQuery({
     queryKey: ["cross-seed", "status"],
     queryFn: () => api.getCrossSeedStatus(),
-    refetchInterval: 30_000,
+    refetchInterval: false,
   })
 
   const { data: searchSettings } = useQuery({
@@ -960,8 +964,8 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
   const { data: searchStatus, refetch: refetchSearchStatus } = useQuery({
     queryKey: ["cross-seed", "search-status"],
     queryFn: () => api.getCrossSeedSearchStatus(),
-    // Only poll frequently when search is running, otherwise poll slowly
-    refetchInterval: (query) => query.state.data?.running ? 5_000 : 60_000,
+    // Poll only while a search is actively running for smooth live progress; events drive idle transitions.
+    refetchInterval: (query) => query.state.data?.running ? 5_000 : false,
   })
 
   const searchRunsRefetchInterval =

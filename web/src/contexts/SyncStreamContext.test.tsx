@@ -7,6 +7,7 @@ import { api } from "@/lib/api"
 import {
   createStreamKey,
   SyncStreamProvider,
+  useActivityStream,
   useSyncStream,
   type StreamParams,
   type StreamState
@@ -39,7 +40,7 @@ function TestProviders({ children }: { children: ReactNode }) {
 // instance and lets each test drive open / error / event emission by hand.
 // ---------------------------------------------------------------------------
 
-type SourceEventName = "init" | "update" | "stream-error" | "heartbeat"
+type SourceEventName = "init" | "update" | "stream-error" | "heartbeat" | "activity"
 
 class MockEventSource {
   static readonly CONNECTING = 0
@@ -510,3 +511,83 @@ function decodeStreamsParam(url: string): Array<{ page: number }> {
   }
   return JSON.parse(decodeURIComponent(raw)) as Array<{ page: number }>
 }
+
+describe("SyncStreamContext activity channel", () => {
+  it("opens an activity-only connection (no streams) and invalidates on activity events", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries")
+
+    function ActivityConsumer() {
+      useActivityStream()
+      return null
+    }
+
+    act(() => {
+      render(
+        <QueryClientProvider client={client}>
+          <SyncStreamProvider>
+            <ActivityConsumer />
+          </SyncStreamProvider>
+        </QueryClientProvider>
+      )
+    })
+    flushConnectionQueue()
+
+    // A single EventSource opens with activity=1 and no streams param.
+    expect(MockEventSource.instances).toHaveLength(1)
+    const source = MockEventSource.instances[0]
+    expect(source.url).toContain("activity=1")
+    expect(decodeStreamsParam(source.url)).toHaveLength(0)
+    expect(source.hasListener("activity")).toBe(true)
+
+    act(() => {
+      source.emitOpen()
+      source.emit("activity", {
+        type: "activity",
+        activity: { kind: "backup.run", instanceId: 7, timestamp: "now" },
+      })
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["instance-backups", 7] })
+  })
+
+  it("keeps the connection alive on activity heartbeats and ignores malformed activity payloads", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries")
+
+    function ActivityConsumer() {
+      useActivityStream()
+      return null
+    }
+
+    act(() => {
+      render(
+        <QueryClientProvider client={client}>
+          <SyncStreamProvider>
+            <ActivityConsumer />
+          </SyncStreamProvider>
+        </QueryClientProvider>
+      )
+    })
+    flushConnectionQueue()
+    const source = MockEventSource.instances[0]
+
+    act(() => {
+      source.emitOpen()
+      // Malformed activity payload must not throw or invalidate.
+      source.emit("activity", { type: "activity" })
+      // A heartbeat keeps the watchdog alive (no reconnect) without invalidating.
+      source.emit("heartbeat", { type: "heartbeat", meta: { timestamp: "now" } })
+    })
+
+    expect(invalidateSpy).not.toHaveBeenCalled()
+
+    // Advancing past the stale window without any event would reconnect; the
+    // heartbeat above reset it, so the original source is still the only one.
+    act(() => {
+      vi.advanceTimersByTime(STALE - 1)
+    })
+    expect(MockEventSource.instances).toHaveLength(1)
+    expect(source.closed).toBe(false)
+  })
+})

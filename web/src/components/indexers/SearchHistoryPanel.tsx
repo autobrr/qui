@@ -10,6 +10,7 @@ import {
   DialogContent,
   DialogTitle
 } from "@/components/ui/dialog"
+import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useSearchHistory } from "@/hooks/useSearchHistory"
 import { formatRelativeTime, formatTimeHMS } from "@/lib/dateTimeUtils"
 import type { SearchHistoryEntry } from "@/types"
@@ -158,10 +159,15 @@ export function SearchHistoryPanel() {
   const { t } = useTranslation("settings")
   const [isOpen, setIsOpen] = useState(true)
   const [selectedEntry, setSelectedEntry] = useState<SearchHistoryEntry | null>(null)
+
+  // Keep the shared SSE stream open while the panel is open so qui server
+  // activity events invalidate the ["searchHistory"] query (event-driven, no polling).
+  useActivityStream(isOpen)
+
   const { data, isLoading } = useSearchHistory({
     limit: 50,
     enabled: true,
-    refetchInterval: isOpen ? 3000 : false,
+    refetchInterval: false,
   })
 
   const entries = data?.entries ?? []

@@ -225,4 +225,4 @@ web/src/                     React 19 + Vite + TypeScript + Tailwind v4
 
 ## Notes
 
-- SSE migration follow-up: `web/src/components/torrents/TorrentDetailsPanel.tsx` still uses polling for live torrent state/files/pieces; next step is stream-backed detail updates where practical.
+- `web/src/components/torrents/TorrentDetailsPanel.tsx` live row state (speed/progress/ratio/state) is stream-backed via `useSyncStream`; polling only runs as a fallback while the stream is unavailable. The Content (files) and Peers tabs still poll on an interval, but that polling is tab-scoped and visibility-gated, so streaming them is optional future work rather than a pending migration.

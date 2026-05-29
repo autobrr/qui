@@ -43,6 +43,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
+import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
@@ -327,6 +328,10 @@ export function WorkflowsOverview({
   const { t } = useTranslation("instances")
   const { instances } = useInstances()
   const queryClient = useQueryClient()
+
+  // Keep the shared SSE stream open so automation-activity events invalidate
+  // the matching react-query keys; this replaces the idle activity polling.
+  useActivityStream()
 
   const reorderSensors = useSensors(
     useSensor(PointerSensor, {
@@ -774,7 +779,7 @@ export function WorkflowsOverview({
     queries: activeInstances.map((instance) => ({
       queryKey: ["automation-activity", instance.id],
       queryFn: () => api.getAutomationActivity(instance.id, 100),
-      refetchInterval: expandedInstances.includes(String(instance.id)) ? 5000 : 30000,
+      refetchInterval: false as const,
       staleTime: 5000,
     })),
   })

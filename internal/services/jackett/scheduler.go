@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/activity"
 )
 
 // Rate limiting constants and types
@@ -501,6 +503,30 @@ type searchScheduler struct {
 
 	// historyRecorder records completed searches for history tracking
 	historyRecorder HistoryRecorder
+
+	// activityPublisher signals connected clients when the scheduler's visible
+	// activity changes (task enqueue/completion, search-history append). Stored
+	// atomically so it can be wired after construction without locking the hot path.
+	activityPublisher atomic.Pointer[activity.Publisher]
+}
+
+// setActivityPublisher wires the server-event hub. Safe to call once at startup.
+func (s *searchScheduler) setActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher.Store(&publisher)
+}
+
+// publishActivity emits a coarse activity signal if a publisher is wired.
+// Must not be called while holding s.mu.
+func (s *searchScheduler) publishActivity(kind activity.Kind) {
+	if s == nil {
+		return
+	}
+	if p := s.activityPublisher.Load(); p != nil && *p != nil {
+		(*p).Publish(activity.Event{Kind: kind})
+	}
 }
 
 func newSearchScheduler(rl *RateLimiter, maxWorkers int) *searchScheduler {
@@ -641,6 +667,12 @@ func (s *searchScheduler) enqueueTasks(tasks []workerTask) {
 		})
 	}
 	s.mu.Unlock()
+
+	// A new batch of work entered the visible queue. Published after releasing
+	// the lock so the publisher never blocks the scheduler.
+	if len(tasks) > 0 {
+		s.publishActivity(activity.KindIndexerActivity)
+	}
 }
 
 func (s *searchScheduler) dispatchTasks() {
@@ -834,17 +866,26 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 	// Handle completion (only if we didn't panic)
 	if !panicked {
 		s.mu.Lock()
-		s.handleTaskCompleteLocked(item, results, coverage, err)
+		historyRecorded := s.handleTaskCompleteLocked(item, results, coverage, err)
 		delete(s.inFlight, task.indexer.ID)
 		if task.isRSS {
 			delete(s.pendingRSS, task.indexer.ID)
 		}
 		s.mu.Unlock()
+
+		// A task finished, changing the scheduler's visible activity. Published
+		// after releasing the lock so the publisher never blocks the scheduler.
+		s.publishActivity(activity.KindIndexerActivity)
+		if historyRecorded {
+			s.publishActivity(activity.KindSearchHistory)
+		}
 	}
 }
 
 // handleTaskCompleteLocked handles task completion. Caller must hold s.mu.
-func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Result, coverage []int, err error) {
+// Returns true when a search-history entry was recorded so the caller can emit
+// the corresponding activity signal after releasing the lock.
+func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Result, coverage []int, err error) (historyRecorded bool) {
 	task := item.task
 
 	// Call OnComplete callback
@@ -908,12 +949,13 @@ func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Res
 
 		// Record asynchronously to avoid blocking
 		go s.historyRecorder.Record(entry)
+		historyRecorded = true
 	}
 
 	// Track job completion
 	job, exists := s.jobs[task.jobID]
 	if !exists {
-		return
+		return historyRecorded
 	}
 
 	job.completedTasks++
@@ -925,6 +967,8 @@ func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Res
 		}
 		delete(s.jobs, task.jobID)
 	}
+
+	return historyRecorded
 }
 
 func (s *searchScheduler) getMaxWait(item *taskItem) time.Duration {

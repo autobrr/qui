@@ -706,7 +706,43 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 	if activityTopic == "" {
 		return raw, true
 	}
+
+	// Send an immediate keepalive to the activity topic so the HTTP response is
+	// flushed and the connection opens promptly. Without it, an activity-only
+	// connection (which has no init event) would not flush headers until the next
+	// heartbeat, delaying the client's open by up to heartbeatInterval. The
+	// replayer redelivers it once go-sse subscribes the session to the topic.
+	go m.publishActivityKeepalive(activityTopic)
+
 	return append(append([]string(nil), raw...), activityTopic), true
+}
+
+// publishActivityKeepalive writes a single heartbeat to one activity topic.
+func (m *StreamManager) publishActivityKeepalive(topic string) {
+	if topic == "" || m.closing.Load() {
+		return
+	}
+
+	payload := &StreamPayload{
+		Type: streamEventHeartbeat,
+		Meta: &StreamMeta{Timestamp: time.Now()},
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		m.eventsDropped.Add(1)
+		return
+	}
+
+	message := &sse.Message{Type: sse.Type(streamEventHeartbeat)}
+	message.AppendData(string(encoded))
+	if err := m.server.Publish(message, topic); err != nil {
+		m.eventsDropped.Add(1)
+		if !errors.Is(err, sse.ErrProviderClosed) {
+			log.Error().Err(err).Msg("Failed to publish SSE activity keepalive")
+		}
+		return
+	}
+	m.eventsPublished.Add(1)
 }
 
 // publishInitToSubscriber builds the current snapshot for the group and delivers
