@@ -839,6 +839,7 @@ class ApiClient {
     streams: Array<{
       key: string
       instanceId: number
+      instanceIds?: number[] | null
       page: number
       limit: number
       sort: string
@@ -850,6 +851,7 @@ class ApiClient {
     const normalized = streams.map(stream => ({
       key: stream.key,
       instanceId: stream.instanceId,
+      instanceIds: stream.instanceIds ?? null,
       page: stream.page,
       limit: stream.limit,
       sort: stream.sort,

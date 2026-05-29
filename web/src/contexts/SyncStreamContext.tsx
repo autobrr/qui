@@ -18,13 +18,27 @@ const ENTRY_TEARDOWN_DELAY_MS = 200
 const STREAM_STALE_TIMEOUT_MS = 15000
 
 export interface StreamParams {
+  // Single-instance subscription is keyed by instanceId. For an aggregated
+  // (all-instances / cross-instance) subscription, set instanceId to 0 and provide
+  // the concrete member ids in instanceIds.
   instanceId: number
+  instanceIds?: number[]
   page: number
   limit: number
   sort: string
   order: "asc" | "desc"
   search?: string
   filters?: TorrentFilters
+}
+
+// normalizeInstanceIds returns a sorted, de-duplicated, positive-only copy used for
+// stable stream keys and payloads (or undefined when there are no valid ids).
+function normalizeInstanceIds(instanceIds?: number[]): number[] | undefined {
+  if (!instanceIds || instanceIds.length === 0) {
+    return undefined
+  }
+  const normalized = Array.from(new Set(instanceIds.filter(id => id > 0))).sort((a, b) => a - b)
+  return normalized.length > 0 ? normalized : undefined
 }
 
 type StreamListener = (payload: TorrentStreamPayload) => void
@@ -255,13 +269,15 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
   const buildStreamPayload = (entries: StreamEntry[]) =>
     entries
-      // Defense in depth: the backend rejects the entire multiplexed batch if any
-      // entry has instanceId <= 0, which would make the shared EventSource reconnect
-      // forever. Drop invalid entries so one buggy consumer can't poison the stream.
-      .filter(entry => entry.params.instanceId > 0)
+      // Defense in depth: the backend rejects the entire multiplexed batch if an
+      // entry has neither a positive instanceId nor a non-empty instanceIds list,
+      // which would make the shared EventSource reconnect forever. Drop invalid
+      // entries so one buggy consumer can't poison the stream.
+      .filter(entry => entry.params.instanceId > 0 || (normalizeInstanceIds(entry.params.instanceIds) !== undefined))
       .map(entry => ({
         key: entry.key,
         instanceId: entry.params.instanceId,
+        instanceIds: normalizeInstanceIds(entry.params.instanceIds) ?? null,
         page: entry.params.page,
         limit: entry.params.limit,
         sort: entry.params.sort,
@@ -850,9 +866,11 @@ export function useSyncStreamManager(): SyncStreamContextValue {
 }
 
 export function createStreamKey(params: StreamParams): string {
+  const instanceIds = normalizeInstanceIds(params.instanceIds)
   try {
     return JSON.stringify({
       instanceId: params.instanceId,
+      instanceIds: instanceIds ?? null,
       page: params.page,
       limit: params.limit,
       sort: params.sort,
@@ -863,7 +881,8 @@ export function createStreamKey(params: StreamParams): string {
   } catch (err) {
     // Fallback for non-serializable filters - log for debugging
     console.error("Failed to serialize stream params, using degraded key:", err, params)
-    return `${params.instanceId}-${params.page}-${params.limit}-${params.sort}-${params.order}-${Date.now()}`
+    const idsKey = instanceIds ? instanceIds.join(",") : params.instanceId
+    return `${idsKey}-${params.page}-${params.limit}-${params.sort}-${params.order}-${Date.now()}`
   }
 }
 
@@ -876,6 +895,12 @@ function isSameParams(a: StreamParams, b: StreamParams): boolean {
     a.order !== b.order ||
     (a.search || "") !== (b.search || "")
   ) {
+    return false
+  }
+
+  const aIds = normalizeInstanceIds(a.instanceIds)
+  const bIds = normalizeInstanceIds(b.instanceIds)
+  if ((aIds ? aIds.join(",") : "") !== (bIds ? bIds.join(",") : "")) {
     return false
   }
 

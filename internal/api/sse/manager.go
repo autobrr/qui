@@ -57,14 +57,36 @@ type ctxKey string
 const subscriptionIDsContextKey ctxKey = "qui.sse.subscriptionIDs"
 
 // StreamOptions captures the torrent view that the subscriber wants to keep in sync.
+//
+// A subscription is single-instance when InstanceIDs is empty (keyed by InstanceID),
+// or multi-instance (aggregated/cross-instance) when InstanceIDs holds one or more
+// concrete instance ids. Multi-instance subscriptions are kept in sync by every one
+// of their member instances.
 type StreamOptions struct {
-	InstanceID int
-	Page       int
-	Limit      int
-	Sort       string
-	Order      string
-	Search     string
-	Filters    qbittorrent.FilterOptions
+	InstanceID  int
+	InstanceIDs []int
+	Page        int
+	Limit       int
+	Sort        string
+	Order       string
+	Search      string
+	Filters     qbittorrent.FilterOptions
+}
+
+// isMultiInstance reports whether the subscription aggregates multiple instances.
+func (o StreamOptions) isMultiInstance() bool {
+	return len(o.InstanceIDs) > 0
+}
+
+// instanceIDs returns the concrete instance ids this subscription is kept in sync by.
+func (o StreamOptions) instanceIDs() []int {
+	if len(o.InstanceIDs) > 0 {
+		return o.InstanceIDs
+	}
+	if o.InstanceID > 0 {
+		return []int{o.InstanceID}
+	}
+	return nil
 }
 
 type streamRequest struct {
@@ -81,9 +103,21 @@ func streamOptionsKey(opts StreamOptions) string {
 		filtersKey = string(raw)
 	}
 
+	// Multi-instance subscriptions are distinguished by their (sorted) member set.
+	instanceKey := strconv.Itoa(opts.InstanceID)
+	if opts.isMultiInstance() {
+		ids := append([]int(nil), opts.InstanceIDs...)
+		slices.Sort(ids)
+		parts := make([]string, len(ids))
+		for i, id := range ids {
+			parts[i] = strconv.Itoa(id)
+		}
+		instanceKey = "multi:" + strings.Join(parts, ",")
+	}
+
 	return fmt.Sprintf(
-		"%d|%d|%d|%s|%s|%s|%s",
-		opts.InstanceID,
+		"%s|%d|%d|%s|%s|%s|%s",
+		instanceKey,
 		opts.Page,
 		opts.Limit,
 		strconv.Quote(opts.Sort),
@@ -266,7 +300,7 @@ func (m *StreamManager) PrepareBatch(ctx context.Context, requests []streamReque
 
 	ids := make([]string, 0, len(requests))
 	for _, req := range requests {
-		if req.options.InstanceID <= 0 {
+		if len(req.options.instanceIDs()) == 0 {
 			m.unregisterMany(ids)
 			return ctx, nil, errInvalidInstanceID
 		}
@@ -318,10 +352,6 @@ func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey strin
 			subs:    make(map[string]*subscriptionState),
 		}
 		m.groups[state.groupKey] = group
-		if _, exists := m.instanceGroups[opts.InstanceID]; !exists {
-			m.instanceGroups[opts.InstanceID] = make(map[string]*subscriptionGroup)
-		}
-		m.instanceGroups[opts.InstanceID][state.groupKey] = group
 	}
 
 	group.subsMu.Lock()
@@ -329,17 +359,29 @@ func (m *StreamManager) registerSubscription(opts StreamOptions, clientKey strin
 	group.subsMu.Unlock()
 
 	m.subscriptions[id] = state
-	if _, ok := m.instanceIndex[opts.InstanceID]; !ok {
-		m.instanceIndex[opts.InstanceID] = make(map[string]*subscriptionState)
-	}
-	m.instanceIndex[opts.InstanceID][id] = state
 
-	backoff := m.ensureBackoffStateLocked(opts.InstanceID)
-	if _, running := m.syncLoops[opts.InstanceID]; !running {
-		m.syncLoops[opts.InstanceID] = m.startSyncLoop(opts.InstanceID, backoff.interval)
-	}
-	if _, running := m.heartbeatLoops[opts.InstanceID]; !running && heartbeatInterval > 0 {
-		m.heartbeatLoops[opts.InstanceID] = m.startHeartbeatLoop(opts.InstanceID)
+	// Register the subscription (and its group) under every instance it depends on,
+	// starting per-instance sync/heartbeat loops as needed. A multi-instance
+	// (aggregated) subscription is kept in sync by each of its member instances, so
+	// an update from any member re-publishes the group.
+	for _, instanceID := range opts.instanceIDs() {
+		if _, exists := m.instanceGroups[instanceID]; !exists {
+			m.instanceGroups[instanceID] = make(map[string]*subscriptionGroup)
+		}
+		m.instanceGroups[instanceID][state.groupKey] = group
+
+		if _, ok := m.instanceIndex[instanceID]; !ok {
+			m.instanceIndex[instanceID] = make(map[string]*subscriptionState)
+		}
+		m.instanceIndex[instanceID][id] = state
+
+		backoff := m.ensureBackoffStateLocked(instanceID)
+		if _, running := m.syncLoops[instanceID]; !running {
+			m.syncLoops[instanceID] = m.startSyncLoop(instanceID, backoff.interval)
+		}
+		if _, running := m.heartbeatLoops[instanceID]; !running && heartbeatInterval > 0 {
+			m.heartbeatLoops[instanceID] = m.startHeartbeatLoop(instanceID)
+		}
 	}
 	m.mu.Unlock()
 
@@ -352,14 +394,12 @@ func (m *StreamManager) Unregister(id string) {
 		return
 	}
 
-	var instanceID int
-
 	m.mu.Lock()
 	if state, ok := m.subscriptions[id]; ok {
-		instanceID = state.options.InstanceID
 		groupKey := state.groupKey
 		delete(m.subscriptions, id)
 
+		groupRemoved := false
 		if group, exists := m.groups[groupKey]; exists {
 			group.subsMu.Lock()
 			delete(group.subs, id)
@@ -368,6 +408,15 @@ func (m *StreamManager) Unregister(id string) {
 
 			if remaining == 0 {
 				delete(m.groups, groupKey)
+				groupRemoved = true
+			}
+		}
+
+		// Detach from every instance the subscription was registered under. A
+		// per-instance sync/heartbeat loop is stopped only once no remaining
+		// subscription (single- or multi-instance) still depends on that instance.
+		for _, instanceID := range state.options.instanceIDs() {
+			if groupRemoved {
 				if groups := m.instanceGroups[instanceID]; groups != nil {
 					delete(groups, groupKey)
 					if len(groups) == 0 {
@@ -375,21 +424,21 @@ func (m *StreamManager) Unregister(id string) {
 					}
 				}
 			}
-		}
 
-		if subs := m.instanceIndex[instanceID]; subs != nil {
-			delete(subs, id)
-			if len(subs) == 0 {
-				delete(m.instanceIndex, instanceID)
-				if loop, ok := m.syncLoops[instanceID]; ok {
-					loop.cancel()
-					delete(m.syncLoops, instanceID)
+			if subs := m.instanceIndex[instanceID]; subs != nil {
+				delete(subs, id)
+				if len(subs) == 0 {
+					delete(m.instanceIndex, instanceID)
+					if loop, ok := m.syncLoops[instanceID]; ok {
+						loop.cancel()
+						delete(m.syncLoops, instanceID)
+					}
+					if hbLoop, ok := m.heartbeatLoops[instanceID]; ok {
+						hbLoop.cancel()
+						delete(m.heartbeatLoops, instanceID)
+					}
+					delete(m.syncBackoff, instanceID)
 				}
-				if hbLoop, ok := m.heartbeatLoops[instanceID]; ok {
-					hbLoop.cancel()
-					delete(m.heartbeatLoops, instanceID)
-				}
-				delete(m.syncBackoff, instanceID)
 			}
 		}
 	}
@@ -478,7 +527,11 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 
 	instanceIDs := make(map[int]struct{}, len(requests))
 	for _, req := range requests {
-		instanceIDs[req.options.InstanceID] = struct{}{}
+		// Validate every member instance, including the constituents of a
+		// multi-instance (aggregated) subscription whose InstanceID is 0.
+		for _, instanceID := range req.options.instanceIDs() {
+			instanceIDs[instanceID] = struct{}{}
+		}
 	}
 
 	for instanceID := range instanceIDs {
@@ -719,16 +772,40 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 	defer cancel()
 	ctx = qbittorrent.WithSkipFreshData(ctx)
 
-	response, err := m.syncManager.GetTorrentsWithFilters(
-		ctx,
-		opts.InstanceID,
-		opts.Limit,
-		opts.Page*opts.Limit,
-		opts.Sort,
-		opts.Order,
-		opts.Search,
-		opts.Filters,
+	// A representative instance id for retry hints / logging (multi-instance groups
+	// have InstanceID == 0).
+	retryInstanceID := opts.InstanceID
+	if retryInstanceID <= 0 && len(opts.InstanceIDs) > 0 {
+		retryInstanceID = opts.InstanceIDs[0]
+	}
+
+	var (
+		response *qbittorrent.TorrentResponse
+		err      error
 	)
+	if opts.isMultiInstance() {
+		response, err = m.syncManager.GetCrossInstanceTorrentsWithFilters(
+			ctx,
+			opts.Limit,
+			opts.Page*opts.Limit,
+			opts.Sort,
+			opts.Order,
+			opts.Search,
+			opts.Filters,
+			opts.InstanceIDs,
+		)
+	} else {
+		response, err = m.syncManager.GetTorrentsWithFilters(
+			ctx,
+			opts.InstanceID,
+			opts.Limit,
+			opts.Page*opts.Limit,
+			opts.Sort,
+			opts.Order,
+			opts.Search,
+			opts.Filters,
+		)
+	}
 	if err != nil {
 		errMsg := "failed to refresh torrent list"
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -739,6 +816,7 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 
 		log.Error().Err(err).
 			Int("instanceID", opts.InstanceID).
+			Ints("instanceIDs", opts.InstanceIDs).
 			Str("groupKey", group.key).
 			Msg("Failed to build torrent response for SSE subscribers")
 
@@ -747,7 +825,7 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 		if metaCopy == nil {
 			metaCopy = &StreamMeta{InstanceID: opts.InstanceID, Timestamp: time.Now()}
 		}
-		metaCopy.RetryInSeconds = m.currentRetrySeconds(opts.InstanceID)
+		metaCopy.RetryInSeconds = m.currentRetrySeconds(retryInstanceID)
 
 		return &StreamPayload{
 			Type: streamEventError,
@@ -756,8 +834,11 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 		}
 	}
 
-	// Populate instance metadata for real-time health updates
-	response.InstanceMeta = m.buildInstanceMeta(ctx, opts.InstanceID)
+	// Populate instance metadata for single-instance streams only. Cross-instance
+	// responses aggregate multiple instances and already carry per-instance data.
+	if !opts.isMultiInstance() {
+		response.InstanceMeta = m.buildInstanceMeta(ctx, opts.InstanceID)
+	}
 
 	return &StreamPayload{
 		Type: eventType,
@@ -1229,14 +1310,15 @@ func (m *StreamManager) instanceExists(ctx context.Context, instanceID int) (boo
 }
 
 type streamRequestPayload struct {
-	Key        string                     `json:"key"`
-	InstanceID int                        `json:"instanceId"`
-	Page       int                        `json:"page"`
-	Limit      int                        `json:"limit"`
-	Sort       string                     `json:"sort"`
-	Order      string                     `json:"order"`
-	Search     string                     `json:"search"`
-	Filters    *qbittorrent.FilterOptions `json:"filters"`
+	Key         string                     `json:"key"`
+	InstanceID  int                        `json:"instanceId"`
+	InstanceIDs []int                      `json:"instanceIds"`
+	Page        int                        `json:"page"`
+	Limit       int                        `json:"limit"`
+	Sort        string                     `json:"sort"`
+	Order       string                     `json:"order"`
+	Search      string                     `json:"search"`
+	Filters     *qbittorrent.FilterOptions `json:"filters"`
 }
 
 func parseStreamRequests(r *http.Request) ([]streamRequest, error) {
@@ -1279,10 +1361,6 @@ func parseStreamRequests(r *http.Request) ([]streamRequest, error) {
 }
 
 func (p streamRequestPayload) toStreamOptions() (StreamOptions, error) {
-	if p.InstanceID <= 0 {
-		return StreamOptions{}, errInvalidInstanceID
-	}
-
 	limit := p.Limit
 	if limit <= 0 {
 		limit = defaultLimit
@@ -1310,13 +1388,40 @@ func (p streamRequestPayload) toStreamOptions() (StreamOptions, error) {
 		filters = *p.Filters
 	}
 
-	return StreamOptions{
-		InstanceID: p.InstanceID,
-		Page:       page,
-		Limit:      limit,
-		Sort:       sort,
-		Order:      order,
-		Search:     p.Search,
-		Filters:    filters,
-	}, nil
+	opts := StreamOptions{
+		Page:    page,
+		Limit:   limit,
+		Sort:    sort,
+		Order:   order,
+		Search:  p.Search,
+		Filters: filters,
+	}
+
+	// Multi-instance (aggregated/cross-instance) subscription: validate, cap, and
+	// dedupe the member ids. InstanceID is left 0 for these.
+	if len(p.InstanceIDs) > 0 {
+		if len(p.InstanceIDs) > maxStreamRequests {
+			return StreamOptions{}, errInvalidInstanceID
+		}
+		seen := make(map[int]struct{}, len(p.InstanceIDs))
+		ids := make([]int, 0, len(p.InstanceIDs))
+		for _, id := range p.InstanceIDs {
+			if id <= 0 {
+				return StreamOptions{}, errInvalidInstanceID
+			}
+			if _, dup := seen[id]; dup {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+		opts.InstanceIDs = ids
+		return opts, nil
+	}
+
+	if p.InstanceID <= 0 {
+		return StreamOptions{}, errInvalidInstanceID
+	}
+	opts.InstanceID = p.InstanceID
+	return opts, nil
 }

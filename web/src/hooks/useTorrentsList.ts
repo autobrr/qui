@@ -5,6 +5,7 @@
 
 import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import { useInstances } from "@/hooks/useInstances"
 import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
 import { isAllInstancesScope } from "@/lib/instances"
@@ -148,11 +149,50 @@ export function useTorrentsList(
     [instanceId, instanceIdsKey, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering]
   )
 
-  // The SSE stream only serves a single instance scope. Cross-instance and
-  // all-instances views fall back to polling via the React Query path below.
+  const { instances } = useInstances()
+  const activeInstanceIds = useMemo(
+    () => (instances ?? []).filter(current => current.isActive).map(current => current.id).filter(id => id > 0),
+    [instances]
+  )
+
+  // Concrete member set for an aggregated (all-instances / cross-instance) stream:
+  // an explicit subset selection when provided, otherwise all active instances.
+  // The stream needs concrete ids; if none can be resolved we fall back to polling.
+  const streamInstanceIds = useMemo(() => {
+    if (!useCrossInstanceEndpoint) {
+      return undefined
+    }
+    const base = instanceIds && instanceIds.length > 0 ? instanceIds : activeInstanceIds
+    const filtered = Array.from(new Set(base.filter(id => id > 0)))
+    return filtered.length > 0 ? filtered : undefined
+  }, [useCrossInstanceEndpoint, instanceIds, activeInstanceIds])
+
+  const streamInstanceIdsKey = useMemo(
+    () => (streamInstanceIds ? [...streamInstanceIds].sort((a, b) => a - b).join(",") : ""),
+    [streamInstanceIds]
+  )
+
+  // Single-instance views stream directly; aggregated views stream the cross-instance
+  // endpoint once a concrete member set is known (otherwise fall back to polling below).
   const streamParams = useMemo(() => {
-    if (!enabled || useCrossInstanceEndpoint) {
+    if (!enabled) {
       return null
+    }
+
+    if (useCrossInstanceEndpoint) {
+      if (!streamInstanceIds || streamInstanceIds.length === 0) {
+        return null
+      }
+      return {
+        instanceId: 0,
+        instanceIds: streamInstanceIds,
+        page: 0,
+        limit: pageSize,
+        sort,
+        order,
+        search: search || undefined,
+        filters,
+      }
     }
 
     return {
@@ -164,7 +204,8 @@ export function useTorrentsList(
       search: search || undefined,
       filters,
     }
-  }, [enabled, filters, instanceId, useCrossInstanceEndpoint, order, pageSize, search, sort])
+    // streamInstanceIdsKey captures streamInstanceIds membership for memoization.
+  }, [enabled, filters, instanceId, useCrossInstanceEndpoint, streamInstanceIds, streamInstanceIdsKey, order, pageSize, search, sort])
 
   const handleStreamPayload = useCallback(
     (payload: TorrentStreamPayload) => {
@@ -175,6 +216,23 @@ export function useTorrentsList(
       updateAppInfoCache(payload.data)
       updateMetadataCache(payload.data)
       queryClient.setQueryData(streamQueryKey, payload.data)
+
+      if (useCrossInstanceEndpoint) {
+        // Aggregated streams deliver the full first page of cross-instance torrents.
+        // Their identity is instanceId+hash, so the single-instance hash merge below
+        // does not apply; replace the list wholesale.
+        const crossTorrents = payload.data.crossInstanceTorrents ?? payload.data.cross_instance_torrents ?? []
+        setAllTorrents(payload.data.total === 0 || crossTorrents.length === 0 ? [] : crossTorrents)
+
+        if (typeof payload.data.total === "number") {
+          setLastKnownTotal(payload.data.total)
+        }
+        if (currentPage === 0 && typeof payload.data.hasMore === "boolean") {
+          setHasLoadedAll(!payload.data.hasMore)
+        }
+        return
+      }
+
       setAllTorrents(prev => {
         const nextTorrents = payload.data?.torrents ?? []
 
@@ -224,7 +282,7 @@ export function useTorrentsList(
         setHasLoadedAll(!payload.data.hasMore)
       }
     },
-    [currentPage, pageSize, queryClient, streamQueryKey, updateAppInfoCache, updateMetadataCache]
+    [currentPage, pageSize, queryClient, streamQueryKey, updateAppInfoCache, updateMetadataCache, useCrossInstanceEndpoint]
   )
 
   const streamState = useSyncStream(streamParams, {
@@ -299,7 +357,7 @@ export function useTorrentsList(
     // When the SSE stream is connected we disable polling entirely on the first page.
     refetchInterval:
       currentPage === 0? (
-        pollingEnabled? (useCrossInstanceEndpoint ? 10000 : (shouldDisablePolling ? false : TORRENT_STREAM_POLL_INTERVAL_MS)): false
+        pollingEnabled && !shouldDisablePolling? (useCrossInstanceEndpoint ? 10000 : TORRENT_STREAM_POLL_INTERVAL_MS): false
       ): false,
     refetchIntervalInBackground, // Controls background polling behavior
     refetchOnWindowFocus: currentPage === 0 && pollingEnabled,
