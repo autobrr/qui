@@ -88,6 +88,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
+import { resolveFooterSpeeds } from "@/lib/scoped-speeds"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { getStateLabel } from "@/lib/torrent-state-utils"
@@ -1376,6 +1377,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
     return cached.state
   }, [serverState, instanceId])
+
+  // Aggregate (all-instances) views have no single serverState; derive footer
+  // transfer rates from the aggregated stats totals instead of showing 0.
+  const footerSpeeds = useMemo(
+    () => resolveFooterSpeeds(isAllInstancesView, stats, effectiveServerState),
+    [isAllInstancesView, stats, effectiveServerState]
+  )
 
   const selectedRowIds = useMemo(() => {
     const ids: string[] = []
@@ -3260,9 +3268,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
               <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
                 <ChevronDown className="h-3 w-3 text-muted-foreground"/>
-                <span className="font-medium">{formatSpeedWithUnit(effectiveServerState?.dl_info_speed ?? 0, speedUnit)}</span>
+                <span className="font-medium">{formatSpeedWithUnit(footerSpeeds.downloadSpeed, speedUnit)}</span>
                 <ChevronUp className="h-3 w-3 text-muted-foreground"/>
-                <span className="font-medium">{formatSpeedWithUnit(effectiveServerState?.up_info_speed ?? 0, speedUnit)}</span>
+                <span className="font-medium">{formatSpeedWithUnit(footerSpeeds.uploadSpeed, speedUnit)}</span>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -3279,29 +3287,33 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                     {speedUnit === "bytes" ? "Switch to bits per second (bps)" : "Switch to bytes per second (B/s)"}
                   </TooltipContent>
                 </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => void handleToggleAltSpeedLimits()}
-                      disabled={isTogglingAltSpeed}
-                      aria-pressed={isAltSpeedKnown ? altSpeedEnabled : undefined}
-                      aria-label={altSpeedAriaLabel}
-                      className={cn(
-                        "h-6 w-6 text-muted-foreground hover:text-accent-foreground",
-                        "disabled:opacity-60 disabled:cursor-not-allowed"
-                      )}
-                    >
-                      {isTogglingAltSpeed ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <AltSpeedIcon className={cn("h-3 w-3", altSpeedIconClass)} />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>{altSpeedTooltip}</TooltipContent>
-                </Tooltip>
+                {/* Alternative speed limits are per-instance; the aggregate scope has
+                    no single instance to toggle (and no serverState to read status from). */}
+                {!isAllInstancesView && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => void handleToggleAltSpeedLimits()}
+                        disabled={isTogglingAltSpeed}
+                        aria-pressed={isAltSpeedKnown ? altSpeedEnabled : undefined}
+                        aria-label={altSpeedAriaLabel}
+                        className={cn(
+                          "h-6 w-6 text-muted-foreground hover:text-accent-foreground",
+                          "disabled:opacity-60 disabled:cursor-not-allowed"
+                        )}
+                      >
+                        {isTogglingAltSpeed ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <AltSpeedIcon className={cn("h-3 w-3", altSpeedIconClass)} />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{altSpeedTooltip}</TooltipContent>
+                  </Tooltip>
+                )}
                 {instance?.reannounceSettings?.enabled && (
                   <Tooltip>
                     <TooltipTrigger asChild>

@@ -181,6 +181,13 @@ export function useTorrentsList(
     }
 
     if (useCrossInstanceEndpoint) {
+      // Cross-seed filtering encodes large `Hash == ... || ...` expressions in the
+      // filters. The SSE subscription is sent as an EventSource GET URL, so those
+      // expressions would risk request-line/proxy limits and reconnect churn; keep
+      // cross-seed views on cross-instance polling. Only the all-instances view streams.
+      if (isCrossSeedFiltering) {
+        return null
+      }
       if (!streamInstanceIds || streamInstanceIds.length === 0) {
         return null
       }
@@ -206,7 +213,7 @@ export function useTorrentsList(
       filters,
     }
     // streamInstanceIdsKey captures streamInstanceIds membership for memoization.
-  }, [enabled, filters, instanceId, useCrossInstanceEndpoint, streamInstanceIds, streamInstanceIdsKey, order, pageSize, search, sort])
+  }, [enabled, filters, instanceId, useCrossInstanceEndpoint, isCrossSeedFiltering, streamInstanceIds, streamInstanceIdsKey, order, pageSize, search, sort])
 
   const handleStreamPayload = useCallback(
     (payload: TorrentStreamPayload) => {
