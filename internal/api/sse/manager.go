@@ -670,6 +670,13 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 			Str("groupKey", group.key).
 			Msg("Failed to build torrent response for SSE subscribers")
 
+		// Carry a retry hint so the frontend can show a recovery countdown and keep
+		// its last data instead of permanently flipping to the fallback state.
+		if metaCopy == nil {
+			metaCopy = &StreamMeta{InstanceID: opts.InstanceID, Timestamp: time.Now()}
+		}
+		metaCopy.RetryInSeconds = m.currentRetrySeconds(opts.InstanceID)
+
 		return &StreamPayload{
 			Type: streamEventError,
 			Meta: metaCopy,
@@ -685,6 +692,25 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 		Data: response,
 		Meta: metaCopy,
 	}
+}
+
+// currentRetrySeconds reports the instance's current sync interval (in seconds)
+// so error events can advertise when the next refresh attempt is expected.
+func (m *StreamManager) currentRetrySeconds(instanceID int) int {
+	m.mu.RLock()
+	state, ok := m.syncBackoff[instanceID]
+	m.mu.RUnlock()
+
+	interval := defaultSyncInterval
+	if ok && state.interval > 0 {
+		interval = state.interval
+	}
+
+	seconds := int(interval.Round(time.Second) / time.Second)
+	if seconds <= 0 {
+		seconds = 1
+	}
+	return seconds
 }
 
 // buildInstanceMeta creates real-time instance health metadata for SSE subscribers.

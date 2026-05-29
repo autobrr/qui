@@ -12,6 +12,10 @@ const RETRY_MAX_DELAY_MS = 30000
 const MAX_RETRY_ATTEMPTS = 6
 const HANDOFF_GRACE_PERIOD_MS = 1200
 const ENTRY_TEARDOWN_DELAY_MS = 200
+// The backend emits a heartbeat every 5s. If no event (heartbeat, init or update)
+// arrives within this window the connection is considered dead even when the
+// browser still reports it open, so we force a reconnect.
+const STREAM_STALE_TIMEOUT_MS = 15000
 
 export interface StreamParams {
   instanceId: number
@@ -61,11 +65,13 @@ interface StreamConnection {
   handlers?: {
     payload: (event: MessageEvent | Event) => void
     networkError: (event: Event) => void
+    heartbeat: (event: MessageEvent | Event) => void
   }
   signature?: string
   retryAttempt: number
   retryTimer?: number
   nextRetryAt?: number
+  staleTimer?: number
 }
 
 interface PendingConnectionUpdate {
@@ -205,6 +211,16 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     (options: { preserveRetry?: boolean } = {}) => {
       const { preserveRetry = false } = options
       const connection = connectionRef.current
+
+      if (connection.staleTimer !== undefined) {
+        if (typeof window !== "undefined") {
+          window.clearTimeout(connection.staleTimer)
+        } else {
+          clearTimeout(connection.staleTimer)
+        }
+        connection.staleTimer = undefined
+      }
+
       if (!connection.source) {
         if (!preserveRetry) {
           clearConnectionRetryState()
@@ -219,6 +235,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         source.removeEventListener("init", handlers.payload)
         source.removeEventListener("update", handlers.payload)
         source.removeEventListener("stream-error", handlers.payload)
+        source.removeEventListener("heartbeat", handlers.heartbeat)
       }
 
       source.onopen = null
@@ -344,7 +361,44 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       const url = api.getTorrentsStreamBatchUrl(normalized)
       closeConnection({ preserveRetry: true })
 
+      const handleNetworkError = (_event?: Event) => {
+        closeConnection({ preserveRetry: true })
+
+        Object.values(streamsRef.current).forEach(entry => {
+          clearHandoffState(entry)
+          if (!entry.error) {
+            entry.error = "Stream disconnected"
+          }
+          entry.connected = false
+          notifyStateSubscribers(entry.key)
+        })
+
+        scheduleReconnectRef.current()
+      }
+
+      // Watchdog: any inbound event (init/update/stream-error/heartbeat) proves the
+      // connection is alive and resets the timer. If it elapses, the connection is
+      // treated as dead and reconnected even when the browser still reports it open.
+      const resetStaleTimer = () => {
+        const conn = connectionRef.current
+        if (conn.staleTimer !== undefined) {
+          if (typeof window !== "undefined") {
+            window.clearTimeout(conn.staleTimer)
+          } else {
+            clearTimeout(conn.staleTimer)
+          }
+        }
+        const schedule = typeof window !== "undefined"
+          ? window.setTimeout
+          : (setTimeout as unknown as (handler: () => void, timeout: number) => number)
+        conn.staleTimer = schedule(() => {
+          conn.staleTimer = undefined
+          handleNetworkError()
+        }, STREAM_STALE_TIMEOUT_MS)
+      }
+
       const payloadHandler = (event: MessageEvent | Event) => {
+        resetStaleTimer()
         if (!("data" in event)) {
           return
         }
@@ -395,26 +449,18 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         notifyStateSubscribers(streamKey)
       }
 
-      const handleNetworkError = (_event?: Event) => {
-        closeConnection({ preserveRetry: true })
-
-        Object.values(streamsRef.current).forEach(entry => {
-          clearHandoffState(entry)
-          if (!entry.error) {
-            entry.error = "Stream disconnected"
-          }
-          entry.connected = false
-          notifyStateSubscribers(entry.key)
-        })
-
-        scheduleReconnectRef.current()
+      // Heartbeats carry no torrent data; they exist solely to keep the watchdog alive.
+      const heartbeatHandler = () => {
+        resetStaleTimer()
       }
 
       const source = new EventSource(url, { withCredentials: true })
       source.addEventListener("init", payloadHandler)
       source.addEventListener("update", payloadHandler)
       source.addEventListener("stream-error", payloadHandler)
+      source.addEventListener("heartbeat", heartbeatHandler)
       source.onopen = () => {
+        resetStaleTimer()
         clearConnectionRetryState()
         connection.retryAttempt = 0
         connection.nextRetryAt = undefined
@@ -435,6 +481,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       connection.handlers = {
         payload: payloadHandler,
         networkError: handleNetworkError,
+        heartbeat: heartbeatHandler,
       }
       connection.signature = signature
     },

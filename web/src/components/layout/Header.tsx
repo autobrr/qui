@@ -311,6 +311,14 @@ export function Header({
     onMessage: handleActiveTaskStreamMessage,
   })
 
+  // Drop the streamed value when the stream is not live so the count reflects the
+  // fresh REST fallback instead of a stale snapshot from before the disconnect.
+  useEffect(() => {
+    if (!activeTaskStreamState.connected || activeTaskStreamState.error) {
+      setStreamActiveTaskCount(null)
+    }
+  }, [activeTaskStreamState.connected, activeTaskStreamState.error])
+
   const shouldUseActiveTaskFallback =
     canManageSelectedInstance &&
     selectedInstanceId !== null &&

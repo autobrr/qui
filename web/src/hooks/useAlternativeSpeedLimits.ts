@@ -50,6 +50,14 @@ export function useAlternativeSpeedLimits(instanceId: number | undefined) {
     setStreamEnabled(undefined)
   }, [instanceId])
 
+  // Drop the streamed value when the stream is not live so the fresh polled
+  // fallback drives the toggle instead of a stale pre-disconnect snapshot.
+  useEffect(() => {
+    if (!streamState.connected || streamState.error) {
+      setStreamEnabled(undefined)
+    }
+  }, [streamState.connected, streamState.error])
+
   const shouldUseFallbackQuery = Boolean(instanceId) && (!streamState.connected || !!streamState.error)
 
   const { data, isLoading: isFallbackLoading, error } = useQuery({

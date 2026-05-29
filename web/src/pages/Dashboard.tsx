@@ -262,8 +262,11 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       const fallbackEnabled = streamEnabled && (!streamState || !streamState.streamConnected)
 
       return {
-        // Match first-page key used by torrent list so we can reuse query cache.
-        queryKey: ["torrents-list", instance.id, 0, undefined, undefined, "added_on", "desc"] as const,
+        // Independent lightweight (limit:1) probe used only to keep dashboard stats
+        // alive while an instance's stream is down. It does NOT share the torrent
+        // list's cache entry (that key now also encodes filters/scope), so keep this
+        // request minimal rather than relying on reuse.
+        queryKey: ["dashboard-stats-fallback", instance.id, "added_on", "desc"] as const,
         queryFn: () => api.getTorrents(instance.id, {
           page: 0,
           limit: 1,
