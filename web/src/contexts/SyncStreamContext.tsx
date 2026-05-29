@@ -238,6 +238,10 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
   const buildStreamPayload = (entries: StreamEntry[]) =>
     entries
+      // Defense in depth: the backend rejects the entire multiplexed batch if any
+      // entry has instanceId <= 0, which would make the shared EventSource reconnect
+      // forever. Drop invalid entries so one buggy consumer can't poison the stream.
+      .filter(entry => entry.params.instanceId > 0)
       .map(entry => ({
         key: entry.key,
         instanceId: entry.params.instanceId,
@@ -256,8 +260,24 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       options: { preserveState?: boolean; resetRetry?: boolean } = {}
     ) => {
       const normalized = buildStreamPayload(entries)
-      const signature = JSON.stringify(normalized)
       const connection = connectionRef.current
+
+      if (normalized.length === 0) {
+        // No streamable entries (e.g. only invalid instanceId <= 0 entries). Tear the
+        // connection down instead of opening a doomed one that the backend rejects and
+        // the client reconnects against forever.
+        entries.forEach(entry => {
+          if (entry.connected) {
+            entry.connected = false
+          }
+          clearHandoffState(entry)
+          notifyStateSubscribers(entry.key)
+        })
+        closeConnection()
+        return
+      }
+
+      const signature = JSON.stringify(normalized)
 
       if (connection.signature === signature && connection.source) {
         return

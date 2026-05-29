@@ -283,7 +283,10 @@ export function Header({
   }, [selectedInstanceId])
 
   const activeTaskStreamParams = useMemo(() => {
-    if (!shouldShowInstanceControls || selectedInstanceId === null) {
+    // The torrent stream is keyed to a single concrete instance; the all-instances
+    // scope (selectedInstanceId <= 0) must not open a stream or the backend rejects
+    // the whole multiplexed batch and the shared EventSource reconnects forever.
+    if (!shouldShowInstanceControls || selectedInstanceId === null || selectedInstanceId <= 0) {
       return null
     }
 

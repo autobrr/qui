@@ -294,7 +294,22 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
 	} else {
-		r.Use(compressor)
+		// SSE responses must never be compressed. The compressor's writer buffers
+		// until MinSize (delaying event flushes) and lacks Unwrap(), which prevents
+		// the stream handler from clearing the server WriteTimeout via
+		// http.NewResponseController. Bypass compression for event-stream requests
+		// (EventSource always sends Accept: text/event-stream), covering /stream and
+		// the RSS /events endpoint without coupling to specific paths.
+		r.Use(func(next http.Handler) http.Handler {
+			compressed := compressor(next)
+			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if strings.Contains(req.Header.Get("Accept"), "text/event-stream") {
+					next.ServeHTTP(w, req)
+					return
+				}
+				compressed.ServeHTTP(w, req)
+			})
+		})
 	}
 
 	// CORS is disabled by default. Enable only for explicit trusted origins.

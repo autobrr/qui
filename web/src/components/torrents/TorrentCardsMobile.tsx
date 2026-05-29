@@ -1267,6 +1267,13 @@ export function TorrentCardsMobile({
   }, [instanceId])
 
   const activeTaskStreamParams = useMemo(() => {
+    // The torrent stream is keyed to a single concrete instance; never open one
+    // for the all-instances scope or an unselected instance, otherwise the backend
+    // rejects the whole multiplexed batch and the shared EventSource reconnects forever.
+    if (isAllInstancesView || instanceId <= 0) {
+      return null
+    }
+
     return {
       instanceId,
       page: 0,
@@ -1274,7 +1281,7 @@ export function TorrentCardsMobile({
       sort: "added_on",
       order: "desc" as const,
     }
-  }, [instanceId])
+  }, [instanceId, isAllInstancesView])
 
   const handleActiveTaskStreamMessage = useCallback((payload: TorrentStreamPayload) => {
     const value = payload.data?.activeTaskCount
@@ -1284,7 +1291,7 @@ export function TorrentCardsMobile({
   }, [])
 
   const activeTaskStreamState = useSyncStream(activeTaskStreamParams, {
-    enabled: true,
+    enabled: Boolean(activeTaskStreamParams),
     onMessage: handleActiveTaskStreamMessage,
   })
 

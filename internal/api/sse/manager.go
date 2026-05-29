@@ -35,6 +35,11 @@ const (
 	defaultSyncInterval  = 2 * time.Second
 	maxSyncInterval      = 30 * time.Second
 	heartbeatInterval    = 5 * time.Second
+	// streamWriteTimeout bounds a single SSE write. It is refreshed before every
+	// write, so a healthy stream (which writes at least every heartbeatInterval)
+	// is never force-closed, while a client that stops reading times out and is
+	// unsubscribed instead of blocking the shared fan-out indefinitely.
+	streamWriteTimeout = 30 * time.Second
 )
 
 var (
@@ -457,12 +462,43 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 
 	req := r.WithContext(ctx)
 
-	// SSE connections are long-lived; disable the write deadline inherited from
-	// the main HTTP server so streams aren't terminated by global WriteTimeout.
-	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+	// SSE connections are long-lived; clear the absolute write deadline inherited
+	// from the server's global WriteTimeout, then apply a rolling per-write
+	// deadline via the wrapper below. If the controller can't reach a deadline
+	// capable writer (e.g. a future middleware re-wraps without Unwrap), log it so
+	// the regression is observable instead of silently capping streams at WriteTimeout.
+	rc := http.NewResponseController(w)
+	if err := rc.SetWriteDeadline(time.Time{}); err != nil {
+		log.Warn().Err(err).Msg("SSE: unable to clear write deadline; stream may be capped by server WriteTimeout")
+	}
+
+	sw := &deadlineResponseWriter{ResponseWriter: w, rc: rc, timeout: streamWriteTimeout}
 
 	// ServeHTTP blocks until the client disconnects.
-	m.server.ServeHTTP(w, req)
+	m.server.ServeHTTP(sw, req)
+}
+
+// deadlineResponseWriter refreshes the write deadline before every write so a
+// stalled SSE client is timed out (and unsubscribed by go-sse) rather than
+// blocking the shared provider's synchronous fan-out. It preserves Flush (which
+// go-sse requires) and Unwrap so the underlying writer's capabilities stay reachable.
+type deadlineResponseWriter struct {
+	http.ResponseWriter
+	rc      *http.ResponseController
+	timeout time.Duration
+}
+
+func (w *deadlineResponseWriter) Write(p []byte) (int, error) {
+	_ = w.rc.SetWriteDeadline(time.Now().Add(w.timeout))
+	return w.ResponseWriter.Write(p)
+}
+
+func (w *deadlineResponseWriter) Flush() {
+	_ = w.rc.Flush()
+}
+
+func (w *deadlineResponseWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
 }
 
 func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]string, bool) {
