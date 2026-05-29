@@ -98,12 +98,20 @@ export function useInstanceMetadata(instanceId: number, options: UseInstanceMeta
       setIsFetchingFallback(true)
 
       try {
-        const preferences = await api.getInstancePreferences(instanceId)
+        // The torrent-list stream normally hydrates this cache. When no stream has
+        // populated it (e.g. add-torrent / RSS / workflow / dir-scan opened before
+        // the torrents view), fetch categories and tags directly too, otherwise those
+        // selectors render permanently empty.
+        const [categories, tags, preferences] = await Promise.all([
+          api.getCategories(instanceId),
+          api.getTags(instanceId),
+          api.getInstancePreferences(instanceId),
+        ])
 
         const cached = queryClient.getQueryData<InstanceMetadata>(queryKey)
         const next: InstanceMetadata = {
-          categories: cached?.categories ?? metadata?.categories ?? {},
-          tags: cached?.tags ?? metadata?.tags ?? [],
+          categories: categories ?? cached?.categories ?? metadata?.categories ?? {},
+          tags: tags ?? cached?.tags ?? metadata?.tags ?? [],
           preferences,
         }
         queryClient.setQueryData(queryKey, next)

@@ -9,6 +9,7 @@ import { useInstances } from "@/hooks/useInstances"
 import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
 import { isAllInstancesScope } from "@/lib/instances"
+import { mergeStreamedFirstPage } from "@/lib/stream-merge"
 import type {
   AppPreferences,
   QBittorrentAppInfo,
@@ -240,38 +241,14 @@ export function useTorrentsList(
           return []
         }
 
-        if (prev.length === 0) {
-          return nextTorrents
-        }
-
-        const totalFromPayload =
+        // Page 0 is authoritative for its window (a row it omits was deleted or moved
+        // off page 0, so it must not be re-added); pagination-loaded later pages are
+        // preserved. See mergeStreamedFirstPage.
+        return mergeStreamedFirstPage(
+          prev,
+          nextTorrents,
           typeof payload.data?.total === "number" ? payload.data.total : undefined
-
-        // The stream only ever serves page 0 (paginated views fall back to polling),
-        // so the incoming torrents replace the head of the list and the remainder is
-        // deduped and preserved.
-        const pageStart = 0
-        const pageEnd = nextTorrents.length
-
-        const seen = new Set(nextTorrents.map(torrent => torrent.hash))
-
-        const leadingSliceEnd = Math.min(pageStart, prev.length)
-        const leading = leadingSliceEnd > 0 ? prev.slice(0, leadingSliceEnd) : []
-        const trailingStart = Math.min(pageEnd, prev.length)
-        const trailing = trailingStart < prev.length ? prev.slice(trailingStart) : []
-        const displacedSlice = prev.slice(pageStart, Math.min(pageEnd, prev.length))
-
-        const dedupedLeading = leading.filter(torrent => !seen.has(torrent.hash))
-        const dedupedDisplaced = displacedSlice.filter(torrent => !seen.has(torrent.hash))
-        const dedupedTrailing = trailing.filter(torrent => !seen.has(torrent.hash))
-
-        const merged = [...dedupedLeading, ...nextTorrents, ...dedupedDisplaced, ...dedupedTrailing]
-
-        if (totalFromPayload !== undefined && merged.length > totalFromPayload) {
-          return merged.slice(0, totalFromPayload)
-        }
-
-        return merged
+        )
       })
 
       if (typeof payload.data.total === "number") {
