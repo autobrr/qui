@@ -72,7 +72,7 @@ type SettingsTab = NonNullable<SettingsSearch["tab"]>
 const TORZNAB_CACHE_MIN_TTL_MINUTES = 1440
 
 function LanguageSelector() {
-  const { t, i18n } = useTranslation("settings")
+  const { i18n } = useTranslation("settings")
 
   return (
     <div className="space-y-2">

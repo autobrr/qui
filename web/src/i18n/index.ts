@@ -3,19 +3,19 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import i18n from "i18next"
+import i18n, { type Resource } from "i18next"
 import { initReactI18next } from "react-i18next"
 
-const localeFiles = import.meta.glob("./locales/**/*.json", { eager: true, import: "default" })
+const localeFiles = import.meta.glob("./locales/**/*.json", { eager: true, import: "default" }) as Record<string, unknown>
 
-const resources: Record<string, Record<string, unknown>> = {}
+const resources: Resource = {}
 
 for (const [path, module] of Object.entries(localeFiles)) {
   const match = path.match(/\.\/locales\/([^/]+)\/([^/]+)\.json$/)
   if (match) {
     const [, lng, ns] = match
     if (!resources[lng]) resources[lng] = {}
-    resources[lng][ns] = module
+    ;(resources[lng] as Record<string, unknown>)[ns] = module
   }
 }
 
