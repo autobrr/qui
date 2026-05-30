@@ -136,6 +136,11 @@ func TestTrackerMessageMatchesUnregistered(t *testing.T) {
 			message: "Torrent is dead",
 			want:    true,
 		},
+		{
+			name:    "repack available or grab internal",
+			message: "Other: Repack available, or grab internal:",
+			want:    true,
+		},
 
 		// Non-matching messages
 		{
