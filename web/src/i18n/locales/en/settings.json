@@ -11,16 +11,14 @@
     "apiKeys": "API Keys",
     "externalPrograms": "External Programs",
     "notifications": "Notifications",
-    "dateTime": "Date & Time",
+    "dateTime": "Time & Language",
     "premiumThemes": "Premium Themes",
     "security": "Security",
     "logs": "Logs"
   },
   "language": {
     "cardTitle": "Language",
-    "cardDescription": "Choose your preferred display language",
-    "label": "Display Language",
-    "description": "Select the language used throughout the application"
+    "cardDescription": "Choose your preferred display language"
   },
   "changePassword": {
     "currentPassword": "Current Password",

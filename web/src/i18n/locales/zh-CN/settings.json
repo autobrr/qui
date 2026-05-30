@@ -11,16 +11,14 @@
     "apiKeys": "API 密钥",
     "externalPrograms": "外部程序",
     "notifications": "通知",
-    "dateTime": "日期与时间",
+    "dateTime": "时间与语言",
     "premiumThemes": "高级主题",
     "security": "安全",
     "logs": "日志"
   },
   "language": {
     "cardTitle": "语言",
-    "cardDescription": "选择您偏好的显示语言",
-    "label": "显示语言",
-    "description": "选择整个应用中使用的语言"
+    "cardDescription": "选择您偏好的显示语言"
   },
   "changePassword": {
     "currentPassword": "当前密码",
