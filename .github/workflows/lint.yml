@@ -93,7 +93,7 @@ jobs:
           echo "go fix check clean."
 
       - name: Lint backend
-        uses: golangci/golangci-lint-action@v9.2.0
+        uses: golangci/golangci-lint-action@v9.2.1
         with:
           version: v2.11.1
           only-new-issues: true

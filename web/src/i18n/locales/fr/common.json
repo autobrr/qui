@@ -1,0 +1,192 @@
+{
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "search": "Recherche",
+    "crossSeed": "Cross-Seed",
+    "automations": "Automatisations",
+    "backups": "Sauvegardes",
+    "rss": "RSS",
+    "settings": "Paramètres",
+    "logs": "Journaux",
+    "instances": "Instances",
+    "generalSettings": "Paramètres généraux",
+    "manageInstances": "Gérer les instances",
+    "appearance": "Apparence",
+    "instanceBackups": "Sauvegardes d'instances"
+  },
+  "sidebar": {
+    "instances": "Instances",
+    "allInstancesDisabled": "Toutes les instances sont désactivées",
+    "noInstancesConfigured": "Aucune instance configurée",
+    "logout": "Déconnexion",
+    "version": "Version {{version}}",
+    "language": "Langue",
+    "viewOnGitHub": "Voir sur GitHub",
+    "rssRunning": "RSS en cours d'exécution",
+    "rssEnabled": "RSS activé",
+    "scanRunning": "Analyse en cours",
+    "showSidebar": "Afficher la barre latérale",
+    "hideSidebar": "Masquer la barre latérale"
+  },
+  "header": {
+    "currentInstance": "Instance actuelle : {{name}}. Cliquez pour changer d'instance.",
+    "connected": "Connecté",
+    "disconnected": "Déconnecté",
+    "noActiveInstances": "Aucune instance active",
+    "showFilters": "Afficher les filtres",
+    "hideFilters": "Masquer les filtres",
+    "addTorrent": "Ajouter un torrent",
+    "createTorrent": "Créer un torrent",
+    "torrentCreationTasks": "Tâches de création de torrents",
+    "instanceSettings": "Paramètres de l'instance",
+    "addToInstance": "Ajouter à l'instance",
+    "createForInstance": "Créer pour l'instance",
+    "tasksForInstance": "Tâches pour l'instance",
+    "settingsForInstance": "Paramètres pour l'instance",
+    "clearSearch": "Effacer la recherche",
+    "searchTorrents": "Rechercher des torrents... ({{shortcutKey}})",
+    "globPattern": "Motif Glob...",
+    "smartSearchTitle": "Fonctionnalités de recherche intelligente :",
+    "smartSearchGlob": "Motifs Glob :",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchFuzzy": "Recherche floue :",
+    "smartSearchFuzzyExample": "\"breaking bad\" trouve \"Breaking.Bad\"",
+    "smartSearchDots": "Gère les points, tirets bas et crochets",
+    "smartSearchFields": "Recherche dans le nom, la catégorie et les étiquettes",
+    "smartSearchEnter": "Appuyez sur Entrée pour une recherche instantanée",
+    "smartSearchAuto": "Recherche auto. après une pause de 500ms",
+    "torrentCreationTasksTitle": "Tâches de création de torrents",
+    "updateAvailable": "Mise à jour disponible",
+    "updateVersion": "Version {{version}}",
+    "rssRunning": "RSS en cours d'exécution",
+    "rssEnabled": "RSS activé",
+    "scanRunning": "Analyse en cours",
+    "allScope": "TOUS",
+    "unified": "Unifié"
+  },
+  "unifiedScope": {
+    "unified": "Unifié",
+    "collapseScope": "Réduire la portée unifiée",
+    "expandScope": "Étendre la portée unifiée",
+    "allActive": "Tous les actifs ({{count}})"
+  },
+  "mobileNav": {
+    "dashboard": "Tableau de bord",
+    "clients": "Clients",
+    "settings": "Paramètres",
+    "qbittorrentClients": "Clients qBittorrent",
+    "instances": "Instances",
+    "noActiveInstances": "Aucune instance active",
+    "loading": "Chargement...",
+    "noActiveClients": "Aucun client actif",
+    "updateAvailable": "Mise à jour disponible",
+    "updateVersion": "Version {{version}}",
+    "rssRunning": "RSS en cours d'exécution",
+    "rssEnabled": "RSS activé",
+    "scanRunning": "Analyse en cours",
+    "logout": "Déconnexion",
+    "version": "Version {{version}}",
+    "viewOnGitHub": "Voir sur GitHub"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr • GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "create": "Créer",
+    "copyPath": "Copier le chemin",
+    "scrollToTop": "Défiler vers le haut",
+    "search": "Rechercher",
+    "select": "Sélectionner",
+    "toggle": "Basculer"
+  },
+  "placeholders": {
+    "search": "Rechercher...",
+    "selectItems": "Sélectionner des éléments..."
+  },
+  "feedback": {
+    "noResultsFound": "Aucun résultat trouvé."
+  },
+  "status": {
+    "disabled": "Désactivé",
+    "notContacted": "Non contacté",
+    "working": "Fonctionnel",
+    "updating": "Mise à jour en cours",
+    "error": "Erreur",
+    "unknown": "Inconnu",
+    "trackerError": "Erreur du tracker",
+    "unreachable": "Inaccessible"
+  },
+  "themeToggle": {
+    "changeTheme": "Changer le thème",
+    "appearance": "Apparence",
+    "mode": "Mode",
+    "light": "Clair",
+    "dark": "Sombre",
+    "system": "Système",
+    "theme": "Thème",
+    "premium": "Premium",
+    "switchedToMode": "Passé en mode {{mode}}",
+    "switchedToTheme": "Passé au thème {{theme}}",
+    "switchedToThemeVariation": "Passé au thème {{theme}} ({{variation}})",
+    "unableToVerifyLicense": "Impossible de vérifier la licence",
+    "licenseCheckFailed": "Échec de la vérification de la licence. Le changement de thème Premium est temporairement indisponible.",
+    "premiumThemeError": "Ceci est un thème premium. Ouvrez Paramètres → Thèmes pour activer une licence."
+  },
+  "updateBanner": {
+    "updateAvailable": "Mise à jour disponible",
+    "versionAvailable": "La version {{version}} est maintenant disponible",
+    "viewRelease": "Voir la version",
+    "dismiss": "Fermer"
+  },
+  "notFound": {
+    "title": "Oups ! Perdu dans l'essaim ?",
+    "subtitle": "Il semble que vous vous soyez aventuré dans l'inconnu.",
+    "bugReport": "Si vous pensez qu'il s'agit d'un bug plutôt que d'un lien manquant,",
+    "reportTo": "n'hésitez pas à le signaler sur notre",
+    "githubRepository": "dépôt GitHub",
+    "getBackOnTrack": "Sinon, laissez-nous vous remettre sur le bon chemin !",
+    "returnToDashboard": "Retour au tableau de bord"
+  },
+  "magnetHandler": {
+    "registerPrompt": "Enregistrer qui comme gestionnaire de liens magnet",
+    "register": "Enregistrer",
+    "dismiss": "Fermer",
+    "registrationRequested": "Demande d'enregistrement du gestionnaire de liens magnet effectuée",
+    "registrationFailed": "Échec de l'enregistrement du gestionnaire magnet",
+    "guidance": {
+      "standalone": "Ouvrez qui dans un onglet classique pour vous enregistrer (l'invite peut apparaître dans la barre d'adresse, ce que les PWA n'affichent pas).",
+      "chromium": "Chrome affiche souvent cela comme une petite icône dans la barre d'adresse ; si rien n'apparaît, activez-le via chrome://settings/handlers.",
+      "default": "Si votre navigateur vous y invite, veuillez accepter pour finaliser l'enregistrement."
+    }
+  },
+  "numberInput": {
+    "unlimited": "Illimité",
+    "useUnlimited": " (utiliser -1 pour illimité)"
+  },
+  "dateTime": {
+    "na": "N/D",
+    "justNow": "À l'instant",
+    "today": "Aujourd'hui",
+    "yesterday": "Hier",
+    "past": "il y a {{value}}",
+    "future": "dans {{value}}",
+    "units": {
+      "second_one": "{{count}} seconde",
+      "second_other": "{{count}} secondes",
+      "minute_one": "{{count}} minute",
+      "minute_other": "{{count}} minutes",
+      "hour_one": "{{count}} heure",
+      "hour_other": "{{count}} heures",
+      "day_one": "{{count}} jour",
+      "day_other": "{{count}} jours",
+      "week_one": "{{count}} semaine",
+      "week_other": "{{count}} semaines",
+      "month_one": "{{count}} mois",
+      "month_other": "{{count}} mois",
+      "year_one": "{{count}} an",
+      "year_other": "{{count}} ans"
+    }
+  }
+}

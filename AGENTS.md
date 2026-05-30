@@ -149,7 +149,7 @@ The frontend uses `i18next` + `react-i18next` with 10 feature-based namespaces u
 
 `common`, `auth`, `settings`, `torrents`, `dashboard`, `crossseed`, `rss`, `search`, `instances`, `automations`
 
-Languages are registered in `web/src/i18n/index.ts` with static imports. Currently supported: `en`, `zh-CN`.
+Locale JSON files are loaded dynamically via `import.meta.glob` in `web/src/i18n/index.ts` — no static imports needed per namespace. Currently supported: `en`, `zh-CN`, `fr`. To expose a language in the UI, add its code to `supportedLanguages` and its display name to `languageNames` in that file.
 
 ### i18n Validation Scripts
 
@@ -168,8 +168,8 @@ pnpm check:i18n:zh-cn        # zh-CN translation coverage and quality checks
 
 ### Adding a New Language
 
-1. Create `web/src/i18n/locales/<lang>/` with all 10 namespace JSON files
-2. Import all files in `web/src/i18n/index.ts` and add to `resources`, `supportedLanguages`, and `languageNames`
+1. Create `web/src/i18n/locales/<lang>/` with all 10 namespace JSON files — they are picked up automatically via `import.meta.glob`
+2. In `web/src/i18n/index.ts`, add the language code to `supportedLanguages` and its native display name to `languageNames`
 3. Run `pnpm check:i18n` to validate English-key usage plus shared guards; if the new locale is not `zh-CN`, add or adapt a locale-coverage script because the current diff checker is zh-CN-specific
 
 ### Translation Workflow

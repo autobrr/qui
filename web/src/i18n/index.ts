@@ -3,42 +3,47 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import i18n from "i18next"
+import i18n, { type Resource } from "i18next"
 import { initReactI18next } from "react-i18next"
 
-import common from "./locales/en/common.json"
-import auth from "./locales/en/auth.json"
-import settings from "./locales/en/settings.json"
-import torrents from "./locales/en/torrents.json"
-import dashboard from "./locales/en/dashboard.json"
-import crossseed from "./locales/en/crossseed.json"
-import rss from "./locales/en/rss.json"
-import search from "./locales/en/search.json"
-import instances from "./locales/en/instances.json"
-import automations from "./locales/en/automations.json"
+const localeFiles = import.meta.glob("./locales/**/*.json", { eager: true, import: "default" }) as Record<string, unknown>
 
-import zhCNCommon from "./locales/zh-CN/common.json"
-import zhCNAuth from "./locales/zh-CN/auth.json"
-import zhCNSettings from "./locales/zh-CN/settings.json"
-import zhCNTorrents from "./locales/zh-CN/torrents.json"
-import zhCNDashboard from "./locales/zh-CN/dashboard.json"
-import zhCNCrossseed from "./locales/zh-CN/crossseed.json"
-import zhCNRss from "./locales/zh-CN/rss.json"
-import zhCNSearch from "./locales/zh-CN/search.json"
-import zhCNInstances from "./locales/zh-CN/instances.json"
-import zhCNAutomations from "./locales/zh-CN/automations.json"
+const resources: Resource = {}
 
-export const supportedLanguages = ["en", "zh-CN"] as const
+for (const [path, module] of Object.entries(localeFiles)) {
+  const match = path.match(/\.\/locales\/([^/]+)\/([^/]+)\.json$/)
+  if (match) {
+    const [, lng, ns] = match
+    if (!resources[lng]) resources[lng] = {}
+    ;(resources[lng] as Record<string, unknown>)[ns] = module
+  }
+}
+
+export const supportedLanguages = ["en", "zh-CN", "fr"] as const
 export type AppLanguage = (typeof supportedLanguages)[number]
 const LANGUAGE_STORAGE_KEY = "qui.language"
 
 export const languageNames: Record<AppLanguage, string> = {
   en: "English",
   "zh-CN": "\u7B80\u4F53\u4E2D\u6587",
+  fr: "Français",
 }
 
 function isAppLanguage(value: string | null): value is AppLanguage {
   return value !== null && supportedLanguages.includes(value as AppLanguage)
+}
+
+function detectBrowserLanguage(): AppLanguage | null {
+  const browserLanguages = navigator.languages ?? [navigator.language]
+  for (const lang of browserLanguages) {
+    // Exact match (e.g. "fr" → "fr", "zh-CN" → "zh-CN")
+    if (isAppLanguage(lang)) return lang
+    // Prefix match (e.g. "fr-FR" → "fr", "zh-Hans" → skip if no match)
+    const prefix = lang.split("-")[0]
+    const match = supportedLanguages.find((s) => s === prefix || s.startsWith(`${prefix}-`))
+    if (match) return match
+  }
+  return null
 }
 
 function getStoredLanguage(): AppLanguage | null {
@@ -78,33 +83,8 @@ export const namespaces = [
 ] as const
 
 i18n.use(initReactI18next).init({
-  resources: {
-    en: {
-      common,
-      auth,
-      settings,
-      torrents,
-      dashboard,
-      crossseed,
-      rss,
-      search,
-      instances,
-      automations,
-    },
-    "zh-CN": {
-      common: zhCNCommon,
-      auth: zhCNAuth,
-      settings: zhCNSettings,
-      torrents: zhCNTorrents,
-      dashboard: zhCNDashboard,
-      crossseed: zhCNCrossseed,
-      rss: zhCNRss,
-      search: zhCNSearch,
-      instances: zhCNInstances,
-      automations: zhCNAutomations,
-    },
-  },
-  lng: getStoredLanguage() ?? "en",
+  resources,
+  lng: getStoredLanguage() ?? detectBrowserLanguage() ?? "en",
   fallbackLng: "en",
   defaultNS: "common",
   ns: [...namespaces],
