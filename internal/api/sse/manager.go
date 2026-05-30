@@ -1468,7 +1468,9 @@ func jitteredInterval(interval time.Duration) time.Duration {
 	if interval <= 0 {
 		return defaultSyncInterval
 	}
-	jitter := time.Duration(rand.Int64N(int64(interval) / 10))
+	// Jitter only spreads sync loops so they do not fire in lockstep; it is timing,
+	// not security, so a non-cryptographic PRNG is fine here.
+	jitter := time.Duration(rand.Int64N(int64(interval) / 10)) //nolint:gosec // G404: non-security jitter
 	return interval + jitter
 }
 

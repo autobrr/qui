@@ -355,8 +355,8 @@ func (c *Client) GetCachedServerState() *qbt.ServerState {
 		return nil
 	}
 
-	copy := *c.lastServerState
-	return &copy
+	stateCopy := *c.lastServerState
+	return &stateCopy
 }
 
 // UpdateWithPeersData triggers a sync on the peer manager to keep it warm after intercepting peer data

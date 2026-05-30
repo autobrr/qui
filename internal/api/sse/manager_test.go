@@ -112,7 +112,7 @@ func TestStreamManagerServeInstanceNotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
 
 	manager.Serve(recorder, request)
 	require.Equal(t, http.StatusNotFound, recorder.Code)
@@ -144,7 +144,7 @@ func TestStreamManagerServeInstanceValidationError(t *testing.T) {
 	require.NoError(t, err)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
 
 	manager.Serve(recorder, request)
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
@@ -167,7 +167,7 @@ func TestStreamManagerServeMissingInstanceStore(t *testing.T) {
 	require.NoError(t, err)
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
 
 	require.NotPanics(t, func() {
 		manager.Serve(recorder, request)
@@ -664,21 +664,21 @@ func TestHandleSyncError_NilError(t *testing.T) {
 }
 
 func TestParseStreamRequests_EmptyStreamsParam(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/stream", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream", nil)
 	_, err := parseStreamRequests(req)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "missing streams parameter")
 }
 
 func TestParseStreamRequests_MalformedJSON(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/stream?streams=not-json", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams=not-json", nil)
 	_, err := parseStreamRequests(req)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid streams payload")
 }
 
 func TestParseStreamRequests_EmptyArray(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/stream?streams=[]", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams=[]", nil)
 	_, err := parseStreamRequests(req)
 	require.Error(t, err)
 	require.ErrorIs(t, err, errNoStreamRequests)
@@ -708,7 +708,7 @@ func TestParseStreamRequests_InvalidInstanceID(t *testing.T) {
 			raw, err := json.Marshal(payload)
 			require.NoError(t, err)
 
-			req := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
 			_, err = parseStreamRequests(req)
 			require.Error(t, err)
 			require.ErrorIs(t, err, errInvalidInstanceID)
@@ -730,7 +730,7 @@ func TestParseStreamRequests_LimitExceedsMax(t *testing.T) {
 	raw, err := json.Marshal(payload)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
 	_, err = parseStreamRequests(req)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid limit")
@@ -750,7 +750,7 @@ func TestParseStreamRequests_NegativePage(t *testing.T) {
 	raw, err := json.Marshal(payload)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
 	_, err = parseStreamRequests(req)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid page")
@@ -767,7 +767,7 @@ func TestParseStreamRequests_DefaultsApplied(t *testing.T) {
 	raw, err := json.Marshal(payload)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
 	requests, err := parseStreamRequests(req)
 	require.NoError(t, err)
 	require.Len(t, requests, 1)
@@ -803,7 +803,7 @@ func TestParseStreamRequests_OrderNormalization(t *testing.T) {
 			raw, err := json.Marshal(payload)
 			require.NoError(t, err)
 
-			req := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
 			requests, err := parseStreamRequests(req)
 			require.NoError(t, err)
 			require.Len(t, requests, 1)

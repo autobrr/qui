@@ -351,7 +351,7 @@ func TestParseStreamRequestsRejectsTooManyEntries(t *testing.T) {
 	require.NoError(t, err)
 
 	// Parser-level: surfaces errTooManyStreamRequests.
-	req := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
 	_, err = parseStreamRequests(req)
 	require.ErrorIs(t, err, errTooManyStreamRequests)
 
@@ -360,7 +360,7 @@ func TestParseStreamRequestsRejectsTooManyEntries(t *testing.T) {
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
 	recorder := httptest.NewRecorder()
-	serveReq := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
+	serveReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(raw)), nil)
 	manager.Serve(recorder, serveReq)
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 
@@ -377,7 +377,7 @@ func TestParseStreamRequestsRejectsTooManyEntries(t *testing.T) {
 	smallRaw, err := json.Marshal(smallPayload)
 	require.NoError(t, err)
 
-	smallReq := httptest.NewRequest(http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(smallRaw)), nil)
+	smallReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream?streams="+url.QueryEscape(string(smallRaw)), nil)
 	requests, err := parseStreamRequests(smallReq)
 	require.NoError(t, err)
 	require.Len(t, requests, maxStreamRequests)
