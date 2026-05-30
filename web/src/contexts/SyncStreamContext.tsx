@@ -531,16 +531,21 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       source.addEventListener("heartbeat", heartbeatHandler)
       source.addEventListener("activity", activityHandler)
       source.onopen = () => {
+        // A non-zero retryAttempt means this open followed one or more failed
+        // attempts, so events could have been missed before we ever connected -
+        // reconcile even on the first successful open, not just on later reconnects.
+        const openedAfterFailures = connection.retryAttempt > 0
         resetStaleTimer()
         clearConnectionRetryState()
         connection.retryAttempt = 0
         connection.nextRetryAt = undefined
         if (activityCountRef.current > 0) {
-          if (activityReconnectArmedRef.current) {
-            // Reconnect (not first open): the previous connection's per-session
-            // activity topic is gone, so any event published while we were down was
-            // dropped. Idle feeds dropped their refetch interval, so reconcile them
-            // all once now. Mounted queries refetch; the rest are just marked stale.
+          if (activityReconnectArmedRef.current || openedAfterFailures) {
+            // Reconnect (or a first open that followed failures): the previous
+            // connection's per-session activity topic is gone, so any event published
+            // while we were down was dropped. Idle feeds dropped their refetch
+            // interval, so reconcile them all once now. Mounted queries refetch; the
+            // rest are just marked stale.
             invalidateAllActivity(queryClientRef.current)
           }
           activityReconnectArmedRef.current = true

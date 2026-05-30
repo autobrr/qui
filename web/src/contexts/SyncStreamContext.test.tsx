@@ -645,4 +645,51 @@ describe("SyncStreamContext activity channel", () => {
     expect(invalidatedKeys).toContainEqual(["orphan-scan"])
     expect(invalidatedKeys).toContainEqual(["tracker-icons"])
   })
+
+  it("reconciles on the FIRST successful open if it followed a failed attempt", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries")
+
+    function ActivityConsumer() {
+      useActivityStream()
+      return null
+    }
+
+    act(() => {
+      render(
+        <QueryClientProvider client={client}>
+          <SyncStreamProvider>
+            <ActivityConsumer />
+          </SyncStreamProvider>
+        </QueryClientProvider>
+      )
+    })
+    flushConnectionQueue()
+
+    // The first attempt fails before it ever opens (events could be missed during
+    // this pre-first-open window).
+    const first = MockEventSource.instances[0]
+    act(() => {
+      first.emitError()
+    })
+    expect(invalidateSpy).not.toHaveBeenCalled()
+
+    // Backoff reopens. This is the first *successful* open, but because it followed
+    // a failure it must still reconcile rather than trust mount-time data.
+    act(() => {
+      vi.advanceTimersByTime(4000) // RETRY_BASE_DELAY_MS
+    })
+    const second = MockEventSource.instances[MockEventSource.instances.length - 1]
+    expect(second).not.toBe(first)
+
+    act(() => {
+      second.emitOpen()
+    })
+
+    const invalidatedKeys = invalidateSpy.mock.calls.map(
+      ([arg]) => (arg as { queryKey: unknown }).queryKey
+    )
+    expect(invalidatedKeys).toContainEqual(["instance-backups"])
+    expect(invalidatedKeys).toContainEqual(["tracker-icons"])
+  })
 })

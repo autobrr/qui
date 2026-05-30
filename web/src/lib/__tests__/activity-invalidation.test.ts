@@ -13,21 +13,24 @@ import {
   invalidateForActivity
 } from "@/lib/activity-invalidation"
 
-// Every activity kind the backend can emit. Keep in sync with the activity.Kind
-// constants; the drift-guard test below fails loudly if a kind is added without a
-// reconnect-reconciliation prefix.
-const ALL_KINDS: ActivityEvent["kind"][] = [
-  "backup.run",
-  "dirscan.run",
-  "orphanscan.run",
-  "crossseed.status",
-  "crossseed.search",
-  "reannounce.activity",
-  "automation.activity",
-  "indexer.activity",
-  "search.history",
-  "tracker.icons",
-]
+// Every activity kind the backend can emit. The `satisfies` check is compiler-
+// enforced exhaustiveness: adding a kind to the ActivityEvent union without listing
+// it here fails to compile, so the drift-guard test below can never silently miss a
+// kind (and thus a feed family left out of ACTIVITY_FEATURE_PREFIXES).
+const ALL_KINDS_MAP = {
+  "backup.run": true,
+  "dirscan.run": true,
+  "orphanscan.run": true,
+  "crossseed.status": true,
+  "crossseed.search": true,
+  "reannounce.activity": true,
+  "automation.activity": true,
+  "indexer.activity": true,
+  "search.history": true,
+  "tracker.icons": true,
+} satisfies Record<ActivityEvent["kind"], true>
+
+const ALL_KINDS = Object.keys(ALL_KINDS_MAP) as ActivityEvent["kind"][]
 
 function isPrefixOf(prefix: QueryKey, key: QueryKey): boolean {
   return prefix.length <= key.length && prefix.every((segment, i) => segment === key[i])
