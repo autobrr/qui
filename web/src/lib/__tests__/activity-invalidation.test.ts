@@ -6,7 +6,32 @@
 import { describe, expect, it, vi } from "vitest"
 import type { QueryClient, QueryKey } from "@tanstack/react-query"
 import type { ActivityEvent } from "@/types"
-import { activityQueryKeys, invalidateForActivity } from "@/lib/activity-invalidation"
+import {
+  ACTIVITY_FEATURE_PREFIXES,
+  activityQueryKeys,
+  invalidateAllActivity,
+  invalidateForActivity
+} from "@/lib/activity-invalidation"
+
+// Every activity kind the backend can emit. Keep in sync with the activity.Kind
+// constants; the drift-guard test below fails loudly if a kind is added without a
+// reconnect-reconciliation prefix.
+const ALL_KINDS: ActivityEvent["kind"][] = [
+  "backup.run",
+  "dirscan.run",
+  "orphanscan.run",
+  "crossseed.status",
+  "crossseed.search",
+  "reannounce.activity",
+  "automation.activity",
+  "indexer.activity",
+  "search.history",
+  "tracker.icons",
+]
+
+function isPrefixOf(prefix: QueryKey, key: QueryKey): boolean {
+  return prefix.length <= key.length && prefix.every((segment, i) => segment === key[i])
+}
 
 function ev(partial: Partial<ActivityEvent> & Pick<ActivityEvent, "kind">): ActivityEvent {
   return { timestamp: "2026-01-01T00:00:00Z", ...partial }
@@ -70,5 +95,32 @@ describe("invalidateForActivity", () => {
     const queryClient = { invalidateQueries } as unknown as QueryClient
     invalidateForActivity(queryClient, ev({ kind: "nope" as ActivityEvent["kind"] }))
     expect(invalidateQueries).not.toHaveBeenCalled()
+  })
+})
+
+describe("invalidateAllActivity", () => {
+  it("invalidates every activity feature prefix exactly once", () => {
+    const invalidateQueries = vi.fn()
+    const queryClient = { invalidateQueries } as unknown as QueryClient
+
+    invalidateAllActivity(queryClient)
+
+    expect(invalidateQueries).toHaveBeenCalledTimes(ACTIVITY_FEATURE_PREFIXES.length)
+    const calledKeys = invalidateQueries.mock.calls.map(([arg]) => (arg as { queryKey: QueryKey }).queryKey)
+    expect(calledKeys).toEqual(ACTIVITY_FEATURE_PREFIXES)
+  })
+
+  // Drift guard: reconnect reconciliation must cover every kind. If a new kind maps
+  // to a key family not represented in ACTIVITY_FEATURE_PREFIXES, a missed event on
+  // that feed would never reconcile on reconnect.
+  it("covers the key family of every activity kind", () => {
+    for (const kind of ALL_KINDS) {
+      const keys = activityQueryKeys(ev({ kind }))
+      expect(keys.length).toBeGreaterThan(0)
+      for (const key of keys) {
+        const covered = ACTIVITY_FEATURE_PREFIXES.some(prefix => isPrefixOf(prefix, key))
+        expect(covered, `no feature prefix covers ${JSON.stringify(key)} (kind ${kind})`).toBe(true)
+      }
+    }
   })
 })

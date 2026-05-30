@@ -4,7 +4,7 @@
  */
 
 import { api } from "@/lib/api"
-import { invalidateForActivity } from "@/lib/activity-invalidation"
+import { invalidateAllActivity, invalidateForActivity } from "@/lib/activity-invalidation"
 import type { ActivityStreamPayload, TorrentFilters, TorrentStreamMeta, TorrentStreamPayload } from "@/types"
 import { useQueryClient } from "@tanstack/react-query"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
@@ -121,6 +121,11 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   // (in activity-only mode if there are no torrent streams) so server events keep
   // flowing. When 0, behaviour is identical to before this feature.
   const activityCountRef = useRef(0)
+  // Armed once an activity-capable connection has opened. A *subsequent* open is a
+  // reconnect: events emitted while the stream was down were never replayed, so we
+  // reconcile every activity-backed query. Reset when activity interest drops to 0
+  // so the next fresh session's first open doesn't redundantly refetch.
+  const activityReconnectArmedRef = useRef(false)
   const queryClient = useQueryClient()
   const queryClientRef = useRef(queryClient)
   useEffect(() => {
@@ -530,6 +535,16 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         clearConnectionRetryState()
         connection.retryAttempt = 0
         connection.nextRetryAt = undefined
+        if (activityCountRef.current > 0) {
+          if (activityReconnectArmedRef.current) {
+            // Reconnect (not first open): the previous connection's per-session
+            // activity topic is gone, so any event published while we were down was
+            // dropped. Idle feeds dropped their refetch interval, so reconcile them
+            // all once now. Mounted queries refetch; the rest are just marked stale.
+            invalidateAllActivity(queryClientRef.current)
+          }
+          activityReconnectArmedRef.current = true
+        }
         normalized.forEach(({ key }) => {
           const entry = streamsRef.current[key]
           if (!entry) {
@@ -747,7 +762,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       activityCountRef.current = Math.max(0, activityCountRef.current - 1)
       if (activityCountRef.current === 0) {
         // Last subscriber gone: re-evaluate; the connection closes only if there are
-        // also no torrent streams.
+        // also no torrent streams. Disarm reconnect reconciliation so a future fresh
+        // activity session's first open doesn't refetch queries that just mounted.
+        activityReconnectArmedRef.current = false
         queueConnectionUpdate({ preserveState: true })
       }
     }

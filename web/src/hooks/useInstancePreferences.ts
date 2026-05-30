@@ -50,20 +50,14 @@ export function useInstancePreferences(
       }
 
       const fresh = await api.getInstancePreferences(instanceId)
-      queryClient.setQueryData(metadataQueryKey, (previous: InstanceMetadata | undefined) => {
-        if (!previous) {
-          return {
-            categories: {},
-            tags: [],
-            preferences: fresh,
-          }
-        }
-
-        return {
-          ...previous,
-          preferences: fresh,
-        }
-      })
+      // Only enrich an existing metadata entry with the fetched preferences. Creating
+      // one here would seed empty categories/tags, which makes useInstanceMetadata
+      // treat metadata as complete and skip its categories/tags fallback, leaving
+      // those selectors permanently empty. The preferences themselves live in the
+      // instance-preferences cache (this query's own key).
+      queryClient.setQueryData<InstanceMetadata | undefined>(metadataQueryKey, previous =>
+        previous ? { ...previous, preferences: fresh } : previous
+      )
 
       return fresh
     },
@@ -134,20 +128,11 @@ export function useInstancePreferences(
     },
     onSuccess: (updatedPreferences) => {
       queryClient.setQueryData(preferencesQueryKey, updatedPreferences)
-      queryClient.setQueryData<InstanceMetadata | undefined>(metadataQueryKey, previous => {
-        if (!previous) {
-          return {
-            categories: {},
-            tags: [],
-            preferences: updatedPreferences,
-          }
-        }
-
-        return {
-          ...previous,
-          preferences: updatedPreferences,
-        }
-      })
+      // Same rule as the fetch path: only merge into an existing metadata entry, never
+      // fabricate one with empty categories/tags.
+      queryClient.setQueryData<InstanceMetadata | undefined>(metadataQueryKey, previous =>
+        previous ? { ...previous, preferences: updatedPreferences } : previous
+      )
     },
   })
 

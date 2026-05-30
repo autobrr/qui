@@ -590,4 +590,59 @@ describe("SyncStreamContext activity channel", () => {
     expect(MockEventSource.instances).toHaveLength(1)
     expect(source.closed).toBe(false)
   })
+
+  it("reconciles all activity-backed queries on reconnect, without an activity event", () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries")
+
+    function ActivityConsumer() {
+      useActivityStream()
+      return null
+    }
+
+    act(() => {
+      render(
+        <QueryClientProvider client={client}>
+          <SyncStreamProvider>
+            <ActivityConsumer />
+          </SyncStreamProvider>
+        </QueryClientProvider>
+      )
+    })
+    flushConnectionQueue()
+
+    const first = MockEventSource.instances[0]
+    // First open arms reconnect reconciliation but must NOT invalidate: the
+    // activity-backed queries just mounted and fetched.
+    act(() => {
+      first.emitOpen()
+    })
+    expect(invalidateSpy).not.toHaveBeenCalled()
+
+    // Drop the connection and let the backoff timer reopen it. The new per-session
+    // activity topic cannot replay anything published while we were down.
+    act(() => {
+      first.emitError()
+    })
+    act(() => {
+      vi.advanceTimersByTime(4000) // RETRY_BASE_DELAY_MS
+    })
+
+    const second = MockEventSource.instances[MockEventSource.instances.length - 1]
+    expect(second).not.toBe(first)
+    expect(second.url).toContain("activity=1")
+
+    act(() => {
+      second.emitOpen()
+    })
+
+    // No activity event was emitted; reconciliation came purely from the reconnect.
+    const invalidatedKeys = invalidateSpy.mock.calls.map(
+      ([arg]) => (arg as { queryKey: unknown }).queryKey
+    )
+    expect(invalidatedKeys).toContainEqual(["instance-backups"])
+    expect(invalidatedKeys).toContainEqual(["dir-scan"])
+    expect(invalidatedKeys).toContainEqual(["orphan-scan"])
+    expect(invalidatedKeys).toContainEqual(["tracker-icons"])
+  })
 })
