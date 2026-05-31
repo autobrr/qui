@@ -58,6 +58,7 @@ import { cn } from "@/lib/utils"
 import type { InstanceCapabilities } from "@/types"
 import { useQueries, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
+import { navigateWithSearch } from "@/lib/router-search"
 import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { Archive, Check, ChevronsUpDown, Cog, Download, FileEdit, FileText, FunnelPlus, FunnelX, GitBranch, Globe, HardDrive, Home, Info, ListTodo, Loader2, LogOut, Menu, Plus, Rss, Search, SearchCode, Server, Settings, X, Zap } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -195,9 +196,10 @@ export function Header({
     saveUnifiedFilter(normalizedIds)
     const nextSearch: Record<string, unknown> = isAllInstancesRoute ? { ...(routeSearch || {}) } : {}
 
-    navigate({
+    navigateWithSearch({
+      navigate,
       to: "/instances",
-      search: nextSearch as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      search: nextSearch,
       replace: isAllInstancesRoute,
     })
   }, [activeInstanceIds, isAllInstancesRoute, navigate, routeSearch, saveUnifiedFilter])
@@ -236,7 +238,7 @@ export function Header({
     const next = { ...(routeSearch || {}) }
     if (trimmedSearch) next.q = trimmedSearch
     else delete next.q
-    navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+    navigateWithSearch({ navigate, search: next, replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedSearch, shouldShowInstanceControls])
 
@@ -503,7 +505,7 @@ export function Header({
                       className="hidden md:inline-flex"
                       onClick={() => {
                         const next = { ...(routeSearch || {}), modal: "add-torrent" }
-                        navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                        navigateWithSearch({ navigate, search: next, replace: true })
                       }}
                     >
                       <Plus className="h-4 w-4" />
@@ -521,7 +523,7 @@ export function Header({
                         className="hidden md:inline-flex"
                         onClick={() => {
                           const next = { ...(routeSearch || {}), modal: "create-torrent" }
-                          navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                          navigateWithSearch({ navigate, search: next, replace: true })
                         }}
                       >
                         <FileEdit className="h-4 w-4" />
@@ -540,7 +542,7 @@ export function Header({
                         className="hidden md:inline-flex relative"
                         onClick={() => {
                           const next = { ...(routeSearch || {}), modal: "tasks" }
-                          navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                          navigateWithSearch({ navigate, search: next, replace: true })
                         }}
                       >
                         <ListTodo className="h-4 w-4" />
@@ -615,7 +617,7 @@ export function Header({
                     const trimmedValue = searchValue.trim()
                     if (trimmedValue) next.q = trimmedValue
                     else delete next.q
-                    navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                    navigateWithSearch({ navigate, search: next, replace: true })
                   } else if (e.key === "Escape") {
                     // Clear search and blur the input
                     e.preventDefault()
@@ -644,7 +646,7 @@ export function Header({
                           setSearchValue("")
                           const next = { ...(routeSearch || {}) }
                           delete next.q
-                          navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                          navigateWithSearch({ navigate, search: next, replace: true })
                         }}
                       >
                         <X className="h-3.5 w-3.5 text-muted-foreground" />
