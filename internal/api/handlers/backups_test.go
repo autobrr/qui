@@ -55,7 +55,7 @@ func newRequestWithParamsAndQuery(method, path string, params map[string]string,
 	return req
 }
 
-func setupTestBackupHandler(t *testing.T) (*BackupsHandler, *database.DB, string, func()) {
+func setupTestBackupHandler(t *testing.T) (*BackupsHandler, *database.DB, string) {
 	t.Helper()
 
 	// Create test database
@@ -75,11 +75,7 @@ func setupTestBackupHandler(t *testing.T) (*BackupsHandler, *database.DB, string
 
 	handler := NewBackupsHandler(service)
 
-	cleanup := func() {
-		require.NoError(t, db.Close())
-	}
-
-	return handler, db, dataDir, cleanup
+	return handler, db, dataDir
 }
 
 func createTestBackupRun(t *testing.T, db *database.DB, dataDir string, instanceID int) *models.BackupRun {
@@ -187,8 +183,7 @@ func createTestTorrentFiles(t *testing.T, dataDir string) {
 }
 
 func TestDownloadRun_InvalidInstanceID(t *testing.T) {
-	handler, _, _, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, _, _ := setupTestBackupHandler(t)
 
 	req := newRequestWithParams(http.MethodGet, "/api/instances/invalid/backups/runs/1/download", map[string]string{
 		"instanceID": "invalid",
@@ -203,8 +198,7 @@ func TestDownloadRun_InvalidInstanceID(t *testing.T) {
 }
 
 func TestDownloadRun_InvalidRunID(t *testing.T) {
-	handler, _, _, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, _, _ := setupTestBackupHandler(t)
 
 	req := newRequestWithParams(http.MethodGet, "/api/instances/1/backups/runs/invalid/download", map[string]string{
 		"instanceID": "1",
@@ -219,8 +213,7 @@ func TestDownloadRun_InvalidRunID(t *testing.T) {
 }
 
 func TestDownloadRun_BackupNotFound(t *testing.T) {
-	handler, _, _, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, _, _ := setupTestBackupHandler(t)
 
 	req := newRequestWithParams(http.MethodGet, "/api/instances/1/backups/runs/999/download", map[string]string{
 		"instanceID": "1",
@@ -235,8 +228,7 @@ func TestDownloadRun_BackupNotFound(t *testing.T) {
 }
 
 func TestDownloadRun_BackupNotAvailable(t *testing.T) {
-	handler, db, _, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, _ := setupTestBackupHandler(t)
 
 	// Create a test instance
 	ctx := context.Background()
@@ -273,8 +265,7 @@ func TestDownloadRun_BackupNotAvailable(t *testing.T) {
 }
 
 func TestDownloadRun_UnsupportedFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -301,8 +292,7 @@ func TestDownloadRun_UnsupportedFormat(t *testing.T) {
 }
 
 func TestDownloadRun_ZIPFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -346,8 +336,7 @@ func TestDownloadRun_ZIPFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarGzFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -397,8 +386,7 @@ func TestDownloadRun_TarGzFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarZstFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -448,8 +436,7 @@ func TestDownloadRun_TarZstFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarBrFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -496,8 +483,7 @@ func TestDownloadRun_TarBrFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarXzFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -546,8 +532,7 @@ func TestDownloadRun_TarXzFormat(t *testing.T) {
 }
 
 func TestDownloadRun_TarFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
@@ -593,8 +578,7 @@ func TestDownloadRun_TarFormat(t *testing.T) {
 }
 
 func TestDownloadRun_DefaultFormat(t *testing.T) {
-	handler, db, dataDir, cleanup := setupTestBackupHandler(t)
-	defer cleanup()
+	handler, db, dataDir := setupTestBackupHandler(t)
 
 	// Create a test instance and successful backup run
 	ctx := context.Background()
