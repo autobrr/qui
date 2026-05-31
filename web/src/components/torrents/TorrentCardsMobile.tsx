@@ -52,6 +52,7 @@ import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag } from "@/lib/torrent-utils"
 import { isAllInstancesScope } from "@/lib/instances"
 import { useNavigate, useSearch } from "@tanstack/react-router"
+import { navigateWithSearch } from "@/lib/router-search"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import {
   ArrowUpDown,
@@ -1999,7 +2000,7 @@ export function TorrentCardsMobile({
     if (routeSearch && Object.prototype.hasOwnProperty.call(routeSearch, "q")) {
       const next = { ...(routeSearch || {}) }
       delete next.q
-      navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+      navigateWithSearch({ navigate, search: next, replace: true })
     }
   }, [navigate, routeSearch])
 
@@ -2768,7 +2769,7 @@ export function TorrentCardsMobile({
               <button
                 onClick={() => {
                   const next = { ...(routeSearch || {}), modal: "create-torrent" }
-                  navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                  navigateWithSearch({ navigate, search: next, replace: true })
                 }}
                 className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95"
               >
@@ -2781,7 +2782,7 @@ export function TorrentCardsMobile({
               <button
                 onClick={() => {
                   const next = { ...(routeSearch || {}), modal: "tasks" }
-                  navigate({ search: next as any, replace: true }) // eslint-disable-line @typescript-eslint/no-explicit-any
+                  navigateWithSearch({ navigate, search: next, replace: true })
                 }}
                 className="flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 text-xs font-medium transition-colors min-w-0 flex-1 text-muted-foreground hover:text-foreground active:scale-95 relative"
               >

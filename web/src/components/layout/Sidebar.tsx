@@ -28,6 +28,7 @@ import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
+import { navigateWithSearch } from "@/lib/router-search"
 import {
   Archive,
   Check,
@@ -147,9 +148,10 @@ export function Sidebar() {
     saveUnifiedFilter(normalizedIds)
     const nextSearch: Record<string, unknown> = isAllInstancesActive ? { ...(routeSearch || {}) } : {}
 
-    navigate({
+    navigateWithSearch({
+      navigate,
       to: "/instances",
-      search: nextSearch as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      search: nextSearch,
       replace: isAllInstancesActive,
     })
   }, [activeInstanceIds, isAllInstancesActive, navigate, routeSearch, saveUnifiedFilter])
