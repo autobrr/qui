@@ -276,9 +276,14 @@ export function useTorrentsList(
 
   const shouldDisablePolling = Boolean(streamParams) && streamState.connected && !streamState.error
   const preferCachedQuery = currentPage === 0 && shouldDisablePolling
+  // Keep the REST query (initial fetch + fallback polling) enabled until the
+  // stream is actually connected, not just until it errors. While the stream is
+  // still connecting (e.g. behind a buffering reverse proxy that delays the init
+  // event) streamState.error is null but no data is arriving, so gating on error
+  // alone would disable REST entirely and the first page would never load.
   const queryEnabled =
     enabled &&
-    (currentPage > 0 || Boolean(streamState.error) || !streamParams)
+    (currentPage > 0 || !streamParams || !streamState.connected || Boolean(streamState.error))
 
   // Reset state when instanceId, filters, search, or sort changes
   // Use JSON.stringify to avoid resetting on every object reference change during polling
