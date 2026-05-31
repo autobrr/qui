@@ -9,8 +9,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strconv"
 	"testing"
@@ -21,9 +19,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	quiqbt "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestGetTorrentField_TagBaselineAcceptsFrontendMixedSelectionPayload(t *testing.T) {
@@ -119,17 +117,7 @@ func TestGetTorrentField_MagnetURIReturnsSelectedLinks(t *testing.T) {
 func createTorrentFieldTestHarness(t *testing.T, torrentsByInstanceName map[string][]qbt.Torrent) (*models.InstanceStore, *quiqbt.SyncManager, map[string]int) {
 	t.Helper()
 
-	tmpDir, err := os.MkdirTemp("", "qui-torrent-field-test-*")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = os.RemoveAll(tmpDir)
-	})
-
-	db, err := database.New(filepath.Join(tmpDir, "test.db"))
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = db.Close()
-	})
+	db := testdb.NewMigratedSQLite(t, "torrents-field")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
