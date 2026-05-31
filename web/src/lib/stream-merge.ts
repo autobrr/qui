@@ -6,12 +6,27 @@
 /**
  * Merge a freshly streamed first page into the currently displayed torrent list.
  *
- * The SSE stream only ever serves page 0 (paginated views fall back to polling), and
- * that page is authoritative for its window: any row the fresh page omits within the
- * first-page window (a torrent that was deleted or moved off page 0) is dropped and
- * never re-added. Rows beyond the first page - loaded earlier via pagination - are
- * preserved and de-duplicated against the fresh page so shifted rows do not appear
- * twice. The result is capped to `total` when provided.
+ * The SSE stream only ever serves page 0 (paginated views fall back to polling).
+ * That page is authoritative for its window: any row the fresh page omits from the
+ * page-0 window (a torrent that was deleted or moved off page 0) is dropped and never
+ * re-added. Rows beyond the page-0 window, loaded earlier via pagination, are kept and
+ * de-duplicated against the fresh page so a row that reflowed up into page 0 is not
+ * shown twice.
+ *
+ * `total` (the server's total match count) tells us whether page 0 is the whole list
+ * or only the first slice of a paginated result:
+ *
+ *   - When the fresh page already covers every row (`nextTorrents.length >= total`),
+ *     it is the complete, authoritative truth and is returned as-is. This correctly
+ *     drops a row deleted off a single visible page, including the last-sorted one.
+ *
+ *   - When the result is paginated (`nextTorrents.length < total`), page 0 cannot
+ *     reveal which later-page row was removed when `total` shrinks, so we must NOT
+ *     tail-trim the merged list against `total`: doing so would drop a genuinely
+ *     surviving highest-sorted row while leaving the deleted one in place. We keep
+ *     every later-page row the client already holds; at worst one deleted later-page
+ *     row lingers until the user re-paginates or the page is refetched, which is far
+ *     less harmful than hiding a row that still exists.
  *
  * Generic over any record carrying a stable `hash` so it can be unit tested without
  * constructing full torrent objects.
@@ -29,17 +44,18 @@ export function mergeStreamedFirstPage<T extends { hash: string }>(
     return nextTorrents
   }
 
-  const seen = new Set(nextTorrents.map(torrent => torrent.hash))
-
-  // Rows past the streamed first page are pagination-loaded pages we want to keep.
-  // Deduping against the fresh page drops any that shifted up into page 0.
-  const trailing = prev.slice(nextTorrents.length).filter(torrent => !seen.has(torrent.hash))
-
-  const merged = [...nextTorrents, ...trailing]
-
-  if (typeof total === "number" && merged.length > total) {
-    return merged.slice(0, total)
+  // The fresh page already covers the entire result set, so it is the whole truth.
+  // Returning it as-is drops any row deleted off the single visible page (no later
+  // pages exist to preserve).
+  if (typeof total === "number" && nextTorrents.length >= total) {
+    return nextTorrents
   }
 
-  return merged
+  const seen = new Set(nextTorrents.map(torrent => torrent.hash))
+
+  // Rows past the streamed page-0 window are pagination-loaded pages we want to keep.
+  // De-duping against the fresh page drops any that reflowed up into page 0.
+  const trailing = prev.slice(nextTorrents.length).filter(torrent => !seen.has(torrent.hash))
+
+  return [...nextTorrents, ...trailing]
 }
