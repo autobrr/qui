@@ -133,8 +133,14 @@ func NewServer(deps *Dependencies) *Server {
 		server: &http.Server{
 			ReadHeaderTimeout: time.Second * 15,
 			ReadTimeout:       60 * time.Second,
-			WriteTimeout:      120 * time.Second,
-			IdleTimeout:       180 * time.Second,
+			// No WriteTimeout: it is an absolute deadline on the whole response,
+			// so it aborts large file downloads (DownloadTorrentContentFile) and
+			// long-lived SSE streams once they run past a fixed bound, regardless
+			// of any reverse proxy. ReadHeaderTimeout/ReadTimeout/IdleTimeout still
+			// bound slow-header and idle connections; on a single-user self-hosted
+			// instance the response-side slow-client protection is not worth the cost.
+			WriteTimeout: 0,
+			IdleTimeout:  180 * time.Second,
 		},
 		logger:                           log.Logger.With().Str("module", "api").Logger(),
 		config:                           deps.Config,
