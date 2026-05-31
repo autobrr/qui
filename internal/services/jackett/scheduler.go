@@ -677,9 +677,9 @@ func (s *searchScheduler) enqueueTasks(tasks []workerTask) {
 
 func (s *searchScheduler) dispatchTasks() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if s.taskQueue.Len() == 0 {
+		s.mu.Unlock()
 		return
 	}
 
@@ -691,11 +691,19 @@ func (s *searchScheduler) dispatchTasks() {
 
 	var blocked []*taskItem
 
+	// Track whether any task completed (so we emit a single queue-state signal)
+	// and whether any of them recorded a search-history entry, so we can emit the
+	// matching activity signals once after releasing s.mu. Both consuming panels
+	// rely on these events instead of polling.
+	var taskCompleted bool
+	var historyRecorded bool
+
 	for _, item := range items {
 		// Check if context was explicitly cancelled (user/system stopped the search)
 		if item.task.ctx.Err() == context.Canceled {
 			item.started = time.Now() // Mark as "started" now for skipped tasks
-			s.handleTaskCompleteLocked(item, nil, nil, item.task.ctx.Err())
+			taskCompleted = true
+			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, item.task.ctx.Err()) || historyRecorded
 			if item.task.isRSS {
 				delete(s.pendingRSS, item.task.indexer.ID)
 			}
@@ -716,7 +724,8 @@ func (s *searchScheduler) dispatchTasks() {
 		if item.task.ctx.Err() != nil && item.task.ctxCancel != nil {
 			item.task.ctxCancel()
 			item.started = time.Now()
-			s.handleTaskCompleteLocked(item, nil, nil, item.task.ctx.Err())
+			taskCompleted = true
+			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, item.task.ctx.Err()) || historyRecorded
 			if item.task.isRSS {
 				delete(s.pendingRSS, item.task.indexer.ID)
 			}
@@ -751,7 +760,8 @@ func (s *searchScheduler) dispatchTasks() {
 				Priority:    priority,
 			}
 			item.started = time.Now() // Mark as "started" now for skipped tasks
-			s.handleTaskCompleteLocked(item, nil, nil, err)
+			taskCompleted = true
+			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, err) || historyRecorded
 			if item.task.isRSS {
 				delete(s.pendingRSS, item.task.indexer.ID)
 			}
@@ -782,6 +792,19 @@ func (s *searchScheduler) dispatchTasks() {
 
 	// Schedule retry timer for blocked tasks
 	s.scheduleRetryTimerLocked()
+
+	s.mu.Unlock()
+
+	// Tasks completed here (cancelled, deadline-exceeded, or rate-limit skipped)
+	// without going through executeTask, so their activity signals must be emitted
+	// from this path. Published after releasing the lock so the publisher never
+	// blocks the scheduler. Mirrors the success path in executeTask.
+	if taskCompleted {
+		s.publishActivity(activity.KindIndexerActivity)
+	}
+	if historyRecorded {
+		s.publishActivity(activity.KindSearchHistory)
+	}
 }
 
 func (s *searchScheduler) executeTask(item *taskItem) {
@@ -804,12 +827,19 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 			panicked = true
 			err := fmt.Errorf("scheduler worker panic: %v", r)
 			s.mu.Lock()
-			s.handleTaskCompleteLocked(item, nil, nil, err)
+			historyRecorded := s.handleTaskCompleteLocked(item, nil, nil, err)
 			delete(s.inFlight, task.indexer.ID)
 			if task.isRSS {
 				delete(s.pendingRSS, task.indexer.ID)
 			}
 			s.mu.Unlock()
+
+			// A task finished (via panic recovery), changing the scheduler's visible
+			// activity. Emitted after releasing the lock, mirroring the success path.
+			s.publishActivity(activity.KindIndexerActivity)
+			if historyRecorded {
+				s.publishActivity(activity.KindSearchHistory)
+			}
 		}
 
 		// Release worker
