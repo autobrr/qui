@@ -45,7 +45,13 @@ const (
 	// write, so a healthy stream (which writes at least every heartbeatInterval)
 	// is never force-closed, while a client that stops reading times out and is
 	// unsubscribed instead of blocking the shared fan-out indefinitely.
-	streamWriteTimeout = 30 * time.Second
+	//
+	// The shared go-sse Joe provider fans writes out serially from a single loop,
+	// so one stalled client blocks every other session for up to this timeout. It
+	// is kept at 2x heartbeatInterval: high enough that a live client (which writes
+	// at least every heartbeat) is never tripped, low enough to keep the worst-case
+	// head-of-line stall short.
+	streamWriteTimeout = 2 * heartbeatInterval
 )
 
 var (
@@ -262,6 +268,9 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvid
 
 	m := &StreamManager{
 		server: &sse.Server{
+			// One shared Joe provider fans writes out serially from a single loop, so a
+			// stalled client blocks every session until its write deadline (streamWriteTimeout)
+			// fires and unsubscribes it. The rolling per-write deadline keeps that stall bounded.
 			Provider: &sse.Joe{Replayer: replayer},
 		},
 		clientPool:     clientPool,
@@ -630,11 +639,12 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 		ctx = context.WithValue(ctx, activityTopicContextKey, activityTopic)
 	}
 
-	// Disable reverse-proxy buffering so the stream (including the initial event)
-	// is flushed immediately. With buffering on (nginx proxy_buffering, Traefik,
-	// etc.) a proxy can hold the connection open without delivering anything,
-	// leaving clients stuck "connecting" with no data and no fallback. Mirrors the
-	// logs and RSS SSE handlers.
+	// Disable reverse-proxy buffering and response caching so the stream
+	// (including the initial event) is flushed immediately. With buffering on
+	// (nginx proxy_buffering, Traefik, etc.) a proxy can hold the connection open
+	// without delivering anything, leaving clients stuck "connecting" with no data
+	// and no fallback. Mirrors the logs and RSS SSE handlers, which set both headers.
+	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
 
 	req := r.WithContext(ctx)
@@ -692,6 +702,15 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 		return nil, false
 	}
 
+	// Build and write each subscriber's initial snapshot synchronously to the
+	// session writer here, before returning topics. onSession runs inside
+	// go-sse's ServeHTTP *before* it subscribes the session to its topics, so a
+	// published init would race the subscribe: if it wins, it only lands in the
+	// replayer buffer, and a fresh connection (empty Last-Event-ID) never has it
+	// replayed, permanently losing its first snapshot until the next update tick.
+	// Writing directly to the still-unsubscribed session is race-free and makes
+	// the init the first bytes on the wire. (Writing after subscribe would instead
+	// race go-sse's own writes to the same response writer.)
 	for _, id := range raw {
 		sub := m.getSubscription(id)
 		if sub == nil {
@@ -705,10 +724,7 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 			return nil, false
 		}
 
-		// Send the initial snapshot to the newly-connected subscriber only. Routing
-		// it through the shared group fan-out would also push a spurious init event
-		// to peers that are already live on the same group.
-		go m.publishInitToSubscriber(sub, group)
+		m.writeInitToSession(w, sub, group)
 	}
 
 	// Subscribe the session to its activity topic (if any) in addition to its
@@ -717,47 +733,20 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 		return raw, true
 	}
 
-	// Send an immediate keepalive to the activity topic so the HTTP response is
-	// flushed and the connection opens promptly. Without it, an activity-only
-	// connection (which has no init event) would not flush headers until the next
-	// heartbeat, delaying the client's open by up to heartbeatInterval. The
-	// replayer redelivers it once go-sse subscribes the session to the topic.
-	go m.publishActivityKeepalive(activityTopic)
+	// Write an immediate keepalive to the activity topic's session so the HTTP
+	// response is flushed and the connection opens promptly. Without it, an
+	// activity-only connection (which has no init event) would not flush headers
+	// until the next heartbeat, delaying the client's open by up to
+	// heartbeatInterval. Written directly for the same race-free reason as the
+	// init snapshot above.
+	m.writeKeepaliveToSession(w)
 
 	return append(append([]string(nil), raw...), activityTopic), true
 }
 
-// publishActivityKeepalive writes a single heartbeat to one activity topic.
-func (m *StreamManager) publishActivityKeepalive(topic string) {
-	if topic == "" || m.closing.Load() {
-		return
-	}
-
-	payload := &StreamPayload{
-		Type: streamEventHeartbeat,
-		Meta: &StreamMeta{Timestamp: time.Now()},
-	}
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		m.eventsDropped.Add(1)
-		return
-	}
-
-	message := &sse.Message{Type: sse.Type(streamEventHeartbeat)}
-	message.AppendData(string(encoded))
-	if err := m.server.Publish(message, topic); err != nil {
-		m.eventsDropped.Add(1)
-		if !errors.Is(err, sse.ErrProviderClosed) {
-			log.Error().Err(err).Msg("Failed to publish SSE activity keepalive")
-		}
-		return
-	}
-	m.eventsPublished.Add(1)
-}
-
-// publishInitToSubscriber builds the current snapshot for the group and delivers
-// it as an init event to a single subscriber.
-func (m *StreamManager) publishInitToSubscriber(sub *subscriptionState, group *subscriptionGroup) {
+// writeInitToSession builds the current snapshot for the group and writes it as
+// an init event directly to the still-unsubscribed session writer.
+func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscriptionState, group *subscriptionGroup) {
 	if sub == nil || group == nil || m.closing.Load() {
 		return
 	}
@@ -773,7 +762,73 @@ func (m *StreamManager) publishInitToSubscriber(sub *subscriptionState, group *s
 		return
 	}
 
-	m.publish(sub.id, clonePayloadForSubscriber(payload, sub))
+	m.writePayloadToSession(w, clonePayloadForSubscriber(payload, sub))
+}
+
+// writeKeepaliveToSession writes a single heartbeat directly to the session writer.
+func (m *StreamManager) writeKeepaliveToSession(w http.ResponseWriter) {
+	if m.closing.Load() {
+		return
+	}
+
+	m.writePayloadToSession(w, &StreamPayload{
+		Type: streamEventHeartbeat,
+		Meta: &StreamMeta{Timestamp: time.Now()},
+	})
+}
+
+// writePayloadToSession encodes payload as an SSE event and writes it straight to
+// the session response writer, then flushes. It is only safe to call from within
+// onSession, before go-sse subscribes the session and starts writing to the same
+// writer from its provider loop.
+func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *StreamPayload) {
+	if payload == nil {
+		return
+	}
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		m.eventsDropped.Add(1)
+		log.Error().Err(err).Str("type", payload.Type).Msg("Failed to marshal SSE init payload")
+		return
+	}
+
+	message := &sse.Message{Type: sse.Type(payload.Type)}
+	message.AppendData(string(encoded))
+
+	// go-sse only sets the content-type header on its first write; do it here so
+	// the bytes we emit before the subscribe are a valid event stream.
+	w.Header().Set("Content-Type", "text/event-stream")
+	if _, err := message.WriteTo(w); err != nil {
+		m.eventsDropped.Add(1)
+		log.Error().Err(err).Str("type", payload.Type).Msg("Failed to write SSE init payload")
+		return
+	}
+
+	flushSession(w)
+	m.eventsPublished.Add(1)
+}
+
+// flushSession flushes whatever buffered bytes were written to the session
+// writer. The writer go-sse hands onSession is its own ResponseWriter wrapper
+// whose Flush returns an error, so try that first, then fall back to the
+// standard http.Flusher (unwrapping as needed).
+func flushSession(w http.ResponseWriter) {
+	if f, ok := w.(interface{ Flush() error }); ok {
+		_ = f.Flush()
+		return
+	}
+	for {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+			return
+		}
+		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return
+		}
+		w = u.Unwrap()
+	}
 }
 
 func (m *StreamManager) publishInstance(instanceID int, eventType string, meta *StreamMeta) {
@@ -829,17 +884,21 @@ func (m *StreamManager) enqueueGroup(group *subscriptionGroup, eventType string,
 	group.sending = true
 	group.mu.Unlock()
 
-	go m.processGroup(group.key)
+	go m.processGroup(group)
 }
 
-func (m *StreamManager) processGroup(groupKey string) {
+// processGroup drains the coalescing queue for one specific group object. It must
+// operate on the exact *subscriptionGroup that enqueueGroup flipped sending=true on,
+// not re-resolve it by key: the single-processor invariant (the sending flag) is
+// per-object, so a key lookup could land on a fresh group with the same view that
+// already has its own processor, yielding two concurrent processors for one view.
+func (m *StreamManager) processGroup(group *subscriptionGroup) {
+	if group == nil {
+		return
+	}
+
 	for {
 		if m.closing.Load() {
-			return
-		}
-
-		group := m.getGroup(groupKey)
-		if group == nil {
 			return
 		}
 

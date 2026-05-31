@@ -423,58 +423,134 @@ func TestParseStreamRequestsRejectsTooManyEntries(t *testing.T) {
 	require.Len(t, requests, maxStreamRequests)
 }
 
-// TestPublishInitToSubscriberDeliversExactlyOneInit asserts that publishInitToSubscriber
-// (the per-subscriber init path) delivers exactly one init event to a freshly
-// connected subscriber, not to its group peers.
-func TestPublishInitToSubscriberDeliversExactlyOneInit(t *testing.T) {
+// TestServeDeliversExactlyOneInitPerConnection asserts that each fresh connection
+// receives exactly one init snapshot, written directly to its session before
+// go-sse subscribes it. A second connection joining the same group must not push a
+// spurious init to the first (init is per-connection, not a group fan-out), while
+// a subsequent update still fans out to both.
+func TestServeDeliversExactlyOneInitPerConnection(t *testing.T) {
+	store, cleanup := newTestInstanceStore(t)
+	defer cleanup()
+
 	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
-	manager := NewStreamManager(nil, provider, nil)
+	manager := NewStreamManager(nil, provider, store)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
-	recorder := newRecordingProvider()
-	manager.server.Provider = recorder
+	instanceID := seedActiveInstance(t, manager)
 
-	opts := StreamOptions{InstanceID: 1, Page: 0, Limit: 50, Sort: "added_on", Order: "desc"}
-	groupKey := streamOptionsKey(opts)
+	srv := startStreamServer(t, manager)
 
-	subA := &subscriptionState{id: "sub-A", options: opts, created: time.Now(), groupKey: groupKey, clientKey: "client-A"}
-	subB := &subscriptionState{id: "sub-B", options: opts, created: time.Now(), groupKey: groupKey, clientKey: "client-B"}
+	// First connection on the group.
+	readerA, _ := connectStream(t, srv, streamPayload(instanceID, "client-A"))
+	initA := readerA.waitForEvent(t, streamEventInit, 5*time.Second)
+	require.Equal(t, streamEventInit, decodeStreamPayloadData(t, initA.data).Type)
 
-	group := &subscriptionGroup{key: groupKey, options: opts, subs: make(map[string]*subscriptionState)}
-	group.subs[subA.id] = subA
-	group.subs[subB.id] = subB
-
-	manager.mu.Lock()
-	manager.subscriptions[subA.id] = subA
-	manager.subscriptions[subB.id] = subB
-	manager.instanceIndex[opts.InstanceID] = map[string]*subscriptionState{subA.id: subA, subB.id: subB}
-	manager.groups[groupKey] = group
-	manager.instanceGroups[opts.InstanceID] = map[string]*subscriptionGroup{groupKey: group}
-	manager.mu.Unlock()
-
-	// Connecting subscriber B should receive exactly one init, and A must NOT
-	// receive an init purely from B joining (init is per-subscriber, not group fan-out).
-	manager.publishInitToSubscriber(subB, group)
-
-	require.Eventually(t, func() bool {
-		return len(recorder.messagesFor(subB.id)) == 1
-	}, 5*time.Second, 10*time.Millisecond, "subscriber B should receive exactly one init")
-
-	bMessages := recorder.messagesFor(subB.id)
-	require.Len(t, bMessages, 1)
-	bPayload := decodeStreamPayload(t, bMessages[0])
+	// Second connection on an identical view (same group). It must get its own
+	// init, and A must not receive a second init purely because B joined.
+	readerB, _ := connectStream(t, srv, streamPayload(instanceID, "client-B"))
+	initB := readerB.waitForEvent(t, streamEventInit, 5*time.Second)
+	bPayload := decodeStreamPayloadData(t, initB.data)
 	require.Equal(t, streamEventInit, bPayload.Type)
 	require.NotNil(t, bPayload.Data)
 	require.Equal(t, "canned-session", bPayload.Data.SessionID)
 
-	require.Empty(t, recorder.messagesFor(subA.id), "subscriber A should not receive an init from B joining")
+	// A is already live; B joining must not deliver another init to A. The only
+	// event A may legitimately see in this window is a heartbeat, never a second init.
+	select {
+	case ev := <-readerA.events:
+		require.NotEqualf(t, streamEventInit, ev.event, "subscriber A must not receive a second init when B joins (got %q)", ev.event)
+	case <-time.After(500 * time.Millisecond):
+		// No further init for A, as expected.
+	}
 
-	// An update triggered by HandleMainData reaches both subscribers in the group.
-	manager.publishInstance(opts.InstanceID, streamEventUpdate, &StreamMeta{InstanceID: opts.InstanceID, Timestamp: time.Now()})
+	// A subsequent update fans out to both connections in the group.
+	manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1, FullUpdate: true})
+	readerA.waitForEvent(t, streamEventUpdate, 5*time.Second)
+	readerB.waitForEvent(t, streamEventUpdate, 5*time.Second)
+}
 
-	require.Eventually(t, func() bool {
-		return len(recorder.messagesFor(subA.id)) >= 1 && len(recorder.messagesFor(subB.id)) >= 2
-	}, 5*time.Second, 10*time.Millisecond, "update should fan out to both subscribers in the group")
+// setTorrentsErr arms the single-instance build to fail with err on the next call.
+func (f *fakeSyncProvider) setTorrentsErr(err error) {
+	f.mu.Lock()
+	f.torrentsErr = err
+	f.mu.Unlock()
+}
+
+// setCrossInstanceErr arms the cross-instance build to fail with err on the next call.
+func (f *fakeSyncProvider) setCrossInstanceErr(err error) {
+	f.mu.Lock()
+	f.crossInstanceErr = err
+	f.mu.Unlock()
+}
+
+// TestServeDeliversStreamErrorOnBuildFailure covers buildGroupPayload's error path:
+// when the torrent build fails after a subscriber connects, the failure is surfaced
+// as a stream-error event carrying a recovery message and a positive retry hint
+// (the countdown the frontend depends on), for both single- and cross-instance views.
+func TestServeDeliversStreamErrorOnBuildFailure(t *testing.T) {
+	tests := []struct {
+		name    string
+		multi   bool
+		armErr  func(*fakeSyncProvider)
+		wantMsg string
+	}{
+		{
+			name:    "single instance generic failure",
+			armErr:  func(f *fakeSyncProvider) { f.setTorrentsErr(errors.New("boom")) },
+			wantMsg: "failed to refresh torrent list",
+		},
+		{
+			name:    "single instance deadline exceeded",
+			armErr:  func(f *fakeSyncProvider) { f.setTorrentsErr(context.DeadlineExceeded) },
+			wantMsg: "torrent list refresh timed out",
+		},
+		{
+			name:    "cross instance generic failure",
+			multi:   true,
+			armErr:  func(f *fakeSyncProvider) { f.setCrossInstanceErr(errors.New("boom")) },
+			wantMsg: "failed to refresh torrent list",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store, cleanup := newTestInstanceStore(t)
+			defer cleanup()
+
+			provider := &fakeSyncProvider{
+				torrentsResponse:      cannedResponse(),
+				crossInstanceResponse: cannedResponse(),
+			}
+			manager := NewStreamManager(nil, provider, store)
+			t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+			instanceID := seedActiveInstance(t, manager)
+
+			payload := streamPayload(instanceID, "stream-err")
+			if tt.multi {
+				payload[0]["instanceId"] = 0
+				payload[0]["instanceIds"] = []int{instanceID}
+			}
+
+			srv := startStreamServer(t, manager)
+			reader, _ := connectStream(t, srv, payload)
+
+			// Drain the successful init snapshot, then arm the failure for the update build.
+			reader.waitForEvent(t, streamEventInit, 5*time.Second)
+			tt.armErr(provider)
+
+			// An external update triggers a rebuild, which now fails and must surface a
+			// stream-error event rather than silently dropping.
+			manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1})
+
+			errEvent := reader.waitForEvent(t, streamEventError, 5*time.Second)
+			errPayload := decodeStreamPayloadData(t, errEvent.data)
+			require.Equal(t, streamEventError, errPayload.Type)
+			require.Equal(t, tt.wantMsg, errPayload.Err)
+			require.NotNil(t, errPayload.Meta, "error event must carry meta for the retry hint")
+			require.Positive(t, errPayload.Meta.RetryInSeconds, "error event must advertise a positive retry countdown")
+		})
+	}
 }
 
 // decodeStreamPayloadData unmarshals the JSON data segment of an SSE event.
