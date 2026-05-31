@@ -2075,7 +2075,7 @@ export function TorrentCardsMobile({
             ) : (
               <>
                 {hasLoadedAll ? (
-                  t("statusBar.torrentCount", { count: torrents.length, plural: torrents.length !== 1 ? "s" : "" })
+                  t("statusBar.torrentCount", { count: torrents.length })
                 ) : isLoadingMore ? (
                   t("statusBar.loadingMore")
                 ) : (

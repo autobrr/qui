@@ -831,7 +831,7 @@
     "ctrlClick": "{{modifier}}+点击多选",
     "loadingTorrents": "正在加载种子...",
     "loadingMore": "正在加载更多种子...",
-    "torrentCount": "{{count}} 个种子",
+    "torrentCount_other": "{{count}} 个种子",
     "torrentsLoaded": "已加载 {{loaded}}/{{total}} 个种子",
     "scrollForMore": "（滚动加载更多）",
     "loading": "加载中...",
