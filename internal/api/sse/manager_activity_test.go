@@ -68,9 +68,11 @@ func TestActivityOnlyConnectionReceivesEvents(t *testing.T) {
 	require.Equal(t, 0, stats.ActiveSyncLoops, "activity-only connection should not start a sync loop")
 	require.Equal(t, 0, stats.ActiveSubscriptions, "activity-only connection should register no torrent subscription")
 
-	hub.Publish(activity.Event{Kind: activity.KindBackupRun, InstanceID: 7, ResourceID: "42"})
-
-	ev := reader.waitForEvent(t, streamEventActivity, 2*time.Second)
+	// Retry the publish: the session may finish subscribing just after its activity
+	// topic is registered, and an event published before then is dropped by design.
+	ev := reader.waitForEventTriggered(t, streamEventActivity, 5*time.Second, func() {
+		hub.Publish(activity.Event{Kind: activity.KindBackupRun, InstanceID: 7, ResourceID: "42"})
+	})
 
 	var payload ActivityPayload
 	require.NoError(t, json.Unmarshal([]byte(ev.data), &payload))

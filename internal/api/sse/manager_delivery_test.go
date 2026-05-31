@@ -210,28 +210,92 @@ func (r *sseReader) waitForEvent(t *testing.T, eventType string, timeout time.Du
 	}
 }
 
-// waitForErrorEvent blocks until a stream-error event whose Err equals wantMsg
-// arrives, ignoring unrelated error events. Tests wire a nil sync pool, so the
-// per-instance sync loop also emits its own "sync manager unavailable"
-// stream-error that races the build-failure error under assertion; matching by
-// message keeps the assertion deterministic regardless of delivery order.
-func (r *sseReader) waitForErrorEvent(t *testing.T, wantMsg string, timeout time.Duration) *StreamPayload {
+// triggerRetryInterval paces re-invocation of an update/error trigger while a
+// freshly connected session finishes subscribing.
+const triggerRetryInterval = 100 * time.Millisecond
+
+// waitForEventTriggered invokes trigger, then re-invokes it on a fixed interval
+// until an event of eventType arrives. A new session receives its init snapshot
+// (written synchronously in onSession) before go-sse subscribes it to its topics,
+// so an update published in that brief window reaches no subscriber. Re-triggering
+// tolerates that window without coupling the test to go-sse's subscribe timing.
+func (r *sseReader) waitForEventTriggered(t *testing.T, eventType string, timeout time.Duration, trigger func()) sseEvent {
 	t.Helper()
 	deadline := time.After(timeout)
+	tick := time.NewTicker(triggerRetryInterval)
+	defer tick.Stop()
+	trigger()
+	for {
+		select {
+		case ev := <-r.events:
+			if ev.event == eventType {
+				return ev
+			}
+		case err := <-r.errc:
+			t.Fatalf("stream closed before receiving %q event: %v", eventType, err)
+		case <-tick.C:
+			trigger()
+		case <-deadline:
+			t.Fatalf("timed out waiting for %q event", eventType)
+		}
+	}
+}
+
+// waitForErrorTriggered is waitForEventTriggered specialised for stream-error
+// events, matching on the error message so the per-instance sync loop's unrelated
+// "sync manager unavailable" stream-error (tests wire a nil pool) is ignored.
+func (r *sseReader) waitForErrorTriggered(t *testing.T, wantMsg string, timeout time.Duration, trigger func()) *StreamPayload {
+	t.Helper()
+	deadline := time.After(timeout)
+	tick := time.NewTicker(triggerRetryInterval)
+	defer tick.Stop()
+	trigger()
 	for {
 		select {
 		case ev := <-r.events:
 			if ev.event != streamEventError {
 				continue
 			}
-			payload := decodeStreamPayloadData(t, ev.data)
-			if payload.Err == wantMsg {
+			if payload := decodeStreamPayloadData(t, ev.data); payload.Err == wantMsg {
 				return payload
 			}
 		case err := <-r.errc:
 			t.Fatalf("stream closed before receiving stream-error %q: %v", wantMsg, err)
+		case <-tick.C:
+			trigger()
 		case <-deadline:
 			t.Fatalf("timed out waiting for stream-error %q", wantMsg)
+		}
+	}
+}
+
+// waitForUpdateOnBoth re-invokes trigger until both readers receive an update
+// event, tolerating the post-init subscribe window for either session.
+func waitForUpdateOnBoth(t *testing.T, a, b *sseReader, timeout time.Duration, trigger func()) {
+	t.Helper()
+	deadline := time.After(timeout)
+	tick := time.NewTicker(triggerRetryInterval)
+	defer tick.Stop()
+	trigger()
+	gotA, gotB := false, false
+	for !gotA || !gotB {
+		select {
+		case ev := <-a.events:
+			if ev.event == streamEventUpdate {
+				gotA = true
+			}
+		case ev := <-b.events:
+			if ev.event == streamEventUpdate {
+				gotB = true
+			}
+		case err := <-a.errc:
+			t.Fatalf("subscriber A stream closed before update: %v", err)
+		case err := <-b.errc:
+			t.Fatalf("subscriber B stream closed before update: %v", err)
+		case <-tick.C:
+			trigger()
+		case <-deadline:
+			t.Fatalf("timed out waiting for update on both subscribers (a=%v b=%v)", gotA, gotB)
 		}
 	}
 }
@@ -334,10 +398,12 @@ func TestServeEndToEndDeliversInitAndUpdate(t *testing.T) {
 	require.Equal(t, canned.SessionID, initPayload.Data.SessionID)
 	require.Equal(t, canned.HasMore, initPayload.Data.HasMore)
 
-	// 2. An external main-data update is fanned out as an update event.
-	manager.HandleMainData(instanceID, &qbt.MainData{Rid: 99, FullUpdate: true})
-
-	updateEvent := reader.waitForEvent(t, streamEventUpdate, 5*time.Second)
+	// 2. An external main-data update is fanned out as an update event. The trigger
+	// is retried because the session subscribes shortly after its init is flushed, so
+	// the first publish can land before the subscription exists.
+	updateEvent := reader.waitForEventTriggered(t, streamEventUpdate, 5*time.Second, func() {
+		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 99, FullUpdate: true})
+	})
 	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
 	require.Equal(t, streamEventUpdate, updatePayload.Type)
 	require.NotNil(t, updatePayload.Data, "update event should carry data")
@@ -489,10 +555,12 @@ func TestServeDeliversExactlyOneInitPerConnection(t *testing.T) {
 		// No further init for A, as expected.
 	}
 
-	// A subsequent update fans out to both connections in the group.
-	manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1, FullUpdate: true})
-	readerA.waitForEvent(t, streamEventUpdate, 5*time.Second)
-	readerB.waitForEvent(t, streamEventUpdate, 5*time.Second)
+	// A subsequent update fans out to both connections in the group. Retry the
+	// trigger until both subscribers (each subscribes just after its init flush)
+	// have received it.
+	waitForUpdateOnBoth(t, readerA, readerB, 5*time.Second, func() {
+		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1, FullUpdate: true})
+	})
 }
 
 // setTorrentsErr arms the single-instance build to fail with err on the next call.
@@ -566,12 +634,12 @@ func TestServeDeliversStreamErrorOnBuildFailure(t *testing.T) {
 			tt.armErr(provider)
 
 			// An external update triggers a rebuild, which now fails and must surface a
-			// stream-error event rather than silently dropping.
-			manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1})
-
-			// Match the build-failure error by message: the background sync loop
-			// emits its own unrelated stream-error that can race this one.
-			errPayload := reader.waitForErrorEvent(t, tt.wantMsg, 5*time.Second)
+			// stream-error event rather than silently dropping. Retry the trigger (the
+			// session may subscribe just after its init is flushed) and match by message
+			// (the sync loop emits its own unrelated stream-error).
+			errPayload := reader.waitForErrorTriggered(t, tt.wantMsg, 5*time.Second, func() {
+				manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1})
+			})
 			require.Equal(t, streamEventError, errPayload.Type)
 			require.NotNil(t, errPayload.Meta, "error event must carry meta for the retry hint")
 			require.Positive(t, errPayload.Meta.RetryInSeconds, "error event must advertise a positive retry countdown")
