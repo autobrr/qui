@@ -190,12 +190,12 @@ function MultiSelectContent({
   const displayOptions = isMobile ? options : options.filter((option) => !selectedSet.has(option.value))
 
   return (
-      <ResponsiveCommand>
-        <ResponsiveCommandInput
-          placeholder={t("placeholders.search")}
-          value={inputValue}
-          onValueChange={setInputValue}
-        />
+    <ResponsiveCommand>
+      <ResponsiveCommandInput
+        placeholder={t("placeholders.search")}
+        value={inputValue}
+        onValueChange={setInputValue}
+      />
       <ResponsiveCommandList>
         <ResponsiveCommandEmpty>
           {creatable && inputValue.trim() ? (
