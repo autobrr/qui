@@ -41,6 +41,12 @@ func TestStreamManagerHandleSyncErrorPublishesErrorEvent(t *testing.T) {
 
 	manager.HandleSyncError(sub.options.InstanceID, errors.New("sync failed"))
 
+	// HandleSyncError publishes asynchronously so a slow subscriber can't block
+	// the sync loop's OnError callback, so wait for the broadcast to land.
+	require.Eventually(t, func() bool {
+		return len(provider.messagesFor(sub.id)) == 1
+	}, time.Second, 5*time.Millisecond, "expected a single broadcast message")
+
 	messages := provider.messagesFor(sub.id)
 	require.Len(t, messages, 1, "expected a single broadcast message")
 

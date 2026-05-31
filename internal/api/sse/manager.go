@@ -553,7 +553,10 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 		Err: message,
 	}
 
-	m.publishToInstance(instanceID, payload)
+	// Publish asynchronously so a slow or stalled subscriber can't block the
+	// qBittorrent sync loop's OnError callback during the synchronous fan-out.
+	// Mirrors HandleMainData.
+	go m.publishToInstance(instanceID, payload)
 }
 
 // Serve implements the HTTP handler for GET /stream and multiplexes multiple subscriptions over one SSE session.
@@ -626,6 +629,13 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 		defer m.unregisterActivityTopic(activityTopic)
 		ctx = context.WithValue(ctx, activityTopicContextKey, activityTopic)
 	}
+
+	// Disable reverse-proxy buffering so the stream (including the initial event)
+	// is flushed immediately. With buffering on (nginx proxy_buffering, Traefik,
+	// etc.) a proxy can hold the connection open without delivering anything,
+	// leaving clients stuck "connecting" with no data and no fallback. Mirrors the
+	// logs and RSS SSE handlers.
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	req := r.WithContext(ctx)
 

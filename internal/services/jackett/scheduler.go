@@ -947,8 +947,12 @@ func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Res
 			entry.Status = "success"
 		}
 
-		// Record asynchronously to avoid blocking
-		go s.historyRecorder.Record(entry)
+		// Record synchronously so the entry is committed before the caller emits
+		// the KindSearchHistory activity signal after releasing s.mu; otherwise a
+		// client refetch can race ahead of the write and miss the new row, and the
+		// panel no longer polls to self-heal. Record -> buffer.Push is an in-memory,
+		// non-blocking append, so this does not stall the worker.
+		s.historyRecorder.Record(entry)
 		historyRecorded = true
 	}
 
