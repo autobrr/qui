@@ -856,7 +856,31 @@
     "connectionPort": "端口：{{port}}",
     "connectionAriaLabel": "qBittorrent 连接状态：{{status}}",
     "connectionAriaLabelUnknown": "qBittorrent 连接状态未知",
-    "external": "外部"
+    "external": "外部",
+    "streamStatus": {
+      "crossInstance": {
+        "label": "跨实例轮询",
+        "message": "聚合的 cross-seed 结果通过轮询刷新。",
+        "secondary": "SSE 已禁用 • 每 {{seconds}} 秒轮询一次"
+      },
+      "reconnecting": {
+        "label": "正在重新连接数据流…",
+        "message": "正在尝试恢复 SSE 连接。",
+        "retryQueued": "已排队第 {{attempt}} 次重试",
+        "pollingContinues": "数据流恢复期间将继续轮询。"
+      },
+      "fallback": {
+        "label": "数据流离线，改用轮询",
+        "message": "数据流不可用期间，回退到定期刷新。",
+        "serverRetry": "服务器将在 {{seconds}} 秒后重试，轮询回退已启用",
+        "retrying": "正在自动重试，使用轮询回退"
+      },
+      "connecting": {
+        "label": "正在连接数据流…",
+        "message": "在 SSE 连接就绪前，每 {{seconds}} 秒轮询一次。",
+        "secondary": "每 {{seconds}} 秒轮询一次"
+      }
+    }
   },
   "detailsPanel": {
     "tabs": {

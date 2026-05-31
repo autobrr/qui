@@ -1107,9 +1107,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const streamStatus = useMemo(() => {
     if (isCrossSeedFiltering) {
       return {
-        label: "Cross-instance polling",
-        message: "Aggregated cross-seed results refresh via polling.",
-        secondary: "SSE disabled • polling every 10s",
+        label: t("statusBar.streamStatus.crossInstance.label"),
+        message: t("statusBar.streamStatus.crossInstance.message"),
+        secondary: t("statusBar.streamStatus.crossInstance.secondary", { seconds: 10 }),
         tone: "muted" as const,
         animate: false,
       }
@@ -1126,22 +1126,22 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     switch (stableStreamPhase) {
       case "reconnecting":
         return {
-          label: "Stream reconnecting…",
-          message: streamError ?? "Attempting to restore SSE connection.",
+          label: t("statusBar.streamStatus.reconnecting.label"),
+          message: streamError ?? t("statusBar.streamStatus.reconnecting.message"),
           secondary: hasClientRetryScheduled
-            ? `Retry attempt ${safeRetryAttempt} queued`
-            : "Polling continues while the stream recovers.",
+            ? t("statusBar.streamStatus.reconnecting.retryQueued", { attempt: safeRetryAttempt })
+            : t("statusBar.streamStatus.reconnecting.pollingContinues"),
           tone: "warning" as const,
           animate: true,
         }
       case "fallback":
         return {
-          label: "Stream offline – using polling",
-          message: streamError ?? "Falling back to periodic refresh while the stream is unavailable.",
+          label: t("statusBar.streamStatus.fallback.label"),
+          message: streamError ?? t("statusBar.streamStatus.fallback.message"),
           secondary:
             serverRetrySeconds && serverRetrySeconds > 0
-              ? `Server retry in ${serverRetrySeconds}s — polling fallback active`
-              : "Retrying automatically with polling fallback",
+              ? t("statusBar.streamStatus.fallback.serverRetry", { seconds: serverRetrySeconds })
+              : t("statusBar.streamStatus.fallback.retrying"),
           tone: "error" as const,
           animate: false,
         }
@@ -1155,9 +1155,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         }
       default:
         return {
-          label: "Connecting to stream…",
-          message: `Using ${TORRENT_STREAM_POLL_INTERVAL_SECONDS}s polling until the SSE connection is ready.`,
-          secondary: `Polling every ${TORRENT_STREAM_POLL_INTERVAL_SECONDS}s`,
+          label: t("statusBar.streamStatus.connecting.label"),
+          message: t("statusBar.streamStatus.connecting.message", { seconds: TORRENT_STREAM_POLL_INTERVAL_SECONDS }),
+          secondary: t("statusBar.streamStatus.connecting.secondary", { seconds: TORRENT_STREAM_POLL_INTERVAL_SECONDS }),
           tone: streamConnected ? ("warning" as const) : ("muted" as const),
           animate: !streamConnected,
         }
@@ -1170,6 +1170,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     streamMeta,
     streamNextRetryAt,
     streamRetryAttempt,
+    t,
   ])
 
   const streamToneStyles = useMemo(() => {

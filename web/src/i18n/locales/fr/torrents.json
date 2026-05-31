@@ -906,7 +906,31 @@
     "connectionPort": "Port : {{port}}",
     "connectionAriaLabel": "Statut de connexion qBittorrent : {{status}}",
     "connectionAriaLabelUnknown": "Statut de connexion inconnu",
-    "external": "Externe"
+    "external": "Externe",
+    "streamStatus": {
+      "crossInstance": {
+        "label": "Interrogation multi-instances",
+        "message": "Les résultats cross-seed agrégés sont actualisés par interrogation.",
+        "secondary": "SSE désactivé • interrogation toutes les {{seconds}} s"
+      },
+      "reconnecting": {
+        "label": "Reconnexion du flux…",
+        "message": "Tentative de rétablissement de la connexion SSE.",
+        "retryQueued": "Tentative {{attempt}} en file d'attente",
+        "pollingContinues": "L'interrogation continue pendant la récupération du flux."
+      },
+      "fallback": {
+        "label": "Flux hors ligne – interrogation en cours",
+        "message": "Basculement vers l'actualisation périodique pendant l'indisponibilité du flux.",
+        "serverRetry": "Nouvelle tentative du serveur dans {{seconds}} s — interrogation de secours active",
+        "retrying": "Nouvelle tentative automatique avec interrogation de secours"
+      },
+      "connecting": {
+        "label": "Connexion au flux…",
+        "message": "Interrogation toutes les {{seconds}} s jusqu'à ce que la connexion SSE soit prête.",
+        "secondary": "Interrogation toutes les {{seconds}} s"
+      }
+    }
   },
   "detailsPanel": {
     "tabs": {
