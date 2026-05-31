@@ -127,15 +127,15 @@
     "noCrossSeeds": "Aucun cross-seed trouvé",
     "deleteCrossSeeds": "Ces cross-seeds seront également supprimés",
     "deletingFilesBreaks": "La suppression des fichiers corrompra ces cross-seeds",
-    "dataPreserved": "Cross-seeds détectés — les données seront préservées",
+    "dataPreserved": "Cross-seeds détectés : les données seront préservées",
     "torrentShares": "{{count}} torrent partage ces fichiers",
     "torrentsShare": "{{count}} torrents partagent ces fichiers",
     "acrossInstances": "sur {{count}} instances",
     "onTracker": "sur {{tracker}}",
     "onTrackers": "sur {{count}} trackers",
-    "willBeRemoved": "— sera supprimé avec la sélection",
-    "willNeedRedownload": "— ils devront être retéléchargés",
-    "unaffected": "— non affecté par cette suppression",
+    "willBeRemoved": "- sera supprimé avec la sélection",
+    "willNeedRedownload": "- ils devront être retéléchargés",
+    "unaffected": "- non affecté par cette suppression",
     "alsoDeleteCrossSeeds": "Supprimer également ces torrents cross-seedés",
     "showAffected": "Afficher les torrents affectés",
     "hideAffected": "Masquer les torrents affectés",
@@ -921,9 +921,9 @@
         "pollingContinues": "L'interrogation continue pendant la récupération du flux."
       },
       "fallback": {
-        "label": "Flux hors ligne – interrogation en cours",
+        "label": "Flux hors ligne, interrogation en cours",
         "message": "Basculement vers l'actualisation périodique pendant l'indisponibilité du flux.",
-        "serverRetry": "Nouvelle tentative du serveur dans {{seconds}} s — interrogation de secours active",
+        "serverRetry": "Nouvelle tentative du serveur dans {{seconds}} s, interrogation de secours active",
         "retrying": "Nouvelle tentative automatique avec interrogation de secours"
       },
       "connecting": {
