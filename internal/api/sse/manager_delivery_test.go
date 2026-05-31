@@ -34,6 +34,7 @@ type fakeSyncProvider struct {
 	torrentsResponse      *qbittorrent.TorrentResponse
 	torrentsErr           error
 	torrentsCalls         int
+	torrentsGate          chan struct{}
 	crossInstanceResponse *qbittorrent.TorrentResponse
 	crossInstanceErr      error
 	crossInstanceCalls    int
@@ -41,13 +42,23 @@ type fakeSyncProvider struct {
 
 func (f *fakeSyncProvider) GetTorrentsWithFilters(_ context.Context, _ int, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions) (*qbittorrent.TorrentResponse, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
-
 	f.torrentsCalls++
-	if f.torrentsErr != nil {
-		return nil, f.torrentsErr
+	err := f.torrentsErr
+	gate := f.torrentsGate
+	var resp *qbittorrent.TorrentResponse
+	if err == nil {
+		resp = cloneTorrentResponse(f.torrentsResponse)
 	}
-	return cloneTorrentResponse(f.torrentsResponse), nil
+	f.mu.Unlock()
+
+	// When a gate is armed, park here (without holding the lock, so torrentsCallCount
+	// stays observable) until the test releases it. This lets a test hold the first
+	// build open while it enqueues a burst, exercising coalescing deterministically.
+	if gate != nil {
+		<-gate
+	}
+
+	return resp, err
 }
 
 func (f *fakeSyncProvider) GetCrossInstanceTorrentsWithFilters(_ context.Context, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions, _ []int) (*qbittorrent.TorrentResponse, error) {
@@ -71,6 +82,26 @@ func (f *fakeSyncProvider) torrentsCallCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.torrentsCalls
+}
+
+// gateTorrentBuilds makes every subsequent torrents build park until the returned
+// release func is called. A test uses this to hold the first coalesced build open
+// while it enqueues a burst, so coalescing is exercised deterministically rather
+// than depending on the producer goroutine out-pacing the build worker. release is
+// safe to call exactly once.
+func (f *fakeSyncProvider) gateTorrentBuilds() (release func()) {
+	gate := make(chan struct{})
+
+	f.mu.Lock()
+	f.torrentsGate = gate
+	f.mu.Unlock()
+
+	return func() {
+		f.mu.Lock()
+		f.torrentsGate = nil
+		f.mu.Unlock()
+		close(gate)
+	}
 }
 
 // cloneTorrentResponse returns a shallow copy so the build path cannot mutate the
@@ -309,22 +340,31 @@ func TestServeCoalescesBurstOfUpdates(t *testing.T) {
 	reader.waitForEvent(t, streamEventInit, 5*time.Second)
 	callsAfterInit := provider.torrentsCallCount()
 
+	// Hold the first update build open so the entire burst provably arrives while a
+	// build is in flight. This makes coalescing deterministic instead of relying on
+	// the producer loop out-pacing the build worker, which only holds on an idle
+	// machine and flakes under CI scheduling pressure.
+	release := provider.gateTorrentBuilds()
+
 	const burst = 50
 	for i := range burst {
 		manager.HandleMainData(instanceID, &qbt.MainData{Rid: int64(i)})
 	}
 
+	// Wait for the first coalesced build to start (it is now parked on the gate).
+	// Every burst event is already enqueued, so they collapse onto the single
+	// pending slot behind it instead of each spawning its own build.
+	require.Eventually(t, func() bool {
+		return provider.torrentsCallCount() >= callsAfterInit+1
+	}, 5*time.Second, 10*time.Millisecond, "expected the first update build to start")
+
+	// Release the gate: the in-flight build finishes and at most one further build
+	// runs for the coalesced pending update.
+	release()
+
 	// At least one coalesced update must reach the subscriber.
 	reader.waitForEvent(t, streamEventUpdate, 5*time.Second)
 
-	// Give any in-flight coalesced builds a moment to settle, then assert the
-	// number of torrent builds triggered by the burst is far below the event
-	// count (coalescing collapses bursts into a small number of builds).
-	require.Eventually(t, func() bool {
-		return provider.torrentsCallCount() >= callsAfterInit+1
-	}, 5*time.Second, 10*time.Millisecond, "expected at least one update build")
-
-	time.Sleep(200 * time.Millisecond)
 	updateBuilds := provider.torrentsCallCount() - callsAfterInit
 	require.Positive(t, updateBuilds, "burst should trigger at least one build")
 	require.Less(t, updateBuilds, burst/2,
