@@ -95,9 +95,16 @@ function persistLanguage(lng: AppLanguage) {
   }
 }
 
+// Monotonic token so that rapid language switches can't apply out of order: a slow
+// chunk load for an earlier selection must not overwrite a newer one once it finishes.
+let latestLanguageRequest = 0
+
 export async function changeLanguage(lng: AppLanguage) {
   persistLanguage(lng)
+  const requestId = ++latestLanguageRequest
   await loadLanguageResources(lng)
+  // A newer changeLanguage call superseded this one while its chunk was loading.
+  if (requestId !== latestLanguageRequest) return
   return i18n.changeLanguage(lng)
 }
 
