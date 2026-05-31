@@ -5,30 +5,18 @@ package qbittorrent
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 // setupTestPool creates a new ClientPool for testing
 func setupTestPool(t *testing.T) *ClientPool {
-	// Create temp directory for test database
-	tmpDir, err := os.MkdirTemp("", "qui-pool-test-*")
-	require.NoError(t, err)
-	t.Cleanup(func() { os.RemoveAll(tmpDir) })
-
-	dbPath := filepath.Join(tmpDir, "test.db")
-
-	// Initialize test database
-	db, err := database.New(dbPath)
-	require.NoError(t, err, "Failed to initialize test database")
-	t.Cleanup(func() { db.Close() })
+	db := testdb.NewMigratedSQLite(t, "qbittorrent-pool")
 
 	// Use test encryption key
 	testKey := make([]byte, 32)

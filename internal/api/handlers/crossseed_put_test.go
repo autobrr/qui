@@ -7,24 +7,20 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/crossseed"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func newTestCrossSeedStore(t *testing.T) *models.CrossSeedStore {
 	t.Helper()
 
-	dbPath := filepath.Join(t.TempDir(), "crossseed.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	db := testdb.NewMigratedSQLite(t, "crossseed-put")
 
 	key := make([]byte, 32)
 	for i := range key {

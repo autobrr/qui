@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,9 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 type testQuerier struct {
@@ -302,12 +301,7 @@ func newArrLookupTestService(t *testing.T, instanceType models.ArrInstanceType, 
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
-	dbPath := filepath.Join(t.TempDir(), "arr-lookup.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "arr-service")
 
 	key := []byte("01234567890123456789012345678901")
 	instanceStore, err := models.NewArrInstanceStore(db, key)
