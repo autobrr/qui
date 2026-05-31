@@ -210,6 +210,32 @@ func (r *sseReader) waitForEvent(t *testing.T, eventType string, timeout time.Du
 	}
 }
 
+// waitForErrorEvent blocks until a stream-error event whose Err equals wantMsg
+// arrives, ignoring unrelated error events. Tests wire a nil sync pool, so the
+// per-instance sync loop also emits its own "sync manager unavailable"
+// stream-error that races the build-failure error under assertion; matching by
+// message keeps the assertion deterministic regardless of delivery order.
+func (r *sseReader) waitForErrorEvent(t *testing.T, wantMsg string, timeout time.Duration) *StreamPayload {
+	t.Helper()
+	deadline := time.After(timeout)
+	for {
+		select {
+		case ev := <-r.events:
+			if ev.event != streamEventError {
+				continue
+			}
+			payload := decodeStreamPayloadData(t, ev.data)
+			if payload.Err == wantMsg {
+				return payload
+			}
+		case err := <-r.errc:
+			t.Fatalf("stream closed before receiving stream-error %q: %v", wantMsg, err)
+		case <-deadline:
+			t.Fatalf("timed out waiting for stream-error %q", wantMsg)
+		}
+	}
+}
+
 // connectStream opens an SSE connection for the given stream payload and returns
 // a reader plus a cancel func that closes the client (ending Serve).
 func connectStream(t *testing.T, srv *httptest.Server, payload []map[string]any) (*sseReader, context.CancelFunc) {
@@ -543,10 +569,10 @@ func TestServeDeliversStreamErrorOnBuildFailure(t *testing.T) {
 			// stream-error event rather than silently dropping.
 			manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1})
 
-			errEvent := reader.waitForEvent(t, streamEventError, 5*time.Second)
-			errPayload := decodeStreamPayloadData(t, errEvent.data)
+			// Match the build-failure error by message: the background sync loop
+			// emits its own unrelated stream-error that can race this one.
+			errPayload := reader.waitForErrorEvent(t, tt.wantMsg, 5*time.Second)
 			require.Equal(t, streamEventError, errPayload.Type)
-			require.Equal(t, tt.wantMsg, errPayload.Err)
 			require.NotNil(t, errPayload.Meta, "error event must carry meta for the retry hint")
 			require.Positive(t, errPayload.Meta.RetryInSeconds, "error event must advertise a positive retry countdown")
 		})
