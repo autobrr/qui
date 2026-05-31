@@ -3,23 +3,53 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import i18n, { type Resource } from "i18next"
+import i18n, { type ResourceKey, type ResourceLanguage } from "i18next"
 import { initReactI18next } from "react-i18next"
 
-const localeFiles = import.meta.glob("./locales/**/*.json", { eager: true, import: "default" }) as Record<string, unknown>
+// English is the fallback and is always needed, so bundle it eagerly into the main
+// chunk. Every other language is split into its own lazily-loaded chunk so the main
+// bundle stays small and adding languages does not grow it (keeps the PWA precache
+// happy). See loadLanguageResources / changeLanguage below.
+const enModules = import.meta.glob("./locales/en/*.json", { eager: true, import: "default" }) as Record<string, ResourceKey>
+const lazyLoaders = import.meta.glob("./locales/**/*.json", { import: "default" }) as Record<string, () => Promise<ResourceKey>>
 
-const resources: Resource = {}
-
-for (const [path, module] of Object.entries(localeFiles)) {
+function parseLocalePath(path: string): { lng: string, ns: string } | null {
   const match = path.match(/\.\/locales\/([^/]+)\/([^/]+)\.json$/)
-  if (match) {
-    const [, lng, ns] = match
-    if (!resources[lng]) resources[lng] = {}
-    ;(resources[lng] as Record<string, unknown>)[ns] = module
+  return match ? { lng: match[1], ns: match[2] } : null
+}
+
+const enResources: ResourceLanguage = {}
+for (const [path, module] of Object.entries(enModules)) {
+  const parsed = parseLocalePath(path)
+  if (parsed) enResources[parsed.ns] = module
+}
+
+// lng -> ns -> lazy loader, for languages other than English.
+const namespaceLoaders: Record<string, Record<string, () => Promise<ResourceKey>>> = {}
+for (const [path, loader] of Object.entries(lazyLoaders)) {
+  const parsed = parseLocalePath(path)
+  if (parsed && parsed.lng !== "en") {
+    (namespaceLoaders[parsed.lng] ??= {})[parsed.ns] = loader
   }
 }
 
-export const supportedLanguages = ["en", "zh-CN", "fr"] as const
+// English is bundled eagerly; mark it loaded so we never try to lazy-load it.
+const loadedLanguages = new Set<string>(["en"])
+
+async function loadLanguageResources(lng: string): Promise<void> {
+  if (loadedLanguages.has(lng)) return
+  const loaders = namespaceLoaders[lng]
+  if (!loaders) return
+  const bundles = await Promise.all(
+    Object.entries(loaders).map(async ([ns, load]) => [ns, await load()] as const)
+  )
+  for (const [ns, data] of bundles) {
+    i18n.addResourceBundle(lng, ns, data, true, true)
+  }
+  loadedLanguages.add(lng)
+}
+
+export const supportedLanguages = ["en", "zh-CN", "fr", "de"] as const
 export type AppLanguage = (typeof supportedLanguages)[number]
 const LANGUAGE_STORAGE_KEY = "qui.language"
 
@@ -27,6 +57,7 @@ export const languageNames: Record<AppLanguage, string> = {
   en: "English",
   "zh-CN": "\u7B80\u4F53\u4E2D\u6587",
   fr: "Français",
+  de: "Deutsch",
 }
 
 function isAppLanguage(value: string | null): value is AppLanguage {
@@ -64,8 +95,9 @@ function persistLanguage(lng: AppLanguage) {
   }
 }
 
-export function changeLanguage(lng: AppLanguage) {
+export async function changeLanguage(lng: AppLanguage) {
   persistLanguage(lng)
+  await loadLanguageResources(lng)
   return i18n.changeLanguage(lng)
 }
 
@@ -82,8 +114,11 @@ export const namespaces = [
   "automations",
 ] as const
 
+// Initialize synchronously with English so i18n.t works the moment this module is
+// imported (lib helpers and tests rely on this). The active language, if not English,
+// falls back to English until its chunk is loaded by initI18n().
 i18n.use(initReactI18next).init({
-  resources,
+  resources: { en: enResources },
   lng: getStoredLanguage() ?? detectBrowserLanguage() ?? "en",
   fallbackLng: "en",
   defaultNS: "common",
@@ -92,5 +127,19 @@ i18n.use(initReactI18next).init({
     escapeValue: false, // React already escapes
   },
 })
+
+// Ensure the active language's resources are loaded before the app renders, so users
+// who picked a non-English language don't see an English flash on first paint. Await
+// this in the entry point before mounting React. i18next set i18n.language from the
+// stored/detected language above; English is already bundled.
+export async function initI18n(): Promise<typeof i18n> {
+  const active = i18n.language
+  if (active && active !== "en" && !loadedLanguages.has(active)) {
+    await loadLanguageResources(active)
+    // Re-resolve so react-i18next switches from the English fallback to the now-loaded language.
+    await i18n.changeLanguage(active)
+  }
+  return i18n
+}
 
 export default i18n
