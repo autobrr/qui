@@ -189,6 +189,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     setStreamTorrent(null)
   }, [torrent?.hash])
 
+  // Drop the streamed snapshot when the stream is not live so the merge below falls
+  // back to fresh poll data instead of freezing on a stale pre-disconnect snapshot.
+  useEffect(() => {
+    if (!streamState.connected || streamState.error) {
+      setStreamTorrent(null)
+    }
+  }, [streamState.connected, streamState.error])
+
   // Fetch torrent properties
   const { data: properties, isLoading: loadingProperties } = useQuery({
     queryKey: ["torrent-properties", instanceId, torrent?.hash],
