@@ -149,7 +149,7 @@ The frontend uses `i18next` + `react-i18next` with 10 feature-based namespaces u
 
 `common`, `auth`, `settings`, `torrents`, `dashboard`, `crossseed`, `rss`, `search`, `instances`, `automations`
 
-Locale JSON files are loaded dynamically via `import.meta.glob` in `web/src/i18n/index.ts` — no static imports needed per namespace. Currently supported: `en`, `zh-CN`, `fr`. To expose a language in the UI, add its code to `supportedLanguages` and its display name to `languageNames` in that file.
+Locale JSON files are wired up via `import.meta.glob` in `web/src/i18n/index.ts`: English is bundled eagerly into the main chunk (it is the fallback), while every other language is split into its own lazily-loaded chunk and fetched on demand by `initI18n()` / `changeLanguage()`. This keeps the main bundle small as languages are added (important for the PWA precache size cap in `vite.config.ts`). Currently supported: `en`, `zh-CN`, `fr`, `de`. To expose a language in the UI, add its code to `supportedLanguages` and its display name to `languageNames` in that file.
 
 ### i18n Validation Scripts
 
