@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { isClientConnectionErrorCode } from "@/contexts/SyncStreamContext"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
@@ -1123,11 +1124,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       typeof streamRetryAttempt === "number" && streamRetryAttempt > 0 ? streamRetryAttempt : 1
     const hasClientRetryScheduled = typeof streamNextRetryAt === "number"
 
+    // Client-side connection-state codes carry no displayable text: render the
+    // localized streamStatus.* message for them. Only genuine backend payload
+    // errors (dynamic server text we cannot translate) are shown verbatim.
+    const backendStreamError = streamError && !isClientConnectionErrorCode(streamError) ? streamError : null
+
     switch (stableStreamPhase) {
       case "reconnecting":
         return {
           label: t("statusBar.streamStatus.reconnecting.label"),
-          message: streamError ?? t("statusBar.streamStatus.reconnecting.message"),
+          message: backendStreamError ?? t("statusBar.streamStatus.reconnecting.message"),
           secondary: hasClientRetryScheduled
             ? t("statusBar.streamStatus.reconnecting.retryQueued", { attempt: safeRetryAttempt })
             : t("statusBar.streamStatus.reconnecting.pollingContinues"),
@@ -1137,7 +1143,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       case "fallback":
         return {
           label: t("statusBar.streamStatus.fallback.label"),
-          message: streamError ?? t("statusBar.streamStatus.fallback.message"),
+          message: backendStreamError ?? t("statusBar.streamStatus.fallback.message"),
           secondary:
             serverRetrySeconds && serverRetrySeconds > 0
               ? t("statusBar.streamStatus.fallback.serverRetry", { seconds: serverRetrySeconds })
@@ -1176,13 +1182,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const streamToneStyles = useMemo(() => {
     switch (streamStatus.tone) {
       case "success":
-        return { dot: "bg-emerald-500 shadow-[0_0_0_2px] shadow-emerald-500/25", text: "text-emerald-600 dark:text-emerald-400" }
+        return { dotClass: "bg-emerald-500 shadow-[0_0_0_2px] shadow-emerald-500/25", textClass: "text-emerald-600 dark:text-emerald-400" }
       case "error":
-        return { dot: "bg-destructive shadow-[0_0_0_2px] shadow-destructive/20", text: "text-destructive" }
+        return { dotClass: "bg-destructive shadow-[0_0_0_2px] shadow-destructive/20", textClass: "text-destructive" }
       case "warning":
-        return { dot: "bg-amber-400 shadow-[0_0_0_2px] shadow-amber-400/25", text: "text-amber-600 dark:text-amber-400" }
+        return { dotClass: "bg-amber-400 shadow-[0_0_0_2px] shadow-amber-400/25", textClass: "text-amber-600 dark:text-amber-400" }
       default:
-        return { dot: "bg-muted-foreground/60", text: "text-muted-foreground" }
+        return { dotClass: "bg-muted-foreground/60", textClass: "text-muted-foreground" }
     }
   }, [streamStatus.tone])
   const hasStreamStatusLabel = streamStatus.label.length > 0
@@ -3191,12 +3197,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       <span
                         className={cn(
                           "h-1.5 w-1.5 rounded-full transition",
-                          streamToneStyles.dot,
+                          streamToneStyles.dotClass,
                           streamStatus.animate && "animate-pulse"
                         )}
                       />
                       {hasStreamStatusLabel && (
-                        <span className={cn("opacity-80", streamToneStyles.text)}>{streamStatus.label}</span>
+                        <span className={cn("opacity-80", streamToneStyles.textClass)}>{streamStatus.label}</span>
                       )}
                     </div>
                   </TooltipTrigger>
@@ -3213,7 +3219,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                   <span
                     className={cn(
                       "h-1.5 w-1.5 rounded-full transition",
-                      streamToneStyles.dot,
+                      streamToneStyles.dotClass,
                       streamStatus.animate && "animate-pulse"
                     )}
                   />

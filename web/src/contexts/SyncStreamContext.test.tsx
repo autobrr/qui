@@ -6,6 +6,9 @@
 import { api } from "@/lib/api"
 import {
   createStreamKey,
+  isClientConnectionErrorCode,
+  STREAM_ERROR_DISCONNECTED,
+  STREAM_ERROR_RETRY_EXHAUSTED,
   SyncStreamProvider,
   useActivityStream,
   useSyncStream,
@@ -343,10 +346,9 @@ describe("SyncStreamContext", () => {
         })
 
         if (i < delays.length - 1) {
-          // Not yet at the cap: error is the generic disconnect message.
-          expect(controls.getState().error).not.toBe(
-            "Connection failed repeatedly. Check your network or server status."
-          )
+          // Not yet at the cap: error is the generic disconnect code.
+          expect(controls.getState().error).toBe(STREAM_ERROR_DISCONNECTED)
+          expect(controls.getState().error).not.toBe(STREAM_ERROR_RETRY_EXHAUSTED)
           act(() => {
             vi.advanceTimersByTime(delays[i])
           })
@@ -354,9 +356,10 @@ describe("SyncStreamContext", () => {
       }
 
       expect(controls.getState().retryAttempt).toBe(6) // MAX_RETRY_ATTEMPTS
-      expect(controls.getState().error).toBe(
-        "Connection failed repeatedly. Check your network or server status."
-      )
+      // The error is a stable machine code (not English prose) so the UI can map it
+      // to localized streamStatus.* copy instead of leaking English to non-en locales.
+      expect(controls.getState().error).toBe(STREAM_ERROR_RETRY_EXHAUSTED)
+      expect(isClientConnectionErrorCode(controls.getState().error)).toBe(true)
     })
   })
 
@@ -691,5 +694,20 @@ describe("SyncStreamContext activity channel", () => {
     )
     expect(invalidatedKeys).toContainEqual(["instance-backups"])
     expect(invalidatedKeys).toContainEqual(["tracker-icons"])
+  })
+})
+
+describe("isClientConnectionErrorCode", () => {
+  it("recognizes client connection-state codes so the UI shows localized copy", () => {
+    expect(isClientConnectionErrorCode(STREAM_ERROR_DISCONNECTED)).toBe(true)
+    expect(isClientConnectionErrorCode(STREAM_ERROR_RETRY_EXHAUSTED)).toBe(true)
+  })
+
+  it("treats backend payload error text and empty values as non-client errors", () => {
+    // Dynamic backend text must still be displayed verbatim, so it is not a client code.
+    expect(isClientConnectionErrorCode("instance unreachable: connection refused")).toBe(false)
+    expect(isClientConnectionErrorCode(null)).toBe(false)
+    expect(isClientConnectionErrorCode(undefined)).toBe(false)
+    expect(isClientConnectionErrorCode("")).toBe(false)
   })
 })
