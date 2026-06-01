@@ -420,11 +420,9 @@ async function ssoSafeFetch(url: string, options: RequestInit): Promise<Response
 // Custom error class for API errors with status and additional data
 export class APIError extends Error {
   status: number
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data?: any
+  data?: unknown
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(message: string, status: number, data?: any) {
+  constructor(message: string, status: number, data?: unknown) {
     super(message)
     this.name = "APIError"
     this.status = status
@@ -459,8 +457,7 @@ class ApiClient {
     return response.json()
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async extractErrorData(response: Response): Promise<{ message: string; data?: any }> {
+  private async extractErrorData(response: Response): Promise<{ message: string; data?: unknown }> {
     const fallbackMessage = `HTTP error! status: ${response.status}`
 
     try {
@@ -473,8 +470,7 @@ class ApiClient {
 
       // Try to parse as JSON first
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const errorData = JSON.parse(rawBody) as { error?: string; message?: string; [key: string]: any }
+        const errorData = JSON.parse(rawBody) as { error?: string; message?: string; [key: string]: unknown }
         const parsedMessage = errorData?.error ?? errorData?.message
         if (typeof parsedMessage === "string" && parsedMessage.trim().length > 0) {
           // Return both the message and the full data (for 409 conflicts with automations, etc.)
