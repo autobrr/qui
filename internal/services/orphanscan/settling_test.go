@@ -443,7 +443,10 @@ func TestBuildFileMapFromTorrents_CaseMismatchBetweenMetadataAndDisk(t *testing.
 				diskPath := normalizePath(filepath.Join(saveRoot, tt.diskFolder, parts[1]))
 				assert.True(t, result.fileMap.Has(diskPath), "expected disk path in map: %s", diskPath)
 
-				// Metadata-cased path must not appear.
+				// Metadata-cased path must not appear — but only assert this
+				// when the disk folder and metadata folder normalize to different
+				// keys. On case-insensitive filesystems they collapse to the same
+				// key, so both paths are valid and the assertion would be wrong.
 				metaPath := normalizePath(filepath.Join(saveRoot, n))
 				if filepath.ToSlash(normalizePath(filepath.Join(saveRoot, tt.diskFolder))) !=
 					filepath.ToSlash(normalizePath(filepath.Join(saveRoot, parts[0]))) {
@@ -456,9 +459,10 @@ func TestBuildFileMapFromTorrents_CaseMismatchBetweenMetadataAndDisk(t *testing.
 }
 
 // TestResolvePathCase verifies that resolvePathCase finds the actual on-disk
-// casing of a directory name when the caller supplies a different case.
-// Skipped on non-Linux because macOS uses a case-insensitive filesystem where
-// os.Lstat succeeds regardless of case, making the resolution path unreachable.
+// casing at every level of a path, including when the parent itself is
+// wrong-cased (e.g. "AITHER/subdir" where only "Aither/subdir" exists).
+// Skipped on non-Linux: macOS case-insensitive FS makes os.Lstat succeed
+// regardless of case, so the correction path is never reached there.
 func TestResolvePathCase(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("case-sensitive filesystem required")
@@ -466,22 +470,44 @@ func TestResolvePathCase(t *testing.T) {
 	t.Parallel()
 
 	parent := t.TempDir()
-	actual := filepath.Join(parent, "Tracker-ONE")
-	require.NoError(t, os.Mkdir(actual, 0o755))
-	cache := make(map[string]string)
+	trackerDir := filepath.Join(parent, "Tracker-ONE")
+	subDir := filepath.Join(trackerDir, "Movie.Dir")
+	require.NoError(t, os.MkdirAll(subDir, 0o755))
 
-	// Wrong case → returns actual on-disk name.
-	got := resolvePathCase(filepath.Join(parent, "tracker-one"), cache)
-	assert.Equal(t, actual, got)
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{
+			name: "wrong final component",
+			path: filepath.Join(parent, "tracker-one"),
+			want: trackerDir,
+		},
+		{
+			name: "correct path unchanged",
+			path: trackerDir,
+			want: trackerDir,
+		},
+		{
+			name: "no match returns original",
+			path: filepath.Join(parent, "zzz-nonexistent"),
+			want: filepath.Join(parent, "zzz-nonexistent"),
+		},
+		{
+			name: "wrong parent resolved recursively",
+			path: filepath.Join(parent, "tracker-one", "Movie.Dir"),
+			want: subDir,
+		},
+	}
 
-	// Correct case → returns unchanged.
-	got = resolvePathCase(actual, cache)
-	assert.Equal(t, actual, got)
-
-	// No match → returns original.
-	noMatch := filepath.Join(parent, "zzz-nonexistent")
-	got = resolvePathCase(noMatch, cache)
-	assert.Equal(t, noMatch, got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := resolvePathCase(tt.path, make(map[string]string))
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 // TestBuildFileMapFromTorrents_SavePathCaseMismatch verifies that when
@@ -517,4 +543,40 @@ func TestBuildFileMapFromTorrents_SavePathCaseMismatch(t *testing.T) {
 	diskPath := normalizePath(filepath.Join(actual, "Transformers.mkv"))
 	assert.True(t, result.fileMap.Has(diskPath), "expected disk path in map: %s", diskPath)
 	assert.Contains(t, result.scanRoots, filepath.Clean(actual))
+}
+
+// TestBuildFileMapFromTorrents_SavePathMultiLevelCaseMismatch verifies that
+// when multiple components of save_path have wrong case (e.g. qBittorrent
+// stores "AITHER/Roofman--hash" but disk has "Aither/Roofman--hash"),
+// resolvePathCase recurses through each component to find the actual path.
+func TestBuildFileMapFromTorrents_SavePathMultiLevelCaseMismatch(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("case-sensitive filesystem required")
+	}
+	t.Parallel()
+
+	parent := t.TempDir()
+	trackerDir := filepath.Join(parent, "Aither")
+	torrentDir := filepath.Join(trackerDir, "Roofman.mkv--hash")
+	require.NoError(t, os.MkdirAll(torrentDir, 0o755))
+
+	// qBittorrent configured with wrong-cased tracker dir and torrent dir.
+	wrongCaseSavePath := filepath.Join(parent, "AITHER", "Roofman.mkv--hash")
+	result, err := buildFileMapFromTorrents(
+		[]qbt.Torrent{
+			{
+				Hash:     "abc123",
+				SavePath: wrongCaseSavePath,
+				State:    qbt.TorrentStatePausedUp,
+			},
+		},
+		map[string]qbt.TorrentFiles{
+			"abc123": {{Name: "Roofman.mkv", Size: 1000}},
+		},
+	)
+	require.NoError(t, err)
+
+	diskPath := normalizePath(filepath.Join(torrentDir, "Roofman.mkv"))
+	assert.True(t, result.fileMap.Has(diskPath), "expected disk path in map: %s", diskPath)
+	assert.Contains(t, result.scanRoots, filepath.Clean(torrentDir))
 }

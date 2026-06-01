@@ -130,11 +130,12 @@ func canonicalizeHash(hash string) string {
 	return strings.ToLower(strings.TrimSpace(hash))
 }
 
-// resolvePathCase returns path with its final component corrected to the actual
-// on-disk casing. Uses cache to avoid repeated ReadDir calls on the same parent.
-// If the path already exists as-is, or no case-insensitive match is found in the
-// parent, the original cleaned path is returned.
-// No-op on Windows: normalizePath already case-folds all paths there.
+// resolvePathCase returns path with every component corrected to the actual
+// on-disk casing. Recurses into the parent when the parent itself does not
+// exist (e.g. "AITHER/subdir" where only "Aither/" is on disk).
+// Uses cache to avoid repeated ReadDir calls for the same parent.
+// If no case-insensitive match is found at any level, the original path is
+// returned. No-op on Windows: normalizePath already case-folds all paths.
 func resolvePathCase(path string, cache map[string]string) string {
 	if runtime.GOOS == goosWindows {
 		return path
@@ -142,26 +143,29 @@ func resolvePathCase(path string, cache map[string]string) string {
 	if v, ok := cache[path]; ok {
 		return v
 	}
-	// Fast path: the path exists with the exact casing given.
+	resolved := resolvePathCaseUncached(path, cache)
+	cache[path] = resolved
+	return resolved
+}
+
+func resolvePathCaseUncached(path string, cache map[string]string) string {
 	if _, err := os.Lstat(path); err == nil {
-		cache[path] = path
 		return path
 	}
-	// Slow path: list the parent and find the first case-insensitive match.
 	parent := filepath.Dir(path)
-	base := filepath.Base(path)
-	entries, err := os.ReadDir(parent)
-	if err != nil {
-		cache[path] = path
+	if parent == path {
 		return path
 	}
+	resolvedParent := resolvePathCase(parent, cache)
+	entries, err := os.ReadDir(resolvedParent)
+	if err != nil {
+		return path
+	}
+	base := filepath.Base(path)
 	for _, e := range entries {
 		if strings.EqualFold(e.Name(), base) {
-			resolved := filepath.Join(parent, e.Name())
-			cache[path] = resolved
-			return resolved
+			return filepath.Join(resolvedParent, e.Name())
 		}
 	}
-	cache[path] = path
 	return path
 }
