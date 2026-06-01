@@ -445,22 +445,6 @@ type TorrentMetadata struct {
 	Info   *metainfo.Info
 }
 
-// ParseTorrentName extracts the name and info hash from torrent bytes using anacrolix/torrent
-func ParseTorrentName(torrentBytes []byte) (name string, hash string, err error) {
-	name, hash, _, err = ParseTorrentMetadata(torrentBytes)
-	return name, hash, err
-}
-
-// ParseTorrentMetadata extracts comprehensive metadata from torrent bytes
-func ParseTorrentMetadata(torrentBytes []byte) (name string, hash string, files qbt.TorrentFiles, err error) {
-	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
-	if err != nil {
-		return "", "", nil, err
-	}
-
-	return meta.Name, meta.HashV1, meta.Files, nil
-}
-
 // ParseTorrentMetadataWithInfo extracts comprehensive metadata from torrent bytes,
 // including the raw metainfo.Info for piece-level operations.
 func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) {

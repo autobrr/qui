@@ -305,10 +305,6 @@ var completionRateLimitTokens = []string{
 	"disabled till",
 }
 
-func computeAutomationSearchTimeout(indexerCount int) time.Duration {
-	return timeouts.AdaptiveSearchTimeout(indexerCount)
-}
-
 func automationTorrentSearchContext(ctx context.Context, disableTorznab bool) (context.Context, context.CancelFunc, time.Duration) {
 	searchCtx := ctx
 	var cancel context.CancelFunc
@@ -6011,182 +6007,6 @@ func decodeBase64Variants(data string) ([]byte, error) {
 	return nil, fmt.Errorf("failed to decode base64: %w", lastErr)
 }
 
-// determineSavePath determines the appropriate save path for cross-seeding
-// This handles various scenarios:
-// - Season pack being added when individual episodes exist
-// - Individual episode being added when a season pack exists
-// - Custom paths and directory structures
-// - Partial-in-pack matches where files exist inside the matched torrent's content directory
-func (s *Service) determineSavePath(newTorrentName string, matchedTorrent *qbt.Torrent, props *qbt.TorrentProperties, matchType string, sourceFiles, candidateFiles qbt.TorrentFiles, contentLayout string) string {
-	// Normalize path separators in SavePath and ContentPath to ensure cross-platform compatibility
-	// Use strings.ReplaceAll instead of filepath.ToSlash because on Unix, backslash is a valid
-	// filename character (not a separator), but qBittorrent paths from Windows use backslashes
-	props.SavePath = strings.ReplaceAll(props.SavePath, "\\", "/")
-	matchedTorrent.ContentPath = strings.ReplaceAll(matchedTorrent.ContentPath, "\\", "/")
-
-	sourceRoot := detectCommonRoot(sourceFiles)
-	candidateRoot := detectCommonRoot(candidateFiles)
-
-	// For partial-in-pack, files exist inside the matched torrent's content directory
-	if matchType == "partial-in-pack" {
-		// If candidate is a single file (no root folder), use SavePath
-		// ContentPath for single files is the full file path, not the directory
-		// This handles both:
-		// - sourceRoot == "" && candidateRoot == "" (both single files)
-		// - sourceRoot != "" && candidateRoot == "" (folder source, single file candidate)
-		if candidateRoot == "" {
-			log.Debug().
-				Str("newTorrent", newTorrentName).
-				Str("matchedTorrent", matchedTorrent.Name).
-				Str("sourceRoot", sourceRoot).
-				Str("savePath", props.SavePath).
-				Msg("Cross-seeding partial-in-pack to single file, using save path")
-			return filepath.ToSlash(props.SavePath)
-		}
-
-		// If source has no root folder but candidate does
-		if sourceRoot == "" && candidateRoot != "" {
-			// Parse releases to detect TV episode into season pack
-			newRelease := s.releaseCache.Parse(newTorrentName)
-			matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
-
-			// TV episode going into season pack: use ContentPath (the season pack folder)
-			// This ensures the episode file ends up in the season pack folder, not a new folder
-			// named after the episode torrent
-			if newRelease.Series > 0 && newRelease.Episode > 0 &&
-				matchedRelease.Series > 0 && matchedRelease.Episode == 0 &&
-				matchedTorrent.ContentPath != "" {
-				log.Debug().
-					Str("newTorrent", newTorrentName).
-					Str("matchedTorrent", matchedTorrent.Name).
-					Str("contentPath", matchedTorrent.ContentPath).
-					Msg("Cross-seeding TV episode into season pack, using ContentPath")
-				return filepath.ToSlash(matchedTorrent.ContentPath)
-			}
-
-			if contentLayout == "Original" && len(sourceFiles) == 1 && len(candidateFiles) == 1 && matchedTorrent.ContentPath != "" {
-				log.Debug().
-					Str("newTorrent", newTorrentName).
-					Str("matchedTorrent", matchedTorrent.Name).
-					Str("candidateRoot", candidateRoot).
-					Str("contentPath", matchedTorrent.ContentPath).
-					Msg("Cross-seeding rootless single file into matched folder, using ContentPath")
-				return filepath.ToSlash(matchedTorrent.ContentPath)
-			}
-
-			// Non-TV (movies, etc.): use SavePath with Subfolder layout
-			// The contentLayout will be set to "Subfolder" which makes qBittorrent
-			// create a folder based on the renamed torrent name (which matches candidateRoot)
-			// This allows TMM to stay enabled since savePath matches props.SavePath
-			log.Debug().
-				Str("newTorrent", newTorrentName).
-				Str("matchedTorrent", matchedTorrent.Name).
-				Str("candidateRoot", candidateRoot).
-				Str("savePath", props.SavePath).
-				Msg("Cross-seeding partial-in-pack (single file into folder), using save path with Subfolder layout")
-			return filepath.ToSlash(props.SavePath)
-		}
-
-		// Otherwise use ContentPath if available (for multi-file partial-in-pack)
-		if matchedTorrent.ContentPath != "" {
-			log.Debug().
-				Str("newTorrent", newTorrentName).
-				Str("matchedTorrent", matchedTorrent.Name).
-				Str("contentPath", matchedTorrent.ContentPath).
-				Str("savePath", props.SavePath).
-				Msg("Cross-seeding partial-in-pack, using matched torrent's content path")
-			return filepath.ToSlash(matchedTorrent.ContentPath)
-		}
-	}
-
-	// Check if root folders differ - if so, use the candidate's folder
-	// This handles scene releases (SceneRelease.2020/) matching Plex-named folders (Movie (2020)/)
-	// Skip this for partial-contains matches as they should use the matched torrent's location directly
-	if matchType != "partial-contains" && sourceRoot != "" && candidateRoot != "" && sourceRoot != candidateRoot {
-		// If save path is empty, return empty (don't construct folder paths)
-		if props.SavePath == "" {
-			log.Debug().
-				Str("newTorrent", newTorrentName).
-				Str("matchedTorrent", matchedTorrent.Name).
-				Str("sourceRoot", sourceRoot).
-				Str("candidateRoot", candidateRoot).
-				Msg("Cross-seeding with different root folders, but save path is empty - returning empty")
-			return ""
-		}
-		// Different root folder names - construct the correct folder path
-		// Avoid duplicating the folder if it's already in the save path
-		if filepath.Base(props.SavePath) == candidateRoot {
-			log.Debug().
-				Str("newTorrent", newTorrentName).
-				Str("matchedTorrent", matchedTorrent.Name).
-				Str("sourceRoot", sourceRoot).
-				Str("candidateRoot", candidateRoot).
-				Str("savePath", props.SavePath).
-				Msg("Cross-seeding with different root folders, save path already ends with candidate root")
-			return filepath.ToSlash(props.SavePath)
-		}
-		folderPath := filepath.Join(props.SavePath, candidateRoot)
-		log.Debug().
-			Str("newTorrent", newTorrentName).
-			Str("matchedTorrent", matchedTorrent.Name).
-			Str("sourceRoot", sourceRoot).
-			Str("candidateRoot", candidateRoot).
-			Str("folderPath", folderPath).
-			Msg("Cross-seeding with different root folders, using candidate's folder path")
-		return filepath.ToSlash(folderPath)
-	}
-
-	// Default to the matched torrent's save path
-	baseSavePath := props.SavePath
-
-	// Parse both torrent names to understand what we're dealing with
-	newTorrentRelease := s.releaseCache.Parse(newTorrentName)
-	matchedRelease := s.releaseCache.Parse(matchedTorrent.Name)
-
-	// Scenario 1: New torrent is a season pack, matched torrent is a single episode
-	// In this case, we want to use the parent directory of the episode
-	if newTorrentRelease.Series > 0 && newTorrentRelease.Episode == 0 &&
-		matchedRelease.Series > 0 && matchedRelease.Episode > 0 {
-		// New is season pack (has series but no episode)
-		// Matched is single episode (has both series and episode)
-		// Use parent directory of the matched torrent's content path
-		log.Debug().
-			Str("newTorrent", newTorrentName).
-			Str("matchedTorrent", matchedTorrent.Name).
-			Str("baseSavePath", baseSavePath).
-			Msg("Cross-seeding season pack from individual episode, using parent directory")
-
-		// If the matched torrent is in a subdirectory, use the parent
-		// This handles: /downloads/Show.S01E01/ -> /downloads/
-		return filepath.ToSlash(baseSavePath)
-	}
-
-	// Scenario 2: New torrent is a single episode, matched torrent is a season pack
-	// Use the matched torrent's save path directly - the files are already there
-	if newTorrentRelease.Series > 0 && newTorrentRelease.Episode > 0 &&
-		matchedRelease.Series > 0 && matchedRelease.Episode == 0 {
-		log.Debug().
-			Str("newTorrent", newTorrentName).
-			Str("matchedTorrent", matchedTorrent.Name).
-			Str("savePath", baseSavePath).
-			Msg("Cross-seeding individual episode from season pack")
-
-		// The season pack already has the episode files, use its path directly
-		return filepath.ToSlash(baseSavePath)
-	}
-
-	// Scenario 3: Both are the same type (both season packs or both single episodes)
-	// Or non-episodic content (movies, etc.)
-	// Use the matched torrent's save path as-is
-	log.Debug().
-		Str("newTorrent", newTorrentName).
-		Str("matchedTorrent", matchedTorrent.Name).
-		Str("savePath", baseSavePath).
-		Msg("Cross-seeding same content type, using matched torrent's path")
-
-	return filepath.ToSlash(baseSavePath)
-}
-
 // AnalyzeTorrentForSearchAsync analyzes a torrent and performs capability filtering immediately,
 // while optionally performing content filtering asynchronously in the background.
 // This allows the UI to update immediately with capability results while waiting for content filtering.
@@ -10029,12 +9849,6 @@ func (s *Service) scopeContentPrefilterRejectionsByIndexer(rejectedByHash map[st
 	return scoped
 }
 
-// torrentMatchesIndexer checks if a torrent came from a tracker associated with the given indexer.
-func (s *Service) torrentMatchesIndexer(torrent *qbt.Torrent, indexerName string) bool {
-	matched, _ := s.torrentMatchesIndexerDomain(torrent, indexerName, s.getCachedIndexerDomain(indexerName))
-	return matched
-}
-
 func (s *Service) torrentMatchesIndexerDomain(torrent *qbt.Torrent, indexerName, indexerDomain string) (bool, string) {
 	if torrent == nil {
 		return false, ""
@@ -10042,11 +9856,6 @@ func (s *Service) torrentMatchesIndexerDomain(torrent *qbt.Torrent, indexerName,
 
 	trackerDomains := s.extractTrackerDomainsFromTorrent(torrent)
 	return s.trackerDomainsMatchIndexerWithDomain(trackerDomains, indexerName, indexerDomain)
-}
-
-// trackerDomainsMatchIndexer checks if any of the provided domains align with the target indexer.
-func (s *Service) trackerDomainsMatchIndexer(trackerDomains []string, indexerName string) bool {
-	return s.trackerDomainsMatchIndexerDomain(trackerDomains, indexerName, s.getCachedIndexerDomain(indexerName))
 }
 
 func (s *Service) trackerDomainsMatchIndexerWithDomain(trackerDomains []string, indexerName, indexerDomain string) (bool, string) {

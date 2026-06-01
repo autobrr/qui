@@ -723,13 +723,6 @@ func TestRadarrParseResponse_ExtractExternalIDs(t *testing.T) {
 	}
 }
 
-func TestNewClient(t *testing.T) {
-	client := NewClient("http://localhost:8989/", "apikey123", nil, nil, models.ArrInstanceTypeSonarr, 30)
-
-	assert.Equal(t, "http://localhost:8989", client.BaseURL()) // trailing slash trimmed
-	assert.Equal(t, models.ArrInstanceTypeSonarr, client.InstanceType())
-}
-
 func TestNewClient_DefaultTimeout(t *testing.T) {
 	client := NewClient("http://localhost:8989", "key", nil, nil, models.ArrInstanceTypeRadarr, 0)
 

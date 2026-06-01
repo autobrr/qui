@@ -541,14 +541,6 @@ func TestExecuteResult_Constructors(t *testing.T) {
 		assert.Equal(t, err, result.Error)
 		assert.Empty(t, result.Message)
 	})
-
-	t.Run("FailureResultWithMessage", func(t *testing.T) {
-		err := errors.New("execution failed")
-		result := FailureResultWithMessage(err, "additional context")
-		assert.False(t, result.Success)
-		assert.Equal(t, err, result.Error)
-		assert.Equal(t, "additional context", result.Message)
-	})
 }
 
 // Helper function

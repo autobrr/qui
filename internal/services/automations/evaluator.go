@@ -282,13 +282,6 @@ func evaluateTime(ctx *EvalContext) time.Time {
 	return time.Now()
 }
 
-// EvaluateCondition recursively evaluates a condition against a torrent.
-// Returns true if the torrent matches the condition.
-// For conditions that require additional context (like isUnregistered), use EvaluateConditionWithContext.
-func EvaluateCondition(cond *RuleCondition, torrent qbt.Torrent, depth int) bool {
-	return EvaluateConditionWithContext(cond, torrent, nil, depth)
-}
-
 // EvaluateConditionWithContext recursively evaluates a condition against a torrent with optional context.
 // Returns true if the torrent matches the condition.
 func EvaluateConditionWithContext(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext, depth int) bool {

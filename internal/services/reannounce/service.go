@@ -795,13 +795,6 @@ func normalizeHashes(hashes []string) []string {
 	return result
 }
 
-// DebugState returns current job counts for observability.
-func (s *Service) DebugState() string {
-	s.jobsMu.Lock()
-	defer s.jobsMu.Unlock()
-	return fmt.Sprintf("instances=%d", len(s.j))
-}
-
 func (s *Service) recordActivity(instanceID int, hash string, torrentName string, trackers string, outcome ActivityOutcome, reason string) {
 	if s == nil || instanceID == 0 {
 		return

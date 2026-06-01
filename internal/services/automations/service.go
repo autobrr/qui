@@ -4490,18 +4490,6 @@ func sanitizeTrackerHost(urlOrHost string) string {
 	return clean
 }
 
-func torrentHasTag(tags string, candidate string) bool {
-	if tags == "" {
-		return false
-	}
-	for tag := range strings.SplitSeq(tags, ",") {
-		if strings.EqualFold(strings.TrimSpace(tag), candidate) {
-			return true
-		}
-	}
-	return false
-}
-
 // normalizePath standardizes a file path for comparison.
 // Keep this consistent with cross-seed's path normalization.
 func normalizePath(p string) string {
@@ -4523,19 +4511,6 @@ func makeCrossSeedKey(t qbt.Torrent) (crossSeedKey, bool) {
 		return crossSeedKey{}, false
 	}
 	return crossSeedKey{contentPath, savePath}, true
-}
-
-func categoryExpandableHashes(hashes []string, states map[string]*torrentDesiredState) []string {
-	if len(hashes) == 0 || len(states) == 0 {
-		return nil
-	}
-	expandableHashes := make([]string, 0, len(hashes))
-	for _, hash := range hashes {
-		if state, exists := states[hash]; exists && state.categoryIncludeCrossSeeds {
-			expandableHashes = append(expandableHashes, hash)
-		}
-	}
-	return expandableHashes
 }
 
 func crossSeedRuleRefsByKey(triggerHashes []string, torrentByHash map[string]qbt.Torrent, ruleByHash map[string]ruleRef) map[crossSeedKey]ruleRef {
@@ -4627,24 +4602,6 @@ func detectCrossSeeds(target qbt.Torrent, idx contentPathIndex) bool {
 		}
 	}
 	return false
-}
-
-func shouldBlockGroupedMoveTriggerFallback(hash string, state *torrentDesiredState, torrentByHash map[string]qbt.Torrent, crossSeedIndex map[crossSeedKey][]qbt.Torrent, evalCtx *EvalContext) bool {
-	if state == nil || !state.moveBlockIfCrossSeed {
-		return false
-	}
-
-	torrent, ok := torrentByHash[hash]
-	if !ok {
-		return true
-	}
-
-	action := &models.MoveAction{
-		BlockIfCrossSeed: true,
-		Condition:        state.moveCondition,
-	}
-
-	return shouldBlockMoveForCrossSeeds(torrent, action, crossSeedIndex, evalCtx)
 }
 
 // isContentPathAmbiguous returns true if the ContentPath cannot reliably identify
