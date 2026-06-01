@@ -212,7 +212,7 @@
       "tvdbDescription": "Optional. Verbessert die Genauigkeit des Schwellenwerts, wenn der Prüf-Endpunkt ohne Torrent-Daten aufgerufen wird. TVMaze wird automatisch als kostenloser Fallback verwendet.",
       "categoryRouting": {
         "title": "Kategorie-Routing",
-        "description": "Leite Season-Pack-Injektionen anhand von Auflösung und Quelle an eine qBittorrent-Kategorie weiter. Setze diese auf deine Sonarr-Download-Client-Kategorien, damit Sonarr das Pack importiert und Hardlinks erhält. Eine Regel mit einer bestimmten Quelle hat Vorrang vor einer Regel mit „Any“-Quelle bei derselben Auflösung.",
+        "description": "Leite Season-Pack-Injektionen anhand von Auflösung und Quelle an eine qBittorrent-Kategorie weiter. Setze diese auf deine Sonarr-Download-Client-Kategorien, damit Sonarr das Pack importiert und Hardlinks erhält. Eine Regel mit einer bestimmten Quelle hat Vorrang vor einer „Beliebige Quelle“-Regel bei derselben Auflösung.",
         "addRule": "Regel hinzufügen",
         "removeRule": "Regel entfernen",
         "whenResolution": "Wenn",

@@ -406,9 +406,11 @@ var validSeasonPackRuleSources = map[string]struct{}{
 }
 
 // normalizeSeasonPackCategoryRules cleans up incoming category routing rules:
-// it trims fields, lowercases the resolution, coerces the source to a known
-// uppercase value (unknown -> "" meaning any), drops rules missing a resolution
-// or category, and dedupes on (resolution, source) keeping the first match.
+// it trims fields, lowercases the resolution, uppercases the source, drops rules
+// missing a resolution or category or carrying an unrecognized source, and
+// dedupes on (resolution, source) keeping the first match. An empty source means
+// "any"; an unrecognized non-empty source drops the rule rather than silently
+// widening it to "any".
 func normalizeSeasonPackCategoryRules(rules []models.SeasonPackCategoryRule) []models.SeasonPackCategoryRule {
 	normalized := make([]models.SeasonPackCategoryRule, 0, len(rules))
 	seen := make(map[string]struct{}, len(rules))
@@ -420,8 +422,10 @@ func normalizeSeasonPackCategoryRules(rules []models.SeasonPackCategoryRule) []m
 		}
 
 		source := strings.ToUpper(strings.TrimSpace(rule.Source))
-		if _, ok := validSeasonPackRuleSources[source]; !ok {
-			source = ""
+		if source != "" {
+			if _, ok := validSeasonPackRuleSources[source]; !ok {
+				continue
+			}
 		}
 
 		key := resolution + "|" + source

@@ -212,7 +212,7 @@
       "tvdbDescription": "Optionnel. Améliore la précision du seuil lorsque le point de vérification est appelé sans données torrent. TVMaze est utilisé automatiquement comme solution de repli gratuite.",
       "categoryRouting": {
         "title": "Routage des catégories",
-        "description": "Acheminez les injections de packs de saison vers une catégorie qBittorrent selon la résolution et la source. Définissez-les sur vos catégories de client de téléchargement Sonarr pour que Sonarr importe le pack et préserve les hardlinks. Une règle avec une source spécifique est prioritaire sur une règle « Any » (toute source) à la même résolution.",
+        "description": "Acheminez les injections de packs de saison vers une catégorie qBittorrent selon la résolution et la source. Définissez-les sur vos catégories de client de téléchargement Sonarr pour que Sonarr importe le pack et préserve les hardlinks. Une règle avec une source spécifique est prioritaire sur une règle « Toute source » à la même résolution.",
         "addRule": "Ajouter une règle",
         "removeRule": "Supprimer la règle",
         "whenResolution": "Si",

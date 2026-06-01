@@ -212,7 +212,7 @@
       "tvdbDescription": "可选。当调用检查端点而不带种子数据时，可提高阈值准确度。TVMaze 会作为免费回退自动使用。",
       "categoryRouting": {
         "title": "分类路由",
-        "description": "根据分辨率和来源将季度包注入路由到 qBittorrent 分类。将这些设置为你的 Sonarr 下载客户端分类，以便 Sonarr 导入该包并保留硬链接。在相同分辨率下，指定来源的规则优先于 Any（任意来源）规则。",
+        "description": "根据分辨率和来源将季度包注入路由到 qBittorrent 分类。将这些设置为你的 Sonarr 下载客户端分类，以便 Sonarr 导入该包并保留硬链接。在相同分辨率下，指定来源的规则优先于任意来源规则。",
         "addRule": "添加规则",
         "removeRule": "移除规则",
         "whenResolution": "当",

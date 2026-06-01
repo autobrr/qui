@@ -6423,12 +6423,21 @@ components:
 
     SeasonPackCategoryRule:
       type: object
+      required:
+        - resolution
+        - category
       properties:
         resolution:
           type: string
           description: Canonical lowercase release resolution to match (e.g. "1080p", "2160p").
         source:
           type: string
+          enum:
+            - ""
+            - WEB
+            - BLURAY
+            - REMUX
+            - HDTV
           description: Canonical uppercase release source to match (WEB, BLURAY, REMUX, HDTV). Empty matches any source.
         category:
           type: string

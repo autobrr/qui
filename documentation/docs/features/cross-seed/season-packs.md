@@ -240,7 +240,7 @@ When qui applies a season pack, it:
 - Applies the tags configured in **Cross-Seed > Rules > Season packs**
 - Adds incomplete packs paused, then best-effort attempts automatic recheck and queues automatic resume. After recheck, qui resumes at or above the configured season-pack coverage threshold; below that threshold, the torrent stays paused for manual review.
 - Resolves the category in this order:
-  - The category from the first matching **Category routing** rule under **Cross-Seed > Rules > Season packs** (recommended for Sonarr integration so the pack lands in Sonarr's download-client category and inherits hardlink-aware imports)
+  - The category from the matching **Category routing** rule under **Cross-Seed > Rules > Season packs**, choosing the most specific rule when several apply (an explicit-source rule beats an Any-source rule at the same resolution). Recommended for Sonarr integration so the pack lands in Sonarr's download-client category and inherits hardlink-aware imports
   - Otherwise the **Anything else** fallback category, if set
   - Otherwise the global cross-seed category rules: custom category if enabled, otherwise category affix mode if enabled, otherwise indexer-name category if enabled, otherwise inheriting the matched episode's category
 - Creates the resolved category on the target instance if it does not already exist
