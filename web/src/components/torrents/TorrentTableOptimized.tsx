@@ -4,6 +4,8 @@
  */
 
 import { isClientConnectionErrorCode } from "@/contexts/SyncStreamContext"
+import { useEffectiveServerState } from "@/hooks/torrent-table/useEffectiveServerState"
+import { useTrackerIconCache } from "@/hooks/torrent-table/useTrackerIconCache"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
@@ -19,12 +21,8 @@ import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewSta
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/useTorrentsList"
-import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
-import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { getRowBackgroundClass } from "@/lib/torrent-table/row-display"
-import { shallowEqualTrackerIcons } from "@/lib/torrent-table/tracker-icon-equality"
-import { buildTrackerCustomizationLookup, getTrackerCustomizationsCacheKey, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { formatBytes } from "@/lib/utils"
 import {
@@ -96,7 +94,6 @@ import { cn } from "@/lib/utils"
 import type {
   Category,
   CrossInstanceTorrent,
-  ServerState,
   Torrent,
   TorrentCounts,
   TorrentFilters
@@ -338,46 +335,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Desktop view mode state (separate from mobile view mode)
   const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
 
-  const trackerIconsQuery = useTrackerIcons()
-  const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
-  const trackerIcons = useMemo(() => {
-    const latest = trackerIconsQuery.data
-    if (!latest) {
-      return trackerIconsRef.current
-    }
-
-    const previous = trackerIconsRef.current
-    if (previous && shallowEqualTrackerIcons(previous, latest)) {
-      return previous
-    }
-
-    trackerIconsRef.current = latest
-    return latest
-  }, [trackerIconsQuery.data])
-
-  // Tracker customizations for custom display names and merged domains
-  const trackerCustomizationsQuery = useTrackerCustomizations()
-  const trackerCustomizationsRef = useRef<{ key: string; lookup: TrackerCustomizationLookup } | undefined>(undefined)
-  const trackerCustomizationLookup = useMemo(() => {
-    const latest = trackerCustomizationsQuery.data
-    if (!latest) {
-      return trackerCustomizationsRef.current?.lookup ?? new Map()
-    }
-
-    // Build a cache key from ids + updatedAt to detect any changes
-    const newKey = getTrackerCustomizationsCacheKey(latest)
-
-    // Check if the lookup has changed using the cache key
-    const previous = trackerCustomizationsRef.current
-    if (previous && previous.key === newKey) {
-      return previous.lookup
-    }
-
-    // Build a new lookup map from the customizations
-    const newLookup = buildTrackerCustomizationLookup(latest)
-    trackerCustomizationsRef.current = { key: newKey, lookup: newLookup }
-    return newLookup
-  }, [trackerCustomizationsQuery.data])
+  const { trackerIcons, trackerCustomizationLookup } = useTrackerIconCache()
 
   // Detect platform for keyboard shortcuts
   const isMac = useMemo(() => {
@@ -400,11 +358,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     supportsSubcategories?: boolean
     supportsTrackerHealth?: boolean
   }>({})
-  const serverStateRef = useRef<{ instanceId: number, state: ServerState | null }>({
-    instanceId,
-    state: null,
-  })
-
   // State for range select capabilities for checkboxes
   const shiftPressedRef = useRef<boolean>(false)
   const lastSelectedIndexRef = useRef<number | null>(null)
@@ -1011,27 +964,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const clearFiltersAtomically = useCallback((mode: 'all' | 'columns-only' = 'all') => {
     setFilterLifecycleState(mode === 'all' ? 'clearing-all' : 'clearing-columns-only');
   }, []);
-  const effectiveServerState = useMemo(() => {
-    const cached = serverStateRef.current
-    const instanceChanged = cached.instanceId !== instanceId
-
-    if (serverState != null) {
-      serverStateRef.current = { instanceId, state: serverState }
-      return serverState
-    }
-
-    if (serverState === null) {
-      serverStateRef.current = { instanceId, state: null }
-      return null
-    }
-
-    if (instanceChanged) {
-      serverStateRef.current = { instanceId, state: null }
-      return null
-    }
-
-    return cached.state
-  }, [serverState, instanceId])
+  const effectiveServerState = useEffectiveServerState({ instanceId, serverState })
 
   // Aggregate (all-instances) views have no single serverState; derive footer
   // transfer rates from the aggregated stats totals instead of showing 0.
