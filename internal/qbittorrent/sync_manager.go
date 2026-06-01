@@ -5923,10 +5923,6 @@ func (sm *SyncManager) GetAppPreferences(ctx context.Context, instanceID int) (q
 		return qbt.AppPreferences{}, fmt.Errorf("failed to get app preferences: %w", err)
 	}
 
-	if prefs == nil {
-		return qbt.AppPreferences{}, errors.New("failed to get app preferences: empty response")
-	}
-
 	return *prefs, nil
 }
 

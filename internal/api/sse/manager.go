@@ -309,11 +309,6 @@ func (m *StreamManager) SetActivityHub(hub *activity.Hub) {
 	go m.activityHeartbeatLoop()
 }
 
-// Server exposes the underlying SSE HTTP handler.
-func (m *StreamManager) Server() http.Handler {
-	return m.server
-}
-
 // StreamStats is a point-in-time snapshot of SSE subsystem activity. It is
 // exported so the metrics layer can surface it (e.g. as Prometheus gauges/counters).
 type StreamStats struct {
@@ -1347,7 +1342,7 @@ func clonePayloadForSubscriber(payload *StreamPayload, sub *subscriptionState) *
 		}
 		metaCopy.StreamKey = sub.clientKey
 		clone.Meta = &metaCopy
-	} else if sub != nil {
+	} else {
 		clone.Meta = &StreamMeta{
 			InstanceID: sub.options.InstanceID,
 			StreamKey:  sub.clientKey,

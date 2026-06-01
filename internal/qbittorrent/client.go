@@ -59,7 +59,6 @@ type Client struct {
 	supportsShareLimitsAction  bool
 	supportsShareLimitsMode    bool
 	lastHealthCheck            time.Time
-	lastRecoveryTime           time.Time // When client transitioned from unhealthy→healthy (or was created)
 	isHealthy                  bool
 	syncManager                *qbt.SyncManager
 	peerSyncManager            map[string]*qbt.PeerSyncManager // Map of torrent hash to PeerSyncManager
@@ -215,11 +214,6 @@ func (c *Client) updateHealthStatus(healthy bool) {
 	c.healthMu.Lock()
 	defer c.healthMu.Unlock()
 
-	// Track recovery time when transitioning to healthy
-	if healthy && !c.isHealthy {
-		c.lastRecoveryTime = time.Now()
-	}
-
 	c.isHealthy = healthy
 	c.lastHealthCheck = time.Now()
 }
@@ -228,12 +222,6 @@ func (c *Client) IsHealthy() bool {
 	c.healthMu.RLock()
 	defer c.healthMu.RUnlock()
 	return c.isHealthy
-}
-
-func (c *Client) GetLastRecoveryTime() time.Time {
-	c.healthMu.RLock()
-	defer c.healthMu.RUnlock()
-	return c.lastRecoveryTime
 }
 
 func (c *Client) SupportsTorrentCreation() bool {

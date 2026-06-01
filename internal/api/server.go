@@ -271,13 +271,11 @@ func (s *Server) tryToServe(addr, protocol string, ready chan<- struct{}) error 
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-	if s.streamManager != nil {
-		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
+	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 
-		if err := s.streamManager.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			s.logger.Warn().Err(err).Msg("failed to shut down stream manager cleanly")
-		}
+	if err := s.streamManager.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		s.logger.Warn().Err(err).Msg("failed to shut down stream manager cleanly")
 	}
 
 	return s.server.Shutdown(ctx)
@@ -507,9 +505,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
 			r.Get("/application/info", applicationHandler.GetInfo)
 
-			if s.streamManager != nil {
-				r.Get("/stream", s.streamManager.Serve)
-			}
+			r.Get("/stream", s.streamManager.Serve)
 
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {
