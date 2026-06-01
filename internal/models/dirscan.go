@@ -1411,42 +1411,6 @@ func (s *DirScanStore) UpsertFile(ctx context.Context, file *DirScanFile) error 
 	return nil
 }
 
-// GetFileByPath retrieves a file by its path within a directory.
-func (s *DirScanStore) GetFileByPath(ctx context.Context, directoryID int, filePath string) (*DirScanFile, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, directory_id, file_path, file_size, file_mod_time, file_id, status,
-		       matched_torrent_hash, matched_indexer_id, last_processed_at
-		FROM dir_scan_files
-		WHERE directory_id = ? AND file_path = ?
-	`, directoryID, filePath)
-
-	return s.scanFile(row)
-}
-
-// GetFileByFileID retrieves a file by its FileID within a directory.
-func (s *DirScanStore) GetFileByFileID(ctx context.Context, directoryID int, fileID []byte) (*DirScanFile, error) {
-	if fileID == nil {
-		return nil, nil
-	}
-
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, directory_id, file_path, file_size, file_mod_time, file_id, status,
-		       matched_torrent_hash, matched_indexer_id, last_processed_at
-		FROM dir_scan_files
-		WHERE directory_id = ? AND file_id = ?
-	`, directoryID, fileID)
-
-	return s.scanFile(row)
-}
-
-func (s *DirScanStore) scanFile(row *sql.Row) (*DirScanFile, error) {
-	file, err := scanFileFromScanner(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	return file, err
-}
-
 func scanFileFromScanner(scanner sqlScanner) (*DirScanFile, error) {
 	var file DirScanFile
 	var fileID []byte
@@ -1539,30 +1503,6 @@ func scanFilesFromRows(rows *sql.Rows) ([]*DirScanFile, error) {
 	return files, nil
 }
 
-// UpdateFileStatus updates the status of a file.
-func (s *DirScanStore) UpdateFileStatus(ctx context.Context, fileID int64, status DirScanFileStatus) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE dir_scan_files SET status = ?, last_processed_at = CURRENT_TIMESTAMP WHERE id = ?
-	`, status, fileID)
-	if err != nil {
-		return fmt.Errorf("update file status: %w", err)
-	}
-	return nil
-}
-
-// UpdateFileMatch updates the match info for a file.
-func (s *DirScanStore) UpdateFileMatch(ctx context.Context, fileID int64, torrentHash string, indexerID int) error {
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE dir_scan_files
-		SET status = ?, matched_torrent_hash = ?, matched_indexer_id = ?, last_processed_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`, DirScanFileStatusMatched, torrentHash, indexerID, fileID)
-	if err != nil {
-		return fmt.Errorf("update file match: %w", err)
-	}
-	return nil
-}
-
 // DeleteFilesForDirectory deletes all tracked files for a directory.
 func (s *DirScanStore) DeleteFilesForDirectory(ctx context.Context, directoryID int) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM dir_scan_files WHERE directory_id = ?`, directoryID)
@@ -1570,33 +1510,4 @@ func (s *DirScanStore) DeleteFilesForDirectory(ctx context.Context, directoryID 
 		return fmt.Errorf("delete files for directory: %w", err)
 	}
 	return nil
-}
-
-// CountFilesByStatus returns counts of files by status for a directory.
-func (s *DirScanStore) CountFilesByStatus(ctx context.Context, directoryID int) (map[DirScanFileStatus]int, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT status, COUNT(*)
-		FROM dir_scan_files
-		WHERE directory_id = ?
-		GROUP BY status
-	`, directoryID)
-	if err != nil {
-		return nil, fmt.Errorf("query file counts: %w", err)
-	}
-	defer rows.Close()
-
-	counts := make(map[DirScanFileStatus]int)
-	for rows.Next() {
-		var status DirScanFileStatus
-		var count int
-		if err := rows.Scan(&status, &count); err != nil {
-			return nil, fmt.Errorf("scan count row: %w", err)
-		}
-		counts[status] = count
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate counts: %w", err)
-	}
-
-	return counts, nil
 }

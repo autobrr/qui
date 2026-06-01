@@ -3688,16 +3688,6 @@ func extractInfoHashFromMagnet(magnetURL string) string {
 	return ""
 }
 
-// hasCapability checks if an indexer has a specific capability
-func (s *Service) hasCapability(ctx context.Context, indexerID int, capability string) bool {
-	caps, err := s.indexerStore.GetCapabilities(ctx, indexerID)
-	if err != nil {
-		return false
-	}
-
-	return slices.Contains(caps, capability)
-}
-
 func (s *Service) resolveIndexerSelection(ctx context.Context, indexerIDs []int) ([]*models.TorznabIndexer, error) {
 	if len(indexerIDs) == 0 {
 		indexers, err := s.indexerStore.ListEnabled(ctx)

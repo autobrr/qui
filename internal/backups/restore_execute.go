@@ -71,11 +71,6 @@ type RestoreResult struct {
 	Errors     []RestoreError `json:"errors,omitempty"`
 }
 
-// PreviewRestore returns the diff plan without executing any mutations.
-func (s *Service) PreviewRestore(ctx context.Context, runID int64, mode RestoreMode, opts *RestorePlanOptions) (*RestorePlan, error) {
-	return s.PlanRestoreDiff(ctx, runID, mode, opts)
-}
-
 // ExecuteRestore executes the restore plan for the given run and mode.
 func (s *Service) ExecuteRestore(ctx context.Context, runID int64, mode RestoreMode, opts RestoreOptions) (*RestoreResult, error) {
 	var planOpts *RestorePlanOptions

@@ -57,8 +57,3 @@ func TestArrInstanceStoreUpdateNilParams(t *testing.T) {
 		})
 	}
 }
-
-//go:fix inline
-func ptr(value string) *string {
-	return new(value)
-}

@@ -1330,13 +1330,6 @@ func preferredHashValue(torrent *qbt.Torrent) string {
 	return ""
 }
 
-func preferredCrossInstanceHashValue(torrent qbittorrent.CrossInstanceTorrentView) string {
-	if torrent.TorrentView == nil || torrent.Torrent == nil {
-		return ""
-	}
-	return preferredHashValue(torrent.Torrent)
-}
-
 func fullPathValue(savePath, name string) string {
 	normalizedSavePath := strings.ReplaceAll(strings.TrimSpace(savePath), "\\", "/")
 	trimmedName := strings.TrimSpace(name)

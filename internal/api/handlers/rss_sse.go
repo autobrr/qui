@@ -301,24 +301,3 @@ func (h *RSSSSEHandler) pollAndBroadcast(ctx context.Context, instanceID int, la
 
 	return currentItems
 }
-
-// Shutdown gracefully stops all pollers and disconnects clients
-func (h *RSSSSEHandler) Shutdown() {
-	h.pollerMu.Lock()
-	for instanceID, cancel := range h.pollers {
-		cancel()
-		delete(h.pollers, instanceID)
-	}
-	h.pollerMu.Unlock()
-
-	h.mu.Lock()
-	for _, clients := range h.clients {
-		for client := range clients {
-			client.closeDone()
-		}
-	}
-	h.clients = make(map[int]map[*rssSSEClient]struct{})
-	h.mu.Unlock()
-
-	log.Debug().Msg("RSS SSE handler shutdown complete")
-}

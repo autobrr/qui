@@ -95,10 +95,6 @@ type Client struct {
 	activeTaskMu         sync.Mutex
 }
 
-func NewClient(instanceID int, instanceHost, username, password, apiKey string, basicUsername, basicPassword *string, tlsSkipVerify bool) (*Client, error) {
-	return NewClientWithTimeout(instanceID, instanceHost, username, password, apiKey, basicUsername, basicPassword, tlsSkipVerify, 60*time.Second)
-}
-
 func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiKey string, basicUsername, basicPassword *string, tlsSkipVerify bool, timeout time.Duration) (*Client, error) {
 	cfg := qbt.Config{
 		Host:          instanceHost,
