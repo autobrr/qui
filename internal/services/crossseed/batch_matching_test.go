@@ -4,9 +4,13 @@
 package crossseed
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/stringutils"
@@ -165,6 +169,46 @@ func TestMatchAgainstIndex_ReleaseMetadata(t *testing.T) {
 			t.Error("expected match by release metadata")
 		}
 	})
+}
+
+func TestMatchAgainstIndex_ReleaseMetadataTraceLogsRejection(t *testing.T) {
+	previousLogger := log.Logger
+	previousLevel := zerolog.GlobalLevel()
+	var buf bytes.Buffer
+	log.Logger = zerolog.New(&buf).Level(zerolog.TraceLevel)
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	t.Cleanup(func() {
+		log.Logger = previousLogger
+		zerolog.SetGlobalLevel(previousLevel)
+	})
+
+	svc := newTestService()
+	views := []qbittorrent.CrossInstanceTorrentView{
+		makeView("aaa", "Movie.2024.1080p.BluRay.x264-GROUP", "/data/a", "/data", 1.0, qbt.TorrentStateUploading),
+	}
+	idx := svc.buildIndexFromViews(views, true)
+	source := &qbt.Torrent{
+		Hash:        "xxx",
+		ContentPath: "/other/b",
+		SavePath:    "/other",
+		Name:        "Movie.2024.1080p.BluRay.x264-OTHER",
+	}
+
+	matched, _ := svc.matchAgainstIndex(source, idx, false)
+	if matched {
+		t.Fatal("expected group mismatch to reject release metadata candidate")
+	}
+
+	logOutput := buf.String()
+	if !strings.Contains(logOutput, `"level":"trace"`) {
+		t.Fatalf("expected trace log, got %s", logOutput)
+	}
+	if !strings.Contains(logOutput, `"message":"crossseed: release metadata candidate evaluated"`) {
+		t.Fatalf("expected release metadata trace message, got %s", logOutput)
+	}
+	if !strings.Contains(logOutput, `"reason":"group mismatch"`) {
+		t.Fatalf("expected mismatch reason in trace log, got %s", logOutput)
+	}
 }
 
 func TestMatchAgainstIndex_ExcludeSelf(t *testing.T) {

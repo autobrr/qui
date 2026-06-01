@@ -20,6 +20,7 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 // Helper function to insert a test instance with interned fields
@@ -46,18 +47,11 @@ func insertTestInstance(t *testing.T, db *database.DB, name string) int {
 func setupTestBackupDB(t *testing.T) *database.DB {
 	t.Helper()
 
-	// Create a unique database file for each test
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err, "Failed to initialize test database with migrations")
+	db := testdb.NewMigratedSQLite(t, "backups-service")
 
 	// Allow multiple connections for tests that need concurrent access
 	db.Conn().SetMaxOpenConns(5)
 	db.Conn().SetMaxIdleConns(2)
-
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
 
 	return db
 }
@@ -1155,8 +1149,6 @@ func TestAdaptiveExportDelayRespectsContextCancellation(t *testing.T) {
 }
 
 func TestDeleteFilesParallelStopsWhenContextCanceled(t *testing.T) {
-	t.Parallel()
-
 	svc := &Service{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

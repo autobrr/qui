@@ -98,6 +98,7 @@ These fields use qui's current system time when the rule is evaluated. They are 
 | Ratio       | Upload/download ratio        |
 | Ratio Limit | Configured ratio limit       |
 | Max Ratio   | qBittorrent max ratio value  |
+| Uploaded / Size | Uploaded bytes divided by total torrent size. Use this instead of Ratio for cross-seeded torrents. |
 | Progress    | Download progress (0-100%)   |
 | Availability | Distributed copies available |
 | Popularity  | Swarm popularity metric      |
@@ -435,6 +436,32 @@ Set ratio limit and/or seeding time limit. Each field supports these modes:
 
 Torrents stop seeding when any enabled limit is reached.
 
+#### Share limit action (Web API 2.15.1+)
+
+On instances whose qBittorrent Web API is **2.15.1** or newer, **When limits are reached** is available in the torrent share limit dialog and in automation workflows. It controls what happens when a torrent hits its configured ratio, seeding time, or inactive seeding limits. Stored and sent as the same **string enum names** qBittorrent expects for `setShareLimits` (Qt meta-object names, not numeric codes):
+
+| Option                  | Value (`shareLimitAction`) | Description                                 |
+| ----------------------- | -------------------------- | ------------------------------------------- |
+| Default (use global)    | omit or `default`          | Follow qBittorrent's global setting         |
+| Stop torrent            | `Stop`                     | Pause the torrent                           |
+| Remove torrent          | `Remove`                   | Remove from client, keep files              |
+| Remove with content     | `RemoveWithContent`        | Remove from client and delete files         |
+| Enable super seeding    | `EnableSuperSeeding`       | Switch to super seeding mode                |
+
+#### Share limits matching mode (Web API 2.16.0+)
+
+**Limits matching mode** (match **any** limit vs **all** limits) is a separate Web API capability and requires **2.16.0** or newer. On slightly older 5.2 builds that only expose **2.15.1**, qui still shows the action above but hides this control until you upgrade qBittorrent. Values use **string enum names** for `setShareLimits`:
+
+| Option               | Value (`shareLimitsMode`) | Description                              |
+| -------------------- | ------------------------- | ---------------------------------------- |
+| Default (use global) | omit or `default`         | Follow qBittorrent's global setting      |
+| Match any limit      | `MatchAny`                | Trigger when any single limit is reached |
+| Match all limits     | `MatchAll`                | Trigger only when all limits are reached |
+
+These options are hidden when the instance does not report the required Web API version (see [qBittorrent Version Compatibility](../advanced/compatibility.md)). Ratio and seeding time limits above still apply on older instances; only the extra controls are gated.
+
+These fields appear in both the torrent share limit dialog and the automation workflow editor when the connected qBittorrent instance supports them. On older instances, the fields are hidden and only the classic ratio/seeding time limits are sent.
+
 ### Pause
 
 Pause matching torrents. Only pauses if not already stopped.
@@ -632,6 +659,61 @@ The program's executable path must be present in the application's allowlist. Pr
 - Notify external systems (webhooks, notifications) when conditions are met
 - Trigger media library scans after category changes
 - Execute cleanup scripts for old or stalled torrents
+
+### Export to Instance
+
+Export a torrent's `.torrent` file from the current instance and add it to a different qBittorrent instance. This is useful for migrating torrents between instances — for example, moving from a seedbox to a local instance for long-term seeding.
+
+This action assumes the data already exists on the target (via rclone, Quickdrop for Deluge, etc.) and uses `skip_checking=true` by default.
+
+| Field              | Description                                                              |
+| ------------------ | ------------------------------------------------------------------------ |
+| **Target instance** | Destination qBittorrent instance (cannot be the same as source)         |
+| **Save path**       | Save path on target instance (Go template supported, see below)         |
+| **Category**        | Category to assign on target instance (dropdown from target's categories) |
+| **Tags**            | Tags to apply on target instance                                        |
+| **Skip checking**   | Skip hash check on target (default: enabled)                            |
+| **Paused**          | Add torrent paused on target                                            |
+| **Content layout**  | `Original`, `Subfolder`, or `NoSubfolder`                               |
+| **Condition Override** | Optional condition specific to this action                           |
+
+**Behavior:**
+
+- Executes asynchronously to avoid blocking automation processing
+- **Cannot combine with Delete** — the API rejects rules that have both export and delete enabled
+- Duplicate detection: before exporting, qui checks if the torrent already exists on the target instance and skips it if found
+- After adding to the target, qui verifies the torrent appeared and is healthy. If verification fails, the torrent is automatically cleaned up from the target so it can be retried on the next run
+- Cross-seed group members are **not** automatically exported. To export a group, chain with Category/Tag actions using group expansion
+- Activity is logged with rule name, torrent details, target instance, and success/failure status
+- Dry-run is supported — shows what would be exported without actually transferring
+
+:::note
+When multiple rules match the same torrent with Export to Instance actions, the **last matching rule** (by sort order) determines the export configuration for that torrent. Only one export runs per torrent per automation cycle.
+:::
+
+#### Save path templates
+
+The save path field supports Go templates, the same as the [Move action](#move-path-templates).
+
+| Variable               | Description                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| `.Name`                | Torrent display name                                                                     |
+| `.Hash`                | Info hash                                                                                |
+| `.Category`            | qBittorrent category (on source instance)                                                |
+| `.IsolationFolderName` | Filesystem-safe folder name (hash or sanitized name)                                     |
+| `.Tracker`             | Tracker display name (when available from instance config), otherwise the tracker domain |
+
+| Function   | Description                                                                 |
+| ---------- | --------------------------------------------------------------------------- |
+| `sanitize` | Makes a string safe for use as a path segment (removes invalid characters). |
+
+**Examples:**
+
+- Fixed path: `/data/torrents`
+- By category: `/data/{{.Category}}`
+- By tracker: `/data/{{.Tracker}}`
+
+If no save path is set but a category is configured, qBittorrent's Automatic Torrent Management is enabled so the target uses the category's configured path.
 
 ## Cross-Seed Awareness
 
@@ -877,7 +959,7 @@ Only sends API calls when the torrent's current setting differs from the desired
 ### Processing Order
 
 - **First match wins** for delete actions (delete ends torrent processing, no further rules evaluated)
-- **Last rule wins** for speed limits, share limits, category, and external program actions
+- **Last rule wins** for speed limits, share limits, category, external program, and export to instance actions
 - **Accumulative** for tag actions (tags are combined across matching rules)
 
 ### Free Space Condition Behavior

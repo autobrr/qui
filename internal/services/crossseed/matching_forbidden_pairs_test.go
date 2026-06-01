@@ -44,6 +44,26 @@ func TestIsTVEpisode(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "seasonless anime episode",
+			release:  &rls.Release{Type: rls.Episode, Episode: 5},
+			expected: true,
+		},
+		{
+			name:     "episode type without episode number",
+			release:  &rls.Release{Type: rls.Episode, Episode: 0},
+			expected: false,
+		},
+		{
+			name:     "episode type with series and episode",
+			release:  &rls.Release{Type: rls.Episode, Series: 1, Episode: 5},
+			expected: true,
+		},
+		{
+			name:     "series type with episode number",
+			release:  &rls.Release{Type: rls.Series, Episode: 5},
+			expected: true,
+		},
+		{
 			name:     "episode from season 2 (S02E03)",
 			release:  &rls.Release{Series: 2, Episode: 3},
 			expected: true,
@@ -85,6 +105,21 @@ func TestIsTVSeasonPack(t *testing.T) {
 			name:     "season pack (series only)",
 			release:  &rls.Release{Series: 1, Episode: 0},
 			expected: true,
+		},
+		{
+			name:     "seasonless anime pack",
+			release:  &rls.Release{Type: rls.Series, Episode: 0},
+			expected: true,
+		},
+		{
+			name:     "series type with series and no episode",
+			release:  &rls.Release{Type: rls.Series, Series: 1, Episode: 0},
+			expected: true,
+		},
+		{
+			name:     "series type with episode number",
+			release:  &rls.Release{Type: rls.Series, Episode: 5},
+			expected: false,
 		},
 		{
 			name:     "episode (series and episode)",

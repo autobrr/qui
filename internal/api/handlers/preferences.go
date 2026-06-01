@@ -72,6 +72,11 @@ func (h *PreferencesHandler) UpdatePreferences(w http.ResponseWriter, r *http.Re
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+	if err := h.syncManager.NormalizeScanDirsPreference(prefs); err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Invalid scan_dirs value")
+		http.Error(w, "Invalid scan_dirs value", http.StatusBadRequest)
+		return
+	}
 
 	// NOTE: qBittorrent's app/setPreferences API does not properly support all preferences.
 	// Specifically, start_paused_enabled gets rejected/ignored. The frontend now handles

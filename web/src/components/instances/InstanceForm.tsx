@@ -12,8 +12,11 @@ import { DEFAULT_REANNOUNCE_SETTINGS, instanceUrlSchema } from "@/lib/instance-v
 import { formatErrorMessage } from "@/lib/utils"
 import type { Instance, InstanceFormData } from "@/types"
 import { useForm } from "@tanstack/react-form"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
+
+type InstanceAuthType = "none" | "usernamePassword" | "apiKey"
 
 interface InstanceFormProps {
   instance?: Instance
@@ -23,16 +26,61 @@ interface InstanceFormProps {
   formId?: string
 }
 
+function getInstanceAuthType(instance?: Instance): InstanceAuthType {
+  return instance?.hasApiKey ? "apiKey" : instance?.username ? "usernamePassword" : "none"
+}
+
+function getInstanceFormDefaults(instance?: Instance): InstanceFormData {
+  return {
+    name: instance?.name ?? "",
+    host: instance?.host ?? "http://localhost:8080",
+    username: instance?.username ?? "",
+    password: "",
+    apiKey: instance?.hasApiKey ? "<redacted>" : "",
+    basicUsername: instance?.basicUsername ?? "",
+    basicPassword: instance?.basicUsername ? "<redacted>" : "",
+    tlsSkipVerify: instance?.tlsSkipVerify ?? false,
+    hasLocalFilesystemAccess: instance?.hasLocalFilesystemAccess ?? false,
+    reannounceSettings: instance?.reannounceSettings ?? DEFAULT_REANNOUNCE_SETTINGS,
+  }
+}
+
+function getAuthValidationError(data: InstanceFormData, authType: InstanceAuthType, instance?: Instance) {
+  if (authType === "usernamePassword") {
+    if (!data.username?.trim()) {
+      return "Username is required for username/password authentication"
+    }
+
+    if (!data.password?.trim() && !instance?.username) {
+      return "Password is required for username/password authentication"
+    }
+  }
+
+  if (authType === "apiKey") {
+    const hasPreservedAPIKey = instance?.hasApiKey && data.apiKey === "<redacted>"
+    if (!hasPreservedAPIKey && !data.apiKey?.trim()) {
+      return "API key is required for API key authentication"
+    }
+  }
+
+  return undefined
+}
+
 export function InstanceForm({ instance, onSuccess, onCancel, formId }: InstanceFormProps) {
+  const { t } = useTranslation("instances")
   const { createInstance, updateInstance, isCreating, isUpdating } = useInstances()
   const [showBasicAuth, setShowBasicAuth] = useState(!!instance?.basicUsername)
-  const [authBypass, setAuthBypass] = useState(instance?.username === "")
-
-  useEffect(() => {
-    setAuthBypass(instance?.username === "")
-  }, [instance?.username])
+  const [authType, setAuthType] = useState<InstanceAuthType>(() => getInstanceAuthType(instance))
 
   const handleSubmit = (data: InstanceFormData) => {
+    const authValidationError = getAuthValidationError(data, authType, instance)
+    if (authValidationError) {
+      toast.error(t("form.toast.missingCredentialsTitle"), {
+        description: authValidationError,
+      })
+      return
+    }
+
     let submitData: InstanceFormData
 
     if (showBasicAuth) {
@@ -55,39 +103,65 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
       }
     }
 
-    if (authBypass) {
+    if (authType === "none") {
       submitData = {
         ...submitData,
         username: "",
         password: "",
+        apiKey: "",
+      }
+    }
+
+    if (authType === "usernamePassword") {
+      submitData = {
+        ...submitData,
+        apiKey: "",
+      }
+      if (submitData.password === "") {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password, ...rest } = submitData
+        submitData = rest
+      }
+    }
+
+    if (authType === "apiKey") {
+      submitData = {
+        ...submitData,
+        username: "",
+        password: "",
+      }
+      if (submitData.apiKey === "" || submitData.apiKey === "<redacted>") {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { apiKey, ...rest } = submitData
+        submitData = rest
       }
     }
 
     if (instance) {
       updateInstance({ id: instance.id, data: submitData }, {
         onSuccess: () => {
-          toast.success("Instance Updated", {
-            description: "Instance updated successfully. Connection testing in background...",
+          toast.success(t("form.toast.instanceUpdatedTitle"), {
+            description: t("form.toast.instanceUpdatedDescription"),
           })
           onSuccess()
         },
         onError: (error) => {
-          toast.error("Update Failed", {
-            description: error instanceof Error ? formatErrorMessage(error.message) : "Failed to update instance",
+          toast.error(t("form.toast.updateFailedTitle"), {
+            description: error instanceof Error ? formatErrorMessage(error.message) : t("form.toast.updateFailedDescription"),
           })
         },
       })
     } else {
       createInstance(submitData, {
         onSuccess: () => {
-          toast.success("Instance Created", {
-            description: "Instance created successfully. Connection testing in background...",
+          toast.success(t("form.toast.instanceCreatedTitle"), {
+            description: t("form.toast.instanceCreatedDescription"),
           })
           onSuccess()
         },
         onError: (error) => {
-          toast.error("Create Failed", {
-            description: error instanceof Error ? formatErrorMessage(error.message) : "Failed to create instance",
+          toast.error(t("form.toast.createFailedTitle"), {
+            description: error instanceof Error ? formatErrorMessage(error.message) : t("form.toast.createFailedDescription"),
           })
         },
       })
@@ -95,21 +169,21 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
   }
 
   const form = useForm({
-    defaultValues: {
-      name: instance?.name ?? "",
-      host: instance?.host ?? "http://localhost:8080",
-      username: instance?.username ?? "",
-      password: "",
-      basicUsername: instance?.basicUsername ?? "",
-      basicPassword: instance?.basicUsername ? "<redacted>" : "",
-      tlsSkipVerify: instance?.tlsSkipVerify ?? false,
-      hasLocalFilesystemAccess: instance?.hasLocalFilesystemAccess ?? false,
-      reannounceSettings: instance?.reannounceSettings ?? DEFAULT_REANNOUNCE_SETTINGS,
-    },
+    defaultValues: getInstanceFormDefaults(instance),
     onSubmit: ({ value }) => {
       handleSubmit(value)
     },
   })
+
+  const prevInstanceId = useRef(instance?.id)
+  useEffect(() => {
+    if (prevInstanceId.current !== instance?.id) {
+      prevInstanceId.current = instance?.id
+      form.reset(getInstanceFormDefaults(instance))
+      setShowBasicAuth(!!instance?.basicUsername)
+      setAuthType(getInstanceAuthType(instance))
+    }
+  }, [instance, form])
 
   return (
     <>
@@ -125,18 +199,18 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
           name="name"
           validators={{
             onChange: ({ value }) =>
-              !value ? "Instance name is required" : undefined,
+              !value ? t("form.validation.nameRequired") : undefined,
           }}
         >
           {(field) => (
             <div className="space-y-2">
-              <Label htmlFor={field.name}>Instance Name</Label>
+              <Label htmlFor={field.name}>{t("form.labels.instanceName")}</Label>
               <Input
                 id={field.name}
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
-                placeholder="e.g., Main Server or Home qBittorrent"
+                placeholder={t("form.placeholders.instanceName")}
                 data-1p-ignore
                 autoComplete="off"
               />
@@ -158,7 +232,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
         >
           {(field) => (
             <div className="space-y-2">
-              <Label htmlFor={field.name}>URL</Label>
+              <Label htmlFor={field.name}>{t("form.labels.url")}</Label>
               <Input
                 id={field.name}
                 value={field.state.value}
@@ -170,7 +244,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                   }
                 }}
                 onChange={(e) => field.handleChange(e.target.value)}
-                placeholder="http://localhost:8080 or 192.168.1.100:8080"
+                placeholder={t("form.placeholders.url")}
               />
               {field.state.meta.isTouched && field.state.meta.errors[0] && (
                 <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
@@ -183,9 +257,9 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
           {(field) => (
             <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/40 p-4">
               <div className="space-y-1">
-                <Label htmlFor="tls-skip-verify">Skip TLS Certificate Verification</Label>
+                <Label htmlFor="tls-skip-verify">{t("form.labels.skipTlsVerification")}</Label>
                 <p className="text-sm text-muted-foreground max-w-prose">
-                  Allow connections to qBittorrent instances that use self-signed or otherwise untrusted certificates.
+                  {t("form.labels.skipTlsDescription")}
                 </p>
               </div>
               <Switch
@@ -201,9 +275,9 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
           {(field) => (
             <div className="flex items-start justify-between gap-4 rounded-lg border bg-muted/40 p-4">
               <div className="space-y-1">
-                <Label htmlFor="local-filesystem-access">Local Filesystem Access</Label>
+                <Label htmlFor="local-filesystem-access">{t("form.labels.localFilesystemAccess")}</Label>
                 <p className="text-sm text-muted-foreground max-w-prose">
-                  Enable if qui can access this instance's download paths (required for hardlink detection in automations).
+                  {t("form.labels.localFilesystemDescription")}
                 </p>
               </div>
               <Switch
@@ -216,33 +290,36 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
         </form.Field>
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label htmlFor="auth-bypass-toggle">Authentication Bypass</Label>
-              <p className="text-sm text-muted-foreground pr-2">
-                Enable when qBittorrent bypasses authentication for localhost or whitelisted IPs
-              </p>
-            </div>
-            <Switch
-              id="auth-bypass-toggle"
-              checked={authBypass}
-              onCheckedChange={setAuthBypass}
-            />
+          <div className="space-y-2">
+            <Label htmlFor="auth-type">{t("form.labels.authType")}</Label>
+            <select
+              id="auth-type"
+              value={authType}
+              onChange={(e) => setAuthType(e.target.value as InstanceAuthType)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+            >
+              <option value="none">{t("form.authType.none")}</option>
+              <option value="usernamePassword">{t("form.authType.usernamePassword")}</option>
+              <option value="apiKey">{t("form.authType.apiKey")}</option>
+            </select>
+            <p className="text-sm text-muted-foreground pr-2">
+              {t("form.labels.authTypeDescription")}
+            </p>
           </div>
         </div>
 
-        {!authBypass && (
+        {authType === "usernamePassword" && (
           <>
             <form.Field name="username">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor={field.name}>Username</Label>
+                  <Label htmlFor={field.name}>{t("form.labels.username")}</Label>
                   <Input
                     id={field.name}
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="qBittorrent username (usually admin)"
+                    placeholder={t("form.placeholders.username")}
                     data-1p-ignore
                     autoComplete="off"
                   />
@@ -255,14 +332,14 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
             >
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor={field.name}>Password</Label>
+                  <Label htmlFor={field.name}>{t("form.labels.password")}</Label>
                   <Input
                     id={field.name}
                     type="password"
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder={instance ? "Leave empty to keep current password" : "qBittorrent password"}
+                    placeholder={instance ? t("form.placeholders.passwordExisting") : t("form.placeholders.passwordNew")}
                     data-1p-ignore
                     autoComplete="off"
                   />
@@ -275,12 +352,42 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
           </>
         )}
 
+        {authType === "apiKey" && (
+          <form.Field name="apiKey">
+            {(field) => (
+              <div className="space-y-2">
+                <Label htmlFor={field.name}>{t("form.authType.apiKey")}</Label>
+                <Input
+                  id={field.name}
+                  type="password"
+                  value={field.state.value}
+                  onBlur={() => {
+                    field.handleBlur()
+                    if (instance?.hasApiKey && field.state.value === "") {
+                      field.handleChange("<redacted>")
+                    }
+                  }}
+                  onFocus={() => {
+                    if (field.state.value === "<redacted>") {
+                      field.handleChange("")
+                    }
+                  }}
+                  onChange={(e) => field.handleChange(e.target.value)}
+                  placeholder={instance ? t("form.placeholders.apiKeyExisting") : t("form.placeholders.apiKeyNew")}
+                  data-1p-ignore
+                  autoComplete="off"
+                />
+              </div>
+            )}
+          </form.Field>
+        )}
+
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label htmlFor="basic-auth-toggle">HTTP Basic Authentication</Label>
+              <Label htmlFor="basic-auth-toggle">{t("form.labels.httpBasicAuth")}</Label>
               <p className="text-sm text-muted-foreground">
-                Enable if your qBittorrent is behind a reverse proxy with Basic Auth
+                {t("form.labels.httpBasicAuthDescription")}
               </p>
             </div>
             <Switch
@@ -295,13 +402,13 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
               <form.Field name="basicUsername">
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor={field.name}>Basic Auth Username</Label>
+                    <Label htmlFor={field.name}>{t("form.labels.basicAuthUsername")}</Label>
                     <Input
                       id={field.name}
                       value={field.state.value}
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Basic auth username"
+                      placeholder={t("form.placeholders.basicAuthUsername")}
                       data-1p-ignore
                       autoComplete="off"
                     />
@@ -313,12 +420,12 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                 name="basicPassword"
                 validators={{
                   onChange: ({ value }) =>
-                    showBasicAuth && value === "" ? "Basic auth password is required when basic auth is enabled" : undefined,
+                    showBasicAuth && value === "" ? t("form.validation.basicAuthPasswordRequired") : undefined,
                 }}
               >
                 {(field) => (
                   <div className="space-y-2">
-                    <Label htmlFor={field.name}>Basic Auth Password</Label>
+                    <Label htmlFor={field.name}>{t("form.labels.basicAuthPassword")}</Label>
                     <Input
                       id={field.name}
                       type="password"
@@ -331,7 +438,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                         }
                       }}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="Enter basic auth password (required)"
+                      placeholder={t("form.placeholders.basicAuthPassword")}
                       data-1p-ignore
                       autoComplete="off"
                     />
@@ -355,7 +462,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
                   type="submit"
                   disabled={!canSubmit || isSubmitting || isCreating || isUpdating}
                 >
-                  {(isCreating || isUpdating) ? "Saving..." : instance ? "Update Instance" : "Add Instance"}
+                  {(isCreating || isUpdating) ? t("form.buttons.saving") : instance ? t("form.buttons.updateInstance") : t("form.buttons.addInstance")}
                 </Button>
               )}
             </form.Subscribe>
@@ -365,7 +472,7 @@ export function InstanceForm({ instance, onSuccess, onCancel, formId }: Instance
               variant="outline"
               onClick={onCancel}
             >
-              Cancel
+              {t("form.buttons.cancel")}
             </Button>
           </div>
         )}

@@ -437,6 +437,61 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			expected: true,
 		},
 		{
+			// Cross-seeded torrent: data already on disk, downloaded ~ 0,
+			// qBit's Ratio explodes (uploaded / 0) but uploaded/total_size is sane.
+			name: "uploaded over size greater than 1.0 (cross-seeded torrent)",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorGreaterThan,
+				Value:    "1.0",
+			},
+			torrent:  qbt.Torrent{Uploaded: 7_500_000_000, TotalSize: 5_000_000_000, Downloaded: 0},
+			expected: true,
+		},
+		{
+			name: "uploaded over size below threshold",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorGreaterThanOrEqual,
+				Value:    "1.0",
+			},
+			torrent:  qbt.Torrent{Uploaded: 500_000_000, TotalSize: 5_000_000_000},
+			expected: false,
+		},
+		{
+			name: "uploaded over size between 0.5 and 2.0",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorBetween,
+				MinValue: new(0.5),
+				MaxValue: new(2.0),
+			},
+			torrent:  qbt.Torrent{Uploaded: 5_000_000_000, TotalSize: 5_000_000_000},
+			expected: true,
+		},
+		{
+			// TotalSize == 0 should not divide-by-zero; field returns false
+			// regardless of operator, so an automation gated on this won't fire.
+			name: "uploaded over size returns false when total size is zero",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorGreaterThan,
+				Value:    "0",
+			},
+			torrent:  qbt.Torrent{Uploaded: 1_000_000, TotalSize: 0},
+			expected: false,
+		},
+		{
+			name: "uploaded over size with zero uploaded equals 0",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorEqual,
+				Value:    "0",
+			},
+			torrent:  qbt.Torrent{Uploaded: 0, TotalSize: 5_000_000_000},
+			expected: true,
+		},
+		{
 			name: "progress equals 1.0",
 			cond: &RuleCondition{
 				Field:    FieldProgress,
@@ -1103,6 +1158,36 @@ func TestEvaluateCondition_StateTrackerDown_WithContext(t *testing.T) {
 	})
 
 	t.Run("does not match without TrackerDownSet", func(t *testing.T) {
+		got := EvaluateConditionWithContext(cond, torrent, &EvalContext{}, 0)
+		if got {
+			t.Fatalf("expected false, got true")
+		}
+	})
+}
+
+func TestEvaluateCondition_StateTrackerError_WithContext(t *testing.T) {
+	cond := &RuleCondition{
+		Field:    FieldState,
+		Operator: OperatorEqual,
+		Value:    "tracker_error",
+	}
+
+	torrent := qbt.Torrent{
+		Hash:  "hash1",
+		State: qbt.TorrentStateUploading,
+	}
+
+	t.Run("matches when in TrackerErrorSet", func(t *testing.T) {
+		ctx := &EvalContext{
+			TrackerErrorSet: map[string]struct{}{"hash1": {}},
+		}
+		got := EvaluateConditionWithContext(cond, torrent, ctx, 0)
+		if !got {
+			t.Fatalf("expected true, got false")
+		}
+	})
+
+	t.Run("does not match without TrackerErrorSet", func(t *testing.T) {
 		got := EvaluateConditionWithContext(cond, torrent, &EvalContext{}, 0)
 		if got {
 			t.Fatalf("expected false, got true")

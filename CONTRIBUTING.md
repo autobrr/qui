@@ -1,5 +1,15 @@
 # Contributing
 
+## Testing
+
+- `make test` runs the Go suite with `-race -count=1`.
+- `make test-frontend` runs the vitest suite in `web/`. Tests are colocated as `*.test.ts(x)` under `web/src/`.
+- For iterative local work: `cd web && pnpm test:watch`.
+- For a coverage report: `cd web && pnpm test:coverage`.
+- CI runs both `make test` and `make test-frontend` on every PR.
+
+See [`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md) for deeper conventions (test placement, table-driven cases, etc.).
+
 ## Database Migrations
 
 Database schema changes must include:

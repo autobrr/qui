@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { TFunction } from "i18next";
+
 // Field definitions with metadata for the query builder UI
 export const CONDITION_FIELDS = {
   // String fields
@@ -73,6 +75,7 @@ export const CONDITION_FIELDS = {
   RATIO: { label: "Ratio", type: "float" as const, description: "Upload/download ratio" },
   RATIO_LIMIT: { label: "Ratio Limit", type: "float" as const, description: "Configured ratio limit" },
   MAX_RATIO: { label: "Max Ratio", type: "float" as const, description: "Maximum ratio value from qBittorrent" },
+  UPLOADED_OVER_SIZE: { label: "Uploaded / Size", type: "float" as const, description: "Uploaded / total torrent size. Cross-seed-safe alternative to RATIO." },
   PROGRESS: { label: "Progress", type: "percentage" as const, description: "Download progress (0-100%)" },
   AVAILABILITY: { label: "Availability", type: "float" as const, description: "Distributed copies" },
   POPULARITY: { label: "Popularity", type: "float" as const, description: "Swarm popularity metric" },
@@ -215,6 +218,7 @@ export const TORRENT_STATES = [
   { value: "stalled_downloading", label: "Stalled Down" },
   { value: "errored", label: "Error" },
   { value: "tracker_down", label: "Tracker Down" },
+  { value: "tracker_error", label: "Tracker Error" },
   { value: "checking", label: "Checking" },
   { value: "checkingResumeData", label: "Checking Resume Data" },
   { value: "moving", label: "Moving" },
@@ -263,7 +267,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Progress",
-    fields: ["RATIO", "RATIO_LIMIT", "MAX_RATIO", "PROGRESS", "AVAILABILITY", "POPULARITY"],
+    fields: ["RATIO", "RATIO_LIMIT", "MAX_RATIO", "UPLOADED_OVER_SIZE", "PROGRESS", "AVAILABILITY", "POPULARITY"],
   },
   {
     label: "Speed",
@@ -368,7 +372,79 @@ export const FIELD_REQUIREMENTS = {
 
 export const STATE_VALUE_REQUIREMENTS = {
   tracker_down: "trackerHealth",
+  tracker_error: "trackerHealth",
 } as const;
 
 // Uncategorized sentinel (Radix Select requires non-empty values)
 export const CATEGORY_UNCATEGORIZED_VALUE = "__uncategorized__";
+
+// --- i18n helper functions ---
+
+/** Get translated label for a condition field */
+export function getFieldLabel(field: string, t: TFunction): string {
+  return t(`queryBuilder.fields.${field}`, { defaultValue: CONDITION_FIELDS[field as keyof typeof CONDITION_FIELDS]?.label ?? field });
+}
+
+/** Get translated label for a field group */
+export function getFieldGroupLabel(label: string, t: TFunction): string {
+  return t(`queryBuilder.fieldGroups.${label}`, { defaultValue: label });
+}
+
+/** Operator label lookup keyed by the operator value string */
+const OPERATOR_LABEL_KEYS: Record<string, string> = {
+  EQUAL: "equals",
+  NOT_EQUAL: "notEquals",
+  CONTAINS: "contains",
+  NOT_CONTAINS: "notContains",
+  STARTS_WITH: "startsWith",
+  ENDS_WITH: "endsWith",
+  MATCHES: "matchesRegex",
+  GREATER_THAN: ">",
+  GREATER_THAN_OR_EQUAL: ">=",
+  LESS_THAN: "<",
+  LESS_THAN_OR_EQUAL: "<=",
+  BETWEEN: "between",
+  EXISTS_IN: "existsIn",
+  CONTAINS_IN: "similarExistsIn",
+};
+
+/** Get translated operators for a field, preserving the original structure */
+export function getTranslatedOperatorsForField(field: string, t: TFunction): { value: string; label: string }[] {
+  const ops = getOperatorsForField(field);
+  return ops.map((op) => {
+    // Symbolic operators (=, !=, >, >=, <, <=) stay as-is
+    if (/^[^a-zA-Z]/.test(op.label)) return op;
+    const key = OPERATOR_LABEL_KEYS[op.value];
+    if (!key) return op;
+    // "is" / "is not" share keys with equals/notEquals for state/boolean types but have different labels
+    const type = getFieldType(field);
+    if ((type === "state" || type === "boolean" || type === "hardlinkScope") && (op.value === "EQUAL" || op.value === "NOT_EQUAL")) {
+      return { value: op.value, label: t(`queryBuilder.operators.${op.value === "EQUAL" ? "is" : "isNot"}`, { defaultValue: op.label }) };
+    }
+    return { value: op.value, label: t(`queryBuilder.operators.${key}`, { defaultValue: op.label }) };
+  });
+}
+
+/** Get translated torrent states */
+export function getTranslatedTorrentStates(t: TFunction): { value: string; label: string }[] {
+  return TORRENT_STATES.map((state) => ({
+    value: state.value,
+    label: t(`queryBuilder.torrentStates.${state.value}`, { defaultValue: state.label }),
+  }));
+}
+
+/** Get translated hardlink scope values */
+export function getTranslatedHardlinkScopes(t: TFunction): { value: string; label: string }[] {
+  return HARDLINK_SCOPE_VALUES.map((scope) => ({
+    value: scope.value,
+    label: t(`queryBuilder.hardlinkScopes.${scope.value}`, { defaultValue: scope.label }),
+  }));
+}
+
+/** Get translated delete modes */
+export function getTranslatedDeleteModes(t: TFunction): { value: string; label: string }[] {
+  return DELETE_MODES.map((mode) => ({
+    value: mode.value,
+    label: t(`queryBuilder.deleteModes.${mode.value}`, { defaultValue: mode.label }),
+  }));
+}

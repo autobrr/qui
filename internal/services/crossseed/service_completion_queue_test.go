@@ -43,6 +43,7 @@ func setupCompletionStoreForQueueTests(t *testing.T) *models.InstanceCrossSeedCo
 			exclude_tags_json TEXT NOT NULL,
 			indexer_ids_json TEXT NOT NULL,
 			bypass_torznab_cache INTEGER NOT NULL DEFAULT 0,
+			completion_delay_seconds INTEGER NOT NULL DEFAULT 0,
 			updated_at DATETIME NOT NULL
 		);
 	`)
@@ -134,8 +135,8 @@ func (*completionPollingSyncMock) GetAppPreferences(context.Context, int) (qbt.A
 	return qbt.AppPreferences{}, nil
 }
 
-func (*completionPollingSyncMock) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (*completionPollingSyncMock) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (*completionPollingSyncMock) BulkAction(context.Context, int, []string, string) error {

@@ -141,7 +141,7 @@ export default defineConfig(() => ({
           groups: [
             {
               name: "react-vendor",
-              test: /node_modules[\\/](react|react-dom|react-hook-form)([\\/]|$)/,
+              test: /node_modules[\\/](react|react-dom)([\\/]|$)/,
               priority: 30,
             },
             {

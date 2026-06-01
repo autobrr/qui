@@ -43,7 +43,7 @@ func Logger(logger zerolog.Logger) func(next http.Handler) http.Handler {
 					Timestamp().
 					Fields(map[string]any{
 						"remote_ip":  r.RemoteAddr,
-						"url":        redact.ProxyPath(r.URL.Path),
+						"url":        redact.ProxyPath(r.URL.EscapedPath()),
 						"proto":      r.Proto,
 						"method":     r.Method,
 						"user_agent": r.Header.Get("User-Agent"),

@@ -285,7 +285,7 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 			options["tags"] = strings.Join(spec.Manifest.Tags, ",")
 		}
 
-		if err := s.torrentWriter.AddTorrent(ctx, instanceID, payload, options); err != nil {
+		if _, err := s.torrentWriter.AddTorrent(ctx, instanceID, payload, options); err != nil {
 			appendRestoreError(errs, "add_torrent", spec.Manifest.Hash, err)
 			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", spec.Manifest.Hash).Msg("Restore: add torrent failed")
 			continue

@@ -4,6 +4,8 @@
 package crossseed
 
 import (
+	"bytes"
+	"encoding/json"
 	"maps"
 	"sync"
 
@@ -46,8 +48,9 @@ type CrossSeedRequest struct {
 	// If false (default), season packs will only match with other season packs.
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
 	// SizeMismatchTolerancePercent is the maximum size difference percentage for matching.
-	// If not set (0), defaults to 5%.
-	SizeMismatchTolerancePercent float64 `json:"size_mismatch_tolerance_percent,omitempty"`
+	// SizeMismatchTolerancePercentSet distinguishes an explicit strict 0 from an omitted value.
+	SizeMismatchTolerancePercent    float64 `json:"size_mismatch_tolerance_percent,omitempty"`
+	SizeMismatchTolerancePercentSet bool    `json:"-"`
 	// SkipAutoResume prevents automatic resume after hash check when true.
 	// Default behavior (false) resumes torrents after verification completes.
 	SkipAutoResume bool `json:"skip_auto_resume,omitempty"`
@@ -72,6 +75,19 @@ type CrossSeedRequest struct {
 	SourceFilterExcludeTags []string `json:"-"`
 }
 
+func (r *CrossSeedRequest) UnmarshalJSON(data []byte) error {
+	type crossSeedRequestAlias CrossSeedRequest
+
+	var decoded crossSeedRequestAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	decoded.SizeMismatchTolerancePercentSet = jsonFieldProvided(data, "size_mismatch_tolerance_percent")
+
+	*r = CrossSeedRequest(decoded)
+	return nil
+}
+
 // CrossSeedResponse represents the result of a cross-seed operation
 type CrossSeedResponse struct {
 	// Success indicates if any instances were successfully cross-seeded
@@ -87,7 +103,7 @@ type InstanceCrossSeedResult struct {
 	InstanceID   int    `json:"instance_id"`
 	InstanceName string `json:"instance_name"`
 	Success      bool   `json:"success"`
-	// Status describes the result: "added", "exists", "no_match", "error"
+	// Status describes the result (examples: "added", "exists", "no_match", "size_mismatch", "content_mismatch", "error"); this list is not exhaustive and additional statuses may be used.
 	Status  string `json:"status"`
 	Message string `json:"message,omitempty"`
 	// MatchedTorrent is the existing torrent that matched (if any)
@@ -211,7 +227,7 @@ type CrossSeedCandidate struct {
 type TorrentSearchOptions struct {
 	// Optional override for the search query; defaults to the torrent name.
 	Query string `json:"query,omitempty"`
-	// Limit controls how many results are returned (after filtering). Defaults to 20.
+	// Limit controls how many results are requested and returned (after filtering). Defaults to 100.
 	Limit int `json:"limit,omitempty"`
 	// IndexerIDs restricts the search to specific Torznab indexers.
 	IndexerIDs []int `json:"indexer_ids,omitempty"`
@@ -224,11 +240,38 @@ type TorrentSearchOptions struct {
 	FindIndividualEpisodes bool `json:"find_individual_episodes,omitempty"`
 	// CacheMode forces cache behaviour when querying Torznab ("" = default, "bypass" = skip cache)
 	CacheMode string `json:"cache_mode,omitempty"`
+	// SizeMismatchTolerancePercent is the maximum size difference percentage for matching.
+	// SizeMismatchTolerancePercentSet distinguishes an explicit strict 0 from an omitted value.
+	SizeMismatchTolerancePercent    float64 `json:"size_mismatch_tolerance_percent,omitempty"`
+	SizeMismatchTolerancePercentSet bool    `json:"-"`
 	// DisableTorznab skips all Torznab search stages while still allowing Gazelle matching.
 	DisableTorznab bool `json:"disable_torznab,omitempty"`
 	// SkipGazelle disables Gazelle pre-search in mixed search mode.
 	// Internal-only (not exposed in API payloads).
 	SkipGazelle bool `json:"-"`
+}
+
+func (o *TorrentSearchOptions) UnmarshalJSON(data []byte) error {
+	type torrentSearchOptionsAlias TorrentSearchOptions
+
+	var decoded torrentSearchOptionsAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	decoded.SizeMismatchTolerancePercentSet = jsonFieldProvided(data, "size_mismatch_tolerance_percent")
+
+	*o = TorrentSearchOptions(decoded)
+	return nil
+}
+
+func jsonFieldProvided(data []byte, field string) bool {
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(data, &values); err != nil {
+		return false
+	}
+
+	value, ok := values[field]
+	return ok && !bytes.Equal(bytes.TrimSpace(value), []byte("null"))
 }
 
 // TorrentSearchResult represents an indexer search result that appears to match the seeded torrent.
@@ -247,6 +290,8 @@ type TorrentSearchResult struct {
 	DownloadVolumeFactor float64 `json:"download_volume_factor"`
 	UploadVolumeFactor   float64 `json:"upload_volume_factor"`
 	GUID                 string  `json:"guid"`
+	InfoHashV1           string  `json:"infohash_v1,omitempty"`
+	InfoHashV2           string  `json:"infohash_v2,omitempty"`
 	IMDbID               string  `json:"imdb_id,omitempty"`
 	TVDbID               string  `json:"tvdb_id,omitempty"`
 	MatchReason          string  `json:"match_reason,omitempty"`
@@ -331,6 +376,8 @@ type AsyncIndexerFilteringState struct {
 	ExcludedIndexers      map[int]string `json:"excluded_indexers,omitempty"`
 	ContentMatches        []string       `json:"content_matches,omitempty"`
 	Error                 string         `json:"error,omitempty"`
+
+	rejectedContentCandidates map[string]contentPrefilterRejectedTorrent
 }
 
 // cloneLocked assumes the caller has already acquired at least a read lock.
@@ -355,6 +402,10 @@ func (s *AsyncIndexerFilteringState) cloneLocked() *AsyncIndexerFilteringState {
 	if len(s.ExcludedIndexers) > 0 {
 		clone.ExcludedIndexers = make(map[int]string, len(s.ExcludedIndexers))
 		maps.Copy(clone.ExcludedIndexers, s.ExcludedIndexers)
+	}
+	if len(s.rejectedContentCandidates) > 0 {
+		clone.rejectedContentCandidates = make(map[string]contentPrefilterRejectedTorrent, len(s.rejectedContentCandidates))
+		maps.Copy(clone.rejectedContentCandidates, s.rejectedContentCandidates)
 	}
 	return clone
 }
@@ -425,4 +476,53 @@ type AutobrrApplyRequest struct {
 	// Used when "Use indexer name as category" mode is enabled because webhook applies
 	// cannot derive tracker identity from the torrent file itself.
 	Indexer string `json:"indexer,omitempty"`
+}
+
+// --- Season-pack webhook DTOs ---
+
+// SeasonPackCheckRequest represents a request to check whether a season pack
+// can be reconstructed from existing individual episodes.
+type SeasonPackCheckRequest struct {
+	TorrentName string `json:"torrentName"`
+	TorrentData string `json:"torrentData"`
+	InstanceIDs []int  `json:"instanceIds,omitempty"`
+	Indexer     string `json:"indexer,omitempty"`
+}
+
+// SeasonPackCheckMatch describes per-instance episode coverage.
+type SeasonPackCheckMatch struct {
+	InstanceID      int     `json:"instanceId"`
+	MatchedEpisodes int     `json:"matchedEpisodes"`
+	TotalEpisodes   int     `json:"totalEpisodes"`
+	Coverage        float64 `json:"coverage"`
+}
+
+// SeasonPackCheckResponse is the response to a season-pack check request.
+type SeasonPackCheckResponse struct {
+	Ready            bool                   `json:"ready"`
+	Reason           string                 `json:"reason,omitempty"`
+	Message          string                 `json:"message,omitempty"`
+	Matches          []SeasonPackCheckMatch `json:"matches,omitempty"`
+	ThresholdSkipped bool                   `json:"thresholdSkipped,omitempty"`
+}
+
+// SeasonPackApplyRequest represents a request to apply (add) a season pack torrent
+// using hardlinked/reflinked episode data.
+type SeasonPackApplyRequest struct {
+	TorrentName string `json:"torrentName"`
+	TorrentData string `json:"torrentData"`
+	InstanceIDs []int  `json:"instanceIds,omitempty"`
+	Indexer     string `json:"indexer,omitempty"`
+}
+
+// SeasonPackApplyResponse is the result of a season-pack apply attempt.
+type SeasonPackApplyResponse struct {
+	Applied         bool    `json:"applied"`
+	Reason          string  `json:"reason,omitempty"`
+	Message         string  `json:"message,omitempty"`
+	InstanceID      int     `json:"instanceId,omitempty"`
+	MatchedEpisodes int     `json:"matchedEpisodes,omitempty"`
+	TotalEpisodes   int     `json:"totalEpisodes,omitempty"`
+	Coverage        float64 `json:"coverage,omitempty"`
+	LinkMode        string  `json:"linkMode,omitempty"`
 }

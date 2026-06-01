@@ -17,6 +17,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -28,6 +31,7 @@ import { useHasPremiumAccess } from "@/hooks/useLicense"
 import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
+import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
 import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
@@ -43,18 +47,20 @@ import {
 } from "@/utils/theme"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
+import { navigateWithSearch } from "@/lib/router-search"
 import {
   Archive,
   Check,
+  Code,
   Copyright,
   CornerDownRight,
   Download,
   FileText,
   GitBranch,
-  Github,
   HardDrive,
   Home,
   Loader2,
+  Globe,
   LogOut,
   Monitor,
   Moon,
@@ -69,6 +75,7 @@ import {
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner"
+import { useTranslation } from "react-i18next"
 
 
 // Custom hook for theme change detection
@@ -96,6 +103,7 @@ const useThemeChange = () => {
 }
 
 export function MobileFooterNav() {
+  const { t, i18n } = useTranslation("common")
   const location = useLocation()
   const navigate = useNavigate()
   const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
@@ -146,9 +154,10 @@ export function MobileFooterNav() {
     saveUnifiedFilter(normalizedIds)
     const nextSearch: Record<string, unknown> = isOnAllInstancesPage ? { ...(routeSearch || {}) } : {}
 
-    navigate({
+    navigateWithSearch({
+      navigate,
       to: "/instances",
-      search: nextSearch as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      search: nextSearch,
       replace: isOnAllInstancesPage,
     })
   }, [activeInstanceIds, isOnAllInstancesPage, navigate, routeSearch, saveUnifiedFilter])
@@ -169,51 +178,51 @@ export function MobileFooterNav() {
   const hasClientScopeEntry = isOnAllInstancesPage || hasActiveInstances
   const currentInstanceId = !isOnAllInstancesPage && location.pathname.startsWith("/instances/") ? location.pathname.split("/")[2] : null
   const currentInstance = instances?.find(i => i.id.toString() === currentInstanceId)
-  const currentInstanceLabel = isOnAllInstancesPage? (hasMultipleActiveInstances ? "Unified" : (activeInstances[0]?.name ?? null)): (currentInstance && currentInstance.isActive ? currentInstance.name : null)
+  const currentInstanceLabel = isOnAllInstancesPage? (hasMultipleActiveInstances ? t("header.unified") : (activeInstances[0]?.name ?? null)): (currentInstance && currentInstance.isActive ? currentInstance.name : null)
 
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode)
-    const modeNames = { light: "Light", dark: "Dark", auto: "System" }
-    toast.success(`Switched to ${modeNames[mode]} mode`)
-  }, [])
+    const modeNames = { light: t("themeToggle.light"), dark: t("themeToggle.dark"), auto: t("themeToggle.system") }
+    toast.success(t("themeToggle.switchedToMode", { mode: modeNames[mode] }))
+  }, [t])
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
     const isPremium = isThemePremium(themeId)
     if (isPremium && !canSwitchPremium) {
       if (isError) {
-        toast.error("Unable to verify license", {
-          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        toast.error(t("themeToggle.unableToVerifyLicense"), {
+          description: t("themeToggle.licenseCheckFailed"),
         })
       } else {
-        toast.error("This is a premium theme. Open Settings → Themes to activate a license.")
+        toast.error(t("themeToggle.premiumThemeError"))
       }
       return
     }
 
     await setTheme(themeId)
-    const theme = themes.find(t => t.id === themeId)
-    toast.success(`Switched to ${theme?.name || themeId} theme`)
-  }, [canSwitchPremium, isError])
+    const theme = themes.find(th => th.id === themeId)
+    toast.success(t("themeToggle.switchedToTheme", { theme: theme?.name || themeId }))
+  }, [canSwitchPremium, isError, t])
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string): Promise<boolean> => {
     const isPremium = isThemePremium(themeId)
     if (isPremium && !canSwitchPremium) {
       if (isError) {
-        toast.error("Unable to verify license", {
-          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        toast.error(t("themeToggle.unableToVerifyLicense"), {
+          description: t("themeToggle.licenseCheckFailed"),
         })
       } else {
-        toast.error("This is a premium theme. Open Settings → Themes to activate a license.")
+        toast.error(t("themeToggle.premiumThemeError"))
       }
       return false
     }
 
     await setTheme(themeId)
     await setThemeVariation(variationId)
-    const theme = themes.find(t => t.id === themeId)
-    toast.success(`Switched to ${theme?.name || themeId} theme (${variationId})`)
+    const theme = themes.find(th => th.id === themeId)
+    toast.success(t("themeToggle.switchedToThemeVariation", { theme: theme?.name || themeId, variation: variationId }))
     return true
-  }, [canSwitchPremium, isError])
+  }, [canSwitchPremium, isError, t])
 
   if (isSelectionMode) {
     return null
@@ -240,7 +249,7 @@ export function MobileFooterNav() {
             "h-5 w-5",
             location.pathname === "/dashboard" && "text-primary"
           )} />
-          <span className="truncate">Dashboard</span>
+          <span className="truncate">{t("mobileNav.dashboard")}</span>
         </Link>
 
         {/* Clients access */}
@@ -268,19 +277,19 @@ export function MobileFooterNav() {
                 </div>
                 <span
                   className="block max-w-[7.5rem] truncate text-center"
-                  title={currentInstanceLabel ?? "Clients"}
+                  title={currentInstanceLabel ?? t("mobileNav.clients")}
                 >
-                  {currentInstanceLabel ?? "Clients"}
+                  {currentInstanceLabel ?? t("mobileNav.clients")}
                 </span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center" side="top" className="w-56 mb-2">
-              <DropdownMenuLabel>qBittorrent Clients</DropdownMenuLabel>
+              <DropdownMenuLabel>{t("mobileNav.qbittorrentClients")}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {activeInstances.length > 0 ? (
                 <>
                   <DropdownMenuLabel className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Instances
+                    {t("mobileNav.instances")}
                   </DropdownMenuLabel>
                   {hasMultipleActiveInstances && (
                     <UnifiedScopeDropdownSection
@@ -324,7 +333,7 @@ export function MobileFooterNav() {
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent side="left" className="text-xs">
-                                  RSS {csState?.rssRunning ? "running" : "enabled"}
+                                  {csState?.rssRunning ? t("mobileNav.rssRunning") : t("mobileNav.rssEnabled")}
                                 </TooltipContent>
                               </Tooltip>
                             )}
@@ -336,7 +345,7 @@ export function MobileFooterNav() {
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent side="left" className="text-xs">
-                                  Scan running
+                                  {t("mobileNav.scanRunning")}
                                 </TooltipContent>
                               </Tooltip>
                             )}
@@ -354,7 +363,7 @@ export function MobileFooterNav() {
                 </>
               ) : (
                 <DropdownMenuItem disabled className="text-xs text-muted-foreground">
-                  No active instances
+                  {t("mobileNav.noActiveInstances")}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -366,7 +375,7 @@ export function MobileFooterNav() {
             disabled
           >
             <HardDrive className="h-5 w-5 animate-pulse" />
-            <span className="block max-w-[7.5rem] truncate text-center text-xs">Loading...</span>
+            <span className="block max-w-[7.5rem] truncate text-center text-xs">{t("mobileNav.loading")}</span>
           </button>
         ) : (
           <button
@@ -375,7 +384,7 @@ export function MobileFooterNav() {
             disabled
           >
             <HardDrive className="h-5 w-5" />
-            <span className="block max-w-[7.5rem] truncate text-center">No active clients</span>
+            <span className="block max-w-[7.5rem] truncate text-center">{t("mobileNav.noActiveClients")}</span>
           </button>
         )}
 
@@ -402,7 +411,7 @@ export function MobileFooterNav() {
                   </Badge>
                 )}
               </div>
-              <span className="truncate">Settings</span>
+              <span className="truncate">{t("mobileNav.settings")}</span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" className="mb-2 w-56">
@@ -417,8 +426,8 @@ export function MobileFooterNav() {
                   >
                     <Download className="h-4 w-4" />
                     <div className="flex flex-col">
-                      <span className="font-medium">Update Available</span>
-                      <span className="text-[10px] opacity-80">Version {updateInfo.tag_name}</span>
+                      <span className="font-medium">{t("mobileNav.updateAvailable")}</span>
+                      <span className="text-[10px] opacity-80">{t("mobileNav.updateVersion", { version: updateInfo.tag_name })}</span>
                     </div>
                   </a>
                 </DropdownMenuItem>
@@ -431,7 +440,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <SearchIcon className="h-4 w-4" />
-                Search
+                {t("nav.search")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -441,7 +450,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <GitBranch className="h-4 w-4" />
-                Cross-Seed
+                {t("nav.crossSeed")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -450,7 +459,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <Zap className="h-4 w-4" />
-                Automations
+                {t("nav.automations")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -459,7 +468,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <Archive className="h-4 w-4" />
-                Instance Backups
+                {t("nav.instanceBackups")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -468,7 +477,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <Rss className="h-4 w-4" />
-                RSS
+                {t("nav.rss")}
               </Link>
             </DropdownMenuItem>
 
@@ -480,7 +489,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <Settings className="h-4 w-4" />
-                General Settings
+                {t("nav.generalSettings")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -490,7 +499,7 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <Server className="h-4 w-4" />
-                Manage Instances
+                {t("nav.manageInstances")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -500,19 +509,19 @@ export function MobileFooterNav() {
                 className="flex items-center gap-2"
               >
                 <FileText className="h-4 w-4" />
-                Logs
+                {t("nav.logs")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setShowThemeDialog(true)}>
               <Palette className="h-4 w-4" />
-              Appearance
+              {t("nav.appearance")}
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />
 
             <div className="flex items-center justify-between px-3 py-2">
               <div className="flex flex-col gap-0.5 text-[10px] text-muted-foreground/60 select-none">
-                <span className="font-medium text-muted-foreground/70">Version {appVersion}</span>
+                <span className="font-medium text-muted-foreground/70">{t("mobileNav.version", { version: appVersion })}</span>
                 <div className="flex items-center gap-1">
                   <Copyright className="h-2.5 w-2.5 flex-shrink-0" />
                   <span>{new Date().getFullYear()} autobrr</span>
@@ -522,19 +531,38 @@ export function MobileFooterNav() {
                 href="https://github.com/autobrr/qui"
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label="View on GitHub"
+                aria-label={t("mobileNav.viewOnGitHub")}
                 className="h-6 w-6 flex items-center justify-center text-muted-foreground/60 hover:text-foreground transition-colors"
               >
-                <Github className="h-3.5 w-3.5" />
+                <Code className="h-3.5 w-3.5" />
               </a>
             </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Globe className="h-4 w-4" />
+                {languageNames[i18n.language as keyof typeof languageNames] ?? i18n.language}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {supportedLanguages.map((lng) => (
+                  <DropdownMenuItem
+                    key={lng}
+                    onClick={() => changeLanguage(lng)}
+                    className="flex items-center justify-between gap-4"
+                  >
+                    {languageNames[lng]}
+                    {i18n.language === lng && <Check className="h-3.5 w-3.5" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => logout()}
               className="text-destructive focus:text-destructive flex items-center gap-2"
             >
               <LogOut className="h-4 w-4 text-destructive" />
-              Logout
+              {t("mobileNav.logout")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -544,13 +572,13 @@ export function MobileFooterNav() {
       <Dialog open={showThemeDialog} onOpenChange={setShowThemeDialog}>
         <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Appearance</DialogTitle>
+            <DialogTitle>{t("themeToggle.appearance")}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* Mode Selection */}
             <div>
-              <div className="text-sm font-medium mb-2">Mode</div>
+              <div className="text-sm font-medium mb-2">{t("themeToggle.mode")}</div>
               <div className="space-y-1">
                 <button
                   onClick={() => {
@@ -563,7 +591,7 @@ export function MobileFooterNav() {
                   )}
                 >
                   <Sun className="h-4 w-4" />
-                  <span className="flex-1 text-left">Light</span>
+                  <span className="flex-1 text-left">{t("themeToggle.light")}</span>
                   {currentMode === "light" && <Check className="h-4 w-4" />}
                 </button>
                 <button
@@ -577,7 +605,7 @@ export function MobileFooterNav() {
                   )}
                 >
                   <Moon className="h-4 w-4" />
-                  <span className="flex-1 text-left">Dark</span>
+                  <span className="flex-1 text-left">{t("themeToggle.dark")}</span>
                   {currentMode === "dark" && <Check className="h-4 w-4" />}
                 </button>
                 <button
@@ -591,7 +619,7 @@ export function MobileFooterNav() {
                   )}
                 >
                   <Monitor className="h-4 w-4" />
-                  <span className="flex-1 text-left">System</span>
+                  <span className="flex-1 text-left">{t("themeToggle.system")}</span>
                   {currentMode === "auto" && <Check className="h-4 w-4" />}
                 </button>
               </div>
@@ -599,7 +627,7 @@ export function MobileFooterNav() {
 
             {/* Theme Selection */}
             <div>
-              <div className="text-sm font-medium mb-2">Theme</div>
+              <div className="text-sm font-medium mb-2">{t("themeToggle.theme")}</div>
               <div className="space-y-1">
                 {themes
                   .sort((a, b) => {
@@ -644,7 +672,7 @@ export function MobileFooterNav() {
                               <span className="truncate">{theme.name}</span>
                               {isPremium && (
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium flex-shrink-0">
-                                  Premium
+                                  {t("themeToggle.premium")}
                                 </span>
                               )}
                             </div>

@@ -58,4 +58,6 @@ If **Fallback to regular mode** is enabled, qui will fall back to adding the tor
 
 This is particularly useful when hardlinking can intermittently fail due to filesystem/device boundaries (for example: pooled mounts where two paths look the same but resolve to different underlying devices).
 
+Because this fallback uses regular source-file paths instead of the link-tree directory, qui adds the torrent paused, rechecks it, and only auto-resumes after qBittorrent reports 100% complete. If **Skip recheck** is enabled, these fallback candidates are skipped.
+
 If fallback is disabled, qui skips/fails the candidate when link-tree creation fails.

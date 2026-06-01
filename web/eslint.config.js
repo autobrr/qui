@@ -40,6 +40,7 @@ export default tseslint.config([
       '@stylistic/no-trailing-spaces': ['warn'],
       '@stylistic/object-curly-spacing': ['error', 'always'],
       '@typescript-eslint/no-unused-vars': ['warn'],
+      '@typescript-eslint/no-explicit-any': 'error',
       'linebreak-style': ['error', 'unix'],
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       'react-hooks/rules-of-hooks': 'error',

@@ -33,10 +33,14 @@ type torrentDesiredState struct {
 	downloadRule     ruleRef
 
 	// Share limits (last rule wins)
-	ratioLimit     *float64
-	seedingMinutes *int64
-	ratioRule      ruleRef
-	seedingRule    ruleRef
+	ratioLimit       *float64
+	seedingMinutes   *int64
+	shareLimitAction string
+	shareLimitsMode  string
+	ratioRule        ruleRef
+	seedingRule      ruleRef
+	shareActionRule  ruleRef
+	shareModeRule    ruleRef
 
 	// Pause (OR - any rule can trigger)
 	shouldPause bool
@@ -96,6 +100,11 @@ type torrentDesiredState struct {
 	externalProgramID *int
 	programRuleID     int
 	programRuleName   string
+
+	// Export to instance (last rule wins)
+	exportToInstance         *models.ExportToInstanceAction
+	exportToInstanceRuleID   int
+	exportToInstanceRuleName string
 }
 
 type ruleRef struct {
@@ -132,13 +141,15 @@ type ruleRunStats struct {
 	MoveBlockedByCrossSeed           int
 	ExternalProgramApplied           int
 	ExternalProgramConditionNotMet   int
+	ExportToInstanceApplied          int
+	ExportToInstanceConditionNotMet  int
 }
 
 func (s *ruleRunStats) totalApplied() int {
 	if s == nil {
 		return 0
 	}
-	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.RecheckApplied + s.ReannounceApplied + s.AutoManageApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied
+	return s.SpeedApplied + s.ShareApplied + s.PauseApplied + s.ResumeApplied + s.RecheckApplied + s.ReannounceApplied + s.AutoManageApplied + s.TagConditionMet + s.CategoryApplied + s.DeleteApplied + s.MoveApplied + s.ExternalProgramApplied + s.ExportToInstanceApplied
 }
 
 func getOrCreateRuleStats(m map[int]*ruleRunStats, rule *models.Automation) *ruleRunStats {
@@ -190,6 +201,7 @@ func processTorrents(
 	}
 
 	crossSeedIndex := buildCrossSeedIndex(torrents)
+	cpIndex := buildContentPathIndex(torrents)
 
 	for _, torrent := range torrents {
 		// Skip if recently processed
@@ -229,7 +241,7 @@ func processTorrents(
 			if ruleStats != nil {
 				ruleStats.MatchedTrackers++
 			}
-			processRuleForTorrent(rule, torrent, state, evalCtx, sm, crossSeedIndex, ruleStats, torrents)
+			processRuleForTorrent(rule, torrent, state, evalCtx, sm, crossSeedIndex, ruleStats, torrents, cpIndex)
 		}
 
 		// Only store if there are actions to take
@@ -247,7 +259,7 @@ func processTorrents(
 }
 
 // processRuleForTorrent applies a single rule to the torrent state.
-func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, allTorrents []qbt.Torrent) {
+func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *torrentDesiredState, evalCtx *EvalContext, sm *qbittorrent.SyncManager, crossSeedIndex map[crossSeedKey][]qbt.Torrent, stats *ruleRunStats, allTorrents []qbt.Torrent, cpIndex contentPathIndex) {
 	conditions := rule.Conditions
 	if conditions == nil {
 		return
@@ -302,6 +314,14 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 			if conditions.ShareLimits.SeedingTimeMinutes != nil {
 				state.seedingMinutes = conditions.ShareLimits.SeedingTimeMinutes
 				state.seedingRule = ruleRef{id: rule.ID, name: rule.Name}
+			}
+			if conditions.ShareLimits.ShareLimitAction != nil {
+				state.shareLimitAction = *conditions.ShareLimits.ShareLimitAction
+				state.shareActionRule = ruleRef{id: rule.ID, name: rule.Name}
+			}
+			if conditions.ShareLimits.ShareLimitsMode != nil {
+				state.shareLimitsMode = *conditions.ShareLimits.ShareLimitsMode
+				state.shareModeRule = ruleRef{id: rule.ID, name: rule.Name}
 			}
 		} else if stats != nil {
 			stats.ShareConditionNotMet++
@@ -475,6 +495,23 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 		}
 	}
 
+	// Export to instance (last rule wins)
+	if conditions.ExportToInstance != nil && conditions.ExportToInstance.Enabled && conditions.ExportToInstance.TargetInstanceID > 0 {
+		shouldApply := conditions.ExportToInstance.Condition == nil ||
+			EvaluateConditionWithContext(conditions.ExportToInstance.Condition, torrent, evalCtx, 0)
+
+		if shouldApply {
+			if stats != nil {
+				stats.ExportToInstanceApplied++
+			}
+			state.exportToInstance = conditions.ExportToInstance
+			state.exportToInstanceRuleID = rule.ID
+			state.exportToInstanceRuleName = rule.Name
+		} else if stats != nil {
+			stats.ExportToInstanceConditionNotMet++
+		}
+	}
+
 	// Delete
 	if conditions.Delete != nil && conditions.Delete.Enabled {
 		// Safety: delete must always have an explicit condition.
@@ -504,7 +541,7 @@ func processRuleForTorrent(rule *models.Automation, torrent qbt.Torrent, state *
 				// Only call this when the delete condition uses FREE_SPACE, otherwise we might
 				// accidentally mutate a previously-loaded rule's projection state.
 				if evalCtx != nil && ConditionUsesField(conditions.Delete.Condition, FieldFreeSpace) {
-					updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, allTorrents)
+					updateCumulativeFreeSpaceCleared(torrent, evalCtx, state.deleteMode, cpIndex)
 				}
 			} else if stats != nil {
 				stats.DeleteConditionNotMet++
@@ -789,7 +826,8 @@ func hasActions(state *torrentDesiredState) bool {
 		state.category != nil ||
 		state.shouldDelete ||
 		state.shouldMove ||
-		state.externalProgramID != nil
+		state.externalProgramID != nil ||
+		state.exportToInstance != nil
 }
 
 // selectTrackerTag picks the best tracker domain to use as a tag.
@@ -842,13 +880,13 @@ func parseTorrentTags(tags string) map[string]struct{} {
 // This ensures keep-files and preserve-cross-seeds modes don't over-project freed disk space.
 // When DeleteSafeHardlinkSignatureByHash is populated, also dedupes by hardlink signature to avoid
 // double-counting torrents that share the same physical files via hardlinks.
-func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, allTorrents []qbt.Torrent) {
+func updateCumulativeFreeSpaceCleared(torrent qbt.Torrent, evalCtx *EvalContext, deleteMode string, cpIndex contentPathIndex) {
 	if evalCtx == nil || evalCtx.FilesToClear == nil {
 		return
 	}
 
 	// Only count toward free space if this delete will actually free disk bytes
-	if !deleteFreesSpace(deleteMode, torrent, allTorrents) {
+	if !deleteFreesSpace(deleteMode, torrent, cpIndex) {
 		return
 	}
 

@@ -43,14 +43,16 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { TruncatedText } from "@/components/ui/truncated-text"
+import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { api } from "@/lib/api"
+import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { downloadBlob, toCsv, type CsvColumn } from "@/lib/csv-export"
 import { pickTrackerIconDomain } from "@/lib/tracker-icons"
-import { cn, copyTextToClipboard, formatBytes, formatRelativeTime, parseTrackerDomains } from "@/lib/utils"
+import { cn, copyTextToClipboard, formatBytes, parseTrackerDomains } from "@/lib/utils"
 import {
   fromImportFormat,
   parseImportJSON,
@@ -79,6 +81,8 @@ import { CSS } from "@dnd-kit/utilities"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, Clock, Copy, CopyPlus, Download, Folder, GripVertical, Info, Loader2, MoreVertical, Move, Pause, Play, Pencil, Plus, RefreshCcw, Scale, Search, Send, Tag, Terminal, Trash2, Upload } from "lucide-react"
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react"
+import { useTranslation } from "react-i18next"
+import i18n from "../../../i18n"
 import { toast } from "sonner"
 import { AutomationActivityRunDialog } from "./AutomationActivityRunDialog"
 import { WorkflowDialog } from "./WorkflowDialog"
@@ -132,9 +136,8 @@ function computeActivityStats(events: AutomationActivity[]): ActivityStats {
 /** Format share limit value for display: -2 = "Global", -1 = "Unlimited", >= 0 = number with optional precision */
 function formatShareLimit(value: number | undefined, isRatio: boolean): string | null {
   if (value === undefined) return null
-  if (value === -2) return "Global"
-  if (value === -1) return "Unlimited"
-  // For ratio, show 2 decimal places; for time, show whole number
+  if (value === -2) return i18n.t("preferences.workflowsOverview.shareLimit.global", { ns: "instances" })
+  if (value === -1) return i18n.t("preferences.workflowsOverview.shareLimit.unlimited", { ns: "instances" })
   return isRatio ? value.toFixed(2) : String(value)
 }
 
@@ -155,46 +158,38 @@ function getRuleTagActions(rule: Automation) {
 }
 
 function formatAction(action: AutomationActivity["action"]): string {
-  switch (action) {
-    case "deleted_ratio":
-      return "Ratio limit"
-    case "deleted_seeding":
-      return "Seeding time"
-    case "deleted_unregistered":
-      return "Unregistered"
-    case "deleted_condition":
-      return "Condition"
-    case "delete_failed":
-      return "Delete"
-    case "limit_failed":
-      return "Set limits"
-    case "tags_changed":
-      return "Tags"
-    case "category_changed":
-      return "Category"
-    case "speed_limits_changed":
-      return "Speed"
-    case "share_limits_changed":
-      return "Share"
-    case "paused":
-      return "Pause"
-    case "resumed":
-      return "Resume"
-    case "rechecked":
-      return "Recheck"
-    case "reannounced":
-      return "Reannounce"
-    case "auto_managed":
-      return "Auto management"
-    case "moved":
-      return "Move"
-    case "external_program":
-      return "External program"
-    case "dry_run_no_match":
-      return "Dry-run"
-    default:
-      return action
+  const actionKeys: Record<string, string> = {
+    deleted_ratio: "ratioLimit",
+    deleted_seeding: "seedingTime",
+    deleted_unregistered: "unregistered",
+    deleted_condition: "condition",
+    delete_failed: "delete",
+    limit_failed: "setLimits",
+    tags_changed: "tags",
+    category_changed: "category",
+    speed_limits_changed: "speed",
+    share_limits_changed: "share",
+    paused: "pause",
+    resumed: "resume",
+    rechecked: "recheck",
+    reannounced: "reannounce",
+    auto_managed: "autoManagement",
+    moved: "move",
+    external_program: "externalProgram",
+    exported_to_instance: "exportToInstance",
+    dry_run_no_match: "dryRun",
   }
+  const key = actionKeys[action]
+  return key ? i18n.t(`preferences.workflowsOverview.actions.${key}`, { ns: "instances" }) : action
+}
+
+function getOutcomeBadgeText(event: AutomationActivity): string {
+  const s = "preferences.workflowsOverview"
+  const ns = "instances"
+  if (event.outcome === "dry-run") return i18n.t(`${s}.dryRun`, { ns })
+  if (event.action === "external_program") return i18n.t(`${s}.${event.outcome === "success" ? "executed" : "failed"}`, { ns })
+  if (event.action === "exported_to_instance") return i18n.t(`${s}.${event.outcome === "success" ? "exported" : "failed"}`, { ns })
+  return i18n.t(`${s}.${event.outcome === "success" ? "removed" : "failed"}`, { ns })
 }
 
 function sumRecordValues(values: Record<string, number> | undefined): number {
@@ -204,90 +199,100 @@ function sumRecordValues(values: Record<string, number> | undefined): number {
   }, 0)
 }
 
-function formatCountWithVerb(count: number, noun: string, verb: string): string {
-  return `${count} ${noun}${count !== 1 ? "s" : ""} ${verb}`
-}
-
 function formatTagsChangedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const addedTotal = sumRecordValues(details?.added)
   const removedTotal = sumRecordValues(details?.removed)
   const parts: string[] = []
-  const prefix = outcome === "dry-run" ? "would be " : ""
-  if (addedTotal > 0) parts.push(`+${addedTotal} ${prefix}tagged`)
-  if (removedTotal > 0) parts.push(`-${removedTotal} ${prefix}untagged`)
-  return parts.join(", ") || "Tag operation"
+  const s = "preferences.workflowsOverview.summary"
+  const ns = "instances"
+  if (addedTotal > 0) parts.push(i18n.t(outcome === "dry-run" ? `${s}.taggedDryRun` : `${s}.tagged`, { ns, count: addedTotal }))
+  if (removedTotal > 0) parts.push(i18n.t(outcome === "dry-run" ? `${s}.untaggedDryRun` : `${s}.untagged`, { ns, count: removedTotal }))
+  return parts.join(", ") || i18n.t(`${s}.tagOperation`, { ns })
 }
 
 function formatCategoryChangedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const total = sumRecordValues(details?.categories)
-  const verb = outcome === "dry-run" ? "would be moved" : "moved"
-  return formatCountWithVerb(total, "torrent", verb)
+  const s = "preferences.workflowsOverview.summary"
+  return i18n.t(outcome === "dry-run" ? `${s}.movedDryRun` : `${s}.moved`, { ns: "instances", count: total })
 }
 
 function formatSpeedLimitsSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const total = sumRecordValues(details?.limits)
-  const verb = outcome === "dry-run" ? "would be limited" : "limited"
-  return formatCountWithVerb(total, "torrent", verb)
+  const s = "preferences.workflowsOverview.summary"
+  return i18n.t(outcome === "dry-run" ? `${s}.limitedDryRun` : `${s}.limited`, { ns: "instances", count: total })
 }
 
 function formatShareLimitsSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const total = sumRecordValues(details?.limits)
-  const verb = outcome === "dry-run" ? "would be limited" : "limited"
-  return formatCountWithVerb(total, "torrent", verb)
+  const s = "preferences.workflowsOverview.summary"
+  return i18n.t(outcome === "dry-run" ? `${s}.limitedDryRun` : `${s}.limited`, { ns: "instances", count: total })
 }
 
 function formatPausedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = details?.count ?? 0
-  const verb = outcome === "dry-run" ? "would be paused" : "paused"
-  return formatCountWithVerb(count, "torrent", verb)
+  const s = "preferences.workflowsOverview.summary"
+  return i18n.t(outcome === "dry-run" ? `${s}.pausedDryRun` : `${s}.paused`, { ns: "instances", count })
 }
 
 function formatResumedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = details?.count ?? 0
-  const verb = outcome === "dry-run" ? "would be resumed" : "resumed"
-  return formatCountWithVerb(count, "torrent", verb)
+  const s = "preferences.workflowsOverview.summary"
+  return i18n.t(outcome === "dry-run" ? `${s}.resumedDryRun` : `${s}.resumed`, { ns: "instances", count })
 }
 
 function formatRecheckedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = details?.count ?? 0
-  const verb = outcome === "dry-run" ? "would be rechecked" : "rechecked"
-  return formatCountWithVerb(count, "torrent", verb)
+  const s = "preferences.workflowsOverview.summary"
+  return i18n.t(outcome === "dry-run" ? `${s}.recheckedDryRun` : `${s}.rechecked`, { ns: "instances", count })
 }
 
 function formatReannouncedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = details?.count ?? 0
-  const verb = outcome === "dry-run" ? "would be reannounced" : "reannounced"
-  return formatCountWithVerb(count, "torrent", verb)
+  const s = "preferences.workflowsOverview.summary"
+  return i18n.t(outcome === "dry-run" ? `${s}.reannouncedDryRun` : `${s}.reannounced`, { ns: "instances", count })
 }
 
 function formatMovedSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
   const count = sumRecordValues(details?.paths)
+  const s = "preferences.workflowsOverview.summary"
   if (outcome === "failed") {
-    return formatCountWithVerb(count, "torrent", "failed to move")
+    return i18n.t(`${s}.moveFailed`, { ns: "instances", count })
   }
-  const verb = outcome === "dry-run" ? "would be moved" : "moved"
-  return formatCountWithVerb(count, "torrent", verb)
+  return i18n.t(outcome === "dry-run" ? `${s}.movedDryRun` : `${s}.moved`, { ns: "instances", count })
 }
 
 function formatExternalProgramSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const s = "preferences.workflowsOverview.summary"
+  const ns = "instances"
   const programName = details?.programName
-    ?? (typeof details?.programId === "number" ? `Program ${details.programId}` : "External program")
+    ?? (typeof details?.programId === "number" ? i18n.t(`${s}.programFallback`, { ns, id: details.programId }) : i18n.t("preferences.workflowsOverview.actions.externalProgram", { ns }))
   if (outcome === "dry-run") {
-    return `${programName} would run`
+    return i18n.t(`${s}.programWouldRun`, { ns, name: programName })
   }
-  return outcome === "failed" ? `${programName} failed` : `${programName} executed`
+  return outcome === "failed" ? i18n.t(`${s}.programFailed`, { ns, name: programName }) : i18n.t(`${s}.programExecuted`, { ns, name: programName })
+}
+
+function formatExportedToInstanceSummary(details: AutomationActivity["details"], outcome?: AutomationActivity["outcome"]): string {
+  const count = details?.count ?? 0
+  const s = "preferences.workflowsOverview.summary"
+  const ns = "instances"
+  if (outcome === "failed") {
+    return i18n.t(`${s}.exportFailed`, { ns, count })
+  }
+  return i18n.t(outcome === "dry-run" ? `${s}.exportedDryRun` : `${s}.exported`, { ns, count })
 }
 
 function formatDeleteDryRunSummary(details: AutomationActivity["details"], action: AutomationActivity["action"]): string {
   const count = details?.count ?? 0
-  const label = action === "deleted_ratio"
-    ? "ratio limit"
-    : action === "deleted_seeding"
-      ? "seeding limit"
-      : action === "deleted_unregistered"
-        ? "unregistered"
-        : "condition"
-  return `${count} torrent${count !== 1 ? "s" : ""} would be deleted (${label})`
+  const s = "preferences.workflowsOverview.summary"
+  const ns = "instances"
+  const labelKeys: Record<string, string> = {
+    deleted_ratio: "deleteLabelRatio",
+    deleted_seeding: "deleteLabelSeeding",
+    deleted_unregistered: "deleteLabelUnregistered",
+  }
+  const label = i18n.t(`${s}.${labelKeys[action] ?? "deleteLabelCondition"}`, { ns })
+  return i18n.t(`${s}.deleteDryRun`, { ns, count, label })
 }
 
 const runSummaryActions = new Set<AutomationActivity["action"]>([
@@ -301,6 +306,7 @@ const runSummaryActions = new Set<AutomationActivity["action"]>([
   "reannounced",
   "auto_managed",
   "moved",
+  "exported_to_instance",
 ])
 
 function isRunSummary(event: AutomationActivity): boolean {
@@ -319,8 +325,13 @@ export function WorkflowsOverview({
   expandedInstances: controlledExpanded,
   onExpandedInstancesChange,
 }: WorkflowsOverviewProps) {
+  const { t } = useTranslation("instances")
   const { instances } = useInstances()
   const queryClient = useQueryClient()
+
+  // Keep the shared SSE stream open so automation-activity events invalidate
+  // the matching react-query keys; this replaces the idle activity polling.
+  useActivityStream()
 
   const reorderSensors = useSensors(
     useSensor(PointerSensor, {
@@ -384,7 +395,7 @@ export function WorkflowsOverview({
       if (context?.previousRules) {
         queryClient.setQueryData<Automation[]>(["automations", instanceId], context.previousRules)
       }
-      toast.error(error instanceof Error ? error.message : "Failed to reorder workflows")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.reorderFailed"))
     },
     onSettled: (_, __, { instanceId }) => {
       void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
@@ -442,11 +453,11 @@ export function WorkflowsOverview({
     mutationFn: ({ instanceId, ruleId }: { instanceId: number; ruleId: number }) =>
       api.deleteAutomation(instanceId, ruleId),
     onSuccess: (_, { instanceId }) => {
-      toast.success("Workflow deleted")
+      toast.success(t("preferences.workflowsOverview.toast.workflowDeleted"))
       void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to delete automation")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.deleteAutomationFailed"))
     },
   })
 
@@ -457,7 +468,7 @@ export function WorkflowsOverview({
       void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to toggle rule")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.toggleRuleFailed"))
     },
   })
 
@@ -477,11 +488,11 @@ export function WorkflowsOverview({
       return api.dryRunAutomation(instanceId, payload)
     },
     onSuccess: (_, { instanceId, rule }) => {
-      toast.success(`Dry-run completed for "${rule.name}"`)
+      toast.success(t("preferences.workflowsOverview.toast.dryRunCompleted", { name: rule.name }))
       void queryClient.invalidateQueries({ queryKey: ["automation-activity", instanceId] })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to run dry-run")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.dryRunFailed"))
     },
   })
 
@@ -529,7 +540,7 @@ export function WorkflowsOverview({
       })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to load more previews")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.loadMoreFailed"))
     },
   })
 
@@ -540,7 +551,7 @@ export function WorkflowsOverview({
       void queryClient.invalidateQueries({ queryKey: ["automations", instanceId] })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to create workflow")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.createFailed"))
     },
   })
 
@@ -556,11 +567,11 @@ export function WorkflowsOverview({
     const json = toExportJSON(exportData)
     try {
       await copyTextToClipboard(json)
-      toast.success("Workflow copied to clipboard")
+      toast.success(t("preferences.workflowsOverview.toast.workflowCopied"))
     } catch {
-      toast.error("Failed to copy to clipboard")
+      toast.error(t("preferences.workflowsOverview.toast.copyFailed"))
     }
-  }, [])
+  }, [t])
 
   // Duplicate workflow in the same instance
   const handleDuplicate = useCallback((instanceId: number, rule: Automation) => {
@@ -570,11 +581,11 @@ export function WorkflowsOverview({
       { instanceId, payload: input },
       {
         onSuccess: () => {
-          toast.success(`Created "${input.name}"`)
+          toast.success(t("preferences.workflowsOverview.toast.createdWorkflow", { name: input.name }))
         },
       }
     )
-  }, [getExistingNames, createWorkflow])
+  }, [getExistingNames, createWorkflow, t])
 
   // Copy workflow to another instance
   const handleCopyToInstance = useCallback((sourceRule: Automation, targetInstanceId: number) => {
@@ -585,11 +596,14 @@ export function WorkflowsOverview({
       {
         onSuccess: () => {
           const targetInstance = instances?.find(i => i.id === targetInstanceId)
-          toast.success(`Copied "${input.name}" to ${targetInstance?.name ?? "instance"}`)
+          toast.success(t("preferences.workflowsOverview.toast.copiedWorkflow", {
+            name: input.name,
+            instance: targetInstance?.name ?? "instance",
+          }))
         },
       }
     )
-  }, [getExistingNames, createWorkflow, instances])
+  }, [getExistingNames, createWorkflow, instances, t])
 
   // Open import dialog
   const openImportDialog = (instanceId: number) => {
@@ -605,7 +619,7 @@ export function WorkflowsOverview({
 
     const result = parseImportJSON(importJSON)
     if (result.error || !result.data) {
-      setImportError(result.error ?? "Invalid import data")
+      setImportError(result.error ?? t("preferences.workflowsOverview.importDialog.invalidImportData"))
       return
     }
 
@@ -616,17 +630,17 @@ export function WorkflowsOverview({
       { instanceId: importInstanceId, payload: input },
       {
         onSuccess: () => {
-          toast.success(`Imported "${input.name}"`)
+          toast.success(t("preferences.workflowsOverview.toast.importedWorkflow", { name: input.name }))
           setImportDialogOpen(false)
           setImportJSON("")
           setImportError(null)
         },
         onError: (err) => {
-          setImportError(err instanceof Error ? err.message : "Import failed")
+          setImportError(err instanceof Error ? err.message : t("preferences.workflowsOverview.importDialog.importFailed"))
         },
       }
     )
-  }, [importInstanceId, importJSON, getExistingNames, createWorkflow])
+  }, [importInstanceId, importJSON, getExistingNames, createWorkflow, t])
 
   // Check if a rule is a delete or category rule (both need previews)
   const isDeleteRule = (rule: Automation): boolean => {
@@ -673,7 +687,7 @@ export function WorkflowsOverview({
       })
       setEnableConfirm(prev => prev ? { ...prev, preview, isInitialLoading: false } : prev)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to switch preview view")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.switchViewFailed"))
     } finally {
       setIsLoadingPreviewView(false)
     }
@@ -681,17 +695,17 @@ export function WorkflowsOverview({
 
   // CSV columns for automation preview export
   const csvColumns: CsvColumn<AutomationPreviewTorrent>[] = [
-    { header: "Name", accessor: t => t.name },
-    { header: "Hash", accessor: t => t.hash },
-    { header: "Tracker", accessor: t => t.tracker },
-    { header: "Size", accessor: t => formatBytes(t.size) },
-    { header: "Ratio", accessor: t => t.ratio === -1 ? "Inf" : t.ratio.toFixed(2) },
-    { header: "Seeding Time (s)", accessor: t => t.seedingTime },
-    { header: "Category", accessor: t => t.category },
-    { header: "Tags", accessor: t => t.tags },
-    { header: "State", accessor: t => t.state },
-    { header: "Added On", accessor: t => t.addedOn },
-    { header: "Path", accessor: t => t.contentPath ?? "" },
+    { header: t("preferences.workflowDialog.csv.name"), accessor: item => item.name },
+    { header: t("preferences.workflowDialog.csv.hash"), accessor: item => item.hash },
+    { header: t("preferences.workflowDialog.csv.tracker"), accessor: item => item.tracker },
+    { header: t("preferences.workflowDialog.csv.size"), accessor: item => formatBytes(item.size) },
+    { header: t("preferences.workflowDialog.csv.ratio"), accessor: item => item.ratio === -1 ? t("preferences.workflowDialog.infinity") : item.ratio.toFixed(2) },
+    { header: t("preferences.workflowDialog.csv.seedingTimeSeconds"), accessor: item => item.seedingTime },
+    { header: t("preferences.workflowDialog.csv.category"), accessor: item => item.category },
+    { header: t("preferences.workflowDialog.csv.tags"), accessor: item => item.tags },
+    { header: t("preferences.workflowDialog.csv.state"), accessor: item => item.state },
+    { header: t("preferences.workflowDialog.csv.addedOn"), accessor: item => item.addedOn },
+    { header: t("preferences.workflowDialog.csv.path"), accessor: item => item.contentPath ?? "" },
   ]
 
   const handleExportPreviewCsv = async () => {
@@ -718,11 +732,11 @@ export function WorkflowsOverview({
       }
 
       const csv = toCsv(allItems, csvColumns)
-      const ruleName = (enableConfirm.rule.name || "automation").replace(/[^a-zA-Z0-9-_]/g, "_")
+      const ruleName = (enableConfirm.rule.name || t("preferences.workflowDialog.automationFallbackName")).replace(/[^a-zA-Z0-9-_]/g, "_")
       downloadBlob(csv, `${ruleName}_preview.csv`)
-      toast.success(`Exported ${allItems.length} torrents to CSV`)
+      toast.success(t("preferences.workflowsOverview.toast.exportedTorrents", { count: allItems.length }))
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to export preview")
+      toast.error(error instanceof Error ? error.message : t("preferences.workflowsOverview.toast.exportFailed"))
     } finally {
       setIsExporting(false)
     }
@@ -765,7 +779,7 @@ export function WorkflowsOverview({
     queries: activeInstances.map((instance) => ({
       queryKey: ["automation-activity", instance.id],
       queryFn: () => api.getAutomationActivity(instance.id, 100),
-      refetchInterval: expandedInstances.includes(String(instance.id)) ? 5000 : 30000,
+      refetchInterval: false as const,
       staleTime: 5000,
     })),
   })
@@ -773,11 +787,11 @@ export function WorkflowsOverview({
   const handleDeleteOldActivity = async (instanceId: number, days: number) => {
     try {
       const result = await api.deleteAutomationActivity(instanceId, days)
-      toast.success(`Deleted ${result.deleted} activity entries`)
+      toast.success(t("preferences.workflowsOverview.toast.deletedActivityEntries", { count: result.deleted }))
       queryClient.invalidateQueries({ queryKey: ["automation-activity", instanceId] })
     } catch (error) {
-      toast.error("Failed to delete activity", {
-        description: error instanceof Error ? error.message : "Unknown error",
+      toast.error(t("preferences.workflowsOverview.toast.deleteActivityFailed"), {
+        description: error instanceof Error ? error.message : t("preferences.workflowsOverview.unknownError"),
       })
     }
   }
@@ -806,6 +820,7 @@ export function WorkflowsOverview({
     moved: "bg-green-500/10 text-green-500 border-green-500/20",
     external_program: "bg-teal-500/10 text-teal-500 border-teal-500/20",
     auto_managed: "bg-rose-500/10 text-rose-500 border-rose-500/20",
+    exported_to_instance: "bg-blue-500/10 text-blue-500 border-blue-500/20",
     dry_run_no_match: "bg-slate-500/10 text-slate-500 border-slate-500/20",
   }
 
@@ -825,9 +840,9 @@ export function WorkflowsOverview({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Workflows</CardTitle>
+          <CardTitle className="text-lg font-semibold">{t("preferences.workflowsOverview.title")}</CardTitle>
           <CardDescription>
-            No instances configured. Add one in Settings to use this service.
+            {t("preferences.workflowsOverview.noInstancesDescription")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -838,22 +853,18 @@ export function WorkflowsOverview({
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">Workflows</CardTitle>
+          <CardTitle className="text-lg font-semibold">{t("preferences.workflowsOverview.title")}</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
             </TooltipTrigger>
             <TooltipContent className="max-w-[340px]">
-              <p>
-                Condition-based automation rules. Actions: speed limits, share limits, pause, resume, delete, tag, and category changes.
-                Match torrents by tracker, category, tag, ratio, seed time, size, and more.
-                Cross-seed and hardlink aware—safely delete or move without losing shared files.
-              </p>
+              <p>{t("preferences.workflowsOverview.tooltip")}</p>
             </TooltipContent>
           </Tooltip>
         </div>
         <CardDescription>
-          Automate torrent management with conditional rules.
+          {t("preferences.workflowsOverview.description")}
         </CardDescription>
       </CardHeader>
 
@@ -904,17 +915,17 @@ export function WorkflowsOverview({
                           "text-xs",
                           enabledRulesCount > 0 && "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                         )}>
-                          {enabledRulesCount}/{rules.length} active
+                          {t("preferences.workflowsOverview.activeCount", { enabled: enabledRulesCount, total: rules.length })}
                         </Badge>
                       )}
                       {activityStats.deletionsToday > 0 && (
                         <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
-                          {activityStats.deletionsToday} today
+                          {t("preferences.workflowsOverview.today", { count: activityStats.deletionsToday })}
                         </Badge>
                       )}
                       {activityStats.failedToday > 0 && (
                         <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
-                          {activityStats.failedToday} failed
+                          {t("preferences.workflowsOverview.failed", { count: activityStats.failedToday })}
                         </Badge>
                       )}
                     </div>
@@ -934,18 +945,18 @@ export function WorkflowsOverview({
                     {/* Rules list */}
                     {rulesQuery?.isError ? (
                       <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
-                        <p className="text-sm text-destructive">Failed to load rules</p>
-                        <p className="text-xs text-destructive/70 mt-1">Check connection to the instance.</p>
+                        <p className="text-sm text-destructive">{t("preferences.workflowsOverview.failedToLoadRules")}</p>
+                        <p className="text-xs text-destructive/70 mt-1">{t("preferences.workflowsOverview.checkConnection")}</p>
                       </div>
                     ) : rulesQuery?.isLoading ? (
                       <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Loading rules...
+                        {t("preferences.workflowsOverview.loadingRules")}
                       </div>
                     ) : sortedRules.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-6 text-center space-y-2 border border-dashed rounded-lg">
                         <p className="text-sm text-muted-foreground">
-                          No automations configured yet.
+                          {t("preferences.workflowsOverview.noAutomationsConfigured")}
                         </p>
                         <div className="flex gap-2">
                           <Button
@@ -954,7 +965,7 @@ export function WorkflowsOverview({
                             onClick={() => openCreateDialog(instance.id)}
                           >
                             <Plus className="h-4 w-4 mr-2" />
-                            Add your first rule
+                            {t("preferences.workflowsOverview.addFirstRule")}
                           </Button>
                           <Button
                             variant="outline"
@@ -962,7 +973,7 @@ export function WorkflowsOverview({
                             onClick={() => openImportDialog(instance.id)}
                           >
                             <Upload className="h-4 w-4 mr-2" />
-                            Import
+                            {t("preferences.workflowsOverview.import")}
                           </Button>
                         </div>
                       </div>
@@ -1017,7 +1028,7 @@ export function WorkflowsOverview({
                             className="flex-1"
                           >
                             <Plus className="h-4 w-4 mr-2" />
-                            Add rule
+                            {t("preferences.workflowsOverview.addRule")}
                           </Button>
                           <Button
                             variant="outline"
@@ -1025,7 +1036,7 @@ export function WorkflowsOverview({
                             onClick={() => openImportDialog(instance.id)}
                           >
                             <Upload className="h-4 w-4 mr-2" />
-                            Import
+                            {t("preferences.workflowsOverview.import")}
                           </Button>
                         </div>
                       </div>
@@ -1037,7 +1048,7 @@ export function WorkflowsOverview({
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground">
-                            {allFilteredEvents.length === events.length? `${events.length} events`: `${allFilteredEvents.length} of ${events.length}`}
+                            {allFilteredEvents.length === events.length? t("preferences.workflowsOverview.events", { count: events.length }): t("preferences.workflowsOverview.eventsFiltered", { filtered: allFilteredEvents.length, total: events.length })}
                           </span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1051,9 +1062,9 @@ export function WorkflowsOverview({
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="all">All</SelectItem>
-                              <SelectItem value="success">Success</SelectItem>
-                              <SelectItem value="errors">Errors</SelectItem>
+                              <SelectItem value="all">{t("preferences.workflowsOverview.all")}</SelectItem>
+                              <SelectItem value="success">{t("preferences.workflowsOverview.success")}</SelectItem>
+                              <SelectItem value="errors">{t("preferences.workflowsOverview.errors")}</SelectItem>
                             </SelectContent>
                           </Select>
                           <Button
@@ -1084,15 +1095,14 @@ export function WorkflowsOverview({
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Clear Activity History</AlertDialogTitle>
+                                <AlertDialogTitle>{t("preferences.workflowsOverview.clearActivityTitle")}</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Delete activity history older than the selected period.
-                                  This action cannot be undone.
+                                  {t("preferences.workflowsOverview.clearActivityDescription")}
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <div className="py-4">
                                 <label className="text-sm font-medium mb-2 block">
-                                  Keep activity from the last:
+                                  {t("preferences.workflowsOverview.keepActivityLabel")}
                                 </label>
                                 <Select
                                   value={clearDaysMap[instance.id] ?? "7"}
@@ -1104,24 +1114,24 @@ export function WorkflowsOverview({
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="1">1 day</SelectItem>
-                                    <SelectItem value="3">3 days</SelectItem>
-                                    <SelectItem value="7">7 days</SelectItem>
-                                    <SelectItem value="14">14 days</SelectItem>
-                                    <SelectItem value="30">30 days</SelectItem>
-                                    <SelectItem value="0">Delete all</SelectItem>
+                                    <SelectItem value="1">{t("preferences.workflowsOverview.oneDay")}</SelectItem>
+                                    <SelectItem value="3">{t("preferences.workflowsOverview.threeDays")}</SelectItem>
+                                    <SelectItem value="7">{t("preferences.workflowsOverview.sevenDays")}</SelectItem>
+                                    <SelectItem value="14">{t("preferences.workflowsOverview.fourteenDays")}</SelectItem>
+                                    <SelectItem value="30">{t("preferences.workflowsOverview.thirtyDays")}</SelectItem>
+                                    <SelectItem value="0">{t("preferences.workflowsOverview.deleteAll")}</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
                               <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogCancel>{t("preferences.workflowsOverview.cancel")}</AlertDialogCancel>
                                 <AlertDialogAction
                                   onClick={() => handleDeleteOldActivity(
                                     instance.id,
                                     parseInt(clearDaysMap[instance.id] ?? "7", 10)
                                   )}
                                 >
-                                  Delete
+                                  {t("preferences.workflowsOverview.deleteDialog.delete")}
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
@@ -1134,7 +1144,7 @@ export function WorkflowsOverview({
                         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                           type="text"
-                          placeholder="Filter by name, hash, or rule..."
+                          placeholder={t("preferences.workflowsOverview.filterPlaceholder")}
                           value={activitySearchMap[instance.id] ?? ""}
                           onChange={(e) => setActivitySearchMap((prev) => ({
                             ...prev,
@@ -1147,22 +1157,22 @@ export function WorkflowsOverview({
                       {/* Activity list */}
                       {activityQuery?.isError ? (
                         <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
-                          <p className="text-sm text-destructive">Failed to load activity</p>
+                          <p className="text-sm text-destructive">{t("preferences.workflowsOverview.failedToLoadActivity")}</p>
                           <p className="text-xs text-destructive/70 mt-1">
-                            Check connection to the instance.
+                            {t("preferences.workflowsOverview.checkConnection")}
                           </p>
                         </div>
                       ) : activityQuery?.isLoading ? (
                         <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/40">
-                          <p className="text-sm text-muted-foreground">Loading activity...</p>
+                          <p className="text-sm text-muted-foreground">{t("preferences.workflowsOverview.loadingActivity")}</p>
                         </div>
                       ) : filteredEvents.length === 0 ? (
                         <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/40 text-center p-4">
                           <p className="text-sm text-muted-foreground">
-                            {activitySearchTerm ? "No matching events found." : "No activity recorded yet."}
+                            {activitySearchTerm ? t("preferences.workflowsOverview.noMatchingEvents") : t("preferences.workflowsOverview.noActivityYet")}
                           </p>
                           <p className="text-xs text-muted-foreground/60 mt-1">
-                            {activitySearchTerm? "Try a different search term or clear the filter.": "Events will appear here when automations delete torrents."}
+                            {activitySearchTerm ? t("preferences.workflowsOverview.tryDifferentSearch") : t("preferences.workflowsOverview.eventsWillAppear")}
                           </p>
                         </div>
                       ) : (
@@ -1239,9 +1249,13 @@ export function WorkflowsOverview({
                                           <span className="font-medium text-sm block">
                                             {formatExternalProgramSummary(event.details, event.outcome)}
                                           </span>
+                                        ) : event.action === "exported_to_instance" ? (
+                                          <span className="font-medium text-sm block">
+                                            {formatExportedToInstanceSummary(event.details, event.outcome)}
+                                          </span>
                                         ) : event.action === "dry_run_no_match" ? (
                                           <span className="font-medium text-sm block">
-                                            No torrents matched this dry-run
+                                            {t("preferences.workflowsOverview.noDryRunMatches")}
                                           </span>
                                         ) : (
                                           <TruncatedText className="font-medium text-sm block cursor-default">
@@ -1267,11 +1281,7 @@ export function WorkflowsOverview({
                                               outcomeClasses[event.outcome]
                                             )}
                                           >
-                                            {event.outcome === "dry-run"
-                                              ? "Dry run"
-                                              : event.action === "external_program"
-                                                ? (event.outcome === "success" ? "Executed" : "Failed")
-                                                : (event.outcome === "success" ? "Removed" : "Failed")}
+                                            {getOutcomeBadgeText(event)}
                                           </Badge>
                                         )}
                                       </div>
@@ -1287,9 +1297,9 @@ export function WorkflowsOverview({
                                             onClick={(clickEvent) => {
                                               clickEvent.stopPropagation()
                                               copyTextToClipboard(event.hash)
-                                              toast.success("Hash copied")
+                                              toast.success(t("preferences.workflowsOverview.toast.hashCopied"))
                                             }}
-                                            title="Copy hash"
+                                            title={t("preferences.workflowsOverview.copyHash")}
                                           >
                                             <Copy className="h-3 w-3" />
                                           </button>
@@ -1308,7 +1318,7 @@ export function WorkflowsOverview({
                                                     <span className="text-xs font-medium cursor-default">{tracker.displayName}</span>
                                                   </TooltipTrigger>
                                                   <TooltipContent>
-                                                    <p className="text-xs">Original: {event.trackerDomain}</p>
+                                                    <p className="text-xs">{t("preferences.workflowsOverview.original", { domain: event.trackerDomain })}</p>
                                                   </TooltipContent>
                                                 </Tooltip>
                                               ) : (
@@ -1342,7 +1352,7 @@ export function WorkflowsOverview({
 
                                           return (
                                             <span>
-                                              Ratio: {ratio.toFixed(2)}
+                                              {t("preferences.workflowsOverview.ratioLabel", { ratio: ratio.toFixed(2) })}
                                               {hasRatioLimit ? `/${ratioLimit.toFixed(2)}` : ""}
                                             </span>
                                           )
@@ -1357,7 +1367,7 @@ export function WorkflowsOverview({
 
                                           return (
                                             <span>
-                                              Seeding: {seedingMinutes}m
+                                              {t("preferences.workflowsOverview.seedingLabel", { minutes: seedingMinutes })}
                                               {hasSeedingLimitMinutes ? `/${seedingLimitMinutes}m` : ""}
                                             </span>
                                           )
@@ -1368,15 +1378,15 @@ export function WorkflowsOverview({
                                           const badgeClassName = "text-[10px] px-1.5 py-0 h-5"
 
                                           if (deleteMode === "delete") {
-                                            label = "Torrent only"
+                                            label = t("preferences.workflowsOverview.torrentOnly")
                                           } else if (deleteMode === "deleteWithFilesPreserveCrossSeeds" && filesKept) {
-                                            label = "Files kept due to cross-seeds"
+                                            label = t("preferences.workflowsOverview.filesKeptDueToCrossSeeds")
                                           } else if (deleteMode === "deleteWithFilesIncludeCrossSeeds") {
-                                            label = "With files + cross-seeds"
+                                            label = t("preferences.workflowsOverview.withFilesPlusCrossSeeds")
                                           } else if (deleteMode === "deleteWithFiles" || deleteMode === "deleteWithFilesPreserveCrossSeeds") {
-                                            label = "With files"
+                                            label = t("preferences.workflowsOverview.withFiles")
                                           } else {
-                                            label = filesKept ? "Files kept" : "Files deleted"
+                                            label = filesKept ? t("preferences.workflowsOverview.filesKept") : t("preferences.workflowsOverview.filesDeleted")
                                           }
 
                                           return (
@@ -1430,7 +1440,7 @@ export function WorkflowsOverview({
                                                 // 0 = Unlimited in qBittorrent per-torrent speed limits
                                                 let label: string
                                                 if (numKiB === 0) {
-                                                  label = "Unlimited"
+                                                  label = t("preferences.workflowsOverview.unlimited")
                                                 } else {
                                                   const limitMiB = numKiB / 1024
                                                   label = limitMiB >= 1 ? `${limitMiB} MiB/s` : `${limitKiB} KiB/s`
@@ -1459,7 +1469,7 @@ export function WorkflowsOverview({
                                                 }
                                                 return (
                                                   <Badge key={key} variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-violet-500/10 text-violet-500 border-violet-500/20">
-                                                    {parts.join(" / ") || "limit"} ({count})
+                                                    {parts.join(" / ") || t("preferences.workflowsOverview.limit")} ({count})
                                                   </Badge>
                                                 )
                                               })}
@@ -1467,10 +1477,10 @@ export function WorkflowsOverview({
                                           )
                                         })()}
                                         {event.action === "external_program" && event.details?.programName && (
-                                          <span className="text-muted-foreground">Program: {event.details.programName}</span>
+                                          <span className="text-muted-foreground">{t("preferences.workflowsOverview.programLabel", { name: event.details.programName })}</span>
                                         )}
                                         {event.ruleName && (
-                                          <span className="text-muted-foreground">Rule: {event.ruleName}</span>
+                                          <span className="text-muted-foreground">{t("preferences.workflowsOverview.ruleLabel", { name: event.ruleName })}</span>
                                         )}
                                         {event.details?.paths && (() => {
                                           const paths = Object.entries(event.details.paths as Record<string, number>)
@@ -1502,7 +1512,7 @@ export function WorkflowsOverview({
                                   [instance.id]: displayLimit + 50,
                                 }))}
                               >
-                                Load more ({allFilteredEvents.length - displayLimit} remaining)
+                                {t("preferences.workflowsOverview.loadMore", { remaining: allFilteredEvents.length - displayLimit })}
                               </Button>
                             </div>
                           )}
@@ -1542,13 +1552,13 @@ export function WorkflowsOverview({
       <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Rule</AlertDialogTitle>
+            <AlertDialogTitle>{t("preferences.workflowsOverview.deleteDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteConfirm?.rule.name}"? This action cannot be undone.
+              {t("preferences.workflowsOverview.deleteDialog.description", { name: deleteConfirm?.rule.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("preferences.workflowsOverview.deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (deleteConfirm) {
@@ -1558,7 +1568,7 @@ export function WorkflowsOverview({
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("preferences.workflowsOverview.deleteDialog.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1568,34 +1578,34 @@ export function WorkflowsOverview({
         open={!!enableConfirm}
         onOpenChange={(open) => !open && setEnableConfirm(null)}
         title={
-          enableConfirm && isCategoryRule(enableConfirm.rule) ? `Enable Category Rule → ${enableConfirm.rule.conditions?.category?.category}` : "Enable Delete Rule"
+          enableConfirm && isCategoryRule(enableConfirm.rule)? t("preferences.workflowsOverview.enableCategoryRule", { category: enableConfirm.rule.conditions?.category?.category }): t("preferences.workflowsOverview.enableDeleteRule")
         }
         description={
           enableConfirm?.preview && enableConfirm.preview.totalMatches > 0 ? (
             enableConfirm && isCategoryRule(enableConfirm.rule) ? (
               <>
                 <p>
-                  Enabling "{enableConfirm.rule.name}" will move{" "}
-                  <strong>{(enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0)}</strong> torrent{((enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0)) !== 1 ? "s" : ""}
+                  {t("preferences.workflowDialog.preview.categoryPrefix", { name: enableConfirm.rule.name })}{" "}
+                  <strong>{(enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0)}</strong> {t("preferences.workflowDialog.preview.torrents", { count: (enableConfirm.preview.totalMatches) - (enableConfirm.preview.crossSeedCount ?? 0) })}
                   {enableConfirm.preview.crossSeedCount ? (
-                    <> and <strong>{enableConfirm.preview.crossSeedCount}</strong> cross-seed{enableConfirm.preview.crossSeedCount !== 1 ? "s" : ""}</>
+                    <> {t("preferences.workflowDialog.preview.and")} <strong>{enableConfirm.preview.crossSeedCount}</strong> {t("preferences.workflowDialog.preview.crossSeeds", { count: enableConfirm.preview.crossSeedCount })}</>
                   ) : null}
-                  {" "}to category <strong>"{enableConfirm.rule.conditions?.category?.category}"</strong>.
+                  {" "}{t("preferences.workflowDialog.preview.toCategory")} <strong>"{enableConfirm.rule.conditions?.category?.category}"</strong>.
                 </p>
-                <p className="text-muted-foreground text-sm">Confirming will enable this rule immediately.</p>
+                <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
               </>
             ) : (
               <>
                 <p className="text-destructive font-medium">
-                  Enabling "{enableConfirm.rule.name}" will affect {enableConfirm.preview.totalMatches} torrent{enableConfirm.preview.totalMatches !== 1 ? "s" : ""} that currently match.
+                  {t("preferences.workflowDialog.preview.deleteEnabledSummary", { name: enableConfirm.rule.name, count: enableConfirm.preview.totalMatches })}
                 </p>
-                <p className="text-muted-foreground text-sm">Confirming will enable this rule immediately.</p>
+                <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
               </>
             )
           ) : (
             <>
-              <p>No torrents currently match "{enableConfirm?.rule.name}".</p>
-              <p className="text-muted-foreground text-sm">Confirming will enable this rule immediately.</p>
+              <p>{t("preferences.workflowsOverview.noTorrentsMatch", { name: enableConfirm?.rule.name })}</p>
+              <p className="text-muted-foreground text-sm">{t("preferences.workflowsOverview.enableRuleImmediately")}</p>
             </>
           )
         }
@@ -1604,7 +1614,7 @@ export function WorkflowsOverview({
         onConfirm={confirmEnableRule}
         onLoadMore={handleLoadMorePreview}
         isLoadingMore={loadMorePreview.isPending}
-        confirmLabel="Enable Rule"
+        confirmLabel={t("preferences.workflowsOverview.enableRule")}
         isConfirming={toggleEnabled.isPending}
         destructive={enableConfirm ? isDeleteRule(enableConfirm.rule) : false}
         warning={enableConfirm ? isCategoryRule(enableConfirm.rule) : false}
@@ -1620,14 +1630,14 @@ export function WorkflowsOverview({
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Import Workflow</DialogTitle>
+            <DialogTitle>{t("preferences.workflowsOverview.importDialog.title")}</DialogTitle>
             <DialogDescription>
-              Paste a workflow JSON to import. The workflow will be created disabled and appended to the end.
+              {t("preferences.workflowsOverview.importDialog.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 overflow-y-auto flex-1 min-h-0">
             <Textarea
-              placeholder='{"name": "My Workflow", "conditions": {...}}'
+              placeholder={t("preferences.workflowsOverview.importDialog.placeholder")}
               value={importJSON}
               onChange={(e) => {
                 setImportJSON(e.target.value)
@@ -1641,7 +1651,7 @@ export function WorkflowsOverview({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
-              Cancel
+              {t("preferences.workflowsOverview.importDialog.cancel")}
             </Button>
             <Button
               onClick={handleImport}
@@ -1650,12 +1660,12 @@ export function WorkflowsOverview({
               {createWorkflow.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Importing...
+                  {t("preferences.workflowsOverview.importDialog.importing")}
                 </>
               ) : (
                 <>
                   <Upload className="h-4 w-4 mr-2" />
-                  Import
+                  {t("preferences.workflowsOverview.importDialog.import")}
                 </>
               )}
             </Button>
@@ -1697,6 +1707,7 @@ function SortableRulePreview({
   onExport,
   disableDrag,
 }: SortableRulePreviewProps) {
+  const { t } = useTranslation("instances")
   const {
     attributes,
     listeners,
@@ -1739,7 +1750,7 @@ function SortableRulePreview({
               "h-7 w-7 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground",
               disableDrag && "cursor-default"
             )}
-            aria-label="Drag to reorder workflow"
+            aria-label={t("preferences.workflowsOverview.dragToReorder")}
             {...attributes}
             {...listeners}
           >
@@ -1764,6 +1775,7 @@ function RulePreview({
   onCopyToInstance,
   onExport,
 }: RulePreviewProps) {
+  const { t } = useTranslation("instances")
   const trackers = parseTrackerDomains(rule)
   const isAllTrackers = rule.trackerPattern === "*"
   const tagActions = getRuleTagActions(rule)
@@ -1804,13 +1816,13 @@ function RulePreview({
       <div className="flex items-center gap-1.5 shrink-0">
         {isAllTrackers ? (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-default">
-            All trackers
+            {t("preferences.workflows.allTrackers")}
           </Badge>
         ) : trackers.length > 0 && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-help">
-                {trackers.length} tracker{trackers.length === 1 ? "" : "s"}
+                {t("preferences.workflowsOverview.trackers", { count: trackers.length })}
               </Badge>
             </TooltipTrigger>
             <TooltipContent className="max-w-[250px]">
@@ -1820,7 +1832,7 @@ function RulePreview({
         )}
         {!hasAnyCondition && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 cursor-default">
-            All torrents
+            {t("preferences.workflowsOverview.allTorrents")}
           </Badge>
         )}
         {rule.conditions?.speedLimits?.enabled && rule.conditions.speedLimits.uploadKiB !== undefined && (
@@ -1844,43 +1856,43 @@ function RulePreview({
         {rule.conditions?.shareLimits?.enabled && rule.conditions.shareLimits.seedingTimeMinutes !== undefined && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Clock className="h-3 w-3" />
-            {formatShareLimit(rule.conditions.shareLimits.seedingTimeMinutes, false)}{rule.conditions.shareLimits.seedingTimeMinutes >= 0 ? "m" : ""}
+            {formatShareLimit(rule.conditions.shareLimits.seedingTimeMinutes, false)}{rule.conditions.shareLimits.seedingTimeMinutes >= 0 ? t("preferences.workflows.minuteSuffix") : ""}
           </Badge>
         )}
         {rule.conditions?.pause?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Pause className="h-3 w-3" />
-            Pause
+            {t("preferences.workflows.pause")}
           </Badge>
         )}
         {rule.conditions?.resume?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Play className="h-3 w-3" />
-            Resume
+            {t("preferences.workflowsOverview.resume")}
           </Badge>
         )}
         {rule.conditions?.recheck?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <RefreshCcw className="h-3 w-3" />
-            Recheck
+            {t("preferences.workflows.recheck")}
           </Badge>
         )}
         {rule.conditions?.reannounce?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <RefreshCcw className="h-3 w-3" />
-            Reannounce
+            {t("preferences.workflows.reannounce")}
           </Badge>
         )}
         {rule.conditions?.delete?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default text-destructive border-destructive/50">
             <Trash2 className="h-3 w-3" />
-            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? "XS safe": rule.conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"? "+ XS": rule.conditions.delete.mode === "deleteWithFiles"? "+ files": ""}
+            {rule.conditions.delete.mode === "deleteWithFilesPreserveCrossSeeds"? t("preferences.workflowsOverview.xsSafe"): rule.conditions.delete.mode === "deleteWithFilesIncludeCrossSeeds"? t("preferences.workflowsOverview.plusXs"): rule.conditions.delete.mode === "deleteWithFiles"? t("preferences.workflowsOverview.plusFiles"): ""}
           </Badge>
         )}
         {tagActions.some((action) => action.enabled) && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Tag className="h-3 w-3" />
-            {tagActions.length} tag action{tagActions.length === 1 ? "" : "s"}
+            {t("preferences.workflowsOverview.tagActions", { count: tagActions.length })}
           </Badge>
         )}
         {rule.conditions?.category?.enabled && (
@@ -1898,7 +1910,7 @@ function RulePreview({
         {rule.conditions?.externalProgram?.enabled && (
           <Badge variant="outline" className="text-[10px] px-1.5 h-5 gap-0.5 cursor-default">
             <Terminal className="h-3 w-3" />
-            Program
+            {t("preferences.workflowsOverview.program")}
           </Badge>
         )}
         <Button
@@ -1918,18 +1930,18 @@ function RulePreview({
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={onRunDryRun}>
               <RefreshCcw className="h-4 w-4 mr-2" />
-              Run dry-run now
+              {t("preferences.workflowsOverview.runDryRunNow")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDuplicate}>
               <CopyPlus className="h-4 w-4 mr-2" />
-              Duplicate
+              {t("preferences.workflowsOverview.duplicate")}
             </DropdownMenuItem>
             {otherInstances.length > 0 && (
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   <Send className="h-4 w-4 mr-2" />
-                  Copy to...
+                  {t("preferences.workflowsOverview.copyTo")}
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
                   {otherInstances.map(inst => (
@@ -1942,12 +1954,12 @@ function RulePreview({
             )}
             <DropdownMenuItem onClick={onExport}>
               <Download className="h-4 w-4 mr-2" />
-              Export JSON
+              {t("preferences.workflowsOverview.exportJSON")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete
+              {t("preferences.workflowsOverview.deleteDialog.delete")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -34,8 +34,8 @@ import (
 
 // torrentAdder is the interface for adding torrents (used for testing)
 type torrentAdder interface {
-	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error
-	AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error
+	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
+	AddTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error)
 	GetAppPreferences(ctx context.Context, instanceID int) (qbt.AppPreferences, error)
 }
 
@@ -112,7 +112,7 @@ func NewTorrentsHandlerForTesting(adder torrentAdder, downloader torrentDownload
 }
 
 // addTorrent wraps the torrent addition to support both production and test modes
-func (h *TorrentsHandler) addTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) error {
+func (h *TorrentsHandler) addTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	if h.torrentAdder != nil {
 		return h.torrentAdder.AddTorrent(ctx, instanceID, fileContent, options)
 	}
@@ -120,7 +120,7 @@ func (h *TorrentsHandler) addTorrent(ctx context.Context, instanceID int, fileCo
 }
 
 // addTorrentFromURLs wraps URL-based torrent addition to support both production and test modes
-func (h *TorrentsHandler) addTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) error {
+func (h *TorrentsHandler) addTorrentFromURLs(ctx context.Context, instanceID int, urls []string, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	if h.torrentAdder != nil {
 		return h.torrentAdder.AddTorrentFromURLs(ctx, instanceID, urls, options)
 	}
@@ -201,14 +201,26 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Debug logging with truncated expression to prevent log bloat
-	logEvent := log.Debug().
+	// Determine freshness preference
+	preferParam := strings.TrimSpace(r.URL.Query().Get("prefer"))
+	preferCached := strings.EqualFold(preferParam, "stale") ||
+		strings.EqualFold(preferParam, "cache") ||
+		strings.EqualFold(preferParam, "cached")
+
+	ctx := r.Context()
+	if preferCached {
+		ctx = qbittorrent.WithSkipFreshData(ctx)
+	}
+
+	// Trace logging with truncated expression to prevent log bloat
+	logEvent := log.Trace().
 		Int("instanceID", instanceID).
 		Str("sort", sort).
 		Str("order", order).
 		Int("page", page).
 		Int("limit", limit).
 		Str("search", search).
+		Bool("preferCached", preferCached).
 		Str("sessionID", sessionID)
 
 	// Log filters but truncate long expressions
@@ -232,14 +244,14 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 
 	// Get torrents with search, sorting and filters
 	// The sync manager will handle stale-while-revalidate internally
-	response, err := h.syncManager.GetTorrentsWithFilters(r.Context(), instanceID, limit, offset, sort, order, search, filters)
+	response, err := h.syncManager.GetTorrentsWithFilters(ctx, instanceID, limit, offset, sort, order, search, filters)
 	if err != nil {
 		if respondIfInstanceDisabled(w, err, instanceID, "torrents:list") {
 			return
 		}
 		// Record error for user visibility
 		errorStore := h.syncManager.GetErrorStore()
-		if recordErr := errorStore.RecordError(r.Context(), instanceID, err); recordErr != nil {
+		if recordErr := errorStore.RecordError(ctx, instanceID, err); recordErr != nil {
 			log.Error().Err(recordErr).Int("instanceID", instanceID).Msg("Failed to record torrent error")
 		}
 
@@ -248,8 +260,14 @@ func (h *TorrentsHandler) ListTorrents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Data is always fresh from sync manager
-	w.Header().Set("X-Data-Source", "fresh")
+	switch {
+	case response.CacheMetadata != nil && response.CacheMetadata.Source != "":
+		w.Header().Set("X-Data-Source", response.CacheMetadata.Source)
+	case preferCached:
+		w.Header().Set("X-Data-Source", "cache")
+	default:
+		w.Header().Set("X-Data-Source", "fresh")
+	}
 
 	RespondJSON(w, http.StatusOK, response)
 }
@@ -298,8 +316,8 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if req.Field != "name" && req.Field != "hash" && req.Field != "full_path" && req.Field != "tags" {
-		RespondError(w, http.StatusBadRequest, "Invalid field: must be name, hash, full_path, or tags")
+	if req.Field != "name" && req.Field != "hash" && req.Field != "full_path" && req.Field != "tags" && req.Field != "magnet_uri" {
+		RespondError(w, http.StatusBadRequest, "Invalid field: must be name, hash, full_path, tags, or magnet_uri")
 		return
 	}
 
@@ -406,7 +424,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 					continue
 				}
 
-				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags)
+				value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.MagnetURI)
 				if shouldIncludeTorrentFieldValue(req.Field, value) {
 					values = append(values, value)
 					resolvedCount++
@@ -464,7 +482,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 				continue
 			}
 
-			value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags)
+			value := torrentFieldValue(req.Field, torrent.Name, torrent.Hash, torrent.InfohashV1, torrent.InfohashV2, torrent.SavePath, torrent.Tags, torrent.MagnetURI)
 			if shouldIncludeTorrentFieldValue(req.Field, value) {
 				values = append(values, value)
 			}
@@ -500,7 +518,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 	RespondJSON(w, http.StatusOK, fieldResponse)
 }
 
-func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags string) string {
+func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags, magnetURI string) string {
 	switch field {
 	case "name":
 		return strings.TrimSpace(name)
@@ -514,6 +532,8 @@ func torrentFieldValue(field, name, hash, infohashV1, infohashV2, savePath, tags
 		return fullPathValue(savePath, name)
 	case "tags":
 		return tags
+	case "magnet_uri":
+		return strings.TrimSpace(magnetURI)
 	default:
 		return ""
 	}
@@ -890,7 +910,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 
-			if err := h.addTorrent(ctx, instanceID, fileContent, options); err != nil {
+			if _, err := h.addTorrent(ctx, instanceID, fileContent, options); err != nil {
 				if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 					return
 				}
@@ -935,11 +955,23 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 
 				// Magnet links can be added directly to qBittorrent
 				if strings.HasPrefix(strings.ToLower(url), "magnet:") {
-					if err := h.addTorrentFromURLs(ctx, instanceID, []string{url}, options); err != nil {
+					resp, err := h.addTorrentFromURLs(ctx, instanceID, []string{url}, options)
+					if err != nil {
 						if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 							return
 						}
 						log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to add magnet link")
+						failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
+						failedCount++
+						lastError = err
+					} else if err := torrentURLAddFailureError(resp); err != nil {
+						log.Error().
+							Int("instanceID", instanceID).
+							Str("url", redact.URLString(url)).
+							Int64("successCount", resp.SuccessCount).
+							Int64("failureCount", resp.FailureCount).
+							Int64("pendingCount", resp.PendingCount).
+							Msg("qBittorrent reported failed magnet link add")
 						failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
 						failedCount++
 						lastError = err
@@ -958,11 +990,23 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 					var magnetErr *jackett.MagnetDownloadError
 					if errors.As(err, &magnetErr) && magnetErr.MagnetURL != "" {
 						magnetURL := strings.TrimSpace(magnetErr.MagnetURL)
-						if err := h.addTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options); err != nil {
+						resp, err := h.addTorrentFromURLs(ctx, instanceID, []string{magnetURL}, options)
+						if err != nil {
 							if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
 								return
 							}
 							log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(magnetURL)).Msg("Failed to add magnet link from indexer redirect")
+							failedURLs = append(failedURLs, failedURL{URL: magnetURL, Error: err.Error()})
+							failedCount++
+							lastError = err
+						} else if err := torrentURLAddFailureError(resp); err != nil {
+							log.Error().
+								Int("instanceID", instanceID).
+								Str("url", redact.URLString(magnetURL)).
+								Int64("successCount", resp.SuccessCount).
+								Int64("failureCount", resp.FailureCount).
+								Int64("pendingCount", resp.PendingCount).
+								Msg("qBittorrent reported failed magnet link from indexer redirect")
 							failedURLs = append(failedURLs, failedURL{URL: magnetURL, Error: err.Error()})
 							failedCount++
 							lastError = err
@@ -979,7 +1023,7 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 				}
 
 				// Add torrent from downloaded file content
-				if err := h.addTorrent(ctx, instanceID, torrentBytes, options); err != nil {
+				if _, err := h.addTorrent(ctx, instanceID, torrentBytes, options); err != nil {
 					if respondIfInstanceDisabled(w, err, instanceID, "torrents:add") {
 						return
 					}
@@ -998,15 +1042,51 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// No indexer_id - use URL method directly
 			// (works for local qBittorrent instances or magnet links)
-			if err := h.addTorrentFromURLs(ctx, instanceID, urls, options); err != nil {
-				if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
-					return
+			var skippedEmpty int
+			for _, url := range urls {
+				url = strings.TrimSpace(url)
+				if url == "" {
+					skippedEmpty++
+					continue
 				}
-				log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to add torrent from URLs")
-				RespondError(w, http.StatusInternalServerError, "Failed to add torrent")
-				return
+
+				if ctx.Err() != nil {
+					log.Warn().Int("instanceID", instanceID).Msg("Request cancelled, stopping torrent additions")
+					break
+				}
+
+				resp, err := h.addTorrentFromURLs(ctx, instanceID, []string{url}, options)
+				if err != nil {
+					if respondIfInstanceDisabled(w, err, instanceID, "torrents:addFromURLs") {
+						return
+					}
+					log.Error().Err(err).Int("instanceID", instanceID).Str("url", redact.URLString(url)).Msg("Failed to add torrent from URL")
+					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
+					failedCount++
+					lastError = err
+					continue
+				}
+
+				if err := torrentURLAddFailureError(resp); err != nil {
+					log.Error().
+						Int("instanceID", instanceID).
+						Str("url", redact.URLString(url)).
+						Int64("successCount", resp.SuccessCount).
+						Int64("failureCount", resp.FailureCount).
+						Int64("pendingCount", resp.PendingCount).
+						Msg("qBittorrent reported failed URL add")
+					failedURLs = append(failedURLs, failedURL{URL: url, Error: err.Error()})
+					failedCount++
+					lastError = err
+					continue
+				}
+
+				addedCount++
 			}
-			addedCount = len(urls) // Assume all URLs succeeded for simplicity
+			if skippedEmpty > 0 {
+				log.Debug().Int("skippedEmpty", skippedEmpty).Int("instanceID", instanceID).
+					Msg("Skipped empty URLs in add torrent request")
+			}
 		}
 	}
 
@@ -1044,6 +1124,13 @@ func (h *TorrentsHandler) AddTorrent(w http.ResponseWriter, r *http.Request) {
 	RespondJSON(w, http.StatusCreated, response)
 }
 
+func torrentURLAddFailureError(resp *qbt.TorrentAddResponse) error {
+	if resp == nil || resp.FailureCount == 0 {
+		return nil
+	}
+	return errors.New("qBittorrent rejected torrent URL")
+}
+
 // BulkActionRequest represents a bulk action request
 type BulkActionRequest struct {
 	Hashes                   []string                   `json:"hashes"`
@@ -1051,6 +1138,7 @@ type BulkActionRequest struct {
 	Action                   string                     `json:"action"`
 	DeleteFiles              bool                       `json:"deleteFiles,omitempty"`              // For delete action
 	Tags                     string                     `json:"tags,omitempty"`                     // For tag operations (comma-separated)
+	Comment                  string                     `json:"comment,omitempty"`                  // For setComment action
 	Category                 string                     `json:"category,omitempty"`                 // For category operations
 	Enable                   bool                       `json:"enable,omitempty"`                   // For toggleAutoTMM action
 	SelectAll                bool                       `json:"selectAll,omitempty"`                // When true, apply to all torrents matching filters
@@ -1062,6 +1150,8 @@ type BulkActionRequest struct {
 	RatioLimit               float64                    `json:"ratioLimit,omitempty"`               // For setShareLimit action
 	SeedingTimeLimit         int64                      `json:"seedingTimeLimit,omitempty"`         // For setShareLimit action
 	InactiveSeedingTimeLimit int64                      `json:"inactiveSeedingTimeLimit,omitempty"` // For setShareLimit action
+	ShareLimitAction         string                     `json:"shareLimitAction,omitempty"`         // For setShareLimit action (qBittorrent 5.2+)
+	ShareLimitsMode          string                     `json:"shareLimitsMode,omitempty"`          // MatchAny/MatchAll; Web API 2.16.0+ (ignored below that; see supportsShareLimitsMode)
 	UploadLimit              int64                      `json:"uploadLimit,omitempty"`              // For setUploadLimit action (KB/s)
 	DownloadLimit            int64                      `json:"downloadLimit,omitempty"`            // For setDownloadLimit action (KB/s)
 	Location                 string                     `json:"location,omitempty"`                 // For setLocation action
@@ -1290,7 +1380,7 @@ func (h *TorrentsHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	validActions := []string{
 		"pause", "resume", "delete", "deleteWithFiles",
 		"recheck", "reannounce", "increasePriority", "decreasePriority",
-		"topPriority", "bottomPriority", "addTags", "removeTags", "setTags", "setCategory",
+		"topPriority", "bottomPriority", "addTags", "removeTags", "setTags", "setComment", "setCategory",
 		"toggleAutoTMM", "forceStart", "setShareLimit", "setUploadLimit", "setDownloadLimit", "setLocation",
 		"editTrackers", "addTrackers", "removeTrackers", "toggleSequentialDownload",
 	}
@@ -1568,6 +1658,8 @@ func (h *TorrentsHandler) executeBulkActionForInstance(ctx context.Context, inst
 	case "setTags":
 		// allow empty tags to clear all tags from torrents
 		return h.syncManager.SetTags(ctx, instanceID, hashes, req.Tags)
+	case "setComment":
+		return h.syncManager.SetComment(ctx, instanceID, hashes, req.Comment)
 	case "setCategory":
 		return h.syncManager.SetCategory(ctx, instanceID, hashes, req.Category)
 	case "toggleAutoTMM":
@@ -1575,7 +1667,7 @@ func (h *TorrentsHandler) executeBulkActionForInstance(ctx context.Context, inst
 	case "forceStart":
 		return h.syncManager.SetForceStart(ctx, instanceID, hashes, req.Enable)
 	case "setShareLimit":
-		return h.syncManager.SetTorrentShareLimit(ctx, instanceID, hashes, req.RatioLimit, req.SeedingTimeLimit, req.InactiveSeedingTimeLimit)
+		return h.syncManager.SetTorrentShareLimit(ctx, instanceID, hashes, req.RatioLimit, req.SeedingTimeLimit, req.InactiveSeedingTimeLimit, req.ShareLimitAction, req.ShareLimitsMode)
 	case "setUploadLimit":
 		return h.syncManager.SetTorrentUploadLimit(ctx, instanceID, hashes, req.UploadLimit)
 	case "setDownloadLimit":
@@ -2399,7 +2491,7 @@ func (h *TorrentsHandler) SetTorrentFilePriority(w http.ResponseWriter, r *http.
 		switch {
 		case errors.Is(err, qbt.ErrInvalidPriority):
 			RespondError(w, http.StatusBadRequest, "Invalid priority or file indices")
-		case errors.Is(err, qbt.ErrTorrentMetdataNotDownloadedYet):
+		case errors.Is(err, qbt.ErrTorrentMetadataNotDownloadedYet):
 			RespondError(w, http.StatusConflict, "Torrent metadata is not yet available. Try again once metadata has downloaded.")
 		default:
 			log.Error().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("Failed to update torrent file priority")

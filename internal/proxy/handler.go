@@ -73,6 +73,7 @@ type proxyContext struct {
 	instanceURL *url.URL
 	httpClient  *http.Client
 	basicAuth   *basicAuthCredentials
+	apiKey      string
 	session     sessionRefresher
 }
 
@@ -491,11 +492,18 @@ func (h *Handler) prepareProxyContext(r *http.Request) (*proxyContext, error) {
 		}
 	}
 
+	apiKey, err := h.instanceStore.GetDecryptedAPIKey(instance)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to decrypt API key for proxy request")
+		return nil, err
+	}
+
 	proxyCtx := &proxyContext{
 		instanceID:  instanceID,
 		instanceURL: instanceURL,
 		httpClient:  client.GetHTTPClient(),
 		basicAuth:   basicAuth,
+		apiKey:      apiKey,
 		session:     client,
 	}
 
@@ -532,6 +540,10 @@ func (pc *proxyContext) applyAuthHeaders(req *http.Request) {
 		req.SetBasicAuth(pc.basicAuth.username, pc.basicAuth.password)
 	} else {
 		req.Header.Del("Authorization")
+	}
+
+	if pc.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+pc.apiKey)
 	}
 }
 

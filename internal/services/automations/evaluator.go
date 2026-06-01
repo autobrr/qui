@@ -53,6 +53,8 @@ type EvalContext struct {
 	UnregisteredSet map[string]struct{}
 	// TrackerDownSet contains hashes of torrents whose trackers are down (from SyncManager health counts)
 	TrackerDownSet map[string]struct{}
+	// TrackerErrorSet contains hashes of torrents with tracker errors (from SyncManager health counts)
+	TrackerErrorSet map[string]struct{}
 	// HardlinkScopeByHash maps torrent hash to its hardlink scope (none, torrents_only, outside_qbittorrent)
 	HardlinkScopeByHash map[string]string
 	// HardlinkCrossScopeByHash maps torrent hash to its cross-instance hardlink scope.
@@ -472,6 +474,15 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareFloat64(torrent.RatioLimit, cond)
 	case FieldMaxRatio:
 		return compareFloat64(torrent.MaxRatio, cond)
+	case FieldUploadedOverSize:
+		// Cross-seed-safe alternative to FieldRatio: qBittorrent's Ratio is
+		// uploaded/downloaded, which explodes for cross-seeded torrents
+		// whose downloaded is near zero. Comparing against total_size
+		// sidesteps the broken denominator.
+		if torrent.TotalSize == 0 {
+			return false
+		}
+		return compareFloat64(float64(torrent.Uploaded)/float64(torrent.TotalSize), cond)
 	case FieldProgress:
 		return compareFloat64(torrent.Progress, normalizeProgressCondition(cond))
 	case FieldAvailability:
@@ -738,6 +749,12 @@ func matchesStateValue(torrent qbt.Torrent, value string, ctx *EvalContext) bool
 			return false
 		}
 		_, ok := ctx.TrackerDownSet[torrent.Hash]
+		return ok
+	case "tracker_error":
+		if ctx == nil || ctx.TrackerErrorSet == nil {
+			return false
+		}
+		_, ok := ctx.TrackerErrorSet[torrent.Hash]
 		return ok
 	}
 

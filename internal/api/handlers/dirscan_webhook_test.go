@@ -4,6 +4,7 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -11,17 +12,37 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/dirscan"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
+
+type webhookPayloadSimple struct {
+	Path string `json:"path"`
+}
+
+type webhookPayloadSeries struct {
+	Path string `json:"path"`
+}
+
+type webhookPayloadArr struct {
+	Series         webhookPayloadSeries `json:"series"`
+	DownloadClient string               `json:"downloadClient,omitempty"`
+	EventType      string               `json:"eventType,omitempty"`
+}
+
+func dirScanWebhookJSONBody(t *testing.T, payload any) *bytes.Reader {
+	t.Helper()
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+	return bytes.NewReader(body)
+}
 
 func TestPathMatchesDirectory(t *testing.T) {
 	t.Parallel()
@@ -123,12 +144,7 @@ func TestNormalizeAllowedDownloadClients(t *testing.T) {
 func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -185,12 +201,7 @@ func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -223,7 +234,9 @@ func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T
 		ctx,
 		http.MethodPost,
 		"/api/dir-scan/webhook/scan",
-		strings.NewReader(`{"path":"`+filepath.Join(dupePath, "Show Name")+`"}`),
+		dirScanWebhookJSONBody(t, webhookPayloadSimple{
+			Path: filepath.Join(dupePath, "Show Name"),
+		}),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -237,12 +250,7 @@ func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T
 func TestWebhookTriggerScan_AcceptsArrTestPayloadWithoutScan(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -264,7 +272,12 @@ func TestWebhookTriggerScan_AcceptsArrTestPayloadWithoutScan(t *testing.T) {
 		ctx,
 		http.MethodPost,
 		"/api/dir-scan/webhook/scan",
-		strings.NewReader(`{"eventType":"test","series":{"path":"C:\\testpath"}}`),
+		dirScanWebhookJSONBody(t, webhookPayloadArr{
+			EventType: "test",
+			Series: webhookPayloadSeries{
+				Path: `C:\testpath`,
+			},
+		}),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -281,12 +294,7 @@ func TestWebhookTriggerScan_AcceptsArrTestPayloadWithoutScan(t *testing.T) {
 func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -327,7 +335,9 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 		ctx,
 		http.MethodPost,
 		"/api/dir-scan/webhook/scan",
-		strings.NewReader(`{"path":"`+first+`"}`),
+		dirScanWebhookJSONBody(t, webhookPayloadSimple{
+			Path: first,
+		}),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -360,12 +370,7 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -402,7 +407,12 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
 		ctx,
 		http.MethodPost,
 		"/api/dir-scan/webhook/scan",
-		strings.NewReader(`{"series":{"path":"`+root+`"},"downloadClient":"qBittorrent"}`),
+		dirScanWebhookJSONBody(t, webhookPayloadArr{
+			Series: webhookPayloadSeries{
+				Path: root,
+			},
+			DownloadClient: "qBittorrent",
+		}),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -420,12 +430,7 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
 func TestWebhookTriggerScan_SkipsWhenDownloadClientMissingButFilterExists(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -462,7 +467,11 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientMissingButFilterExists(t *tes
 		ctx,
 		http.MethodPost,
 		"/api/dir-scan/webhook/scan",
-		strings.NewReader(`{"series":{"path":"`+root+`"}}`),
+		dirScanWebhookJSONBody(t, webhookPayloadArr{
+			Series: webhookPayloadSeries{
+				Path: root,
+			},
+		}),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -480,12 +489,7 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientMissingButFilterExists(t *tes
 func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -524,7 +528,12 @@ func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T)
 		ctx,
 		http.MethodPost,
 		"/api/dir-scan/webhook/scan",
-		strings.NewReader(`{"series":{"path":"`+root+`"},"downloadClient":"sabNZBD"}`),
+		dirScanWebhookJSONBody(t, webhookPayloadArr{
+			Series: webhookPayloadSeries{
+				Path: root,
+			},
+			DownloadClient: "sabNZBD",
+		}),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -547,12 +556,7 @@ func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T)
 func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "dirscan-webhook")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
@@ -591,7 +595,9 @@ func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T)
 		ctx,
 		http.MethodPost,
 		"/api/dir-scan/webhook/scan",
-		strings.NewReader(`{"path":"`+root+`"}`),
+		dirScanWebhookJSONBody(t, webhookPayloadSimple{
+			Path: root,
+		}),
 	)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

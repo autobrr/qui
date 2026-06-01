@@ -13,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/notifications"
 )
 
@@ -39,6 +41,8 @@ type Service struct {
 	store         *models.OrphanScanStore
 	syncManager   *qbittorrent.SyncManager
 	notifier      notifications.Notifier
+
+	activityPublisher activity.Publisher
 
 	// Per-instance mutex to prevent overlapping scans
 	instanceMu map[int]*sync.Mutex
@@ -68,14 +72,39 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 		cfg.StuckRunThreshold = DefaultConfig().StuckRunThreshold
 	}
 	return &Service{
-		cfg:           cfg,
-		instanceStore: instanceStore,
-		store:         store,
-		syncManager:   syncManager,
-		notifier:      notifier,
-		instanceMu:    make(map[int]*sync.Mutex),
-		cancelFuncs:   make(map[int64]context.CancelFunc),
+		cfg:               cfg,
+		instanceStore:     instanceStore,
+		store:             store,
+		syncManager:       syncManager,
+		notifier:          notifier,
+		activityPublisher: activity.NopPublisher{},
+		instanceMu:        make(map[int]*sync.Mutex),
+		cancelFuncs:       make(map[int64]context.CancelFunc),
 	}
+}
+
+// SetActivityPublisher wires the qui server-event hub so orphan scan run status
+// transitions are pushed to connected clients instead of polled. Safe to call
+// once at startup.
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
+}
+
+// emitRun signals connected clients that an orphan scan run changed status.
+// Call only after the status transition has been persisted and any held lock
+// released; never inside per-file progress loops.
+func (s *Service) emitRun(instanceID int, runID int64) {
+	if s == nil || s.activityPublisher == nil {
+		return
+	}
+	s.activityPublisher.Publish(activity.Event{
+		Kind:       activity.KindOrphanScanRun,
+		InstanceID: instanceID,
+		ResourceID: strconv.FormatInt(runID, 10),
+	})
 }
 
 // getAllTorrents returns all torrents for an instance, using the provider if set.
@@ -215,6 +244,10 @@ func (s *Service) recoverStuckRuns(ctx context.Context) error {
 	if err := s.store.MarkStuckRunsFailed(ctx, s.cfg.StuckRunThreshold, []string{"pending", "scanning"}); err != nil {
 		return fmt.Errorf("mark stuck runs failed: %w", err)
 	}
+
+	// Crash recovery operates in bulk without per-run identifiers, so emit a coarse
+	// signal that prompts clients to refetch any runs they were tracking.
+	s.emitRun(0, 0)
 	return nil
 }
 
@@ -346,6 +379,9 @@ func (s *Service) TriggerScan(ctx context.Context, instanceID int, triggeredBy s
 	s.cancelFuncs[runID] = cancel
 	s.cancelMu.Unlock()
 
+	// Run created (pending) - notify clients so they begin tracking it.
+	s.emitRun(instanceID, runID)
+
 	go func() {
 		defer func() {
 			s.cancelMu.Lock()
@@ -378,7 +414,11 @@ func (s *Service) CancelRun(ctx context.Context, runID int64) error {
 		s.cancelMu.Unlock()
 
 		// Mark as canceled in DB
-		return s.store.UpdateRunStatus(ctx, runID, "canceled")
+		if err := s.store.UpdateRunStatus(ctx, runID, "canceled"); err != nil {
+			return err
+		}
+		s.emitRun(run.InstanceID, runID)
+		return nil
 
 	case "deleting":
 		// If deletion is truly in progress (in-memory cancel func exists), refuse to cancel mid-delete.
@@ -396,6 +436,7 @@ func (s *Service) CancelRun(ctx context.Context, runID int64) error {
 		if err := s.store.UpdateRunStatus(ctx, runID, "canceled"); err != nil {
 			return fmt.Errorf("update run status: %w", err)
 		}
+		s.emitRun(run.InstanceID, runID)
 		return nil
 
 	case "completed", "failed", "canceled":
@@ -455,6 +496,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		log.Error().Err(err).Msg("orphanscan: failed to update run status")
 		return
 	}
+	s.emitRun(instanceID, runID)
 
 	// Get settings (fall back to defaults if none exist yet)
 	settings, err := s.store.GetSettings(ctx, instanceID)
@@ -551,14 +593,14 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	for _, root := range scanRoots {
 		if ctx.Err() != nil {
-			s.markCanceled(ctx, runID)
+			s.markCanceled(ctx, instanceID, runID)
 			return
 		}
 
 		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0)
 		if err != nil {
 			if ctx.Err() != nil {
-				s.markCanceled(ctx, runID)
+				s.markCanceled(ctx, instanceID, runID)
 				return
 			}
 			log.Error().Err(err).Str("root", root).Msg("orphanscan: walk error")
@@ -668,6 +710,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			log.Error().Err(err).Msg("orphanscan: failed to update run status to completed")
 			return
 		}
+		s.emitRun(instanceID, runID)
 		startedAt, completedAt := s.getRunTimes(ctx, runID)
 		s.notify(ctx, notifications.Event{
 			Type:                     notifications.EventOrphanScanCompleted,
@@ -691,6 +734,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		log.Error().Err(err).Msg("orphanscan: failed to update run status to preview_ready")
 		return
 	}
+	s.emitRun(instanceID, runID)
 
 	log.Info().Int64("run", runID).Int("files", len(allOrphans)).Msg("orphanscan: preview ready")
 
@@ -783,6 +827,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		log.Error().Err(err).Msg("orphanscan: failed to update run status to deleting")
 		return
 	}
+	s.emitRun(instanceID, runID)
 
 	// Get run details
 	run, err := s.store.GetRun(ctx, runID)
@@ -917,6 +962,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			log.Error().Err(err).Msg("orphanscan: failed to mark run as failed")
 			return
 		}
+		s.emitRun(instanceID, runID)
 		startedAt, completedAt := s.getRunTimes(ctx, runID)
 		s.notify(ctx, notifications.Event{
 			Type:            notifications.EventOrphanScanFailed,
@@ -938,6 +984,7 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		log.Error().Err(err).Msg("orphanscan: failed to update run completed")
 		return
 	}
+	s.emitRun(instanceID, runID)
 
 	startedAt, completedAt := s.getRunTimes(ctx, runID)
 	s.notify(ctx, notifications.Event{
@@ -966,10 +1013,12 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		Msg("orphanscan: deletion complete")
 }
 
-func (s *Service) markCanceled(ctx context.Context, runID int64) {
+func (s *Service) markCanceled(ctx context.Context, instanceID int, runID int64) {
 	if err := s.store.UpdateRunStatus(ctx, runID, "canceled"); err != nil {
 		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to mark run canceled")
+		return
 	}
+	s.emitRun(instanceID, runID)
 }
 
 func (s *Service) failRun(ctx context.Context, runID int64, instanceID int, message string) {
@@ -981,6 +1030,7 @@ func (s *Service) failRun(ctx context.Context, runID int64, instanceID int, mess
 		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to mark run failed")
 		return
 	}
+	s.emitRun(instanceID, runID)
 
 	startedAt, completedAt := s.getRunTimes(ctx, runID)
 	s.notify(ctx, notifications.Event{

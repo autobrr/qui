@@ -6,7 +6,6 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/alexedwards/scs/v2"
@@ -15,19 +14,14 @@ import (
 
 	"github.com/autobrr/qui/internal/api/ctxkeys"
 	"github.com/autobrr/qui/internal/auth"
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/domain"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestIsAuthenticated_APIKeyHeaderAndSessionForbidden(t *testing.T) {
 	ctx := t.Context()
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "middleware-auth")
 
 	authService := auth.NewService(db)
 	sessionManager := scs.New()
@@ -144,12 +138,7 @@ func TestIsAuthenticated_AuthDisabledWithoutConfirmation(t *testing.T) {
 	// AuthDisabled alone without IAcknowledgeThisIsABadIdea should NOT bypass auth
 	cfg := &domain.Config{AuthDisabled: true, IAcknowledgeThisIsABadIdea: false}
 
-	dbPath := filepath.Join(t.TempDir(), "test.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "middleware-auth")
 
 	authService := auth.NewService(db)
 	sessionManager := scs.New()

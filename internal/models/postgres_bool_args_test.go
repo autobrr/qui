@@ -121,6 +121,7 @@ func TestInstanceCreateUsesIntegerBooleanArgs(t *testing.T) {
 			host_id INTEGER NOT NULL,
 			username_id INTEGER NOT NULL,
 			password_encrypted TEXT NOT NULL,
+			api_key_encrypted TEXT NOT NULL DEFAULT '',
 			basic_username_id INTEGER,
 			basic_password_encrypted TEXT,
 			tls_skip_verify INTEGER NOT NULL DEFAULT 0,
@@ -149,14 +150,14 @@ func TestInstanceCreateUsesIntegerBooleanArgs(t *testing.T) {
 	hasLocalAccess := true
 	_, err = store.Create(ctx, "main", "http://localhost:8080", "admin", "secret", nil, nil, true, &hasLocalAccess)
 	require.NoError(t, err)
-	require.Len(t, insertArgs, 8)
+	require.Len(t, insertArgs, 9)
 
-	tlsArg, ok := insertArgs[6].(int)
-	require.Truef(t, ok, "expected int arg for tls_skip_verify, got %T", insertArgs[6])
+	tlsArg, ok := insertArgs[7].(int)
+	require.Truef(t, ok, "expected int arg for tls_skip_verify, got %T", insertArgs[7])
 	require.Equal(t, 1, tlsArg)
 
-	localAccessArg, ok := insertArgs[7].(int)
-	require.Truef(t, ok, "expected int arg for has_local_filesystem_access, got %T", insertArgs[7])
+	localAccessArg, ok := insertArgs[8].(int)
+	require.Truef(t, ok, "expected int arg for has_local_filesystem_access, got %T", insertArgs[8])
 	require.Equal(t, 1, localAccessArg)
 }
 
@@ -271,6 +272,7 @@ func TestArrIDCacheSetUsesIntegerNegativeArg(t *testing.T) {
 			tmdb_id INTEGER,
 			tvdb_id INTEGER,
 			tvmaze_id INTEGER,
+			titles_json TEXT,
 			is_negative INTEGER DEFAULT 0,
 			cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			expires_at TIMESTAMP NOT NULL,
@@ -291,10 +293,10 @@ func TestArrIDCacheSetUsesIntegerNegativeArg(t *testing.T) {
 	store := NewArrIDCacheStore(q)
 	err := store.Set(context.Background(), "title-hash", "movie", nil, nil, false, time.Hour)
 	require.NoError(t, err)
-	require.Len(t, insertArgs, 9)
+	require.Len(t, insertArgs, 10)
 
-	isNegativeArg, ok := insertArgs[7].(int)
-	require.Truef(t, ok, "expected int arg for is_negative, got %T", insertArgs[7])
+	isNegativeArg, ok := insertArgs[8].(int)
+	require.Truef(t, ok, "expected int arg for is_negative, got %T", insertArgs[8])
 	require.Equal(t, 0, isNegativeArg)
 }
 
@@ -399,6 +401,16 @@ func TestCrossSeedUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 			skip_auto_resume_webhook INTEGER NOT NULL DEFAULT 0,
 			skip_recheck INTEGER NOT NULL DEFAULT 0,
 			skip_piece_boundary_safety_check INTEGER NOT NULL DEFAULT 1,
+			season_pack_skip_repack_compare INTEGER NOT NULL DEFAULT 1,
+			season_pack_simplify_hdr_compare INTEGER NOT NULL DEFAULT 0,
+			season_pack_simplify_web_compare INTEGER NOT NULL DEFAULT 0,
+			season_pack_skip_year_compare INTEGER NOT NULL DEFAULT 0,
+			season_pack_enabled INTEGER NOT NULL DEFAULT 0,
+			season_pack_coverage_threshold REAL NOT NULL DEFAULT 0.75,
+			season_pack_tags TEXT NOT NULL DEFAULT '["cross-seed"]',
+			season_pack_category TEXT NOT NULL DEFAULT '',
+			season_pack_tvdb_api_key_encrypted TEXT NOT NULL DEFAULT '',
+			season_pack_tvdb_pin_encrypted TEXT NOT NULL DEFAULT '',
 			gazelle_enabled INTEGER NOT NULL DEFAULT 0,
 			redacted_api_key_encrypted TEXT NOT NULL DEFAULT '',
 			orpheus_api_key_encrypted TEXT NOT NULL DEFAULT '',
@@ -426,9 +438,9 @@ func TestCrossSeedUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 
 	_, err = store.UpsertSettings(context.Background(), settings)
 	require.NoError(t, err)
-	require.Len(t, insertArgs, 39)
+	require.Len(t, insertArgs, 49)
 
-	boolIndexes := []int{1, 3, 16, 18, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36}
+	boolIndexes := []int{1, 3, 16, 18, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 46}
 	for _, idx := range boolIndexes {
 		_, ok := insertArgs[idx].(int)
 		require.Truef(t, ok, "expected int arg at index %d, got %T", idx, insertArgs[idx])

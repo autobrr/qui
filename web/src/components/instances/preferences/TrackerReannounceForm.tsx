@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
+import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
@@ -30,6 +31,7 @@ import { REANNOUNCE_CONSTRAINTS, type InstanceFormData, type InstanceReannounceA
 import { useQuery } from "@tanstack/react-query"
 import { Copy, HardDrive, Info, RefreshCcw } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
+import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface TrackerReannounceFormProps {
@@ -68,6 +70,7 @@ interface PersistSettingsCallbacks {
 }
 
 export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess, variant = "card", formId }: TrackerReannounceFormProps) {
+  const { t } = useTranslation("instances")
   const { instances, updateInstance, isUpdating } = useInstances()
   const { formatISOTimestamp } = useDateTimeFormatters()
   const instance = useMemo(() => instances?.find((item) => item.id === instanceId), [instances, instanceId])
@@ -229,11 +232,13 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
   const persistSettings = (
     nextSettings: InstanceReannounceSettings,
-    successMessage = "Settings saved successfully.",
+    successMessage = t("preferences.reannounceOverview.form.settingsSaved"),
     callbacks?: PersistSettingsCallbacks
   ) => {
     if (!instance) {
-      toast.error("Instance missing", { description: "Please close and reopen the dialog." })
+      toast.error(t("preferences.reannounceOverview.form.instanceMissing"), {
+        description: t("preferences.dialog.instanceNotAvailable"),
+      })
       return
     }
 
@@ -254,12 +259,14 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
       { id: instanceId, data: payload },
       {
         onSuccess: () => {
-          toast.success("Tracker monitoring updated", { description: successMessage })
+          toast.success(t("preferences.reannounceOverview.form.updated"), { description: successMessage })
           callbacks?.onSuccess?.()
           onSuccess?.()
         },
         onError: (error) => {
-          toast.error("Update failed", { description: error instanceof Error ? error.message : "Unable to update settings" })
+          toast.error(t("preferences.reannounceOverview.form.updateFailed"), {
+            description: error instanceof Error ? error.message : t("preferences.reannounceOverview.form.unableToUpdate"),
+          })
           callbacks?.onError?.(error)
         },
       }
@@ -282,7 +289,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
   const confirmEnable = () => {
     if (!pendingEnableSettings) return
-    persistSettings(pendingEnableSettings, "Settings saved successfully.", {
+    persistSettings(pendingEnableSettings, t("preferences.reannounceOverview.form.settingsSaved"), {
       onSuccess: () => {
         setPendingEnableSettings(null)
         setShowEnableDialog(false)
@@ -302,20 +309,23 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     setSettings(nextSettings)
 
     if (!enabled) {
-      persistSettings(nextSettings, "Monitoring disabled")
+      persistSettings(nextSettings, t("preferences.reannounceOverview.form.monitoringDisabled"))
     }
   }
+
+  // Reannounce activity is pushed via SSE (reannounce.activity events invalidate
+  // this key), so there is no polling interval.
+  useActivityStream(variant !== "embedded" && Boolean(instance && settings.enabled))
 
   // Only fetch activity in card mode (embedded mode shows activity in overview)
   const activityQuery = useQuery({
     queryKey: ["instance-reannounce-activity", instanceId],
     queryFn: () => api.getInstanceReannounceActivity(instanceId, 100),
     enabled: variant !== "embedded" && Boolean(instance && settings.enabled),
-    refetchInterval: activeTab === "activity" ? 5000 : false,
   })
 
   if (!instance) {
-    return <p className="text-sm text-muted-foreground">Instance not found. Please close and reopen the dialog.</p>
+    return <p className="text-sm text-muted-foreground">{t("preferences.dialog.instanceNotAvailable")}</p>
   }
 
   // Filter and limit to 50 events for display
@@ -335,7 +345,9 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <h3 className={cn(variant === "card" ? "text-lg font-semibold" : "text-base font-medium")}>
-              {variant === "card" ? "Automatic Tracker Reannounce" : "Settings"}
+              {variant === "card"
+                ? t("preferences.reannounceOverview.form.automaticTitle")
+                : t("preferences.reannounceOverview.form.settingsTitle")}
             </h3>
             {variant === "card" && (
               <Tooltip>
@@ -343,21 +355,28 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                   <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-[300px]">
-                  <p>qBittorrent doesn't retry failed announces quickly. When a tracker is slow to register a new upload or returns an error, you may be stuck waiting. qui handles this automatically while never spamming trackers.</p>
+                  <p>{t("preferences.reannounceOverview.tooltip")}</p>
                 </TooltipContent>
               </Tooltip>
             )}
           </div>
           {variant === "card" && (
             <p className="text-sm text-muted-foreground">
-              qui monitors <strong>stalled</strong> torrents and reannounces them when no tracker is healthy.
-              Background scan runs every {GLOBAL_SCAN_INTERVAL_SECONDS} seconds.
+              <Trans
+                ns="instances"
+                i18nKey="preferences.reannounceOverview.description"
+                components={{ strong: <strong /> }}
+              />
+              {" "}
+              {t("preferences.reannounceOverview.form.backgroundScanRunsEvery", { seconds: GLOBAL_SCAN_INTERVAL_SECONDS })}
             </p>
           )}
         </div>
         <div className="flex items-center gap-2 bg-muted/50 p-2 rounded-lg border shrink-0">
           <Label htmlFor="tracker-monitoring" className="font-medium text-sm cursor-pointer">
-            {settings.enabled ? "Enabled" : "Disabled"}
+            {settings.enabled
+              ? t("preferences.reannounceOverview.form.enabled")
+              : t("preferences.reannounceOverview.form.disabled")}
           </Label>
           <Switch
             id="tracker-monitoring"
@@ -370,7 +389,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
       {variant === "card" && activeInstances.length > 1 && onInstanceChange && (
         <div className="flex items-center gap-3 pt-2 border-t border-border/40">
-          <Label className="text-sm text-muted-foreground shrink-0">Instance</Label>
+          <Label className="text-sm text-muted-foreground shrink-0">{t("preferences.reannounceOverview.form.instance")}</Label>
           <Select
             value={String(instanceId)}
             onValueChange={(value) => onInstanceChange?.(Number(value))}
@@ -380,7 +399,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
               <div className="flex items-center gap-2 min-w-0 overflow-hidden">
                 <HardDrive className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                 <span className="truncate">
-                  <SelectValue placeholder="Select instance" />
+                  <SelectValue placeholder={t("preferences.reannounceOverview.form.selectInstance")} />
                 </span>
               </div>
             </SelectTrigger>
@@ -403,15 +422,15 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Timing & Behavior</h3>
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">{t("preferences.reannounceOverview.form.timingBehavior")}</h3>
           <Separator className="flex-1" />
         </div>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <NumberField
             id="initial-wait"
-            label="Initial Wait"
-            description="Seconds before first check"
+            label={t("preferences.reannounceOverview.form.initialWait")}
+            description={t("preferences.reannounceOverview.form.initialWaitDescription")}
             tooltip="How long to wait after a torrent is added before checking its status. Gives the tracker time to register it naturally. Minimum 5 seconds."
             min={REANNOUNCE_CONSTRAINTS.MIN_INITIAL_WAIT}
             value={settings.initialWaitSeconds}
@@ -419,8 +438,8 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
           />
           <NumberField
             id="reannounce-interval"
-            label="Retry Interval"
-            description="Seconds between retries"
+            label={t("preferences.reannounceOverview.form.retryInterval")}
+            description={t("preferences.reannounceOverview.form.retryIntervalDescription")}
             tooltip="How often to retry inside a single reannounce attempt. With Quick Retry enabled, this also becomes the cooldown between scans. Minimum 5 seconds."
             min={REANNOUNCE_CONSTRAINTS.MIN_INTERVAL}
             value={settings.reannounceIntervalSeconds}
@@ -428,8 +447,8 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
           />
           <NumberField
             id="max-age"
-            label="Max Torrent Age"
-            description="Stop monitoring after (s)"
+            label={t("preferences.reannounceOverview.form.maxTorrentAge")}
+            description={t("preferences.reannounceOverview.form.maxTorrentAgeDescription")}
             tooltip="Stop monitoring torrents older than this (in seconds). Prevents checking old torrents that are permanently dead. Minimum 60 seconds."
             min={REANNOUNCE_CONSTRAINTS.MIN_MAX_AGE}
             value={settings.maxAgeSeconds}
@@ -437,8 +456,8 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
           />
           <NumberField
             id="max-retries"
-            label="Max Retries"
-            description="Retry attempts per torrent"
+            label={t("preferences.reannounceOverview.form.maxRetries")}
+            description={t("preferences.reannounceOverview.form.maxRetriesDescription")}
             tooltip="Maximum consecutive retries within a single scan cycle. Each scan can retry up to this many times before waiting for the next cycle. Some slow trackers may need up to 50 retries (at 7s intervals = ~6 minutes). Range: 1-50."
             min={REANNOUNCE_CONSTRAINTS.MIN_MAX_RETRIES}
             max={REANNOUNCE_CONSTRAINTS.MAX_MAX_RETRIES}
@@ -450,18 +469,18 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
         <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
           <div className="space-y-0.5">
             <div className="flex items-center gap-2">
-              <Label htmlFor="quick-retry" className="text-base">Quick Retry</Label>
+              <Label htmlFor="quick-retry" className="text-base">{t("preferences.reannounceOverview.form.quickRetry")}</Label>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Info className="h-4 w-4 text-muted-foreground cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-[300px]">
-                  <p>Use the Retry Interval as the cooldown between scans instead of the default 2 minutes. Useful on trackers that are slow to register new uploads. qui always waits while a tracker is updating and never spams.</p>
+                  <p>{t("preferences.reannounceOverview.form.quickRetryTooltip")}</p>
                 </TooltipContent>
               </Tooltip>
             </div>
             <p className="text-sm text-muted-foreground">
-              Use Retry Interval for cooldown instead of 2 minutes
+              {t("preferences.reannounceOverview.form.quickRetryDescription")}
             </p>
           </div>
           <Switch
@@ -474,17 +493,17 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
 
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Scope & Filtering</h3>
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">{t("preferences.reannounceOverview.form.scopeFiltering")}</h3>
           <Separator className="flex-1" />
         </div>
 
         <div className="space-y-4">
           <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/40">
             <div className="space-y-0.5">
-              <Label htmlFor="monitor-all" className="text-base">Monitor All Stalled Torrents</Label>
+              <Label htmlFor="monitor-all" className="text-base">{t("preferences.reannounceOverview.form.monitorAllStalled")}</Label>
               <p className="text-sm text-muted-foreground">
-                If enabled, monitors everything except excluded items.<br />
-                If disabled, only monitors items matching the include rules below.
+                {t("preferences.reannounceOverview.form.monitorAllDescriptionEnabled")}<br />
+                {t("preferences.reannounceOverview.form.monitorAllDescriptionDisabled")}
               </p>
             </div>
             <Switch
@@ -510,7 +529,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
             {/* Categories */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label htmlFor="scope-categories">Categories</Label>
+                <Label htmlFor="scope-categories">{t("preferences.reannounceOverview.form.categories")}</Label>
                 <Tabs
                   value={settings.excludeCategories ? "exclude" : "include"}
                   onValueChange={(v) => setSettings((prev) => ({ ...prev, excludeCategories: v === "exclude" }))}
@@ -522,9 +541,9 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                       className="text-xs h-5 px-2"
                       disabled={settings.monitorAll}
                     >
-                      Include
+                      {t("preferences.reannounceOverview.form.include")}
                     </TabsTrigger>
-                    <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
+                    <TabsTrigger value="exclude" className="text-xs h-5 px-2">{t("preferences.reannounceOverview.form.exclude")}</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
@@ -532,7 +551,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                 options={categoryOptions}
                 selected={settings.categories}
                 onChange={(values) => setSettings((prev) => ({ ...prev, categories: values }))}
-                placeholder="Select categories..."
+                placeholder={t("preferences.reannounceOverview.form.selectCategories")}
                 creatable
                 onCreateOption={(value) => appendUniqueValue("categories", value)}
               />
@@ -541,7 +560,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
             {/* Tags */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label htmlFor="scope-tags">Tags</Label>
+                <Label htmlFor="scope-tags">{t("preferences.reannounceOverview.form.tags")}</Label>
                 <Tabs
                   value={settings.excludeTags ? "exclude" : "include"}
                   onValueChange={(v) => setSettings((prev) => ({ ...prev, excludeTags: v === "exclude" }))}
@@ -553,9 +572,9 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                       className="text-xs h-5 px-2"
                       disabled={settings.monitorAll}
                     >
-                      Include
+                      {t("preferences.reannounceOverview.form.include")}
                     </TabsTrigger>
-                    <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
+                    <TabsTrigger value="exclude" className="text-xs h-5 px-2">{t("preferences.reannounceOverview.form.exclude")}</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
@@ -563,7 +582,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                 options={tagOptions}
                 selected={settings.tags}
                 onChange={(values) => setSettings((prev) => ({ ...prev, tags: values }))}
-                placeholder="Select tags..."
+                placeholder={t("preferences.reannounceOverview.form.selectTags")}
                 creatable
                 onCreateOption={(value) => appendUniqueValue("tags", value)}
               />
@@ -572,7 +591,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
             {/* Trackers */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label htmlFor="scope-trackers">Tracker Domains</Label>
+                <Label htmlFor="scope-trackers">{t("preferences.reannounceOverview.form.trackerDomains")}</Label>
                 <Tabs
                   value={settings.excludeTrackers ? "exclude" : "include"}
                   onValueChange={(v) => setSettings((prev) => ({ ...prev, excludeTrackers: v === "exclude" }))}
@@ -584,9 +603,9 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                       className="text-xs h-5 px-2"
                       disabled={settings.monitorAll}
                     >
-                      Include
+                      {t("preferences.reannounceOverview.form.include")}
                     </TabsTrigger>
-                    <TabsTrigger value="exclude" className="text-xs h-5 px-2">Exclude</TabsTrigger>
+                    <TabsTrigger value="exclude" className="text-xs h-5 px-2">{t("preferences.reannounceOverview.form.exclude")}</TabsTrigger>
                   </TabsList>
                 </Tabs>
               </div>
@@ -594,7 +613,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                 options={trackerOptions}
                 selected={selectedTrackerValues}
                 onChange={(values) => setSettings((prev) => ({ ...prev, trackers: normalizeTrackerDomains(values) }))}
-                placeholder="Select tracker domains..."
+                placeholder={t("preferences.reannounceOverview.form.selectTrackerDomains")}
                 creatable
                 onCreateOption={(value) => appendUniqueValue("trackers", value)}
                 hideCheckIcon
@@ -607,7 +626,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
       {!formId && (
         <div className="flex justify-end pt-4">
           <Button type="submit" disabled={isUpdating}>
-            {isUpdating ? "Saving..." : "Save Changes"}
+            {isUpdating ? t("preferences.reannounceOverview.form.saving") : t("preferences.reannounceOverview.form.saveChanges")}
           </Button>
         </div>
       )}
@@ -618,9 +637,11 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h3 className="text-sm font-medium leading-none">Recent Activity</h3>
+          <h3 className="text-sm font-medium leading-none">{t("preferences.reannounceOverview.recentActivity")}</h3>
           <p className="text-sm text-muted-foreground">
-            {activityEnabled? "Real-time log of reannounce attempts and results.": "Monitoring is disabled. No new activity will be recorded."}
+            {activityEnabled
+              ? t("preferences.reannounceOverview.form.activityEnabled")
+              : t("preferences.reannounceOverview.form.activityDisabled")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -632,7 +653,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
               className="scale-75"
             />
             <Label htmlFor="hide-skipped" className="text-sm font-normal cursor-pointer">
-              Hide skipped
+              {t("preferences.reannounceOverview.hideSkipped")}
             </Label>
           </div>
           <Button
@@ -644,28 +665,28 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
             className="h-8 px-2 lg:px-3"
           >
             <RefreshCcw className={cn("h-3.5 w-3.5 mr-2", activityQuery.isFetching && "animate-spin")} />
-            Refresh
+            {t("preferences.reannounceOverview.form.refresh")}
           </Button>
         </div>
       </div>
 
       {activityQuery.isError ? (
         <div className="h-[150px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
-          <p className="text-sm text-destructive">Failed to load activity</p>
+          <p className="text-sm text-destructive">{t("preferences.reannounceOverview.failedToLoadActivity")}</p>
           <p className="text-xs text-destructive/70 mt-1">
-            Check connection to the instance.
+            {t("preferences.reannounceOverview.checkConnectionToInstance")}
           </p>
         </div>
       ) : activityQuery.isLoading ? (
         <div className="h-[300px] flex items-center justify-center border rounded-lg bg-muted/40">
-          <p className="text-sm text-muted-foreground">Loading activity...</p>
+          <p className="text-sm text-muted-foreground">{t("preferences.reannounceOverview.loadingActivity")}</p>
         </div>
       ) : activityEvents.length === 0 ? (
         <div className="h-[300px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/40 text-center p-6">
-          <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
+          <p className="text-sm text-muted-foreground">{t("preferences.reannounceOverview.noActivityRecordedYet")}</p>
           {activityEnabled && (
             <p className="text-xs text-muted-foreground/60 mt-1">
-              Events will appear here when stalled torrents are detected.
+              {t("preferences.reannounceOverview.eventsWillAppear")}
             </p>
           )}
         </div>
@@ -700,9 +721,9 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                           className="hover:text-foreground transition-colors"
                           onClick={() => {
                             copyTextToClipboard(event.hash)
-                            toast.success("Hash copied")
+                            toast.success(t("preferences.reannounceOverview.hashCopied"))
                           }}
-                          title="Copy hash"
+                          title={t("preferences.reannounceOverview.copyHash")}
                         >
                           <Copy className="h-3 w-3" />
                         </button>
@@ -715,13 +736,13 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                       <div className="mt-2 space-y-1 bg-muted/40 p-2 rounded text-xs">
                         {event.trackers && (
                           <div className="flex items-start gap-2">
-                            <span className="font-medium text-muted-foreground shrink-0">Trackers:</span>
+                            <span className="font-medium text-muted-foreground shrink-0">{t("preferences.reannounceOverview.form.trackersLabel")}</span>
                             <span className="text-foreground break-all">{event.trackers}</span>
                           </div>
                         )}
                         {event.reason && (
                           <div className="flex items-start gap-2">
-                            <span className="font-medium text-muted-foreground shrink-0">Reason:</span>
+                            <span className="font-medium text-muted-foreground shrink-0">{t("preferences.reannounceOverview.form.reasonLabel")}</span>
                             {formatErrorReason(event.reason) !== event.reason ? (
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -782,8 +803,8 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <div className="flex items-center justify-between mb-4">
                 <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
-                  <TabsTrigger value="settings">Settings</TabsTrigger>
-                  <TabsTrigger value="activity">Activity Log</TabsTrigger>
+                  <TabsTrigger value="settings">{t("preferences.reannounceOverview.form.settingsTab")}</TabsTrigger>
+                  <TabsTrigger value="activity">{t("preferences.reannounceOverview.form.activityTab")}</TabsTrigger>
                 </TabsList>
               </div>
               <TabsContent value="settings" className="mt-0">

@@ -16,6 +16,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/autobrr/qui/pkg/fsutil"
 )
 
 const (
@@ -50,6 +52,7 @@ var (
 	markFileSparseFn       = markFileSparse
 	setFileEndFn           = setFileEnd
 	volumeRootForPathFn    = getVolumeRoot
+	sameFilesystemFn       = fsutil.SameFilesystem
 	filesystemNameForVolFn = getFilesystemName
 	clusterSizeForVolFn    = getClusterSize
 	duplicateExtentFn      = duplicateExtent
@@ -229,12 +232,16 @@ func ensureSameVolume(src, dst string) (string, error) {
 		return "", fmt.Errorf("get source volume: %w", err)
 	}
 
-	dstRoot, err := volumeRootForPathFn(dst)
-	if err != nil {
+	if _, err := volumeRootForPathFn(dst); err != nil {
 		return "", fmt.Errorf("get destination volume: %w", err)
 	}
 
-	if !strings.EqualFold(srcRoot, dstRoot) {
+	sameVolume, err := sameFilesystemFn(src, dst)
+	if err != nil {
+		return "", fmt.Errorf("check same volume: %w", err)
+	}
+
+	if !sameVolume {
 		return "", errors.New("source and destination must be on the same volume")
 	}
 

@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"maps"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
@@ -324,6 +326,68 @@ func TestAdaptiveSearchTimeoutScalesWithIndexerCount(t *testing.T) {
 				t.Fatalf("AdaptiveSearchTimeout(%d) = %s, want %s", tt.indexerCount, got, tt.expectedLimit)
 			}
 		})
+	}
+}
+
+func TestSortSearchResults_SeedersFirstUsesSizeAsTieBreaker(t *testing.T) {
+	results := []SearchResult{
+		{Title: "small weak", Size: 1000, Seeders: 5},
+		{Title: "large popular", Size: 2000, Seeders: 100},
+		{Title: "larger popular", Size: 3000, Seeders: 100},
+	}
+
+	sortSearchResults(results)
+
+	want := []string{"larger popular", "large popular", "small weak"}
+	for i, title := range want {
+		if results[i].Title != title {
+			t.Fatalf("results[%d].Title = %q, want %q; results=%+v", i, results[i].Title, title, results)
+		}
+	}
+}
+
+func TestBuildSearchCacheSignatureNormalizesLimitToEffectiveIndexerCap(t *testing.T) {
+	svc := NewService(nil)
+	svc.searchCacheEnabled = true
+	svc.searchCacheTTL = time.Hour
+	svc.searchCache = &fakeSearchCache{}
+
+	baseReq := &TorznabSearchRequest{
+		Query:      "Example Show",
+		Categories: []int{CategoryTV},
+	}
+	const (
+		indexerMaxLimit      = 150
+		limitAboveIndexerMax = indexerMaxLimit + 1
+		limitAboveDefault    = defaultTorznabLimit + 1
+	)
+	sigForLimit := func(limit int, indexer *models.TorznabIndexer) *searchCacheSignature {
+		req := *baseReq
+		req.Limit = limit
+		sig := svc.buildSearchCacheSignature(searchCacheScopeCrossSeed, &req, contentTypeTVShow, "tvsearch", []*models.TorznabIndexer{indexer})
+		if sig == nil {
+			t.Fatalf("expected cache signature for limit %d", limit)
+		}
+		return sig
+	}
+
+	highCapIndexer := &models.TorznabIndexer{ID: 1, LimitMax: indexerMaxLimit}
+	highCap100 := sigForLimit(defaultTorznabLimit, highCapIndexer)
+	highCapMax := sigForLimit(indexerMaxLimit, highCapIndexer)
+	highCapAboveMax := sigForLimit(limitAboveIndexerMax, highCapIndexer)
+
+	if highCap100.Key == highCapMax.Key {
+		t.Fatal("expected default and high-cap max limits to produce distinct cache keys")
+	}
+	if highCapMax.Key != highCapAboveMax.Key {
+		t.Fatal("expected high-cap max and above-max limits to share cache key")
+	}
+
+	defaultCapIndexer := &models.TorznabIndexer{ID: 1}
+	defaultCap100 := sigForLimit(defaultTorznabLimit, defaultCapIndexer)
+	defaultCapAboveMax := sigForLimit(limitAboveDefault, defaultCapIndexer)
+	if defaultCap100.Key != defaultCapAboveMax.Key {
+		t.Fatal("expected default and above-default limits to share cache key")
 	}
 }
 
@@ -922,6 +986,185 @@ func TestBuildSearchParams(t *testing.T) {
 	}
 }
 
+func TestResponseSearchResultsReturnAllSkipsPagination(t *testing.T) {
+	results := []SearchResult{
+		{Title: "first"},
+		{Title: "second"},
+		{Title: "third"},
+	}
+
+	tests := []struct {
+		name           string
+		input          []SearchResult
+		page           int
+		perPage        int
+		returnAll      bool
+		wantTotal      int
+		wantLen        int
+		wantFirstTitle string
+	}{
+		{
+			name:           "paged",
+			input:          results,
+			page:           1,
+			perPage:        1,
+			wantTotal:      3,
+			wantLen:        1,
+			wantFirstTitle: "second",
+		},
+		{
+			name:           "return all",
+			input:          results,
+			page:           1,
+			perPage:        1,
+			returnAll:      true,
+			wantTotal:      3,
+			wantLen:        3,
+			wantFirstTitle: "first",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, gotTotal := responseSearchResults(tt.input, tt.page, tt.perPage, tt.returnAll)
+			if gotTotal != tt.wantTotal {
+				t.Fatalf("total = %d, want %d", gotTotal, tt.wantTotal)
+			}
+			if len(got) != tt.wantLen {
+				t.Fatalf("results length = %d, want %d", len(got), tt.wantLen)
+			}
+			if tt.wantFirstTitle != "" && got[0].Title != tt.wantFirstTitle {
+				t.Fatalf("first title = %q, want %q", got[0].Title, tt.wantFirstTitle)
+			}
+		})
+	}
+}
+
+func TestClampedTorznabLimit(t *testing.T) {
+	tests := []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{name: "unset", limit: 0, want: 0},
+		{name: "negative", limit: -1, want: 0},
+		{name: "below fixed max", limit: 50, want: 50},
+		{name: "fixed max", limit: 100, want: 100},
+		{name: "above fixed max", limit: defaultTorznabLimit + 1, want: defaultTorznabLimit},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := clampedTorznabLimit(tt.limit)
+			if got != tt.want {
+				t.Fatalf("clampedTorznabLimit(%d) = %d, want %d", tt.limit, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExecuteIndexerSearchClampsLimitPerIndexer(t *testing.T) {
+	tests := []struct {
+		name      string
+		backend   models.TorznabBackend
+		indexerID string
+		limitMax  int
+		requested string
+		wantLimit string
+	}{
+		{
+			name:      "native uses indexer max below fallback cap",
+			backend:   models.TorznabBackendNative,
+			limitMax:  50,
+			requested: "100",
+			wantLimit: "50",
+		},
+		{
+			name:      "prowlarr uses indexer max below fallback cap",
+			backend:   models.TorznabBackendProwlarr,
+			indexerID: "7",
+			limitMax:  50,
+			requested: "100",
+			wantLimit: "50",
+		},
+		{
+			name:      "jackett uses indexer max below fallback cap",
+			backend:   models.TorznabBackendJackett,
+			indexerID: "test-indexer",
+			limitMax:  50,
+			requested: "100",
+			wantLimit: "50",
+		},
+		{
+			name:      "valid indexer max above fallback cap is honored",
+			backend:   models.TorznabBackendNative,
+			limitMax:  150,
+			requested: "151",
+			wantLimit: "150",
+		},
+		{
+			name:      "missing indexer max falls back to hard cap",
+			backend:   models.TorznabBackendNative,
+			limitMax:  0,
+			requested: "101",
+			wantLimit: "100",
+		},
+		{
+			name:      "invalid indexer max falls back to hard cap",
+			backend:   models.TorznabBackendNative,
+			limitMax:  -5,
+			requested: "101",
+			wantLimit: "100",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var captured url.Values
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				captured = r.URL.Query()
+				w.Header().Set("Content-Type", "application/rss+xml")
+				if _, err := w.Write([]byte(`<rss version="2.0"><channel><title>Test</title></channel></rss>`)); err != nil {
+					t.Errorf("write RSS response: %v", err)
+				}
+			}))
+			defer server.Close()
+
+			idx := &models.TorznabIndexer{
+				ID:             1,
+				Name:           "Test Indexer",
+				BaseURL:        server.URL,
+				Backend:        tt.backend,
+				IndexerID:      tt.indexerID,
+				LimitMax:       tt.limitMax,
+				TimeoutSeconds: 5,
+				Enabled:        true,
+			}
+			service := NewService(&mockTorznabIndexerStore{indexers: []*models.TorznabIndexer{idx}})
+
+			result := service.executeIndexerSearch(
+				context.Background(),
+				idx,
+				url.Values{
+					"q":     {"Example"},
+					"limit": {tt.requested},
+				},
+				nil,
+				indexerExecOptions{},
+			)
+			if result.err != nil {
+				t.Fatalf("executeIndexerSearch() error = %v", result.err)
+			}
+			if captured == nil {
+				t.Fatal("expected outbound request to be captured")
+			}
+			if got := captured.Get("limit"); got != tt.wantLimit {
+				t.Fatalf("outbound limit = %q, want %q", got, tt.wantLimit)
+			}
+		})
+	}
+}
+
 func TestConvertResults(t *testing.T) {
 	s := &Service{}
 	tests := []struct {
@@ -1208,6 +1451,85 @@ func TestFilterCategoriesForIndexer(t *testing.T) {
 			t.Fatalf("expected unsupported categories to be rejected")
 		}
 	})
+
+	t.Run("deduplicates repeated categories", func(t *testing.T) {
+		tvIndexerCats := []models.TorznabIndexerCategory{
+			{CategoryID: CategoryTV},
+		}
+
+		filtered, ok := filterCategoriesForIndexer(tvIndexerCats, []int{CategoryTV, CategoryTV, CategoryTV})
+		if !ok {
+			t.Fatalf("expected parent TV category to be permitted")
+		}
+		if len(filtered) != 1 || filtered[0] != CategoryTV {
+			t.Fatalf("unexpected filtered categories: %+v", filtered)
+		}
+	})
+}
+
+func TestMapCategoriesToIndexerCapabilitiesCompactsParentFallbacks(t *testing.T) {
+	service := &Service{}
+
+	tests := []struct {
+		name      string
+		parent    int
+		requested []int
+	}{
+		{
+			name:      "movies",
+			parent:    CategoryMovies,
+			requested: []int{CategoryMovies, CategoryMoviesSD, CategoryMoviesHD, CategoryMovies4K, CategoryMovies3D},
+		},
+		{
+			name:      "tv and anime",
+			parent:    CategoryTV,
+			requested: []int{CategoryTV, 5010, 5020, CategoryTVSD, CategoryTVHD, CategoryTV4K, CategoryTVAnime, CategoryTVDocumentary},
+		},
+		{
+			name:      "xxx",
+			parent:    CategoryXXX,
+			requested: []int{CategoryXXX, CategoryXXXDVD, CategoryXXXWMV, CategoryXXXXviD, CategoryXXXx264, CategoryXXXPack, CategoryXXXImageSet, CategoryXXXOther},
+		},
+		{
+			name:      "books",
+			parent:    CategoryBooks,
+			requested: []int{CategoryBooks, CategoryBooksEbook, CategoryBooksComics},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			indexer := &models.TorznabIndexer{
+				Categories: []models.TorznabIndexerCategory{
+					{CategoryID: tt.parent},
+				},
+			}
+
+			mapped := service.MapCategoriesToIndexerCapabilities(context.Background(), indexer, tt.requested)
+			if !slices.Equal(mapped, []int{tt.parent}) {
+				t.Fatalf("expected duplicate subcategory fallbacks to compact to [%d], got %+v", tt.parent, mapped)
+			}
+		})
+	}
+}
+
+func TestBuildSearchParamsDeduplicatesCategories(t *testing.T) {
+	service := &Service{}
+	req := &TorznabSearchRequest{
+		Query:      "Example",
+		Categories: []int{CategoryTVHD, CategoryTV, CategoryTVHD, CategoryTVAnime, CategoryTV},
+	}
+
+	params := service.buildSearchParams(req, "tvsearch")
+	if got := params.Get("cat"); got != "5000,5040,5070" {
+		t.Fatalf("cat param = %q, want %q", got, "5000,5040,5070")
+	}
+}
+
+func TestFormatCategoryListPreservesDuplicates(t *testing.T) {
+	if got := formatCategoryList([]int{CategoryMoviesHD, CategoryMovies, CategoryMoviesHD}); got != "2040,2000,2040" {
+		t.Fatalf("formatCategoryList() = %q, want %q", got, "2040,2000,2040")
+	}
 }
 
 func TestSearchGenericAutoDetectCategories(t *testing.T) {
@@ -1667,8 +1989,8 @@ func TestSearch_AllIndexersSkippedByRateLimitWaitReturnsError(t *testing.T) {
 	}
 
 	// Prime both indexers so wait exceeds MaxWait for every task.
-	service.rateLimiter.RecordRequest(1, time.Now())
-	service.rateLimiter.RecordRequest(2, time.Now())
+	service.rateLimiter.RecordRequestComplete(1, time.Now())
+	service.rateLimiter.RecordRequestComplete(2, time.Now())
 
 	done := make(chan struct{})
 	completeErrs := make(chan error, len(indexers))
@@ -1741,6 +2063,7 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 		backend     models.TorznabBackend
 		inputParams map[string]string
 		expected    map[string]string
+		meta        *searchContext
 		description string
 	}{
 		{
@@ -1835,6 +2158,90 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 			},
 			description: "Prowlarr indexer should not modify query when no year parameter",
 		},
+		{
+			name:    "prowlarr tv season parameter",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t":      "tvsearch",
+				"q":      "Some Show",
+				"season": "22",
+				"cat":    "5000",
+			},
+			expected: map[string]string{
+				"t":   "tvsearch",
+				"q":   "Some Show S22",
+				"cat": "5000",
+			},
+			description: "Prowlarr indexer should move TV season parameter to search query",
+		},
+		{
+			name:    "prowlarr tv season episode parameter",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t":      "tvsearch",
+				"q":      "Some Show",
+				"season": "22",
+				"ep":     "32",
+			},
+			expected: map[string]string{
+				"t": "tvsearch",
+				"q": "Some Show S22E32",
+			},
+			description: "Prowlarr indexer should move TV season and episode parameters to search query",
+		},
+		{
+			name:    "prowlarr tv season parameter before trailing resolution",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t":      "tvsearch",
+				"q":      "Some Show 720",
+				"season": "22",
+			},
+			expected: map[string]string{
+				"t": "tvsearch",
+				"q": "Some Show S22 720",
+			},
+			description: "Prowlarr indexer should place TV season before a trailing resolution token",
+		},
+		{
+			name:    "prowlarr id driven tv restores query with season token",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t":      "tvsearch",
+				"season": "17",
+				"imdbid": "1785123",
+			},
+			expected: map[string]string{
+				"t":      "tvsearch",
+				"q":      "S17 1080p",
+				"imdbid": "1785123",
+			},
+			meta: &searchContext{
+				originalQuery: "Some.Show.S17.1080p.HULU.WEB-DL.AAC2.0.H.264-RAWR",
+				releaseName:   "Some.Show.S17.1080p.HULU.WEB-DL.AAC2.0.H.264-RAWR",
+			},
+			description: "Prowlarr indexer should keep TV token and resolution for ID-driven TV searches",
+		},
+		{
+			name:    "prowlarr id driven tv drops title from restored query",
+			backend: models.TorznabBackendProwlarr,
+			inputParams: map[string]string{
+				"t":      "tvsearch",
+				"q":      "Greys Anatomy 720",
+				"season": "22",
+				"imdbid": "0413573",
+				"tvdbid": "73762",
+				"tmdbid": "1416",
+			},
+			expected: map[string]string{
+				"t":      "tvsearch",
+				"q":      "S22 720",
+				"imdbid": "0413573",
+				"tvdbid": "73762",
+				"tmdbid": "1416",
+			},
+			description: "Prowlarr indexer should not include title in q when IDs are present",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1862,7 +2269,7 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 			maps.Copy(inputParams, tt.inputParams)
 
 			// Call the actual service method to apply the workaround
-			service.applyProwlarrWorkaround(indexer, inputParams)
+			service.applyProwlarrWorkaround(indexer, inputParams, tt.meta)
 
 			// Assert expected parameter values
 			for key, expectedValue := range tt.expected {
@@ -1883,6 +2290,36 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 				if _, expected := tt.expected[key]; !expected {
 					t.Errorf("%s: unexpected parameter %q = %q", tt.description, key, inputParams[key])
 				}
+			}
+		})
+	}
+}
+
+func TestAppendSearchTokenDetectsExistingSeasonEpisode(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		token    string
+		expected string
+	}{
+		{
+			name:     "keeps existing season token",
+			input:    "Some Show S22E01 720",
+			token:    "S22",
+			expected: "Some Show S22E01 720",
+		},
+		{
+			name:     "adds missing season token",
+			input:    "Some Show S21E01 720",
+			token:    "S22",
+			expected: "Some Show S21E01 S22 720",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := appendSearchToken(tt.input, tt.token); got != tt.expected {
+				t.Fatalf("appendSearchToken() = %q, want %q", got, tt.expected)
 			}
 		})
 	}

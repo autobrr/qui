@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,13 +17,33 @@ import (
 
 	"github.com/autobrr/qui/pkg/stringutils"
 
-	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
+
+type spyARRLookupService struct {
+	title       string
+	contentType arr.ContentType
+	result      *arr.ExternalIDsResult
+	err         error
+	called      bool
+}
+
+func (s *spyARRLookupService) LookupExternalIDs(_ context.Context, title string, contentType arr.ContentType) (*arr.ExternalIDsResult, error) {
+	s.called = true
+	s.title = title
+	s.contentType = contentType
+	return s.result, s.err
+}
+
+func (s *spyARRLookupService) LookupSeasonEpisodeTotal(context.Context, string, int) (*arr.SeasonEpisodeTotalResult, error) {
+	return nil, nil
+}
 
 type failingEnabledIndexerStore struct {
 	err      error
@@ -112,6 +131,21 @@ func newJackettServiceWithIndexers(indexers []*models.TorznabIndexer) *jackett.S
 	return jackett.NewService(&failingEnabledIndexerStore{indexers: indexers})
 }
 
+func TestIsNilARRLookupServiceHandlesTypedNilARRService(t *testing.T) {
+	var arrService *arr.Service
+
+	require.True(t, isNilARRLookupService(arrService))
+}
+
+func TestLookupARRExternalIDsSkipsTypedNilARRService(t *testing.T) {
+	var arrService *arr.Service
+	svc := &Service{arrService: arrService}
+
+	got := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", "movie")
+
+	require.Nil(t, got)
+}
+
 func TestComputeAutomationSearchTimeout(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -131,6 +165,202 @@ func TestComputeAutomationSearchTimeout(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAutomationTorrentSearchContext(t *testing.T) {
+	t.Run("torznab search keeps scheduler-owned deadline", func(t *testing.T) {
+		ctx, cancel, timeout := automationTorrentSearchContext(context.Background(), false)
+
+		require.Nil(t, cancel)
+		require.Zero(t, timeout)
+		_, hasDeadline := ctx.Deadline()
+		require.False(t, hasDeadline)
+		priority, ok := jackett.SearchPriority(ctx)
+		require.True(t, ok)
+		require.Equal(t, jackett.RateLimitPriorityBackground, priority)
+	})
+
+	t.Run("gazelle-only search keeps bounded timeout", func(t *testing.T) {
+		start := time.Now()
+		ctx, cancel, timeout := automationTorrentSearchContext(context.Background(), true)
+		require.NotNil(t, cancel)
+		defer cancel()
+
+		require.Equal(t, timeouts.MaxSearchTimeout, timeout)
+		deadline, hasDeadline := ctx.Deadline()
+		require.True(t, hasDeadline)
+		require.WithinDuration(t, start.Add(timeouts.MaxSearchTimeout), deadline, time.Second)
+		priority, ok := jackett.SearchPriority(ctx)
+		require.True(t, ok)
+		require.Equal(t, jackett.RateLimitPriorityBackground, priority)
+	})
+}
+
+func TestEffectiveTorznabCrossSeedSearchLimit(t *testing.T) {
+	tests := []struct {
+		name  string
+		limit int
+		want  int
+	}{
+		{name: "unset uses cross seed max", limit: 0, want: torznabCrossSeedSearchLimit},
+		{name: "negative uses cross seed max", limit: -1, want: torznabCrossSeedSearchLimit},
+		{name: "below max", limit: 25, want: 25},
+		{name: "at max", limit: torznabCrossSeedSearchLimit, want: torznabCrossSeedSearchLimit},
+		{name: "above max clamps", limit: torznabCrossSeedSearchLimit + 1, want: torznabCrossSeedSearchLimit},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, effectiveTorznabCrossSeedSearchLimit(tt.limit))
+		})
+	}
+}
+
+func TestSearchTolerancePercentUsesRunOverride(t *testing.T) {
+	svc := &Service{
+		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
+			settings := models.DefaultCrossSeedAutomationSettings()
+			settings.SizeMismatchTolerancePercent = 5
+			return settings, nil
+		},
+	}
+
+	tests := []struct {
+		name string
+		opts TorrentSearchOptions
+		want float64
+	}{
+		{
+			name: "explicit zero",
+			opts: TorrentSearchOptions{
+				SizeMismatchTolerancePercent:    0,
+				SizeMismatchTolerancePercentSet: true,
+			},
+			want: 0,
+		},
+		{
+			name: "positive override without set flag",
+			opts: TorrentSearchOptions{
+				SizeMismatchTolerancePercent: 20,
+			},
+			want: 20,
+		},
+		{
+			name: "fallback settings",
+			opts: TorrentSearchOptions{},
+			want: 5,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.InDelta(t, tt.want, svc.searchTolerancePercent(context.Background(), tt.opts), 0.0001)
+		})
+	}
+}
+
+func TestLookupARRExternalIDsMapsContentType(t *testing.T) {
+	ids := &models.ExternalIDs{TMDbID: 27205, IMDbID: "tt1375666"}
+	tests := []struct {
+		name            string
+		contentType     string
+		wantContentType arr.ContentType
+		lookupErr       error
+		wantResult      bool
+		wantCalled      bool
+	}{
+		{
+			name:            "movie maps to Radarr",
+			contentType:     "movie",
+			wantContentType: arr.ContentTypeMovie,
+			wantResult:      true,
+			wantCalled:      true,
+		},
+		{
+			name:            "tv maps to Sonarr",
+			contentType:     "tv",
+			wantContentType: arr.ContentTypeTV,
+			wantResult:      true,
+			wantCalled:      true,
+		},
+		{
+			name:            "anime maps to Sonarr anime",
+			contentType:     "anime",
+			wantContentType: arr.ContentTypeAnime,
+			wantResult:      true,
+			wantCalled:      true,
+		},
+		{
+			name:        "unsupported content type skips lookup",
+			contentType: "music",
+		},
+		{
+			name:        "invalid content type skips lookup",
+			contentType: "invalid",
+		},
+		{
+			name: "empty content type skips lookup",
+		},
+		{
+			name:            "lookup error returns nil",
+			contentType:     "movie",
+			wantContentType: arr.ContentTypeMovie,
+			lookupErr:       errors.New("lookup failed"),
+			wantCalled:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spy := &spyARRLookupService{
+				result: &arr.ExternalIDsResult{
+					IDs:         ids,
+					ContentType: tt.wantContentType,
+					Source:      "parse",
+				},
+				err: tt.lookupErr,
+			}
+			svc := &Service{arrService: spy}
+
+			got := svc.lookupARRExternalIDs(context.Background(), "Inception.2010", tt.contentType)
+
+			require.Equal(t, tt.wantCalled, spy.called)
+			if !tt.wantCalled {
+				require.Nil(t, got)
+				return
+			}
+
+			require.Equal(t, "Inception.2010", spy.title)
+			require.Equal(t, tt.wantContentType, spy.contentType)
+			if !tt.wantResult {
+				require.Nil(t, got)
+				return
+			}
+
+			require.NotNil(t, got)
+			require.Same(t, ids, got.IDs)
+		})
+	}
+}
+
+func TestLookupARRExternalIDsPreservesTitleOnlyResult(t *testing.T) {
+	titles := []string{"Frieren: Beyond Journey's End", "Sousou no Frieren"}
+	spy := &spyARRLookupService{
+		result: &arr.ExternalIDsResult{
+			IDs:         &models.ExternalIDs{},
+			Titles:      titles,
+			ContentType: arr.ContentTypeAnime,
+			Source:      "parse",
+		},
+	}
+	svc := &Service{arrService: spy}
+
+	got := svc.lookupARRExternalIDs(context.Background(), "Sousou.no.Frieren.S01", "anime")
+
+	require.NotNil(t, got)
+	require.True(t, got.IDs.IsEmpty())
+	require.Equal(t, titles, got.Titles)
+	require.Equal(t, arr.ContentTypeAnime, spy.contentType)
 }
 
 func TestGazelleTargetsForSource(t *testing.T) {
@@ -263,12 +493,7 @@ func TestResolveTorznabIndexerIDs_PreservesOPSREDForRSSAutomation(t *testing.T) 
 
 func TestResolveTorznabIndexerIDs_ExcludesOPSREDForSearchWhenGazelleConfigured(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-resolve-exclude-gazelle.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-resolve-exclude-gazelle")
 	key := make([]byte, 32)
 	for i := range key {
 		key[i] = byte(i)
@@ -298,12 +523,7 @@ func TestResolveTorznabIndexerIDs_ExcludesOPSREDForSearchWhenGazelleConfigured(t
 
 func TestResolveTorznabIndexerIDs_DoesNotExcludeOPSREDForPartialGazelleConfig(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-resolve-partial-gazelle.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-resolve-partial-gazelle")
 	key := make([]byte, 32)
 	for i := range key {
 		key[i] = byte(i)
@@ -335,12 +555,7 @@ func TestBuildGazelleClientSet_LoadsSettingsOnce(t *testing.T) {
 	ctx := context.Background()
 
 	// Store is required for buildGazelleClientSet, but keys can be missing for this test.
-	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-client-cache.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-gazelle-client-cache")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -368,12 +583,7 @@ func TestBuildGazelleClientSet_LoadsSettingsOnce(t *testing.T) {
 
 func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-refresh.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-refresh")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -433,12 +643,7 @@ func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 
 func TestRefreshSearchQueue_TorznabDisabledCountsAllSources(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-refresh-gazelle-only.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-refresh-gazelle-only")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -495,12 +700,7 @@ func TestRefreshSearchQueue_TorznabDisabledCountsAllSources(t *testing.T) {
 
 func TestRefreshSearchQueue_TorznabDisabledSkipsAlreadyCrossSeeded(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-refresh-gazelle-already-seeded.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-refresh-gazelle-already-seeded")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -589,12 +789,7 @@ func TestRefreshSearchQueue_TorznabDisabledSkipsAlreadyCrossSeeded(t *testing.T)
 
 func TestPropagateDuplicateSearchHistory(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-duplicates.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-duplicates")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -635,12 +830,7 @@ func TestPropagateDuplicateSearchHistory(t *testing.T) {
 
 func TestStartSearchRun_AllowsGazelleOnlyWhenTorznabUnavailable(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-gazelle-only.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-start-gazelle-only")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -691,12 +881,7 @@ func TestStartSearchRun_AllowsGazelleOnlyWhenTorznabUnavailable(t *testing.T) {
 
 func TestStartSearchRun_DisableTorznabRequiresGazelle(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-disable-torznab.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-start-disable-torznab")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -728,12 +913,7 @@ func TestStartSearchRun_DisableTorznabRequiresGazelle(t *testing.T) {
 
 func TestStartSearchRun_DisableTorznabRequiresDecryptableGazelleKey(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-disable-torznab-decryptable.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-start-disable-torznab-decryptable")
 	key := make([]byte, 32)
 	for i := range key {
 		key[i] = byte(i)
@@ -772,12 +952,7 @@ func TestStartSearchRun_DisableTorznabRequiresDecryptableGazelleKey(t *testing.T
 
 func TestStartSearchRun_DisableTorznabSkipsJackettProbe(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-disable-torznab-jackett-probe.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-start-disable-torznab-jackett-probe")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -829,12 +1004,7 @@ func TestStartSearchRun_DisableTorznabSkipsJackettProbe(t *testing.T) {
 
 func TestStartSearchRun_FallsBackToGazelleWhenJackettProbeFails(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-jackett-probe-fallback.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-start-jackett-probe-fallback")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -885,12 +1055,7 @@ func TestStartSearchRun_FallsBackToGazelleWhenJackettProbeFails(t *testing.T) {
 
 func TestStartSearchRun_JackettProbeFailureRequiresGazelle(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-jackett-probe-failure.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-start-jackett-probe-failure")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -922,12 +1087,7 @@ func TestStartSearchRun_JackettProbeFailureRequiresGazelle(t *testing.T) {
 
 func TestStartSearchRun_DisableTorznabUsesGazelleIntervalFloor(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-disable-torznab-interval.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-start-disable-torznab-interval")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -980,12 +1140,7 @@ func TestStartSearchRun_DisableTorznabUsesGazelleIntervalFloor(t *testing.T) {
 
 func TestStartSearchRun_TorznabKeepsConservativeIntervalFloor(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-start-torznab-interval.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-start-torznab-interval")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -1062,8 +1217,8 @@ func (*queueTestSyncManager) GetAppPreferences(_ context.Context, _ int) (qbt.Ap
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (*queueTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (*queueTestSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (*queueTestSyncManager) BulkAction(context.Context, int, []string, string) error {
@@ -1156,8 +1311,8 @@ func (*gazelleSkipHashSyncManager) GetAppPreferences(_ context.Context, _ int) (
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (*gazelleSkipHashSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) error {
-	return nil
+func (*gazelleSkipHashSyncManager) AddTorrent(context.Context, int, []byte, map[string]string) (*qbt.TorrentAddResponse, error) {
+	return nil, nil
 }
 
 func (*gazelleSkipHashSyncManager) BulkAction(context.Context, int, []string, string) error {
@@ -1207,12 +1362,7 @@ func (*gazelleSkipHashSyncManager) CreateCategory(_ context.Context, _ int, _, _
 
 func TestSearchTorrentMatches_GazelleSourceWithoutBackendsReturnsError(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-no-backend.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-gazelle-no-backend")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
@@ -1251,12 +1401,7 @@ func TestSearchTorrentMatches_GazelleSourceWithoutBackendsReturnsError(t *testin
 
 func TestSearchTorrentMatches_DisableTorznabWithoutGazelleReturnsError(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-disable-torznab-no-gazelle.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-gazelle-disable-torznab-no-gazelle")
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
@@ -1295,12 +1440,7 @@ func TestSearchTorrentMatches_DisableTorznabWithoutGazelleReturnsError(t *testin
 }
 func TestSearchTorrentMatches_DisableTorznab_AllowsPartialGazelleConfig(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-partial-disable-torznab.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-gazelle-partial-disable-torznab")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -1356,12 +1496,7 @@ func TestSearchTorrentMatches_DisableTorznab_AllowsPartialGazelleConfig(t *testi
 
 func TestSearchTorrentMatches_GazelleSkipsWhenTargetHashExistsLocally(t *testing.T) {
 	ctx := context.Background()
-	dbPath := filepath.Join(t.TempDir(), "crossseed-gazelle-skip-hash.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	db := testdb.NewMigratedSQLite(t, "crossseed-gazelle-skip-hash")
 
 	key := make([]byte, 32)
 	for i := range key {

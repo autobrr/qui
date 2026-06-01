@@ -13,6 +13,7 @@ import { formatBytes } from "@/lib/utils"
 import type { OrphanScanFile } from "@/types"
 import { Download, Loader2, Trash2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface OrphanScanPreviewDialogProps {
@@ -30,6 +31,7 @@ export function OrphanScanPreviewDialog({
   instanceId,
   runId,
 }: OrphanScanPreviewDialogProps) {
+  const { t } = useTranslation("instances")
   const [offset, setOffset] = useState(0)
   const [files, setFiles] = useState<OrphanScanFile[]>([])
   const [isExporting, setIsExporting] = useState(false)
@@ -79,11 +81,11 @@ export function OrphanScanPreviewDialog({
   const handleConfirm = () => {
     confirmMutation.mutate(runId, {
       onSuccess: () => {
-        toast.success("Deletion started", { description: "Orphan files are being removed" })
+        toast.success(t("preferences.orphanScanPreview.toast.deletionStarted"), { description: t("preferences.orphanScanPreview.toast.deletionDescription") })
         onOpenChange(false)
       },
       onError: (error) => {
-        toast.error("Failed to start deletion", {
+        toast.error(t("preferences.orphanScanPreview.toast.deletionFailed"), {
           description: error instanceof Error ? error.message : "Unknown error",
         })
       },
@@ -119,9 +121,9 @@ export function OrphanScanPreviewDialog({
 
       const csv = toCsv(allItems, csvColumns)
       downloadBlob(csv, `orphan_files_${runId}.csv`)
-      toast.success(`Exported ${allItems.length} files to CSV`)
+      toast.success(t("preferences.orphanScanPreview.toast.exportedFiles", { count: allItems.length }))
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to export files")
+      toast.error(error instanceof Error ? error.message : t("preferences.orphanScanPreview.toast.exportFailed"))
     } finally {
       setIsExporting(false)
     }
@@ -131,16 +133,16 @@ export function OrphanScanPreviewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-4xl max-h-[85dvh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Orphan File Preview</DialogTitle>
+          <DialogTitle>{t("preferences.orphanScanPreview.title")}</DialogTitle>
           <DialogDescription>
-            Review files that are not associated with any torrent before deletion.
+            {t("preferences.orphanScanPreview.description")}
           </DialogDescription>
         </DialogHeader>
 
         {run && (
           <div className="text-sm text-muted-foreground">
-            {run.filesFound} file{run.filesFound !== 1 ? "s" : ""} · {formatBytes(totalSize)}
-            {run.truncated && " (truncated)"}
+            {t("preferences.orphanScanPreview.filesCount", { count: run.filesFound, size: formatBytes(totalSize) })}
+            {run.truncated && t("preferences.orphanScanPreview.truncated")}
           </div>
         )}
 
@@ -149,10 +151,10 @@ export function OrphanScanPreviewDialog({
             <table className="w-full text-sm">
               <thead className="sticky top-0">
                 <tr className="border-b">
-                  <th className="text-left p-2 font-medium bg-muted">Path</th>
-                  <th className="text-right p-2 font-medium bg-muted">Size</th>
-                  <th className="text-right p-2 font-medium bg-muted">Modified</th>
-                  <th className="text-left p-2 font-medium bg-muted">Status</th>
+                  <th className="text-left p-2 font-medium bg-muted">{t("preferences.orphanScanPreview.path")}</th>
+                  <th className="text-right p-2 font-medium bg-muted">{t("preferences.orphanScanPreview.size")}</th>
+                  <th className="text-right p-2 font-medium bg-muted">{t("preferences.orphanScanPreview.modified")}</th>
+                  <th className="text-left p-2 font-medium bg-muted">{t("preferences.orphanScanPreview.status")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -183,14 +185,14 @@ export function OrphanScanPreviewDialog({
                   <tr>
                     <td colSpan={4} className="p-6 text-center text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin inline-block mr-2" />
-                      Loading…
+                      {t("preferences.orphanScanPreview.loadingFiles")}
                     </td>
                   </tr>
                 )}
                 {!runQuery.isLoading && files.length === 0 && (
                   <tr>
                     <td colSpan={4} className="p-6 text-center text-muted-foreground">
-                      No files to display.
+                      {t("preferences.orphanScanPreview.noFiles")}
                     </td>
                   </tr>
                 )}
@@ -199,7 +201,7 @@ export function OrphanScanPreviewDialog({
           </div>
           {hasMore && (
             <div className="flex items-center justify-between gap-3 p-2 text-xs text-muted-foreground border-t bg-muted/30">
-              <span>Showing {files.length} of {totalFiles}</span>
+              <span>{t("preferences.orphanScanPreview.showing", { shown: files.length, total: totalFiles })}</span>
               <Button
                 size="sm"
                 variant="secondary"
@@ -207,7 +209,7 @@ export function OrphanScanPreviewDialog({
                 disabled={runQuery.isFetching}
               >
                 {runQuery.isFetching && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Load more
+                {t("preferences.orphanScanPreview.loadMore")}
               </Button>
             </div>
           )}
@@ -228,13 +230,13 @@ export function OrphanScanPreviewDialog({
                 ) : (
                   <Download className="h-4 w-4 mr-2" />
                 )}
-                Export CSV
+                {t("preferences.orphanScanPreview.exportCSV")}
               </Button>
             )}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
+              {t("preferences.orphanScanPreview.close")}
             </Button>
             <Button
               variant="destructive"
@@ -246,7 +248,7 @@ export function OrphanScanPreviewDialog({
               ) : (
                 <Trash2 className="h-4 w-4 mr-2" />
               )}
-              Delete Files
+              {t("preferences.orphanScanPreview.deleteFiles")}
             </Button>
           </div>
         </DialogFooter>
@@ -254,4 +256,3 @@ export function OrphanScanPreviewDialog({
     </Dialog>
   )
 }
-

@@ -67,10 +67,10 @@ func (*rootlessSavePathSyncManager) GetAppPreferences(context.Context, int) (qbt
 	return qbt.AppPreferences{TorrentContentLayout: "Original"}, nil
 }
 
-func (m *rootlessSavePathSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) error {
+func (m *rootlessSavePathSyncManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
 	m.addedOptions = make(map[string]string, len(options))
 	maps.Copy(m.addedOptions, options)
-	return nil
+	return nil, nil
 }
 
 func (*rootlessSavePathSyncManager) BulkAction(context.Context, int, []string, string) error {

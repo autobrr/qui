@@ -5,6 +5,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
+import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { api } from "@/lib/api"
 import type {
   DirScanDirectory,
@@ -139,6 +140,8 @@ export function useCancelDirScan(directoryId: number) {
 export function useDirScanStatus(directoryId: number, options?: { enabled?: boolean }) {
   const shouldEnable = (options?.enabled ?? true) && directoryId > 0
 
+  useActivityStream(shouldEnable)
+
   return useQuery({
     queryKey: ["dir-scan", "directory", directoryId, "status"],
     queryFn: () => api.getDirScanStatus(directoryId),
@@ -146,9 +149,9 @@ export function useDirScanStatus(directoryId: number, options?: { enabled?: bool
     refetchInterval: (query) => {
       const data = query.state.data
       if (!data || ("status" in data && data.status === "idle")) {
-        return 15_000
+        return false
       }
-      return isRunActive(data as DirScanRun) ? 1_000 : 15_000
+      return isRunActive(data as DirScanRun) ? 1_000 : false
     },
   })
 }
@@ -160,6 +163,8 @@ export function useDirScanRuns(
   const limit = options?.limit
   const shouldEnable = (options?.enabled ?? true) && directoryId > 0
 
+  useActivityStream(shouldEnable)
+
   return useQuery({
     queryKey: ["dir-scan", "directory", directoryId, "runs", limit ?? null],
     queryFn: () =>
@@ -170,9 +175,9 @@ export function useDirScanRuns(
     refetchInterval: (query) => {
       const runs = query.state.data as DirScanRun[] | undefined
       if (!runs) {
-        return 5_000
+        return false
       }
-      return runs.some(isRunActive) ? 1_000 : 15_000
+      return runs.some(isRunActive) ? 1_000 : false
     },
   })
 }
@@ -204,6 +209,8 @@ export function useDirScanRunInjections(
 ) {
   const { limit, offset, enabled, active } = options ?? {}
   const shouldEnable = (enabled ?? true) && directoryId > 0 && runId > 0
+
+  useActivityStream(shouldEnable)
 
   return useQuery({
     queryKey: ["dir-scan", "directory", directoryId, "run", runId, "injections", { limit, offset }],

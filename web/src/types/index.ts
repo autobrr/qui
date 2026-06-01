@@ -54,6 +54,7 @@ export interface Instance {
   name: string
   host: string
   username: string
+  hasApiKey?: boolean
   basicUsername?: string
   tlsSkipVerify: boolean
   hasLocalFilesystemAccess: boolean
@@ -75,6 +76,7 @@ export interface InstanceFormData {
   host: string
   username?: string
   password?: string
+  apiKey?: string
   basicUsername?: string
   basicPassword?: string
   tlsSkipVerify: boolean
@@ -125,6 +127,7 @@ export interface InstanceCrossSeedCompletionSettings {
   excludeTags: string[]
   indexerIds: number[]
   bypassTorznabCache: boolean
+  delaySeconds: number
 }
 
 /**
@@ -243,6 +246,7 @@ export type ConditionField =
   | "RATIO"
   | "RATIO_LIMIT"
   | "MAX_RATIO"
+  | "UPLOADED_OVER_SIZE"
   | "PROGRESS"
   | "AVAILABILITY"
   | "POPULARITY"
@@ -323,6 +327,8 @@ export interface ShareLimitsAction {
   enabled: boolean
   ratioLimit?: number
   seedingTimeMinutes?: number
+  shareLimitAction?: string
+  shareLimitsMode?: string
   condition?: RuleCondition
 }
 
@@ -406,6 +412,18 @@ export interface ExternalProgramAction {
   condition?: RuleCondition
 }
 
+export interface ExportToInstanceAction {
+  enabled: boolean
+  targetInstanceId: number
+  savePath: string
+  category?: string
+  tags?: string[]
+  paused?: boolean
+  skipChecking?: boolean
+  contentLayout?: string
+  condition?: RuleCondition
+}
+
 export interface ActionConditions {
   schemaVersion: string
   grouping?: GroupingConfig
@@ -424,6 +442,7 @@ export interface ActionConditions {
   move?: MoveAction
   externalProgram?: ExternalProgramAction
   autoManagement?: AutoManagementAction
+  exportToInstance?: ExportToInstanceAction
 }
 
 export type FreeSpaceSource =
@@ -514,7 +533,7 @@ export interface AutomationActivity {
   hash: string
   torrentName?: string
   trackerDomain?: string
-  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "auto_managed" | "moved" | "external_program" | "dry_run_no_match"
+  action: "deleted_ratio" | "deleted_seeding" | "deleted_unregistered" | "deleted_condition" | "delete_failed" | "limit_failed" | "tags_changed" | "category_changed" | "speed_limits_changed" | "share_limits_changed" | "paused" | "resumed" | "rechecked" | "reannounced" | "auto_managed" | "moved" | "external_program" | "exported_to_instance" | "dry_run_no_match"
   ruleId?: number
   ruleName?: string
   outcome: "success" | "failed" | "dry-run"
@@ -630,6 +649,7 @@ export interface InstanceCapabilities {
   supportsTorrentCreation: boolean
   supportsTorrentExport: boolean
   supportsSetTags: boolean
+  supportsSetComment: boolean
   supportsTrackerHealth: boolean
   supportsTrackerEditing: boolean
   supportsRenameTorrent: boolean
@@ -637,10 +657,13 @@ export interface InstanceCapabilities {
   supportsRenameFolder: boolean
   supportsFilePriority: boolean
   supportsSubcategories: boolean
+  subcategoriesAlwaysEnabled: boolean
   supportsTorrentTmpPath: boolean
   supportsPathAutocomplete: boolean
   supportsFreeSpacePathSource: boolean
   supportsSetRSSFeedURL: boolean
+  supportsShareLimitsAction: boolean
+  supportsShareLimitsMode?: boolean
   webAPIVersion?: string
 }
 
@@ -765,6 +788,8 @@ export interface Torrent {
   seeding_time: number
   seeding_time_limit: number
   inactive_seeding_time_limit?: number
+  share_limit_action?: string
+  share_limits_mode?: string
   seen_complete: number
   seq_dl: boolean
   size: number
@@ -776,7 +801,7 @@ export interface Torrent {
   tracker: string
   trackers_count: number
   trackers?: TorrentTracker[]
-  tracker_health?: "unregistered" | "tracker_down"
+  tracker_health?: "unregistered" | "tracker_down" | "tracker_error"
   up_limit: number
   uploaded: number
   uploaded_session: number
@@ -891,21 +916,32 @@ export interface TorrentFilters {
   expr?: string
 }
 
+// InstanceMeta provides real-time instance health via SSE, reducing need for polling
+export interface InstanceMeta {
+  connected: boolean
+  hasDecryptionError: boolean
+  recentErrors?: InstanceError[]
+}
+
 export interface TorrentResponse {
   torrents: Torrent[]
   crossInstanceTorrents?: CrossInstanceTorrent[]
   cross_instance_torrents?: CrossInstanceTorrent[]  // Backend uses snake_case
   total: number
+  activeTaskCount?: number
   stats?: TorrentStats
   counts?: TorrentCounts
   categories?: Record<string, Category>
   tags?: string[]
   serverState?: ServerState
+  appInfo?: QBittorrentAppInfo
+  preferences?: AppPreferences
   useSubcategories?: boolean
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
   trackerHealthSupported?: boolean
   isCrossInstance?: boolean
+  instanceMeta?: InstanceMeta  // Real-time instance health from SSE
 }
 
 export interface AddTorrentFailedURL {
@@ -929,6 +965,52 @@ export interface AddTorrentResponse {
 export interface CrossInstanceTorrent extends Torrent {
   instanceId: number
   instanceName: string
+}
+
+export interface TorrentStreamMeta {
+  instanceId: number
+  rid?: number
+  fullUpdate?: boolean
+  timestamp: string
+  retryInSeconds?: number
+  streamKey?: string
+}
+
+export interface TorrentStreamPayload {
+  type: "init" | "update" | "stream-error" | "heartbeat"
+  data?: TorrentResponse
+  meta?: TorrentStreamMeta
+  error?: string
+}
+
+// ActivityEventKind mirrors internal/services/activity.Kind. Each kind maps to
+// the react-query keys the frontend invalidates when the event arrives.
+export type ActivityEventKind =
+  | "backup.run"
+  | "dirscan.run"
+  | "orphanscan.run"
+  | "crossseed.status"
+  | "crossseed.search"
+  | "reannounce.activity"
+  | "automation.activity"
+  | "indexer.activity"
+  | "search.history"
+  | "tracker.icons"
+
+// ActivityEvent is a small qui-owned server signal. It carries identifiers only
+// (never payload data); the frontend reacts by invalidating the matching query.
+export interface ActivityEvent {
+  kind: ActivityEventKind
+  instanceId?: number
+  resourceId?: string
+  timestamp: string
+}
+
+// ActivityStreamPayload is the envelope for the "activity" SSE event. It is
+// disjoint from TorrentStreamPayload and handled by a dedicated listener.
+export interface ActivityStreamPayload {
+  type: "activity"
+  activity?: ActivityEvent
 }
 
 // Simplified MainData - only used for Dashboard server stats
@@ -1449,6 +1531,11 @@ export interface QBittorrentAppInfo {
   version: string
   webAPIVersion?: string
   buildInfo?: QBittorrentBuildInfo
+  processInfo?: QBittorrentProcessInfo
+}
+
+export interface QBittorrentProcessInfo {
+  launchTime: number
 }
 
 // Torrent Creation Types
@@ -1905,6 +1992,8 @@ export interface CrossSeedTorrentSearchResult {
   downloadVolumeFactor: number
   uploadVolumeFactor: number
   guid: string
+  infoHashV1?: string
+  infoHashV2?: string
   imdbId?: string
   tvdbId?: string
   matchReason?: string
@@ -2022,6 +2111,17 @@ export interface CrossSeedAutomationSettings {
   gazelleEnabled: boolean
   redactedApiKey: string
   orpheusApiKey: string
+  // Season pack settings
+  seasonPackEnabled: boolean
+  seasonPackSkipRepackCompare: boolean
+  seasonPackSimplifyHdrCompare: boolean
+  seasonPackSimplifyWebCompare: boolean
+  seasonPackSkipYearCompare: boolean
+  seasonPackCoverageThreshold: number
+  seasonPackTags: string[]
+  seasonPackCategory: string
+  seasonPackTvdbApiKey?: string
+  seasonPackTvdbPin?: string
   createdAt?: string
   updatedAt?: string
 }
@@ -2073,6 +2173,17 @@ export interface CrossSeedAutomationSettingsPatch {
   gazelleEnabled?: boolean
   redactedApiKey?: string
   orpheusApiKey?: string
+  // Season pack settings
+  seasonPackEnabled?: boolean
+  seasonPackSkipRepackCompare?: boolean
+  seasonPackSimplifyHdrCompare?: boolean
+  seasonPackSimplifyWebCompare?: boolean
+  seasonPackSkipYearCompare?: boolean
+  seasonPackCoverageThreshold?: number
+  seasonPackTags?: string[]
+  seasonPackCategory?: string
+  seasonPackTvdbApiKey?: string
+  seasonPackTvdbPin?: string
 }
 
 export interface CrossSeedAutomationStatus {
@@ -2107,12 +2218,14 @@ export interface CrossSeedSearchSettingsPatch {
   cooldownMinutes?: number
 }
 
+export type CrossSeedSearchResultStatus = "added" | "skipped" | "failed"
+
 export interface CrossSeedSearchResult {
   torrentHash: string
   torrentName: string
   indexerName: string
   releaseTitle: string
-  added: boolean
+  status: CrossSeedSearchResultStatus
   message?: string
   processedAt: string
 }
@@ -2152,6 +2265,22 @@ export interface CrossSeedSearchStatus {
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
 }
+
+export interface SeasonPackRun {
+  id: number
+  torrentName: string
+  phase: "check" | "apply"
+  status: "ready" | "skipped" | "applied" | "failed"
+  reason: string
+  message: string
+  instanceId?: number
+  matchedEpisodes: number
+  totalEpisodes: number
+  coverage: number
+  linkMode?: string
+  createdAt: string
+}
+
 // Orphan Scan types
 export type OrphanScanRunStatus =
   | "pending"

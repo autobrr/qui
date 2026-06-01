@@ -25,6 +25,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/jackett"
@@ -94,6 +95,8 @@ type Service struct {
 
 	// Global run semaphore to cap concurrent scans.
 	runSem chan struct{}
+
+	activityPublisher activity.Publisher
 }
 
 // syncManagerTorrentChecker adapts SyncManager to the TorrentChecker interface.
@@ -155,7 +158,50 @@ func NewService(
 		cancelFuncs:               make(map[int64]context.CancelFunc),
 		runProgress:               make(map[int64]*runProgress),
 		runSem:                    make(chan struct{}, cfg.MaxConcurrentRuns),
+		activityPublisher:         activity.NopPublisher{},
 	}
+}
+
+// SetActivityPublisher wires the qui server-event hub so directory-scan run
+// transitions are pushed to connected clients instead of polled. Safe to call
+// once at startup.
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
+}
+
+// emitRunActivity signals connected clients that a directory's scan-run state
+// changed so they refetch. The frontend keys these queries by directory id, so
+// ResourceID is always the directory id. Must be called after any state
+// transition completes and after releasing locks.
+func (s *Service) emitRunActivity(directoryID, instanceID int) {
+	if s == nil || s.activityPublisher == nil || directoryID <= 0 {
+		return
+	}
+	s.activityPublisher.Publish(activity.Event{
+		Kind:       activity.KindDirScanRun,
+		InstanceID: instanceID,
+		ResourceID: strconv.Itoa(directoryID),
+	})
+}
+
+// emitRunActivityForRun resolves the owning directory for a run and emits a
+// scan-run activity event. Used by terminal-state helpers where only the run id
+// is in scope.
+func (s *Service) emitRunActivityForRun(ctx context.Context, runID int64, instanceID int) {
+	if s == nil || s.activityPublisher == nil || s.store == nil || runID <= 0 {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil || run == nil {
+		return
+	}
+	s.emitRunActivity(run.DirectoryID, instanceID)
 }
 
 // Start starts the scheduler loop.
@@ -252,6 +298,9 @@ func (s *Service) triggerScheduledScan(directoryID int) {
 
 	l := log.With().Int("directoryID", directoryID).Int64("runID", runID).Logger()
 
+	// Run queued for this directory.
+	s.emitRunActivity(directoryID, 0)
+
 	if s.cfg.MaxJitter > 0 {
 		jitter, jitterErr := randomDuration(s.cfg.MaxJitter)
 		if jitterErr != nil {
@@ -322,6 +371,9 @@ func (s *Service) startScan(ctx context.Context, directoryID int, triggeredBy, s
 		return 0, fmt.Errorf("create run: %w", err)
 	}
 
+	// Run queued for this directory.
+	s.emitRunActivity(directoryID, 0)
+
 	// Use Background() as parent so the scan survives after the HTTP request completes.
 	s.startRun(context.Background(), directoryID, runID)
 
@@ -384,6 +436,9 @@ func (s *Service) StartWebhookScan(ctx context.Context, directoryID int, scanRoo
 		return 0, fmt.Errorf("create queued webhook run: %w", err)
 	}
 
+	// Follow-up run queued for this directory.
+	s.emitRunActivity(directoryID, 0)
+
 	s.startRun(context.Background(), directoryID, runID)
 	return runID, nil
 }
@@ -422,6 +477,9 @@ func (s *Service) CancelScan(ctx context.Context, directoryID int) error {
 	if err := s.store.CancelQueuedRuns(context.Background(), directoryID); err != nil {
 		return fmt.Errorf("cancel queued runs: %w", err)
 	}
+
+	// Run canceled for this directory.
+	s.emitRunActivity(directoryID, 0)
 	return nil
 }
 
@@ -503,6 +561,9 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		return
 	}
 
+	// Run advanced from queued to scanning.
+	s.emitRunActivity(directoryID, 0)
+
 	run, err = s.store.GetRun(ctx, runID)
 	if err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to reload run")
@@ -566,6 +627,9 @@ func (s *Service) executeScan(ctx context.Context, directoryID int, runID int64)
 		l.Error().Err(err).Msg("dirscan: failed to update run stats")
 	}
 
+	// Run advanced from scanning to searching.
+	s.emitRunActivity(directoryID, dir.TargetInstanceID)
+
 	l.Info().
 		Int("searchees", len(scanResult.Searchees)).
 		Int("searcheesEligible", len(workSelection.roots)).
@@ -596,9 +660,15 @@ func (s *Service) markRunCanceled(ctx context.Context, runID int64, l *zerolog.L
 	if s == nil || s.store == nil || runID <= 0 {
 		return
 	}
-	if err := s.store.UpdateRunCanceled(ctx, runID); err != nil && l != nil {
-		l.Debug().Err(err).Str("reason", reason).Msg("dirscan: failed to mark run canceled")
+	if err := s.store.UpdateRunCanceled(ctx, runID); err != nil {
+		if l != nil {
+			l.Debug().Err(err).Str("reason", reason).Msg("dirscan: failed to mark run canceled")
+		}
+		return
 	}
+
+	// Run canceled.
+	s.emitRunActivityForRun(context.Background(), runID, 0)
 }
 
 func (s *Service) loadSettingsAndMatcher(ctx context.Context, runID int64, instanceID int, l *zerolog.Logger) (*models.DirScanSettings, *Matcher, bool) {
@@ -651,6 +721,9 @@ func (s *Service) finalizeRun(ctx context.Context, runID int64, filesFound, file
 		}
 		return
 	}
+
+	// Run completed successfully.
+	s.emitRunActivityForRun(ctx, runID, instanceID)
 
 	startedAt, completedAt := s.getRunTimes(ctx, runID)
 	s.notify(ctx, notifications.Event{
@@ -708,6 +781,9 @@ func (s *Service) handleCancellation(ctx context.Context, runID int64, l *zerolo
 	if err := s.store.UpdateRunCanceled(context.Background(), runID); err != nil {
 		l.Error().Err(err).Msg("dirscan: failed to mark run as canceled")
 	}
+
+	// Run canceled mid-scan.
+	s.emitRunActivityForRun(context.Background(), runID, 0)
 	return true
 }
 
@@ -1233,9 +1309,33 @@ func markTVGroupInjected(injectedTVGroups map[tvGroupKey]struct{}, key *tvGroupK
 }
 
 type runProgress struct {
-	matchesFound  int
-	torrentsAdded int
-	updatedAt     time.Time
+	matchesFound     int
+	torrentsAdded    int
+	updatedAt        time.Time
+	injectingEmitted bool
+}
+
+// markInjectingEmitted records that the injecting transition has been emitted
+// for a run and returns true only on the first call, so the event fires once
+// per run rather than on every per-item injection.
+func (s *Service) markInjectingEmitted(runID int64) bool {
+	if s == nil || runID <= 0 {
+		return false
+	}
+
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+
+	entry, ok := s.runProgress[runID]
+	if !ok {
+		entry = &runProgress{}
+		s.runProgress[runID] = entry
+	}
+	if entry.injectingEmitted {
+		return false
+	}
+	entry.injectingEmitted = true
+	return true
 }
 
 func (s *Service) setRunProgress(runID int64, matchesFound, torrentsAdded int) {
@@ -1311,6 +1411,16 @@ func (s *Service) recoverStuckRuns() error {
 	}
 	if affected > 0 {
 		log.Info().Int64("runs", affected).Msg("dirscan: marked interrupted runs as failed")
+
+		// The recovery query only returns a count, so signal every directory once
+		// at startup. This fires only when runs were actually interrupted.
+		if directoryIDs, listErr := s.store.ListDirectoryIDs(recoveryCtx); listErr != nil {
+			log.Debug().Err(listErr).Msg("dirscan: failed to list directories for crash-recovery activity")
+		} else {
+			for _, directoryID := range directoryIDs {
+				s.emitRunActivity(directoryID, 0)
+			}
+		}
 	}
 
 	return nil
@@ -1592,7 +1702,6 @@ func (s *Service) searchForSearchee(
 		Metadata:   meta,       // Pass parsed metadata with external IDs
 		IndexerIDs: indexerIDs, // Use capability-filtered indexers
 		Categories: categories,
-		Limit:      50,
 		OnAllComplete: func(response *jackett.SearchResponse, err error) {
 			if err != nil {
 				errCh <- err
@@ -1797,6 +1906,11 @@ func (s *Service) tryMatchAndInject(
 	// pure searching from active injection attempts.
 	if updateErr := s.store.UpdateRunStatus(ctx, runID, models.DirScanRunStatusInjecting); updateErr != nil {
 		l.Debug().Err(updateErr).Msg("dirscan: failed to update run status to injecting")
+	}
+
+	// Emit the searching->injecting transition once per run, not per item.
+	if s.markInjectingEmitted(runID) {
+		s.emitRunActivity(dir.ID, dir.TargetInstanceID)
 	}
 
 	injectResult, err := s.injector.Inject(ctx, injectReq)
@@ -2581,6 +2695,9 @@ func (s *Service) markRunFailed(_ context.Context, runID int64, errMsg string, i
 		l.Error().Err(err).Msg("dirscan: failed to mark run as failed")
 		return
 	}
+
+	// Run failed.
+	s.emitRunActivityForRun(context.Background(), runID, instanceID)
 
 	startedAt, completedAt := s.getRunTimes(context.Background(), runID)
 	s.notify(context.Background(), notifications.Event{
