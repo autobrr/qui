@@ -60,7 +60,8 @@ describe("useCompactViewSort", () => {
   it("changes the sort field and flags a user sort action", () => {
     const { params, result } = render({ activeSortField: "name" })
     act(() => result.current.handleCompactSortFieldChange("size"))
-    expect(params.setSorting).toHaveBeenCalledWith([{ id: "size", desc: expect.any(Boolean) }])
+    // "size" is numeric, so getDefaultSortOrder("size") === "desc".
+    expect(params.setSorting).toHaveBeenCalledWith([{ id: "size", desc: true }])
     expect(params.setLastUserAction).toHaveBeenCalledWith({ type: "sort", timestamp: expect.any(Number) })
   })
 

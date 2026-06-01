@@ -46,8 +46,8 @@ export function useCompactViewSort({
     }
 
     return field
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [table, columnVisibility, columnOrder])
+    // Reads table.getAllLeafColumns() at call time, so it only depends on `table`.
+  }, [table])
 
   const compactSortOptions = useMemo(() => {
     const columns = table.getAllLeafColumns()
