@@ -4,6 +4,7 @@
 package orphanscan
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -127,4 +128,40 @@ func normalizePath(path string) string {
 // canonicalizeHash matches SyncManager's internal hash normalization.
 func canonicalizeHash(hash string) string {
 	return strings.ToLower(strings.TrimSpace(hash))
+}
+
+// resolvePathCase returns path with its final component corrected to the actual
+// on-disk casing. Uses cache to avoid repeated ReadDir calls on the same parent.
+// If the path already exists as-is, or no case-insensitive match is found in the
+// parent, the original cleaned path is returned.
+// No-op on Windows: normalizePath already case-folds all paths there.
+func resolvePathCase(path string, cache map[string]string) string {
+	if runtime.GOOS == goosWindows {
+		return path
+	}
+	if v, ok := cache[path]; ok {
+		return v
+	}
+	// Fast path: the path exists with the exact casing given.
+	if _, err := os.Lstat(path); err == nil {
+		cache[path] = path
+		return path
+	}
+	// Slow path: list the parent and find the first case-insensitive match.
+	parent := filepath.Dir(path)
+	base := filepath.Base(path)
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		cache[path] = path
+		return path
+	}
+	for _, e := range entries {
+		if strings.EqualFold(e.Name(), base) {
+			resolved := filepath.Join(parent, e.Name())
+			cache[path] = resolved
+			return resolved
+		}
+	}
+	cache[path] = path
+	return path
 }

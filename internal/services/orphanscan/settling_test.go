@@ -4,7 +4,9 @@
 package orphanscan
 
 import (
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -451,4 +453,68 @@ func TestBuildFileMapFromTorrents_CaseMismatchBetweenMetadataAndDisk(t *testing.
 			assert.Equal(t, []string{filepath.Clean(saveRoot)}, result.scanRoots)
 		})
 	}
+}
+
+// TestResolvePathCase verifies that resolvePathCase finds the actual on-disk
+// casing of a directory name when the caller supplies a different case.
+// Skipped on non-Linux because macOS uses a case-insensitive filesystem where
+// os.Lstat succeeds regardless of case, making the resolution path unreachable.
+func TestResolvePathCase(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("case-sensitive filesystem required")
+	}
+	t.Parallel()
+
+	parent := t.TempDir()
+	actual := filepath.Join(parent, "Tracker-ONE")
+	require.NoError(t, os.Mkdir(actual, 0o755))
+	cache := make(map[string]string)
+
+	// Wrong case → returns actual on-disk name.
+	got := resolvePathCase(filepath.Join(parent, "tracker-one"), cache)
+	assert.Equal(t, actual, got)
+
+	// Correct case → returns unchanged.
+	got = resolvePathCase(actual, cache)
+	assert.Equal(t, actual, got)
+
+	// No match → returns original.
+	noMatch := filepath.Join(parent, "zzz-nonexistent")
+	got = resolvePathCase(noMatch, cache)
+	assert.Equal(t, noMatch, got)
+}
+
+// TestBuildFileMapFromTorrents_SavePathCaseMismatch verifies that when
+// qBittorrent's configured save_path uses different casing from the actual
+// on-disk directory (e.g. "tracker-one" vs "Tracker-ONE"), the file map is
+// built with the actual on-disk paths so the walker can find them.
+// Skipped on non-Linux (case-insensitive filesystem makes it a no-op there).
+func TestBuildFileMapFromTorrents_SavePathCaseMismatch(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("case-sensitive filesystem required")
+	}
+	t.Parallel()
+
+	parent := t.TempDir()
+	actual := filepath.Join(parent, "Tracker-ONE")
+	require.NoError(t, os.Mkdir(actual, 0o755))
+
+	wrongCaseSavePath := filepath.Join(parent, "tracker-one")
+	result, err := buildFileMapFromTorrents(
+		[]qbt.Torrent{
+			{
+				Hash:     "abc123",
+				SavePath: wrongCaseSavePath,
+				State:    qbt.TorrentStatePausedUp,
+			},
+		},
+		map[string]qbt.TorrentFiles{
+			"abc123": {{Name: "Transformers.mkv", Size: 1000}},
+		},
+	)
+	require.NoError(t, err)
+
+	diskPath := normalizePath(filepath.Join(actual, "Transformers.mkv"))
+	assert.True(t, result.fileMap.Has(diskPath), "expected disk path in map: %s", diskPath)
+	assert.Contains(t, result.scanRoots, filepath.Clean(actual))
 }

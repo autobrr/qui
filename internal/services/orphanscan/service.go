@@ -1248,6 +1248,7 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 	scanRoots := make(map[string]struct{})
 	skippedRoots := make(map[string]struct{})
 	stableMissingFiles := 0
+	pathCache := make(map[string]string)
 
 	for i := range torrents {
 		torrent := torrents[i]
@@ -1259,7 +1260,7 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 		if !hasFiles {
 			if isTransientTorrentStateForOrphanScan(torrent.State) {
 				if hasAbsSavePath {
-					skippedRoots[savePath] = struct{}{}
+					skippedRoots[resolvePathCase(savePath, pathCache)] = struct{}{}
 				}
 				continue
 			}
@@ -1272,7 +1273,12 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 			continue
 		}
 
-		scanRoots[savePath] = struct{}{}
+		// qBittorrent stores the configured save_path, which may differ in case
+		// from the actual directory on disk (e.g. "tracker-one" vs "Tracker-ONE")
+		// on case-sensitive filesystems. Resolve to the real on-disk name so the
+		// file map and scan roots match what WalkDir reports.
+		resolvedSavePath := resolvePathCase(savePath, pathCache)
+		scanRoots[resolvedSavePath] = struct{}{}
 
 		// content_path reflects the real on-disk path; use it to correct any
 		// case differences between the torrent metadata root folder name and the
@@ -1284,6 +1290,9 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 
 		for _, f := range correctedFiles {
 			tfm.Add(normalizePath(filepath.Join(savePath, f.Name)))
+			if resolvedSavePath != savePath {
+				tfm.Add(normalizePath(filepath.Join(resolvedSavePath, f.Name)))
+			}
 		}
 
 		// Auto TMM can update save_path to the category root without moving the
