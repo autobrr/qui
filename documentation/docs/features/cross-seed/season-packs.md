@@ -112,7 +112,23 @@ See [Hardlink Mode](hardlink-mode) for setup instructions.
 - Enable the feature
 - Set the coverage threshold (default 75%)
 - Optionally, add a TVDB API key for improved episode count accuracy. TVMaze is used automatically as a free fallback without any configuration.
-- Optionally, set a **Category override** for season pack injects. If you use Sonarr, set this to the same category Sonarr is watching on its qBittorrent download client (for example `tv-hd` or `tv-uhd`). Sonarr will pick up the assembled pack and hardlink-import its files into your library, so the same on-disk bytes back both the library and every seeded episode. If left empty, season packs use the global Category Mode configured under **Cross-Seed > Rules > Categories**.
+- Optionally, configure **Category routing** for season pack injects. Add rules that map a resolution (and optionally a source) to a qBittorrent category, then set an **Anything else** fallback category for packs that match no rule. If you run multiple Sonarr instances, point each rule at the category that Sonarr watches on its qBittorrent download client: route `1080p` to `tv-hd` and `2160p` to `tv-uhd`, for example. Sonarr will pick up the assembled pack and hardlink-import its files into your library, so the same on-disk bytes back both the library and every seeded episode. Categories are created on demand when they do not exist yet, and existing categories are used untouched. If no rule matches and no fallback is set, season packs use the global Category Mode configured under **Cross-Seed > Rules > Categories**.
+
+#### Category routing
+
+Each routing rule matches on a resolution and an optional source:
+
+| Field | Values | Effect |
+| --- | --- | --- |
+| Resolution | `2160p`, `1080p`, `720p`, `576p`, `480p` | Required. The pack resolution the rule applies to. |
+| Source | Any, `WEB`, `BluRay`, `Remux`, `HDTV` | Optional. Restricts the rule to a single source, or leave as **Any** to match every source at that resolution. |
+| Category | A qBittorrent category | Where matching packs are filed. Created on demand if it does not exist. |
+
+When more than one rule could match a pack, the most specific rule wins: a rule with an explicit source beats an **Any**-source rule at the same resolution. If no rule matches, qui uses the **Anything else** fallback category.
+
+:::tip
+**Remux** is detected from the release tags, not the source field. A BluRay remux carries the remux tag, so it routes under the **Remux** option rather than the **BluRay** option. Add a separate `Remux` rule when you want remuxes filed away from regular BluRay packs.
+:::
 
 ### 2. Create an API Key
 
@@ -223,11 +239,11 @@ When qui applies a season pack, it:
 - Always adds the torrent with an explicit `savepath` pointing at the linked tree
 - Applies the tags configured in **Cross-Seed > Rules > Season packs**
 - Adds incomplete packs paused, then best-effort attempts automatic recheck and queues automatic resume. After recheck, qui resumes at or above the configured season-pack coverage threshold; below that threshold, the torrent stays paused for manual review.
-- Uses the **Category override** from **Cross-Seed > Rules > Season packs** when set (recommended for Sonarr integration so the pack lands in Sonarr's download-client category and inherits hardlink-aware imports)
-- Otherwise uses the global cross-seed category rules:
-  - Custom category, if enabled
-  - Otherwise category affix mode, if enabled
-  - Otherwise indexer-name category, if enabled
+- Resolves the category in this order:
+  - The category from the first matching **Category routing** rule under **Cross-Seed > Rules > Season packs** (recommended for Sonarr integration so the pack lands in Sonarr's download-client category and inherits hardlink-aware imports)
+  - Otherwise the **Anything else** fallback category, if set
+  - Otherwise the global cross-seed category rules: custom category if enabled, otherwise category affix mode if enabled, otherwise indexer-name category if enabled, otherwise inheriting the matched episode's category
+- Creates the resolved category on the target instance if it does not already exist
 
 ## Instance Selection
 

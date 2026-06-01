@@ -210,10 +210,25 @@
       "tvdbPin": "TVDB 订阅者 PIN",
       "pasteTvdbPin": "粘贴 TVDB PIN",
       "tvdbDescription": "可选。当调用检查端点而不带种子数据时，可提高阈值准确度。TVMaze 会作为免费回退自动使用。",
-      "categoryOverride": "分类覆盖",
-      "categoryPlaceholder": "例如 tv-hd",
-      "categoryDescriptionBefore": "可选。用于季度包注入的固定 qBittorrent 分类。将其设置为你的 Sonarr 下载客户端分类（例如 ",
-      "categoryDescriptionAfter": "），以便 Sonarr 导入该包并在媒体库与你做种的单集之间保留硬链接。留空则遵循下方的分类模式。"
+      "categoryRouting": {
+        "title": "分类路由",
+        "description": "根据分辨率和来源将季度包注入路由到 qBittorrent 分类。将这些设置为你的 Sonarr 下载客户端分类，以便 Sonarr 导入该包并保留硬链接。在相同分辨率下，指定来源的规则优先于 Any（任意来源）规则。",
+        "addRule": "添加规则",
+        "removeRule": "移除规则",
+        "whenResolution": "当",
+        "fromSource": "来自",
+        "anySource": "任意来源",
+        "fileAs": "归入",
+        "fallbackLabel": "其他所有",
+        "fallbackDescriptionBefore": "可选。用于不匹配上述任何规则的季度包注入的分类（例如 ",
+        "fallbackDescriptionAfter": "）。留空则遵循下方的分类模式。",
+        "source": {
+          "web": "WEB",
+          "bluray": "BluRay",
+          "remux": "Remux",
+          "hdtv": "HDTV"
+        }
+      }
     },
     "gazelle": {
       "title": "Gazelle（OPS/RED）",
