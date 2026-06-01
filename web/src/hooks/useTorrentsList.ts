@@ -8,6 +8,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
+import { resolveStreamedCrossInstanceTorrents } from "@/lib/cross-instance-torrents"
 import { isAllInstancesScope } from "@/lib/instances"
 import { mergeStreamedFirstPage } from "@/lib/stream-merge"
 import type {
@@ -228,9 +229,10 @@ export function useTorrentsList(
       if (useCrossInstanceEndpoint) {
         // Aggregated streams deliver the full first page of cross-instance torrents.
         // Their identity is instanceId+hash, so the single-instance hash merge below
-        // does not apply; replace the list wholesale.
-        const crossTorrents = payload.data.crossInstanceTorrents ?? payload.data.cross_instance_torrents ?? []
-        setAllTorrents(payload.data.total === 0 || crossTorrents.length === 0 ? [] : crossTorrents)
+        // does not apply; replace the list wholesale. The resolver normalizes the
+        // backend's snake_case instance_id/instance_name to camelCase — without it the
+        // Instance column renders blank (the cell reads camelCase instanceName).
+        setAllTorrents(resolveStreamedCrossInstanceTorrents(payload.data))
 
         if (typeof payload.data.total === "number") {
           setLastKnownTotal(payload.data.total)
