@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { normalizeCrossInstanceTorrents, resolveStreamedCrossInstanceTorrents } from "@/lib/cross-instance-torrents"
+import { normalizeCrossInstanceTorrents, normalizeStreamedSnapshot, resolveStreamedCrossInstanceTorrents } from "@/lib/cross-instance-torrents"
 import type { CrossInstanceTorrent, TorrentResponse } from "@/types"
 
 // A streamed cross-instance torrent as it arrives over SSE: the backend's
@@ -115,5 +115,31 @@ describe("resolveStreamedCrossInstanceTorrents", () => {
   it("returns an empty list when no torrents are present", () => {
     expect(resolveStreamedCrossInstanceTorrents(snapshot({ total: 5, cross_instance_torrents: [] }))).toEqual([])
     expect(resolveStreamedCrossInstanceTorrents(snapshot({ total: 5 }))).toEqual([])
+  })
+})
+
+describe("normalizeStreamedSnapshot", () => {
+  // Guards the flicker regression: the stream handler writes this normalized
+  // snapshot into the React Query cache, which the REST-processing effect reads.
+  // If the cached snapshot kept snake_case rows, the effect would overwrite the
+  // table with blank-Instance rows on every tick.
+  it("promotes both cross-instance arrays to camelCase so the cached snapshot is consistent", () => {
+    const raw = {
+      total: 1,
+      cross_instance_torrents: [streamed("a", 3, "seedbox")],
+    } as unknown as TorrentResponse
+
+    const result = normalizeStreamedSnapshot(raw)
+
+    expect(result.cross_instance_torrents?.[0]).toEqual(
+      expect.objectContaining({ instanceId: 3, instanceName: "seedbox" })
+    )
+    // Both casings of the array must point at the normalized rows.
+    expect(result.crossInstanceTorrents).toBe(result.cross_instance_torrents)
+  })
+
+  it("returns the snapshot unchanged when there is nothing to normalize", () => {
+    const single = { total: 2, torrents: [] } as unknown as TorrentResponse
+    expect(normalizeStreamedSnapshot(single)).toBe(single)
   })
 })

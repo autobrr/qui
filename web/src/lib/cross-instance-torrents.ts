@@ -62,6 +62,30 @@ export function normalizeCrossInstanceTorrents(
   return normalizedTorrents
 }
 
+// normalizeStreamedSnapshot returns the SSE snapshot with its cross-instance
+// torrents promoted to camelCase, leaving every other field untouched. The
+// stream handler feeds this single normalized object to all of its sinks (the
+// React Query cache, the retained snapshot, and the table rows) so they never
+// disagree. Writing a raw snake_case snapshot into the query cache would let the
+// REST-processing effect overwrite the table with un-normalized rows on the next
+// tick, flickering the Instance column. Returns the input unchanged when there
+// are no cross-instance torrents to normalize (e.g. single-instance streams).
+export function normalizeStreamedSnapshot(data: TorrentResponse): TorrentResponse {
+  const normalized = normalizeCrossInstanceTorrents(
+    (data.crossInstanceTorrents ?? data.cross_instance_torrents) as RawCrossInstanceTorrent[] | undefined
+  )
+
+  if (!normalized) {
+    return data
+  }
+
+  return {
+    ...data,
+    crossInstanceTorrents: normalized,
+    cross_instance_torrents: normalized,
+  }
+}
+
 // resolveStreamedCrossInstanceTorrents turns an SSE stream snapshot into the row
 // list the unified table renders. Aggregated streams deliver the full first page,
 // so the snapshot is authoritative: an empty result (or total 0) clears the table,

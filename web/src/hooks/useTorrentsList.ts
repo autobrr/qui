@@ -8,7 +8,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
-import { resolveStreamedCrossInstanceTorrents } from "@/lib/cross-instance-torrents"
+import { normalizeStreamedSnapshot, resolveStreamedCrossInstanceTorrents } from "@/lib/cross-instance-torrents"
 import { isAllInstancesScope } from "@/lib/instances"
 import { mergeStreamedFirstPage } from "@/lib/stream-merge"
 import type {
@@ -221,32 +221,37 @@ export function useTorrentsList(
       if (!payload?.data) {
         return
       }
-      setLastStreamSnapshot(payload.data)
-      updateAppInfoCache(payload.data)
-      updateMetadataCache(payload.data)
-      queryClient.setQueryData(streamQueryKey, payload.data)
+      // Normalize the streamed snapshot once at the boundary so every sink — the
+      // query cache (read by the REST-processing effect below), the retained
+      // snapshot, and the table rows — sees identical camelCase cross-instance
+      // metadata. Feeding the raw snake_case payload to the cache would let the
+      // effect overwrite the table with un-normalized rows on the next tick,
+      // flickering the Instance column.
+      const data = normalizeStreamedSnapshot(payload.data)
+      setLastStreamSnapshot(data)
+      updateAppInfoCache(data)
+      updateMetadataCache(data)
+      queryClient.setQueryData(streamQueryKey, data)
 
       if (useCrossInstanceEndpoint) {
         // Aggregated streams deliver the full first page of cross-instance torrents.
         // Their identity is instanceId+hash, so the single-instance hash merge below
-        // does not apply; replace the list wholesale. The resolver normalizes the
-        // backend's snake_case instance_id/instance_name to camelCase — without it the
-        // Instance column renders blank (the cell reads camelCase instanceName).
-        setAllTorrents(resolveStreamedCrossInstanceTorrents(payload.data))
+        // does not apply; replace the list wholesale.
+        setAllTorrents(resolveStreamedCrossInstanceTorrents(data))
 
-        if (typeof payload.data.total === "number") {
-          setLastKnownTotal(payload.data.total)
+        if (typeof data.total === "number") {
+          setLastKnownTotal(data.total)
         }
-        if (currentPage === 0 && typeof payload.data.hasMore === "boolean") {
-          setHasLoadedAll(!payload.data.hasMore)
+        if (currentPage === 0 && typeof data.hasMore === "boolean") {
+          setHasLoadedAll(!data.hasMore)
         }
         return
       }
 
       setAllTorrents(prev => {
-        const nextTorrents = payload.data?.torrents ?? []
+        const nextTorrents = data.torrents ?? []
 
-        if (payload.data?.total === 0 || nextTorrents.length === 0) {
+        if (data.total === 0 || nextTorrents.length === 0) {
           return []
         }
 
@@ -256,16 +261,16 @@ export function useTorrentsList(
         return mergeStreamedFirstPage(
           prev,
           nextTorrents,
-          typeof payload.data?.total === "number" ? payload.data.total : undefined
+          typeof data.total === "number" ? data.total : undefined
         )
       })
 
-      if (typeof payload.data.total === "number") {
-        setLastKnownTotal(payload.data.total)
+      if (typeof data.total === "number") {
+        setLastKnownTotal(data.total)
       }
 
-      if (currentPage === 0 && typeof payload.data.hasMore === "boolean") {
-        setHasLoadedAll(!payload.data.hasMore)
+      if (currentPage === 0 && typeof data.hasMore === "boolean") {
+        setHasLoadedAll(!data.hasMore)
       }
     },
     [currentPage, pageSize, queryClient, streamQueryKey, updateAppInfoCache, updateMetadataCache, useCrossInstanceEndpoint]
