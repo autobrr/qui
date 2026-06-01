@@ -5,40 +5,27 @@
 
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { api } from "@/lib/api"
 import { formatRelativeTime } from "@/lib/dateTimeUtils"
-import type { IndexerActivityStatus, IndexerCooldownStatus, SchedulerTaskStatus } from "@/types"
+import type { IndexerCooldownStatus, SchedulerTaskStatus } from "@/types"
+import { useQuery } from "@tanstack/react-query"
 import { Activity, ChevronDown, Clock, Loader2, Pause, Zap } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
 export function IndexerActivityPanel() {
   const { t } = useTranslation("settings")
-  const [activity, setActivity] = useState<IndexerActivityStatus | null>(null)
-  const [loading, setLoading] = useState(true)
   const [isOpen, setIsOpen] = useState(true)
 
-  const fetchActivity = async () => {
-    try {
-      const data = await api.getIndexerActivityStatus()
-      setActivity(data)
-    } catch (error) {
-      console.error("Failed to fetch activity status:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchActivity()
-    // Poll every 2 seconds when open
-    const interval = setInterval(() => {
-      if (isOpen) {
-        fetchActivity()
-      }
-    }, 2000)
-    return () => clearInterval(interval)
-  }, [isOpen])
+  // Events ("indexer.activity") invalidate ["indexer-activity"]; no polling needed.
+  useActivityStream(isOpen)
+  const { data: activity, isLoading: loading } = useQuery({
+    queryKey: ["indexer-activity"],
+    queryFn: () => api.getIndexerActivityStatus(),
+    enabled: isOpen,
+    refetchInterval: false,
+  })
 
   const hasActivity = activity && (
     (activity.scheduler?.queueLength ?? 0) > 0 ||

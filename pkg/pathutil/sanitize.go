@@ -68,24 +68,6 @@ func SanitizePathSegment(name string) string {
 	return result
 }
 
-// TorrentKey generates a stable, filesystem-safe directory key for a torrent.
-// Uses the infohash as the primary identifier, falling back to sanitized name.
-// The key is suitable for use as a directory name on any platform.
-func TorrentKey(infohash, name string) string {
-	// Prefer infohash as it's guaranteed unique and filesystem-safe
-	if infohash != "" {
-		// Infohash is already hex (a-f0-9), but lowercase it for consistency
-		return strings.ToLower(infohash)
-	}
-
-	// Fallback to sanitized name
-	if name != "" {
-		return SanitizePathSegment(name)
-	}
-
-	return "_unknown"
-}
-
 // IsolationFolderName generates a human-readable isolation folder name for
 // hardlink cross-seeding. Format: <sanitized-name>--<shortHash>
 //

@@ -259,35 +259,6 @@ func shouldLogTrackedFileDecision(
 	return existing.Status != fileModel.Status || existing.FilePath != fileModel.FilePath
 }
 
-func searcheeIsEligible(searchee *Searchee, idx *trackedFilesIndex) bool {
-	if searchee == nil || len(searchee.Files) == 0 {
-		return false
-	}
-
-	for _, f := range searchee.Files {
-		if f == nil {
-			continue
-		}
-
-		var tracked *models.DirScanFile
-		if idx != nil {
-			tracked = idx.byPath[f.Path]
-			if tracked == nil && !f.FileID.IsZero() {
-				tracked = idx.byFileID[string(f.FileID.Bytes())]
-			}
-		}
-
-		if tracked == nil {
-			return true
-		}
-		if !isFinalFileStatus(tracked.Status) {
-			return true
-		}
-	}
-
-	return false
-}
-
 func isFinalFileStatus(status models.DirScanFileStatus) bool {
 	switch status {
 	case models.DirScanFileStatusMatched,

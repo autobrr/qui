@@ -289,7 +289,7 @@ func TestEvaluateCondition_StringFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, tt.torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -831,7 +831,7 @@ func TestEvaluateCondition_BooleanFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, tt.torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -872,7 +872,7 @@ func TestEvaluateCondition_Negate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, tt.torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -932,7 +932,7 @@ func TestEvaluateCondition_ANDGroup(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -990,7 +990,7 @@ func TestEvaluateCondition_ORGroup(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -1073,7 +1073,7 @@ func TestEvaluateCondition_NestedGroups(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -1106,7 +1106,7 @@ func TestEvaluateCondition_MaxDepth(t *testing.T) {
 	torrent := qbt.Torrent{Category: "movies", Ratio: 2.0}
 
 	// Should return false because we hit max depth
-	result := EvaluateCondition(cond, torrent, 0)
+	result := EvaluateConditionWithContext(cond, torrent, nil, 0)
 	if result {
 		t.Error("expected false due to max depth, got true")
 	}
@@ -1114,7 +1114,7 @@ func TestEvaluateCondition_MaxDepth(t *testing.T) {
 
 func TestEvaluateCondition_NilCondition(t *testing.T) {
 	torrent := qbt.Torrent{Name: "Test"}
-	result := EvaluateCondition(nil, torrent, 0)
+	result := EvaluateConditionWithContext(nil, torrent, nil, 0)
 	if result {
 		t.Error("expected false for nil condition")
 	}
@@ -1129,7 +1129,7 @@ func TestEvaluateCondition_EmptyGroup(t *testing.T) {
 		Conditions: []*RuleCondition{},
 	}
 	// Empty conditions means it's not a group, so evaluateLeaf is called with unknown field
-	result := EvaluateCondition(andCond, torrent, 0)
+	result := EvaluateConditionWithContext(andCond, torrent, nil, 0)
 	if result {
 		t.Error("empty AND group should return false (not a valid group)")
 	}
@@ -1193,11 +1193,6 @@ func TestEvaluateCondition_StateTrackerError_WithContext(t *testing.T) {
 			t.Fatalf("expected false, got true")
 		}
 	})
-}
-
-//go:fix inline
-func float64Ptr(v float64) *float64 {
-	return new(v)
 }
 
 func TestEvaluateCondition_ExistsIn(t *testing.T) {
@@ -1678,7 +1673,7 @@ func TestEvaluateCondition_ErrorCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -2624,7 +2619,7 @@ func TestEvaluateCondition_Tags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, tt.torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}

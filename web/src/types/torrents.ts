@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import type { AppPreferences, QBittorrentAppInfo } from "./app"
+import type { InstanceError } from "./instances"
+
 export interface TorrentTracker {
   url: string
   status: number
@@ -204,21 +207,32 @@ export interface TorrentFilters {
   expr?: string
 }
 
+// InstanceMeta provides real-time instance health via SSE, reducing need for polling
+export interface InstanceMeta {
+  connected: boolean
+  hasDecryptionError: boolean
+  recentErrors?: InstanceError[]
+}
+
 export interface TorrentResponse {
   torrents: Torrent[]
   crossInstanceTorrents?: CrossInstanceTorrent[]
   cross_instance_torrents?: CrossInstanceTorrent[]  // Backend uses snake_case
   total: number
+  activeTaskCount?: number
   stats?: TorrentStats
   counts?: TorrentCounts
   categories?: Record<string, Category>
   tags?: string[]
   serverState?: ServerState
+  appInfo?: QBittorrentAppInfo
+  preferences?: AppPreferences
   useSubcategories?: boolean
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
   trackerHealthSupported?: boolean
   isCrossInstance?: boolean
+  instanceMeta?: InstanceMeta  // Real-time instance health from SSE
 }
 
 export interface AddTorrentFailedURL {
@@ -242,6 +256,22 @@ export interface AddTorrentResponse {
 export interface CrossInstanceTorrent extends Torrent {
   instanceId: number
   instanceName: string
+}
+
+export interface TorrentStreamMeta {
+  instanceId: number
+  rid?: number
+  fullUpdate?: boolean
+  timestamp: string
+  retryInSeconds?: number
+  streamKey?: string
+}
+
+export interface TorrentStreamPayload {
+  type: "init" | "update" | "stream-error" | "heartbeat"
+  data?: TorrentResponse
+  meta?: TorrentStreamMeta
+  error?: string
 }
 
 // Simplified MainData - only used for Dashboard server stats

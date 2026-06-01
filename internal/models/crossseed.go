@@ -1837,29 +1837,6 @@ func decodeIntSlice(src sql.NullString, dest *[]int) error {
 	return nil
 }
 
-func normalizeStringSlice(values []string) []string {
-	if len(values) == 0 {
-		return []string{}
-	}
-
-	seen := make(map[string]struct{}, len(values))
-	normalized := make([]string, 0, len(values))
-
-	for _, value := range values {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			continue
-		}
-		if _, exists := seen[trimmed]; exists {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		normalized = append(normalized, trimmed)
-	}
-
-	return normalized
-}
-
 func encodeRunResults(results []CrossSeedRunResult) (string, error) {
 	if results == nil {
 		results = []CrossSeedRunResult{}

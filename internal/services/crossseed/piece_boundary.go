@@ -142,27 +142,6 @@ func CheckPieceBoundarySafety(files []TorrentFileForBoundaryCheck, pieceLength i
 	}
 }
 
-// CheckPieceBoundarySafetyFromMetainfo is a convenience wrapper that builds the
-// file list from metainfo.Info and a predicate function for content detection.
-//
-// Parameters:
-//   - info: parsed torrent info from metainfo
-//   - isContentFile: predicate returning true if the file path is required content
-func CheckPieceBoundarySafetyFromMetainfo(
-	info *metainfo.Info,
-	isContentFile func(path string) bool,
-) PieceBoundarySafetyResult {
-	if info == nil {
-		return PieceBoundarySafetyResult{
-			Safe:   false,
-			Reason: "nil torrent info",
-		}
-	}
-
-	files := BuildFilesForBoundaryCheck(info, isContentFile)
-	return CheckPieceBoundarySafety(files, info.PieceLength)
-}
-
 // BuildFilesForBoundaryCheck constructs the file list from torrent metadata.
 func BuildFilesForBoundaryCheck(
 	info *metainfo.Info,

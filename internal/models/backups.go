@@ -1706,128 +1706,11 @@ func deleteRunsOlderThanQuery(dialect string) string {
     `
 }
 
-func (s *BackupStore) DeleteItemsByRunIDs(ctx context.Context, runIDs []int64) error {
-	if len(runIDs) == 0 {
-		return nil
-	}
-
-	// Process in chunks to avoid hitting SQLite parameter limits
-	const chunkSize = 900
-
-	for i := 0; i < len(runIDs); i += chunkSize {
-		end := min(i+chunkSize, len(runIDs))
-		chunk := runIDs[i:end]
-
-		if err := s.deleteItemsByRunIDsChunk(ctx, chunk); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (s *BackupStore) deleteItemsByRunIDsChunk(ctx context.Context, runIDs []int64) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	query := "DELETE FROM instance_backup_items WHERE run_id IN " + buildInPlaceholders(len(runIDs))
-
-	args := make([]any, len(runIDs))
-	for i, id := range runIDs {
-		args[i] = id
-	}
-
-	_, err = tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		return err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
-}
-
 func buildInPlaceholders(count int) string {
 	if count <= 0 {
 		return "()"
 	}
 	return dbinterface.BuildQueryWithPlaceholders("%s", count, 1)
-}
-
-func (s *BackupStore) DeleteRunsByIDs(ctx context.Context, runIDs []int64) error {
-	if len(runIDs) == 0 {
-		return nil
-	}
-
-	// Process in chunks to avoid hitting SQLite parameter limits
-	const chunkSize = 900
-
-	for i := 0; i < len(runIDs); i += chunkSize {
-		end := min(i+chunkSize, len(runIDs))
-		chunk := runIDs[i:end]
-
-		if err := s.deleteRunsByIDsChunk(ctx, chunk); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (s *BackupStore) deleteRunsByIDsChunk(ctx context.Context, runIDs []int64) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	query := "DELETE FROM instance_backup_runs WHERE id IN " + buildInPlaceholders(len(runIDs))
-	args := make([]any, len(runIDs))
-	for i, id := range runIDs {
-		args[i] = id
-	}
-
-	_, err = tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		return err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
-}
-
-func (s *BackupStore) CountRunsByKind(ctx context.Context, instanceID int, kind BackupRunKind) (int, error) {
-	var count int
-	err := s.db.QueryRowContext(ctx, `
-        SELECT COUNT(*)
-        FROM instance_backup_runs_view
-        WHERE instance_id = ? AND kind = ?
-    `, instanceID, string(kind)).Scan(&count)
-
-	if err != nil {
-		return 0, err
-	}
-
-	return count, nil
-}
-
-func (s *BackupStore) LatestRunByKind(ctx context.Context, instanceID int, kind BackupRunKind) (*BackupRun, error) {
-	runs, err := s.ListRunsByKind(ctx, instanceID, kind, 1)
-	if err != nil {
-		return nil, err
-	}
-	if len(runs) == 0 {
-		return nil, sql.ErrNoRows
-	}
-	return runs[0], nil
 }
 
 func (s *BackupStore) CleanupRun(ctx context.Context, runID int64) error {
@@ -1881,38 +1764,6 @@ func (s *BackupStore) cleanupRunsChunk(ctx context.Context, runIDs []int64) erro
 	}
 
 	return nil
-}
-
-// RemoveFailedRunsBefore deletes failed runs older than the provided cutoff and returns the number of rows affected.
-func (s *BackupStore) RemoveFailedRunsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	// Start a transaction
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Intern the status string
-	status := string(BackupRunStatusFailed)
-	ids, err := dbinterface.InternStringNullable(ctx, tx, &status)
-	if err != nil {
-		return 0, fmt.Errorf("failed to intern status: %w", err)
-	}
-
-	// Execute DELETE with interned ID
-	res, err := tx.ExecContext(ctx, `
-		DELETE FROM instance_backup_runs
-		WHERE status_id = ? AND requested_at < ?
-	`, ids[0], cutoff)
-	if err != nil {
-		return 0, err
-	}
-
-	if err = tx.Commit(); err != nil {
-		return 0, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return res.RowsAffected()
 }
 
 // FindIncompleteRuns returns all backup runs that are in pending or running status.

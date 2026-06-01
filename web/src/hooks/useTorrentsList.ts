@@ -3,12 +3,30 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import { useInstances } from "@/hooks/useInstances"
+import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
+import { normalizeStreamedSnapshot, resolveStreamedCrossInstanceTorrents } from "@/lib/cross-instance-torrents"
 import { isAllInstancesScope } from "@/lib/instances"
-import type { Torrent, TorrentFilters, TorrentResponse } from "@/types"
-import { useQuery } from "@tanstack/react-query"
-import { useEffect, useMemo, useState } from "react"
+import { mergeStreamedFirstPage } from "@/lib/stream-merge"
+import type {
+  AppPreferences,
+  QBittorrentAppInfo,
+  Torrent,
+  TorrentFilters,
+  TorrentResponse,
+  TorrentStreamPayload
+} from "@/types"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useCallback, useEffect, useMemo, useState } from "react"
+
+export const TORRENT_STREAM_POLL_INTERVAL_MS = 3000
+export const TORRENT_STREAM_POLL_INTERVAL_SECONDS = Math.max(
+  1,
+  Math.round(TORRENT_STREAM_POLL_INTERVAL_MS / 1000)
+)
 
 interface UseTorrentsListOptions {
   enabled?: boolean
@@ -37,7 +55,6 @@ export function useTorrentsList(
     order = "desc",
     instanceIds,
   } = options
-  const shouldEnableQuery = enabled
   const isAllInstancesView = isAllInstancesScope(instanceId)
 
   const [currentPage, setCurrentPage] = useState(0)
@@ -47,16 +64,238 @@ export function useTorrentsList(
   const [lastRequestTime, setLastRequestTime] = useState(0)
   const [lastKnownTotal, setLastKnownTotal] = useState(0)
   const [lastProcessedPage, setLastProcessedPage] = useState(-1)
+  const [lastStreamSnapshot, setLastStreamSnapshot] = useState<TorrentResponse | null>(null)
   const pageSize = 300 // Load 300 at a time (backend default)
+  const queryClient = useQueryClient()
+
+  const metadataQueryKey = useMemo(
+    () => ["instance-metadata", instanceId] as const,
+    [instanceId]
+  )
+
+  const appInfoQueryKey = useMemo(
+    () => ["qbittorrent-app-info", instanceId] as const,
+    [instanceId]
+  )
+
+  const updateMetadataCache = useCallback(
+    (source?: TorrentResponse | null) => {
+      if (!source) {
+        return
+      }
+
+      const hasPreferences = Object.prototype.hasOwnProperty.call(source, "preferences")
+      const isCrossInstanceSource = source.isCrossInstance === true
+
+      if (isCrossInstanceSource && !hasPreferences) {
+        return
+      }
+
+      queryClient.setQueryData<InstanceMetadata | undefined>(
+        metadataQueryKey,
+        previous => {
+          // Treat omitted metadata arrays/maps as empty for regular instance responses.
+          // Backend omitempty omits empty tags/categories, and we must clear stale cache values.
+          const nextCategories = isCrossInstanceSource? (previous?.categories ?? {}): (source.categories ?? {})
+          const nextTags = isCrossInstanceSource? (previous?.tags ?? []): (source.tags ?? [])
+          const nextPreferences =
+            hasPreferences && source.preferences !== undefined? (source.preferences as AppPreferences | undefined) ?? previous?.preferences: previous?.preferences
+
+          const next: InstanceMetadata = {
+            categories: nextCategories,
+            tags: nextTags,
+            preferences: nextPreferences,
+          }
+
+          return next
+        }
+      )
+
+      if (hasPreferences && source.preferences !== undefined) {
+        const nextPreferences = source.preferences as AppPreferences | undefined
+        if (nextPreferences !== undefined) {
+          queryClient.setQueryData<AppPreferences | undefined>(
+            ["instance-preferences", instanceId],
+            nextPreferences
+          )
+        }
+      }
+    },
+    [instanceId, metadataQueryKey, queryClient]
+  )
+
+  const updateAppInfoCache = useCallback(
+    (source?: Pick<TorrentResponse, "appInfo"> | null) => {
+      if (!source?.appInfo) {
+        return
+      }
+
+      queryClient.setQueryData<QBittorrentAppInfo | undefined>(appInfoQueryKey, source.appInfo)
+    },
+    [appInfoQueryKey, queryClient]
+  )
+
+  // Detect if this is cross-seed filtering based on expression content
+  const isCrossSeedFiltering = useMemo(() => {
+    return filters?.expr?.includes("Hash ==") && filters?.expr?.includes("||")
+  }, [filters?.expr])
+  const useCrossInstanceEndpoint = isAllInstancesView || isCrossSeedFiltering
+
+  const instanceIdsKey = useMemo(
+    () => (instanceIds && instanceIds.length > 0 ? [...instanceIds].sort((left, right) => left - right).join(",") : ""),
+    [instanceIds]
+  )
+
+  const streamQueryKey = useMemo(
+    () => ["torrents-list", instanceId, instanceIdsKey, 0, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering] as const,
+    [instanceId, instanceIdsKey, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering]
+  )
+
+  const { instances } = useInstances()
+  const activeInstanceIds = useMemo(
+    () => (instances ?? []).filter(current => current.isActive).map(current => current.id).filter(id => id > 0),
+    [instances]
+  )
+
+  // Concrete member set for an aggregated (all-instances / cross-instance) stream:
+  // an explicit subset selection when provided, otherwise all active instances.
+  // The stream needs concrete ids; if none can be resolved we fall back to polling.
+  const streamInstanceIds = useMemo(() => {
+    if (!useCrossInstanceEndpoint) {
+      return undefined
+    }
+    const base = instanceIds && instanceIds.length > 0 ? instanceIds : activeInstanceIds
+    const filtered = Array.from(new Set(base.filter(id => id > 0)))
+    return filtered.length > 0 ? filtered : undefined
+  }, [useCrossInstanceEndpoint, instanceIds, activeInstanceIds])
+
+  const streamInstanceIdsKey = useMemo(
+    () => (streamInstanceIds ? [...streamInstanceIds].sort((a, b) => a - b).join(",") : ""),
+    [streamInstanceIds]
+  )
+
+  // Single-instance views stream directly; aggregated views stream the cross-instance
+  // endpoint once a concrete member set is known (otherwise fall back to polling below).
+  const streamParams = useMemo(() => {
+    if (!enabled) {
+      return null
+    }
+
+    if (useCrossInstanceEndpoint) {
+      // Cross-seed filtering encodes large `Hash == ... || ...` expressions in the
+      // filters. The SSE subscription is sent as an EventSource GET URL, so those
+      // expressions would risk request-line/proxy limits and reconnect churn; keep
+      // cross-seed views on cross-instance polling. Only the all-instances view streams.
+      if (isCrossSeedFiltering) {
+        return null
+      }
+      if (!streamInstanceIds || streamInstanceIds.length === 0) {
+        return null
+      }
+      return {
+        instanceId: 0,
+        instanceIds: streamInstanceIds,
+        page: 0,
+        limit: pageSize,
+        sort,
+        order,
+        search: search || undefined,
+        filters,
+      }
+    }
+
+    return {
+      instanceId,
+      page: 0,
+      limit: pageSize,
+      sort,
+      order,
+      search: search || undefined,
+      filters,
+    }
+    // streamInstanceIdsKey captures streamInstanceIds membership for memoization.
+  }, [enabled, filters, instanceId, useCrossInstanceEndpoint, isCrossSeedFiltering, streamInstanceIds, streamInstanceIdsKey, order, pageSize, search, sort])
+
+  const handleStreamPayload = useCallback(
+    (payload: TorrentStreamPayload) => {
+      if (!payload?.data) {
+        return
+      }
+      // Normalize the streamed snapshot once at the boundary so every sink — the
+      // query cache (read by the REST-processing effect below), the retained
+      // snapshot, and the table rows — sees identical camelCase cross-instance
+      // metadata. Feeding the raw snake_case payload to the cache would let the
+      // effect overwrite the table with un-normalized rows on the next tick,
+      // flickering the Instance column.
+      const data = normalizeStreamedSnapshot(payload.data)
+      setLastStreamSnapshot(data)
+      updateAppInfoCache(data)
+      updateMetadataCache(data)
+      queryClient.setQueryData(streamQueryKey, data)
+
+      if (useCrossInstanceEndpoint) {
+        // Aggregated streams deliver the full first page of cross-instance torrents.
+        // Their identity is instanceId+hash, so the single-instance hash merge below
+        // does not apply; replace the list wholesale.
+        setAllTorrents(resolveStreamedCrossInstanceTorrents(data))
+
+        if (typeof data.total === "number") {
+          setLastKnownTotal(data.total)
+        }
+        if (currentPage === 0 && typeof data.hasMore === "boolean") {
+          setHasLoadedAll(!data.hasMore)
+        }
+        return
+      }
+
+      setAllTorrents(prev => {
+        const nextTorrents = data.torrents ?? []
+
+        if (data.total === 0 || nextTorrents.length === 0) {
+          return []
+        }
+
+        // Page 0 is authoritative for its window (a row it omits was deleted or moved
+        // off page 0, so it must not be re-added); pagination-loaded later pages are
+        // preserved. See mergeStreamedFirstPage.
+        return mergeStreamedFirstPage(
+          prev,
+          nextTorrents,
+          typeof data.total === "number" ? data.total : undefined
+        )
+      })
+
+      if (typeof data.total === "number") {
+        setLastKnownTotal(data.total)
+      }
+
+      if (currentPage === 0 && typeof data.hasMore === "boolean") {
+        setHasLoadedAll(!data.hasMore)
+      }
+    },
+    [currentPage, pageSize, queryClient, streamQueryKey, updateAppInfoCache, updateMetadataCache, useCrossInstanceEndpoint]
+  )
+
+  const streamState = useSyncStream(streamParams, {
+    enabled: Boolean(streamParams),
+    onMessage: handleStreamPayload,
+  })
+
+  const shouldDisablePolling = Boolean(streamParams) && streamState.connected && !streamState.error
+  const preferCachedQuery = currentPage === 0 && shouldDisablePolling
+  // Keep the REST query (initial fetch + fallback polling) enabled until the
+  // stream is actually connected, not just until it errors. While the stream is
+  // still connecting (e.g. behind a buffering reverse proxy that delays the init
+  // event) streamState.error is null but no data is arriving, so gating on error
+  // alone would disable REST entirely and the first page would never load.
+  const queryEnabled =
+    enabled &&
+    (currentPage > 0 || !streamParams || !streamState.connected || Boolean(streamState.error))
 
   // Reset state when instanceId, filters, search, or sort changes
   // Use JSON.stringify to avoid resetting on every object reference change during polling
   const filterKey = JSON.stringify(filters)
   const searchKey = search || ""
-  const instanceIdsKey = useMemo(
-    () => (instanceIds && instanceIds.length > 0 ? [...instanceIds].sort((left, right) => left - right).join(",") : ""),
-    [instanceIds]
-  )
 
   useEffect(() => {
     setCurrentPage(0)
@@ -64,13 +303,19 @@ export function useTorrentsList(
     setHasLoadedAll(false)
     setLastKnownTotal(0)
     setLastProcessedPage(-1)
+    setLastStreamSnapshot(null)
   }, [instanceId, filterKey, searchKey, sort, order, instanceIdsKey])
 
-  // Detect if this is cross-seed filtering based on expression content
-  const isCrossSeedFiltering = useMemo(() => {
-    return filters?.expr?.includes("Hash ==") && filters?.expr?.includes("||")
-  }, [filters?.expr])
-  const useCrossInstanceEndpoint = isAllInstancesView || isCrossSeedFiltering
+  useEffect(() => {
+    if (lastKnownTotal <= 0) {
+      return
+    }
+
+    setHasLoadedAll(previous => {
+      const next = allTorrents.length >= lastKnownTotal
+      return previous === next ? previous : next
+    })
+  }, [allTorrents.length, lastKnownTotal])
 
   // Query for torrents - backend handles stale-while-revalidate
   const { data, isLoading, isFetching, isPlaceholderData } = useQuery<TorrentResponse>({
@@ -95,6 +340,7 @@ export function useTorrentsList(
         order,
         search,
         filters,
+        preferCached: preferCachedQuery,
       })
     },
     // Trust backend cache - it returns immediately with stale data if needed
@@ -103,14 +349,26 @@ export function useTorrentsList(
     // Reuse the previous page's data while the next page is loading so the UI doesn't flash empty state
     placeholderData: currentPage > 0 ? ((previousData) => previousData) : undefined,
     // Only poll the first page to get fresh data - don't poll pagination pages
-    // Reduce polling frequency for cross-instance calls since they're more expensive
-    refetchInterval: currentPage === 0? (pollingEnabled ? (useCrossInstanceEndpoint ? 10000 : 3000) : false): false,
+    // Reduce polling frequency for cross-instance calls since they're more expensive.
+    // When the SSE stream is connected we disable polling entirely on the first page.
+    refetchInterval:
+      currentPage === 0? (
+        pollingEnabled && !shouldDisablePolling? (useCrossInstanceEndpoint ? 10000 : TORRENT_STREAM_POLL_INTERVAL_MS): false
+      ): false,
     refetchIntervalInBackground, // Controls background polling behavior
-    refetchOnWindowFocus: currentPage === 0,
-    enabled: shouldEnableQuery,
+    refetchOnWindowFocus: currentPage === 0 && pollingEnabled,
+    enabled: queryEnabled,
   })
 
-  const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: shouldEnableQuery && !isAllInstancesView })
+  const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: enabled && !isAllInstancesView })
+
+  const activeData = useMemo(() => {
+    if (shouldDisablePolling && lastStreamSnapshot) {
+      return lastStreamSnapshot
+    }
+
+    return data ?? lastStreamSnapshot ?? null
+  }, [data, lastStreamSnapshot, shouldDisablePolling])
 
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
@@ -128,6 +386,9 @@ export function useTorrentsList(
     if (!data) {
       return
     }
+
+    updateAppInfoCache(data)
+    updateMetadataCache(data)
 
     if (data.total !== undefined) {
       setLastKnownTotal(data.total)
@@ -183,7 +444,7 @@ export function useTorrentsList(
     }
 
     setIsLoadingMore(false)
-  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData])
+  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData, updateAppInfoCache, updateMetadataCache])
 
   // Load more function for pagination - following TanStack Query best practices
   const loadMore = () => {
@@ -212,55 +473,74 @@ export function useTorrentsList(
 
   // Extract stats from response or calculate defaults
   const stats = useMemo(() => {
-    if (data?.stats) {
+    const source = activeData ?? data
+
+    if (source?.stats) {
       return {
-        total: data.total || data.stats.total || 0,
-        downloading: data.stats.downloading || 0,
-        seeding: data.stats.seeding || 0,
-        paused: data.stats.paused || 0,
-        error: data.stats.error || 0,
-        totalDownloadSpeed: data.stats.totalDownloadSpeed || 0,
-        totalUploadSpeed: data.stats.totalUploadSpeed || 0,
-        totalSize: data.stats.totalSize || 0,
+        total: source.total || source.stats.total || 0,
+        downloading: source.stats.downloading || 0,
+        seeding: source.stats.seeding || 0,
+        paused: source.stats.paused || 0,
+        error: source.stats.error || 0,
+        totalDownloadSpeed: source.stats.totalDownloadSpeed || 0,
+        totalUploadSpeed: source.stats.totalUploadSpeed || 0,
+        totalSize: source.stats.totalSize || 0,
       }
     }
 
     return {
-      total: data?.total || 0,
+      total: source?.total || 0,
       downloading: 0,
       seeding: 0,
       paused: 0,
       error: 0,
       totalDownloadSpeed: 0,
       totalUploadSpeed: 0,
-      totalSize: data?.stats?.totalSize || 0,
+      totalSize: source?.stats?.totalSize || 0,
     }
-  }, [data])
+  }, [activeData, data])
 
   // Check if data is from cache or fresh (backend provides this info)
-  const isCachedData = data?.cacheMetadata?.source === "cache"
-  const isStaleData = data?.cacheMetadata?.isStale === true
+  const cacheMetadata = activeData?.cacheMetadata ?? data?.cacheMetadata
+  const isCachedData = cacheMetadata?.source === "cache"
+  const isStaleData = cacheMetadata?.isStale === true
+
+  const isInitialStreamLoading =
+    currentPage === 0 &&
+    enabled &&
+    Boolean(streamParams) &&
+    !streamState.error &&
+    !lastStreamSnapshot &&
+    !data
+
+  const effectiveIsLoading =
+    currentPage === 0 ? (isInitialStreamLoading || (queryEnabled && isLoading)) : isLoading
+
+  const effectiveIsFetching =
+    currentPage === 0 ? (queryEnabled && isFetching) : isFetching
 
   // Use lastKnownTotal when loading more pages to prevent flickering
-  const effectiveTotalCount = currentPage > 0 && !data?.total ? lastKnownTotal : (data?.total ?? 0)
+  const effectiveTotalCount =
+    currentPage > 0 && typeof activeData?.total !== "number"? lastKnownTotal: activeData?.total ?? lastKnownTotal
 
-  const responseUseSubcategories = data?.useSubcategories ?? data?.serverState?.use_subcategories ?? false
-  const supportsSubcategories = isAllInstancesView? responseUseSubcategories: (capabilities?.supportsSubcategories ?? false)
+  const responseUseSubcategories = activeData?.useSubcategories ?? activeData?.serverState?.use_subcategories ?? data?.useSubcategories ?? data?.serverState?.use_subcategories ?? false
+  const supportsSubcategories = isAllInstancesView ? responseUseSubcategories : (capabilities?.supportsSubcategories ?? false)
 
   return {
     torrents: allTorrents,
     totalCount: effectiveTotalCount,
     stats,
-    counts: data?.counts,
-    categories: data?.categories,
-    tags: data?.tags,
-    trackerHealthSupported: data?.trackerHealthSupported ?? false,
+    counts: activeData?.counts ?? data?.counts,
+    appInfo: activeData?.appInfo ?? data?.appInfo ?? null,
+    categories: activeData?.categories ?? data?.categories,
+    tags: activeData?.tags ?? data?.tags,
+    trackerHealthSupported: activeData?.trackerHealthSupported ?? data?.trackerHealthSupported ?? false,
     supportsTorrentCreation: isAllInstancesView ? false : capabilities?.supportsTorrentCreation ?? true,
     capabilities: isAllInstancesView ? undefined : capabilities,
-    serverState: data?.serverState ?? null,
+    serverState: activeData?.serverState ?? data?.serverState ?? null,
     useSubcategories: isAllInstancesView? responseUseSubcategories: (supportsSubcategories ? responseUseSubcategories : false),
-    isLoading: isLoading && currentPage === 0,
-    isFetching,
+    isLoading: effectiveIsLoading,
+    isFetching: effectiveIsFetching,
     isLoadingMore,
     hasLoadedAll,
     loadMore,
@@ -273,6 +553,13 @@ export function useTorrentsList(
     isFreshData: !isCachedData || !isStaleData,
     isCachedData,
     isStaleData,
-    cacheAge: data?.cacheMetadata?.age,
+    cacheAge: cacheMetadata?.age,
+    isStreaming: shouldDisablePolling,
+    streamConnected: streamState.connected,
+    streamError: streamState.error,
+    streamMeta: streamState.lastMeta,
+    streamRetrying: streamState.retrying,
+    streamNextRetryAt: streamState.nextRetryAt,
+    streamRetryAttempt: streamState.retryAttempt,
   }
 }

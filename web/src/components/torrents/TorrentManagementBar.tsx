@@ -100,7 +100,9 @@ export const TorrentManagementBar = memo(function TorrentManagementBar({
   const supportsCrossSeedBlocklist = actionInstanceId >= 0
 
   // Use shared metadata hook to leverage cache from table and filter sidebar
-  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(metadataInstanceId)
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(metadataInstanceId, {
+    fallbackDelayMs: 1500,
+  })
   const fallbackTags = useMemo(() => {
     const tags = new Set<string>()
     for (const torrent of selectedTorrents) {

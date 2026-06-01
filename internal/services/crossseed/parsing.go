@@ -384,54 +384,6 @@ func containsVideoTokens(value string, tokens []string) bool {
 	return false
 }
 
-// OptimizeContentTypeForIndexers optimizes content type information for specific indexers
-// This function takes the basic content type and adjusts categories based on indexer capabilities
-func OptimizeContentTypeForIndexers(basicInfo ContentTypeInfo, indexerCategories []int) ContentTypeInfo {
-	if len(indexerCategories) == 0 || len(basicInfo.Categories) == 0 {
-		return basicInfo
-	}
-
-	// Create a map of available categories from the indexer
-	availableCategories := make(map[int]struct{})
-	for _, cat := range indexerCategories {
-		availableCategories[cat] = struct{}{}
-	}
-
-	// Filter the basic categories to only include those supported by the indexer
-	optimizedCategories := make([]int, 0, len(basicInfo.Categories))
-	for _, cat := range basicInfo.Categories {
-		if _, exists := availableCategories[cat]; exists {
-			optimizedCategories = append(optimizedCategories, cat)
-		} else {
-			// Try parent category
-			parent := cat / 100 * 100
-			if parent != cat {
-				if _, exists := availableCategories[parent]; exists {
-					optimizedCategories = append(optimizedCategories, parent)
-				}
-			}
-		}
-	}
-
-	// If no categories match, fall back to parent categories
-	if len(optimizedCategories) == 0 {
-		for _, cat := range basicInfo.Categories {
-			parent := cat / 100 * 100
-			if _, exists := availableCategories[parent]; exists {
-				optimizedCategories = append(optimizedCategories, parent)
-			}
-		}
-	}
-
-	// Create optimized info
-	optimizedInfo := basicInfo
-	if len(optimizedCategories) > 0 {
-		optimizedInfo.Categories = optimizedCategories
-	}
-
-	return optimizedInfo
-}
-
 // ParseMusicReleaseFromTorrentName extracts music-specific metadata from torrent name
 // First tries RLS's built-in parsing, then falls back to manual "Artist - Album" format parsing
 func ParseMusicReleaseFromTorrentName(baseRelease *rls.Release, torrentName string) *rls.Release {
@@ -491,22 +443,6 @@ type TorrentMetadata struct {
 	HashV2 string
 	Files  qbt.TorrentFiles
 	Info   *metainfo.Info
-}
-
-// ParseTorrentName extracts the name and info hash from torrent bytes using anacrolix/torrent
-func ParseTorrentName(torrentBytes []byte) (name string, hash string, err error) {
-	name, hash, _, err = ParseTorrentMetadata(torrentBytes)
-	return name, hash, err
-}
-
-// ParseTorrentMetadata extracts comprehensive metadata from torrent bytes
-func ParseTorrentMetadata(torrentBytes []byte) (name string, hash string, files qbt.TorrentFiles, err error) {
-	meta, err := ParseTorrentMetadataWithInfo(torrentBytes)
-	if err != nil {
-		return "", "", nil, err
-	}
-
-	return meta.Name, meta.HashV1, meta.Files, nil
 }
 
 // ParseTorrentMetadataWithInfo extracts comprehensive metadata from torrent bytes,

@@ -8,15 +8,62 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/autobrr/qui/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/activity"
 )
+
+// recordingPublisher captures published activity events for assertions.
+type recordingPublisher struct {
+	mu     sync.Mutex
+	events []activity.Event
+}
+
+func (p *recordingPublisher) Publish(ev activity.Event) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events = append(p.events, ev)
+}
+
+func (p *recordingPublisher) counts() map[activity.Kind]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	counts := make(map[activity.Kind]int)
+	for _, ev := range p.events {
+		counts[ev.Kind]++
+	}
+	return counts
+}
+
+// recordingHistoryRecorder captures recorded search-history entries.
+type recordingHistoryRecorder struct {
+	mu      sync.Mutex
+	entries []SearchHistoryEntry
+}
+
+func (r *recordingHistoryRecorder) Record(entry SearchHistoryEntry) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.entries = append(r.entries, entry)
+}
+
+func (r *recordingHistoryRecorder) statuses() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, len(r.entries))
+	for i, e := range r.entries {
+		out[i] = e.Status
+	}
+	return out
+}
 
 func TestSearchScheduler_BasicFunctionality(t *testing.T) {
 	s := newSearchScheduler(nil, 10)
@@ -780,6 +827,138 @@ func TestSearchScheduler_DefaultMaxWaitByPriority(t *testing.T) {
 			assert.Equal(t, tc.expectedMaxWait, waitErr.MaxWait, "wrong MaxWait for priority %s", tc.priority)
 		})
 	}
+}
+
+// Activity emission tests
+//
+// Both consuming panels (SearchHistoryPanel, IndexerActivityPanel) disabled
+// polling and rely on the scheduler emitting KindIndexerActivity and
+// KindSearchHistory whenever a task completes. These tests lock in emission for
+// completion paths that previously stayed silent: the rate-limit skip in
+// dispatchTasks, and a panicking exec (recovered per-task) still routing its
+// completion through the emit.
+
+func TestSearchScheduler_RateLimitSkipEmitsActivity(t *testing.T) {
+	// Long interval with background priority guarantees the second request is
+	// skipped for exceeding its MaxWait budget, exercising the dispatchTasks
+	// rate-limit-skip completion path.
+	rl := NewRateLimiter(5 * time.Second)
+	s := newSearchScheduler(rl, 10)
+	defer s.Stop()
+
+	pub := &recordingPublisher{}
+	rec := &recordingHistoryRecorder{}
+	s.setActivityPublisher(pub)
+	s.historyRecorder = rec
+
+	indexer := &models.TorznabIndexer{ID: 1, Name: "test-indexer"}
+	exec := func(_ context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+		return []Result{{Title: "test"}}, []int{1}, nil
+	}
+
+	// First request sets rate-limit state and completes successfully. Its own
+	// completion already emits both signals, so the skip path below must be measured
+	// as a DELTA on top of this baseline, not as an absolute count.
+	done1 := make(chan struct{})
+	_, err := s.Submit(context.Background(), SubmitRequest{
+		Indexers:  []*models.TorznabIndexer{indexer},
+		ExecFn:    exec,
+		Callbacks: JobCallbacks{OnJobDone: func(uint64) { close(done1) }},
+	})
+	require.NoError(t, err)
+	<-done1
+
+	// KindSearchHistory is emitted only by completion paths, never by enqueue, so a
+	// settled count of 1 after the first (successful) request is a stable baseline.
+	require.Eventually(t, func() bool {
+		return pub.counts()[activity.KindSearchHistory] >= 1
+	}, time.Second, 5*time.Millisecond, "first completion should emit a search-history signal")
+	before := pub.counts()
+
+	// Second request with a tiny MaxWait is skipped as rate_limited.
+	completeCh := make(chan error, 1)
+	_, err = s.Submit(context.Background(), SubmitRequest{
+		Indexers: []*models.TorznabIndexer{indexer},
+		Meta: &searchContext{
+			rateLimit: &RateLimitOptions{
+				Priority: RateLimitPriorityBackground,
+				MaxWait:  10 * time.Millisecond,
+			},
+		},
+		ExecFn: exec,
+		Callbacks: JobCallbacks{
+			OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+				completeCh <- err
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	gotErr := <-completeCh
+	var waitErr *RateLimitWaitError
+	require.ErrorAs(t, gotErr, &waitErr)
+
+	require.Eventually(t, func() bool {
+		return slices.Contains(rec.statuses(), "rate_limited")
+	}, time.Second, 5*time.Millisecond, "rate_limited history entry should be recorded")
+
+	// The skip path must emit its OWN completion signals: the search-history count has
+	// to rise above the post-first-request baseline. Without the dispatchTasks
+	// skip-path emit, KindSearchHistory stays at `before` and this fails
+	// (fail-without-fix). The search-history delta is load-bearing here because
+	// KindIndexerActivity is also bumped by the second request's enqueue.
+	require.Eventually(t, func() bool {
+		after := pub.counts()
+		return after[activity.KindSearchHistory] > before[activity.KindSearchHistory] &&
+			after[activity.KindIndexerActivity] > before[activity.KindIndexerActivity]
+	}, time.Second, 5*time.Millisecond, "rate-limit skip must emit its own indexer-activity and search-history signals")
+}
+
+// TestSearchScheduler_ExecPanicStillEmitsActivity verifies that an exec which
+// panics does not silently swallow the activity signals the panels depend on. The
+// panic is caught by executeTask's inner per-task recover(), converted to an error
+// result, and routed through the normal completion emit, so both signals must
+// still fire. (The outer worker-level recover() in executeTask emits the same way
+// for the near-impossible case of a panic outside the exec goroutine; that branch
+// is covered by inspection since its only triggers are unmockable internals.)
+func TestSearchScheduler_ExecPanicStillEmitsActivity(t *testing.T) {
+	s := newSearchScheduler(nil, 10)
+	defer s.Stop()
+
+	pub := &recordingPublisher{}
+	rec := &recordingHistoryRecorder{}
+	s.setActivityPublisher(pub)
+	s.historyRecorder = rec
+
+	indexer := &models.TorznabIndexer{ID: 1, Name: "panic-indexer"}
+	exec := func(_ context.Context, _ []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+		panic("boom")
+	}
+
+	completeCh := make(chan error, 1)
+	_, err := s.Submit(context.Background(), SubmitRequest{
+		Indexers: []*models.TorznabIndexer{indexer},
+		ExecFn:   exec,
+		Callbacks: JobCallbacks{
+			OnComplete: func(_ uint64, _ *models.TorznabIndexer, _ []Result, _ []int, err error) {
+				completeCh <- err
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	gotErr := <-completeCh
+	require.Error(t, gotErr)
+	assert.Contains(t, gotErr.Error(), "scheduler worker panic")
+
+	require.Eventually(t, func() bool {
+		return slices.Contains(rec.statuses(), "error")
+	}, time.Second, 5*time.Millisecond, "panicked task should record an error history entry")
+
+	require.Eventually(t, func() bool {
+		counts := pub.counts()
+		return counts[activity.KindIndexerActivity] > 0 && counts[activity.KindSearchHistory] > 0
+	}, time.Second, 5*time.Millisecond, "panic-recovery path must emit both indexer-activity and search-history signals")
 }
 
 // Rate limiter tests

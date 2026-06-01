@@ -31,6 +31,7 @@ import (
 	"golang.org/x/sync/singleflight"
 	"golang.org/x/text/transform"
 
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/pkg/httphelpers"
 )
 
@@ -71,6 +72,8 @@ type Service struct {
 
 	failureMu   sync.Mutex
 	lastFailure map[string]time.Time
+
+	activityPublisher activity.Publisher
 }
 
 // Flow overview:
@@ -102,9 +105,10 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 	}
 
 	svc := &Service{
-		iconDir:     iconDir,
-		client:      &http.Client{Timeout: fetchTimeout},
-		lastFailure: make(map[string]time.Time),
+		iconDir:           iconDir,
+		client:            &http.Client{Timeout: fetchTimeout},
+		lastFailure:       make(map[string]time.Time),
+		activityPublisher: activity.NopPublisher{},
 	}
 
 	if trimmed := strings.TrimSpace(userAgent); trimmed != "" {
@@ -118,6 +122,15 @@ func NewService(dataDir, userAgent string) (*Service, error) {
 	}
 
 	return svc, nil
+}
+
+// SetActivityPublisher wires the qui server-event hub so newly cached tracker
+// icons are pushed to connected clients instead of polled. Safe to call once at startup.
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
 }
 
 func SetGlobal(svc *Service) {
@@ -374,6 +387,12 @@ func (s *Service) fetchAndStoreIcon(ctx context.Context, host, trackerURL string
 			resized := resizeToSquare(img, 16)
 			if err := s.writePNG(resized, iconPath); err != nil {
 				return err
+			}
+
+			// Signal connected clients that a new tracker icon was cached so they
+			// refetch the icon set instead of polling. Global event, no ids.
+			if s.activityPublisher != nil {
+				s.activityPublisher.Publish(activity.Event{Kind: activity.KindTrackerIcons})
 			}
 
 			return nil

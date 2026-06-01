@@ -127,15 +127,15 @@
     "noCrossSeeds": "No cross-seeds found",
     "deleteCrossSeeds": "These cross-seeds will also be deleted",
     "deletingFilesBreaks": "Deleting files will break these cross-seeds",
-    "dataPreserved": "Cross-seeds detected — data will be preserved",
+    "dataPreserved": "Cross-seeds detected: data will be preserved",
     "torrentShares": "{{count}} torrent shares these files",
     "torrentsShare": "{{count}} torrents share these files",
     "acrossInstances": "across {{count}} instances",
     "onTracker": "on {{tracker}}",
     "onTrackers": "on {{count}} trackers",
-    "willBeRemoved": "— will be removed along with selection",
-    "willNeedRedownload": "— they will need to redownload",
-    "unaffected": "— unaffected by this removal",
+    "willBeRemoved": "- will be removed along with selection",
+    "willNeedRedownload": "- they will need to redownload",
+    "unaffected": "- unaffected by this removal",
     "alsoDeleteCrossSeeds": "Also delete these cross-seeded torrents",
     "showAffected": "Show affected torrents",
     "hideAffected": "Hide affected torrents",
@@ -881,7 +881,8 @@
     "ctrlClick": "{{modifier}}+click for multiple",
     "loadingTorrents": "Loading torrents...",
     "loadingMore": "Loading more torrents...",
-    "torrentCount": "{{count}} torrent{{plural}}",
+    "torrentCount_one": "{{count}} torrent",
+    "torrentCount_other": "{{count}} torrents",
     "torrentsLoaded": "{{loaded}} of {{total}} torrents loaded",
     "scrollForMore": "(scroll for more)",
     "loading": "Loading...",
@@ -906,7 +907,31 @@
     "connectionPort": "Port: {{port}}",
     "connectionAriaLabel": "qBittorrent connection status: {{status}}",
     "connectionAriaLabelUnknown": "qBittorrent connection status unknown",
-    "external": "External"
+    "external": "External",
+    "streamStatus": {
+      "crossInstance": {
+        "label": "Cross-instance polling",
+        "message": "Aggregated cross-seed results refresh via polling.",
+        "secondary": "SSE disabled • polling every {{seconds}}s"
+      },
+      "reconnecting": {
+        "label": "Stream reconnecting…",
+        "message": "Attempting to restore SSE connection.",
+        "retryQueued": "Retry attempt {{attempt}} queued",
+        "pollingContinues": "Polling continues while the stream recovers."
+      },
+      "fallback": {
+        "label": "Stream offline, using polling",
+        "message": "Falling back to periodic refresh while the stream is unavailable.",
+        "serverRetry": "Server retry in {{seconds}}s, polling fallback active",
+        "retrying": "Retrying automatically with polling fallback"
+      },
+      "connecting": {
+        "label": "Connecting to stream…",
+        "message": "Using {{seconds}}s polling until the SSE connection is ready.",
+        "secondary": "Polling every {{seconds}}s"
+      }
+    }
   },
   "detailsPanel": {
     "tabs": {

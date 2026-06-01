@@ -47,6 +47,7 @@ import {
 } from "@/utils/theme"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
+import { navigateWithSearch } from "@/lib/router-search"
 import {
   Archive,
   Check,
@@ -153,9 +154,10 @@ export function MobileFooterNav() {
     saveUnifiedFilter(normalizedIds)
     const nextSearch: Record<string, unknown> = isOnAllInstancesPage ? { ...(routeSearch || {}) } : {}
 
-    navigate({
+    navigateWithSearch({
+      navigate,
       to: "/instances",
-      search: nextSearch as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      search: nextSearch,
       replace: isOnAllInstancesPage,
     })
   }, [activeInstanceIds, isOnAllInstancesPage, navigate, routeSearch, saveUnifiedFilter])

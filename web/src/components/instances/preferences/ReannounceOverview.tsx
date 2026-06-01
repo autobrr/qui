@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
@@ -85,13 +86,16 @@ export function ReannounceOverview({
     [instances]
   )
 
+  // Reannounce activity is pushed via SSE (reannounce.activity events invalidate
+  // ["instance-reannounce-activity", id]), so there is no polling interval.
+  useActivityStream()
+
   // Fetch activity for all instances with enabled reannounce
   const activityQueries = useQueries({
     queries: activeInstances.map((instance) => ({
       queryKey: ["instance-reannounce-activity", instance.id],
       queryFn: () => api.getInstanceReannounceActivity(instance.id, 0),
       enabled: instance.reannounceSettings?.enabled ?? false,
-      refetchInterval: expandedInstances.includes(String(instance.id)) ? 5000 : 30000,
       staleTime: 5000,
     })),
   })
