@@ -1141,9 +1141,14 @@ func torrentRootFolder(files qbt.TorrentFiles) string {
 // correctFileNamesCase corrects the root folder capitalization in file names
 // when the torrent metadata case differs from the actual on-disk name reported
 // by content_path. This prevents false orphans when qBittorrent returns file
-// paths using metadata casing (e.g. "Hawke-UNO/file.mkv") while the actual
-// folder on disk uses different casing (e.g. "hawke-uno").
-func correctFileNamesCase(contentPath string, files qbt.TorrentFiles) qbt.TorrentFiles {
+// paths using metadata casing (e.g. "Tracker/file.mkv") while the actual
+// folder on disk uses different casing (e.g. "tracker").
+//
+// The disk name is derived by taking the first path component of content_path
+// relative to save_path. This covers both:
+//   - Multi-file torrents: content_path = save_path/RootFolder
+//   - Single-file torrents with a root folder: content_path = save_path/RootFolder/file.ext
+func correctFileNamesCase(savePath, contentPath string, files qbt.TorrentFiles) qbt.TorrentFiles {
 	if contentPath == "" || len(files) == 0 {
 		return files
 	}
@@ -1153,25 +1158,39 @@ func correctFileNamesCase(contentPath string, files qbt.TorrentFiles) qbt.Torren
 		return files
 	}
 
-	contentBase := filepath.Base(filepath.Clean(contentPath))
-	if contentBase == "" || contentBase == "." || contentBase == rootFolderMeta {
+	cleanSave := filepath.Clean(savePath)
+	cleanContent := filepath.Clean(contentPath)
+
+	// Extract the first component of contentPath after savePath.
+	// That component is the on-disk name of the torrent's root folder.
+	sep := string(filepath.Separator)
+	prefix := cleanSave + sep
+	var diskRootFolder string
+	if strings.HasPrefix(cleanContent, prefix) {
+		rel := cleanContent[len(prefix):]
+		diskRootFolder, _, _ = strings.Cut(rel, sep)
+	} else {
+		diskRootFolder = filepath.Base(cleanContent)
+	}
+
+	if diskRootFolder == "" || diskRootFolder == rootFolderMeta {
 		return files
 	}
 
-	if !strings.EqualFold(contentBase, rootFolderMeta) {
+	if !strings.EqualFold(diskRootFolder, rootFolderMeta) {
 		return files
 	}
 
 	corrected := make(qbt.TorrentFiles, len(files))
 	copy(corrected, files)
-	prefix := rootFolderMeta + "/"
+	metaPrefix := rootFolderMeta + "/"
 	for i := range corrected {
 		normalized := strings.ReplaceAll(corrected[i].Name, "\\", "/")
 		switch {
-		case strings.HasPrefix(normalized, prefix):
-			corrected[i].Name = contentBase + "/" + normalized[len(prefix):]
+		case strings.HasPrefix(normalized, metaPrefix):
+			corrected[i].Name = diskRootFolder + "/" + normalized[len(metaPrefix):]
 		case normalized == rootFolderMeta:
-			corrected[i].Name = contentBase
+			corrected[i].Name = diskRootFolder
 		}
 	}
 	return corrected
@@ -1257,11 +1276,11 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 
 		// content_path reflects the real on-disk path; use it to correct any
 		// case differences between the torrent metadata root folder name and the
-		// actual directory on disk (e.g. metadata says "Hawke-UNO" but disk has
-		// "hawke-uno"). Without this, the file map would have the metadata case
+		// actual directory on disk (e.g. metadata says "Tracker" but disk has
+		// "tracker"). Without this, the file map would have the metadata case
 		// while the filesystem walker finds the actual disk case, causing the
 		// files to be falsely reported as orphans.
-		correctedFiles := correctFileNamesCase(torrent.ContentPath, files)
+		correctedFiles := correctFileNamesCase(savePath, torrent.ContentPath, files)
 
 		for _, f := range correctedFiles {
 			tfm.Add(normalizePath(filepath.Join(savePath, f.Name)))
