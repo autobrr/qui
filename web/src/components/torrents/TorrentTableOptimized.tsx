@@ -22,10 +22,11 @@ import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/u
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
-import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
+import { getRowBackgroundClass } from "@/lib/torrent-table/row-display"
+import { shallowEqualTrackerIcons } from "@/lib/torrent-table/tracker-icon-equality"
+import { buildTrackerCustomizationLookup, getTrackerCustomizationsCacheKey, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
-import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
-import { formatBytes, getRatioColor } from "@/lib/utils"
+import { formatBytes } from "@/lib/utils"
 import {
   DndContext,
   MouseSensor,
@@ -48,7 +49,6 @@ import {
   useReactTable
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import type { TFunction } from "i18next"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
@@ -57,7 +57,6 @@ import { TORRENT_SORT_OPTIONS, getDefaultSortOrder, type TorrentSortOptionValue 
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -87,12 +86,11 @@ import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
-import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
+import { useIncognitoMode } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
 import { resolveFooterSpeeds } from "@/lib/scoped-speeds"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
-import { getStateLabel } from "@/lib/torrent-state-utils"
 import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag, getTotalSize } from "@/lib/torrent-utils"
 import { cn } from "@/lib/utils"
 import type {
@@ -115,7 +113,6 @@ import {
   EthernetPort,
   Eye,
   EyeOff,
-  Folder,
   Globe,
   HardDrive,
   LayoutGrid,
@@ -124,7 +121,6 @@ import {
   RefreshCcw,
   Rows3,
   Table as TableIcon,
-  Tag,
   Turtle,
   X
 } from "lucide-react"
@@ -149,6 +145,7 @@ import {
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns, type TableViewMode } from "./TorrentTableColumns"
+import { CompactRow } from "./table/CompactRow"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
 
@@ -216,357 +213,6 @@ function getDefaultColumnOrder(): string[] {
 
   return order
 }
-
-function shallowEqualTrackerIcons(
-  prev?: Record<string, string>,
-  next?: Record<string, string>
-): boolean {
-  if (prev === next) {
-    return true
-  }
-
-  if (!prev || !next) {
-    return false
-  }
-
-  const prevKeys = Object.keys(prev)
-  const nextKeys = Object.keys(next)
-
-  if (prevKeys.length !== nextKeys.length) {
-    return false
-  }
-
-  for (const key of prevKeys) {
-    if (prev[key] !== next[key]) {
-      return false
-    }
-  }
-
-  return true
-}
-
-// Compact view helper functions and components
-
-// Returns the background class for a row based on selection state and zebra striping
-function getRowBackgroundClass(isRowSelected: boolean, isSelected: boolean, rowIndex: number): string {
-  if (isRowSelected || isSelected) return "bg-accent"
-  if (rowIndex % 2 === 1) return "bg-muted/40"
-  return ""
-}
-
-function getStatusBadgeVariant(state: string): "default" | "secondary" | "destructive" | "outline" {
-  switch (state) {
-    case "downloading":
-      return "default"
-    case "stalledDL":
-      return "secondary"
-    case "uploading":
-      return "default"
-    case "stalledUP":
-      return "secondary"
-    case "pausedDL":
-    case "pausedUP":
-      return "secondary"
-    case "error":
-    case "missingFiles":
-      return "destructive"
-    default:
-      return "outline"
-  }
-}
-
-function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean, t: TFunction): {
-  variant: "default" | "secondary" | "destructive" | "outline"
-  label: string
-  className: string
-} {
-  const baseVariant = getStatusBadgeVariant(torrent.state)
-  let variant = baseVariant
-  let label = getStateLabel(torrent.state, t)
-  let className = ""
-
-  if (supportsTrackerHealth) {
-    const trackerHealth = torrent.tracker_health ?? null
-    if (trackerHealth === "tracker_down") {
-      label = t("tableColumns.trackerDown")
-      variant = "outline"
-      className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
-    } else if (trackerHealth === "tracker_error") {
-      label = t("tableColumns.trackerError")
-      variant = "outline"
-      className = "text-orange-500 border-orange-500/40 bg-orange-500/10"
-    } else if (trackerHealth === "unregistered") {
-      label = t("tableColumns.unregistered")
-      variant = "outline"
-      className = "text-destructive border-destructive/40 bg-destructive/10"
-    }
-  }
-
-  return { variant, label, className }
-}
-
-const trackerIconSizeClasses = {
-  xs: "h-3 w-3 text-[8px]",
-  sm: "h-[14px] w-[14px] text-[9px]",
-  md: "h-4 w-4 text-[10px]",
-} as const
-
-type TrackerIconSize = keyof typeof trackerIconSizeClasses
-
-interface TrackerIconProps {
-  title: string
-  fallback: string
-  src: string | null
-  size?: TrackerIconSize
-  className?: string
-}
-
-const TrackerIcon = memo(({ title, fallback, src, size = "md", className }: TrackerIconProps) => {
-  const [hasError, setHasError] = useState(false)
-
-  useEffect(() => {
-    setHasError(false)
-  }, [src])
-
-  return (
-    <div className={cn("flex items-center justify-center", className)} title={title}>
-      <div
-        className={cn(
-          "flex items-center justify-center rounded-sm border border-border/40 bg-muted font-medium uppercase leading-none select-none",
-          trackerIconSizeClasses[size]
-        )}
-      >
-        {src && !hasError ? (
-          <img
-            src={src}
-            alt=""
-            className="h-full w-full rounded-[2px] object-cover"
-            loading="lazy"
-            draggable={false}
-            onError={() => setHasError(true)}
-          />
-        ) : (
-          <span aria-hidden="true">{fallback}</span>
-        )}
-      </div>
-    </div>
-  )
-}, (prev, next) =>
-  prev.title === next.title &&
-  prev.fallback === next.fallback &&
-  prev.src === next.src &&
-  prev.size === next.size &&
-  prev.className === next.className
-)
-
-// Compact row component for desktop
-interface CompactRowProps {
-  torrent: Torrent
-  rowId: string
-  rowIndex: number
-  isSelected: boolean
-  isRowSelected: boolean
-  showCheckbox: boolean
-  onClick: (e: React.MouseEvent) => void
-  onContextMenu: () => void
-  onCheckboxPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void
-  onCheckboxChange: (torrent: Torrent, rowId: string, checked: boolean) => void
-  incognitoMode: boolean
-  speedUnit: "bytes" | "bits"
-  supportsTrackerHealth: boolean
-  trackerIcons?: Record<string, string>
-  trackerCustomizationLookup: TrackerCustomizationLookup
-  style: React.CSSProperties
-}
-
-const CompactRow = memo(({
-  torrent,
-  rowId,
-  rowIndex,
-  isSelected,
-  isRowSelected,
-  showCheckbox,
-  onClick,
-  onContextMenu,
-  onCheckboxPointerDown,
-  onCheckboxChange,
-  incognitoMode,
-  speedUnit,
-  supportsTrackerHealth,
-  trackerIcons,
-  trackerCustomizationLookup,
-  style,
-}: CompactRowProps) => {
-  const { t } = useTranslation("torrents")
-  const displayName = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
-  const displayCategory = incognitoMode ? getLinuxCategory(torrent.hash) : torrent.category
-  const displayTags = incognitoMode ? getLinuxTags(torrent.hash) : torrent.tags
-  const displayRatio = incognitoMode ? getLinuxRatio(torrent.hash) : torrent.ratio
-
-  const { variant: statusBadgeVariant, label: statusBadgeLabel, className: statusBadgeClass } = useMemo(
-    () => getStatusBadgeProps(torrent, supportsTrackerHealth, t),
-    [torrent, supportsTrackerHealth, t]
-  )
-
-  // Resolve tracker display name and icon using customizations
-  const trackerRaw = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
-  const trackerHost = useMemo(() => extractTrackerHost(trackerRaw), [trackerRaw])
-  const trackerDisplayInfo = useMemo(
-    () => resolveTrackerDisplay(trackerHost, trackerCustomizationLookup),
-    [trackerHost, trackerCustomizationLookup]
-  )
-  const trackerLabel = trackerDisplayInfo.displayName || ""
-  const trackerIconSrc = resolveTrackerIconSrc(trackerIcons, trackerDisplayInfo.primaryDomain, trackerHost)
-  const trackerTitle = trackerDisplayInfo.isCustomized ? `${trackerDisplayInfo.displayName} (${trackerHost})` : trackerHost
-
-  // Compact view
-  return (
-    <div
-      className={cn(
-        "relative flex flex-col gap-1 px-3 py-2 cursor-pointer hover:bg-accent/40 overflow-hidden",
-        getRowBackgroundClass(isRowSelected, isSelected, rowIndex)
-      )}
-      style={style}
-      onClick={(e) => onClick(e)}
-      onContextMenu={onContextMenu}
-    >
-      {/* Progress background overlay - only show when downloading */}
-      {torrent.progress < 1 && (
-        <div
-          className="absolute inset-0 -z-10 bg-primary/10 transition-all duration-300"
-          style={{
-            width: `${Math.min(100, Math.max(0, torrent.progress * 100))}%`,
-          }}
-          aria-hidden="true"
-        />
-      )}
-      {/* Name with progress inline */}
-      <div className="flex items-center gap-2">
-        {showCheckbox && (
-          <div
-            className="flex items-center justify-center flex-shrink-0"
-            data-slot="checkbox"
-            onPointerDown={onCheckboxPointerDown}
-          >
-            <Checkbox
-              checked={isRowSelected}
-              onCheckedChange={(checked) => onCheckboxChange(torrent, rowId, checked === true)}
-              aria-label={t("tableColumns.selectAll")}
-              className="h-4 w-4"
-            />
-          </div>
-        )}
-        <div className="flex items-center gap-1 flex-shrink-0" title={trackerTitle}>
-          <TrackerIcon
-            title={trackerTitle}
-            fallback={trackerHost ? trackerHost.charAt(0).toUpperCase() : "?"}
-            src={trackerIconSrc}
-            size="sm"
-          />
-          {trackerLabel && (
-            <span className="text-xs text-muted-foreground whitespace-nowrap">
-              {trackerLabel}
-            </span>
-          )}
-        </div>
-        <h3 className="flex-1 font-medium text-sm truncate min-w-0" title={displayName}>
-          {displayName}
-        </h3>
-        <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0", statusBadgeClass)}>
-          {statusBadgeLabel}
-        </Badge>
-      </div>
-
-      {/* Downloaded/Size and Ratio */}
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">
-          {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
-        </span>
-        <div className="flex items-center gap-1">
-          <span className="text-muted-foreground">{t("mobileCards.ratio")}</span>
-          <span
-            className="font-medium"
-            style={{ color: getRatioColor(displayRatio) }}
-          >
-            {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
-          </span>
-        </div>
-      </div>
-
-      {/* Bottom row: Category/tags and percentage/speeds */}
-      <div className="flex items-center justify-between gap-2 text-xs">
-        {/* Left side: Category and Tags */}
-        <div className="flex items-center gap-2 text-muted-foreground min-w-0 overflow-hidden">
-          {displayCategory && (
-            <span className="flex items-center gap-1 flex-shrink-0">
-              <Folder className="h-3 w-3" />
-              {displayCategory}
-            </span>
-          )}
-          {displayTags && (
-            <div className="flex items-center gap-1 min-w-0 overflow-hidden">
-              <Tag className="h-3 w-3 flex-shrink-0" />
-              <span className="truncate">
-                {Array.isArray(displayTags) ? displayTags.join(", ") : displayTags}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Right side: Percentage and Speeds */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="text-muted-foreground">
-            {torrent.progress >= 0.99 && torrent.progress < 1 ? (
-              (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
-            ) : (
-              Math.round(torrent.progress * 100)
-            )}%
-          </span>
-          {/* Speeds */}
-          {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
-            <div className="flex items-center gap-1">
-              {torrent.dlspeed > 0 && (
-                <span className="text-chart-2 font-medium">
-                  ↓{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}
-                </span>
-              )}
-              {torrent.upspeed > 0 && (
-                <span className="text-chart-3 font-medium">
-                  ↑{formatSpeedWithUnit(torrent.upspeed, speedUnit)}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}, (prev, next) =>
-  prev.torrent.hash === next.torrent.hash &&
-  prev.rowId === next.rowId &&
-  prev.rowIndex === next.rowIndex &&
-  prev.torrent.name === next.torrent.name &&
-  prev.torrent.category === next.torrent.category &&
-  prev.torrent.tags === next.torrent.tags &&
-  prev.torrent.tracker === next.torrent.tracker &&
-  prev.torrent.tracker_health === next.torrent.tracker_health &&
-  prev.torrent.state === next.torrent.state &&
-  prev.torrent.progress === next.torrent.progress &&
-  prev.torrent.dlspeed === next.torrent.dlspeed &&
-  prev.torrent.upspeed === next.torrent.upspeed &&
-  prev.torrent.downloaded === next.torrent.downloaded &&
-  prev.torrent.size === next.torrent.size &&
-  prev.torrent.ratio === next.torrent.ratio &&
-  prev.isSelected === next.isSelected &&
-  prev.isRowSelected === next.isRowSelected &&
-  prev.showCheckbox === next.showCheckbox &&
-  prev.incognitoMode === next.incognitoMode &&
-  prev.speedUnit === next.speedUnit &&
-  prev.supportsTrackerHealth === next.supportsTrackerHealth &&
-  prev.trackerIcons === next.trackerIcons &&
-  prev.trackerCustomizationLookup === next.trackerCustomizationLookup &&
-  prev.style === next.style
-)
 
 interface ExternalIPAddressProps {
   address?: string | null
