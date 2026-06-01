@@ -134,6 +134,15 @@ describe("useTorrentTableFilterExpr — lastUserAction", () => {
     expect(result.current.lastUserAction).toBeNull()
   })
 
+  it("does not fire a spurious search action when mounting with a route search query", () => {
+    // Regression: a URL with ?q= seeds effectiveSearch on mount, which must not
+    // be treated as a user-initiated search.
+    hoisted.routeSearch = { q: "linux" }
+    const { result } = render({ instanceId: 1, columnFilters: [] })
+    expect(result.current.effectiveSearch).toBe("linux")
+    expect(result.current.lastUserAction).toBeNull()
+  })
+
   it("fires a filter action when filters change", () => {
     const { result, rerender } = render({ instanceId: 1, columnFilters: [], filters: makeFilters({ expr: "a" }) })
     rerender({ instanceId: 1, columnFilters: [], filters: makeFilters({ expr: "b" }) })

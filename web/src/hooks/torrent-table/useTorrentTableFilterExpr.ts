@@ -52,7 +52,6 @@ export function useTorrentTableFilterExpr({
   const [lastUserAction, setLastUserAction] = useState<UserAction | null>(null)
   const previousFiltersRef = useRef(filters)
   const previousInstanceIdRef = useRef(instanceId)
-  const previousSearchRef = useRef("")
 
   // Debounce search to prevent excessive filtering (200ms delay for faster response)
   const debouncedSearch = useDebounce(globalFilter, 200)
@@ -62,6 +61,11 @@ export function useTorrentTableFilterExpr({
 
   // Use route search if present, otherwise fall back to the local debounced search
   const effectiveSearch = (searchFromRoute || debouncedSearch).trim()
+
+  // Seed with the initial effectiveSearch so a route-derived search present on
+  // mount (e.g. loading a URL with ?q=) isn't mistaken for a user-initiated
+  // search action and doesn't emit a spurious {type: "search"}.
+  const previousSearchRef = useRef(effectiveSearch)
 
   // Keep local input state in sync with route query so internal effects remain consistent
   useEffect(() => {
