@@ -5,6 +5,7 @@
 
 import { isClientConnectionErrorCode } from "@/contexts/SyncStreamContext"
 import { useEffectiveServerState } from "@/hooks/torrent-table/useEffectiveServerState"
+import { useTorrentSelection } from "@/hooks/torrent-table/useTorrentSelection"
 import { useTorrentTableFilterExpr } from "@/hooks/torrent-table/useTorrentTableFilterExpr"
 import { useTrackerIconCache } from "@/hooks/torrent-table/useTrackerIconCache"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
@@ -307,11 +308,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
   const [sorting, setSorting] = usePersistedColumnSorting([], instanceId)
-  const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({})
-
-  // Custom "select all" state for handling large datasets
-  const [isAllSelected, setIsAllSelected] = useState(false)
-  const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
   const [dropPayload, setDropPayload] = useState<AddTorrentDropPayload | null>(null)
 
   // Instance preferences dialog state
@@ -351,33 +347,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     supportsSubcategories?: boolean
     supportsTrackerHealth?: boolean
   }>({})
-  // State for range select capabilities for checkboxes
-  const shiftPressedRef = useRef<boolean>(false)
-  const lastSelectedIndexRef = useRef<number | null>(null)
-
-  // Cross-seed async filtering polling
-
-  const handleCompactCheckboxPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    shiftPressedRef.current = event.shiftKey
-  }, [])
-
-  const resetSelectionState = useCallback(() => {
-    setIsAllSelected(false)
-    setExcludedFromSelectAll(new Set())
-    setRowSelection({})
-    lastSelectedIndexRef.current = null
-  }, [setIsAllSelected, setExcludedFromSelectAll, setRowSelection])
-
-  useEffect(() => {
-    if (!onResetSelection) {
-      return
-    }
-
-    onResetSelection(resetSelectionState)
-    return () => {
-      onResetSelection(undefined)
-    }
-  }, [onResetSelection, resetSelectionState])
 
   // These should be defined at module scope, not inside the component, to ensure stable references
   // (If not already, move them to the top of the file)
@@ -747,16 +716,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const isLoadingTags = isMetadataLoading && availableTags.length === 0
   const isLoadingCategories = isMetadataLoading && Object.keys(availableCategories).length === 0
 
-  const getSelectionIdentity = useCallback((torrent: Torrent): string => {
-    if (!isCrossInstanceEndpoint) {
-      return torrent.hash
-    }
-
-    const crossInstanceId = (torrent as Partial<CrossInstanceTorrent>).instanceId
-    const resolvedInstanceId = typeof crossInstanceId === "number" && crossInstanceId > 0 ? crossInstanceId : instanceId
-    return `${resolvedInstanceId}:${torrent.hash}`
-  }, [isCrossInstanceEndpoint, instanceId])
-
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>
@@ -913,131 +872,33 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     [isAllInstancesView, stats, effectiveServerState]
   )
 
-  const selectedRowIds = useMemo(() => {
-    const ids: string[] = []
-    for (const [rowId, isSelected] of Object.entries(rowSelection)) {
-      if (isSelected) {
-        ids.push(rowId)
-      }
-    }
-    return ids
-  }, [rowSelection])
-  const selectedRowIdSet = useMemo(() => new Set(selectedRowIds), [selectedRowIds])
-
-  useEffect(() => {
-    if (isAllSelected) {
-      if (excludedFromSelectAll.size === 0) {
-        return
-      }
-
-      const visibleSelectionIdentities = new Set(sortedTorrents.map(getSelectionIdentity))
-      const hasInvalidExclusion = Array.from(excludedFromSelectAll).some(identity => !visibleSelectionIdentities.has(identity))
-
-      if (hasInvalidExclusion) {
-        resetSelectionState()
-      }
-
-      return
-    }
-
-    if (Object.keys(rowSelection).length === 0) {
-      return
-    }
-
-    const visibleRowIds = new Set(table.getRowModel().rows.map(row => row.id))
-    const hasInvalidSelection = Object.entries(rowSelection).some(([rowId, selected]) => selected && !visibleRowIds.has(rowId))
-
-    if (hasInvalidSelection) {
-      resetSelectionState()
-    }
-  }, [
-    excludedFromSelectAll,
-    getSelectionIdentity,
-    isAllSelected,
-    resetSelectionState,
+  const {
     rowSelection,
+    setRowSelection,
+    isAllSelected,
+    setIsAllSelected,
+    excludedFromSelectAll,
+    setExcludedFromSelectAll,
+    shiftPressedRef,
+    lastSelectedIndexRef,
+    selectedRowIds,
+    selectedRowIdSet,
+    resetSelectionState,
+    getSelectionIdentity,
+    handleSelectAll,
+    handleRowSelection,
+    isSelectAllChecked,
+    isSelectAllIndeterminate,
+    handleCompactCheckboxPointerDown,
+    handleCompactCheckboxChange,
+  } = useTorrentSelection({
     sortedTorrents,
-  ])
-
-  // Reset selection when table becomes empty
-  useEffect(() => {
-    if (sortedTorrents.length === 0 && (isAllSelected || Object.keys(rowSelection).length > 0)) {
-      resetSelectionState()
-    }
-  }, [sortedTorrents.length, isAllSelected, rowSelection, resetSelectionState])
-
-  // Custom selection handlers for "select all" functionality
-  const handleSelectAll = useCallback(() => {
-    if (isReadOnly) {
-      return
-    }
-
-    // Gmail-style behavior: if any rows are selected, always deselect all
-    const hasAnySelection = isAllSelected || selectedRowIds.length > 0
-
-    if (hasAnySelection) {
-      // Deselect all mode - regardless of checked state
-      setIsAllSelected(false)
-      setExcludedFromSelectAll(new Set())
-      setRowSelection({})
-      lastSelectedIndexRef.current = null // Reset anchor on deselect all
-    } else {
-      // Select all mode - only when nothing is selected
-      setIsAllSelected(true)
-      setExcludedFromSelectAll(new Set())
-      setRowSelection({})
-    }
-  }, [setRowSelection, isAllSelected, selectedRowIds.length, isReadOnly])
-
-  const handleRowSelection = useCallback((selectionIdentity: string, checked: boolean, rowId?: string) => {
-    if (isReadOnly) {
-      return
-    }
-
-    if (isAllSelected) {
-      if (!checked) {
-        // When deselecting a row in "select all" mode, add to exclusions
-        setExcludedFromSelectAll(prev => new Set(prev).add(selectionIdentity))
-      } else {
-        // When selecting a row that was excluded, remove from exclusions
-        setExcludedFromSelectAll(prev => {
-          const newSet = new Set(prev)
-          newSet.delete(selectionIdentity)
-          return newSet
-        })
-      }
-    } else {
-      // Regular selection mode - use table's built-in selection with correct row ID
-      const keyToUse = rowId || selectionIdentity // Use rowId if provided, fallback for backward compatibility
-      setRowSelection(prev => ({
-        ...prev,
-        [keyToUse]: checked,
-      }))
-    }
-  }, [isAllSelected, setRowSelection, isReadOnly])
-
-  // Calculate these after we have selectedHashes
-  const isSelectAllChecked = useMemo(() => {
-    if (isAllSelected) {
-      // When in "select all" mode, only show checked if no exclusions exist
-      return excludedFromSelectAll.size === 0
-    }
-    const regularSelectionCount = selectedRowIds.length
-    return regularSelectionCount === sortedTorrents.length && sortedTorrents.length > 0
-  }, [isAllSelected, excludedFromSelectAll.size, selectedRowIds.length, sortedTorrents.length])
-
-  const isSelectAllIndeterminate = useMemo(() => {
-    // Show indeterminate (dash) when SOME but not ALL items are selected
-    if (isAllSelected) {
-      // In "select all" mode, show indeterminate if some are excluded
-      return excludedFromSelectAll.size > 0
-    }
-
-    const regularSelectionCount = selectedRowIds.length
-
-    // Indeterminate when some (but not all) are selected
-    return regularSelectionCount > 0 && regularSelectionCount < sortedTorrents.length
-  }, [isAllSelected, excludedFromSelectAll.size, selectedRowIds.length, sortedTorrents.length])
+    isReadOnly,
+    isCrossInstanceEndpoint,
+    instanceId,
+    onResetSelection,
+    getVisibleRows: () => table.getRowModel().rows,
+  })
 
   // Memoize columns to avoid unnecessary recalculations
   const columns = useMemo(
@@ -1228,35 +1089,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       timestamp: Date.now(),
     })
   }, [activeSortField, activeSortOrder, resolveSortColumnId, setSorting, setLastUserAction])
-
-  const handleCompactCheckboxChange = useCallback((torrent: Torrent, rowId: string, checked: boolean) => {
-    if (isReadOnly) {
-      return
-    }
-
-    const nextChecked = !!checked
-    const allRows = table.getRowModel().rows
-    const currentIndex = allRows.findIndex(r => r.id === rowId)
-
-    if (shiftPressedRef.current && lastSelectedIndexRef.current !== null && currentIndex !== -1) {
-      const start = Math.min(lastSelectedIndexRef.current, currentIndex)
-      const end = Math.max(lastSelectedIndexRef.current, currentIndex)
-
-      for (let i = start; i <= end; i++) {
-        const targetRow = allRows[i]
-        if (targetRow) {
-          handleRowSelection(getSelectionIdentity(targetRow.original), nextChecked, targetRow.id)
-        }
-      }
-    } else {
-      handleRowSelection(getSelectionIdentity(torrent), nextChecked, rowId)
-    }
-
-    if (currentIndex !== -1) {
-      lastSelectedIndexRef.current = currentIndex
-    }
-    shiftPressedRef.current = false
-  }, [handleRowSelection, getSelectionIdentity, table, isReadOnly])
 
   // Get selected torrent hashes - handle both regular selection and "select all" mode
   const selectedHashes = useMemo((): string[] => {
