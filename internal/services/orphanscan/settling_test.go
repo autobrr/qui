@@ -289,3 +289,121 @@ func TestBuildFileMapFromTorrents_FlatMultiFileDivergentContentPathUsesContentRo
 	assert.Contains(t, result.scanRoots, filepath.Clean(contentRoot))
 	assert.NotContains(t, result.scanRoots, filepath.Dir(categoryRoot))
 }
+
+// TestCorrectFileNamesCase verifies that case mismatches between torrent metadata
+// root folder names and actual on-disk names (as reported by content_path) are
+// corrected before building file map entries.
+func TestCorrectFileNamesCase(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		contentPath string
+		files       qbt.TorrentFiles
+		wantNames   []string
+	}{
+		{
+			name:        "no change when cases match",
+			contentPath: "/data/Torrents/ZZCrossSeed/hawke-uno",
+			files:       qbt.TorrentFiles{{Name: "hawke-uno/movie.mkv"}},
+			wantNames:   []string{"hawke-uno/movie.mkv"},
+		},
+		{
+			name:        "corrects metadata caps to disk lowercase",
+			contentPath: "/data/Torrents/ZZCrossSeed/hawke-uno",
+			files:       qbt.TorrentFiles{{Name: "Hawke-UNO/movie.mkv"}},
+			wantNames:   []string{"hawke-uno/movie.mkv"},
+		},
+		{
+			name:        "corrects metadata lowercase to disk caps",
+			contentPath: "/data/Torrents/ZZCrossSeed/Hawke-UNO",
+			files:       qbt.TorrentFiles{{Name: "hawke-uno/movie.mkv"}},
+			wantNames:   []string{"Hawke-UNO/movie.mkv"},
+		},
+		{
+			name:        "no change when no common root folder",
+			contentPath: "/data/Torrents/ZZCrossSeed/hawke-uno",
+			files: qbt.TorrentFiles{
+				{Name: "movie.mkv"},
+				{Name: "subs/en.srt"},
+			},
+			wantNames: []string{"movie.mkv", "subs/en.srt"},
+		},
+		{
+			name:        "no change when content_path base unrelated to root folder",
+			contentPath: "/data/Torrents/ZZCrossSeed/hawke-uno/movie.mkv",
+			files: qbt.TorrentFiles{
+				{Name: "Hawke-UNO/movie.mkv"},
+				{Name: "Hawke-UNO/subs.srt"},
+			},
+			wantNames: []string{"Hawke-UNO/movie.mkv", "Hawke-UNO/subs.srt"},
+		},
+		{
+			name:        "corrects multiple files with same root folder",
+			contentPath: "/data/Torrents/ZZCrossSeed/hawke-uno",
+			files: qbt.TorrentFiles{
+				{Name: "Hawke-UNO/movie.mkv"},
+				{Name: "Hawke-UNO/subs/en.srt"},
+			},
+			wantNames: []string{"hawke-uno/movie.mkv", "hawke-uno/subs/en.srt"},
+		},
+		{
+			name:        "empty content_path returns files unchanged",
+			contentPath: "",
+			files:       qbt.TorrentFiles{{Name: "Hawke-UNO/movie.mkv"}},
+			wantNames:   []string{"Hawke-UNO/movie.mkv"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := correctFileNamesCase(tt.contentPath, tt.files)
+			require.Len(t, got, len(tt.wantNames))
+			for i, want := range tt.wantNames {
+				assert.Equal(t, want, got[i].Name)
+			}
+		})
+	}
+}
+
+// TestBuildFileMapFromTorrents_CaseMismatchBetweenMetadataAndDisk verifies that
+// when qBittorrent reports file names using torrent metadata casing (e.g. "Hawke-UNO")
+// but content_path reveals the actual on-disk casing is different (e.g. "hawke-uno"),
+// the file map is built with the actual on-disk paths so the walker can find them.
+func TestBuildFileMapFromTorrents_CaseMismatchBetweenMetadataAndDisk(t *testing.T) {
+	t.Parallel()
+
+	saveRoot := filepath.Join(t.TempDir(), "ZZCrossSeed")
+	// content_path uses the actual on-disk lowercase name
+	diskFolder := filepath.Join(saveRoot, "hawke-uno")
+	// but torrent metadata has a different capitalisation
+	result, err := buildFileMapFromTorrents(
+		[]qbt.Torrent{
+			{
+				Hash:        "crossseed1",
+				SavePath:    saveRoot,
+				ContentPath: diskFolder,
+				State:       qbt.TorrentStatePausedUp,
+			},
+		},
+		map[string]qbt.TorrentFiles{
+			"crossseed1": {
+				{Name: "Hawke-UNO/The.Hunger.Games.mkv", Size: 1000},
+				{Name: "Hawke-UNO/subs.srt", Size: 50},
+			},
+		},
+	)
+	require.NoError(t, err)
+
+	// File map must use the actual on-disk case (from content_path), not metadata case.
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(saveRoot, "hawke-uno", "The.Hunger.Games.mkv"))))
+	assert.True(t, result.fileMap.Has(normalizePath(filepath.Join(saveRoot, "hawke-uno", "subs.srt"))))
+
+	// Must NOT have the metadata-cased path (which doesn't exist on disk).
+	assert.False(t, result.fileMap.Has(normalizePath(filepath.Join(saveRoot, "Hawke-UNO", "The.Hunger.Games.mkv"))))
+	assert.False(t, result.fileMap.Has(normalizePath(filepath.Join(saveRoot, "Hawke-UNO", "subs.srt"))))
+
+	assert.Equal(t, []string{filepath.Clean(saveRoot)}, result.scanRoots)
+}

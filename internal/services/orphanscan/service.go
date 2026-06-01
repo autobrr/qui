@@ -1138,6 +1138,45 @@ func torrentRootFolder(files qbt.TorrentFiles) string {
 	return rootFolder
 }
 
+// correctFileNamesCase corrects the root folder capitalization in file names
+// when the torrent metadata case differs from the actual on-disk name reported
+// by content_path. This prevents false orphans when qBittorrent returns file
+// paths using metadata casing (e.g. "Hawke-UNO/file.mkv") while the actual
+// folder on disk uses different casing (e.g. "hawke-uno").
+func correctFileNamesCase(contentPath string, files qbt.TorrentFiles) qbt.TorrentFiles {
+	if contentPath == "" || len(files) == 0 {
+		return files
+	}
+
+	rootFolderMeta := torrentRootFolder(files)
+	if rootFolderMeta == "" {
+		return files
+	}
+
+	contentBase := filepath.Base(filepath.Clean(contentPath))
+	if contentBase == "" || contentBase == "." || contentBase == rootFolderMeta {
+		return files
+	}
+
+	if !strings.EqualFold(contentBase, rootFolderMeta) {
+		return files
+	}
+
+	corrected := make(qbt.TorrentFiles, len(files))
+	copy(corrected, files)
+	prefix := rootFolderMeta + "/"
+	for i := range corrected {
+		normalized := strings.ReplaceAll(corrected[i].Name, "\\", "/")
+		switch {
+		case strings.HasPrefix(normalized, prefix):
+			corrected[i].Name = contentBase + "/" + normalized[len(prefix):]
+		case normalized == rootFolderMeta:
+			corrected[i].Name = contentBase
+		}
+	}
+	return corrected
+}
+
 func actualSavePathFromContentPath(savePath, contentPath string, files qbt.TorrentFiles) string {
 	savePath = filepath.Clean(savePath)
 	contentPath = filepath.Clean(contentPath)
@@ -1215,16 +1254,25 @@ func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt
 		}
 
 		scanRoots[savePath] = struct{}{}
-		for _, f := range files {
+
+		// content_path reflects the real on-disk path; use it to correct any
+		// case differences between the torrent metadata root folder name and the
+		// actual directory on disk (e.g. metadata says "Hawke-UNO" but disk has
+		// "hawke-uno"). Without this, the file map would have the metadata case
+		// while the filesystem walker finds the actual disk case, causing the
+		// files to be falsely reported as orphans.
+		correctedFiles := correctFileNamesCase(torrent.ContentPath, files)
+
+		for _, f := range correctedFiles {
 			tfm.Add(normalizePath(filepath.Join(savePath, f.Name)))
 		}
 
 		// Auto TMM can update save_path to the category root without moving the
 		// payload. content_path still reflects the real on-disk location.
-		actualSavePath := actualSavePathFromContentPath(savePath, torrent.ContentPath, files)
+		actualSavePath := actualSavePathFromContentPath(savePath, torrent.ContentPath, correctedFiles)
 		if actualSavePath != "" && actualSavePath != savePath {
 			scanRoots[actualSavePath] = struct{}{}
-			for _, f := range files {
+			for _, f := range correctedFiles {
 				tfm.Add(normalizePath(filepath.Join(actualSavePath, f.Name)))
 			}
 		}
