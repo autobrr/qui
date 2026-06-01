@@ -116,6 +116,23 @@ describe("useTorrentTableNotifications — onSelectionChange", () => {
     expect(call[7]).toBe(filters)
   })
 
+  it("does not carry selectAllFilters into the payload after leaving select-all mode", () => {
+    // selectAllFilters comes from a memo that returns undefined whenever
+    // !isAllSelected, so toggling select-all off must fall the 8th arg back to
+    // `filters` — no stale select-all filter can leak into an explicit selection.
+    const filters = { status: [], excludeStatus: [], categories: [], excludeCategories: [], tags: [], excludeTags: [], trackers: [], excludeTrackers: [] } as UseTorrentTableNotificationsParams["filters"]
+    const selectAllFilters = { ...filters!, expr: "Hash == \"x\"" } as UseTorrentTableNotificationsParams["selectAllFilters"]
+    const onSelectionChange = vi.fn()
+
+    const { rerender } = renderHook((p: UseTorrentTableNotificationsParams) => useTorrentTableNotifications(p), {
+      initialProps: makeParams({ onSelectionChange, isAllSelected: true, selectAllFilters, filters }),
+    })
+    expect(vi.mocked(onSelectionChange).mock.calls.at(-1)![7]).toBe(selectAllFilters)
+
+    rerender(makeParams({ onSelectionChange, isAllSelected: false, selectAllFilters: undefined, filters }))
+    expect(vi.mocked(onSelectionChange).mock.calls.at(-1)![7]).toBe(filters)
+  })
+
   it("fires even while loading (no loading gate on selection)", () => {
     const params = makeParams({ isLoading: true, onFilteredDataUpdate: vi.fn() })
     renderHook((p: UseTorrentTableNotificationsParams) => useTorrentTableNotifications(p), { initialProps: params })
