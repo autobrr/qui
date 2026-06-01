@@ -21,7 +21,9 @@ export interface ExternalProgram {
   updated_at: string
 }
 
-export interface ExternalProgramCreate {
+// ExternalProgramCreate and ExternalProgramUpdate share an identical payload
+// shape; keep them as a single source of truth to avoid drift.
+export interface ExternalProgramPayload {
   name: string
   path: string
   args_template: string
@@ -30,14 +32,8 @@ export interface ExternalProgramCreate {
   path_mappings: PathMapping[]
 }
 
-export interface ExternalProgramUpdate {
-  name: string
-  path: string
-  args_template: string
-  enabled: boolean
-  use_terminal: boolean
-  path_mappings: PathMapping[]
-}
+export type ExternalProgramCreate = ExternalProgramPayload
+export type ExternalProgramUpdate = ExternalProgramPayload
 
 export interface ExternalProgramExecute {
   program_id: number
