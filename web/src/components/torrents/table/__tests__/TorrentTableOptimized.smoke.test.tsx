@@ -220,9 +220,11 @@ describe("TorrentTableOptimized smoke", () => {
     const header = checkboxes[0]
     expect(header.getAttribute("aria-checked")).not.toBe("true")
     fireEvent.click(header)
-    const checkedAfter = within(container).getAllByRole("checkbox").filter(
-      (cb) => cb.getAttribute("aria-checked") === "true"
+    // Exclude the header itself so this asserts ROW checkboxes became checked,
+    // not just the select-all control reflecting its own click.
+    const checkedRowsAfter = within(container).getAllByRole("checkbox").filter(
+      (cb) => cb !== header && cb.getAttribute("aria-checked") === "true"
     )
-    expect(checkedAfter.length).toBeGreaterThan(0)
+    expect(checkedRowsAfter.length).toBeGreaterThan(0)
   })
 })

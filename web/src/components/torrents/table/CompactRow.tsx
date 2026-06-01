@@ -200,6 +200,10 @@ export const CompactRow = memo(({
     </div>
   )
 }, (prev, next) =>
+  // Handler props (onClick/onContextMenu/onCheckbox*) are intentionally excluded:
+  // the parent passes fresh inline lambdas every render, so comparing them would
+  // defeat row memoization (every row would re-render on every poll/stream tick).
+  // The state those handlers act on is reflected in the compared props below.
   prev.torrent.hash === next.torrent.hash &&
   prev.rowId === next.rowId &&
   prev.rowIndex === next.rowIndex &&

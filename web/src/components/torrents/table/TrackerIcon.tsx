@@ -4,7 +4,7 @@
  */
 
 import { cn } from "@/lib/utils"
-import { memo, useEffect, useState } from "react"
+import { memo, useState } from "react"
 
 const trackerIconSizeClasses = {
   xs: "h-3 w-3 text-[8px]",
@@ -23,11 +23,10 @@ export interface TrackerIconProps {
 }
 
 export const TrackerIcon = memo(({ title, fallback, src, size = "md", className }: TrackerIconProps) => {
-  const [hasError, setHasError] = useState(false)
-
-  useEffect(() => {
-    setHasError(false)
-  }, [src])
+  // Track the specific src that failed to load. Keying error state to the src
+  // value (rather than resetting a boolean in an effect) means a new src renders
+  // its image immediately, with no one-frame fallback flash.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
 
   return (
     <div className={cn("flex items-center justify-center", className)} title={title}>
@@ -37,14 +36,14 @@ export const TrackerIcon = memo(({ title, fallback, src, size = "md", className 
           trackerIconSizeClasses[size]
         )}
       >
-        {src && !hasError ? (
+        {src && failedSrc !== src ? (
           <img
             src={src}
             alt=""
             className="h-full w-full rounded-[2px] object-cover"
             loading="lazy"
             draggable={false}
-            onError={() => setHasError(true)}
+            onError={() => setFailedSrc(src)}
           />
         ) : (
           <span aria-hidden="true">{fallback}</span>
