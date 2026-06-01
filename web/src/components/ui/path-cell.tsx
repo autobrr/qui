@@ -4,6 +4,7 @@
  */
 
 import { Copy } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { cn, copyTextToClipboard } from "@/lib/utils"
@@ -19,15 +20,16 @@ interface PathCellProps {
  * Shows "-" when no path is provided.
  */
 export function PathCell({ path, className }: PathCellProps) {
+  const { t } = useTranslation("common")
   const hasPath = path != null && path !== ""
 
   const handleCopy = async () => {
     if (!hasPath) return
     try {
       await copyTextToClipboard(path)
-      toast.success("Path copied to clipboard")
+      toast.success(t("contextMenu.toast.torrentCopied", { ns: "torrents", label: t("actions.copyPath") }))
     } catch {
-      toast.error("Failed to copy to clipboard")
+      toast.error(t("contextMenu.toast.failedToCopy", { ns: "torrents" }))
     }
   }
 
@@ -42,12 +44,10 @@ export function PathCell({ path, className }: PathCellProps) {
         disabled={!hasPath}
         className={cn(
           "flex-shrink-0 p-0.5 rounded transition-colors",
-          hasPath
-            ? "text-muted-foreground hover:text-foreground cursor-pointer"
-            : "text-muted-foreground/40 cursor-not-allowed"
+          hasPath? "text-muted-foreground hover:text-foreground cursor-pointer": "text-muted-foreground/40 cursor-not-allowed"
         )}
-        aria-label="Copy path"
-        title={hasPath ? "Copy path" : undefined}
+        aria-label={t("actions.copyPath")}
+        title={hasPath ? t("actions.copyPath") : undefined}
       >
         <Copy className="size-3.5" />
       </button>

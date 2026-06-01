@@ -38,6 +38,7 @@ var ignoredOrphanFileNamePrefixes = []string{
 // torrent clients and should not be treated as orphan content (e.g. "*.parts" from qBittorrent).
 var ignoredOrphanFileNameSuffixes = []string{
 	".parts",
+	".!qB",
 }
 
 // ignoredOrphanDirNames are directory names that should be skipped entirely during scanning.
@@ -76,17 +77,6 @@ type discUnitDecision struct {
 func walkScanRoot(ctx context.Context, root string, tfm *TorrentFileMap,
 	ignorePaths []string, gracePeriod time.Duration, maxFiles int) ([]OrphanFile, bool, error) {
 	return walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, nil)
-}
-
-// walkScanRootDiscUnits walks a directory tree and returns only disc-layout orphan units.
-// This is intended for diagnostics/local tests to avoid materializing a huge orphan list.
-func walkScanRootDiscUnits(
-	ctx context.Context, root string, tfm *TorrentFileMap,
-	ignorePaths []string, gracePeriod time.Duration, maxUnits int,
-) ([]OrphanFile, bool, error) {
-	return walkScanRootWithUnitFilter(ctx, root, tfm, ignorePaths, gracePeriod, maxUnits, func(_ string, isDiscUnit bool) bool {
-		return isDiscUnit
-	})
 }
 
 type scanWalker struct {
@@ -326,19 +316,6 @@ func walkScanRootWithUnitFilter(
 	w := newScanWalker(ctx, root, tfm, ignorePaths, gracePeriod, maxFiles, unitFilter)
 	err := filepath.WalkDir(root, w.walk)
 	return w.orphans(), w.truncated, err
-}
-
-// discOrphanUnit detects whether a file path belongs to a disc-layout folder.
-// If so, it returns the deletion unit path (directory) that should represent the disc.
-//
-// Rules:
-//   - Detects BDMV and VIDEO_TS directory markers (case-insensitive) anywhere in the path.
-//   - Prefers the parent directory above the marker as the unit root.
-//   - If the marker is directly under the scan root, the unit becomes the marker directory itself
-//     (to avoid attempting to delete the scan root).
-func discOrphanUnit(scanRoot, filePath string, cache map[string]discUnitDecision) (unitPath string, ok bool) {
-	// Backwards-compatible wrapper (used only by local diagnostic code).
-	return discOrphanUnitWithContext(scanRoot, filePath, nil, cache, nil)
 }
 
 // findDiscMarker scans path segments for a disc-layout marker (BDMV, VIDEO_TS).

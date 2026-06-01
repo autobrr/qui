@@ -51,6 +51,7 @@ type Instance struct {
 	Host                     string  `json:"host"`
 	Username                 string  `json:"username"`
 	PasswordEncrypted        string  `json:"-"`
+	APIKeyEncrypted          string  `json:"-"`
 	BasicUsername            *string `json:"basic_username,omitempty"`
 	BasicPasswordEncrypted   *string `json:"-"`
 	TLSSkipVerify            bool    `json:"tlsSkipVerify"`
@@ -76,6 +77,7 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		Host                     string     `json:"host"`
 		Username                 string     `json:"username"`
 		Password                 string     `json:"password,omitempty"`
+		APIKey                   string     `json:"apiKey,omitempty"`
 		BasicUsername            *string    `json:"basic_username,omitempty"`
 		BasicPassword            string     `json:"basic_password,omitempty"`
 		TLSSkipVerify            bool       `json:"tlsSkipVerify"`
@@ -97,6 +99,7 @@ func (i Instance) MarshalJSON() ([]byte, error) {
 		Host:          i.Host,
 		Username:      i.Username,
 		Password:      domain.RedactString(i.PasswordEncrypted),
+		APIKey:        domain.RedactString(i.APIKeyEncrypted),
 		BasicUsername: i.BasicUsername,
 		BasicPassword: func() string {
 			if i.BasicPasswordEncrypted != nil {
@@ -125,6 +128,7 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 		Host                     string     `json:"host"`
 		Username                 string     `json:"username"`
 		Password                 string     `json:"password,omitempty"`
+		APIKey                   string     `json:"apiKey,omitempty"`
 		BasicUsername            *string    `json:"basic_username,omitempty"`
 		BasicPassword            string     `json:"basic_password,omitempty"`
 		TLSSkipVerify            *bool      `json:"tlsSkipVerify,omitempty"`
@@ -193,6 +197,11 @@ func (i *Instance) UnmarshalJSON(data []byte) error {
 	// Handle password - don't overwrite if redacted
 	if temp.Password != "" && !domain.IsRedactedString(temp.Password) {
 		i.PasswordEncrypted = temp.Password
+	}
+
+	// Handle API key - don't overwrite if redacted
+	if temp.APIKey != "" && !domain.IsRedactedString(temp.APIKey) {
+		i.APIKeyEncrypted = temp.APIKey
 	}
 
 	// Handle basic password - don't overwrite if redacted
@@ -305,7 +314,12 @@ func validateAndNormalizeHost(rawHost string) (string, error) {
 	return u.String(), nil
 }
 
-func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, hasLocalFilesystemAccess *bool, linkDirName *string) (*Instance, error) {
+func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, hasLocalFilesystemAccess *bool, linkDirName *string, apiKey ...string) (*Instance, error) {
+	key := ""
+	if len(apiKey) > 0 {
+		key = apiKey[0]
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
@@ -314,7 +328,7 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 		_ = tx.Rollback()
 	}()
 
-	instance, err := s.createWithTx(ctx, tx, name, rawHost, username, password, basicUsername, basicPassword, tlsSkipVerify, hasLocalFilesystemAccess, linkDirName)
+	instance, err := s.createWithTx(ctx, tx, name, rawHost, username, password, basicUsername, basicPassword, tlsSkipVerify, hasLocalFilesystemAccess, linkDirName, key)
 	if err != nil {
 		return nil, err
 	}
@@ -326,11 +340,17 @@ func (s *InstanceStore) Create(ctx context.Context, name, rawHost, username, pas
 	return instance, nil
 }
 
-func (s *InstanceStore) createWithTx(ctx context.Context, tx dbinterface.TxQuerier, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, hasLocalFilesystemAccess *bool, linkDirName *string) (*Instance, error) {
+func (s *InstanceStore) createWithTx(ctx context.Context, tx dbinterface.TxQuerier, name, rawHost, username, password string, basicUsername, basicPassword *string, tlsSkipVerify bool, hasLocalFilesystemAccess *bool, linkDirName *string, apiKey string) (*Instance, error) {
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
 		return nil, err
+	}
+
+	// API key auth does not use username/password login.
+	if apiKey != "" {
+		username = ""
+		password = ""
 	}
 
 	// Localhost bypass auth uses an empty username, and the qBittorrent client should not attempt a login.
@@ -342,6 +362,14 @@ func (s *InstanceStore) createWithTx(ctx context.Context, tx dbinterface.TxQueri
 	encryptedPassword, err := s.encrypt(password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt password: %w", err)
+	}
+
+	encryptedAPIKey := ""
+	if apiKey != "" {
+		encryptedAPIKey, err = s.encrypt(apiKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt api key: %w", err)
+		}
 	}
 
 	// Encrypt basic auth password if provided
@@ -406,6 +434,7 @@ func (s *InstanceStore) createWithTx(ctx context.Context, tx dbinterface.TxQueri
 			host_id,
 			username_id,
 			password_encrypted,
+			api_key_encrypted,
 			basic_username_id,
 			basic_password_encrypted,
 			tls_skip_verify,
@@ -413,13 +442,14 @@ func (s *InstanceStore) createWithTx(ctx context.Context, tx dbinterface.TxQueri
 			link_dir_name,
 			sort_order
 		)
-		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, next_order FROM next_sort
 		RETURNING id, password_encrypted, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, link_dir_name
 		`,
 		nameID,
 		hostID,
 		usernameID,
 		encryptedPassword,
+		encryptedAPIKey,
 		allIDs[3],
 		encryptedBasicPassword,
 		BoolToSQLite(tlsSkipVerify),
@@ -445,6 +475,7 @@ func (s *InstanceStore) createWithTx(ctx context.Context, tx dbinterface.TxQueri
 		Host:                     normalizedHost,
 		Username:                 username,
 		PasswordEncrypted:        passwordEncrypted.String,
+		APIKeyEncrypted:          encryptedAPIKey,
 		TLSSkipVerify:            SQLiteIntToBool(tlsSkipVerifyResult),
 		HasLocalFilesystemAccess: SQLiteIntToBool(hasLocalFilesystemAccessResult),
 		SortOrder:                sortOrder,
@@ -464,13 +495,13 @@ func (s *InstanceStore) createWithTx(ctx context.Context, tx dbinterface.TxQueri
 
 func scanInstance(ctx context.Context, q rowQuerier, id int) (*Instance, error) {
 	query := `
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, link_dir_name, use_reflinks, fallback_to_regular_mode
+		SELECT id, name, host, username, password_encrypted, api_key_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, link_dir_name, use_reflinks, fallback_to_regular_mode
 		FROM instances_view
 		WHERE id = ?
 	`
 
 	var instanceID int
-	var name, host, username, passwordEncrypted string
+	var name, host, username, passwordEncrypted, apiKeyEncrypted string
 	var basicUsername, basicPasswordEncrypted sql.NullString
 	var tlsSkipVerify int
 	var sortOrder int
@@ -487,6 +518,7 @@ func scanInstance(ctx context.Context, q rowQuerier, id int) (*Instance, error) 
 		&host,
 		&username,
 		&passwordEncrypted,
+		&apiKeyEncrypted,
 		&basicUsername,
 		&basicPasswordEncrypted,
 		&tlsSkipVerify,
@@ -513,6 +545,7 @@ func scanInstance(ctx context.Context, q rowQuerier, id int) (*Instance, error) 
 		Host:                     host,
 		Username:                 username,
 		PasswordEncrypted:        passwordEncrypted,
+		APIKeyEncrypted:          apiKeyEncrypted,
 		TLSSkipVerify:            SQLiteIntToBool(tlsSkipVerify),
 		SortOrder:                sortOrder,
 		IsActive:                 SQLiteIntToBool(isActive),
@@ -546,7 +579,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	}
 
 	query := fmt.Sprintf(`
-		SELECT id, name, host, username, password_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, link_dir_name, use_reflinks, fallback_to_regular_mode
+		SELECT id, name, host, username, password_encrypted, api_key_encrypted, basic_username, basic_password_encrypted, tls_skip_verify, sort_order, is_active, has_local_filesystem_access, use_hardlinks, hardlink_base_dir, hardlink_dir_preset, link_dir_name, use_reflinks, fallback_to_regular_mode
 		FROM instances_view
 		ORDER BY sort_order ASC, %s ASC, id ASC
 	`, orderByName)
@@ -560,7 +593,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 	var instances []*Instance
 	for rows.Next() {
 		var id int
-		var name, host, username, passwordEncrypted string
+		var name, host, username, passwordEncrypted, apiKeyEncrypted string
 		var basicUsername, basicPasswordEncrypted sql.NullString
 		var tlsSkipVerify int
 		var sortOrder int
@@ -577,6 +610,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			&host,
 			&username,
 			&passwordEncrypted,
+			&apiKeyEncrypted,
 			&basicUsername,
 			&basicPasswordEncrypted,
 			&tlsSkipVerify,
@@ -600,6 +634,7 @@ func (s *InstanceStore) List(ctx context.Context) ([]*Instance, error) {
 			Host:                     host,
 			Username:                 username,
 			PasswordEncrypted:        passwordEncrypted,
+			APIKeyEncrypted:          apiKeyEncrypted,
 			TLSSkipVerify:            SQLiteIntToBool(tlsSkipVerify),
 			SortOrder:                sortOrder,
 			IsActive:                 SQLiteIntToBool(isActive),
@@ -641,7 +676,12 @@ type InstanceUpdateParams struct {
 	FallbackToRegularMode    *bool
 }
 
-func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, params *InstanceUpdateParams) (*Instance, error) {
+func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, params *InstanceUpdateParams, apiKey ...*string) (*Instance, error) {
+	var apiKeyUpdate *string
+	if len(apiKey) > 0 {
+		apiKeyUpdate = apiKey[0]
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to begin transaction: %w", err)
@@ -650,7 +690,7 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 		_ = tx.Rollback()
 	}()
 
-	instance, err := s.updateWithTx(ctx, tx, id, name, rawHost, username, password, basicUsername, basicPassword, params)
+	instance, err := s.updateWithTx(ctx, tx, id, name, rawHost, username, password, basicUsername, basicPassword, params, apiKeyUpdate)
 	if err != nil {
 		return nil, err
 	}
@@ -662,11 +702,16 @@ func (s *InstanceStore) Update(ctx context.Context, id int, name, rawHost, usern
 	return instance, nil
 }
 
-func (s *InstanceStore) updateWithTx(ctx context.Context, tx dbinterface.TxQuerier, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, params *InstanceUpdateParams) (*Instance, error) {
+func (s *InstanceStore) updateWithTx(ctx context.Context, tx dbinterface.TxQuerier, id int, name, rawHost, username, password string, basicUsername, basicPassword *string, params *InstanceUpdateParams, apiKeyUpdate *string) (*Instance, error) {
 	// Validate and normalize the host
 	normalizedHost, err := validateAndNormalizeHost(rawHost)
 	if err != nil {
 		return nil, err
+	}
+
+	if apiKeyUpdate != nil && *apiKeyUpdate != "" {
+		username = ""
+		password = ""
 	}
 
 	// Prepare strings to intern - always intern name, host, username
@@ -726,6 +771,18 @@ func (s *InstanceStore) updateWithTx(ctx context.Context, tx dbinterface.TxQueri
 		}
 		query += ", password_encrypted = ?"
 		args = append(args, encryptedPassword)
+	}
+
+	if apiKeyUpdate != nil {
+		encryptedAPIKey := ""
+		if *apiKeyUpdate != "" {
+			encryptedAPIKey, err = s.encrypt(*apiKeyUpdate)
+			if err != nil {
+				return nil, fmt.Errorf("failed to encrypt api key: %w", err)
+			}
+		}
+		query += ", api_key_encrypted = ?"
+		args = append(args, encryptedAPIKey)
 	}
 
 	// Handle basic password update
@@ -823,7 +880,13 @@ func (s *InstanceStore) CreateWithReannounce(
 	hasLocalFilesystemAccess *bool,
 	linkDirName *string,
 	reannounceSettings *InstanceReannounceSettings,
+	apiKey ...string,
 ) (*Instance, *InstanceReannounceSettings, error) {
+	key := ""
+	if len(apiKey) > 0 {
+		key = apiKey[0]
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to begin transaction: %w", err)
@@ -832,7 +895,7 @@ func (s *InstanceStore) CreateWithReannounce(
 		_ = tx.Rollback()
 	}()
 
-	instance, err := s.createWithTx(ctx, tx, name, rawHost, username, password, basicUsername, basicPassword, tlsSkipVerify, hasLocalFilesystemAccess, linkDirName)
+	instance, err := s.createWithTx(ctx, tx, name, rawHost, username, password, basicUsername, basicPassword, tlsSkipVerify, hasLocalFilesystemAccess, linkDirName, key)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -866,7 +929,13 @@ func (s *InstanceStore) UpdateWithReannounce(
 	params *InstanceUpdateParams,
 	reannounceStore *InstanceReannounceStore,
 	reannounceSettings *InstanceReannounceSettings,
+	apiKey ...*string,
 ) (*Instance, *InstanceReannounceSettings, error) {
+	var apiKeyUpdate *string
+	if len(apiKey) > 0 {
+		apiKeyUpdate = apiKey[0]
+	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to begin transaction: %w", err)
@@ -875,7 +944,7 @@ func (s *InstanceStore) UpdateWithReannounce(
 		_ = tx.Rollback()
 	}()
 
-	instance, err := s.updateWithTx(ctx, tx, id, name, rawHost, username, password, basicUsername, basicPassword, params)
+	instance, err := s.updateWithTx(ctx, tx, id, name, rawHost, username, password, basicUsername, basicPassword, params, apiKeyUpdate)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1008,6 +1077,15 @@ func (s *InstanceStore) Delete(ctx context.Context, id int) error {
 // GetDecryptedPassword returns the decrypted password for an instance
 func (s *InstanceStore) GetDecryptedPassword(instance *Instance) (string, error) {
 	return s.decrypt(instance.PasswordEncrypted)
+}
+
+// GetDecryptedAPIKey returns the decrypted API key for an instance.
+func (s *InstanceStore) GetDecryptedAPIKey(instance *Instance) (string, error) {
+	if instance.APIKeyEncrypted == "" {
+		return "", nil
+	}
+
+	return s.decrypt(instance.APIKeyEncrypted)
 }
 
 // GetDecryptedBasicPassword returns the decrypted basic auth password for an instance

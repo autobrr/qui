@@ -1,8 +1,9 @@
 /*
- * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * Copyright (c) 2025, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { isClientConnectionErrorCode } from "@/contexts/SyncStreamContext"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
@@ -17,11 +18,12 @@ import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibili
 import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewState"
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
-import { useTorrentsList } from "@/hooks/useTorrentsList"
+import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/useTorrentsList"
 import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
 import { useTrackerIcons } from "@/hooks/useTrackerIcons"
 import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
+import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
 import { formatBytes, getRatioColor } from "@/lib/utils"
 import {
@@ -46,7 +48,9 @@ import {
   useReactTable
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
+import type { TFunction } from "i18next"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
 import { TORRENT_SORT_OPTIONS, getDefaultSortOrder, type TorrentSortOptionValue } from "./torrentSortOptions"
@@ -85,6 +89,7 @@ import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
 import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
+import { resolveFooterSpeeds } from "@/lib/scoped-speeds"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
 import { getStateLabel } from "@/lib/torrent-state-utils"
@@ -98,22 +103,35 @@ import type {
   TorrentCounts,
   TorrentFilters
 } from "@/types"
-import { useQuery } from "@tanstack/react-query"
-import { useSearch } from "@tanstack/react-router"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useNavigate, useSearch } from "@tanstack/react-router"
 import {
   ArrowUpDown,
+  Ban,
+  BrickWallFire,
   ChevronDown,
   ChevronUp,
   Columns3,
+  EthernetPort,
+  Eye,
+  EyeOff,
   Folder,
+  Globe,
+  HardDrive,
+  LayoutGrid,
+  Loader2,
+  Rabbit,
+  RefreshCcw,
+  Rows3,
+  Table as TableIcon,
   Tag,
+  Turtle,
   X
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
 import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
-import type { SelectionInfo } from "./GlobalStatusBar"
 import { SelectAllHotkey } from "./SelectAllHotkey"
 import {
   CreateAndAssignCategoryDialog,
@@ -124,6 +142,7 @@ import {
   SetCategoryDialog,
   SetLocationDialog,
   TagEditorDialog,
+  SetCommentDialog,
   ShareLimitDialog,
   SpeedLimitsDialog,
   TmmConfirmDialog
@@ -177,6 +196,9 @@ const DEFAULT_COLUMN_VISIBILITY = {
   instance: true,
 }
 const DEFAULT_COLUMN_SIZING = {}
+const STREAM_STATUS_TRANSITION_DELAY_MS = 800
+
+type StreamPhase = "connecting" | "healthy" | "reconnecting" | "fallback"
 
 // Helper function to get default column order (module scope for stable reference)
 function getDefaultColumnOrder(): string[] {
@@ -253,24 +275,28 @@ function getStatusBadgeVariant(state: string): "default" | "secondary" | "destru
   }
 }
 
-function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean): {
+function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean, t: TFunction): {
   variant: "default" | "secondary" | "destructive" | "outline"
   label: string
   className: string
 } {
   const baseVariant = getStatusBadgeVariant(torrent.state)
   let variant = baseVariant
-  let label = getStateLabel(torrent.state)
+  let label = getStateLabel(torrent.state, t)
   let className = ""
 
   if (supportsTrackerHealth) {
     const trackerHealth = torrent.tracker_health ?? null
     if (trackerHealth === "tracker_down") {
-      label = "Tracker Down"
+      label = t("tableColumns.trackerDown")
       variant = "outline"
       className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+    } else if (trackerHealth === "tracker_error") {
+      label = t("tableColumns.trackerError")
+      variant = "outline"
+      className = "text-orange-500 border-orange-500/40 bg-orange-500/10"
     } else if (trackerHealth === "unregistered") {
-      label = "Unregistered"
+      label = t("tableColumns.unregistered")
       variant = "outline"
       className = "text-destructive border-destructive/40 bg-destructive/10"
     }
@@ -371,14 +397,15 @@ const CompactRow = memo(({
   trackerCustomizationLookup,
   style,
 }: CompactRowProps) => {
+  const { t } = useTranslation("torrents")
   const displayName = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
   const displayCategory = incognitoMode ? getLinuxCategory(torrent.hash) : torrent.category
   const displayTags = incognitoMode ? getLinuxTags(torrent.hash) : torrent.tags
   const displayRatio = incognitoMode ? getLinuxRatio(torrent.hash) : torrent.ratio
 
   const { variant: statusBadgeVariant, label: statusBadgeLabel, className: statusBadgeClass } = useMemo(
-    () => getStatusBadgeProps(torrent, supportsTrackerHealth),
-    [torrent, supportsTrackerHealth]
+    () => getStatusBadgeProps(torrent, supportsTrackerHealth, t),
+    [torrent, supportsTrackerHealth, t]
   )
 
   // Resolve tracker display name and icon using customizations
@@ -424,7 +451,7 @@ const CompactRow = memo(({
             <Checkbox
               checked={isRowSelected}
               onCheckedChange={(checked) => onCheckboxChange(torrent, rowId, checked === true)}
-              aria-label="Select torrent"
+              aria-label={t("tableColumns.selectAll")}
               className="h-4 w-4"
             />
           </div>
@@ -456,7 +483,7 @@ const CompactRow = memo(({
           {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
         </span>
         <div className="flex items-center gap-1">
-          <span className="text-muted-foreground">Ratio:</span>
+          <span className="text-muted-foreground">{t("mobileCards.ratio")}</span>
           <span
             className="font-medium"
             style={{ color: getRatioColor(displayRatio) }}
@@ -541,6 +568,44 @@ const CompactRow = memo(({
   prev.style === next.style
 )
 
+interface ExternalIPAddressProps {
+  address?: string | null
+  incognitoMode: boolean
+  label: string
+}
+
+const ExternalIPAddress = memo(
+  ({ address, incognitoMode, label }: ExternalIPAddressProps) => {
+    const { t } = useTranslation("torrents")
+
+    if (!address) return null
+
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge
+            variant="outline"
+            className="gap-1 px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground"
+            aria-label={`${t("statusBar.external")} ${label}`}
+          >
+            <EthernetPort className="h-3.5 w-3.5 text-muted-foreground" />
+            <span>{label}</span>
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p className="font-mono text-xs">
+            <span {...(incognitoMode && { style: { filter: "blur(4px)" } })}>{address}</span>
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    )
+  },
+  (prev, next) =>
+    prev.address === next.address &&
+    prev.incognitoMode === next.incognitoMode &&
+    prev.label === next.label
+)
+
 interface TorrentTableOptimizedProps {
   instanceId: number
   instanceIds?: number[]
@@ -556,7 +621,8 @@ interface TorrentTableOptimizedProps {
     counts?: TorrentCounts,
     categories?: Record<string, Category>,
     tags?: string[],
-    useSubcategories?: boolean
+    useSubcategories?: boolean,
+    supportsTrackerHealth?: boolean
   ) => void
   onSelectionChange?: (
     selectedHashes: string[],
@@ -573,8 +639,6 @@ interface TorrentTableOptimizedProps {
   canCrossSeedSearch?: boolean
   onCrossSeedSearch?: (torrent: Torrent) => void
   isCrossSeedSearching?: boolean
-  onServerStateUpdate?: (serverState: ServerState | null, listenPort?: number | null) => void
-  onSelectionInfoUpdate?: (info: SelectionInfo) => void
 }
 
 export const TorrentTableOptimized = memo(function TorrentTableOptimized({
@@ -593,8 +657,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   canCrossSeedSearch,
   onCrossSeedSearch,
   isCrossSeedSearching,
-  onServerStateUpdate,
-  onSelectionInfoUpdate,
 }: TorrentTableOptimizedProps) {
   const isReadOnly = readOnly
   const isUnifiedView = isAllInstancesScope(instanceId)
@@ -615,19 +677,20 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [preferencesOpen, setPreferencesOpen] = useState(false)
 
   // Filter lifecycle state machine to replace fragile timing-based coordination
-  type FilterLifecycleState = "idle" | "clearing-all" | "clearing-columns-only" | "cleared"
-  const [filterLifecycleState, setFilterLifecycleState] = useState<FilterLifecycleState>("idle")
+  type FilterLifecycleState = 'idle' | 'clearing-all' | 'clearing-columns-only' | 'cleared'
+  const [filterLifecycleState, setFilterLifecycleState] = useState<FilterLifecycleState>('idle')
 
-  const [incognitoMode] = useIncognitoMode()
+  const [incognitoMode, setIncognitoMode] = useIncognitoMode()
+  const { t } = useTranslation("torrents")
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
-  const [speedUnit] = useSpeedUnits()
+  const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
-  const { preferences } = useInstancePreferences(instanceId, { enabled: instanceId > 0 })
+  const { preferences } = useInstancePreferences(instanceId, { fetchIfMissing: false, enabled: instanceId > 0 })
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
   // Desktop view mode state (separate from mobile view mode)
-  const { viewMode: desktopViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
+  const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
 
   const trackerIconsQuery = useTrackerIcons()
   const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
@@ -681,6 +744,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const previousInstanceIdRef = useRef(instanceId)
   const previousSearchRef = useRef("")
   const lastMetadataRef = useRef<{
+    instanceId?: number
     counts?: TorrentCounts
     categories?: Record<string, Category>
     tags?: string[]
@@ -688,6 +752,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     torrentsLength?: number
     useSubcategories?: boolean
     supportsSubcategories?: boolean
+    supportsTrackerHealth?: boolean
   }>({})
   const serverStateRef = useRef<{ instanceId: number, state: ServerState | null }>({
     instanceId,
@@ -735,15 +800,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Column filters with persistence
   const [columnFilters, setColumnFilters] = usePersistedColumnFilters(instanceId)
 
-  // Remove filters for columns that are no longer visible
-  useEffect(() => {
-    setColumnFilters(prev => {
-      if (prev.length === 0) return prev
-      const filtered = prev.filter(f => columnVisibility[f.columnId] !== false)
-      return filtered.length === prev.length ? prev : filtered
-    })
-  }, [columnVisibility, setColumnFilters])
-
   // Progressive loading state with async management
   const [loadedRows, setLoadedRows] = useState(100)
   const [isLoadingMoreRows, setIsLoadingMoreRows] = useState(false)
@@ -765,6 +821,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setDeleteCrossSeeds,
     showTagsDialog,
     setShowTagsDialog,
+    showCommentDialog,
+    setShowCommentDialog,
     showCategoryDialog,
     setShowCategoryDialog,
     showCreateCategoryDialog,
@@ -796,6 +854,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     handleAction,
     handleDelete,
     handleUpdateTags,
+    handleSetComment,
     handleSetCategory,
     handleSetLocation,
     handleRenameTorrent,
@@ -809,14 +868,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     proceedToLocationDialog,
     prepareDeleteAction,
     prepareTagsAction,
+    prepareCommentAction,
     prepareCategoryAction,
     prepareCreateCategoryAction,
     prepareShareLimitAction,
     prepareSpeedLimitAction,
     prepareLocationAction,
     prepareRenameTorrentAction,
-    prepareRenameFileAction,
-    prepareRenameFolderAction,
     prepareRecheckAction,
     prepareReannounceAction,
     prepareTmmAction,
@@ -836,7 +894,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     instanceName: instance?.name ?? "",
     torrents: contextTorrents,
   })
-
   const hasCrossSeedTag = useMemo(
     () => anyTorrentHasTag(contextTorrents, "cross-seed") || anyTorrentHasTag(crossSeedWarning.affectedTorrents, "cross-seed"),
     [contextTorrents, crossSeedWarning.affectedTorrents]
@@ -845,7 +902,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { blockCrossSeedHashes } = useCrossSeedBlocklistActions(instanceId)
 
   // Fetch metadata using shared hook
-  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId)
+  const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId, {
+    fallbackDelayMs: 1500,
+  })
   const metadataTags = metadata?.tags || []
   const metadataCategories = metadata?.categories || {}
 
@@ -889,6 +948,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Debounce search to prevent excessive filtering (200ms delay for faster response)
   const debouncedSearch = useDebounce(globalFilter, 200)
   const routeSearch = useSearch({ strict: false }) as { q?: string }
+  const navigate = useNavigate()
   const rawRouteSearch = typeof routeSearch?.q === "string" ? routeSearch.q : ""
   const searchFromRoute = rawRouteSearch.trim()
 
@@ -908,7 +968,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Detect if this is cross-seed filtering (same logic as in useTorrentsList)
   const isDoingCrossSeedFiltering = useMemo(() => {
-    return filters?.expr?.includes("Hash ==") && filters?.expr?.includes("||")
+    return filters?.expr?.includes('Hash ==') && filters?.expr?.includes('||')
   }, [filters?.expr])
 
   // Combine column filters with any existing filter expression
@@ -986,6 +1046,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     counts,
     categories,
     tags,
+    trackerHealthSupported,
     serverState,
     capabilities,
     useSubcategories: subcategoriesFromData,
@@ -995,6 +1056,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     isLoadingMore,
     hasLoadedAll,
     loadMore: backendLoadMore,
+    streamConnected,
+    streamMeta,
+    isStreaming,
+    streamError,
+    streamRetrying,
+    streamNextRetryAt,
+    streamRetryAttempt,
     isCrossSeedFiltering,
     isCrossInstanceEndpoint,
   } = useTorrentsList(instanceId, {
@@ -1019,13 +1087,122 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     order: activeSortOrder,
   })
 
-  const supportsTrackerHealth = capabilities?.supportsTrackerHealth ?? false
-  const supportsSubcategories = isAllInstancesView
-    ? Boolean(subcategoriesFromData)
-    : (capabilities?.supportsSubcategories ?? false)
-  const allowSubcategories = isAllInstancesView
-    ? Boolean(subcategoriesFromData)
-    : (supportsSubcategories && (preferences?.use_subcategories ?? subcategoriesFromData ?? false))
+  const derivedStreamPhase = useMemo<StreamPhase>(() => {
+    if (streamRetrying || typeof streamNextRetryAt === "number") {
+      return "reconnecting"
+    }
+    if (streamError) {
+      return "fallback"
+    }
+    if (isStreaming) {
+      return "healthy"
+    }
+    return "connecting"
+  }, [isStreaming, streamError, streamNextRetryAt, streamRetrying])
+
+  const stableStreamPhase = useDebounce(
+    derivedStreamPhase,
+    derivedStreamPhase === "healthy" || derivedStreamPhase === "fallback" ? 0 : STREAM_STATUS_TRANSITION_DELAY_MS
+  )
+
+  const streamStatus = useMemo(() => {
+    if (isCrossSeedFiltering) {
+      return {
+        label: t("statusBar.streamStatus.crossInstance.label"),
+        message: t("statusBar.streamStatus.crossInstance.message"),
+        secondary: t("statusBar.streamStatus.crossInstance.secondary", { seconds: 10 }),
+        tone: "muted" as const,
+        animate: false,
+      }
+    }
+
+    const serverRetrySeconds =
+      typeof streamMeta?.retryInSeconds === "number" && streamMeta.retryInSeconds > 0
+        ? streamMeta.retryInSeconds
+        : null
+    const safeRetryAttempt =
+      typeof streamRetryAttempt === "number" && streamRetryAttempt > 0 ? streamRetryAttempt : 1
+    const hasClientRetryScheduled = typeof streamNextRetryAt === "number"
+
+    // Client-side connection-state codes carry no displayable text: render the
+    // localized streamStatus.* message for them. Only genuine backend payload
+    // errors (dynamic server text we cannot translate) are shown verbatim.
+    const backendStreamError = streamError && !isClientConnectionErrorCode(streamError) ? streamError : null
+
+    switch (stableStreamPhase) {
+      case "reconnecting":
+        return {
+          label: t("statusBar.streamStatus.reconnecting.label"),
+          message: backendStreamError ?? t("statusBar.streamStatus.reconnecting.message"),
+          secondary: hasClientRetryScheduled
+            ? t("statusBar.streamStatus.reconnecting.retryQueued", { attempt: safeRetryAttempt })
+            : t("statusBar.streamStatus.reconnecting.pollingContinues"),
+          tone: "warning" as const,
+          animate: true,
+        }
+      case "fallback":
+        return {
+          label: t("statusBar.streamStatus.fallback.label"),
+          message: backendStreamError ?? t("statusBar.streamStatus.fallback.message"),
+          secondary:
+            serverRetrySeconds && serverRetrySeconds > 0
+              ? t("statusBar.streamStatus.fallback.serverRetry", { seconds: serverRetrySeconds })
+              : t("statusBar.streamStatus.fallback.retrying"),
+          tone: "error" as const,
+          animate: false,
+        }
+      case "healthy":
+        return {
+          label: "",
+          message: null,
+          secondary: null,
+          tone: "success" as const,
+          animate: false,
+        }
+      default:
+        return {
+          label: t("statusBar.streamStatus.connecting.label"),
+          message: t("statusBar.streamStatus.connecting.message", { seconds: TORRENT_STREAM_POLL_INTERVAL_SECONDS }),
+          secondary: t("statusBar.streamStatus.connecting.secondary", { seconds: TORRENT_STREAM_POLL_INTERVAL_SECONDS }),
+          tone: streamConnected ? ("warning" as const) : ("muted" as const),
+          animate: !streamConnected,
+        }
+    }
+  }, [
+    isCrossSeedFiltering,
+    stableStreamPhase,
+    streamConnected,
+    streamError,
+    streamMeta,
+    streamNextRetryAt,
+    streamRetryAttempt,
+    t,
+  ])
+
+  const streamToneStyles = useMemo(() => {
+    switch (streamStatus.tone) {
+      case "success":
+        return { dotClass: "bg-emerald-500 shadow-[0_0_0_2px] shadow-emerald-500/25", textClass: "text-emerald-600 dark:text-emerald-400" }
+      case "error":
+        return { dotClass: "bg-destructive shadow-[0_0_0_2px] shadow-destructive/20", textClass: "text-destructive" }
+      case "warning":
+        return { dotClass: "bg-amber-400 shadow-[0_0_0_2px] shadow-amber-400/25", textClass: "text-amber-600 dark:text-amber-400" }
+      default:
+        return { dotClass: "bg-muted-foreground/60", textClass: "text-muted-foreground" }
+    }
+  }, [streamStatus.tone])
+  const hasStreamStatusLabel = streamStatus.label.length > 0
+  const hasStreamStatusDetails =
+    hasStreamStatusLabel || Boolean(streamStatus.message) || Boolean(streamStatus.secondary)
+
+  const supportsTrackerHealth = resolveTrackerHealthSupport({
+    isUnifiedView: isAllInstancesView,
+    capabilitySupport: capabilities?.supportsTrackerHealth,
+    responseSupport: trackerHealthSupported,
+  })
+  const supportsSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (capabilities?.supportsSubcategories ?? false)
+  const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
+  const allowSubcategories = isAllInstancesView? Boolean(subcategoriesFromData): (supportsSubcategories && (subcategoriesAlwaysEnabled || (preferences?.use_subcategories ?? subcategoriesFromData ?? false)))
   const availableTags = isCrossInstanceEndpoint ? (tags ?? metadataTags) : metadataTags
   const availableCategories = isCrossInstanceEndpoint ? (categories ?? metadataCategories) : metadataCategories
   const isLoadingTags = isMetadataLoading && availableTags.length === 0
@@ -1116,13 +1293,20 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       return
     }
 
-    const nextCounts = counts ?? lastMetadataRef.current.counts
-    const nextCategories = categories ?? lastMetadataRef.current.categories
-    const nextTags = tags ?? lastMetadataRef.current.tags
-    const prevSupportsSubcategories = lastMetadataRef.current.supportsSubcategories ?? false
-    const previousUseSubcategories = lastMetadataRef.current.useSubcategories ?? false
+    const cachedMetadata =
+      lastMetadataRef.current.instanceId === instanceId
+        ? lastMetadataRef.current
+        : ({} as typeof lastMetadataRef.current)
+
+    const nextCounts = counts ?? cachedMetadata.counts
+    const nextCategories = categories ?? cachedMetadata.categories
+    const nextTags = tags ?? cachedMetadata.tags
+    const prevSupportsSubcategories = cachedMetadata.supportsSubcategories ?? false
+    const previousUseSubcategories = cachedMetadata.useSubcategories ?? false
+    const previousSupportsTrackerHealth = cachedMetadata.supportsTrackerHealth ?? false
     const nextSupportsSubcategories = supportsSubcategories
-    const nextUseSubcategories = nextSupportsSubcategories ? (subcategoriesFromData ?? previousUseSubcategories) : false
+    const nextUseSubcategories = nextSupportsSubcategories? (subcategoriesFromData ?? previousUseSubcategories): false
+    const nextSupportsTrackerHealth = supportsTrackerHealth
     const nextTotalCount = totalCount
 
     const hasAnyMetadata =
@@ -1137,14 +1321,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
 
     const metadataChanged =
-      nextCounts !== lastMetadataRef.current.counts ||
-      nextCategories !== lastMetadataRef.current.categories ||
-      nextTags !== lastMetadataRef.current.tags ||
+      nextCounts !== cachedMetadata.counts ||
+      nextCategories !== cachedMetadata.categories ||
+      nextTags !== cachedMetadata.tags ||
       nextSupportsSubcategories !== prevSupportsSubcategories ||
       nextUseSubcategories !== previousUseSubcategories ||
-      nextTotalCount !== lastMetadataRef.current.totalCount
+      nextSupportsTrackerHealth !== previousSupportsTrackerHealth ||
+      nextTotalCount !== cachedMetadata.totalCount
 
-    const torrentsLengthChanged = torrents.length !== (lastMetadataRef.current.torrentsLength ?? -1)
+    const torrentsLengthChanged = torrents.length !== (cachedMetadata.torrentsLength ?? -1)
 
     if (!metadataChanged && !torrentsLengthChanged) {
       return
@@ -1156,10 +1341,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       nextCounts,
       nextCategories,
       nextTags,
-      nextUseSubcategories
+      nextUseSubcategories,
+      nextSupportsTrackerHealth
     )
 
     lastMetadataRef.current = {
+      instanceId,
       counts: nextCounts,
       categories: nextCategories,
       tags: nextTags,
@@ -1167,15 +1354,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       torrentsLength: torrents.length,
       useSubcategories: nextUseSubcategories,
       supportsSubcategories: nextSupportsSubcategories,
+      supportsTrackerHealth: nextSupportsTrackerHealth,
     }
-  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData, supportsSubcategories])
+  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData, supportsSubcategories, supportsTrackerHealth])
 
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
 
   // Atomic filter clearing callback
-  const clearFiltersAtomically = useCallback((mode: "all" | "columns-only" = "all") => {
-    setFilterLifecycleState(mode === "all" ? "clearing-all" : "clearing-columns-only");
+  const clearFiltersAtomically = useCallback((mode: 'all' | 'columns-only' = 'all') => {
+    setFilterLifecycleState(mode === 'all' ? 'clearing-all' : 'clearing-columns-only');
   }, []);
   const effectiveServerState = useMemo(() => {
     const cached = serverStateRef.current
@@ -1199,11 +1387,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     return cached.state
   }, [serverState, instanceId])
 
-  // Notify parent of server state updates
-  const listenPort = metadata?.preferences?.listen_port
-  useEffect(() => {
-    onServerStateUpdate?.(effectiveServerState, listenPort)
-  }, [effectiveServerState, listenPort, onServerStateUpdate])
+  // Aggregate (all-instances) views have no single serverState; derive footer
+  // transfer rates from the aggregated stats totals instead of showing 0.
+  const footerSpeeds = useMemo(
+    () => resolveFooterSpeeds(isAllInstancesView, stats, effectiveServerState),
+    [isAllInstancesView, stats, effectiveServerState]
+  )
 
   const selectedRowIds = useMemo(() => {
     const ids: string[] = []
@@ -1346,8 +1535,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       getSelectionIdentity,
       isAllSelected,
       excludedFromSelectAll,
-    }, speedUnit, trackerIcons, formatTimestamp, preferences, supportsTrackerHealth, isUnifiedView && isCrossInstanceEndpoint, desktopViewMode as TableViewMode, trackerCustomizationLookup, !isReadOnly),
-    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, getSelectionIdentity, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isUnifiedView, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly]
+    }, speedUnit, trackerIcons, (timestamp: number) => formatTimestamp(timestamp, true), preferences, supportsTrackerHealth, isUnifiedView && isCrossInstanceEndpoint, desktopViewMode as TableViewMode, trackerCustomizationLookup, !isReadOnly, t),
+    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, getSelectionIdentity, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isUnifiedView, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly, t]
   )
 
   const torrentIdentityCounts = useMemo(() => {
@@ -1403,8 +1592,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       ...(isCrossSeedFiltering && {
         columnFilters: columnFilters.map(filter => ({
           id: filter.columnId,
-          value: filter.value,
-        })),
+          value: filter.value
+        }))
       }),
     },
     onSortingChange: setSorting,
@@ -1426,7 +1615,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Fix virtualization when column filters are cleared in cross-seed mode
   // Only run when lifecycle is idle to avoid racing with filter lifecycle handler
   useEffect(() => {
-    if (filterLifecycleState === "idle" && isCrossSeedFiltering && columnFilters.length === 0) {
+    if (filterLifecycleState === 'idle' && isCrossSeedFiltering && columnFilters.length === 0) {
       // Reset loadedRows to ensure all rows are visible when filters are cleared
       const targetRows = Math.min(100, sortedTorrents.length)
       // Use functional update to ensure idempotent, non-racing updates
@@ -1617,6 +1806,75 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     return getTotalSize(selectedTorrents)
   }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, sortedTorrents, selectedTorrents, getSelectionIdentity])
   const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
+  const queryClient = useQueryClient()
+
+  const [altSpeedOverride, setAltSpeedOverride] = useState<boolean | null>(null)
+  const serverAltSpeedEnabled = effectiveServerState?.use_alt_speed_limits
+  const hasAltSpeedStatus = typeof serverAltSpeedEnabled === "boolean"
+  const isAltSpeedKnown = altSpeedOverride !== null || hasAltSpeedStatus
+  const altSpeedEnabled = altSpeedOverride ?? serverAltSpeedEnabled ?? false
+  const AltSpeedIcon = altSpeedEnabled ? Turtle : Rabbit
+  const altSpeedIconClass = isAltSpeedKnown ? altSpeedEnabled ? "text-destructive" : "text-green-500" : "text-muted-foreground"
+
+  useEffect(() => {
+    setAltSpeedOverride(null)
+  }, [instanceId])
+
+  const { mutateAsync: toggleAltSpeedLimits, isPending: isTogglingAltSpeed } = useMutation({
+    mutationFn: () => api.toggleAlternativeSpeedLimits(instanceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId] })
+      queryClient.invalidateQueries({ queryKey: ["alternative-speed-limits", instanceId] })
+    },
+  })
+
+  useEffect(() => {
+    if (altSpeedOverride === null) {
+      return
+    }
+
+    if (serverAltSpeedEnabled === altSpeedOverride) {
+      setAltSpeedOverride(null)
+    }
+  }, [serverAltSpeedEnabled, altSpeedOverride])
+
+  // Poll for async cross-seed filtering status updates
+
+
+  const handleToggleAltSpeedLimits = useCallback(async () => {
+    if (isTogglingAltSpeed) {
+      return
+    }
+
+    const current = altSpeedOverride ?? serverAltSpeedEnabled ?? false
+    const next = !current
+
+    setAltSpeedOverride(next)
+
+    try {
+      await toggleAltSpeedLimits()
+    } catch {
+      setAltSpeedOverride(current)
+    }
+  }, [altSpeedOverride, serverAltSpeedEnabled, toggleAltSpeedLimits, isTogglingAltSpeed])
+
+  const altSpeedTooltip = isAltSpeedKnown ? altSpeedEnabled ? t("statusBar.altSpeedOn") : t("statusBar.altSpeedOff") : t("statusBar.altSpeedUnknown")
+  const altSpeedAriaLabel = isAltSpeedKnown ? altSpeedEnabled ? t("statusBar.disableAltSpeed") : t("statusBar.enableAltSpeed") : t("statusBar.altSpeedUnknown")
+
+  const rawConnectionStatus = effectiveServerState?.connection_status ?? ""
+  const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
+  const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
+  const connectionStatusDisplay = formattedConnectionStatus ? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()) : ""
+  const hasConnectionStatus = Boolean(formattedConnectionStatus)
+  const isConnectable = normalizedConnectionStatus === "connected"
+  const isFirewalled = normalizedConnectionStatus === "firewalled"
+  const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : hasConnectionStatus ? Ban : Globe
+  const listenPort = metadata?.preferences?.listen_port
+  const connectionStatusTooltip = hasConnectionStatus
+    ? `${isConnectable ? t("statusBar.connectionConnectable") : connectionStatusDisplay}${listenPort ? `. ${t("statusBar.connectionPort", { port: listenPort })}` : ""}`
+    : t("statusBar.connectionUnknown")
+  const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
+  const connectionStatusAriaLabel = hasConnectionStatus ? t("statusBar.connectionAriaLabel", { status: connectionStatusDisplay || formattedConnectionStatus }) : t("statusBar.connectionAriaLabelUnknown")
 
   // Size shown in destructive dialogs - prefer the aggregate when select-all is active
   const deleteDialogTotalSize = useMemo(() => {
@@ -1645,7 +1903,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       return undefined
     }
 
-    const combinedExpr = columnFiltersExpr ?? filters?.expr
+    // Combine both column filters and filter expressions (e.g. cross-seed hash filters)
+    // so select-all operations target exactly the visible set.
+    // Using ?? here would drop filters.expr when columnFiltersExpr is present,
+    // causing bulk actions to match more torrents than the user sees.
+    const combinedExpr = (columnFiltersExpr && filters?.expr)
+      ? `(${columnFiltersExpr}) && (${filters.expr})`
+      : (columnFiltersExpr || filters?.expr)
 
     if (filters) {
       return {
@@ -1704,7 +1968,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, selectAllExcludeHashes, selectAllExcludedTargets, selectedTotalSize, selectAllFilters, filters])
 
   // Callback for context menu to fetch field for matching torrents
-  const fetchAllTorrentField = useCallback(async (field: "name" | "hash" | "full_path"): Promise<string[]> => {
+  const fetchAllTorrentField = useCallback(async (field: "name" | "hash" | "full_path" | "magnet_uri"): Promise<string[]> => {
     const response = await api.getTorrentField(instanceId, field, {
       sort: activeSortField,
       order: activeSortOrder,
@@ -1762,50 +2026,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Also keep loadedRows in sync with actual data to prevent status display issues
   useEffect(() => {
-    if (filterLifecycleState === "idle" && loadedRows > rows.length && rows.length > 0) {
+    if (filterLifecycleState === 'idle' && loadedRows > rows.length && rows.length > 0) {
       setLoadedRows(rows.length)
     }
   }, [loadedRows, rows.length, filterLifecycleState])
-
-  // Notify parent of selection info updates
-  useEffect(() => {
-    onSelectionInfoUpdate?.({
-      effectiveSelectionCount,
-      isAllSelected,
-      excludedFromSelectAllSize: excludedFromSelectAll.size,
-      selectedFormattedSize,
-      torrentsLength: torrents.length,
-      totalCount,
-      hasLoadedAll,
-      isLoading,
-      isLoadingMore,
-      isCachedData,
-      isStaleData,
-      emptyStateMessage,
-      safeLoadedRows,
-      rowsLength: rows.length,
-      totalDownloadSpeed: stats?.totalDownloadSpeed ?? 0,
-      totalUploadSpeed: stats?.totalUploadSpeed ?? 0,
-    })
-  }, [
-    onSelectionInfoUpdate,
-    effectiveSelectionCount,
-    isAllSelected,
-    excludedFromSelectAll.size,
-    selectedFormattedSize,
-    torrents.length,
-    totalCount,
-    hasLoadedAll,
-    isLoading,
-    isLoadingMore,
-    isCachedData,
-    isStaleData,
-    emptyStateMessage,
-    safeLoadedRows,
-    rows.length,
-    stats?.totalDownloadSpeed,
-    stats?.totalUploadSpeed,
-  ])
 
   // Compute estimated row height based on view mode - used by virtualizer and keyboard navigation
   const estimatedRowHeight = useMemo(() => {
@@ -1850,7 +2074,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Filter lifecycle state machine
   useLayoutEffect(() => {
-    if (filterLifecycleState === "clearing-all" || filterLifecycleState === "clearing-columns-only") {
+    if (filterLifecycleState === 'clearing-all' || filterLifecycleState === 'clearing-columns-only') {
 
       // Perform clearing operations atomically
       setColumnFilters([]);
@@ -1863,7 +2087,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       setLoadedRows(newLoadedRows);
 
       // Only clear parent filters if clearing all (not just columns)
-      if (filterLifecycleState === "clearing-all") {
+      if (filterLifecycleState === 'clearing-all') {
         const emptyFilters: TorrentFilters = {
           status: [],
           excludeStatus: [],
@@ -1872,16 +2096,16 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           tags: [],
           excludeTags: [],
           trackers: [],
-          excludeTrackers: [],
+          excludeTrackers: []
         };
         onFilterChange?.(emptyFilters);
       }
 
       // Transition to cleared state
-      setFilterLifecycleState("cleared");
-    } else if (filterLifecycleState === "cleared") {
+      setFilterLifecycleState('cleared');
+    } else if (filterLifecycleState === 'cleared') {
       // Reset to idle state after clearing is complete
-      setFilterLifecycleState("idle");
+      setFilterLifecycleState('idle');
     }
   }, [filterLifecycleState, virtualizer, onFilterChange, setLoadedRows, sortedTorrents.length]);
 
@@ -1982,56 +2206,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     lastSelectedIndexRef.current = null
   }, [sortedTorrents.length, setIsAllSelected, setExcludedFromSelectAll, setRowSelection])
 
-  // Open delete dialog with Delete key for current selection.
-  useEffect(() => {
-    const handleDeleteHotkey = (event: KeyboardEvent) => {
-      const isDeleteKey = event.key === "Delete"
-      const isBackspaceDelete = isMac && event.key === "Backspace" && !event.metaKey && !event.ctrlKey && !event.altKey
-
-      // Mac keyboards commonly emit Backspace for the key labeled Delete.
-      if (!isDeleteKey && !isBackspaceDelete) {
-        return
-      }
-
-      if (showDeleteDialog || isPending || effectiveSelectionCount === 0) {
-        return
-      }
-
-      const target = event.target
-      const elementTarget = target instanceof Element ? target : null
-
-      if (
-        elementTarget &&
-        (elementTarget.tagName === "INPUT" ||
-          elementTarget.tagName === "TEXTAREA" ||
-          elementTarget.tagName === "SELECT" ||
-          elementTarget instanceof HTMLElement && elementTarget.isContentEditable ||
-          elementTarget.closest("[role=\"dialog\"]") ||
-          elementTarget.closest("[role=\"combobox\"]"))
-      ) {
-        return
-      }
-
-      event.preventDefault()
-      event.stopPropagation()
-      prepareDeleteAction(selectedHashes, selectedTorrents)
-    }
-
-    window.addEventListener("keydown", handleDeleteHotkey)
-
-    return () => {
-      window.removeEventListener("keydown", handleDeleteHotkey)
-    }
-  }, [
-    effectiveSelectionCount,
-    isMac,
-    isPending,
-    prepareDeleteAction,
-    selectedHashes,
-    selectedTorrents,
-    showDeleteDialog,
-  ])
-
   // Wrapper functions to adapt hook handlers to component needs
   const selectAllOptions = useMemo(() => ({
     instanceIds: isCrossInstanceEndpoint ? instanceIds : undefined,
@@ -2113,10 +2287,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
 
     // Include cross-seed hashes if user opted to delete them
-    const hashesToDelete = deleteCrossSeeds ? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)] : contextHashes
+    const hashesToDelete = deleteCrossSeeds
+      ? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]
+      : contextHashes
 
     // Update count to include cross-seeds for accurate toast message
-    const deleteClientMeta = deleteCrossSeeds ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length } : contextClientMeta
+    const deleteClientMeta = deleteCrossSeeds
+      ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }
+      : contextClientMeta
 
     await handleDelete(
       hashesToDelete,
@@ -2128,8 +2306,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     )
   }, [
     blockCrossSeedHashes,
-    contextHashes,
     contextClientMeta,
+    contextHashes,
     contextTorrents,
     crossSeedWarning.affectedTorrents,
     deleteCrossSeeds,
@@ -2142,6 +2320,18 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     selectAllFilters,
     shouldBlockCrossSeeds,
   ])
+
+  const handleSetCommentWrapper = useCallback((comment: string) => {
+    handleSetComment(
+      comment,
+      contextHashes,
+      isAllSelected,
+      normalizedSelectionFilters ?? selectAllFilters ?? filters,
+      effectiveSearch,
+      selectAllExcludeHashes,
+      contextClientMeta
+    )
+  }, [handleSetComment, contextHashes, isAllSelected, normalizedSelectionFilters, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
   const handleTagsWrapper = useCallback((plan: Parameters<typeof handleUpdateTags>[0]) => {
     handleUpdateTags(
@@ -2270,7 +2460,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const handleSetShareLimitWrapper = useCallback((
     ratioLimit: number,
     seedingTimeLimit: number,
-    inactiveSeedingTimeLimit: number
+    inactiveSeedingTimeLimit: number,
+    shareLimitAction?: string,
+    shareLimitsMode?: string
   ) => {
     handleSetShareLimit(
       ratioLimit,
@@ -2281,7 +2473,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       selectAllFilters ?? filters,
       effectiveSearch,
       selectAllExcludeHashes,
-      contextClientMeta
+      contextClientMeta,
+      shareLimitAction,
+      shareLimitsMode
     )
   }, [handleSetShareLimit, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
 
@@ -2368,10 +2562,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                                 </Button>
                               </DropdownMenuTrigger>
                             </TooltipTrigger>
-                            <TooltipContent>Change sort field</TooltipContent>
+                            <TooltipContent>{t("tableView.changeSortField")}</TooltipContent>
                           </Tooltip>
                           <DropdownMenuContent align="end" className="w-56 max-h-72 overflow-y-auto">
-                            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                            <DropdownMenuLabel>{t("mobileCards.sortBy")}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuRadioGroup
                               value={activeSortField}
@@ -2397,7 +2591,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               size="icon"
                               className="h-8 w-8"
                               onClick={handleCompactSortOrderToggle}
-                              aria-label={`Sort ${activeSortOrder === "desc" ? "ascending" : "descending"}`}
+                              aria-label={`${t("sort.label")} ${activeSortOrder === "desc" ? t("sort.ascending") : t("sort.descending")}`}
                             >
                               {activeSortOrder === "desc" ? (
                                 <ChevronDown className="h-4 w-4" />
@@ -2406,7 +2600,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                               )}
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Sort {activeSortOrder === "desc" ? "ascending" : "descending"}</TooltipContent>
+                          <TooltipContent>{t("tableView.sortDirection", { direction: activeSortOrder === "desc" ? t("tableView.ascending") : t("tableView.descending") })}</TooltipContent>
                         </Tooltip>
                       </div>
                     )}
@@ -2432,10 +2626,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                             }}
                           >
                             <X className="h-4 w-4" />
-                            <span className="sr-only">Clear all column filters</span>
+                            <span className="sr-only">{t("columnFilter.clearFilters")}</span>
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>Clear all column filters ({columnFilters.length})</TooltipContent>
+                        <TooltipContent>{t("tableView.clearAllColumnFilters", { count: columnFilters.length })}</TooltipContent>
                       </Tooltip>
                     )}
 
@@ -2455,14 +2649,14 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                                 size="icon"
                               >
                                 <Columns3 className="h-4 w-4" />
-                                <span className="sr-only">Toggle columns</span>
+                                <span className="sr-only">{t("tableView.toggleColumns")}</span>
                               </Button>
                             </DropdownMenuTrigger>
                           </TooltipTrigger>
-                          <TooltipContent>Toggle columns</TooltipContent>
+                          <TooltipContent>{t("tableView.toggleColumns")}</TooltipContent>
                         </Tooltip>
                         <DropdownMenuContent align="end" className="w-48">
-                          <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
+                          <DropdownMenuLabel>{t("tableView.toggleColumns")}</DropdownMenuLabel>
                           <DropdownMenuSeparator />
                           {table
                             .getAllColumns()
@@ -2518,7 +2712,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
             ref={parentRef}
             className="relative flex-1 overflow-auto scrollbar-thin select-none will-change-transform contain-paint"
             role="grid"
-            aria-label="Torrents table"
+            aria-label={t("tableView.tableAriaLabel")}
             aria-rowcount={totalCount}
             aria-colcount={table.getVisibleLeafColumns().length}
             onDropPayload={handleDropPayload}
@@ -2528,7 +2722,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-50 animate-in fade-in duration-300">
                 <div className="text-center animate-in zoom-in-95 duration-300">
                   <Logo className="h-12 w-12 animate-pulse mx-auto mb-3" />
-                  <p>Loading torrents...</p>
+                  <p>{t("statusBar.loadingTorrents")}</p>
                 </div>
               </div>
             )}
@@ -2547,7 +2741,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       variant="outline"
                       onClick={() => clearFiltersAtomically("all")}
                     >
-                      Clear filters
+                      {t("columnFilter.clearFilters")}
                     </Button>
                   )}
                 </div>
@@ -2679,14 +2873,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                         onAction={runAction}
                         onPrepareDelete={prepareDeleteAction}
                         onPrepareTags={prepareTagsAction}
+                        onPrepareComment={prepareCommentAction}
                         onPrepareCategory={prepareCategoryAction}
                         onPrepareCreateCategory={prepareCreateCategoryAction}
                         onPrepareShareLimit={prepareShareLimitAction}
                         onPrepareSpeedLimits={prepareSpeedLimitAction}
                         onPrepareLocation={prepareLocationAction}
                         onPrepareRenameTorrent={prepareRenameTorrentAction}
-                        onPrepareRenameFile={prepareRenameFileAction}
-                        onPrepareRenameFolder={prepareRenameFolderAction}
                         onPrepareRecheck={prepareRecheckAction}
                         onPrepareReannounce={prepareReannounceAction}
                         onPrepareTmm={prepareTmmAction}
@@ -2831,14 +3024,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                       onAction={runAction}
                       onPrepareDelete={prepareDeleteAction}
                       onPrepareTags={prepareTagsAction}
+                      onPrepareComment={prepareCommentAction}
                       onPrepareCategory={prepareCategoryAction}
                       onPrepareCreateCategory={prepareCreateCategoryAction}
                       onPrepareShareLimit={prepareShareLimitAction}
                       onPrepareSpeedLimits={prepareSpeedLimitAction}
                       onPrepareLocation={prepareLocationAction}
                       onPrepareRenameTorrent={prepareRenameTorrentAction}
-                      onPrepareRenameFile={prepareRenameFileAction}
-                      onPrepareRenameFolder={prepareRenameFolderAction}
                       onPrepareRecheck={prepareRecheckAction}
                       onPrepareReannounce={prepareReannounceAction}
                       onPrepareTmm={prepareTmmAction}
@@ -2967,6 +3159,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           return (
                             <div
                               key={cell.id}
+                              data-torrent-column-measure={cell.column.id}
                               style={{
                                 width: cell.column.getSize(),
                                 flexShrink: 0,
@@ -2992,6 +3185,253 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               </div>
             </div>
           </TorrentDropZone>
+
+          {/* Status bar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 border-t flex-shrink-0 select-none">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              {/* Compact SSE status */}
+              {hasStreamStatusDetails ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1.5 cursor-default text-[11px]">
+                      <span
+                        className={cn(
+                          "h-1.5 w-1.5 rounded-full transition",
+                          streamToneStyles.dotClass,
+                          streamStatus.animate && "animate-pulse"
+                        )}
+                      />
+                      {hasStreamStatusLabel && (
+                        <span className={cn("opacity-80", streamToneStyles.textClass)}>{streamStatus.label}</span>
+                      )}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs text-xs">
+                    <div className="space-y-1">
+                      {hasStreamStatusLabel && <p className="font-medium">{streamStatus.label}</p>}
+                      {streamStatus.message && <p>{streamStatus.message}</p>}
+                      {streamStatus.secondary && <p className="text-muted-foreground">{streamStatus.secondary}</p>}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <div className="flex items-center cursor-default text-[11px]">
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full transition",
+                      streamToneStyles.dotClass,
+                      streamStatus.animate && "animate-pulse"
+                    )}
+                  />
+                </div>
+              )}
+              <div>
+                {effectiveSelectionCount > 0 ? (
+                  <>
+                    <span>
+                      {isAllSelected && excludedFromSelectAll.size === 0 ? t("statusBar.allSelected") : t("statusBar.selected", { count: effectiveSelectionCount })}
+                      {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>}
+                    </span>
+                    {/* Keyboard shortcuts helper - only show on desktop */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
+                          {t("statusBar.selectionShortcuts")}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <div className="text-xs">
+                          <div>{t("statusBar.shiftClick")}</div>
+                          <div>{t("statusBar.ctrlClick", { modifier: isMac ? "Cmd" : "Ctrl" })}</div>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </>
+                ) : (
+                  <>
+                    {/* Show special loading message when fetching without cache (cold load) */}
+                    {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
+                        {t("statusBar.loadingTorrents")}
+                      </>
+                    ) : totalCount === 0 ? (
+                      emptyStateMessage
+                    ) : (
+                      <>
+                        {hasLoadedAll ? (
+                          t("statusBar.torrentCount", { count: torrents.length })
+                        ) : isLoadingMore ? (
+                          t("statusBar.loadingMore")
+                        ) : (
+                          t("statusBar.torrentsLoaded", { loaded: torrents.length, total: totalCount })
+                        )}
+                        {hasLoadedAll && safeLoadedRows < rows.length && ` ${t("statusBar.scrollForMore")}`}
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
+              <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
+                <ChevronDown className="h-3 w-3 text-muted-foreground"/>
+                <span className="font-medium">{formatSpeedWithUnit(footerSpeeds.downloadSpeed, speedUnit)}</span>
+                <ChevronUp className="h-3 w-3 text-muted-foreground"/>
+                <span className="font-medium">{formatSpeedWithUnit(footerSpeeds.uploadSpeed, speedUnit)}</span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
+                      className="h-6 px-2 text-xs text-muted-foreground hover:text-accent-foreground"
+                    >
+                      <ArrowUpDown className="h-3 w-3" />
+                      <span>{speedUnit === "bytes" ? "MiB/s" : "Mbps"}</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {speedUnit === "bytes" ? t("statusBar.switchToBits") : t("statusBar.switchToBytes")}
+                  </TooltipContent>
+                </Tooltip>
+                {/* Alternative speed limits are per-instance; the aggregate scope has
+                    no single instance to toggle (and no serverState to read status from). */}
+                {!isAllInstancesView && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => void handleToggleAltSpeedLimits()}
+                        disabled={isTogglingAltSpeed}
+                        aria-pressed={isAltSpeedKnown ? altSpeedEnabled : undefined}
+                        aria-label={altSpeedAriaLabel}
+                        className={cn(
+                          "h-6 w-6 text-muted-foreground hover:text-accent-foreground",
+                          "disabled:opacity-60 disabled:cursor-not-allowed"
+                        )}
+                      >
+                        {isTogglingAltSpeed ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <AltSpeedIcon className={cn("h-3 w-3", altSpeedIconClass)} />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{altSpeedTooltip}</TooltipContent>
+                  </Tooltip>
+                )}
+                {instance?.reannounceSettings?.enabled && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          void navigate({
+                            to: "/instances/$instanceId",
+                            params: { instanceId: String(instanceId) },
+                            search: { tab: "reannounce" },
+                          })
+                        }}
+                        className="h-6 w-6 text-muted-foreground hover:text-accent-foreground"
+                      >
+                        <RefreshCcw className="h-4 w-4 text-green-500" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>{t("statusBar.reannounceEnabled")}</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+              <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={cycleViewMode}
+                  className={cn(
+                    "h-6 px-2 text-xs hover:text-accent-foreground",
+                    "text-muted-foreground"
+                  )}
+                >
+                  {desktopViewMode === "normal" ? (
+                    <TableIcon className="h-3 w-3" />
+                  ) : desktopViewMode === "dense" ? (
+                    <Rows3 className="h-3 w-3" />
+                  ) : (
+                    <LayoutGrid className="h-3 w-3" />
+                  )}
+                  <span className="hidden sm:inline">
+                    {desktopViewMode === "normal" ? t("statusBar.viewModes.table") : desktopViewMode === "dense" ? t("statusBar.viewModes.dense") : t("statusBar.viewModes.stacked")}
+                  </span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIncognitoMode(!incognitoMode)}
+                  className={cn(
+                    "h-6 px-2 text-xs hover:text-accent-foreground",
+                    incognitoMode ? "text-foreground" : "text-muted-foreground"
+                  )}
+                >
+                  {incognitoMode ? (
+                    <EyeOff className="h-3 w-3" />
+                  ) : (
+                    <Eye className="h-3 w-3" />
+                  )}
+                  <span className="hidden sm:inline">
+                    {incognitoMode ? t("statusBar.incognitoOn") : t("statusBar.incognitoOff")}
+                  </span>
+                </Button>
+              </div>
+              {effectiveServerState?.free_space_on_disk !== undefined && (
+                <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="flex items-center h-6 px-2 text-xs text-muted-foreground">
+                        <HardDrive  aria-hidden="true" className="h-3 w-3 mr-1"/>
+                        <span className="ml-auto font-medium truncate">{formatBytes(effectiveServerState.free_space_on_disk)}</span>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>{t("statusBar.freeSpace")}</TooltipContent>
+                  </Tooltip>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <ExternalIPAddress
+                  address={effectiveServerState?.last_external_address_v4}
+                  incognitoMode={incognitoMode}
+                  label="IPv4"
+                />
+                <ExternalIPAddress
+                  address={effectiveServerState?.last_external_address_v6}
+                  incognitoMode={incognitoMode}
+                  label="IPv6"
+                />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      tabIndex={0}
+                      aria-label={connectionStatusAriaLabel}
+                      className={cn(
+                        "inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent",
+                        "text-muted-foreground",
+                        connectionStatusIconClass
+                      )}
+                    >
+                      <ConnectionStatusIcon className="h-3 w-3" aria-hidden="true"/>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-[220px]">
+                    <p>{connectionStatusTooltip}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+          </div>
         </div>
 
         <DeleteTorrentDialog
@@ -3016,6 +3456,20 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           onDeleteCrossSeedsChange={setDeleteCrossSeeds}
           crossSeedWarning={crossSeedWarning}
           onConfirm={handleDeleteWrapper}
+        />
+
+        <SetCommentDialog
+          open={showCommentDialog}
+          onOpenChange={setShowCommentDialog}
+          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
+          instanceId={
+            contextTorrents.length === 1
+              ? ((contextTorrents[0] as CrossInstanceTorrent).instanceId ?? instanceId)
+              : instanceId
+          }
+          torrentHash={contextHashes.length === 1 ? contextHashes[0] : undefined}
+          onConfirm={handleSetCommentWrapper}
+          isPending={isPending}
         />
 
         <TagEditorDialog
@@ -3069,6 +3523,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           torrents={contextTorrents}
           onConfirm={handleSetShareLimitWrapper}
           isPending={isPending}
+          supportsShareLimitsAction={capabilities?.supportsShareLimitsAction}
+          supportsShareLimitsMode={capabilities?.supportsShareLimitsMode}
         />
 
         <SpeedLimitsDialog
@@ -3122,17 +3578,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Force Recheck {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</DialogTitle>
+              <DialogTitle>{t("recheckDialog.title", { count: isAllSelected ? effectiveSelectionCount : contextHashes.length })}</DialogTitle>
               <DialogDescription>
-                This will force qBittorrent to recheck all pieces of the selected torrents. This process may take some time and will temporarily pause the torrents.
+                {t("recheckDialog.description")}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
-                Cancel
+                {t("recheckDialog.cancel")}
               </Button>
               <Button onClick={handleRecheckWrapper} disabled={isPending}>
-                Force Recheck
+                {t("recheckDialog.confirm")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -3142,17 +3598,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         <Dialog open={showReannounceDialog} onOpenChange={setShowReannounceDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Reannounce {isAllSelected ? effectiveSelectionCount : contextHashes.length} torrent(s)?</DialogTitle>
+              <DialogTitle>{t("reannounceDialog.title", { count: isAllSelected ? effectiveSelectionCount : contextHashes.length })}</DialogTitle>
               <DialogDescription>
-                This will force the selected torrents to reannounce to all their trackers. This is useful when trackers are not responding or you want to refresh your connection.
+                {t("reannounceDialog.description")}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
-                Cancel
+                {t("reannounceDialog.cancel")}
               </Button>
               <Button onClick={handleReannounceWrapper} disabled={isPending}>
-                Reannounce
+                {t("reannounceDialog.confirm")}
               </Button>
             </DialogFooter>
           </DialogContent>

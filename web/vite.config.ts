@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+/// <reference lib="WebWorker" />
+
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import path from "node:path"
@@ -46,7 +48,7 @@ export default defineConfig(() => ({
         disableDevLogs: true,
         // VitePWA defaults to 2 MiB; our main bundle can exceed that, which breaks CI builds.
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
-        sourcemap: true,
+        sourcemap: false,
         // Avoid serving the SPA shell for backend proxy routes and SSO callback paths
         // (also under custom base URLs). /cdn-cgi/ is used by Cloudflare Access for its
         // auth callback (/cdn-cgi/access/authorized); intercepting it breaks the SSO flow.
@@ -133,16 +135,30 @@ export default defineConfig(() => ({
     },
   },
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          "react-vendor": ["react", "react-dom", "react-hook-form"],
-          "tanstack": ["@tanstack/react-router", "@tanstack/react-query", "@tanstack/react-table", "@tanstack/react-virtual"],
-          "ui-vendor": ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "lucide-react"],
+        codeSplitting: {
+          groups: [
+            {
+              name: "react-vendor",
+              test: /node_modules[\\/](react|react-dom)([\\/]|$)/,
+              priority: 30,
+            },
+            {
+              name: "tanstack",
+              test: /node_modules[\\/]@tanstack[\\/]/,
+              priority: 20,
+            },
+            {
+              name: "ui-vendor",
+              test: /node_modules[\\/](@radix-ui|lucide-react)([\\/]|$)/,
+              priority: 10,
+            },
+          ],
         },
       },
     },
     chunkSizeWarningLimit: 750,
-    sourcemap: true,
+    sourcemap: false,
   },
 }));

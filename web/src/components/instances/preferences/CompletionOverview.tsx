@@ -6,6 +6,7 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { MultiSelect } from "@/components/ui/multi-select"
 import { Switch } from "@/components/ui/switch"
@@ -18,7 +19,10 @@ import type { Instance, InstanceCrossSeedCompletionSettings } from "@/types"
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, Info, Loader2 } from "lucide-react"
 import { useMemo, useState } from "react"
+import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
+
+const MAX_COMPLETION_DELAY_SECONDS = 600
 
 interface CompletionFormState {
   enabled: boolean
@@ -28,6 +32,7 @@ interface CompletionFormState {
   excludeTags: string[]
   indexerIds: number[]
   bypassTorznabCache: boolean
+  delaySeconds: number
 }
 
 const DEFAULT_COMPLETION_FORM: CompletionFormState = {
@@ -38,6 +43,7 @@ const DEFAULT_COMPLETION_FORM: CompletionFormState = {
   excludeTags: [],
   indexerIds: [],
   bypassTorznabCache: false,
+  delaySeconds: 0,
 }
 
 function settingsToForm(settings: InstanceCrossSeedCompletionSettings | undefined): CompletionFormState {
@@ -50,6 +56,7 @@ function settingsToForm(settings: InstanceCrossSeedCompletionSettings | undefine
     excludeTags: settings.excludeTags ?? [],
     indexerIds: settings.indexerIds ?? [],
     bypassTorznabCache: settings.bypassTorznabCache ?? false,
+    delaySeconds: settings.delaySeconds ?? 0,
   }
 }
 
@@ -62,6 +69,7 @@ function formToSettings(form: CompletionFormState): Omit<InstanceCrossSeedComple
     excludeTags: form.excludeTags,
     indexerIds: form.indexerIds,
     bypassTorznabCache: form.bypassTorznabCache,
+    delaySeconds: form.delaySeconds,
   }
 }
 
@@ -78,6 +86,7 @@ function normalizeNumberList(values: Array<string | number>): number[] {
 }
 
 export function CompletionOverview() {
+  const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
   const { instances } = useInstances()
   const [expandedInstances, setExpandedInstances] = useState<string[]>([])
@@ -143,12 +152,12 @@ export function CompletionOverview() {
         ...prev,
         [variables.instanceId]: false,
       }))
-      toast.success("Settings saved", {
+      toast.success(t("preferences.completionOverview.toast.settingsSaved"), {
         description: activeInstances.find((i) => i.id === variables.instanceId)?.name,
       })
     },
     onError: (error) => {
-      toast.error("Failed to save settings", {
+      toast.error(t("preferences.completionOverview.toast.saveFailed"), {
         description: error instanceof Error ? error.message : "Unknown error",
       })
     },
@@ -158,7 +167,7 @@ export function CompletionOverview() {
     const query = settingsQueries[queryIndex]
     // Don't allow toggle if settings haven't loaded successfully
     if (query?.isError || (!query?.data && !formMap[instance.id])) {
-      toast.error("Cannot toggle - settings failed to load")
+      toast.error(t("preferences.completionOverview.cannotToggle"))
       return
     }
 
@@ -172,7 +181,7 @@ export function CompletionOverview() {
   const handleFormChange = (
     instanceId: number,
     field: keyof CompletionFormState,
-    value: string[] | number[] | boolean,
+    value: string[] | number[] | boolean | number,
     currentForm: CompletionFormState
   ) => {
     setFormMap((prev) => ({
@@ -192,7 +201,7 @@ export function CompletionOverview() {
     const query = settingsQueries[queryIndex]
     // Don't allow save if settings haven't loaded successfully
     if (query?.isError || (!query?.data && !formMap[instance.id])) {
-      toast.error("Cannot save - settings failed to load")
+      toast.error(t("preferences.completionOverview.cannotSave"))
       return
     }
 
@@ -207,9 +216,9 @@ export function CompletionOverview() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Auto-search on completion</CardTitle>
+          <CardTitle className="text-lg font-semibold">{t("preferences.completionOverview.title")}</CardTitle>
           <CardDescription>
-            No instances configured. Add one in Settings to use this feature.
+            {t("preferences.completionOverview.noInstancesDescription")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -220,9 +229,9 @@ export function CompletionOverview() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Auto-search on completion</CardTitle>
+          <CardTitle className="text-lg font-semibold">{t("preferences.completionOverview.title")}</CardTitle>
           <CardDescription>
-            No active instances. Enable an instance in Settings to use this feature.
+            {t("preferences.completionOverview.noActiveInstances")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -233,21 +242,24 @@ export function CompletionOverview() {
     <Card>
       <CardHeader className="space-y-2">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-lg font-semibold">Auto-search on completion</CardTitle>
+          <CardTitle className="text-lg font-semibold">{t("preferences.completionOverview.title")}</CardTitle>
           <Tooltip>
             <TooltipTrigger asChild>
               <Info className="h-4 w-4 text-muted-foreground cursor-help" />
             </TooltipTrigger>
             <TooltipContent className="max-w-[300px]">
               <p>
-                Automatically trigger a cross-seed search when torrents complete downloading.
-                Torrents already tagged <span className="font-semibold">cross-seed</span> are skipped.
+                <Trans
+                  ns="instances"
+                  i18nKey="preferences.completionOverview.tooltip"
+                  components={{ strong: <span className="font-semibold" /> }}
+                />
               </p>
             </TooltipContent>
           </Tooltip>
         </div>
         <CardDescription>
-          Kick off a cross-seed search the moment a torrent finishes.
+          {t("preferences.completionOverview.description")}
         </CardDescription>
       </CardHeader>
 
@@ -303,7 +315,7 @@ export function CompletionOverview() {
                           "text-xs font-medium",
                           isEnabled ? "text-emerald-500" : "text-muted-foreground"
                         )}>
-                          {isEnabled ? "On" : "Off"}
+                          {isEnabled ? t("preferences.completionOverview.on") : t("preferences.completionOverview.off")}
                         </span>
                         <Switch
                           checked={isEnabled}
@@ -323,7 +335,7 @@ export function CompletionOverview() {
                       <div className="flex items-center gap-2 p-3 rounded-lg border border-destructive/30 bg-destructive/10">
                         <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
                         <p className="text-sm text-destructive">
-                          Failed to load settings. Please try refreshing the page.
+                          {t("preferences.completionOverview.failedToLoadSettings")}
                         </p>
                       </div>
                     )}
@@ -336,7 +348,7 @@ export function CompletionOverview() {
                           <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
                             <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
                             <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                              Could not load categories and tags from qBittorrent. You can still type custom values.
+                              {t("preferences.completionOverview.metadataWarning")}
                             </p>
                           </div>
                         )}
@@ -344,7 +356,7 @@ export function CompletionOverview() {
                           <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
                             <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
                             <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                              Could not load Torznab indexers. Completion searches will use all available indexers.
+                              {t("preferences.completionOverview.indexerWarning")}
                             </p>
                           </div>
                         )}
@@ -352,16 +364,16 @@ export function CompletionOverview() {
                           <div className="flex items-center gap-2 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
                             <AlertCircle className="h-4 w-4 text-yellow-500 shrink-0" />
                             <p className="text-sm text-yellow-600 dark:text-yellow-400">
-                              No enabled Torznab indexers found. Enable at least one in Settings → Indexers.
+                              {t("preferences.completionOverview.noIndexersWarning")}
                             </p>
                           </div>
                         )}
 
                         <div className="flex items-center justify-between rounded-md border border-border/50 bg-muted/30 p-3">
                           <div className="space-y-0.5">
-                            <Label className="text-sm font-medium">Bypass Torznab cache</Label>
+                            <Label className="text-sm font-medium">{t("preferences.completionOverview.bypassTorznabCache")}</Label>
                             <p className="text-xs text-muted-foreground">
-                              When on, completion searches for this instance always hit indexers (no cached results). Default off.
+                              {t("preferences.completionOverview.bypassTorznabCacheDescription")}
                             </p>
                           </div>
                           <Switch
@@ -371,83 +383,105 @@ export function CompletionOverview() {
                           />
                         </div>
 
+                        <div className="flex items-center justify-between gap-4 rounded-md border border-border/50 bg-muted/30 p-3">
+                          <div className="space-y-0.5">
+                            <Label htmlFor={`completion-delay-${instance.id}`} className="text-sm font-medium">
+                              {t("preferences.completionOverview.searchDelay")}
+                            </Label>
+                            <p className="text-xs text-muted-foreground">
+                              {t("preferences.completionOverview.searchDelayDescription")}
+                            </p>
+                          </div>
+                          <Input
+                            id={`completion-delay-${instance.id}`}
+                            type="number"
+                            min={0}
+                            max={MAX_COMPLETION_DELAY_SECONDS}
+                            step={1}
+                            value={form.delaySeconds}
+                            onChange={(event) => {
+                              const raw = event.target.value
+                              const parsed = raw === "" ? 0 : Number(raw)
+                              if (!Number.isFinite(parsed)) return
+                              const clamped = Math.min(MAX_COMPLETION_DELAY_SECONDS, Math.max(0, Math.floor(parsed)))
+                              handleFormChange(instance.id, "delaySeconds", clamped, form)
+                            }}
+                            disabled={isSaving}
+                            className="w-24 text-right"
+                          />
+                        </div>
+
                         <div className="grid gap-4 md:grid-cols-2">
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">
-                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Include filters</p>
+                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("preferences.completionOverview.includeFilters")}</p>
                             <div className="space-y-2">
-                              <Label className="text-xs">Categories</Label>
+                              <Label className="text-xs">{t("preferences.completionOverview.categories")}</Label>
                               <MultiSelect
                                 options={categoryOptions}
                                 selected={form.categories}
                                 onChange={(values) => handleFormChange(instance.id, "categories", values, form)}
-                                placeholder="All categories"
+                                placeholder={t("preferences.completionOverview.allCategories")}
                                 creatable
                                 disabled={isSaving}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.categories.length === 0
-                                  ? "All categories will be included."
-                                  : `Only ${form.categories.length} selected ${form.categories.length === 1 ? "category" : "categories"} will be matched.`}
+                                {form.categories.length === 0? t("preferences.completionOverview.allCategoriesIncluded"): t("preferences.completionOverview.selectedCategories", { count: form.categories.length })}
                               </p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">Tags</Label>
+                              <Label className="text-xs">{t("preferences.completionOverview.tags")}</Label>
                               <MultiSelect
                                 options={tagOptions}
                                 selected={form.tags}
                                 onChange={(values) => handleFormChange(instance.id, "tags", values, form)}
-                                placeholder="All tags"
+                                placeholder={t("preferences.completionOverview.allTags")}
                                 creatable
                                 disabled={isSaving}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.tags.length === 0
-                                  ? "All tags will be included."
-                                  : `Only ${form.tags.length} selected ${form.tags.length === 1 ? "tag" : "tags"} will be matched.`}
+                                {form.tags.length === 0? t("preferences.completionOverview.allTagsIncluded"): t("preferences.completionOverview.selectedTags", { count: form.tags.length })}
                               </p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">Indexers</Label>
+                              <Label className="text-xs">{t("preferences.completionOverview.indexers")}</Label>
                               <MultiSelect
                                 options={indexerOptions}
                                 selected={form.indexerIds.map(String)}
                                 onChange={(values) => handleFormChange(instance.id, "indexerIds", normalizeNumberList(values), form)}
-                                placeholder="All indexers"
+                                placeholder={t("preferences.completionOverview.allIndexers")}
                                 disabled={isSaving || indexersQuery.isPending || (!hasEnabledIndexers && !indexersQuery.isPending)}
                               />
                               <p className="text-xs text-muted-foreground">
-                                {form.indexerIds.length === 0
-                                  ? "All enabled indexers will be searched."
-                                  : `Only ${form.indexerIds.length} selected ${form.indexerIds.length === 1 ? "indexer" : "indexers"} will be queried.`}
+                                {form.indexerIds.length === 0? t("preferences.completionOverview.allIndexersSearched"): t("preferences.completionOverview.selectedIndexers", { count: form.indexerIds.length })}
                               </p>
                             </div>
                           </div>
 
                           <div className="rounded-md border border-border/50 bg-muted/30 p-3 space-y-3">
-                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Exclude filters</p>
+                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("preferences.completionOverview.excludeFilters")}</p>
                             <div className="space-y-2">
-                              <Label className="text-xs">Categories</Label>
+                              <Label className="text-xs">{t("preferences.completionOverview.categories")}</Label>
                               <MultiSelect
                                 options={categoryOptions}
                                 selected={form.excludeCategories}
                                 onChange={(values) => handleFormChange(instance.id, "excludeCategories", values, form)}
-                                placeholder="None"
+                                placeholder={t("preferences.completionOverview.none")}
                                 creatable
                                 disabled={isSaving}
                               />
-                              <p className="text-xs text-muted-foreground">Skip torrents in these categories.</p>
+                              <p className="text-xs text-muted-foreground">{t("preferences.completionOverview.skipCategoriesDescription")}</p>
                             </div>
                             <div className="space-y-2">
-                              <Label className="text-xs">Tags</Label>
+                              <Label className="text-xs">{t("preferences.completionOverview.tags")}</Label>
                               <MultiSelect
                                 options={tagOptions}
                                 selected={form.excludeTags}
                                 onChange={(values) => handleFormChange(instance.id, "excludeTags", values, form)}
-                                placeholder="None"
+                                placeholder={t("preferences.completionOverview.none")}
                                 creatable
                                 disabled={isSaving}
                               />
-                              <p className="text-xs text-muted-foreground">Skip torrents with these tags.</p>
+                              <p className="text-xs text-muted-foreground">{t("preferences.completionOverview.skipTagsDescription")}</p>
                             </div>
                           </div>
                         </div>
@@ -459,7 +493,7 @@ export function CompletionOverview() {
                             size="sm"
                           >
                             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            {isDirty ? "Save changes" : "Saved"}
+                            {isDirty ? t("preferences.completionOverview.saveChanges") : t("preferences.completionOverview.saved")}
                           </Button>
                         </div>
                       </>
@@ -469,7 +503,7 @@ export function CompletionOverview() {
                     {!isError && !isEnabled && (
                       <div className="flex flex-col items-center justify-center py-6 text-center space-y-2 border border-dashed rounded-lg">
                         <p className="text-sm text-muted-foreground">
-                          Enable auto-search to configure filters for this instance.
+                          {t("preferences.completionOverview.enableAutoSearchMessage")}
                         </p>
                       </div>
                     )}

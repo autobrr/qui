@@ -11,6 +11,7 @@ import type { TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { ChevronRight, Download, FilePen, FolderPen, Info, Loader2 } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 
 interface TorrentFileTreeProps {
   files: TorrentFile[]
@@ -69,9 +70,7 @@ function buildFileTree(
       let node = nodeMap.get(currentPath)
 
       if (!node) {
-        const displayName = incognitoMode && isLeaf
-          ? getLinuxFileName(torrentHash, file.index).split("/").pop() || segment
-          : segment
+        const displayName = incognitoMode && isLeaf? getLinuxFileName(torrentHash, file.index).split("/").pop() || segment: segment
 
         node = {
           id: currentPath,
@@ -184,6 +183,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   onDownloadFile,
   onShowMediaInfo,
 }: TorrentFileTreeProps) {
+  const { t } = useTranslation("torrents")
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const { nodes, allFolderIds } = useMemo(
@@ -315,7 +315,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                           checked={!isSkipped}
                           disabled={isPending}
                           onCheckedChange={(checked) => onToggleFile(file, checked === true)}
-                          aria-label={isSkipped ? "Select file for download" : "Skip file download"}
+                          aria-label={isSkipped ? t("fileTree.selectFileForDownload") : t("fileTree.skipFileDownload")}
                           className="shrink-0"
                         />
                       )}
@@ -346,8 +346,8 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                           if (!incognitoMode) onRenameFile(file.name)
                         }}
                         disabled={incognitoMode}
-                        aria-label="Rename file"
-                        title="Rename file"
+                        aria-label={t("fileTree.renameFile")}
+                        title={t("fileTree.renameFile")}
                       >
                         <FilePen className="h-3 w-3" />
                       </button>
@@ -361,7 +361,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                       disabled={incognitoMode}
                     >
                       <Download className="h-4 w-4 mr-2" />
-                      Download
+                      {t("fileTree.download")}
                     </ContextMenuItem>
                   )}
                   {onShowMediaInfo && file && (
@@ -370,7 +370,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                       disabled={incognitoMode}
                     >
                       <Info className="h-4 w-4 mr-2" />
-                      MediaInfo
+                      {t("fileTree.mediaInfo")}
                     </ContextMenuItem>
                   )}
                   <ContextMenuItem
@@ -378,7 +378,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                     disabled={incognitoMode}
                   >
                     <FilePen className="h-4 w-4 mr-2" />
-                    Rename
+                    {t("fileTree.rename")}
                   </ContextMenuItem>
                 </ContextMenuContent>
               </ContextMenu>
@@ -386,15 +386,9 @@ export const TorrentFileTree = memo(function TorrentFileTree({
           }
 
           // Folder row
-          const progressPercent = node.totalSize > 0
-            ? (node.totalProgress / node.totalSize) * 100
-            : 0
+          const progressPercent = node.totalSize > 0? (node.totalProgress / node.totalSize) * 100: 0
           const isFolderComplete = progressPercent === 100
-          const checkState: boolean | "indeterminate" = node.selectedCount === 0
-            ? false
-            : node.selectedCount === node.totalCount
-              ? true
-              : "indeterminate"
+          const checkState: boolean | "indeterminate" = node.selectedCount === 0? false: node.selectedCount === node.totalCount? true: "indeterminate"
           const indent = depth * 20 + 4
 
           const handleCheckChange = () => {
@@ -433,7 +427,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                         checked={checkState}
                         onCheckedChange={handleCheckChange}
                         onClick={(e) => e.stopPropagation()}
-                        aria-label={`Select all files in ${node.name}`}
+                        aria-label={t("fileTree.selectAllFilesIn", { name: node.name })}
                         className="shrink-0"
                       />
                     )}
@@ -458,8 +452,8 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                         if (!incognitoMode) onRenameFolder(node.id)
                       }}
                       disabled={incognitoMode}
-                      aria-label="Rename folder"
-                      title="Rename folder"
+                      aria-label={t("fileTree.renameFolder")}
+                      title={t("fileTree.renameFolder")}
                     >
                       <FolderPen className="h-3 w-3" />
                     </button>
@@ -475,7 +469,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                   disabled={incognitoMode}
                 >
                   <FolderPen className="h-4 w-4 mr-2" />
-                  Rename
+                  {t("fileTree.rename")}
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>

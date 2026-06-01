@@ -125,6 +125,8 @@ Non-canonical CIDRs with host bits set (for example `10.0.0.5/8`) are rejected.
 
 Only use this when qui runs behind a reverse proxy that already handles authentication (e.g., Authelia, Authentik, Caddy with forward_auth). See the [Configuration Reference](./reference#authentication) for a full explanation of the risks.
 
+Built-in health endpoints (`/health`, `/healthz/readiness`, `/healthz/liveness`) always allow loopback probes, so the official Docker image healthcheck continues to work even if your allowlist only includes the reverse proxy subnet(s).
+
 ## External Programs
 
 Configure the allow list from `config.toml`; there is no environment override to keep it read-only from the UI.

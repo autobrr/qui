@@ -80,12 +80,13 @@ const (
 	FieldLastActivityAge = models.FieldLastActivityAge
 
 	// Numeric fields (float64)
-	FieldRatio        = models.FieldRatio
-	FieldRatioLimit   = models.FieldRatioLimit
-	FieldMaxRatio     = models.FieldMaxRatio
-	FieldProgress     = models.FieldProgress
-	FieldAvailability = models.FieldAvailability
-	FieldPopularity   = models.FieldPopularity
+	FieldRatio            = models.FieldRatio
+	FieldRatioLimit       = models.FieldRatioLimit
+	FieldMaxRatio         = models.FieldMaxRatio
+	FieldUploadedOverSize = models.FieldUploadedOverSize
+	FieldProgress         = models.FieldProgress
+	FieldAvailability     = models.FieldAvailability
+	FieldPopularity       = models.FieldPopularity
 
 	// Numeric fields (speeds)
 	FieldDlSpeed = models.FieldDlSpeed
@@ -103,18 +104,23 @@ const (
 	FieldGroupSize     = models.FieldGroupSize
 
 	// Boolean fields
-	FieldPrivate            = models.FieldPrivate
-	FieldAutoManaged        = models.FieldAutoManaged
-	FieldFirstLastPiecePrio = models.FieldFirstLastPiecePrio
-	FieldForceStart         = models.FieldForceStart
-	FieldSequentialDownload = models.FieldSequentialDownload
-	FieldSuperSeeding       = models.FieldSuperSeeding
-	FieldIsUnregistered     = models.FieldIsUnregistered
-	FieldHasMissingFiles    = models.FieldHasMissingFiles
-	FieldIsGrouped          = models.FieldIsGrouped
+	FieldPrivate                = models.FieldPrivate
+	FieldAutoManaged            = models.FieldAutoManaged
+	FieldFirstLastPiecePrio     = models.FieldFirstLastPiecePrio
+	FieldForceStart             = models.FieldForceStart
+	FieldSequentialDownload     = models.FieldSequentialDownload
+	FieldSuperSeeding           = models.FieldSuperSeeding
+	FieldIsUnregistered         = models.FieldIsUnregistered
+	FieldHasMissingFiles        = models.FieldHasMissingFiles
+	FieldIsGrouped              = models.FieldIsGrouped
+	FieldExistsOnOtherInstance  = models.FieldExistsOnOtherInstance
+	FieldSeedingOnOtherInstance = models.FieldSeedingOnOtherInstance
+	FieldExistsOnSameInstance   = models.FieldExistsOnSameInstance
+	FieldSeedingOnSameInstance  = models.FieldSeedingOnSameInstance
 
 	// Enum-like fields
-	FieldHardlinkScope = models.FieldHardlinkScope
+	FieldHardlinkScope      = models.FieldHardlinkScope
+	FieldHardlinkScopeCross = models.FieldHardlinkScopeCross
 
 	// Hardlink scope values
 	HardlinkScopeNone               = models.HardlinkScopeNone

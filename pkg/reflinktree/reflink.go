@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
@@ -174,6 +175,9 @@ func containsPath(paths []string, path string) bool {
 func isDirNotEmpty(err error) bool {
 	if err == nil {
 		return false
+	}
+	if errors.Is(err, syscall.ENOTEMPTY) {
+		return true
 	}
 	// Different OS have different error messages
 	errStr := err.Error()

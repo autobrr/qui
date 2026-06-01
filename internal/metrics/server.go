@@ -4,7 +4,6 @@
 package metrics
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -81,14 +80,6 @@ func (s *Server) ListenAndServe() error {
 		Msg("Starting Prometheus metrics server")
 
 	return s.server.ListenAndServe()
-}
-
-func (s *Server) Stop() error {
-	return s.server.Close()
-}
-
-func (s *Server) Shutdown(ctx context.Context) error {
-	return s.server.Shutdown(ctx)
 }
 
 // BasicAuth middleware for metrics endpoint (matches autobrr implementation)

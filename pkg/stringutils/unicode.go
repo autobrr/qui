@@ -20,6 +20,34 @@ var (
 	// matchingNormalizer caches expensive NormalizeForMatching results to avoid repeated unicode transformations.
 	// This cuts CPU usage significantly in hot paths like crossseed matching.
 	matchingNormalizer = NewNormalizer(defaultNormalizerTTL, normalized)
+
+	animeTitleSymbolReplacer = strings.NewReplacer(
+		"★", " ",
+		"☆", " ",
+		"✩", " ",
+		"✭", " ",
+		"✯", " ",
+		"✰", " ",
+		"✦", " ",
+		"✧", " ",
+		"◆", " ",
+		"◇", " ",
+		"■", " ",
+		"□", " ",
+		"●", " ",
+		"○", " ",
+		"◎", " ",
+		"♪", " ",
+		"♫", " ",
+		"♬", " ",
+		"♩", " ",
+		"♡", " ",
+		"♥", " ",
+		"・", " ",
+		"･", " ",
+		"·", " ",
+		"•", " ",
+	)
 )
 
 // normalizeUnicodeInner is the inner transformation function used by unicodeNormalizer.
@@ -58,18 +86,25 @@ func normalized(s string) string {
 
 	// Remove apostrophes - "Bob's" → "Bobs"
 	s = strings.ReplaceAll(s, "'", "")
-	s = strings.ReplaceAll(s, "'", "") // Unicode right single quote U+2019
-	s = strings.ReplaceAll(s, "'", "") // Unicode left single quote U+2018
-	s = strings.ReplaceAll(s, "`", "") // Backtick
+	s = strings.ReplaceAll(s, "\u2019", "") // Unicode right single quote
+	s = strings.ReplaceAll(s, "\u2018", "") // Unicode left single quote
+	s = strings.ReplaceAll(s, "\u02bc", "") // Modifier letter apostrophe
+	s = strings.ReplaceAll(s, "`", "")      // Backtick
 
 	// Remove colons - "csi: miami" → "csi miami"
 	s = strings.ReplaceAll(s, ":", "")
+
+	// Normalize commas to spaces - "show,title" → "show title"
+	s = strings.ReplaceAll(s, ",", " ")
 
 	// Normalize ampersand to "and" - "His & Hers" → "His and Hers"
 	s = strings.ReplaceAll(s, "&", " and ")
 
 	// Normalize hyphens to spaces - "Spider-Man" → "spider man"
 	s = strings.ReplaceAll(s, "-", " ")
+
+	// Normalize decorative anime title separators - "Classic★Stars" → "classic stars"
+	s = animeTitleSymbolReplacer.Replace(s)
 
 	// Collapse multiple spaces to single space
 	s = strings.Join(strings.Fields(s), " ")
@@ -96,8 +131,10 @@ func NormalizeUnicode(s string) string {
 //   - Lowercase
 //   - Strip apostrophes (including Unicode variants)
 //   - Strip colons
+//   - Convert commas to spaces
 //   - Convert ampersand to "and"
 //   - Convert hyphens to spaces
+//   - Replace decorative anime title symbols via animeTitleSymbolReplacer, e.g. "Classic★Stars" to "classic stars"
 //   - Collapse multiple spaces to single space
 //
 // Results are cached per input string (5 minute TTL) to avoid repeated expensive transformations.
@@ -106,6 +143,7 @@ func NormalizeUnicode(s string) string {
 //   - "Shōgun S01" → "shogun s01"
 //   - "Bob's Burgers" → "bobs burgers"
 //   - "CSI: Miami" → "csi miami"
+//   - "Title, With Comma" → "title with comma"
 //   - "Spider-Man" → "spider man"
 //   - "His & Hers" → "his and hers"
 func NormalizeForMatching(s string) string {

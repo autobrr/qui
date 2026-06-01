@@ -13,8 +13,12 @@ import (
 	"github.com/autobrr/qui/internal/services/jackett"
 )
 
-// SearchScope is the cache scope used for dir-scan searches.
-const SearchScope = "dir-scan"
+const (
+	// SearchScope is the cache scope used for dir-scan searches.
+	SearchScope = "dir-scan"
+
+	torznabDirScanSearchLimit = 100
+)
 
 // Searcher handles searching Torznab indexers for matching torrents.
 type Searcher struct {
@@ -52,9 +56,6 @@ type SearchRequest struct {
 	// Categories to search (optional, but recommended for better results).
 	Categories []int
 
-	// Limit results per indexer
-	Limit int
-
 	// OnAllComplete is called when all search jobs complete with the final results
 	OnAllComplete func(response *jackett.SearchResponse, err error)
 }
@@ -87,11 +88,12 @@ func (s *Searcher) Search(ctx context.Context, req *SearchRequest) error {
 // buildSearchRequest constructs a TorznabSearchRequest from parsed metadata.
 func (s *Searcher) buildSearchRequest(meta *SearcheeMetadata, req *SearchRequest) *jackett.TorznabSearchRequest {
 	searchReq := &jackett.TorznabSearchRequest{
-		ReleaseName:   meta.OriginalName,
-		Categories:    req.Categories,
-		IndexerIDs:    req.IndexerIDs,
-		Limit:         req.Limit,
-		OnAllComplete: req.OnAllComplete,
+		ReleaseName:      meta.OriginalName,
+		Categories:       req.Categories,
+		IndexerIDs:       req.IndexerIDs,
+		Limit:            torznabDirScanSearchLimit,
+		ReturnAllResults: true,
+		OnAllComplete:    req.OnAllComplete,
 	}
 
 	// Priority 1: Use embedded external IDs if available (most accurate)
@@ -113,8 +115,8 @@ func (s *Searcher) buildSearchRequest(meta *SearcheeMetadata, req *SearchRequest
 		}
 	}
 
-	// Apply year if available
-	if meta.Year > 0 {
+	// Year hurts TV searches on many indexers; keep it for movies only.
+	if meta.Year > 0 && meta.IsMovie {
 		searchReq.Year = meta.Year
 	}
 
@@ -190,28 +192,6 @@ type SearchResult struct {
 
 	// MatchScore indicates match quality (higher is better)
 	MatchScore float64
-}
-
-// FilterResults filters search results based on basic criteria.
-func FilterResults(results []*SearchResult, minSize, maxSize int64) []*SearchResult {
-	if len(results) == 0 {
-		return results
-	}
-
-	filtered := make([]*SearchResult, 0, len(results))
-	for _, r := range results {
-		// Skip if size is outside bounds
-		if minSize > 0 && r.Size < minSize {
-			continue
-		}
-		if maxSize > 0 && r.Size > maxSize {
-			continue
-		}
-
-		filtered = append(filtered, r)
-	}
-
-	return filtered
 }
 
 // CalculateSizeRange calculates min/max size based on searchee size and tolerance.

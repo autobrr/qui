@@ -108,6 +108,7 @@ Non-canonical CIDRs with host bits set (for example `10.0.0.5/8`) are rejected.
 When authentication is disabled:
 
 - Requests are allowed only if the direct client IP matches `authDisabledAllowedCIDRs`.
+- Built-in health endpoints (`/health`, `/healthz/readiness`, `/healthz/liveness`) still allow loopback probes so the official Docker image healthcheck works without adding `127.0.0.1/32` or `::1/128` to your reverse proxy allowlist.
 - `/api/auth/me` returns a synthetic `admin` user so the frontend works without login.
 - `/api/auth/validate` returns a synthetic `admin` user so callback/session checks work without login.
 - The setup screen is skipped entirely.

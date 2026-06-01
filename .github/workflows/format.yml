@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: "22.18.0"
+  NODE_VERSION: "24.15.0"
 
 jobs:
   format:
@@ -29,9 +29,9 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6.0.8
         with:
-          version: latest
+          package_json_file: web/package.json
 
       - name: Install frontend dependencies
         run: cd web && pnpm install

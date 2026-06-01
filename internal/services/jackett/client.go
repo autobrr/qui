@@ -144,20 +144,11 @@ type Result struct {
 	DownloadVolumeFactor float64
 	UploadVolumeFactor   float64
 	Imdb                 string
+	SearchIMDbID         string
+	SearchTVDbID         string
+	SearchTMDbID         int
 	// Attributes stores every Torznab attribute with lowercase keys from RSS item attr entries (see convertRssToResults normalization).
 	Attributes map[string]string
-}
-
-// SearchAll searches across all indexers when supported by the backend
-func (c *Client) SearchAll(ctx context.Context, params map[string]string) ([]Result, error) {
-	switch c.backend {
-	case models.TorznabBackendJackett:
-		return c.Search(ctx, "all", params)
-	case models.TorznabBackendNative:
-		return c.SearchDirect(ctx, params)
-	default:
-		return nil, fmt.Errorf("search all not supported for backend %s", c.backend)
-	}
 }
 
 // SearchDirect searches a direct Torznab endpoint (not through Jackett/Prowlarr aggregator)
@@ -808,16 +799,4 @@ func fetchCapsWithRetry(ctx context.Context, baseURL, apiKey string, basicUserna
 		lastErr = fmt.Errorf("caps fetch failed after %d attempts: %w", maxRetries+1, lastErr)
 	}
 	return nil, lastErr
-}
-
-// GetCapabilitiesDirect gets capabilities from a direct Torznab endpoint
-func (c *Client) GetCapabilitiesDirect() (*gojackett.Indexers, error) {
-	if c.jackett == nil {
-		return nil, fmt.Errorf("capabilities not supported for backend %s", c.backend)
-	}
-	indexers, err := c.jackett.GetCapsDirectCtx(context.Background())
-	if err != nil {
-		return nil, fmt.Errorf("failed to get capabilities: %w", err)
-	}
-	return &indexers, nil
 }

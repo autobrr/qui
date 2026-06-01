@@ -45,6 +45,7 @@ type AutomationPayload struct {
 	TrackerDomains  []string                 `json:"trackerDomains"`
 	Enabled         *bool                    `json:"enabled"`
 	DryRun          *bool                    `json:"dryRun"`
+	Notify          *bool                    `json:"notify"`
 	SortOrder       *int                     `json:"sortOrder"`
 	IntervalSeconds *int                     `json:"intervalSeconds,omitempty"` // nil = use DefaultRuleInterval (15m)
 	Conditions      *models.ActionConditions `json:"conditions"`
@@ -82,6 +83,7 @@ func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 		SortingConfig:   p.SortingConfig,
 		Enabled:         true,
 		DryRun:          false,
+		Notify:          true,
 		IntervalSeconds: p.IntervalSeconds,
 	}
 	if p.Enabled != nil {
@@ -89,6 +91,9 @@ func (p *AutomationPayload) toModel(instanceID int, id int) *models.Automation {
 	}
 	if p.DryRun != nil {
 		automation.DryRun = *p.DryRun
+	}
+	if p.Notify != nil {
+		automation.Notify = *p.Notify
 	}
 	if p.SortOrder != nil {
 		automation.SortOrder = *p.SortOrder
@@ -335,6 +340,25 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return http.StatusBadRequest, "Category action requires a category name", errors.New("category name required")
 	}
 
+	// Validate export to instance action
+	if payload.Conditions.ExportToInstance != nil && payload.Conditions.ExportToInstance.Enabled {
+		if payload.Conditions.ExportToInstance.TargetInstanceID <= 0 {
+			return http.StatusBadRequest, "Export to instance requires a target instance", errors.New("target instance required")
+		}
+		if payload.Conditions.ExportToInstance.TargetInstanceID == instanceID {
+			return http.StatusBadRequest, "Export target cannot be the same as the source instance", errors.New("self-export not allowed")
+		}
+		if h.instanceStore == nil {
+			return http.StatusInternalServerError, "Instance store not configured", errors.New("instance store unavailable")
+		}
+		if _, err := h.instanceStore.Get(ctx, payload.Conditions.ExportToInstance.TargetInstanceID); err != nil {
+			if errors.Is(err, models.ErrInstanceNotFound) {
+				return http.StatusBadRequest, "Target instance not found", errors.New("target instance not found")
+			}
+			return http.StatusInternalServerError, "Failed to validate target instance", err
+		}
+	}
+
 	// Validate delete is standalone - it cannot be combined with any other action
 	hasDelete := payload.Conditions.Delete != nil && payload.Conditions.Delete.Enabled
 	if hasDelete {
@@ -350,7 +374,9 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 			(len(payload.Conditions.TagActions()) > 0) ||
 			(payload.Conditions.Category != nil && payload.Conditions.Category.Enabled) ||
 			(payload.Conditions.Move != nil && payload.Conditions.Move.Enabled) ||
-			(payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled)
+			(payload.Conditions.ExternalProgram != nil && payload.Conditions.ExternalProgram.Enabled) ||
+			(payload.Conditions.AutoManagement != nil) ||
+			(payload.Conditions.ExportToInstance != nil && payload.Conditions.ExportToInstance.Enabled)
 		if hasOtherAction {
 			return http.StatusBadRequest, "Delete action cannot be combined with other actions", errors.New("delete must be standalone")
 		}
@@ -481,7 +507,9 @@ func conditionsUseField(conditions *models.ActionConditions, field automations.C
 		anyEnabledTagActionUsesField(c.TagActions(), field) ||
 		(c.Category != nil && check(c.Category.Enabled, c.Category.Condition)) ||
 		(c.Move != nil && check(c.Move.Enabled, c.Move.Condition)) ||
-		(c.ExternalProgram != nil && check(c.ExternalProgram.Enabled, c.ExternalProgram.Condition))
+		(c.ExternalProgram != nil && check(c.ExternalProgram.Enabled, c.ExternalProgram.Condition)) ||
+		(c.AutoManagement != nil && automations.ConditionUsesField(c.AutoManagement.Condition, field)) ||
+		(c.ExportToInstance != nil && check(c.ExportToInstance.Enabled, c.ExportToInstance.Condition))
 }
 
 func anyEnabledTagActionUsesField(actions []*models.TagAction, field automations.ConditionField) bool {
@@ -494,9 +522,10 @@ func anyEnabledTagActionUsesField(actions []*models.TagAction, field automations
 }
 
 // conditionsRequireLocalAccess checks if any enabled action condition uses fields
-// that require local filesystem access (HARDLINK_SCOPE or HAS_MISSING_FILES).
+// that require local filesystem access (HARDLINK_SCOPE, HARDLINK_SCOPE_CROSS, or HAS_MISSING_FILES).
 func conditionsRequireLocalAccess(conditions *models.ActionConditions) bool {
 	return conditionsUseField(conditions, automations.FieldHardlinkScope) ||
+		conditionsUseField(conditions, automations.FieldHardlinkScopeCross) ||
 		conditionsUseField(conditions, automations.FieldHasMissingFiles)
 }
 
@@ -624,6 +653,12 @@ func conditionTreesForValidation(conditions *models.ActionConditions) []*models.
 	}
 	if conditions.ExternalProgram != nil && conditions.ExternalProgram.Enabled {
 		trees = append(trees, conditions.ExternalProgram.Condition)
+	}
+	if conditions.AutoManagement != nil {
+		trees = append(trees, conditions.AutoManagement.Condition)
+	}
+	if conditions.ExportToInstance != nil && conditions.ExportToInstance.Enabled {
+		trees = append(trees, conditions.ExportToInstance.Condition)
 	}
 	return trees
 }
@@ -1029,6 +1064,12 @@ func collectConditionRegexErrors(conditions *models.ActionConditions) []RegexVal
 	}
 	if conditions.ExternalProgram != nil {
 		validateConditionRegex(conditions.ExternalProgram.Condition, "/conditions/externalProgram/condition", &result)
+	}
+	if conditions.AutoManagement != nil {
+		validateConditionRegex(conditions.AutoManagement.Condition, "/conditions/autoManagement/condition", &result)
+	}
+	if conditions.ExportToInstance != nil {
+		validateConditionRegex(conditions.ExportToInstance.Condition, "/conditions/exportToInstance/condition", &result)
 	}
 
 	return result

@@ -158,6 +158,9 @@ func (s *Service) PlanRestoreDiff(ctx context.Context, runID int64, mode Restore
 	if s == nil {
 		return nil, errors.New("nil backup service")
 	}
+	if s.reader == nil {
+		return nil, errors.New("sync manager unavailable")
+	}
 
 	if mode == "" {
 		mode = RestoreModeIncremental
@@ -367,17 +370,17 @@ func (s *Service) loadSnapshotState(ctx context.Context, runID int64) (*Snapshot
 }
 
 func (s *Service) loadLiveState(ctx context.Context, instanceID int) (*LiveState, error) {
-	categories, err := s.syncManager.GetCategories(ctx, instanceID)
+	categories, err := s.reader.GetCategories(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("load categories: %w", err)
 	}
 
-	tags, err := s.syncManager.GetTags(ctx, instanceID)
+	tags, err := s.reader.GetTags(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("load tags: %w", err)
 	}
 
-	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	torrents, err := s.reader.GetAllTorrents(ctx, instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("load torrents: %w", err)
 	}

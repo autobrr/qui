@@ -667,6 +667,7 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 		candidateFiles   qbt.TorrentFiles
 		expectedMismatch bool
 		expectedFiles    []string
+		expectedDetails  []contentFileSizeMismatch
 	}{
 		{
 			name: "identical single files - no mismatch",
@@ -689,6 +690,14 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			},
 			expectedMismatch: true,
 			expectedFiles:    []string{"movie.mkv"},
+			expectedDetails: []contentFileSizeMismatch{
+				{
+					SourceFile:    "movie.mkv",
+					SourceSize:    1000000000,
+					CandidateFile: "movie.mkv",
+					CandidateSize: 1000000001,
+				},
+			},
 		},
 		{
 			name: "same scene release different naming - no mismatch",
@@ -754,6 +763,14 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			},
 			expectedMismatch: true,
 			expectedFiles:    []string{"Show.S01E02.mkv"},
+			expectedDetails: []contentFileSizeMismatch{
+				{
+					SourceFile:    "Show.S01E02.mkv",
+					SourceSize:    600000001,
+					CandidateFile: "Show S01E02.mkv",
+					CandidateSize: 600000000,
+				},
+			},
 		},
 		{
 			name:             "empty source files - no mismatch",
@@ -951,6 +968,14 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 			},
 			expectedMismatch: true, // Fallback: largest files have different sizes
 			expectedFiles:    []string{"TrackerA.Release.Name.mkv"},
+			expectedDetails: []contentFileSizeMismatch{
+				{
+					SourceFile:    "TrackerA.Release.Name.mkv",
+					SourceSize:    5000000000,
+					CandidateFile: "Completely.Different.Name.mkv",
+					CandidateSize: 5000000001,
+				},
+			},
 		},
 		{
 			name: "source has extra video file - no mismatch (extras allowed)",
@@ -1025,12 +1050,16 @@ func TestHasContentFileSizeMismatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hasMismatch, mismatchedFiles := hasContentFileSizeMismatch(tt.sourceFiles, tt.candidateFiles, normalizer)
+			hasMismatch, fileSizeMismatches := hasContentFileSizeMismatch(tt.sourceFiles, tt.candidateFiles, normalizer)
 			require.Equal(t, tt.expectedMismatch, hasMismatch)
+			mismatchedFiles := contentFileSizeMismatchSourceFiles(fileSizeMismatches)
 			if tt.expectedFiles != nil {
 				require.ElementsMatch(t, tt.expectedFiles, mismatchedFiles)
 			} else {
 				require.Empty(t, mismatchedFiles)
+			}
+			if tt.expectedDetails != nil {
+				require.ElementsMatch(t, tt.expectedDetails, fileSizeMismatches)
 			}
 		})
 	}

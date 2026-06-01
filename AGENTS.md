@@ -29,7 +29,7 @@ make dev-backend        # Backend only with hot-reload
 make dev-frontend       # Frontend only
 
 # Testing
-make test               # go test -race -count=3 -v ./...
+make test               # go test -race -count=1 -v ./...
 make test-openapi       # Validate OpenAPI spec after touching internal/web/swagger
 
 # Linting
@@ -84,6 +84,17 @@ Keep Go code `gofmt`-clean with PascalCase exports, camelCase locals, and packag
 - Do not add documentation-only branches unless they enforce something mechanically via compiler, linter, or tests.
 - When a branch only enumerates known states, ask whether it changes behavior, improves safety, or provides exhaustiveness checking. If not, delete it.
 
+## Cross-Platform Path Handling
+
+qui must work on Windows and Unix-like hosts. Do not assume POSIX path behavior in Go code or tests unless the value is explicitly a torrent-internal path or remote qBittorrent path.
+
+- Use `filepath.Join`, `filepath.Clean`, `filepath.Rel`, and `filepath.Separator` for local filesystem paths.
+- Use `path` only for slash-delimited data formats such as torrent-internal file names, URLs, or API payloads that are defined to use `/`.
+- At boundaries between torrent/API paths and local filesystem paths, normalize deliberately: validate slash paths first, then convert with `filepath.FromSlash`.
+- Security/path traversal checks must reject both POSIX and Windows absolute/escaping forms on every OS: leading `/`, leading `\`, drive-letter paths, UNC paths, and `..` segments.
+- Tests should not assert raw `"/foo/"` substrings against local filesystem paths. Use `filepath.ToSlash(path)` for cross-platform assertions, or build expected paths with `filepath.Join`.
+- When adding path traversal tests, include both POSIX-style and Windows-style cases, even if the test is running on only one OS.
+
 ## React Effects
 
 - Use `useEffect` only to sync with external systems (DOM, subscriptions, network).
@@ -95,11 +106,13 @@ Keep Go code `gofmt`-clean with PascalCase exports, camelCase locals, and packag
 
 ## Testing Guidelines
 
-Place backend tests beside implementations as `*_test.go`, mirroring paths such as `internal/qbittorrent/pool_test.go`. Prefer table-driven cases and reuse the integration fixtures already in `internal/qbittorrent/`. Run `make test` before every push and add `make test-openapi` when contracts change. Frontend work should include Vitest + React Testing Library specs named `*.test.tsx` near the component.
+Place backend tests beside implementations as `*_test.go`, mirroring paths such as `internal/qbittorrent/pool_test.go`. Prefer table-driven cases and reuse the integration fixtures already in `internal/qbittorrent/`. Run targeted local tests for touched packages and add `make test-openapi` when contracts change. CI covers the full `make test` suite unless explicitly requested locally. Frontend work should include Vitest + React Testing Library specs named `*.test.tsx` near the component.
 
-When running tests, always use `-race` and `-count=3` to catch race conditions.
+When running tests, always use `-race` and `-count=1`.
 
-For changes under `internal/services/crossseed` or `internal/qbittorrent`, run targeted package tests first, then run the full `make test` suite.
+For changes under `internal/services/crossseed` or `internal/qbittorrent`, run targeted package tests first. Skip local full `make test` by default; CI covers it unless explicitly requested.
+
+When adding Go tests that create files with `os.WriteFile`, use `0o600` or tighter permissions unless the test explicitly needs broader mode bits. This avoids `gosec` `G306` lint failures.
 
 ## Commit & Pull Request Guidelines
 
@@ -110,12 +123,12 @@ Follow the conventional commit style in history (`feat(scope):`, `fix(scope):`, 
 - "Co-Authored-By: Claude" or any AI co-author credits
 - Any advertising or attribution in commit messages
 
-PRs need a clear summary, testing checklist, and UI screenshots for visual tweaks. Confirm `make lint`, `make test`, and a fresh `make build` succeed before requesting review.
+PRs need a clear summary, testing checklist, and UI screenshots for visual tweaks. Confirm local targeted verification, `make lint`, and a fresh `make build` succeed before requesting review; rely on CI for the full `make test` suite unless explicitly requested.
 
 ## Pre-Commit Checklist
 
 1. `make precommit` passes (`fmt` + `gofix-changed` + `lint`, changed files only)
-2. `make test` passes
+2. Targeted local tests for touched packages pass (full `make test` covered by CI unless explicitly requested)
 3. `make build` succeeds
 4. If touched `internal/web/swagger`, run `make test-openapi`
 
@@ -125,9 +138,69 @@ Load secrets such as `THEMES_REPO_TOKEN` via `.env` so the Makefile can fetch pr
 
 ## API & Database Change Rules
 
-- Database schema changes must ship as migrations under `internal/database/migrations` and include matching model/store updates in the same PR.
+- Database schema changes must ship as migrations under `internal/database/migrations`, include matching model/store updates in the same PR, and add both SQLite and Postgres migrations.
+- For an open PR, keep schema work consolidated to at most one new SQLite migration and one new Postgres migration. If the PR needs more schema changes before merge, edit the draft migration files for that PR instead of adding more migration files.
 - API contract changes must update OpenAPI content under `internal/web/swagger` and pass `make test-openapi`.
 - Prefer minimal, reviewable diffs in high-churn areas (`internal/services/crossseed`, `internal/qbittorrent`, `internal/models`).
+
+## Internationalization (i18n)
+
+The frontend uses `i18next` + `react-i18next` with 10 feature-based namespaces under `web/src/i18n/locales/<lang>/`:
+
+`common`, `auth`, `settings`, `torrents`, `dashboard`, `crossseed`, `rss`, `search`, `instances`, `automations`
+
+Locale JSON files are wired up via `import.meta.glob` in `web/src/i18n/index.ts`: English is bundled eagerly into the main chunk (it is the fallback), while every other language is split into its own lazily-loaded chunk and fetched on demand by `initI18n()` / `changeLanguage()`. This keeps the main bundle small as languages are added (important for the PWA precache size cap in `vite.config.ts`). Currently supported: `en`, `zh-CN`, `fr`, `de`. To expose a language in the UI, add its code to `supportedLanguages` and its display name to `languageNames` in that file.
+
+### i18n Validation Scripts
+
+```bash
+pnpm check:i18n              # Run all i18n checks; fails on errors, zh-CN warnings allowed
+pnpm check:i18n:hardcoded    # AST-based detector for UI strings not yet wrapped in t()
+pnpm check:i18n:zh-cn        # zh-CN translation coverage and quality checks
+```
+
+| Script | Purpose |
+|--------|---------|
+| `check-i18n-keys.mjs` | Validates literal `t("key")` / `i18n.t("key")` calls against English locale JSON when the file namespace can be resolved from `useTranslation(...)` or `ns:` |
+| `check-i18n-implementation.mjs` | Guards a small set of bootstrap invariants in `src/i18n/index.ts` and formatter-hook patterns in `src/hooks/useDateTimeFormatters.ts` |
+| `find-hardcoded-i18n-literals.mjs` | TypeScript AST scan for hardcoded UI strings that should use `t()` |
+| `check-zh-cn-coverage.mjs` | Validates zh-CN files against English for errors (missing/extra keys, interpolation, HTML tags, empty strings, encoding) and reports warnings for punctuation, untranslated strings, and plural-form cleanup |
+
+### Adding a New Language
+
+1. Create `web/src/i18n/locales/<lang>/` with all 10 namespace JSON files — they are picked up automatically via `import.meta.glob`
+2. In `web/src/i18n/index.ts`, add the language code to `supportedLanguages` and its native display name to `languageNames`
+3. Run `pnpm check:i18n` to validate English-key usage plus shared guards; if the new locale is not `zh-CN`, add or adapt a locale-coverage script because the current diff checker is zh-CN-specific
+
+### Translation Workflow
+
+Before translating or reviewing a new locale:
+
+1. Read the English namespace JSON and the relevant UI/components first so strings are translated in product context, not in isolation
+2. Research language-specific gotchas up front: plural rules, punctuation, formality/register, date/time wording, capitalization, technical-term handling, and any script/encoding concerns
+3. Keep a small glossary for product names, torrent/domain terms, and words that should stay in English vs be translated
+4. Preserve placeholders, HTML tags, and key structure exactly unless the locale checker explicitly allows a locale-specific exception
+5. Treat examples, paths, URLs, commands, and technical notation separately from user-facing copy; many should stay as-is
+6. Before calling the locale complete, add or adapt a `<lang>` coverage script against English and run it
+
+Locale coverage is not optional for new languages. The checker must compare every namespace file against English for:
+
+- missing keys
+- extra keys
+- interpolation placeholders
+- HTML tag parity
+- plural-form handling
+- empty strings
+- encoding / JSON validity
+
+Locale-specific quality rules such as punctuation, untranslated technical terms, or style consistency can be warnings, but key coverage and structural parity should fail the check.
+
+### i18n Conventions
+
+- **Plural forms:** English uses `_one`/`_other` (i18next v4 CLDR). Chinese has no plural -- zh-CN only needs `_other`. Legacy `_plural` keys are manually dispatched in code and must exist in all locales.
+- **Technical terms:** Product names and many torrent ecosystem terms are intentionally left in English where that reads better (`qBittorrent`, `Prowlarr`, `DHT`, `PEX`, etc.). Treat this as a translation guideline, not a blanket rule.
+- **Interpolation:** All `{{variable}}` placeholders must be preserved. `{{plural}}` is English-specific and can be omitted in non-English locales.
+- **Chinese punctuation:** Prefer full-width `，。：；！？` in Chinese text. Half-width is still correct inside URLs, IPs, file paths, and technical notation, and the current checker reports punctuation issues as warnings rather than hard failures.
 
 ## Architecture Quick Reference
 
@@ -149,3 +222,7 @@ web/src/                     React 19 + Vite + TypeScript + Tailwind v4
 2. Torrent state cached in-memory with delta updates
 3. Frontend fetches via REST API, real-time updates via SSE
 4. Cross-seed service listens for torrent completion events
+
+## Notes
+
+- `web/src/components/torrents/TorrentDetailsPanel.tsx` live row state (speed/progress/ratio/state) is stream-backed via `useSyncStream`; polling only runs as a fallback while the stream is unavailable. The Content (files) and Peers tabs still poll on an interval, but that polling is tab-scoped and visibility-gated, so streaming them is optional future work rather than a pending migration.

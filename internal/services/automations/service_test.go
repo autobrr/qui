@@ -18,7 +18,31 @@ import (
 	"github.com/autobrr/qui/internal/dbinterface"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/notifications"
 )
+
+func TestNormalizeShareLimitEnum(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{in: "", want: ""},
+		{in: "  ", want: ""},
+		{in: "Default", want: ""},
+		{in: "default", want: ""},
+		{in: "Stop", want: "Stop"},
+		{in: " MatchAny ", want: "MatchAny"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, normalizeShareLimitEnum(tc.in))
+		})
+	}
+}
 
 // -----------------------------------------------------------------------------
 // matchesTracker tests
@@ -154,6 +178,36 @@ func TestMatchesTracker(t *testing.T) {
 			domains: []string{"tracker.example.com"},
 			want:    false,
 		},
+		{
+			name:    "exclude single tracker match",
+			pattern: "!tracker.example.com",
+			domains: []string{"tracker.example.com"},
+			want:    false,
+		},
+		{
+			name:    "exclude single tracker non-match",
+			pattern: "!tracker.example.com",
+			domains: []string{"other.tracker.com"},
+			want:    true,
+		},
+		{
+			name:    "include and exclude where exclude wins",
+			pattern: "tracker.example.com,!tracker.example.com",
+			domains: []string{"tracker.example.com"},
+			want:    false,
+		},
+		{
+			name:    "include and exclude where include matches",
+			pattern: "tracker.example.com,!other.tracker.com",
+			domains: []string{"tracker.example.com"},
+			want:    true,
+		},
+		{
+			name:    "exclude supports glob",
+			pattern: "!*.example.com",
+			domains: []string{"tracker.example.com"},
+			want:    false,
+		},
 
 		// Multiple domains
 		{
@@ -274,7 +328,7 @@ func TestDetectCrossSeeds(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := detectCrossSeeds(tc.target, tc.allTorrents)
+			got := detectCrossSeeds(tc.target, buildContentPathIndex(tc.allTorrents))
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -509,48 +563,6 @@ func TestRulesCanShareSortingBatch_RejectsRuleScopedSortingContext(t *testing.T)
 		&models.Automation{SortingConfig: freeSpaceSort},
 		&models.Automation{SortingConfig: freeSpaceSort},
 	))
-}
-
-func TestShouldBlockGroupedMoveTriggerFallback(t *testing.T) {
-	torrents := []qbt.Torrent{
-		{Hash: "a", ContentPath: "/data/shared", SavePath: "/data", Ratio: 3.0},
-		{Hash: "b", ContentPath: "/data/shared", SavePath: "/data", Ratio: 1.0},
-	}
-	torrentByHash := map[string]qbt.Torrent{
-		"a": torrents[0],
-		"b": torrents[1],
-	}
-	crossSeedIndex := buildCrossSeedIndex(torrents)
-
-	t.Run("disabled block flag returns false", func(t *testing.T) {
-		state := &torrentDesiredState{moveBlockIfCrossSeed: false}
-		require.False(t, shouldBlockGroupedMoveTriggerFallback("a", state, torrentByHash, crossSeedIndex, nil))
-	})
-
-	t.Run("nil condition does not block", func(t *testing.T) {
-		state := &torrentDesiredState{
-			moveBlockIfCrossSeed: true,
-			moveCondition:        nil,
-		}
-		require.False(t, shouldBlockGroupedMoveTriggerFallback("a", state, torrentByHash, crossSeedIndex, nil))
-	})
-
-	t.Run("condition mismatch in cross-seed blocks fallback", func(t *testing.T) {
-		state := &torrentDesiredState{
-			moveBlockIfCrossSeed: true,
-			moveCondition: &models.RuleCondition{
-				Field:    models.FieldRatio,
-				Operator: models.OperatorGreaterThan,
-				Value:    "2.0",
-			},
-		}
-		require.True(t, shouldBlockGroupedMoveTriggerFallback("a", state, torrentByHash, crossSeedIndex, nil))
-	})
-
-	t.Run("missing torrent is blocked conservatively", func(t *testing.T) {
-		state := &torrentDesiredState{moveBlockIfCrossSeed: true}
-		require.True(t, shouldBlockGroupedMoveTriggerFallback("missing", state, torrentByHash, crossSeedIndex, nil))
-	})
 }
 
 func TestPrepareRuleForDryRun(t *testing.T) {
@@ -790,19 +802,6 @@ func TestCrossSeedRuleRefsByKey(t *testing.T) {
 	require.Equal(t, got[keyB], gotShuffled[keyB])
 }
 
-func TestCategoryExpandableHashes(t *testing.T) {
-	t.Parallel()
-
-	hashes := []string{"h1", "h2", "h3"}
-	states := map[string]*torrentDesiredState{
-		"h1": {categoryIncludeCrossSeeds: false},
-		"h2": {categoryIncludeCrossSeeds: true},
-	}
-
-	got := categoryExpandableHashes(hashes, states)
-	require.Equal(t, []string{"h2"}, got)
-}
-
 func TestCategoryCrossSeedRuleAttributionUsesExpandableHashes(t *testing.T) {
 	t.Parallel()
 
@@ -814,12 +813,8 @@ func TestCategoryCrossSeedRuleAttributionUsesExpandableHashes(t *testing.T) {
 		"h1": {id: 10, name: "Non expanding rule"},
 		"h2": {id: 20, name: "Expanding rule"},
 	}
-	states := map[string]*torrentDesiredState{
-		"h1": {categoryIncludeCrossSeeds: false},
-		"h2": {categoryIncludeCrossSeeds: true},
-	}
-
-	expandableHashes := categoryExpandableHashes([]string{"h1", "h2"}, states)
+	// Only h2 opts into cross-seed expansion, so rule attribution must use it.
+	expandableHashes := []string{"h2"}
 	got := crossSeedRuleRefsByKey(expandableHashes, torrentByHash, ruleByHash)
 
 	key, ok := makeCrossSeedKey(torrentByHash["h1"])
@@ -937,81 +932,6 @@ func TestLimitHashBatch(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := limitHashBatch(tc.hashes, tc.max)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
-// -----------------------------------------------------------------------------
-// torrentHasTag tests
-// -----------------------------------------------------------------------------
-
-func TestTorrentHasTag(t *testing.T) {
-	tests := []struct {
-		name      string
-		tags      string
-		candidate string
-		want      bool
-	}{
-		{
-			name:      "empty tags",
-			tags:      "",
-			candidate: "tagA",
-			want:      false,
-		},
-		{
-			name:      "single tag match",
-			tags:      "tagA",
-			candidate: "tagA",
-			want:      true,
-		},
-		{
-			name:      "single tag no match",
-			tags:      "tagA",
-			candidate: "tagB",
-			want:      false,
-		},
-		{
-			name:      "multiple tags first match",
-			tags:      "tagA, tagB, tagC",
-			candidate: "tagA",
-			want:      true,
-		},
-		{
-			name:      "multiple tags middle match",
-			tags:      "tagA, tagB, tagC",
-			candidate: "tagB",
-			want:      true,
-		},
-		{
-			name:      "multiple tags last match",
-			tags:      "tagA, tagB, tagC",
-			candidate: "tagC",
-			want:      true,
-		},
-		{
-			name:      "case insensitive",
-			tags:      "TagA, TAGB",
-			candidate: "taga",
-			want:      true,
-		},
-		{
-			name:      "whitespace trimmed",
-			tags:      "  tagA  ,  tagB  ",
-			candidate: "tagA",
-			want:      true,
-		},
-		{
-			name:      "partial match fails",
-			tags:      "tagABC",
-			candidate: "tagA",
-			want:      false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := torrentHasTag(tc.tags, tc.candidate)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -1141,8 +1061,8 @@ func TestCategoryLastRuleWins(t *testing.T) {
 	}
 
 	// Process rules in order
-	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
-	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil, nil)
 
 	// Last rule wins - category should be "completed"
 	require.NotNil(t, state.category)
@@ -1186,8 +1106,8 @@ func TestCategoryLastRuleWinsEvenWhenMatchesCurrent(t *testing.T) {
 	}
 
 	// Process rules in order
-	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil)
-	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule1, torrent, state, nil, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule2, torrent, state, nil, nil, nil, nil, nil, nil)
 
 	// Last rule wins - category should be "movies"
 	// Even though it matches current, the processor should set it (service filters no-op)
@@ -1229,7 +1149,7 @@ func TestCategoryWithCondition(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil, nil)
 
 	// Condition matched, category should be set
 	require.NotNil(t, state.category)
@@ -1270,7 +1190,7 @@ func TestCategoryConditionNotMet(t *testing.T) {
 		tagActions:  make(map[string]string),
 	}
 
-	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil)
+	processRuleForTorrent(rule, torrent, state, nil, nil, nil, nil, nil, nil)
 
 	// Condition not met, category should not be set
 	assert.Nil(t, state.category)
@@ -1430,7 +1350,7 @@ func TestFindCrossSeedGroup(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.scenario, func(t *testing.T) {
-			got := findCrossSeedGroup(tc.target, tc.allTorrents)
+			got := findCrossSeedGroup(tc.target, buildContentPathIndex(tc.allTorrents))
 			if tc.wantHashes == nil {
 				assert.Nil(t, got)
 			} else {
@@ -1446,44 +1366,207 @@ func TestFindCrossSeedGroup(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------------
+// ruleUsesHardlinkSignatureGrouping tests
+// -----------------------------------------------------------------------------
+
+func TestRuleUsesHardlinkSignatureGrouping(t *testing.T) {
+	tests := []struct {
+		name string
+		rule *models.Automation
+		want bool
+	}{
+		{
+			name: "nil rule",
+			rule: nil,
+			want: false,
+		},
+		{
+			name: "disabled rule",
+			rule: &models.Automation{Enabled: false},
+			want: false,
+		},
+		{
+			name: "disabled preview rule still detects hardlink_signature condition usage",
+			rule: &models.Automation{
+				Enabled: false,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldIsGrouped,
+								GroupID: "hardlink_signature",
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "default group is hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Grouping: &models.GroupingConfig{
+						DefaultGroupID: "hardlink_signature",
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "delete action GroupID is hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Grouping: &models.GroupingConfig{},
+					Delete: &models.DeleteAction{
+						Enabled: true,
+						GroupID: "hardlink_signature",
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "tag condition uses IS_GROUPED with hardlink_signature, no grouping config",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldIsGrouped,
+								GroupID: "hardlink_signature",
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "tag condition uses GROUP_SIZE with hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldGroupSize,
+								GroupID: "hardlink_signature",
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "nested condition uses hardlink_signature",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Operator: "AND",
+								Conditions: []*models.RuleCondition{
+									{
+										Field:   models.FieldIsGrouped,
+										GroupID: "hardlink_signature",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "tag condition with unrelated groupId",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Tags: []*models.TagAction{
+						{
+							Enabled: true,
+							Condition: &models.RuleCondition{
+								Field:   models.FieldIsGrouped,
+								GroupID: "cross_seed_content_path",
+							},
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "no grouping references at all",
+			rule: &models.Automation{
+				Enabled: true,
+				Conditions: &models.ActionConditions{
+					Delete: &models.DeleteAction{
+						Enabled: true,
+						Mode:    "delete",
+					},
+				},
+			},
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ruleUsesHardlinkSignatureGrouping(tc.rule)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
 // HardlinkIndex.GetHardlinkCopies tests
 // -----------------------------------------------------------------------------
 
 func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 	tests := []struct {
-		name             string
-		triggerHash      string
-		signatureByHash  map[string]string
-		groupBySignature map[string][]string
-		wantCopies       []string
+		name                      string
+		triggerHash               string
+		deleteSafeSignatureByHash map[string]string
+		deleteSafeGroupBySig      map[string][]string
+		wantCopies                []string
 	}{
 		{
 			name:        "trigger hash not in any group",
 			triggerHash: "not-found",
-			signatureByHash: map[string]string{
+			deleteSafeSignatureByHash: map[string]string{
 				"abc123": "sig1",
 				"def456": "sig1",
 			},
-			groupBySignature: map[string][]string{
+			deleteSafeGroupBySig: map[string][]string{
 				"sig1": {"abc123", "def456"},
 			},
 			wantCopies: nil,
 		},
 		{
-			name:             "trigger is only member of group (singleton filtered out)",
-			triggerHash:      "abc123",
-			signatureByHash:  map[string]string{}, // Singleton groups are filtered, so no entry
-			groupBySignature: map[string][]string{},
-			wantCopies:       nil,
+			name:                      "trigger is only member of group (singleton filtered out)",
+			triggerHash:               "abc123",
+			deleteSafeSignatureByHash: map[string]string{}, // Singleton groups are filtered, so no entry
+			deleteSafeGroupBySig:      map[string][]string{},
+			wantCopies:                nil,
 		},
 		{
 			name:        "trigger has one hardlink copy",
 			triggerHash: "abc123",
-			signatureByHash: map[string]string{
+			deleteSafeSignatureByHash: map[string]string{
 				"abc123": "sig1",
 				"def456": "sig1",
 			},
-			groupBySignature: map[string][]string{
+			deleteSafeGroupBySig: map[string][]string{
 				"sig1": {"abc123", "def456"},
 			},
 			wantCopies: []string{"def456"},
@@ -1491,12 +1574,12 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 		{
 			name:        "trigger has multiple hardlink copies",
 			triggerHash: "abc123",
-			signatureByHash: map[string]string{
+			deleteSafeSignatureByHash: map[string]string{
 				"abc123": "sig1",
 				"def456": "sig1",
 				"ghi789": "sig1",
 			},
-			groupBySignature: map[string][]string{
+			deleteSafeGroupBySig: map[string][]string{
 				"sig1": {"abc123", "def456", "ghi789"},
 			},
 			wantCopies: []string{"def456", "ghi789"},
@@ -1504,41 +1587,50 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 		{
 			name:        "multiple groups, trigger in second",
 			triggerHash: "xyz999",
-			signatureByHash: map[string]string{
+			deleteSafeSignatureByHash: map[string]string{
 				"abc123": "sig1",
 				"def456": "sig1",
 				"xyz999": "sig2",
 				"uvw888": "sig2",
 			},
-			groupBySignature: map[string][]string{
+			deleteSafeGroupBySig: map[string][]string{
 				"sig1": {"abc123", "def456"},
 				"sig2": {"xyz999", "uvw888"},
 			},
 			wantCopies: []string{"uvw888"},
 		},
 		{
-			name:             "nil index returns nil",
-			triggerHash:      "abc123",
-			signatureByHash:  nil,
-			groupBySignature: nil,
-			wantCopies:       nil,
+			name:                      "nil index returns nil",
+			triggerHash:               "abc123",
+			deleteSafeSignatureByHash: nil,
+			deleteSafeGroupBySig:      nil,
+			wantCopies:                nil,
 		},
 		{
-			name:             "empty index returns nil",
-			triggerHash:      "abc123",
-			signatureByHash:  map[string]string{},
-			groupBySignature: map[string][]string{},
-			wantCopies:       nil,
+			name:                      "empty index returns nil",
+			triggerHash:               "abc123",
+			deleteSafeSignatureByHash: map[string]string{},
+			deleteSafeGroupBySig:      map[string][]string{},
+			wantCopies:                nil,
+		},
+		{
+			name:                      "grouping-only signatures do not expand deletes",
+			triggerHash:               "abc123",
+			deleteSafeSignatureByHash: map[string]string{},
+			deleteSafeGroupBySig:      map[string][]string{},
+			wantCopies:                nil,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var idx *HardlinkIndex
-			if tc.signatureByHash != nil || tc.groupBySignature != nil {
+			if tc.deleteSafeSignatureByHash != nil || tc.deleteSafeGroupBySig != nil {
 				idx = &HardlinkIndex{
-					SignatureByHash:  tc.signatureByHash,
-					GroupBySignature: tc.groupBySignature,
+					SignatureByHash:            map[string]string{"abc123": "sig1", "def456": "sig1"},
+					GroupBySignature:           map[string][]string{"sig1": {"abc123", "def456"}},
+					DeleteSafeSignatureByHash:  tc.deleteSafeSignatureByHash,
+					DeleteSafeGroupBySignature: tc.deleteSafeGroupBySig,
 				}
 			}
 			got := idx.GetHardlinkCopies(tc.triggerHash)
@@ -1549,6 +1641,24 @@ func TestHardlinkIndex_GetHardlinkCopies(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSetupHardlinkSignatureContext_UsesDeleteSafeSignatures(t *testing.T) {
+	svc := &Service{}
+	evalCtx := &EvalContext{
+		HardlinkSignatureByHash: map[string]string{"abc123": "grouping-sig"},
+	}
+	hardlinkIndex := &HardlinkIndex{
+		SignatureByHash:           map[string]string{"abc123": "grouping-sig"},
+		DeleteSafeSignatureByHash: map[string]string{"abc123": "delete-sig"},
+	}
+	cond := &RuleCondition{Field: FieldFreeSpace}
+
+	svc.setupHardlinkSignatureContext(evalCtx, hardlinkIndex, cond, false, true)
+
+	require.Equal(t, map[string]string{"abc123": "grouping-sig"}, evalCtx.HardlinkSignatureByHash)
+	require.Equal(t, map[string]string{"abc123": "delete-sig"}, evalCtx.DeleteSafeHardlinkSignatureByHash)
+	require.NotNil(t, evalCtx.HardlinkSignaturesToClear)
 }
 
 // -----------------------------------------------------------------------------
@@ -1592,9 +1702,10 @@ func TestDeleteFreesSpace_IncludeCrossSeeds(t *testing.T) {
 		},
 	}
 
+	cpIndex := buildContentPathIndex(allTorrents)
 	for _, tc := range tests {
 		t.Run(tc.scenario, func(t *testing.T) {
-			got := deleteFreesSpace(tc.mode, target, allTorrents)
+			got := deleteFreesSpace(tc.mode, target, cpIndex)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -1626,9 +1737,10 @@ func TestDeleteFreesSpace_NoCrossSeeds(t *testing.T) {
 		},
 	}
 
+	cpIndex := buildContentPathIndex(allTorrents)
 	for _, tc := range tests {
 		t.Run(tc.scenario, func(t *testing.T) {
-			got := deleteFreesSpace(tc.mode, target, allTorrents)
+			got := deleteFreesSpace(tc.mode, target, cpIndex)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -1653,13 +1765,14 @@ func TestUpdateCumulativeFreeSpaceCleared_NeededView(t *testing.T) {
 	}
 
 	// Simulate "needed" mode processing: each deletion updates SpaceToClear
-	updateCumulativeFreeSpaceCleared(allTorrents[0], evalCtx, DeleteModeWithFiles, allTorrents)
+	cpIndex := buildContentPathIndex(allTorrents)
+	updateCumulativeFreeSpaceCleared(allTorrents[0], evalCtx, DeleteModeWithFiles, cpIndex)
 	assert.Equal(t, int64(100*1024*1024*1024), evalCtx.SpaceToClear)
 
-	updateCumulativeFreeSpaceCleared(allTorrents[1], evalCtx, DeleteModeWithFiles, allTorrents)
+	updateCumulativeFreeSpaceCleared(allTorrents[1], evalCtx, DeleteModeWithFiles, cpIndex)
 	assert.Equal(t, int64(150*1024*1024*1024), evalCtx.SpaceToClear)
 
-	updateCumulativeFreeSpaceCleared(allTorrents[2], evalCtx, DeleteModeWithFiles, allTorrents)
+	updateCumulativeFreeSpaceCleared(allTorrents[2], evalCtx, DeleteModeWithFiles, cpIndex)
 	assert.Equal(t, int64(180*1024*1024*1024), evalCtx.SpaceToClear)
 }
 
@@ -1697,7 +1810,7 @@ func TestPreviewViewBehavior_CrossSeedExpansion(t *testing.T) {
 	}
 
 	// findCrossSeedGroup should return both a and b for target a
-	group := findCrossSeedGroup(allTorrents[0], allTorrents)
+	group := findCrossSeedGroup(allTorrents[0], buildContentPathIndex(allTorrents))
 	require.NotNil(t, group)
 	assert.Len(t, group, 2)
 
@@ -1873,7 +1986,9 @@ func TestRecordDryRunActivities_Deletes(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		pending,
+		nil,
 		nil,
 		map[string]qbt.Torrent{"abc123": torrent},
 		[]qbt.Torrent{torrent},
@@ -1916,6 +2031,8 @@ func TestRecordDryRunActivities_Resumes(t *testing.T) {
 		nil,
 		nil,
 		[]string{"abc123", "abc123"},
+		nil,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -2012,7 +2129,9 @@ func TestRecordDryRunActivities_Categories_IncludeCrossSeeds_DoesNotRequireCondi
 		nil,
 		nil,
 		nil,
+		nil,
 		categoryBatches,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -2051,6 +2170,8 @@ func TestRecordDryRunActivities_NoMatches_LogsSummary(t *testing.T) {
 	activities := s.recordDryRunActivities(
 		context.Background(),
 		1,
+		nil,
+		nil,
 		nil,
 		nil,
 		nil,
@@ -2126,7 +2247,9 @@ func TestRecordDryRunActivities_CategoryUnknownGroupID_DoesNotPanicAndSkips(t *t
 			nil,
 			nil,
 			nil,
+			nil,
 			map[string][]string{"movies": {"abc123"}},
+			nil,
 			nil,
 			nil,
 			nil,
@@ -2227,7 +2350,9 @@ func TestRecordDryRunActivities_MoveGroupRequiresAllMembersMatchCondition(t *tes
 		nil,
 		nil,
 		nil,
+		nil,
 		map[string][]string{"/data/moved": {"a"}},
+		nil,
 		nil,
 		nil,
 		torrentByHash,
@@ -2275,11 +2400,59 @@ func TestRecordDryRunActivities_NoMatches_DoesNotLogSummaryWhenDisabled(t *testi
 		nil,
 		nil,
 		nil,
+		nil,
+		nil,
 		false,
 	)
 
 	require.Empty(t, activities)
 	require.Empty(t, mockDB.activities)
+}
+
+func TestNotifyAutomationSummaryFiltersSuppressedRules(t *testing.T) {
+	t.Parallel()
+
+	notifier := &automationRecordingNotifier{}
+	s := &Service{notifier: notifier}
+
+	summary := newAutomationSummary()
+	notifyRuleID := 42
+	suppressedRuleID := 43
+
+	summary.recordActivity(&models.AutomationActivity{
+		RuleID:      &notifyRuleID,
+		RuleName:    "Notify me",
+		Action:      models.ActivityActionMoved,
+		Outcome:     models.ActivityOutcomeSuccess,
+		TorrentName: "Notify.Release.2026",
+	}, 1)
+	summary.recordActivity(&models.AutomationActivity{
+		RuleID:      &suppressedRuleID,
+		RuleName:    "Suppress me",
+		Action:      models.ActivityActionMoved,
+		Outcome:     models.ActivityOutcomeFailed,
+		TorrentName: "Suppressed.Release.2026",
+		Reason:      "permission denied",
+	}, 1)
+
+	s.notifyAutomationSummary(context.Background(), 1, summary, []*models.Automation{
+		{ID: notifyRuleID, Notify: true},
+		{ID: suppressedRuleID, Notify: false},
+	})
+
+	events := notifier.Events()
+	require.Len(t, events, 1)
+
+	event := events[0]
+	require.Equal(t, notifications.EventAutomationsActionsApplied, event.Type)
+	require.Equal(t, 1, event.Automations.Applied)
+	require.Equal(t, 0, event.Automations.Failed)
+	require.Len(t, event.Automations.Rules, 1)
+	require.Equal(t, notifyRuleID, event.Automations.Rules[0].RuleID)
+	require.Equal(t, "Notify me", event.Automations.Rules[0].RuleName)
+	require.NotContains(t, event.Message, "Suppress me")
+	require.NotContains(t, event.Message, "permission denied")
+	require.NotContains(t, event.Message, "Suppressed.Release.2026")
 }
 
 // mockQuerier implements dbinterface.Querier for testing activity logging
@@ -2324,3 +2497,17 @@ type mockResult struct{}
 
 func (m mockResult) LastInsertId() (int64, error) { return 0, nil }
 func (m mockResult) RowsAffected() (int64, error) { return 1, nil }
+
+type automationRecordingNotifier struct {
+	events []notifications.Event
+}
+
+func (r *automationRecordingNotifier) Notify(_ context.Context, event notifications.Event) {
+	r.events = append(r.events, event)
+}
+
+func (r *automationRecordingNotifier) Events() []notifications.Event {
+	out := make([]notifications.Event, len(r.events))
+	copy(out, r.events)
+	return out
+}

@@ -17,7 +17,7 @@ import type {
   MarkRSSAsReadRequest,
   SetRSSRuleRequest,
   RenameRSSRuleRequest,
-  SetRSSFeedURLRequest,
+  SetRSSFeedURLRequest
 } from "@/types"
 
 // Query keys

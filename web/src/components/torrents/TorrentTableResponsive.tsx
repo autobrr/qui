@@ -7,9 +7,8 @@ import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useCrossSeedSearch } from "@/hooks/useCrossSeedSearch"
 import { useIsMobile } from "@/hooks/useMediaQuery"
 import { isAllInstancesScope } from "@/lib/instances"
-import type { Category, ServerState, Torrent, TorrentCounts, TorrentFilters } from "@/types"
+import type { Category, Torrent, TorrentCounts, TorrentFilters } from "@/types"
 import { useEffect } from "react"
-import type { SelectionInfo } from "./GlobalStatusBar"
 import { TorrentCardsMobile } from "./TorrentCardsMobile"
 import { TorrentTableOptimized } from "./TorrentTableOptimized"
 
@@ -28,11 +27,10 @@ interface TorrentTableResponsiveProps {
     counts?: TorrentCounts,
     categories?: Record<string, Category>,
     tags?: string[],
-    useSubcategories?: boolean
+    useSubcategories?: boolean,
+    supportsTrackerHealth?: boolean
   ) => void
   onFilterChange?: (filters: TorrentFilters) => void
-  onServerStateUpdate?: (serverState: ServerState | null, listenPort?: number | null) => void
-  onSelectionInfoUpdate?: (info: SelectionInfo) => void
 }
 
 export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
@@ -56,7 +54,6 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
       <>
         <TorrentCardsMobile
           {...memoizedProps}
-          onFilterChange={allowCrossSeedSearch ? props.onFilterChange : undefined}
           canCrossSeedSearch={allowCrossSeedSearch ? crossSeed.canCrossSeedSearch : false}
           onCrossSeedSearch={allowCrossSeedSearch ? crossSeed.openCrossSeedSearch : undefined}
           isCrossSeedSearching={allowCrossSeedSearch ? crossSeed.isCrossSeedSearching : false}
@@ -72,7 +69,6 @@ export function TorrentTableResponsive(props: TorrentTableResponsiveProps) {
         readOnly={readOnly}
         onSelectionChange={updateSelection}
         onResetSelection={setResetHandler}
-        onFilterChange={allowCrossSeedSearch ? props.onFilterChange : undefined}
         canCrossSeedSearch={allowCrossSeedSearch ? crossSeed.canCrossSeedSearch : false}
         onCrossSeedSearch={allowCrossSeedSearch ? crossSeed.openCrossSeedSearch : undefined}
         isCrossSeedSearching={allowCrossSeedSearch ? crossSeed.isCrossSeedSearching : false}

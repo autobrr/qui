@@ -28,7 +28,7 @@ on:
 env:
   REGISTRY: ghcr.io
   REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
-  NODE_VERSION: "22.18.0"
+  NODE_VERSION: "24.15.0"
   POLAR_ORG_ID: ${{ secrets.POLAR_ORG_ID }}
 
 permissions:
@@ -52,9 +52,9 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6.0.8
         with:
-          version: latest
+          package_json_file: web/package.json
 
       - name: Get pnpm store directory
         shell: bash
@@ -88,13 +88,19 @@ jobs:
         working-directory: web
         run: pnpm install --frozen-lockfile
 
-      - name: Type check frontend
+      - name: Run frontend tests
         working-directory: web
-        run: pnpm tsc --noEmit
+        run: pnpm test
 
-      - name: Build web frontend
+      - name: Type check and build frontend
         working-directory: web
-        run: CI= pnpm run build
+        run: |
+          pnpm tsc --noEmit &
+          TSC_PID=$!
+          CI= pnpm run build &
+          BUILD_PID=$!
+          wait $TSC_PID || exit 1
+          wait $BUILD_PID || exit 1
 
       - name: Upload web production build
         uses: actions/upload-artifact@v7
@@ -102,56 +108,9 @@ jobs:
           name: web-dist
           path: web/dist
 
-  test:
-    name: Run tests
-    runs-on: ubuntu-latest
-    needs: [web]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Download web production build
-        uses: actions/download-artifact@v8
-        with:
-          name: web-dist
-          path: web/dist
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Cache Go modules
-        uses: actions/cache@v5
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      - name: Install dependencies
-        run: go mod download
-
-      - name: Run tests
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            go test -v -coverprofile=coverage.out ./...
-          else
-            go test -v -race -coverprofile=coverage.out ./...
-          fi
-          go tool cover -html=coverage.out -o coverage.html
-
-      - name: Upload coverage reports
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-report
-          path: |
-            coverage.out
-            coverage.html
-
   goreleaserbuild:
     name: Build distribution binaries
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     needs: [test, web]
     steps:
@@ -166,33 +125,52 @@ jobs:
           name: web-dist
           path: web/dist
 
+      - name: Create web dist tarball
+        run: tar -czf web-dist.tar.gz -C . web/dist
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
           cache: true
 
-      - name: Run GoReleaser build
-        if: github.event_name == 'pull_request'
-        uses: goreleaser/goreleaser-action@v7
-        with:
-          distribution: goreleaser
-          version: "~> v2"
-          args: release --clean --skip=validate,publish --parallelism 5
+      - name: Prepare release signing key
+        if: startsWith(github.ref, 'refs/tags/')
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BUILDER: ${{ github.actor }}@github-actions
+          RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.RELEASE_SIGNING_PRIVATE_KEY }}
+        run: |
+          test -n "$RELEASE_SIGNING_PRIVATE_KEY"
+          key_file="$RUNNER_TEMP/release-signing-key.pem"
+          printf '%s' "$RELEASE_SIGNING_PRIVATE_KEY" > "$key_file"
+          chmod 600 "$key_file"
+          echo "RELEASE_SIGNING_KEY_FILE=$key_file" >> "$GITHUB_ENV"
+
+      - name: Verify release signing key matches embedded updater cert
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cert_public_key_file="$RUNNER_TEMP/release-signing-cert.pub.der"
+          signing_public_key_file="$RUNNER_TEMP/release-signing-key.pub.der"
+
+          openssl x509 -in internal/update/release_signing_cert.pem -pubkey -noout |
+            openssl pkey -pubin -outform DER > "$cert_public_key_file"
+          openssl pkey -in "$RELEASE_SIGNING_KEY_FILE" -pubout -outform DER > "$signing_public_key_file"
+
+          if ! cmp -s "$cert_public_key_file" "$signing_public_key_file"; then
+            echo "::error::RELEASE_SIGNING_PRIVATE_KEY does not match internal/update/release_signing_cert.pem"
+            exit 1
+          fi
 
       - name: Run GoReleaser build and publish tags
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: goreleaser/goreleaser-action@v7
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/develop'
+        uses: goreleaser/goreleaser-action@v7.2.2
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean
+          args: ${{ startsWith(github.ref, 'refs/tags/') && 'release --clean --config .goreleaser.release.yml' || 'release --skip=publish,sign --snapshot --clean --config .goreleaser.release.yml' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BUILDER: ${{ github.actor }}@github-actions
+          RELEASE_SIGNING_KEY_FILE: ${{ env.RELEASE_SIGNING_KEY_FILE }}
 
       - name: Upload assets
         uses: actions/upload-artifact@v7
@@ -203,29 +181,99 @@ jobs:
             dist/*.zip
             dist/*.deb
             dist/*.rpm
+          if-no-files-found: error
 
-  docker:
-    name: Build Docker images
+  goreleasersignedsmoke:
+    name: PR signed release smoke test (ephemeral key)
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    needs: [test, web]
-    strategy:
-      fail-fast: true
-      matrix:
-        platform:
-          - linux/amd64
-          - linux/amd64/v2
-          - linux/amd64/v3
-          - linux/arm/v6
-          - linux/arm/v7
-          - linux/arm64
+    needs: [web]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
+      - name: Download web production build
+        uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Create web dist tarball
+        run: tar -czf web-dist.tar.gz -C . web/dist
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Cache Go build artifacts
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/go-build
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-build-
+
+      - name: Prepare ephemeral release signing key
+        run: |
+          key_file="$RUNNER_TEMP/release-signing-key.pem"
+          openssl ecparam -name prime256v1 -genkey -noout -out "$key_file"
+          chmod 600 "$key_file"
+          echo "RELEASE_SIGNING_KEY_FILE=$key_file" >> "$GITHUB_ENV"
+          echo "POLAR_ORG_ID=00000000-0000-0000-0000-000000000000" >> "$GITHUB_ENV"
+
+      - name: Run signed GoReleaser smoke build
+        uses: goreleaser/goreleaser-action@v7.2.2
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --snapshot --clean --config .goreleaser.release.yml --parallelism 5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILDER: ${{ github.actor }}@github-actions
+          POLAR_ORG_ID: ${{ env.POLAR_ORG_ID }}
+          RELEASE_SIGNING_KEY_FILE: ${{ env.RELEASE_SIGNING_KEY_FILE }}
+
+      - name: Verify signed checksum signature
+        run: |
+          public_key_file="$RUNNER_TEMP/release-signing-key.pub.pem"
+          openssl pkey -in "$RELEASE_SIGNING_KEY_FILE" -pubout -out "$public_key_file"
+          openssl dgst -sha256 \
+            -verify "$public_key_file" \
+            -signature dist/checksums.txt.sig \
+            dist/checksums.txt
+
+  docker-matrix:
+    name: Determine Docker platforms
+    runs-on: ubuntu-latest
+    outputs:
+      platforms: ${{ steps.set.outputs.platforms }}
+    steps:
+      - id: set
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo 'platforms=["linux/amd64","linux/arm64"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'platforms=["linux/amd64","linux/amd64/v2","linux/amd64/v3","linux/arm/v6","linux/arm/v7","linux/arm64"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  docker:
+    name: Build Docker images
+    runs-on: ubuntu-latest
+    needs: [web, docker-matrix]
+    strategy:
+      fail-fast: true
+      matrix:
+        platform: ${{ fromJSON(needs.docker-matrix.outputs.platforms) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@v4.2.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
@@ -258,7 +306,7 @@ jobs:
 
       - name: Build and publish image
         id: docker_build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v7.2.0
         with:
           context: .
           file: ./distrib/docker/ci.Dockerfile
@@ -295,7 +343,7 @@ jobs:
     name: Publish Docker multi-arch manifest
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository || github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
-    needs: [docker]
+    needs: [docker, test]
     steps:
       - name: Download image digests
         uses: actions/download-artifact@v8
@@ -308,7 +356,7 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v4
+        uses: docker/login-action@v4.2.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
@@ -336,3 +384,39 @@ jobs:
       - name: Inspect image
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
+
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Create placeholder web dist for embed
+        run: mkdir -p web/dist && touch web/dist/.gitkeep
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            go test -v -coverprofile=coverage.out ./...
+          else
+            go test -v -race -coverprofile=coverage.out ./...
+          fi
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.html

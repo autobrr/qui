@@ -40,6 +40,27 @@ func TestMigrationNumbering(t *testing.T) {
 	}
 }
 
+func TestPostgresMigrationNumbering(t *testing.T) {
+	files := listPostgresMigrationFiles(t)
+
+	seen := make(map[string]struct{})
+	prev := -1
+
+	for _, name := range files {
+		parts := strings.SplitN(name, "_", 2)
+		require.Lenf(t, parts, 2, "migration file %s must follow <number>_<description>.sql", name)
+
+		number := parts[0]
+		require.NotContainsf(t, seen, number, "Duplicate postgres migration number found: %s", number)
+		seen[number] = struct{}{}
+
+		n, err := strconv.Atoi(number)
+		require.NoErrorf(t, err, "migration prefix %s must be numeric", number)
+		require.Greaterf(t, n, prev, "postgres migration numbers must be strictly increasing (saw %d then %d)", prev, n)
+		prev = n
+	}
+}
+
 func TestMigrationIdempotency(t *testing.T) {
 	log.Logger = log.Output(io.Discard)
 	ctx := t.Context()
@@ -176,6 +197,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "host_id", Type: "INTEGER"},
 		{Name: "username_id", Type: "INTEGER"},
 		{Name: "password_encrypted", Type: "TEXT"},
+		{Name: "api_key_encrypted", Type: "TEXT"},
 		{Name: "basic_username_id", Type: "INTEGER"},
 		{Name: "basic_password_encrypted", Type: "TEXT"},
 		{Name: "tls_skip_verify", Type: "BOOLEAN"},
@@ -262,6 +284,7 @@ var expectedSchema = map[string][]columnSpec{
 		{Name: "created_at", Type: "DATETIME"},
 		{Name: "updated_at", Type: "DATETIME"},
 		{Name: "sorting_config", Type: "TEXT"},
+		{Name: "notify", Type: "INTEGER"},
 	},
 	"automation_activity": {
 		{Name: "id", Type: "INTEGER", PrimaryKey: true},
@@ -300,6 +323,22 @@ var expectedTriggers = []string{
 func listMigrationFiles(t *testing.T) []string {
 	entries, err := migrationsFS.ReadDir("migrations")
 	require.NoError(t, err, "Failed to read migrations directory")
+
+	var files []string
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".sql" {
+			continue
+		}
+		files = append(files, entry.Name())
+	}
+
+	sort.Strings(files)
+	return files
+}
+
+func listPostgresMigrationFiles(t *testing.T) []string {
+	entries, err := postgresMigrationsFS.ReadDir("postgres_migrations")
+	require.NoError(t, err, "Failed to read postgres migrations directory")
 
 	var files []string
 	for _, entry := range entries {
@@ -528,6 +567,64 @@ func TestCleanupUnusedStrings_BasicAuthStringRefs(t *testing.T) {
 	require.True(t, exists, "torznab basic username string must remain referenced")
 	require.NoError(t, conn.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM string_pool WHERE id = ?)", orphanID).Scan(&exists))
 	require.False(t, exists, "orphan string should be cleaned up")
+}
+
+func TestTxTempTableQueriesBypassStatementCache(t *testing.T) {
+	t.Parallel()
+
+	tx := &Tx{}
+	const (
+		createTemp = "CREATE TEMP TABLE current_hashes (hash TEXT PRIMARY KEY)"
+		insertTemp = "INSERT INTO current_hashes (hash) VALUES (?)"
+		deleteTemp = `
+			DELETE FROM torrent_files_cache
+			WHERE torrent_hash_id NOT IN (
+				SELECT id FROM string_pool WHERE value IN (SELECT hash FROM current_hashes)
+			)
+		`
+		dropTemp   = "DROP TABLE current_hashes"
+		normalStmt = "INSERT INTO string_pool (value) VALUES (?)"
+	)
+
+	require.True(t, tx.shouldBypassStatementCache(createTemp))
+	require.Empty(t, tx.tempTables)
+
+	tx.markQueryForCaching(createTemp)
+	require.Contains(t, tx.tempTables, "current_hashes")
+
+	tx.markQueryForCaching(insertTemp)
+	tx.markQueryForCaching(deleteTemp)
+	require.Empty(t, tx.txStmts)
+
+	tx.markQueryForCaching(normalStmt)
+	require.Contains(t, tx.txStmts, normalStmt)
+
+	require.True(t, tx.shouldBypassStatementCache(dropTemp))
+	require.Contains(t, tx.tempTables, "current_hashes")
+
+	tx.markQueryForCaching(dropTemp)
+	require.NotContains(t, tx.txStmts, dropTemp)
+	require.NotContains(t, tx.tempTables, "current_hashes")
+}
+
+func TestTempTableNameParsingUsesFinalIdentifierSegment(t *testing.T) {
+	t.Parallel()
+
+	createName, ok := tempTableNameFromCreate(`CREATE TEMP TABLE "pg_temp"."current_hashes" (hash TEXT PRIMARY KEY)`)
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", createName)
+
+	dropName, ok := tableNameFromDrop("DROP TABLE IF EXISTS [pg_temp].[current_hashes];")
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", dropName)
+}
+
+func TestTempTableNameParsingWithoutSpaceBeforeColumns(t *testing.T) {
+	t.Parallel()
+
+	createName, ok := tempTableNameFromCreate(`CREATE TEMP TABLE current_hashes(hash TEXT PRIMARY KEY)`)
+	require.True(t, ok)
+	require.Equal(t, "current_hashes", createName)
 }
 
 // TestTransactionCommitSuccessMutexRelease tests that the writer mutex is properly released

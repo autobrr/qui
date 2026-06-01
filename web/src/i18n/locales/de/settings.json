@@ -1,0 +1,979 @@
+{
+  "title": "Einstellungen",
+  "description": "Verwalte deine App-Einstellungen und Sicherheit",
+  "tabs": {
+    "application": "Anwendung",
+    "instances": "Instanzen",
+    "indexers": "Indexer",
+    "searchCache": "Such-Cache",
+    "integrations": "Integrationen",
+    "clientProxy": "Client-Proxy",
+    "apiKeys": "API-Keys",
+    "externalPrograms": "Externe Programme",
+    "notifications": "Benachrichtigungen",
+    "dateTime": "Zeit & Sprache",
+    "premiumThemes": "Premium-Designs",
+    "security": "Sicherheit",
+    "logs": "Protokolle"
+  },
+  "language": {
+    "cardTitle": "Sprache",
+    "cardDescription": "Wähle deine bevorzugte Anzeigesprache"
+  },
+  "changePassword": {
+    "currentPassword": "Aktuelles Passwort",
+    "newPassword": "Neues Passwort",
+    "confirmPassword": "Neues Passwort bestätigen",
+    "submit": "Passwort ändern",
+    "submitting": "Wird geändert...",
+    "toasts": {
+      "success": "Passwort erfolgreich geändert",
+      "error": "Passwort konnte nicht geändert werden. Bitte überprüfe dein aktuelles Passwort."
+    },
+    "validation": {
+      "currentRequired": "Aktuelles Passwort ist erforderlich",
+      "newRequired": "Neues Passwort ist erforderlich",
+      "minLength": "Das Passwort muss mindestens 8 Zeichen lang sein",
+      "confirmRequired": "Bitte bestätige dein Passwort",
+      "mismatch": "Die Passwörter stimmen nicht überein"
+    }
+  },
+  "instances": {
+    "title": "Instanzen",
+    "description": "Verwalte deine qBittorrent-Verbindungseinstellungen",
+    "addButton": "Instanz hinzufügen",
+    "loading": "Instanzen werden geladen...",
+    "empty": "Noch keine Instanzen konfiguriert",
+    "addFirst": "Erste Instanz hinzufügen",
+    "titleBarSpeeds": {
+      "label": "Geschwindigkeiten in der Titelleiste",
+      "description": "Download-/Upload-Geschwindigkeiten im Titel des Browser-Tabs anzeigen"
+    },
+    "addDialog": {
+      "title": "Instanz hinzufügen",
+      "description": "Eine neue qBittorrent-Instanz konfigurieren",
+      "cancel": "Abbrechen",
+      "submit": "Instanz hinzufügen",
+      "adding": "Wird hinzugefügt..."
+    },
+    "toasts": {
+      "reorderFailed": "Instanzen konnten nicht neu sortiert werden"
+    }
+  },
+  "integrations": {
+    "title": "ARR-Integrationen",
+    "description": "Konfiguriere Sonarr- und Radarr-Instanzen für erweiterte Cross-Seed-Suchen mit externen IDs"
+  },
+  "clientApiKeys": {
+    "cardTitle": "Client-Proxy-API-Keys",
+    "cardDescription": "Verwalte API-Keys, mit denen sich externe Anwendungen über qui mit qBittorrent-Instanzen verbinden",
+    "createButton": "Client-API-Key erstellen",
+    "loading": "Client-API-Keys werden geladen...",
+    "loadFailed": "Client-API-Keys konnten nicht geladen werden",
+    "featureUnavailable": "Funktion ist in dieser Version möglicherweise nicht verfügbar",
+    "unknownError": "Ein Fehler ist aufgetreten",
+    "instanceDeleted": "Instanz gelöscht",
+    "empty": "Noch keine Client-API-Keys erstellt",
+    "idLabel": "ID: {{id}}",
+    "labels": {
+      "created": "Erstellt:",
+      "lastUsed": "Zuletzt verwendet:",
+      "host": "Host:",
+      "showHost": "Host anzeigen",
+      "hideHost": "Host ausblenden"
+    },
+    "createDialog": {
+      "title": "Client-API-Key erstellen",
+      "description": "Erstelle einen API-Key, mit dem sich ein bestimmter Client mit einer qBittorrent-Instanz verbindet.",
+      "clientNameLabel": "Client-Name",
+      "clientNamePlaceholder": "z. B. autobrr, tqm, sonarr, radarr, cross-seed",
+      "instanceLabel": "qBittorrent-Instanz",
+      "instancePlaceholder": "Instanz auswählen",
+      "creating": "Wird erstellt..."
+    },
+    "newKey": {
+      "title": "API-Key erstellt",
+      "warning": "Diese Informationen werden nur einmal angezeigt. Speichere sie in deinem Passwort-Manager, bevor du den Dialog schließt.",
+      "proxyUrl": "Proxy-URL",
+      "showProxyUrl": "Proxy-URL anzeigen",
+      "hideProxyUrl": "Proxy-URL ausblenden",
+      "copyProxyUrl": "Proxy-URL kopieren",
+      "done": "Fertig"
+    },
+    "deleteDialog": {
+      "title": "Client-API-Key löschen?",
+      "description": "Diese Aktion kann nicht rückgängig gemacht werden. Anwendungen, die diesen Key nutzen, verlieren den Zugriff auf die qBittorrent-Instanz.",
+      "cancel": "Abbrechen",
+      "delete": "Löschen",
+      "deleteLabel": "API-Key {{name}} löschen"
+    },
+    "toasts": {
+      "created": "Client-API-Key erfolgreich erstellt",
+      "createFailed": "Client-API-Key konnte nicht erstellt werden",
+      "deleted": "Client-API-Key erfolgreich gelöscht",
+      "deleteFailed": "Client-API-Key konnte nicht gelöscht werden: {{error}}",
+      "clientNameRequired": "Client-Name ist erforderlich",
+      "selectInstance": "Bitte wähle eine qBittorrent-Instanz aus",
+      "proxyCopied": "Proxy-URL in die Zwischenablage kopiert",
+      "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen"
+    }
+  },
+  "apiKeys": {
+    "cardTitle": "API-Keys",
+    "loadingAuthMode": "Authentifizierungsmodus wird geladen...",
+    "authDisabledTitle": "API-Keys sind nicht verfügbar, solange die integrierte Authentifizierung deaktiviert ist",
+    "authDisabledDescription": "Anfragen, die deinen Reverse-Proxy und die CIDR-Allowlist passieren, können die qui-API direkt nutzen.",
+    "cardDescription": "Verwalte API-Keys für externen Zugriff",
+    "apiDocs": "API-Dokumentation",
+    "description": "Mit API-Keys können externe Anwendungen auf deine qBittorrent-Instanzen zugreifen.",
+    "createButton": "API-Key erstellen",
+    "loading": "API-Keys werden geladen...",
+    "empty": "Noch keine API-Keys erstellt",
+    "createDialog": {
+      "title": "API-Key erstellen",
+      "description": "Gib deinem API-Key einen aussagekräftigen Namen, um seinen Zweck zu erkennen.",
+      "nameLabel": "Name",
+      "namePlaceholder": "z. B. Automatisierungsskript",
+      "nameRequired": "Name ist erforderlich",
+      "submit": "API-Key erstellen",
+      "creating": "Wird erstellt..."
+    },
+    "newKey": {
+      "label": "Dein neuer API-Key",
+      "warning": "Speichere diesen Key jetzt. Du kannst ihn später nicht erneut einsehen.",
+      "done": "Fertig"
+    },
+    "deleteDialog": {
+      "title": "API-Key löschen?",
+      "description": "Diese Aktion kann nicht rückgängig gemacht werden. Anwendungen, die diesen Key nutzen, verlieren den Zugriff.",
+      "cancel": "Abbrechen",
+      "delete": "Löschen"
+    },
+    "toasts": {
+      "created": "API-Key erfolgreich erstellt",
+      "createFailed": "API-Key konnte nicht erstellt werden",
+      "deleted": "API-Key erfolgreich gelöscht",
+      "deleteFailed": "API-Key konnte nicht gelöscht werden",
+      "copied": "API-Key in die Zwischenablage kopiert",
+      "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen"
+    }
+  },
+  "externalPrograms": {
+    "cardTitle": "Externe Programme",
+    "cardDescription": "Externe Programme oder Skripte konfigurieren, die aus dem Torrent-Kontextmenü ausgeführt werden können",
+    "createButton": "Externes Programm erstellen",
+    "createTitle": "Externes Programm erstellen",
+    "createDescription": "Konfiguriere ein externes Programm oder Skript, das aus dem Torrent-Kontextmenü ausgeführt werden kann.",
+    "loading": "Externe Programme werden geladen...",
+    "loadFailed": "Externe Programme konnten nicht geladen werden",
+    "unknownError": "Unbekannter Fehler",
+    "empty": "Keine externen Programme konfiguriert. Erstelle eines, um zu beginnen.",
+    "enabled": "Aktiviert",
+    "disabled": "Deaktiviert",
+    "created": "Erstellt {{date}}",
+    "updated": "Aktualisiert {{date}}",
+    "programPath": "Programmpfad:",
+    "argumentsTemplate": "Argumentvorlage:",
+    "editTitle": "Externes Programm bearbeiten",
+    "deleteTitle": "Externes Programm löschen",
+    "delete": "Löschen",
+    "deleteConflictIntro": "Dieses Programm wird von den folgenden Automatisierungsregeln verwendet:",
+    "deleteConflictDescription": "Wenn du fortfährst, wird die Aktion für das externe Programm aus diesen Automatisierungsregeln entfernt.",
+    "deleteDescription": "Bist du sicher, dass du \"{{name}}\" löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "deleteAnyway": "Trotzdem löschen",
+    "nameLabel": "Name *",
+    "namePlaceholder": "Mein externes Programm",
+    "pathLabel": "Programmpfad *",
+    "pathPlaceholder": "/usr/bin/my-script.sh oder C:\\Scripts\\my-script.bat",
+    "pathDescription": "Vollständiger Pfad zur ausführbaren Datei",
+    "argumentsLabel": "Argumentvorlage",
+    "argumentsPlaceholder": "\"{hash}\" \"{name}\" --save-path \"{save_path}\"",
+    "argumentsDescription": "Vollständiger Pfad zum Skript mit Argumenten",
+    "availablePlaceholders": "Verfügbare Platzhalter:",
+    "pathMappings": "Pfad-Zuordnungen",
+    "remotePathPlaceholder": "Remote-Pfad (z. B. /mnt/remote-storage)",
+    "localPathPlaceholder": "Lokaler Pfad (z. B. /home/user/mounts/remote)",
+    "removePathMapping": "Pfad-Zuordnung entfernen",
+    "addPathMapping": "Pfad-Zuordnung hinzufügen",
+    "pathMappingsDescription": "Pfad-Zuordnungen wandeln Remote-Pfade in lokale Mount-Punkte um. Nützlich, wenn externe Programme auf einem lokalen qui-Server laufen, während qBittorrent remote ist. Pfade werden nach dem längsten Präfix zuerst abgeglichen. Verwende denselben Pfadtrennzeichen-Stil wie die Remote-qBittorrent-Instanz (/ für Linux, \\ für Windows).",
+    "launchInTerminal": "In Terminalfenster starten",
+    "launchInTerminalDescription": "Wenn aktiviert, wird das Programm in einem neuen Terminalfenster geöffnet. Deaktiviere dies für GUI-Anwendungen oder Programme, die keine Terminalausgabe benötigen.",
+    "enableProgram": "Dieses Programm aktivieren",
+    "cancel": "Abbrechen",
+    "saving": "Wird gespeichert...",
+    "updateButton": "Aktualisieren",
+    "createSubmit": "Erstellen",
+    "ariaLabels": {
+      "edit": "{{name}} bearbeiten",
+      "delete": "{{name}} löschen"
+    },
+    "toasts": {
+      "created": "Externes Programm erfolgreich erstellt",
+      "createFailed": "Externes Programm konnte nicht erstellt werden: {{error}}",
+      "updated": "Externes Programm erfolgreich aktualisiert",
+      "updateFailed": "Externes Programm konnte nicht aktualisiert werden: {{error}}",
+      "deleted": "Externes Programm erfolgreich gelöscht",
+      "deleteFailed": "Externes Programm konnte nicht gelöscht werden: {{error}}"
+    },
+    "validation": {
+      "nameRequired": "Programmname ist erforderlich",
+      "pathRequired": "Programmpfad ist erforderlich"
+    },
+    "placeholders": {
+      "hash": "Torrent-Hash",
+      "name": "Torrent-Name",
+      "savePath": "Speicherpfad",
+      "contentPath": "Inhaltspfad",
+      "category": "Kategorie",
+      "tags": "Tags (kommagetrennt)",
+      "state": "Torrent-Status",
+      "size": "Größe in Bytes",
+      "progress": "Fortschritt (0-1)",
+      "comment": "Torrent-Kommentar"
+    }
+  },
+  "notifications": {
+    "cardTitle": "Benachrichtigungen",
+    "cardDescription": "Sende Warnungen und Statusupdates über jeden von Shoutrrr unterstützten Dienst",
+    "addButton": "Benachrichtigungsziel hinzufügen",
+    "loading": "Benachrichtigungsziele werden geladen…",
+    "loadFailed": "Benachrichtigungsziele konnten nicht geladen werden",
+    "empty": "Keine Benachrichtigungsziele konfiguriert. Füge eines hinzu, um Warnungen zu erhalten.",
+    "allEvents": "Alle Ereignisse",
+    "showList": "Liste anzeigen",
+    "hideList": "Liste ausblenden",
+    "badges": {
+      "enabled": "Aktiviert",
+      "disabled": "Deaktiviert"
+    },
+    "groups": {
+      "torrent": "Torrent",
+      "maintenance": "Wartung",
+      "crossSeed": "Cross-Seed",
+      "automations": "Automatisierungen",
+      "other": "Sonstiges",
+      "unknown": "Unbekannt"
+    },
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "Mein Discord",
+      "url": "Shoutrrr-URL",
+      "urlPlaceholder": "discord://token@id oder notifiarrapi://apikey",
+      "urlDescriptionPrefix": "Verwende ein beliebiges von Shoutrrr unterstütztes URL-Schema. Die Notifiarr-API nutzt",
+      "urlDescriptionSuffix": "Discord-Webhook-URLs werden automatisch umgewandelt in",
+      "examples": {
+        "notifiarr": "notifiarrapi://apikey",
+        "discord": "discord://token@id"
+      },
+      "enabled": "Aktiviert",
+      "enabledDescription": "Zustellung für dieses Ziel umschalten.",
+      "events": "Ereignisse",
+      "selectAll": "Alle auswählen",
+      "select": "Auswählen",
+      "clear": "Leeren",
+      "loadingEventTypes": "Ereignistypen werden geladen…"
+    },
+    "dialog": {
+      "newTitle": "Neues Benachrichtigungsziel",
+      "newDescription": "Konfiguriere, wohin qui Warnungen und Statusupdates senden soll.",
+      "editTitle": "Benachrichtigungsziel bearbeiten",
+      "editDescription": "Zustellungseinstellungen für dieses Ziel aktualisieren.",
+      "deleteTitle": "Benachrichtigungsziel löschen?",
+      "deleteDescription": "Dadurch wird {{name}} entfernt. Du kannst es bei Bedarf später wieder hinzufügen.",
+      "cancel": "Abbrechen",
+      "saving": "Wird gespeichert…",
+      "save": "Speichern",
+      "delete": "Löschen"
+    },
+    "validation": {
+      "nameRequired": "Name ist erforderlich",
+      "urlRequired": "Benachrichtigungs-URL ist erforderlich",
+      "selectEvent": "Wähle mindestens ein Ereignis aus"
+    },
+    "toasts": {
+      "created": "Benachrichtigungsziel erfolgreich erstellt",
+      "createFailed": "Benachrichtigungsziel konnte nicht erstellt werden",
+      "updated": "Benachrichtigungsziel erfolgreich aktualisiert",
+      "updateFailed": "Benachrichtigungsziel konnte nicht aktualisiert werden",
+      "deleted": "Benachrichtigungsziel erfolgreich gelöscht",
+      "deleteFailed": "Benachrichtigungsziel konnte nicht gelöscht werden",
+      "testSent": "Testbenachrichtigung erfolgreich gesendet",
+      "testFailed": "Testbenachrichtigung konnte nicht gesendet werden"
+    },
+    "ariaLabels": {
+      "sendTest": "Test an {{name}} senden",
+      "edit": "{{name}} bearbeiten",
+      "delete": "{{name}} löschen"
+    }
+  },
+  "dateTime": {
+    "cardTitle": "Datums- & Zeiteinstellungen",
+    "cardDescription": "Konfiguriere Zeitzone, Datumsformat und Zeitanzeige",
+    "timezone": "Zeitzone",
+    "timezoneDescription": "Wähle deine lokale Zeitzone für eine korrekte Zeitanzeige",
+    "selectTimezone": "Zeitzone auswählen",
+    "detected": "erkannt",
+    "regions": {
+      "UTC": "UTC",
+      "Americas": "Amerika",
+      "Europe": "Europa",
+      "Asia": "Asien",
+      "Africa": "Afrika",
+      "Oceania": "Ozeanien"
+    },
+    "timeFormat": "Zeitformat",
+    "use12Hour": "12-Stunden-Format verwenden (AM/PM)",
+    "use12HourDescription": "Zwischen 12-Stunden- und 24-Stunden-Anzeige umschalten",
+    "dateFormat": "Datumsformat",
+    "dateFormatDescription": "Wähle, wie Datumsangaben in der gesamten Anwendung angezeigt werden",
+    "selectDateFormat": "Datumsformat auswählen",
+    "isoFormat": "ISO 8601 (JJJJ-MM-TT)",
+    "usFormat": "US-Format (MM/TT/JJJJ)",
+    "euFormat": "Europäisches Format (TT/MM/JJJJ)",
+    "relativeFormat": "Relativ (z. B. \"vor 2 Stunden\")",
+    "preview": "Vorschau",
+    "previewDescription": "So werden Datum und Uhrzeit in der Anwendung angezeigt",
+    "savePreferences": "Einstellungen speichern",
+    "toasts": {
+      "success": "Datums- und Zeiteinstellungen gespeichert",
+      "error": "Datums- und Zeiteinstellungen konnten nicht gespeichert werden"
+    }
+  },
+  "security": {
+    "changePassword": {
+      "title": "Passwort ändern",
+      "description": "Aktualisiere das Passwort deines Kontos"
+    },
+    "browserIntegration": {
+      "title": "Browser-Integration",
+      "description": "Konfiguriere, wie dein Browser mit Magnet-Links umgeht",
+      "registerDescription": "Registriere qui als Handler deines Browsers für Magnet-Links. So kannst du Magnet-Links direkt in qui öffnen.",
+      "registerButton": "Als Handler registrieren",
+      "toasts": {
+        "requested": "Registrierung als Magnet-Handler angefordert",
+        "failed": "Registrierung als Magnet-Handler fehlgeschlagen"
+      }
+    }
+  },
+  "logs": {
+    "title": "Protokolle",
+    "description": "Live-Protokolle ansehen und Protokolleinstellungen konfigurieren",
+    "settingsSrOnly": "Protokolleinstellungen öffnen",
+    "configuration": {
+      "title": "Konfiguration",
+      "description": "Log-Level, Ausgabepfad und Rotationseinstellungen anpassen.",
+      "level": "Log-Level",
+      "levelPlaceholder": "Log-Level auswählen",
+      "path": "Pfad zur Protokolldatei",
+      "pathPlaceholder": "Leer lassen für ausschließlich stdout",
+      "maxSize": "Max. Größe (MB)",
+      "maxBackups": "Max. Backups",
+      "saving": "Wird gespeichert...",
+      "saveSettings": "Einstellungen speichern"
+    },
+    "viewer": {
+      "connected": "Verbunden",
+      "disconnected": "Getrennt",
+      "searchPlaceholder": "Protokolle durchsuchen...",
+      "allLevels": "Alle Level",
+      "all": "Alle",
+      "none": "Keine",
+      "levelCount_one": "{{count}} Level",
+      "levelCount_other": "{{count}} Level",
+      "mutedCount_one": "{{count}} stummgeschaltet",
+      "mutedCount_other": "{{count}} stummgeschaltet",
+      "mutedMessages": "Stummgeschaltete Nachrichten",
+      "clearAll": "Alle löschen",
+      "clear": "Löschen",
+      "autoScroll": "Auto-Scroll",
+      "noEntriesMatch": "Keine Einträge passen zum aktuellen Filter",
+      "waiting": "Warte auf Protokolleinträge...",
+      "showing": "Zeige {{shown}} von {{total}} Einträgen ({{max}} {{mode}})",
+      "maxLive": "max.",
+      "maxPaused": "max. bei Pause",
+      "oldestEntriesDropped": "• älteste Einträge verworfen",
+      "muteSimilarEntries": "Ähnliche Einträge stummschalten"
+    },
+    "entryDialog": {
+      "title": "Protokolleintrag",
+      "rawLine": "Rohe Protokollzeile",
+      "copyRaw": "Roh kopieren",
+      "copyJson": "JSON kopieren",
+      "close": "Schließen"
+    },
+    "toasts": {
+      "settingsUpdated": "Protokolleinstellungen aktualisiert",
+      "settingsFailed": "Protokolleinstellungen konnten nicht aktualisiert werden",
+      "jsonCopied": "JSON-Protokolleintrag kopiert",
+      "rawCopied": "Roher Protokolleintrag kopiert",
+      "copyFailed": "Protokolleintrag konnte nicht kopiert werden"
+    }
+  },
+  "themes": {
+    "selector": {
+      "title": "Design-Auswahl",
+      "loadingDescription": "Verfügbare Designs werden geladen...",
+      "description": "Wähle aus den verfügbaren Designs. Premium-Designs erfordern eine gültige Lizenz.",
+      "verificationUnavailable": "Lizenzprüfung nicht verfügbar. Der Wechsel zu Premium-Designs ist vorübergehend deaktiviert.",
+      "freeBadge": "Kostenlos",
+      "freeThemes": "Kostenlose Designs",
+      "premiumBadge": "Premium",
+      "premiumThemes": "Premium-Designs",
+      "notLoaded": "Premium-Designs nicht geladen",
+      "notLoadedDescription": "Konfiguriere",
+      "notLoadedAnd": "und führe aus",
+      "premium": "Premium",
+      "pro": "Pro",
+      "free": "Kostenlos",
+      "locked": "Gesperrt",
+      "lock": "Sperren"
+    },
+    "toasts": {
+      "verifyFailed": "Lizenzprüfung nicht verfügbar",
+      "verifyFailedDescription": "Der Wechsel zu Premium-Designs ist vorübergehend deaktiviert.",
+      "premiumRequired": "Premium-Lizenz erforderlich",
+      "premiumRequiredDescription": "Schalte Premium-Designs frei, indem du eine gültige Premium-Lizenz hinzufügst."
+    },
+    "license": {
+      "loadingTitle": "Lizenzverwaltung",
+      "loadingDescription": "Design-Lizenzen werden geladen...",
+      "managementTitle": "Lizenzverwaltung",
+      "managementDescription": "Verwalte deine Design-Lizenz und deinen Premium-Zugang",
+      "providers": {
+        "dodoPortal": "Dodo-Portal",
+        "polarPortal": "Polar-Portal",
+        "legacyPolarPortal": "Altes Polar-Portal"
+      },
+      "status": {
+        "unlockTitle": "Premium-Designs freischalten",
+        "unlockDescription": "Zahle, was du möchtest (min. 4,99 $) • Lebenslange Lizenz • Alle Designs",
+        "activeTitle": "Premium-Zugang aktiv",
+        "activeDescription": "Du hast Zugriff auf alle aktuellen und zukünftigen Premium-Designs",
+        "activationRequiredTitle": "Lizenzaktivierung erforderlich",
+        "activationRequiredDescription": "Deine Lizenz muss auf diesem Gerät aktiviert werden"
+      },
+      "portalHelp": {
+        "prefix": "Kaufe über DodoPayments und gib hier deinen Lizenzschlüssel ein. Falls du den Schlüssel verlierst, kannst du ihn wiederherstellen über das",
+        "suffix": "."
+      },
+      "discord": {
+        "title": "Discord-Vorteil",
+        "prefix": "Hol dir die",
+        "afterRole": "Rolle für Zugang zu einem privaten Channel.",
+        "openDiscord": "qui Discord öffnen",
+        "opensInNewTab": "(öffnet in neuem Tab)",
+        "afterLink": ", führe aus",
+        "copyVerifyAriaLabel": "/verify-Befehl kopieren",
+        "copyVerifyTitle": "Zum Kopieren klicken",
+        "verifyCommand": "/verify",
+        "afterVerify": "in",
+        "channel": "#qui",
+        "suffix": ", und melde dich mit deiner Lizenz-E-Mail-Adresse an."
+      },
+      "details": {
+        "productAdded": "{{productName}} • Hinzugefügt {{date}}",
+        "productStatusAndAdded": "{{productName}} • Status: {{status}} • Hinzugefügt {{date}}"
+      },
+      "invalid": {
+        "polarPrefix": "Diese Lizenz ist auf diesem Gerät nicht aktiv. Klicke auf „Reaktivieren“, um sie hier zu nutzen. Falls du ein Aktivierungslimit erreichst, deaktiviere sie auf dem anderen Gerät, auf dem sie aktiv ist, oder verwalte die Aktivierungen über",
+        "polarSuffix": ".",
+        "dodo": "Diese Lizenz ist auf diesem Gerät nicht aktiv. Klicke auf „Reaktivieren“, um sie hier zu nutzen. Falls du ein Aktivierungslimit erreichst, deaktiviere sie auf dem anderen Gerät, auf dem sie aktuell aktiv ist."
+      },
+      "actions": {
+        "addLicense": "Lizenz hinzufügen",
+        "remove": "Entfernen",
+        "removing": "Wird entfernt...",
+        "getPremium": "Premium holen",
+        "reactivate": "Lizenz reaktivieren",
+        "activating": "Wird aktiviert...",
+        "copyLicenseKey": "Lizenzschlüssel kopieren",
+        "activate": "Lizenz aktivieren",
+        "validating": "Wird überprüft...",
+        "openDodoCheckout": "DodoPayments-Checkout öffnen",
+        "openDodoPortal": "Dodo-Portal öffnen"
+      },
+      "deleteDialog": {
+        "title": "Lizenz entfernen?",
+        "description": "Bist du sicher, dass du diese Lizenz von diesem Gerät entfernen möchtest? qui versucht, auch den Remote-Aktivierungsslot freizugeben, aber die lokale Entfernung wird trotzdem abgeschlossen, falls diese Anfrage fehlschlägt.",
+        "keyLabel": "Zu entfernender Lizenzschlüssel:",
+        "recoverPrefix": "Bei Bedarf kannst du ihn später wiederherstellen über dein"
+      },
+      "addDialog": {
+        "title": "Premium-Lizenz hinzufügen",
+        "description": "Gib deinen Lizenzschlüssel für Premium-Designs ein, um alle Premium-Designs freizuschalten.",
+        "label": "Lizenzschlüssel",
+        "placeholder": "Gib deinen Lizenzschlüssel für Premium-Designs ein",
+        "recoverKey": "Schlüssel wiederherstellen?",
+        "validation": {
+          "required": "Lizenzschlüssel ist erforderlich"
+        }
+      },
+      "paymentDialog": {
+        "title": "Premium-Lizenz holen",
+        "description": "Zahle, was du möchtest (min. 4,99 $) • Lebenslange Lizenz • Alle Designs",
+        "steps": {
+          "choosePaymentMethod": {
+            "title": "Zahlungsmethode wählen",
+            "cardTitle": "Karte oder lokale Methoden",
+            "cardDescription": "Zahle direkt in DodoPayments. Nach der Zahlung kehrst du zu qui zurück.",
+            "cryptoTitle": "Krypto",
+            "cryptoDescription": "Die Krypto-Zahlung wird ebenfalls im DodoPayments-Checkout abgeschlossen.",
+            "xmrHelp": "XMR läuft manuell: Melde dich über Discord oder per E-Mail an s0up4200@pm.me.",
+            "cryptoSteps": {
+              "readmePrefix": "Spende über die Adressen in der",
+              "readmeSuffix": ".",
+              "verifyPrefix": "Verifiziere unter",
+              "verifySuffix": "um deinen Rabattcode zu erhalten.",
+              "applyCode": "Öffne den DodoPayments-Checkout, füge den Code im Feld „Discount code“ ein und klicke auf „Apply“.",
+              "completeCheckout": "Bestätige, dass die Summe 0,00 $ beträgt, und schließe dann den Checkout ab."
+            }
+          },
+          "findLicenseKey": {
+            "title": "Finde deinen Lizenzschlüssel",
+            "description": "Dein Lizenzschlüssel wird nach dem Checkout angezeigt. Du kannst ihn auch später über das Dodo-Kundenportal wiederherstellen."
+          },
+          "activateLicense": {
+            "title": "Aktiviere deine Lizenz",
+            "description": "Sobald du nach dem Checkout hierher zurückkehrst, verwende „Lizenz hinzufügen“, um deinen Schlüssel zu aktivieren."
+          }
+        }
+      },
+      "copiedVerify": "Verifizierungsbefehl kopiert",
+      "failedCopyVerify": "Verifizierungsbefehl konnte nicht kopiert werden",
+      "toasts": {
+        "activationSuccess": "Lizenz erfolgreich aktiviert!",
+        "activationSuccessPremium": "Premium-Zugang aktiviert! Vielen Dank!",
+        "paymentCompleted": "Zahlung abgeschlossen. Füge deinen Premium-Lizenzschlüssel hinzu, um die Einrichtung abzuschließen.",
+        "paymentNotCompleted": "Die Zahlung wurde nicht erfolgreich abgeschlossen.",
+        "returnedFromCheckout": "Vom Checkout zurückgekehrt. Füge deinen Premium-Lizenzschlüssel hinzu, sobald du bereit bist.",
+        "keyCopied": "Lizenzschlüssel in die Zwischenablage kopiert",
+        "copyFailed": "Lizenzschlüssel konnte nicht kopiert werden",
+        "removedFromMachine": "Lizenz von diesem Gerät entfernt",
+        "refreshedAll": "Alle Lizenzen erfolgreich aktualisiert",
+        "refreshFailed": "Lizenzen konnten nicht aktualisiert werden"
+      }
+    }
+  },
+  "arrInstances": {
+    "addButton": "ARR-Instanz hinzufügen",
+    "addDialog": {
+      "title": "ARR-Instanz hinzufügen",
+      "description": "Konfiguriere eine Sonarr- oder Radarr-Instanz für ID-Abfragen bei Cross-Seed-Suchen."
+    },
+    "editDialog": {
+      "title": "ARR-Instanz bearbeiten"
+    },
+    "deleteDialog": {
+      "title": "ARR-Instanz löschen?",
+      "description": "Bist du sicher, dass du „{{name}}“ löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden."
+    },
+    "badges": {
+      "enabled": "Aktiviert",
+      "disabled": "Deaktiviert",
+      "connected": "Verbunden",
+      "failed": "Fehlgeschlagen"
+    },
+    "loading": "ARR-Instanzen werden geladen...",
+    "loadFailed": "ARR-Instanzen konnten nicht geladen werden",
+    "empty": "Keine ARR-Instanzen konfiguriert. Füge eine Sonarr- oder Radarr-Instanz hinzu, um ID-basierte Cross-Seed-Suchen zu aktivieren.",
+    "created": "Erstellt {{date}}",
+    "sonarrInstances": "Sonarr-Instanzen",
+    "radarrInstances": "Radarr-Instanzen",
+    "unknownError": "Unbekannter Fehler",
+    "actions": {
+      "testConnection": "Verbindung testen",
+      "testing": "Wird getestet...",
+      "cancel": "Abbrechen",
+      "delete": "Löschen",
+      "create": "Erstellen",
+      "update": "Aktualisieren",
+      "saving": "Wird gespeichert..."
+    },
+    "form": {
+      "type": "Typ *",
+      "selectType": "Typ wählen",
+      "name": "Name *",
+      "namePlaceholder": "Mein {{type}}",
+      "baseUrl": "Basis-URL *",
+      "baseUrlDescription": "Die Basis-URL deiner {{type}}-Instanz",
+      "apiKey": "API Key *",
+      "apiKeyOptional": "API Key (leer lassen, um den aktuellen zu behalten)",
+      "apiKeyPlaceholder": "API Key eingeben",
+      "apiKeyPlaceholderEdit": "••••••••",
+      "apiKeyDescription": "Zu finden unter Einstellungen > Allgemein in {{type}}",
+      "basicAuth": "Basic Auth",
+      "basicAuthDescription": "Verwende HTTP Basic Authentication für ARR hinter einem Reverse Proxy.",
+      "basicUsername": "Basic-Benutzername",
+      "basicUsernamePlaceholder": "Benutzername",
+      "basicPassword": "Basic-Passwort",
+      "basicPasswordPlaceholder": "Passwort",
+      "basicPasswordPlaceholderEdit": "<redacted>",
+      "basicPasswordKeep": "Lass <redacted> stehen, um das bestehende Passwort zu behalten.",
+      "priority": "Priorität",
+      "priorityDescription": "Instanzen mit höherer Priorität werden zuerst abgefragt",
+      "timeoutSeconds": "Timeout (Sekunden)",
+      "enabled": "Diese Instanz aktivieren",
+      "types": {
+        "sonarr": "Sonarr (Serien)",
+        "radarr": "Radarr (Filme)",
+        "sonarrShort": "Sonarr",
+        "radarrShort": "Radarr"
+      }
+    },
+    "validation": {
+      "nameRequired": "Name ist erforderlich",
+      "baseUrlRequired": "Basis-URL ist erforderlich",
+      "apiKeyRequired": "API Key ist erforderlich",
+      "baseUrlAndApiKeyRequired": "Basis-URL und API Key sind erforderlich, um die Verbindung zu testen",
+      "basicUsernameRequired": "Basic-Auth-Benutzername ist erforderlich",
+      "basicPasswordRequired": "Basic-Auth-Passwort ist erforderlich, um die Verbindung zu testen",
+      "basicPasswordRequiredSubmit": "Basic-Auth-Passwort ist erforderlich",
+      "basicPasswordKeepOrEnter": "Gib ein neues Basic-Auth-Passwort ein oder behalte das bestehende"
+    },
+    "ariaLabels": {
+      "testConnection": "Verbindung für {{name}} testen",
+      "edit": "{{name}} bearbeiten",
+      "delete": "{{name}} löschen"
+    },
+    "toasts": {
+      "created": "ARR-Instanz erfolgreich erstellt",
+      "createFailed": "ARR-Instanz konnte nicht erstellt werden: {{error}}",
+      "updated": "ARR-Instanz erfolgreich aktualisiert",
+      "updateFailed": "ARR-Instanz konnte nicht aktualisiert werden: {{error}}",
+      "deleted": "ARR-Instanz erfolgreich gelöscht",
+      "deleteFailed": "ARR-Instanz konnte nicht gelöscht werden: {{error}}",
+      "connectionSuccess": "Verbindung erfolgreich",
+      "connectionFailed": "Verbindung fehlgeschlagen: {{error}}",
+      "testFailed": "Verbindungstest fehlgeschlagen: {{error}}"
+    }
+  },
+  "indexers": {
+    "title": "Torznab Indexer",
+    "addIndexer": "Indexer hinzufügen",
+    "autodiscoverProwlarr": "Automatisch aus Prowlarr erkennen",
+    "noIndexers": "Noch keine Indexer konfiguriert.",
+    "noIndexersDescription": "Füge einen Torznab-kompatiblen Indexer hinzu, um automatische Cross-Seed-Suchen zu aktivieren.",
+    "deleteIndexer": "Indexer löschen",
+    "deleteIndexerDescription": "Bist du sicher, dass du \"{{name}}\" löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "deleteAllIndexers": "Alle Indexer löschen",
+    "deleteAllDescription": "Bist du sicher, dass du alle {{count}} Indexer löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "toast": {
+      "loadFailed": "Indexer konnten nicht geladen werden",
+      "deletedSuccess": "Indexer gelöscht",
+      "deleteFailed": "Indexer konnte nicht gelöscht werden",
+      "allDeletedSuccess": "Alle Indexer gelöscht",
+      "allDeletedFailed": "Es konnten nicht alle Indexer gelöscht werden",
+      "deleteAllSuccess": "Alle {{count}} Indexer gelöscht",
+      "deleteAllPartial": "{{success}} Indexer gelöscht, {{failed}} fehlgeschlagen: {{names}}",
+      "testSuccess": "Verbindungstest erfolgreich",
+      "noIndexersToTest": "Keine Indexer zum Testen",
+      "testing": "{{count}} Indexer werden getestet...",
+      "testAllSuccess": "Alle {{count}} Indexer erfolgreich getestet",
+      "testAllPartial": "{{success}} bestanden, {{failed}} fehlgeschlagen",
+      "failedIndexers": "Fehlgeschlagene Indexer: {{names}}",
+      "capsSynced": "Capabilities vom Backend synchronisiert",
+      "failedToSyncCaps": "Caps konnten nicht synchronisiert werden"
+    },
+    "page": {
+      "summary": "{{enabled}} aktiviert, {{capabilities}} mit Capabilities",
+      "description": "Verwalte Torznab-Indexer über Jackett, Prowlarr oder native Tracker-Endpunkte",
+      "deleteAll": "Alle löschen",
+      "discover": "Erkennen",
+      "addSingle": "Einzeln hinzufügen"
+    },
+    "dialog": {
+      "addTitle": "Indexer hinzufügen",
+      "editTitle": "Indexer bearbeiten",
+      "addDescription": "Füge einen neuen Torznab-Indexer für die Cross-Seed-Erkennung hinzu",
+      "editDescription": "Indexer-Einstellungen aktualisieren",
+      "labels": {
+        "name": "Name",
+        "backend": "Backend",
+        "baseUrl": "Basis-URL",
+        "indexerId": "Indexer-ID",
+        "apiKey": "API-Key",
+        "priority": "Priorität",
+        "timeout": "Timeout (Sekunden)",
+        "enabled": "Aktiviert",
+        "basicAuth": "Basic Auth",
+        "basicAuthDescription": "Verwende HTTP-Basic-Authentifizierung für Torznab hinter einem Reverse Proxy.",
+        "basicUsername": "Basic-Benutzername",
+        "basicPassword": "Basic-Passwort"
+      },
+      "placeholders": {
+        "name": "Mein Indexer",
+        "selectBackend": "Backend auswählen",
+        "apiKeyEdit": "Leer lassen, um den bestehenden zu behalten",
+        "apiKeyCreate": "Dein API-Key",
+        "indexerIdProwlarr": "Prowlarr-Indexer-ID (z. B. 1)",
+        "indexerIdJackett": "Optionale Jackett-Indexer-ID (z. B. aither)",
+        "username": "Benutzername",
+        "password": "Passwort"
+      },
+      "hints": {
+        "indexerIdProwlarr": "Gib die numerische ID von der Indexer-Detailseite in Prowlarr ein.",
+        "indexerIdJackett": "Optional für Jackett. Leer lassen, damit qui sie automatisch ableitet.",
+        "basicPasswordKeep": "Auf <redacted> lassen, um das bestehende Passwort zu behalten."
+      },
+      "backends": {
+        "jackett": "Jackett",
+        "prowlarr": "Prowlarr",
+        "native": "Native Torznab"
+      },
+      "buttons": {
+        "save": "Speichern",
+        "add": "Hinzufügen",
+        "saving": "Wird gespeichert...",
+        "cancel": "Abbrechen"
+      },
+      "toast": {
+        "createdSuccess": "Indexer erfolgreich erstellt",
+        "createdWithWarnings": "Indexer mit Warnungen erstellt: {{warnings}}",
+        "updatedSuccess": "Indexer erfolgreich aktualisiert",
+        "updatedWithWarnings": "Indexer mit Warnungen aktualisiert: {{warnings}}",
+        "failedCreate": "Indexer konnte nicht erstellt werden",
+        "failedEdit": "Indexer konnte nicht bearbeitet werden",
+        "basicUsernameRequired": "Basic-Auth-Benutzername ist erforderlich",
+        "basicPasswordRequired": "Basic-Auth-Passwort ist erforderlich",
+        "basicPasswordRequiredOrKeep": "Basic-Auth-Passwort ist erforderlich (oder <redacted> behalten)"
+      }
+    },
+    "autodiscovery": {
+      "title": "Indexer erkennen",
+      "descriptionInput": "Mit Jackett oder Prowlarr verbinden, um konfigurierte Indexer zu erkennen",
+      "descriptionSelect": "Indexer zum Importieren auswählen",
+      "labels": {
+        "indexerUrl": "Indexer-URL",
+        "apiKey": "API-Key",
+        "basicAuth": "Basic Auth",
+        "basicAuthDescription": "Verwende HTTP-Basic-Authentifizierung für Jackett/Prowlarr hinter einem Reverse Proxy.",
+        "basicUsername": "Basic-Benutzername",
+        "basicPassword": "Basic-Passwort"
+      },
+      "placeholders": {
+        "indexerUrl": "http://localhost:9696",
+        "apiKey": "Dein Indexer-API-Key",
+        "username": "Benutzername",
+        "password": "Passwort"
+      },
+      "hints": {
+        "indexerUrl": "Prowlarr verwendet standardmäßig http://localhost:9696, Jackett http://localhost:9117."
+      },
+      "buttons": {
+        "cancel": "Abbrechen",
+        "discover": "Erkennen",
+        "discovering": "Wird erkannt...",
+        "back": "Zurück",
+        "importing": "Wird importiert...",
+        "import": "{{count}} Indexer importieren",
+        "importPlural": "{{count}} Indexer importieren",
+        "selectAll": "Alle auswählen",
+        "deselectAll": "Alle abwählen"
+      },
+      "selectionCount": "{{selected}} von {{total}} ausgewählt",
+      "noIndexersFound": "Keine Indexer gefunden",
+      "willUpdate": "Wird aktualisiert",
+      "typeLabel": "Typ:",
+      "backendLabel": "Backend:",
+      "notConfigured": "(Nicht konfiguriert)",
+      "unknownError": "Unbekannter Fehler",
+      "toast": {
+        "urlRequired": "Indexer-URL ist erforderlich",
+        "basicAuthRequired": "Basic Auth erfordert Benutzername und Passwort",
+        "urlRequiredBeforeImport": "Gib vor dem Importieren eine Indexer-URL an",
+        "discoveredWithExisting": "{{total}} Indexer gefunden ({{existing}} existieren bereits)",
+        "discovered": "{{count}} Indexer gefunden",
+        "discoverFailed": "Indexer konnten nicht erkannt werden: {{error}}",
+        "importSuccess": "Erfolg: {{details}}",
+        "importWithWarnings": "{{details}} ({{warningCount}} mit Warnungen)",
+        "moreWarnings": "...und {{count}} weitere Warnungen",
+        "importErrors": "{{details}}",
+        "moreErrors": "...und {{count}} weitere Fehler",
+        "created": "{{count}} erstellt",
+        "updated": "{{count}} aktualisiert",
+        "failed": "{{count}} fehlgeschlagen"
+      }
+    },
+    "table": {
+      "name": "Name",
+      "backend": "Backend",
+      "priority": "Priorität",
+      "status": "Status",
+      "testStatus": "Teststatus",
+      "capabilities": "Capabilities",
+      "timeout": "Timeout",
+      "actions": "Aktionen",
+      "enabled": "Aktiviert",
+      "disabled": "Deaktiviert",
+      "working": "Funktioniert",
+      "failed": "Fehlgeschlagen",
+      "untested": "Ungetestet",
+      "testAll": "Alle testen",
+      "filters": "Filter",
+      "clearFilters": "Filter zurücksetzen",
+      "showingCount": "{{shown}} von {{total}} Indexern angezeigt",
+      "loading": "Wird geladen...",
+      "noIndexers": "Keine Indexer konfiguriert. Füge einen hinzu, um zu beginnen.",
+      "noMatch": "Keine Indexer entsprechen den aktuellen Filtern",
+      "noCapabilities": "Keine Capabilities",
+      "sync": "Synchronisieren",
+      "collapse": "Einklappen",
+      "filterStatus": "Status",
+      "filterTestStatus": "Teststatus",
+      "filterBackend": "Backend",
+      "filterAll": "Alle",
+      "filterEnabledOnly": "Nur aktivierte",
+      "filterDisabledOnly": "Nur deaktivierte",
+      "filterWorkingOnly": "Nur funktionierende",
+      "filterFailedOnly": "Nur fehlgeschlagene",
+      "filterUntestedOnly": "Nur ungetestete",
+      "filterJackett": "Jackett",
+      "filterProwlarr": "Prowlarr",
+      "filterNative": "Native",
+      "tooltipTest": "Verbindung testen",
+      "tooltipSyncCaps": "Capabilities synchronisieren",
+      "tooltipEdit": "Bearbeiten",
+      "tooltipDelete": "Löschen",
+      "tooltipSyncCapsFromBackend": "Capabilities vom Backend synchronisieren",
+      "capability": "Capability: {{name}}",
+      "clickToShowAllCapabilities": "Klicke, um alle {{count}} Capabilities anzuzeigen"
+    },
+    "activity": {
+      "title": "Scheduler-Aktivität",
+      "idle": "Inaktiv",
+      "queueLength": "Warteschlange",
+      "workers": "Worker",
+      "cooldown": "Cooldown",
+      "running": "Läuft",
+      "queued": "In Warteschlange",
+      "rateLimited": "Rate-limitiert",
+      "noActiveTasks": "Keine aktiven Aufgaben oder Rate-Limits",
+      "andMore": "...und {{count}} weitere",
+      "workersStatus": "{{used}}/{{total}} Worker",
+      "runningCount": "{{count}} laufend",
+      "queuedCount": "{{count}} in Warteschlange",
+      "cooldownCount": "{{count}} im Cooldown",
+      "ready": "Bereit",
+      "left": "{{time}} verbleibend"
+    },
+    "searchHistory": {
+      "title": "Suchverlauf",
+      "searches": "{{count}} Suchen",
+      "searchesWithErrors": "{{count}} Suchen, {{errors}} Fehler",
+      "noSearchesYet": "Noch keine Suchen",
+      "successful": "{{count}} erfolgreich",
+      "failed": "{{count}} fehlgeschlagen",
+      "source": "Quelle: {{source}}",
+      "results": "{{count}} Ergebnisse",
+      "detail": {
+        "release": "Release",
+        "results": "Ergebnisse",
+        "duration": "Dauer",
+        "priority": "Priorität",
+        "crossSeed": "Cross-Seed",
+        "added": "{{count}} hinzugefügt",
+        "error": "Fehler",
+        "searchParameters": "Suchparameter",
+        "mode": "Modus:",
+        "type": "Typ:",
+        "job": "Job {{id}}",
+        "statusSuccess": "Erfolg",
+        "statusFailed": "Fehlgeschlagen",
+        "statusSkipped": "Übersprungen",
+        "statusRateLimited": "Rate-limitiert",
+        "season": "Staffel",
+        "episode": "Episode"
+      }
+    }
+  },
+  "searchCache": {
+    "title": "Such-Cache",
+    "description": "Zwischengespeicherte Suchergebnisse von Torznab-Indexern.",
+    "refreshStats": "Aktualisieren",
+    "configTitle": "Cache-Konfiguration",
+    "configDescription": "Lege fest, wie lange Suchergebnisse zwischengespeichert werden.",
+    "cacheTTL": "Cache-TTL (Minuten)",
+    "saving": "Wird gespeichert...",
+    "saveTTL": "Speichern",
+    "ttlHelper": "Mindestens {{min}} Minuten. Höhere Werte reduzieren die Indexer-Last.",
+    "entries": "Einträge",
+    "hitCount": "Treffer",
+    "approxSize": "Ungefähre Größe",
+    "ttl": "TTL",
+    "newestEntry": "Neuester Eintrag",
+    "lastUsed": "Zuletzt verwendet",
+    "enabled": "Aktiviert",
+    "disabled": "Deaktiviert",
+    "ttlValue": "{{minutes}} Minuten",
+    "timestamps": {
+      "justNow": "gerade eben",
+      "ago": "vor {{duration}}",
+      "inFuture": "in {{duration}}"
+    },
+    "toasts": {
+      "ttlUpdated": "Cache-TTL auf {{minutes}} Minuten aktualisiert",
+      "ttlUpdateFailed": "Cache-TTL konnte nicht aktualisiert werden",
+      "invalidNumber": "Bitte gib eine gültige Zahl ein",
+      "ttlMinimum": "TTL muss mindestens {{min}} Minuten betragen"
+    }
+  },
+  "application": {
+    "loading": "Wird geladen...",
+    "loadFailed": "Anwendungsinformationen konnten nicht geladen werden",
+    "build": {
+      "title": "Build",
+      "description": "Versions- und Build-Details.",
+      "refresh": "Aktualisieren",
+      "version": "Version",
+      "commit": "Commit",
+      "buildDate": "Build-Datum",
+      "updateStatus": "Update-Status",
+      "statuses": {
+        "unknown": "Unbekannt",
+        "unknownDetail": "Update-Status konnte nicht ermittelt werden",
+        "disabled": "Deaktiviert",
+        "disabledDetail": "Update-Prüfung ist deaktiviert",
+        "devBuild": "Dev-Build",
+        "checking": "Wird geprüft...",
+        "checkingDetail": "Suche nach Updates",
+        "updateAvailable": "Update verfügbar",
+        "upToDate": "Aktuell",
+        "upToDateDetail": "Neueste Version läuft",
+        "notCheckedYet": "Noch nicht geprüft",
+        "lastChecked": "Zuletzt geprüft {{date}}"
+      }
+    },
+    "runtime": {
+      "title": "Laufzeit",
+      "description": "Informationen zur Server-Laufzeit.",
+      "uptime": "Uptime",
+      "runtime": "Laufzeit"
+    },
+    "auth": {
+      "title": "Authentifizierung",
+      "description": "Authentifizierungskonfiguration.",
+      "currentSessionAuth": "Aktuelle Sitzung",
+      "unknown": "Unbekannt",
+      "loading": "Wird geladen...",
+      "unavailable": "Nicht verfügbar",
+      "yes": "Ja",
+      "no": "Nein",
+      "oidcEnabled": "OIDC aktiviert",
+      "builtInLoginEnabled": "Integrierter Login",
+      "oidcIssuerHost": "OIDC-Issuer"
+    },
+    "storage": {
+      "title": "Speicher",
+      "description": "Datenbank- und Dateisystempfade.",
+      "database": "Datenbank",
+      "bind": "Bind-Adresse",
+      "configDir": "Konfigurationsverzeichnis",
+      "dataDir": "Datenverzeichnis"
+    },
+    "copyTitle": "{{label}} kopieren",
+    "toasts": {
+      "copied": "{{label}} in die Zwischenablage kopiert",
+      "copyFailed": "{{label}} konnte nicht kopiert werden"
+    }
+  }
+}

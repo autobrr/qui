@@ -73,6 +73,7 @@ type proxyContext struct {
 	instanceURL *url.URL
 	httpClient  *http.Client
 	basicAuth   *basicAuthCredentials
+	apiKey      string
 	session     sessionRefresher
 }
 
@@ -338,16 +339,7 @@ func (h *Handler) handleSyncMainData(w http.ResponseWriter, r *http.Request) {
 		isFullUpdate := mainData.FullUpdate || (mainData.Rid == 0 && len(mainData.Torrents) > 0)
 
 		if isFullUpdate {
-			client, err := h.clientPool.GetClient(ctx, instanceID)
-			if err != nil {
-				log.Error().
-					Err(err).
-					Int("instanceId", instanceID).
-					Msg("Failed to get client for maindata update")
-				return
-			}
-
-			client.UpdateWithMainData(&mainData)
+			h.syncManager.HintMainDataRefresh(instanceID, "proxy_sync_maindata")
 			log.Debug().
 				Int("instanceId", instanceID).
 				Int64("rid", mainData.Rid).
@@ -355,7 +347,7 @@ func (h *Handler) handleSyncMainData(w http.ResponseWriter, r *http.Request) {
 				Bool("hasServerState", mainData.ServerState != (qbt.ServerState{})).
 				Int("categoryCount", len(mainData.Categories)).
 				Int("tagCount", len(mainData.Tags)).
-				Msg("Updated local maindata from full sync/maindata response")
+				Msg("Queued maindata refresh hint from full sync/maindata response")
 		} else {
 			log.Debug().
 				Int("instanceId", instanceID).
@@ -500,11 +492,18 @@ func (h *Handler) prepareProxyContext(r *http.Request) (*proxyContext, error) {
 		}
 	}
 
+	apiKey, err := h.instanceStore.GetDecryptedAPIKey(instance)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to decrypt API key for proxy request")
+		return nil, err
+	}
+
 	proxyCtx := &proxyContext{
 		instanceID:  instanceID,
 		instanceURL: instanceURL,
 		httpClient:  client.GetHTTPClient(),
 		basicAuth:   basicAuth,
+		apiKey:      apiKey,
 		session:     client,
 	}
 
@@ -541,6 +540,10 @@ func (pc *proxyContext) applyAuthHeaders(req *http.Request) {
 		req.SetBasicAuth(pc.basicAuth.username, pc.basicAuth.password)
 	} else {
 		req.Header.Del("Authorization")
+	}
+
+	if pc.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+pc.apiKey)
 	}
 }
 

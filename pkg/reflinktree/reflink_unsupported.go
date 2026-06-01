@@ -1,12 +1,12 @@
 // Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-//go:build !linux && !darwin
+//go:build !linux && !darwin && !windows
 
 package reflinktree
 
 // SupportsReflink returns false on unsupported platforms.
-// Windows and FreeBSD do not have a standard reflink mechanism that we support.
+// FreeBSD do not have a standard reflink mechanism that we support.
 func SupportsReflink(_ string) (supported bool, reason string) {
 	return false, "reflink is not supported on this operating system"
 }

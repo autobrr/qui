@@ -121,6 +121,7 @@ func TestInstanceCreateUsesIntegerBooleanArgs(t *testing.T) {
 			host_id INTEGER NOT NULL,
 			username_id INTEGER NOT NULL,
 			password_encrypted TEXT NOT NULL,
+			api_key_encrypted TEXT NOT NULL DEFAULT '',
 			basic_username_id INTEGER,
 			basic_password_encrypted TEXT,
 			tls_skip_verify INTEGER NOT NULL DEFAULT 0,
@@ -150,18 +151,18 @@ func TestInstanceCreateUsesIntegerBooleanArgs(t *testing.T) {
 	hasLocalAccess := true
 	_, err = store.Create(ctx, "main", "http://localhost:8080", "admin", "secret", nil, nil, true, &hasLocalAccess, nil)
 	require.NoError(t, err)
-	require.Len(t, insertArgs, 9)
+	require.Len(t, insertArgs, 10)
 
-	tlsArg, ok := insertArgs[6].(int)
-	require.Truef(t, ok, "expected int arg for tls_skip_verify, got %T", insertArgs[6])
+	tlsArg, ok := insertArgs[7].(int)
+	require.Truef(t, ok, "expected int arg for tls_skip_verify, got %T", insertArgs[7])
 	require.Equal(t, 1, tlsArg)
 
-	localAccessArg, ok := insertArgs[7].(int)
-	require.Truef(t, ok, "expected int arg for has_local_filesystem_access, got %T", insertArgs[7])
+	localAccessArg, ok := insertArgs[8].(int)
+	require.Truef(t, ok, "expected int arg for has_local_filesystem_access, got %T", insertArgs[8])
 	require.Equal(t, 1, localAccessArg)
 
-	linkDirArg, ok := insertArgs[8].(string)
-	require.Truef(t, ok, "expected string arg for link_dir_name, got %T", insertArgs[8])
+	linkDirArg, ok := insertArgs[9].(string)
+	require.Truef(t, ok, "expected string arg for link_dir_name, got %T", insertArgs[9])
 	require.Empty(t, linkDirArg)
 }
 
@@ -276,6 +277,7 @@ func TestArrIDCacheSetUsesIntegerNegativeArg(t *testing.T) {
 			tmdb_id INTEGER,
 			tvdb_id INTEGER,
 			tvmaze_id INTEGER,
+			titles_json TEXT,
 			is_negative INTEGER DEFAULT 0,
 			cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			expires_at TIMESTAMP NOT NULL,
@@ -296,10 +298,10 @@ func TestArrIDCacheSetUsesIntegerNegativeArg(t *testing.T) {
 	store := NewArrIDCacheStore(q)
 	err := store.Set(context.Background(), "title-hash", "movie", nil, nil, false, time.Hour)
 	require.NoError(t, err)
-	require.Len(t, insertArgs, 9)
+	require.Len(t, insertArgs, 10)
 
-	isNegativeArg, ok := insertArgs[7].(int)
-	require.Truef(t, ok, "expected int arg for is_negative, got %T", insertArgs[7])
+	isNegativeArg, ok := insertArgs[8].(int)
+	require.Truef(t, ok, "expected int arg for is_negative, got %T", insertArgs[8])
 	require.Equal(t, 0, isNegativeArg)
 }
 
@@ -404,6 +406,16 @@ func TestCrossSeedUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 			skip_auto_resume_webhook INTEGER NOT NULL DEFAULT 0,
 			skip_recheck INTEGER NOT NULL DEFAULT 0,
 			skip_piece_boundary_safety_check INTEGER NOT NULL DEFAULT 1,
+			season_pack_skip_repack_compare INTEGER NOT NULL DEFAULT 1,
+			season_pack_simplify_hdr_compare INTEGER NOT NULL DEFAULT 0,
+			season_pack_simplify_web_compare INTEGER NOT NULL DEFAULT 0,
+			season_pack_skip_year_compare INTEGER NOT NULL DEFAULT 0,
+			season_pack_enabled INTEGER NOT NULL DEFAULT 0,
+			season_pack_coverage_threshold REAL NOT NULL DEFAULT 0.75,
+			season_pack_tags TEXT NOT NULL DEFAULT '["cross-seed"]',
+			season_pack_category TEXT NOT NULL DEFAULT '',
+			season_pack_tvdb_api_key_encrypted TEXT NOT NULL DEFAULT '',
+			season_pack_tvdb_pin_encrypted TEXT NOT NULL DEFAULT '',
 			gazelle_enabled INTEGER NOT NULL DEFAULT 0,
 			redacted_api_key_encrypted TEXT NOT NULL DEFAULT '',
 			orpheus_api_key_encrypted TEXT NOT NULL DEFAULT '',
@@ -431,9 +443,9 @@ func TestCrossSeedUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 
 	_, err = store.UpsertSettings(context.Background(), settings)
 	require.NoError(t, err)
-	require.Len(t, insertArgs, 39)
+	require.Len(t, insertArgs, 49)
 
-	boolIndexes := []int{1, 3, 16, 18, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36}
+	boolIndexes := []int{1, 3, 16, 18, 24, 25, 28, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 46}
 	for _, idx := range boolIndexes {
 		_, ok := insertArgs[idx].(int)
 		require.Truef(t, ok, "expected int arg at index %d, got %T", idx, insertArgs[idx])
@@ -451,6 +463,7 @@ func TestAutomationReadsIntegerBooleanColumns(t *testing.T) {
 			conditions TEXT NOT NULL,
 			enabled INTEGER NOT NULL DEFAULT 1,
 			dry_run INTEGER NOT NULL DEFAULT 0,
+			notify INTEGER NOT NULL DEFAULT 1,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			interval_seconds INTEGER,
 			free_space_source TEXT,
@@ -460,8 +473,8 @@ func TestAutomationReadsIntegerBooleanColumns(t *testing.T) {
 		)
 	`)
 	mustExec(t, db, `
-		INSERT INTO automations (instance_id, name, tracker_pattern, conditions, enabled, dry_run, sort_order)
-		VALUES (1, 'Auto rule', 'tracker.example', '{}', 1, 0, 1)
+		INSERT INTO automations (instance_id, name, tracker_pattern, conditions, enabled, dry_run, notify, sort_order)
+		VALUES (1, 'Auto rule', 'tracker.example', '{}', 1, 0, 0, 1)
 	`)
 
 	store := NewAutomationStore(&capturingQuerier{db: db})
@@ -470,11 +483,13 @@ func TestAutomationReadsIntegerBooleanColumns(t *testing.T) {
 	require.Len(t, items, 1)
 	require.True(t, items[0].Enabled)
 	require.False(t, items[0].DryRun)
+	require.False(t, items[0].Notify)
 
 	item, err := store.Get(context.Background(), 1, items[0].ID)
 	require.NoError(t, err)
 	require.True(t, item.Enabled)
 	require.False(t, item.DryRun)
+	require.False(t, item.Notify)
 }
 
 func TestOrphanScanReadsIntegerBooleanColumns(t *testing.T) {
@@ -550,6 +565,7 @@ func TestDirScanReadsIntegerBooleanColumns(t *testing.T) {
 			allow_partial INTEGER NOT NULL DEFAULT 0,
 			skip_piece_boundary_safety_check INTEGER NOT NULL DEFAULT 0,
 			start_paused INTEGER NOT NULL DEFAULT 0,
+			download_missing_files INTEGER NOT NULL DEFAULT 1,
 			category TEXT,
 			tags TEXT NOT NULL DEFAULT '[]',
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -563,6 +579,7 @@ func TestDirScanReadsIntegerBooleanColumns(t *testing.T) {
 			qbit_path_prefix TEXT,
 			category TEXT,
 			tags TEXT NOT NULL DEFAULT '[]',
+			allowed_download_clients TEXT NOT NULL DEFAULT '[]',
 			enabled INTEGER NOT NULL DEFAULT 1,
 			arr_instance_id INTEGER,
 			target_instance_id INTEGER NOT NULL,
@@ -574,15 +591,15 @@ func TestDirScanReadsIntegerBooleanColumns(t *testing.T) {
 	`)
 	mustExec(t, db, `
 		INSERT INTO dir_scan_settings
-			(id, enabled, match_mode, size_tolerance_percent, min_piece_ratio, max_searchees_per_run, max_searchee_age_days, allow_partial, skip_piece_boundary_safety_check, start_paused, category, tags)
+			(id, enabled, match_mode, size_tolerance_percent, min_piece_ratio, max_searchees_per_run, max_searchee_age_days, allow_partial, skip_piece_boundary_safety_check, start_paused, download_missing_files, category, tags)
 		VALUES
-			(1, 1, 'strict', 5.0, 0.85, 500, 365, 1, 1, 0, 'movies', '["tag1"]')
+			(1, 1, 'strict', 5.0, 0.85, 500, 365, 1, 1, 0, 1, 'movies', '["tag1"]')
 	`)
 	mustExec(t, db, `
 		INSERT INTO dir_scan_directories
-			(path, qbit_path_prefix, category, tags, enabled, arr_instance_id, target_instance_id, scan_interval_minutes)
+			(path, qbit_path_prefix, category, tags, allowed_download_clients, enabled, arr_instance_id, target_instance_id, scan_interval_minutes)
 		VALUES
-			('/data/incoming', '/data', 'movies', '["tag1"]', 1, NULL, 1, 30)
+			('/data/incoming', '/data', 'movies', '["tag1"]', '["SABnzbd"]', 1, NULL, 1, 30)
 	`)
 
 	store := NewDirScanStore(&capturingQuerier{db: db})
@@ -592,6 +609,7 @@ func TestDirScanReadsIntegerBooleanColumns(t *testing.T) {
 	require.True(t, settings.AllowPartial)
 	require.True(t, settings.SkipPieceBoundarySafetyCheck)
 	require.False(t, settings.StartPaused)
+	require.True(t, settings.DownloadMissingFiles)
 
 	dir, err := store.GetDirectory(context.Background(), 1)
 	require.NoError(t, err)

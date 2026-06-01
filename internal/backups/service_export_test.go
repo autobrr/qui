@@ -11,7 +11,7 @@ import (
 )
 
 func TestIsExportMetadataUnavailable(t *testing.T) {
-	if !isExportMetadataUnavailable(qbt.ErrTorrentMetdataNotDownloadedYet) {
+	if !isExportMetadataUnavailable(qbt.ErrTorrentMetadataNotDownloadedYet) {
 		t.Fatal("expected metadata-not-downloaded error to be treated as skippable")
 	}
 

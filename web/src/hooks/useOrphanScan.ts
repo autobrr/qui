@@ -5,12 +5,13 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
+import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { api } from "@/lib/api"
 import type {
   OrphanScanRun,
   OrphanScanRunWithFiles,
   OrphanScanSettings,
-  OrphanScanSettingsUpdate,
+  OrphanScanSettingsUpdate
 } from "@/types"
 
 export function useOrphanScanSettings(instanceId: number, options?: { enabled?: boolean }) {
@@ -57,6 +58,8 @@ export function useOrphanScanRuns(
   const limit = options?.limit
   const shouldEnable = (options?.enabled ?? true) && instanceId > 0
 
+  useActivityStream(shouldEnable)
+
   return useQuery({
     queryKey: ["orphan-scan", instanceId, "runs", limit ?? null],
     queryFn: () =>
@@ -67,7 +70,7 @@ export function useOrphanScanRuns(
     refetchInterval: (query) => {
       const runs = query.state.data as OrphanScanRun[] | undefined
       if (!runs) {
-        return 5_000
+        return false
       }
       const hasActiveRun = runs.some(
         (run: OrphanScanRun) =>
@@ -75,7 +78,7 @@ export function useOrphanScanRuns(
           run.status === "scanning" ||
           run.status === "deleting"
       )
-      return hasActiveRun ? 1_000 : 15_000
+      return hasActiveRun ? 1_000 : false
     },
   })
 }
@@ -88,6 +91,8 @@ export function useOrphanScanRun(
   const limit = options?.limit
   const offset = options?.offset
   const shouldEnable = (options?.enabled ?? true) && instanceId > 0 && !!runId
+
+  useActivityStream(shouldEnable)
 
   return useQuery({
     queryKey: ["orphan-scan", instanceId, "run", runId, limit ?? null, offset ?? null],

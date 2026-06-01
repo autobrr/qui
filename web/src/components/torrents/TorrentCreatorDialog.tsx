@@ -9,6 +9,7 @@ import { useForm } from "@tanstack/react-form"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, ChevronDown, Info, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { z } from "zod"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -45,12 +46,18 @@ import { api } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { TorrentCreationParams, TorrentFormat } from "@/types"
 
+import { useTranslation } from "react-i18next"
+
 import { pieceSizeOptions, TorrentPieceSize } from "./piece-size"
 
 /** Parse newline-separated input into array of non-empty trimmed strings */
 function parseLines(input: string): string[] {
   return input.split("\n").map((line) => line.trim()).filter(Boolean)
 }
+
+const torrentFilePathSchema = z.string().trim().refine(
+  (value) => value === "" || (!value.endsWith("/") && !value.endsWith("\\"))
+)
 
 interface PathSuggestionsProps {
   suggestions: string[]
@@ -95,6 +102,7 @@ interface TorrentCreatorDialogProps {
 }
 
 export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: TorrentCreatorDialogProps) {
+  const { t } = useTranslation("torrents")
   const [error, setError] = useState<string | null>(null)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const queryClient = useQueryClient()
@@ -120,11 +128,11 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
       // Invalidate tasks and badge count so polling views update immediately
       queryClient.invalidateQueries({ queryKey: ["torrent-creation-tasks", instanceId] })
       queryClient.invalidateQueries({ queryKey: ["active-task-count", instanceId] })
-      toast.success("Torrent creation task queued")
+      toast.success(t("creatorDialog.toast.taskQueued"))
     },
     onError: (err: Error) => {
       setError(err.message)
-      toast.error(err.message || "Failed to create torrent task")
+      toast.error(err.message || t("creatorDialog.toast.taskFailed"))
     },
   })
 
@@ -212,9 +220,9 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90dvh] flex flex-col">
         <DialogHeader className="flex-shrink-0">
-          <DialogTitle>Create Torrent</DialogTitle>
+          <DialogTitle>{t("creatorDialog.title")}</DialogTitle>
           <DialogDescription>
-            Create a new .torrent file from a file or folder on the server
+            {t("creatorDialog.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -240,12 +248,12 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
               {(field) => (
                 <div className="space-y-2">
                   <Label htmlFor="sourcePath">
-                    Source Path <span className="text-destructive">*</span>
+                    {t("creatorDialog.sourcePath")} <span className="text-destructive">*</span>
                   </Label>
                   <Input
                     id="sourcePath"
                     ref={supportsPathAutocomplete ? sourcePathInputRef : undefined}
-                    placeholder="/path/to/file/or/folder"
+                    placeholder={t("creatorDialog.sourcePathPlaceholder")}
                     autoComplete="off"
                     spellCheck={false}
                     value={field.state.value}
@@ -269,13 +277,13 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                   )}
 
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>Full path on the server where qBittorrent is running</span>
+                    <span>{t("creatorDialog.sourcePathHelp")}</span>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Info className="h-4 w-4 cursor-help shrink-0" />
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Windows users: use double backslashes (e.g., C:\\Data\\folder)</p>
+                        <p>{t("creatorDialog.sourcePathTooltip")}</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -288,9 +296,9 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
               {(field) => (
                 <div className="flex items-center justify-between">
                   <div className="space-y-2">
-                    <Label htmlFor="private">Private torrent</Label>
+                    <Label htmlFor="private">{t("creatorDialog.privateTorrent")}</Label>
                     <p className="text-sm text-muted-foreground">
-                      Disable DHT, PEX, and local peer discovery
+                      {t("creatorDialog.privateDescription")}
                     </p>
                   </div>
                   <Switch
@@ -306,11 +314,11 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
             <form.Field name="trackers">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor="trackers">Trackers</Label>
+                  <Label htmlFor="trackers">{t("creatorDialog.trackers")}</Label>
                   {activeTrackers && Object.keys(activeTrackers).length > 0 && (
                     <div className="space-y-2">
                       <p className="text-sm text-muted-foreground">
-                        Select from your active trackers or paste custom URLs below
+                        {t("creatorDialog.trackersSelectHelp")}
                       </p>
                       <Select
                         value=""
@@ -321,7 +329,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                         }}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Add tracker from your active torrents" />
+                          <SelectValue placeholder={t("creatorDialog.trackersSelectPlaceholder")} />
                         </SelectTrigger>
                         <SelectContent>
                           {Object.entries(activeTrackers)
@@ -336,11 +344,11 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                     </div>
                   )}
                   <p className="text-sm text-muted-foreground">
-                    One tracker URL per line
+                    {t("creatorDialog.trackersHelp")}
                   </p>
                   <Textarea
                     id="trackers"
-                    placeholder="https://tracker.example.com:443/announce&#10;udp://tracker.example2.com:6969/announce"
+                    placeholder={t("creatorDialog.trackersPlaceholder")}
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                     rows={4}
@@ -353,10 +361,10 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
             <form.Field name="comment">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor="comment">Comment</Label>
+                  <Label htmlFor="comment">{t("creatorDialog.comment")}</Label>
                   <Input
                     id="comment"
-                    placeholder="Optional comment"
+                    placeholder={t("creatorDialog.commentPlaceholder")}
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                   />
@@ -368,10 +376,10 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
             <form.Field name="source">
               {(field) => (
                 <div className="space-y-2">
-                  <Label htmlFor="source">Source</Label>
+                  <Label htmlFor="source">{t("creatorDialog.source")}</Label>
                   <Input
                     id="source"
-                    placeholder="Optional source tag"
+                    placeholder={t("creatorDialog.sourcePlaceholder")}
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                   />
@@ -384,9 +392,9 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
               {(field) => (
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label htmlFor="startSeeding">Add to qBittorrent</Label>
+                    <Label htmlFor="startSeeding">{t("creatorDialog.addToQBittorrent")}</Label>
                     <p className="text-sm text-muted-foreground">
-                      Add the created torrent to qBittorrent and start seeding. If disabled, only creates the .torrent file for download.
+                      {t("creatorDialog.addToQBittorrentDescription")}
                     </p>
                   </div>
                   <Switch
@@ -406,7 +414,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                   variant="ghost"
                   className="w-full justify-between p-0 hover:bg-transparent"
                 >
-                  <span className="text-sm font-medium">Advanced Options</span>
+                  <span className="text-sm font-medium">{t("creatorDialog.advancedOptions")}</span>
                   <ChevronDown
                     className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
                   />
@@ -418,7 +426,7 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                   <form.Field name="format">
                     {(field) => (
                       <div className="space-y-2">
-                        <Label htmlFor="format">Torrent Format</Label>
+                        <Label htmlFor="format">{t("creatorDialog.torrentFormat")}</Label>
                         <Select
                           value={field.state.value}
                           onValueChange={(value) => field.handleChange(value as TorrentFormat)}
@@ -427,13 +435,13 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="v1">v1 (Compatible)</SelectItem>
-                            <SelectItem value="v2">v2 (Modern)</SelectItem>
-                            <SelectItem value="hybrid">Hybrid (v1 + v2)</SelectItem>
+                            <SelectItem value="v1">{t("creatorDialog.formatV1")}</SelectItem>
+                            <SelectItem value="v2">{t("creatorDialog.formatV2")}</SelectItem>
+                            <SelectItem value="hybrid">{t("creatorDialog.formatHybrid")}</SelectItem>
                           </SelectContent>
                         </Select>
                         <p className="text-sm text-muted-foreground">
-                          v1 for maximum compatibility, v2 for modern clients, hybrid for both
+                          {t("creatorDialog.formatHelp")}
                         </p>
                       </div>
                     )}
@@ -441,10 +449,9 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                 ) : (
                   <Alert className="bg-muted/40 text-muted-foreground">
                     <Info className="h-4 w-4" />
-                    <AlertTitle>Hybrid and v2 torrents are unavailable</AlertTitle>
+                    <AlertTitle>{t("creatorDialog.formatUnavailableTitle")}</AlertTitle>
                     <AlertDescription>
-                      This qBittorrent build uses {libtorrentVersionLabel}, which only supports creating v1 torrents.
-                      Upgrade to a qBittorrent release built with libtorrent v2 to enable hybrid or v2 torrent creation.
+                      {t("creatorDialog.formatUnavailableDescription", { version: libtorrentVersionLabel })}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -463,13 +470,13 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                 <form.Field name="pieceSize">
                   {(field) => (
                     <div className="space-y-2">
-                      <Label htmlFor="pieceSize">Piece Size</Label>
+                      <Label htmlFor="pieceSize">{t("creatorDialog.pieceSize")}</Label>
                       <Select
                         value={field.state.value || TorrentPieceSize.Auto}
                         onValueChange={field.handleChange}
                       >
                         <SelectTrigger id="pieceSize">
-                          <SelectValue placeholder="Auto (recommended)" />
+                          <SelectValue placeholder={t("creatorDialog.pieceSizePlaceholder")} />
                         </SelectTrigger>
                         <SelectContent>
                           {pieceSizeOptions.map((option) => (
@@ -480,24 +487,33 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                         </SelectContent>
                       </Select>
                       <p className="text-sm text-muted-foreground">
-                        Auto calculates optimal size based on content
+                        {t("creatorDialog.pieceSizeHelp")}
                       </p>
                     </div>
                   )}
                 </form.Field>
 
                 {/* Torrent File Path */}
-                <form.Field name="torrentFilePath">
+                <form.Field
+                  name="torrentFilePath"
+                  validators={{
+                    onChange: ({ value }) => {
+                      const result = torrentFilePathSchema.safeParse(value)
+                      return result.success ? undefined : t("creatorDialog.saveTorrentToInvalid")
+                    },
+                  }}
+                >
                   {(field) => (
                     <div className="space-y-2">
-                      <Label htmlFor="torrentFilePath">Save .torrent to (optional)</Label>
+                      <Label htmlFor="torrentFilePath">{t("creatorDialog.saveTorrentTo")}</Label>
                       <Input
                         id="torrentFilePath"
                         ref={supportsPathAutocomplete ? torrentFilePathInputRef : undefined}
-                        placeholder="/path/to/save/file.torrent"
+                        placeholder={t("creatorDialog.saveTorrentToPlaceholder")}
                         autoComplete="off"
                         spellCheck={false}
                         value={field.state.value}
+                        aria-invalid={field.state.meta.isTouched && !!field.state.meta.errors[0]}
                         onBlur={field.handleBlur}
                         onKeyDown={supportsPathAutocomplete ? handleTorrentFilePathKeyDown : undefined}
                         onChange={(e) => {
@@ -517,16 +533,19 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                       )}
 
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span>Where to save the .torrent file on the server</span>
+                        <span>{t("creatorDialog.saveTorrentToHelp")}</span>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Info className="h-4 w-4 cursor-help shrink-0" />
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs">
-                            <p>qBittorrent needs write access to this directory. Best to leave blank and download the .torrent file from the tasks modal later.</p>
+                            <p>{t("creatorDialog.saveTorrentToTooltip")}</p>
                           </TooltipContent>
                         </Tooltip>
                       </div>
+                      {field.state.meta.isTouched && field.state.meta.errors[0] && (
+                        <p className="text-sm text-destructive">{field.state.meta.errors[0]}</p>
+                      )}
                     </div>
                   )}
                 </form.Field>
@@ -535,16 +554,16 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
                 <form.Field name="urlSeeds">
                   {(field) => (
                     <div className="space-y-2">
-                      <Label htmlFor="urlSeeds">Web Seeds (HTTP/HTTPS)</Label>
+                      <Label htmlFor="urlSeeds">{t("creatorDialog.webSeeds")}</Label>
                       <Textarea
                         id="urlSeeds"
-                        placeholder="https://mirror1.example.com/path&#10;https://mirror2.example.com/path"
+                        placeholder={t("creatorDialog.webSeedsPlaceholder")}
                         value={field.state.value}
                         onChange={(e) => field.handleChange(e.target.value)}
                         rows={3}
                       />
                       <p className="text-sm text-muted-foreground">
-                        HTTP/HTTPS URLs where the content can be downloaded. One URL per line.
+                        {t("creatorDialog.webSeedsHelp")}
                       </p>
                     </div>
                   )}
@@ -561,11 +580,11 @@ export function TorrentCreatorDialog({ instanceId, open, onOpenChange }: Torrent
             onClick={() => onOpenChange(false)}
             disabled={mutation.isPending}
           >
-            Cancel
+            {t("creatorDialog.cancel")}
           </Button>
           <Button type="submit" form={FORM_ID} disabled={mutation.isPending}>
             {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Create Torrent
+            {t("creatorDialog.createTorrent")}
           </Button>
         </DialogFooter>
       </DialogContent>

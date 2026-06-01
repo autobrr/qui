@@ -4,7 +4,6 @@
  */
 
 import { FilterSidebar } from "@/components/torrents/FilterSidebar"
-import { GlobalStatusBar, type SelectionInfo } from "@/components/torrents/GlobalStatusBar"
 import { TorrentCreationTasks } from "@/components/torrents/TorrentCreationTasks"
 import { TorrentCreatorDialog } from "@/components/torrents/TorrentCreatorDialog"
 import { TorrentDetailsPanel } from "@/components/torrents/TorrentDetailsPanel"
@@ -25,9 +24,10 @@ import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
 import { isAllInstancesScope, normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
-import type { Category, CrossInstanceTorrent, ServerState, Torrent, TorrentCounts } from "@/types"
+import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts } from "@/types"
 import { useNavigate } from "@tanstack/react-router"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useDefaultLayout, usePanelRef } from "react-resizable-panels"
 
 interface TorrentsProps {
@@ -39,6 +39,7 @@ interface TorrentsProps {
 }
 
 export function Torrents({ instanceId, instanceName, isAllInstancesView = false, search, onSearchChange }: TorrentsProps) {
+  const { t } = useTranslation("torrents")
   const isAllInstances = isAllInstancesView || isAllInstancesScope(instanceId)
   const [filters, setFilters] = usePersistedFilters(instanceId)
   const [filterSidebarCollapsed] = usePersistedFilterSidebarState(false)
@@ -66,30 +67,14 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   }, [instances, instanceId, isAllInstances])
   const [titleBarSpeedsEnabled] = usePersistedTitleBarSpeeds(false)
 
-  // Server state for global status bar
-  const [serverState, setServerState] = useState<ServerState | null>(null)
-  const [listenPort, setListenPort] = useState<number | null>(null)
-  const handleServerStateUpdate = useCallback((state: ServerState | null, port?: number | null) => {
-    setServerState(state)
-    setListenPort(port ?? null)
-  }, [])
-
   useTitleBarSpeeds({
     mode: "instance",
     enabled: titleBarSpeedsEnabled && !isAllInstances,
     instanceId,
     instanceName: instance?.name ?? instanceName,
-    foregroundSpeeds: serverState? {
-      dl: serverState.dl_info_speed ?? 0,
-      up: serverState.up_info_speed ?? 0,
-    }: undefined,
+    // Foreground speeds come from the SSE stream inside useTitleBarSpeeds itself,
+    // so no page-level serverState plumbing is needed here.
   })
-
-  // Selection info for global status bar
-  const [selectionInfo, setSelectionInfo] = useState<SelectionInfo | null>(null)
-  const handleSelectionInfoUpdate = useCallback((info: SelectionInfo) => {
-    setSelectionInfo(info)
-  }, [])
 
   // Sidebar width: 320px normal, 260px dense (fixed px to avoid issues with non-16px root font size)
   const sidebarWidth = viewMode === "dense" ? "260px" : "320px"
@@ -287,6 +272,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   const [categories, setCategories] = useState<Record<string, Category> | undefined>(undefined)
   const [tags, setTags] = useState<string[] | undefined>(undefined)
   const [useSubcategories, setUseSubcategories] = useState<boolean>(false)
+  const [supportsTrackerHealth, setSupportsTrackerHealth] = useState<boolean>(false)
   const [lastInstanceId, setLastInstanceId] = useState<number | null>(null)
 
   const isSameTorrent = useCallback((left: Torrent | null, right: Torrent | null) => {
@@ -317,7 +303,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
   }, [instanceId])
 
   // Callback when filtered data updates - now receives counts, categories, tags, and useSubcategories from backend
-  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: TorrentCounts, categoriesData?: Record<string, Category>, tagsData?: string[], subcategoriesEnabled?: boolean) => {
+  const handleFilteredDataUpdate = useCallback((_torrents: Torrent[], _total: number, counts?: TorrentCounts, categoriesData?: Record<string, Category>, tagsData?: string[], subcategoriesEnabled?: boolean, trackerHealthEnabled?: boolean) => {
     // Update the last instance ID when we receive new data
     setLastInstanceId(instanceId)
 
@@ -370,6 +356,9 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
     // Update subcategories flag when provided
     if (subcategoriesEnabled !== undefined) {
       setUseSubcategories(subcategoriesEnabled)
+    }
+    if (trackerHealthEnabled !== undefined) {
+      setSupportsTrackerHealth(trackerHealthEnabled)
     }
   }, [instanceId])
 
@@ -445,6 +434,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
             key={`filter-sidebar-${instanceId}`}
             instanceId={instanceId}
             readOnly={isAllInstances}
+            supportsTrackerHealth={isAllInstances ? supportsTrackerHealth : undefined}
             selectedFilters={filters}
             onFilterChange={setFilters}
             torrentCounts={torrentCounts}
@@ -474,13 +464,14 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
           }}
         >
           <SheetHeader className="px-4 py-3 border-b">
-            <SheetTitle className="text-lg font-semibold">Filters</SheetTitle>
+            <SheetTitle className="text-lg font-semibold">{t("filterSidebar.title")}</SheetTitle>
           </SheetHeader>
           <div className="flex-1 min-h-0 overflow-hidden">
             <FilterSidebar
               key={`filter-sidebar-mobile-${instanceId}`}
               instanceId={instanceId}
               readOnly={isAllInstances}
+              supportsTrackerHealth={isAllInstances ? supportsTrackerHealth : undefined}
               selectedFilters={filters}
               onFilterChange={setFilters}
               torrentCounts={torrentCounts}
@@ -523,8 +514,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
                     onAddTorrentModalChange={handleAddTorrentModalChange}
                     onFilteredDataUpdate={handleFilteredDataUpdate}
                     onFilterChange={setFilters}
-                    onServerStateUpdate={handleServerStateUpdate}
-                    onSelectionInfoUpdate={handleSelectionInfoUpdate}
                   />
                 </div>
               </ResizablePanel>
@@ -569,14 +558,6 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
                 </>
               )}
             </ResizablePanelGroup>
-            {/* Global status bar - at bottom of desktop layout */}
-            <GlobalStatusBar
-              instanceId={instanceId}
-              serverState={serverState}
-              instance={instance}
-              listenPort={listenPort}
-              selectionInfo={selectionInfo}
-            />
           </div>
         )}
 
@@ -616,7 +597,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
             <SheetHeader className="sr-only">
               <VisuallyHidden>
                 <SheetTitle>
-                  {selectedTorrent ? `Torrent Details: ${selectedTorrent.name}` : "Torrent Details"}
+                  {selectedTorrent ? t("page.torrentDetailsWithName", { name: selectedTorrent.name }) : t("page.torrentDetails")}
                 </SheetTitle>
               </VisuallyHidden>
             </SheetHeader>
@@ -648,7 +629,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         <Dialog open={isTasksModalOpen} onOpenChange={handleTasksModalChange}>
           <DialogContent className="w-full sm:max-w-screen-sm md:max-w-screen-md lg:max-w-screen-xl xl:max-w-screen-xl max-h-[85vh] overflow-hidden flex flex-col">
             <DialogHeader>
-              <DialogTitle>Torrent Creation Tasks</DialogTitle>
+              <DialogTitle>{t("creationTasks.dialogTitle")}</DialogTitle>
             </DialogHeader>
             <div className="flex-1 overflow-auto">
               <TorrentCreationTasks instanceId={instanceId} />
