@@ -5,6 +5,7 @@
 
 import { isClientConnectionErrorCode } from "@/contexts/SyncStreamContext"
 import { useEffectiveServerState } from "@/hooks/torrent-table/useEffectiveServerState"
+import { useTorrentTableFilterExpr } from "@/hooks/torrent-table/useTorrentTableFilterExpr"
 import { useTrackerIconCache } from "@/hooks/torrent-table/useTrackerIconCache"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
@@ -21,7 +22,6 @@ import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewSta
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/useTorrentsList"
-import { columnFiltersToExpr } from "@/lib/column-filter-utils"
 import { getRowBackgroundClass } from "@/lib/torrent-table/row-display"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { formatBytes } from "@/lib/utils"
@@ -99,7 +99,7 @@ import type {
   TorrentFilters
 } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useNavigate, useSearch } from "@tanstack/react-router"
+import { useNavigate } from "@tanstack/react-router"
 import {
   ArrowUpDown,
   Ban,
@@ -307,8 +307,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
   const [sorting, setSorting] = usePersistedColumnSorting([], instanceId)
-  const [globalFilter, setGlobalFilter] = useState("")
-  const [immediateSearch] = useState("")
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({})
 
   // Custom "select all" state for handling large datasets
@@ -342,11 +340,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     return typeof window !== "undefined" && /Mac|iPhone|iPad|iPod/.test(window.navigator.userAgent)
   }, [])
 
-  // Track user-initiated actions to differentiate from automatic data updates
-  const [lastUserAction, setLastUserAction] = useState<{ type: string; timestamp: number } | null>(null)
-  const previousFiltersRef = useRef(filters)
-  const previousInstanceIdRef = useRef(instanceId)
-  const previousSearchRef = useRef("")
   const lastMetadataRef = useRef<{
     instanceId?: number
     counts?: TorrentCounts
@@ -544,70 +537,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       .map(name => ({ name }))
   }, [renameFileEntries])
 
-  // Debounce search to prevent excessive filtering (200ms delay for faster response)
-  const debouncedSearch = useDebounce(globalFilter, 200)
-  const routeSearch = useSearch({ strict: false }) as { q?: string }
   const navigate = useNavigate()
-  const rawRouteSearch = typeof routeSearch?.q === "string" ? routeSearch.q : ""
-  const searchFromRoute = rawRouteSearch.trim()
 
-  // Use route search if present, otherwise fall back to local immediate/debounced search
-  const effectiveSearch = (searchFromRoute || immediateSearch || debouncedSearch).trim()
-
-  // Keep local input state in sync with route query so internal effects remain consistent
-  useEffect(() => {
-    if (searchFromRoute !== globalFilter) {
-      setGlobalFilter(searchFromRoute)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchFromRoute])
-
-  // Convert column filters to expr format for backend
-  const columnFiltersExpr = useMemo(() => columnFiltersToExpr(columnFilters), [columnFilters])
-
-  // Detect if this is cross-seed filtering (same logic as in useTorrentsList)
-  const isDoingCrossSeedFiltering = useMemo(() => {
-    return filters?.expr?.includes('Hash ==') && filters?.expr?.includes('||')
-  }, [filters?.expr])
-
-  // Combine column filters with any existing filter expression
-  // For cross-seed filtering, we'll apply column filters client-side only
-  const combinedFiltersExpr = useMemo(() => {
-    const columnExpr = columnFiltersExpr
-    const filterExpr = filters?.expr
-
-    // If we're doing cross-seed filtering, don't send column filters to backend
-    // They will be applied client-side by TanStack Table (along with sorting)
-    if (isDoingCrossSeedFiltering) {
-      return filterExpr // Only use the cross-seed expression for backend
-    }
-
-    // For regular filtering, combine column filters with existing filters
-    if (columnExpr && filterExpr) {
-      const combined = `(${columnExpr}) && (${filterExpr})`
-      return combined
-    }
-    return columnExpr || filterExpr
-  }, [columnFiltersExpr, filters?.expr, isDoingCrossSeedFiltering])
-
-  // Detect user-initiated changes
-  useEffect(() => {
-    const filtersChanged = JSON.stringify(previousFiltersRef.current) !== JSON.stringify(filters)
-    const instanceChanged = previousInstanceIdRef.current !== instanceId
-    const searchChanged = previousSearchRef.current !== effectiveSearch
-
-    if (filtersChanged || instanceChanged || searchChanged) {
-      setLastUserAction({
-        type: instanceChanged ? "instance" : filtersChanged ? "filter" : "search",
-        timestamp: Date.now(),
-      })
-
-      // Update refs
-      previousFiltersRef.current = filters
-      previousInstanceIdRef.current = instanceId
-      previousSearchRef.current = effectiveSearch
-    }
-  }, [filters, instanceId, effectiveSearch])
+  const {
+    globalFilter,
+    setGlobalFilter,
+    effectiveSearch,
+    columnFiltersExpr,
+    combinedFiltersExpr,
+    lastUserAction,
+    setLastUserAction,
+  } = useTorrentTableFilterExpr({ filters, instanceId, columnFilters })
 
   // Map TanStack Table column IDs to backend field names
   const getBackendSortField = (columnId: string): string => {
