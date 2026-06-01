@@ -21,12 +21,14 @@ import (
 
 	"github.com/autobrr/qui/internal/api/handlers"
 	"github.com/autobrr/qui/internal/api/middleware"
+	"github.com/autobrr/qui/internal/api/sse"
 	"github.com/autobrr/qui/internal/auth"
 	"github.com/autobrr/qui/internal/backups"
 	"github.com/autobrr/qui/internal/config"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/proxy"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
@@ -67,6 +69,7 @@ type Server struct {
 	updateService                    *update.Service
 	trackerIconService               *trackericons.Service
 	backupService                    *backups.Service
+	streamManager                    *sse.StreamManager
 	filesManager                     *filesmanager.Service
 	crossSeedService                 *crossseed.Service
 	jackettService                   *jackett.Service
@@ -126,9 +129,18 @@ type Dependencies struct {
 	DirScanService                   *dirscan.Service
 	ArrInstanceStore                 *models.ArrInstanceStore
 	ArrService                       *arr.Service
+	ActivityHub                      *activity.Hub
 }
 
 func NewServer(deps *Dependencies) *Server {
+	streamManager := sse.NewStreamManager(deps.ClientPool, deps.SyncManager, deps.InstanceStore)
+	if deps.ClientPool != nil {
+		deps.ClientPool.SetSyncEventSink(streamManager)
+	}
+	if deps.ActivityHub != nil {
+		streamManager.SetActivityHub(deps.ActivityHub)
+	}
+
 	s := Server{
 		server: &http.Server{
 			ReadHeaderTimeout: time.Second * 15,
@@ -160,6 +172,7 @@ func NewServer(deps *Dependencies) *Server {
 		updateService:                    deps.UpdateService,
 		trackerIconService:               deps.TrackerIconService,
 		backupService:                    deps.BackupService,
+		streamManager:                    streamManager,
 		filesManager:                     deps.FilesManager,
 		crossSeedService:                 deps.CrossSeedService,
 		reannounceService:                deps.ReannounceService,
@@ -258,6 +271,13 @@ func (s *Server) tryToServe(addr, protocol string, ready chan<- struct{}) error 
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
+	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if err := s.streamManager.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+		s.logger.Warn().Err(err).Msg("failed to shut down stream manager cleanly")
+	}
+
 	return s.server.Shutdown(ctx)
 }
 
@@ -283,7 +303,22 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create HTTP compression adapter")
 	} else {
-		r.Use(compressor)
+		// SSE responses must never be compressed. The compressor's writer buffers
+		// until MinSize (delaying event flushes) and lacks Unwrap(), which prevents
+		// the stream handler from clearing the server WriteTimeout via
+		// http.NewResponseController. Bypass compression for event-stream requests
+		// (EventSource always sends Accept: text/event-stream), covering /stream and
+		// the RSS /events endpoint without coupling to specific paths.
+		r.Use(func(next http.Handler) http.Handler {
+			compressed := compressor(next)
+			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if strings.Contains(req.Header.Get("Accept"), "text/event-stream") {
+					next.ServeHTTP(w, req)
+					return
+				}
+				compressed.ServeHTTP(w, req)
+			})
+		})
 	}
 
 	// CORS is disabled by default. Enable only for explicit trusted origins.
@@ -469,6 +504,8 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			// Version endpoint for update checks
 			r.Get("/version/latest", versionHandler.GetLatestVersion)
 			r.Get("/application/info", applicationHandler.GetInfo)
+
+			r.Get("/stream", s.streamManager.Serve)
 
 			// Instance management
 			r.Route("/instances", func(r chi.Router) {

@@ -29,3 +29,36 @@ QUI__CORS_ALLOWED_ORIGINS=https://panel.example.com
 Only explicit origins are accepted (`http(s)://host[:port]`). Wildcards and path/query/fragment values are rejected.
 
 If you still hit CORS errors after proxy configuration, capture the browser console error and open an issue.
+
+## Real-time updates and reverse-proxy buffering
+
+qui pushes live torrent, stats, and instance-health updates to the UI over a
+Server-Sent Events (SSE) stream at `GET /api/stream` (the RSS view uses a similar
+stream). SSE is a long-lived HTTP response that the server flushes incrementally.
+Most reverse proxies **buffer responses by default**, which holds events back and
+makes the UI look frozen or stuck on "reconnecting" until the buffer fills.
+
+If the dashboard and torrent list do not update in real time behind your proxy,
+disable response buffering and allow long-lived connections for the stream
+endpoint:
+
+- **nginx** — for the qui location (or specifically `~ ^/api/stream`):
+  ```nginx
+  proxy_buffering off;
+  proxy_cache off;
+  proxy_read_timeout 1h;
+  proxy_set_header Connection "";   # keep the upstream connection open
+  proxy_http_version 1.1;
+  ```
+  qui already sends `X-Accel-Buffering: no` style flushing, but `proxy_buffering off`
+  is the reliable switch.
+- **Traefik** — SSE works without buffering by default; just ensure no
+  `buffering` middleware (`maxResponseBodyBytes` / `memResponseBodyBytes`) is
+  applied to the qui router.
+- **Caddy** — `reverse_proxy` streams responses without buffering by default; no
+  extra configuration is required.
+
+Also make sure any idle/read timeout on the proxy is comfortably longer than a few
+seconds. qui sends a heartbeat every 5s and the client reconnects automatically,
+but an aggressive proxy timeout will cause unnecessary reconnects. Compression
+middlewares should not be applied to `text/event-stream` responses.

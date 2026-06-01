@@ -23,7 +23,6 @@ import type {
   BackupRunsResponse,
   BackupSettings,
   Category,
-  CrossInstanceTorrent,
   CrossSeedApplyResponse,
   CrossSeedAutomationSettings,
   CrossSeedAutomationSettingsPatch,
@@ -132,6 +131,7 @@ import type {
   ArrTestResponse
 } from "@/types/arr"
 import { getApiBaseUrl, withBasePath } from "./base-url"
+import { normalizeCrossInstanceTorrents, type RawCrossInstanceTorrent } from "./cross-instance-torrents"
 
 const API_BASE = getApiBaseUrl()
 
@@ -814,6 +814,7 @@ class ApiClient {
       order?: "asc" | "desc"
       search?: string
       filters?: TorrentFilters
+      preferCached?: boolean
     }
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
@@ -823,10 +824,52 @@ class ApiClient {
     if (params.order) searchParams.set("order", params.order)
     if (params.search) searchParams.set("search", params.search)
     if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
+    if (params.preferCached) searchParams.set("prefer", "stale")
 
     return this.request<TorrentResponse>(
       `/instances/${instanceId}/torrents?${searchParams}`
     )
+  }
+
+  getTorrentsStreamBatchUrl(
+    streams: Array<{
+      key: string
+      instanceId: number
+      instanceIds?: number[] | null
+      page: number
+      limit: number
+      sort: string
+      order: "asc" | "desc"
+      search?: string
+      filters?: TorrentFilters | null
+    }>,
+    options: { activity?: boolean } = {}
+  ): string {
+    const params = new URLSearchParams()
+
+    if (streams.length > 0) {
+      const normalized = streams.map(stream => ({
+        key: stream.key,
+        instanceId: stream.instanceId,
+        instanceIds: stream.instanceIds ?? null,
+        page: stream.page,
+        limit: stream.limit,
+        sort: stream.sort,
+        order: stream.order,
+        search: stream.search ?? "",
+        filters: stream.filters ?? null,
+      }))
+      params.set("streams", JSON.stringify(normalized))
+    }
+
+    // Activity events (qui-owned server signals) ride the same multiplexed
+    // EventSource; the flag lets a connection with no torrent streams stay open
+    // purely to receive them.
+    if (options.activity) {
+      params.set("activity", "1")
+    }
+
+    return withBasePath(`/api/stream?${params.toString()}`)
   }
 
   async getTorrentField(
@@ -886,54 +929,6 @@ class ApiClient {
     if (params.filters) searchParams.set("filters", JSON.stringify(params.filters))
     if (params.instanceIds && params.instanceIds.length > 0) {
       searchParams.set("instanceIds", params.instanceIds.join(","))
-    }
-
-    type RawCrossInstanceTorrent = Omit<CrossInstanceTorrent, "instanceId" | "instanceName"> & {
-      instanceId?: number
-      instanceName?: string
-      instance_id?: number
-      instance_name?: string
-    }
-
-    const normalizeCrossInstanceTorrents = (
-      torrents?: RawCrossInstanceTorrent[] | null
-    ): CrossInstanceTorrent[] | undefined => {
-      if (!torrents) {
-        return undefined
-      }
-
-      let needsNormalization = false
-
-      for (const torrent of torrents) {
-        if (torrent.instanceId === undefined || torrent.instanceName === undefined) {
-          needsNormalization = true
-          break
-        }
-      }
-
-      if (!needsNormalization) {
-        return torrents as CrossInstanceTorrent[]
-      }
-
-      const normalizedTorrents: CrossInstanceTorrent[] = []
-
-      torrents.forEach(torrent => {
-        const instanceId = torrent.instanceId ?? torrent.instance_id
-        const instanceName = torrent.instanceName ?? torrent.instance_name
-
-        if (instanceId === undefined || instanceName === undefined) {
-          console.error("Missing instance fields in cross-instance torrent:", torrent)
-          return
-        }
-
-        normalizedTorrents.push({
-          ...torrent,
-          instanceId,
-          instanceName,
-        })
-      })
-
-      return normalizedTorrents
     }
 
     const response = await this.request<TorrentResponse>(

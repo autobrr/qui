@@ -127,15 +127,15 @@
     "noCrossSeeds": "Keine Cross-Seeds gefunden",
     "deleteCrossSeeds": "Diese Cross-Seeds werden ebenfalls gelöscht",
     "deletingFilesBreaks": "Das Löschen von Dateien zerstört diese Cross-Seeds",
-    "dataPreserved": "Cross-Seeds erkannt — Daten bleiben erhalten",
+    "dataPreserved": "Cross-Seeds erkannt: Daten bleiben erhalten",
     "torrentShares": "{{count}} Torrent teilt sich diese Dateien",
     "torrentsShare": "{{count}} Torrents teilen sich diese Dateien",
     "acrossInstances": "über {{count}} Instanzen",
     "onTracker": "auf {{tracker}}",
     "onTrackers": "auf {{count}} Trackern",
-    "willBeRemoved": "— wird zusammen mit der Auswahl entfernt",
-    "willNeedRedownload": "— sie müssen erneut heruntergeladen werden",
-    "unaffected": "— von dieser Entfernung nicht betroffen",
+    "willBeRemoved": "- wird zusammen mit der Auswahl entfernt",
+    "willNeedRedownload": "- sie müssen erneut heruntergeladen werden",
+    "unaffected": "- von dieser Entfernung nicht betroffen",
     "alsoDeleteCrossSeeds": "Diese Cross-Seed-Torrents ebenfalls löschen",
     "showAffected": "Betroffene Torrents anzeigen",
     "hideAffected": "Betroffene Torrents ausblenden",
@@ -881,7 +881,8 @@
     "ctrlClick": "{{modifier}}+Klick für mehrere",
     "loadingTorrents": "Torrents werden geladen...",
     "loadingMore": "Weitere Torrents werden geladen...",
-    "torrentCount": "{{count}} Torrents",
+    "torrentCount_one": "{{count}} Torrent",
+    "torrentCount_other": "{{count}} Torrents",
     "torrentsLoaded": "{{loaded}} von {{total}} Torrents geladen",
     "scrollForMore": "(scrollen für mehr)",
     "loading": "Wird geladen...",
@@ -906,7 +907,31 @@
     "connectionPort": "Port: {{port}}",
     "connectionAriaLabel": "qBittorrent-Verbindungsstatus: {{status}}",
     "connectionAriaLabelUnknown": "qBittorrent-Verbindungsstatus unbekannt",
-    "external": "Extern"
+    "external": "Extern",
+    "streamStatus": {
+      "crossInstance": {
+        "label": "Instanzübergreifender Abruf",
+        "message": "Aggregierte Cross-Seed-Ergebnisse werden per Abruf aktualisiert.",
+        "secondary": "SSE deaktiviert • Abruf alle {{seconds}} s"
+      },
+      "reconnecting": {
+        "label": "Stream wird neu verbunden…",
+        "message": "Versuch, die SSE-Verbindung wiederherzustellen.",
+        "retryQueued": "Wiederholungsversuch {{attempt}} eingereiht",
+        "pollingContinues": "Der Abruf läuft weiter, während sich der Stream erholt."
+      },
+      "fallback": {
+        "label": "Stream offline, Abruf wird verwendet",
+        "message": "Wechsel zur regelmäßigen Aktualisierung, während der Stream nicht verfügbar ist.",
+        "serverRetry": "Server-Wiederholung in {{seconds}} s, Abruf-Fallback aktiv",
+        "retrying": "Automatische Wiederholung mit Abruf-Fallback"
+      },
+      "connecting": {
+        "label": "Verbindung zum Stream wird hergestellt…",
+        "message": "Abruf alle {{seconds}} s, bis die SSE-Verbindung bereit ist.",
+        "secondary": "Abruf alle {{seconds}} s"
+      }
+    }
   },
   "detailsPanel": {
     "tabs": {

@@ -39,6 +39,7 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip"
 import { useLayoutRoute } from "@/contexts/LayoutRouteContext"
+import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useTorrentSelection } from "@/contexts/TorrentSelectionContext"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
@@ -55,7 +56,7 @@ import {
   normalizeUnifiedInstanceIds
 } from "@/lib/instances"
 import { cn } from "@/lib/utils"
-import type { InstanceCapabilities } from "@/types"
+import type { InstanceCapabilities, TorrentStreamPayload } from "@/types"
 import { useQueries, useQuery } from "@tanstack/react-query"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { navigateWithSearch } from "@/lib/router-search"
@@ -277,15 +278,67 @@ export function Header({
   )
   const { theme } = useTheme()
   const { viewMode } = usePersistedCompactViewState("normal")
+  const [streamActiveTaskCount, setStreamActiveTaskCount] = useState<number | null>(null)
 
-  // Query active task count for badge (lightweight endpoint, only for instance routes)
-  const { data: activeTaskCount = 0 } = useQuery({
+  useEffect(() => {
+    setStreamActiveTaskCount(null)
+  }, [selectedInstanceId])
+
+  const activeTaskStreamParams = useMemo(() => {
+    // The torrent stream is keyed to a single concrete instance; the all-instances
+    // scope (selectedInstanceId <= 0) must not open a stream or the backend rejects
+    // the whole multiplexed batch and the shared EventSource reconnects forever.
+    if (!shouldShowInstanceControls || selectedInstanceId === null || selectedInstanceId <= 0) {
+      return null
+    }
+
+    return {
+      instanceId: selectedInstanceId,
+      page: 0,
+      limit: 1,
+      sort: "added_on",
+      order: "desc" as const,
+    }
+  }, [selectedInstanceId, shouldShowInstanceControls])
+
+  const handleActiveTaskStreamMessage = useCallback((payload: TorrentStreamPayload) => {
+    const value = payload.data?.activeTaskCount
+    if (typeof value === "number") {
+      setStreamActiveTaskCount(value)
+    }
+  }, [])
+
+  const activeTaskStreamState = useSyncStream(activeTaskStreamParams, {
+    enabled: Boolean(activeTaskStreamParams),
+    onMessage: handleActiveTaskStreamMessage,
+  })
+
+  // Drop the streamed value when the stream is not live so the count reflects the
+  // fresh REST fallback instead of a stale snapshot from before the disconnect.
+  useEffect(() => {
+    if (!activeTaskStreamState.connected || activeTaskStreamState.error) {
+      setStreamActiveTaskCount(null)
+    }
+  }, [activeTaskStreamState.connected, activeTaskStreamState.error])
+
+  const shouldUseActiveTaskFallback =
+    canManageSelectedInstance &&
+    selectedInstanceId !== null &&
+    (
+      !activeTaskStreamState.connected ||
+      !!activeTaskStreamState.error ||
+      streamActiveTaskCount === null
+    )
+
+  // Active task count is streamed via SSE; REST polling only runs as fallback.
+  const { data: polledActiveTaskCount = 0 } = useQuery({
     queryKey: ["active-task-count", selectedInstanceId],
     queryFn: () => canManageSelectedInstance && selectedInstanceId !== null ? api.getActiveTaskCount(selectedInstanceId) : Promise.resolve(0),
-    enabled: canManageSelectedInstance,
-    refetchInterval: 30000, // Poll every 30 seconds (lightweight check)
+    enabled: shouldUseActiveTaskFallback,
+    refetchInterval: shouldUseActiveTaskFallback ? 30000 : false, // Poll every 30 seconds (lightweight check) when stream is unavailable
     refetchIntervalInBackground: true,
   })
+  const activeTaskCount = streamActiveTaskCount ?? polledActiveTaskCount
 
   // Query for available updates
   const { data: updateInfo } = useQuery({

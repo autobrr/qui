@@ -35,6 +35,7 @@ import { Progress } from "@/components/ui/progress"
 import { ScrollToTopButton } from "@/components/ui/scroll-to-top-button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Switch } from "@/components/ui/switch"
+import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
 import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useDebounce } from "@/hooks/useDebounce"
@@ -113,7 +114,7 @@ import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinu
 import { formatSpeedWithUnit, useSpeedUnits, type SpeedUnit } from "@/lib/speedUnits"
 import { getStateLabel } from "@/lib/torrent-state-utils"
 import { cn, formatBytes, getRatioColor } from "@/lib/utils"
-import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts, TorrentFilters } from "@/types"
+import type { Category, CrossInstanceTorrent, Torrent, TorrentCounts, TorrentFilters, TorrentStreamPayload } from "@/types"
 import { useQuery } from "@tanstack/react-query"
 import { getDefaultSortOrder, TORRENT_SORT_OPTIONS, type TorrentSortOptionValue } from "./torrentSortOptions"
 
@@ -1249,7 +1250,7 @@ export function TorrentCardsMobile({
   const { instances } = useInstances()
   const instance = useMemo(() => instances?.find(i => i.id === instanceId), [instances, instanceId])
 
-  const { data: metadata } = useInstanceMetadata(instanceId)
+  const { data: metadata } = useInstanceMetadata(instanceId, { fallbackDelayMs: 1500 })
   const availableTags = metadata?.tags || []
   const availableCategories = metadata?.categories || {}
   const preferences = metadata?.preferences
@@ -1260,15 +1261,67 @@ export function TorrentCardsMobile({
 
   const effectiveSearch = searchFromRoute || immediateSearch || debouncedSearch
   const navigate = useNavigate()
+  const [streamActiveTaskCount, setStreamActiveTaskCount] = useState<number | null>(null)
 
-  // Query active task count for badge (lightweight endpoint)
-  const { data: activeTaskCount = 0 } = useQuery({
+  useEffect(() => {
+    setStreamActiveTaskCount(null)
+  }, [instanceId])
+
+  const activeTaskStreamParams = useMemo(() => {
+    // The torrent stream is keyed to a single concrete instance; never open one
+    // for the all-instances scope or an unselected instance, otherwise the backend
+    // rejects the whole multiplexed batch and the shared EventSource reconnects forever.
+    if (isAllInstancesView || instanceId <= 0) {
+      return null
+    }
+
+    return {
+      instanceId,
+      page: 0,
+      limit: 1,
+      sort: "added_on",
+      order: "desc" as const,
+    }
+  }, [instanceId, isAllInstancesView])
+
+  const handleActiveTaskStreamMessage = useCallback((payload: TorrentStreamPayload) => {
+    const value = payload.data?.activeTaskCount
+    if (typeof value === "number") {
+      setStreamActiveTaskCount(value)
+    }
+  }, [])
+
+  const activeTaskStreamState = useSyncStream(activeTaskStreamParams, {
+    enabled: Boolean(activeTaskStreamParams),
+    onMessage: handleActiveTaskStreamMessage,
+  })
+
+  // Drop the streamed value when the stream is not live so the count reflects the
+  // fresh REST fallback instead of a stale snapshot from before the disconnect.
+  useEffect(() => {
+    if (!activeTaskStreamState.connected || activeTaskStreamState.error) {
+      setStreamActiveTaskCount(null)
+    }
+  }, [activeTaskStreamState.connected, activeTaskStreamState.error])
+
+  const canPollActiveTask = !isAllInstancesView && instanceId > 0
+  const shouldUseActiveTaskFallback =
+    canPollActiveTask && (
+      !activeTaskStreamState.connected ||
+      !!activeTaskStreamState.error ||
+      streamActiveTaskCount === null
+    )
+
+  // Active task count is streamed via SSE; REST polling only runs as fallback
+  // and never for the all-instances view or an unselected instance.
+  const { data: polledActiveTaskCount = 0 } = useQuery({
     queryKey: ["active-task-count", instanceId],
     queryFn: () => api.getActiveTaskCount(instanceId),
-    enabled: !isAllInstancesView && instanceId > 0,
-    refetchInterval: 30000, // Poll every 30 seconds (lightweight check)
+    enabled: shouldUseActiveTaskFallback,
+    refetchInterval: shouldUseActiveTaskFallback ? 30000 : false, // Poll every 30 seconds (lightweight check)
     refetchIntervalInBackground: true,
   })
+  const activeTaskCount = streamActiveTaskCount ?? polledActiveTaskCount
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -2023,7 +2076,7 @@ export function TorrentCardsMobile({
             ) : (
               <>
                 {hasLoadedAll ? (
-                  t("statusBar.torrentCount", { count: torrents.length, plural: torrents.length !== 1 ? "s" : "" })
+                  t("statusBar.torrentCount", { count: torrents.length })
                 ) : isLoadingMore ? (
                   t("statusBar.loadingMore")
                 ) : (

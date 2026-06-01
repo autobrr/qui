@@ -50,6 +50,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/crossseed/gazellemusic"
 	"github.com/autobrr/qui/internal/services/externalprograms"
@@ -435,6 +436,8 @@ type Service struct {
 	metadataMu                  sync.RWMutex
 	metadataCredsRevision       time.Time
 	metadataCredsFingerprint    string
+
+	activityPublisher activity.Publisher
 }
 
 // pendingResume tracks a torrent waiting for recheck to complete before resuming.
@@ -558,6 +561,7 @@ func NewService(
 		metadataCredsRevisionLoader:   metadataCredsRevisionLoader,
 		metadataCredentialLoader:      metadataCredentialLoader,
 		metadataService:               metadata.NewService("", ""), // TVMaze-only default
+		activityPublisher:             activity.NopPublisher{},
 	}
 
 	// Start the single worker goroutine for processing recheck resumes
@@ -571,6 +575,16 @@ func NewServiceWithAutomationStore(automationStore *models.CrossSeedStore) *Serv
 	return &Service{
 		automationStore: automationStore,
 	}
+}
+
+// SetActivityPublisher wires the qui server-event hub so cross-seed automation and
+// search run lifecycle transitions are pushed to connected clients instead of polled.
+// Safe to call once at startup.
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
 }
 
 // getMetadataService returns the metadata service, recreating it if credentials changed.
@@ -1557,12 +1571,23 @@ func (s *Service) RunAutomation(ctx context.Context, opts AutomationRunOptions) 
 	s.runCancel = cancel
 	s.automationMu.Unlock()
 
+	// Signal connected clients that an automation run started so they switch to the
+	// while-running refresh cadence instead of polling. Published after releasing the lock.
+	if s.activityPublisher != nil {
+		s.activityPublisher.Publish(activity.Event{Kind: activity.KindCrossSeedStatus})
+	}
+
 	defer func() {
 		s.automationMu.Lock()
 		s.runCancel = nil
 		s.automationMu.Unlock()
 		cancel()
 		s.runActive.Store(false)
+
+		// Signal the run finished so clients refetch and drop the while-running cadence.
+		if s.activityPublisher != nil {
+			s.activityPublisher.Publish(activity.Event{Kind: activity.KindCrossSeedStatus})
+		}
 	}()
 
 	settings, err := s.GetAutomationSettings(ctx)
@@ -2914,6 +2939,12 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	s.searchCancel = cancel
 	s.searchState = state
 	s.searchMu.Unlock()
+
+	// Signal connected clients that a search run started so they switch to the
+	// while-running refresh cadence instead of polling. Published after releasing the lock.
+	if s.activityPublisher != nil {
+		s.activityPublisher.Publish(activity.Event{Kind: activity.KindCrossSeedSearch, InstanceID: opts.InstanceID})
+	}
 
 	go s.searchRunLoop(runCtx, state)
 
@@ -8577,6 +8608,12 @@ func (s *Service) finalizeSearchRun(state *searchRunState, canceled bool) {
 	s.searchMu.Unlock()
 
 	s.notifySearchRun(context.Background(), state, canceled)
+
+	// Signal the search run finished so clients refetch and drop the while-running cadence.
+	// Published after releasing the lock.
+	if s.activityPublisher != nil {
+		s.activityPublisher.Publish(activity.Event{Kind: activity.KindCrossSeedSearch, InstanceID: state.run.InstanceID})
+	}
 }
 
 // dedupCacheKey generates a cache key for deduplication results based on instance ID

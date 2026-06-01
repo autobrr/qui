@@ -216,7 +216,7 @@ const FilterSidebarComponent = ({
   const subcategoriesAlwaysEnabled = capabilities?.subcategoriesAlwaysEnabled ?? false
   const { preferences } = useInstancePreferences(
     instanceId,
-    { enabled: isConcreteInstanceScope && isInstanceActive }
+    { fetchIfMissing: false, enabled: isConcreteInstanceScope && isInstanceActive }
   )
   const preferenceUseSubcategories = preferences?.use_subcategories
   const subcategoriesEnabled = isConcreteInstanceScope? Boolean(supportsSubcategories && (subcategoriesAlwaysEnabled || (preferenceUseSubcategories ?? useSubcategories ?? false))): Boolean(useSubcategories)

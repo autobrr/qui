@@ -34,6 +34,7 @@ import (
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/services/automations"
 	"github.com/autobrr/qui/internal/services/crossseed"
@@ -614,6 +615,17 @@ func (app *Application) runServer() {
 		notificationService.Start(notificationCtx)
 	}
 
+	// activityHub fans qui-owned server events (reannounce, scans, cross-seed,
+	// backups, automations, indexer activity, etc.) onto the SSE stream so the
+	// frontend can stop polling those endpoints. Background services publish to it;
+	// the StreamManager (wired via api.Dependencies) forwards events to clients.
+	activityHub := activity.NewHub()
+	defer activityHub.Close()
+
+	// Wire services constructed earlier (before the hub) as activity publishers.
+	trackerIconService.SetActivityPublisher(activityHub)
+	jackettService.SetActivityPublisher(activityHub)
+
 	// Initialize cross-seed automation store and service
 	crossSeedStore, err := models.NewCrossSeedStore(db, cfg.GetEncryptionKey())
 	if err != nil {
@@ -640,14 +652,19 @@ func (app *Application) runServer() {
 		crossSeedStore.GetSeasonPackTVDBCredentialsUpdatedAt,
 		crossSeedStore.GetDecryptedSeasonPackTVDBCredentials,
 	)
+	crossSeedService.SetActivityPublisher(activityHub)
 	reannounceService := reannounce.NewService(reannounce.DefaultConfig(), instanceStore, instanceReannounceStore, reannounceSettingsCache, clientPool, syncManager)
+	reannounceService.SetActivityPublisher(activityHub)
 	automationService := automations.NewService(automations.DefaultConfig(), instanceStore, automationStore, automationActivityStore, trackerCustomizationStore, syncManager, notificationService, externalProgramService, crossSeedService)
+	automationService.SetActivityPublisher(activityHub)
 
 	orphanScanStore := models.NewOrphanScanStore(db)
 	orphanScanService := orphanscan.NewService(orphanscan.DefaultConfig(), instanceStore, orphanScanStore, syncManager, notificationService)
+	orphanScanService.SetActivityPublisher(activityHub)
 
 	dirScanStore := models.NewDirScanStore(db)
 	dirScanService := dirscan.NewService(dirscan.DefaultConfig(), dirScanStore, crossSeedStore, instanceStore, syncManager, jackettService, arrService, trackerCustomizationStore, notificationService)
+	dirScanService.SetActivityPublisher(activityHub)
 
 	syncManager.SetTorrentCompletionHandler(func(ctx context.Context, instanceID int, torrent qbt.Torrent) {
 		crossSeedService.HandleTorrentCompletion(ctx, instanceID, torrent)
@@ -684,6 +701,7 @@ func (app *Application) runServer() {
 
 	backupStore := models.NewBackupStore(db)
 	backupService := backups.NewService(backupStore, syncManager, jackettService, backups.Config{DataDir: cfg.GetDataDir()}, notificationService)
+	backupService.SetActivityPublisher(activityHub)
 	backupService.Start(context.Background())
 	defer backupService.Stop()
 
@@ -781,6 +799,7 @@ func (app *Application) runServer() {
 		DirScanService:                   dirScanService,
 		ArrInstanceStore:                 arrInstanceStore,
 		ArrService:                       arrService,
+		ActivityHub:                      activityHub,
 	})
 
 	// Reconcile any cross-seed runs left in 'running' status from a previous crash/restart.

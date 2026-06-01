@@ -222,3 +222,7 @@ web/src/                     React 19 + Vite + TypeScript + Tailwind v4
 2. Torrent state cached in-memory with delta updates
 3. Frontend fetches via REST API, real-time updates via SSE
 4. Cross-seed service listens for torrent completion events
+
+## Notes
+
+- `web/src/components/torrents/TorrentDetailsPanel.tsx` live row state (speed/progress/ratio/state) is stream-backed via `useSyncStream`; polling only runs as a fallback while the stream is unavailable. The Content (files) and Peers tabs still poll on an interval, but that polling is tab-scoped and visibility-gated, so streaming them is optional future work rather than a pending migration.
