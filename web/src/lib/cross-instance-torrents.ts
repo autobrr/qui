@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { CrossInstanceTorrent, TorrentResponse } from "@/types"
+import { mergeStreamedFirstPage } from "@/lib/stream-merge"
+import type { CrossInstanceTorrent, Torrent, TorrentResponse } from "@/types"
 
 // RawCrossInstanceTorrent models a cross-instance torrent before normalization.
 // The backend's CrossInstanceTorrentView serializes instance metadata as
@@ -104,4 +105,30 @@ export function resolveStreamedCrossInstanceTorrents(
   }
 
   return normalized
+}
+
+// A cross-instance row's identity is instanceId+hash, not hash alone: the same
+// torrent cross-seeded onto two instances shares a hash but is two distinct rows.
+const crossInstanceRowKey = (torrent: CrossInstanceTorrent): string =>
+  `${torrent.instanceId}:${torrent.hash}`
+
+// mergeStreamedCrossInstanceFirstPage folds an aggregated SSE snapshot into the
+// list the unified table already displays. The stream only ever serves page 0, so
+// a wholesale replace would wipe any later pages the user paginated in via REST and
+// the unified view could never scroll past the first page (issue #1983). Instead we
+// merge: page 0 stays authoritative for its own window, while pagination-loaded
+// trailing pages are preserved and de-duplicated by instanceId+hash. `prev` is the
+// state list typed as the Torrent supertype; in aggregated scope every row is in
+// fact a CrossInstanceTorrent (it carries instanceId+instanceName), so we treat it
+// as such for the identity key.
+export function mergeStreamedCrossInstanceFirstPage(
+  prev: Torrent[],
+  data: Pick<TorrentResponse, "total" | "crossInstanceTorrents" | "cross_instance_torrents">
+): CrossInstanceTorrent[] {
+  return mergeStreamedFirstPage(
+    prev as CrossInstanceTorrent[],
+    resolveStreamedCrossInstanceTorrents(data),
+    typeof data.total === "number" ? data.total : undefined,
+    crossInstanceRowKey
+  )
 }
