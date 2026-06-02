@@ -37,8 +37,10 @@ export interface UseTorrentTableNotificationsParams {
   tags?: string[]
   totalCount: number
   torrents: Torrent[]
-  subcategoriesFromData?: boolean
-  supportsSubcategories: boolean
+  // The fully-derived "subcategories active right now" flag (folds in capabilities,
+  // the always-enabled flag, and the user's use_subcategories preference) — the same
+  // value the table/cards render from, so the parent receives a consistent flag.
+  allowSubcategories: boolean
   supportsTrackerHealth: boolean
   // onSelectionChange effect inputs
   onSelectionChange?: SelectionChange
@@ -75,8 +77,7 @@ export function useTorrentTableNotifications({
   tags,
   totalCount,
   torrents,
-  subcategoriesFromData,
-  supportsSubcategories,
+  allowSubcategories,
   supportsTrackerHealth,
   onSelectionChange,
   selectedHashes,
@@ -96,8 +97,7 @@ export function useTorrentTableNotifications({
     tags?: string[]
     totalCount?: number
     torrentsLength?: number
-    useSubcategories?: boolean
-    supportsSubcategories?: boolean
+    allowSubcategories?: boolean
     supportsTrackerHealth?: boolean
   }>({})
 
@@ -113,11 +113,9 @@ export function useTorrentTableNotifications({
     const nextCounts = counts ?? cachedMetadata.counts
     const nextCategories = categories ?? cachedMetadata.categories
     const nextTags = tags ?? cachedMetadata.tags
-    const prevSupportsSubcategories = cachedMetadata.supportsSubcategories ?? false
-    const previousUseSubcategories = cachedMetadata.useSubcategories ?? false
+    const previousAllowSubcategories = cachedMetadata.allowSubcategories ?? false
     const previousSupportsTrackerHealth = cachedMetadata.supportsTrackerHealth ?? false
-    const nextSupportsSubcategories = supportsSubcategories
-    const nextUseSubcategories = nextSupportsSubcategories ? (subcategoriesFromData ?? previousUseSubcategories) : false
+    const nextAllowSubcategories = allowSubcategories
     const nextSupportsTrackerHealth = supportsTrackerHealth
     const nextTotalCount = totalCount
 
@@ -125,7 +123,7 @@ export function useTorrentTableNotifications({
       nextCounts !== undefined ||
       nextCategories !== undefined ||
       nextTags !== undefined ||
-      nextUseSubcategories !== undefined
+      nextAllowSubcategories !== undefined
     const hasExistingTorrents = torrents.length > 0
 
     if (!hasAnyMetadata && !hasExistingTorrents) {
@@ -136,8 +134,7 @@ export function useTorrentTableNotifications({
       nextCounts !== cachedMetadata.counts ||
       nextCategories !== cachedMetadata.categories ||
       nextTags !== cachedMetadata.tags ||
-      nextSupportsSubcategories !== prevSupportsSubcategories ||
-      nextUseSubcategories !== previousUseSubcategories ||
+      nextAllowSubcategories !== previousAllowSubcategories ||
       nextSupportsTrackerHealth !== previousSupportsTrackerHealth ||
       nextTotalCount !== cachedMetadata.totalCount
 
@@ -153,7 +150,7 @@ export function useTorrentTableNotifications({
       nextCounts,
       nextCategories,
       nextTags,
-      nextUseSubcategories,
+      nextAllowSubcategories,
       nextSupportsTrackerHealth
     )
 
@@ -164,14 +161,13 @@ export function useTorrentTableNotifications({
       tags: nextTags,
       totalCount: nextTotalCount,
       torrentsLength: torrents.length,
-      useSubcategories: nextUseSubcategories,
-      supportsSubcategories: nextSupportsSubcategories,
+      allowSubcategories: nextAllowSubcategories,
       supportsTrackerHealth: nextSupportsTrackerHealth,
     }
     // instanceId is intentionally NOT a dependency — it's only a ref cache key
     // (adding it would change the effect's re-run timing).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData, supportsSubcategories, supportsTrackerHealth])
+  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, allowSubcategories, supportsTrackerHealth])
 
   // Call the callback when selection state changes
   useEffect(() => {
