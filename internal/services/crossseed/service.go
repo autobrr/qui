@@ -7646,6 +7646,23 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		candidateRelease := s.releaseCache.Parse(res.Title)
 		match, mismatchReason := s.releasesMatchWithReasonAndNamesAndTitles(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, arrTitles, nil, opts.FindIndividualEpisodes)
 		if !match {
+			// Detect cross-tracker web-source relabels (e.g. WEBRip vs WEB-DL) of the
+			// same encode that are within size tolerance. These are currently rejected
+			// here; the log surfaces how often it happens so the relabel tolerance can
+			// be validated before it is acted on.
+			if mismatchReason == sourceMismatchReason &&
+				s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, tolerancePercent) &&
+				s.isWebSourceRelabel(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, arrTitles, nil, opts.FindIndividualEpisodes) {
+				log.Info().
+					Str("sourceTitle", sourceTorrent.Name).
+					Str("candidateTitle", res.Title).
+					Str("sourceSource", searchRelease.Source).
+					Str("candidateSource", candidateRelease.Source).
+					Int64("sourceSize", sourceTorrent.Size).
+					Int64("candidateSize", res.Size).
+					Float64("tolerancePercent", tolerancePercent).
+					Msg("[CROSSSEED-SEARCH] Web-source relabel within size tolerance detected (currently rejected; apply-stage verification would confirm)")
+			}
 			releaseFilteredCount++
 			recordReleaseRejection(
 				releaseFilterReasons,
