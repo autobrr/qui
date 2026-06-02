@@ -2,40 +2,29 @@ package crossseed
 
 import "testing"
 
-func TestNormalizeSearchRunTiming(t *testing.T) {
+func TestNormalizeSearchTiming(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name           string
-		interval       int
-		cooldown       int
-		disableTorznab bool
-		wantInterval   int
-		wantCooldown   int
+		name         string
+		interval     int
+		cooldown     int
+		wantInterval int
+		wantCooldown int
 	}{
 		{
-			name:           "torznab clamps interval",
-			interval:       1,
-			cooldown:       1,
-			disableTorznab: false,
-			wantInterval:   minSearchIntervalSecondsTorznab,
-			wantCooldown:   minSearchCooldownMinutes,
+			name:         "clamps interval to minimum",
+			interval:     1,
+			cooldown:     1,
+			wantInterval: minSearchIntervalSecondsTorznab,
+			wantCooldown: minSearchCooldownMinutes,
 		},
 		{
-			name:           "gazelle-only clamps interval",
-			interval:       1,
-			cooldown:       1,
-			disableTorznab: true,
-			wantInterval:   minSearchIntervalSecondsGazelleOnly,
-			wantCooldown:   minSearchCooldownMinutes,
-		},
-		{
-			name:           "gazelle-only preserves higher interval",
-			interval:       minSearchIntervalSecondsGazelleOnly + 5,
-			cooldown:       minSearchCooldownMinutes + 5,
-			disableTorznab: true,
-			wantInterval:   minSearchIntervalSecondsGazelleOnly + 5,
-			wantCooldown:   minSearchCooldownMinutes + 5,
+			name:         "preserves higher interval",
+			interval:     minSearchIntervalSecondsTorznab + 5,
+			cooldown:     minSearchCooldownMinutes + 5,
+			wantInterval: minSearchIntervalSecondsTorznab + 5,
+			wantCooldown: minSearchCooldownMinutes + 5,
 		},
 	}
 
@@ -43,7 +32,7 @@ func TestNormalizeSearchRunTiming(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			gotInterval, gotCooldown := normalizeSearchRunTiming(tt.interval, tt.cooldown, tt.disableTorznab)
+			gotInterval, gotCooldown := normalizeSearchTiming(tt.interval, tt.cooldown)
 			if gotInterval != tt.wantInterval {
 				t.Fatalf("interval: got %d want %d", gotInterval, tt.wantInterval)
 			}

@@ -1803,7 +1803,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       return null
     }
     const total = activeSearchRun.totalTorrents ?? 0
-    const interval = activeSearchRun.intervalSeconds ?? 0
+    const interval = searchStatus?.effectiveIntervalSeconds ?? activeSearchRun.intervalSeconds ?? 0
     if (total === 0 || interval <= 0) {
       return null
     }
@@ -1813,7 +1813,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     }
     const eta = new Date(Date.now() + remaining * interval * 1000)
     return { eta, remaining, interval }
-  }, [activeSearchRun])
+  }, [activeSearchRun, searchStatus?.effectiveIntervalSeconds])
 
   const automationEnabled = formInitialized ? automationForm.enabled : settings?.enabled ?? false
 
