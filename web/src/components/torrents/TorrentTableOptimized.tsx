@@ -63,14 +63,6 @@ import { type TorrentSortOptionValue } from "./torrentSortOptions"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog"
-import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
@@ -95,7 +87,6 @@ import { useIncognitoMode } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
 import { resolveFooterSpeeds } from "@/lib/scoped-speeds"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import { getCommonCategory, getCommonSavePath } from "@/lib/torrent-utils"
 import { cn } from "@/lib/utils"
 import type {
   Category,
@@ -104,7 +95,7 @@ import type {
   TorrentCounts,
   TorrentFilters
 } from "@/types"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import {
   ArrowUpDown,
@@ -129,26 +120,12 @@ import {
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
-import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
 import { DraggableTableHeader } from "./DraggableTableHeader"
 import { SelectAllHotkey } from "./SelectAllHotkey"
-import {
-  CreateAndAssignCategoryDialog,
-  LocationWarningDialog,
-  RenameTorrentDialog,
-  RenameTorrentFileDialog,
-  RenameTorrentFolderDialog,
-  SetCategoryDialog,
-  SetLocationDialog,
-  TagEditorDialog,
-  SetCommentDialog,
-  ShareLimitDialog,
-  SpeedLimitsDialog,
-  TmmConfirmDialog
-} from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns } from "./TorrentTableColumns"
 import { CompactRow } from "./table/CompactRow"
+import { TorrentTableDialogs } from "./table/TorrentTableDialogs"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
 
@@ -451,43 +428,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
   const metadataTags = metadata?.tags || []
   const metadataCategories = metadata?.categories || {}
-
-  const shouldLoadRenameEntries = (showRenameFileDialog || showRenameFolderDialog) && Boolean(contextHashes[0])
-
-  const {
-    data: renameFileData,
-    isLoading: renameEntriesLoading,
-  } = useQuery({
-    queryKey: ["torrent-files", instanceId, contextHashes[0]],
-    queryFn: () => api.getTorrentFiles(instanceId, contextHashes[0]!, { refresh: true }),
-    enabled: shouldLoadRenameEntries,
-    staleTime: 0,
-    gcTime: 5 * 60 * 1000,
-  })
-
-  const renameFileEntries = useMemo(() => {
-    if (!Array.isArray(renameFileData)) return [] as { name: string }[]
-    return renameFileData
-      .filter((file) => typeof file?.name === "string")
-      .map((file) => ({ name: file.name }))
-  }, [renameFileData])
-
-  const renameFolderEntries = useMemo(() => {
-    if (renameFileEntries.length === 0) return [] as { name: string }[]
-    const folderSet = new Set<string>()
-    for (const file of renameFileEntries) {
-      const parts = file.name.split("/")
-      if (parts.length <= 1) continue
-      let current = ""
-      for (let i = 0; i < parts.length - 1; i++) {
-        current = current ? `${current}/${parts[i]}` : parts[i]
-        folderSet.add(current)
-      }
-    }
-    return Array.from(folderSet)
-      .sort((a, b) => a.localeCompare(b))
-      .map(name => ({ name }))
-  }, [renameFileEntries])
 
   const navigate = useNavigate()
 
@@ -2256,203 +2196,83 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           </div>
         </div>
 
-        <DeleteTorrentDialog
-          open={showDeleteDialog}
-          onOpenChange={(open) => {
-            if (!open) {
-              closeDeleteDialog()
-              crossSeedWarning.reset()
-            }
-          }}
-          count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          totalSize={deleteDialogTotalSize}
-          formattedSize={deleteDialogFormattedSize}
-          deleteFiles={deleteFiles}
-          onDeleteFilesChange={setDeleteFiles}
-          isDeleteFilesLocked={isDeleteFilesLocked}
-          onToggleDeleteFilesLock={toggleDeleteFilesLock}
-          showBlockCrossSeeds={hasCrossSeedTag}
-          blockCrossSeeds={blockCrossSeeds}
-          onBlockCrossSeedsChange={setBlockCrossSeeds}
-          deleteCrossSeeds={deleteCrossSeeds}
-          onDeleteCrossSeedsChange={setDeleteCrossSeeds}
-          crossSeedWarning={crossSeedWarning}
-          onConfirm={handleDeleteWrapper}
-        />
-
-        <SetCommentDialog
-          open={showCommentDialog}
-          onOpenChange={setShowCommentDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          instanceId={
-            contextTorrents.length === 1
-              ? ((contextTorrents[0] as CrossInstanceTorrent).instanceId ?? instanceId)
-              : instanceId
-          }
-          torrentHash={contextHashes.length === 1 ? contextHashes[0] : undefined}
-          onConfirm={handleSetCommentWrapper}
-          isPending={isPending}
-        />
-
-        <TagEditorDialog
-          open={showTagsDialog}
-          onOpenChange={setShowTagsDialog}
-          availableTags={availableTags || []}
-          selectedTorrents={contextTorrents}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          selectionRequest={{
-            instanceId,
-            instanceIds: isCrossInstanceEndpoint ? instanceIds : undefined,
-            hashes: !isAllSelected ? contextHashes : undefined,
-            targets: !isAllSelected && (contextClientMeta.actionTargets?.length ?? 0) === contextHashes.length ? contextClientMeta.actionTargets : undefined,
-            selectAll: isAllSelected,
-            filters: isAllSelected ? normalizedSelectionFilters : undefined,
-            search: isAllSelected ? effectiveSearch : undefined,
-            excludeHashes: isAllSelected ? selectAllExcludeHashes : undefined,
-            excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
-          }}
-          onConfirm={handleTagsWrapper}
-          isPending={isPending}
-          isLoadingTags={isLoadingTags}
-        />
-
-        {/* Set Category Dialog */}
-        <SetCategoryDialog
-          open={showCategoryDialog}
-          onOpenChange={setShowCategoryDialog}
-          availableCategories={availableCategories || {}}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={handleSetCategoryWrapper}
-          isPending={isPending}
-          initialCategory={getCommonCategory(contextTorrents)}
-          isLoadingCategories={isLoadingCategories}
-          useSubcategories={allowSubcategories}
-        />
-
-        {/* Create and Assign Category Dialog */}
-        <CreateAndAssignCategoryDialog
-          open={showCreateCategoryDialog}
-          onOpenChange={setShowCreateCategoryDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={handleSetCategoryWrapper}
-          isPending={isPending}
-        />
-
-        <ShareLimitDialog
-          open={showShareLimitDialog}
-          onOpenChange={setShowShareLimitDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          torrents={contextTorrents}
-          onConfirm={handleSetShareLimitWrapper}
-          isPending={isPending}
-          supportsShareLimitsAction={capabilities?.supportsShareLimitsAction}
-          supportsShareLimitsMode={capabilities?.supportsShareLimitsMode}
-        />
-
-        <SpeedLimitsDialog
-          open={showSpeedLimitDialog}
-          onOpenChange={setShowSpeedLimitDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          torrents={contextTorrents}
-          onConfirm={handleSetSpeedLimitsWrapper}
-          isPending={isPending}
-        />
-
-        {/* Set Location Dialog */}
-        <SetLocationDialog
-          open={showLocationDialog}
-          onOpenChange={setShowLocationDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={handleSetLocationWrapper}
-          isPending={isPending}
-          initialLocation={getCommonSavePath(contextTorrents)}
+        <TorrentTableDialogs
           instanceId={instanceId}
+          instanceIds={instanceIds}
+          contextHashes={contextHashes}
+          contextTorrents={contextTorrents}
+          isPending={isPending}
+          showDeleteDialog={showDeleteDialog}
+          closeDeleteDialog={closeDeleteDialog}
+          showCommentDialog={showCommentDialog}
+          setShowCommentDialog={setShowCommentDialog}
+          showTagsDialog={showTagsDialog}
+          setShowTagsDialog={setShowTagsDialog}
+          showCategoryDialog={showCategoryDialog}
+          setShowCategoryDialog={setShowCategoryDialog}
+          showCreateCategoryDialog={showCreateCategoryDialog}
+          setShowCreateCategoryDialog={setShowCreateCategoryDialog}
+          showShareLimitDialog={showShareLimitDialog}
+          setShowShareLimitDialog={setShowShareLimitDialog}
+          showSpeedLimitDialog={showSpeedLimitDialog}
+          setShowSpeedLimitDialog={setShowSpeedLimitDialog}
+          showLocationDialog={showLocationDialog}
+          setShowLocationDialog={setShowLocationDialog}
+          showRenameTorrentDialog={showRenameTorrentDialog}
+          setShowRenameTorrentDialog={setShowRenameTorrentDialog}
+          showRenameFileDialog={showRenameFileDialog}
+          setShowRenameFileDialog={setShowRenameFileDialog}
+          showRenameFolderDialog={showRenameFolderDialog}
+          setShowRenameFolderDialog={setShowRenameFolderDialog}
+          showRecheckDialog={showRecheckDialog}
+          setShowRecheckDialog={setShowRecheckDialog}
+          showReannounceDialog={showReannounceDialog}
+          setShowReannounceDialog={setShowReannounceDialog}
+          showTmmDialog={showTmmDialog}
+          setShowTmmDialog={setShowTmmDialog}
+          pendingTmmEnable={pendingTmmEnable}
+          showLocationWarningDialog={showLocationWarningDialog}
+          setShowLocationWarningDialog={setShowLocationWarningDialog}
+          deleteFiles={deleteFiles}
+          setDeleteFiles={setDeleteFiles}
+          isDeleteFilesLocked={isDeleteFilesLocked}
+          toggleDeleteFilesLock={toggleDeleteFilesLock}
+          blockCrossSeeds={blockCrossSeeds}
+          setBlockCrossSeeds={setBlockCrossSeeds}
+          deleteCrossSeeds={deleteCrossSeeds}
+          setDeleteCrossSeeds={setDeleteCrossSeeds}
+          handleDeleteWrapper={handleDeleteWrapper}
+          handleSetCommentWrapper={handleSetCommentWrapper}
+          handleTagsWrapper={handleTagsWrapper}
+          handleSetCategoryWrapper={handleSetCategoryWrapper}
+          handleSetShareLimitWrapper={handleSetShareLimitWrapper}
+          handleSetSpeedLimitsWrapper={handleSetSpeedLimitsWrapper}
+          handleSetLocationWrapper={handleSetLocationWrapper}
+          handleRenameTorrentWrapper={handleRenameTorrentWrapper}
+          handleRenameFileWrapper={handleRenameFileWrapper}
+          handleRenameFolderWrapper={handleRenameFolderWrapper}
+          handleRecheckWrapper={handleRecheckWrapper}
+          handleReannounceWrapper={handleReannounceWrapper}
+          handleTmmConfirmWrapper={handleTmmConfirmWrapper}
+          proceedToLocationDialog={proceedToLocationDialog}
+          normalizedSelectionFilters={normalizedSelectionFilters}
+          contextClientMeta={contextClientMeta}
+          isAllSelected={isAllSelected}
+          effectiveSelectionCount={effectiveSelectionCount}
+          deleteDialogTotalSize={deleteDialogTotalSize}
+          deleteDialogFormattedSize={deleteDialogFormattedSize}
+          selectAllExcludeHashes={selectAllExcludeHashes}
+          selectAllExcludedTargets={selectAllExcludedTargets}
+          crossSeedWarning={crossSeedWarning}
+          hasCrossSeedTag={hasCrossSeedTag}
+          availableTags={availableTags}
+          availableCategories={availableCategories}
+          isLoadingTags={isLoadingTags}
+          isLoadingCategories={isLoadingCategories}
+          allowSubcategories={allowSubcategories}
           capabilities={capabilities}
-        />
-
-        {/* Rename dialogs */}
-        <RenameTorrentDialog
-          open={showRenameTorrentDialog}
-          onOpenChange={setShowRenameTorrentDialog}
-          currentName={contextTorrents[0]?.name}
-          onConfirm={handleRenameTorrentWrapper}
-          isPending={isPending}
-        />
-        <RenameTorrentFileDialog
-          open={showRenameFileDialog}
-          onOpenChange={setShowRenameFileDialog}
-          files={renameFileEntries}
-          isLoading={renameEntriesLoading}
-          onConfirm={handleRenameFileWrapper}
-          isPending={isPending}
-        />
-        <RenameTorrentFolderDialog
-          open={showRenameFolderDialog}
-          onOpenChange={setShowRenameFolderDialog}
-          folders={renameFolderEntries}
-          isLoading={renameEntriesLoading}
-          onConfirm={handleRenameFolderWrapper}
-          isPending={isPending}
-        />
-
-
-        {/* Force Recheck Confirmation Dialog */}
-        <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("recheckDialog.title", { count: isAllSelected ? effectiveSelectionCount : contextHashes.length })}</DialogTitle>
-              <DialogDescription>
-                {t("recheckDialog.description")}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
-                {t("recheckDialog.cancel")}
-              </Button>
-              <Button onClick={handleRecheckWrapper} disabled={isPending}>
-                {t("recheckDialog.confirm")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Reannounce Confirmation Dialog */}
-        <Dialog open={showReannounceDialog} onOpenChange={setShowReannounceDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("reannounceDialog.title", { count: isAllSelected ? effectiveSelectionCount : contextHashes.length })}</DialogTitle>
-              <DialogDescription>
-                {t("reannounceDialog.description")}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
-                {t("reannounceDialog.cancel")}
-              </Button>
-              <Button onClick={handleReannounceWrapper} disabled={isPending}>
-                {t("reannounceDialog.confirm")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* TMM Confirmation Dialog */}
-        <TmmConfirmDialog
-          open={showTmmDialog}
-          onOpenChange={setShowTmmDialog}
-          count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          enable={pendingTmmEnable}
-          onConfirm={handleTmmConfirmWrapper}
-          isPending={isPending}
-        />
-
-        {/* Location Warning Dialog */}
-        <LocationWarningDialog
-          open={showLocationWarningDialog}
-          onOpenChange={setShowLocationWarningDialog}
-          count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={proceedToLocationDialog}
-          isPending={isPending}
+          isCrossInstanceEndpoint={isCrossInstanceEndpoint}
+          effectiveSearch={effectiveSearch}
         />
 
         {/* Instance Preferences Dialog */}
