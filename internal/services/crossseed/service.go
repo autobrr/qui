@@ -7646,35 +7646,38 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 		candidateRelease := s.releaseCache.Parse(res.Title)
 		match, mismatchReason := s.releasesMatchWithReasonAndNamesAndTitles(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, arrTitles, nil, opts.FindIndividualEpisodes)
 		if !match {
-			// Detect cross-tracker web-source relabels (e.g. WEBRip vs WEB-DL) of the
-			// same encode that are within size tolerance. These are currently rejected
-			// here; the log surfaces how often it happens so the relabel tolerance can
-			// be validated before it is acted on.
-			if mismatchReason == sourceMismatchReason &&
+			// Cross-tracker relabel tolerance: the same web encode is frequently
+			// relabeled WEBRip<->WEB-DL across trackers. When the source label is the
+			// only difference and the candidate is within size tolerance, accept it and
+			// let the apply-stage file-size verification + qBittorrent recheck make the
+			// final call, rather than dropping a byte-identical release on its label.
+			relabelMatch := mismatchReason == sourceMismatchReason &&
 				s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, tolerancePercent) &&
-				s.isWebSourceRelabel(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, arrTitles, nil, opts.FindIndividualEpisodes) {
-				log.Info().
-					Str("sourceTitle", sourceTorrent.Name).
-					Str("candidateTitle", res.Title).
-					Str("sourceSource", searchRelease.Source).
-					Str("candidateSource", candidateRelease.Source).
-					Int64("sourceSize", sourceTorrent.Size).
-					Int64("candidateSize", res.Size).
-					Float64("tolerancePercent", tolerancePercent).
-					Msg("[CROSSSEED-SEARCH] Web-source relabel within size tolerance detected (currently rejected; apply-stage verification would confirm)")
+				s.isWebSourceRelabel(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, arrTitles, nil, opts.FindIndividualEpisodes)
+			if !relabelMatch {
+				releaseFilteredCount++
+				recordReleaseRejection(
+					releaseFilterReasons,
+					mismatchReason,
+					sourceTorrent.Name,
+					res.Title,
+					opts.FindIndividualEpisodes,
+					releaseFilterDebugInfoFrom(searchRelease),
+					releaseFilterDebugInfoFrom(candidateRelease),
+					"[CROSSSEED-SEARCH] Candidate filtered out by release match",
+				)
+				continue
 			}
-			releaseFilteredCount++
-			recordReleaseRejection(
-				releaseFilterReasons,
-				mismatchReason,
-				sourceTorrent.Name,
-				res.Title,
-				opts.FindIndividualEpisodes,
-				releaseFilterDebugInfoFrom(searchRelease),
-				releaseFilterDebugInfoFrom(candidateRelease),
-				"[CROSSSEED-SEARCH] Candidate filtered out by release match",
-			)
-			continue
+
+			log.Info().
+				Str("sourceTitle", sourceTorrent.Name).
+				Str("candidateTitle", res.Title).
+				Str("sourceSource", searchRelease.Source).
+				Str("candidateSource", candidateRelease.Source).
+				Int64("sourceSize", sourceTorrent.Size).
+				Int64("candidateSize", res.Size).
+				Float64("tolerancePercent", tolerancePercent).
+				Msg("[CROSSSEED-SEARCH] Accepting cross-tracker web-source relabel; apply-stage file verification will confirm")
 		}
 
 		// Reject forbidden pairing: season pack candidate (new) vs single episode source (existing).
