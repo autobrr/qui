@@ -8,7 +8,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
-import { normalizeStreamedSnapshot, resolveStreamedCrossInstanceTorrents } from "@/lib/cross-instance-torrents"
+import { mergeStreamedCrossInstanceFirstPage, normalizeStreamedSnapshot } from "@/lib/cross-instance-torrents"
 import { isAllInstancesScope } from "@/lib/instances"
 import { mergeStreamedFirstPage } from "@/lib/stream-merge"
 import type {
@@ -234,10 +234,13 @@ export function useTorrentsList(
       queryClient.setQueryData(streamQueryKey, data)
 
       if (useCrossInstanceEndpoint) {
-        // Aggregated streams deliver the full first page of cross-instance torrents.
-        // Their identity is instanceId+hash, so the single-instance hash merge below
-        // does not apply; replace the list wholesale.
-        setAllTorrents(resolveStreamedCrossInstanceTorrents(data))
+        // Aggregated streams only ever deliver the first page of cross-instance
+        // torrents. Merge it into the displayed list keyed on instanceId+hash so
+        // pages the user paginated in via REST survive: a wholesale replace would
+        // reset the unified view to page 0 on every snapshot, so it could never
+        // scroll past the first page (issue #1983). Page 0 stays authoritative for
+        // its own window. See mergeStreamedCrossInstanceFirstPage.
+        setAllTorrents(prev => mergeStreamedCrossInstanceFirstPage(prev, data))
 
         if (typeof data.total === "number") {
           setLastKnownTotal(data.total)
