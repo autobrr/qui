@@ -12,6 +12,15 @@ Frontend and i18n rules for work under `web/`.
 - Style: two-space indentation, double quotes, trailing commas on multiline literals, Unix line endings.
 - Frontend tests: Vitest + React Testing Library, colocated as `*.test.tsx` near the component.
 
+## Frontend Tests
+
+- Colocate `*.test.ts(x)` specs with the change. Prefer extracting logic into hooks (`web/src/hooks/`) and pure helpers (`web/src/lib/`) so it is unit-testable without mounting the whole tree (see `web/src/hooks/torrent-table/` for the pattern).
+- Vitest runs with `globals: false` + jsdom and **no setup file**:
+  - Import test globals explicitly: `import { describe, it, expect, vi } from "vitest"`; use `render` / `renderHook` / `act` from `@testing-library/react`.
+  - No jest-dom matchers (`toBeInTheDocument`, `toHaveTextContent`, …) — assert plain DOM: `el.textContent`, `el.getAttribute(...)`, `expect(node).toBeNull()`.
+  - When mounting components with effects, mock their boundaries (`@/lib/api`, router, context providers, `useVirtualizer`, query hooks) and return a **stable singleton** from each mock — fresh objects per render loop effects and OOM the worker. Use `vi.hoisted()` for values referenced inside `vi.mock` factories.
+- jsdom does no real layout, scroll, or pointer/drag work — it renders **zero virtual rows** and cannot exercise virtualization, dnd-kit, or scroll restoration. Unit-test the extractable logic (reorder math, row-height mapping, handler wiring) and **manually smoke** anything visual or interactive; a green suite is not full coverage. Run targeted with `cd web && npx vitest run <path>`; CI runs the full suite via `make test-frontend`.
+
 ## React Effects
 
 - Use `useEffect` only to sync with external systems: DOM, subscriptions, network.
