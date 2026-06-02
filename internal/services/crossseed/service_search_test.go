@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1466,9 +1467,9 @@ func TestSearchTorrentMatches_DisableTorznabWithoutGazelleReturnsError(t *testin
 	require.ErrorIs(t, err, ErrInvalidRequest)
 	require.Contains(t, err.Error(), "gazelle")
 }
-func TestSearchTorrentMatches_DisableTorznab_AllowsPartialGazelleConfig(t *testing.T) {
+func TestSearchTorrentMatches_GazelleConfiguredWithoutTargetLookupReturnsNoBackendErrors(t *testing.T) {
 	ctx := context.Background()
-	db := testdb.NewMigratedSQLite(t, "crossseed-gazelle-partial-disable-torznab")
+	db := testdb.NewMigratedSQLite(t, "crossseed-gazelle-partial-no-target")
 
 	key := make([]byte, 32)
 	for i := range key {
@@ -1482,8 +1483,8 @@ func TestSearchTorrentMatches_DisableTorznab_AllowsPartialGazelleConfig(t *testi
 	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
 	require.NoError(t, err)
 
-	// Only RED key configured: OPS-sourced torrents can be searched (target=RED),
-	// but RED-sourced torrents cannot (target=OPS). Gazelle-only mode should not hard-fail.
+	// Only RED key configured: RED-sourced torrents need OPS as the target, so Gazelle
+	// is globally configured but not usable for this source.
 	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
 		GazelleEnabled: true,
 		RedactedAPIKey: "red-key",
@@ -1516,13 +1517,17 @@ func TestSearchTorrentMatches_DisableTorznab_AllowsPartialGazelleConfig(t *testi
 		},
 	}
 
-	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{DisableTorznab: true})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.Empty(t, resp.Results)
+	_, err = svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{DisableTorznab: true})
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrInvalidRequest)
+	require.Contains(t, err.Error(), "gazelle")
+
+	_, err = svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "torznab search is not configured")
 }
 
-func TestSearchTorrentMatches_GazelleSkipsWhenTargetHashExistsLocally(t *testing.T) {
+func TestSearchTorrentMatches_GazelleTargetHashSkipReturnsNoBackendWithoutTorznab(t *testing.T) {
 	ctx := context.Background()
 	db := testdb.NewMigratedSQLite(t, "crossseed-gazelle-skip-hash")
 
@@ -1589,11 +1594,9 @@ func TestSearchTorrentMatches_GazelleSkipsWhenTargetHashExistsLocally(t *testing
 		},
 	}
 
-	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
-	require.NoError(t, err)
-	require.NotNil(t, resp)
-	require.Equal(t, instance.ID, resp.SourceTorrent.InstanceID)
-	require.Empty(t, resp.Results, "should skip Gazelle search when target hash already exists locally")
+	_, err = svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "torznab search is not configured")
 }
 
 func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *testing.T) {
@@ -1847,7 +1850,7 @@ func TestSearchRunLoop_GazelleOnly_DoesNotSleepWhenLookupSkippedByLocalPrefilter
 	require.NoError(t, err)
 	state := &searchRunState{
 		run:  run,
-		opts: SearchRunOptions{InstanceID: instance.ID, DisableTorznab: true},
+		opts: SearchRunOptions{InstanceID: instance.ID, DisableTorznab: true, IntervalSeconds: 1},
 		queue: []qbt.Torrent{
 			sourceTorrent,
 		},
@@ -1884,23 +1887,30 @@ func TestSearchRunLoop_GazelleOnly_DoesNotSleepWhenLookupSkippedByLocalPrefilter
 	svc.searchState = state
 	svc.searchMu.Unlock()
 
-	searchResp, lookupAttempted, err := svc.searchTorrentMatches(ctx, state.opts.InstanceID, sourceTorrent.Hash, TorrentSearchOptions{
-		DisableTorznab:                  true,
-		FindIndividualEpisodes:          false,
-		SizeMismatchTolerancePercent:    0,
-		SizeMismatchTolerancePercentSet: false,
-	}, state.gazelleClients)
-	require.NoError(t, err)
-	require.NotNil(t, searchResp)
-	_, _, directLookupAttempted := svc.searchGazelleMatches(ctx, state.opts.InstanceID, &sourceTorrent, sourceFiles, "redacted.sh", true, state.gazelleClients)
-	require.False(t, directLookupAttempted)
-	require.False(t, lookupAttempted)
-	require.Equal(t, 0, callCount)
+	runCtx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	done := make(chan struct{})
+	go func() {
+		svc.searchRunLoop(runCtx, state)
+		close(done)
+	}()
 
-	interval := searchRunLoopInterval(state.opts)
-	shouldSleep := interval > 0 && (!state.opts.DisableTorznab || lookupAttempted)
-	require.False(t, shouldSleep)
-	require.True(t, state.nextWake.IsZero())
+	require.Eventually(t, func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	}, 2*time.Second, 10*time.Millisecond)
+
+	svc.searchMu.Lock()
+	processed := state.run.Processed
+	nextWake := state.nextWake
+	svc.searchMu.Unlock()
+	require.Equal(t, 1, processed)
+	require.Equal(t, 0, callCount)
+	require.True(t, nextWake.IsZero())
 }
 
 func TestSearchRunLoop_GazelleOnly_SleepsOnlyAfterLookupAttempted(t *testing.T) {
@@ -1944,10 +1954,10 @@ func TestSearchRunLoop_GazelleOnly_SleepsOnlyAfterLookupAttempted(t *testing.T) 
 	clients, err := gazelleClientsForTest()
 	require.NoError(t, err)
 
-	callCount := 0
+	var callCount atomic.Int32
 	prevFindMatch := findGazelleMatch
 	findGazelleMatch = func(_ context.Context, _ *gazellemusic.Client, _ []byte, _ map[string]int64, _ int64) (*gazellemusic.Match, error) {
-		callCount++
+		callCount.Add(1)
 		return nil, nil
 	}
 	defer func() {
@@ -1993,6 +2003,7 @@ func TestSearchRunLoop_GazelleOnly_SleepsOnlyAfterLookupAttempted(t *testing.T) 
 	svc.searchMu.Unlock()
 
 	runCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	done := make(chan struct{})
 	go func() {
 		svc.searchRunLoop(runCtx, state)
@@ -2012,7 +2023,7 @@ func TestSearchRunLoop_GazelleOnly_SleepsOnlyAfterLookupAttempted(t *testing.T) 
 		svc.searchMu.Unlock()
 		return sleepScheduled
 	}, 2*time.Second, 10*time.Millisecond)
-	require.Positive(t, callCount)
+	require.Positive(t, callCount.Load())
 
 	cancel()
 	require.Eventually(t, func() bool {
@@ -2097,6 +2108,173 @@ func TestSearchRunLoop_NoBackendDoesNotSleepWithoutLookupAttempt(t *testing.T) {
 	}()
 
 	defer cancel()
+	require.Eventually(t, func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	}, 2*time.Second, 10*time.Millisecond)
+
+	svc.searchMu.Lock()
+	nextWake := state.nextWake
+	svc.searchMu.Unlock()
+	require.True(t, nextWake.IsZero())
+}
+
+func TestSearchRunLoop_RunScopedIndexerErrorStopsAfterFirstCandidate(t *testing.T) {
+	ctx := context.Background()
+	db := testdb.NewMigratedSQLite(t, "crossseed-runloop-indexer-resolution-error")
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{
+		InstanceID:      instance.ID,
+		Status:          models.CrossSeedSearchRunStatusRunning,
+		StartedAt:       time.Now().UTC(),
+		Filters:         models.CrossSeedSearchFilters{},
+		IndexerIDs:      []int{},
+		IntervalSeconds: 1,
+		CooldownMinutes: 0,
+		Results:         []models.CrossSeedSearchResult{},
+	})
+	require.NoError(t, err)
+
+	torrents := []qbt.Torrent{
+		{
+			Hash:     "223759985c562a644428312c8cd3585d04686847",
+			Name:     "During - LMK (2024 WF)",
+			Progress: 1.0,
+			Size:     123,
+			Tracker:  "https://tracker.example/announce",
+		},
+		{
+			Hash:     "323759985c562a644428312c8cd3585d04686847",
+			Name:     "Other Artist - Other Album (2024)",
+			Progress: 1.0,
+			Size:     456,
+			Tracker:  "https://tracker.example/announce",
+		},
+	}
+	resolveErr := errors.New("indexer resolution unavailable")
+	state := &searchRunState{
+		run:                       run,
+		opts:                      SearchRunOptions{InstanceID: instance.ID, IntervalSeconds: 1},
+		resolvedTorznabIndexerErr: resolveErr,
+	}
+
+	svc := &Service{
+		instanceStore:    instanceStore,
+		automationStore:  store,
+		syncManager:      newFakeSyncManager(instance, torrents, nil),
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		searchState:      state,
+	}
+
+	svc.searchRunLoop(ctx, state)
+
+	require.ErrorIs(t, state.lastError, resolveErr)
+	require.Equal(t, models.CrossSeedSearchRunStatusFailed, state.run.Status)
+	require.Equal(t, 2, state.run.TotalTorrents)
+	require.Equal(t, 1, state.run.Processed)
+	require.Equal(t, 0, state.run.TorrentsFailed)
+	require.Empty(t, state.run.Results)
+	require.True(t, state.nextWake.IsZero())
+}
+
+func TestSearchRunLoop_FilteredIndexersDoesNotSleepWithoutRemoteRequest(t *testing.T) {
+	ctx := context.Background()
+	db := testdb.NewMigratedSQLite(t, "crossseed-runloop-filtered-indexers-no-remote")
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled: true,
+		RedactedAPIKey: "red-key",
+		OrpheusAPIKey:  "ops-key",
+	})
+	require.NoError(t, err)
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	run, err := store.CreateSearchRun(ctx, &models.CrossSeedSearchRun{
+		InstanceID:      instance.ID,
+		Status:          models.CrossSeedSearchRunStatusRunning,
+		StartedAt:       time.Now().UTC(),
+		Filters:         models.CrossSeedSearchFilters{},
+		IndexerIDs:      []int{},
+		IntervalSeconds: 1,
+		CooldownMinutes: 0,
+		Results:         []models.CrossSeedSearchResult{},
+	})
+	require.NoError(t, err)
+
+	sourceTorrent := qbt.Torrent{
+		Hash:     "223759985c562a644428312c8cd3585d04686847",
+		Name:     "During - LMK (2024 WF)",
+		Progress: 1.0,
+		Size:     123,
+		Tracker:  "https://tracker.example/announce",
+	}
+	state := &searchRunState{
+		run: run,
+		opts: SearchRunOptions{
+			InstanceID:      instance.ID,
+			DisableTorznab:  false,
+			IntervalSeconds: 1,
+		},
+		queue: []qbt.Torrent{
+			sourceTorrent,
+		},
+	}
+
+	svc := &Service{
+		instanceStore:   instanceStore,
+		automationStore: store,
+		jackettService: newJackettServiceWithIndexers([]*models.TorznabIndexer{
+			{ID: 1, Name: "Orpheus", BaseURL: "https://orpheus.network", Enabled: true},
+			{ID: 2, Name: "Redacted", BaseURL: "https://redacted.sh", Enabled: true},
+		}),
+		syncManager: &gazelleSkipHashSyncManager{
+			torrents: []qbt.Torrent{sourceTorrent},
+			filesByHash: map[string]qbt.TorrentFiles{
+				strings.ToLower(sourceTorrent.Hash): {
+					{Name: "During - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
+				},
+			},
+		},
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+	}
+
+	svc.searchMu.Lock()
+	svc.searchState = state
+	svc.searchMu.Unlock()
+
+	runCtx := t.Context()
+	done := make(chan struct{})
+	go func() {
+		svc.searchRunLoop(runCtx, state)
+		close(done)
+	}()
+
 	require.Eventually(t, func() bool {
 		select {
 		case <-done:
