@@ -1065,7 +1065,7 @@ func TestStartSearchRun_JackettProbeFailureRequiresGazelle(t *testing.T) {
 	require.ErrorContains(t, err, "failed to load enabled torznab indexers")
 }
 
-func TestStartSearchRun_DisableTorznabUsesConservativeRunInterval(t *testing.T) {
+func TestStartSearchRun_DisableTorznabUsesGazelleRunIntervalFloor(t *testing.T) {
 	ctx := context.Background()
 	db := testdb.NewMigratedSQLite(t, "crossseed-start-disable-torznab-interval")
 
@@ -1102,7 +1102,7 @@ func TestStartSearchRun_DisableTorznabUsesConservativeRunInterval(t *testing.T) 
 	})
 	require.NoError(t, err)
 	require.NotNil(t, run)
-	require.Equal(t, minSearchIntervalSecondsTorznab, run.IntervalSeconds)
+	require.Equal(t, minSearchIntervalSecondsGazelleOnly, run.IntervalSeconds)
 
 	require.Eventually(t, func() bool {
 		loaded, loadErr := store.GetSearchRun(ctx, run.ID)
@@ -1115,7 +1115,7 @@ func TestStartSearchRun_DisableTorznabUsesConservativeRunInterval(t *testing.T) 
 	loaded, err := store.GetSearchRun(ctx, run.ID)
 	require.NoError(t, err)
 	require.NotNil(t, loaded)
-	require.Equal(t, minSearchIntervalSecondsTorznab, loaded.IntervalSeconds)
+	require.Equal(t, minSearchIntervalSecondsGazelleOnly, loaded.IntervalSeconds)
 }
 
 func TestStartSearchRun_TorznabKeepsConservativeIntervalFloor(t *testing.T) {
@@ -1182,7 +1182,7 @@ func TestSearchRunLoopInterval(t *testing.T) {
 		t,
 		time.Duration(minSearchIntervalSecondsGazelleOnly)*time.Second,
 		searchRunLoopInterval(SearchRunOptions{
-			IntervalSeconds: 42,
+			IntervalSeconds: 1,
 			DisableTorznab:  true,
 		}),
 	)
@@ -1198,7 +1198,7 @@ func TestGetSearchRunStatus_ReportsEffectiveInterval(t *testing.T) {
 				IntervalSeconds: minSearchIntervalSecondsTorznab,
 			},
 			opts: SearchRunOptions{
-				IntervalSeconds: minSearchIntervalSecondsTorznab,
+				IntervalSeconds: minSearchIntervalSecondsTorznab + 30,
 				DisableTorznab:  true,
 			},
 		},
@@ -1207,7 +1207,7 @@ func TestGetSearchRunStatus_ReportsEffectiveInterval(t *testing.T) {
 	status, err := svc.GetSearchRunStatus(context.Background())
 	require.NoError(t, err)
 	require.True(t, status.Running)
-	require.Equal(t, minSearchIntervalSecondsGazelleOnly, status.EffectiveIntervalSeconds)
+	require.Equal(t, minSearchIntervalSecondsTorznab+30, status.EffectiveIntervalSeconds)
 	require.Equal(t, minSearchIntervalSecondsTorznab, status.Run.IntervalSeconds)
 }
 
@@ -1674,6 +1674,79 @@ func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *test
 	require.False(t, lookupAttempted)
 	require.Empty(t, results, "should skip Gazelle search when target tracker content exists locally")
 	require.Equal(t, 0, callCount, "should skip remote Gazelle lookup for matching local content")
+}
+
+func TestSearchTorrentMatches_DisableTorznabAllowsGazellePrefilterOnlySkip(t *testing.T) {
+	ctx := context.Background()
+	db := testdb.NewMigratedSQLite(t, "crossseed-gazelle-disable-torznab-prefilter-only")
+
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i)
+	}
+	store, err := models.NewCrossSeedStore(db, key)
+	require.NoError(t, err)
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
+		GazelleEnabled: true,
+		OrpheusAPIKey:  "ops-key",
+		RedactedAPIKey: "red-key",
+	})
+	require.NoError(t, err)
+
+	sourceHash := "223759985c562a644428312c8cd3585d04686847"
+	sourceHashNorm := strings.ToLower(sourceHash)
+	sourceTorrent := qbt.Torrent{
+		Hash:     sourceHash,
+		Name:     "Durante - LMK (2024 WF)",
+		Progress: 1.0,
+		Size:     123,
+		Tracker:  "https://flacsfor.me/abc/announce",
+	}
+	sourceFiles := qbt.TorrentFiles{
+		{Name: "Durante - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
+	}
+	cachedCandidate := qbt.Torrent{
+		Hash:     "c1f58f7e5c7f6f45c8f5d6f6a6c4fbb4d4f2b1a9e",
+		Name:     "Durante - LMK (2024 WF)",
+		Progress: 1.0,
+		Size:     123,
+		Tracker:  "https://orpheus.network/announce",
+	}
+
+	svc := &Service{
+		instanceStore:    instanceStore,
+		automationStore:  store,
+		releaseCache:     NewReleaseCache(),
+		stringNormalizer: stringutils.NewDefaultNormalizer(),
+		syncManager: &gazelleSkipHashSyncManager{
+			torrents: []qbt.Torrent{sourceTorrent},
+			filesByHash: map[string]qbt.TorrentFiles{
+				sourceHashNorm: sourceFiles,
+				normalizeHash(cachedCandidate.Hash): {
+					{Name: "Durante - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
+				},
+			},
+			cachedInstanceTorrents: []internalqb.CrossInstanceTorrentView{
+				{
+					TorrentView: &internalqb.TorrentView{
+						Torrent: &cachedCandidate,
+					},
+					InstanceID:   instance.ID,
+					InstanceName: "Local Node",
+				},
+			},
+		},
+	}
+
+	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{DisableTorznab: true})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Empty(t, resp.Results)
 }
 
 func TestSearchGazelleMatches_SkipsPrefilterWhenNoConfiguredClient(t *testing.T) {

@@ -1347,9 +1347,23 @@ func normalizeSearchTiming(intervalSeconds, cooldownMinutes int) (int, int) {
 	return intervalSeconds, cooldownMinutes
 }
 
+func normalizeSearchRunTiming(intervalSeconds, cooldownMinutes int, disableTorznab bool) (int, int) {
+	minIntervalSeconds := minSearchIntervalSecondsTorznab
+	if disableTorznab {
+		minIntervalSeconds = minSearchIntervalSecondsGazelleOnly
+	}
+	if intervalSeconds < minIntervalSeconds {
+		intervalSeconds = minIntervalSeconds
+	}
+	if cooldownMinutes < minSearchCooldownMinutes {
+		cooldownMinutes = minSearchCooldownMinutes
+	}
+	return intervalSeconds, cooldownMinutes
+}
+
 func searchRunLoopInterval(opts SearchRunOptions) time.Duration {
 	intervalSeconds := opts.IntervalSeconds
-	if opts.DisableTorznab {
+	if opts.DisableTorznab && intervalSeconds < minSearchIntervalSecondsGazelleOnly {
 		intervalSeconds = minSearchIntervalSecondsGazelleOnly
 	}
 	return time.Duration(intervalSeconds) * time.Second
@@ -2883,6 +2897,7 @@ func (s *Service) StartSearchRun(ctx context.Context, opts SearchRunOptions) (*m
 	if opts.DisableTorznab {
 		opts.IndexerIDs = []int{}
 	}
+	opts.IntervalSeconds, opts.CooldownMinutes = normalizeSearchRunTiming(opts.IntervalSeconds, opts.CooldownMinutes, opts.DisableTorznab)
 
 	s.searchMu.Lock()
 	if s.searchCancel != nil && len(opts.SpecificHashes) == 0 {
@@ -3068,7 +3083,7 @@ func (s *Service) validateSearchRunOptions(ctx context.Context, opts *SearchRunO
 	if opts.InstanceID <= 0 {
 		return fmt.Errorf("%w: instance id must be positive", ErrInvalidRequest)
 	}
-	opts.IntervalSeconds, opts.CooldownMinutes = normalizeSearchTiming(opts.IntervalSeconds, opts.CooldownMinutes)
+	opts.IntervalSeconds, opts.CooldownMinutes = normalizeSearchRunTiming(opts.IntervalSeconds, opts.CooldownMinutes, opts.DisableTorznab)
 	opts.Categories = normalizeStringSlice(opts.Categories)
 	opts.Tags = normalizeStringSlice(opts.Tags)
 	opts.IndexerIDs = uniquePositiveInts(opts.IndexerIDs)
@@ -7039,16 +7054,17 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	sourceSite, isGazelleSource := s.detectGazelleSourceSite(sourceTorrent)
 	gazelleResults := []TorrentSearchResult{}
+	gazelleConfigured := false
 	gazelleLookupAttempted := false
 	remoteRequestsMade := false
 	tolerancePercent := s.searchTolerancePercent(ctx, opts)
 	if !opts.SkipGazelle {
-		gazelleResults, _, gazelleLookupAttempted = s.searchGazelleMatches(ctx, instanceID, sourceTorrent, sourceFiles, sourceSite, isGazelleSource, gazelleClients)
+		gazelleResults, gazelleConfigured, gazelleLookupAttempted = s.searchGazelleMatches(ctx, instanceID, sourceTorrent, sourceFiles, sourceSite, isGazelleSource, gazelleClients)
 		remoteRequestsMade = gazelleLookupAttempted
 	}
 
 	if opts.DisableTorznab {
-		if !gazelleLookupAttempted {
+		if !gazelleConfigured {
 			return nil, false, false, fmt.Errorf("%w: torznab disabled but gazelle not configured", ErrInvalidRequest)
 		}
 		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults, tolerancePercent)

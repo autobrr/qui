@@ -42,3 +42,16 @@ func TestNormalizeSearchTiming(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeSearchRunTimingUsesGazelleFloorWhenTorznabDisabled(t *testing.T) {
+	t.Parallel()
+
+	gotInterval, gotCooldown := normalizeSearchRunTiming(1, 1, true)
+
+	if gotInterval != minSearchIntervalSecondsGazelleOnly {
+		t.Fatalf("interval: got %d want %d", gotInterval, minSearchIntervalSecondsGazelleOnly)
+	}
+	if gotCooldown != minSearchCooldownMinutes {
+		t.Fatalf("cooldown: got %d want %d", gotCooldown, minSearchCooldownMinutes)
+	}
+}
