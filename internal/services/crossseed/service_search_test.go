@@ -2012,7 +2012,7 @@ func TestSearchRunLoop_GazelleOnly_SleepsOnlyAfterLookupAttempted(t *testing.T) 
 		svc.searchMu.Unlock()
 		return sleepScheduled
 	}, 2*time.Second, 10*time.Millisecond)
-	require.Greater(t, callCount, 0)
+	require.Positive(t, callCount)
 
 	cancel()
 	require.Eventually(t, func() bool {
