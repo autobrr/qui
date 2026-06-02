@@ -6982,6 +6982,58 @@ func (s *Service) resolveTorznabIndexerIDs(ctx context.Context, requested []int,
 	return ids, nil
 }
 
+// alternateConnectorQuery returns a variant of query with the title connector
+// swapped between "and" and "&", so trackers that index a show with the opposite
+// spelling are still reachable (e.g. "Law and Order" vs "Law & Order"). Returns
+// ("", false) when no swap applies.
+func alternateConnectorQuery(query string) (string, bool) {
+	if strings.Contains(query, " and ") {
+		return strings.ReplaceAll(query, " and ", " & "), true
+	}
+	if strings.Contains(query, "&") {
+		alt := strings.Join(strings.Fields(strings.ReplaceAll(query, "&", "and")), " ")
+		if alt != query {
+			return alt, true
+		}
+	}
+	return "", false
+}
+
+// searchOnce runs a single Torznab search to completion and returns its response.
+// It is used for follow-up passes (e.g. the alternate connector-spelling query)
+// that need their own result set rather than the primary search's.
+func (s *Service) searchOnce(ctx context.Context, req *jackett.TorznabSearchRequest) (*jackett.SearchResponse, error) {
+	respCh := make(chan *jackett.SearchResponse, 1)
+	errCh := make(chan error, 1)
+	var once sync.Once
+	req.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
+		once.Do(func() {
+			if err != nil {
+				select {
+				case errCh <- err:
+				case <-ctx.Done():
+				}
+				return
+			}
+			select {
+			case respCh <- resp:
+			case <-ctx.Done():
+			}
+		})
+	}
+	if err := s.jackettService.Search(ctx, req); err != nil {
+		return nil, err
+	}
+	select {
+	case resp := <-respCh:
+		return resp, nil
+	case err := <-errCh:
+		return nil, err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 // SearchTorrentMatches queries Torznab indexers for candidate torrents that match an existing torrent.
 func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions) (*TorrentSearchResponse, error) {
 	gazelleClients, gazelleErr := s.buildGazelleClientSet(ctx, nil)
@@ -7613,6 +7665,47 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				return nil, wrapCrossSeedSearchError(errors.New("search timed out"))
 			}
 			return nil, wrapCrossSeedSearchError(waitCtx.Err())
+		}
+	}
+
+	// Cross-tracker title-variant coverage: some trackers index a show with "&"
+	// (e.g. "Law & Order: SVU") while the release name spells out "and". A literal
+	// q only matches one spelling, so re-query the indexers that returned nothing
+	// for the primary spelling using the alternate connector and merge the extra
+	// candidates (the match loop dedupes by GUID/download URL). Skipped for
+	// ID-based searches, which do not rely on title text.
+	if !opts.DisableTorznab && !searchReq.OmitQueryForIDs {
+		if altQuery, ok := alternateConnectorQuery(searchReq.Query); ok {
+			responded := make(map[int]struct{}, len(searchResults))
+			for _, r := range searchResults {
+				responded[r.IndexerID] = struct{}{}
+			}
+			var altIndexerIDs []int
+			for _, id := range searchReq.IndexerIDs {
+				if _, seen := responded[id]; !seen {
+					altIndexerIDs = append(altIndexerIDs, id)
+				}
+			}
+			if len(altIndexerIDs) > 0 {
+				altReq := *searchReq
+				altReq.Query = altQuery
+				altReq.IndexerIDs = altIndexerIDs
+				if altResp, altErr := s.searchOnce(waitCtx, &altReq); altErr != nil {
+					log.Debug().
+						Err(altErr).
+						Str("altQuery", altQuery).
+						Ints("altIndexerIDs", altIndexerIDs).
+						Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass failed; continuing with primary results")
+				} else if altResp != nil && len(altResp.Results) > 0 {
+					log.Debug().
+						Str("query", searchReq.Query).
+						Str("altQuery", altQuery).
+						Int("altResults", len(altResp.Results)).
+						Ints("altIndexerIDs", altIndexerIDs).
+						Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass returned additional candidates")
+					searchResults = append(searchResults, altResp.Results...)
+				}
+			}
 		}
 	}
 
