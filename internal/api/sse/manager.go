@@ -1333,15 +1333,18 @@ func (m *StreamManager) forwardActivity(ch <-chan activity.Event) {
 // sync loop, and therefore no instance heartbeat) alive so the frontend stale
 // watchdog does not force needless reconnects.
 func (m *StreamManager) activityHeartbeatLoop() {
-	ticker := time.NewTicker(heartbeatInterval)
-	defer ticker.Stop()
+	timer := time.NewTimer(jitteredInterval(heartbeatInterval))
+	defer timer.Stop()
 
 	for {
 		select {
 		case <-m.ctx.Done():
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			m.broadcastActivityHeartbeat()
+			// Jitter each interval so multiple instances' heartbeats do not align
+			// into a synchronized burst through the single dispatcher.
+			timer.Reset(jitteredInterval(heartbeatInterval))
 		}
 	}
 }
@@ -1681,15 +1684,18 @@ func (m *StreamManager) startHeartbeatLoop(instanceID int) *heartbeatLoopState {
 	loop := &heartbeatLoopState{cancel: cancel}
 
 	go func() {
-		ticker := time.NewTicker(heartbeatInterval)
-		defer ticker.Stop()
+		timer := time.NewTimer(jitteredInterval(heartbeatInterval))
+		defer timer.Stop()
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
+			case <-timer.C:
 				m.publishHeartbeat(instanceID)
+				// Jitter each interval so per-instance heartbeats do not align into a
+				// synchronized burst through the single dispatcher.
+				timer.Reset(jitteredInterval(heartbeatInterval))
 			}
 		}
 	}()
