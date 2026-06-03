@@ -29,7 +29,7 @@ vi.mock("@/lib/api", () => ({
   },
 }))
 
-import { useTorrentsList } from "@/hooks/useTorrentsList"
+import { STREAM_HIDDEN_PAUSE_DELAY_MS, useTorrentsList } from "@/hooks/useTorrentsList"
 
 const DEFAULT_STREAM_STATE = {
   connected: false,
@@ -102,7 +102,7 @@ describe("useTorrentsList background stream gating", () => {
 
     setHidden(true)
     act(() => {
-      vi.advanceTimersByTime(60_000)
+      vi.advanceTimersByTime(STREAM_HIDDEN_PAUSE_DELAY_MS)
     })
     rerender()
 
@@ -114,7 +114,7 @@ describe("useTorrentsList background stream gating", () => {
 
     setHidden(true)
     act(() => {
-      vi.advanceTimersByTime(60_000)
+      vi.advanceTimersByTime(STREAM_HIDDEN_PAUSE_DELAY_MS)
     })
     rerender()
     expect(lastStreamEnabled()).toBe(false)
