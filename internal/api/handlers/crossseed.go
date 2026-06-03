@@ -34,31 +34,32 @@ type CrossSeedHandler struct {
 var infoHashRegex = regexp.MustCompile(`^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$`)
 
 type automationSettingsRequest struct {
-	Enabled                      bool     `json:"enabled"`
-	RunIntervalMinutes           int      `json:"runIntervalMinutes"`
-	StartPaused                  bool     `json:"startPaused"`
-	Category                     *string  `json:"category"`
-	TargetInstanceIDs            []int    `json:"targetInstanceIds"`
-	TargetIndexerIDs             []int    `json:"targetIndexerIds"`
-	MaxResultsPerRun             int      `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
-	FindIndividualEpisodes       bool     `json:"findIndividualEpisodes"`
-	SizeMismatchTolerancePercent float64  `json:"sizeMismatchTolerancePercent"`
-	UseCategoryFromIndexer       bool     `json:"useCategoryFromIndexer"`
-	UseCrossCategoryAffix        bool     `json:"useCrossCategoryAffix"`
-	CategoryAffixMode            string   `json:"categoryAffixMode"`
-	CategoryAffix                string   `json:"categoryAffix"`
-	UseCustomCategory            bool     `json:"useCustomCategory"`
-	CustomCategory               string   `json:"customCategory"`
-	RunExternalProgramID         *int     `json:"runExternalProgramId"`
-	SkipRecheck                  bool     `json:"skipRecheck"`
-	SeasonPackEnabled            bool     `json:"seasonPackEnabled"`
-	SeasonPackSkipRepackCompare  bool     `json:"seasonPackSkipRepackCompare"`
-	SeasonPackSimplifyHDRCompare bool     `json:"seasonPackSimplifyHdrCompare"`
-	SeasonPackSimplifyWEBCompare bool     `json:"seasonPackSimplifyWebCompare"`
-	SeasonPackSkipYearCompare    bool     `json:"seasonPackSkipYearCompare"`
-	SeasonPackCoverageThreshold  float64  `json:"seasonPackCoverageThreshold"`
-	SeasonPackTags               []string `json:"seasonPackTags"`
-	SeasonPackCategory           string   `json:"seasonPackCategory"`
+	Enabled                      bool                            `json:"enabled"`
+	RunIntervalMinutes           int                             `json:"runIntervalMinutes"`
+	StartPaused                  bool                            `json:"startPaused"`
+	Category                     *string                         `json:"category"`
+	TargetInstanceIDs            []int                           `json:"targetInstanceIds"`
+	TargetIndexerIDs             []int                           `json:"targetIndexerIds"`
+	MaxResultsPerRun             int                             `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
+	FindIndividualEpisodes       bool                            `json:"findIndividualEpisodes"`
+	SizeMismatchTolerancePercent float64                         `json:"sizeMismatchTolerancePercent"`
+	UseCategoryFromIndexer       bool                            `json:"useCategoryFromIndexer"`
+	UseCrossCategoryAffix        bool                            `json:"useCrossCategoryAffix"`
+	CategoryAffixMode            string                          `json:"categoryAffixMode"`
+	CategoryAffix                string                          `json:"categoryAffix"`
+	UseCustomCategory            bool                            `json:"useCustomCategory"`
+	CustomCategory               string                          `json:"customCategory"`
+	RunExternalProgramID         *int                            `json:"runExternalProgramId"`
+	SkipRecheck                  bool                            `json:"skipRecheck"`
+	SeasonPackEnabled            bool                            `json:"seasonPackEnabled"`
+	SeasonPackSkipRepackCompare  bool                            `json:"seasonPackSkipRepackCompare"`
+	SeasonPackSimplifyHDRCompare bool                            `json:"seasonPackSimplifyHdrCompare"`
+	SeasonPackSimplifyWEBCompare bool                            `json:"seasonPackSimplifyWebCompare"`
+	SeasonPackSkipYearCompare    bool                            `json:"seasonPackSkipYearCompare"`
+	SeasonPackCoverageThreshold  float64                         `json:"seasonPackCoverageThreshold"`
+	SeasonPackTags               []string                        `json:"seasonPackTags"`
+	SeasonPackCategory           string                          `json:"seasonPackCategory"`
+	SeasonPackCategoryRules      []models.SeasonPackCategoryRule `json:"seasonPackCategoryRules"`
 	// Gazelle (OPS/RED) cross-seed settings.
 	GazelleEnabled       bool   `json:"gazelleEnabled"`
 	RedactedAPIKey       string `json:"redactedApiKey"`
@@ -109,19 +110,20 @@ type automationSettingsPatchRequest struct {
 	SkipPieceBoundarySafetyCheck *bool `json:"skipPieceBoundarySafetyCheck,omitempty"`
 	// Gazelle (OPS/RED) cross-seed settings.
 	// Season pack settings
-	SeasonPackEnabled            *bool     `json:"seasonPackEnabled,omitempty"`
-	SeasonPackSkipRepackCompare  *bool     `json:"seasonPackSkipRepackCompare,omitempty"`
-	SeasonPackSimplifyHDRCompare *bool     `json:"seasonPackSimplifyHdrCompare,omitempty"`
-	SeasonPackSimplifyWEBCompare *bool     `json:"seasonPackSimplifyWebCompare,omitempty"`
-	SeasonPackSkipYearCompare    *bool     `json:"seasonPackSkipYearCompare,omitempty"`
-	SeasonPackCoverageThreshold  *float64  `json:"seasonPackCoverageThreshold,omitempty"`
-	SeasonPackTags               *[]string `json:"seasonPackTags,omitempty"`
-	SeasonPackCategory           *string   `json:"seasonPackCategory,omitempty"`
-	GazelleEnabled               *bool     `json:"gazelleEnabled,omitempty"`
-	RedactedAPIKey               *string   `json:"redactedApiKey,omitempty"`
-	OrpheusAPIKey                *string   `json:"orpheusApiKey,omitempty"`
-	SeasonPackTVDBAPIKey         *string   `json:"seasonPackTvdbApiKey,omitempty"`
-	SeasonPackTVDBPIN            *string   `json:"seasonPackTvdbPin,omitempty"`
+	SeasonPackEnabled            *bool                            `json:"seasonPackEnabled,omitempty"`
+	SeasonPackSkipRepackCompare  *bool                            `json:"seasonPackSkipRepackCompare,omitempty"`
+	SeasonPackSimplifyHDRCompare *bool                            `json:"seasonPackSimplifyHdrCompare,omitempty"`
+	SeasonPackSimplifyWEBCompare *bool                            `json:"seasonPackSimplifyWebCompare,omitempty"`
+	SeasonPackSkipYearCompare    *bool                            `json:"seasonPackSkipYearCompare,omitempty"`
+	SeasonPackCoverageThreshold  *float64                         `json:"seasonPackCoverageThreshold,omitempty"`
+	SeasonPackTags               *[]string                        `json:"seasonPackTags,omitempty"`
+	SeasonPackCategory           *string                          `json:"seasonPackCategory,omitempty"`
+	SeasonPackCategoryRules      *[]models.SeasonPackCategoryRule `json:"seasonPackCategoryRules,omitempty"`
+	GazelleEnabled               *bool                            `json:"gazelleEnabled,omitempty"`
+	RedactedAPIKey               *string                          `json:"redactedApiKey,omitempty"`
+	OrpheusAPIKey                *string                          `json:"orpheusApiKey,omitempty"`
+	SeasonPackTVDBAPIKey         *string                          `json:"seasonPackTvdbApiKey,omitempty"`
+	SeasonPackTVDBPIN            *string                          `json:"seasonPackTvdbPin,omitempty"`
 }
 
 type optionalString struct {
@@ -224,6 +226,7 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SeasonPackCoverageThreshold == nil &&
 		r.SeasonPackTags == nil &&
 		r.SeasonPackCategory == nil &&
+		r.SeasonPackCategoryRules == nil &&
 		r.GazelleEnabled == nil &&
 		r.RedactedAPIKey == nil &&
 		r.OrpheusAPIKey == nil &&
@@ -375,6 +378,9 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.SeasonPackCategory != nil {
 		settings.SeasonPackCategory = strings.TrimSpace(*patch.SeasonPackCategory)
 	}
+	if patch.SeasonPackCategoryRules != nil {
+		settings.SeasonPackCategoryRules = normalizeSeasonPackCategoryRules(*patch.SeasonPackCategoryRules)
+	}
 	if patch.GazelleEnabled != nil {
 		settings.GazelleEnabled = *patch.GazelleEnabled
 	}
@@ -390,6 +396,51 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.SeasonPackTVDBPIN != nil {
 		settings.SeasonPackTVDBPIN = strings.TrimSpace(*patch.SeasonPackTVDBPIN)
 	}
+}
+
+var validSeasonPackRuleSources = map[string]struct{}{
+	"WEB":    {},
+	"BLURAY": {},
+	"REMUX":  {},
+	"HDTV":   {},
+}
+
+// normalizeSeasonPackCategoryRules cleans up incoming category routing rules:
+// it trims fields, lowercases the resolution, uppercases the source, drops rules
+// missing a resolution or category or carrying an unrecognized source, and
+// dedupes on (resolution, source) keeping the first match. An empty source means
+// "any"; an unrecognized non-empty source drops the rule rather than silently
+// widening it to "any".
+func normalizeSeasonPackCategoryRules(rules []models.SeasonPackCategoryRule) []models.SeasonPackCategoryRule {
+	normalized := make([]models.SeasonPackCategoryRule, 0, len(rules))
+	seen := make(map[string]struct{}, len(rules))
+	for _, rule := range rules {
+		resolution := strings.ToLower(strings.TrimSpace(rule.Resolution))
+		category := strings.TrimSpace(rule.Category)
+		if resolution == "" || category == "" {
+			continue
+		}
+
+		source := strings.ToUpper(strings.TrimSpace(rule.Source))
+		if source != "" {
+			if _, ok := validSeasonPackRuleSources[source]; !ok {
+				continue
+			}
+		}
+
+		key := resolution + "|" + source
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		normalized = append(normalized, models.SeasonPackCategoryRule{
+			Resolution: resolution,
+			Source:     source,
+			Category:   category,
+		})
+	}
+	return normalized
 }
 
 type automationRunRequest struct {
@@ -931,6 +982,7 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		SeasonPackCoverageThreshold:  req.SeasonPackCoverageThreshold,
 		SeasonPackTags:               req.SeasonPackTags,
 		SeasonPackCategory:           strings.TrimSpace(req.SeasonPackCategory),
+		SeasonPackCategoryRules:      normalizeSeasonPackCategoryRules(req.SeasonPackCategoryRules),
 		GazelleEnabled:               req.GazelleEnabled,
 		RedactedAPIKey:               strings.TrimSpace(req.RedactedAPIKey),
 		OrpheusAPIKey:                strings.TrimSpace(req.OrpheusAPIKey),
