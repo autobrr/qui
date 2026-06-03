@@ -17,7 +17,7 @@ import {
 } from "@/contexts/SyncStreamContext"
 import type { TorrentStreamPayload } from "@/types"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, render } from "@testing-library/react"
+import { act, cleanup, render } from "@testing-library/react"
 import { useState, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -127,6 +127,12 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // Unmount any rendered tree so each provider's document-level listeners
+  // (visibilitychange / beforeunload) are detached. Without this, providers from
+  // earlier tests linger and respond to a dispatched visibilitychange.
+  act(() => {
+    cleanup()
+  })
   if (originalEventSource === undefined) {
     delete (globalThis as { EventSource?: unknown }).EventSource
     delete (window as { EventSource?: unknown }).EventSource
@@ -136,6 +142,13 @@ afterEach(() => {
   }
   vi.clearAllTimers()
   vi.useRealTimers()
+  // jsdom's document.visibilityState is read-only and defaults to "visible";
+  // tests override it via defineProperty, so restore the default here to avoid
+  // leaking a "hidden" getter into later tests.
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => "visible",
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -421,6 +434,76 @@ describe("SyncStreamContext", () => {
     })
   })
 
+  describe("visibility stale watchdog", () => {
+    it("re-arms a fresh watchdog on refocus instead of killing a healthy OPEN connection", () => {
+      renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+
+      const source = MockEventSource.instances[0]
+      act(() => {
+        source.emitOpen() // arms the 15s stale watchdog, readyState = OPEN
+      })
+
+      // Tab goes hidden: the stale timer is cleared (timing is meaningless while throttled).
+      act(() => {
+        setVisibility("hidden")
+      })
+
+      // Simulate a throttled background tab: advance WELL past the stale window. With the
+      // old code an overdue timer would have fired; with the hidden-clear it must not.
+      act(() => {
+        vi.advanceTimersByTime(STALE * 3)
+      })
+      expect(source.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(1)
+
+      // Refocus: connection is still OPEN, so we must re-arm a FRESH watchdog and NOT
+      // tear down / reconnect the healthy connection.
+      act(() => {
+        setVisibility("visible")
+      })
+      expect(source.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(1)
+
+      // The fresh watchdog has the full STREAM_STALE_TIMEOUT_MS again: just under it,
+      // still alive; crossing it trips a reconnect (proving the timer was actually re-armed).
+      act(() => {
+        vi.advanceTimersByTime(STALE - 1)
+      })
+      expect(source.closed).toBe(false)
+      act(() => {
+        vi.advanceTimersByTime(1)
+      })
+      expect(source.closed).toBe(true)
+    })
+
+    it("still force-reconnects on refocus when the source is CLOSED", () => {
+      const { controls } = renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+
+      const first = MockEventSource.instances[0]
+      act(() => {
+        first.emitOpen()
+        first.emitError() // network error -> source CLOSED, closeConnection
+      })
+      // The error path schedules a reconnect; the visibility path then resets retry
+      // state and reopens immediately.
+      expect(controls.getState().retrying).toBe(true)
+
+      const countAfterError = MockEventSource.instances.length
+
+      act(() => {
+        setVisibility("visible")
+      })
+      flushConnectionQueue()
+
+      // A new source was opened by the visibility reconnect path.
+      expect(MockEventSource.instances.length).toBeGreaterThan(countAfterError)
+      // Retry state was reset (resetRetry:true).
+      expect(controls.getState().retryAttempt).toBe(0)
+    })
+  })
+
   describe("transient onerror guard", () => {
     it("ignores a transient onerror (CONNECTING) without closing, disconnecting, or scheduling a reconnect", () => {
       const { controls } = renderSubscriber(BASE_PARAMS)
@@ -581,6 +664,16 @@ describe("SyncStreamContext", () => {
 })
 
 const STALE = 15000 // STREAM_STALE_TIMEOUT_MS
+
+// jsdom defaults document.visibilityState to "visible" and makes it read-only,
+// so override it via a getter and fire the real visibilitychange event.
+function setVisibility(state: "visible" | "hidden") {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => state,
+  })
+  document.dispatchEvent(new Event("visibilitychange"))
+}
 
 function decodeStreamsParam(url: string): Array<{ page: number }> {
   const query = url.split("?")[1] ?? ""

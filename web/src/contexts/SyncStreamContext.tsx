@@ -141,6 +141,11 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   const stateSubscribersRef = useRef<Record<string, Set<(state: StreamState) => void>>>({})
   const connectionRef = useRef<StreamConnection>({ retryAttempt: 0 })
   const scheduleReconnectRef = useRef<() => void>(() => {})
+  // Re-armable handle to the live connection's stale watchdog. openConnection owns
+  // resetStaleTimer (it closes over that connection's handlers); we mirror it here so
+  // the visibility effect can re-arm a FRESH timer on tab refocus without reaching
+  // into openConnection's closure. It always reads connectionRef.current internally.
+  const resetStaleTimerRef = useRef<() => void>(() => {})
   const pendingConnectionUpdateRef = useRef<PendingConnectionUpdate | null>(null)
   // Count of active activity subscribers. While > 0 the EventSource stays open
   // (in activity-only mode if there are no torrent streams) so server events keep
@@ -475,6 +480,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           handleNetworkError()
         }, STREAM_STALE_TIMEOUT_MS)
       }
+      resetStaleTimerRef.current = resetStaleTimer
 
       const payloadHandler = (event: MessageEvent | Event) => {
         resetStaleTimer()
@@ -847,26 +853,42 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     }
 
     const handleVisibilityChange = () => {
+      const connection = connectionRef.current
+
       if (document.visibilityState !== "visible") {
+        // Background tabs throttle timers, so the stale watchdog's remaining delay is
+        // meaningless. Clear it now; we re-arm a fresh one on refocus. Otherwise an
+        // overdue throttled timer could fire on return and kill a healthy connection.
+        if (connection.staleTimer !== undefined) {
+          if (typeof window !== "undefined") {
+            window.clearTimeout(connection.staleTimer)
+          } else {
+            clearTimeout(connection.staleTimer)
+          }
+          connection.staleTimer = undefined
+        }
         return
       }
 
-      const connection = connectionRef.current
       const hasStreams = Object.keys(streamsRef.current).length > 0
 
       if (!hasStreams && activityCountRef.current === 0) {
         return
       }
 
-      // Check if connection is dead or disconnected
       const source = connection.source
       const isDisconnected = !source || source.readyState === EventSource.CLOSED
 
       if (isDisconnected) {
-        // Reset retry state and force immediate reconnection
+        // Dead/closed source: reset retry state and force an immediate reconnection.
         clearConnectionRetryState()
         ensureConnection({ preserveState: false, resetRetry: true })
+        return
       }
+
+      // Source is OPEN and healthy: re-arm a FRESH stale timer so an overdue
+      // throttled watchdog cannot immediately declare the live connection dead.
+      resetStaleTimerRef.current()
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange)
