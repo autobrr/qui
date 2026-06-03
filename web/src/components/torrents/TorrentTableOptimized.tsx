@@ -4,13 +4,14 @@
  */
 
 import { isClientConnectionErrorCode } from "@/contexts/SyncStreamContext"
+import { useCompactViewSort } from "@/hooks/torrent-table/useCompactViewSort"
+import { useCrossSeedOrchestration } from "@/hooks/torrent-table/useCrossSeedOrchestration"
 import { useEffectiveServerState } from "@/hooks/torrent-table/useEffectiveServerState"
 import { useTorrentSelection } from "@/hooks/torrent-table/useTorrentSelection"
 import { useTorrentSelectionDerivations } from "@/hooks/torrent-table/useTorrentSelectionDerivations"
 import { useTorrentTableFilterExpr } from "@/hooks/torrent-table/useTorrentTableFilterExpr"
+import { useTorrentTableHotkeys } from "@/hooks/torrent-table/useTorrentTableHotkeys"
 import { useTrackerIconCache } from "@/hooks/torrent-table/useTrackerIconCache"
-import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
-import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
@@ -24,6 +25,7 @@ import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewSta
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/useTorrentsList"
+import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
 import { getRowBackgroundClass } from "@/lib/torrent-table/row-display"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { formatBytes } from "@/lib/utils"
@@ -53,7 +55,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
-import { TORRENT_SORT_OPTIONS, getDefaultSortOrder, type TorrentSortOptionValue } from "./torrentSortOptions"
+import { type TorrentSortOptionValue } from "./torrentSortOptions"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -91,7 +93,7 @@ import { isAllInstancesScope } from "@/lib/instances"
 import { resolveFooterSpeeds } from "@/lib/scoped-speeds"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
 import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
-import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag } from "@/lib/torrent-utils"
+import { getCommonCategory, getCommonSavePath, getTorrentHashesWithTag } from "@/lib/torrent-utils"
 import { cn } from "@/lib/utils"
 import type {
   Category,
@@ -332,11 +334,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   const { trackerIcons, trackerCustomizationLookup } = useTrackerIconCache()
 
-  // Detect platform for keyboard shortcuts
-  const isMac = useMemo(() => {
-    return typeof window !== "undefined" && /Mac|iPhone|iPad|iPod/.test(window.navigator.userAgent)
-  }, [])
-
   const lastMetadataRef = useRef<{
     instanceId?: number
     counts?: TorrentCounts
@@ -451,17 +448,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
 
   // Cross-seed warning for delete dialog
-  const crossSeedWarning = useCrossSeedWarning({
+  const { crossSeedWarning, hasCrossSeedTag, shouldBlockCrossSeeds, blockCrossSeedHashes } = useCrossSeedOrchestration({
     instanceId,
     instanceName: instance?.name ?? "",
-    torrents: contextTorrents,
+    contextTorrents,
+    blockCrossSeeds,
   })
-  const hasCrossSeedTag = useMemo(
-    () => anyTorrentHasTag(contextTorrents, "cross-seed") || anyTorrentHasTag(crossSeedWarning.affectedTorrents, "cross-seed"),
-    [contextTorrents, crossSeedWarning.affectedTorrents]
-  )
-  const shouldBlockCrossSeeds = hasCrossSeedTag && blockCrossSeeds
-  const { blockCrossSeedHashes } = useCrossSeedBlocklistActions(instanceId)
 
   // Fetch metadata using shared hook
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId, {
@@ -518,24 +510,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     lastUserAction,
     setLastUserAction,
   } = useTorrentTableFilterExpr({ filters, instanceId, columnFilters })
-
-  // Map TanStack Table column IDs to backend field names
-  const getBackendSortField = (columnId: string): string => {
-    if (!columnId) {
-      return "added_on"
-    }
-
-    switch (columnId) {
-      case "status_icon":
-        return "state"
-      case "num_seeds":
-        return "num_complete" // Sort by total seeds, not connected
-      case "num_leechs":
-        return "num_incomplete" // Sort by total peers, not connected
-      default:
-        return columnId
-    }
-  }
 
   const activeSortField = sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on"
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
@@ -1004,92 +978,20 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
   }, [filterLifecycleState, isCrossSeedFiltering, columnFilters.length, sortedTorrents.length])
 
-  const resolveSortColumnId = useCallback((field: string): string => {
-    const columns = table.getAllLeafColumns()
-    const directMatch = columns.find(column => column.id === field)
-    if (directMatch) {
-      return directMatch.id
-    }
-
-    const backendMatch = columns.find(column => getBackendSortField(column.id) === field)
-    if (backendMatch) {
-      return backendMatch.id
-    }
-
-    return field
-  }, [table, columnVisibility, columnOrder])
-
-  const compactSortOptions = useMemo(() => {
-    const columns = table.getAllLeafColumns()
-    const availableFields = new Set<string>()
-
-    for (const column of columns) {
-      availableFields.add(column.id)
-      availableFields.add(getBackendSortField(column.id))
-    }
-
-    return TORRENT_SORT_OPTIONS.filter(option => availableFields.has(option.value))
-  }, [table, columnVisibility, columnOrder])
-
-  const currentCompactSortLabel = useMemo(() => {
-    const directOption = compactSortOptions.find(option => option.value === activeSortField)
-    if (directOption) {
-      return directOption.label
-    }
-
-    const columns = table.getAllLeafColumns()
-    const directColumn = columns.find(column => column.id === activeSortField)
-    if (directColumn) {
-      const meta = directColumn.columnDef.meta as { headerString?: string } | undefined
-      if (meta?.headerString) {
-        return meta.headerString
-      }
-      if (typeof directColumn.columnDef.header === "string") {
-        return directColumn.columnDef.header
-      }
-      return directColumn.id
-    }
-
-    const backendColumn = columns.find(column => getBackendSortField(column.id) === activeSortField)
-    if (backendColumn) {
-      const meta = backendColumn.columnDef.meta as { headerString?: string } | undefined
-      if (meta?.headerString) {
-        return meta.headerString
-      }
-      if (typeof backendColumn.columnDef.header === "string") {
-        return backendColumn.columnDef.header
-      }
-      return backendColumn.id
-    }
-
-    return activeSortField
-  }, [compactSortOptions, activeSortField, table, columnVisibility, columnOrder])
-
-  const handleCompactSortFieldChange = useCallback((value: TorrentSortOptionValue) => {
-    if (activeSortField === value) {
-      return
-    }
-
-    const columnId = resolveSortColumnId(value)
-    const defaultOrder = getDefaultSortOrder(value)
-
-    setSorting([{ id: columnId, desc: defaultOrder === "desc" }])
-    setLastUserAction({
-      type: "sort",
-      timestamp: Date.now(),
-    })
-  }, [activeSortField, resolveSortColumnId, setSorting, setLastUserAction])
-
-  const handleCompactSortOrderToggle = useCallback(() => {
-    const columnId = resolveSortColumnId(activeSortField)
-    const nextDesc = activeSortOrder === "asc"
-
-    setSorting([{ id: columnId, desc: nextDesc }])
-    setLastUserAction({
-      type: "sort",
-      timestamp: Date.now(),
-    })
-  }, [activeSortField, activeSortOrder, resolveSortColumnId, setSorting, setLastUserAction])
+  const {
+    compactSortOptions,
+    currentCompactSortLabel,
+    handleCompactSortFieldChange,
+    handleCompactSortOrderToggle,
+  } = useCompactViewSort({
+    table,
+    columnVisibility,
+    columnOrder,
+    activeSortField,
+    activeSortOrder,
+    setSorting,
+    setLastUserAction,
+  })
 
   // Get selected torrent hashes - handle both regular selection and "select all" mode
   const {
@@ -1432,17 +1334,13 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     estimatedRowHeight,
   })
 
-  // Apply Ctrl/Cmd+A shortcut to select all torrents
-  const selectAllWithShortcut = useCallback(() => {
-    if (sortedTorrents.length === 0) {
-      return
-    }
-
-    setIsAllSelected(true)
-    setExcludedFromSelectAll(new Set())
-    setRowSelection({})
-    lastSelectedIndexRef.current = null
-  }, [sortedTorrents.length, setIsAllSelected, setExcludedFromSelectAll, setRowSelection])
+  const { isMac, selectAllWithShortcut } = useTorrentTableHotkeys({
+    sortedTorrents,
+    setIsAllSelected,
+    setExcludedFromSelectAll,
+    setRowSelection,
+    lastSelectedIndexRef,
+  })
 
   // Wrapper functions to adapt hook handlers to component needs
   const selectAllOptions = useMemo(() => ({
