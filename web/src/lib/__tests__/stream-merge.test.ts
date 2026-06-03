@@ -114,4 +114,32 @@ describe("mergeStreamedFirstPage", () => {
     expect(hashes(merged)).toEqual(["a"])
     expect(hashes(merged)).not.toContain("b")
   })
+
+  describe("with a custom key extractor (cross-instance identity)", () => {
+    // Cross-instance rows are identified by instanceId+hash, because the same torrent
+    // cross-seeded onto two instances shares a hash but is two distinct rows.
+    type Row = { hash: string; instanceId: number }
+    const keyOf = (row: Row) => `${row.instanceId}:${row.hash}`
+    const row = (hash: string, instanceId: number): Row => ({ hash, instanceId })
+    const keys = (list: Row[]) => list.map(keyOf)
+
+    it("keeps cross-seeded same-hash rows on different instances as distinct trailing rows", () => {
+      // page size 2: prev = page0[x@1, y@1] + page1[x@2, z@1]; total 4. The fresh page 0
+      // is still [x@1, y@1]. A hash-only key would treat trailing 'x@2' as a duplicate of
+      // page-0 'x@1' and drop it; the instanceId+hash key must preserve it.
+      const prev = [row("x", 1), row("y", 1), row("x", 2), row("z", 1)]
+      const next = [row("x", 1), row("y", 1)]
+      const merged = mergeStreamedFirstPage(prev, next, 4, keyOf)
+      expect(keys(merged)).toEqual(["1:x", "1:y", "2:x", "1:z"])
+    })
+
+    it("still de-dupes a trailing row that genuinely reflowed up into page 0", () => {
+      // 'x@2' reflowed into the fresh page 0 and also lingers in the old trailing slice;
+      // it must appear once, identified by instanceId+hash.
+      const prev = [row("x", 1), row("y", 1), row("x", 2), row("z", 1)]
+      const next = [row("x", 1), row("x", 2)]
+      const merged = mergeStreamedFirstPage(prev, next, 4, keyOf)
+      expect(keys(merged)).toEqual(["1:x", "2:x", "1:z"])
+    })
+  })
 })

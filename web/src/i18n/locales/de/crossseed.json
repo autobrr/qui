@@ -210,10 +210,25 @@
       "tvdbPin": "TVDB Subscriber PIN",
       "pasteTvdbPin": "TVDB PIN einfügen",
       "tvdbDescription": "Optional. Verbessert die Genauigkeit des Schwellenwerts, wenn der Prüf-Endpunkt ohne Torrent-Daten aufgerufen wird. TVMaze wird automatisch als kostenloser Fallback verwendet.",
-      "categoryOverride": "Kategorie überschreiben",
-      "categoryPlaceholder": "z. B. tv-hd",
-      "categoryDescriptionBefore": "Optional. Feste qBittorrent-Kategorie für Season-Pack-Injektionen. Setze diese auf deine Sonarr-Download-Client-Kategorie (z. B. ",
-      "categoryDescriptionAfter": "), damit Sonarr das Pack importiert und Hardlinks zwischen der Bibliothek und deinen geseedeten Episoden erhält. Leer lassen, um dem Kategorie-Modus unten zu folgen."
+      "categoryRouting": {
+        "title": "Kategorie-Routing",
+        "description": "Leite Season-Pack-Injektionen anhand von Auflösung und Quelle an eine qBittorrent-Kategorie weiter. Setze diese auf deine Sonarr-Download-Client-Kategorien, damit Sonarr das Pack importiert und Hardlinks erhält. Eine Regel mit einer bestimmten Quelle hat Vorrang vor einer „Beliebige Quelle“-Regel bei derselben Auflösung.",
+        "addRule": "Regel hinzufügen",
+        "removeRule": "Regel entfernen",
+        "whenResolution": "Wenn",
+        "fromSource": "von",
+        "anySource": "Beliebige Quelle",
+        "fileAs": "ablegen als",
+        "fallbackLabel": "Alles andere",
+        "fallbackDescriptionBefore": "Optional. Kategorie für Season-Pack-Injektionen, die keiner Regel oben entsprechen (z. B. ",
+        "fallbackDescriptionAfter": "). Leer lassen, um dem Kategorie-Modus unten zu folgen.",
+        "source": {
+          "web": "WEB",
+          "bluray": "BluRay",
+          "remux": "Remux",
+          "hdtv": "HDTV"
+        }
+      }
     },
     "gazelle": {
       "title": "Gazelle (OPS/RED)",

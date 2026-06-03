@@ -210,6 +210,18 @@ func (r *sseReader) waitForEvent(t *testing.T, eventType string, timeout time.Du
 	}
 }
 
+// drain discards any events already buffered on the reader without blocking, so a
+// subsequent waitForEvent observes only events produced after the drain.
+func (r *sseReader) drain() {
+	for {
+		select {
+		case <-r.events:
+		default:
+			return
+		}
+	}
+}
+
 // triggerRetryInterval paces re-invocation of an update/error trigger while a
 // freshly connected session finishes subscribing.
 const triggerRetryInterval = 100 * time.Millisecond
@@ -430,6 +442,32 @@ func TestServeCoalescesBurstOfUpdates(t *testing.T) {
 
 	// Drain the initial snapshot first so it does not count toward update builds.
 	reader.waitForEvent(t, streamEventInit, 5*time.Second)
+
+	// A fresh session is subscribed to its go-sse topics only *after* its init
+	// snapshot is written synchronously in onSession, so an update published in that
+	// window reaches no subscriber: it lands only in the replay buffer, which a fresh
+	// connection (empty Last-Event-ID) never replays. The sibling delivery tests ride
+	// out that window by re-firing their trigger; this test fires the coalescing burst
+	// exactly once, so it must establish the subscription up front. Re-fire one warm-up
+	// update until it lands; once it does the session stays subscribed for the life of
+	// the connection, so the single coalesced burst update below is delivered without
+	// coupling the coalescing measurement to go-sse's subscribe timing. The gate makes
+	// coalescing deterministic but cannot close this subscribe window.
+	reader.waitForEventTriggered(t, streamEventUpdate, 5*time.Second, func() {
+		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1000})
+	})
+
+	// Let the warm-up builds settle, then drop their buffered events, before
+	// snapshotting the build count. This keeps warm-up activity out of both the
+	// coalescing measurement and the delivery assertion below.
+	var prevCalls int
+	require.Eventually(t, func() bool {
+		cur := provider.torrentsCallCount()
+		settled := cur == prevCalls
+		prevCalls = cur
+		return settled
+	}, 2*time.Second, 50*time.Millisecond, "warm-up builds did not settle")
+	reader.drain()
 	callsAfterInit := provider.torrentsCallCount()
 
 	// Hold the first update build open so the entire burst provably arrives while a

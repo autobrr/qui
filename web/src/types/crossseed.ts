@@ -141,6 +141,12 @@ export interface CrossSeedRun {
   createdAt: string
 }
 
+export interface SeasonPackCategoryRule {
+  resolution: string
+  source: string
+  category: string
+}
+
 export interface CrossSeedAutomationSettings {
   enabled: boolean
   runIntervalMinutes: number
@@ -197,6 +203,7 @@ export interface CrossSeedAutomationSettings {
   seasonPackCoverageThreshold: number
   seasonPackTags: string[]
   seasonPackCategory: string
+  seasonPackCategoryRules: SeasonPackCategoryRule[]
   seasonPackTvdbApiKey?: string
   seasonPackTvdbPin?: string
   createdAt?: string
@@ -259,6 +266,7 @@ export interface CrossSeedAutomationSettingsPatch {
   seasonPackCoverageThreshold?: number
   seasonPackTags?: string[]
   seasonPackCategory?: string
+  seasonPackCategoryRules?: SeasonPackCategoryRule[]
   seasonPackTvdbApiKey?: string
   seasonPackTvdbPin?: string
 }
