@@ -41,10 +41,22 @@ func TestAlternateConnectorQuery(t *testing.T) {
 			wantOK:  false,
 		},
 		{
-			name:    "collapses extra spacing left by ampersand removal",
+			name:    "standalone ampersand connector becomes and",
 			query:   "Tom & Jerry",
 			wantAlt: "Tom and Jerry",
 			wantOK:  true,
+		},
+		{
+			name:    "intra-token ampersand is not a connector",
+			query:   "AT&T S01 1080p",
+			wantAlt: "",
+			wantOK:  false,
+		},
+		{
+			name:    "intra-token ampersand R&B is left intact",
+			query:   "Best of R&B 2024",
+			wantAlt: "",
+			wantOK:  false,
 		},
 	}
 

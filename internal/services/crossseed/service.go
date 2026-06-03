@@ -6990,11 +6990,11 @@ func alternateConnectorQuery(query string) (string, bool) {
 	if strings.Contains(query, " and ") {
 		return strings.ReplaceAll(query, " and ", " & "), true
 	}
-	if strings.Contains(query, "&") {
-		alt := strings.Join(strings.Fields(strings.ReplaceAll(query, "&", "and")), " ")
-		if alt != query {
-			return alt, true
-		}
+	// Only swap a standalone, whitespace-delimited "&" connector. Queries are
+	// space-joined, so " & " captures the real connector form while leaving
+	// intra-token ampersands like "AT&T" or "R&B" untouched.
+	if strings.Contains(query, " & ") {
+		return strings.ReplaceAll(query, " & ", " and "), true
 	}
 	return "", false
 }
@@ -7690,6 +7690,12 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				altReq := *searchReq
 				altReq.Query = altQuery
 				altReq.IndexerIDs = altIndexerIDs
+				// Treat the alternate-spelling pass as an internal continuation of the
+				// primary search rather than a separate tracked job: skip its search-history
+				// recording so it does not create parallel history entries. Outcome reporting
+				// keys on indexer ID under the primary job (which already searched these
+				// indexers), so the merged candidates attribute correctly.
+				altReq.SkipHistory = true
 				if altResp, altErr := s.searchOnce(waitCtx, &altReq); altErr != nil {
 					log.Debug().
 						Err(altErr).
