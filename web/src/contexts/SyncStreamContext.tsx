@@ -102,6 +102,11 @@ interface StreamEntry {
   lastMeta?: TorrentStreamMeta
   handoffTimer?: number
   handoffPending?: boolean
+  // Set once the replacement connection's socket has demonstrably opened during a
+  // view-parameter swap. A connection that has opened but is still awaiting a slow
+  // first snapshot must not be declared offline, so the handoff timer skips the
+  // flip when this is true and onopen clears the timer outright.
+  handoffOpened?: boolean
   teardownTimer?: number
 }
 
@@ -250,6 +255,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       entry.handoffTimer = undefined
     }
     entry.handoffPending = false
+    entry.handoffOpened = false
   }, [])
 
   const clearConnectionRetryState = useCallback(() => {
@@ -401,6 +407,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             return
           }
           entry.handoffPending = true
+          // Fresh swap: the replacement socket has not opened yet.
+          entry.handoffOpened = false
           if (entry.handoffTimer !== undefined) {
             if (typeof window !== "undefined") {
               window.clearTimeout(entry.handoffTimer)
@@ -411,6 +419,12 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           const timer = (typeof window !== "undefined"? window.setTimeout: (setTimeout as unknown as (handler: () => void, timeout: number) => number))(() => {
             entry.handoffTimer = undefined
             if (!entry.handoffPending) {
+              return
+            }
+            // The replacement socket opened during the grace window: keep the stream
+            // connected and let the slow first snapshot (or the 15s stale watchdog)
+            // resolve it, instead of flipping offline and re-enabling REST polling.
+            if (entry.handoffOpened) {
               return
             }
             entry.handoffPending = false
@@ -601,7 +615,21 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           if (!entry) {
             return
           }
-          if (!entry.handoffPending) {
+          if (entry.handoffPending) {
+            // The replacement socket has opened but its first snapshot may still be
+            // in flight. Mark the handoff as opened and clear the fixed grace timer so
+            // a slow init can no longer flip the stream offline; the stale watchdog
+            // still guards a socket that opens but never delivers any event.
+            entry.handoffOpened = true
+            if (entry.handoffTimer !== undefined) {
+              if (typeof window !== "undefined") {
+                window.clearTimeout(entry.handoffTimer)
+              } else {
+                clearTimeout(entry.handoffTimer)
+              }
+              entry.handoffTimer = undefined
+            }
+          } else {
             entry.error = null
           }
           notifyStateSubscribers(key)

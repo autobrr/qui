@@ -215,6 +215,48 @@ const DEFAULT: StreamState = {
   nextRetryAt: undefined,
 }
 
+// Renders a single useSyncStream subscriber whose params can be swapped while the
+// provider stays mounted. Changing sort/search/filters mints a new stream key,
+// which is exactly the view-parameter swap that drives openConnection's handoff
+// path. Exposes the latest state plus a `swap` to drive new params imperatively.
+function renderSwappableSubscriber(initialParams: StreamParams) {
+  const controls: HarnessControls = {
+    getState: () => DEFAULT,
+    payloads: [],
+  }
+  let swapParams: (params: StreamParams) => void = () => {}
+
+  function Subscriber({ params }: { params: StreamParams }) {
+    const state = useSyncStream(params, {
+      enabled: true,
+      onMessage: payload => {
+        controls.payloads.push(payload)
+      },
+    })
+    controls.getState = () => state
+    return null
+  }
+
+  function Root() {
+    const [params, setParams] = useState(initialParams)
+    swapParams = setParams
+    return (
+      <TestProviders>
+        <Subscriber params={params} />
+      </TestProviders>
+    )
+  }
+
+  act(() => {
+    render(<Root />)
+  })
+
+  return {
+    controls,
+    swap: (params: StreamParams) => act(() => swapParams(params)),
+  }
+}
+
 // Renders a subscriber whose mount state can be toggled while the surrounding
 // SyncStreamProvider stays mounted. This is required to observe the debounced
 // (ENTRY_TEARDOWN_DELAY_MS) teardown path: unmounting the whole tree would also
@@ -574,6 +616,116 @@ describe("SyncStreamContext", () => {
     })
   })
 
+  describe("view-parameter swap handoff", () => {
+    function emitInitFor(source: MockEventSource, params: StreamParams) {
+      act(() => {
+        source.emit("init", {
+          type: "init",
+          meta: { instanceId: params.instanceId, timestamp: "now", streamKey: createStreamKey(params) },
+        })
+      })
+    }
+
+    it("stays connected across rapid swaps whose init arrives within normal latency", () => {
+      const { controls, swap } = renderSwappableSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+
+      const first = MockEventSource.instances[0]
+      act(() => {
+        first.emitOpen()
+      })
+      emitInitFor(first, BASE_PARAMS)
+      expect(controls.getState().connected).toBe(true)
+
+      // Each swap mints a new stream key, tearing down the old EventSource and
+      // opening a new one. The new socket opens and delivers init well within the
+      // grace window, so connected must never flip false during the handoff.
+      const sorts = ["name", "size", "added_on", "progress"]
+      for (const sort of sorts) {
+        const nextParams = makeParams({ sort })
+        swap(nextParams)
+        flushConnectionQueue()
+
+        const source = MockEventSource.instances[MockEventSource.instances.length - 1]
+        // Socket opens, then a fast init resolves it -- still inside the grace window.
+        act(() => {
+          source.emitOpen()
+          vi.advanceTimersByTime(100)
+        })
+        emitInitFor(source, nextParams)
+
+        expect(controls.getState().connected).toBe(true)
+        expect(controls.getState().error).toBeNull()
+      }
+    })
+
+    it("keeps the stream connected when the socket opened but the first snapshot is slow", () => {
+      const { controls, swap } = renderSwappableSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+
+      const first = MockEventSource.instances[0]
+      act(() => {
+        first.emitOpen()
+      })
+      emitInitFor(first, BASE_PARAMS)
+      expect(controls.getState().connected).toBe(true)
+
+      // Swap to a new key (cold filter): teardown + reopen.
+      const nextParams = makeParams({ sort: "size" })
+      swap(nextParams)
+      flushConnectionQueue()
+
+      const second = MockEventSource.instances[MockEventSource.instances.length - 1]
+      expect(second).not.toBe(first)
+
+      // The replacement socket opens promptly, but its first snapshot is slow.
+      act(() => {
+        second.emitOpen()
+      })
+
+      // Advance PAST the base grace window with no init yet. Because the socket has
+      // demonstrably opened, onopen refreshed the handoff and the stream must not
+      // flip offline / re-enable polling.
+      act(() => {
+        vi.advanceTimersByTime(GRACE + 500)
+      })
+      expect(controls.getState().connected).toBe(true)
+      expect(controls.getState().error).toBeNull()
+
+      // The slow init finally arrives on the live source and resolves the handoff
+      // cleanly. (Tearing down the prior view's entry may have reopened a fresh
+      // source meanwhile, so deliver init on whichever source is current.)
+      const live = MockEventSource.instances[MockEventSource.instances.length - 1]
+      emitInitFor(live, nextParams)
+      expect(controls.getState().connected).toBe(true)
+      expect(controls.payloads[controls.payloads.length - 1].type).toBe("init")
+    })
+
+    it("still flips disconnected when the replacement socket never opens within grace", () => {
+      const { controls, swap } = renderSwappableSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+
+      const first = MockEventSource.instances[0]
+      act(() => {
+        first.emitOpen()
+      })
+      emitInitFor(first, BASE_PARAMS)
+      expect(controls.getState().connected).toBe(true)
+
+      // Swap to a new key, but never open the replacement socket nor deliver init.
+      swap(makeParams({ sort: "size" }))
+      flushConnectionQueue()
+      expect(controls.getState().connected).toBe(true) // still in the grace window
+
+      // The grace window elapses with no onopen and no init: the existing fixed-window
+      // behaviour must still flip the stream offline so REST polling resumes.
+      act(() => {
+        vi.advanceTimersByTime(GRACE)
+      })
+      expect(controls.getState().connected).toBe(false)
+    })
+  })
+
   describe("instanceId <= 0 guard", () => {
     it("does not open an EventSource for an invalid instanceId", () => {
       const { controls } = renderSubscriber(makeParams({ instanceId: 0 }))
@@ -664,6 +816,7 @@ describe("SyncStreamContext", () => {
 })
 
 const STALE = 15000 // STREAM_STALE_TIMEOUT_MS
+const GRACE = 1200 // HANDOFF_GRACE_PERIOD_MS
 
 // jsdom defaults document.visibilityState to "visible" and makes it read-only,
 // so override it via a getter and fire the real visibilitychange event.
