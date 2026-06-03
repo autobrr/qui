@@ -29,12 +29,16 @@
  *     less harmful than hiding a row that still exists.
  *
  * Generic over any record carrying a stable `hash` so it can be unit tested without
- * constructing full torrent objects.
+ * constructing full torrent objects. `keyOf` selects the identity used for the page-0
+ * window dedup; it defaults to `hash` for single-instance rows, but aggregated
+ * (cross-instance) views pass `instanceId+hash` so cross-seeded copies of one torrent
+ * living on different instances stay distinct rows instead of collapsing into one.
  */
 export function mergeStreamedFirstPage<T extends { hash: string }>(
   prev: T[],
   nextTorrents: T[],
-  total?: number
+  total?: number,
+  keyOf: (torrent: T) => string = torrent => torrent.hash
 ): T[] {
   if (nextTorrents.length === 0) {
     return []
@@ -51,11 +55,11 @@ export function mergeStreamedFirstPage<T extends { hash: string }>(
     return nextTorrents
   }
 
-  const seen = new Set(nextTorrents.map(torrent => torrent.hash))
+  const seen = new Set(nextTorrents.map(keyOf))
 
   // Rows past the streamed page-0 window are pagination-loaded pages we want to keep.
   // De-duping against the fresh page drops any that reflowed up into page 0.
-  const trailing = prev.slice(nextTorrents.length).filter(torrent => !seen.has(torrent.hash))
+  const trailing = prev.slice(nextTorrents.length).filter(torrent => !seen.has(keyOf(torrent)))
 
   return [...nextTorrents, ...trailing]
 }

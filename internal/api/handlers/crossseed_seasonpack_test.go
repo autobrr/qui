@@ -265,3 +265,49 @@ func TestPatchAutomationSettings_IsEmptyIncludesSeasonPackFields(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeSeasonPackCategoryRules(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []models.SeasonPackCategoryRule
+		want []models.SeasonPackCategoryRule
+	}{
+		{
+			name: "trims, lowercases resolution, uppercases source",
+			in:   []models.SeasonPackCategoryRule{{Resolution: " 2160P ", Source: " bluray ", Category: " tv-uhd "}},
+			want: []models.SeasonPackCategoryRule{{Resolution: "2160p", Source: "BLURAY", Category: "tv-uhd"}},
+		},
+		{
+			name: "empty source means any and is kept",
+			in:   []models.SeasonPackCategoryRule{{Resolution: "1080p", Source: "", Category: "tv-hd"}},
+			want: []models.SeasonPackCategoryRule{{Resolution: "1080p", Source: "", Category: "tv-hd"}},
+		},
+		{
+			name: "unrecognized source drops the rule instead of widening to any",
+			in:   []models.SeasonPackCategoryRule{{Resolution: "1080p", Source: "DVDRIP", Category: "tv-hd"}},
+			want: []models.SeasonPackCategoryRule{},
+		},
+		{
+			name: "drops rules missing resolution or category",
+			in: []models.SeasonPackCategoryRule{
+				{Resolution: "", Source: "WEB", Category: "tv-hd"},
+				{Resolution: "1080p", Source: "WEB", Category: ""},
+			},
+			want: []models.SeasonPackCategoryRule{},
+		},
+		{
+			name: "dedupes on resolution and source keeping the first",
+			in: []models.SeasonPackCategoryRule{
+				{Resolution: "1080p", Source: "WEB", Category: "first"},
+				{Resolution: "1080p", Source: "WEB", Category: "second"},
+			},
+			want: []models.SeasonPackCategoryRule{{Resolution: "1080p", Source: "WEB", Category: "first"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, normalizeSeasonPackCategoryRules(tt.in))
+		})
+	}
+}
