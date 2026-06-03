@@ -97,6 +97,13 @@ class MockEventSource {
     this.onerror?.(new Event("error"))
   }
 
+  emitTransientError() {
+    // Browser behaviour on a transient drop: it keeps the source in CONNECTING
+    // and auto-retries; onerror still fires but readyState stays CONNECTING.
+    this.readyState = MockEventSource.CONNECTING
+    this.onerror?.(new Event("error"))
+  }
+
   emit(type: SourceEventName, data?: unknown) {
     const event = new MessageEvent(type, {
       data: data === undefined ? undefined : JSON.stringify(data),
@@ -411,6 +418,76 @@ describe("SyncStreamContext", () => {
       // Only ever one source: no reconnect happened.
       expect(MockEventSource.instances).toHaveLength(1)
       expect(source.closed).toBe(false)
+    })
+  })
+
+  describe("transient onerror guard", () => {
+    it("ignores a transient onerror (CONNECTING) without closing, disconnecting, or scheduling a reconnect", () => {
+      const { controls } = renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+      const source = MockEventSource.instances[0]
+
+      act(() => {
+        source.emitOpen()
+        source.emit("update", {
+          type: "update",
+          meta: { instanceId: 1, timestamp: "now", streamKey: createStreamKey(BASE_PARAMS) },
+        })
+      })
+      expect(controls.getState().connected).toBe(true)
+
+      act(() => {
+        source.emitTransientError()
+      })
+
+      // The native EventSource retry is left to proceed: nothing is torn down.
+      expect(source.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(1)
+      expect(controls.getState().connected).toBe(true)
+      expect(controls.getState().error).toBeNull()
+      expect(controls.getState().retrying).toBe(false)
+      expect(controls.getState().retryAttempt).toBe(0)
+    })
+
+    it("escalates when onerror is terminal (CLOSED)", () => {
+      const { controls } = renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+      const source = MockEventSource.instances[0]
+
+      act(() => {
+        source.emitOpen()
+      })
+      act(() => {
+        source.emitError() // terminal: readyState=CLOSED before onerror fires
+      })
+
+      expect(source.closed).toBe(true)
+      expect(controls.getState().connected).toBe(false)
+      expect(controls.getState().error).toBe(STREAM_ERROR_DISCONNECTED)
+      expect(controls.getState().retrying).toBe(true)
+      expect(controls.getState().retryAttempt).toBe(1)
+    })
+
+    it("still escalates a connection stuck in CONNECTING via the 15s stale watchdog", () => {
+      const { controls } = renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+      const source = MockEventSource.instances[0]
+
+      act(() => {
+        source.emitOpen() // arms the 15s stale watchdog
+      })
+      act(() => {
+        source.emitTransientError() // CONNECTING: does not escalate
+      })
+      expect(source.closed).toBe(false)
+
+      act(() => {
+        vi.advanceTimersByTime(STALE) // 15000
+      })
+
+      expect(source.closed).toBe(true)
+      expect(controls.getState().retrying).toBe(true)
+      expect(controls.getState().retryAttempt).toBe(1)
     })
   })
 

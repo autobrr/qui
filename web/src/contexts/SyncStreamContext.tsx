@@ -440,6 +440,21 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         scheduleReconnectRef.current()
       }
 
+      // The browser fires onerror on transient drops while it is already
+      // auto-reconnecting (readyState stays CONNECTING; native retry is ~1-3s and
+      // invisible). Calling closeConnection() here would source.close() and abort
+      // that native retry, flipping the UI offline and re-enabling REST polling.
+      // So: while CONNECTING, do nothing and let native retry proceed. Only escalate
+      // (teardown + our own backoff) when the source is terminal/CLOSED or gone.
+      // The 15s stale watchdog still escalates a connection stuck in CONNECTING.
+      const handleSourceError = (event?: Event) => {
+        const source = connectionRef.current.source
+        if (source && source.readyState === EventSource.CONNECTING) {
+          return
+        }
+        handleNetworkError(event)
+      }
+
       // Watchdog: any inbound event (init/update/stream-error/heartbeat) proves the
       // connection is alive and resets the timer. If it elapses, the connection is
       // treated as dead and reconnected even when the browser still reports it open.
@@ -586,7 +601,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           notifyStateSubscribers(key)
         })
       }
-      source.onerror = handleNetworkError
+      source.onerror = handleSourceError
 
       connection.source = source
       connection.handlers = {
