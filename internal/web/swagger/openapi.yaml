@@ -6421,6 +6421,28 @@ components:
           default: 0
           description: Seconds to wait after a torrent completes before starting the cross-seed search. 0 disables the delay.
 
+    SeasonPackCategoryRule:
+      type: object
+      required:
+        - resolution
+        - category
+      properties:
+        resolution:
+          type: string
+          description: Canonical lowercase release resolution to match (e.g. "1080p", "2160p").
+        source:
+          type: string
+          enum:
+            - ""
+            - WEB
+            - BLURAY
+            - REMUX
+            - HDTV
+          description: Canonical uppercase release source to match (WEB, BLURAY, REMUX, HDTV). Empty matches any source.
+        category:
+          type: string
+          description: qBittorrent category to file matching season-pack injections under.
+
     CrossSeedAutomationSettingsPatch:
       type: object
       properties:
@@ -6542,6 +6564,11 @@ components:
         seasonPackCategory:
           type: string
           description: Fixed qBittorrent category for season-pack injections. Empty uses the global category mode.
+        seasonPackCategoryRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeasonPackCategoryRule'
+          description: Per-quality routing rules that pick a category by release resolution and source. seasonPackCategory is the fallback when no rule matches.
         seasonPackTvdbApiKey:
           type: string
           description: TVDB API key for season pack metadata resolution. Redacted in API responses.
@@ -6670,6 +6697,11 @@ components:
         seasonPackCategory:
           type: string
           description: Fixed qBittorrent category for season-pack injections. Empty uses the global category mode.
+        seasonPackCategoryRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeasonPackCategoryRule'
+          description: Per-quality routing rules that pick a category by release resolution and source. seasonPackCategory is the fallback when no rule matches.
         seasonPackTvdbApiKey:
           type: string
           description: TVDB API key for season pack metadata resolution. Redacted in API responses.

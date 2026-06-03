@@ -210,10 +210,25 @@
       "tvdbPin": "TVDB Subscriber PIN",
       "pasteTvdbPin": "Paste TVDB PIN",
       "tvdbDescription": "Optional. Improves threshold accuracy when the check endpoint is called without torrent data. TVMaze is used automatically as a free fallback.",
-      "categoryOverride": "Category override",
-      "categoryPlaceholder": "e.g. tv-hd",
-      "categoryDescriptionBefore": "Optional. Fixed qBittorrent category for season pack injects. Set this to your Sonarr download-client category (e.g. ",
-      "categoryDescriptionAfter": ") so Sonarr imports the pack and preserves hardlinks between the library and your seeded episodes. Leave empty to follow the Category Mode below."
+      "categoryRouting": {
+        "title": "Category routing",
+        "description": "Route season pack injects to a qBittorrent category based on resolution and source. Set these to your Sonarr download-client categories so Sonarr imports the pack and preserves hardlinks. A rule with a specific source takes priority over an Any-source rule at the same resolution.",
+        "addRule": "Add rule",
+        "removeRule": "Remove rule",
+        "whenResolution": "When",
+        "fromSource": "from",
+        "anySource": "Any source",
+        "fileAs": "file as",
+        "fallbackLabel": "Anything else",
+        "fallbackDescriptionBefore": "Optional. Category for season pack injects that don't match any rule above (e.g. ",
+        "fallbackDescriptionAfter": "). Leave empty to follow the Category Mode below.",
+        "source": {
+          "web": "WEB",
+          "bluray": "BluRay",
+          "remux": "Remux",
+          "hdtv": "HDTV"
+        }
+      }
     },
     "gazelle": {
       "title": "Gazelle (OPS/RED)",
