@@ -61,11 +61,15 @@ function setHidden(next: boolean) {
   })
 }
 
-function wrapper({ children }: { children: ReactNode }) {
+// One QueryClient per test, reused across rerenders (renderHook's rerender()
+// re-invokes the wrapper, so an inline client would reset the cache each time).
+function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  }
 }
 
 describe("useTorrentsList background stream gating", () => {
@@ -86,13 +90,13 @@ describe("useTorrentsList background stream gating", () => {
   })
 
   it("keeps the list stream enabled while the tab is visible", () => {
-    renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper })
+    renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: createWrapper() })
 
     expect(lastStreamEnabled()).toBe(true)
   })
 
   it("pauses the list stream once the tab has been hidden past the delay", () => {
-    const { rerender } = renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper })
+    const { rerender } = renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: createWrapper() })
 
     expect(lastStreamEnabled()).toBe(true)
 
@@ -106,7 +110,7 @@ describe("useTorrentsList background stream gating", () => {
   })
 
   it("resumes the list stream immediately when the tab becomes visible again", () => {
-    const { rerender } = renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper })
+    const { rerender } = renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: createWrapper() })
 
     setHidden(true)
     act(() => {
