@@ -10,7 +10,9 @@ import { useCrossSeedOrchestration } from "@/hooks/torrent-table/useCrossSeedOrc
 import { useEffectiveServerState } from "@/hooks/torrent-table/useEffectiveServerState"
 import { useTorrentSelection } from "@/hooks/torrent-table/useTorrentSelection"
 import { useTorrentSelectionDerivations } from "@/hooks/torrent-table/useTorrentSelectionDerivations"
+import { useTorrentTableColumns } from "@/hooks/torrent-table/useTorrentTableColumns"
 import { useTorrentTableFilterExpr } from "@/hooks/torrent-table/useTorrentTableFilterExpr"
+import { useTorrentTableNotifications } from "@/hooks/torrent-table/useTorrentTableNotifications"
 import { useTorrentTableHotkeys } from "@/hooks/torrent-table/useTorrentTableHotkeys"
 import { useTrackerIconCache } from "@/hooks/torrent-table/useTrackerIconCache"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
@@ -145,7 +147,7 @@ import {
   TmmConfirmDialog
 } from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
-import { createColumns, type TableViewMode } from "./TorrentTableColumns"
+import { createColumns } from "./TorrentTableColumns"
 import { CompactRow } from "./table/CompactRow"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
@@ -333,18 +335,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
 
   const { trackerIcons, trackerCustomizationLookup } = useTrackerIconCache()
-
-  const lastMetadataRef = useRef<{
-    instanceId?: number
-    counts?: TorrentCounts
-    categories?: Record<string, Category>
-    tags?: string[]
-    totalCount?: number
-    torrentsLength?: number
-    useSubcategories?: boolean
-    supportsSubcategories?: boolean
-    supportsTrackerHealth?: boolean
-  }>({})
 
   // These should be defined at module scope, not inside the component, to ensure stable references
   // (If not already, move them to the top of the file)
@@ -760,77 +750,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     return "No torrents found"
   }, [hasFilterControls, hasSearchQuery])
 
-  // Call the callback when filtered data updates
-  useEffect(() => {
-    if (!onFilteredDataUpdate || isLoading) {
-      return
-    }
-
-    const cachedMetadata =
-      lastMetadataRef.current.instanceId === instanceId
-        ? lastMetadataRef.current
-        : ({} as typeof lastMetadataRef.current)
-
-    const nextCounts = counts ?? cachedMetadata.counts
-    const nextCategories = categories ?? cachedMetadata.categories
-    const nextTags = tags ?? cachedMetadata.tags
-    const prevSupportsSubcategories = cachedMetadata.supportsSubcategories ?? false
-    const previousUseSubcategories = cachedMetadata.useSubcategories ?? false
-    const previousSupportsTrackerHealth = cachedMetadata.supportsTrackerHealth ?? false
-    const nextSupportsSubcategories = supportsSubcategories
-    const nextUseSubcategories = nextSupportsSubcategories? (subcategoriesFromData ?? previousUseSubcategories): false
-    const nextSupportsTrackerHealth = supportsTrackerHealth
-    const nextTotalCount = totalCount
-
-    const hasAnyMetadata =
-      nextCounts !== undefined ||
-      nextCategories !== undefined ||
-      nextTags !== undefined ||
-      nextUseSubcategories !== undefined
-    const hasExistingTorrents = torrents.length > 0
-
-    if (!hasAnyMetadata && !hasExistingTorrents) {
-      return
-    }
-
-    const metadataChanged =
-      nextCounts !== cachedMetadata.counts ||
-      nextCategories !== cachedMetadata.categories ||
-      nextTags !== cachedMetadata.tags ||
-      nextSupportsSubcategories !== prevSupportsSubcategories ||
-      nextUseSubcategories !== previousUseSubcategories ||
-      nextSupportsTrackerHealth !== previousSupportsTrackerHealth ||
-      nextTotalCount !== cachedMetadata.totalCount
-
-    const torrentsLengthChanged = torrents.length !== (cachedMetadata.torrentsLength ?? -1)
-
-    if (!metadataChanged && !torrentsLengthChanged) {
-      return
-    }
-
-    onFilteredDataUpdate(
-      torrents,
-      totalCount,
-      nextCounts,
-      nextCategories,
-      nextTags,
-      nextUseSubcategories,
-      nextSupportsTrackerHealth
-    )
-
-    lastMetadataRef.current = {
-      instanceId,
-      counts: nextCounts,
-      categories: nextCategories,
-      tags: nextTags,
-      totalCount: nextTotalCount,
-      torrentsLength: torrents.length,
-      useSubcategories: nextUseSubcategories,
-      supportsSubcategories: nextSupportsSubcategories,
-      supportsTrackerHealth: nextSupportsTrackerHealth,
-    }
-  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData, supportsSubcategories, supportsTrackerHealth])
-
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
 
@@ -876,35 +795,30 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
 
   // Memoize columns to avoid unnecessary recalculations
-  const columns = useMemo(
-    () => createColumns(incognitoMode, {
-      shiftPressedRef,
-      lastSelectedIndexRef,
-      // Pass custom selection handlers
-      customSelectAll: {
-        onSelectAll: handleSelectAll,
-        isAllSelected: isSelectAllChecked,
-        isIndeterminate: isSelectAllIndeterminate,
-      },
-      onRowSelection: handleRowSelection,
-      getSelectionIdentity,
-      isAllSelected,
-      excludedFromSelectAll,
-    }, speedUnit, trackerIcons, (timestamp: number) => formatTimestamp(timestamp, true), preferences, supportsTrackerHealth, isUnifiedView && isCrossInstanceEndpoint, desktopViewMode as TableViewMode, trackerCustomizationLookup, !isReadOnly, t),
-    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, getSelectionIdentity, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isUnifiedView, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly, t]
-  )
-
-  const torrentIdentityCounts = useMemo(() => {
-    const counts = new Map<string, number>()
-
-    for (const torrent of sortedTorrents) {
-      const baseIdentity = torrent.hash ?? torrent.infohash_v1 ?? torrent.infohash_v2
-      if (!baseIdentity) continue
-      counts.set(baseIdentity, (counts.get(baseIdentity) ?? 0) + 1)
-    }
-
-    return counts
-  }, [sortedTorrents])
+  const { columns, torrentIdentityCounts } = useTorrentTableColumns({
+    shiftPressedRef,
+    lastSelectedIndexRef,
+    handleSelectAll,
+    isSelectAllChecked,
+    isSelectAllIndeterminate,
+    handleRowSelection,
+    getSelectionIdentity,
+    isAllSelected,
+    excludedFromSelectAll,
+    incognitoMode,
+    speedUnit,
+    trackerIcons,
+    formatTimestamp,
+    preferences,
+    supportsTrackerHealth,
+    isUnifiedView,
+    isCrossInstanceEndpoint,
+    desktopViewMode,
+    trackerCustomizationLookup,
+    isReadOnly,
+    t,
+    sortedTorrents,
+  })
 
   const table = useReactTable({
     data: sortedTorrents,
@@ -1091,21 +1005,30 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
   const connectionStatusAriaLabel = hasConnectionStatus ? t("statusBar.connectionAriaLabel", { status: connectionStatusDisplay || formattedConnectionStatus }) : t("statusBar.connectionAriaLabelUnknown")
 
-  // Call the callback when selection state changes
-  useEffect(() => {
-    if (onSelectionChange) {
-      onSelectionChange(
-        selectedHashes,
-        selectedTorrents,
-        isAllSelected,
-        effectiveSelectionCount,
-        selectAllExcludeHashes ?? [],
-        isAllSelected ? selectAllExcludedTargets : [],
-        selectedTotalSize,
-        selectAllFilters ?? filters
-      )
-    }
-  }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, selectAllExcludeHashes, selectAllExcludedTargets, selectedTotalSize, selectAllFilters, filters])
+  // Fire parent-facing notifications when filtered data or selection changes
+  useTorrentTableNotifications({
+    onFilteredDataUpdate,
+    isLoading,
+    instanceId,
+    counts,
+    categories,
+    tags,
+    totalCount,
+    torrents,
+    subcategoriesFromData,
+    supportsSubcategories,
+    supportsTrackerHealth,
+    onSelectionChange,
+    selectedHashes,
+    selectedTorrents,
+    isAllSelected,
+    effectiveSelectionCount,
+    selectAllExcludeHashes,
+    selectAllExcludedTargets,
+    selectedTotalSize,
+    selectAllFilters,
+    filters,
+  })
 
   // Callback for context menu to fetch field for matching torrents
   const fetchAllTorrentField = useCallback(async (field: "name" | "hash" | "full_path" | "magnet_uri"): Promise<string[]> => {
