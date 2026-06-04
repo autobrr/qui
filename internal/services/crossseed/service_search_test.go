@@ -1423,9 +1423,10 @@ func TestSearchTorrentMatches_GazelleSourceWithoutBackendsReturnsError(t *testin
 		},
 	}
 
-	_, err = svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "torznab search is not configured")
+	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Empty(t, resp.Results)
 }
 
 func TestSearchTorrentMatches_DisableTorznabWithoutGazelleReturnsError(t *testing.T) {
@@ -1522,9 +1523,10 @@ func TestSearchTorrentMatches_GazelleConfiguredWithoutTargetLookupReturnsNoBacke
 	require.ErrorIs(t, err, ErrInvalidRequest)
 	require.Contains(t, err.Error(), "gazelle")
 
-	_, err = svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "torznab search is not configured")
+	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Empty(t, resp.Results)
 }
 
 func TestSearchTorrentMatches_GazelleTargetHashSkipReturnsNoBackendWithoutTorznab(t *testing.T) {
@@ -1594,9 +1596,10 @@ func TestSearchTorrentMatches_GazelleTargetHashSkipReturnsNoBackendWithoutTorzna
 		},
 	}
 
-	_, err = svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "torznab search is not configured")
+	resp, err := svc.SearchTorrentMatches(ctx, instance.ID, sourceHash, TorrentSearchOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Empty(t, resp.Results)
 }
 
 func TestSearchGazelleMatches_SkipsWhenTargetTrackerContentExistsLocally(t *testing.T) {
@@ -2194,6 +2197,10 @@ func TestSearchRunLoop_NoBackendDoesNotSleepWithoutLookupAttempt(t *testing.T) {
 	nextWake := state.nextWake
 	svc.searchMu.Unlock()
 	require.True(t, nextWake.IsZero())
+
+	_, found, err := store.GetSearchHistory(ctx, instance.ID, sourceTorrent.Hash)
+	require.NoError(t, err)
+	require.False(t, found)
 }
 
 func TestSearchRunLoop_RunScopedIndexerErrorStopsAfterFirstCandidate(t *testing.T) {
@@ -2261,9 +2268,15 @@ func TestSearchRunLoop_RunScopedIndexerErrorStopsAfterFirstCandidate(t *testing.
 	require.Equal(t, models.CrossSeedSearchRunStatusFailed, state.run.Status)
 	require.Equal(t, 2, state.run.TotalTorrents)
 	require.Equal(t, 1, state.run.Processed)
-	require.Equal(t, 0, state.run.TorrentsFailed)
-	require.Empty(t, state.run.Results)
+	require.Equal(t, 1, state.run.TorrentsFailed)
+	require.Len(t, state.run.Results, 1)
+	require.Equal(t, models.CrossSeedSearchResultStatusFailed, state.run.Results[0].Status)
+	require.Contains(t, state.run.Results[0].Message, "indexer resolution unavailable")
 	require.True(t, state.nextWake.IsZero())
+
+	_, found, err := store.GetSearchHistory(ctx, instance.ID, torrents[0].Hash)
+	require.NoError(t, err)
+	require.False(t, found)
 }
 
 func TestSearchRunLoop_FilteredIndexersDoesNotSleepWithoutRemoteRequest(t *testing.T) {
@@ -2361,6 +2374,10 @@ func TestSearchRunLoop_FilteredIndexersDoesNotSleepWithoutRemoteRequest(t *testi
 	nextWake := state.nextWake
 	svc.searchMu.Unlock()
 	require.True(t, nextWake.IsZero())
+
+	_, found, err := store.GetSearchHistory(ctx, instance.ID, sourceTorrent.Hash)
+	require.NoError(t, err)
+	require.False(t, found)
 }
 
 func gazelleClientsForTest() (*gazelleClientSet, error) {

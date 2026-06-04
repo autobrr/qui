@@ -7078,7 +7078,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 	if s.jackettService == nil {
 		// No Torznab backend. Only succeed when Gazelle was usable for this source.
-		if gazelleLookupAttempted {
+		if isGazelleSource || gazelleConfigured {
 			s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults, tolerancePercent)
 			return &TorrentSearchResponse{
 				SourceTorrent: sourceInfo,
@@ -9012,13 +9012,6 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 	s.searchMu.Unlock()
 	processedAt := time.Now().UTC()
 
-	if s.automationStore != nil {
-		if err := s.automationStore.UpsertSearchHistory(ctx, state.opts.InstanceID, torrent.Hash, processedAt); err != nil {
-			log.Debug().Err(err).Msg("failed to update search history")
-		}
-		s.propagateDuplicateSearchHistory(ctx, state, torrent.Hash, processedAt)
-	}
-
 	// Hybrid behavior:
 	// - Gazelle matching is attempted inside SearchTorrentMatches for every source torrent.
 	// - Torznab matching is also attempted when enabled and indexers remain after filtering.
@@ -9027,6 +9020,18 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 
 	if !state.opts.DisableTorznab && state.resolvedTorznabIndexerErr != nil {
 		state.lastError = state.resolvedTorznabIndexerErr
+		s.searchMu.Lock()
+		state.run.TorrentsFailed++
+		s.searchMu.Unlock()
+		s.appendSearchResult(state, models.CrossSeedSearchResult{
+			TorrentHash:  torrent.Hash,
+			TorrentName:  torrent.Name,
+			IndexerName:  "",
+			ReleaseTitle: "",
+			Status:       models.CrossSeedSearchResultStatusFailed,
+			Message:      fmt.Sprintf("search failed: %v", state.resolvedTorznabIndexerErr),
+			ProcessedAt:  processedAt,
+		})
 		s.persistSearchRun(state)
 		return false, state.resolvedTorznabIndexerErr
 	}
@@ -9050,7 +9055,7 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 				ProcessedAt:  processedAt,
 			})
 			s.persistSearchRun(state)
-			return true, err
+			return false, err
 		}
 
 		filteringState := asyncAnalysis.FilteringState
@@ -9133,6 +9138,12 @@ func (s *Service) processSearchCandidate(ctx context.Context, state *searchRunSt
 		SizeMismatchTolerancePercentSet: state.opts.SizeMismatchTolerancePercentSet,
 	}, state.gazelleClients)
 	delayAfterCandidate := remoteRequestsMade
+	if remoteRequestsMade && s.automationStore != nil {
+		if err := s.automationStore.UpsertSearchHistory(ctx, state.opts.InstanceID, torrent.Hash, processedAt); err != nil {
+			log.Debug().Err(err).Msg("failed to update search history")
+		}
+		s.propagateDuplicateSearchHistory(ctx, state, torrent.Hash, processedAt)
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return delayAfterCandidate, ctx.Err()
