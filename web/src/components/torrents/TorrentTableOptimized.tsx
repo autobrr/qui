@@ -4,14 +4,24 @@
  */
 
 import { isClientConnectionErrorCode } from "@/contexts/SyncStreamContext"
-import { useCrossSeedWarning } from "@/hooks/useCrossSeedWarning"
-import { useCrossSeedBlocklistActions } from "@/hooks/useCrossSeedBlocklistActions"
+import { useBulkActionWrappers } from "@/hooks/torrent-table/useBulkActionWrappers"
+import { useColumnDnd } from "@/hooks/torrent-table/useColumnDnd"
+import { useCompactViewSort } from "@/hooks/torrent-table/useCompactViewSort"
+import { useCrossSeedOrchestration } from "@/hooks/torrent-table/useCrossSeedOrchestration"
+import { useEffectiveServerState } from "@/hooks/torrent-table/useEffectiveServerState"
+import { useFilterLifecycle } from "@/hooks/torrent-table/useFilterLifecycle"
+import { useTorrentSelection } from "@/hooks/torrent-table/useTorrentSelection"
+import { useTorrentSelectionDerivations } from "@/hooks/torrent-table/useTorrentSelectionDerivations"
+import { useTorrentTableColumns } from "@/hooks/torrent-table/useTorrentTableColumns"
+import { useTorrentTableFilterExpr } from "@/hooks/torrent-table/useTorrentTableFilterExpr"
+import { useTorrentTableNotifications } from "@/hooks/torrent-table/useTorrentTableNotifications"
+import { useTorrentTableHotkeys } from "@/hooks/torrent-table/useTorrentTableHotkeys"
+import { useTorrentTableVirtualization } from "@/hooks/torrent-table/useTorrentTableVirtualization"
+import { useTrackerIconCache } from "@/hooks/torrent-table/useTrackerIconCache"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
-import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
-import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
@@ -19,27 +29,10 @@ import { usePersistedCompactViewState } from "@/hooks/usePersistedCompactViewSta
 import { TORRENT_ACTIONS, useTorrentActions } from "@/hooks/useTorrentActions"
 import { useTorrentExporter } from "@/hooks/useTorrentExporter"
 import { TORRENT_STREAM_POLL_INTERVAL_SECONDS, useTorrentsList } from "@/hooks/useTorrentsList"
-import { useTrackerCustomizations } from "@/hooks/useTrackerCustomizations"
-import { useTrackerIcons } from "@/hooks/useTrackerIcons"
-import { columnFiltersToExpr } from "@/lib/column-filter-utils"
-import { buildTrackerCustomizationLookup, extractTrackerHost, getTrackerCustomizationsCacheKey, resolveTrackerDisplay, type TrackerCustomizationLookup } from "@/lib/tracker-customizations"
+import { getBackendSortField } from "@/lib/torrent-table/backend-sort-field"
+import { getRowBackgroundClass } from "@/lib/torrent-table/row-display"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
-import { resolveTrackerIconSrc } from "@/lib/tracker-icons"
-import { formatBytes, getRatioColor } from "@/lib/utils"
-import {
-  DndContext,
-  MouseSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors
-} from "@dnd-kit/core"
-import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
-import {
-  SortableContext,
-  arrayMove,
-  horizontalListSortingStrategy
-} from "@dnd-kit/sortable"
+import { formatBytes } from "@/lib/utils"
 import {
   flexRender,
   getCoreRowModel,
@@ -47,25 +40,14 @@ import {
   getSortedRowModel,
   useReactTable
 } from "@tanstack/react-table"
-import { useVirtualizer } from "@tanstack/react-virtual"
-import type { TFunction } from "i18next"
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
-import { TORRENT_SORT_OPTIONS, getDefaultSortOrder, type TorrentSortOptionValue } from "./torrentSortOptions"
+import { type TorrentSortOptionValue } from "./torrentSortOptions"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -87,24 +69,20 @@ import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
-import { getLinuxCategory, getLinuxIsoName, getLinuxRatio, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
+import { useIncognitoMode } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
 import { resolveFooterSpeeds } from "@/lib/scoped-speeds"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import { buildTorrentActionTargets } from "@/lib/torrent-action-targets"
-import { getStateLabel } from "@/lib/torrent-state-utils"
-import { anyTorrentHasTag, getCommonCategory, getCommonSavePath, getTorrentHashesWithTag, getTotalSize } from "@/lib/torrent-utils"
 import { cn } from "@/lib/utils"
 import type {
   Category,
   CrossInstanceTorrent,
-  ServerState,
   Torrent,
   TorrentCounts,
   TorrentFilters
 } from "@/types"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useNavigate, useSearch } from "@tanstack/react-router"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useNavigate } from "@tanstack/react-router"
 import {
   ArrowUpDown,
   Ban,
@@ -115,7 +93,6 @@ import {
   EthernetPort,
   Eye,
   EyeOff,
-  Folder,
   Globe,
   HardDrive,
   LayoutGrid,
@@ -124,31 +101,17 @@ import {
   RefreshCcw,
   Rows3,
   Table as TableIcon,
-  Tag,
   Turtle,
   X
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
-import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
-import { DraggableTableHeader } from "./DraggableTableHeader"
 import { SelectAllHotkey } from "./SelectAllHotkey"
-import {
-  CreateAndAssignCategoryDialog,
-  LocationWarningDialog,
-  RenameTorrentDialog,
-  RenameTorrentFileDialog,
-  RenameTorrentFolderDialog,
-  SetCategoryDialog,
-  SetLocationDialog,
-  TagEditorDialog,
-  SetCommentDialog,
-  ShareLimitDialog,
-  SpeedLimitsDialog,
-  TmmConfirmDialog
-} from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
-import { createColumns, type TableViewMode } from "./TorrentTableColumns"
+import { createColumns } from "./TorrentTableColumns"
+import { CompactRow } from "./table/CompactRow"
+import { TableColumnHeader } from "./table/TableColumnHeader"
+import { TorrentTableDialogs } from "./table/TorrentTableDialogs"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
 
@@ -216,357 +179,6 @@ function getDefaultColumnOrder(): string[] {
 
   return order
 }
-
-function shallowEqualTrackerIcons(
-  prev?: Record<string, string>,
-  next?: Record<string, string>
-): boolean {
-  if (prev === next) {
-    return true
-  }
-
-  if (!prev || !next) {
-    return false
-  }
-
-  const prevKeys = Object.keys(prev)
-  const nextKeys = Object.keys(next)
-
-  if (prevKeys.length !== nextKeys.length) {
-    return false
-  }
-
-  for (const key of prevKeys) {
-    if (prev[key] !== next[key]) {
-      return false
-    }
-  }
-
-  return true
-}
-
-// Compact view helper functions and components
-
-// Returns the background class for a row based on selection state and zebra striping
-function getRowBackgroundClass(isRowSelected: boolean, isSelected: boolean, rowIndex: number): string {
-  if (isRowSelected || isSelected) return "bg-accent"
-  if (rowIndex % 2 === 1) return "bg-muted/40"
-  return ""
-}
-
-function getStatusBadgeVariant(state: string): "default" | "secondary" | "destructive" | "outline" {
-  switch (state) {
-    case "downloading":
-      return "default"
-    case "stalledDL":
-      return "secondary"
-    case "uploading":
-      return "default"
-    case "stalledUP":
-      return "secondary"
-    case "pausedDL":
-    case "pausedUP":
-      return "secondary"
-    case "error":
-    case "missingFiles":
-      return "destructive"
-    default:
-      return "outline"
-  }
-}
-
-function getStatusBadgeProps(torrent: Torrent, supportsTrackerHealth: boolean, t: TFunction): {
-  variant: "default" | "secondary" | "destructive" | "outline"
-  label: string
-  className: string
-} {
-  const baseVariant = getStatusBadgeVariant(torrent.state)
-  let variant = baseVariant
-  let label = getStateLabel(torrent.state, t)
-  let className = ""
-
-  if (supportsTrackerHealth) {
-    const trackerHealth = torrent.tracker_health ?? null
-    if (trackerHealth === "tracker_down") {
-      label = t("tableColumns.trackerDown")
-      variant = "outline"
-      className = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
-    } else if (trackerHealth === "tracker_error") {
-      label = t("tableColumns.trackerError")
-      variant = "outline"
-      className = "text-orange-500 border-orange-500/40 bg-orange-500/10"
-    } else if (trackerHealth === "unregistered") {
-      label = t("tableColumns.unregistered")
-      variant = "outline"
-      className = "text-destructive border-destructive/40 bg-destructive/10"
-    }
-  }
-
-  return { variant, label, className }
-}
-
-const trackerIconSizeClasses = {
-  xs: "h-3 w-3 text-[8px]",
-  sm: "h-[14px] w-[14px] text-[9px]",
-  md: "h-4 w-4 text-[10px]",
-} as const
-
-type TrackerIconSize = keyof typeof trackerIconSizeClasses
-
-interface TrackerIconProps {
-  title: string
-  fallback: string
-  src: string | null
-  size?: TrackerIconSize
-  className?: string
-}
-
-const TrackerIcon = memo(({ title, fallback, src, size = "md", className }: TrackerIconProps) => {
-  const [hasError, setHasError] = useState(false)
-
-  useEffect(() => {
-    setHasError(false)
-  }, [src])
-
-  return (
-    <div className={cn("flex items-center justify-center", className)} title={title}>
-      <div
-        className={cn(
-          "flex items-center justify-center rounded-sm border border-border/40 bg-muted font-medium uppercase leading-none select-none",
-          trackerIconSizeClasses[size]
-        )}
-      >
-        {src && !hasError ? (
-          <img
-            src={src}
-            alt=""
-            className="h-full w-full rounded-[2px] object-cover"
-            loading="lazy"
-            draggable={false}
-            onError={() => setHasError(true)}
-          />
-        ) : (
-          <span aria-hidden="true">{fallback}</span>
-        )}
-      </div>
-    </div>
-  )
-}, (prev, next) =>
-  prev.title === next.title &&
-  prev.fallback === next.fallback &&
-  prev.src === next.src &&
-  prev.size === next.size &&
-  prev.className === next.className
-)
-
-// Compact row component for desktop
-interface CompactRowProps {
-  torrent: Torrent
-  rowId: string
-  rowIndex: number
-  isSelected: boolean
-  isRowSelected: boolean
-  showCheckbox: boolean
-  onClick: (e: React.MouseEvent) => void
-  onContextMenu: () => void
-  onCheckboxPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void
-  onCheckboxChange: (torrent: Torrent, rowId: string, checked: boolean) => void
-  incognitoMode: boolean
-  speedUnit: "bytes" | "bits"
-  supportsTrackerHealth: boolean
-  trackerIcons?: Record<string, string>
-  trackerCustomizationLookup: TrackerCustomizationLookup
-  style: React.CSSProperties
-}
-
-const CompactRow = memo(({
-  torrent,
-  rowId,
-  rowIndex,
-  isSelected,
-  isRowSelected,
-  showCheckbox,
-  onClick,
-  onContextMenu,
-  onCheckboxPointerDown,
-  onCheckboxChange,
-  incognitoMode,
-  speedUnit,
-  supportsTrackerHealth,
-  trackerIcons,
-  trackerCustomizationLookup,
-  style,
-}: CompactRowProps) => {
-  const { t } = useTranslation("torrents")
-  const displayName = incognitoMode ? getLinuxIsoName(torrent.hash) : torrent.name
-  const displayCategory = incognitoMode ? getLinuxCategory(torrent.hash) : torrent.category
-  const displayTags = incognitoMode ? getLinuxTags(torrent.hash) : torrent.tags
-  const displayRatio = incognitoMode ? getLinuxRatio(torrent.hash) : torrent.ratio
-
-  const { variant: statusBadgeVariant, label: statusBadgeLabel, className: statusBadgeClass } = useMemo(
-    () => getStatusBadgeProps(torrent, supportsTrackerHealth, t),
-    [torrent, supportsTrackerHealth, t]
-  )
-
-  // Resolve tracker display name and icon using customizations
-  const trackerRaw = incognitoMode ? getLinuxTracker(torrent.hash) : torrent.tracker
-  const trackerHost = useMemo(() => extractTrackerHost(trackerRaw), [trackerRaw])
-  const trackerDisplayInfo = useMemo(
-    () => resolveTrackerDisplay(trackerHost, trackerCustomizationLookup),
-    [trackerHost, trackerCustomizationLookup]
-  )
-  const trackerLabel = trackerDisplayInfo.displayName || ""
-  const trackerIconSrc = resolveTrackerIconSrc(trackerIcons, trackerDisplayInfo.primaryDomain, trackerHost)
-  const trackerTitle = trackerDisplayInfo.isCustomized ? `${trackerDisplayInfo.displayName} (${trackerHost})` : trackerHost
-
-  // Compact view
-  return (
-    <div
-      className={cn(
-        "relative flex flex-col gap-1 px-3 py-2 cursor-pointer hover:bg-accent/40 overflow-hidden",
-        getRowBackgroundClass(isRowSelected, isSelected, rowIndex)
-      )}
-      style={style}
-      onClick={(e) => onClick(e)}
-      onContextMenu={onContextMenu}
-    >
-      {/* Progress background overlay - only show when downloading */}
-      {torrent.progress < 1 && (
-        <div
-          className="absolute inset-0 -z-10 bg-primary/10 transition-all duration-300"
-          style={{
-            width: `${Math.min(100, Math.max(0, torrent.progress * 100))}%`,
-          }}
-          aria-hidden="true"
-        />
-      )}
-      {/* Name with progress inline */}
-      <div className="flex items-center gap-2">
-        {showCheckbox && (
-          <div
-            className="flex items-center justify-center flex-shrink-0"
-            data-slot="checkbox"
-            onPointerDown={onCheckboxPointerDown}
-          >
-            <Checkbox
-              checked={isRowSelected}
-              onCheckedChange={(checked) => onCheckboxChange(torrent, rowId, checked === true)}
-              aria-label={t("tableColumns.selectAll")}
-              className="h-4 w-4"
-            />
-          </div>
-        )}
-        <div className="flex items-center gap-1 flex-shrink-0" title={trackerTitle}>
-          <TrackerIcon
-            title={trackerTitle}
-            fallback={trackerHost ? trackerHost.charAt(0).toUpperCase() : "?"}
-            src={trackerIconSrc}
-            size="sm"
-          />
-          {trackerLabel && (
-            <span className="text-xs text-muted-foreground whitespace-nowrap">
-              {trackerLabel}
-            </span>
-          )}
-        </div>
-        <h3 className="flex-1 font-medium text-sm truncate min-w-0" title={displayName}>
-          {displayName}
-        </h3>
-        <Badge variant={statusBadgeVariant} className={cn("text-xs flex-shrink-0", statusBadgeClass)}>
-          {statusBadgeLabel}
-        </Badge>
-      </div>
-
-      {/* Downloaded/Size and Ratio */}
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">
-          {formatBytes(torrent.downloaded)} / {formatBytes(torrent.size)}
-        </span>
-        <div className="flex items-center gap-1">
-          <span className="text-muted-foreground">{t("mobileCards.ratio")}</span>
-          <span
-            className="font-medium"
-            style={{ color: getRatioColor(displayRatio) }}
-          >
-            {displayRatio === -1 ? "∞" : displayRatio.toFixed(2)}
-          </span>
-        </div>
-      </div>
-
-      {/* Bottom row: Category/tags and percentage/speeds */}
-      <div className="flex items-center justify-between gap-2 text-xs">
-        {/* Left side: Category and Tags */}
-        <div className="flex items-center gap-2 text-muted-foreground min-w-0 overflow-hidden">
-          {displayCategory && (
-            <span className="flex items-center gap-1 flex-shrink-0">
-              <Folder className="h-3 w-3" />
-              {displayCategory}
-            </span>
-          )}
-          {displayTags && (
-            <div className="flex items-center gap-1 min-w-0 overflow-hidden">
-              <Tag className="h-3 w-3 flex-shrink-0" />
-              <span className="truncate">
-                {Array.isArray(displayTags) ? displayTags.join(", ") : displayTags}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Right side: Percentage and Speeds */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="text-muted-foreground">
-            {torrent.progress >= 0.99 && torrent.progress < 1 ? (
-              (Math.floor(torrent.progress * 1000) / 10).toFixed(1)
-            ) : (
-              Math.round(torrent.progress * 100)
-            )}%
-          </span>
-          {/* Speeds */}
-          {(torrent.dlspeed > 0 || torrent.upspeed > 0) && (
-            <div className="flex items-center gap-1">
-              {torrent.dlspeed > 0 && (
-                <span className="text-chart-2 font-medium">
-                  ↓{formatSpeedWithUnit(torrent.dlspeed, speedUnit)}
-                </span>
-              )}
-              {torrent.upspeed > 0 && (
-                <span className="text-chart-3 font-medium">
-                  ↑{formatSpeedWithUnit(torrent.upspeed, speedUnit)}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}, (prev, next) =>
-  prev.torrent.hash === next.torrent.hash &&
-  prev.rowId === next.rowId &&
-  prev.rowIndex === next.rowIndex &&
-  prev.torrent.name === next.torrent.name &&
-  prev.torrent.category === next.torrent.category &&
-  prev.torrent.tags === next.torrent.tags &&
-  prev.torrent.tracker === next.torrent.tracker &&
-  prev.torrent.tracker_health === next.torrent.tracker_health &&
-  prev.torrent.state === next.torrent.state &&
-  prev.torrent.progress === next.torrent.progress &&
-  prev.torrent.dlspeed === next.torrent.dlspeed &&
-  prev.torrent.upspeed === next.torrent.upspeed &&
-  prev.torrent.downloaded === next.torrent.downloaded &&
-  prev.torrent.size === next.torrent.size &&
-  prev.torrent.ratio === next.torrent.ratio &&
-  prev.isSelected === next.isSelected &&
-  prev.isRowSelected === next.isRowSelected &&
-  prev.showCheckbox === next.showCheckbox &&
-  prev.incognitoMode === next.incognitoMode &&
-  prev.speedUnit === next.speedUnit &&
-  prev.supportsTrackerHealth === next.supportsTrackerHealth &&
-  prev.trackerIcons === next.trackerIcons &&
-  prev.trackerCustomizationLookup === next.trackerCustomizationLookup &&
-  prev.style === next.style
-)
 
 interface ExternalIPAddressProps {
   address?: string | null
@@ -664,21 +276,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Move default values outside the component for stable references
   // (This should be at module scope, not inside the component)
   const [sorting, setSorting] = usePersistedColumnSorting([], instanceId)
-  const [globalFilter, setGlobalFilter] = useState("")
-  const [immediateSearch] = useState("")
-  const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({})
-
-  // Custom "select all" state for handling large datasets
-  const [isAllSelected, setIsAllSelected] = useState(false)
-  const [excludedFromSelectAll, setExcludedFromSelectAll] = useState<Set<string>>(new Set())
   const [dropPayload, setDropPayload] = useState<AddTorrentDropPayload | null>(null)
 
   // Instance preferences dialog state
   const [preferencesOpen, setPreferencesOpen] = useState(false)
-
-  // Filter lifecycle state machine to replace fragile timing-based coordination
-  type FilterLifecycleState = 'idle' | 'clearing-all' | 'clearing-columns-only' | 'cleared'
-  const [filterLifecycleState, setFilterLifecycleState] = useState<FilterLifecycleState>('idle')
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { t } = useTranslation("torrents")
@@ -692,100 +293,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Desktop view mode state (separate from mobile view mode)
   const { viewMode: desktopViewMode, cycleViewMode } = usePersistedCompactViewState("normal", TABLE_ALLOWED_VIEW_MODES)
 
-  const trackerIconsQuery = useTrackerIcons()
-  const trackerIconsRef = useRef<Record<string, string> | undefined>(undefined)
-  const trackerIcons = useMemo(() => {
-    const latest = trackerIconsQuery.data
-    if (!latest) {
-      return trackerIconsRef.current
-    }
-
-    const previous = trackerIconsRef.current
-    if (previous && shallowEqualTrackerIcons(previous, latest)) {
-      return previous
-    }
-
-    trackerIconsRef.current = latest
-    return latest
-  }, [trackerIconsQuery.data])
-
-  // Tracker customizations for custom display names and merged domains
-  const trackerCustomizationsQuery = useTrackerCustomizations()
-  const trackerCustomizationsRef = useRef<{ key: string; lookup: TrackerCustomizationLookup } | undefined>(undefined)
-  const trackerCustomizationLookup = useMemo(() => {
-    const latest = trackerCustomizationsQuery.data
-    if (!latest) {
-      return trackerCustomizationsRef.current?.lookup ?? new Map()
-    }
-
-    // Build a cache key from ids + updatedAt to detect any changes
-    const newKey = getTrackerCustomizationsCacheKey(latest)
-
-    // Check if the lookup has changed using the cache key
-    const previous = trackerCustomizationsRef.current
-    if (previous && previous.key === newKey) {
-      return previous.lookup
-    }
-
-    // Build a new lookup map from the customizations
-    const newLookup = buildTrackerCustomizationLookup(latest)
-    trackerCustomizationsRef.current = { key: newKey, lookup: newLookup }
-    return newLookup
-  }, [trackerCustomizationsQuery.data])
-
-  // Detect platform for keyboard shortcuts
-  const isMac = useMemo(() => {
-    return typeof window !== "undefined" && /Mac|iPhone|iPad|iPod/.test(window.navigator.userAgent)
-  }, [])
-
-  // Track user-initiated actions to differentiate from automatic data updates
-  const [lastUserAction, setLastUserAction] = useState<{ type: string; timestamp: number } | null>(null)
-  const previousFiltersRef = useRef(filters)
-  const previousInstanceIdRef = useRef(instanceId)
-  const previousSearchRef = useRef("")
-  const lastMetadataRef = useRef<{
-    instanceId?: number
-    counts?: TorrentCounts
-    categories?: Record<string, Category>
-    tags?: string[]
-    totalCount?: number
-    torrentsLength?: number
-    useSubcategories?: boolean
-    supportsSubcategories?: boolean
-    supportsTrackerHealth?: boolean
-  }>({})
-  const serverStateRef = useRef<{ instanceId: number, state: ServerState | null }>({
-    instanceId,
-    state: null,
-  })
-
-  // State for range select capabilities for checkboxes
-  const shiftPressedRef = useRef<boolean>(false)
-  const lastSelectedIndexRef = useRef<number | null>(null)
-
-  // Cross-seed async filtering polling
-
-  const handleCompactCheckboxPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    shiftPressedRef.current = event.shiftKey
-  }, [])
-
-  const resetSelectionState = useCallback(() => {
-    setIsAllSelected(false)
-    setExcludedFromSelectAll(new Set())
-    setRowSelection({})
-    lastSelectedIndexRef.current = null
-  }, [setIsAllSelected, setExcludedFromSelectAll, setRowSelection])
-
-  useEffect(() => {
-    if (!onResetSelection) {
-      return
-    }
-
-    onResetSelection(resetSelectionState)
-    return () => {
-      onResetSelection(undefined)
-    }
-  }, [onResetSelection, resetSelectionState])
+  const { trackerIcons, trackerCustomizationLookup } = useTrackerIconCache()
 
   // These should be defined at module scope, not inside the component, to ensure stable references
   // (If not already, move them to the top of the file)
@@ -794,15 +302,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Column visibility with persistence
   const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(DEFAULT_COLUMN_VISIBILITY, instanceId)
   // Column order with persistence (get default order at runtime to avoid initialization order issues)
-  const [columnOrder, setColumnOrder] = usePersistedColumnOrder(getDefaultColumnOrder(), instanceId)
+  // Latest accessor for the table's leaf column ids — reassigned after the table
+  // is created below; useColumnDnd reads it lazily at drag time.
+  const leafColumnIdsRef = useRef<() => string[]>(() => [])
+  const getLeafColumnIds = useCallback(() => leafColumnIdsRef.current(), [])
+  const { columnOrder, setColumnOrder, sensors, onDragEnd } = useColumnDnd({
+    instanceId,
+    defaultColumnOrder: getDefaultColumnOrder(),
+    getLeafColumnIds,
+  })
   // Column sizing with persistence
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING, instanceId)
   // Column filters with persistence
   const [columnFilters, setColumnFilters] = usePersistedColumnFilters(instanceId)
-
-  // Progressive loading state with async management
-  const [loadedRows, setLoadedRows] = useState(100)
-  const [isLoadingMoreRows, setIsLoadingMoreRows] = useState(false)
 
   // Delayed loading state to avoid flicker on fast loads
   const [showLoadingState, setShowLoadingState] = useState(false)
@@ -889,17 +401,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
 
   // Cross-seed warning for delete dialog
-  const crossSeedWarning = useCrossSeedWarning({
+  const { crossSeedWarning, hasCrossSeedTag, shouldBlockCrossSeeds, blockCrossSeedHashes } = useCrossSeedOrchestration({
     instanceId,
     instanceName: instance?.name ?? "",
-    torrents: contextTorrents,
+    contextTorrents,
+    blockCrossSeeds,
   })
-  const hasCrossSeedTag = useMemo(
-    () => anyTorrentHasTag(contextTorrents, "cross-seed") || anyTorrentHasTag(crossSeedWarning.affectedTorrents, "cross-seed"),
-    [contextTorrents, crossSeedWarning.affectedTorrents]
-  )
-  const shouldBlockCrossSeeds = hasCrossSeedTag && blockCrossSeeds
-  const { blockCrossSeedHashes } = useCrossSeedBlocklistActions(instanceId)
 
   // Fetch metadata using shared hook
   const { data: metadata, isLoading: isMetadataLoading } = useInstanceMetadata(instanceId, {
@@ -908,125 +415,17 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const metadataTags = metadata?.tags || []
   const metadataCategories = metadata?.categories || {}
 
-  const shouldLoadRenameEntries = (showRenameFileDialog || showRenameFolderDialog) && Boolean(contextHashes[0])
+  const navigate = useNavigate()
 
   const {
-    data: renameFileData,
-    isLoading: renameEntriesLoading,
-  } = useQuery({
-    queryKey: ["torrent-files", instanceId, contextHashes[0]],
-    queryFn: () => api.getTorrentFiles(instanceId, contextHashes[0]!, { refresh: true }),
-    enabled: shouldLoadRenameEntries,
-    staleTime: 0,
-    gcTime: 5 * 60 * 1000,
-  })
-
-  const renameFileEntries = useMemo(() => {
-    if (!Array.isArray(renameFileData)) return [] as { name: string }[]
-    return renameFileData
-      .filter((file) => typeof file?.name === "string")
-      .map((file) => ({ name: file.name }))
-  }, [renameFileData])
-
-  const renameFolderEntries = useMemo(() => {
-    if (renameFileEntries.length === 0) return [] as { name: string }[]
-    const folderSet = new Set<string>()
-    for (const file of renameFileEntries) {
-      const parts = file.name.split("/")
-      if (parts.length <= 1) continue
-      let current = ""
-      for (let i = 0; i < parts.length - 1; i++) {
-        current = current ? `${current}/${parts[i]}` : parts[i]
-        folderSet.add(current)
-      }
-    }
-    return Array.from(folderSet)
-      .sort((a, b) => a.localeCompare(b))
-      .map(name => ({ name }))
-  }, [renameFileEntries])
-
-  // Debounce search to prevent excessive filtering (200ms delay for faster response)
-  const debouncedSearch = useDebounce(globalFilter, 200)
-  const routeSearch = useSearch({ strict: false }) as { q?: string }
-  const navigate = useNavigate()
-  const rawRouteSearch = typeof routeSearch?.q === "string" ? routeSearch.q : ""
-  const searchFromRoute = rawRouteSearch.trim()
-
-  // Use route search if present, otherwise fall back to local immediate/debounced search
-  const effectiveSearch = (searchFromRoute || immediateSearch || debouncedSearch).trim()
-
-  // Keep local input state in sync with route query so internal effects remain consistent
-  useEffect(() => {
-    if (searchFromRoute !== globalFilter) {
-      setGlobalFilter(searchFromRoute)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchFromRoute])
-
-  // Convert column filters to expr format for backend
-  const columnFiltersExpr = useMemo(() => columnFiltersToExpr(columnFilters), [columnFilters])
-
-  // Detect if this is cross-seed filtering (same logic as in useTorrentsList)
-  const isDoingCrossSeedFiltering = useMemo(() => {
-    return filters?.expr?.includes('Hash ==') && filters?.expr?.includes('||')
-  }, [filters?.expr])
-
-  // Combine column filters with any existing filter expression
-  // For cross-seed filtering, we'll apply column filters client-side only
-  const combinedFiltersExpr = useMemo(() => {
-    const columnExpr = columnFiltersExpr
-    const filterExpr = filters?.expr
-
-    // If we're doing cross-seed filtering, don't send column filters to backend
-    // They will be applied client-side by TanStack Table (along with sorting)
-    if (isDoingCrossSeedFiltering) {
-      return filterExpr // Only use the cross-seed expression for backend
-    }
-
-    // For regular filtering, combine column filters with existing filters
-    if (columnExpr && filterExpr) {
-      const combined = `(${columnExpr}) && (${filterExpr})`
-      return combined
-    }
-    return columnExpr || filterExpr
-  }, [columnFiltersExpr, filters?.expr, isDoingCrossSeedFiltering])
-
-  // Detect user-initiated changes
-  useEffect(() => {
-    const filtersChanged = JSON.stringify(previousFiltersRef.current) !== JSON.stringify(filters)
-    const instanceChanged = previousInstanceIdRef.current !== instanceId
-    const searchChanged = previousSearchRef.current !== effectiveSearch
-
-    if (filtersChanged || instanceChanged || searchChanged) {
-      setLastUserAction({
-        type: instanceChanged ? "instance" : filtersChanged ? "filter" : "search",
-        timestamp: Date.now(),
-      })
-
-      // Update refs
-      previousFiltersRef.current = filters
-      previousInstanceIdRef.current = instanceId
-      previousSearchRef.current = effectiveSearch
-    }
-  }, [filters, instanceId, effectiveSearch])
-
-  // Map TanStack Table column IDs to backend field names
-  const getBackendSortField = (columnId: string): string => {
-    if (!columnId) {
-      return "added_on"
-    }
-
-    switch (columnId) {
-      case "status_icon":
-        return "state"
-      case "num_seeds":
-        return "num_complete" // Sort by total seeds, not connected
-      case "num_leechs":
-        return "num_incomplete" // Sort by total peers, not connected
-      default:
-        return columnId
-    }
-  }
+    globalFilter,
+    setGlobalFilter,
+    effectiveSearch,
+    columnFiltersExpr,
+    combinedFiltersExpr,
+    lastUserAction,
+    setLastUserAction,
+  } = useTorrentTableFilterExpr({ filters, instanceId, columnFilters })
 
   const activeSortField = sorting.length > 0 ? getBackendSortField(sorting[0].id) : "added_on"
   const activeSortOrder: "asc" | "desc" = sorting.length > 0 ? (sorting[0].desc ? "desc" : "asc") : "desc"
@@ -1208,16 +607,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const isLoadingTags = isMetadataLoading && availableTags.length === 0
   const isLoadingCategories = isMetadataLoading && Object.keys(availableCategories).length === 0
 
-  const getSelectionIdentity = useCallback((torrent: Torrent): string => {
-    if (!isCrossInstanceEndpoint) {
-      return torrent.hash
-    }
-
-    const crossInstanceId = (torrent as Partial<CrossInstanceTorrent>).instanceId
-    const resolvedInstanceId = typeof crossInstanceId === "number" && crossInstanceId > 0 ? crossInstanceId : instanceId
-    return `${resolvedInstanceId}:${torrent.hash}`
-  }, [isCrossInstanceEndpoint, instanceId])
-
   // Delayed loading state to avoid flicker on fast loads
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>
@@ -1287,105 +676,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     return "No torrents found"
   }, [hasFilterControls, hasSearchQuery])
 
-  // Call the callback when filtered data updates
-  useEffect(() => {
-    if (!onFilteredDataUpdate || isLoading) {
-      return
-    }
-
-    const cachedMetadata =
-      lastMetadataRef.current.instanceId === instanceId
-        ? lastMetadataRef.current
-        : ({} as typeof lastMetadataRef.current)
-
-    const nextCounts = counts ?? cachedMetadata.counts
-    const nextCategories = categories ?? cachedMetadata.categories
-    const nextTags = tags ?? cachedMetadata.tags
-    const prevSupportsSubcategories = cachedMetadata.supportsSubcategories ?? false
-    const previousUseSubcategories = cachedMetadata.useSubcategories ?? false
-    const previousSupportsTrackerHealth = cachedMetadata.supportsTrackerHealth ?? false
-    const nextSupportsSubcategories = supportsSubcategories
-    const nextUseSubcategories = nextSupportsSubcategories? (subcategoriesFromData ?? previousUseSubcategories): false
-    const nextSupportsTrackerHealth = supportsTrackerHealth
-    const nextTotalCount = totalCount
-
-    const hasAnyMetadata =
-      nextCounts !== undefined ||
-      nextCategories !== undefined ||
-      nextTags !== undefined ||
-      nextUseSubcategories !== undefined
-    const hasExistingTorrents = torrents.length > 0
-
-    if (!hasAnyMetadata && !hasExistingTorrents) {
-      return
-    }
-
-    const metadataChanged =
-      nextCounts !== cachedMetadata.counts ||
-      nextCategories !== cachedMetadata.categories ||
-      nextTags !== cachedMetadata.tags ||
-      nextSupportsSubcategories !== prevSupportsSubcategories ||
-      nextUseSubcategories !== previousUseSubcategories ||
-      nextSupportsTrackerHealth !== previousSupportsTrackerHealth ||
-      nextTotalCount !== cachedMetadata.totalCount
-
-    const torrentsLengthChanged = torrents.length !== (cachedMetadata.torrentsLength ?? -1)
-
-    if (!metadataChanged && !torrentsLengthChanged) {
-      return
-    }
-
-    onFilteredDataUpdate(
-      torrents,
-      totalCount,
-      nextCounts,
-      nextCategories,
-      nextTags,
-      nextUseSubcategories,
-      nextSupportsTrackerHealth
-    )
-
-    lastMetadataRef.current = {
-      instanceId,
-      counts: nextCounts,
-      categories: nextCategories,
-      tags: nextTags,
-      totalCount: nextTotalCount,
-      torrentsLength: torrents.length,
-      useSubcategories: nextUseSubcategories,
-      supportsSubcategories: nextSupportsSubcategories,
-      supportsTrackerHealth: nextSupportsTrackerHealth,
-    }
-  }, [counts, categories, tags, totalCount, torrents, isLoading, onFilteredDataUpdate, subcategoriesFromData, supportsSubcategories, supportsTrackerHealth])
-
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
 
-  // Atomic filter clearing callback
-  const clearFiltersAtomically = useCallback((mode: 'all' | 'columns-only' = 'all') => {
-    setFilterLifecycleState(mode === 'all' ? 'clearing-all' : 'clearing-columns-only');
-  }, []);
-  const effectiveServerState = useMemo(() => {
-    const cached = serverStateRef.current
-    const instanceChanged = cached.instanceId !== instanceId
-
-    if (serverState != null) {
-      serverStateRef.current = { instanceId, state: serverState }
-      return serverState
-    }
-
-    if (serverState === null) {
-      serverStateRef.current = { instanceId, state: null }
-      return null
-    }
-
-    if (instanceChanged) {
-      serverStateRef.current = { instanceId, state: null }
-      return null
-    }
-
-    return cached.state
-  }, [serverState, instanceId])
+  const effectiveServerState = useEffectiveServerState({ instanceId, serverState })
 
   // Aggregate (all-instances) views have no single serverState; derive footer
   // transfer rates from the aggregated stats totals instead of showing 0.
@@ -1394,162 +688,59 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     [isAllInstancesView, stats, effectiveServerState]
   )
 
-  const selectedRowIds = useMemo(() => {
-    const ids: string[] = []
-    for (const [rowId, isSelected] of Object.entries(rowSelection)) {
-      if (isSelected) {
-        ids.push(rowId)
-      }
-    }
-    return ids
-  }, [rowSelection])
-  const selectedRowIdSet = useMemo(() => new Set(selectedRowIds), [selectedRowIds])
-
-  useEffect(() => {
-    if (isAllSelected) {
-      if (excludedFromSelectAll.size === 0) {
-        return
-      }
-
-      const visibleSelectionIdentities = new Set(sortedTorrents.map(getSelectionIdentity))
-      const hasInvalidExclusion = Array.from(excludedFromSelectAll).some(identity => !visibleSelectionIdentities.has(identity))
-
-      if (hasInvalidExclusion) {
-        resetSelectionState()
-      }
-
-      return
-    }
-
-    if (Object.keys(rowSelection).length === 0) {
-      return
-    }
-
-    const visibleRowIds = new Set(table.getRowModel().rows.map(row => row.id))
-    const hasInvalidSelection = Object.entries(rowSelection).some(([rowId, selected]) => selected && !visibleRowIds.has(rowId))
-
-    if (hasInvalidSelection) {
-      resetSelectionState()
-    }
-  }, [
-    excludedFromSelectAll,
-    getSelectionIdentity,
-    isAllSelected,
-    resetSelectionState,
+  const {
     rowSelection,
+    setRowSelection,
+    isAllSelected,
+    setIsAllSelected,
+    excludedFromSelectAll,
+    setExcludedFromSelectAll,
+    shiftPressedRef,
+    lastSelectedIndexRef,
+    selectedRowIds,
+    selectedRowIdSet,
+    resetSelectionState,
+    getSelectionIdentity,
+    handleSelectAll,
+    handleRowSelection,
+    isSelectAllChecked,
+    isSelectAllIndeterminate,
+    handleCompactCheckboxPointerDown,
+    handleCompactCheckboxChange,
+  } = useTorrentSelection({
     sortedTorrents,
-  ])
-
-  // Reset selection when table becomes empty
-  useEffect(() => {
-    if (sortedTorrents.length === 0 && (isAllSelected || Object.keys(rowSelection).length > 0)) {
-      resetSelectionState()
-    }
-  }, [sortedTorrents.length, isAllSelected, rowSelection, resetSelectionState])
-
-  // Custom selection handlers for "select all" functionality
-  const handleSelectAll = useCallback(() => {
-    if (isReadOnly) {
-      return
-    }
-
-    // Gmail-style behavior: if any rows are selected, always deselect all
-    const hasAnySelection = isAllSelected || selectedRowIds.length > 0
-
-    if (hasAnySelection) {
-      // Deselect all mode - regardless of checked state
-      setIsAllSelected(false)
-      setExcludedFromSelectAll(new Set())
-      setRowSelection({})
-      lastSelectedIndexRef.current = null // Reset anchor on deselect all
-    } else {
-      // Select all mode - only when nothing is selected
-      setIsAllSelected(true)
-      setExcludedFromSelectAll(new Set())
-      setRowSelection({})
-    }
-  }, [setRowSelection, isAllSelected, selectedRowIds.length, isReadOnly])
-
-  const handleRowSelection = useCallback((selectionIdentity: string, checked: boolean, rowId?: string) => {
-    if (isReadOnly) {
-      return
-    }
-
-    if (isAllSelected) {
-      if (!checked) {
-        // When deselecting a row in "select all" mode, add to exclusions
-        setExcludedFromSelectAll(prev => new Set(prev).add(selectionIdentity))
-      } else {
-        // When selecting a row that was excluded, remove from exclusions
-        setExcludedFromSelectAll(prev => {
-          const newSet = new Set(prev)
-          newSet.delete(selectionIdentity)
-          return newSet
-        })
-      }
-    } else {
-      // Regular selection mode - use table's built-in selection with correct row ID
-      const keyToUse = rowId || selectionIdentity // Use rowId if provided, fallback for backward compatibility
-      setRowSelection(prev => ({
-        ...prev,
-        [keyToUse]: checked,
-      }))
-    }
-  }, [isAllSelected, setRowSelection, isReadOnly])
-
-  // Calculate these after we have selectedHashes
-  const isSelectAllChecked = useMemo(() => {
-    if (isAllSelected) {
-      // When in "select all" mode, only show checked if no exclusions exist
-      return excludedFromSelectAll.size === 0
-    }
-    const regularSelectionCount = selectedRowIds.length
-    return regularSelectionCount === sortedTorrents.length && sortedTorrents.length > 0
-  }, [isAllSelected, excludedFromSelectAll.size, selectedRowIds.length, sortedTorrents.length])
-
-  const isSelectAllIndeterminate = useMemo(() => {
-    // Show indeterminate (dash) when SOME but not ALL items are selected
-    if (isAllSelected) {
-      // In "select all" mode, show indeterminate if some are excluded
-      return excludedFromSelectAll.size > 0
-    }
-
-    const regularSelectionCount = selectedRowIds.length
-
-    // Indeterminate when some (but not all) are selected
-    return regularSelectionCount > 0 && regularSelectionCount < sortedTorrents.length
-  }, [isAllSelected, excludedFromSelectAll.size, selectedRowIds.length, sortedTorrents.length])
+    isReadOnly,
+    isCrossInstanceEndpoint,
+    instanceId,
+    onResetSelection,
+    getVisibleRows: () => table.getRowModel().rows,
+  })
 
   // Memoize columns to avoid unnecessary recalculations
-  const columns = useMemo(
-    () => createColumns(incognitoMode, {
-      shiftPressedRef,
-      lastSelectedIndexRef,
-      // Pass custom selection handlers
-      customSelectAll: {
-        onSelectAll: handleSelectAll,
-        isAllSelected: isSelectAllChecked,
-        isIndeterminate: isSelectAllIndeterminate,
-      },
-      onRowSelection: handleRowSelection,
-      getSelectionIdentity,
-      isAllSelected,
-      excludedFromSelectAll,
-    }, speedUnit, trackerIcons, (timestamp: number) => formatTimestamp(timestamp, true), preferences, supportsTrackerHealth, isUnifiedView && isCrossInstanceEndpoint, desktopViewMode as TableViewMode, trackerCustomizationLookup, !isReadOnly, t),
-    [incognitoMode, speedUnit, trackerIcons, formatTimestamp, handleSelectAll, isSelectAllChecked, isSelectAllIndeterminate, handleRowSelection, getSelectionIdentity, isAllSelected, excludedFromSelectAll, preferences, supportsTrackerHealth, isUnifiedView, isCrossInstanceEndpoint, desktopViewMode, trackerCustomizationLookup, isReadOnly, t]
-  )
-
-  const torrentIdentityCounts = useMemo(() => {
-    const counts = new Map<string, number>()
-
-    for (const torrent of sortedTorrents) {
-      const baseIdentity = torrent.hash ?? torrent.infohash_v1 ?? torrent.infohash_v2
-      if (!baseIdentity) continue
-      counts.set(baseIdentity, (counts.get(baseIdentity) ?? 0) + 1)
-    }
-
-    return counts
-  }, [sortedTorrents])
+  const { columns, torrentIdentityCounts } = useTorrentTableColumns({
+    shiftPressedRef,
+    lastSelectedIndexRef,
+    handleSelectAll,
+    isSelectAllChecked,
+    isSelectAllIndeterminate,
+    handleRowSelection,
+    getSelectionIdentity,
+    isAllSelected,
+    excludedFromSelectAll,
+    incognitoMode,
+    speedUnit,
+    trackerIcons,
+    formatTimestamp,
+    preferences,
+    supportsTrackerHealth,
+    isUnifiedView,
+    isCrossInstanceEndpoint,
+    desktopViewMode,
+    trackerCustomizationLookup,
+    isReadOnly,
+    t,
+    sortedTorrents,
+  })
 
   const table = useReactTable({
     data: sortedTorrents,
@@ -1612,200 +803,52 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     autoResetExpanded: false,
   })
 
-  // Fix virtualization when column filters are cleared in cross-seed mode
-  // Only run when lifecycle is idle to avoid racing with filter lifecycle handler
-  useEffect(() => {
-    if (filterLifecycleState === 'idle' && isCrossSeedFiltering && columnFilters.length === 0) {
-      // Reset loadedRows to ensure all rows are visible when filters are cleared
-      const targetRows = Math.min(100, sortedTorrents.length)
-      // Use functional update to ensure idempotent, non-racing updates
-      setLoadedRows(prev => Math.max(prev, targetRows))
-    }
-  }, [filterLifecycleState, isCrossSeedFiltering, columnFilters.length, sortedTorrents.length])
+  // Keep the leaf-column accessor current for useColumnDnd (drag reads it lazily).
+  leafColumnIdsRef.current = () => table.getAllLeafColumns().map(col => col.id)
 
-  const resolveSortColumnId = useCallback((field: string): string => {
-    const columns = table.getAllLeafColumns()
-    const directMatch = columns.find(column => column.id === field)
-    if (directMatch) {
-      return directMatch.id
-    }
-
-    const backendMatch = columns.find(column => getBackendSortField(column.id) === field)
-    if (backendMatch) {
-      return backendMatch.id
-    }
-
-    return field
-  }, [table, columnVisibility, columnOrder])
-
-  const compactSortOptions = useMemo(() => {
-    const columns = table.getAllLeafColumns()
-    const availableFields = new Set<string>()
-
-    for (const column of columns) {
-      availableFields.add(column.id)
-      availableFields.add(getBackendSortField(column.id))
-    }
-
-    return TORRENT_SORT_OPTIONS.filter(option => availableFields.has(option.value))
-  }, [table, columnVisibility, columnOrder])
-
-  const currentCompactSortLabel = useMemo(() => {
-    const directOption = compactSortOptions.find(option => option.value === activeSortField)
-    if (directOption) {
-      return directOption.label
-    }
-
-    const columns = table.getAllLeafColumns()
-    const directColumn = columns.find(column => column.id === activeSortField)
-    if (directColumn) {
-      const meta = directColumn.columnDef.meta as { headerString?: string } | undefined
-      if (meta?.headerString) {
-        return meta.headerString
-      }
-      if (typeof directColumn.columnDef.header === "string") {
-        return directColumn.columnDef.header
-      }
-      return directColumn.id
-    }
-
-    const backendColumn = columns.find(column => getBackendSortField(column.id) === activeSortField)
-    if (backendColumn) {
-      const meta = backendColumn.columnDef.meta as { headerString?: string } | undefined
-      if (meta?.headerString) {
-        return meta.headerString
-      }
-      if (typeof backendColumn.columnDef.header === "string") {
-        return backendColumn.columnDef.header
-      }
-      return backendColumn.id
-    }
-
-    return activeSortField
-  }, [compactSortOptions, activeSortField, table, columnVisibility, columnOrder])
-
-  const handleCompactSortFieldChange = useCallback((value: TorrentSortOptionValue) => {
-    if (activeSortField === value) {
-      return
-    }
-
-    const columnId = resolveSortColumnId(value)
-    const defaultOrder = getDefaultSortOrder(value)
-
-    setSorting([{ id: columnId, desc: defaultOrder === "desc" }])
-    setLastUserAction({
-      type: "sort",
-      timestamp: Date.now(),
-    })
-  }, [activeSortField, resolveSortColumnId, setSorting, setLastUserAction])
-
-  const handleCompactSortOrderToggle = useCallback(() => {
-    const columnId = resolveSortColumnId(activeSortField)
-    const nextDesc = activeSortOrder === "asc"
-
-    setSorting([{ id: columnId, desc: nextDesc }])
-    setLastUserAction({
-      type: "sort",
-      timestamp: Date.now(),
-    })
-  }, [activeSortField, activeSortOrder, resolveSortColumnId, setSorting, setLastUserAction])
-
-  const handleCompactCheckboxChange = useCallback((torrent: Torrent, rowId: string, checked: boolean) => {
-    if (isReadOnly) {
-      return
-    }
-
-    const nextChecked = !!checked
-    const allRows = table.getRowModel().rows
-    const currentIndex = allRows.findIndex(r => r.id === rowId)
-
-    if (shiftPressedRef.current && lastSelectedIndexRef.current !== null && currentIndex !== -1) {
-      const start = Math.min(lastSelectedIndexRef.current, currentIndex)
-      const end = Math.max(lastSelectedIndexRef.current, currentIndex)
-
-      for (let i = start; i <= end; i++) {
-        const targetRow = allRows[i]
-        if (targetRow) {
-          handleRowSelection(getSelectionIdentity(targetRow.original), nextChecked, targetRow.id)
-        }
-      }
-    } else {
-      handleRowSelection(getSelectionIdentity(torrent), nextChecked, rowId)
-    }
-
-    if (currentIndex !== -1) {
-      lastSelectedIndexRef.current = currentIndex
-    }
-    shiftPressedRef.current = false
-  }, [handleRowSelection, getSelectionIdentity, table, isReadOnly])
+  const {
+    compactSortOptions,
+    currentCompactSortLabel,
+    handleCompactSortFieldChange,
+    handleCompactSortOrderToggle,
+  } = useCompactViewSort({
+    table,
+    columnVisibility,
+    columnOrder,
+    activeSortField,
+    activeSortOrder,
+    setSorting,
+    setLastUserAction,
+  })
 
   // Get selected torrent hashes - handle both regular selection and "select all" mode
-  const selectedHashes = useMemo((): string[] => {
-    if (isAllSelected) {
-      // When all are selected, return all currently loaded hashes minus exclusions
-      // This is needed for actions to work properly
-      return sortedTorrents
-        .filter(torrent => !excludedFromSelectAll.has(getSelectionIdentity(torrent)))
-        .map(torrent => torrent.hash)
-    } else {
-      // Regular selection mode - get hashes from selected torrents directly
-      const tableRows = table.getRowModel().rows
-      return tableRows
-        .filter(row => selectedRowIdSet.has(row.id))
-        .map(row => row.original.hash)
-    }
-  }, [selectedRowIdSet, isAllSelected, excludedFromSelectAll, sortedTorrents, table, getSelectionIdentity])
-
-  // Calculate the effective selection count for display
-  const effectiveSelectionCount = useMemo(() => {
-    if (isAllSelected) {
-      // When all selected, count is total minus exclusions
-      return Math.max(0, totalCount - excludedFromSelectAll.size)
-    } else {
-      // Regular selection mode - use the computed selectedHashes length
-      return selectedRowIds.length
-    }
-  }, [isAllSelected, totalCount, excludedFromSelectAll.size, selectedRowIds.length])
-
-  // Get selected torrents
-  const selectedTorrents = useMemo((): Torrent[] => {
-    if (isAllSelected) {
-      // When all are selected, return all torrents minus exclusions
-      return sortedTorrents.filter(t => !excludedFromSelectAll.has(getSelectionIdentity(t)))
-    } else {
-      // Regular selection mode
-      return table.getRowModel().rows
-        .filter(row => selectedRowIdSet.has(row.id))
-        .map(row => row.original)
-    }
-  }, [table, selectedRowIdSet, sortedTorrents, isAllSelected, excludedFromSelectAll, getSelectionIdentity])
-
-  // Calculate total size of selected torrents
-  const selectedTotalSize = useMemo(() => {
-    if (isAllSelected) {
-      const aggregateTotalSize = stats?.totalSize ?? 0
-
-      if (aggregateTotalSize <= 0) {
-        return 0
-      }
-
-      if (excludedFromSelectAll.size === 0) {
-        return aggregateTotalSize
-      }
-
-      const excludedSize = sortedTorrents.reduce((total, torrent) => {
-        if (excludedFromSelectAll.has(getSelectionIdentity(torrent))) {
-          return total + (torrent.size || 0)
-        }
-        return total
-      }, 0)
-
-      return Math.max(aggregateTotalSize - excludedSize, 0)
-    }
-
-    return getTotalSize(selectedTorrents)
-  }, [isAllSelected, stats?.totalSize, excludedFromSelectAll, sortedTorrents, selectedTorrents, getSelectionIdentity])
-  const selectedFormattedSize = useMemo(() => formatBytes(selectedTotalSize), [selectedTotalSize])
+  const {
+    selectedHashes,
+    effectiveSelectionCount,
+    selectedTorrents,
+    selectedTotalSize,
+    selectedFormattedSize,
+    deleteDialogTotalSize,
+    deleteDialogFormattedSize,
+    selectAllFilters,
+    selectAllExcludedTargets,
+    selectAllExcludeHashes,
+  } = useTorrentSelectionDerivations({
+    isAllSelected,
+    excludedFromSelectAll,
+    selectedRowIds,
+    selectedRowIdSet,
+    getSelectionIdentity,
+    getVisibleRows: () => table.getRowModel().rows,
+    sortedTorrents,
+    columnFiltersExpr,
+    filters,
+    stats,
+    totalCount,
+    isCrossInstanceEndpoint,
+    instanceId,
+    contextTorrents,
+  })
   const queryClient = useQueryClient()
 
   const [altSpeedOverride, setAltSpeedOverride] = useState<boolean | null>(null)
@@ -1876,96 +919,30 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
   const connectionStatusAriaLabel = hasConnectionStatus ? t("statusBar.connectionAriaLabel", { status: connectionStatusDisplay || formattedConnectionStatus }) : t("statusBar.connectionAriaLabelUnknown")
 
-  // Size shown in destructive dialogs - prefer the aggregate when select-all is active
-  const deleteDialogTotalSize = useMemo(() => {
-    if (isAllSelected) {
-      if (selectedTotalSize > 0) {
-        return selectedTotalSize
-      }
-
-      if (contextTorrents.length > 0) {
-        return getTotalSize(contextTorrents)
-      }
-
-      return 0
-    }
-
-    if (contextTorrents.length > 0) {
-      return getTotalSize(contextTorrents)
-    }
-
-    return selectedTotalSize
-  }, [isAllSelected, selectedTotalSize, contextTorrents])
-  const deleteDialogFormattedSize = useMemo(() => formatBytes(deleteDialogTotalSize), [deleteDialogTotalSize])
-
-  const selectAllFilters = useMemo(() => {
-    if (!isAllSelected) {
-      return undefined
-    }
-
-    // Combine both column filters and filter expressions (e.g. cross-seed hash filters)
-    // so select-all operations target exactly the visible set.
-    // Using ?? here would drop filters.expr when columnFiltersExpr is present,
-    // causing bulk actions to match more torrents than the user sees.
-    const combinedExpr = (columnFiltersExpr && filters?.expr)
-      ? `(${columnFiltersExpr}) && (${filters.expr})`
-      : (columnFiltersExpr || filters?.expr)
-
-    if (filters) {
-      return {
-        ...filters,
-        expr: combinedExpr ?? filters.expr ?? "",
-      }
-    }
-
-    if (combinedExpr == null) {
-      return undefined
-    }
-
-    return {
-      status: [],
-      excludeStatus: [],
-      categories: [],
-      excludeCategories: [],
-      tags: [],
-      excludeTags: [],
-      trackers: [],
-      excludeTrackers: [],
-      expr: combinedExpr,
-    }
-  }, [isAllSelected, filters, columnFiltersExpr])
-
-  const selectAllExcludedTargets = useMemo(() => {
-    if (!isAllSelected || excludedFromSelectAll.size === 0) {
-      return []
-    }
-    const excludedTorrents = sortedTorrents.filter(torrent => excludedFromSelectAll.has(getSelectionIdentity(torrent)))
-    return buildTorrentActionTargets(excludedTorrents, instanceId)
-  }, [isAllSelected, excludedFromSelectAll, sortedTorrents, instanceId, getSelectionIdentity])
-
-  const selectAllExcludeHashes = useMemo(() => {
-    if (!isAllSelected || excludedFromSelectAll.size === 0 || isCrossInstanceEndpoint) {
-      return undefined
-    }
-
-    return Array.from(excludedFromSelectAll)
-  }, [isAllSelected, excludedFromSelectAll, isCrossInstanceEndpoint])
-
-  // Call the callback when selection state changes
-  useEffect(() => {
-    if (onSelectionChange) {
-      onSelectionChange(
-        selectedHashes,
-        selectedTorrents,
-        isAllSelected,
-        effectiveSelectionCount,
-        selectAllExcludeHashes ?? [],
-        isAllSelected ? selectAllExcludedTargets : [],
-        selectedTotalSize,
-        selectAllFilters ?? filters
-      )
-    }
-  }, [onSelectionChange, selectedHashes, selectedTorrents, isAllSelected, effectiveSelectionCount, selectAllExcludeHashes, selectAllExcludedTargets, selectedTotalSize, selectAllFilters, filters])
+  // Fire parent-facing notifications when filtered data or selection changes
+  useTorrentTableNotifications({
+    onFilteredDataUpdate,
+    isLoading,
+    instanceId,
+    counts,
+    categories,
+    tags,
+    totalCount,
+    torrents,
+    subcategoriesFromData,
+    supportsSubcategories,
+    supportsTrackerHealth,
+    onSelectionChange,
+    selectedHashes,
+    selectedTorrents,
+    isAllSelected,
+    effectiveSelectionCount,
+    selectAllExcludeHashes,
+    selectAllExcludedTargets,
+    selectedTotalSize,
+    selectAllFilters,
+    filters,
+  })
 
   // Callback for context menu to fetch field for matching torrents
   const fetchAllTorrentField = useCallback(async (field: "name" | "hash" | "full_path" | "magnet_uri"): Promise<string[]> => {
@@ -1995,131 +972,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
-  const parentRef = useRef<HTMLDivElement>(null)
 
-  // Load more rows as user scrolls (progressive loading + backend pagination)
-  const loadMore = useCallback((): void => {
-    // First, try to load more from virtual scrolling if we have more local data
-    if (loadedRows < sortedTorrents.length) {
-      // Prevent concurrent loads
-      if (isLoadingMoreRows) {
-        return
-      }
-
-      setIsLoadingMoreRows(true)
-
-      setLoadedRows(prev => {
-        const newLoadedRows = Math.min(prev + 100, sortedTorrents.length)
-        return newLoadedRows
-      })
-
-      // Reset loading flag after a short delay
-      setTimeout(() => setIsLoadingMoreRows(false), 100)
-    } else if (!hasLoadedAll && !isLoadingMore && backendLoadMore) {
-      // If we've displayed all local data but there's more on backend, load next page
-      backendLoadMore()
-    }
-  }, [sortedTorrents.length, isLoadingMoreRows, loadedRows, hasLoadedAll, isLoadingMore, backendLoadMore])
-
-  // Ensure loadedRows never exceeds actual data length
-  const safeLoadedRows = Math.min(loadedRows, rows.length)
-
-  // Also keep loadedRows in sync with actual data to prevent status display issues
-  useEffect(() => {
-    if (filterLifecycleState === 'idle' && loadedRows > rows.length && rows.length > 0) {
-      setLoadedRows(rows.length)
-    }
-  }, [loadedRows, rows.length, filterLifecycleState])
-
-  // Compute estimated row height based on view mode - used by virtualizer and keyboard navigation
-  const estimatedRowHeight = useMemo(() => {
-    switch (desktopViewMode) {
-      case "compact": return 80
-      case "dense": return 26
-      default: return 40
-    }
-  }, [desktopViewMode])
-
-  // useVirtualizer must be called at the top level, not inside useMemo
-  const virtualizer = useVirtualizer({
-    count: safeLoadedRows,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => estimatedRowHeight,
-    // Optimized overscan based on TanStack Virtual recommendations
-    // Start small and adjust based on dataset size and performance
-    overscan: sortedTorrents.length > 50000 ? 3 : sortedTorrents.length > 10000 ? 5 : sortedTorrents.length > 1000 ? 10 : 15,
-    // Provide a key to help with item tracking - use hash with index for uniqueness
-    getItemKey: useCallback((index: number) => {
-      const row = rows[index]
-      if (!row) return `loading-${index}`
-      return row.id
-    }, [rows]),
-    // Optimized onChange handler following TanStack Virtual best practices
-    onChange: (instance, sync) => {
-      const vRows = instance.getVirtualItems();
-      const lastItem = vRows.at(-1);
-
-      // Only trigger loadMore when scrolling has paused (sync === false) or we're not actively scrolling
-      // This prevents excessive loadMore calls during rapid scrolling
-      const shouldCheckLoadMore = !sync || !instance.isScrolling
-
-      if (shouldCheckLoadMore && lastItem && lastItem.index >= safeLoadedRows - 50) {
-        // Load more if we're near the end of virtual rows OR if we might need more data from backend
-        if (safeLoadedRows < rows.length || (!hasLoadedAll && !isLoadingMore)) {
-          loadMore();
-        }
-      }
-    },
+  const {
+    parentRef,
+    virtualizer,
+    virtualRows,
+    safeLoadedRows,
+    loadedRows,
+    setLoadedRows,
+    setIsLoadingMoreRows,
+  } = useTorrentTableVirtualization({
+    rows,
+    desktopViewMode,
+    sortedTorrentsLength: sortedTorrents.length,
+    hasLoadedAll,
+    isLoadingMore,
+    backendLoadMore,
   })
-
-  // Filter lifecycle state machine
-  useLayoutEffect(() => {
-    if (filterLifecycleState === 'clearing-all' || filterLifecycleState === 'clearing-columns-only') {
-
-      // Perform clearing operations atomically
-      setColumnFilters([]);
-      setSorting([]);
-      virtualizer.scrollToOffset(0);
-      virtualizer.measure();
-
-      // Reset loadedRows to a reasonable initial value
-      const newLoadedRows = Math.min(100, sortedTorrents.length);
-      setLoadedRows(newLoadedRows);
-
-      // Only clear parent filters if clearing all (not just columns)
-      if (filterLifecycleState === 'clearing-all') {
-        const emptyFilters: TorrentFilters = {
-          status: [],
-          excludeStatus: [],
-          categories: [],
-          excludeCategories: [],
-          tags: [],
-          excludeTags: [],
-          trackers: [],
-          excludeTrackers: []
-        };
-        onFilterChange?.(emptyFilters);
-      }
-
-      // Transition to cleared state
-      setFilterLifecycleState('cleared');
-    } else if (filterLifecycleState === 'cleared') {
-      // Reset to idle state after clearing is complete
-      setFilterLifecycleState('idle');
-    }
-  }, [filterLifecycleState, virtualizer, onFilterChange, setLoadedRows, sortedTorrents.length]);
-
-  // Force virtualizer to recalculate when count changes
-  useEffect(() => {
-    virtualizer.measure()
-  }, [safeLoadedRows, virtualizer])
-
-  // Recalculate virtualized row sizes when view mode changes
-  useEffect(() => {
-    virtualizer.measure()
-  }, [desktopViewMode, virtualizer])
-
-  const virtualRows = virtualizer.getVirtualItems()
 
   // Memoize minTableWidth to avoid recalculation on every row render
   const minTableWidth = useMemo(() => {
@@ -2129,30 +998,18 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [table, columnVisibility])
 
-  // Reset loaded rows when data changes significantly
-  useEffect(() => {
-    // Always ensure loadedRows is at least 100 (or total length if less)
-    const targetRows = Math.min(100, sortedTorrents.length)
-
-    setLoadedRows(prev => {
-      if (sortedTorrents.length === 0) {
-        // No data, reset to 0
-        return 0
-      } else if (prev === 0) {
-        // Initial load
-        return targetRows
-      } else if (prev < targetRows) {
-        // Not enough rows loaded, load at least 100
-        return targetRows
-      }
-      // Don't reset loadedRows backward due to temporary server data fluctuations
-      // Progressive loading should be independent of server data variations
-      return prev
-    })
-
-    // Force virtualizer to recalculate
-    virtualizer.measure()
-  }, [sortedTorrents.length, virtualizer])
+  const { clearFiltersAtomically } = useFilterLifecycle({
+    virtualizer,
+    sortedTorrentsLength: sortedTorrents.length,
+    onFilterChange,
+    setColumnFilters,
+    setSorting,
+    setLoadedRows,
+    isCrossSeedFiltering,
+    columnFiltersLength: columnFilters.length,
+    visibleRowCount: rows.length,
+    loadedRows,
+  })
 
   // Reset when filters or search changes
   useEffect(() => {
@@ -2181,345 +1038,80 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         virtualizer.measure()
       }, 0)
     }
+    // setLoadedRows / setIsLoadingMoreRows are stable setters from the virtualization
+    // hook; intentionally omitted to preserve the original effect's re-run timing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, lastUserAction, resetSelectionState])
 
-  // Set up keyboard navigation (PageUp/Down, Home/End)
-  useKeyboardNavigation({
-    parentRef,
-    virtualizer,
-    safeLoadedRows,
-    hasLoadedAll,
-    isLoadingMore,
-    loadMore,
-    estimatedRowHeight,
+  const { isMac, selectAllWithShortcut } = useTorrentTableHotkeys({
+    sortedTorrents,
+    setIsAllSelected,
+    setExcludedFromSelectAll,
+    setRowSelection,
+    lastSelectedIndexRef,
   })
 
-  // Apply Ctrl/Cmd+A shortcut to select all torrents
-  const selectAllWithShortcut = useCallback(() => {
-    if (sortedTorrents.length === 0) {
-      return
-    }
-
-    setIsAllSelected(true)
-    setExcludedFromSelectAll(new Set())
-    setRowSelection({})
-    lastSelectedIndexRef.current = null
-  }, [sortedTorrents.length, setIsAllSelected, setExcludedFromSelectAll, setRowSelection])
-
   // Wrapper functions to adapt hook handlers to component needs
-  const selectAllOptions = useMemo(() => ({
-    instanceIds: isCrossInstanceEndpoint ? instanceIds : undefined,
-    selectAll: isAllSelected,
-    filters: selectAllFilters,
-    search: isAllSelected ? effectiveSearch : undefined,
-    excludeHashes: isAllSelected ? selectAllExcludeHashes : undefined,
-    excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
-  }), [isAllSelected, selectAllFilters, effectiveSearch, selectAllExcludeHashes, isCrossInstanceEndpoint, selectAllExcludedTargets, instanceIds])
-  const normalizedSelectionFilters = useMemo(() => {
-    const sourceFilters = selectAllFilters ?? filters
-    if (!sourceFilters) {
-      return undefined
-    }
-
-    return {
-      ...sourceFilters,
-      categories: sourceFilters.expandedCategories ?? sourceFilters.categories ?? [],
-      excludeCategories: sourceFilters.expandedExcludeCategories ?? sourceFilters.excludeCategories ?? [],
-    }
-  }, [selectAllFilters, filters])
-
-  const contextClientMeta = useMemo(() => ({
-    clientHashes: contextHashes,
-    totalSelected: isAllSelected ? effectiveSelectionCount : contextHashes.length,
-    actionTargets: buildTorrentActionTargets(contextTorrents, instanceId),
-    excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
-  }), [contextHashes, isAllSelected, effectiveSelectionCount, contextTorrents, instanceId, isCrossInstanceEndpoint, selectAllExcludedTargets])
-
-  const runAction = useCallback((action: (typeof TORRENT_ACTIONS)[keyof typeof TORRENT_ACTIONS], hashes: string[], extra?: Parameters<typeof handleAction>[2]) => {
-    const clientHashes = hashes.length > 0 ? hashes : selectedHashes
-    const clientCount = isAllSelected ? effectiveSelectionCount : (clientHashes.length || hashes.length || 1)
-    const defaultTargets = buildTorrentActionTargets(selectedTorrents, instanceId)
-    const actionTargets = isAllSelected ? undefined : (extra?.targets ?? defaultTargets)
-    const extraOptions = extra ?? {}
-    handleAction(action, isAllSelected ? [] : hashes, {
-      ...selectAllOptions,
-      ...extraOptions,
-      clientHashes,
-      clientCount,
-      targets: actionTargets,
-    })
-  }, [handleAction, isAllSelected, selectAllOptions, selectedHashes, effectiveSelectionCount, selectedTorrents, instanceId])
-
-  const handleExportWrapper = useCallback((hashes: string[], torrentsForSelection: Torrent[]) => {
-    exportTorrents({
-      hashes,
-      torrents: torrentsForSelection,
-      isAllSelected,
-      totalSelected: effectiveSelectionCount,
-      filters: selectAllFilters ?? filters,
-      search: effectiveSearch,
-      excludeHashes: selectAllExcludeHashes,
-      sortField: activeSortField,
-      sortOrder: activeSortOrder,
-    })
-  }, [
-    exportTorrents,
-    isAllSelected,
-    effectiveSelectionCount,
-    selectAllFilters,
-    filters,
-    effectiveSearch,
-    selectAllExcludeHashes,
-    activeSortField,
-    activeSortOrder,
-  ])
-
-  const handleDeleteWrapper = useCallback(async () => {
-    const crossSeedHashes = deleteCrossSeeds ? getTorrentHashesWithTag(crossSeedWarning.affectedTorrents, "cross-seed") : []
-
-    if (shouldBlockCrossSeeds) {
-      const taggedHashes = getTorrentHashesWithTag(contextTorrents, "cross-seed")
-      const blocklistTargets = [
-        ...(contextClientMeta.actionTargets ?? []),
-        ...buildTorrentActionTargets(crossSeedWarning.affectedTorrents, instanceId),
-      ]
-      await blockCrossSeedHashes([...taggedHashes, ...crossSeedHashes], blocklistTargets)
-    }
-
-    // Include cross-seed hashes if user opted to delete them
-    const hashesToDelete = deleteCrossSeeds
-      ? [...contextHashes, ...crossSeedWarning.affectedTorrents.map(t => t.hash)]
-      : contextHashes
-
-    // Update count to include cross-seeds for accurate toast message
-    const deleteClientMeta = deleteCrossSeeds
-      ? { clientHashes: hashesToDelete, totalSelected: hashesToDelete.length }
-      : contextClientMeta
-
-    await handleDelete(
-      hashesToDelete,
-      isAllSelected,
-      selectAllFilters ?? filters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      deleteClientMeta
-    )
-  }, [
-    blockCrossSeedHashes,
+  const {
+    normalizedSelectionFilters,
     contextClientMeta,
+    runAction,
+    handleExportWrapper,
+    handleDeleteWrapper,
+    handleSetCommentWrapper,
+    handleTagsWrapper,
+    handleSetCategoryWrapper,
+    handleSetCategoryDirect,
+    handleSetLocationWrapper,
+    handleRenameTorrentWrapper,
+    handleRenameFileWrapper,
+    handleRenameFolderWrapper,
+    handleRecheckWrapper,
+    handleReannounceWrapper,
+    handleTmmConfirmWrapper,
+    handleSetShareLimitWrapper,
+    handleSetSpeedLimitsWrapper,
+    handleDropPayload,
+    handleDropPayloadConsumed,
+  } = useBulkActionWrappers({
+    handleAction,
+    handleDelete,
+    handleSetComment,
+    handleUpdateTags,
+    handleSetCategory,
+    handleSetLocation,
+    handleRenameTorrent,
+    handleRenameFile,
+    handleRenameFolder,
+    handleRecheck,
+    handleReannounce,
+    handleTmmConfirm,
+    handleSetShareLimit,
+    handleSetSpeedLimits,
     contextHashes,
     contextTorrents,
-    crossSeedWarning.affectedTorrents,
     deleteCrossSeeds,
-    effectiveSearch,
-    selectAllExcludeHashes,
-    filters,
-    handleDelete,
-    instanceId,
+    exportTorrents,
     isAllSelected,
+    selectedHashes,
+    selectedTorrents,
+    effectiveSelectionCount,
     selectAllFilters,
-    shouldBlockCrossSeeds,
-  ])
-
-  const handleSetCommentWrapper = useCallback((comment: string) => {
-    handleSetComment(
-      comment,
-      contextHashes,
-      isAllSelected,
-      normalizedSelectionFilters ?? selectAllFilters ?? filters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleSetComment, contextHashes, isAllSelected, normalizedSelectionFilters, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
-
-  const handleTagsWrapper = useCallback((plan: Parameters<typeof handleUpdateTags>[0]) => {
-    handleUpdateTags(
-      plan,
-      contextHashes,
-      isAllSelected,
-      normalizedSelectionFilters ?? selectAllFilters ?? filters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleUpdateTags, contextHashes, isAllSelected, normalizedSelectionFilters, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
-
-  const handleSetCategoryWrapper = useCallback((category: string) => {
-    handleSetCategory(
-      category,
-      contextHashes,
-      isAllSelected,
-      selectAllFilters ?? filters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleSetCategory, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
-
-  // Direct category handler for context menu submenu
-  const handleSetCategoryDirect = useCallback((category: string, hashes: string[], targets?: Array<{ instanceId: number; hash: string }>) => {
-    const usingSelectAll = isAllSelected
-    const resolvedFilters = usingSelectAll ? (selectAllFilters ?? filters) : undefined
-    const resolvedSearch = usingSelectAll ? effectiveSearch : undefined
-    const resolvedExclusions = usingSelectAll ? selectAllExcludeHashes : undefined
-    const clientHashes = hashes.length > 0 ? hashes : selectedHashes
-    const totalSelected = usingSelectAll ? effectiveSelectionCount : (clientHashes.length || 1)
-
-    handleSetCategory(
-      category,
-      usingSelectAll ? [] : hashes,
-      usingSelectAll,
-      resolvedFilters,
-      resolvedSearch,
-      resolvedExclusions,
-      {
-        clientHashes,
-        totalSelected,
-        actionTargets: usingSelectAll ? undefined : targets,
-        excludeTargets: usingSelectAll ? selectAllExcludedTargets : undefined,
-      }
-    )
-  }, [
-    handleSetCategory,
-    isAllSelected,
-    selectAllFilters,
-    filters,
-    effectiveSearch,
     selectAllExcludeHashes,
     selectAllExcludedTargets,
-    selectedHashes,
-    effectiveSelectionCount,
-  ])
-
-  const handleSetLocationWrapper = useCallback((location: string) => {
-    handleSetLocation(
-      location,
-      contextHashes,
-      isAllSelected,
-      selectAllFilters ?? filters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleSetLocation, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
-
-  const handleRenameTorrentWrapper = useCallback(async (name: string) => {
-    const hash = contextHashes[0]
-    if (!hash) return
-    await handleRenameTorrent(hash, name)
-  }, [handleRenameTorrent, contextHashes])
-
-  const handleRenameFileWrapper = useCallback(async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
-    const hash = contextHashes[0]
-    if (!hash) return
-    if (!oldPath || !newPath) return
-    await handleRenameFile(hash, oldPath, newPath)
-  }, [handleRenameFile, contextHashes])
-
-  const handleRenameFolderWrapper = useCallback(async ({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
-    const hash = contextHashes[0]
-    if (!hash) return
-    if (!oldPath || !newPath) return
-    await handleRenameFolder(hash, oldPath, newPath)
-  }, [handleRenameFolder, contextHashes])
-
-  const handleRecheckWrapper = useCallback(() => {
-    handleRecheck(
-      contextHashes,
-      isAllSelected,
-      selectAllFilters ?? filters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleRecheck, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
-
-  const handleReannounceWrapper = useCallback(() => {
-    handleReannounce(
-      contextHashes,
-      isAllSelected,
-      selectAllFilters ?? filters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleReannounce, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
-
-  const handleTmmConfirmWrapper = useCallback(() => {
-    handleTmmConfirm(
-      contextHashes,
-      isAllSelected,
-      selectAllFilters ?? filters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleTmmConfirm, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
-
-  const handleSetShareLimitWrapper = useCallback((
-    ratioLimit: number,
-    seedingTimeLimit: number,
-    inactiveSeedingTimeLimit: number,
-    shareLimitAction?: string,
-    shareLimitsMode?: string
-  ) => {
-    handleSetShareLimit(
-      ratioLimit,
-      seedingTimeLimit,
-      inactiveSeedingTimeLimit,
-      contextHashes,
-      isAllSelected,
-      selectAllFilters ?? filters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta,
-      shareLimitAction,
-      shareLimitsMode
-    )
-  }, [handleSetShareLimit, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
-
-  const handleSetSpeedLimitsWrapper = useCallback((
-    uploadLimit: number,
-    downloadLimit: number
-  ) => {
-    handleSetSpeedLimits(
-      uploadLimit,
-      downloadLimit,
-      contextHashes,
-      isAllSelected,
-      selectAllFilters ?? filters,
-      effectiveSearch,
-      selectAllExcludeHashes,
-      contextClientMeta
-    )
-  }, [handleSetSpeedLimits, contextHashes, isAllSelected, selectAllFilters, filters, effectiveSearch, selectAllExcludeHashes, contextClientMeta])
-
-  const handleDropPayload = useCallback((payload: AddTorrentDropPayload) => {
-    setDropPayload(payload)
-    onAddTorrentModalChange?.(true)
-  }, [onAddTorrentModalChange])
-
-  const handleDropPayloadConsumed = useCallback(() => {
-    setDropPayload(null)
-  }, [])
-
-
-  // Drag and drop setup
-  // Sensors must be called at the top level, not inside useMemo
-  const sensors = useSensors(
-    useSensor(MouseSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 250,
-        tolerance: 5,
-      },
-    })
-  )
+    filters,
+    effectiveSearch,
+    activeSortField,
+    activeSortOrder,
+    crossSeedWarning,
+    shouldBlockCrossSeeds,
+    blockCrossSeedHashes,
+    isCrossInstanceEndpoint,
+    instanceIds,
+    instanceId,
+    setDropPayload,
+    onAddTorrentModalChange,
+  })
 
   return (
     <>
@@ -2750,80 +1342,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
             <div style={{ position: "relative", minWidth: "min-content" }}>
               {/* Header - show in normal and dense table views */}
-              {desktopViewMode !== "compact" && (
-                <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={(event) => {
-                      const { active, over } = event
-                      if (!active || !over || active.id === over.id) {
-                        return
-                      }
-
-                      setColumnOrder((currentOrder: string[]) => {
-                        const allColumnIds = table.getAllLeafColumns().map((col) => col.id)
-
-                        // Normalize current order to include all current columns exactly once
-                        const sanitizedOrder = [
-                          ...currentOrder.filter((id) => allColumnIds.includes(id)),
-                          ...allColumnIds.filter((id) => !currentOrder.includes(id)),
-                        ]
-
-                        const oldIndex = sanitizedOrder.indexOf(active.id as string)
-                        const newIndex = sanitizedOrder.indexOf(over.id as string)
-
-                        if (oldIndex === -1 || newIndex === -1) {
-                          return sanitizedOrder
-                        }
-
-                        return arrayMove(sanitizedOrder, oldIndex, newIndex)
-                      })
-                    }}
-                    modifiers={[restrictToHorizontalAxis]}
-                  >
-                    {table.getHeaderGroups().map(headerGroup => {
-                      const headers = headerGroup.headers
-                      const headerIds = headers.map(h => h.column.id)
-
-                      // Use memoized minTableWidth
-
-                      return (
-                        <SortableContext
-                          key={headerGroup.id}
-                          items={headerIds}
-                          strategy={horizontalListSortingStrategy}
-                        >
-                          <div className="flex" style={{ minWidth: `${minTableWidth}px` }}>
-                            {headers.map(header => (
-                              <DraggableTableHeader
-                                key={header.id}
-                                header={header}
-                                columnFilters={columnFilters}
-                                viewMode={desktopViewMode}
-                                onFilterChange={(columnId, filter) => {
-                                  if (filter === null) {
-                                    setColumnFilters(columnFilters.filter(f => f.columnId !== columnId))
-                                  } else {
-                                    const existing = columnFilters.findIndex(f => f.columnId === columnId)
-                                    if (existing >= 0) {
-                                      const newFilters = [...columnFilters]
-                                      newFilters[existing] = filter
-                                      setColumnFilters(newFilters)
-                                    } else {
-                                      setColumnFilters([...columnFilters, filter])
-                                    }
-                                  }
-                                }}
-                              />
-                            ))}
-                          </div>
-                        </SortableContext>
-                      )
-                    })}
-                  </DndContext>
-                </div>
-              )}
+              <TableColumnHeader
+                table={table}
+                sensors={sensors}
+                onDragEnd={onDragEnd}
+                columnFilters={columnFilters}
+                setColumnFilters={setColumnFilters}
+                minTableWidth={minTableWidth}
+                viewMode={desktopViewMode}
+              />
 
               {/* Body */}
               <div
@@ -3434,203 +1961,83 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           </div>
         </div>
 
-        <DeleteTorrentDialog
-          open={showDeleteDialog}
-          onOpenChange={(open) => {
-            if (!open) {
-              closeDeleteDialog()
-              crossSeedWarning.reset()
-            }
-          }}
-          count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          totalSize={deleteDialogTotalSize}
-          formattedSize={deleteDialogFormattedSize}
-          deleteFiles={deleteFiles}
-          onDeleteFilesChange={setDeleteFiles}
-          isDeleteFilesLocked={isDeleteFilesLocked}
-          onToggleDeleteFilesLock={toggleDeleteFilesLock}
-          showBlockCrossSeeds={hasCrossSeedTag}
-          blockCrossSeeds={blockCrossSeeds}
-          onBlockCrossSeedsChange={setBlockCrossSeeds}
-          deleteCrossSeeds={deleteCrossSeeds}
-          onDeleteCrossSeedsChange={setDeleteCrossSeeds}
-          crossSeedWarning={crossSeedWarning}
-          onConfirm={handleDeleteWrapper}
-        />
-
-        <SetCommentDialog
-          open={showCommentDialog}
-          onOpenChange={setShowCommentDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          instanceId={
-            contextTorrents.length === 1
-              ? ((contextTorrents[0] as CrossInstanceTorrent).instanceId ?? instanceId)
-              : instanceId
-          }
-          torrentHash={contextHashes.length === 1 ? contextHashes[0] : undefined}
-          onConfirm={handleSetCommentWrapper}
-          isPending={isPending}
-        />
-
-        <TagEditorDialog
-          open={showTagsDialog}
-          onOpenChange={setShowTagsDialog}
-          availableTags={availableTags || []}
-          selectedTorrents={contextTorrents}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          selectionRequest={{
-            instanceId,
-            instanceIds: isCrossInstanceEndpoint ? instanceIds : undefined,
-            hashes: !isAllSelected ? contextHashes : undefined,
-            targets: !isAllSelected && (contextClientMeta.actionTargets?.length ?? 0) === contextHashes.length ? contextClientMeta.actionTargets : undefined,
-            selectAll: isAllSelected,
-            filters: isAllSelected ? normalizedSelectionFilters : undefined,
-            search: isAllSelected ? effectiveSearch : undefined,
-            excludeHashes: isAllSelected ? selectAllExcludeHashes : undefined,
-            excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
-          }}
-          onConfirm={handleTagsWrapper}
-          isPending={isPending}
-          isLoadingTags={isLoadingTags}
-        />
-
-        {/* Set Category Dialog */}
-        <SetCategoryDialog
-          open={showCategoryDialog}
-          onOpenChange={setShowCategoryDialog}
-          availableCategories={availableCategories || {}}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={handleSetCategoryWrapper}
-          isPending={isPending}
-          initialCategory={getCommonCategory(contextTorrents)}
-          isLoadingCategories={isLoadingCategories}
-          useSubcategories={allowSubcategories}
-        />
-
-        {/* Create and Assign Category Dialog */}
-        <CreateAndAssignCategoryDialog
-          open={showCreateCategoryDialog}
-          onOpenChange={setShowCreateCategoryDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={handleSetCategoryWrapper}
-          isPending={isPending}
-        />
-
-        <ShareLimitDialog
-          open={showShareLimitDialog}
-          onOpenChange={setShowShareLimitDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          torrents={contextTorrents}
-          onConfirm={handleSetShareLimitWrapper}
-          isPending={isPending}
-          supportsShareLimitsAction={capabilities?.supportsShareLimitsAction}
-          supportsShareLimitsMode={capabilities?.supportsShareLimitsMode}
-        />
-
-        <SpeedLimitsDialog
-          open={showSpeedLimitDialog}
-          onOpenChange={setShowSpeedLimitDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          torrents={contextTorrents}
-          onConfirm={handleSetSpeedLimitsWrapper}
-          isPending={isPending}
-        />
-
-        {/* Set Location Dialog */}
-        <SetLocationDialog
-          open={showLocationDialog}
-          onOpenChange={setShowLocationDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={handleSetLocationWrapper}
-          isPending={isPending}
-          initialLocation={getCommonSavePath(contextTorrents)}
+        <TorrentTableDialogs
           instanceId={instanceId}
+          instanceIds={instanceIds}
+          contextHashes={contextHashes}
+          contextTorrents={contextTorrents}
+          isPending={isPending}
+          showDeleteDialog={showDeleteDialog}
+          closeDeleteDialog={closeDeleteDialog}
+          showCommentDialog={showCommentDialog}
+          setShowCommentDialog={setShowCommentDialog}
+          showTagsDialog={showTagsDialog}
+          setShowTagsDialog={setShowTagsDialog}
+          showCategoryDialog={showCategoryDialog}
+          setShowCategoryDialog={setShowCategoryDialog}
+          showCreateCategoryDialog={showCreateCategoryDialog}
+          setShowCreateCategoryDialog={setShowCreateCategoryDialog}
+          showShareLimitDialog={showShareLimitDialog}
+          setShowShareLimitDialog={setShowShareLimitDialog}
+          showSpeedLimitDialog={showSpeedLimitDialog}
+          setShowSpeedLimitDialog={setShowSpeedLimitDialog}
+          showLocationDialog={showLocationDialog}
+          setShowLocationDialog={setShowLocationDialog}
+          showRenameTorrentDialog={showRenameTorrentDialog}
+          setShowRenameTorrentDialog={setShowRenameTorrentDialog}
+          showRenameFileDialog={showRenameFileDialog}
+          setShowRenameFileDialog={setShowRenameFileDialog}
+          showRenameFolderDialog={showRenameFolderDialog}
+          setShowRenameFolderDialog={setShowRenameFolderDialog}
+          showRecheckDialog={showRecheckDialog}
+          setShowRecheckDialog={setShowRecheckDialog}
+          showReannounceDialog={showReannounceDialog}
+          setShowReannounceDialog={setShowReannounceDialog}
+          showTmmDialog={showTmmDialog}
+          setShowTmmDialog={setShowTmmDialog}
+          pendingTmmEnable={pendingTmmEnable}
+          showLocationWarningDialog={showLocationWarningDialog}
+          setShowLocationWarningDialog={setShowLocationWarningDialog}
+          deleteFiles={deleteFiles}
+          setDeleteFiles={setDeleteFiles}
+          isDeleteFilesLocked={isDeleteFilesLocked}
+          toggleDeleteFilesLock={toggleDeleteFilesLock}
+          blockCrossSeeds={blockCrossSeeds}
+          setBlockCrossSeeds={setBlockCrossSeeds}
+          deleteCrossSeeds={deleteCrossSeeds}
+          setDeleteCrossSeeds={setDeleteCrossSeeds}
+          handleDeleteWrapper={handleDeleteWrapper}
+          handleSetCommentWrapper={handleSetCommentWrapper}
+          handleTagsWrapper={handleTagsWrapper}
+          handleSetCategoryWrapper={handleSetCategoryWrapper}
+          handleSetShareLimitWrapper={handleSetShareLimitWrapper}
+          handleSetSpeedLimitsWrapper={handleSetSpeedLimitsWrapper}
+          handleSetLocationWrapper={handleSetLocationWrapper}
+          handleRenameTorrentWrapper={handleRenameTorrentWrapper}
+          handleRenameFileWrapper={handleRenameFileWrapper}
+          handleRenameFolderWrapper={handleRenameFolderWrapper}
+          handleRecheckWrapper={handleRecheckWrapper}
+          handleReannounceWrapper={handleReannounceWrapper}
+          handleTmmConfirmWrapper={handleTmmConfirmWrapper}
+          proceedToLocationDialog={proceedToLocationDialog}
+          normalizedSelectionFilters={normalizedSelectionFilters}
+          contextClientMeta={contextClientMeta}
+          isAllSelected={isAllSelected}
+          effectiveSelectionCount={effectiveSelectionCount}
+          deleteDialogTotalSize={deleteDialogTotalSize}
+          deleteDialogFormattedSize={deleteDialogFormattedSize}
+          selectAllExcludeHashes={selectAllExcludeHashes}
+          selectAllExcludedTargets={selectAllExcludedTargets}
+          crossSeedWarning={crossSeedWarning}
+          hasCrossSeedTag={hasCrossSeedTag}
+          availableTags={availableTags}
+          availableCategories={availableCategories}
+          isLoadingTags={isLoadingTags}
+          isLoadingCategories={isLoadingCategories}
+          allowSubcategories={allowSubcategories}
           capabilities={capabilities}
-        />
-
-        {/* Rename dialogs */}
-        <RenameTorrentDialog
-          open={showRenameTorrentDialog}
-          onOpenChange={setShowRenameTorrentDialog}
-          currentName={contextTorrents[0]?.name}
-          onConfirm={handleRenameTorrentWrapper}
-          isPending={isPending}
-        />
-        <RenameTorrentFileDialog
-          open={showRenameFileDialog}
-          onOpenChange={setShowRenameFileDialog}
-          files={renameFileEntries}
-          isLoading={renameEntriesLoading}
-          onConfirm={handleRenameFileWrapper}
-          isPending={isPending}
-        />
-        <RenameTorrentFolderDialog
-          open={showRenameFolderDialog}
-          onOpenChange={setShowRenameFolderDialog}
-          folders={renameFolderEntries}
-          isLoading={renameEntriesLoading}
-          onConfirm={handleRenameFolderWrapper}
-          isPending={isPending}
-        />
-
-
-        {/* Force Recheck Confirmation Dialog */}
-        <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("recheckDialog.title", { count: isAllSelected ? effectiveSelectionCount : contextHashes.length })}</DialogTitle>
-              <DialogDescription>
-                {t("recheckDialog.description")}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
-                {t("recheckDialog.cancel")}
-              </Button>
-              <Button onClick={handleRecheckWrapper} disabled={isPending}>
-                {t("recheckDialog.confirm")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Reannounce Confirmation Dialog */}
-        <Dialog open={showReannounceDialog} onOpenChange={setShowReannounceDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("reannounceDialog.title", { count: isAllSelected ? effectiveSelectionCount : contextHashes.length })}</DialogTitle>
-              <DialogDescription>
-                {t("reannounceDialog.description")}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
-                {t("reannounceDialog.cancel")}
-              </Button>
-              <Button onClick={handleReannounceWrapper} disabled={isPending}>
-                {t("reannounceDialog.confirm")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* TMM Confirmation Dialog */}
-        <TmmConfirmDialog
-          open={showTmmDialog}
-          onOpenChange={setShowTmmDialog}
-          count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          enable={pendingTmmEnable}
-          onConfirm={handleTmmConfirmWrapper}
-          isPending={isPending}
-        />
-
-        {/* Location Warning Dialog */}
-        <LocationWarningDialog
-          open={showLocationWarningDialog}
-          onOpenChange={setShowLocationWarningDialog}
-          count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={proceedToLocationDialog}
-          isPending={isPending}
+          isCrossInstanceEndpoint={isCrossInstanceEndpoint}
+          effectiveSearch={effectiveSearch}
         />
 
         {/* Instance Preferences Dialog */}

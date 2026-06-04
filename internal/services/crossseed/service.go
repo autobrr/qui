@@ -4678,6 +4678,10 @@ func (s *Service) processCrossSeedCandidate(
 	// categorySavePath includes the fallback to matched torrent's path for category creation
 	var categorySavePath string
 	var actualCategorySavePath string
+	// crossCategoryActualSavePath is the cross-seed category's real save path as it
+	// exists in qBittorrent (after ensureCrossCategory). Regular mode compares it
+	// against the matched torrent's location to decide whether autoTMM is safe.
+	var crossCategoryActualSavePath string
 	var categoryCreationFailed bool
 	if crossCategory != "" {
 		// Try to get SavePath from the base category definition in qBittorrent
@@ -4704,13 +4708,16 @@ func (s *Service) processCrossSeedCandidate(
 		// the fallback to props.SavePath would produce the wrong path.
 		if !useReflinkMode && !useHardlinkMode {
 			// Ensure the cross-seed category exists with the correct SavePath
-			if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, true); err != nil {
+			actualPath, err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, true)
+			if err != nil {
 				log.Warn().Err(err).
 					Str("category", crossCategory).
 					Str("savePath", categorySavePath).
 					Msg("[CROSSSEED] Failed to ensure category exists, continuing without category")
 				crossCategory = ""            // Clear category to proceed without it
 				categoryCreationFailed = true // Track for result message
+			} else {
+				crossCategoryActualSavePath = actualPath
 			}
 		}
 	}
@@ -4961,6 +4968,26 @@ func (s *Service) processCrossSeedCandidate(
 		tmmDecision := shouldEnableAutoTMM(crossCategory, matchedTorrent.AutoManaged, useCategoryFromIndexer, useCustomCategory, actualCategorySavePath, props.SavePath)
 		if forceManualSavePath {
 			tmmDecision.Enabled = false
+		}
+
+		// Under autoTMM, qBittorrent resolves the save path from the assigned (affixed)
+		// category — its configured save_path, or the implicit <default_save_path>/<category>
+		// when none is set. That only reuses the matched torrent's files when it equals the
+		// matched torrent's location. ensureCrossCategory never rewrites a pre-existing
+		// category whose path diverges (it only warns), so trusting autoTMM there would
+		// relocate the cross-seed into e.g. <base>/<category>.cross and re-download instead
+		// of reusing files. When the category's actual path diverges (or is unset), pin an
+		// explicit savepath like hardlink/reflink mode does.
+		if tmmDecision.Enabled && crossCategory != "" {
+			if crossCategoryActualSavePath == "" || normalizePathForComparison(crossCategoryActualSavePath) != normalizePathForComparison(savePath) {
+				tmmDecision.Enabled = false
+				log.Debug().
+					Int("instanceID", candidate.InstanceID).
+					Str("crossCategory", crossCategory).
+					Str("crossCategorySavePath", crossCategoryActualSavePath).
+					Str("matchedSavePath", savePath).
+					Msg("[CROSSSEED] Cross category save path diverges from matched torrent; pinning explicit savepath instead of autoTMM")
+			}
 		}
 
 		log.Debug().
@@ -11268,6 +11295,11 @@ func applyCategoryAffix(category, affixMode, affix string) string {
 // explicit savepath and autoTMM disabled, so category save_path drift is not actionable there.
 // If it doesn't exist, it creates it with the provided save_path.
 //
+// It returns the category's actual save_path (normalized for comparison): the existing path when
+// the category already exists, otherwise the path it was created with. Regular mode uses this to
+// detect divergence from the matched torrent's location and pin an explicit savepath instead of
+// trusting autoTMM. The returned path is empty only when crossCategory is empty.
+//
 // This function uses singleflight to deduplicate concurrent creation attempts for the same
 // category, and maintains local state to avoid relying on potentially stale GetCategories responses.
 func (s *Service) ensureCrossCategory(
@@ -11276,9 +11308,9 @@ func (s *Service) ensureCrossCategory(
 	crossCategory,
 	savePath string,
 	compareExistingSavePath bool,
-) error {
+) (string, error) {
 	if crossCategory == "" {
-		return nil
+		return "", nil
 	}
 
 	key := fmt.Sprintf("%d:%s", instanceID, crossCategory)
@@ -11301,7 +11333,8 @@ func (s *Service) ensureCrossCategory(
 	// Fast path: we already created or verified this category in this session
 	// for the same requested save path.
 	if cached, ok := s.createdCategories.Load(key); ok && cacheMatches(cached) {
-		return nil
+		cachedSavePath, _ := cached.(string)
+		return cachedSavePath, nil
 	}
 
 	// Use singleflight to deduplicate concurrent calls for the same category.
@@ -11353,17 +11386,17 @@ func (s *Service) ensureCrossCategory(
 	})
 
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	actualSavePath, _ := actualSavePathValue.(string)
 	if !compareExistingSavePath || requestedSavePath == "" || actualSavePath == requestedSavePath {
-		return nil
+		return actualSavePath, nil
 	}
 
 	categories, err := s.syncManager.GetCategories(ctx, instanceID)
 	if err != nil {
-		return fmt.Errorf("get categories after singleflight: %w", err)
+		return "", fmt.Errorf("get categories after singleflight: %w", err)
 	}
 
 	if existing, exists := categories[crossCategory]; exists {
@@ -11377,11 +11410,11 @@ func (s *Service) ensureCrossCategory(
 				Msg("[CROSSSEED] Cross-seed category exists with different save path")
 		}
 		s.createdCategories.Store(key, actualSavePath)
-		return nil
+		return actualSavePath, nil
 	}
 
 	if err := s.syncManager.CreateCategory(ctx, instanceID, crossCategory, savePath); err != nil {
-		return fmt.Errorf("create category after singleflight: %w", err)
+		return "", fmt.Errorf("create category after singleflight: %w", err)
 	}
 
 	s.createdCategories.Store(key, requestedSavePath)
@@ -11391,7 +11424,7 @@ func (s *Service) ensureCrossCategory(
 		Str("savePath", savePath).
 		Msg("[CROSSSEED] Created category for cross-seed after singleflight revalidation")
 
-	return nil
+	return requestedSavePath, nil
 }
 
 func shouldWarnOnCategorySavePathMismatch(compareExistingSavePath bool, requestedSavePath, existingSavePath string) bool {
@@ -12593,7 +12626,7 @@ func (s *Service) processHardlinkMode(
 	categoryCreationFailed := false
 	if crossCategory != "" {
 		categorySavePath := s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
-		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, false); err != nil {
+		if _, err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, false); err != nil {
 			log.Warn().Err(err).
 				Str("category", crossCategory).
 				Str("savePath", categorySavePath).
@@ -13268,7 +13301,7 @@ func (s *Service) processReflinkMode(
 	categoryCreationFailed := false
 	if crossCategory != "" {
 		categorySavePath := s.buildCategorySavePath(ctx, instance, selectedBaseDir, incomingTrackerDomain, candidate, req)
-		if err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, false); err != nil {
+		if _, err := s.ensureCrossCategory(ctx, candidate.InstanceID, crossCategory, categorySavePath, false); err != nil {
 			log.Warn().Err(err).
 				Str("category", crossCategory).
 				Str("savePath", categorySavePath).

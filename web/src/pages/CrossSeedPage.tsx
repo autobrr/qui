@@ -6,6 +6,7 @@
 import { CompletionOverview } from "@/components/instances/preferences/CompletionOverview"
 import { BlocklistTab } from "@/components/cross-seed/BlocklistTab"
 import { DirScanTab } from "@/components/cross-seed/DirScanTab"
+import { SeasonPackCategoryRulesEditor } from "@/components/crossseed/SeasonPackCategoryRulesEditor"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
@@ -50,6 +51,7 @@ import type {
   CrossSeedRun,
   CrossSeedSearchResult,
   Instance,
+  SeasonPackCategoryRule,
   SeasonPackRun
 } from "@/types"
 import { useTranslation } from "react-i18next"
@@ -128,6 +130,7 @@ interface GlobalCrossSeedSettings {
   seasonPackCoverageThreshold: number
   seasonPackTags: string[]
   seasonPackCategory: string
+  seasonPackCategoryRules: SeasonPackCategoryRule[]
   seasonPackTvdbApiKey: string
   seasonPackTvdbPin: string
   // Note: Hardlink mode settings have been moved to per-instance configuration
@@ -190,6 +193,7 @@ const DEFAULT_GLOBAL_SETTINGS: GlobalCrossSeedSettings = {
   seasonPackCoverageThreshold: 0.75,
   seasonPackTags: ["cross-seed"],
   seasonPackCategory: "",
+  seasonPackCategoryRules: [],
   seasonPackTvdbApiKey: "",
   seasonPackTvdbPin: "",
   // Webhook source filtering defaults - empty means no filtering (all torrents)
@@ -1128,6 +1132,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
         seasonPackCoverageThreshold: settings.seasonPackCoverageThreshold ?? 0.75,
         seasonPackTags: settings.seasonPackTags ?? ["cross-seed"],
         seasonPackCategory: settings.seasonPackCategory ?? "",
+        seasonPackCategoryRules: settings.seasonPackCategoryRules ?? [],
         seasonPackTvdbApiKey: settings.seasonPackTvdbApiKey ?? "",
         seasonPackTvdbPin: settings.seasonPackTvdbPin ?? "",
         // Note: Hardlink mode is now per-instance (configured in Instance Settings)
@@ -1226,6 +1231,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       seasonPackCoverageThreshold: settings.seasonPackCoverageThreshold ?? 0.75,
       seasonPackTags: settings.seasonPackTags ?? ["cross-seed"],
       seasonPackCategory: settings.seasonPackCategory ?? "",
+      seasonPackCategoryRules: settings.seasonPackCategoryRules ?? [],
       seasonPackTvdbApiKey: settings.seasonPackTvdbApiKey ?? "",
       seasonPackTvdbPin: settings.seasonPackTvdbPin ?? "",
       // Note: Hardlink mode is now per-instance
@@ -1271,6 +1277,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       seasonPackCoverageThreshold: globalSource.seasonPackCoverageThreshold,
       seasonPackTags: globalSource.seasonPackTags,
       seasonPackCategory: globalSource.seasonPackCategory,
+      seasonPackCategoryRules: globalSource.seasonPackCategoryRules,
       seasonPackTvdbApiKey: globalSource.seasonPackTvdbApiKey,
       seasonPackTvdbPin: globalSource.seasonPackTvdbPin,
       // Note: Hardlink mode is now per-instance (see Instance Settings)
@@ -1730,6 +1737,15 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       globalSettings.customCategory ? [globalSettings.customCategory] : []
     ),
     [globalSettings.customCategory, webhookSourceMetadata?.categories]
+  )
+
+  // Season pack fallback category select options ("Anything else" routing target)
+  const seasonPackFallbackCategorySelectOptions = useMemo(
+    () => buildCategorySelectOptions(
+      webhookSourceMetadata?.categories ?? {},
+      globalSettings.seasonPackCategory ? [globalSettings.seasonPackCategory] : []
+    ),
+    [globalSettings.seasonPackCategory, webhookSourceMetadata?.categories]
   )
 
   // Helper to get current category mode from boolean flags
@@ -3002,20 +3018,29 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
                 <p className="text-xs text-muted-foreground">
                   {t("rules.seasonPack.tvdbDescription")}
                 </p>
-                <div className="space-y-2 pt-3 border-t border-border/50">
-                  <Label htmlFor="season-pack-category">{t("rules.seasonPack.categoryOverride")}</Label>
-                  <Input
-                    id="season-pack-category"
-                    value={globalSettings.seasonPackCategory}
-                    onChange={event => setGlobalSettings(prev => ({ ...prev, seasonPackCategory: event.target.value }))}
-                    placeholder={globalSettings.seasonPackEnabled ? t("rules.seasonPack.categoryPlaceholder") : t("rules.seasonPack.enableToConfigure")}
+                <div className="space-y-4 pt-3 border-t border-border/50">
+                  <SeasonPackCategoryRulesEditor
+                    value={globalSettings.seasonPackCategoryRules}
+                    onChange={rules => setGlobalSettings(prev => ({ ...prev, seasonPackCategoryRules: rules }))}
+                    categoryMetadata={webhookSourceMetadata?.categories ?? {}}
                     disabled={!globalSettings.seasonPackEnabled}
-                    className="max-w-sm"
-                    autoComplete="off"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    {t("rules.seasonPack.categoryDescriptionBefore")}<code>tv-hd</code>{t("rules.seasonPack.categoryDescriptionAfter")}
-                  </p>
+                  <div className="space-y-2">
+                    <Label htmlFor="season-pack-category">{t("rules.seasonPack.categoryRouting.fallbackLabel")}</Label>
+                    <MultiSelect
+                      options={seasonPackFallbackCategorySelectOptions}
+                      selected={globalSettings.seasonPackCategory ? [globalSettings.seasonPackCategory] : []}
+                      onChange={values => setGlobalSettings(prev => ({ ...prev, seasonPackCategory: values[0] ?? "" }))}
+                      onCreateOption={value => setGlobalSettings(prev => ({ ...prev, seasonPackCategory: value }))}
+                      placeholder={globalSettings.seasonPackEnabled ? t("rules.categories.selectOrTypeCategory") : t("rules.seasonPack.enableToConfigure")}
+                      className="max-w-sm"
+                      creatable
+                      disabled={!globalSettings.seasonPackEnabled}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t("rules.seasonPack.categoryRouting.fallbackDescriptionBefore")}<code>tv-hd</code>{t("rules.seasonPack.categoryRouting.fallbackDescriptionAfter")}
+                    </p>
+                  </div>
                 </div>
                 <SeasonPackRunsPanel
                   runs={seasonPackRuns}

@@ -383,13 +383,9 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		return s.failApply(ctx, req.TorrentName, err, prep, winner)
 	}
 
-	crossCategory := strings.TrimSpace(prep.settings.SeasonPackCategory)
-	if crossCategory == "" {
-		_, crossCategory = s.determineCrossSeedCategory(ctx, &CrossSeedRequest{
-			IndexerName: req.Indexer,
-		}, &qbt.Torrent{
-			Category: firstMatchedEpisodeCategory(episodes),
-		}, prep.settings)
+	crossCategory := s.resolveSeasonPackCategory(ctx, prep, req.Indexer, episodes)
+	if _, err := s.ensureCrossCategory(ctx, inst.ID, crossCategory, "", false); err != nil {
+		log.Warn().Err(err).Str("torrentName", req.TorrentName).Str("category", crossCategory).Msg("season pack: failed to ensure cross-seed category exists")
 	}
 
 	opts := seasonPackAddOptions(planBuild.plan, crossCategory, planBuild.hasPendingFiles())

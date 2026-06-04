@@ -27,6 +27,15 @@ const (
 	CategoryAffixModeSuffix = "suffix"
 )
 
+// SeasonPackCategoryRule routes a season pack add to a category based on its
+// release quality. The first matching rule wins; otherwise the add falls back
+// to CrossSeedAutomationSettings.SeasonPackCategory ("Anything else").
+type SeasonPackCategoryRule struct {
+	Resolution string `json:"resolution"` // Canonical lowercase rls value, e.g. "1080p", "2160p"
+	Source     string `json:"source"`     // "" = any; else canonical uppercase: WEB, BLURAY, REMUX, HDTV
+	Category   string `json:"category"`   // qBittorrent category to file the add under
+}
+
 // CrossSeedAutomationSettings controls automatic cross-seed behaviour.
 // Contains both RSS Automation-specific settings and global cross-seed settings.
 type CrossSeedAutomationSettings struct {
@@ -85,16 +94,17 @@ type CrossSeedAutomationSettings struct {
 	SkipPieceBoundarySafetyCheck bool `json:"skipPieceBoundarySafetyCheck"` // Skip piece boundary safety check (risky: may corrupt existing seeded data)
 
 	// Season pack settings
-	SeasonPackSkipRepackCompare  bool     `json:"seasonPackSkipRepackCompare"`
-	SeasonPackSimplifyHDRCompare bool     `json:"seasonPackSimplifyHdrCompare"`
-	SeasonPackSimplifyWEBCompare bool     `json:"seasonPackSimplifyWebCompare"`
-	SeasonPackSkipYearCompare    bool     `json:"seasonPackSkipYearCompare"`
-	SeasonPackEnabled            bool     `json:"seasonPackEnabled"`           // Enable season pack webhook flow
-	SeasonPackCoverageThreshold  float64  `json:"seasonPackCoverageThreshold"` // Minimum episode coverage to trigger (0..1, default 0.75)
-	SeasonPackTags               []string `json:"seasonPackTags"`              // Tags for season pack results
-	SeasonPackCategory           string   `json:"seasonPackCategory"`          // Optional fixed category for season pack adds
-	SeasonPackTVDBAPIKey         string   `json:"seasonPackTvdbApiKey,omitempty"`
-	SeasonPackTVDBPIN            string   `json:"seasonPackTvdbPin,omitempty"`
+	SeasonPackSkipRepackCompare  bool                     `json:"seasonPackSkipRepackCompare"`
+	SeasonPackSimplifyHDRCompare bool                     `json:"seasonPackSimplifyHdrCompare"`
+	SeasonPackSimplifyWEBCompare bool                     `json:"seasonPackSimplifyWebCompare"`
+	SeasonPackSkipYearCompare    bool                     `json:"seasonPackSkipYearCompare"`
+	SeasonPackEnabled            bool                     `json:"seasonPackEnabled"`           // Enable season pack webhook flow
+	SeasonPackCoverageThreshold  float64                  `json:"seasonPackCoverageThreshold"` // Minimum episode coverage to trigger (0..1, default 0.75)
+	SeasonPackTags               []string                 `json:"seasonPackTags"`              // Tags for season pack results
+	SeasonPackCategory           string                   `json:"seasonPackCategory"`          // Fallback category for season pack adds ("Anything else")
+	SeasonPackCategoryRules      []SeasonPackCategoryRule `json:"seasonPackCategoryRules"`     // Per-quality routing rules; first match wins, else SeasonPackCategory
+	SeasonPackTVDBAPIKey         string                   `json:"seasonPackTvdbApiKey,omitempty"`
+	SeasonPackTVDBPIN            string                   `json:"seasonPackTvdbPin,omitempty"`
 
 	// Gazelle (OPS/RED) cross-seed settings.
 	// When enabled, qui uses the tracker JSON APIs to find matches for OPS/RED torrents
@@ -170,6 +180,7 @@ func DefaultCrossSeedAutomationSettings() *CrossSeedAutomationSettings {
 		SeasonPackCoverageThreshold:  0.75,
 		SeasonPackTags:               []string{"cross-seed"},
 		SeasonPackCategory:           "",
+		SeasonPackCategoryRules:      []SeasonPackCategoryRule{},
 		GazelleEnabled:               false,
 		RedactedAPIKey:               "",
 		OrpheusAPIKey:                "",
@@ -423,6 +434,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		       season_pack_skip_repack_compare, season_pack_simplify_hdr_compare,
 		       season_pack_simplify_web_compare, season_pack_skip_year_compare,
 		       season_pack_enabled, season_pack_coverage_threshold, season_pack_tags, season_pack_category,
+		       season_pack_category_rules,
 		       season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted,
 		       gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted,
 		       created_at, updated_at
@@ -447,6 +459,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	var seasonPackSkipRepackCompare, seasonPackSimplifyHDRCompare, seasonPackSimplifyWEBCompare, seasonPackSkipYearCompare int
 	var seasonPackEnabled int
 	var seasonPackTags, seasonPackCategory sql.NullString
+	var seasonPackCategoryRules sql.NullString
 	var seasonPackTVDBAPIKeyEncrypted, seasonPackTVDBPINEncrypted sql.NullString
 	var gazelleEnabled int
 	var redactedAPIKeyEncrypted, orpheusAPIKeyEncrypted sql.NullString
@@ -496,6 +509,7 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 		&settings.SeasonPackCoverageThreshold,
 		&seasonPackTags,
 		&seasonPackCategory,
+		&seasonPackCategoryRules,
 		&seasonPackTVDBAPIKeyEncrypted,
 		&seasonPackTVDBPINEncrypted,
 		&gazelleEnabled,
@@ -574,6 +588,9 @@ func (s *CrossSeedStore) GetSettings(ctx context.Context) (*CrossSeedAutomationS
 	}
 	if seasonPackCategory.Valid {
 		settings.SeasonPackCategory = seasonPackCategory.String
+	}
+	if err := decodeSeasonPackCategoryRules(seasonPackCategoryRules, &settings.SeasonPackCategoryRules); err != nil {
+		return nil, fmt.Errorf("decode season pack category rules: %w", err)
 	}
 
 	if createdAt.Valid {
@@ -774,6 +791,10 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 	if err != nil {
 		return nil, fmt.Errorf("encode season pack tags: %w", err)
 	}
+	seasonPackCategoryRules, err := encodeSeasonPackCategoryRules(settings.SeasonPackCategoryRules)
+	if err != nil {
+		return nil, fmt.Errorf("encode season pack category rules: %w", err)
+	}
 
 	var existingRedactedEncrypted string
 	var existingOrpheusEncrypted string
@@ -894,10 +915,11 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			season_pack_skip_repack_compare, season_pack_simplify_hdr_compare,
 			season_pack_simplify_web_compare, season_pack_skip_year_compare,
 			season_pack_enabled, season_pack_coverage_threshold, season_pack_tags, season_pack_category,
+			season_pack_category_rules,
 			season_pack_tvdb_api_key_encrypted, season_pack_tvdb_pin_encrypted,
 			gazelle_enabled, redacted_api_key_encrypted, orpheus_api_key_encrypted
 		) VALUES (
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON CONFLICT(id) DO UPDATE SET
 			enabled = excluded.enabled,
@@ -943,6 +965,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 			season_pack_coverage_threshold = excluded.season_pack_coverage_threshold,
 			season_pack_tags = excluded.season_pack_tags,
 			season_pack_category = excluded.season_pack_category,
+			season_pack_category_rules = excluded.season_pack_category_rules,
 			season_pack_tvdb_api_key_encrypted = excluded.season_pack_tvdb_api_key_encrypted,
 			season_pack_tvdb_pin_encrypted = excluded.season_pack_tvdb_pin_encrypted,
 			gazelle_enabled = excluded.gazelle_enabled,
@@ -1006,6 +1029,7 @@ func (s *CrossSeedStore) UpsertSettings(ctx context.Context, settings *CrossSeed
 		settings.SeasonPackCoverageThreshold,
 		seasonPackTags,
 		settings.SeasonPackCategory,
+		seasonPackCategoryRules,
 		seasonPackTVDBAPIKeyEncrypted,
 		seasonPackTVDBPINEncrypted,
 		BoolToSQLite(settings.GazelleEnabled),
@@ -1817,6 +1841,30 @@ func decodeStringSliceWithDefault(src sql.NullString, dest *[]string, defaultVal
 		return nil
 	}
 	var tmp []string
+	if err := json.Unmarshal([]byte(src.String), &tmp); err != nil {
+		return err
+	}
+	*dest = tmp
+	return nil
+}
+
+func encodeSeasonPackCategoryRules(rules []SeasonPackCategoryRule) (string, error) {
+	if rules == nil {
+		rules = []SeasonPackCategoryRule{}
+	}
+	data, err := json.Marshal(rules)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func decodeSeasonPackCategoryRules(src sql.NullString, dest *[]SeasonPackCategoryRule) error {
+	if !src.Valid || src.String == "" {
+		*dest = []SeasonPackCategoryRule{}
+		return nil
+	}
+	var tmp []SeasonPackCategoryRule
 	if err := json.Unmarshal([]byte(src.String), &tmp); err != nil {
 		return err
 	}
