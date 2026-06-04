@@ -87,6 +87,7 @@ func TestOverflowingClientIsDropped(t *testing.T) {
 
 	rc := http.NewResponseController(rw)
 	bw := newBufferedSessionWriter(rw, rc, streamWriteTimeout, cancel)
+	bw.enableBuffering() // exercise the post-subscribe buffered/drain path
 
 	// Enqueue more messages than the queue can hold. The drain goroutine pulls the
 	// first message and parks on the blocked socket Write, so the queue (capacity
@@ -138,6 +139,7 @@ func TestFlushReturnsImmediatelyWhileSocketBlocks(t *testing.T) {
 	rw := newBlockingResponseWriter()
 	rc := http.NewResponseController(rw)
 	bw := newBufferedSessionWriter(rw, rc, streamWriteTimeout, func() {})
+	bw.enableBuffering() // exercise the post-subscribe buffered/drain path
 	t.Cleanup(func() {
 		rw.release()
 		bw.Close()
@@ -173,6 +175,17 @@ func TestFlushReturnsImmediatelyWhileSocketBlocks(t *testing.T) {
 // (its buffered events channel fills) must not prevent the other connection from
 // promptly receiving an update. Each session now has its own buffered writer and
 // drain goroutine, so B's delivery is independent of A.
+// TestSlowClientDoesNotBlockOthers is an end-to-end smoke check that two SSE
+// connections on the same group are served independently: connection B promptly
+// receives an update while connection A merely sits idle after its init.
+//
+// Note this does NOT by itself prove socket-level isolation — over httptest
+// loopback A's reader goroutine keeps draining its body and a single update never
+// back-pressures A's socket, so the assertion would also pass against the old
+// shared serial fan-out. The actual "a stalled socket cannot block other
+// sessions" guarantee is proven deterministically at the unit level by
+// TestFlushReturnsImmediatelyWhileSocketBlocks and TestOverflowingClientIsDropped,
+// which park a real socket write on a gate.
 func TestSlowClientDoesNotBlockOthers(t *testing.T) {
 	store, cleanup := newTestInstanceStore(t)
 	defer cleanup()
@@ -184,8 +197,7 @@ func TestSlowClientDoesNotBlockOthers(t *testing.T) {
 	instanceID := seedActiveInstance(t, manager)
 	srv := startStreamServer(t, manager)
 
-	// Connection A: a "slow" reader. We read its init so it subscribes, then stop
-	// reading entirely so its in-memory events buffer and socket back-pressure.
+	// Connection A: read its init so it subscribes, then leave its reader idle.
 	readerA, _ := connectStream(t, srv, streamPayload(instanceID, "slow-A"))
 	readerA.waitForEvent(t, streamEventInit, 5*time.Second)
 
@@ -193,8 +205,7 @@ func TestSlowClientDoesNotBlockOthers(t *testing.T) {
 	readerB, _ := connectStream(t, srv, streamPayload(instanceID, "fast-B"))
 	readerB.waitForEvent(t, streamEventInit, 5*time.Second)
 
-	// Fire updates; B must receive one promptly regardless of A's stalled reader.
-	// (A's reader is simply never serviced after its init.)
+	// Fire updates; B must receive one promptly while A's reader sits idle.
 	updateB := readerB.waitForEventTriggered(t, streamEventUpdate, 5*time.Second, func() {
 		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1, FullUpdate: true})
 	})
@@ -213,6 +224,7 @@ func TestFlushAfterCloseDoesNotPanic(t *testing.T) {
 	rw.release() // never block the drain goroutine
 	rc := http.NewResponseController(rw)
 	bw := newBufferedSessionWriter(rw, rc, streamWriteTimeout, func() {})
+	bw.enableBuffering() // exercise the post-subscribe buffered/drain path
 
 	// Close stops the drain (Serve returned); the queue stays open by design.
 	bw.Close()

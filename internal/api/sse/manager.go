@@ -64,6 +64,7 @@ type ctxKey string
 const (
 	subscriptionIDsContextKey ctxKey = "qui.sse.subscriptionIDs"
 	activityTopicContextKey   ctxKey = "qui.sse.activityTopic"
+	sessionWriterContextKey   ctxKey = "qui.sse.sessionWriter"
 )
 
 // StreamOptions captures the torrent view that the subscriber wants to keep in sync.
@@ -648,14 +649,14 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 	// unsubscribes a session once its request context is Done.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	req := r.WithContext(ctx)
 
 	// SSE connections are long-lived; clear the absolute write deadline inherited
-	// from the server's global WriteTimeout. The rolling per-write deadline is now
-	// applied by the buffered writer's drain goroutine. If the controller can't
-	// reach a deadline-capable writer (e.g. a future middleware re-wraps without
-	// Unwrap), log it so the regression is observable instead of silently capping
-	// streams at WriteTimeout.
+	// from the server's global WriteTimeout. The rolling per-write deadline is
+	// applied by the buffered writer (its drain goroutine once buffered, or inline
+	// during the synchronous init phase). If the controller can't reach a
+	// deadline-capable writer (e.g. a future middleware re-wraps without Unwrap),
+	// log it so the regression is observable instead of silently capping streams at
+	// WriteTimeout.
 	rc := http.NewResponseController(w)
 	if err := rc.SetWriteDeadline(time.Time{}); err != nil {
 		log.Warn().Err(err).Msg("SSE: unable to clear write deadline; stream may be capped by server WriteTimeout")
@@ -663,6 +664,11 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 
 	sw := newBufferedSessionWriter(w, rc, streamWriteTimeout, cancel)
 	defer sw.Close() // stop the drain goroutine on disconnect/return
+
+	// Expose the session writer to onSession so it can switch to buffered mode
+	// after writing the init snapshot synchronously (see enableBuffering).
+	ctx = context.WithValue(ctx, sessionWriterContextKey, sw)
+	req := r.WithContext(ctx)
 
 	// ServeHTTP blocks until the client disconnects.
 	m.server.ServeHTTP(sw, req)
@@ -674,27 +680,45 @@ func (m *StreamManager) Serve(w http.ResponseWriter, r *http.Request) {
 const maxQueuedMessages = 16
 
 // bufferedSessionWriter isolates a slow or stalled SSE client from the shared
-// go-sse Joe dispatch loop. Write accumulates the bytes for the current message;
-// Flush enqueues the accumulated message onto a bounded channel and returns
-// immediately, so the synchronous fan-out never blocks on a stuck socket. A
-// dedicated drain goroutine writes queued messages to the real socket under a
-// rolling streamWriteTimeout deadline. If the queue is full (client too slow) or
-// a drained write errors/times out, the connection is dropped: the request
-// context is canceled (go-sse removes only this subscriber) and subsequent
-// Write calls return errSlowClient so go-sse's next Send for this session also
-// removes it. The deadline now bounds only this one client's drain, not the
-// shared loop, so a stalled client no longer head-of-line-blocks healthy ones.
+// go-sse Joe dispatch loop. It has two phases:
+//
+//   - Init phase (before the session is subscribed): Write/Flush go straight to
+//     the socket on the request goroutine. onSession writes each subscription's
+//     init snapshot here, so those writes are the first bytes on the wire, never
+//     consume the bounded queue (a connection with many streams cannot overflow-
+//     drop itself during init), and — being on the only goroutine touching the
+//     socket — cannot race anything.
+//   - Buffered phase (after enableBuffering, called by onSession before go-sse
+//     subscribes the session): Write accumulates the current message's bytes and
+//     Flush enqueues the message onto a bounded channel and returns immediately,
+//     so the synchronous fan-out never blocks on a stuck socket. A dedicated
+//     drain goroutine writes queued messages to the real socket under a rolling
+//     streamWriteTimeout deadline.
+//
+// Switching phases before subscribe guarantees the request goroutine and the
+// drain goroutine are never both writing to the socket. If the queue is full
+// (client too slow) or a drained write errors/times out, the connection is
+// dropped: the request context is canceled (go-sse removes only this subscriber)
+// and subsequent Write calls return errSlowClient so go-sse's next Send for this
+// session also removes it. The deadline bounds only this one client's drain, not
+// the shared loop, so a stalled client no longer head-of-line-blocks healthy ones.
 type bufferedSessionWriter struct {
 	rw      http.ResponseWriter
 	rc      *http.ResponseController
 	timeout time.Duration
 	cancel  context.CancelFunc
 
-	// staging accumulates the current message's bytes across Write calls. go-sse's
-	// Message.WriteTo issues many small Writes followed by one Flush, so a message
-	// is the right unit to enqueue. Write/Flush are only ever called serially by a
-	// single goroutine for this session (go-sse's Joe dispatch loop, or onSession
-	// before the session is subscribed), so staging needs no lock.
+	// buffered is false during the init phase (synchronous writes on the request
+	// goroutine, no drain) and true after enableBuffering starts the drain. It is
+	// flipped once, before go-sse subscribes the session, so the request goroutine
+	// is the sole writer during init and the drain is the sole writer afterward.
+	buffered atomic.Bool
+
+	// staging accumulates the current message's bytes across Write calls in
+	// buffered mode. go-sse's Message.WriteTo issues many small Writes followed by
+	// one Flush, so a message is the right unit to enqueue. Write/Flush are only
+	// ever called serially by a single goroutine for this session (go-sse's Joe
+	// dispatch loop), so staging needs no lock.
 	staging []byte
 	// queue is intentionally NEVER closed. go-sse's Joe dispatch loop can call Flush
 	// (which sends on queue) after Serve's ServeHTTP returns: Joe.Subscribe returns
@@ -706,12 +730,16 @@ type bufferedSessionWriter struct {
 	queue     chan []byte
 	stop      chan struct{}
 	done      chan struct{}
+	drainOnce sync.Once
 	failed    atomic.Bool
 	closeOnce sync.Once
 }
 
 func newBufferedSessionWriter(w http.ResponseWriter, rc *http.ResponseController, timeout time.Duration, cancel context.CancelFunc) *bufferedSessionWriter {
-	bw := &bufferedSessionWriter{
+	// The drain goroutine starts only when enableBuffering switches the writer out
+	// of its synchronous init phase, so a connection torn down before subscribe
+	// (e.g. an onSession error) never leaks a goroutine.
+	return &bufferedSessionWriter{
 		rw:      w,
 		rc:      rc,
 		timeout: timeout,
@@ -720,8 +748,17 @@ func newBufferedSessionWriter(w http.ResponseWriter, rc *http.ResponseController
 		stop:    make(chan struct{}),
 		done:    make(chan struct{}),
 	}
-	go bw.drain()
-	return bw
+}
+
+// enableBuffering switches the writer from the synchronous init phase to buffered
+// mode and starts the drain goroutine. onSession calls it once, after writing the
+// init snapshot and before go-sse subscribes the session, so the request
+// goroutine is the only writer during init and the drain is the only writer after.
+func (w *bufferedSessionWriter) enableBuffering() {
+	w.drainOnce.Do(func() {
+		w.buffered.Store(true)
+		go w.drain()
+	})
 }
 
 func (w *bufferedSessionWriter) Header() http.Header { return w.rw.Header() }
@@ -734,14 +771,26 @@ func (w *bufferedSessionWriter) Write(p []byte) (int, error) {
 	if w.failed.Load() {
 		return 0, errSlowClient
 	}
+	if !w.buffered.Load() {
+		// Init phase: write straight to the socket under the rolling deadline. No
+		// drain goroutine exists yet, so the request goroutine is the sole writer.
+		_ = w.rc.SetWriteDeadline(time.Now().Add(w.timeout))
+		return w.rw.Write(p)
+	}
 	w.staging = append(w.staging, p...)
 	return len(p), nil
 }
 
-// Flush enqueues the staged message for the drain goroutine and returns
-// immediately. Its no-return signature keeps the writer matching go-sse's
+// Flush, in buffered mode, enqueues the staged message for the drain goroutine
+// and returns immediately; in the init phase it flushes the synchronous write
+// straight through. Its no-return signature keeps the writer matching go-sse's
 // http.Flusher detection (writeFlusher) rather than the FlushError path.
 func (w *bufferedSessionWriter) Flush() {
+	if !w.buffered.Load() {
+		_ = w.rc.Flush()
+		return
+	}
+
 	if w.failed.Load() || len(w.staging) == 0 {
 		w.staging = w.staging[:0]
 		return
@@ -792,7 +841,21 @@ func (w *bufferedSessionWriter) drop() {
 // Close stops the drain goroutine and waits for it to exit, ensuring no leak
 // when Serve returns. It closes stop (not queue) so a concurrent Flush from
 // go-sse's loop can never send on a closed channel. Safe to call once via defer.
+//
+// If the writer never left the synchronous init phase (enableBuffering was not
+// reached, e.g. an onSession error), no drain goroutine was started, so there is
+// nothing to stop or wait for. enableBuffering and Close both run on the request
+// goroutine (onSession during ServeHTTP, Close via Serve's defer afterward), so
+// this read of buffered is correctly ordered.
+//
+// When the drain IS running and is parked in a stuck socket Write, Close blocks
+// on <-done until that write's rolling deadline (streamWriteTimeout) fires. That
+// wait is bounded and runs only on this one disconnecting session's goroutine; it
+// holds no shared lock and never delays other sessions.
 func (w *bufferedSessionWriter) Close() {
+	if !w.buffered.Load() {
+		return
+	}
 	w.closeOnce.Do(func() { close(w.stop) })
 	<-w.done
 }
@@ -836,20 +899,30 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 		m.writeInitToSession(w, sub, group)
 	}
 
+	// Write an immediate keepalive to the activity topic's session (if any) so the
+	// HTTP response is flushed and the connection opens promptly. Without it, an
+	// activity-only connection (which has no init event) would not flush headers
+	// until the next heartbeat, delaying the client's open by up to
+	// heartbeatInterval. Written directly for the same race-free reason as the init
+	// snapshot above.
+	if activityTopic != "" {
+		m.writeKeepaliveToSession(w)
+	}
+
+	// The init snapshots (and optional keepalive) are now on the wire, written
+	// synchronously on this request goroutine. Switch the session writer to
+	// buffered mode before go-sse subscribes the session, so its post-subscribe
+	// fan-out is drained per session (a slow client no longer blocks others) and
+	// the drain goroutine — not these init writes — owns the socket from here on.
+	if sw, ok := r.Context().Value(sessionWriterContextKey).(*bufferedSessionWriter); ok {
+		sw.enableBuffering()
+	}
+
 	// Subscribe the session to its activity topic (if any) in addition to its
 	// torrent-stream topics, so activity events and activity heartbeats reach it.
 	if activityTopic == "" {
 		return raw, true
 	}
-
-	// Write an immediate keepalive to the activity topic's session so the HTTP
-	// response is flushed and the connection opens promptly. Without it, an
-	// activity-only connection (which has no init event) would not flush headers
-	// until the next heartbeat, delaying the client's open by up to
-	// heartbeatInterval. Written directly for the same race-free reason as the
-	// init snapshot above.
-	m.writeKeepaliveToSession(w)
-
 	return append(append([]string(nil), raw...), activityTopic), true
 }
 
