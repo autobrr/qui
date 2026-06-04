@@ -73,23 +73,27 @@ func TestEnsureCrossCategory_RevalidatesWhenRequestedSavePathChanges(t *testing.
 	}
 
 	ctx := context.Background()
+	ensure := func(path string) error {
+		_, err := service.ensureCrossCategory(ctx, instanceID, categoryName, path, true)
+		return err
+	}
 
-	require.NoError(t, service.ensureCrossCategory(ctx, instanceID, categoryName, linkModePath, true))
+	require.NoError(t, ensure(linkModePath))
 	getCategoriesCalls, createCategoryCalls := syncManager.callCounts()
 	require.Equal(t, 1, getCategoriesCalls)
 	require.Equal(t, 1, createCategoryCalls)
 
-	require.NoError(t, service.ensureCrossCategory(ctx, instanceID, categoryName, regularPath, true))
+	require.NoError(t, ensure(regularPath))
 	getCategoriesCalls, createCategoryCalls = syncManager.callCounts()
 	require.Equal(t, 3, getCategoriesCalls)
 	require.Equal(t, 1, createCategoryCalls)
 
-	require.NoError(t, service.ensureCrossCategory(ctx, instanceID, categoryName, regularPath, true))
+	require.NoError(t, ensure(regularPath))
 	getCategoriesCalls, createCategoryCalls = syncManager.callCounts()
 	require.Equal(t, 5, getCategoriesCalls)
 	require.Equal(t, 1, createCategoryCalls)
 
-	require.NoError(t, service.ensureCrossCategory(ctx, instanceID, categoryName, linkModePath, true))
+	require.NoError(t, ensure(linkModePath))
 	getCategoriesCalls, createCategoryCalls = syncManager.callCounts()
 	require.Equal(t, 5, getCategoriesCalls)
 	require.Equal(t, 1, createCategoryCalls)
@@ -113,13 +117,17 @@ func TestEnsureCrossCategory_CacheMatchesPathCaseInsensitively(t *testing.T) {
 	}
 
 	ctx := context.Background()
+	ensure := func(path string) error {
+		_, err := service.ensureCrossCategory(ctx, instanceID, categoryName, path, true)
+		return err
+	}
 
-	require.NoError(t, service.ensureCrossCategory(ctx, instanceID, categoryName, initialPath, true))
+	require.NoError(t, ensure(initialPath))
 	getCategoriesCalls, createCategoryCalls := syncManager.callCounts()
 	require.Equal(t, 1, getCategoriesCalls)
 	require.Equal(t, 1, createCategoryCalls)
 
-	require.NoError(t, service.ensureCrossCategory(ctx, instanceID, categoryName, requestPath, true))
+	require.NoError(t, ensure(requestPath))
 	getCategoriesCalls, createCategoryCalls = syncManager.callCounts()
 	require.Equal(t, 1, getCategoriesCalls)
 	require.Equal(t, 1, createCategoryCalls)
@@ -146,15 +154,19 @@ func TestEnsureCrossCategory_ConcurrentDifferentRequestedPathsCreateOnce(t *test
 
 	ctx := context.Background()
 	errs := make(chan error, 2)
+	ensure := func(path string) error {
+		_, err := service.ensureCrossCategory(ctx, instanceID, categoryName, path, true)
+		return err
+	}
 
 	go func() {
-		errs <- service.ensureCrossCategory(ctx, instanceID, categoryName, linkModePath, true)
+		errs <- ensure(linkModePath)
 	}()
 
 	<-syncManager.getStarted
 
 	go func() {
-		errs <- service.ensureCrossCategory(ctx, instanceID, categoryName, regularPath, true)
+		errs <- ensure(regularPath)
 	}()
 
 	close(syncManager.releaseGet)
