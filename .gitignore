@@ -58,6 +58,8 @@ web/src/themes/premium/
 web/src/themes/premium/*
 docs/*
 !docs/CROSS_SEEDING.md
+!docs/architecture.md
+!docs/linting.md
 .mcp_unused.json
 config.toml
 .env
