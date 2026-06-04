@@ -645,6 +645,16 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         activity: activityHandler,
       }
       connection.signature = signature
+
+      // Arm the stale watchdog now, at connection creation - not only in onopen. A
+      // connection whose server is unreachable from the start never fires onopen,
+      // and handleSourceError deliberately defers to the browser's native retry
+      // while readyState is CONNECTING. Without a watchdog armed here, such a
+      // cold-start outage (or a replacement socket from a view swap that never
+      // opens) would never escalate to qui's own backoff/offline state. The timer
+      // is reset on every inbound event and on a successful open, so this only
+      // fires if the connection produces nothing for STREAM_STALE_TIMEOUT_MS.
+      resetStaleTimer()
     },
     [clearConnectionRetryState, clearHandoffState, closeConnection, notifyStateSubscribers]
   )

@@ -614,6 +614,30 @@ describe("SyncStreamContext", () => {
       expect(controls.getState().retrying).toBe(true)
       expect(controls.getState().retryAttempt).toBe(1)
     })
+
+    it("escalates a cold-start connection that never opens once the stale watchdog elapses", () => {
+      const { controls } = renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+      const source = MockEventSource.instances[0]
+
+      // Server unreachable from mount: the browser keeps retrying (CONNECTING) and
+      // never fires onopen, so handleSourceError defers to the native retry...
+      act(() => {
+        source.emitTransientError()
+      })
+      expect(source.closed).toBe(false)
+      expect(controls.getState().retrying).toBe(false)
+
+      // ...but a connection that never opens must still escalate via the stale
+      // watchdog armed at connection creation (not only in onopen), so qui's own
+      // backoff and offline state engage instead of waiting silently forever.
+      act(() => {
+        vi.advanceTimersByTime(STALE)
+      })
+      expect(source.closed).toBe(true)
+      expect(controls.getState().retrying).toBe(true)
+      expect(controls.getState().retryAttempt).toBe(1)
+    })
   })
 
   describe("view-parameter swap handoff", () => {
