@@ -485,6 +485,16 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           } else {
             clearTimeout(conn.staleTimer)
           }
+          conn.staleTimer = undefined
+        }
+        // While the tab is hidden, background timer throttling makes the watchdog
+        // unreliable: incoming heartbeats keep calling this, so a re-armed timer
+        // could false-fire (flipping the stream offline and re-enabling REST
+        // polling in the background) or fire overdue on refocus and kill a healthy
+        // connection. Stay disarmed while hidden; the visibilitychange handler
+        // re-arms a fresh timer on refocus (or reconnects a closed source).
+        if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+          return
         }
         const schedule = typeof window !== "undefined"
           ? window.setTimeout

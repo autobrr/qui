@@ -519,6 +519,43 @@ describe("SyncStreamContext", () => {
       expect(source.closed).toBe(true)
     })
 
+    it("does NOT re-arm the watchdog when a heartbeat arrives while hidden", () => {
+      renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+
+      const source = MockEventSource.instances[0]
+      act(() => {
+        source.emitOpen() // arms the 15s stale watchdog, readyState = OPEN
+      })
+
+      act(() => {
+        setVisibility("hidden")
+      })
+
+      // Background heartbeats keep arriving. They must NOT resurrect the watchdog
+      // while hidden: a re-armed timer under background throttling false-fires and
+      // flips the stream to REST polling. Emit one, then blow well past the window.
+      act(() => {
+        source.emit("heartbeat", { type: "heartbeat", meta: { timestamp: "now" } })
+        vi.advanceTimersByTime(STALE * 3)
+      })
+      expect(source.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(1)
+
+      // Refocus re-arms a fresh watchdog: still alive just under it, trips just over.
+      act(() => {
+        setVisibility("visible")
+      })
+      act(() => {
+        vi.advanceTimersByTime(STALE - 1)
+      })
+      expect(source.closed).toBe(false)
+      act(() => {
+        vi.advanceTimersByTime(1)
+      })
+      expect(source.closed).toBe(true)
+    })
+
     it("still force-reconnects on refocus when the source is CLOSED", () => {
       const { controls } = renderSubscriber(BASE_PARAMS)
       flushConnectionQueue()
