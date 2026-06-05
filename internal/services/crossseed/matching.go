@@ -765,6 +765,30 @@ func (s *Service) isWebSourceRelabel(source, candidate *rls.Release, sourceName,
 	return match
 }
 
+// shouldAcceptWebSourceRelabel reports whether a candidate that the release match
+// rejected solely on source mismatch should still be accepted as a cross-tracker
+// web-source relabel (WEBRip<->WEB-DL). ignoreSizeCheck mirrors the main size gate:
+// a single episode of a season-pack source is legitimately much smaller than its
+// pack, so the full-size tolerance is bypassed in that case and the apply-stage
+// file verification makes the final call.
+func (s *Service) shouldAcceptWebSourceRelabel(
+	source, candidate *rls.Release,
+	sourceName, candidateName string,
+	sourceTitles, candidateTitles []string,
+	findIndividualEpisodes, ignoreSizeCheck bool,
+	sourceSize, candidateSize int64,
+	tolerancePercent float64,
+	mismatchReason string,
+) bool {
+	if mismatchReason != sourceMismatchReason {
+		return false
+	}
+	if !ignoreSizeCheck && !s.isSizeWithinTolerance(sourceSize, candidateSize, tolerancePercent) {
+		return false
+	}
+	return s.isWebSourceRelabel(source, candidate, sourceName, candidateName, sourceTitles, candidateTitles, findIndividualEpisodes)
+}
+
 // joinNormalizedCodecSlice converts a codec slice to a normalized string for comparison.
 // Applies codec aliasing so that x264, H.264, H264, and AVC are treated as equivalent.
 func joinNormalizedCodecSlice(slice []string) string {

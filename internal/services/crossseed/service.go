@@ -6999,6 +6999,25 @@ func alternateConnectorQuery(query string) (string, bool) {
 	return "", false
 }
 
+// effectiveSearchYear returns the year actually used by the latest search pass: 0
+// once the yearless retry has run, otherwise the originally requested year. The
+// alternate connector pass uses this so it does not re-apply a year the primary
+// search already proved ineffective.
+func effectiveSearchYear(requestedYear int, yearlessRetryRan bool) int {
+	if yearlessRetryRan {
+		return 0
+	}
+	return requestedYear
+}
+
+// mergeAltConnectorResults appends the alternate connector pass's results to the
+// primary results and returns the combined partial flag, so an incomplete
+// alternate pass is never reported as a complete search. Callers invoke it only
+// when alt carries results.
+func mergeAltConnectorResults(primaryPartial bool, primaryResults []jackett.SearchResult, alt *jackett.SearchResponse) ([]jackett.SearchResult, bool) {
+	return append(primaryResults, alt.Results...), primaryPartial || alt.Partial
+}
+
 // searchOnce runs a single Torznab search to completion and returns its response.
 // It is used for follow-up passes (e.g. the alternate connector-spelling query)
 // that need their own result set rather than the primary search's.
@@ -7624,7 +7643,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	var lateFilterSnapshot *AsyncIndexerFilteringState
 	var lateExcludedCount int
 
-	effectiveYear := searchReq.Year
+	yearlessRetryRan := false
 
 	// Retry without year for single-indexer searches when the first pass returned zero.
 	if len(searchResults) == 0 && searchReq.Year > 0 && len(filteredIndexerIDs) <= 1 {
@@ -7668,7 +7687,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			}
 			return nil, wrapCrossSeedSearchError(waitCtx.Err())
 		}
-		effectiveYear = 0 // yearless retry was executed
+		yearlessRetryRan = true
 	}
 
 	// Cross-tracker title-variant coverage: some trackers index a show with "&"
@@ -7693,7 +7712,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				altReq := *searchReq
 				altReq.Query = altQuery
 				altReq.IndexerIDs = altIndexerIDs
-				altReq.Year = effectiveYear // use the year actually searched (0 if yearless retry ran)
+				altReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan) // year actually searched (0 if yearless retry ran)
 				// Treat the alternate-spelling pass as an internal continuation of the
 				// primary search rather than a separate tracked job: skip its search-history
 				// recording so it does not create parallel history entries. Outcome reporting
@@ -7713,8 +7732,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 						Int("altResults", len(altResp.Results)).
 						Ints("altIndexerIDs", altIndexerIDs).
 						Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass returned additional candidates")
-					searchResults = append(searchResults, altResp.Results...)
-					searchResp.Partial = searchResp.Partial || altResp.Partial
+					searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, altResp)
 				}
 			}
 		}
@@ -7756,9 +7774,14 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			// only difference and the candidate is within size tolerance, accept it and
 			// let the apply-stage file-size verification + qBittorrent recheck make the
 			// final call, rather than dropping a byte-identical release on its label.
-			relabelMatch := mismatchReason == sourceMismatchReason &&
-				(ignoreSizeCheck || s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, tolerancePercent)) &&
-				s.isWebSourceRelabel(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, arrTitles, nil, opts.FindIndividualEpisodes)
+			relabelMatch := s.shouldAcceptWebSourceRelabel(
+				searchRelease, candidateRelease,
+				sourceTorrent.Name, res.Title,
+				arrTitles, nil,
+				opts.FindIndividualEpisodes, ignoreSizeCheck,
+				sourceTorrent.Size, res.Size,
+				tolerancePercent, mismatchReason,
+			)
 			if !relabelMatch {
 				releaseFilteredCount++
 				recordReleaseRejection(
