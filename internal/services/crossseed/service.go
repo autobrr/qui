@@ -7624,6 +7624,8 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	var lateFilterSnapshot *AsyncIndexerFilteringState
 	var lateExcludedCount int
 
+	effectiveYear := searchReq.Year
+
 	// Retry without year for single-indexer searches when the first pass returned zero.
 	if len(searchResults) == 0 && searchReq.Year > 0 && len(filteredIndexerIDs) <= 1 {
 		log.Debug().
@@ -7666,6 +7668,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			}
 			return nil, wrapCrossSeedSearchError(waitCtx.Err())
 		}
+		effectiveYear = 0 // yearless retry was executed
 	}
 
 	// Cross-tracker title-variant coverage: some trackers index a show with "&"
@@ -7690,6 +7693,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				altReq := *searchReq
 				altReq.Query = altQuery
 				altReq.IndexerIDs = altIndexerIDs
+				altReq.Year = effectiveYear // use the year actually searched (0 if yearless retry ran)
 				// Treat the alternate-spelling pass as an internal continuation of the
 				// primary search rather than a separate tracked job: skip its search-history
 				// recording so it does not create parallel history entries. Outcome reporting
@@ -7710,6 +7714,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 						Ints("altIndexerIDs", altIndexerIDs).
 						Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass returned additional candidates")
 					searchResults = append(searchResults, altResp.Results...)
+					searchResp.Partial = searchResp.Partial || altResp.Partial
 				}
 			}
 		}
@@ -7744,6 +7749,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
 		match, mismatchReason := s.releasesMatchWithReasonAndNamesAndTitles(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, arrTitles, nil, opts.FindIndividualEpisodes)
+		ignoreSizeCheck := opts.FindIndividualEpisodes && isTVSeasonPack(searchRelease) && isTVEpisode(candidateRelease)
 		if !match {
 			// Cross-tracker relabel tolerance: the same web encode is frequently
 			// relabeled WEBRip<->WEB-DL across trackers. When the source label is the
@@ -7751,7 +7757,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			// let the apply-stage file-size verification + qBittorrent recheck make the
 			// final call, rather than dropping a byte-identical release on its label.
 			relabelMatch := mismatchReason == sourceMismatchReason &&
-				s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, tolerancePercent) &&
+				(ignoreSizeCheck || s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, tolerancePercent)) &&
 				s.isWebSourceRelabel(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, arrTitles, nil, opts.FindIndividualEpisodes)
 			if !relabelMatch {
 				releaseFilteredCount++
@@ -7795,8 +7801,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			)
 			continue
 		}
-
-		ignoreSizeCheck := opts.FindIndividualEpisodes && isTVSeasonPack(searchRelease) && isTVEpisode(candidateRelease)
 
 		// Size validation: check if candidate size is within tolerance of source size
 		if !ignoreSizeCheck && !s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, tolerancePercent) {
