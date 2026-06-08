@@ -6986,16 +6986,38 @@ func (s *Service) resolveTorznabIndexerIDs(ctx context.Context, requested []int,
 // swapped between "and" and "&", so trackers that index a show with the opposite
 // spelling are still reachable (e.g. "Law and Order" vs "Law & Order"). Returns
 // ("", false) when no swap applies.
+//
+// Only standalone, whitespace-delimited connector tokens are swapped, so
+// intra-token ampersands like "AT&T" or "R&B" and embedded words like "Andor"
+// are left intact. The spelled-out connector is matched case-insensitively
+// because the query is built from the rls-parsed title, which preserves the
+// source release's original casing ("and", "And", "AND" are all common).
 func alternateConnectorQuery(query string) (string, bool) {
-	if strings.Contains(query, " and ") {
-		return strings.ReplaceAll(query, " and ", " & "), true
+	tokens := strings.Split(query, " ")
+
+	// Prefer swapping a spelled-out connector to "&": match any casing.
+	swapped := false
+	for i, tok := range tokens {
+		if strings.EqualFold(tok, "and") {
+			tokens[i] = "&"
+			swapped = true
+		}
 	}
-	// Only swap a standalone, whitespace-delimited "&" connector. Queries are
-	// space-joined, so " & " captures the real connector form while leaving
-	// intra-token ampersands like "AT&T" or "R&B" untouched.
-	if strings.Contains(query, " & ") {
-		return strings.ReplaceAll(query, " & ", " and "), true
+	if swapped {
+		return strings.Join(tokens, " "), true
 	}
+
+	// Otherwise swap a standalone "&" connector to "and".
+	for i, tok := range tokens {
+		if tok == "&" {
+			tokens[i] = "and"
+			swapped = true
+		}
+	}
+	if swapped {
+		return strings.Join(tokens, " "), true
+	}
+
 	return "", false
 }
 
@@ -7016,6 +7038,27 @@ func effectiveSearchYear(requestedYear int, yearlessRetryRan bool) int {
 // when alt carries results.
 func mergeAltConnectorResults(primaryPartial bool, primaryResults []jackett.SearchResult, alt *jackett.SearchResponse) ([]jackett.SearchResult, bool) {
 	return append(primaryResults, alt.Results...), primaryPartial || alt.Partial
+}
+
+// indexersWithoutResults returns the requested indexer IDs that produced no
+// results in the primary pass, preserving request order. The alternate connector
+// pass re-queries only these so the extra round-trip stays minimal; an indexer
+// that returned at least one candidate is omitted.
+func indexersWithoutResults(requestedIDs []int, results []jackett.SearchResult) []int {
+	if len(requestedIDs) == 0 {
+		return nil
+	}
+	responded := make(map[int]struct{}, len(results))
+	for _, r := range results {
+		responded[r.IndexerID] = struct{}{}
+	}
+	var missing []int
+	for _, id := range requestedIDs {
+		if _, seen := responded[id]; !seen {
+			missing = append(missing, id)
+		}
+	}
+	return missing
 }
 
 // searchOnce runs a single Torznab search to completion and returns its response.
@@ -7698,16 +7741,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// ID-based searches, which do not rely on title text.
 	if !opts.DisableTorznab && !searchReq.OmitQueryForIDs {
 		if altQuery, ok := alternateConnectorQuery(searchReq.Query); ok {
-			responded := make(map[int]struct{}, len(searchResults))
-			for _, r := range searchResults {
-				responded[r.IndexerID] = struct{}{}
-			}
-			var altIndexerIDs []int
-			for _, id := range searchReq.IndexerIDs {
-				if _, seen := responded[id]; !seen {
-					altIndexerIDs = append(altIndexerIDs, id)
-				}
-			}
+			altIndexerIDs := indexersWithoutResults(searchReq.IndexerIDs, searchResults)
 			if len(altIndexerIDs) > 0 {
 				altReq := *searchReq
 				altReq.Query = altQuery
