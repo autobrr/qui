@@ -4,6 +4,7 @@
  */
 
 import { useSyncStream } from "@/contexts/SyncStreamContext"
+import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
@@ -27,6 +28,16 @@ export const TORRENT_STREAM_POLL_INTERVAL_SECONDS = Math.max(
   1,
   Math.round(TORRENT_STREAM_POLL_INTERVAL_MS / 1000)
 )
+
+// While the tab is hidden the table is invisible, so streaming a full page-0
+// snapshot (up to 300 torrents) every couple of seconds is pure waste: the work is
+// deferred and then burst-processed by a throttled background tab, and each frame is
+// retained by anyone running DevTools with "Persist Logs" on. Pause the heavy list
+// subscription once the tab has been hidden this long; the title-bar speed stream
+// (limit:1) stays live so background transfer rates keep updating. The grace delay
+// avoids tearing the stream down on quick tab switches; on refocus it resumes at once
+// and refetchOnWindowFocus pulls fresh data immediately.
+export const STREAM_HIDDEN_PAUSE_DELAY_MS = 30000
 
 interface UseTorrentsListOptions {
   enabled?: boolean
@@ -67,6 +78,11 @@ export function useTorrentsList(
   const [lastStreamSnapshot, setLastStreamSnapshot] = useState<TorrentResponse | null>(null)
   const pageSize = 300 // Load 300 at a time (backend default)
   const queryClient = useQueryClient()
+
+  // Pause the heavy list stream while the tab is backgrounded (see
+  // STREAM_HIDDEN_PAUSE_DELAY_MS). isHiddenDelayed only trips after a grace period,
+  // so quick tab switches don't churn the subscription.
+  const { isHiddenDelayed } = useDelayedVisibility(STREAM_HIDDEN_PAUSE_DELAY_MS)
 
   const metadataQueryKey = useMemo(
     () => ["instance-metadata", instanceId] as const,
@@ -280,7 +296,7 @@ export function useTorrentsList(
   )
 
   const streamState = useSyncStream(streamParams, {
-    enabled: Boolean(streamParams),
+    enabled: Boolean(streamParams) && !isHiddenDelayed,
     onMessage: handleStreamPayload,
   })
 
