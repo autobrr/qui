@@ -22,7 +22,13 @@ export function useIndexerTrackerDomains(options: UseIndexerTrackerDomainsOption
 
   return useQuery({
     queryKey: ["indexer-tracker-domains"],
-    queryFn: () => api.getIndexerTrackerDomains(),
+    queryFn: async () => {
+      try {
+        return await api.getIndexerTrackerDomains()
+      } catch {
+        return []
+      }
+    },
     staleTime: staleTimeMs,
     enabled,
     retry: false,
