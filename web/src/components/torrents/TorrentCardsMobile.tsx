@@ -1483,10 +1483,10 @@ export function TorrentCardsMobile({
   // Call the callback when filtered data updates
   useEffect(() => {
     if (onFilteredDataUpdate && torrents && totalCount !== undefined && !isLoading) {
-      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags, subcategoriesFromData, supportsTrackerHealth)
+      onFilteredDataUpdate(torrents, totalCount, counts, categories, tags, allowSubcategories, supportsTrackerHealth)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalCount, isLoading, torrents.length, counts, categories, tags, subcategoriesFromData, onFilteredDataUpdate, supportsTrackerHealth]) // Update when data changes
+  }, [totalCount, isLoading, torrents.length, counts, categories, tags, allowSubcategories, onFilteredDataUpdate, supportsTrackerHealth]) // Update when data changes
 
   // Calculate the effective selection count for display
   const effectiveSelectionCount = useMemo(() => {

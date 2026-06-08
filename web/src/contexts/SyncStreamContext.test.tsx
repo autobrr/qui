@@ -17,7 +17,7 @@ import {
 } from "@/contexts/SyncStreamContext"
 import type { TorrentStreamPayload } from "@/types"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, render } from "@testing-library/react"
+import { act, cleanup, render } from "@testing-library/react"
 import { useState, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -97,6 +97,13 @@ class MockEventSource {
     this.onerror?.(new Event("error"))
   }
 
+  emitTransientError() {
+    // Browser behaviour on a transient drop: it keeps the source in CONNECTING
+    // and auto-retries; onerror still fires but readyState stays CONNECTING.
+    this.readyState = MockEventSource.CONNECTING
+    this.onerror?.(new Event("error"))
+  }
+
   emit(type: SourceEventName, data?: unknown) {
     const event = new MessageEvent(type, {
       data: data === undefined ? undefined : JSON.stringify(data),
@@ -120,6 +127,12 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // Unmount any rendered tree so each provider's document-level listeners
+  // (visibilitychange / beforeunload) are detached. Without this, providers from
+  // earlier tests linger and respond to a dispatched visibilitychange.
+  act(() => {
+    cleanup()
+  })
   if (originalEventSource === undefined) {
     delete (globalThis as { EventSource?: unknown }).EventSource
     delete (window as { EventSource?: unknown }).EventSource
@@ -129,6 +142,13 @@ afterEach(() => {
   }
   vi.clearAllTimers()
   vi.useRealTimers()
+  // jsdom's document.visibilityState is read-only and defaults to "visible";
+  // tests override it via defineProperty, so restore the default here to avoid
+  // leaking a "hidden" getter into later tests.
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => "visible",
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -193,6 +213,48 @@ const DEFAULT: StreamState = {
   retrying: false,
   retryAttempt: 0,
   nextRetryAt: undefined,
+}
+
+// Renders a single useSyncStream subscriber whose params can be swapped while the
+// provider stays mounted. Changing sort/search/filters mints a new stream key,
+// which is exactly the view-parameter swap that drives openConnection's handoff
+// path. Exposes the latest state plus a `swap` to drive new params imperatively.
+function renderSwappableSubscriber(initialParams: StreamParams) {
+  const controls: HarnessControls = {
+    getState: () => DEFAULT,
+    payloads: [],
+  }
+  let swapParams: (params: StreamParams) => void = () => {}
+
+  function Subscriber({ params }: { params: StreamParams }) {
+    const state = useSyncStream(params, {
+      enabled: true,
+      onMessage: payload => {
+        controls.payloads.push(payload)
+      },
+    })
+    controls.getState = () => state
+    return null
+  }
+
+  function Root() {
+    const [params, setParams] = useState(initialParams)
+    swapParams = setParams
+    return (
+      <TestProviders>
+        <Subscriber params={params} />
+      </TestProviders>
+    )
+  }
+
+  act(() => {
+    render(<Root />)
+  })
+
+  return {
+    controls,
+    swap: (params: StreamParams) => act(() => swapParams(params)),
+  }
 }
 
 // Renders a subscriber whose mount state can be toggled while the surrounding
@@ -414,6 +476,317 @@ describe("SyncStreamContext", () => {
     })
   })
 
+  describe("visibility stale watchdog", () => {
+    it("re-arms a fresh watchdog on refocus instead of killing a healthy OPEN connection", () => {
+      renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+
+      const source = MockEventSource.instances[0]
+      act(() => {
+        source.emitOpen() // arms the 15s stale watchdog, readyState = OPEN
+      })
+
+      // Tab goes hidden: the stale timer is cleared (timing is meaningless while throttled).
+      act(() => {
+        setVisibility("hidden")
+      })
+
+      // Simulate a throttled background tab: advance WELL past the stale window. With the
+      // old code an overdue timer would have fired; with the hidden-clear it must not.
+      act(() => {
+        vi.advanceTimersByTime(STALE * 3)
+      })
+      expect(source.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(1)
+
+      // Refocus: connection is still OPEN, so we must re-arm a FRESH watchdog and NOT
+      // tear down / reconnect the healthy connection.
+      act(() => {
+        setVisibility("visible")
+      })
+      expect(source.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(1)
+
+      // The fresh watchdog has the full STREAM_STALE_TIMEOUT_MS again: just under it,
+      // still alive; crossing it trips a reconnect (proving the timer was actually re-armed).
+      act(() => {
+        vi.advanceTimersByTime(STALE - 1)
+      })
+      expect(source.closed).toBe(false)
+      act(() => {
+        vi.advanceTimersByTime(1)
+      })
+      expect(source.closed).toBe(true)
+    })
+
+    it("does NOT re-arm the watchdog when a heartbeat arrives while hidden", () => {
+      renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+
+      const source = MockEventSource.instances[0]
+      act(() => {
+        source.emitOpen() // arms the 15s stale watchdog, readyState = OPEN
+      })
+
+      act(() => {
+        setVisibility("hidden")
+      })
+
+      // Background heartbeats keep arriving. They must NOT resurrect the watchdog
+      // while hidden: a re-armed timer under background throttling false-fires and
+      // flips the stream to REST polling. Emit one, then blow well past the window.
+      act(() => {
+        source.emit("heartbeat", { type: "heartbeat", meta: { timestamp: "now" } })
+        vi.advanceTimersByTime(STALE * 3)
+      })
+      expect(source.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(1)
+
+      // Refocus re-arms a fresh watchdog: still alive just under it, trips just over.
+      act(() => {
+        setVisibility("visible")
+      })
+      act(() => {
+        vi.advanceTimersByTime(STALE - 1)
+      })
+      expect(source.closed).toBe(false)
+      act(() => {
+        vi.advanceTimersByTime(1)
+      })
+      expect(source.closed).toBe(true)
+    })
+
+    it("still force-reconnects on refocus when the source is CLOSED", () => {
+      const { controls } = renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+
+      const first = MockEventSource.instances[0]
+      act(() => {
+        first.emitOpen()
+        first.emitError() // network error -> source CLOSED, closeConnection
+      })
+      // The error path schedules a reconnect; the visibility path then resets retry
+      // state and reopens immediately.
+      expect(controls.getState().retrying).toBe(true)
+
+      const countAfterError = MockEventSource.instances.length
+
+      act(() => {
+        setVisibility("visible")
+      })
+      flushConnectionQueue()
+
+      // A new source was opened by the visibility reconnect path.
+      expect(MockEventSource.instances.length).toBeGreaterThan(countAfterError)
+      // Retry state was reset (resetRetry:true).
+      expect(controls.getState().retryAttempt).toBe(0)
+    })
+  })
+
+  describe("transient onerror guard", () => {
+    it("ignores a transient onerror (CONNECTING) without closing, disconnecting, or scheduling a reconnect", () => {
+      const { controls } = renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+      const source = MockEventSource.instances[0]
+
+      act(() => {
+        source.emitOpen()
+        source.emit("update", {
+          type: "update",
+          meta: { instanceId: 1, timestamp: "now", streamKey: createStreamKey(BASE_PARAMS) },
+        })
+      })
+      expect(controls.getState().connected).toBe(true)
+
+      act(() => {
+        source.emitTransientError()
+      })
+
+      // The native EventSource retry is left to proceed: nothing is torn down.
+      expect(source.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(1)
+      expect(controls.getState().connected).toBe(true)
+      expect(controls.getState().error).toBeNull()
+      expect(controls.getState().retrying).toBe(false)
+      expect(controls.getState().retryAttempt).toBe(0)
+    })
+
+    it("escalates when onerror is terminal (CLOSED)", () => {
+      const { controls } = renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+      const source = MockEventSource.instances[0]
+
+      act(() => {
+        source.emitOpen()
+      })
+      act(() => {
+        source.emitError() // terminal: readyState=CLOSED before onerror fires
+      })
+
+      expect(source.closed).toBe(true)
+      expect(controls.getState().connected).toBe(false)
+      expect(controls.getState().error).toBe(STREAM_ERROR_DISCONNECTED)
+      expect(controls.getState().retrying).toBe(true)
+      expect(controls.getState().retryAttempt).toBe(1)
+    })
+
+    it("still escalates a connection stuck in CONNECTING via the 15s stale watchdog", () => {
+      const { controls } = renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+      const source = MockEventSource.instances[0]
+
+      act(() => {
+        source.emitOpen() // arms the 15s stale watchdog
+      })
+      act(() => {
+        source.emitTransientError() // CONNECTING: does not escalate
+      })
+      expect(source.closed).toBe(false)
+
+      act(() => {
+        vi.advanceTimersByTime(STALE) // 15000
+      })
+
+      expect(source.closed).toBe(true)
+      expect(controls.getState().retrying).toBe(true)
+      expect(controls.getState().retryAttempt).toBe(1)
+    })
+
+    it("escalates a cold-start connection that never opens once the stale watchdog elapses", () => {
+      const { controls } = renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+      const source = MockEventSource.instances[0]
+
+      // Server unreachable from mount: the browser keeps retrying (CONNECTING) and
+      // never fires onopen, so handleSourceError defers to the native retry...
+      act(() => {
+        source.emitTransientError()
+      })
+      expect(source.closed).toBe(false)
+      expect(controls.getState().retrying).toBe(false)
+
+      // ...but a connection that never opens must still escalate via the stale
+      // watchdog armed at connection creation (not only in onopen), so qui's own
+      // backoff and offline state engage instead of waiting silently forever.
+      act(() => {
+        vi.advanceTimersByTime(STALE)
+      })
+      expect(source.closed).toBe(true)
+      expect(controls.getState().retrying).toBe(true)
+      expect(controls.getState().retryAttempt).toBe(1)
+    })
+  })
+
+  describe("view-parameter swap handoff", () => {
+    function emitInitFor(source: MockEventSource, params: StreamParams) {
+      act(() => {
+        source.emit("init", {
+          type: "init",
+          meta: { instanceId: params.instanceId, timestamp: "now", streamKey: createStreamKey(params) },
+        })
+      })
+    }
+
+    it("stays connected across rapid swaps whose init arrives within normal latency", () => {
+      const { controls, swap } = renderSwappableSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+
+      const first = MockEventSource.instances[0]
+      act(() => {
+        first.emitOpen()
+      })
+      emitInitFor(first, BASE_PARAMS)
+      expect(controls.getState().connected).toBe(true)
+
+      // Each swap mints a new stream key, tearing down the old EventSource and
+      // opening a new one. The new socket opens and delivers init well within the
+      // grace window, so connected must never flip false during the handoff.
+      const sorts = ["name", "size", "added_on", "progress"]
+      for (const sort of sorts) {
+        const nextParams = makeParams({ sort })
+        swap(nextParams)
+        flushConnectionQueue()
+
+        const source = MockEventSource.instances[MockEventSource.instances.length - 1]
+        // Socket opens, then a fast init resolves it -- still inside the grace window.
+        act(() => {
+          source.emitOpen()
+          vi.advanceTimersByTime(100)
+        })
+        emitInitFor(source, nextParams)
+
+        expect(controls.getState().connected).toBe(true)
+        expect(controls.getState().error).toBeNull()
+      }
+    })
+
+    it("keeps the stream connected when the socket opened but the first snapshot is slow", () => {
+      const { controls, swap } = renderSwappableSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+
+      const first = MockEventSource.instances[0]
+      act(() => {
+        first.emitOpen()
+      })
+      emitInitFor(first, BASE_PARAMS)
+      expect(controls.getState().connected).toBe(true)
+
+      // Swap to a new key (cold filter): teardown + reopen.
+      const nextParams = makeParams({ sort: "size" })
+      swap(nextParams)
+      flushConnectionQueue()
+
+      const second = MockEventSource.instances[MockEventSource.instances.length - 1]
+      expect(second).not.toBe(first)
+
+      // The replacement socket opens promptly, but its first snapshot is slow.
+      act(() => {
+        second.emitOpen()
+      })
+
+      // Advance PAST the base grace window with no init yet. Because the socket has
+      // demonstrably opened, onopen refreshed the handoff and the stream must not
+      // flip offline / re-enable polling.
+      act(() => {
+        vi.advanceTimersByTime(GRACE + 500)
+      })
+      expect(controls.getState().connected).toBe(true)
+      expect(controls.getState().error).toBeNull()
+
+      // The slow init finally arrives on the live source and resolves the handoff
+      // cleanly. (Tearing down the prior view's entry may have reopened a fresh
+      // source meanwhile, so deliver init on whichever source is current.)
+      const live = MockEventSource.instances[MockEventSource.instances.length - 1]
+      emitInitFor(live, nextParams)
+      expect(controls.getState().connected).toBe(true)
+      expect(controls.payloads[controls.payloads.length - 1].type).toBe("init")
+    })
+
+    it("still flips disconnected when the replacement socket never opens within grace", () => {
+      const { controls, swap } = renderSwappableSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+
+      const first = MockEventSource.instances[0]
+      act(() => {
+        first.emitOpen()
+      })
+      emitInitFor(first, BASE_PARAMS)
+      expect(controls.getState().connected).toBe(true)
+
+      // Swap to a new key, but never open the replacement socket nor deliver init.
+      swap(makeParams({ sort: "size" }))
+      flushConnectionQueue()
+      expect(controls.getState().connected).toBe(true) // still in the grace window
+
+      // The grace window elapses with no onopen and no init: the existing fixed-window
+      // behaviour must still flip the stream offline so REST polling resumes.
+      act(() => {
+        vi.advanceTimersByTime(GRACE)
+      })
+      expect(controls.getState().connected).toBe(false)
+    })
+  })
+
   describe("instanceId <= 0 guard", () => {
     it("does not open an EventSource for an invalid instanceId", () => {
       const { controls } = renderSubscriber(makeParams({ instanceId: 0 }))
@@ -504,6 +877,17 @@ describe("SyncStreamContext", () => {
 })
 
 const STALE = 15000 // STREAM_STALE_TIMEOUT_MS
+const GRACE = 1200 // HANDOFF_GRACE_PERIOD_MS
+
+// jsdom defaults document.visibilityState to "visible" and makes it read-only,
+// so override it via a getter and fire the real visibilitychange event.
+function setVisibility(state: "visible" | "hidden") {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => state,
+  })
+  document.dispatchEvent(new Event("visibilitychange"))
+}
 
 function decodeStreamsParam(url: string): Array<{ page: number }> {
   const query = url.split("?")[1] ?? ""
