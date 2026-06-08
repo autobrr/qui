@@ -23,8 +23,7 @@ function makeParams(overrides: Partial<UseTorrentTableNotificationsParams> = {})
     tags: TAGS,
     totalCount: 1,
     torrents: [makeTorrent({ hash: "h0" })],
-    subcategoriesFromData: false,
-    supportsSubcategories: false,
+    allowSubcategories: false,
     supportsTrackerHealth: false,
     onSelectionChange: vi.fn(),
     selectedHashes: [],
@@ -47,6 +46,23 @@ describe("useTorrentTableNotifications — onFilteredDataUpdate", () => {
     expect(vi.mocked(params.onFilteredDataUpdate!)).toHaveBeenCalledWith(
       params.torrents, 1, COUNTS, {}, [], false, false
     )
+  })
+
+  it("emits allowSubcategories verbatim as the useSubcategories arg (no extra gating)", () => {
+    const params = makeParams({ allowSubcategories: true })
+    renderHook((p: UseTorrentTableNotificationsParams) => useTorrentTableNotifications(p), { initialProps: params })
+    expect(vi.mocked(params.onFilteredDataUpdate!).mock.calls[0][5]).toBe(true)
+  })
+
+  it("re-fires when only allowSubcategories changes (e.g. a preference toggle)", () => {
+    const cb = vi.fn()
+    const { rerender } = renderHook((p: UseTorrentTableNotificationsParams) => useTorrentTableNotifications(p), {
+      initialProps: makeParams({ onFilteredDataUpdate: cb, allowSubcategories: false }),
+    })
+    expect(cb).toHaveBeenCalledTimes(1)
+    rerender(makeParams({ onFilteredDataUpdate: cb, allowSubcategories: true }))
+    expect(cb).toHaveBeenCalledTimes(2)
+    expect(cb.mock.calls.at(-1)![5]).toBe(true)
   })
 
   it("is suppressed while loading", () => {
