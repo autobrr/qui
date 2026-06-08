@@ -5,22 +5,23 @@
 
 import { isClientConnectionErrorCode } from "@/contexts/SyncStreamContext"
 import { useBulkActionWrappers } from "@/hooks/torrent-table/useBulkActionWrappers"
+import { useColumnDnd } from "@/hooks/torrent-table/useColumnDnd"
 import { useCompactViewSort } from "@/hooks/torrent-table/useCompactViewSort"
 import { useCrossSeedOrchestration } from "@/hooks/torrent-table/useCrossSeedOrchestration"
 import { useEffectiveServerState } from "@/hooks/torrent-table/useEffectiveServerState"
+import { useFilterLifecycle } from "@/hooks/torrent-table/useFilterLifecycle"
 import { useTorrentSelection } from "@/hooks/torrent-table/useTorrentSelection"
 import { useTorrentSelectionDerivations } from "@/hooks/torrent-table/useTorrentSelectionDerivations"
 import { useTorrentTableColumns } from "@/hooks/torrent-table/useTorrentTableColumns"
 import { useTorrentTableFilterExpr } from "@/hooks/torrent-table/useTorrentTableFilterExpr"
 import { useTorrentTableNotifications } from "@/hooks/torrent-table/useTorrentTableNotifications"
 import { useTorrentTableHotkeys } from "@/hooks/torrent-table/useTorrentTableHotkeys"
+import { useTorrentTableVirtualization } from "@/hooks/torrent-table/useTorrentTableVirtualization"
 import { useTrackerIconCache } from "@/hooks/torrent-table/useTrackerIconCache"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useDebounce } from "@/hooks/useDebounce"
 import { useDelayedVisibility } from "@/hooks/useDelayedVisibility"
-import { useKeyboardNavigation } from "@/hooks/useKeyboardNavigation"
 import { usePersistedColumnFilters } from "@/hooks/usePersistedColumnFilters"
-import { usePersistedColumnOrder } from "@/hooks/usePersistedColumnOrder"
 import { usePersistedColumnSizing } from "@/hooks/usePersistedColumnSizing"
 import { usePersistedColumnSorting } from "@/hooks/usePersistedColumnSorting"
 import { usePersistedColumnVisibility } from "@/hooks/usePersistedColumnVisibility"
@@ -33,28 +34,13 @@ import { getRowBackgroundClass } from "@/lib/torrent-table/row-display"
 import { resolveTrackerHealthSupport } from "@/lib/tracker-health-support"
 import { formatBytes } from "@/lib/utils"
 import {
-  DndContext,
-  MouseSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors
-} from "@dnd-kit/core"
-import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
-import {
-  SortableContext,
-  arrayMove,
-  horizontalListSortingStrategy
-} from "@dnd-kit/sortable"
-import {
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
   getSortedRowModel,
   useReactTable
 } from "@tanstack/react-table"
-import { useVirtualizer } from "@tanstack/react-virtual"
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
@@ -62,14 +48,6 @@ import { type TorrentSortOptionValue } from "./torrentSortOptions"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -95,7 +73,6 @@ import { useIncognitoMode } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
 import { resolveFooterSpeeds } from "@/lib/scoped-speeds"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
-import { getCommonCategory, getCommonSavePath } from "@/lib/torrent-utils"
 import { cn } from "@/lib/utils"
 import type {
   Category,
@@ -104,7 +81,7 @@ import type {
   TorrentCounts,
   TorrentFilters
 } from "@/types"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import {
   ArrowUpDown,
@@ -129,26 +106,12 @@ import {
 } from "lucide-react"
 import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
-import { DeleteTorrentDialog } from "./DeleteTorrentDialog"
-import { DraggableTableHeader } from "./DraggableTableHeader"
 import { SelectAllHotkey } from "./SelectAllHotkey"
-import {
-  CreateAndAssignCategoryDialog,
-  LocationWarningDialog,
-  RenameTorrentDialog,
-  RenameTorrentFileDialog,
-  RenameTorrentFolderDialog,
-  SetCategoryDialog,
-  SetLocationDialog,
-  TagEditorDialog,
-  SetCommentDialog,
-  ShareLimitDialog,
-  SpeedLimitsDialog,
-  TmmConfirmDialog
-} from "./TorrentDialogs"
 import { TorrentDropZone } from "./TorrentDropZone"
 import { createColumns } from "./TorrentTableColumns"
 import { CompactRow } from "./table/CompactRow"
+import { TableColumnHeader } from "./table/TableColumnHeader"
+import { TorrentTableDialogs } from "./table/TorrentTableDialogs"
 
 const TABLE_ALLOWED_VIEW_MODES = ["normal", "dense", "compact"] as const
 
@@ -318,10 +281,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Instance preferences dialog state
   const [preferencesOpen, setPreferencesOpen] = useState(false)
 
-  // Filter lifecycle state machine to replace fragile timing-based coordination
-  type FilterLifecycleState = 'idle' | 'clearing-all' | 'clearing-columns-only' | 'cleared'
-  const [filterLifecycleState, setFilterLifecycleState] = useState<FilterLifecycleState>('idle')
-
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { t } = useTranslation("torrents")
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
@@ -343,15 +302,19 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Column visibility with persistence
   const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility(DEFAULT_COLUMN_VISIBILITY, instanceId)
   // Column order with persistence (get default order at runtime to avoid initialization order issues)
-  const [columnOrder, setColumnOrder] = usePersistedColumnOrder(getDefaultColumnOrder(), instanceId)
+  // Latest accessor for the table's leaf column ids — reassigned after the table
+  // is created below; useColumnDnd reads it lazily at drag time.
+  const leafColumnIdsRef = useRef<() => string[]>(() => [])
+  const getLeafColumnIds = useCallback(() => leafColumnIdsRef.current(), [])
+  const { columnOrder, setColumnOrder, sensors, onDragEnd } = useColumnDnd({
+    instanceId,
+    defaultColumnOrder: getDefaultColumnOrder(),
+    getLeafColumnIds,
+  })
   // Column sizing with persistence
   const [columnSizing, setColumnSizing] = usePersistedColumnSizing(DEFAULT_COLUMN_SIZING, instanceId)
   // Column filters with persistence
   const [columnFilters, setColumnFilters] = usePersistedColumnFilters(instanceId)
-
-  // Progressive loading state with async management
-  const [loadedRows, setLoadedRows] = useState(100)
-  const [isLoadingMoreRows, setIsLoadingMoreRows] = useState(false)
 
   // Delayed loading state to avoid flicker on fast loads
   const [showLoadingState, setShowLoadingState] = useState(false)
@@ -451,43 +414,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   })
   const metadataTags = metadata?.tags || []
   const metadataCategories = metadata?.categories || {}
-
-  const shouldLoadRenameEntries = (showRenameFileDialog || showRenameFolderDialog) && Boolean(contextHashes[0])
-
-  const {
-    data: renameFileData,
-    isLoading: renameEntriesLoading,
-  } = useQuery({
-    queryKey: ["torrent-files", instanceId, contextHashes[0]],
-    queryFn: () => api.getTorrentFiles(instanceId, contextHashes[0]!, { refresh: true }),
-    enabled: shouldLoadRenameEntries,
-    staleTime: 0,
-    gcTime: 5 * 60 * 1000,
-  })
-
-  const renameFileEntries = useMemo(() => {
-    if (!Array.isArray(renameFileData)) return [] as { name: string }[]
-    return renameFileData
-      .filter((file) => typeof file?.name === "string")
-      .map((file) => ({ name: file.name }))
-  }, [renameFileData])
-
-  const renameFolderEntries = useMemo(() => {
-    if (renameFileEntries.length === 0) return [] as { name: string }[]
-    const folderSet = new Set<string>()
-    for (const file of renameFileEntries) {
-      const parts = file.name.split("/")
-      if (parts.length <= 1) continue
-      let current = ""
-      for (let i = 0; i < parts.length - 1; i++) {
-        current = current ? `${current}/${parts[i]}` : parts[i]
-        folderSet.add(current)
-      }
-    }
-    return Array.from(folderSet)
-      .sort((a, b) => a.localeCompare(b))
-      .map(name => ({ name }))
-  }, [renameFileEntries])
 
   const navigate = useNavigate()
 
@@ -753,10 +679,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   // Use torrents directly from backend (already sorted)
   const sortedTorrents = torrents
 
-  // Atomic filter clearing callback
-  const clearFiltersAtomically = useCallback((mode: 'all' | 'columns-only' = 'all') => {
-    setFilterLifecycleState(mode === 'all' ? 'clearing-all' : 'clearing-columns-only');
-  }, []);
   const effectiveServerState = useEffectiveServerState({ instanceId, serverState })
 
   // Aggregate (all-instances) views have no single serverState; derive footer
@@ -881,16 +803,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     autoResetExpanded: false,
   })
 
-  // Fix virtualization when column filters are cleared in cross-seed mode
-  // Only run when lifecycle is idle to avoid racing with filter lifecycle handler
-  useEffect(() => {
-    if (filterLifecycleState === 'idle' && isCrossSeedFiltering && columnFilters.length === 0) {
-      // Reset loadedRows to ensure all rows are visible when filters are cleared
-      const targetRows = Math.min(100, sortedTorrents.length)
-      // Use functional update to ensure idempotent, non-racing updates
-      setLoadedRows(prev => Math.max(prev, targetRows))
-    }
-  }, [filterLifecycleState, isCrossSeedFiltering, columnFilters.length, sortedTorrents.length])
+  // Keep the leaf-column accessor current for useColumnDnd (drag reads it lazily).
+  leafColumnIdsRef.current = () => table.getAllLeafColumns().map(col => col.id)
 
   const {
     compactSortOptions,
@@ -1057,131 +971,23 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   // Virtualization setup with progressive loading
   const { rows } = table.getRowModel()
-  const parentRef = useRef<HTMLDivElement>(null)
 
-  // Load more rows as user scrolls (progressive loading + backend pagination)
-  const loadMore = useCallback((): void => {
-    // First, try to load more from virtual scrolling if we have more local data
-    if (loadedRows < sortedTorrents.length) {
-      // Prevent concurrent loads
-      if (isLoadingMoreRows) {
-        return
-      }
-
-      setIsLoadingMoreRows(true)
-
-      setLoadedRows(prev => {
-        const newLoadedRows = Math.min(prev + 100, sortedTorrents.length)
-        return newLoadedRows
-      })
-
-      // Reset loading flag after a short delay
-      setTimeout(() => setIsLoadingMoreRows(false), 100)
-    } else if (!hasLoadedAll && !isLoadingMore && backendLoadMore) {
-      // If we've displayed all local data but there's more on backend, load next page
-      backendLoadMore()
-    }
-  }, [sortedTorrents.length, isLoadingMoreRows, loadedRows, hasLoadedAll, isLoadingMore, backendLoadMore])
-
-  // Ensure loadedRows never exceeds actual data length
-  const safeLoadedRows = Math.min(loadedRows, rows.length)
-
-  // Also keep loadedRows in sync with actual data to prevent status display issues
-  useEffect(() => {
-    if (filterLifecycleState === 'idle' && loadedRows > rows.length && rows.length > 0) {
-      setLoadedRows(rows.length)
-    }
-  }, [loadedRows, rows.length, filterLifecycleState])
-
-  // Compute estimated row height based on view mode - used by virtualizer and keyboard navigation
-  const estimatedRowHeight = useMemo(() => {
-    switch (desktopViewMode) {
-      case "compact": return 80
-      case "dense": return 26
-      default: return 40
-    }
-  }, [desktopViewMode])
-
-  // useVirtualizer must be called at the top level, not inside useMemo
-  const virtualizer = useVirtualizer({
-    count: safeLoadedRows,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => estimatedRowHeight,
-    // Optimized overscan based on TanStack Virtual recommendations
-    // Start small and adjust based on dataset size and performance
-    overscan: sortedTorrents.length > 50000 ? 3 : sortedTorrents.length > 10000 ? 5 : sortedTorrents.length > 1000 ? 10 : 15,
-    // Provide a key to help with item tracking - use hash with index for uniqueness
-    getItemKey: useCallback((index: number) => {
-      const row = rows[index]
-      if (!row) return `loading-${index}`
-      return row.id
-    }, [rows]),
-    // Optimized onChange handler following TanStack Virtual best practices
-    onChange: (instance, sync) => {
-      const vRows = instance.getVirtualItems();
-      const lastItem = vRows.at(-1);
-
-      // Only trigger loadMore when scrolling has paused (sync === false) or we're not actively scrolling
-      // This prevents excessive loadMore calls during rapid scrolling
-      const shouldCheckLoadMore = !sync || !instance.isScrolling
-
-      if (shouldCheckLoadMore && lastItem && lastItem.index >= safeLoadedRows - 50) {
-        // Load more if we're near the end of virtual rows OR if we might need more data from backend
-        if (safeLoadedRows < rows.length || (!hasLoadedAll && !isLoadingMore)) {
-          loadMore();
-        }
-      }
-    },
+  const {
+    parentRef,
+    virtualizer,
+    virtualRows,
+    safeLoadedRows,
+    loadedRows,
+    setLoadedRows,
+    setIsLoadingMoreRows,
+  } = useTorrentTableVirtualization({
+    rows,
+    desktopViewMode,
+    sortedTorrentsLength: sortedTorrents.length,
+    hasLoadedAll,
+    isLoadingMore,
+    backendLoadMore,
   })
-
-  // Filter lifecycle state machine
-  useLayoutEffect(() => {
-    if (filterLifecycleState === 'clearing-all' || filterLifecycleState === 'clearing-columns-only') {
-
-      // Perform clearing operations atomically
-      setColumnFilters([]);
-      setSorting([]);
-      virtualizer.scrollToOffset(0);
-      virtualizer.measure();
-
-      // Reset loadedRows to a reasonable initial value
-      const newLoadedRows = Math.min(100, sortedTorrents.length);
-      setLoadedRows(newLoadedRows);
-
-      // Only clear parent filters if clearing all (not just columns)
-      if (filterLifecycleState === 'clearing-all') {
-        const emptyFilters: TorrentFilters = {
-          status: [],
-          excludeStatus: [],
-          categories: [],
-          excludeCategories: [],
-          tags: [],
-          excludeTags: [],
-          trackers: [],
-          excludeTrackers: []
-        };
-        onFilterChange?.(emptyFilters);
-      }
-
-      // Transition to cleared state
-      setFilterLifecycleState('cleared');
-    } else if (filterLifecycleState === 'cleared') {
-      // Reset to idle state after clearing is complete
-      setFilterLifecycleState('idle');
-    }
-  }, [filterLifecycleState, virtualizer, onFilterChange, setLoadedRows, sortedTorrents.length]);
-
-  // Force virtualizer to recalculate when count changes
-  useEffect(() => {
-    virtualizer.measure()
-  }, [safeLoadedRows, virtualizer])
-
-  // Recalculate virtualized row sizes when view mode changes
-  useEffect(() => {
-    virtualizer.measure()
-  }, [desktopViewMode, virtualizer])
-
-  const virtualRows = virtualizer.getVirtualItems()
 
   // Memoize minTableWidth to avoid recalculation on every row render
   const minTableWidth = useMemo(() => {
@@ -1191,30 +997,18 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [table, columnVisibility])
 
-  // Reset loaded rows when data changes significantly
-  useEffect(() => {
-    // Always ensure loadedRows is at least 100 (or total length if less)
-    const targetRows = Math.min(100, sortedTorrents.length)
-
-    setLoadedRows(prev => {
-      if (sortedTorrents.length === 0) {
-        // No data, reset to 0
-        return 0
-      } else if (prev === 0) {
-        // Initial load
-        return targetRows
-      } else if (prev < targetRows) {
-        // Not enough rows loaded, load at least 100
-        return targetRows
-      }
-      // Don't reset loadedRows backward due to temporary server data fluctuations
-      // Progressive loading should be independent of server data variations
-      return prev
-    })
-
-    // Force virtualizer to recalculate
-    virtualizer.measure()
-  }, [sortedTorrents.length, virtualizer])
+  const { clearFiltersAtomically } = useFilterLifecycle({
+    virtualizer,
+    sortedTorrentsLength: sortedTorrents.length,
+    onFilterChange,
+    setColumnFilters,
+    setSorting,
+    setLoadedRows,
+    isCrossSeedFiltering,
+    columnFiltersLength: columnFilters.length,
+    visibleRowCount: rows.length,
+    loadedRows,
+  })
 
   // Reset when filters or search changes
   useEffect(() => {
@@ -1243,18 +1037,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         virtualizer.measure()
       }, 0)
     }
+    // setLoadedRows / setIsLoadingMoreRows are stable setters from the virtualization
+    // hook; intentionally omitted to preserve the original effect's re-run timing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, effectiveSearch, instanceId, virtualizer, sortedTorrents.length, lastUserAction, resetSelectionState])
-
-  // Set up keyboard navigation (PageUp/Down, Home/End)
-  useKeyboardNavigation({
-    parentRef,
-    virtualizer,
-    safeLoadedRows,
-    hasLoadedAll,
-    isLoadingMore,
-    loadMore,
-    estimatedRowHeight,
-  })
 
   const { isMac, selectAllWithShortcut } = useTorrentTableHotkeys({
     sortedTorrents,
@@ -1325,22 +1111,6 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     setDropPayload,
     onAddTorrentModalChange,
   })
-
-  // Drag and drop setup
-  // Sensors must be called at the top level, not inside useMemo
-  const sensors = useSensors(
-    useSensor(MouseSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 250,
-        tolerance: 5,
-      },
-    })
-  )
 
   return (
     <>
@@ -1571,80 +1341,15 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
             <div style={{ position: "relative", minWidth: "min-content" }}>
               {/* Header - show in normal and dense table views */}
-              {desktopViewMode !== "compact" && (
-                <div className="sticky top-0 bg-background border-b" style={{ zIndex: 50 }}>
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={(event) => {
-                      const { active, over } = event
-                      if (!active || !over || active.id === over.id) {
-                        return
-                      }
-
-                      setColumnOrder((currentOrder: string[]) => {
-                        const allColumnIds = table.getAllLeafColumns().map((col) => col.id)
-
-                        // Normalize current order to include all current columns exactly once
-                        const sanitizedOrder = [
-                          ...currentOrder.filter((id) => allColumnIds.includes(id)),
-                          ...allColumnIds.filter((id) => !currentOrder.includes(id)),
-                        ]
-
-                        const oldIndex = sanitizedOrder.indexOf(active.id as string)
-                        const newIndex = sanitizedOrder.indexOf(over.id as string)
-
-                        if (oldIndex === -1 || newIndex === -1) {
-                          return sanitizedOrder
-                        }
-
-                        return arrayMove(sanitizedOrder, oldIndex, newIndex)
-                      })
-                    }}
-                    modifiers={[restrictToHorizontalAxis]}
-                  >
-                    {table.getHeaderGroups().map(headerGroup => {
-                      const headers = headerGroup.headers
-                      const headerIds = headers.map(h => h.column.id)
-
-                      // Use memoized minTableWidth
-
-                      return (
-                        <SortableContext
-                          key={headerGroup.id}
-                          items={headerIds}
-                          strategy={horizontalListSortingStrategy}
-                        >
-                          <div className="flex" style={{ minWidth: `${minTableWidth}px` }}>
-                            {headers.map(header => (
-                              <DraggableTableHeader
-                                key={header.id}
-                                header={header}
-                                columnFilters={columnFilters}
-                                viewMode={desktopViewMode}
-                                onFilterChange={(columnId, filter) => {
-                                  if (filter === null) {
-                                    setColumnFilters(columnFilters.filter(f => f.columnId !== columnId))
-                                  } else {
-                                    const existing = columnFilters.findIndex(f => f.columnId === columnId)
-                                    if (existing >= 0) {
-                                      const newFilters = [...columnFilters]
-                                      newFilters[existing] = filter
-                                      setColumnFilters(newFilters)
-                                    } else {
-                                      setColumnFilters([...columnFilters, filter])
-                                    }
-                                  }
-                                }}
-                              />
-                            ))}
-                          </div>
-                        </SortableContext>
-                      )
-                    })}
-                  </DndContext>
-                </div>
-              )}
+              <TableColumnHeader
+                table={table}
+                sensors={sensors}
+                onDragEnd={onDragEnd}
+                columnFilters={columnFilters}
+                setColumnFilters={setColumnFilters}
+                minTableWidth={minTableWidth}
+                viewMode={desktopViewMode}
+              />
 
               {/* Body */}
               <div
@@ -2255,203 +1960,83 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           </div>
         </div>
 
-        <DeleteTorrentDialog
-          open={showDeleteDialog}
-          onOpenChange={(open) => {
-            if (!open) {
-              closeDeleteDialog()
-              crossSeedWarning.reset()
-            }
-          }}
-          count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          totalSize={deleteDialogTotalSize}
-          formattedSize={deleteDialogFormattedSize}
-          deleteFiles={deleteFiles}
-          onDeleteFilesChange={setDeleteFiles}
-          isDeleteFilesLocked={isDeleteFilesLocked}
-          onToggleDeleteFilesLock={toggleDeleteFilesLock}
-          showBlockCrossSeeds={hasCrossSeedTag}
-          blockCrossSeeds={blockCrossSeeds}
-          onBlockCrossSeedsChange={setBlockCrossSeeds}
-          deleteCrossSeeds={deleteCrossSeeds}
-          onDeleteCrossSeedsChange={setDeleteCrossSeeds}
-          crossSeedWarning={crossSeedWarning}
-          onConfirm={handleDeleteWrapper}
-        />
-
-        <SetCommentDialog
-          open={showCommentDialog}
-          onOpenChange={setShowCommentDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          instanceId={
-            contextTorrents.length === 1
-              ? ((contextTorrents[0] as CrossInstanceTorrent).instanceId ?? instanceId)
-              : instanceId
-          }
-          torrentHash={contextHashes.length === 1 ? contextHashes[0] : undefined}
-          onConfirm={handleSetCommentWrapper}
-          isPending={isPending}
-        />
-
-        <TagEditorDialog
-          open={showTagsDialog}
-          onOpenChange={setShowTagsDialog}
-          availableTags={availableTags || []}
-          selectedTorrents={contextTorrents}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          selectionRequest={{
-            instanceId,
-            instanceIds: isCrossInstanceEndpoint ? instanceIds : undefined,
-            hashes: !isAllSelected ? contextHashes : undefined,
-            targets: !isAllSelected && (contextClientMeta.actionTargets?.length ?? 0) === contextHashes.length ? contextClientMeta.actionTargets : undefined,
-            selectAll: isAllSelected,
-            filters: isAllSelected ? normalizedSelectionFilters : undefined,
-            search: isAllSelected ? effectiveSearch : undefined,
-            excludeHashes: isAllSelected ? selectAllExcludeHashes : undefined,
-            excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
-          }}
-          onConfirm={handleTagsWrapper}
-          isPending={isPending}
-          isLoadingTags={isLoadingTags}
-        />
-
-        {/* Set Category Dialog */}
-        <SetCategoryDialog
-          open={showCategoryDialog}
-          onOpenChange={setShowCategoryDialog}
-          availableCategories={availableCategories || {}}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={handleSetCategoryWrapper}
-          isPending={isPending}
-          initialCategory={getCommonCategory(contextTorrents)}
-          isLoadingCategories={isLoadingCategories}
-          useSubcategories={allowSubcategories}
-        />
-
-        {/* Create and Assign Category Dialog */}
-        <CreateAndAssignCategoryDialog
-          open={showCreateCategoryDialog}
-          onOpenChange={setShowCreateCategoryDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={handleSetCategoryWrapper}
-          isPending={isPending}
-        />
-
-        <ShareLimitDialog
-          open={showShareLimitDialog}
-          onOpenChange={setShowShareLimitDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          torrents={contextTorrents}
-          onConfirm={handleSetShareLimitWrapper}
-          isPending={isPending}
-          supportsShareLimitsAction={capabilities?.supportsShareLimitsAction}
-          supportsShareLimitsMode={capabilities?.supportsShareLimitsMode}
-        />
-
-        <SpeedLimitsDialog
-          open={showSpeedLimitDialog}
-          onOpenChange={setShowSpeedLimitDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          torrents={contextTorrents}
-          onConfirm={handleSetSpeedLimitsWrapper}
-          isPending={isPending}
-        />
-
-        {/* Set Location Dialog */}
-        <SetLocationDialog
-          open={showLocationDialog}
-          onOpenChange={setShowLocationDialog}
-          hashCount={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={handleSetLocationWrapper}
-          isPending={isPending}
-          initialLocation={getCommonSavePath(contextTorrents)}
+        <TorrentTableDialogs
           instanceId={instanceId}
+          instanceIds={instanceIds}
+          contextHashes={contextHashes}
+          contextTorrents={contextTorrents}
+          isPending={isPending}
+          showDeleteDialog={showDeleteDialog}
+          closeDeleteDialog={closeDeleteDialog}
+          showCommentDialog={showCommentDialog}
+          setShowCommentDialog={setShowCommentDialog}
+          showTagsDialog={showTagsDialog}
+          setShowTagsDialog={setShowTagsDialog}
+          showCategoryDialog={showCategoryDialog}
+          setShowCategoryDialog={setShowCategoryDialog}
+          showCreateCategoryDialog={showCreateCategoryDialog}
+          setShowCreateCategoryDialog={setShowCreateCategoryDialog}
+          showShareLimitDialog={showShareLimitDialog}
+          setShowShareLimitDialog={setShowShareLimitDialog}
+          showSpeedLimitDialog={showSpeedLimitDialog}
+          setShowSpeedLimitDialog={setShowSpeedLimitDialog}
+          showLocationDialog={showLocationDialog}
+          setShowLocationDialog={setShowLocationDialog}
+          showRenameTorrentDialog={showRenameTorrentDialog}
+          setShowRenameTorrentDialog={setShowRenameTorrentDialog}
+          showRenameFileDialog={showRenameFileDialog}
+          setShowRenameFileDialog={setShowRenameFileDialog}
+          showRenameFolderDialog={showRenameFolderDialog}
+          setShowRenameFolderDialog={setShowRenameFolderDialog}
+          showRecheckDialog={showRecheckDialog}
+          setShowRecheckDialog={setShowRecheckDialog}
+          showReannounceDialog={showReannounceDialog}
+          setShowReannounceDialog={setShowReannounceDialog}
+          showTmmDialog={showTmmDialog}
+          setShowTmmDialog={setShowTmmDialog}
+          pendingTmmEnable={pendingTmmEnable}
+          showLocationWarningDialog={showLocationWarningDialog}
+          setShowLocationWarningDialog={setShowLocationWarningDialog}
+          deleteFiles={deleteFiles}
+          setDeleteFiles={setDeleteFiles}
+          isDeleteFilesLocked={isDeleteFilesLocked}
+          toggleDeleteFilesLock={toggleDeleteFilesLock}
+          blockCrossSeeds={blockCrossSeeds}
+          setBlockCrossSeeds={setBlockCrossSeeds}
+          deleteCrossSeeds={deleteCrossSeeds}
+          setDeleteCrossSeeds={setDeleteCrossSeeds}
+          handleDeleteWrapper={handleDeleteWrapper}
+          handleSetCommentWrapper={handleSetCommentWrapper}
+          handleTagsWrapper={handleTagsWrapper}
+          handleSetCategoryWrapper={handleSetCategoryWrapper}
+          handleSetShareLimitWrapper={handleSetShareLimitWrapper}
+          handleSetSpeedLimitsWrapper={handleSetSpeedLimitsWrapper}
+          handleSetLocationWrapper={handleSetLocationWrapper}
+          handleRenameTorrentWrapper={handleRenameTorrentWrapper}
+          handleRenameFileWrapper={handleRenameFileWrapper}
+          handleRenameFolderWrapper={handleRenameFolderWrapper}
+          handleRecheckWrapper={handleRecheckWrapper}
+          handleReannounceWrapper={handleReannounceWrapper}
+          handleTmmConfirmWrapper={handleTmmConfirmWrapper}
+          proceedToLocationDialog={proceedToLocationDialog}
+          normalizedSelectionFilters={normalizedSelectionFilters}
+          contextClientMeta={contextClientMeta}
+          isAllSelected={isAllSelected}
+          effectiveSelectionCount={effectiveSelectionCount}
+          deleteDialogTotalSize={deleteDialogTotalSize}
+          deleteDialogFormattedSize={deleteDialogFormattedSize}
+          selectAllExcludeHashes={selectAllExcludeHashes}
+          selectAllExcludedTargets={selectAllExcludedTargets}
+          crossSeedWarning={crossSeedWarning}
+          hasCrossSeedTag={hasCrossSeedTag}
+          availableTags={availableTags}
+          availableCategories={availableCategories}
+          isLoadingTags={isLoadingTags}
+          isLoadingCategories={isLoadingCategories}
+          allowSubcategories={allowSubcategories}
           capabilities={capabilities}
-        />
-
-        {/* Rename dialogs */}
-        <RenameTorrentDialog
-          open={showRenameTorrentDialog}
-          onOpenChange={setShowRenameTorrentDialog}
-          currentName={contextTorrents[0]?.name}
-          onConfirm={handleRenameTorrentWrapper}
-          isPending={isPending}
-        />
-        <RenameTorrentFileDialog
-          open={showRenameFileDialog}
-          onOpenChange={setShowRenameFileDialog}
-          files={renameFileEntries}
-          isLoading={renameEntriesLoading}
-          onConfirm={handleRenameFileWrapper}
-          isPending={isPending}
-        />
-        <RenameTorrentFolderDialog
-          open={showRenameFolderDialog}
-          onOpenChange={setShowRenameFolderDialog}
-          folders={renameFolderEntries}
-          isLoading={renameEntriesLoading}
-          onConfirm={handleRenameFolderWrapper}
-          isPending={isPending}
-        />
-
-
-        {/* Force Recheck Confirmation Dialog */}
-        <Dialog open={showRecheckDialog} onOpenChange={setShowRecheckDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("recheckDialog.title", { count: isAllSelected ? effectiveSelectionCount : contextHashes.length })}</DialogTitle>
-              <DialogDescription>
-                {t("recheckDialog.description")}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowRecheckDialog(false)}>
-                {t("recheckDialog.cancel")}
-              </Button>
-              <Button onClick={handleRecheckWrapper} disabled={isPending}>
-                {t("recheckDialog.confirm")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Reannounce Confirmation Dialog */}
-        <Dialog open={showReannounceDialog} onOpenChange={setShowReannounceDialog}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("reannounceDialog.title", { count: isAllSelected ? effectiveSelectionCount : contextHashes.length })}</DialogTitle>
-              <DialogDescription>
-                {t("reannounceDialog.description")}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowReannounceDialog(false)}>
-                {t("reannounceDialog.cancel")}
-              </Button>
-              <Button onClick={handleReannounceWrapper} disabled={isPending}>
-                {t("reannounceDialog.confirm")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* TMM Confirmation Dialog */}
-        <TmmConfirmDialog
-          open={showTmmDialog}
-          onOpenChange={setShowTmmDialog}
-          count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          enable={pendingTmmEnable}
-          onConfirm={handleTmmConfirmWrapper}
-          isPending={isPending}
-        />
-
-        {/* Location Warning Dialog */}
-        <LocationWarningDialog
-          open={showLocationWarningDialog}
-          onOpenChange={setShowLocationWarningDialog}
-          count={isAllSelected ? effectiveSelectionCount : contextHashes.length}
-          onConfirm={proceedToLocationDialog}
-          isPending={isPending}
+          isCrossInstanceEndpoint={isCrossInstanceEndpoint}
+          effectiveSearch={effectiveSearch}
         />
 
         {/* Instance Preferences Dialog */}

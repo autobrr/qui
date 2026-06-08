@@ -8,7 +8,7 @@
 - For a coverage report: `cd web && pnpm test:coverage`.
 - CI runs both `make test` and `make test-frontend` on every PR.
 
-See [`AGENTS.md`](AGENTS.md) / [`CLAUDE.md`](CLAUDE.md) for deeper conventions (test placement, table-driven cases, etc.).
+See [`AGENTS.md`](AGENTS.md) and [`web/AGENTS.md`](web/AGENTS.md) for agent-specific conventions.
 
 ## Database Migrations
 
