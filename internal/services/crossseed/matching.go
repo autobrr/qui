@@ -402,6 +402,12 @@ func (s *Service) validateGroupSiteAndChecksum(source, candidate *rls.Release) (
 	return true, ""
 }
 
+// sourceMismatchReason is the rejection reason emitted when two releases differ
+// only by an incompatible source (e.g. WEBRip vs WEB-DL). Callers key off this
+// exact value to apply cross-tracker relabel tolerance, so it is a named constant
+// rather than an inline literal.
+const sourceMismatchReason = "source mismatch"
+
 func (s *Service) validateFormatAndCodec(source, candidate *rls.Release, isTV bool) (bool, string) {
 	normalizer := normalizerForService(s)
 
@@ -412,7 +418,7 @@ func (s *Service) validateFormatAndCodec(source, candidate *rls.Release, isTV bo
 	sourceSource := normalizeSource(source.Source)
 	candidateSource := normalizeSource(candidate.Source)
 	if !sourcesCompatible(sourceSource, candidateSource) {
-		return false, "source mismatch"
+		return false, sourceMismatchReason
 	}
 
 	// Resolution must match (1080p vs 2160p are different files).
@@ -735,6 +741,52 @@ func sourcesCompatible(source, candidate string) bool {
 	// At this point both are web sources, but they differ.
 	// WEBDL and WEBRIP are explicitly different and do not match each other.
 	return source == "WEB" || candidate == "WEB"
+}
+
+// isWebSourceRelabel reports whether candidate is the same release as source with
+// only its web-source label changed (e.g. WEBRip vs WEB-DL). The identical web
+// encode is frequently relabeled across trackers, so when nothing but the web
+// source differs we let the candidate reach the apply-stage file verification and
+// qBittorrent recheck instead of dropping it on the label alone. Callers must
+// still confirm the candidate size is within tolerance before trusting this.
+func (s *Service) isWebSourceRelabel(source, candidate *rls.Release, sourceName, candidateName string, sourceTitles, candidateTitles []string, findIndividualEpisodes bool) bool {
+	if source == nil || candidate == nil {
+		return false
+	}
+	if !isWebSource(normalizeSource(source.Source)) || !isWebSource(normalizeSource(candidate.Source)) {
+		return false
+	}
+
+	// Equalize the web-source label and re-run the full match. If it now matches,
+	// the source label was the only difference between the two releases.
+	probe := *candidate
+	probe.Source = source.Source
+	match, _ := s.releasesMatchWithReasonAndNamesAndTitles(source, &probe, sourceName, candidateName, sourceTitles, candidateTitles, findIndividualEpisodes)
+	return match
+}
+
+// shouldAcceptWebSourceRelabel reports whether a candidate that the release match
+// rejected solely on source mismatch should still be accepted as a cross-tracker
+// web-source relabel (WEBRip<->WEB-DL). ignoreSizeCheck mirrors the main size gate:
+// a single episode of a season-pack source is legitimately much smaller than its
+// pack, so the full-size tolerance is bypassed in that case and the apply-stage
+// file verification makes the final call.
+func (s *Service) shouldAcceptWebSourceRelabel(
+	source, candidate *rls.Release,
+	sourceName, candidateName string,
+	sourceTitles, candidateTitles []string,
+	findIndividualEpisodes, ignoreSizeCheck bool,
+	sourceSize, candidateSize int64,
+	tolerancePercent float64,
+	mismatchReason string,
+) bool {
+	if mismatchReason != sourceMismatchReason {
+		return false
+	}
+	if !ignoreSizeCheck && !s.isSizeWithinTolerance(sourceSize, candidateSize, tolerancePercent) {
+		return false
+	}
+	return s.isWebSourceRelabel(source, candidate, sourceName, candidateName, sourceTitles, candidateTitles, findIndividualEpisodes)
 }
 
 // joinNormalizedCodecSlice converts a codec slice to a normalized string for comparison.

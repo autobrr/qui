@@ -6928,6 +6928,120 @@ func (s *Service) resolveTorznabIndexerIDs(ctx context.Context, requested []int,
 	return ids, nil
 }
 
+// alternateConnectorQuery returns a variant of query with the title connector
+// swapped between "and" and "&", so trackers that index a show with the opposite
+// spelling are still reachable (e.g. "Law and Order" vs "Law & Order"). Returns
+// ("", false) when no swap applies.
+//
+// Only standalone, whitespace-delimited connector tokens are swapped, so
+// intra-token ampersands like "AT&T" or "R&B" and embedded words like "Andor"
+// are left intact. The spelled-out connector is matched case-insensitively
+// because the query is built from the rls-parsed title, which preserves the
+// source release's original casing ("and", "And", "AND" are all common).
+func alternateConnectorQuery(query string) (string, bool) {
+	tokens := strings.Split(query, " ")
+
+	// Prefer swapping a spelled-out connector to "&": match any casing.
+	swapped := false
+	for i, tok := range tokens {
+		if strings.EqualFold(tok, "and") {
+			tokens[i] = "&"
+			swapped = true
+		}
+	}
+	if swapped {
+		return strings.Join(tokens, " "), true
+	}
+
+	// Otherwise swap a standalone "&" connector to "and".
+	for i, tok := range tokens {
+		if tok == "&" {
+			tokens[i] = "and"
+			swapped = true
+		}
+	}
+	if swapped {
+		return strings.Join(tokens, " "), true
+	}
+
+	return "", false
+}
+
+// effectiveSearchYear returns the year actually used by the latest search pass: 0
+// once the yearless retry has run, otherwise the originally requested year. The
+// alternate connector pass uses this so it does not re-apply a year the primary
+// search already proved ineffective.
+func effectiveSearchYear(requestedYear int, yearlessRetryRan bool) int {
+	if yearlessRetryRan {
+		return 0
+	}
+	return requestedYear
+}
+
+// mergeAltConnectorResults appends the alternate connector pass's results to the
+// primary results and returns the combined partial flag, so an incomplete
+// alternate pass is never reported as a complete search. Callers invoke it only
+// when alt carries results.
+func mergeAltConnectorResults(primaryPartial bool, primaryResults []jackett.SearchResult, alt *jackett.SearchResponse) ([]jackett.SearchResult, bool) {
+	return append(primaryResults, alt.Results...), primaryPartial || alt.Partial
+}
+
+// indexersWithoutResults returns the requested indexer IDs that produced no
+// results in the primary pass, preserving request order. The alternate connector
+// pass re-queries only these so the extra round-trip stays minimal; an indexer
+// that returned at least one candidate is omitted.
+func indexersWithoutResults(requestedIDs []int, results []jackett.SearchResult) []int {
+	if len(requestedIDs) == 0 {
+		return nil
+	}
+	responded := make(map[int]struct{}, len(results))
+	for _, r := range results {
+		responded[r.IndexerID] = struct{}{}
+	}
+	var missing []int
+	for _, id := range requestedIDs {
+		if _, seen := responded[id]; !seen {
+			missing = append(missing, id)
+		}
+	}
+	return missing
+}
+
+// searchOnce runs a single Torznab search to completion and returns its response.
+// It is used for follow-up passes (e.g. the alternate connector-spelling query)
+// that need their own result set rather than the primary search's.
+func (s *Service) searchOnce(ctx context.Context, req *jackett.TorznabSearchRequest) (*jackett.SearchResponse, error) {
+	respCh := make(chan *jackett.SearchResponse, 1)
+	errCh := make(chan error, 1)
+	var once sync.Once
+	req.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
+		once.Do(func() {
+			if err != nil {
+				select {
+				case errCh <- err:
+				case <-ctx.Done():
+				}
+				return
+			}
+			select {
+			case respCh <- resp:
+			case <-ctx.Done():
+			}
+		})
+	}
+	if err := s.jackettService.Search(ctx, req); err != nil {
+		return nil, err
+	}
+	select {
+	case resp := <-respCh:
+		return resp, nil
+	case err := <-errCh:
+		return nil, err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 // SearchTorrentMatches queries Torznab indexers for candidate torrents that match an existing torrent.
 func (s *Service) SearchTorrentMatches(ctx context.Context, instanceID int, hash string, opts TorrentSearchOptions) (*TorrentSearchResponse, error) {
 	gazelleClients, gazelleErr := s.buildGazelleClientSet(ctx, nil)
@@ -7523,6 +7637,8 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	var lateFilterSnapshot *AsyncIndexerFilteringState
 	var lateExcludedCount int
 
+	yearlessRetryRan := false
+
 	// Retry without year for single-indexer searches when the first pass returned zero.
 	if len(searchResults) == 0 && searchReq.Year > 0 && len(filteredIndexerIDs) <= 1 {
 		log.Debug().
@@ -7565,6 +7681,46 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			}
 			return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(waitCtx.Err())
 		}
+		yearlessRetryRan = true
+	}
+
+	// Cross-tracker title-variant coverage: some trackers index a show with "&"
+	// (e.g. "Law & Order: SVU") while the release name spells out "and". A literal
+	// q only matches one spelling, so re-query the indexers that returned nothing
+	// for the primary spelling using the alternate connector and merge the extra
+	// candidates (the match loop dedupes by GUID/download URL). Skipped for
+	// ID-based searches, which do not rely on title text.
+	if !opts.DisableTorznab && !searchReq.OmitQueryForIDs {
+		if altQuery, ok := alternateConnectorQuery(searchReq.Query); ok {
+			altIndexerIDs := indexersWithoutResults(searchReq.IndexerIDs, searchResults)
+			if len(altIndexerIDs) > 0 {
+				altReq := *searchReq
+				altReq.Query = altQuery
+				altReq.IndexerIDs = altIndexerIDs
+				altReq.Year = effectiveSearchYear(searchReq.Year, yearlessRetryRan) // year actually searched (0 if yearless retry ran)
+				// Treat the alternate-spelling pass as an internal continuation of the
+				// primary search rather than a separate tracked job: skip its search-history
+				// recording so it does not create parallel history entries. Outcome reporting
+				// keys on indexer ID under the primary job (which already searched these
+				// indexers), so the merged candidates attribute correctly.
+				altReq.SkipHistory = true
+				if altResp, altErr := s.searchOnce(waitCtx, &altReq); altErr != nil {
+					log.Debug().
+						Err(altErr).
+						Str("altQuery", altQuery).
+						Ints("altIndexerIDs", altIndexerIDs).
+						Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass failed; continuing with primary results")
+				} else if altResp != nil && len(altResp.Results) > 0 {
+					log.Debug().
+						Str("query", searchReq.Query).
+						Str("altQuery", altQuery).
+						Int("altResults", len(altResp.Results)).
+						Ints("altIndexerIDs", altIndexerIDs).
+						Msg("[CROSSSEED-SEARCH] Alternate connector-spelling pass returned additional candidates")
+					searchResults, searchResp.Partial = mergeAltConnectorResults(searchResp.Partial, searchResults, altResp)
+				}
+			}
+		}
 	}
 
 	searchResults, lateFilterSnapshot, lateExcludedCount = s.filterSearchResultsByLateContentFilter(instanceID, sourceTorrent, searchResults)
@@ -7596,19 +7752,45 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 
 		candidateRelease := s.releaseCache.Parse(res.Title)
 		match, mismatchReason := s.releasesMatchWithReasonAndNamesAndTitles(searchRelease, candidateRelease, sourceTorrent.Name, res.Title, arrTitles, nil, opts.FindIndividualEpisodes)
+		ignoreSizeCheck := opts.FindIndividualEpisodes && isTVSeasonPack(searchRelease) && isTVEpisode(candidateRelease)
 		if !match {
-			releaseFilteredCount++
-			recordReleaseRejection(
-				releaseFilterReasons,
-				mismatchReason,
-				sourceTorrent.Name,
-				res.Title,
-				opts.FindIndividualEpisodes,
-				releaseFilterDebugInfoFrom(searchRelease),
-				releaseFilterDebugInfoFrom(candidateRelease),
-				"[CROSSSEED-SEARCH] Candidate filtered out by release match",
+			// Cross-tracker relabel tolerance: the same web encode is frequently
+			// relabeled WEBRip<->WEB-DL across trackers. When the source label is the
+			// only difference and the candidate is within size tolerance, accept it and
+			// let the apply-stage file-size verification + qBittorrent recheck make the
+			// final call, rather than dropping a byte-identical release on its label.
+			relabelMatch := s.shouldAcceptWebSourceRelabel(
+				searchRelease, candidateRelease,
+				sourceTorrent.Name, res.Title,
+				arrTitles, nil,
+				opts.FindIndividualEpisodes, ignoreSizeCheck,
+				sourceTorrent.Size, res.Size,
+				tolerancePercent, mismatchReason,
 			)
-			continue
+			if !relabelMatch {
+				releaseFilteredCount++
+				recordReleaseRejection(
+					releaseFilterReasons,
+					mismatchReason,
+					sourceTorrent.Name,
+					res.Title,
+					opts.FindIndividualEpisodes,
+					releaseFilterDebugInfoFrom(searchRelease),
+					releaseFilterDebugInfoFrom(candidateRelease),
+					"[CROSSSEED-SEARCH] Candidate filtered out by release match",
+				)
+				continue
+			}
+
+			log.Info().
+				Str("sourceTitle", sourceTorrent.Name).
+				Str("candidateTitle", res.Title).
+				Str("sourceSource", searchRelease.Source).
+				Str("candidateSource", candidateRelease.Source).
+				Int64("sourceSize", sourceTorrent.Size).
+				Int64("candidateSize", res.Size).
+				Float64("tolerancePercent", tolerancePercent).
+				Msg("[CROSSSEED-SEARCH] Accepting cross-tracker web-source relabel; apply-stage file verification will confirm")
 		}
 
 		// Reject forbidden pairing: season pack candidate (new) vs single episode source (existing).
@@ -7627,8 +7809,6 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			)
 			continue
 		}
-
-		ignoreSizeCheck := opts.FindIndividualEpisodes && isTVSeasonPack(searchRelease) && isTVEpisode(candidateRelease)
 
 		// Size validation: check if candidate size is within tolerance of source size
 		if !ignoreSizeCheck && !s.isSizeWithinTolerance(sourceTorrent.Size, res.Size, tolerancePercent) {
