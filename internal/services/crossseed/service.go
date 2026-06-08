@@ -7007,6 +7007,40 @@ func indexersWithoutResults(requestedIDs []int, results []jackett.SearchResult) 
 	return missing
 }
 
+// searchResultUsable reports whether a primary-pass result would survive the
+// match loop's release/size filtering and become a real cross-seed candidate: a
+// direct release match (or an accepted web-source relabel) that is not a
+// forbidden season-pack pairing and is within size tolerance. It mirrors the
+// match loop's acceptance so both judge a hit's usability by the same rule.
+func (s *Service) searchResultUsable(searchRelease, candidateRelease *rls.Release, sourceName string, sourceSize int64, candidateTitle string, candidateSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes bool) bool {
+	ignoreSizeCheck := findIndividualEpisodes && isTVSeasonPack(searchRelease) && isTVEpisode(candidateRelease)
+	match, mismatchReason := s.releasesMatchWithReasonAndNamesAndTitles(searchRelease, candidateRelease, sourceName, candidateTitle, arrTitles, nil, findIndividualEpisodes)
+	if !match && !s.shouldAcceptWebSourceRelabel(searchRelease, candidateRelease, sourceName, candidateTitle, arrTitles, nil, findIndividualEpisodes, ignoreSizeCheck, sourceSize, candidateSize, tolerancePercent, mismatchReason) {
+		return false
+	}
+	if reject, _ := rejectSeasonPackFromEpisode(candidateRelease, searchRelease, findIndividualEpisodes); reject {
+		return false
+	}
+	return ignoreSizeCheck || s.isSizeWithinTolerance(sourceSize, candidateSize, tolerancePercent)
+}
+
+// indexersWithoutUsableResults returns the requested indexer IDs whose primary
+// pass produced no USABLE candidate. Unlike indexersWithoutResults (which counts
+// any raw hit), an indexer whose primary-spelling hits were all rejected by
+// release/size filtering is still re-queried with the alternate connector
+// spelling, so a connector-variant candidate it carries under the opposite
+// spelling can surface instead of being permanently suppressed.
+func (s *Service) indexersWithoutUsableResults(requestedIDs []int, results []jackett.SearchResult, searchRelease *rls.Release, sourceName string, sourceSize int64, arrTitles []string, tolerancePercent float64, findIndividualEpisodes bool) []int {
+	usable := make([]jackett.SearchResult, 0, len(results))
+	for _, r := range results {
+		candidate := s.parseReleaseName(r.Title)
+		if s.searchResultUsable(searchRelease, candidate, sourceName, sourceSize, r.Title, r.Size, arrTitles, tolerancePercent, findIndividualEpisodes) {
+			usable = append(usable, r)
+		}
+	}
+	return indexersWithoutResults(requestedIDs, usable)
+}
+
 // searchOnce runs a single Torznab search to completion and returns its response.
 // It is used for follow-up passes (e.g. the alternate connector-spelling query)
 // that need their own result set rather than the primary search's.
@@ -7692,7 +7726,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	// ID-based searches, which do not rely on title text.
 	if !opts.DisableTorznab && !searchReq.OmitQueryForIDs {
 		if altQuery, ok := alternateConnectorQuery(searchReq.Query); ok {
-			altIndexerIDs := indexersWithoutResults(searchReq.IndexerIDs, searchResults)
+			altIndexerIDs := s.indexersWithoutUsableResults(searchReq.IndexerIDs, searchResults, searchRelease, sourceTorrent.Name, sourceTorrent.Size, arrTitles, tolerancePercent, opts.FindIndividualEpisodes)
 			if len(altIndexerIDs) > 0 {
 				altReq := *searchReq
 				altReq.Query = altQuery
