@@ -41,6 +41,7 @@ func TestValidateRlsYearConditions(t *testing.T) {
 		{name: "zero rejected", conditions: yearConditions(models.OperatorEqual, "0", nil, nil), wantErr: true},
 		{name: "non-numeric rejected", conditions: yearConditions(models.OperatorEqual, "abc", nil, nil), wantErr: true},
 		{name: "valid between", conditions: yearConditions(models.OperatorBetween, "", new(float64(2000)), new(float64(2020))), wantErr: false},
+		{name: "between fractional bound rejected", conditions: yearConditions(models.OperatorBetween, "", new(2000.5), new(float64(2020))), wantErr: true},
 		{name: "between missing max", conditions: yearConditions(models.OperatorBetween, "", new(float64(2000)), nil), wantErr: true},
 		{name: "between min greater than max", conditions: yearConditions(models.OperatorBetween, "", new(float64(2020)), new(float64(2000))), wantErr: true},
 		{name: "between out of range", conditions: yearConditions(models.OperatorBetween, "", new(float64(1800)), new(float64(2020))), wantErr: true},

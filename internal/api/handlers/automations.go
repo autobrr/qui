@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"runtime"
 	"strconv"
@@ -734,6 +735,9 @@ func validateRlsYearLeaf(cond *models.RuleCondition, maxYear int) (string, error
 	if cond.Operator == models.OperatorBetween {
 		if cond.MinValue == nil || cond.MaxValue == nil {
 			return "Release Year range requires both a minimum and maximum year", errors.New("release year range missing bound")
+		}
+		if *cond.MinValue != math.Trunc(*cond.MinValue) || *cond.MaxValue != math.Trunc(*cond.MaxValue) {
+			return "Release Year range requires whole-number years", errors.New("release year range must be whole numbers")
 		}
 		if *cond.MinValue > *cond.MaxValue {
 			return "Release Year minimum cannot be greater than maximum", errors.New("release year min greater than max")
