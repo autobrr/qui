@@ -349,6 +349,7 @@ export interface CrossSeedSearchStatus {
   currentTorrent?: CrossSeedSearchCandidate
   recentResults: CrossSeedSearchResult[]
   nextRunAt?: string
+  effectiveIntervalSeconds?: number
 }
 
 export interface SeasonPackRun {

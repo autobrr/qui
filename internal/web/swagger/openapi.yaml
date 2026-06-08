@@ -7047,6 +7047,8 @@ components:
           type: string
           format: date-time
           nullable: true
+        effectiveIntervalSeconds:
+          type: integer
 
     CrossSeedRunRequest:
       type: object
