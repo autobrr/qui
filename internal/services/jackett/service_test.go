@@ -1781,6 +1781,41 @@ func TestSearchRespectsRequestedIndexerIDs(t *testing.T) {
 	}
 }
 
+func TestGetConfiguredTrackerDomains(t *testing.T) {
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "Native A", Backend: models.TorznabBackendNative, BaseURL: "https://aither.cc/torznab", Enabled: true},
+			{ID: 2, Name: "Native A dup host", Backend: models.TorznabBackendNative, BaseURL: "https://aither.cc/api/torznab", Enabled: true},
+			{ID: 3, Name: "Native B", Backend: models.TorznabBackendNative, BaseURL: "https://blutopia.cc/torznab", Enabled: true},
+			// Jackett base_url is the Jackett server, not the tracker — must be skipped.
+			{ID: 4, Name: "Jackett", Backend: models.TorznabBackendJackett, BaseURL: "http://jackett:9117/api/v2.0/indexers/aither/results/torznab", Enabled: true},
+			// Disabled indexers are filtered out by ListEnabled.
+			{ID: 5, Name: "Disabled native", Backend: models.TorznabBackendNative, BaseURL: "https://disabled.cc/torznab", Enabled: false},
+			// A native indexer without a base URL yields no domain.
+			{ID: 6, Name: "Native no url", Backend: models.TorznabBackendNative, BaseURL: "", Enabled: true},
+			// Prowlarr with a non-numeric IndexerID hits getProwlarrTrackerDomains'
+			// server-host fallback (no API call). The Prowlarr server host must NOT
+			// leak into the result.
+			{ID: 7, Name: "Prowlarr bad id", Backend: models.TorznabBackendProwlarr, BaseURL: "http://prowlarr:9696", IndexerID: "not-a-number", Enabled: true},
+		},
+	}
+	s := NewService(store)
+
+	domains, err := s.GetConfiguredTrackerDomains(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"aither.cc", "blutopia.cc"}
+	if !slices.Equal(domains, want) {
+		t.Fatalf("GetConfiguredTrackerDomains() = %v, want %v", domains, want)
+	}
+	// Guard against the Prowlarr server host leaking via the fallback.
+	if slices.Contains(domains, "prowlarr") {
+		t.Fatalf("GetConfiguredTrackerDomains() leaked Prowlarr server host: %v", domains)
+	}
+}
+
 // Helper functions
 //
 // Mock store for testing

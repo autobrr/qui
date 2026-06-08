@@ -53,6 +53,7 @@ import {
 import { TrackerIconImage } from "@/components/ui/tracker-icon"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
+import { useIndexerTrackerDomains } from "@/hooks/useIndexerTrackerDomains"
 import { useInstanceTrackers } from "@/hooks/useInstanceTrackers"
 import { useInstances } from "@/hooks/useInstances"
 import { usePathAutocomplete } from "@/hooks/usePathAutocomplete"
@@ -709,6 +710,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
   }, [dryRunPromptKey, rule?.id])
 
   const trackersQuery = useInstanceTrackers(instanceId, { enabled: open })
+  const indexerTrackerDomainsQuery = useIndexerTrackerDomains({ enabled: open })
   const { data: trackerCustomizations } = useTrackerCustomizations()
   const { data: trackerIcons } = useTrackerIcons()
   const { data: metadata } = useInstanceMetadata(instanceId)
@@ -864,6 +866,12 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       addTracker(tracker)
     }
 
+    // Add trackers configured in qui's indexers, so they remain selectable even
+    // when no torrent on this instance currently uses them.
+    for (const domain of indexerTrackerDomainsQuery.data ?? []) {
+      addTracker(domain)
+    }
+
     // Add trackers from the workflow being edited (so they persist even if no torrents use them)
     if (rule && rule.trackerPattern !== "*") {
       const savedDomains = getTrackerTokens(rule).map(stripTrackerNegation).filter(Boolean)
@@ -884,7 +892,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
       value: option.value,
       icon: option.icon,
     }))
-  }, [trackersQuery.data, trackerCustomizationMaps, trackerIcons, rule, t])
+  }, [trackersQuery.data, indexerTrackerDomainsQuery.data, trackerCustomizationMaps, trackerIcons, rule, t])
 
   // Map individual domains to merged option values
   const mapDomainsToOptionValues = useMemo(() => {
@@ -2271,7 +2279,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       trackerDomains: [...prev.trackerDomains, value],
                       trackerMatchMode: prev.trackerMatchMode === "mixed" ? "include" : prev.trackerMatchMode,
                     }))}
-                    disabled={trackersQuery.isLoading}
+                    disabled={trackersQuery.isLoading || indexerTrackerDomainsQuery.isLoading}
                     hideCheckIcon
                   />
                 </div>
