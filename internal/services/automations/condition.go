@@ -45,6 +45,7 @@ const (
 	FieldRlsAudio      = models.FieldRlsAudio
 	FieldRlsChannels   = models.FieldRlsChannels
 	FieldRlsGroup      = models.FieldRlsGroup
+	FieldRlsYear       = models.FieldRlsYear
 	FieldState         = models.FieldState
 	FieldTracker       = models.FieldTracker
 	FieldComment       = models.FieldComment

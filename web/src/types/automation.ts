@@ -27,6 +27,7 @@ export type ConditionField =
   | "RLS_AUDIO"
   | "RLS_CHANNELS"
   | "RLS_GROUP"
+  | "RLS_YEAR"
   | "STATE"
   | "TRACKER"
   | "COMMENT"

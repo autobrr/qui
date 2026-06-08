@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
@@ -440,6 +441,10 @@ func (h *AutomationHandler) validatePayload(ctx context.Context, instanceID int,
 		return http.StatusBadRequest, msg, err
 	}
 
+	if msg, err := validateRlsYearConditions(payload.Conditions); err != nil {
+		return http.StatusBadRequest, msg, err
+	}
+
 	// Validate includeHardlinks option
 	if payload.Conditions != nil && payload.Conditions.Delete != nil && payload.Conditions.Delete.IncludeHardlinks {
 		// Only valid when mode is deleteWithFilesIncludeCrossSeeds
@@ -683,6 +688,69 @@ func validateConditionTreeGroupIDs(cond *models.RuleCondition, knownGroupIDs map
 		}
 	}
 
+	return "", nil
+}
+
+// minRlsYear is the lowest year a RLS_YEAR condition may use. The release-name
+// parser performs no range sanity check, so we reject obviously-bogus values at save time.
+const minRlsYear = 1900
+
+// validateRlsYearConditions rejects RLS_YEAR conditions whose values fall outside a
+// plausible range (minRlsYear..currentYear+1), guarding against typos and stray 4-digit
+// tokens that the parser might otherwise surface as a real year.
+func validateRlsYearConditions(conditions *models.ActionConditions) (string, error) {
+	maxYear := time.Now().Year() + 1
+	for _, tree := range conditionTreesForValidation(conditions) {
+		if msg, err := validateRlsYearTree(tree, maxYear); err != nil {
+			return msg, err
+		}
+	}
+	return "", nil
+}
+
+func validateRlsYearTree(cond *models.RuleCondition, maxYear int) (string, error) {
+	if cond == nil {
+		return "", nil
+	}
+	if cond.Field == models.FieldRlsYear {
+		if msg, err := validateRlsYearLeaf(cond, maxYear); err != nil {
+			return msg, err
+		}
+	}
+	for _, child := range cond.Conditions {
+		if msg, err := validateRlsYearTree(child, maxYear); err != nil {
+			return msg, err
+		}
+	}
+	return "", nil
+}
+
+func validateRlsYearLeaf(cond *models.RuleCondition, maxYear int) (string, error) {
+	rangeMsg := fmt.Sprintf("Release Year must be between %d and %d", minRlsYear, maxYear)
+	inRange := func(year float64) bool {
+		return year >= float64(minRlsYear) && year <= float64(maxYear)
+	}
+
+	if cond.Operator == models.OperatorBetween {
+		if cond.MinValue == nil || cond.MaxValue == nil {
+			return "Release Year range requires both a minimum and maximum year", errors.New("release year range missing bound")
+		}
+		if *cond.MinValue > *cond.MaxValue {
+			return "Release Year minimum cannot be greater than maximum", errors.New("release year min greater than max")
+		}
+		if !inRange(*cond.MinValue) || !inRange(*cond.MaxValue) {
+			return rangeMsg, errors.New("release year out of range")
+		}
+		return "", nil
+	}
+
+	year, err := strconv.Atoi(strings.TrimSpace(cond.Value))
+	if err != nil {
+		return "Release Year must be a whole number", errors.New("release year not an integer")
+	}
+	if !inRange(float64(year)) {
+		return rangeMsg, errors.New("release year out of range")
+	}
 	return "", nil
 }
 

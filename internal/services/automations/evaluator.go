@@ -392,6 +392,9 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareString(torrentRlsChannels(torrent, ctx), cond)
 	case FieldRlsGroup:
 		return compareString(torrentRlsGroup(torrent, ctx), cond)
+	case FieldRlsYear:
+		// Numeric RLS-derived field. A parsed year of 0 means "unknown" and never matches.
+		return compareRlsYearIfSet(torrentRlsYear(torrent, ctx), cond)
 	case FieldState:
 		return compareState(torrent, cond, ctx)
 	case FieldTracker:
@@ -1144,6 +1147,15 @@ func compareAgeIfSet(timestamp int64, cond *RuleCondition, ctx *EvalContext) boo
 		return false
 	}
 	return compareAge(timestamp, cond, ctx)
+}
+
+// compareRlsYearIfSet compares a parsed release year and treats an unparsed year (<= 0)
+// as unknown/no-match, mirroring compareAgeIfSet for timestamp-backed fields.
+func compareRlsYearIfSet(year int64, cond *RuleCondition) bool {
+	if year <= 0 {
+		return false
+	}
+	return compareInt64(year, cond)
 }
 
 // splitTags splits a comma-separated tag string into individual tags.

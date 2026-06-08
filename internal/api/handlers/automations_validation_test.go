@@ -14,6 +14,87 @@ import (
 	"github.com/autobrr/qui/internal/services/automations"
 )
 
+func TestValidateRlsYearConditions(t *testing.T) {
+	yearConditions := func(op models.ConditionOperator, value string, minVal, maxVal *float64) *models.ActionConditions {
+		return &models.ActionConditions{
+			Pause: &models.PauseAction{
+				Enabled: true,
+				Condition: &models.RuleCondition{
+					Field:    models.FieldRlsYear,
+					Operator: op,
+					Value:    value,
+					MinValue: minVal,
+					MaxValue: maxVal,
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name       string
+		conditions *models.ActionConditions
+		wantErr    bool
+	}{
+		{name: "valid year", conditions: yearConditions(models.OperatorEqual, "2021", nil, nil), wantErr: false},
+		{name: "year too low", conditions: yearConditions(models.OperatorEqual, "1800", nil, nil), wantErr: true},
+		{name: "year far in future", conditions: yearConditions(models.OperatorEqual, "3000", nil, nil), wantErr: true},
+		{name: "zero rejected", conditions: yearConditions(models.OperatorEqual, "0", nil, nil), wantErr: true},
+		{name: "non-numeric rejected", conditions: yearConditions(models.OperatorEqual, "abc", nil, nil), wantErr: true},
+		{name: "valid between", conditions: yearConditions(models.OperatorBetween, "", new(float64(2000)), new(float64(2020))), wantErr: false},
+		{name: "between missing max", conditions: yearConditions(models.OperatorBetween, "", new(float64(2000)), nil), wantErr: true},
+		{name: "between min greater than max", conditions: yearConditions(models.OperatorBetween, "", new(float64(2020)), new(float64(2000))), wantErr: true},
+		{name: "between out of range", conditions: yearConditions(models.OperatorBetween, "", new(float64(1800)), new(float64(2020))), wantErr: true},
+		{name: "nil conditions", conditions: nil, wantErr: false},
+		{
+			name: "non-year field ignored",
+			conditions: &models.ActionConditions{
+				Pause: &models.PauseAction{
+					Enabled:   true,
+					Condition: &models.RuleCondition{Field: models.FieldName, Operator: models.OperatorEqual, Value: "anything"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "nested year condition validated",
+			conditions: &models.ActionConditions{
+				Pause: &models.PauseAction{
+					Enabled: true,
+					Condition: &models.RuleCondition{
+						Operator: models.OperatorAnd,
+						Conditions: []*models.RuleCondition{
+							{Field: models.FieldRlsYear, Operator: models.OperatorEqual, Value: "1700"},
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "disabled action not validated",
+			conditions: &models.ActionConditions{
+				Pause: &models.PauseAction{
+					Enabled:   false,
+					Condition: &models.RuleCondition{Field: models.FieldRlsYear, Operator: models.OperatorEqual, Value: "1700"},
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg, err := validateRlsYearConditions(tt.conditions)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("validateRlsYearConditions() err = %v, wantErr %v (msg=%q)", err, tt.wantErr, msg)
+			}
+			if tt.wantErr && msg == "" {
+				t.Error("expected a non-empty user-facing message on error")
+			}
+		})
+	}
+}
+
 func TestValidateFreeSpaceSource(t *testing.T) {
 	tests := []struct {
 		name          string

@@ -9,6 +9,7 @@ import (
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 func TestEvaluateCondition_StringFields(t *testing.T) {
@@ -1193,6 +1194,93 @@ func TestEvaluateCondition_StateTrackerError_WithContext(t *testing.T) {
 			t.Fatalf("expected false, got true")
 		}
 	})
+}
+
+func TestEvaluateCondition_RlsYear(t *testing.T) {
+	parsed := &EvalContext{ReleaseParser: releases.NewDefaultParser()}
+	const movie = "Movie.Title.2021.1080p.WEB-DL-GROUP"
+	const noYear = "Some Release Without A Year"
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		ctx      *EvalContext
+		expected bool
+	}{
+		{
+			name:     "equals parsed year",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorEqual, Value: "2021"},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: true,
+		},
+		{
+			name:     "equals wrong year",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorEqual, Value: "2020"},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: false,
+		},
+		{
+			name:     "greater than",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorGreaterThan, Value: "2000"},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: true,
+		},
+		{
+			name:     "less than",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorLessThan, Value: "2000"},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: false,
+		},
+		{
+			name:     "between inclusive match",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorBetween, MinValue: new(float64(2020)), MaxValue: new(float64(2023))},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: true,
+		},
+		{
+			name:     "between outside range",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorBetween, MinValue: new(float64(2010)), MaxValue: new(float64(2019))},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: false,
+		},
+		{
+			name:     "unparsed year never matches equals zero",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorEqual, Value: "0"},
+			torrent:  qbt.Torrent{Name: noYear},
+			ctx:      parsed,
+			expected: false,
+		},
+		{
+			name:     "unparsed year never matches greater than",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorGreaterThan, Value: "1900"},
+			torrent:  qbt.Torrent{Name: noYear},
+			ctx:      parsed,
+			expected: false,
+		},
+		{
+			name:     "nil parser treats year as unknown",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorEqual, Value: "2021"},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      &EvalContext{},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.ctx, 0)
+			if got != tt.expected {
+				t.Errorf("EvaluateConditionWithContext() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
 }
 
 func TestEvaluateCondition_ExistsIn(t *testing.T) {

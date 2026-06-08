@@ -679,6 +679,7 @@ const (
 	FieldRlsAudio      ConditionField = "RLS_AUDIO"
 	FieldRlsChannels   ConditionField = "RLS_CHANNELS"
 	FieldRlsGroup      ConditionField = "RLS_GROUP"
+	FieldRlsYear       ConditionField = "RLS_YEAR"
 	FieldState         ConditionField = "STATE"
 	FieldTracker       ConditionField = "TRACKER"
 	FieldComment       ConditionField = "COMMENT"
