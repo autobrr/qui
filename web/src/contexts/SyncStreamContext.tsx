@@ -102,6 +102,11 @@ interface StreamEntry {
   lastMeta?: TorrentStreamMeta
   handoffTimer?: number
   handoffPending?: boolean
+  // Set once the replacement connection's socket has demonstrably opened during a
+  // view-parameter swap. A connection that has opened but is still awaiting a slow
+  // first snapshot must not be declared offline, so the handoff timer skips the
+  // flip when this is true and onopen clears the timer outright.
+  handoffOpened?: boolean
   teardownTimer?: number
 }
 
@@ -141,6 +146,11 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
   const stateSubscribersRef = useRef<Record<string, Set<(state: StreamState) => void>>>({})
   const connectionRef = useRef<StreamConnection>({ retryAttempt: 0 })
   const scheduleReconnectRef = useRef<() => void>(() => {})
+  // Re-armable handle to the live connection's stale watchdog. openConnection owns
+  // resetStaleTimer (it closes over that connection's handlers); we mirror it here so
+  // the visibility effect can re-arm a FRESH timer on tab refocus without reaching
+  // into openConnection's closure. It always reads connectionRef.current internally.
+  const resetStaleTimerRef = useRef<() => void>(() => {})
   const pendingConnectionUpdateRef = useRef<PendingConnectionUpdate | null>(null)
   // Count of active activity subscribers. While > 0 the EventSource stays open
   // (in activity-only mode if there are no torrent streams) so server events keep
@@ -245,6 +255,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       entry.handoffTimer = undefined
     }
     entry.handoffPending = false
+    entry.handoffOpened = false
   }, [])
 
   const clearConnectionRetryState = useCallback(() => {
@@ -396,6 +407,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
             return
           }
           entry.handoffPending = true
+          // Fresh swap: the replacement socket has not opened yet.
+          entry.handoffOpened = false
           if (entry.handoffTimer !== undefined) {
             if (typeof window !== "undefined") {
               window.clearTimeout(entry.handoffTimer)
@@ -406,6 +419,12 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           const timer = (typeof window !== "undefined"? window.setTimeout: (setTimeout as unknown as (handler: () => void, timeout: number) => number))(() => {
             entry.handoffTimer = undefined
             if (!entry.handoffPending) {
+              return
+            }
+            // The replacement socket opened during the grace window: keep the stream
+            // connected and let the slow first snapshot (or the 15s stale watchdog)
+            // resolve it, instead of flipping offline and re-enabling REST polling.
+            if (entry.handoffOpened) {
               return
             }
             entry.handoffPending = false
@@ -440,6 +459,21 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         scheduleReconnectRef.current()
       }
 
+      // The browser fires onerror on transient drops while it is already
+      // auto-reconnecting (readyState stays CONNECTING; native retry is ~1-3s and
+      // invisible). Calling closeConnection() here would source.close() and abort
+      // that native retry, flipping the UI offline and re-enabling REST polling.
+      // So: while CONNECTING, do nothing and let native retry proceed. Only escalate
+      // (teardown + our own backoff) when the source is terminal/CLOSED or gone.
+      // The 15s stale watchdog still escalates a connection stuck in CONNECTING.
+      const handleSourceError = (event?: Event) => {
+        const source = connectionRef.current.source
+        if (source && source.readyState === EventSource.CONNECTING) {
+          return
+        }
+        handleNetworkError(event)
+      }
+
       // Watchdog: any inbound event (init/update/stream-error/heartbeat) proves the
       // connection is alive and resets the timer. If it elapses, the connection is
       // treated as dead and reconnected even when the browser still reports it open.
@@ -451,6 +485,16 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           } else {
             clearTimeout(conn.staleTimer)
           }
+          conn.staleTimer = undefined
+        }
+        // While the tab is hidden, background timer throttling makes the watchdog
+        // unreliable: incoming heartbeats keep calling this, so a re-armed timer
+        // could false-fire (flipping the stream offline and re-enabling REST
+        // polling in the background) or fire overdue on refocus and kill a healthy
+        // connection. Stay disarmed while hidden; the visibilitychange handler
+        // re-arms a fresh timer on refocus (or reconnects a closed source).
+        if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+          return
         }
         const schedule = typeof window !== "undefined"
           ? window.setTimeout
@@ -460,6 +504,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           handleNetworkError()
         }, STREAM_STALE_TIMEOUT_MS)
       }
+      resetStaleTimerRef.current = resetStaleTimer
 
       const payloadHandler = (event: MessageEvent | Event) => {
         resetStaleTimer()
@@ -580,13 +625,27 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
           if (!entry) {
             return
           }
-          if (!entry.handoffPending) {
+          if (entry.handoffPending) {
+            // The replacement socket has opened but its first snapshot may still be
+            // in flight. Mark the handoff as opened and clear the fixed grace timer so
+            // a slow init can no longer flip the stream offline; the stale watchdog
+            // still guards a socket that opens but never delivers any event.
+            entry.handoffOpened = true
+            if (entry.handoffTimer !== undefined) {
+              if (typeof window !== "undefined") {
+                window.clearTimeout(entry.handoffTimer)
+              } else {
+                clearTimeout(entry.handoffTimer)
+              }
+              entry.handoffTimer = undefined
+            }
+          } else {
             entry.error = null
           }
           notifyStateSubscribers(key)
         })
       }
-      source.onerror = handleNetworkError
+      source.onerror = handleSourceError
 
       connection.source = source
       connection.handlers = {
@@ -596,6 +655,16 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         activity: activityHandler,
       }
       connection.signature = signature
+
+      // Arm the stale watchdog now, at connection creation - not only in onopen. A
+      // connection whose server is unreachable from the start never fires onopen,
+      // and handleSourceError deliberately defers to the browser's native retry
+      // while readyState is CONNECTING. Without a watchdog armed here, such a
+      // cold-start outage (or a replacement socket from a view swap that never
+      // opens) would never escalate to qui's own backoff/offline state. The timer
+      // is reset on every inbound event and on a successful open, so this only
+      // fires if the connection produces nothing for STREAM_STALE_TIMEOUT_MS.
+      resetStaleTimer()
     },
     [clearConnectionRetryState, clearHandoffState, closeConnection, notifyStateSubscribers]
   )
@@ -832,26 +901,42 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
     }
 
     const handleVisibilityChange = () => {
+      const connection = connectionRef.current
+
       if (document.visibilityState !== "visible") {
+        // Background tabs throttle timers, so the stale watchdog's remaining delay is
+        // meaningless. Clear it now; we re-arm a fresh one on refocus. Otherwise an
+        // overdue throttled timer could fire on return and kill a healthy connection.
+        if (connection.staleTimer !== undefined) {
+          if (typeof window !== "undefined") {
+            window.clearTimeout(connection.staleTimer)
+          } else {
+            clearTimeout(connection.staleTimer)
+          }
+          connection.staleTimer = undefined
+        }
         return
       }
 
-      const connection = connectionRef.current
       const hasStreams = Object.keys(streamsRef.current).length > 0
 
       if (!hasStreams && activityCountRef.current === 0) {
         return
       }
 
-      // Check if connection is dead or disconnected
       const source = connection.source
       const isDisconnected = !source || source.readyState === EventSource.CLOSED
 
       if (isDisconnected) {
-        // Reset retry state and force immediate reconnection
+        // Dead/closed source: reset retry state and force an immediate reconnection.
         clearConnectionRetryState()
         ensureConnection({ preserveState: false, resetRetry: true })
+        return
       }
+
+      // Source is OPEN and healthy: re-arm a FRESH stale timer so an overdue
+      // throttled watchdog cannot immediately declare the live connection dead.
+      resetStaleTimerRef.current()
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange)
