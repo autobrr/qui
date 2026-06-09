@@ -55,6 +55,14 @@ func TestBuildSafeSearchQuery(t *testing.T) {
 			},
 			expectedQuery: "some movie 2024",
 		},
+		{
+			// Non-movie path with no parsed title where cleanAnimeTitle strips
+			// everything: fall back to the original name so the query is never empty.
+			name:          "FallsBackToNameWhenCleanedEmpty",
+			inputName:     "[Group][1080p]",
+			release:       rls.Release{Type: rls.Unknown},
+			expectedQuery: "[Group][1080p]",
+		},
 	}
 
 	for _, tc := range tests {
