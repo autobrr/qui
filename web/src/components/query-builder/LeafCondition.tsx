@@ -29,6 +29,7 @@ import {
   getOperatorsForField,
   HARDLINK_SCOPE_VALUES,
   TORRENT_STATES,
+  TRACKER_STATUS_VALUES,
   type DisabledField,
   type DisabledStateValue
 } from "./constants";
@@ -644,6 +645,19 @@ export function LeafCondition({
               placeholder="Max"
             />
           </div>
+        ) : fieldType === "trackerStatus" ? (
+          <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
+            <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[180px]">
+              <SelectValue placeholder="Select status" />
+            </SelectTrigger>
+            <SelectContent>
+              {TRACKER_STATUS_VALUES.map((status) => (
+                <SelectItem key={status.value} value={status.value}>
+                  {status.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         ) : fieldType === "state" ? (
           <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
             <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[160px]">

@@ -207,6 +207,8 @@ export type ConditionField =
   | "RLS_GROUP"
   | "STATE"
   | "TRACKER"
+  | "TRACKER_STATUS"
+  | "TRACKER_MESSAGE"
   | "COMMENT"
   // Numeric fields (bytes)
   | "SIZE"
