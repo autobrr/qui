@@ -19,7 +19,8 @@
       "cooldown": "Délai de {{display}}",
       "ready": "Prêt",
       "disabled": "Désactivé",
-      "noRunsYet": "Aucune exécution"
+      "noRunsYet": "Aucune exécution",
+      "disabledUpper": "DÉSACTIVÉ"
     },
     "seededSearch": {
       "title": "Recherche de torrents en seed",
@@ -37,8 +38,8 @@
   },
   "tabs": {
     "auto": "Auto",
-    "scan": "Scan",
-    "dirScan": "Scan Dir",
+    "scan": "Analyse",
+    "dirScan": "Analyse de répertoires",
     "rules": "Règles",
     "blocklist": "Liste de blocage"
   },
@@ -95,7 +96,8 @@
     "items": "{{count}} éléments",
     "failedCount": "{{count}} échec(s)",
     "runSummary": "{{runs}} exécutions • +{{added}}",
-    "runSummaryWithFailures": "{{runs}} exécutions • +{{added}} • {{failed}} échec(s)"
+    "runSummaryWithFailures": "{{runs}} exécutions • +{{added}} • {{failed}} échec(s)",
+    "scheduledUpper": "PLANIFIÉ"
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -167,7 +169,7 @@
     "enableLocalFilesystem": "Activez « Accès au système de fichiers local » dans les paramètres de l'instance pour utiliser les modes hardlink ou reflink.",
     "regular": "Normal",
     "regularDescription": "Réutilise les fichiers existants sur place. Rapide, pas d'espace disque supplémentaire.",
-    "hardlink": "Lien symbolique",
+    "hardlink": "Lien physique",
     "hardlinkDescription2": "Crée des arborescences en hardlink. Pas d'espace supplémentaire, vérification stricte des limites de pièces.",
     "reflink": "Reflink (copie sur écriture)",
     "reflinkDescription": "Crée des clones en reflink. Plus sûr pour les fichiers en plus/manquants, atténue mieux la corruption.",
@@ -358,7 +360,17 @@
     "coverage": "Couverture",
     "episodes": "Épisodes",
     "instance": "Instance",
-    "mode": "Mode"
+    "mode": "Mode",
+    "statusLabels": {
+      "ready": "Prêt",
+      "skipped": "Ignoré",
+      "applied": "Appliqué",
+      "failed": "Échec"
+    },
+    "phases": {
+      "check": "Vérification",
+      "apply": "Application"
+    }
   },
   "cancelDialog": {
     "title": "Annuler l'exécution RSS ?",
@@ -461,12 +473,12 @@
     }
   },
   "dirScan": {
-    "title": "Scanner de répertoire",
+    "title": "Analyse de répertoires",
     "description": "Analysez les répertoires locaux pour trouver des téléchargements terminés et les cross-seeder automatiquement.",
     "settings": "Paramètres",
     "enabled": "Activé",
     "disabled": "Désactivé",
-    "noLocalAccessWarning": "Aucune instance n'a l'accès local activé. Activez-le pour utiliser le scanner de répertoire.",
+    "noLocalAccessWarning": "Aucune instance n'a l'accès local activé. Activez-le pour utiliser l'analyse de répertoires.",
     "scanDirectories": "Répertoires à analyser",
     "scanDirectoriesDescription": "Configurez les répertoires à surveiller pour le contenu cross-seedable.",
     "addDirectory": "Ajouter un répertoire",
@@ -491,8 +503,8 @@
     "noScanRunsYet": "Aucune exécution pour le moment.",
     "showError": "Afficher l'erreur",
     "unknown": "Inconnu",
-    "tagsDescription": "Ajoutés en plus des tags globaux de Dir Scan. Suggérés : <dirscan>dirscan</dirscan>, <needsReview>needs-review</needsReview>.",
-    "orphanWarning": "En mode normal, les torrents pointent vers vos fichiers originaux. Cela conduit le scanner d'orphelins à traiter ce répertoire comme racine d'analyse. <strong>Tout fichier non mis en correspondance avec un torrent sera signalé comme orphelin</strong> et pourrait être supprimé si le nettoyage automatique est activé.",
+    "tagsDescription": "Ajoutés en plus des tags globaux de l'analyse de répertoires. Suggérés : <dirscan>dirscan</dirscan>, <needsReview>needs-review</needsReview>.",
+    "orphanWarning": "En mode normal, les torrents pointent vers vos fichiers originaux. Cela conduit l'analyse d'orphelins à traiter ce répertoire comme racine d'analyse. <strong>Tout fichier non mis en correspondance avec un torrent sera signalé comme orphelin</strong> et pourrait être supprimé si le nettoyage automatique est activé.",
     "resetFiles": "Réinitialiser les fichiers",
     "resetScanProgress": "Réinitialiser la progression",
     "resetFilesDescription": "Marquer tous les fichiers comme non vus pour la prochaine analyse.",
@@ -503,8 +515,8 @@
     "resetScanProgressDescription": "La prochaine analyse vérifiera le répertoire et réessaiera tous les éléments.",
     "resetFilesSuccess": "Fichiers réinitialisés.",
     "toast": {
-      "scannerEnabled": "Scanner de répertoire activé",
-      "scannerDisabled": "Scanner de répertoire désactivé",
+      "scannerEnabled": "Analyse de répertoires activée",
+      "scannerDisabled": "Analyse de répertoires désactivée",
       "failedToUpdateSettings": "Échec de la mise à jour : {{error}}",
       "scanStarted": "Analyse démarrée",
       "scanStartFailed": "Échec du démarrage : {{error}}",
@@ -528,7 +540,10 @@
       "success": "Succès",
       "failed": "Échec",
       "added": "Ajouté",
-      "canceled": "Annulé"
+      "canceled": "Annulé",
+      "running": "En cours",
+      "partial": "Partiel",
+      "pending": "En attente"
     },
     "table": {
       "started": "Démarré",
@@ -545,8 +560,8 @@
       "mode": "Mode"
     },
     "settingsDialog": {
-      "title": "Paramètres du Scanner",
-      "description": "Paramètres globaux pour le scanner de répertoire.",
+      "title": "Paramètres d'analyse",
+      "description": "Paramètres globaux pour l'analyse de répertoires.",
       "matchModeLabel": "Mode de Correspondance",
       "matchModeStrict": "Strict (nom + taille)",
       "matchModeFlexible": "Flexible (taille uniquement)",
@@ -574,7 +589,7 @@
       "skipPieceBoundarySafetyCheckHelp": "Désactive le blocage des correspondances partielles avec des pièces chevauchantes.",
       "skipPieceBoundarySafetyCheckDescription": "Seulement pertinent pour les correspondances partielles. Désactivez (recommandé) pour plus de sécurité.",
       "startPaused": "Démarrer les torrents en pause",
-      "startPausedHelp": "Ajoute les correspondances de Dir Scan en pause (utile pour réviser avant de seeder).",
+      "startPausedHelp": "Ajoute les correspondances de l'analyse de répertoires en pause (utile pour réviser avant de partager).",
       "defaultCategory": "Catégorie par défaut",
       "defaultCategoryHelp": "Catégorie pour les torrents injectés si le répertoire ne la remplace pas.",
       "tags": "Tags",
@@ -635,6 +650,19 @@
       "description": "Cela supprimera le répertoire et son historique. Les torrents déjà ajoutés ne seront pas affectés.",
       "cancel": "Annuler",
       "delete": "Supprimer"
+    },
+    "statusLabelsUpper": {
+      "queued": "EN ATTENTE",
+      "scanning": "EN ANALYSE",
+      "searching": "EN RECHERCHE",
+      "injecting": "EN INJECTION",
+      "success": "SUCCÈS",
+      "failed": "ÉCHEC",
+      "added": "AJOUTÉ",
+      "canceled": "ANNULÉ",
+      "running": "EN COURS",
+      "partial": "PARTIEL",
+      "pending": "EN ATTENTE"
     }
   }
 }

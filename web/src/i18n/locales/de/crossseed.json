@@ -19,7 +19,8 @@
       "cooldown": "Cooldown {{display}}",
       "ready": "Bereit",
       "disabled": "Deaktiviert",
-      "noRunsYet": "Noch keine Läufe"
+      "noRunsYet": "Noch keine Läufe",
+      "disabledUpper": "DEAKTIVIERT"
     },
     "seededSearch": {
       "title": "Suche in geseedeten Torrents",
@@ -95,7 +96,8 @@
     "items": "{{count}} Einträge",
     "failedCount": "{{count}} fehlgeschlagen",
     "runSummary": "{{runs}} Läufe • +{{added}}",
-    "runSummaryWithFailures": "{{runs}} Läufe • +{{added}} • {{failed}} fehlgeschlagen"
+    "runSummaryWithFailures": "{{runs}} Läufe • +{{added}} • {{failed}} fehlgeschlagen",
+    "scheduledUpper": "GEPLANT"
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -358,7 +360,17 @@
     "coverage": "Abdeckung",
     "episodes": "Episoden",
     "instance": "Instanz",
-    "mode": "Modus"
+    "mode": "Modus",
+    "statusLabels": {
+      "ready": "Bereit",
+      "skipped": "Übersprungen",
+      "applied": "Angewendet",
+      "failed": "Fehlgeschlagen"
+    },
+    "phases": {
+      "check": "Prüfen",
+      "apply": "Anwenden"
+    }
   },
   "cancelDialog": {
     "title": "RSS-Automatisierungslauf abbrechen?",
@@ -528,7 +540,10 @@
       "success": "Erfolgreich",
       "failed": "Fehlgeschlagen",
       "added": "Hinzugefügt",
-      "canceled": "Abgebrochen"
+      "canceled": "Abgebrochen",
+      "running": "Läuft",
+      "partial": "Teilweise",
+      "pending": "Ausstehend"
     },
     "table": {
       "started": "Gestartet",
@@ -635,6 +650,19 @@
       "description": "Dadurch werden das Scan-Verzeichnis und sein Durchlauf-Verlauf entfernt. Bereits hinzugefügte Torrents sind nicht betroffen.",
       "cancel": "Abbrechen",
       "delete": "Löschen"
+    },
+    "statusLabelsUpper": {
+      "queued": "IN WARTESCHLANGE",
+      "scanning": "WIRD GESCANNT",
+      "searching": "WIRD GESUCHT",
+      "injecting": "WIRD INJIZIERT",
+      "success": "ERFOLGREICH",
+      "failed": "FEHLGESCHLAGEN",
+      "added": "HINZUGEFÜGT",
+      "canceled": "ABGEBROCHEN",
+      "running": "LÄUFT",
+      "partial": "TEILWEISE",
+      "pending": "AUSSTEHEND"
     }
   }
 }

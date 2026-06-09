@@ -196,9 +196,9 @@
       "PRIVATE": "Privé",
       "AUTO_MANAGED": "Auto-géré",
       "FIRST_LAST_PIECE_PRIO": "Priorité de première/dernière pièce",
-      "FORCE_START": "Forcer le démarrage",
+      "FORCE_START": "Démarrage forcé",
       "SEQUENTIAL_DOWNLOAD": "Téléchargement séquentiel",
-      "SUPER_SEEDING": "Super partage",
+      "SUPER_SEEDING": "Mode Super Seed",
       "IS_UNREGISTERED": "Non enregistré",
       "HAS_MISSING_FILES": "Fichiers manquants",
       "IS_GROUPED": "Est groupé",
@@ -206,7 +206,7 @@
       "SEEDING_ON_OTHER_INSTANCE": "En partage sur une autre instance",
       "EXISTS_ON_SAME_INSTANCE": "Cross-seed existe sur la même instance",
       "SEEDING_ON_SAME_INSTANCE": "Cross-seed en partage sur la même instance",
-      "HARDLINK_SCOPE": "Portée du lien dur"
+      "HARDLINK_SCOPE": "Portée du lien physique"
     },
     "fieldGroups": {
       "Identity": "Identité",
@@ -241,19 +241,19 @@
     "torrentStates": {
       "downloading": "Téléchargement",
       "uploading": "Partage",
-      "completed": "Terminé",
-      "stopped": "En pause",
+      "completed": "Complété",
+      "stopped": "Arrêté",
       "active": "Actif",
       "inactive": "Inactif",
       "running": "En cours",
       "stalled": "Bloqué",
       "stalled_uploading": "Bloqué (Envoi)",
       "stalled_downloading": "Bloqué (Réception)",
-      "errored": "Erreur",
+      "errored": "Erroné",
       "tracker_down": "Tracker hors ligne",
-      "checking": "Vérification",
+      "checking": "En vérification",
       "checkingResumeData": "Vérification (reprise)",
-      "moving": "Déplacement",
+      "moving": "En déplacement",
       "missingFiles": "Fichiers manquants"
     },
     "hardlinkScopes": {
