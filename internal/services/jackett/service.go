@@ -65,10 +65,7 @@ type searchCacheStore interface {
 
 var _ searchCacheStore = (*models.TorznabSearchCacheStore)(nil)
 
-var (
-	searchResolutionToken   = regexp.MustCompile(`(?i)\b(480|576|720|1080|2160|4320)p?\b`)
-	trailingResolutionToken = regexp.MustCompile(`(?i)^(480|576|720|1080|2160|4320)p?$`)
-)
+var trailingResolutionToken = regexp.MustCompile(`(?i)^(480|576|720|1080|2160|4320)p?$`)
 
 // Service provides Jackett integration for Torznab searching
 type Service struct {
@@ -2592,8 +2589,11 @@ func (s *Service) applyProwlarrTVTokenWorkaround(idx *models.TorznabIndexer, par
 
 	currentQuery := strings.TrimSpace(params["q"])
 	if hasTorznabIDParams(params) {
-		modifiedQuery := idDrivenTVQuery(token, currentQuery, meta)
-		params["q"] = modifiedQuery
+		// IDs identify the series; q only needs the season/episode token. Never append a
+		// resolution token here: indexers whose free-text search matches the series name
+		// (e.g. BTN, IPT) return zero results when a bare resolution token is present.
+		// Resolution is enforced by the cross-seed matcher after the search instead.
+		params["q"] = token
 		delete(params, "season")
 		delete(params, "ep")
 
@@ -2601,7 +2601,7 @@ func (s *Service) applyProwlarrTVTokenWorkaround(idx *models.TorznabIndexer, par
 			Int("indexer_id", idx.ID).
 			Str("indexer_name", idx.Name).
 			Str("original_query", currentQuery).
-			Str("modified_query", modifiedQuery).
+			Str("modified_query", token).
 			Str("tv_token", token).
 			Msg("Prowlarr workaround: moved TV season/episode parameter to search query")
 		return
@@ -2634,24 +2634,6 @@ func (s *Service) applyProwlarrTVTokenWorkaround(idx *models.TorznabIndexer, par
 
 func hasTorznabIDParams(params map[string]string) bool {
 	return params["imdbid"] != "" || params["tvdbid"] != "" || params["tmdbid"] != "" || params["tvmazeid"] != ""
-}
-
-func idDrivenTVQuery(token, currentQuery string, meta *searchContext) string {
-	resolution := firstResolutionToken(currentQuery)
-	if resolution == "" && meta != nil {
-		resolution = firstResolutionToken(meta.originalQuery)
-		if resolution == "" {
-			resolution = firstResolutionToken(meta.releaseName)
-		}
-	}
-	if resolution == "" {
-		return strings.TrimSpace(token)
-	}
-	return strings.TrimSpace(token + " " + resolution)
-}
-
-func firstResolutionToken(query string) string {
-	return searchResolutionToken.FindString(query)
 }
 
 func prowlarrTVToken(seasonStr, episodeStr string) string {

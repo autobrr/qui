@@ -16,7 +16,6 @@ func TestBuildSafeSearchQuery(t *testing.T) {
 		inputName       string
 		release         rls.Release
 		parsedTitle     string
-		options         SearchQueryOptions
 		expectedQuery   string
 		expectedSeason  *int
 		expectedEpisode *int
@@ -29,7 +28,11 @@ func TestBuildSafeSearchQuery(t *testing.T) {
 			expectedEpisode: intPtr(1140),
 		},
 		{
-			name:      "KeepsParsedTitle",
+			// Resolution must never be appended to the query: indexers whose free-text
+			// search only matches the series name (e.g. BTN, IPT) return zero results
+			// when a bare resolution token is present. Resolution is enforced post-search
+			// in releasesMatch instead.
+			name:      "KeepsParsedTitleWithoutResolution",
 			inputName: "Some.Show.S01E02.mkv",
 			release: rls.Release{
 				Type:       rls.Episode,
@@ -39,24 +42,9 @@ func TestBuildSafeSearchQuery(t *testing.T) {
 				Resolution: "720p",
 			},
 			parsedTitle:     "Some Show",
-			options:         SearchQueryOptions{IncludeResolution: true},
-			expectedQuery:   "Some Show 720",
+			expectedQuery:   "Some Show",
 			expectedSeason:  intPtr(1),
 			expectedEpisode: intPtr(2),
-		},
-		{
-			name:      "DoesNotDuplicateResolution",
-			inputName: "Some.Show.S01.720p.WEB-DL.mkv",
-			release: rls.Release{
-				Type:       rls.Series,
-				Title:      "Some Show",
-				Series:     1,
-				Resolution: "720p",
-			},
-			parsedTitle:    "Some Show 720p",
-			options:        SearchQueryOptions{IncludeResolution: true},
-			expectedQuery:  "Some Show 720p",
-			expectedSeason: intPtr(1),
 		},
 		{
 			name:      "MovieFallback",
@@ -71,7 +59,7 @@ func TestBuildSafeSearchQuery(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			q := buildSafeSearchQuery(tc.inputName, &tc.release, tc.parsedTitle, tc.options)
+			q := buildSafeSearchQuery(tc.inputName, &tc.release, tc.parsedTitle)
 
 			require.Equal(t, tc.expectedQuery, q.Query)
 			require.Equal(t, tc.expectedSeason, q.Season)
