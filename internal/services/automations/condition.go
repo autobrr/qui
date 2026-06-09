@@ -46,8 +46,10 @@ const (
 	FieldRlsChannels   = models.FieldRlsChannels
 	FieldRlsGroup      = models.FieldRlsGroup
 	FieldState         = models.FieldState
-	FieldTracker       = models.FieldTracker
-	FieldComment       = models.FieldComment
+	FieldTracker        = models.FieldTracker
+	FieldTrackerStatus  = models.FieldTrackerStatus
+	FieldTrackerMessage = models.FieldTrackerMessage
+	FieldComment        = models.FieldComment
 
 	// Numeric fields (bytes)
 	FieldSize              = models.FieldSize

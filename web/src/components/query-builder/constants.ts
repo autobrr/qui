@@ -29,6 +29,8 @@ export const CONDITION_FIELDS = {
   RLS_GROUP: { label: "Group (RLS)", type: "string" as const, description: "Parsed release group (e.g. NTb, FLUX, FraMeSToR)" },
   STATE: { label: "State", type: "state" as const, description: "Torrent status (matches sidebar filters)" },
   TRACKER: { label: "Tracker", type: "string" as const, description: "Primary tracker (URL, domain, or display name)" },
+  TRACKER_STATUS: { label: "Status", type: "trackerStatus" as const, description: "Per-tracker announce status (matches if any tracker matches)" },
+  TRACKER_MESSAGE: { label: "Message", type: "string" as const, description: "Per-tracker status message (matches if any tracker matches). Use \"nil\" for empty." },
   COMMENT: { label: "Comment", type: "string" as const, description: "Torrent comment" },
 
   // Size fields (bytes)
@@ -113,7 +115,7 @@ export const CONDITION_FIELDS = {
   HARDLINK_SCOPE_CROSS: { label: "Hardlink scope (cross-instance)", type: "hardlinkScope" as const, description: "Where hardlinks exist considering ALL instances. Requires Local Filesystem Access on all relevant instances." },
 } as const;
 
-export type FieldType = "string" | "state" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope";
+export type FieldType = "string" | "state" | "trackerStatus" | "bytes" | "duration" | "float" | "percentage" | "speed" | "integer" | "boolean" | "hardlinkScope";
 
 // Operators available per field type
 export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string }[]> = {
@@ -127,6 +129,10 @@ export const OPERATORS_BY_TYPE: Record<FieldType, { value: string; label: string
     { value: "MATCHES", label: "matches regex" },
   ],
   state: [
+    { value: "EQUAL", label: "is" },
+    { value: "NOT_EQUAL", label: "is not" },
+  ],
+  trackerStatus: [
     { value: "EQUAL", label: "is" },
     { value: "NOT_EQUAL", label: "is not" },
   ],
@@ -276,7 +282,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Tracker",
-    fields: ["TRACKER", "TRACKERS", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "COMMENT"],
+    fields: ["TRACKER", "TRACKERS", "TRACKERS_COUNT", "PRIVATE", "IS_UNREGISTERED", "TRACKER_STATUS", "TRACKER_MESSAGE", "COMMENT"],
   },
   {
     label: "Cross-Seed",
@@ -360,8 +366,20 @@ export const CAPABILITY_REASONS = {
   localFilesystemAccess: "Requires Local Filesystem Access",
 } as const;
 
+export const TRACKER_STATUS_VALUES = [
+  { value: "disabled", label: "Disabled" },
+  { value: "not_contacted", label: "Not contacted" },
+  { value: "working", label: "Working" },
+  { value: "updating", label: "Updating" },
+  { value: "error", label: "Error" },
+  { value: "tracker_error", label: "Tracker error" },
+  { value: "unreachable", label: "Unreachable" },
+] as const;
+
 export const FIELD_REQUIREMENTS = {
   IS_UNREGISTERED: "trackerHealth",
+  TRACKER_STATUS: "trackerHealth",
+  TRACKER_MESSAGE: "trackerHealth",
   HAS_MISSING_FILES: "localFilesystemAccess",
   HARDLINK_SCOPE: "localFilesystemAccess",
   HARDLINK_SCOPE_CROSS: "localFilesystemAccess",

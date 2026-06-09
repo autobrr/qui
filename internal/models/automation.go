@@ -681,6 +681,8 @@ const (
 	FieldRlsGroup      ConditionField = "RLS_GROUP"
 	FieldState         ConditionField = "STATE"
 	FieldTracker       ConditionField = "TRACKER"
+	FieldTrackerStatus ConditionField = "TRACKER_STATUS"
+	FieldTrackerMessage ConditionField = "TRACKER_MESSAGE"
 	FieldComment       ConditionField = "COMMENT"
 
 	// Numeric fields (bytes)

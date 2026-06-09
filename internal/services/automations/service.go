@@ -971,6 +971,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
+	torrents = s.hydrateTorrentTrackersForRule(ctx, instanceID, torrents, rule)
 
 	cfg := previewConfig{limit: limit, offset: offset}
 	cfg.normalize()
@@ -1590,6 +1591,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get torrents: %w", err)
 	}
+	torrents = s.hydrateTorrentTrackersForRule(ctx, instanceID, torrents, rule)
 
 	crossSeedIndex := buildCrossSeedIndex(torrents)
 
@@ -1996,6 +1998,10 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 
 	if len(torrents) == 0 {
 		return nil, nil
+	}
+
+	if rulesUseTrackerEntryData(eligibleRules) {
+		torrents = s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
 	}
 
 	// Get instance for local filesystem access check
@@ -4931,6 +4937,20 @@ func scoreRuleUsesField(rule models.ScoreRule, field ConditionField) bool {
 	}
 
 	return false
+}
+
+func rulesUseTrackerEntryData(rules []*models.Automation) bool {
+	return rulesUseCondition(rules, FieldTrackerStatus) || rulesUseCondition(rules, FieldTrackerMessage)
+}
+
+func (s *Service) hydrateTorrentTrackersForRule(ctx context.Context, instanceID int, torrents []qbt.Torrent, rule *models.Automation) []qbt.Torrent {
+	if s == nil || s.syncManager == nil || rule == nil {
+		return torrents
+	}
+	if !ruleUsesCondition(rule, FieldTrackerStatus) && !ruleUsesCondition(rule, FieldTrackerMessage) {
+		return torrents
+	}
+	return s.syncManager.HydrateTorrentTrackers(ctx, instanceID, torrents)
 }
 
 // rulesUseCondition checks if any enabled rule uses the given field.
