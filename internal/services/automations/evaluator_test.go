@@ -3344,6 +3344,17 @@ func TestEvaluateCondition_TrackerStatusAndMessage(t *testing.T) {
 			expected: true,
 		},
 		{
+			name: "tracker message nil contains does not match empty",
+			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorContains, Value: "nil"},
+			torrent: qbt.Torrent{
+				Trackers: []qbt.TorrentTracker{
+					{Message: ""},
+					{Message: "contains nil literal"},
+				},
+			},
+			expected: false,
+		},
+		{
 			name: "tracker message no trackers",
 			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorEqual, Value: "nil"},
 			torrent: qbt.Torrent{},

@@ -885,7 +885,7 @@ func compareTrackerMessage(message string, cond *RuleCondition) bool {
 		case OperatorNotEqual:
 			return message != ""
 		default:
-			return compareString(message, cond)
+			return false
 		}
 	}
 
