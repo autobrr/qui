@@ -23,7 +23,9 @@
 //
 // String interning uses the database string_pool table as the source of truth.
 // String operations are handled through dbinterface package functions that work
-// within transactions using INSERT ... ON CONFLICT for deduplication.
+// within transactions, looking up existing IDs first and inserting only missing
+// values (insert-first ON CONFLICT burns Postgres sequence values; see
+// dbinterface.InternStrings).
 //
 // CLEANUP CONCURRENCY PROTECTION:
 //
@@ -1641,9 +1643,11 @@ func (db *DB) CleanupUnusedStrings(ctx context.Context) (int64, error) {
 	}
 
 	// Temp tables are connection-local on Postgres, so create and use them on the same tx.
+	// BIGINT, not INTEGER: string_pool ids can exceed the int4 range on Postgres
+	// installs whose sequence burned past it (see migration 079).
 	_, err = tx.ExecContext(ctx, `
 		CREATE TEMP TABLE temp_referenced_strings (
-			string_id INTEGER PRIMARY KEY
+			string_id BIGINT PRIMARY KEY
 		)
 	`)
 	if err != nil {
