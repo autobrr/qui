@@ -82,7 +82,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessRequiresLinkMode
 		newHash,
 		"",
 		torrentName,
-		&CrossSeedRequest{},
+		&CrossSeedRequest{SizeMismatchTolerancePercent: 5.0},
 		service.releaseCache.Parse(torrentName),
 		sourceFiles,
 		nil,
@@ -160,7 +160,7 @@ func TestProcessCrossSeedCandidate_SizeFallbackExtrasRootlessRequiresLinkMode(t 
 		newHash,
 		"",
 		torrentName,
-		&CrossSeedRequest{},
+		&CrossSeedRequest{SizeMismatchTolerancePercent: 5.0},
 		service.releaseCache.Parse(torrentName),
 		sourceFiles,
 		nil,
@@ -186,16 +186,16 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 	require.NoError(t, os.MkdirAll(downloadsDir, 0o755))
 	require.NoError(t, os.WriteFile(
 		filepath.Join(downloadsDir, "Movie.2024.1080p.WEB-DL-GROUP.mkv"),
-		[]byte("movie"),
+		make([]byte, 1000),
 		0o600,
 	))
 
 	candidateFiles := qbt.TorrentFiles{
-		{Name: "Movie.2024.1080p.WEB-DL-GROUP.mkv", Size: 5},
+		{Name: "Movie.2024.1080p.WEB-DL-GROUP.mkv", Size: 1000},
 	}
 	sourceFiles := qbt.TorrentFiles{
-		{Name: "Movie.2024.1080p.WEB-DL-GROUP/Movie.2024.1080p.WEB-DL-GROUP.mkv", Size: 5},
-		{Name: "Movie.2024.1080p.WEB-DL-GROUP/Sample/sample.mkv", Size: 1},
+		{Name: "Movie.2024.1080p.WEB-DL-GROUP/Movie.2024.1080p.WEB-DL-GROUP.mkv", Size: 1000},
+		{Name: "Movie.2024.1080p.WEB-DL-GROUP/Sample/sample.mkv", Size: 10},
 	}
 
 	matchedTorrent := qbt.Torrent{
@@ -249,7 +249,7 @@ func TestProcessCrossSeedCandidate_PartialContainsExtrasRootlessHardlinkModeBypa
 		newHash,
 		"",
 		torrentName,
-		&CrossSeedRequest{},
+		&CrossSeedRequest{SizeMismatchTolerancePercent: 5.0},
 		service.releaseCache.Parse(torrentName),
 		sourceFiles,
 		nil,

@@ -13,18 +13,33 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+var (
+	evalSymlinksFn    = filepath.EvalSymlinks
+	getVolumeSerialFn = getVolumeSerial
+)
+
 // sameFilesystem checks if two paths are on the same volume on Windows.
 // Hardlinks on Windows require the same volume.
 // Compares volume serial numbers using GetVolumeInformation.
 func sameFilesystem(path1, path2 string) (bool, error) {
-	vol1, err := getVolumeSerial(path1)
+	resolvedPath1, err := evalSymlinksFn(path1)
 	if err != nil {
-		return false, fmt.Errorf("get volume for %s: %w", path1, err)
+		return false, fmt.Errorf("resolve path %s: %w", path1, err)
 	}
 
-	vol2, err := getVolumeSerial(path2)
+	resolvedPath2, err := evalSymlinksFn(path2)
 	if err != nil {
-		return false, fmt.Errorf("get volume for %s: %w", path2, err)
+		return false, fmt.Errorf("resolve path %s: %w", path2, err)
+	}
+
+	vol1, err := getVolumeSerialFn(resolvedPath1)
+	if err != nil {
+		return false, fmt.Errorf("get volume for %s: %w", resolvedPath1, err)
+	}
+
+	vol2, err := getVolumeSerialFn(resolvedPath2)
+	if err != nil {
+		return false, fmt.Errorf("get volume for %s: %w", resolvedPath2, err)
 	}
 
 	return vol1 == vol2, nil

@@ -22,6 +22,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/crossseed"
 	"github.com/autobrr/qui/internal/services/externalprograms"
 	"github.com/autobrr/qui/internal/services/notifications"
@@ -552,6 +553,8 @@ type Service struct {
 	lastFreeSpaceDeleteAt map[int]time.Time            // instanceID -> last FREE_SPACE delete timestamp
 	inFlightExports       map[string]struct{}          // "targetInstanceID:hash" -> in-progress export
 	mu                    sync.RWMutex
+
+	activityPublisher activity.Publisher
 }
 
 func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *models.AutomationStore, activityStore *models.AutomationActivityStore, trackerCustomizationStore *models.TrackerCustomizationStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier, externalProgramService *externalprograms.Service, crossMatcher CrossMatcher) *Service {
@@ -589,7 +592,17 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, ruleStore *mode
 		lastRuleRun:               make(map[ruleKey]time.Time),
 		lastFreeSpaceDeleteAt:     make(map[int]time.Time),
 		inFlightExports:           make(map[string]struct{}),
+		activityPublisher:         activity.NopPublisher{},
 	}
+}
+
+// SetActivityPublisher wires the qui server-event hub so automation activity is
+// pushed to connected clients instead of polled. Safe to call once at startup.
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
 }
 
 // cleanupStaleEntries removes entries from lastApplied and lastRuleRun maps
@@ -883,6 +896,9 @@ func (s *Service) initPreviewEvalContext(ctx context.Context, instanceID int, to
 		}
 		if len(healthCounts.TrackerDownSet) > 0 {
 			evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
+		}
+		if len(healthCounts.TrackerErrorSet) > 0 {
+			evalCtx.TrackerErrorSet = healthCounts.TrackerErrorSet
 		}
 	}
 
@@ -1909,11 +1925,25 @@ func (s *Service) applyForInstance(ctx context.Context, instanceID int, force bo
 		}
 	}
 
-	if _, err := s.applyRulesForInstance(ctx, instanceID, force, dryRunRules, true); err != nil {
+	dryActivity, err := s.applyRulesForInstance(ctx, instanceID, force, dryRunRules, true)
+	if err != nil {
 		return err
 	}
-	if _, err := s.applyRulesForInstance(ctx, instanceID, force, liveRules, false); err != nil {
+	liveActivity, err := s.applyRulesForInstance(ctx, instanceID, force, liveRules, false)
+	if err != nil {
 		return err
+	}
+
+	// Signal connected clients that this instance's automation activity changed so
+	// they refetch instead of polling. Emitted only when activity rows were actually
+	// written this cycle (not on idle ticks), after writes and with no lock held.
+	if len(dryActivity) > 0 || len(liveActivity) > 0 {
+		if s.activityPublisher != nil {
+			s.activityPublisher.Publish(activity.Event{
+				Kind:       activity.KindAutomationActivity,
+				InstanceID: instanceID,
+			})
+		}
 	}
 
 	return nil
@@ -2025,6 +2055,7 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	if healthCounts := s.syncManager.GetTrackerHealthCounts(instanceID); healthCounts != nil {
 		evalCtx.UnregisteredSet = healthCounts.UnregisteredSet
 		evalCtx.TrackerDownSet = healthCounts.TrackerDownSet
+		evalCtx.TrackerErrorSet = healthCounts.TrackerErrorSet
 	}
 
 	// On-demand hardlink index (if rules use HARDLINK_SCOPE condition OR includeHardlinks)
@@ -4368,34 +4399,54 @@ func matchesTracker(pattern string, domains []string) bool {
 	tokens := strings.FieldsFunc(pattern, func(r rune) bool {
 		return r == ',' || r == ';' || r == '|'
 	})
+	includeTokens := make([]string, 0, len(tokens))
+	excludeTokens := make([]string, 0, len(tokens))
 
 	for _, token := range tokens {
 		normalized := normalizeLowerTrim(token)
 		if normalized == "" {
 			continue
 		}
-		isGlob := strings.ContainsAny(normalized, "*?")
+		if after, ok := strings.CutPrefix(normalized, "!"); ok {
+			negated := normalizeLowerTrim(after)
+			if negated != "" {
+				excludeTokens = append(excludeTokens, negated)
+			}
+			continue
+		}
+		includeTokens = append(includeTokens, normalized)
+	}
 
+	matchesToken := func(token string) bool {
+		isGlob := strings.ContainsAny(token, "*?")
 		for _, domain := range domains {
 			d := normalizeLower(domain)
 			if isGlob {
-				ok, err := path.Match(normalized, d)
+				ok, err := path.Match(token, d)
 				if err != nil {
-					log.Error().Err(err).Str("pattern", normalized).Msg("automations: invalid glob pattern")
+					log.Error().Err(err).Str("pattern", token).Msg("automations: invalid glob pattern")
 					continue
 				}
 				if ok {
 					return true
 				}
-			} else if d == normalized {
-				return true
-			} else if strings.HasPrefix(normalized, ".") && strings.HasSuffix(d, normalized) {
+				continue
+			}
+			if d == token || (strings.HasPrefix(token, ".") && strings.HasSuffix(d, token)) {
 				return true
 			}
 		}
+		return false
 	}
 
-	return false
+	if slices.ContainsFunc(excludeTokens, matchesToken) {
+		return false
+	}
+
+	if len(includeTokens) == 0 {
+		return len(excludeTokens) > 0
+	}
+	return slices.ContainsFunc(includeTokens, matchesToken)
 }
 
 func collectTrackerDomains(t qbt.Torrent, sm *qbittorrent.SyncManager) []string {
@@ -4445,18 +4496,6 @@ func sanitizeTrackerHost(urlOrHost string) string {
 	return clean
 }
 
-func torrentHasTag(tags string, candidate string) bool {
-	if tags == "" {
-		return false
-	}
-	for tag := range strings.SplitSeq(tags, ",") {
-		if strings.EqualFold(strings.TrimSpace(tag), candidate) {
-			return true
-		}
-	}
-	return false
-}
-
 // normalizePath standardizes a file path for comparison.
 // Keep this consistent with cross-seed's path normalization.
 func normalizePath(p string) string {
@@ -4478,19 +4517,6 @@ func makeCrossSeedKey(t qbt.Torrent) (crossSeedKey, bool) {
 		return crossSeedKey{}, false
 	}
 	return crossSeedKey{contentPath, savePath}, true
-}
-
-func categoryExpandableHashes(hashes []string, states map[string]*torrentDesiredState) []string {
-	if len(hashes) == 0 || len(states) == 0 {
-		return nil
-	}
-	expandableHashes := make([]string, 0, len(hashes))
-	for _, hash := range hashes {
-		if state, exists := states[hash]; exists && state.categoryIncludeCrossSeeds {
-			expandableHashes = append(expandableHashes, hash)
-		}
-	}
-	return expandableHashes
 }
 
 func crossSeedRuleRefsByKey(triggerHashes []string, torrentByHash map[string]qbt.Torrent, ruleByHash map[string]ruleRef) map[crossSeedKey]ruleRef {
@@ -4582,24 +4608,6 @@ func detectCrossSeeds(target qbt.Torrent, idx contentPathIndex) bool {
 		}
 	}
 	return false
-}
-
-func shouldBlockGroupedMoveTriggerFallback(hash string, state *torrentDesiredState, torrentByHash map[string]qbt.Torrent, crossSeedIndex map[crossSeedKey][]qbt.Torrent, evalCtx *EvalContext) bool {
-	if state == nil || !state.moveBlockIfCrossSeed {
-		return false
-	}
-
-	torrent, ok := torrentByHash[hash]
-	if !ok {
-		return true
-	}
-
-	action := &models.MoveAction{
-		BlockIfCrossSeed: true,
-		Condition:        state.moveCondition,
-	}
-
-	return shouldBlockMoveForCrossSeeds(torrent, action, crossSeedIndex, evalCtx)
 }
 
 // isContentPathAmbiguous returns true if the ContentPath cannot reliably identify

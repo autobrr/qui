@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,15 +18,13 @@ import (
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/polar"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestValidateLicenses_NetworkTimeoutDoesNotInvalidate(t *testing.T) {
 	ctx := context.Background()
 
-	dbPath := filepath.Join(t.TempDir(), "licenses.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	defer db.Close()
+	db := testdb.NewMigratedSQLite(t, "license-validation")
 
 	repo := database.NewLicenseRepo(db)
 
@@ -72,10 +69,7 @@ func TestValidateLicenses_NetworkTimeoutDoesNotInvalidate(t *testing.T) {
 func TestValidateLicenses_OfflineBeyondGraceDoesNotInvalidate(t *testing.T) {
 	ctx := context.Background()
 
-	dbPath := filepath.Join(t.TempDir(), "licenses.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	defer db.Close()
+	db := testdb.NewMigratedSQLite(t, "license-validation")
 
 	repo := database.NewLicenseRepo(db)
 
@@ -120,10 +114,7 @@ func TestValidateLicenses_OfflineBeyondGraceDoesNotInvalidate(t *testing.T) {
 func TestValidateLicenses_InvalidThenTransientStillReturnsInvalid(t *testing.T) {
 	ctx := context.Background()
 
-	dbPath := filepath.Join(t.TempDir(), "licenses.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	defer db.Close()
+	db := testdb.NewMigratedSQLite(t, "license-validation")
 
 	repo := database.NewLicenseRepo(db)
 
@@ -192,10 +183,7 @@ func TestValidateLicenses_InvalidThenTransientStillReturnsInvalid(t *testing.T) 
 func TestValidateLicenses_InvalidStatusMarksLicenseInvalid(t *testing.T) {
 	ctx := context.Background()
 
-	dbPath := filepath.Join(t.TempDir(), "licenses.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	defer db.Close()
+	db := testdb.NewMigratedSQLite(t, "license-validation")
 
 	repo := database.NewLicenseRepo(db)
 

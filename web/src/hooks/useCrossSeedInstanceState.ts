@@ -6,6 +6,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { useMemo } from "react"
 
+import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { api } from "@/lib/api"
 
 export type CrossSeedInstanceState = Record<number, {
@@ -22,6 +23,10 @@ export type CrossSeedInstanceStateResult = {
 }
 
 export function useCrossSeedInstanceState(): CrossSeedInstanceStateResult {
+  // Keep the shared SSE connection open app-wide (this hook backs the Sidebar badge).
+  // Events invalidate ["cross-seed","status"] and ["cross-seed","search-status"].
+  useActivityStream()
+
   const settingsQuery = useQuery({
     queryKey: ["cross-seed", "settings"],
     queryFn: () => api.getCrossSeedSettings(),
@@ -34,18 +39,16 @@ export function useCrossSeedInstanceState(): CrossSeedInstanceStateResult {
   const statusQuery = useQuery({
     queryKey: ["cross-seed", "status"],
     queryFn: () => api.getCrossSeedStatus(),
-    refetchInterval: 30_000,
+    refetchInterval: false,
     staleTime: 10_000,
     enabled: rssEnabled,
   })
 
-  // Poll frequently while search is running, slow poll otherwise to detect new searches
+  // Poll frequently only while a search is actively running for smooth progress; rely on events otherwise
   const searchStatusQuery = useQuery({
     queryKey: ["cross-seed", "search-status"],
     queryFn: () => api.getCrossSeedSearchStatus(),
-    refetchInterval: (query) => {
-      return query.state.data?.running ? 5_000 : 60_000
-    },
+    refetchInterval: (query) => query.state.data?.running ? 5_000 : false,
     staleTime: 3_000,
   })
 

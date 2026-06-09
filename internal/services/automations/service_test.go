@@ -178,6 +178,36 @@ func TestMatchesTracker(t *testing.T) {
 			domains: []string{"tracker.example.com"},
 			want:    false,
 		},
+		{
+			name:    "exclude single tracker match",
+			pattern: "!tracker.example.com",
+			domains: []string{"tracker.example.com"},
+			want:    false,
+		},
+		{
+			name:    "exclude single tracker non-match",
+			pattern: "!tracker.example.com",
+			domains: []string{"other.tracker.com"},
+			want:    true,
+		},
+		{
+			name:    "include and exclude where exclude wins",
+			pattern: "tracker.example.com,!tracker.example.com",
+			domains: []string{"tracker.example.com"},
+			want:    false,
+		},
+		{
+			name:    "include and exclude where include matches",
+			pattern: "tracker.example.com,!other.tracker.com",
+			domains: []string{"tracker.example.com"},
+			want:    true,
+		},
+		{
+			name:    "exclude supports glob",
+			pattern: "!*.example.com",
+			domains: []string{"tracker.example.com"},
+			want:    false,
+		},
 
 		// Multiple domains
 		{
@@ -535,48 +565,6 @@ func TestRulesCanShareSortingBatch_RejectsRuleScopedSortingContext(t *testing.T)
 	))
 }
 
-func TestShouldBlockGroupedMoveTriggerFallback(t *testing.T) {
-	torrents := []qbt.Torrent{
-		{Hash: "a", ContentPath: "/data/shared", SavePath: "/data", Ratio: 3.0},
-		{Hash: "b", ContentPath: "/data/shared", SavePath: "/data", Ratio: 1.0},
-	}
-	torrentByHash := map[string]qbt.Torrent{
-		"a": torrents[0],
-		"b": torrents[1],
-	}
-	crossSeedIndex := buildCrossSeedIndex(torrents)
-
-	t.Run("disabled block flag returns false", func(t *testing.T) {
-		state := &torrentDesiredState{moveBlockIfCrossSeed: false}
-		require.False(t, shouldBlockGroupedMoveTriggerFallback("a", state, torrentByHash, crossSeedIndex, nil))
-	})
-
-	t.Run("nil condition does not block", func(t *testing.T) {
-		state := &torrentDesiredState{
-			moveBlockIfCrossSeed: true,
-			moveCondition:        nil,
-		}
-		require.False(t, shouldBlockGroupedMoveTriggerFallback("a", state, torrentByHash, crossSeedIndex, nil))
-	})
-
-	t.Run("condition mismatch in cross-seed blocks fallback", func(t *testing.T) {
-		state := &torrentDesiredState{
-			moveBlockIfCrossSeed: true,
-			moveCondition: &models.RuleCondition{
-				Field:    models.FieldRatio,
-				Operator: models.OperatorGreaterThan,
-				Value:    "2.0",
-			},
-		}
-		require.True(t, shouldBlockGroupedMoveTriggerFallback("a", state, torrentByHash, crossSeedIndex, nil))
-	})
-
-	t.Run("missing torrent is blocked conservatively", func(t *testing.T) {
-		state := &torrentDesiredState{moveBlockIfCrossSeed: true}
-		require.True(t, shouldBlockGroupedMoveTriggerFallback("missing", state, torrentByHash, crossSeedIndex, nil))
-	})
-}
-
 func TestPrepareRuleForDryRun(t *testing.T) {
 	interval := 900
 	rule := &models.Automation{
@@ -814,19 +802,6 @@ func TestCrossSeedRuleRefsByKey(t *testing.T) {
 	require.Equal(t, got[keyB], gotShuffled[keyB])
 }
 
-func TestCategoryExpandableHashes(t *testing.T) {
-	t.Parallel()
-
-	hashes := []string{"h1", "h2", "h3"}
-	states := map[string]*torrentDesiredState{
-		"h1": {categoryIncludeCrossSeeds: false},
-		"h2": {categoryIncludeCrossSeeds: true},
-	}
-
-	got := categoryExpandableHashes(hashes, states)
-	require.Equal(t, []string{"h2"}, got)
-}
-
 func TestCategoryCrossSeedRuleAttributionUsesExpandableHashes(t *testing.T) {
 	t.Parallel()
 
@@ -838,12 +813,8 @@ func TestCategoryCrossSeedRuleAttributionUsesExpandableHashes(t *testing.T) {
 		"h1": {id: 10, name: "Non expanding rule"},
 		"h2": {id: 20, name: "Expanding rule"},
 	}
-	states := map[string]*torrentDesiredState{
-		"h1": {categoryIncludeCrossSeeds: false},
-		"h2": {categoryIncludeCrossSeeds: true},
-	}
-
-	expandableHashes := categoryExpandableHashes([]string{"h1", "h2"}, states)
+	// Only h2 opts into cross-seed expansion, so rule attribution must use it.
+	expandableHashes := []string{"h2"}
 	got := crossSeedRuleRefsByKey(expandableHashes, torrentByHash, ruleByHash)
 
 	key, ok := makeCrossSeedKey(torrentByHash["h1"])
@@ -961,81 +932,6 @@ func TestLimitHashBatch(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := limitHashBatch(tc.hashes, tc.max)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
-// -----------------------------------------------------------------------------
-// torrentHasTag tests
-// -----------------------------------------------------------------------------
-
-func TestTorrentHasTag(t *testing.T) {
-	tests := []struct {
-		name      string
-		tags      string
-		candidate string
-		want      bool
-	}{
-		{
-			name:      "empty tags",
-			tags:      "",
-			candidate: "tagA",
-			want:      false,
-		},
-		{
-			name:      "single tag match",
-			tags:      "tagA",
-			candidate: "tagA",
-			want:      true,
-		},
-		{
-			name:      "single tag no match",
-			tags:      "tagA",
-			candidate: "tagB",
-			want:      false,
-		},
-		{
-			name:      "multiple tags first match",
-			tags:      "tagA, tagB, tagC",
-			candidate: "tagA",
-			want:      true,
-		},
-		{
-			name:      "multiple tags middle match",
-			tags:      "tagA, tagB, tagC",
-			candidate: "tagB",
-			want:      true,
-		},
-		{
-			name:      "multiple tags last match",
-			tags:      "tagA, tagB, tagC",
-			candidate: "tagC",
-			want:      true,
-		},
-		{
-			name:      "case insensitive",
-			tags:      "TagA, TAGB",
-			candidate: "taga",
-			want:      true,
-		},
-		{
-			name:      "whitespace trimmed",
-			tags:      "  tagA  ,  tagB  ",
-			candidate: "tagA",
-			want:      true,
-		},
-		{
-			name:      "partial match fails",
-			tags:      "tagABC",
-			candidate: "tagA",
-			want:      false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := torrentHasTag(tc.tags, tc.candidate)
 			assert.Equal(t, tc.want, got)
 		})
 	}

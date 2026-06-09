@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useActivityStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
@@ -20,6 +21,7 @@ import type { Instance, InstanceFormData, InstanceReannounceActivity, InstanceRe
 import { useQueries, useQueryClient } from "@tanstack/react-query"
 import { ChevronDown, Copy, Info, RefreshCcw, Search, Settings2 } from "lucide-react"
 import { useMemo, useState } from "react"
+import { Trans, useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface ReannounceOverviewProps {
@@ -64,6 +66,7 @@ export function ReannounceOverview({
   expandedInstances: controlledExpanded,
   onExpandedInstancesChange,
 }: ReannounceOverviewProps) {
+  const { t } = useTranslation("instances")
   const { instances, updateInstance, isUpdating } = useInstances()
   const queryClient = useQueryClient()
   const { formatISOTimestamp } = useDateTimeFormatters()
@@ -83,13 +86,16 @@ export function ReannounceOverview({
     [instances]
   )
 
+  // Reannounce activity is pushed via SSE (reannounce.activity events invalidate
+  // ["instance-reannounce-activity", id]), so there is no polling interval.
+  useActivityStream()
+
   // Fetch activity for all instances with enabled reannounce
   const activityQueries = useQueries({
     queries: activeInstances.map((instance) => ({
       queryKey: ["instance-reannounce-activity", instance.id],
       queryFn: () => api.getInstanceReannounceActivity(instance.id, 0),
       enabled: instance.reannounceSettings?.enabled ?? false,
-      refetchInterval: expandedInstances.includes(String(instance.id)) ? 5000 : 30000,
       staleTime: 5000,
     })),
   })
@@ -114,13 +120,13 @@ export function ReannounceOverview({
       { id: instance.id, data: payload },
       {
         onSuccess: () => {
-          toast.success(enabled ? "Monitoring enabled" : "Monitoring disabled", {
+          toast.success(enabled ? t("preferences.reannounceOverview.toast.monitoringEnabled") : t("preferences.reannounceOverview.toast.monitoringDisabled"), {
             description: instance.name,
           })
         },
         onError: (error) => {
-          toast.error("Update failed", {
-            description: error instanceof Error ? error.message : "Unable to update settings",
+          toast.error(t("preferences.reannounceOverview.toast.updateFailed"), {
+            description: error instanceof Error ? error.message : t("preferences.reannounceOverview.toast.updateFailedDescription"),
           })
         },
       }
@@ -149,12 +155,12 @@ export function ReannounceOverview({
   }
 
   const getSettingsSummary = (settings: InstanceReannounceSettings | undefined): string => {
-    if (!settings) return "Not configured"
+    if (!settings) return t("preferences.reannounceOverview.notConfigured")
     const parts: string[] = []
-    parts.push(`Wait ${settings.initialWaitSeconds}s`)
-    parts.push(`Retry ${settings.reannounceIntervalSeconds}s`)
-    parts.push(`Max ${settings.maxRetries}x`)
-    if (settings.aggressive) parts.push("Quick")
+    parts.push(t("preferences.reannounceOverview.summaryWait", { seconds: settings.initialWaitSeconds }))
+    parts.push(t("preferences.reannounceOverview.summaryRetry", { seconds: settings.reannounceIntervalSeconds }))
+    parts.push(t("preferences.reannounceOverview.summaryMax", { count: settings.maxRetries }))
+    if (settings.aggressive) parts.push(t("preferences.reannounceOverview.summaryQuick"))
     return parts.join(" · ")
   }
 
@@ -162,9 +168,9 @@ export function ReannounceOverview({
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Reannounce</CardTitle>
+          <CardTitle className="text-lg font-semibold">{t("preferences.reannounceOverview.title")}</CardTitle>
           <CardDescription>
-            No instances configured. Add one in Settings to use this service.
+            {t("preferences.reannounceOverview.noInstancesDescription")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -176,22 +182,24 @@ export function ReannounceOverview({
       <Card>
         <CardHeader className="space-y-2">
           <div className="flex items-center gap-2">
-            <CardTitle className="text-lg font-semibold">Reannounce</CardTitle>
+            <CardTitle className="text-lg font-semibold">{t("preferences.reannounceOverview.title")}</CardTitle>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Info className="h-4 w-4 text-muted-foreground cursor-help" />
               </TooltipTrigger>
               <TooltipContent className="max-w-[300px]">
                 <p>
-                  qBittorrent doesn't retry failed announces quickly. When a tracker is slow to
-                  register a new upload or returns an error, you may be stuck waiting. qui handles
-                  this automatically while never spamming trackers.
+                  {t("preferences.reannounceOverview.tooltip")}
                 </p>
               </TooltipContent>
             </Tooltip>
           </div>
           <CardDescription>
-            Monitors <strong>stalled</strong> torrents and reannounces them when no tracker is healthy.
+            <Trans
+              ns="instances"
+              i18nKey="preferences.reannounceOverview.description"
+              components={{ strong: <strong /> }}
+            />
           </CardDescription>
         </CardHeader>
 
@@ -233,12 +241,12 @@ export function ReannounceOverview({
                           <span className="font-medium truncate">{instance.name}</span>
                           {isEnabled && stats.successToday > 0 && (
                             <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs">
-                              {stats.successToday} today
+                              {t("preferences.reannounceOverview.today", { count: stats.successToday })}
                             </Badge>
                           )}
                           {isEnabled && stats.failedToday > 0 && (
                             <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30 text-xs">
-                              {stats.failedToday} failed
+                              {t("preferences.reannounceOverview.failed", { count: stats.failedToday })}
                             </Badge>
                           )}
                         </div>
@@ -259,7 +267,7 @@ export function ReannounceOverview({
                           "text-xs font-medium",
                           isEnabled ? "text-emerald-500" : "text-muted-foreground"
                         )}>
-                          {isEnabled ? "On" : "Off"}
+                          {isEnabled ? t("preferences.reannounceOverview.on") : t("preferences.reannounceOverview.off")}
                         </span>
                         <Switch
                           checked={isEnabled}
@@ -279,7 +287,7 @@ export function ReannounceOverview({
                           }
                         }}
                         aria-expanded={expandedInstances.includes(String(instance.id))}
-                        aria-label={expandedInstances.includes(String(instance.id)) ? "Collapse" : "Expand"}
+                        aria-label={expandedInstances.includes(String(instance.id)) ? t("preferences.reannounceOverview.collapse") : t("preferences.reannounceOverview.expand")}
                       >
                         <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]/item:rotate-180" />
                       </button>
@@ -295,10 +303,10 @@ export function ReannounceOverview({
                             {getSettingsSummary(settings)}
                           </p>
                           {settings?.monitorAll ? (
-                            <p className="text-xs text-muted-foreground/70">Monitoring all stalled torrents</p>
+                            <p className="text-xs text-muted-foreground/70">{t("preferences.reannounceOverview.monitoringAllStalled")}</p>
                           ) : (
                             <p className="text-xs text-muted-foreground/70">
-                              {settings?.categories.length || settings?.tags.length || settings?.trackers.length? "Filtered by categories/tags/trackers": "No filters configured"}
+                              {settings?.categories.length || settings?.tags.length || settings?.trackers.length? t("preferences.reannounceOverview.filteredByCategoriesTagsTrackers"): t("preferences.reannounceOverview.noFiltersConfigured")}
                             </p>
                           )}
                         </div>
@@ -310,7 +318,7 @@ export function ReannounceOverview({
                             className="h-8"
                           >
                             <Settings2 className="h-4 w-4 mr-2" />
-                            Configure
+                            {t("preferences.reannounceOverview.configure")}
                           </Button>
                         )}
                       </div>
@@ -320,15 +328,15 @@ export function ReannounceOverview({
                         <div className="space-y-3">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <h4 className="text-sm font-medium">Recent Activity</h4>
+                              <h4 className="text-sm font-medium">{t("preferences.reannounceOverview.recentActivity")}</h4>
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <span className="text-xs text-muted-foreground cursor-help">
-                                    {filteredEvents.length === events.length? `${events.length} events`: `${filteredEvents.length} of ${events.length}`}
+                                    {filteredEvents.length === events.length ? t("preferences.reannounceOverview.eventCount", { count: events.length }) : t("preferences.reannounceOverview.eventCountFiltered", { filtered: filteredEvents.length, total: events.length })}
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                  <p>Retains last 100 succeeded, 100 failed, 50 skipped</p>
+                                  <p>{t("preferences.reannounceOverview.retentionTooltip")}</p>
                                 </TooltipContent>
                               </Tooltip>
                             </div>
@@ -344,7 +352,7 @@ export function ReannounceOverview({
                                   [instance.id]: !hideSkipped,
                                 }))}
                               >
-                                {hideSkipped ? "Show skipped" : "Hide skipped"}
+                                {hideSkipped ? t("preferences.reannounceOverview.showSkipped") : t("preferences.reannounceOverview.hideSkipped")}
                               </button>
                               <Button
                                 type="button"
@@ -369,7 +377,7 @@ export function ReannounceOverview({
                             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <Input
                               type="text"
-                              placeholder="Filter by name or hash..."
+                              placeholder={t("preferences.reannounceOverview.filterPlaceholder")}
                               value={searchMap[instance.id] ?? ""}
                               onChange={(e) => setSearchMap((prev) => ({
                                 ...prev,
@@ -381,22 +389,22 @@ export function ReannounceOverview({
 
                           {activityQuery?.isError ? (
                             <div className="h-[100px] flex flex-col items-center justify-center border border-destructive/30 rounded-lg bg-destructive/10 text-center p-4">
-                              <p className="text-sm text-destructive">Failed to load activity</p>
+                              <p className="text-sm text-destructive">{t("preferences.reannounceOverview.failedToLoadActivity")}</p>
                               <p className="text-xs text-destructive/70 mt-1">
-                                Check connection to the instance.
+                                {t("preferences.reannounceOverview.checkConnectionToInstance")}
                               </p>
                             </div>
                           ) : activityQuery?.isLoading ? (
                             <div className="h-[150px] flex items-center justify-center border rounded-lg bg-muted/40">
-                              <p className="text-sm text-muted-foreground">Loading activity...</p>
+                              <p className="text-sm text-muted-foreground">{t("preferences.reannounceOverview.loadingActivity")}</p>
                             </div>
                           ) : filteredEvents.length === 0 ? (
                             <div className="h-[100px] flex flex-col items-center justify-center border border-dashed rounded-lg bg-muted/40 text-center p-4">
                               <p className="text-sm text-muted-foreground">
-                                {searchTerm ? "No matching events found." : "No activity recorded yet."}
+                                {searchTerm ? t("preferences.reannounceOverview.noMatchingEventsFound") : t("preferences.reannounceOverview.noActivityRecordedYet")}
                               </p>
                               <p className="text-xs text-muted-foreground/60 mt-1">
-                                {searchTerm? "Try a different search term or clear the filter.": "Events will appear here when stalled torrents are detected."}
+                                {searchTerm? t("preferences.reannounceOverview.tryDifferentSearch"): t("preferences.reannounceOverview.eventsWillAppear")}
                               </p>
                             </div>
                           ) : (
@@ -438,9 +446,9 @@ export function ReannounceOverview({
                                             className="hover:text-foreground transition-colors"
                                             onClick={() => {
                                               copyTextToClipboard(event.hash)
-                                              toast.success("Hash copied")
+                                              toast.success(t("preferences.reannounceOverview.hashCopied"))
                                             }}
-                                            title="Copy hash"
+                                            title={t("preferences.reannounceOverview.copyHash")}
                                           >
                                             <Copy className="h-3 w-3" />
                                           </button>
@@ -480,7 +488,7 @@ export function ReannounceOverview({
                             <RefreshCcw className="h-5 w-5 text-muted-foreground/50" />
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            Enable monitoring to start tracking stalled torrents.
+                            {t("preferences.reannounceOverview.enableMonitoring")}
                           </p>
                         </div>
                       )}

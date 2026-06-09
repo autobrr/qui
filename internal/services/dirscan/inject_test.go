@@ -197,6 +197,7 @@ type recordingTorrentManager struct {
 		instanceID int
 		hashes     []string
 		action     string
+		ctxErr     error
 	}
 	resumeCalls []struct {
 		instanceID int
@@ -210,12 +211,13 @@ func (m *recordingTorrentManager) AddTorrent(_ context.Context, _ int, _ []byte,
 	return nil, nil
 }
 
-func (m *recordingTorrentManager) BulkAction(_ context.Context, instanceID int, hashes []string, action string) error {
+func (m *recordingTorrentManager) BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error {
 	m.bulkCalls = append(m.bulkCalls, struct {
 		instanceID int
 		hashes     []string
 		action     string
-	}{instanceID: instanceID, hashes: hashes, action: action})
+		ctxErr     error
+	}{instanceID: instanceID, hashes: hashes, action: action, ctxErr: ctx.Err()})
 	return nil
 }
 
@@ -227,7 +229,7 @@ func (m *recordingTorrentManager) ResumeWhenComplete(instanceID int, hashes []st
 	}{instanceID: instanceID, hashes: hashes, opts: opts})
 }
 
-func TestInjector_Inject_PausedPartial_TriggersRecheckAndResumeWhenComplete(t *testing.T) {
+func TestInjector_Inject_PausedPartial_TriggersRecheckWithoutResumeWhenComplete(t *testing.T) {
 	instance := &models.Instance{
 		ID:                       1,
 		Name:                     "test",
@@ -289,14 +291,8 @@ func TestInjector_Inject_PausedPartial_TriggersRecheckAndResumeWhenComplete(t *t
 		t.Fatalf("expected hash deadbeef, got %+v", manager.bulkCalls[0].hashes)
 	}
 
-	if len(manager.resumeCalls) != 1 {
-		t.Fatalf("expected 1 resume call, got %d", len(manager.resumeCalls))
-	}
-	if len(manager.resumeCalls[0].hashes) != 1 || manager.resumeCalls[0].hashes[0] != "deadbeef" {
-		t.Fatalf("expected hash deadbeef, got %+v", manager.resumeCalls[0].hashes)
-	}
-	if manager.resumeCalls[0].opts.Timeout != 60*time.Minute {
-		t.Fatalf("expected timeout 60m, got %v", manager.resumeCalls[0].opts.Timeout)
+	if len(manager.resumeCalls) != 0 {
+		t.Fatalf("expected no resume call, got %d", len(manager.resumeCalls))
 	}
 }
 
@@ -432,6 +428,73 @@ func TestInjector_Inject_PausedPerfect_DoesNotTriggerRecheck(t *testing.T) {
 	}
 	if manager.addOptions["skip_checking"] != "true" {
 		t.Fatalf("expected skip_checking=true, got %q", manager.addOptions["skip_checking"])
+	}
+}
+
+func TestInjector_Inject_DiscLayoutPerfect_TriggersRecheckAndResumeWhenComplete(t *testing.T) {
+	sourceDir := t.TempDir()
+	sourceFile := filepath.Join(sourceDir, "Movie", "BDMV", "index.bdmv")
+	if err := os.MkdirAll(filepath.Dir(sourceFile), 0o755); err != nil {
+		t.Fatalf("mkdir source: %v", err)
+	}
+	if err := os.WriteFile(sourceFile, []byte("bdmv"), 0o600); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	instance := &models.Instance{
+		ID:                       1,
+		Name:                     "test",
+		HasLocalFilesystemAccess: true,
+	}
+
+	manager := &recordingTorrentManager{}
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:        "Movie",
+			InfoHash:    "deadbeef",
+			Files:       []TorrentFile{{Path: "Movie/BDMV/index.bdmv", Size: 4, Offset: 0}},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name: "Movie",
+			Path: sourceDir,
+			Files: []*ScannedFile{{
+				Path:    sourceFile,
+				RelPath: filepath.ToSlash(filepath.Join("Movie", "BDMV", "index.bdmv")),
+				Size:    4,
+			}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles: []MatchedFilePair{{
+				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "Movie/BDMV/index.bdmv", Size: 4},
+				TorrentFile:  TorrentFile{Path: "Movie/BDMV/index.bdmv", Size: 4},
+			}},
+			IsMatch:        true,
+			IsPerfectMatch: true,
+		},
+		SearchResult: &jackett.SearchResult{Indexer: "Test"},
+	}
+
+	res, err := injector.Inject(context.Background(), req)
+	if err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got %+v", res)
+	}
+	if manager.addOptions["paused"] != "true" || manager.addOptions["stopped"] != "true" {
+		t.Fatalf("expected disc layout to force paused/stopped, got paused=%q stopped=%q",
+			manager.addOptions["paused"], manager.addOptions["stopped"])
+	}
+	if len(manager.bulkCalls) != 1 || manager.bulkCalls[0].action != "recheck" {
+		t.Fatalf("expected one recheck call, got %+v", manager.bulkCalls)
+	}
+	if len(manager.resumeCalls) != 1 || len(manager.resumeCalls[0].hashes) != 1 || manager.resumeCalls[0].hashes[0] != "deadbeef" {
+		t.Fatalf("expected ResumeWhenComplete for deadbeef, got %+v", manager.resumeCalls)
 	}
 }
 
@@ -867,7 +930,7 @@ func TestInjector_PerfectMatch_UnaffectedByDownloadMissing(t *testing.T) {
 	}
 }
 
-func TestInjector_Inject_RunningPartial_DoesNotTriggerRecheck(t *testing.T) {
+func TestInjector_Inject_RunningPartial_TriggersRecheckAndResumeWhenComplete(t *testing.T) {
 	instance := &models.Instance{
 		ID:                       1,
 		Name:                     "test",
@@ -911,7 +974,10 @@ func TestInjector_Inject_RunningPartial_DoesNotTriggerRecheck(t *testing.T) {
 		StartPaused:  false,
 	}
 
-	res, err := injector.Inject(context.Background(), req)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	res, err := injector.Inject(ctx, req)
 	if err != nil {
 		t.Fatalf("inject: %v", err)
 	}
@@ -919,7 +985,22 @@ func TestInjector_Inject_RunningPartial_DoesNotTriggerRecheck(t *testing.T) {
 		t.Fatalf("expected success, got %+v", res)
 	}
 
-	if len(manager.bulkCalls) != 0 || len(manager.resumeCalls) != 0 {
-		t.Fatalf("expected no recheck/resume calls, got bulk=%d resume=%d", len(manager.bulkCalls), len(manager.resumeCalls))
+	if len(manager.bulkCalls) != 1 {
+		t.Fatalf("expected 1 bulk call, got %d", len(manager.bulkCalls))
+	}
+	if manager.bulkCalls[0].action != "recheck" {
+		t.Fatalf("expected action recheck, got %q", manager.bulkCalls[0].action)
+	}
+	if manager.bulkCalls[0].ctxErr != nil {
+		t.Fatalf("expected background recheck context, got ctx err %v", manager.bulkCalls[0].ctxErr)
+	}
+	if len(manager.resumeCalls) != 1 {
+		t.Fatalf("expected 1 resume call, got %d", len(manager.resumeCalls))
+	}
+	if len(manager.resumeCalls[0].hashes) != 1 || manager.resumeCalls[0].hashes[0] != "deadbeef" {
+		t.Fatalf("expected hash deadbeef, got %+v", manager.resumeCalls[0].hashes)
+	}
+	if manager.resumeCalls[0].opts.Timeout != 60*time.Minute {
+		t.Fatalf("expected timeout 60m, got %v", manager.resumeCalls[0].opts.Timeout)
 	}
 }

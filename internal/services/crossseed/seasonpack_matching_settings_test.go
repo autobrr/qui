@@ -13,107 +13,167 @@ import (
 	"github.com/autobrr/qui/pkg/stringutils"
 )
 
-func TestSeasonPackMatching_DefaultOptions(t *testing.T) {
-	opts := seasonPackMatchOptionsFromSettings(nil)
+func TestSeasonPackMatchingOptions(t *testing.T) {
+	tests := []struct {
+		name            string
+		settings        *models.CrossSeedAutomationSettings
+		wantSkipRepack  bool
+		wantSimplifyHDR bool
+		wantSimplifyWEB bool
+		wantSkipYear    bool
+	}{
+		{
+			name:           "default options",
+			wantSkipRepack: true,
+		},
+		{
+			name: "uses configured options",
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackSkipRepackCompare:  false,
+				SeasonPackSimplifyHDRCompare: true,
+				SeasonPackSimplifyWEBCompare: true,
+				SeasonPackSkipYearCompare:    true,
+			},
+			wantSimplifyHDR: true,
+			wantSimplifyWEB: true,
+			wantSkipYear:    true,
+		},
+	}
 
-	require.True(t, opts.skipRepackCompare)
-	require.False(t, opts.simplifyHDRCompare)
-	require.False(t, opts.simplifyWEBCompare)
-	require.False(t, opts.skipYearCompare)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := seasonPackMatchOptionsFromSettings(tt.settings)
+
+			require.Equal(t, tt.wantSkipRepack, opts.skipRepackCompare)
+			require.Equal(t, tt.wantSimplifyHDR, opts.simplifyHDRCompare)
+			require.Equal(t, tt.wantSimplifyWEB, opts.simplifyWEBCompare)
+			require.Equal(t, tt.wantSkipYear, opts.skipYearCompare)
+		})
+	}
 }
 
-func TestSeasonPackMatching_UsesConfiguredOptions(t *testing.T) {
-	opts := seasonPackMatchOptionsFromSettings(&models.CrossSeedAutomationSettings{
-		SeasonPackSkipRepackCompare:  false,
-		SeasonPackSimplifyHDRCompare: true,
-		SeasonPackSimplifyWEBCompare: true,
-		SeasonPackSkipYearCompare:    true,
-	})
+func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
+	tests := []struct {
+		name            string
+		pack            string
+		episode         string
+		strict          bool
+		settings        *models.CrossSeedAutomationSettings
+		wantSeasonPack  bool
+		checkGeneric    bool
+		wantGeneric     bool
+		checkSeasonPack bool
+	}{
+		{
+			name:            "ignore repack differences",
+			pack:            "Show.S01E01.1080p.WEB-DL.DDPA5.1.H.264-RlsGrp",
+			episode:         "Show.S01E01.1080p.WEB-DL.REPACK.DDPA5.1.H.264-RlsGrp",
+			wantSeasonPack:  true,
+			checkGeneric:    true,
+			checkSeasonPack: true,
+		},
+		{
+			name:    "repack differences can be ignored for season packs",
+			pack:    "Show.S01.1080p.WEB-DL.DDPA5.1.H.264-RlsGrp",
+			episode: "Show.S01E01.1080p.WEB-DL.REPACK.DDPA5.1.H.264-RlsGrp",
+			strict:  true,
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackSkipRepackCompare: true,
+			},
+			wantSeasonPack:  true,
+			checkSeasonPack: true,
+		},
+		{
+			name:    "repack differences can be enforced for season packs",
+			pack:    "Show.S01.1080p.WEB-DL.DDPA5.1.H.264-RlsGrp",
+			episode: "Show.S01E01.1080p.WEB-DL.REPACK.DDPA5.1.H.264-RlsGrp",
+			strict:  true,
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackSkipRepackCompare: false,
+			},
+			checkSeasonPack: true,
+		},
+		{
+			name:    "simplify HDR matching",
+			pack:    "Show.S01E01.2160p.NF.WEB-DL.DDPA5.1.DV.HDR10+.H.265-RlsGrp",
+			episode: "Show.S01E01.2160p.NF.WEB-DL.DDPA5.1.DV.HDR.H.265-RlsGrp",
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackSkipRepackCompare:  true,
+				SeasonPackSimplifyHDRCompare: true,
+			},
+			wantSeasonPack:  true,
+			checkGeneric:    true,
+			checkSeasonPack: true,
+		},
+		{
+			name:    "WEB simplification disabled",
+			pack:    "Show.S01E01.1080p.WEB-DL.H.264-RlsGrp",
+			episode: "Show.S01E01.1080p.WEB.H.264-RlsGrp",
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackSkipRepackCompare:  true,
+				SeasonPackSimplifyWEBCompare: false,
+			},
+			checkSeasonPack: true,
+		},
+		{
+			name:    "simplify WEB matching",
+			pack:    "Show.S01E01.1080p.WEB-DL.H.264-RlsGrp",
+			episode: "Show.S01E01.1080p.WEB.H.264-RlsGrp",
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackSkipRepackCompare:  true,
+				SeasonPackSimplifyWEBCompare: true,
+			},
+			wantSeasonPack:  true,
+			checkGeneric:    true,
+			wantGeneric:     true,
+			checkSeasonPack: true,
+		},
+		{
+			name:    "allows missing source metadata",
+			pack:    "Show.S01.1080p.H.264-RlsGrp",
+			episode: "Show.S01E01.1080p.WEB-DL.H.264-RlsGrp",
+			strict:  true,
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackSkipRepackCompare: true,
+			},
+			wantSeasonPack:  true,
+			checkSeasonPack: true,
+		},
+		{
+			name:    "ignore year differences",
+			pack:    "Show.2024.S01.1080p.WEB.H.264-RlsGrp",
+			episode: "Show.2025.S01E01.1080p.WEB.H.264-RlsGrp",
+			strict:  true,
+			settings: &models.CrossSeedAutomationSettings{
+				SeasonPackSkipRepackCompare: true,
+				SeasonPackSkipYearCompare:   true,
+			},
+			wantSeasonPack:  true,
+			checkGeneric:    true,
+			checkSeasonPack: true,
+		},
+		{
+			name:         "generic matcher remains unchanged",
+			pack:         "Show.S01E01.1080p.WEB-DL.DDPA5.1.H.264-RlsGrp",
+			episode:      "Show.S01E01.1080p.WEB-DL.REPACK.DDPA5.1.H.264-RlsGrp",
+			checkGeneric: true,
+		},
+	}
 
-	require.False(t, opts.skipRepackCompare)
-	require.True(t, opts.simplifyHDRCompare)
-	require.True(t, opts.simplifyWEBCompare)
-	require.True(t, opts.skipYearCompare)
-}
-
-func TestSeasonPackMatching_IgnoreRepackDifferences(t *testing.T) {
 	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
-	pack := parseSeasonPackTestRelease(t, "Show.S01E01.1080p.WEB-DL.DDPA5.1.H.264-RlsGrp")
-	episode := parseSeasonPackTestRelease(t, "Show.S01E01.1080p.WEB-DL.REPACK.DDPA5.1.H.264-RlsGrp")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pack := parseSeasonPackTestRelease(t, tt.pack)
+			episode := parseSeasonPackTestRelease(t, tt.episode)
 
-	require.True(t, matcher.seasonPackReleasesMatch(pack, episode, false, nil))
-	require.False(t, matcher.releasesMatch(pack, episode, false))
-}
-
-func TestSeasonPackMatching_RepackDifferencesCanBeDisabledForSeasonPacks(t *testing.T) {
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
-	pack := parseSeasonPackTestRelease(t, "Show.S01.1080p.WEB-DL.DDPA5.1.H.264-RlsGrp")
-	episode := parseSeasonPackTestRelease(t, "Show.S01E01.1080p.WEB-DL.REPACK.DDPA5.1.H.264-RlsGrp")
-
-	require.True(t, matcher.seasonPackReleasesMatch(pack, episode, true, &models.CrossSeedAutomationSettings{
-		SeasonPackSkipRepackCompare: true,
-	}))
-	require.False(t, matcher.seasonPackReleasesMatch(pack, episode, true, &models.CrossSeedAutomationSettings{
-		SeasonPackSkipRepackCompare: false,
-	}))
-}
-
-func TestSeasonPackMatching_SimplifyHDRMatching(t *testing.T) {
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
-	pack := parseSeasonPackTestRelease(t, "Show.S01E01.2160p.NF.WEB-DL.DDPA5.1.DV.HDR10+.H.265-RlsGrp")
-	episode := parseSeasonPackTestRelease(t, "Show.S01E01.2160p.NF.WEB-DL.DDPA5.1.DV.HDR.H.265-RlsGrp")
-
-	require.True(t, matcher.seasonPackReleasesMatch(pack, episode, false, &models.CrossSeedAutomationSettings{
-		SeasonPackSkipRepackCompare:  true,
-		SeasonPackSimplifyHDRCompare: true,
-	}))
-	require.False(t, matcher.releasesMatch(pack, episode, false))
-}
-
-func TestSeasonPackMatching_SimplifyWEBMatching(t *testing.T) {
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
-	pack := parseSeasonPackTestRelease(t, "Show.S01E01.1080p.WEB-DL.H.264-RlsGrp")
-	episode := parseSeasonPackTestRelease(t, "Show.S01E01.1080p.WEB.H.264-RlsGrp")
-
-	require.False(t, matcher.seasonPackReleasesMatch(pack, episode, false, &models.CrossSeedAutomationSettings{
-		SeasonPackSkipRepackCompare:  true,
-		SeasonPackSimplifyWEBCompare: false,
-	}))
-	require.True(t, matcher.seasonPackReleasesMatch(pack, episode, false, &models.CrossSeedAutomationSettings{
-		SeasonPackSkipRepackCompare:  true,
-		SeasonPackSimplifyWEBCompare: true,
-	}))
-	require.True(t, matcher.releasesMatch(pack, episode, false))
-}
-
-func TestSeasonPackMatching_AllowsMissingSourceMetadata(t *testing.T) {
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
-	pack := parseSeasonPackTestRelease(t, "Show.S01.1080p.H.264-RlsGrp")
-	episode := parseSeasonPackTestRelease(t, "Show.S01E01.1080p.WEB-DL.H.264-RlsGrp")
-
-	require.True(t, matcher.seasonPackReleasesMatch(pack, episode, true, &models.CrossSeedAutomationSettings{
-		SeasonPackSkipRepackCompare: true,
-	}))
-}
-
-func TestSeasonPackMatching_IgnoreYearDifferences(t *testing.T) {
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
-	pack := parseSeasonPackTestRelease(t, "Show.2024.S01.1080p.WEB.H.264-RlsGrp")
-	episode := parseSeasonPackTestRelease(t, "Show.2025.S01E01.1080p.WEB.H.264-RlsGrp")
-
-	require.True(t, matcher.seasonPackReleasesMatch(pack, episode, true, &models.CrossSeedAutomationSettings{
-		SeasonPackSkipRepackCompare: true,
-		SeasonPackSkipYearCompare:   true,
-	}))
-	require.False(t, matcher.releasesMatch(pack, episode, true))
-}
-
-func TestSeasonPackMatching_GenericMatcherRemainsUnchanged(t *testing.T) {
-	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
-	left := parseSeasonPackTestRelease(t, "Show.S01E01.1080p.WEB-DL.DDPA5.1.H.264-RlsGrp")
-	right := parseSeasonPackTestRelease(t, "Show.S01E01.1080p.WEB-DL.REPACK.DDPA5.1.H.264-RlsGrp")
-
-	require.False(t, matcher.releasesMatch(left, right, false))
+			if tt.checkSeasonPack {
+				require.Equal(t, tt.wantSeasonPack, matcher.seasonPackReleasesMatch(pack, episode, tt.strict, tt.settings))
+			}
+			if tt.checkGeneric {
+				require.Equal(t, tt.wantGeneric, matcher.releasesMatch(pack, episode, tt.strict))
+			}
+		})
+	}
 }
 
 func parseSeasonPackTestRelease(t *testing.T, name string) *rls.Release {

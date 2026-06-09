@@ -8,7 +8,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,13 +15,11 @@ import (
 	"github.com/autobrr/qui/internal/api/ctxkeys"
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/services/license"
+	"github.com/autobrr/qui/internal/testutil/testdb"
 )
 
 func TestValidateLicense_MissingStoredLicenseReturns404(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "licenses.db")
-	db, err := database.New(dbPath)
-	require.NoError(t, err)
-	defer db.Close()
+	db := testdb.NewMigratedSQLite(t, "licenses-validate-handler")
 
 	repo := database.NewLicenseRepo(db)
 	service := license.NewLicenseService(repo, nil, nil, t.TempDir())

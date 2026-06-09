@@ -4,13 +4,18 @@
  */
 
 import { Code } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 
 export const Footer = () => {
+  const { t } = useTranslation("common")
+  const currentYear = new Date().getFullYear()
+  const years = currentYear > 2025 ? `2025-${currentYear}` : String(currentYear)
+
   return (
     <div className="flex items-center justify-between mt-6 px-1">
       <p className="text-[10px] text-muted-foreground/60">
-        © {new Date().getFullYear() > 2025 ? `2025-${new Date().getFullYear()}` : new Date().getFullYear()} autobrr • GPL-2.0-or-later
+        {t("footer.copyright", { years })}
       </p>
       <Button
         variant="ghost"
@@ -22,7 +27,7 @@ export const Footer = () => {
           href="https://github.com/autobrr/qui"
           target="_blank"
           rel="noopener noreferrer"
-          aria-label="View on GitHub"
+          aria-label={t("sidebar.viewOnGitHub")}
         >
           <Code className="h-3 w-3" />
         </a>

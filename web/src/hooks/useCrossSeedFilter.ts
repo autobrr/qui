@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { api } from "@/lib/api"
@@ -15,12 +16,13 @@ interface UseCrossSeedFilterOptions {
 }
 
 export function useCrossSeedFilter({ instanceId, onFilterChange }: UseCrossSeedFilterOptions) {
+  const { t } = useTranslation("crossseed")
   const [isFilteringCrossSeeds, setIsFilteringCrossSeeds] = useState(false)
   const isFilteringRef = useRef(false)
 
   const filterCrossSeeds = useCallback(async (torrents: Torrent[]) => {
     if (!onFilterChange) {
-      toast.error("Filtering is unavailable in this view")
+      toast.error(t("hooks.filter.unavailable"))
       return
     }
 
@@ -29,14 +31,14 @@ export function useCrossSeedFilter({ instanceId, onFilterChange }: UseCrossSeedF
     }
 
     if (torrents.length !== 1) {
-      toast.info("Cross-seed filtering only works with a single selected torrent")
+      toast.info(t("hooks.filter.singleSelectionOnly"))
       return
     }
 
     const selectedTorrent = torrents[0]
     isFilteringRef.current = true
     setIsFilteringCrossSeeds(true)
-    toast.info("Identifying cross-seeded torrents...")
+    toast.info(t("hooks.filter.identifying"))
 
     try {
       // Use backend API for proper release matching (rls library)
@@ -44,7 +46,7 @@ export function useCrossSeedFilter({ instanceId, onFilterChange }: UseCrossSeedF
       const matches = await api.getLocalCrossSeedMatches(instanceId, selectedTorrent.hash)
 
       if (matches.length === 0) {
-        toast.info("No cross-seeded torrents found")
+        toast.info(t("hooks.filter.noResults"))
         return
       }
 
@@ -65,15 +67,15 @@ export function useCrossSeedFilter({ instanceId, onFilterChange }: UseCrossSeedF
       }
 
       onFilterChange(newFilters)
-      toast.success(`Found ${matches.length} cross-seeded torrents (showing ${uniqueConditions.length} total)`)
+      toast.success(t("hooks.filter.found", { matches: matches.length, total: uniqueConditions.length }))
     } catch (error) {
       console.error("Failed to identify cross-seeded torrents:", error)
-      toast.error("Failed to identify cross-seeded torrents")
+      toast.error(t("hooks.filter.failed"))
     } finally {
       isFilteringRef.current = false
       setIsFilteringCrossSeeds(false)
     }
-  }, [instanceId, onFilterChange])
+  }, [instanceId, onFilterChange, t])
 
   return { isFilteringCrossSeeds, filterCrossSeeds }
 }

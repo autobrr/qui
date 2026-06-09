@@ -383,13 +383,9 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		return s.failApply(ctx, req.TorrentName, err, prep, winner)
 	}
 
-	crossCategory := strings.TrimSpace(prep.settings.SeasonPackCategory)
-	if crossCategory == "" {
-		_, crossCategory = s.determineCrossSeedCategory(ctx, &CrossSeedRequest{
-			IndexerName: req.Indexer,
-		}, &qbt.Torrent{
-			Category: firstMatchedEpisodeCategory(episodes),
-		}, prep.settings)
+	crossCategory := s.resolveSeasonPackCategory(ctx, prep, req.Indexer, episodes)
+	if _, err := s.ensureCrossCategory(ctx, inst.ID, crossCategory, "", false); err != nil {
+		log.Warn().Err(err).Str("torrentName", req.TorrentName).Str("category", crossCategory).Msg("season pack: failed to ensure cross-seed category exists")
 	}
 
 	opts := seasonPackAddOptions(planBuild.plan, crossCategory, planBuild.hasPendingFiles())
@@ -410,7 +406,7 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		switch {
 		case len(recheckHashes) == 0:
 			message = "torrent added paused; missing files require manual recheck"
-		case s.syncManager.BulkAction(ctx, inst.ID, recheckHashes, "recheck") != nil:
+		case s.syncManager.BulkAction(qbittorrent.WithPostAddBulkActionRetry(ctx), inst.ID, recheckHashes, "recheck") != nil:
 			message = "torrent added paused; automatic recheck failed"
 		default:
 			activeHash := seasonPackActiveHash(prep.meta)

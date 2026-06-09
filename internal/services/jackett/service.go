@@ -25,6 +25,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/pkg/timeouts"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/pkg/prowlarr"
 	"github.com/autobrr/qui/pkg/redact"
 	"github.com/autobrr/qui/pkg/releases"
@@ -95,6 +96,8 @@ type Service struct {
 
 	// indexerOutcomes tracks cross-seed outcomes per (jobID, indexerID)
 	indexerOutcomes *IndexerOutcomeStore
+
+	activityPublisher activity.Publisher
 }
 
 // ErrMissingIndexerIdentifier signals that the Torznab backend requires an indexer ID to fetch caps.
@@ -300,6 +303,7 @@ func NewService(indexerStore IndexerStore, opts ...ServiceOption) *Service {
 		persistedCooldowns: make(map[int]time.Time),
 		searchCacheTTL:     defaultSearchCacheTTL,
 		searchCacheEnabled: true,
+		activityPublisher:  activity.NopPublisher{},
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -307,6 +311,29 @@ func NewService(indexerStore IndexerStore, opts ...ServiceOption) *Service {
 		}
 	}
 	return s
+}
+
+// SetActivityPublisher wires the qui server-event hub so indexer scheduler and
+// search-history changes are pushed to connected clients instead of polled.
+// Safe to call once at startup.
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
+	if s.searchScheduler != nil {
+		s.searchScheduler.setActivityPublisher(publisher)
+	}
+}
+
+// emitIndexerActivity signals connected clients that the indexer scheduler's
+// visible activity changed (e.g. a cooldown was set or cleared). Safe to call
+// when no publisher is wired.
+func (s *Service) emitIndexerActivity() {
+	if s == nil || s.activityPublisher == nil {
+		return
+	}
+	s.activityPublisher.Publish(activity.Event{Kind: activity.KindIndexerActivity})
 }
 
 func (s *Service) executeSearch(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
@@ -1067,6 +1094,9 @@ func (s *Service) DownloadTorrent(ctx context.Context, req TorrentDownloadReques
 
 			// Persist cooldown if enabled
 			s.persistRateLimitCooldown(req.IndexerID, resumeAt, cooldown, "download_rate_limited")
+
+			// A cooldown was applied, changing the scheduler's visible activity.
+			s.emitIndexerActivity()
 
 			return nil, &DownloadRateLimitError{
 				IndexerID:   req.IndexerID,
@@ -1985,8 +2015,7 @@ func (s *Service) executeIndexerSearch(ctx context.Context, idx *models.TorznabI
 		}
 	}
 
-	// Rate limiting is handled at dispatch time by the scheduler.
-	// BeforeRequest was removed - scheduler calls NextWait() before dispatching.
+	// Rate limiting is handled by the scheduler, which dispatches from the previous completion time.
 
 	start := time.Now()
 	results, err := searchFn()
@@ -3036,6 +3065,9 @@ func (s *Service) handleRateLimit(ctx context.Context, idx *models.TorznabIndexe
 		reason = cause.Error()
 	}
 	s.persistRateLimitCooldown(idx.ID, resumeAt, cooldown, reason)
+
+	// A cooldown was applied, changing the scheduler's visible activity.
+	s.emitIndexerActivity()
 }
 
 func (s *Service) ensureRateLimiterState() {
@@ -3128,6 +3160,9 @@ func (s *Service) clearPersistedCooldown(indexerID int) {
 	}
 
 	s.deleteCooldownRecord(indexerID)
+
+	// A cooldown was cleared, changing the scheduler's visible activity.
+	s.emitIndexerActivity()
 }
 
 func (s *Service) deleteCooldownRecord(indexerID int) {
@@ -3651,16 +3686,6 @@ func extractInfoHashFromMagnet(magnetURL string) string {
 	}
 
 	return ""
-}
-
-// hasCapability checks if an indexer has a specific capability
-func (s *Service) hasCapability(ctx context.Context, indexerID int, capability string) bool {
-	caps, err := s.indexerStore.GetCapabilities(ctx, indexerID)
-	if err != nil {
-		return false
-	}
-
-	return slices.Contains(caps, capability)
 }
 
 func (s *Service) resolveIndexerSelection(ctx context.Context, indexerIDs []int) ([]*models.TorznabIndexer, error) {

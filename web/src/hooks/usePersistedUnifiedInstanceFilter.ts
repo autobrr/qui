@@ -31,7 +31,7 @@ function getSnapshot(): string {
 
 export function usePersistedUnifiedInstanceFilter(): [
   readonly number[],
-  (ids: readonly number[]) => void,
+  (ids: readonly number[]) => void
 ] {
   const storedString = useSyncExternalStore(subscribe, getSnapshot)
 

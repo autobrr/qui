@@ -45,6 +45,7 @@ dist/
 .dev/
 tmp/
 web/eslint-sarif-report.sarif
+web/coverage/
 test/mockindexer/feeds/*
 test/mockindexer/files/*
 cpu.pprof
@@ -57,6 +58,8 @@ web/src/themes/premium/
 web/src/themes/premium/*
 docs/*
 !docs/CROSS_SEEDING.md
+!docs/architecture.md
+!docs/linting.md
 .mcp_unused.json
 config.toml
 .env
@@ -77,3 +80,6 @@ analyses/*
 # Local reference dumps
 dodopayments.txt
 polar.txt
+
+# Local-only planning notes
+plans/
