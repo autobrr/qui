@@ -3274,3 +3274,90 @@ func TestEvaluateCondition_CrossSeedCompositeConditions(t *testing.T) {
 		}
 	})
 }
+
+func TestEvaluateCondition_TrackerStatusAndMessage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		expected bool
+	}{
+		{
+			name: "tracker status working",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "working"},
+			torrent: qbt.Torrent{
+				Trackers: []qbt.TorrentTracker{
+					{Status: qbt.TrackerStatusDisabled},
+					{Status: qbt.TrackerStatusOK},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "tracker status error",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "error"},
+			torrent: qbt.Torrent{
+				Trackers: []qbt.TorrentTracker{
+					{Status: qbt.TrackerStatusNotWorking},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "tracker status disabled not equal",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorNotEqual, Value: "disabled"},
+			torrent: qbt.Torrent{
+				Trackers: []qbt.TorrentTracker{
+					{Status: qbt.TrackerStatusDisabled},
+					{Status: qbt.TrackerStatusOK},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "tracker status no trackers",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "working"},
+			torrent: qbt.Torrent{},
+			expected: false,
+		},
+		{
+			name: "tracker message contains",
+			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorContains, Value: "Torrent deleted"},
+			torrent: qbt.Torrent{
+				Trackers: []qbt.TorrentTracker{
+					{Message: "Torrent deleted: get pack:"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "tracker message nil",
+			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorEqual, Value: "nil"},
+			torrent: qbt.Torrent{
+				Trackers: []qbt.TorrentTracker{
+					{Message: ""},
+					{Message: "some error"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "tracker message no trackers",
+			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorEqual, Value: "nil"},
+			torrent: qbt.Torrent{},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := EvaluateConditionWithContext(tt.cond, tt.torrent, nil, 0)
+			if got != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, got)
+			}
+		})
+	}
+}
