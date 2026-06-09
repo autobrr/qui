@@ -3342,9 +3342,9 @@ func TestEvaluateCondition_TrackerStatusAndMessage(t *testing.T) {
 			expected: true,
 		},
 		{
-			name: "tracker status no trackers",
-			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "working"},
-			torrent: qbt.Torrent{},
+			name:     "tracker status no trackers",
+			cond:     &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "working"},
+			torrent:  qbt.Torrent{},
 			expected: false,
 		},
 		{
@@ -3380,9 +3380,9 @@ func TestEvaluateCondition_TrackerStatusAndMessage(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "tracker message no trackers",
-			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorEqual, Value: "nil"},
-			torrent: qbt.Torrent{},
+			name:     "tracker message no trackers",
+			cond:     &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorEqual, Value: "nil"},
+			torrent:  qbt.Torrent{},
 			expected: false,
 		},
 	}

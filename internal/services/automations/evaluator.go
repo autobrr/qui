@@ -822,7 +822,7 @@ func compareTrackerStatus(status int, cond *RuleCondition) bool {
 	}
 
 	matches := matchesTrackerStatusValue(status, cond.Value)
-	switch cond.Operator {
+	switch cond.Operator { //nolint:exhaustive // tracker status only supports equal/not equal
 	case OperatorEqual:
 		return matches
 	case OperatorNotEqual:
@@ -880,7 +880,7 @@ func compareTrackerMessage(message string, cond *RuleCondition) bool {
 	}
 
 	if strings.EqualFold(strings.TrimSpace(cond.Value), "nil") {
-		switch cond.Operator {
+		switch cond.Operator { //nolint:exhaustive // nil tracker message only supports equal/not equal
 		case OperatorEqual:
 			return message == ""
 		case OperatorNotEqual:
