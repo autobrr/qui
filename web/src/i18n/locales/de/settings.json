@@ -674,6 +674,22 @@
       "capsSynced": "Capabilities vom Backend synchronisiert",
       "failedToSyncCaps": "Caps konnten nicht synchronisiert werden"
     },
+    "priorityLabels": {
+      "interactive": "Interaktiv",
+      "rss": "RSS",
+      "completion": "Vervollständigung",
+      "background": "Hintergrund"
+    },
+    "contentTypeLabels": {
+      "movie": "Film",
+      "tv": "Serie",
+      "anime": "Anime",
+      "music": "Musik",
+      "book": "Buch",
+      "game": "Spiel",
+      "software": "Software",
+      "unknown": "Unbekannt"
+    },
     "page": {
       "summary": "{{enabled}} aktiviert, {{capabilities}} mit Capabilities",
       "description": "Verwalte Torznab-Indexer über Jackett, Prowlarr oder native Tracker-Endpunkte",

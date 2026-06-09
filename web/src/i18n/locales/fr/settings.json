@@ -674,6 +674,22 @@
       "capsSynced": "Capacités synchronisées depuis le backend",
       "failedToSyncCaps": "Échec de la synchronisation des caps"
     },
+    "priorityLabels": {
+      "interactive": "Interactive",
+      "rss": "RSS",
+      "completion": "Complétion",
+      "background": "Arrière-plan"
+    },
+    "contentTypeLabels": {
+      "movie": "Film",
+      "tv": "Série TV",
+      "anime": "Anime",
+      "music": "Musique",
+      "book": "Livre",
+      "game": "Jeu",
+      "software": "Logiciel",
+      "unknown": "Inconnu"
+    },
     "page": {
       "summary": "{{enabled}} activés, {{capabilities}} avec des capacités",
       "description": "Gérer les indexeurs Torznab propulsés par Jackett, Prowlarr ou des points de terminaison de tracker natifs",

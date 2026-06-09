@@ -33,6 +33,7 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 
 - `pnpm check:i18n`
 - `pnpm check:i18n:hardcoded`
+- `pnpm check:i18n:raw-backend-values`
 - `pnpm check:i18n:zh-cn`
 
 Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.ts`, or formatter hooks.

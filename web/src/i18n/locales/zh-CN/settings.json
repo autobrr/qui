@@ -672,6 +672,22 @@
       "capsSynced": "已从后端同步功能信息",
       "failedToSyncCaps": "同步功能信息失败"
     },
+    "priorityLabels": {
+      "interactive": "交互式",
+      "rss": "RSS",
+      "completion": "补全",
+      "background": "后台"
+    },
+    "contentTypeLabels": {
+      "movie": "电影",
+      "tv": "剧集",
+      "anime": "动漫",
+      "music": "音乐",
+      "book": "书籍",
+      "game": "游戏",
+      "software": "软件",
+      "unknown": "未知"
+    },
     "page": {
       "summary": "{{enabled}} 个已启用，{{capabilities}} 个有功能信息",
       "description": "管理由 Jackett、Prowlarr 或原生 Tracker 端点驱动的 Torznab 索引器",
