@@ -7273,9 +7273,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			}
 		}
 
-		safeQuery := buildSafeSearchQuery(sourceTorrent.Name, queryRelease, baseQuery, SearchQueryOptions{
-			IncludeResolution: contentInfo.ContentType == "tv",
-		})
+		safeQuery := buildSafeSearchQuery(sourceTorrent.Name, queryRelease, baseQuery)
 		query = strings.TrimSpace(safeQuery.Query)
 		if query == "" {
 			// Fallback to a basic title-based query to avoid empty searches
