@@ -44,6 +44,7 @@ let capturedOnMessage: ((payload: TorrentStreamPayload) => void) | undefined
 let lastStreamParams: StreamParams | null
 let lastStreamOptions: { enabled?: boolean } | undefined
 let hidden = false
+let originalHiddenDescriptor: PropertyDescriptor | undefined
 
 // Drives document visibility for the stream-gating tests: the hook pauses the
 // list subscription after the tab has been hidden past STREAM_HIDDEN_PAUSE_DELAY_MS.
@@ -119,6 +120,7 @@ beforeEach(() => {
   lastStreamParams = null
   lastStreamOptions = undefined
   hidden = false
+  originalHiddenDescriptor = Object.getOwnPropertyDescriptor(document, "hidden")
   Object.defineProperty(document, "hidden", {
     configurable: true,
     get: () => hidden,
@@ -144,6 +146,11 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers()
   vi.clearAllMocks()
+  if (originalHiddenDescriptor) {
+    Object.defineProperty(document, "hidden", originalHiddenDescriptor)
+  } else {
+    Reflect.deleteProperty(document, "hidden")
+  }
 })
 
 describe("useTorrentsList", () => {
