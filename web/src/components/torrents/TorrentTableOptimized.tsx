@@ -41,6 +41,7 @@ import {
   useReactTable
 } from "@tanstack/react-table"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
 import { TorrentContextMenu } from "./TorrentContextMenu"
@@ -104,7 +105,6 @@ import {
   Turtle,
   X
 } from "lucide-react"
-import { createPortal } from "react-dom"
 import { AddTorrentDialog, type AddTorrentDropPayload } from "./AddTorrentDialog"
 import { SelectAllHotkey } from "./SelectAllHotkey"
 import { TorrentDropZone } from "./TorrentDropZone"
@@ -283,6 +283,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
 
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { t } = useTranslation("torrents")
+  const [statusBarContainer, setStatusBarContainer] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    setStatusBarContainer(document.getElementById("qui-status-bar-container"))
+  }, [])
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
   const [speedUnit, setSpeedUnit] = useSpeedUnits()
   const { formatTimestamp } = useDateTimeFormatters()
@@ -1713,7 +1717,12 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           </TorrentDropZone>
 
           {/* Status bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 border-t flex-shrink-0 select-none">
+          {(() => {
+            const statusBarContent = (
+              <div className={cn(
+                "flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 border-t flex-shrink-0 select-none",
+                statusBarContainer && "border-b sm:border-b-0 w-full"
+              )}>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               {/* Compact SSE status */}
               {hasStreamStatusDetails ? (
@@ -1958,6 +1967,9 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
               </div>
             </div>
           </div>
+            )
+            return statusBarContainer ? createPortal(statusBarContent, statusBarContainer) : statusBarContent
+          })()}
         </div>
 
         <TorrentTableDialogs

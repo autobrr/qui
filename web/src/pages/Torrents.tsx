@@ -495,6 +495,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         {!isMobile && (
           <div className="flex flex-col h-full">
             <ResizablePanelGroup
+              className="flex-1 min-h-0"
               direction="vertical"
               defaultLayout={defaultLayout}
               onLayoutChange={onLayoutChange}
@@ -558,23 +559,27 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
                 </>
               )}
             </ResizablePanelGroup>
+            <div id="qui-status-bar-container" className="flex-shrink-0 bg-background" />
           </div>
         )}
 
         {/* Mobile: Full height table with Sheet overlay */}
         {isMobile && (
           <div className="flex flex-col h-full px-4">
-            <TorrentTableResponsive
-              instanceId={instanceId}
-              instanceIds={unifiedScopeInstanceIds}
-              filters={filters}
-              selectedTorrent={selectedTorrent}
-              onTorrentSelect={handleTorrentSelect}
-              addTorrentModalOpen={isAddTorrentModalOpen}
-              onAddTorrentModalChange={handleAddTorrentModalChange}
-              onFilteredDataUpdate={handleFilteredDataUpdate}
-              onFilterChange={setFilters}
-            />
+            <div className="flex-1 min-h-0 flex flex-col relative">
+              <TorrentTableResponsive
+                instanceId={instanceId}
+                instanceIds={unifiedScopeInstanceIds}
+                filters={filters}
+                selectedTorrent={selectedTorrent}
+                onTorrentSelect={handleTorrentSelect}
+                addTorrentModalOpen={isAddTorrentModalOpen}
+                onAddTorrentModalChange={handleAddTorrentModalChange}
+                onFilteredDataUpdate={handleFilteredDataUpdate}
+                onFilterChange={setFilters}
+              />
+            </div>
+            <div id="qui-status-bar-container" className="flex-shrink-0 bg-background -mx-4" />
           </div>
         )}
       </div>
