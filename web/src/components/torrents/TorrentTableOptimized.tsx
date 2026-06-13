@@ -40,7 +40,7 @@ import {
   getSortedRowModel,
   useReactTable
 } from "@tanstack/react-table"
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "../instances/preferences/InstancePreferencesDialog"
@@ -284,7 +284,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const [incognitoMode, setIncognitoMode] = useIncognitoMode()
   const { t } = useTranslation("torrents")
   const [statusBarContainer, setStatusBarContainer] = useState<HTMLElement | null>(null)
-  useEffect(() => {
+  useLayoutEffect(() => {
     setStatusBarContainer(document.getElementById("qui-status-bar-container"))
   }, [])
   const { exportTorrents, isExporting: isExportingTorrent } = useTorrentExporter({ instanceId, incognitoMode })
@@ -1719,16 +1719,35 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
           {/* Status bar */}
           {(() => {
             const statusBarContent = (
-              <div className={cn(
-                "flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 border-t flex-shrink-0 select-none",
-                statusBarContainer && "border-b sm:border-b-0 w-full"
-              )}>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              {/* Compact SSE status */}
-              {hasStreamStatusDetails ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1.5 cursor-default text-[11px]">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 border-t flex-shrink-0 select-none">
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  {/* Compact SSE status */}
+                  {hasStreamStatusDetails ? (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-1.5 cursor-default text-[11px]">
+                          <span
+                            className={cn(
+                              "h-1.5 w-1.5 rounded-full transition",
+                              streamToneStyles.dotClass,
+                              streamStatus.animate && "animate-pulse"
+                            )}
+                          />
+                          {hasStreamStatusLabel && (
+                            <span className={cn("opacity-80", streamToneStyles.textClass)}>{streamStatus.label}</span>
+                          )}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs text-xs">
+                        <div className="space-y-1">
+                          {hasStreamStatusLabel && <p className="font-medium">{streamStatus.label}</p>}
+                          {streamStatus.message && <p>{streamStatus.message}</p>}
+                          {streamStatus.secondary && <p className="text-muted-foreground">{streamStatus.secondary}</p>}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    <div className="flex items-center cursor-default text-[11px]">
                       <span
                         className={cn(
                           "h-1.5 w-1.5 rounded-full transition",
@@ -1736,237 +1755,215 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
                           streamStatus.animate && "animate-pulse"
                         )}
                       />
-                      {hasStreamStatusLabel && (
-                        <span className={cn("opacity-80", streamToneStyles.textClass)}>{streamStatus.label}</span>
-                      )}
                     </div>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs text-xs">
-                    <div className="space-y-1">
-                      {hasStreamStatusLabel && <p className="font-medium">{streamStatus.label}</p>}
-                      {streamStatus.message && <p>{streamStatus.message}</p>}
-                      {streamStatus.secondary && <p className="text-muted-foreground">{streamStatus.secondary}</p>}
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                <div className="flex items-center cursor-default text-[11px]">
-                  <span
-                    className={cn(
-                      "h-1.5 w-1.5 rounded-full transition",
-                      streamToneStyles.dotClass,
-                      streamStatus.animate && "animate-pulse"
-                    )}
-                  />
-                </div>
-              )}
-              <div>
-                {effectiveSelectionCount > 0 ? (
-                  <>
-                    <span>
-                      {isAllSelected && excludedFromSelectAll.size === 0 ? t("statusBar.allSelected") : t("statusBar.selected", { count: effectiveSelectionCount })}
-                      {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>}
-                    </span>
-                    {/* Keyboard shortcuts helper - only show on desktop */}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
-                          {t("statusBar.selectionShortcuts")}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <div className="text-xs">
-                          <div>{t("statusBar.shiftClick")}</div>
-                          <div>{t("statusBar.ctrlClick", { modifier: isMac ? "Cmd" : "Ctrl" })}</div>
-                        </div>
-                      </TooltipContent>
-                    </Tooltip>
-                  </>
-                ) : (
-                  <>
-                    {/* Show special loading message when fetching without cache (cold load) */}
-                    {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
+                  )}
+                  <div>
+                    {effectiveSelectionCount > 0 ? (
                       <>
-                        <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
-                        {t("statusBar.loadingTorrents")}
+                        <span>
+                          {isAllSelected && excludedFromSelectAll.size === 0 ? t("statusBar.allSelected") : t("statusBar.selected", { count: effectiveSelectionCount })}
+                          {selectedTotalSize > 0 && <> • {selectedFormattedSize}</>}
+                        </span>
+                        {/* Keyboard shortcuts helper - only show on desktop */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="hidden sm:inline-block ml-2 text-xs opacity-70 cursor-help">
+                              {t("statusBar.selectionShortcuts")}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <div className="text-xs">
+                              <div>{t("statusBar.shiftClick")}</div>
+                              <div>{t("statusBar.ctrlClick", { modifier: isMac ? "Cmd" : "Ctrl" })}</div>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
                       </>
-                    ) : totalCount === 0 ? (
-                      emptyStateMessage
                     ) : (
                       <>
-                        {hasLoadedAll ? (
-                          t("statusBar.torrentCount", { count: torrents.length })
-                        ) : isLoadingMore ? (
-                          t("statusBar.loadingMore")
+                        {/* Show special loading message when fetching without cache (cold load) */}
+                        {isLoading && !isCachedData && !isStaleData && torrents.length === 0 ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin inline mr-1"/>
+                            {t("statusBar.loadingTorrents")}
+                          </>
+                        ) : totalCount === 0 ? (
+                          emptyStateMessage
                         ) : (
-                          t("statusBar.torrentsLoaded", { loaded: torrents.length, total: totalCount })
+                          <>
+                            {hasLoadedAll ? (
+                              t("statusBar.torrentCount", { count: torrents.length })
+                            ) : isLoadingMore ? (
+                              t("statusBar.loadingMore")
+                            ) : (
+                              t("statusBar.torrentsLoaded", { loaded: torrents.length, total: totalCount })
+                            )}
+                            {hasLoadedAll && safeLoadedRows < rows.length && ` ${t("statusBar.scrollForMore")}`}
+                          </>
                         )}
-                        {hasLoadedAll && safeLoadedRows < rows.length && ` ${t("statusBar.scrollForMore")}`}
                       </>
                     )}
-                  </>
-                )}
-              </div>
-            </div>
+                  </div>
+                </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
-              <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
-                <ChevronDown className="h-3 w-3 text-muted-foreground"/>
-                <span className="font-medium">{formatSpeedWithUnit(footerSpeeds.downloadSpeed, speedUnit)}</span>
-                <ChevronUp className="h-3 w-3 text-muted-foreground"/>
-                <span className="font-medium">{formatSpeedWithUnit(footerSpeeds.uploadSpeed, speedUnit)}</span>
-                <Tooltip>
-                  <TooltipTrigger asChild>
+                <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
+                  <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
+                    <ChevronDown className="h-3 w-3 text-muted-foreground"/>
+                    <span className="font-medium">{formatSpeedWithUnit(footerSpeeds.downloadSpeed, speedUnit)}</span>
+                    <ChevronUp className="h-3 w-3 text-muted-foreground"/>
+                    <span className="font-medium">{formatSpeedWithUnit(footerSpeeds.uploadSpeed, speedUnit)}</span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
+                          className="h-6 px-2 text-xs text-muted-foreground hover:text-accent-foreground"
+                        >
+                          <ArrowUpDown className="h-3 w-3" />
+                          <span>{speedUnit === "bytes" ? "MiB/s" : "Mbps"}</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {speedUnit === "bytes" ? t("statusBar.switchToBits") : t("statusBar.switchToBytes")}
+                      </TooltipContent>
+                    </Tooltip>
+                    {/* Alternative speed limits are per-instance; the aggregate scope has
+                        no single instance to toggle (and no serverState to read status from). */}
+                    {!isAllInstancesView && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => void handleToggleAltSpeedLimits()}
+                            disabled={isTogglingAltSpeed}
+                            aria-pressed={isAltSpeedKnown ? altSpeedEnabled : undefined}
+                            aria-label={altSpeedAriaLabel}
+                            className={cn(
+                              "h-6 w-6 text-muted-foreground hover:text-accent-foreground",
+                              "disabled:opacity-60 disabled:cursor-not-allowed"
+                            )}
+                          >
+                            {isTogglingAltSpeed ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <AltSpeedIcon className={cn("h-3 w-3", altSpeedIconClass)} />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{altSpeedTooltip}</TooltipContent>
+                      </Tooltip>
+                    )}
+                    {instance?.reannounceSettings?.enabled && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              void navigate({
+                                to: "/instances/$instanceId",
+                                params: { instanceId: String(instanceId) },
+                                search: { tab: "reannounce" },
+                              })
+                            }}
+                            className="h-6 w-6 text-muted-foreground hover:text-accent-foreground"
+                          >
+                            <RefreshCcw className="h-4 w-4 text-green-500" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{t("statusBar.reannounceEnabled")}</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setSpeedUnit(speedUnit === "bytes" ? "bits" : "bytes")}
-                      className="h-6 px-2 text-xs text-muted-foreground hover:text-accent-foreground"
-                    >
-                      <ArrowUpDown className="h-3 w-3" />
-                      <span>{speedUnit === "bytes" ? "MiB/s" : "Mbps"}</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {speedUnit === "bytes" ? t("statusBar.switchToBits") : t("statusBar.switchToBytes")}
-                  </TooltipContent>
-                </Tooltip>
-                {/* Alternative speed limits are per-instance; the aggregate scope has
-                    no single instance to toggle (and no serverState to read status from). */}
-                {!isAllInstancesView && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => void handleToggleAltSpeedLimits()}
-                        disabled={isTogglingAltSpeed}
-                        aria-pressed={isAltSpeedKnown ? altSpeedEnabled : undefined}
-                        aria-label={altSpeedAriaLabel}
-                        className={cn(
-                          "h-6 w-6 text-muted-foreground hover:text-accent-foreground",
-                          "disabled:opacity-60 disabled:cursor-not-allowed"
-                        )}
-                      >
-                        {isTogglingAltSpeed ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <AltSpeedIcon className={cn("h-3 w-3", altSpeedIconClass)} />
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{altSpeedTooltip}</TooltipContent>
-                  </Tooltip>
-                )}
-                {instance?.reannounceSettings?.enabled && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          void navigate({
-                            to: "/instances/$instanceId",
-                            params: { instanceId: String(instanceId) },
-                            search: { tab: "reannounce" },
-                          })
-                        }}
-                        className="h-6 w-6 text-muted-foreground hover:text-accent-foreground"
-                      >
-                        <RefreshCcw className="h-4 w-4 text-green-500" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{t("statusBar.reannounceEnabled")}</TooltipContent>
-                  </Tooltip>
-                )}
-              </div>
-              <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={cycleViewMode}
-                  className={cn(
-                    "h-6 px-2 text-xs hover:text-accent-foreground",
-                    "text-muted-foreground"
-                  )}
-                >
-                  {desktopViewMode === "normal" ? (
-                    <TableIcon className="h-3 w-3" />
-                  ) : desktopViewMode === "dense" ? (
-                    <Rows3 className="h-3 w-3" />
-                  ) : (
-                    <LayoutGrid className="h-3 w-3" />
-                  )}
-                  <span className="hidden sm:inline">
-                    {desktopViewMode === "normal" ? t("statusBar.viewModes.table") : desktopViewMode === "dense" ? t("statusBar.viewModes.dense") : t("statusBar.viewModes.stacked")}
-                  </span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIncognitoMode(!incognitoMode)}
-                  className={cn(
-                    "h-6 px-2 text-xs hover:text-accent-foreground",
-                    incognitoMode ? "text-foreground" : "text-muted-foreground"
-                  )}
-                >
-                  {incognitoMode ? (
-                    <EyeOff className="h-3 w-3" />
-                  ) : (
-                    <Eye className="h-3 w-3" />
-                  )}
-                  <span className="hidden sm:inline">
-                    {incognitoMode ? t("statusBar.incognitoOn") : t("statusBar.incognitoOff")}
-                  </span>
-                </Button>
-              </div>
-              {effectiveServerState?.free_space_on_disk !== undefined && (
-                <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="flex items-center h-6 px-2 text-xs text-muted-foreground">
-                        <HardDrive  aria-hidden="true" className="h-3 w-3 mr-1"/>
-                        <span className="ml-auto font-medium truncate">{formatBytes(effectiveServerState.free_space_on_disk)}</span>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>{t("statusBar.freeSpace")}</TooltipContent>
-                  </Tooltip>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <ExternalIPAddress
-                  address={effectiveServerState?.last_external_address_v4}
-                  incognitoMode={incognitoMode}
-                  label="IPv4"
-                />
-                <ExternalIPAddress
-                  address={effectiveServerState?.last_external_address_v6}
-                  incognitoMode={incognitoMode}
-                  label="IPv6"
-                />
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      tabIndex={0}
-                      aria-label={connectionStatusAriaLabel}
+                      onClick={cycleViewMode}
                       className={cn(
-                        "inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent",
-                        "text-muted-foreground",
-                        connectionStatusIconClass
+                        "h-6 px-2 text-xs hover:text-accent-foreground",
+                        "text-muted-foreground"
                       )}
                     >
-                      <ConnectionStatusIcon className="h-3 w-3" aria-hidden="true"/>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-[220px]">
-                    <p>{connectionStatusTooltip}</p>
-                  </TooltipContent>
-                </Tooltip>
+                      {desktopViewMode === "normal" ? (
+                        <TableIcon className="h-3 w-3" />
+                      ) : desktopViewMode === "dense" ? (
+                        <Rows3 className="h-3 w-3" />
+                      ) : (
+                        <LayoutGrid className="h-3 w-3" />
+                      )}
+                      <span className="hidden sm:inline">
+                        {desktopViewMode === "normal" ? t("statusBar.viewModes.table") : desktopViewMode === "dense" ? t("statusBar.viewModes.dense") : t("statusBar.viewModes.stacked")}
+                      </span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIncognitoMode(!incognitoMode)}
+                      className={cn(
+                        "h-6 px-2 text-xs hover:text-accent-foreground",
+                        incognitoMode ? "text-foreground" : "text-muted-foreground"
+                      )}
+                    >
+                      {incognitoMode ? (
+                        <EyeOff className="h-3 w-3" />
+                      ) : (
+                        <Eye className="h-3 w-3" />
+                      )}
+                      <span className="hidden sm:inline">
+                        {incognitoMode ? t("statusBar.incognitoOn") : t("statusBar.incognitoOff")}
+                      </span>
+                    </Button>
+                  </div>
+                  {effectiveServerState?.free_space_on_disk !== undefined && (
+                    <div className="flex items-center gap-2 pr-2 border-r last:border-r-0 last:pr-0">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="flex items-center h-6 px-2 text-xs text-muted-foreground">
+                            <HardDrive  aria-hidden="true" className="h-3 w-3 mr-1"/>
+                            <span className="ml-auto font-medium truncate">{formatBytes(effectiveServerState.free_space_on_disk)}</span>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>{t("statusBar.freeSpace")}</TooltipContent>
+                      </Tooltip>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <ExternalIPAddress
+                      address={effectiveServerState?.last_external_address_v4}
+                      incognitoMode={incognitoMode}
+                      label="IPv4"
+                    />
+                    <ExternalIPAddress
+                      address={effectiveServerState?.last_external_address_v6}
+                      incognitoMode={incognitoMode}
+                      label="IPv6"
+                    />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span
+                          tabIndex={0}
+                          aria-label={connectionStatusAriaLabel}
+                          className={cn(
+                            "inline-flex h-6 w-6 items-center justify-center rounded-md border border-transparent",
+                            "text-muted-foreground",
+                            connectionStatusIconClass
+                          )}
+                        >
+                          <ConnectionStatusIcon className="h-3 w-3" aria-hidden="true"/>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[220px]">
+                        <p>{connectionStatusTooltip}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
             )
             return statusBarContainer ? createPortal(statusBarContent, statusBarContainer) : statusBarContent
           })()}
