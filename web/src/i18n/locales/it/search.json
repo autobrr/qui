@@ -1,0 +1,194 @@
+{
+  "pageTitle": "Cerca negli indexer",
+  "pageDescription": "Cerca tra tutti gli indexer abilitati. Scegli un tipo di query o lascia Auto per rilevare automaticamente le categorie.",
+  "indexerSummary": {
+    "label": "Indexer",
+    "noEnabled": "Nessun indexer abilitato",
+    "allEnabled": "Tutti abilitati ({{count}})",
+    "selected": "{{selected}} di {{total}} selezionati"
+  },
+  "indexerSheet": {
+    "title": "Selezione indexer",
+    "description": "Scegli quali indexer includere nelle ricerche.",
+    "selectAll": "Seleziona tutti",
+    "clearSelection": "Svuota selezione",
+    "noCategories": "Nessuna categoria",
+    "backend": {
+      "prowlarr": "Prowlarr",
+      "native": "Nativo",
+      "jackett": "Jackett"
+    },
+    "footer": "{{selected}} di {{total}} indexer abilitati selezionati",
+    "done": "Fatto"
+  },
+  "instanceSelector": {
+    "chooseTarget": "Scegli l'istanza di destinazione",
+    "noInstances": "Nessuna istanza",
+    "offline": "Offline",
+    "targetNamed": "Destinazione: {{name}}",
+    "targetNamedOffline": "Destinazione: {{name}} (offline)",
+    "clearSelection": "Svuota selezione",
+    "noInstancesConfigured": "Nessuna istanza configurata",
+    "addInstanceNote": "Aggiungi un'istanza di download in Impostazioni > Istanze."
+  },
+  "searchForm": {
+    "advanced": "Avanzate",
+    "active": "Attivo",
+    "clear": "Svuota",
+    "searching": "Ricerca in corso...",
+    "search": "Cerca",
+    "advancedNote": "Parametri Torznab facoltativi (ma consigliati).",
+    "searchType": "Tipo di ricerca",
+    "searchQuery": "Query di ricerca",
+    "noIndexers": "Nessun indexer abilitato disponibile. Aggiungi e abilita gli indexer nella",
+    "indexersPage": "pagina Indexer"
+  },
+  "searchTypes": {
+    "auto": {
+      "label": "Rilevamento auto",
+      "description": "Deduci automaticamente le categorie corrette",
+      "placeholder": "Prova: \"Sample Movie 2024\", \"tt1234567\", \"tvdb 123456\" o \"Example Artist – Example Album\""
+    },
+    "movies": {
+      "label": "Film",
+      "placeholder": "es. \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""
+    },
+    "tv": {
+      "label": "TV",
+      "placeholder": "es. \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\""
+    },
+    "music": {
+      "label": "Musica",
+      "placeholder": "es. \"Example Artist – Example Album\", \"Sample Band – Debut EP\""
+    },
+    "books": {
+      "label": "Libri e fumetti",
+      "placeholder": "es. \"Example Book Title\", \"Fictional Series Book 1\""
+    },
+    "apps": {
+      "label": "App e giochi",
+      "placeholder": "es. \"Sample OS ISO\", \"Example App 2025\""
+    },
+    "xxx": {
+      "label": "Adulti",
+      "placeholder": "Inserisci il nome di una release per adulti specifica"
+    }
+  },
+  "advanced": {
+    "imdbId": {
+      "label": "ID IMDb",
+      "placeholder": "tt1234567"
+    },
+    "tvdbId": {
+      "label": "ID TVDb",
+      "placeholder": "12345"
+    },
+    "year": {
+      "label": "Anno",
+      "placeholder": "2024"
+    },
+    "season": {
+      "label": "Stagione",
+      "placeholder": "1"
+    },
+    "episode": {
+      "label": "Episodio",
+      "placeholder": "2"
+    },
+    "artist": {
+      "label": "Artista",
+      "placeholder": "Nine Inch Nails"
+    },
+    "album": {
+      "label": "Album",
+      "placeholder": "The Fragile"
+    },
+    "limit": {
+      "label": "Limite",
+      "placeholder": "100"
+    },
+    "offset": {
+      "label": "Offset",
+      "placeholder": "0"
+    }
+  },
+  "results": {
+    "showing": "Visualizzazione di {{filtered}} risultati su {{total}}",
+    "filterPlaceholder": "Filtra i risultati...",
+    "clearSearch": "Svuota ricerca",
+    "clearAllFilters": "Svuota tutti i filtri di colonna",
+    "pickInstance": "Scegli istanza",
+    "download": "Scarica",
+    "viewDetails": "Vedi dettagli",
+    "clearSelectionButton": "Svuota selezione",
+    "actions": "Azioni",
+    "quickAddTo": "Aggiunta rapida a...",
+    "cachedSummary": "In cache {{cached}} · Scade {{expires}}",
+    "cacheSource": "Origine: {{source}} · Ambito: {{scope}}",
+    "refreshReadyIn": "Pronto tra {{seconds}}s",
+    "refreshFromIndexers": "Aggiorna dagli indexer",
+    "noValue": "-",
+    "categoryFallback": "Categoria {{id}}",
+    "noResultsFor": "Nessun risultato trovato per \"{{query}}\"",
+    "enterQuery": "Inserisci una query di ricerca per iniziare",
+    "free": "Gratuito",
+    "freeNeutral": "Neutro",
+    "noInfoUrlAvailable": "Nessun URL informativo disponibile"
+  },
+  "historyMeta": "{{type}} · {{count}} risultati · {{timestamp}}",
+  "table": {
+    "title": "Titolo",
+    "indexer": "Indexer",
+    "size": "Dimensione",
+    "seeders": "Seeder",
+    "category": "Categoria",
+    "source": "Origine",
+    "collection": "Raccolta",
+    "group": "Gruppo",
+    "freeleech": "Freeleech",
+    "published": "Pubblicato",
+    "actions": "Azioni",
+    "downloadTorrent": "Scarica .torrent",
+    "viewDetails": "Vedi dettagli",
+    "noInfoUrl": "Nessun URL informativo"
+  },
+  "refreshDialog": {
+    "title": "Ignorare la cache?",
+    "description": "Questo invierà la richiesta direttamente a ogni indexer selezionato. Usalo con parsimonia per evitare i limiti di frequenza. Potrai aggiornare di nuovo dopo una breve attesa.",
+    "cancel": "Annulla",
+    "refreshNow": "Aggiorna ora"
+  },
+  "cache": {
+    "cacheAndLive": "Cache + live",
+    "cacheHit": "Cache hit",
+    "liveFetch": "Recupero live"
+  },
+  "card": {
+    "actions": "Azioni",
+    "addToInstance": "Aggiungi all'istanza",
+    "addToNamed": "Aggiungi a {{name}}",
+    "addToNamedOffline": "Aggiungi a {{name}} (offline)",
+    "quickAddTo": "Aggiunta rapida a...",
+    "download": "Scarica",
+    "viewDetails": "Vedi dettagli",
+    "clearSelection": "Svuota selezione",
+    "seeders": "{{count}} seeder",
+    "published": "Pubblicato {{date}}"
+  },
+  "toast": {
+    "enterSearchQuery": "Inserisci una query di ricerca o compila i parametri avanzati",
+    "selectIndexer": "Seleziona almeno un indexer",
+    "noEnabledIndexers": "Nessun indexer abilitato disponibile. Aggiungi e abilita prima gli indexer.",
+    "noResults": "Nessun risultato trovato",
+    "foundResults": "Trovati {{total}} risultati{{suffix}}",
+    "cached": " (in cache)",
+    "searchFailed": "Ricerca non riuscita: {{error}}",
+    "failedToLoadIndexers": "Caricamento degli indexer non riuscito",
+    "addInstanceFirst": "Aggiungi un'istanza di download in Impostazioni -> Istanze",
+    "chooseInstance": "Scegli un'istanza per aggiungere i torrent",
+    "noDownloadUrl": "Nessun URL di download disponibile per questo risultato",
+    "noInfoUrl": "Nessuna informazione aggiuntiva disponibile per questo risultato",
+    "invalidProtocol": "Protocollo URL non valido",
+    "invalidUrl": "Formato URL non valido"
+  }
+}
