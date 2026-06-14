@@ -445,6 +445,7 @@ func TestProcessCrossSeedCandidate_RootlessFileNameMatchUsesSubfolderNoOverride(
 	require.Equal(t, "added", result.Status)
 
 	require.NotNil(t, sync.addedOptions)
+	require.Equal(t, "true", sync.addedOptions["autoTMM"])
 	require.Equal(t, "Subfolder", sync.addedOptions["contentLayout"])
 	_, hasSavePath := sync.addedOptions["savepath"]
 	// CASE A applies no override; the save path comes from the standard autoTMM/save-path block.
