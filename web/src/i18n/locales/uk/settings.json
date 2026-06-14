@@ -262,8 +262,8 @@
       "urlDescriptionPrefix": "Використовуйте будь-яку схему URL, яка підтримується Shoutrrr. Notifiarr API використовує",
       "urlDescriptionSuffix": "Discord вебхук URLs автоматично перетворює на",
       "examples": {
-        "notifiarr": "сповіщення://apikey",
-        "discord": "розбрат: //token@id"
+        "notifiarr": "notifiarrapi://apikey",
+        "discord": "discord://token@id"
       },
       "enabled": "Увімкнено",
       "enabledDescription": "Перемкнути доставку для цієї цілі.",
@@ -524,8 +524,8 @@
               "readmeSuffix": ".",
               "verifyPrefix": "Підтвердити на",
               "verifySuffix": "щоб отримати код знижки.",
-              "applyCode": "Відкрийте касу DodoPayments, вставте код у код знижки та натисніть «Застосувати».",
-              "completeCheckout": "Підтвердьте, що загальна сума становить 0,00 доларів США, а потім завершіть оплату."
+              "applyCode": "Відкрийте DodoPayments checkout, вставте код у Discount code, потім натисніть Apply.",
+              "completeCheckout": "Підтвердьте, що загальна сума становить $0.00, а потім завершіть оплату."
             }
           },
           "findLicenseKey": {
@@ -623,8 +623,8 @@
     "validation": {
       "nameRequired": "Потрібне ім'я",
       "baseUrlRequired": "Потрібен базовий URL",
-      "apiKeyRequired": "Ключ API requiчервоний",
-      "baseUrlAndApiKeyRequired": "База URL і ключ API requiчервоні для перевірки з’єднання",
+      "apiKeyRequired": "API-ключ обов'язковий",
+      "baseUrlAndApiKeyRequired": "Базовий URL і API-ключ обов'язкові для перевірки з’єднання",
       "basicUsernameRequired": "Потрібне ім’я користувача Basic Auth",
       "basicPasswordRequired": "Базовий пароль автентифікації потрібен для перевірки з’єднання",
       "basicPasswordRequiredSubmit": "Потрібен пароль Basic Auth",
@@ -779,7 +779,7 @@
       "unknownError": "Невідома помилка",
       "toast": {
         "urlRequired": "Потрібен URL індексатора",
-        "basicAuthRequired": "Ім'я користувача та пароль базової авторизації requires",
+        "basicAuthRequired": "Ім'я користувача та пароль Basic Auth обов'язкові",
         "urlRequiredBeforeImport": "Перед імпортом надайте індексатор URL",
         "discoveredWithExisting": "Знайдено індексатори {{total}} ({{existing}} вже існує)",
         "discovered": "Знайдено індексатори {{count}}",
