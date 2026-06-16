@@ -398,6 +398,9 @@ func TestStreamManager_syncTimeout_concurrent(t *testing.T) {
 	}
 
 	wg.Wait()
+
+	// State stays readable and yields a valid budget after concurrent access.
+	require.Contains(t, []time.Duration{syncTimeoutIncremental, syncTimeoutFull}, manager.syncTimeout(1))
 }
 
 func TestStreamManager_markSyncSuccess_primes(t *testing.T) {
