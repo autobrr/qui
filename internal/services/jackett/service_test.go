@@ -1797,6 +1797,12 @@ func TestGetConfiguredTrackerDomains(t *testing.T) {
 			// server-host fallback (no API call). The Prowlarr server host must NOT
 			// leak into the result.
 			{ID: 7, Name: "Prowlarr bad id", Backend: models.TorznabBackendProwlarr, BaseURL: "http://prowlarr:9696", IndexerID: "not-a-number", Enabled: true},
+			// A tracker./www./api. host must NOT be stripped: the domain has to match the
+			// full host qBittorrent reports for the active tracker, or the matcher silently
+			// fails ("foo.net" != "tracker.foo.net").
+			{ID: 8, Name: "Native subdomain", Backend: models.TorznabBackendNative, BaseURL: "https://tracker.foo.net/torznab", Enabled: true},
+			// A mixed-case host must be lowercased to match the qBittorrent-keyed active trackers.
+			{ID: 9, Name: "Native mixed case", Backend: models.TorznabBackendNative, BaseURL: "https://API.Example.ORG/torznab", Enabled: true},
 		},
 	}
 	s := NewService(store)
@@ -1806,13 +1812,51 @@ func TestGetConfiguredTrackerDomains(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	want := []string{"aither.cc", "blutopia.cc"}
+	want := []string{"aither.cc", "api.example.org", "blutopia.cc", "tracker.foo.net"}
 	if !slices.Equal(domains, want) {
 		t.Fatalf("GetConfiguredTrackerDomains() = %v, want %v", domains, want)
 	}
 	// Guard against the Prowlarr server host leaking via the fallback.
 	if slices.Contains(domains, "prowlarr") {
 		t.Fatalf("GetConfiguredTrackerDomains() leaked Prowlarr server host: %v", domains)
+	}
+}
+
+func TestGetConfiguredTrackerDomains_ProwlarrResolvesRealDomain(t *testing.T) {
+	// Prowlarr resolves the real tracker domain from its API. Serve an indexer detail whose
+	// baseUrl field points at the real tracker and assert that domain is emitted (lowercased)
+	// and deduped against a native indexer for the same host. This is the core reason Prowlarr
+	// support exists in GetConfiguredTrackerDomains; a regression that dropped real domains
+	// instead of only the Prowlarr server-host fallback would fail here.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/indexer/5" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(`{"id":5,"name":"RealTracker","fields":[{"name":"baseUrl","value":"https://RealTracker.org"}]}`)); err != nil {
+			t.Errorf("write prowlarr response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "Prowlarr", Backend: models.TorznabBackendProwlarr, BaseURL: server.URL, IndexerID: "5", TimeoutSeconds: 5, Enabled: true},
+			// Native indexer for the same tracker: the resolved Prowlarr domain must dedup against it.
+			{ID: 2, Name: "Native same host", Backend: models.TorznabBackendNative, BaseURL: "https://realtracker.org/torznab", Enabled: true},
+		},
+	}
+	s := NewService(store)
+
+	domains, err := s.GetConfiguredTrackerDomains(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"realtracker.org"}
+	if !slices.Equal(domains, want) {
+		t.Fatalf("GetConfiguredTrackerDomains() = %v, want %v", domains, want)
 	}
 }
 

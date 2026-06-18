@@ -2279,7 +2279,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                       trackerDomains: [...prev.trackerDomains, value],
                       trackerMatchMode: prev.trackerMatchMode === "mixed" ? "include" : prev.trackerMatchMode,
                     }))}
-                    disabled={trackersQuery.isLoading || indexerTrackerDomainsQuery.isLoading}
+                    disabled={trackersQuery.isLoading}
                     hideCheckIcon
                   />
                 </div>
