@@ -78,8 +78,8 @@
     "labels": {
       "created": "Створено:",
       "lastUsed": "Останнє використання:",
-      "host": "Ведучий:",
-      "showHost": "Ведучий шоу",
+      "host": "Хост:",
+      "showHost": "Показати хост",
       "hideHost": "Приховати хост"
     },
     "createDialog": {
@@ -249,7 +249,7 @@
     "groups": {
       "torrent": "Торент",
       "maintenance": "Технічне обслуговування",
-      "crossSeed": "Перехресний роздавання",
+      "crossSeed": "Крос-сіди",
       "automations": "Автоматизації",
       "other": "інше",
       "unknown": "Невідомо"
@@ -392,7 +392,11 @@
       "maxLive": "макс",
       "maxPaused": "макс. під час паузи",
       "oldestEntriesDropped": "• найстаріші записи видалено",
-      "muteSimilarEntries": "Вимкнути схожі записи"
+      "muteSimilarEntries": "Вимкнути схожі записи",
+      "levelCount_few": "Рівні {{count}}",
+      "levelCount_many": "Рівнів {{count}}",
+      "mutedCount_few": "{{count}} Вимкнено",
+      "mutedCount_many": "{{count}} Вимкнено"
     },
     "entryDialog": {
       "title": "Запис у журналі",
@@ -672,7 +676,7 @@
       "testAllPartial": "{{success}} пройшло, {{failed}} не вдалося",
       "failedIndexers": "Помилка індексаторів: {{names}}",
       "capsSynced": "Можливості, синхронізовані з серверної частини",
-      "failedToSyncCaps": "Не вдалося синхронізувати великі букви"
+      "failedToSyncCaps": "Не вдалося синхронізувати можливості"
     },
     "page": {
       "summary": "{{enabled}} увімкнено, {{capabilities}} із можливостями",
@@ -844,7 +848,7 @@
       "queueLength": "Черга",
       "workers": "Робітники",
       "cooldown": "Кулдаун",
-      "running": "Біг",
+      "running": "Виконується",
       "queued": "У черзі",
       "rateLimited": "Rate Limited",
       "noActiveTasks": "Немає активних завдань або обмежень по швидкості",
@@ -852,9 +856,9 @@
       "workersStatus": "{{used}}/{{total}} працівників",
       "runningCount": "{{count}} працює",
       "queuedCount": "{{count}} у черзі",
-      "cooldownCount": "Зарядка {{count}}",
+      "cooldownCount": "{{count}} кулдаун",
       "ready": "Готовий",
-      "left": "{{time}} пішов"
+      "left": "залишилось {{time}}"
     },
     "searchHistory": {
       "title": "Історія пошуку",
@@ -866,11 +870,11 @@
       "source": "Джерело: {{source}}",
       "results": "Результати {{count}}",
       "detail": {
-        "release": "Звільнення",
+        "release": "Реліз",
         "results": "Результати",
         "duration": "Тривалість",
         "priority": "Пріоритет",
-        "crossSeed": "Перехресний роздавання",
+        "crossSeed": "Крос-сіди",
         "added": "Додано {{count}}",
         "error": "Помилка",
         "searchParameters": "Параметри пошуку",
@@ -925,7 +929,7 @@
       "description": "Деталі версії та збірки.",
       "refresh": "Оновити",
       "version": "Версія",
-      "commit": "Здійснити",
+      "commit": "Коміт",
       "buildDate": "Дата збірки",
       "updateStatus": "Статус оновлення",
       "statuses": {
