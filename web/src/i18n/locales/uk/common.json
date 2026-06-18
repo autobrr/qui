@@ -141,8 +141,8 @@
     "dismiss": "Закрити"
   },
   "notFound": {
-    "title": "Упс! Ви заблукали?",
-    "subtitle": "Схоже, ви потрапили в невідоме місце.",
+    "title": "Упс! Загубився в рої?",
+    "subtitle": "Схоже, ви потрапили в невідомі краї.",
     "bugReport": "Якщо ви вважаєте, що це помилка, а не відсутнє посилання,",
     "reportTo": "будь ласка, повідомте про це в наш",
     "githubRepository": "репозиторій GitHub",
@@ -174,19 +174,33 @@
     "future": "через {{value}}",
     "units": {
       "second_one": "{{count}} секунда",
-      "second_other": "{{count}} секунд",
+      "second_other": "{{count}} секунди",
       "minute_one": "{{count}} хвилина",
-      "minute_other": "{{count}} хвилин",
+      "minute_other": "{{count}} хвилини",
       "hour_one": "{{count}} година",
-      "hour_other": "{{count}} годин",
+      "hour_other": "{{count}} години",
       "day_one": "{{count}} день",
-      "day_other": "{{count}} днів",
+      "day_other": "{{count}} дня",
       "week_one": "{{count}} тиждень",
-      "week_other": "{{count}} тижнів",
+      "week_other": "{{count}} тижня",
       "month_one": "{{count}} місяць",
-      "month_other": "{{count}} місяців",
+      "month_other": "{{count}} місяця",
       "year_one": "{{count}} рік",
-      "year_other": "{{count}} років"
+      "year_other": "{{count}} року",
+      "second_few": "{{count}} секунди",
+      "second_many": "{{count}} секунд",
+      "minute_few": "{{count}} хвилини",
+      "minute_many": "{{count}} хвилин",
+      "hour_few": "{{count}} години",
+      "hour_many": "{{count}} годин",
+      "day_few": "{{count}} дні",
+      "day_many": "{{count}} днів",
+      "week_few": "{{count}} тижні",
+      "week_many": "{{count}} тижнів",
+      "month_few": "{{count}} місяці",
+      "month_many": "{{count}} місяців",
+      "year_few": "{{count}} роки",
+      "year_many": "{{count}} років"
     }
   }
 }
