@@ -126,7 +126,7 @@
     "retry": "Повторити",
     "noCrossSeeds": "крос-сіди не знайдено",
     "deleteCrossSeeds": "Ці крос-сіди також буде видалено",
-    "deletingFilesBreaks": "Видалення файлів порушить ці перехресні коди",
+    "deletingFilesBreaks": "Видалення файлів порушить ці крос-сіди",
     "dataPreserved": "Виявлено крос-сіди: дані будуть збережені",
     "torrentShares": "Торент {{count}} ділиться цими файлами",
     "torrentsShare": "Торенти {{count}} поділяють ці файли",
@@ -180,7 +180,9 @@
       "actions": {
         "add": "додати",
         "remove": "видалити"
-      }
+      },
+      "title_few": "Частково оновлені теги для торенти {{count}}",
+      "title_many": "Частково оновлені теги для торентів {{count}}"
     },
     "success": {
       "resume_one": "Відновлено торент {{count}}",
@@ -232,7 +234,57 @@
       "toggleSequentialDownloadDisable_one": "Вимкнено послідовне завантаження для торента {{count}}",
       "toggleSequentialDownloadDisable_other": "Вимкнено послідовне завантаження для торентів {{count}}",
       "setComment_one": "Оновлений коментар для торента {{count}}",
-      "setComment_other": "Оновлений коментар для торентів {{count}}"
+      "setComment_other": "Оновлений коментар для торентів {{count}}",
+      "resume_few": "Відновлено торенти {{count}}",
+      "resume_many": "Відновлено торентів {{count}}",
+      "pause_few": "Торенти {{count}} призупинено",
+      "pause_many": "Торентів {{count}} призупинено",
+      "delete_few": "Видалені торенти {{count}}",
+      "delete_many": "Видалені торентів {{count}}",
+      "deleteWithFiles_few": "Видалено торенти та файли {{count}}",
+      "deleteWithFiles_many": "Видалено торентів та файли {{count}}",
+      "recheck_few": "Розпочато повторну перевірку торенти {{count}}",
+      "recheck_many": "Розпочато повторну перевірку торентів {{count}}",
+      "reannounce_few": "Повторно анонсовані торенти {{count}}",
+      "reannounce_many": "Повторно анонсовані торентів {{count}}",
+      "increasePriority_few": "Підвищений пріоритет для торенти {{count}}",
+      "increasePriority_many": "Підвищений пріоритет для торентів {{count}}",
+      "decreasePriority_few": "Знижений пріоритет для торенти {{count}}",
+      "decreasePriority_many": "Знижений пріоритет для торентів {{count}}",
+      "topPriority_few": "Встановіть для торенти {{count}} найвищий пріоритет",
+      "topPriority_many": "Встановіть для торентів {{count}} найвищий пріоритет",
+      "bottomPriority_few": "Встановіть для торенти {{count}} найнижчий пріоритет",
+      "bottomPriority_many": "Встановіть для торентів {{count}} найнижчий пріоритет",
+      "addTags_few": "Додано теги до торенти {{count}}",
+      "addTags_many": "Додано теги до торентів {{count}}",
+      "removeTags_few": "Видалено теги з торенти {{count}}",
+      "removeTags_many": "Видалено теги з торентів {{count}}",
+      "setTags_few": "Замінені теги для торенти {{count}}",
+      "setTags_many": "Замінені теги для торентів {{count}}",
+      "setCategory_few": "Встановити категорію для торенти {{count}}",
+      "setCategory_many": "Встановити категорію для торентів {{count}}",
+      "toggleAutoTMMEnable_few": "Увімкнено Auto TMM для торенти {{count}}",
+      "toggleAutoTMMEnable_many": "Увімкнено Auto TMM для торентів {{count}}",
+      "toggleAutoTMMDisable_few": "Вимкнено Auto TMM для торенти {{count}}",
+      "toggleAutoTMMDisable_many": "Вимкнено Auto TMM для торентів {{count}}",
+      "forceStartEnable_few": "Увімкнено примусовий запуск для торенти {{count}}",
+      "forceStartEnable_many": "Увімкнено примусовий запуск для торентів {{count}}",
+      "forceStartDisable_few": "Вимкнено примусовий запуск для торенти {{count}}",
+      "forceStartDisable_many": "Вимкнено примусовий запуск для торентів {{count}}",
+      "setShareLimit_few": "Встановити обмеження на спільний доступ для торенти {{count}}",
+      "setShareLimit_many": "Встановити обмеження на спільний доступ для торентів {{count}}",
+      "setUploadLimit_few": "Встановити ліміт завантаження для торенти {{count}}",
+      "setUploadLimit_many": "Встановити ліміт завантаження для торентів {{count}}",
+      "setDownloadLimit_few": "Встановити ліміт завантаження для торенти {{count}}",
+      "setDownloadLimit_many": "Встановити ліміт завантаження для торентів {{count}}",
+      "setLocation_few": "Встановити розташування для торенти {{count}}",
+      "setLocation_many": "Встановити розташування для торентів {{count}}",
+      "toggleSequentialDownloadEnable_few": "Увімкнено послідовне завантаження для торенти {{count}}",
+      "toggleSequentialDownloadEnable_many": "Увімкнено послідовне завантаження для торентів {{count}}",
+      "toggleSequentialDownloadDisable_few": "Вимкнено послідовне завантаження для торенти {{count}}",
+      "toggleSequentialDownloadDisable_many": "Вимкнено послідовне завантаження для торентів {{count}}",
+      "setComment_few": "Оновлений коментар для торенти {{count}}",
+      "setComment_many": "Оновлений коментар для торентів {{count}}"
     },
     "failed": {
       "resume_one": "Не вдалося відновити торент {{count}}",
@@ -274,8 +326,52 @@
       "setLocation_one": "Не вдалося встановити місце для торента {{count}}",
       "setLocation_other": "Не вдалося встановити розташування для торентів {{count}}",
       "toggleSequentialDownload_one": "Не вдалося оновити послідовне завантаження для торента {{count}}",
-      "toggleSequentialDownload_other": "Не вдалося оновити послідовне завантаження для торентів {{count}}"
-    }
+      "toggleSequentialDownload_other": "Не вдалося оновити послідовне завантаження для торентів {{count}}",
+      "resume_few": "Не вдалося відновити торенти {{count}}",
+      "resume_many": "Не вдалося відновити торентів {{count}}",
+      "pause_few": "Не вдалося призупинити торенти {{count}}",
+      "pause_many": "Не вдалося призупинити торентів {{count}}",
+      "delete_few": "Не вдалося видалити торенти {{count}}",
+      "delete_many": "Не вдалося видалити торентів {{count}}",
+      "recheck_few": "Не вдалося повторно перевірити торенти {{count}}",
+      "recheck_many": "Не вдалося повторно перевірити торентів {{count}}",
+      "reannounce_few": "Не вдалося повторно анонсувати торенти {{count}}",
+      "reannounce_many": "Не вдалося повторно анонсувати торентів {{count}}",
+      "increasePriority_few": "Не вдалося збільшити пріоритет для торенти {{count}}",
+      "increasePriority_many": "Не вдалося збільшити пріоритет для торентів {{count}}",
+      "decreasePriority_few": "Не вдалося зменшити пріоритет для торенти {{count}}",
+      "decreasePriority_many": "Не вдалося зменшити пріоритет для торентів {{count}}",
+      "topPriority_few": "Не вдалося встановити торенти {{count}} як найвищий пріоритет",
+      "topPriority_many": "Не вдалося встановити торентів {{count}} як найвищий пріоритет",
+      "bottomPriority_few": "Не вдалося встановити для торенти {{count}} найнижчий пріоритет",
+      "bottomPriority_many": "Не вдалося встановити для торентів {{count}} найнижчий пріоритет",
+      "addTags_few": "Не вдалося додати теги до торенти {{count}}",
+      "addTags_many": "Не вдалося додати теги до торентів {{count}}",
+      "removeTags_few": "Не вдалося видалити теги з торенти {{count}}",
+      "removeTags_many": "Не вдалося видалити теги з торентів {{count}}",
+      "setTags_few": "Не вдалося замінити теги для торенти {{count}}",
+      "setTags_many": "Не вдалося замінити теги для торентів {{count}}",
+      "setCategory_few": "Не вдалося встановити категорію для торенти {{count}}",
+      "setCategory_many": "Не вдалося встановити категорію для торентів {{count}}",
+      "toggleAutoTMM_few": "Не вдалося оновити Auto TMM для торенти {{count}}",
+      "toggleAutoTMM_many": "Не вдалося оновити Auto TMM для торентів {{count}}",
+      "forceStart_few": "Не вдалося оновити примусовий запуск для торенти {{count}}",
+      "forceStart_many": "Не вдалося оновити примусовий запуск для торентів {{count}}",
+      "setShareLimit_few": "Не вдалося встановити обмеження спільного використання для торенти {{count}}",
+      "setShareLimit_many": "Не вдалося встановити обмеження спільного використання для торентів {{count}}",
+      "setUploadLimit_few": "Не вдалося встановити ліміт завантаження для торенти {{count}}",
+      "setUploadLimit_many": "Не вдалося встановити ліміт завантаження для торентів {{count}}",
+      "setDownloadLimit_few": "Не вдалося встановити ліміт завантаження для торенти {{count}}",
+      "setDownloadLimit_many": "Не вдалося встановити ліміт завантаження для торентів {{count}}",
+      "setLocation_few": "Не вдалося встановити розташування для торенти {{count}}",
+      "setLocation_many": "Не вдалося встановити розташування для торентів {{count}}",
+      "toggleSequentialDownload_few": "Не вдалося оновити послідовне завантаження для торенти {{count}}",
+      "toggleSequentialDownload_many": "Не вдалося оновити послідовне завантаження для торентів {{count}}"
+    },
+    "updatedTags_few": "Оновлені теги для торенти {{count}}",
+    "updatedTags_many": "Оновлені теги для торентів {{count}}",
+    "updateTagsFailed_few": "Не вдалося оновити теги для торенти {{count}}",
+    "updateTagsFailed_many": "Не вдалося оновити теги для торентів {{count}}"
   },
   "dialogs": {
     "tagEditor": {
@@ -527,7 +623,7 @@
   },
   "mediaInfoDialog": {
     "title": "MediaInfo",
-    "summary": "Резюме",
+    "summary": "Підсумок",
     "rawJson": "Необроблений JSON",
     "copySummary": "Копіювати резюме",
     "copyJson": "Копія JSON",
@@ -851,7 +947,11 @@
       "convertedTrackerUrls_one": "Перетворено трекер {{count}} URL на HTTPS",
       "convertedTrackerUrls_other": "Перетворено трекер {{count}} URLs на HTTPS",
       "convertTrackerFailed_one": "Не вдалося перетворити {{count}} URL",
-      "convertTrackerFailed_other": "Не вдалося перетворити {{count}} URLs"
+      "convertTrackerFailed_other": "Не вдалося перетворити {{count}} URLs",
+      "convertedTrackerUrls_few": "Перетворено трекер {{count}} URLs на HTTPS",
+      "convertedTrackerUrls_many": "Перетворено трекер {{count}} URLs на HTTPS",
+      "convertTrackerFailed_few": "Не вдалося перетворити {{count}} URLs",
+      "convertTrackerFailed_many": "Не вдалося перетворити {{count}} URLs"
     },
     "states": {
       "downloading": "Завантаження",
@@ -860,7 +960,7 @@
       "stopped": "Зупинився",
       "active": "Активний",
       "inactive": "Неактивний",
-      "running": "Біг",
+      "running": "Активні",
       "stalled": "Застопорився",
       "stalledUp": "Застопорився",
       "stalledDown": "Застопорився",
@@ -931,7 +1031,9 @@
         "message": "Використання опитування {{seconds}}s, доки не буде готове з’єднання SSE.",
         "secondary": "Опитування кожні {{seconds}}s"
       }
-    }
+    },
+    "torrentCount_few": "{{count}} торенти",
+    "torrentCount_many": "{{count}} торентів"
   },
   "detailsPanel": {
     "tabs": {
@@ -949,7 +1051,7 @@
       "copyFailed": "Не вдалося скопіювати в буфер обміну",
       "peersAdded": "Аналогів успішно додано",
       "peersFailed": "Не вдалося додати партнерів: {{error}}",
-      "peerBanned": "Одноранговий блок успішно",
+      "peerBanned": "Піра успішно заблоковано",
       "peerBanFailed": "Не вдалося забанити вузла: {{error}}",
       "trackerUpdated": "URL трекера успішно оновлено",
       "trackerUpdateFailed": "Не вдалося оновити трекер",
@@ -982,7 +1084,11 @@
       "description_one": "Ви впевнені, що хочете видалити торент {{count}}?",
       "description_other": "Ви впевнені, що хочете видалити торенти {{count}}?",
       "confirm_one": "Видалити {{count}} Torrent",
-      "confirm_other": "Видалити {{count}} Torrents"
+      "confirm_other": "Видалити {{count}} Torrents",
+      "description_few": "Ви впевнені, що хочете видалити торенти {{count}}?",
+      "description_many": "Ви впевнені, що хочете видалити торентів {{count}}?",
+      "confirm_few": "Видалити {{count}} Torrents",
+      "confirm_many": "Видалити {{count}} Torrents"
     },
     "deleteCurrent": {
       "description": "Ви впевнені, що хочете видалити \"{{name}}\"?",
@@ -1007,7 +1113,11 @@
       "infoHashDescription": "Точно той самий торент (такий самий хеш інформації)",
       "savePathMatch": "Зберегти шлях",
       "savePathDescription": "Той самий каталог збереження та ім’я файлу",
-      "selectTorrent": "Виберіть {{name}}"
+      "selectTorrent": "Виберіть {{name}}",
+      "loadingSummary_few": "{{count}} відповідні торенти знайдено, перевірка інших випадків...",
+      "loadingSummary_many": "{{count}} відповідні торентів знайдено, перевірка інших випадків...",
+      "loadedSummary_few": "{{count}} відповідні торенти знайдено в усіх екземплярах",
+      "loadedSummary_many": "{{count}} відповідні торентів знайдено в усіх екземплярах"
     },
     "sections": {
       "generalInformation": "Загальна інформація",
@@ -1056,7 +1166,15 @@
       "httpSources_other": "Джерела {{count}}",
       "selectedFiles": "Вибрано {{selected}} з {{total}}",
       "files_one": "файл {{count}}",
-      "files_other": "Файли {{count}}"
+      "files_other": "Файли {{count}}",
+      "trackers_few": "Трекери {{count}}",
+      "trackers_many": "Трекерів {{count}}",
+      "connectedPeers_few": "{{count}} піри підключено",
+      "connectedPeers_many": "{{count}} пірів підключено",
+      "httpSources_few": "{{count}} джерела",
+      "httpSources_many": "{{count}} джерел",
+      "files_few": "Файли {{count}}",
+      "files_many": "Файлів {{count}}"
     },
     "values": {
       "normal": "нормальний",
@@ -1102,7 +1220,7 @@
     "network": "Мережа",
     "seeds": "Сіди",
     "peers": "Піри",
-    "downSpeed": "Скорочення вниз",
+    "downSpeed": "Швидкість завантаження",
     "upSpeed": "Швидкість",
     "downLimit": "Нижній ліміт",
     "upLimit": "До ліміту",
@@ -1224,7 +1342,7 @@
         "description": "Та сама назва торента"
       },
       "release": {
-        "label": "Звільнення",
+        "label": "Реліз",
         "description": "Той самий випуск (зіставляється за метаданими)"
       }
     },
@@ -1232,7 +1350,9 @@
     "toast": {
       "savePathCopied": "Шлях збереження скопійовано",
       "copyFailed": "Не вдалося скопіювати"
-    }
+    },
+    "matchCount_few": "{{count}} збіги",
+    "matchCount_many": "{{count}} збігів"
   },
   "addTorrentDialog": {
     "title": "Додати новий торент",
@@ -1255,7 +1375,9 @@
       "existingTorrents": "Наявні торенти: {{names}}",
       "highlightedBelow": "Дубльовані виділення виділені нижче.",
       "remove": "Видаліть дублікати",
-      "matchesExisting": "Збігається з наявними: {{names}}"
+      "matchesExisting": "Збігається з наявними: {{names}}",
+      "selectionDetected_few": "Виявлено повторювані виділення {{count}}",
+      "selectionDetected_many": "Виявлено повторювані виділень {{count}}"
     },
     "fileInput": {
       "label": "Торент файли",
@@ -1269,7 +1391,11 @@
       "showFiles": "Показати файли",
       "hideFiles": "Приховати файли",
       "moreFiles": "... і ще {{count}}",
-      "removeFile": "Видалити файл"
+      "removeFile": "Видалити файл",
+      "selectedFiles_few": "Вибрані файли {{count}}",
+      "selectedFiles_many": "Вибрані файлів {{count}}",
+      "duplicateFiles_few": "{{count}} дублікати файлів",
+      "duplicateFiles_many": "{{count}} дублікатів файлів"
     },
     "urlInput": {
       "label": "URLs / Магнітні посилання",
@@ -1345,7 +1471,7 @@
     "stopTorrent": "Зупинити торент",
     "removeTorrent": "Видалити торент",
     "removeWithContent": "Видалити разом із вмістом",
-    "enableSuperSeeding": "Увімкнути суперпосадку",
+    "enableSuperSeeding": "Увімкнути суперсідування",
     "limitsMatchingMode": "Обмежує режим відповідності",
     "matchAnyLimit": "Відповідність будь-якій межі",
     "matchAllLimits": "Відповідати всім обмеженням",
@@ -1429,10 +1555,10 @@
     "size": "Розмір",
     "totalSize": "Загальний розмір",
     "progress": "Прогрес",
-    "state": "Держава",
+    "state": "Стан",
     "seeds": "Сіди",
     "peers": "Піри",
-    "downSpeed": "Скорочення вниз",
+    "downSpeed": "Швидкість завантаження",
     "upSpeed": "Швидкість",
     "eta": "ETA",
     "ratio": "Коефіцієнт",
