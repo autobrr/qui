@@ -355,8 +355,8 @@ Partial matches in link tree mode (hardlink or reflink) require **Download missi
 :::
 
 See:
-- [Hardlink Mode](hardlink-mode)
-- [Link Directories](link-directories)
+- [Hardlink Mode](./hardlink-mode.md)
+- [Link Directories](./link-directories.md)
 
 ### Fallback to regular mode
 
@@ -412,4 +412,4 @@ Click a run to see details including failure reasons for individual items.
 - Indexers may throttle requests. Check **Scheduler Activity** on the Indexers page.
 - Consider reducing scan frequency or limiting to fewer indexers.
 
-For cross-seed-wide issues (matching behavior, hardlink failures, recheck problems), see [Troubleshooting](troubleshooting).
+For cross-seed-wide issues (matching behavior, hardlink failures, recheck problems), see [Troubleshooting](./troubleshooting.md).

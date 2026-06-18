@@ -4234,6 +4234,88 @@ func (s *Service) GetEnabledTrackerDomains(ctx context.Context) ([]string, error
 	return domains, nil
 }
 
+// GetConfiguredTrackerDomains returns tracker domains for enabled indexers whose
+// real tracker domain can be derived reliably, so trackers with no active torrents
+// can still be selected (e.g. in automation rules).
+//
+// Only native and Prowlarr backends are included:
+//   - native: base_url is the tracker's own Torznab endpoint, so its host is the
+//     tracker domain.
+//   - prowlarr: the real tracker domain is resolved from the Prowlarr API.
+//
+// Jackett indexers are intentionally skipped: their base_url points at the Jackett
+// server (e.g. http://jackett:9117/api/v2.0/indexers/<tracker>/results/torznab), so
+// its host is the server, not the tracker, and would be misleading.
+func (s *Service) GetConfiguredTrackerDomains(ctx context.Context) ([]string, error) {
+	indexers, err := s.indexerStore.ListEnabled(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list enabled indexers: %w", err)
+	}
+
+	domainMap := make(map[string]bool)
+	var domains []string
+	addDomain := func(domain string) {
+		if domain == "" || domainMap[domain] {
+			return
+		}
+		domainMap[domain] = true
+		domains = append(domains, domain)
+	}
+
+	var prowlarrIndexers []*models.TorznabIndexer
+	for _, indexer := range indexers {
+		switch indexer.Backend {
+		case models.TorznabBackendProwlarr:
+			prowlarrIndexers = append(prowlarrIndexers, indexer)
+		case models.TorznabBackendNative:
+			if indexer.BaseURL != "" {
+				addDomain(trackerDomainFromURL(indexer.BaseURL))
+			}
+		case models.TorznabBackendJackett:
+			// base_url points at the Jackett server, not the tracker — skip.
+		}
+	}
+
+	// Prowlarr domains are resolved from the Prowlarr API (same path cross-seed uses).
+	// getProwlarrTrackerDomains falls back to the Prowlarr server host when its API
+	// lookup fails or returns no domain; that host is not a tracker, so drop it.
+	// Compare the raw resolved domain against the (same) extractDomainFromURL form
+	// getProwlarrTrackerDomains used for the fallback, then lowercase when emitting so
+	// the output matches the qBittorrent-keyed active trackers.
+	if len(prowlarrIndexers) > 0 {
+		prowlarrDomains := s.getProwlarrTrackerDomains(ctx, prowlarrIndexers)
+		for _, indexer := range prowlarrIndexers {
+			domain := prowlarrDomains[indexer.ID]
+			if domain == "" || domain == extractDomainFromURL(indexer.BaseURL) {
+				continue
+			}
+			addDomain(strings.ToLower(domain))
+		}
+	}
+
+	sort.Strings(domains)
+	return domains, nil
+}
+
+// trackerDomainFromURL extracts a tracker domain from a URL the same way the qBittorrent sync
+// manager does (SyncManager.ExtractDomainFromURL): the lowercased hostname with no subdomain
+// stripping. The workflow tracker selector and the automation tracker matcher key trackers by
+// this exact form, so indexer-derived domains must match it byte-for-byte. Unlike
+// extractDomainFromURL it must NOT strip www/api/tracker prefixes: a token like "foo.net" would
+// never match a torrent announcing on "tracker.foo.net" and would surface as a duplicate option.
+func trackerDomainFromURL(urlStr string) string {
+	if urlStr == "" {
+		return ""
+	}
+
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return ""
+	}
+
+	return strings.ToLower(u.Hostname())
+}
+
 // extractDomainFromURL extracts the domain from a URL string
 func extractDomainFromURL(urlStr string) string {
 	if urlStr == "" {

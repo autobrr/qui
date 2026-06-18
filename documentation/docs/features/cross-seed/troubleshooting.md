@@ -32,21 +32,21 @@ Library scan and completion search rows use **added**, **skipped**, or **failed*
 
 | Status or message | Outcome | What it usually means | What to check |
 | --- | --- | --- | --- |
-| `exists` | Skipped | The exact torrent infohash is already in the target qBittorrent instance. | This is normally harmless. If you expected a new tracker result, check the source and target indexers in [Cross-Seed Overview](overview#discovery-methods). |
-| `no_match` | Skipped | qui searched but did not find an existing local torrent with the required files. | Review [release matching](#release-didnt-match), source filters, and the discovery method in [Library Scan](overview#library-scan) or [Auto-Search on Completion](overview#auto-search-on-completion). |
-| `blocked` | Skipped | The candidate infohash is on the cross-seed blocklist. | Remove it from **Cross-Seed > Blocklist** if you want qui to try it again. See [Blocklist](overview#blocklist). |
-| `skipped_recheck` | Skipped | The match would require a recheck, but **Skip recheck** is enabled. | See [When Rechecks Are Required](#when-rechecks-are-required-reuse-mode) and [Rules](rules#matching). |
-| `skipped_unsafe_pieces` | Skipped | The incoming torrent has missing or extra files whose pieces overlap existing content, or a link-mode fallback would leave unsafe unmaterialized pieces. qui skips before adding to avoid modifying existing data. | See [Cross-seed skipped: "extra files share pieces with content"](#cross-seed-skipped-extra-files-share-pieces-with-content) and [Reflink Mode](hardlink-mode#reflink-mode-alternative). |
-| `below_threshold` | Skipped | The matched files do not meet the configured completion threshold after materialization or recheck. | Check **Size mismatch tolerance** in [Rules](rules#matching), then see [Cross-seed stuck at low percentage after recheck](#cross-seed-stuck-at-low-percentage-after-recheck). |
-| `requires_hardlink_reflink` | Skipped | The torrent layout would scatter rootless or extra files in regular reuse mode. | Enable [Hardlink Mode](hardlink-mode) or [Reflink Mode](hardlink-mode#reflink-mode-alternative), or download the torrent normally. |
+| `exists` | Skipped | The exact torrent infohash is already in the target qBittorrent instance. | This is normally harmless. If you expected a new tracker result, check the source and target indexers in [Cross-Seed Overview](./overview.md#discovery-methods). |
+| `no_match` | Skipped | qui searched but did not find an existing local torrent with the required files. | Review [release matching](#release-didnt-match), source filters, and the discovery method in [Library Scan](./overview.md#library-scan) or [Auto-Search on Completion](./overview.md#auto-search-on-completion). |
+| `blocked` | Skipped | The candidate infohash is on the cross-seed blocklist. | Remove it from **Cross-Seed > Blocklist** if you want qui to try it again. See [Blocklist](./overview.md#blocklist). |
+| `skipped_recheck` | Skipped | The match would require a recheck, but **Skip recheck** is enabled. | See [When Rechecks Are Required](#when-rechecks-are-required-reuse-mode) and [Rules](./rules.md#matching). |
+| `skipped_unsafe_pieces` | Skipped | The incoming torrent has missing or extra files whose pieces overlap existing content, or a link-mode fallback would leave unsafe unmaterialized pieces. qui skips before adding to avoid modifying existing data. | See [Cross-seed skipped: "extra files share pieces with content"](#cross-seed-skipped-extra-files-share-pieces-with-content) and [Reflink Mode](./hardlink-mode.md#reflink-mode-alternative). |
+| `below_threshold` | Skipped | The matched files do not meet the configured completion threshold after materialization or recheck. | Check **Size mismatch tolerance** in [Rules](./rules.md#matching), then see [Cross-seed stuck at low percentage after recheck](#cross-seed-stuck-at-low-percentage-after-recheck). |
+| `requires_hardlink_reflink` | Skipped | The torrent layout would scatter rootless or extra files in regular reuse mode. | Enable [Hardlink Mode](./hardlink-mode.md) or [Reflink Mode](./hardlink-mode.md#reflink-mode-alternative), or download the torrent normally. |
 | `size_mismatch` | Failed | A search result already exists by infohash, but the earlier content prefilter rejected it because the torrent file list did not match the source sizes. | Compare the torrent files on the trackers. This protects you from treating different content as a valid cross-seed. See [release matching](#release-didnt-match). |
 | `content_mismatch` | Failed | A search result already exists by infohash, but the earlier content prefilter rejected it for a non-size file-level reason. | Review the row message and enable trace logging if needed. See [How do I see why a release was filtered?](#how-do-i-see-why-a-release-was-filtered). |
-| `hardlink_error` | Failed | Hardlink mode was enabled but qui could not create or use the hardlink tree. | See [Hardlink mode failed](#hardlink-mode-failed) and [Hardlink Mode requirements](hardlink-mode#requirements). |
-| `reflink_error` | Failed | Reflink mode was enabled but qui could not create or use the reflink tree. | See [Reflink mode failed](#reflink-mode-failed) and [Reflink Requirements](hardlink-mode#reflink-requirements). |
-| `no_save_path` | Failed | qui could not find a valid target save path for the cross-seed. The matched torrent has no usable SavePath and the category does not provide an explicit SavePath. | Verify the matched torrent's save path and category save path in qBittorrent, then review [category behavior](rules#category-behavior-details). |
-| `error`, `alignment_failed`, or `pause_failed` | Failed | qBittorrent rejected the add, a required file or folder rename failed, or qui could not pause a misaligned torrent after an alignment failure. | Check the instance connection, qBittorrent logs, and save path/category behavior in [Rules](rules#category-behavior-details). |
+| `hardlink_error` | Failed | Hardlink mode was enabled but qui could not create or use the hardlink tree. | See [Hardlink mode failed](#hardlink-mode-failed) and [Hardlink Mode requirements](./hardlink-mode.md#requirements). |
+| `reflink_error` | Failed | Reflink mode was enabled but qui could not create or use the reflink tree. | See [Reflink mode failed](#reflink-mode-failed) and [Reflink Requirements](./hardlink-mode.md#reflink-requirements). |
+| `no_save_path` | Failed | qui could not find a valid target save path for the cross-seed. The matched torrent has no usable SavePath and the category does not provide an explicit SavePath. | Verify the matched torrent's save path and category save path in qBittorrent, then review [category behavior](./rules.md#category-behavior-details). |
+| `error`, `alignment_failed`, or `pause_failed` | Failed | qBittorrent rejected the add, a required file or folder rename failed, or qui could not pause a misaligned torrent after an alignment failure. | Check the instance connection, qBittorrent logs, and save path/category behavior in [Rules](./rules.md#category-behavior-details). |
 
-Failed search or completion runs can trigger notification events. See [Notifications](../notifications#event-types) for the event keys.
+Failed search or completion runs can trigger notification events. See [Notifications](../notifications.md#event-types) for the event keys.
 
 :::tip
 `size_mismatch` failures are generated from the size reported inside of torrent files, not the content on disk. These failures are strong indicators that the cross seeded content has mismatching piece hashes between trackers. One or more trackers had a bad hash copy.
@@ -56,7 +56,7 @@ If the source torrent is the bad hash, the hash in `debug` logging `[CROSSSEED-A
 :::
 
 :::tip
-Use [piece boundary protection](rules#matching) to protect content against bad hash torrents.
+Use [piece boundary protection](./rules.md#matching) to protect content against bad hash torrents.
 
 ## Why did my season-pack check return 404?
 
@@ -75,7 +75,7 @@ If the pack should match except for REPACK, HDR, WEB, or year differences, check
 
 Open **Cross-Seed > Rules > Season packs** for recent season-pack activity. It shows the check/apply phase, status, reason, message, coverage, matched episodes, total episodes, selected instance, and link mode. You can also query `/api/cross-seed/season-pack/runs?limit=20` directly.
 
-See [Season Packs](season-packs) for the full flow, setup requirements, and season-pack-specific debugging steps.
+See [Season Packs](./season-packs.md) for the full flow, setup requirements, and season-pack-specific debugging steps.
 
 ## How do I see why a release was filtered?
 
