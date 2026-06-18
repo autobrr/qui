@@ -32,7 +32,7 @@ import {
   getTranslatedOperatorsForField,
   getTranslatedTorrentStates,
   getTranslatedHardlinkScopes,
-  TRACKER_STATUS_VALUES,
+  getTranslatedTrackerStatuses,
   type DisabledField,
   type DisabledStateValue
 } from "./constants";
@@ -654,10 +654,10 @@ export function LeafCondition({
         ) : fieldType === "trackerStatus" ? (
           <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
             <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[180px]">
-              <SelectValue placeholder="Select status" />
+              <SelectValue placeholder={t("queryBuilder.selectTrackerStatus")} />
             </SelectTrigger>
             <SelectContent>
-              {TRACKER_STATUS_VALUES.map((status) => (
+              {getTranslatedTrackerStatuses(t).map((status) => (
                 <SelectItem key={status.value} value={status.value}>
                   {status.label}
                 </SelectItem>

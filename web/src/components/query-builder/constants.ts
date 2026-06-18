@@ -31,8 +31,8 @@ export const CONDITION_FIELDS = {
   RLS_GROUP: { label: "Group (RLS)", type: "string" as const, description: "Parsed release group (e.g. NTb, FLUX, FraMeSToR)" },
   STATE: { label: "State", type: "state" as const, description: "Torrent status (matches sidebar filters)" },
   TRACKER: { label: "Tracker", type: "string" as const, description: "Primary tracker (URL, domain, or display name)" },
-  TRACKER_STATUS: { label: "Status", type: "trackerStatus" as const, description: "Per-tracker announce status (matches if any tracker matches)" },
-  TRACKER_MESSAGE: { label: "Message", type: "string" as const, description: "Per-tracker status message (matches if any tracker matches). Use \"nil\" for empty." },
+  TRACKER_STATUS: { label: "Tracker status", type: "trackerStatus" as const, description: "Per-tracker announce status (matches if any tracker matches)" },
+  TRACKER_MESSAGE: { label: "Tracker message", type: "string" as const, description: "Per-tracker status message (matches if any tracker matches). Use \"nil\" for empty." },
   COMMENT: { label: "Comment", type: "string" as const, description: "Torrent comment" },
 
   // Size fields (bytes)
@@ -369,8 +369,9 @@ export const CAPABILITY_REASONS = {
   localFilesystemAccess: "Requires Local Filesystem Access",
 } as const;
 
+// "disabled" (status 0) is intentionally omitted: it only ever applies to qBittorrent's
+// DHT/PeX/LSD pseudo-trackers, which the evaluator skips, so it could never match a real tracker.
 export const TRACKER_STATUS_VALUES = [
-  { value: "disabled", label: "Disabled" },
   { value: "not_contacted", label: "Not contacted" },
   { value: "working", label: "Working" },
   { value: "updating", label: "Updating" },
@@ -448,6 +449,14 @@ export function getTranslatedTorrentStates(t: TFunction): { value: string; label
   return TORRENT_STATES.map((state) => ({
     value: state.value,
     label: t(`queryBuilder.torrentStates.${state.value}`, { defaultValue: state.label }),
+  }));
+}
+
+/** Get translated tracker status values */
+export function getTranslatedTrackerStatuses(t: TFunction): { value: string; label: string }[] {
+  return TRACKER_STATUS_VALUES.map((status) => ({
+    value: status.value,
+    label: t(`queryBuilder.trackerStatuses.${status.value}`, { defaultValue: status.label }),
   }));
 }
 
