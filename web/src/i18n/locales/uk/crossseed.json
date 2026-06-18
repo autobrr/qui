@@ -12,7 +12,7 @@
   "overview": {
     "rssAutomation": {
       "title": "RSS автоматизація",
-      "description": "Автоматичний опитування RSS-стрічок трекерів за вашими правилами.",
+      "description": "Автоматичне опитування RSS-стрічок трекерів за вашими правилами.",
       "nextRun": "Наступний запуск",
       "manualTrigger": "Ручний запуск",
       "lastRun": "Останній запуск",
@@ -358,7 +358,15 @@
     "coverage": "Покриття",
     "episodes": "Епізоди",
     "instance": "Екземпляр",
-    "mode": "Режим"
+    "mode": "Режим",
+    "runsCount_few": "{{count}} запуски",
+    "runsCount_many": "{{count}} запусків",
+    "appliedCount_few": "{{count}} застосовано",
+    "appliedCount_many": "{{count}} застосовано",
+    "failedCount_few": "{{count}} невдалі",
+    "failedCount_many": "{{count}} невдалих",
+    "showSkippedCount_few": "Показати {{count}} пропущені",
+    "showSkippedCount_many": "Показати {{count}} пропущених"
   },
   "cancelDialog": {
     "title": "Скасувати запуск RSS автоматизації?",
@@ -396,15 +404,17 @@
       "selectionUnavailable": "Неможливо заблокувати крос-сід торенти для цього вибору",
       "blockFailed": "Не вдалося заблокувати {{failed}} з {{total}} крос-сід торентів",
       "blocked_one": "Заблоковано {{count}} крос-сід торент",
-      "blocked_other": "Заблоковано {{count}} крос-сід торентів"
+      "blocked_other": "Заблоковано {{count}} крос-сід торентів",
+      "blocked_few": "Заблоковано {{count}} крос-сід торенти",
+      "blocked_many": "Заблоковано {{count}} крос-сід торентів"
     },
     "filter": {
       "unavailable": "Фільтрація недоступна в цьому перегляді",
       "singleSelectionOnly": "Фільтрація крос-сідів працює лише з одним вибраним торентом",
-      "identifying": "Визначення крос-засіяних торентів...",
+      "identifying": "Визначення крос-сід торентів...",
       "noResults": "Крос-засіяних торентів не знайдено",
-      "found": "Знайдено {{matches}} крос-засіяних торентів (показано {{total}} всього)",
-      "failed": "Не вдалося визначити крос-засіяні торенти"
+      "found": "Знайдено {{matches}} крос-сід торентів (усього показано {{total}})",
+      "failed": "Не вдалося визначити крос-сід торенти"
     },
     "search": {
       "noMatches": "Збігів крос-сіду не знайдено",
@@ -427,7 +437,11 @@
       "applyCompletedUnavailable": "Запит крос-сіду завершено (деталі недоступні)",
       "applyNoChanges": "Крос-сідів додано не було",
       "applyCompletedPart": ", {{count}} завершено",
-      "applyCompletedPrefix": "{{count}} завершено, "
+      "applyCompletedPrefix": "{{count}} завершено, ",
+      "applySuccess_few": "Додано {{count}} крос-сіди",
+      "applySuccess_many": "Додано {{count}} крос-сідів",
+      "applySuccessWithCompleted_few": "Додано {{count}} крос-сіди (+{{completed}} завершено)",
+      "applySuccessWithCompleted_many": "Додано {{count}} крос-сідів (+{{completed}} завершено)"
     }
   },
   "validation": {
