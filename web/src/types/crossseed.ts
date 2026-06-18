@@ -5,6 +5,13 @@
 
 import type { TorznabSearchCacheMetadata } from "./indexers"
 
+export interface CrossSeedIndexerCategory {
+  instanceId: number
+  indexerId: number
+  indexerName: string
+  category: string
+}
+
 export interface CrossSeedTorrentInfo {
   instanceId?: number
   instanceName?: string

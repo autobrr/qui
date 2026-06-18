@@ -531,6 +531,9 @@ func TestProcessHardlinkMode_NotUsedWhenDisabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	assert.False(t, result.Used, "hardlink mode should not be used when disabled")
@@ -564,10 +567,13 @@ func TestProcessHardlinkMode_FailsWhenBaseDirEmpty(t *testing.T) {
 		&qbt.Torrent{},
 		"exact",
 		nil,
-		nil,
+		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// When hardlink mode is enabled but fails, it should return Used=true with error
@@ -639,6 +645,9 @@ func TestProcessHardlinkMode_ExecutesExternalProgramAfterSuccessfulAdd(t *testin
 		&qbt.TorrentProperties{SavePath: downloadsDir},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	require.True(t, result.Success)
@@ -678,6 +687,9 @@ func TestProcessHardlinkMode_FailsWhenNoLocalAccess(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// When hardlink mode is enabled but fails, it should return Used=true with error
@@ -723,6 +735,9 @@ func TestProcessHardlinkMode_FailsOnInfrastructureError(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/also/nonexistent"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// Should be Used=true because we attempted hardlink mode, but failed
@@ -781,6 +796,9 @@ func TestProcessHardlinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) 
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// Should be Used=true because hardlink mode is enabled, but skipped due to recheck requirement
@@ -837,6 +855,9 @@ func TestProcessReflinkMode_SkipsWhenExtrasAndSkipRecheckEnabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// Should be Used=true because reflink mode is enabled, but skipped due to recheck requirement
@@ -940,6 +961,7 @@ func TestProcessHardlinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.
 		&qbt.TorrentProperties{SavePath: downloadsDir},
 		"category",
 		"category.cross",
+		"", false, false,
 	)
 
 	require.True(t, result.Used)
@@ -990,6 +1012,7 @@ func TestProcessReflinkMode_SkipsBelowMaterializedCoverageThreshold(t *testing.T
 		&qbt.TorrentProperties{SavePath: downloadsDir},
 		"category",
 		"category.cross",
+		"", false, false,
 	)
 
 	require.True(t, result.Used)
@@ -1121,6 +1144,7 @@ func TestProcessReflinkMode_DoesNotFallbackToRegularAfterMaterializationError(t 
 		&qbt.TorrentProperties{SavePath: downloadsDir},
 		"category",
 		"category.cross",
+		"", false, false,
 	)
 
 	require.True(t, result.Used)
@@ -1165,6 +1189,9 @@ func TestProcessHardlinkMode_FallbackEnabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// With fallback enabled, failure should return Used=false to allow regular mode
@@ -1206,6 +1233,9 @@ func TestProcessHardlinkMode_FallbackDisabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// With fallback disabled, failure should return Used=true with error status
@@ -1250,6 +1280,9 @@ func TestProcessReflinkMode_FallbackEnabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// With fallback enabled, failure should return Used=false to allow regular mode
@@ -1291,6 +1324,9 @@ func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
 		&qbt.TorrentProperties{SavePath: "/downloads"},
 		"category",
 		"category.cross",
+		"",
+		false,
+		false,
 	)
 
 	// With fallback disabled, failure should return Used=true with error status
@@ -1298,6 +1334,61 @@ func TestProcessReflinkMode_FallbackDisabled(t *testing.T) {
 	assert.False(t, result.Success, "result should indicate failure")
 	assert.Equal(t, "reflink_error", result.Result.Status)
 	assert.Contains(t, result.Result.Message, "base directory")
+}
+
+// TestProcessHardlinkMode_IgnoresCategorySavePathWhenNotTrackerCategoryMode is a
+// regression test for the bug where categorySavePath (derived from the matched
+// torrent's existing qBittorrent category) was used unconditionally as selectedBaseDir,
+// bypassing FindMatchingBaseDir and breaking by-tracker subfolder placement for users
+// not using the tracker category mapping feature.
+//
+// When isTrackerCategoryMode=false, a non-empty categorySavePath must be ignored and
+// the error must come from FindMatchingBaseDir ("base directory"), NOT from the
+// category path branch ("Failed to create category directory").
+func TestProcessHardlinkMode_IgnoresCategorySavePathWhenNotTrackerCategoryMode(t *testing.T) {
+	mockInstances := &mockInstanceStore{
+		instances: map[int]*models.Instance{
+			1: {
+				ID:                       1,
+				Name:                     "qbt1",
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             true,
+				HardlinkBaseDir:          "", // empty → FindMatchingBaseDir returns "not configured"
+			},
+		},
+	}
+
+	s := &Service{instanceStore: mockInstances}
+
+	result := s.processHardlinkMode(
+		context.Background(),
+		CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"},
+		[]byte("torrent"),
+		"hash123",
+		"",
+		"TorrentName",
+		&CrossSeedRequest{},
+		&qbt.Torrent{ContentPath: "/downloads/movie"},
+		"exact",
+		nil,
+		qbt.TorrentFiles{{Name: "movie.mkv", Size: 1000}},
+		&qbt.TorrentProperties{SavePath: "/downloads"},
+		"movies",
+		"movies.cross",
+		"/qbt/movies", // categorySavePath from matched torrent's existing category
+		false,         // isTrackerCategoryMode = false: no mapping configured
+		true,          // crossCategoryExistsInQbit = true: category already in qBittorrent
+	)
+
+	require.True(t, result.Used)
+	assert.False(t, result.Success)
+	assert.Equal(t, "hardlink_error", result.Result.Status)
+	// Must fail on FindMatchingBaseDir ("base directory"), not on MkdirAll of categorySavePath
+	// ("Failed to create category directory"). If the latter appears, the guard is missing.
+	assert.Contains(t, result.Result.Message, "base directory",
+		"error must come from FindMatchingBaseDir, not from the category save path branch")
+	assert.NotContains(t, result.Result.Message, "category directory",
+		"categorySavePath must not be used when isTrackerCategoryMode is false")
 }
 
 func TestShouldWarnForReflinkCreateError(t *testing.T) {

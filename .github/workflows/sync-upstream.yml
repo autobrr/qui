@@ -1,0 +1,84 @@
+name: Sync Upstream
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+
+    steps:
+      - name: Checkout with full history
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN != '' && secrets.SYNC_TOKEN || github.token }}
+
+      - name: Configure git user
+        run: |
+          git config user.name  "CjE5"
+          git config user.email "CjE5@proton.me"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/autobrr/qui.git || true
+          git fetch upstream
+
+      - name: Check for new upstream commits
+        id: check
+        run: |
+          merge_base=$(git merge-base HEAD upstream/develop)
+          upstream_head=$(git rev-parse upstream/develop)
+          if [ "$merge_base" = "$upstream_head" ]; then
+            echo "Already up to date with upstream/develop — nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            count=$(git rev-list --count "${merge_base}..upstream/develop")
+            echo "Upstream has ${count} new commit(s) since merge base ${merge_base}."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "new_commits=${count}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run sync script
+        if: steps.check.outputs.skip != 'true'
+        id: sync
+        run: |
+          chmod +x scripts/sync-upstream.sh
+          bash scripts/sync-upstream.sh
+        env:
+          UPSTREAM_REMOTE: upstream
+          UPSTREAM_BRANCH: develop
+          LOCAL_BRANCH: develop
+
+      - name: Force-push develop to origin
+        if: steps.check.outputs.skip != 'true' && steps.sync.outcome == 'success'
+        run: |
+          git push origin develop --force-with-lease
+          echo "Pushed rebased develop — pulled in ${{ steps.check.outputs.new_commits }} upstream commit(s)."
+
+      - name: Annotate failure
+        if: failure() && steps.check.outputs.skip != 'true'
+        run: |
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "::error title=Manual rebase needed::Upstream sync failed — non-migration conflicts require manual resolution. Run: ${RUN_URL}"
+          cat >> "$GITHUB_STEP_SUMMARY" << 'EOF'
+          ## ❌ Upstream sync failed — manual rebase needed
+
+          The automated rebase encountered conflicts that could not be resolved automatically.
+
+          **Failed run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          ### How to fix
+          ```bash
+          git fetch upstream
+          git rebase upstream/develop
+          # resolve conflicts manually, then:
+          git push origin develop --force-with-lease
+          ```
+          EOF
