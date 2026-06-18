@@ -36,7 +36,7 @@ Avoid placing qui in `C:\Program Files` — it can cause permission issues with 
 
 ### Configuration
 
-qui stores its configuration and runtime data in `%APPDATA%\qui\` by default. With the default SQLite engine, `qui.db` is stored there too. For more details, see the [Configuration](/docs/configuration/environment) section.
+qui stores its configuration and runtime data in `%APPDATA%\qui\` by default. With the default SQLite engine, `qui.db` is stored there too. For more details, see the [Configuration](../configuration/environment.md) section.
 
 ## Create a Windows Task
 
@@ -85,7 +85,7 @@ qui has a built-in update command. You must stop the Task Scheduler job first, o
 
 For remote access, it's recommended to run qui behind a reverse proxy like [Caddy](https://caddyserver.com/) or nginx for TLS and additional security.
 
-See the [Base URL](/docs/configuration/base-url) section for reverse proxy configuration examples.
+See the [Base URL](../configuration/base-url.md) section for reverse proxy configuration examples.
 
 ## Finishing Up
 
