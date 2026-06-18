@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -809,6 +810,11 @@ func compareTrackerStatuses(torrent qbt.Torrent, cond *RuleCondition) bool {
 		return false
 	}
 	for _, tracker := range torrent.Trackers {
+		// Skip DHT/PeX/LSD pseudo-trackers: they are always reported as Disabled with
+		// no message and would otherwise spuriously satisfy "disabled"/NOT_EQUAL queries.
+		if qbittorrent.IsPseudoTrackerLabel(tracker.Url) {
+			continue
+		}
 		if compareTrackerStatus(int(tracker.Status), cond) {
 			return true
 		}
@@ -843,8 +849,6 @@ func matchesTrackerStatusValue(status int, value string) bool {
 	}
 
 	switch strings.ToLower(normalized) {
-	case "disabled":
-		return status == int(qbt.TrackerStatusDisabled)
 	case "not_contacted", "notcontacted", "not contacted":
 		return status == int(qbt.TrackerStatusNotContacted)
 	case "working", "ok":
@@ -867,6 +871,11 @@ func compareTrackerMessages(torrent qbt.Torrent, cond *RuleCondition) bool {
 		return false
 	}
 	for _, tracker := range torrent.Trackers {
+		// Skip DHT/PeX/LSD pseudo-trackers: they carry no message and would otherwise
+		// make "message is nil" match nearly every torrent.
+		if qbittorrent.IsPseudoTrackerLabel(tracker.Url) {
+			continue
+		}
 		if compareTrackerMessage(tracker.Message, cond) {
 			return true
 		}
