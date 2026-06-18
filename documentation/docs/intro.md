@@ -45,7 +45,7 @@ Translations are community-contributed and we welcome more. To add or improve a 
 
 Get started in minutes:
 
-1. [Install qui](/docs/getting-started/installation)
+1. [Install qui](./getting-started/installation.md)
 2. Open your browser to http://localhost:7476
 3. Create your admin account
 4. Add your qBittorrent instance(s)
