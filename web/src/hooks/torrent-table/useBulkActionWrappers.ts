@@ -158,6 +158,8 @@ export function useBulkActionWrappers({
       filters: selectAllFilters ?? filters,
       search: effectiveSearch,
       excludeHashes: selectAllExcludeHashes,
+      excludeTargets: isAllSelected && isCrossInstanceEndpoint ? selectAllExcludedTargets : undefined,
+      instanceIds: isCrossInstanceEndpoint ? instanceIds : undefined,
       sortField: activeSortField,
       sortOrder: activeSortOrder,
     })
@@ -169,6 +171,9 @@ export function useBulkActionWrappers({
     filters,
     effectiveSearch,
     selectAllExcludeHashes,
+    selectAllExcludedTargets,
+    isCrossInstanceEndpoint,
+    instanceIds,
     activeSortField,
     activeSortOrder,
   ])

@@ -4955,7 +4955,14 @@ func (s *Service) processCrossSeedCandidate(
 		}
 
 		forceManualSavePath := false
-		if rootlessContentDir != "" {
+		switch {
+		case addPlan.savePathOverride != "":
+			// Rootless single file -> matched folder with a name mismatch: pin the save path to the
+			// matched folder so the file is injected into the existing content dir regardless of
+			// autoTMM/category configuration. Alignment renames the bare file to match.
+			savePath = addPlan.savePathOverride
+			forceManualSavePath = true
+		case rootlessContentDir != "":
 			normalizedSavePath := normalizePath(savePath)
 			normalizedRootlessDir := normalizePath(rootlessContentDir)
 			if normalizedRootlessDir != "" && normalizedRootlessDir != normalizedSavePath {
@@ -7273,9 +7280,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			}
 		}
 
-		safeQuery := buildSafeSearchQuery(sourceTorrent.Name, queryRelease, baseQuery, SearchQueryOptions{
-			IncludeResolution: contentInfo.ContentType == "tv",
-		})
+		safeQuery := buildSafeSearchQuery(sourceTorrent.Name, queryRelease, baseQuery)
 		query = strings.TrimSpace(safeQuery.Query)
 		if query == "" {
 			// Fallback to a basic title-based query to avoid empty searches

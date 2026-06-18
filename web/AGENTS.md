@@ -43,6 +43,7 @@ Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.t
 2. Add code to `supportedLanguages` and display name to `languageNames` in `web/src/i18n/index.ts`.
 3. Add/adapt a locale coverage script if the locale is not `zh-CN`.
 4. Run `pnpm check:i18n`.
+5. Update the supported-language list in `README.md` (Features) and `documentation/docs/intro.md` (Features + Languages section) so the promoted list stays accurate.
 
 Coverage must compare against English for missing/extra keys, interpolation placeholders, HTML tag parity, plural forms, empty strings, encoding, and JSON validity.
 
