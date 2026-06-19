@@ -21,7 +21,7 @@ const namespaces = [
 
 const pluralSuffixes = ["_zero", "_one", "_two", "_few", "_many", "_other", "_plural"]
 const requiredUkPluralSuffixes = ["_one", "_few", "_many", "_other"]
-const localeSpecificVars = new Set(["plural"])
+const localeSpecificVars = new Set()
 
 function flattenKeys(obj, prefix = "") {
   const result = new Map()
