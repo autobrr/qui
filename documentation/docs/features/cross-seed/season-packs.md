@@ -102,7 +102,7 @@ In hardlink mode, incomplete packs are also subject to piece-boundary protection
 
 Instances without local filesystem access or a link mode are skipped during eligibility checks.
 
-See [Hardlink Mode](hardlink-mode) for setup instructions.
+See [Hardlink Mode](./hardlink-mode.md) for setup instructions.
 
 ## Setup
 

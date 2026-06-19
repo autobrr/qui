@@ -136,7 +136,7 @@ Rules:
 - path/query/fragment/userinfo are rejected
 - invalid values refuse startup; invalid live reloads are rejected and keep the last valid allowlist
 
-For SSO proxy setups, prefer configuring CORS on the proxy auth endpoints first. See [SSO Proxies and CORS](../advanced/sso-proxy-cors).
+For SSO proxy setups, prefer configuring CORS on the proxy auth endpoints first. See [SSO Proxies and CORS](../advanced/sso-proxy-cors.md).
 
 ## Example `config.toml`
 

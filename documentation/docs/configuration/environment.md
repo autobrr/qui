@@ -7,7 +7,7 @@ title: Environment Variables
 
 Configuration is stored in `config.toml` (created automatically on first run, or manually with `qui generate-config`). You can also use environment variables:
 
-For the complete list (including `config.toml` keys, defaults, and notes), see [Configuration Reference](./reference).
+For the complete list (including `config.toml` keys, defaults, and notes), see [Configuration Reference](./reference.md).
 
 ## Server
 
@@ -123,7 +123,7 @@ Non-canonical CIDRs with host bits set (for example `10.0.0.5/8`) are rejected.
 
 `QUI__OIDC_ENABLED=true` cannot be combined with auth-disabled mode.
 
-Only use this when qui runs behind a reverse proxy that already handles authentication (e.g., Authelia, Authentik, Caddy with forward_auth). See the [Configuration Reference](./reference#authentication) for a full explanation of the risks.
+Only use this when qui runs behind a reverse proxy that already handles authentication (e.g., Authelia, Authentik, Caddy with forward_auth). See the [Configuration Reference](./reference.md#authentication) for a full explanation of the risks.
 
 Built-in health endpoints (`/health`, `/healthz/readiness`, `/healthz/liveness`) always allow loopback probes, so the official Docker image healthcheck continues to work even if your allowlist only includes the reverse proxy subnet(s).
 
