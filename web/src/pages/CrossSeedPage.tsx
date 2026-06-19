@@ -1994,7 +1994,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as typeof activeTab)} className="space-y-4">
-        <TabsList className="w-full md:w-auto overflow-x-auto">
+        <TabsList className="w-full md:w-auto justify-start overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <TabsTrigger className="shrink-0" value="auto">{t("tabs.auto")}</TabsTrigger>
           <TabsTrigger className="shrink-0" value="scan">{t("tabs.scan")}</TabsTrigger>
           <TabsTrigger className="shrink-0" value="dir-scan">{t("tabs.dirScan")}</TabsTrigger>
