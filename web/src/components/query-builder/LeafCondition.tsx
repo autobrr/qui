@@ -32,6 +32,7 @@ import {
   getTranslatedOperatorsForField,
   getTranslatedTorrentStates,
   getTranslatedHardlinkScopes,
+  getTranslatedTrackerStatuses,
   type DisabledField,
   type DisabledStateValue
 } from "./constants";
@@ -650,6 +651,19 @@ export function LeafCondition({
               placeholder={t("queryBuilder.max")}
             />
           </div>
+        ) : fieldType === "trackerStatus" ? (
+          <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
+            <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[180px]">
+              <SelectValue placeholder={t("queryBuilder.selectTrackerStatus")} />
+            </SelectTrigger>
+            <SelectContent>
+              {getTranslatedTrackerStatuses(t).map((status) => (
+                <SelectItem key={status.value} value={status.value}>
+                  {status.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         ) : fieldType === "state" ? (
           <Select value={condition.value ?? ""} onValueChange={handleValueChange}>
             <SelectTrigger className="h-8 flex-1 sm:flex-none sm:w-[160px]">

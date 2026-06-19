@@ -131,6 +131,8 @@ These fields use qui's current system time when the rule is evaluated. They are 
 | Trackers (All)  | All tracker URLs/domains/display names for this torrent       |
 | Private         | Boolean - is private tracker                                  |
 | Is Unregistered | Boolean - tracker reports unregistered                        |
+| Tracker status  | Per-tracker announce status; see [Tracker Status Values](#tracker-status-values) (requires qBittorrent 5.1+) |
+| Tracker message | Per-tracker status message; use `nil` for an empty message (requires qBittorrent 5.1+)                       |
 | Comment         | Torrent comment field                                         |
 
 Note: if you have **Settings → Tracker Customizations** configured, the **Tracker** condition can match the display name in addition to the raw URL/domain.
@@ -201,6 +203,23 @@ The State field matches these status buckets:
 | `moving`       | Moving files                 |
 | `missingFiles` | Files not found              |
 | `unregistered` | Tracker reports unregistered |
+
+### Tracker Status Values
+
+The **Tracker status** field matches if **any** of a torrent's real trackers reports the selected status. qBittorrent's DHT/PeX/LSD pseudo-trackers are ignored. Pick a value from the dropdown:
+
+| Status        | Description                               |
+| ------------- | ----------------------------------------- |
+| Not contacted | Tracker has not been contacted yet        |
+| Working       | Tracker has been contacted and is working |
+| Updating      | Tracker is being updated                  |
+| Error         | Announce failed (generic)                 |
+| Tracker error | Tracker returned an explicit error        |
+| Unreachable   | Cannot connect to the tracker             |
+
+**Tracker message** matches the per-tracker status message with the standard string operators. Use the literal value `nil` with **is** / **is not** to match an empty (or non-empty) message.
+
+Both fields require **qBittorrent 5.1+** (Web API 2.11.4+) and are disabled in the query builder otherwise.
 
 ### Operators
 

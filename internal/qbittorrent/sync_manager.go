@@ -3074,7 +3074,7 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 
 	// qBittorrent may emit pseudo tracker labels (e.g. "[DHT]", "[PeX]", "[LSD]").
 	// These are peer-discovery mechanisms, not real tracker domains.
-	if isPseudoTrackerLabel(urlStr) {
+	if IsPseudoTrackerLabel(urlStr) {
 		urlCache.Set(urlStr, "", ttlcache.DefaultTTL)
 		return ""
 	}
@@ -3137,7 +3137,7 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	if domain != unknown {
 		domain = strings.Trim(domain, "[]")
 		domain = strings.ToLower(domain)
-		if isPseudoTrackerLabel(domain) {
+		if IsPseudoTrackerLabel(domain) {
 			domain = ""
 		}
 	} else {
@@ -3149,7 +3149,10 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	return domain
 }
 
-func isPseudoTrackerLabel(value string) bool {
+// IsPseudoTrackerLabel reports whether value is one of qBittorrent's DHT/PeX/LSD
+// pseudo-tracker labels (e.g. "** [DHT] **"). These are peer-discovery mechanisms,
+// not real trackers, and should be ignored when evaluating per-tracker conditions.
+func IsPseudoTrackerLabel(value string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	normalized = strings.Trim(normalized, "*")
 	normalized = strings.TrimSpace(normalized)
@@ -4063,6 +4066,23 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 // GetAllTorrents returns the current torrent list for an instance without pagination.
 func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
 	return sm.getAllTorrentsForStats(ctx, instanceID, "")
+}
+
+// HydrateTorrentTrackers enriches torrents with per-tracker status/message data when supported.
+// Returns the original slice unchanged when hydration is unavailable or fails.
+func (sm *SyncManager) HydrateTorrentTrackers(ctx context.Context, instanceID int, torrents []qbt.Torrent) []qbt.Torrent {
+	if len(torrents) == 0 {
+		return torrents
+	}
+
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Skipping tracker hydration for automations")
+		return torrents
+	}
+
+	enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil)
+	return enriched
 }
 
 func normalizeForSearch(text string) string {
