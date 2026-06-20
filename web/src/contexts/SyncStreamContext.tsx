@@ -39,10 +39,21 @@ export function isClientConnectionErrorCode(error: string | null | undefined): b
   return error != null && CLIENT_CONNECTION_ERROR_CODES.has(error)
 }
 
-// The backend emits a heartbeat every 5s. If no event (heartbeat, init or update)
-// arrives within this window the connection is considered dead even when the
+// The backend emits a heartbeat every 5s. Once any event has arrived, if none
+// follows within this window the connection is considered dead even when the
 // browser still reports it open, so we force a reconnect.
 const STREAM_STALE_TIMEOUT_MS = 15000
+
+// Grace window applied until the FIRST event of a fresh connection arrives. The
+// init snapshot is a single large SSE event (hundreds of KB on big instances), and
+// SSE is ordered, so the 5s heartbeats are queued behind it and cannot arrive until
+// it fully drains. A flat 15s watchdog therefore fires mid-init on a slow link,
+// tears down the in-flight download, and reconnects into a fresh full init - a
+// self-sustaining reconnect storm that saturates the (shared, h2) connection and
+// starves every other request. This longer pre-first-event budget lets the init
+// land; REST polling still serves data meanwhile (the stream isn't "connected"
+// until its first event), and the normal 15s budget resumes once events flow.
+const STREAM_INITIAL_TIMEOUT_MS = 60000
 
 export interface StreamParams {
   // Single-instance subscription is keyed by instanceId. For an aggregated
@@ -123,6 +134,11 @@ interface StreamConnection {
   retryTimer?: number
   nextRetryAt?: number
   staleTimer?: number
+  // False until the first event of the current source arrives. While false the
+  // watchdog uses the longer STREAM_INITIAL_TIMEOUT_MS so a large init has time to
+  // drain; the first event flips it true and the normal STREAM_STALE_TIMEOUT_MS
+  // applies thereafter. Reset to false whenever a new EventSource is created.
+  firstEventSeen?: boolean
 }
 
 interface PendingConnectionUpdate {
@@ -478,6 +494,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       // Watchdog: any inbound event (init/update/delta/stream-error/heartbeat) proves
       // the connection is alive and resets the timer. If it elapses, the connection is
       // treated as dead and reconnected even when the browser still reports it open.
+      // Before the first event the longer STREAM_INITIAL_TIMEOUT_MS applies so a large
+      // init has time to drain without being killed mid-download (see that constant).
       const resetStaleTimer = () => {
         const conn = connectionRef.current
         if (conn.staleTimer !== undefined) {
@@ -497,15 +515,17 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         if (typeof document !== "undefined" && document.visibilityState !== "visible") {
           return
         }
+        const timeout = conn.firstEventSeen ? STREAM_STALE_TIMEOUT_MS : STREAM_INITIAL_TIMEOUT_MS
         const schedule = typeof window !== "undefined"? window.setTimeout: (setTimeout as unknown as (handler: () => void, timeout: number) => number)
         conn.staleTimer = schedule(() => {
           conn.staleTimer = undefined
           handleNetworkError()
-        }, STREAM_STALE_TIMEOUT_MS)
+        }, timeout)
       }
       resetStaleTimerRef.current = resetStaleTimer
 
       const payloadHandler = (event: MessageEvent | Event) => {
+        connectionRef.current.firstEventSeen = true
         resetStaleTimer()
         if (!("data" in event)) {
           return
@@ -562,6 +582,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
 
       // Heartbeats carry no torrent data; they exist solely to keep the watchdog alive.
       const heartbeatHandler = () => {
+        connectionRef.current.firstEventSeen = true
         resetStaleTimer()
       }
 
@@ -569,6 +590,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       // the watchdog alive and invalidate the matching cached query so it refetches
       // on demand instead of polling.
       const activityHandler = (event: MessageEvent | Event) => {
+        connectionRef.current.firstEventSeen = true
         resetStaleTimer()
         if (!("data" in event)) {
           return
@@ -648,6 +670,9 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       source.onerror = handleSourceError
 
       connection.source = source
+      // Fresh source: no event has arrived yet, so the watchdog grants the longer
+      // init grace until the first one lands (see STREAM_INITIAL_TIMEOUT_MS).
+      connection.firstEventSeen = false
       connection.handlers = {
         payload: payloadHandler,
         networkError: handleNetworkError,
