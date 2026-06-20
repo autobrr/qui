@@ -205,11 +205,11 @@ func TestSlowClientDoesNotBlockOthers(t *testing.T) {
 	readerB, _ := connectStream(t, srv, streamPayload(instanceID, "fast-B"))
 	readerB.waitForEvent(t, streamEventInit, 5*time.Second)
 
-	// Fire updates; B must receive one promptly while A's reader sits idle.
-	updateB := readerB.waitForEventTriggered(t, streamEventUpdate, 5*time.Second, func() {
+	// Fire updates; B must receive a tick frame promptly while A's reader sits idle.
+	updateB := readerB.waitForTickTriggered(t, 5*time.Second, func() {
 		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1, FullUpdate: true})
 	})
-	require.Equal(t, streamEventUpdate, updateB.event)
+	require.True(t, isTickEvent(updateB.event), "expected a tick frame, got %q", updateB.event)
 }
 
 // TestFlushAfterCloseDoesNotPanic guards the lifecycle race that makes closing

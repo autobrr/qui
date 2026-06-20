@@ -305,6 +305,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       if (handlers) {
         source.removeEventListener("init", handlers.payload)
         source.removeEventListener("update", handlers.payload)
+        source.removeEventListener("delta", handlers.payload)
         source.removeEventListener("stream-error", handlers.payload)
         source.removeEventListener("heartbeat", handlers.heartbeat)
         source.removeEventListener("activity", handlers.activity)
@@ -474,8 +475,8 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         handleNetworkError(event)
       }
 
-      // Watchdog: any inbound event (init/update/stream-error/heartbeat) proves the
-      // connection is alive and resets the timer. If it elapses, the connection is
+      // Watchdog: any inbound event (init/update/delta/stream-error/heartbeat) proves
+      // the connection is alive and resets the timer. If it elapses, the connection is
       // treated as dead and reconnected even when the browser still reports it open.
       const resetStaleTimer = () => {
         const conn = connectionRef.current
@@ -496,9 +497,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
         if (typeof document !== "undefined" && document.visibilityState !== "visible") {
           return
         }
-        const schedule = typeof window !== "undefined"
-          ? window.setTimeout
-          : (setTimeout as unknown as (handler: () => void, timeout: number) => number)
+        const schedule = typeof window !== "undefined"? window.setTimeout: (setTimeout as unknown as (handler: () => void, timeout: number) => number)
         conn.staleTimer = schedule(() => {
           conn.staleTimer = undefined
           handleNetworkError()
@@ -597,6 +596,7 @@ export function SyncStreamProvider({ children }: { children: React.ReactNode }) 
       const source = new EventSource(url, { withCredentials: true })
       source.addEventListener("init", payloadHandler)
       source.addEventListener("update", payloadHandler)
+      source.addEventListener("delta", payloadHandler)
       source.addEventListener("stream-error", payloadHandler)
       source.addEventListener("heartbeat", heartbeatHandler)
       source.addEventListener("activity", activityHandler)

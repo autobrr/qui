@@ -9,7 +9,7 @@ import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstances } from "@/hooks/useInstances"
 import type { InstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { api } from "@/lib/api"
-import { mergeStreamedCrossInstanceFirstPage, normalizeStreamedSnapshot } from "@/lib/cross-instance-torrents"
+import { applyStreamDelta, mergeStreamedCrossInstanceFirstPage, normalizeStreamedSnapshot } from "@/lib/cross-instance-torrents"
 import { isAllInstancesScope } from "@/lib/instances"
 import { mergeStreamedFirstPage } from "@/lib/stream-merge"
 import type {
@@ -21,7 +21,7 @@ import type {
   TorrentStreamPayload
 } from "@/types"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 export const TORRENT_STREAM_POLL_INTERVAL_MS = 3000
 export const TORRENT_STREAM_POLL_INTERVAL_SECONDS = Math.max(
@@ -76,6 +76,11 @@ export function useTorrentsList(
   const [lastKnownTotal, setLastKnownTotal] = useState(0)
   const [lastProcessedPage, setLastProcessedPage] = useState(-1)
   const [lastStreamSnapshot, setLastStreamSnapshot] = useState<TorrentResponse | null>(null)
+  // The last full page-0 snapshot, retained as the base that incoming SSE deltas are
+  // applied against. Held in a ref (not state) so a delta can read the just-applied
+  // snapshot synchronously without re-running this callback. Seeded by every full
+  // frame (init/update/keyframe) and reset when the view identity changes.
+  const lastFullSnapshotRef = useRef<TorrentResponse | null>(null)
   const pageSize = 300 // Load 300 at a time (backend default)
   const queryClient = useQueryClient()
 
@@ -237,13 +242,36 @@ export function useTorrentsList(
       if (!payload?.data) {
         return
       }
-      // Normalize the streamed snapshot once at the boundary so every sink — the
-      // query cache (read by the REST-processing effect below), the retained
-      // snapshot, and the table rows — sees identical camelCase cross-instance
-      // metadata. Feeding the raw snake_case payload to the cache would let the
-      // effect overwrite the table with un-normalized rows on the next tick,
-      // flickering the Instance column.
-      const data = normalizeStreamedSnapshot(payload.data)
+
+      // Resolve the frame to a full page-0 snapshot. Full frames (init/update and the
+      // periodic delta keyframe) carry the whole page; a delta frame carries only the
+      // changed rows and is reconstructed against the retained baseline. Either way the
+      // result is normalized to camelCase once here so every sink — the query cache
+      // (read by the REST-processing effect below), the retained snapshot, and the
+      // table rows — sees identical metadata and the Instance column never flickers.
+      let data: TorrentResponse
+      // Aggregate-only delta ticks (speeds/counts changed but no row added, removed,
+      // reordered, or changed) leave the page untouched, so the table list is left
+      // referentially stable and only the stats/server-state sinks run.
+      let rowsChanged = true
+      if (payload.type === "delta") {
+        const base = lastFullSnapshotRef.current
+        if (!base) {
+          // No full baseline yet (a delta raced ahead of the init snapshot, or arrived
+          // after a view reset). The next full frame reseeds; drop this one rather than
+          // apply it against nothing.
+          return
+        }
+        const applied = applyStreamDelta(base, payload, Boolean(useCrossInstanceEndpoint))
+        data = applied.data
+        rowsChanged = applied.changed
+      } else {
+        data = normalizeStreamedSnapshot(payload.data)
+      }
+
+      // Retain the reconstructed full snapshot as the base for the next delta.
+      lastFullSnapshotRef.current = data
+
       setLastStreamSnapshot(data)
       updateAppInfoCache(data)
       updateMetadataCache(data)
@@ -256,7 +284,9 @@ export function useTorrentsList(
         // reset the unified view to page 0 on every snapshot, so it could never
         // scroll past the first page (issue #1983). Page 0 stays authoritative for
         // its own window. See mergeStreamedCrossInstanceFirstPage.
-        setAllTorrents(prev => mergeStreamedCrossInstanceFirstPage(prev, data))
+        if (rowsChanged) {
+          setAllTorrents(prev => mergeStreamedCrossInstanceFirstPage(prev, data))
+        }
 
         if (typeof data.total === "number") {
           setLastKnownTotal(data.total)
@@ -267,22 +297,24 @@ export function useTorrentsList(
         return
       }
 
-      setAllTorrents(prev => {
-        const nextTorrents = data.torrents ?? []
+      if (rowsChanged) {
+        setAllTorrents(prev => {
+          const nextTorrents = data.torrents ?? []
 
-        if (data.total === 0 || nextTorrents.length === 0) {
-          return []
-        }
+          if (data.total === 0 || nextTorrents.length === 0) {
+            return []
+          }
 
-        // Page 0 is authoritative for its window (a row it omits was deleted or moved
-        // off page 0, so it must not be re-added); pagination-loaded later pages are
-        // preserved. See mergeStreamedFirstPage.
-        return mergeStreamedFirstPage(
-          prev,
-          nextTorrents,
-          typeof data.total === "number" ? data.total : undefined
-        )
-      })
+          // Page 0 is authoritative for its window (a row it omits was deleted or moved
+          // off page 0, so it must not be re-added); pagination-loaded later pages are
+          // preserved. See mergeStreamedFirstPage.
+          return mergeStreamedFirstPage(
+            prev,
+            nextTorrents,
+            typeof data.total === "number" ? data.total : undefined
+          )
+        })
+      }
 
       if (typeof data.total === "number") {
         setLastKnownTotal(data.total)
@@ -323,6 +355,9 @@ export function useTorrentsList(
     setLastKnownTotal(0)
     setLastProcessedPage(-1)
     setLastStreamSnapshot(null)
+    // Drop the delta baseline so a delta from the previous view can never be applied
+    // against the new one; the new subscription's init reseeds it.
+    lastFullSnapshotRef.current = null
   }, [instanceId, filterKey, searchKey, sort, order, instanceIdsKey])
 
   useEffect(() => {

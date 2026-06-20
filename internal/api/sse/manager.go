@@ -32,6 +32,7 @@ const (
 	maxLimit             = 2000
 	streamEventInit      = "init"
 	streamEventUpdate    = "update"
+	streamEventDelta     = "delta"
 	streamEventError     = "stream-error"
 	streamEventHeartbeat = "heartbeat"
 	streamEventActivity  = "activity"
@@ -218,10 +219,20 @@ type subscriptionGroup struct {
 	sending     bool
 	hasPending  bool
 	pendingMeta *StreamMeta
-	pendingType string
 
 	subsMu sync.RWMutex
 	subs   map[string]*subscriptionState
+
+	// Delta baseline for this group's page-0 window, owned by the single tick
+	// processor (processGroup) and guarded by baselineMu against the unrelated init
+	// path. baselineFP maps each row key to its last-broadcast content fingerprint;
+	// baselineOrder is the last-broadcast key order; lastFullAt timestamps the last
+	// full keyframe. See buildUpdatePayload.
+	baselineMu     sync.Mutex
+	baselineFP     map[string]uint64
+	baselineOrder  []string
+	baselineSeeded bool
+	lastFullAt     time.Time
 }
 
 type syncLoopState struct {
@@ -246,10 +257,28 @@ type backoffState struct {
 
 // StreamPayload is the message envelope sent to the frontend.
 type StreamPayload struct {
-	Type string                       `json:"type"`
-	Data *qbittorrent.TorrentResponse `json:"data,omitempty"`
-	Meta *StreamMeta                  `json:"meta,omitempty"`
-	Err  string                       `json:"error,omitempty"`
+	Type  string                       `json:"type"`
+	Data  *qbittorrent.TorrentResponse `json:"data,omitempty"`
+	Delta *StreamDelta                 `json:"delta,omitempty"`
+	Meta  *StreamMeta                  `json:"meta,omitempty"`
+	Err   string                       `json:"error,omitempty"`
+}
+
+// StreamDelta describes how to reconcile a group's page-0 window against the
+// previous frame on a "delta" event. The added or changed rows themselves ride in
+// StreamPayload.Data.Torrents (single-instance) or Data.CrossInstanceTorrents
+// (cross-instance); Order lists the full page key sequence and is present only when
+// membership or ordering changed. When Order is omitted the client applies the
+// changed rows in place at their existing positions. Keys are the torrent hash for
+// single-instance streams and "<instanceID>:<hash>" for cross-instance streams.
+//
+// Order is a pointer so a present-but-empty order (the page drained to zero rows,
+// e.g. every match deleted) serializes as `[]` and stays distinct from an absent
+// order. A plain `[]string` with omitempty would drop the empty slice on the wire,
+// making a full clear indistinguishable from an aggregate-only tick and leaving the
+// deleted rows on screen until the next keyframe.
+type StreamDelta struct {
+	Order *[]string `json:"order,omitempty"`
 }
 
 // StreamMeta carries lightweight metadata about the sync update.
@@ -537,7 +566,7 @@ func (m *StreamManager) HandleMainData(instanceID int, data *qbt.MainData) {
 		Timestamp:  time.Now(),
 	}
 
-	go m.publishInstance(instanceID, streamEventUpdate, meta)
+	go m.publishInstance(instanceID, meta)
 }
 
 // HandleSyncError implements qbittorrent.SyncEventSink.
@@ -961,6 +990,13 @@ func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscript
 		return
 	}
 
+	// Seed the delta baseline from this init snapshot so the client's first frame and
+	// the server baseline match exactly; the next tick is then a clean delta. No-op if
+	// the group is already seeded (a tick or an earlier joiner got there first).
+	if payload.Data != nil {
+		group.seedBaselineIfEmpty(group.options, payload.Data, time.Now())
+	}
+
 	m.writePayloadToSession(w, clonePayloadForSubscriber(payload, sub))
 }
 
@@ -1030,7 +1066,7 @@ func flushSession(w http.ResponseWriter) {
 	}
 }
 
-func (m *StreamManager) publishInstance(instanceID int, eventType string, meta *StreamMeta) {
+func (m *StreamManager) publishInstance(instanceID int, meta *StreamMeta) {
 	if m.closing.Load() {
 		return
 	}
@@ -1041,7 +1077,7 @@ func (m *StreamManager) publishInstance(instanceID int, eventType string, meta *
 	}
 
 	for _, group := range groups {
-		m.enqueueGroup(group, eventType, meta)
+		m.enqueueGroup(group, meta)
 	}
 }
 
@@ -1065,7 +1101,7 @@ func (m *StreamManager) groupsForInstance(instanceID int) []*subscriptionGroup {
 	return result
 }
 
-func (m *StreamManager) enqueueGroup(group *subscriptionGroup, eventType string, meta *StreamMeta) {
+func (m *StreamManager) enqueueGroup(group *subscriptionGroup, meta *StreamMeta) {
 	if group == nil || m.closing.Load() {
 		return
 	}
@@ -1074,7 +1110,6 @@ func (m *StreamManager) enqueueGroup(group *subscriptionGroup, eventType string,
 
 	group.mu.Lock()
 	group.pendingMeta = metaCopy
-	group.pendingType = eventType
 	group.hasPending = true
 	if group.sending {
 		group.mu.Unlock()
@@ -1107,7 +1142,6 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 			group.mu.Unlock()
 			return
 		}
-		eventType := group.pendingType
 		meta := group.pendingMeta
 		opts := group.options
 		group.hasPending = false
@@ -1118,7 +1152,10 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 			continue
 		}
 
-		payload := m.buildGroupPayload(group, opts, eventType, meta)
+		// Every enqueued group event is a tick update (init is written synchronously
+		// in onSession, never routed here), so build an incremental update: a delta
+		// against the group baseline, or a full keyframe. See buildUpdatePayload.
+		payload := m.buildGroupUpdatePayload(group, opts, meta)
 		if payload == nil {
 			continue
 		}
@@ -1136,17 +1173,49 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 	}
 }
 
+// buildGroupPayload materializes the current page and wraps it as a full snapshot
+// of the given event type. Used for the synchronous init write; tick updates go
+// through buildGroupUpdatePayload instead.
 func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamOptions, eventType string, meta *StreamMeta) *StreamPayload {
-	if group == nil || m.syncManager == nil {
-		return nil
-	}
-
-	if m.closing.Load() {
+	if group == nil || m.syncManager == nil || m.closing.Load() {
 		return nil
 	}
 
 	metaCopy := cloneMeta(meta)
+	response, errPayload := m.materializeGroupResponse(opts, metaCopy, group.key)
+	if errPayload != nil {
+		return errPayload
+	}
 
+	return &StreamPayload{
+		Type: eventType,
+		Data: response,
+		Meta: metaCopy,
+	}
+}
+
+// buildGroupUpdatePayload materializes the current page and turns it into a tick
+// frame: an incremental delta against the group baseline, or a full keyframe. See
+// buildUpdatePayload for the delta-vs-full decision and baseline advancement.
+func (m *StreamManager) buildGroupUpdatePayload(group *subscriptionGroup, opts StreamOptions, meta *StreamMeta) *StreamPayload {
+	if group == nil || m.syncManager == nil || m.closing.Load() {
+		return nil
+	}
+
+	metaCopy := cloneMeta(meta)
+	response, errPayload := m.materializeGroupResponse(opts, metaCopy, group.key)
+	if errPayload != nil {
+		return errPayload
+	}
+
+	return group.buildUpdatePayload(opts, response, metaCopy, time.Now())
+}
+
+// materializeGroupResponse fetches the current filtered/sorted/paginated page for
+// the group's view from the warm sync cache. On success it returns the response and
+// a nil payload; on failure it returns a nil response and a ready-to-send
+// stream-error payload (carrying a retry hint).
+func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *StreamMeta, groupKey string) (*qbittorrent.TorrentResponse, *StreamPayload) {
 	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
 	ctx = qbittorrent.WithSkipFreshData(ctx)
@@ -1196,7 +1265,7 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 		log.Error().Err(err).
 			Int("instanceID", opts.InstanceID).
 			Ints("instanceIDs", opts.InstanceIDs).
-			Str("groupKey", group.key).
+			Str("groupKey", groupKey).
 			Msg("Failed to build torrent response for SSE subscribers")
 
 		// Carry a retry hint so the frontend can show a recovery countdown and keep
@@ -1206,7 +1275,7 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 		}
 		metaCopy.RetryInSeconds = m.currentRetrySeconds(retryInstanceID)
 
-		return &StreamPayload{
+		return nil, &StreamPayload{
 			Type: streamEventError,
 			Meta: metaCopy,
 			Err:  errMsg,
@@ -1219,11 +1288,7 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 		response.InstanceMeta = m.buildInstanceMeta(ctx, opts.InstanceID)
 	}
 
-	return &StreamPayload{
-		Type: eventType,
-		Data: response,
-		Meta: metaCopy,
-	}
+	return response, nil
 }
 
 // currentRetrySeconds reports the instance's current sync interval (in seconds)
