@@ -66,7 +66,8 @@ qui watches `config.toml` for changes. Some settings are applied immediately (fo
 | `checkForUpdates` | `QUI__CHECK_FOR_UPDATES` | bool | `true` | Controls update checks and UI indicators. Restart recommended. |
 | `trackerIconsFetchEnabled` | `QUI__TRACKER_ICONS_FETCH_ENABLED` | bool | `true` | Disable to prevent remote tracker favicon fetches. Applied immediately. |
 | `crossSeedRecoverErroredTorrents` | `QUI__CROSS_SEED_RECOVER_ERRORED_TORRENTS` | bool | `false` | When enabled, cross-seed automation attempts recovery (pause, recheck, resume) for errored/missingFiles torrents. Can add 25+ minutes per torrent. Restart recommended. |
-| `pprofEnabled` | `QUI__PPROF_ENABLED` | bool | `false` | Enables pprof server on `:6060` (`/debug/pprof/`). Restart required. |
+| `pprofEnabled` | `QUI__PPROF_ENABLED` | bool | `false` | Enables pprof server (`/debug/pprof/`). Restart required. |
+| `pprofAddr` | `QUI__PPROF_ADDR` | string | `127.0.0.1:6060` | pprof server bind address. Loopback by default to avoid colliding with another listener in a shared network namespace (e.g. a Tailscale sidecar). Restart required. |
 | `metricsEnabled` | `QUI__METRICS_ENABLED` | bool | `false` | Enables a Prometheus metrics server (separate port). Restart required. |
 | `metricsHost` | `QUI__METRICS_HOST` | string | `127.0.0.1` | Metrics server bind address. Restart required. |
 | `metricsPort` | `QUI__METRICS_PORT` | int | `9074` | Metrics server port. Restart required. |

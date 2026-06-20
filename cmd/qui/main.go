@@ -98,7 +98,7 @@ func RunServeCommand() *cobra.Command {
 	command.Flags().StringVar(&configDir, "config-dir", "", "config directory path (default is OS-specific: ~/.config/qui/ or %APPDATA%\\qui\\). For backward compatibility, can also be a direct path to a .toml file")
 	command.Flags().StringVar(&dataDir, "data-dir", "", "data directory for database and other files (default is next to config file)")
 	command.Flags().StringVar(&logPath, "log-path", "", "log file path (default is stdout)")
-	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server on :6060")
+	command.Flags().BoolVar(&pprofFlag, "pprof", false, "enable pprof server (default 127.0.0.1:6060, override with QUI__PPROF_ADDR / pprofAddr)")
 
 	command.Run = func(cmd *cobra.Command, args []string) {
 		app := NewApplication(configDir, dataDir, logPath, pprofFlag, PolarOrgID)
@@ -841,11 +841,18 @@ func (app *Application) runServer() {
 
 	// Start profiling server if enabled
 	if cfg.Config.PprofEnabled {
+		// Bind to loopback by default so pprof never collides with another listener
+		// sharing the network namespace (e.g. a Tailscale sidecar already serving
+		// :6060) and is not exposed on a wildcard address. Override with QUI__PPROF_ADDR.
+		pprofAddr := cfg.Config.PprofAddr
+		if pprofAddr == "" {
+			pprofAddr = "127.0.0.1:6060"
+		}
 		go func() {
-			log.Info().Msg("Starting pprof server on :6060")
-			log.Info().Msg("Access profiling at: http://localhost:6060/debug/pprof/")
-			if err := http.ListenAndServe(":6060", nil); err != nil {
-				log.Error().Err(err).Msg("Profiling server failed")
+			log.Info().Str("addr", pprofAddr).Msg("Starting pprof server")
+			log.Info().Msgf("Access profiling at: http://%s/debug/pprof/", pprofAddr)
+			if err := http.ListenAndServe(pprofAddr, nil); err != nil {
+				log.Error().Err(err).Str("addr", pprofAddr).Msg("Profiling server failed")
 			}
 		}()
 	}
