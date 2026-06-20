@@ -241,7 +241,7 @@
     "torrentStates": {
       "downloading": "Téléchargement",
       "uploading": "Partage",
-      "completed": "Complété",
+      "completed": "Terminé",
       "stopped": "Arrêté",
       "active": "Actif",
       "inactive": "Inactif",

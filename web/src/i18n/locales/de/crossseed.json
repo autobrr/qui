@@ -365,7 +365,8 @@
       "ready": "Bereit",
       "skipped": "Übersprungen",
       "applied": "Angewendet",
-      "failed": "Fehlgeschlagen"
+      "failed": "Fehlgeschlagen",
+      "ready_no_threshold": "Bereit (kein Schwellenwert)"
     },
     "phases": {
       "check": "Prüfen",

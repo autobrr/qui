@@ -134,7 +134,7 @@ const CrossSeedDialogComponent = ({
   refreshCooldownLabel,
   onForceRefresh,
 }: CrossSeedDialogProps) => {
-  const { t } = useTranslation(["torrents", "settings"])
+  const { t } = useTranslation(["torrents", "settings", "crossseed"])
   const excludedIndexerEntries = useMemo(() => {
     if (!sourceTorrent?.excludedIndexers) {
       return []
@@ -213,7 +213,7 @@ const CrossSeedDialogComponent = ({
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                 {sourceTorrent?.contentType && (
                   <Badge variant="secondary" className="h-5 text-xs font-normal capitalize">
-                    {t(`settings:indexers.contentTypeLabels.${sourceTorrent.contentType}`, sourceTorrent.contentType)}
+                    {t(`crossseed:dirScan.contentTypeLabels.${sourceTorrent.contentType}`, sourceTorrent.contentType)}
                   </Badge>
                 )}
                 {sourceTorrent?.category && <span>{t("crossSeedDialog.category", { category: sourceTorrent.category })}</span>}

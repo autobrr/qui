@@ -365,7 +365,8 @@
       "ready": "Prêt",
       "skipped": "Ignoré",
       "applied": "Appliqué",
-      "failed": "Échec"
+      "failed": "Échec",
+      "ready_no_threshold": "Prêt (sans seuil)"
     },
     "phases": {
       "check": "Vérification",

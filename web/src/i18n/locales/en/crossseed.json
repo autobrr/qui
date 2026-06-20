@@ -365,7 +365,8 @@
       "ready": "Ready",
       "skipped": "Skipped",
       "applied": "Applied",
-      "failed": "Failed"
+      "failed": "Failed",
+      "ready_no_threshold": "Ready (no threshold)"
     },
     "phases": {
       "check": "Check",

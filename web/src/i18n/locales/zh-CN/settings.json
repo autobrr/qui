@@ -681,11 +681,16 @@
     "contentTypeLabels": {
       "movie": "电影",
       "tv": "剧集",
-      "anime": "动漫",
+      "tv_daily": "每日剧集",
+      "xxx": "成人",
       "music": "音乐",
+      "audiobook": "有声书",
       "book": "书籍",
+      "comic": "漫画",
+      "magazine": "杂志",
+      "education": "教育",
+      "app": "应用",
       "game": "游戏",
-      "software": "软件",
       "unknown": "未知"
     },
     "page": {

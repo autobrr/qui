@@ -361,7 +361,8 @@
       "ready": "就绪",
       "skipped": "已跳过",
       "applied": "已应用",
-      "failed": "失败"
+      "failed": "失败",
+      "ready_no_threshold": "就绪（无阈值）"
     },
     "phases": {
       "check": "检查",

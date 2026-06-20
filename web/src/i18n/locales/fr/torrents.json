@@ -784,7 +784,7 @@
     "states": {
       "downloading": "En téléchargement",
       "uploading": "En partage",
-      "completed": "Complété",
+      "completed": "Terminé",
       "stopped": "Arrêté",
       "paused": "En pause",
       "active": "Actif",
@@ -862,7 +862,7 @@
     "states": {
       "downloading": "En téléchargement",
       "uploading": "En partage",
-      "completed": "Complété",
+      "completed": "Terminé",
       "stopped": "Arrêté",
       "active": "Actif",
       "inactive": "Inactif",
@@ -1458,7 +1458,7 @@
     "timeActive": "Temps Actif",
     "seedingTime": "Temps de Seed",
     "savePath": "Chemin de Sauvegarde",
-    "completed": "Complété",
+    "completed": "Terminé",
     "ratioLimit": "Limite Ratio",
     "seenComplete": "Vu Complet",
     "lastActivity": "Dernière Activité",

@@ -683,11 +683,16 @@
     "contentTypeLabels": {
       "movie": "Movie",
       "tv": "TV",
-      "anime": "Anime",
+      "tv_daily": "TV (Daily)",
+      "xxx": "XXX",
       "music": "Music",
+      "audiobook": "Audiobook",
       "book": "Book",
+      "comic": "Comic",
+      "magazine": "Magazine",
+      "education": "Education",
+      "app": "App",
       "game": "Game",
-      "software": "Software",
       "unknown": "Unknown"
     },
     "page": {
