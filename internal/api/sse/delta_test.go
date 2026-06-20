@@ -172,6 +172,36 @@ func TestBuildUpdatePayloadCrossInstance(t *testing.T) {
 	require.Nil(t, changed.Delta.Order, "value-only change keeps order implicit")
 }
 
+// TestCrossInstanceMetadataChangeIsFlaggedAsChanged refutes the concern that a
+// table-visible cross-instance field (instance name) could change while hiding
+// behind an "aggregate-only" delta the client skips. The fingerprint marshals the
+// whole row including instance_name, so any such change forces the row into the
+// changed set and the frame is never aggregate-only.
+func TestCrossInstanceMetadataChangeIsFlaggedAsChanged(t *testing.T) {
+	rowA := qbittorrent.CrossInstanceTorrentView{
+		TorrentView:  &qbittorrent.TorrentView{Torrent: &qbt.Torrent{Hash: "a", Name: "A"}},
+		InstanceID:   1,
+		InstanceName: "alpha",
+	}
+	rowRenamed := rowA
+	rowRenamed.InstanceName = "alpha-renamed"
+
+	_, _, fp := computeRowDelta([]qbittorrent.CrossInstanceTorrentView{rowA}, crossRowKey, nil)
+	_, changedIdx, _ := computeRowDelta([]qbittorrent.CrossInstanceTorrentView{rowRenamed}, crossRowKey, fp)
+	require.Equal(t, []int{0}, changedIdx, "an instance_name change must be detected as a changed row")
+
+	// And through the full tick path: only metadata changed, so the row rides in the
+	// delta (rowsChanged on the client) rather than being an aggregate-only skip.
+	g := &subscriptionGroup{}
+	opts := StreamOptions{InstanceIDs: []int{1}}
+	now := time.Now()
+	g.buildUpdatePayload(opts, crossResp(rowA), &StreamMeta{}, now)
+	delta := g.buildUpdatePayload(opts, crossResp(rowRenamed), &StreamMeta{}, now.Add(2*time.Second))
+	require.Equal(t, streamEventDelta, delta.Type)
+	require.Len(t, delta.Data.CrossInstanceTorrents, 1, "metadata-only change still carries the row")
+	require.Equal(t, "alpha-renamed", delta.Data.CrossInstanceTorrents[0].InstanceName)
+}
+
 func TestComputeRowDeltaFlagsNewAndChangedRows(t *testing.T) {
 	base := map[string]uint64{}
 	rows := []qbittorrent.TorrentView{tv("a", "A"), tv("b", "B")}

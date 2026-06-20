@@ -252,7 +252,12 @@ export function useTorrentsList(
       let data: TorrentResponse
       // Aggregate-only delta ticks (speeds/counts changed but no row added, removed,
       // reordered, or changed) leave the page untouched, so the table list is left
-      // referentially stable and only the stats/server-state sinks run.
+      // referentially stable and only the stats/server-state sinks run. This skip is
+      // safe because the server change-detects rows by fingerprinting the WHOLE row
+      // JSON: any table-visible field (including cross-instance instance_name) that
+      // changes forces the row into the delta, so changed:false guarantees no
+      // row-visible change. Per-row styling derived from aggregate maps (category/tag)
+      // still refreshes every tick via the unconditional metadata sinks below.
       let rowsChanged = true
       if (payload.type === "delta") {
         const base = lastFullSnapshotRef.current
