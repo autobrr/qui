@@ -89,7 +89,8 @@ QUI__CHECK_FOR_UPDATES=false  # Optional: disable update checks and UI indicator
 ## Profiling (pprof)
 
 ```bash
-QUI__PPROF_ENABLED=true  # Optional: enable pprof server on :6060 (default: false)
+QUI__PPROF_ENABLED=true        # Optional: enable pprof server (default: false)
+QUI__PPROF_ADDR=127.0.0.1:6060 # Optional: pprof bind address (default: 127.0.0.1:6060)
 ```
 
 ## Metrics

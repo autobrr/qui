@@ -42,6 +42,7 @@ type Config struct {
 	DatabaseConnMaxLifetime  int    `toml:"databaseConnMaxLifetime" mapstructure:"databaseConnMaxLifetime"`
 	CheckForUpdates          bool   `toml:"checkForUpdates" mapstructure:"checkForUpdates"`
 	PprofEnabled             bool   `toml:"pprofEnabled" mapstructure:"pprofEnabled"`
+	PprofAddr                string `toml:"pprofAddr" mapstructure:"pprofAddr"`
 	MetricsEnabled           bool   `toml:"metricsEnabled" mapstructure:"metricsEnabled"`
 	MetricsHost              string `toml:"metricsHost" mapstructure:"metricsHost"`
 	MetricsPort              int    `toml:"metricsPort" mapstructure:"metricsPort"`
