@@ -819,7 +819,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
         <div className="border-b flex items-center">
           <div className="flex-1 overflow-x-auto scroll-smooth">
-            <TabsList className="w-full justify-start rounded-none h-8 bg-background px-4 sm:px-2 flex-nowrap">
+            <TabsList className="w-full justify-start rounded-none h-8 bg-background px-4 sm:px-2 flex-nowrap overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               <TabsTrigger value="general" className="text-xs shrink-0">
                 {t("detailsPanel.tabs.general")}
               </TabsTrigger>

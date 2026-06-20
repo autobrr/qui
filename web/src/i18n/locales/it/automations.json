@@ -102,6 +102,7 @@
     "max": "Max",
     "selectState": "Seleziona uno stato",
     "selectScope": "Seleziona un ambito",
+    "selectTrackerStatus": "Seleziona uno stato",
     "true": "Vero",
     "false": "Falso",
     "selectCategory": "Seleziona una categoria",
@@ -145,6 +146,8 @@
       "RLS_GROUP": "Group (RLS)",
       "STATE": "Stato",
       "TRACKER": "Tracker",
+      "TRACKER_STATUS": "Stato tracker",
+      "TRACKER_MESSAGE": "Messaggio tracker",
       "COMMENT": "Commento",
       "SIZE": "Dimensione",
       "TOTAL_SIZE": "Dimensione totale",
@@ -260,6 +263,14 @@
       "none": "Nessuno",
       "torrents_only": "Solo altri torrent",
       "outside_qbittorrent": "Al di fuori di qBittorrent (libreria/importazione)"
+    },
+    "trackerStatuses": {
+      "not_contacted": "Non contattato",
+      "working": "Funzionante",
+      "updating": "In aggiornamento",
+      "error": "Errore",
+      "tracker_error": "Errore tracker",
+      "unreachable": "Irraggiungibile"
     },
     "deleteModes": {
       "delete": "Rimuovi dal client",

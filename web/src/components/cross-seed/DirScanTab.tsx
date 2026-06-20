@@ -632,8 +632,8 @@ function RunRow({
                           )}
                         </TableCell>
                         <TableCell>{formatTrackerName(inj)}</TableCell>
-                        <TableCell>{inj.contentType}</TableCell>
-                        <TableCell>{inj.linkMode ?? "-"}</TableCell>
+                        <TableCell>{t(`dirScan.contentTypeLabels.${inj.contentType}`, inj.contentType)}</TableCell>
+                        <TableCell>{inj.linkMode ? t(`dirScan.linkModeLabels.${inj.linkMode}`, inj.linkMode) : "-"}</TableCell>
                         <TableCell>
                           <Tooltip>
                             <TooltipTrigger className="cursor-default">

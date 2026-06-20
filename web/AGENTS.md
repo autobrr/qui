@@ -33,6 +33,7 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 
 - `pnpm check:i18n`
 - `pnpm check:i18n:hardcoded`
+- `pnpm check:i18n:raw-backend-values`
 - `pnpm check:i18n:zh-cn`
 
 Run relevant checks when touching UI strings, locale JSON, `web/src/i18n/index.ts`, or formatter hooks.
@@ -49,6 +50,7 @@ Coverage must compare against English for missing/extra keys, interpolation plac
 
 ## Translation Rules
 
+- **Never hardcode text or raw backend variables (e.g., `run.status`, `task.status`) directly into JSX.** If a status or string is displayed to the user, you MUST create a corresponding `i18n` key (e.g., `statusLabels`) in the relevant JSON namespace and render it via `t()`.
 - Read English namespace JSON and relevant UI first; translate in product context.
 - Preserve placeholders, HTML tags, keys, examples, paths, URLs, commands, and technical notation unless the checker allows an exception.
 - Keep a glossary for product names and torrent/domain terms.
