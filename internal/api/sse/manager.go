@@ -225,14 +225,12 @@ type subscriptionGroup struct {
 
 	// Delta baseline for this group's page-0 window, owned by the single tick
 	// processor (processGroup) and guarded by baselineMu against the unrelated init
-	// path. baselineFP maps each row key to its last-broadcast content fingerprint;
-	// baselineOrder is the last-broadcast key order; lastFullAt timestamps the last
-	// full keyframe. See buildUpdatePayload.
+	// path. baselineFP maps each row key to its last-broadcast change fingerprint;
+	// baselineOrder is the last-broadcast key order. See buildUpdatePayload.
 	baselineMu     sync.Mutex
 	baselineFP     map[string]uint64
 	baselineOrder  []string
 	baselineSeeded bool
-	lastFullAt     time.Time
 }
 
 type syncLoopState struct {
@@ -994,7 +992,7 @@ func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscript
 	// the server baseline match exactly; the next tick is then a clean delta. No-op if
 	// the group is already seeded (a tick or an earlier joiner got there first).
 	if payload.Data != nil {
-		group.seedBaselineIfEmpty(group.options, payload.Data, time.Now())
+		group.seedBaselineIfEmpty(group.options, payload.Data)
 	}
 
 	m.writePayloadToSession(w, clonePayloadForSubscriber(payload, sub))
@@ -1208,7 +1206,7 @@ func (m *StreamManager) buildGroupUpdatePayload(group *subscriptionGroup, opts S
 		return errPayload
 	}
 
-	return group.buildUpdatePayload(opts, response, metaCopy, time.Now())
+	return group.buildUpdatePayload(opts, response, metaCopy)
 }
 
 // materializeGroupResponse fetches the current filtered/sorted/paginated page for
