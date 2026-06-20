@@ -19,7 +19,8 @@
       "cooldown": "Attesa {{display}}",
       "ready": "Pronto",
       "disabled": "Disabilitato",
-      "noRunsYet": "Ancora nessuna esecuzione"
+      "noRunsYet": "Ancora nessuna esecuzione",
+      "disabledUpper": "DISABILITATO"
     },
     "seededSearch": {
       "title": "Ricerca torrent in distribuzione",
@@ -95,7 +96,8 @@
     "items": "{{count}} elementi",
     "failedCount": "{{count}} non riusciti",
     "runSummary": "{{runs}} esecuzioni • +{{added}}",
-    "runSummaryWithFailures": "{{runs}} esecuzioni • +{{added}} • {{failed}} non riusciti"
+    "runSummaryWithFailures": "{{runs}} esecuzioni • +{{added}} • {{failed}} non riusciti",
+    "scheduledUpper": "PIANIFICATO"
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -358,7 +360,18 @@
     "coverage": "Copertura",
     "episodes": "Episodi",
     "instance": "Istanza",
-    "mode": "Modalità"
+    "mode": "Modalità",
+    "statusLabels": {
+      "ready": "Pronto",
+      "skipped": "Ignorato",
+      "applied": "Applicato",
+      "failed": "Non riuscito",
+      "ready_no_threshold": "Pronto (nessuna soglia)"
+    },
+    "phases": {
+      "check": "Verifica",
+      "apply": "Applicazione"
+    }
   },
   "cancelDialog": {
     "title": "Annullare l'esecuzione dell'automazione RSS?",
@@ -528,7 +541,10 @@
       "success": "Riuscito",
       "failed": "Non riuscito",
       "added": "Aggiunto",
-      "canceled": "Annullato"
+      "canceled": "Annullato",
+      "running": "In esecuzione",
+      "partial": "Parziale",
+      "pending": "In attesa"
     },
     "table": {
       "started": "Avviato",
@@ -635,6 +651,36 @@
       "description": "Questa operazione rimuoverà la directory di scansione e la sua cronologia delle esecuzioni. I torrent già aggiunti non saranno interessati.",
       "cancel": "Annulla",
       "delete": "Elimina"
+    },
+    "contentTypeLabels": {
+      "movie": "Film",
+      "tv": "Serie TV",
+      "music": "Musica",
+      "audiobook": "Audiolibro",
+      "book": "Libro",
+      "comic": "Fumetto",
+      "game": "Gioco",
+      "app": "App",
+      "adult": "Adulti",
+      "unknown": "Sconosciuto"
+    },
+    "linkModeLabels": {
+      "regular": "Normale",
+      "hardlink": "Hardlink",
+      "reflink": "Reflink"
+    },
+    "statusLabelsUpper": {
+      "queued": "IN CODA",
+      "scanning": "ANALISI IN CORSO",
+      "searching": "RICERCA IN CORSO",
+      "injecting": "INIEZIONE IN CORSO",
+      "success": "RIUSCITO",
+      "failed": "NON RIUSCITO",
+      "added": "AGGIUNTO",
+      "canceled": "ANNULLATO",
+      "running": "IN ESECUZIONE",
+      "partial": "PARZIALE",
+      "pending": "IN ATTESA"
     }
   }
 }

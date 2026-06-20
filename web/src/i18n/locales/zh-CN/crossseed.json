@@ -19,7 +19,8 @@
       "cooldown": "冷却 {{display}}",
       "ready": "就绪",
       "disabled": "已禁用",
-      "noRunsYet": "尚无运行记录"
+      "noRunsYet": "尚无运行记录",
+      "disabledUpper": "已禁用"
     },
     "seededSearch": {
       "title": "做种搜索",
@@ -95,7 +96,8 @@
     "items": "{{count}} 个项目",
     "failedCount": "{{count}} 个失败",
     "runSummary": "{{runs}} 次运行 - +{{added}}",
-    "runSummaryWithFailures": "{{runs}} 次运行 - +{{added}} - {{failed}} 次失败"
+    "runSummaryWithFailures": "{{runs}} 次运行 - +{{added}} - {{failed}} 次失败",
+    "scheduledUpper": "定时"
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -354,7 +356,18 @@
     "coverage": "覆盖率",
     "episodes": "单集",
     "instance": "实例",
-    "mode": "模式"
+    "mode": "模式",
+    "statusLabels": {
+      "ready": "就绪",
+      "skipped": "已跳过",
+      "applied": "已应用",
+      "failed": "失败",
+      "ready_no_threshold": "就绪（无阈值）"
+    },
+    "phases": {
+      "check": "检查",
+      "apply": "应用"
+    }
   },
   "cancelDialog": {
     "title": "取消 RSS 自动化运行？",
@@ -521,7 +534,27 @@
       "success": "成功",
       "failed": "失败",
       "added": "已添加",
-      "canceled": "已取消"
+      "canceled": "已取消",
+      "running": "运行中",
+      "partial": "部分成功",
+      "pending": "等待中"
+    },
+    "contentTypeLabels": {
+      "movie": "电影",
+      "tv": "电视剧",
+      "music": "音乐",
+      "audiobook": "有声书",
+      "book": "图书",
+      "comic": "漫画",
+      "game": "游戏",
+      "app": "应用",
+      "adult": "成人",
+      "unknown": "未知"
+    },
+    "linkModeLabels": {
+      "regular": "常规",
+      "hardlink": "硬链接",
+      "reflink": "引用链接"
     },
     "table": {
       "started": "开始时间",
@@ -628,6 +661,19 @@
       "description": "这将移除扫描目录及其运行历史。已添加的种子不会受到影响。",
       "cancel": "取消",
       "delete": "删除"
+    },
+    "statusLabelsUpper": {
+      "queued": "排队中",
+      "scanning": "扫描中",
+      "searching": "搜索中",
+      "injecting": "注入中",
+      "success": "成功",
+      "failed": "失败",
+      "added": "已添加",
+      "canceled": "已取消",
+      "running": "运行中",
+      "partial": "部分成功",
+      "pending": "等待中"
     }
   }
 }

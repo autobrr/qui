@@ -128,6 +128,7 @@ export function IndexerActivityPanel() {
 }
 
 function TaskRow({ task, status }: { task: SchedulerTaskStatus; status: "running" | "queued" }) {
+  const { t } = useTranslation("settings")
   const priorityColors: Record<string, string> = {
     interactive: "text-green-500",
     rss: "text-blue-500",
@@ -150,7 +151,7 @@ function TaskRow({ task, status }: { task: SchedulerTaskStatus; status: "running
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <span className={`text-xs ${priorityColors[task.priority] ?? "text-gray-500"}`}>
-          {task.priority}
+          {task.priority ? t(`indexers.priorityLabels.${task.priority}`, task.priority) : task.priority}
         </span>
         <span className="text-xs text-muted-foreground">
           {formatRelativeTime(new Date(task.createdAt))}

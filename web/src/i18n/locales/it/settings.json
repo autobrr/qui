@@ -884,6 +884,27 @@
         "season": "Stagione",
         "episode": "Episodio"
       }
+    },
+    "priorityLabels": {
+      "interactive": "Interattivo",
+      "rss": "RSS",
+      "completion": "Completamento",
+      "background": "Secondo piano"
+    },
+    "contentTypeLabels": {
+      "movie": "Film",
+      "tv": "Serie TV",
+      "tv_daily": "TV (giornaliero)",
+      "xxx": "Adulti",
+      "music": "Musica",
+      "audiobook": "Audiolibro",
+      "book": "Libro",
+      "comic": "Fumetto",
+      "magazine": "Rivista",
+      "education": "Formazione",
+      "app": "App",
+      "game": "Gioco",
+      "unknown": "Sconosciuto"
     }
   },
   "searchCache": {
