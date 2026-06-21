@@ -287,8 +287,8 @@ function checkUntranslated(enFlat, csFlat, namespace) {
 // ---------------------------------------------------------------------------
 
 if (!fs.existsSync(csRoot)) {
-  console.log("cs locale directory not found, skipping coverage check.")
-  process.exit(0)
+  console.error(`cs locale directory not found: ${csRoot}`)
+  process.exit(1)
 }
 
 const errors = {
