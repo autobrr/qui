@@ -85,7 +85,7 @@
     "addCondition": "Přidat podmínku",
     "dragGroup": "Přetáhnout skupinu",
     "allConditionsMustMatch": "Všechny podmínky se musí shodovat",
-    "anyConditionMustMatch": "Žádná podmínka se neshoduje",
+    "anyConditionMustMatch": "Jakákoliv podmínka se musí shodovat",
     "condition": "Podmínka",
     "group": "Skupina",
     "not": "NE",

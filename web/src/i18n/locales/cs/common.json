@@ -109,7 +109,7 @@
     "noResultsFound": "Žádné výsledky."
   },
   "status": {
-    "disabled": "Disabled",
+    "disabled": "Vypnuto",
     "notContacted": "Nekontaktováno",
     "working": "Pracuje",
     "updating": "Aktualizace",

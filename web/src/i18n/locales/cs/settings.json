@@ -131,7 +131,7 @@
     "empty": "Žádné API klíče vytvořeny",
     "createDialog": {
       "title": "Vytvořit API klíč",
-      "description": "Dájte svému API klíči popisný název, abyste si mohli jeho účel zapamatovat.",
+      "description": "Dejte svému API klíči popisný název, abyste si mohli jeho účel zapamatovat.",
       "nameLabel": "Název",
       "namePlaceholder": "např. Automatizační skript",
       "nameRequired": "Název je povinný",

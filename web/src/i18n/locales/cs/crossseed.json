@@ -473,7 +473,7 @@
     "noDirectories": "Žádné adresáře nejsou nakonfigurovány.",
     "addDirectoryToStart": "Přidat adresář pro začátek skenování.",
     "target": "Cíl: {{name}}",
-    "targetUnknown": "Cíl: Unknown",
+    "targetUnknown": "Cíl: Neznámý",
     "interval": "Interval: {{minutes}}m",
     "category": "Kategorie: {{category}}",
     "lastScan": "Poslední sken: {{time}}",
