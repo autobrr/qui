@@ -102,6 +102,7 @@
     "max": "最大",
     "selectState": "选择状态",
     "selectScope": "选择范围",
+    "selectTrackerStatus": "选择状态",
     "true": "是",
     "false": "否",
     "selectCategory": "选择分类",
@@ -146,6 +147,8 @@
       "RLS_YEAR": "年份（RLS）",
       "STATE": "状态",
       "TRACKER": "Tracker",
+      "TRACKER_STATUS": "Tracker 状态",
+      "TRACKER_MESSAGE": "Tracker 消息",
       "COMMENT": "备注",
       "SIZE": "大小",
       "TOTAL_SIZE": "总大小",
@@ -261,6 +264,14 @@
       "none": "无",
       "torrents_only": "仅其他种子",
       "outside_qbittorrent": "qBittorrent 外部（媒体库/导入）"
+    },
+    "trackerStatuses": {
+      "not_contacted": "未联系",
+      "working": "工作中",
+      "updating": "更新中",
+      "error": "错误",
+      "tracker_error": "Tracker 错误",
+      "unreachable": "无法访问"
     },
     "deleteModes": {
       "delete": "从客户端移除",

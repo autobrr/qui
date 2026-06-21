@@ -30,6 +30,8 @@ export type ConditionField =
   | "RLS_YEAR"
   | "STATE"
   | "TRACKER"
+  | "TRACKER_STATUS"
+  | "TRACKER_MESSAGE"
   | "COMMENT"
   // Numeric fields (bytes)
   | "SIZE"

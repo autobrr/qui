@@ -17,6 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/releases"
 )
 
@@ -401,6 +402,10 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareTracker(torrent.Tracker, cond, ctx)
 	case FieldTrackers:
 		return compareTrackers(torrent, cond, ctx)
+	case FieldTrackerStatus:
+		return compareTrackerStatuses(torrent, cond)
+	case FieldTrackerMessage:
+		return compareTrackerMessages(torrent, cond)
 	case FieldComment:
 		return compareString(torrent.Comment, cond)
 
@@ -801,6 +806,103 @@ func compareTrackers(torrent qbt.Torrent, cond *RuleCondition, ctx *EvalContext)
 		candidates = append(candidates, trackerCandidates(tracker.Url, ctx)...)
 	}
 	return compareStringCandidates(candidates, cond)
+}
+
+func compareTrackerStatuses(torrent qbt.Torrent, cond *RuleCondition) bool {
+	if len(torrent.Trackers) == 0 {
+		return false
+	}
+	for _, tracker := range torrent.Trackers {
+		// Skip DHT/PeX/LSD pseudo-trackers: they are always reported as Disabled with
+		// no message and would otherwise spuriously satisfy "disabled"/NOT_EQUAL queries.
+		if qbittorrent.IsPseudoTrackerLabel(tracker.Url) {
+			continue
+		}
+		if compareTrackerStatus(int(tracker.Status), cond) {
+			return true
+		}
+	}
+	return false
+}
+
+func compareTrackerStatus(status int, cond *RuleCondition) bool {
+	if cond == nil {
+		return false
+	}
+
+	matches := matchesTrackerStatusValue(status, cond.Value)
+	switch cond.Operator { //nolint:exhaustive // tracker status only supports equal/not equal
+	case OperatorEqual:
+		return matches
+	case OperatorNotEqual:
+		return !matches
+	default:
+		return false
+	}
+}
+
+func matchesTrackerStatusValue(status int, value string) bool {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return false
+	}
+
+	if n, err := strconv.Atoi(normalized); err == nil {
+		return status == n
+	}
+
+	switch strings.ToLower(normalized) {
+	case "not_contacted", "notcontacted", "not contacted":
+		return status == int(qbt.TrackerStatusNotContacted)
+	case "working", "ok":
+		return status == int(qbt.TrackerStatusOK)
+	case "updating":
+		return status == int(qbt.TrackerStatusUpdating)
+	case "error", "not_working", "not working":
+		return status == int(qbt.TrackerStatusNotWorking)
+	case "tracker_error", "tracker error":
+		return status == int(qbt.TrackerStatusTrackerError)
+	case "unreachable":
+		return status == int(qbt.TrackerStatusUnreachable)
+	}
+
+	return false
+}
+
+func compareTrackerMessages(torrent qbt.Torrent, cond *RuleCondition) bool {
+	if len(torrent.Trackers) == 0 {
+		return false
+	}
+	for _, tracker := range torrent.Trackers {
+		// Skip DHT/PeX/LSD pseudo-trackers: they carry no message and would otherwise
+		// make "message is nil" match nearly every torrent.
+		if qbittorrent.IsPseudoTrackerLabel(tracker.Url) {
+			continue
+		}
+		if compareTrackerMessage(tracker.Message, cond) {
+			return true
+		}
+	}
+	return false
+}
+
+func compareTrackerMessage(message string, cond *RuleCondition) bool {
+	if cond == nil {
+		return false
+	}
+
+	if strings.EqualFold(strings.TrimSpace(cond.Value), "nil") {
+		switch cond.Operator { //nolint:exhaustive // nil tracker message only supports equal/not equal
+		case OperatorEqual:
+			return message == ""
+		case OperatorNotEqual:
+			return message != ""
+		default:
+			return false
+		}
+	}
+
+	return compareString(message, cond)
 }
 
 func trackerCandidates(trackerURL string, ctx *EvalContext) []string {

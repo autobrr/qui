@@ -86,6 +86,32 @@ describe("useBulkActionWrappers — argument forwarding", () => {
       sortOrder: "desc",
     }))
   })
+
+  it("forwards instanceIds and excluded targets to export on cross-instance select-all", () => {
+    const excludedTargets = [{ instanceId: 2, hash: "x" }]
+    const params = makeParams({
+      isAllSelected: true,
+      isCrossInstanceEndpoint: true,
+      instanceIds: [2, 3],
+      selectAllExcludedTargets: excludedTargets,
+    })
+    const { result } = render(params)
+    act(() => result.current.handleExportWrapper([], []))
+    expect(vi.mocked(params.exportTorrents)).toHaveBeenCalledWith(expect.objectContaining({
+      instanceIds: [2, 3],
+      excludeTargets: excludedTargets,
+    }))
+  })
+
+  it("omits instanceIds and excluded targets from export on a single-instance endpoint", () => {
+    const params = makeParams({ isAllSelected: true, isCrossInstanceEndpoint: false })
+    const { result } = render(params)
+    act(() => result.current.handleExportWrapper([], []))
+    expect(vi.mocked(params.exportTorrents)).toHaveBeenCalledWith(expect.objectContaining({
+      instanceIds: undefined,
+      excludeTargets: undefined,
+    }))
+  })
 })
 
 describe("useBulkActionWrappers — runAction", () => {

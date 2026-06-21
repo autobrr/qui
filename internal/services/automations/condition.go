@@ -38,17 +38,19 @@ const (
 	FieldContentType   = models.FieldContentType
 	FieldEffectiveName = models.FieldEffectiveName
 
-	FieldRlsSource     = models.FieldRlsSource
-	FieldRlsResolution = models.FieldRlsResolution
-	FieldRlsCodec      = models.FieldRlsCodec
-	FieldRlsHDR        = models.FieldRlsHDR
-	FieldRlsAudio      = models.FieldRlsAudio
-	FieldRlsChannels   = models.FieldRlsChannels
-	FieldRlsGroup      = models.FieldRlsGroup
-	FieldRlsYear       = models.FieldRlsYear
-	FieldState         = models.FieldState
-	FieldTracker       = models.FieldTracker
-	FieldComment       = models.FieldComment
+	FieldRlsSource      = models.FieldRlsSource
+	FieldRlsResolution  = models.FieldRlsResolution
+	FieldRlsCodec       = models.FieldRlsCodec
+	FieldRlsHDR         = models.FieldRlsHDR
+	FieldRlsAudio       = models.FieldRlsAudio
+	FieldRlsChannels    = models.FieldRlsChannels
+	FieldRlsGroup       = models.FieldRlsGroup
+	FieldRlsYear        = models.FieldRlsYear
+	FieldState          = models.FieldState
+	FieldTracker        = models.FieldTracker
+	FieldTrackerStatus  = models.FieldTrackerStatus
+	FieldTrackerMessage = models.FieldTrackerMessage
+	FieldComment        = models.FieldComment
 
 	// Numeric fields (bytes)
 	FieldSize              = models.FieldSize

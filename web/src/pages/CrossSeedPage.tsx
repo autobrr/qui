@@ -505,8 +505,8 @@ function SeasonPackRunsPanel({
                       <div key={run.id} className="grid gap-2 bg-background/50 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
                         <div className="min-w-0 space-y-1">
                           <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            <Badge variant={seasonPackStatusVariant(run.status)} className="capitalize">{run.status}</Badge>
-                            <Badge variant="outline" className="uppercase">{run.phase}</Badge>
+                            <Badge variant={seasonPackStatusVariant(run.status)} className="capitalize">{t(`seasonPackRuns.statusLabels.${run.status}`, run.status)}</Badge>
+                            <Badge variant="outline" className="uppercase">{t(`seasonPackRuns.phases.${run.phase}`, run.phase)}</Badge>
                             {reasonLabel && <span className="text-xs text-muted-foreground">· {reasonLabel}</span>}
                           </div>
                           <p className="truncate text-sm font-medium" title={run.torrentName}>{run.torrentName}</p>
@@ -1848,10 +1848,10 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
     [instances, searchRunning, activeSearchRun, searchInstanceName]
   )
 
-  const automationStatusLabel = automationRunning ? "RUNNING" : automationEnabled ? "SCHEDULED" : "DISABLED"
+  const automationStatusLabel = automationRunning ? t("scan.runningUpper") : automationEnabled ? t("automation.scheduledUpper") : t("overview.rssAutomation.disabledUpper")
   const automationStatusVariant: "default" | "secondary" | "destructive" | "outline" =
     automationRunning ? "default" : automationEnabled ? "secondary" : "destructive"
-  const searchStatusLabel = searchRunning ? "RUNNING" : "IDLE"
+  const searchStatusLabel = searchRunning ? t("scan.runningUpper") : t("scan.idleUpper")
   const searchStatusVariant: "default" | "secondary" | "destructive" | "outline" =
     searchRunning ? "default" : "secondary"
 
@@ -1960,7 +1960,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">{t("overview.rssAutomation.lastRun")}</span>
               <span className="font-medium">
-                {latestRun ? `${latestRun.status.toUpperCase()} • ${formatDateValue(latestRun.startedAt)}` : t("overview.rssAutomation.noRunsYet")}
+                {latestRun ? `${t(`dirScan.statusLabelsUpper.${latestRun.status}`, latestRun.status)} • ${formatDateValue(latestRun.startedAt)}` : t("overview.rssAutomation.noRunsYet")}
               </span>
             </div>
           </CardContent>
@@ -1994,7 +1994,7 @@ export function CrossSeedPage({ activeTab, onTabChange }: CrossSeedPageProps) {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as typeof activeTab)} className="space-y-4">
-        <TabsList className="w-full md:w-auto overflow-x-auto">
+        <TabsList className="w-full md:w-auto justify-start overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           <TabsTrigger className="shrink-0" value="auto">{t("tabs.auto")}</TabsTrigger>
           <TabsTrigger className="shrink-0" value="scan">{t("tabs.scan")}</TabsTrigger>
           <TabsTrigger className="shrink-0" value="dir-scan">{t("tabs.dirScan")}</TabsTrigger>

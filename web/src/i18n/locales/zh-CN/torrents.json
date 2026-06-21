@@ -438,6 +438,12 @@
   },
   "creationTasks": {
     "dialogTitle": "种子创建任务",
+    "statusLabels": {
+      "Queued": "排队中",
+      "Running": "运行中",
+      "Finished": "已完成",
+      "Failed": "失败"
+    },
     "loadingTasks": "正在加载任务...",
     "noTasks": "未找到种子创建任务",
     "tableHeaders": {

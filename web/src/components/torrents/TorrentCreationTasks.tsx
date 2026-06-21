@@ -114,7 +114,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                   <Badge variant="outline" className={STATUS_COLORS[task.status]}>
                     <span className="flex items-center gap-1">
                       {STATUS_ICONS[task.status]}
-                      {task.status}
+                      {t(`creationTasks.statusLabels.${task.status}`, task.status)}
                     </span>
                   </Badge>
                   {task.private && (
@@ -207,7 +207,7 @@ export function TorrentCreationTasks({ instanceId }: TorrentCreationTasksProps) 
                   <Badge variant="outline" className={STATUS_COLORS[task.status]}>
                     <span className="flex items-center gap-1">
                       {STATUS_ICONS[task.status]}
-                      {task.status}
+                      {t(`creationTasks.statusLabels.${task.status}`, task.status)}
                     </span>
                   </Badge>
                 </TableCell>

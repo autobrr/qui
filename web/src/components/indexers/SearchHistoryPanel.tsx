@@ -280,7 +280,7 @@ function HistoryRow({ entry, onClick }: HistoryRowProps) {
         )}
         {showContentType && (
           <Badge variant="outline" className="text-xs shrink-0">
-            {entry.contentType}
+            {entry.contentType ? t(`indexers.contentTypeLabels.${entry.contentType}`, entry.contentType) : entry.contentType}
           </Badge>
         )}
         {/* Cross-seed outcome badge - only show successful adds */}
@@ -303,7 +303,7 @@ function HistoryRow({ entry, onClick }: HistoryRowProps) {
           </span>
         )}
         <span className="text-xs text-muted-foreground">
-          {entry.priority}
+          {entry.priority ? t(`indexers.priorityLabels.${entry.priority}`, entry.priority) : entry.priority}
         </span>
         <span className="text-xs text-muted-foreground">
           {durationStr}
@@ -388,7 +388,7 @@ function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
             </div>
             <div>
               <span className="text-muted-foreground">{t("indexers.searchHistory.detail.priority")} </span>
-              <span className="font-medium">{entry.priority}</span>
+              <span className="font-medium">{entry.priority ? t(`indexers.priorityLabels.${entry.priority}`, entry.priority) : entry.priority}</span>
             </div>
             {/* Cross-seed outcome - only show successful adds */}
             {entry.outcome === "added" && (
@@ -441,7 +441,7 @@ function SearchDetailDialog({ entry, open, onClose }: SearchDetailDialogProps) {
               )}
               {entry.contentType && entry.contentType !== "unknown" && (
                 <span>
-                  {t("indexers.searchHistory.detail.type")} <span className="text-foreground/70">{entry.contentType}</span>
+                  {t("indexers.searchHistory.detail.type")} <span className="text-foreground/70">{t(`indexers.contentTypeLabels.${entry.contentType}`, entry.contentType)}</span>
                 </span>
               )}
             </div>

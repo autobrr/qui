@@ -486,6 +486,12 @@
   },
   "creationTasks": {
     "dialogTitle": "Torrent Creation Tasks",
+    "statusLabels": {
+      "Queued": "Queued",
+      "Running": "Running",
+      "Finished": "Finished",
+      "Failed": "Failed"
+    },
     "loadingTasks": "Loading tasks...",
     "noTasks": "No torrent creation tasks found",
     "tableHeaders": {
