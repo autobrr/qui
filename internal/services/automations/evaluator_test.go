@@ -3299,3 +3299,178 @@ func TestEvaluateCondition_CrossSeedCompositeConditions(t *testing.T) {
 		}
 	})
 }
+
+func TestEvaluateCondition_TrackerStatusAndMessage(t *testing.T) {
+	t.Parallel()
+
+	const (
+		realURL  = "https://tracker.example.com/announce"
+		dhtLabel = "** [DHT] **"
+	)
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		expected bool
+	}{
+		// Status: positive matches across the alias / numeric value set.
+		{
+			name: "status working matches OK tracker",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "working"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusOK},
+			}},
+			expected: true,
+		},
+		{
+			name: "status ok alias matches OK tracker",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "ok"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusOK},
+			}},
+			expected: true,
+		},
+		{
+			name: "status not_contacted matches",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "not_contacted"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusNotContacted},
+			}},
+			expected: true,
+		},
+		{
+			name: "status updating matches",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "updating"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusUpdating},
+			}},
+			expected: true,
+		},
+		{
+			name: "status error matches NotWorking",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "error"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusNotWorking},
+			}},
+			expected: true,
+		},
+		{
+			name: "status tracker_error matches code 5",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "tracker_error"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusTrackerError},
+			}},
+			expected: true,
+		},
+		{
+			name: "status unreachable matches code 6",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "unreachable"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusUnreachable},
+			}},
+			expected: true,
+		},
+		{
+			name: "status numeric value matches raw code",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "5"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusTrackerError},
+			}},
+			expected: true,
+		},
+		{
+			name: "status not_equal satisfied by a differing tracker",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorNotEqual, Value: "error"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusOK},
+			}},
+			expected: true,
+		},
+		{
+			name:     "status no trackers does not match",
+			cond:     &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "working"},
+			torrent:  qbt.Torrent{},
+			expected: false,
+		},
+		// Status: DHT/PeX/LSD pseudo-trackers must be ignored (regression guard).
+		{
+			name: "pseudo DHT tracker is ignored, real tracker decides not_equal",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorNotEqual, Value: "working"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: dhtLabel, Status: qbt.TrackerStatusDisabled},
+				{Url: realURL, Status: qbt.TrackerStatusOK},
+			}},
+			expected: false,
+		},
+		{
+			name: "pseudo-only torrent never matches a real status",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorNotEqual, Value: "working"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: dhtLabel, Status: qbt.TrackerStatusDisabled},
+				{Url: "** [PeX] **", Status: qbt.TrackerStatusDisabled},
+			}},
+			expected: false,
+		},
+		// Message.
+		{
+			name: "message contains substring",
+			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorContains, Value: "Torrent deleted"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusNotWorking, Message: "Torrent deleted: get pack:"},
+			}},
+			expected: true,
+		},
+		{
+			name: "message nil matches empty real tracker message",
+			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorEqual, Value: "nil"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusOK, Message: ""},
+			}},
+			expected: true,
+		},
+		{
+			name: "message nil not_equal matches non-empty message",
+			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorNotEqual, Value: "nil"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusNotWorking, Message: "unregistered torrent"},
+			}},
+			expected: true,
+		},
+		{
+			name: "message nil contains does not match literal nil",
+			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorContains, Value: "nil"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusOK, Message: ""},
+				{Url: realURL, Status: qbt.TrackerStatusNotWorking, Message: "contains nil literal"},
+			}},
+			expected: false,
+		},
+		{
+			name:     "message no trackers does not match",
+			cond:     &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorEqual, Value: "nil"},
+			torrent:  qbt.Torrent{},
+			expected: false,
+		},
+		// Message: pseudo-tracker empty message must not satisfy "nil" (regression guard).
+		{
+			name: "pseudo DHT empty message does not satisfy message nil",
+			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorEqual, Value: "nil"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: dhtLabel, Status: qbt.TrackerStatusDisabled, Message: ""},
+				{Url: realURL, Status: qbt.TrackerStatusOK, Message: "seeding ok"},
+			}},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := EvaluateConditionWithContext(tt.cond, tt.torrent, nil, 0)
+			if got != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, got)
+			}
+		})
+	}
+}

@@ -944,6 +944,12 @@
       "exportCSV": "导出 CSV",
       "close": "关闭",
       "deleteFiles": "删除文件",
+      "statusLabels": {
+        "pending": "等待中",
+        "deleted": "已删除",
+        "skipped": "已跳过",
+        "failed": "失败"
+      },
       "toast": {
         "deletionStarted": "删除已开始",
         "deletionDescription": "正在移除孤立文件",
@@ -1611,6 +1617,13 @@
     "pageDescription": "管理实例的种子备份",
     "selectInstancePlaceholder": "选择实例",
     "loadingCapabilities": "正在加载实例功能...",
+    "statusLabels": {
+      "pending": "等待中",
+      "running": "运行中",
+      "success": "成功",
+      "failed": "失败",
+      "canceled": "已取消"
+    },
     "runKinds": {
       "manual": "手动",
       "hourly": "每小时",

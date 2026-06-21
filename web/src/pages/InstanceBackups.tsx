@@ -958,7 +958,7 @@ export function InstanceBackups() {
                         </p>
                       </div>
                     ) : (
-                      <p className="text-xs text-muted-foreground capitalize">{t("backups.summary.status", { status: lastRun.status })}</p>
+                      <p className="text-xs text-muted-foreground capitalize">{t("backups.summary.status", { status: t(`backups.statusLabels.${lastRun.status}`, lastRun.status) })}</p>
                     )}
                   </div>
                 </div>
@@ -1808,7 +1808,7 @@ export function InstanceBackups() {
                               </p>
                             </div>
                           ) : (
-                            <Badge variant={statusVariants[run.status]} className="capitalize">{run.status}</Badge>
+                            <Badge variant={statusVariants[run.status]} className="capitalize">{t(`backups.statusLabels.${run.status}`, run.status)}</Badge>
                           )}
                         </TableCell>
                         <TableCell>{formatDateSafe(run.requestedAt, formatDate)}</TableCell>

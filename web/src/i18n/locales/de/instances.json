@@ -962,6 +962,12 @@
       "exportCSV": "CSV exportieren",
       "close": "Schließen",
       "deleteFiles": "Dateien löschen",
+      "statusLabels": {
+        "pending": "Ausstehend",
+        "deleted": "Gelöscht",
+        "skipped": "Übersprungen",
+        "failed": "Fehlgeschlagen"
+      },
       "toast": {
         "deletionStarted": "Löschung gestartet",
         "deletionDescription": "Orphan-Dateien werden entfernt",
@@ -1626,9 +1632,16 @@
   },
   "backups": {
     "pageTitle": "Backups",
-    "pageDescription": "Verwalte Torrent-Backups für deine Instanzen",
+    "pageDescription": "Torrent-Backups für Ihre Instanzen verwalten",
     "selectInstancePlaceholder": "Instanz auswählen",
     "loadingCapabilities": "Instanz-Fähigkeiten werden geladen...",
+    "statusLabels": {
+      "pending": "Ausstehend",
+      "running": "Läuft",
+      "success": "Erfolgreich",
+      "failed": "Fehlgeschlagen",
+      "canceled": "Abgebrochen"
+    },
     "runKinds": {
       "manual": "Manuell",
       "hourly": "Stündlich",

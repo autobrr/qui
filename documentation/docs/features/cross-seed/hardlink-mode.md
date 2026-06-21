@@ -34,7 +34,7 @@ Example: `/mnt/disk1/cross-seed, /mnt/disk2/cross-seed, /mnt/disk3/cross-seed`
 - Hardlink mode is a **per-instance setting** (not per request). Each qBittorrent instance can have its own hardlink configuration.
 - Torrents added via hardlink/reflink mode always use an explicit `savepath` (the link-tree root), which forces **AutoTMM off**. Enabling AutoTMM after adding can move files out of the link tree.
 - By default, if a hardlink cannot be created (no local access, filesystem mismatch, invalid base dir, etc.), the cross-seed **fails**.
-- Enable **"Fallback to regular mode"** to allow failed hardlink operations to use regular cross-seed mode instead of failing. Filesystem fallback uses a full recheck; see [troubleshooting](troubleshooting#when-rechecks-are-required-reuse-mode).
+- Enable **"Fallback to regular mode"** to allow failed hardlink operations to use regular cross-seed mode instead of failing. Filesystem fallback uses a full recheck; see [troubleshooting](./troubleshooting.md#when-rechecks-are-required-reuse-mode).
 - When fallback handles a partial or otherwise non-perfect match, qui runs a piece-boundary safety check before adding the torrent to qBittorrent. This fallback check is always enforced, even if **Skip piece boundary safety check** is enabled for regular reuse mode.
 - Hardlinked torrents are still categorized using your existing cross-seed category rules (category affix, indexer name, or custom category); the hardlink preset only affects on-disk folder layout.
 
@@ -74,7 +74,7 @@ For the `flat` preset, an isolation folder is always used to keep each torrent's
 
 By default, hardlink-added torrents start seeding immediately (since `skip_checking=true` means they're at 100% instantly). If you want hardlink-added torrents to remain paused, enable the "Skip auto-resume" option for your cross-seed source (Completion, RSS, Webhook, etc.).
 
-When hardlink/reflink mode creates a complete link tree with no extra files to download, qui adds the torrent with hash checking skipped and does not trigger an automatic recheck. If qBittorrent instead reports `missing files`, see [Hardlink/reflink cross-seed shows "missing files"](troubleshooting#hardlinkreflink-cross-seed-shows-missing-files).
+When hardlink/reflink mode creates a complete link tree with no extra files to download, qui adds the torrent with hash checking skipped and does not trigger an automatic recheck. If qBittorrent instead reports `missing files`, see [Hardlink/reflink cross-seed shows "missing files"](./troubleshooting.md#hardlinkreflink-cross-seed-shows-missing-files).
 
 When the incoming torrent has extra files that are not present in the matched torrent, qui adds the torrent paused, triggers a recheck, and resumes it only after qBittorrent reports progress at or above the configured threshold.
 
@@ -85,7 +85,7 @@ If hardlink/reflink mode falls back to regular mode for a partial or non-perfect
 - Hardlinks share disk blocks with the original file but increase the link count. Deleting one link does not necessarily free space until all links are removed.
 - Windows support: folder names are sanitized to remove characters Windows forbids. Torrent file paths themselves still need to be valid for your qBittorrent setup.
 - Hardlink mode supports extra files when piece-boundary safe. If the incoming torrent contains extra files not present in the matched torrent (e.g., `.nfo`/`.srt` sidecars), hardlink mode will link the content files and trigger a recheck so qBittorrent downloads the extras. If extras share pieces with content (unsafe), the cross-seed is skipped.
-- Partial matches (e.g., season packs where only some episodes are on disk) require the **Download missing files** setting to be enabled in [Dir Scan settings](dir-scan#settings-global). Without it, partial link tree injections are rejected.
+- Partial matches (e.g., season packs where only some episodes are on disk) require the **Download missing files** setting to be enabled in [Dir Scan settings](./dir-scan.md#settings-global). Without it, partial link tree injections are rejected.
 
 ## Reflink Mode (Alternative)
 

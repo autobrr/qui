@@ -37,7 +37,18 @@ const (
 	streamEventActivity  = "activity"
 	defaultSyncInterval  = 2 * time.Second
 	maxSyncInterval      = 30 * time.Second
-	heartbeatInterval    = 5 * time.Second
+	// syncTimeoutIncremental bounds a steady-state incremental /sync/maindata tick.
+	// Healthy delta updates finish well under this even on large instances, so the
+	// short budget keeps the ~2s loop snappy and frees the goroutine when qbit is
+	// briefly slow.
+	syncTimeoutIncremental = 10 * time.Second
+	// syncTimeoutFull bounds a full /sync/maindata update (first sync for an instance,
+	// or any sync after a failure when qBittorrent has reset the rid and resends the
+	// whole torrent set). A 20k-torrent full fetch+parse can exceed 10s; this is
+	// aligned with the qbit HTTP client timeout (60s, see ClientPool.GetClient) so the
+	// per-sync budget is bounded by the transport, not a tighter inner deadline.
+	syncTimeoutFull   = 60 * time.Second
+	heartbeatInterval = 5 * time.Second
 	// maxStreamRequests caps the number of stream subscriptions a single SSE
 	// connection may request, bounding per-connection fan-out and resource use.
 	maxStreamRequests = 64
@@ -225,6 +236,12 @@ type heartbeatLoopState struct {
 type backoffState struct {
 	attempt  int
 	interval time.Duration
+	// primed is set true once the instance has completed at least one successful
+	// sync. Before priming the next sync is a full /sync/maindata and must use the
+	// full-sync timeout. primed is never cleared by a failure (failure streaks are
+	// tracked by attempt > 0); it is only dropped when the whole entry is deleted on
+	// unregister, so a re-registered instance correctly resyncs full first.
+	primed bool
 }
 
 // StreamPayload is the message envelope sent to the frontend.
@@ -1632,11 +1649,8 @@ func (m *StreamManager) markSyncSuccess(instanceID int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	state, ok := m.syncBackoff[instanceID]
-	if !ok {
-		return
-	}
-
+	state := m.ensureBackoffStateLocked(instanceID)
+	state.primed = true
 	state.attempt = 0
 
 	if state.interval != defaultSyncInterval {
@@ -1728,12 +1742,29 @@ func jitteredInterval(interval time.Duration) time.Duration {
 	return interval + jitter
 }
 
+// syncTimeout returns the context budget for the next forceSync of instanceID.
+// A full /sync/maindata is likely when the instance has never completed a sync
+// (no entry / not primed) or is in a failure streak (attempt > 0): qBittorrent
+// resets the rid on these and resends the whole torrent set, which can exceed the
+// incremental budget on large instances. A primed instance with no active failure
+// streak is in a healthy delta streak and gets the short budget.
+func (m *StreamManager) syncTimeout(instanceID int) time.Duration {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	state, ok := m.syncBackoff[instanceID]
+	if !ok || !state.primed || state.attempt > 0 {
+		return syncTimeoutFull
+	}
+	return syncTimeoutIncremental
+}
+
 func (m *StreamManager) forceSync(parent context.Context, instanceID int) {
 	if m.closing.Load() {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	ctx, cancel := context.WithTimeout(parent, m.syncTimeout(instanceID))
 	defer cancel()
 
 	syncMgr, err := m.syncManager.GetQBittorrentSyncManager(ctx, instanceID)

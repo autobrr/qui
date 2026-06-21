@@ -19,7 +19,8 @@
       "cooldown": "Cooldown {{display}}",
       "ready": "Ready",
       "disabled": "Disabled",
-      "noRunsYet": "No runs yet"
+      "noRunsYet": "No runs yet",
+      "disabledUpper": "DISABLED"
     },
     "seededSearch": {
       "title": "Seeded torrent search",
@@ -95,7 +96,8 @@
     "items": "{{count}} items",
     "failedCount": "{{count}} failed",
     "runSummary": "{{runs}} runs • +{{added}}",
-    "runSummaryWithFailures": "{{runs}} runs • +{{added}} • {{failed}} failed"
+    "runSummaryWithFailures": "{{runs}} runs • +{{added}} • {{failed}} failed",
+    "scheduledUpper": "SCHEDULED"
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -358,7 +360,18 @@
     "coverage": "Coverage",
     "episodes": "Episodes",
     "instance": "Instance",
-    "mode": "Mode"
+    "mode": "Mode",
+    "statusLabels": {
+      "ready": "Ready",
+      "skipped": "Skipped",
+      "applied": "Applied",
+      "failed": "Failed",
+      "ready_no_threshold": "Ready (no threshold)"
+    },
+    "phases": {
+      "check": "Check",
+      "apply": "Apply"
+    }
   },
   "cancelDialog": {
     "title": "Cancel RSS Automation Run?",
@@ -528,7 +541,27 @@
       "success": "Success",
       "failed": "Failed",
       "added": "Added",
-      "canceled": "Canceled"
+      "canceled": "Canceled",
+      "running": "Running",
+      "partial": "Partial",
+      "pending": "Pending"
+    },
+    "contentTypeLabels": {
+      "movie": "Movie",
+      "tv": "TV",
+      "music": "Music",
+      "audiobook": "Audiobook",
+      "book": "Book",
+      "comic": "Comic",
+      "game": "Game",
+      "app": "App",
+      "adult": "Adult",
+      "unknown": "Unknown"
+    },
+    "linkModeLabels": {
+      "regular": "Regular",
+      "hardlink": "Hardlink",
+      "reflink": "Reflink"
     },
     "table": {
       "started": "Started",
@@ -635,6 +668,19 @@
       "description": "This will remove the scan directory and its run history. Torrents already added will not be affected.",
       "cancel": "Cancel",
       "delete": "Delete"
+    },
+    "statusLabelsUpper": {
+      "queued": "QUEUED",
+      "scanning": "SCANNING",
+      "searching": "SEARCHING",
+      "injecting": "INJECTING",
+      "success": "SUCCESS",
+      "failed": "FAILED",
+      "added": "ADDED",
+      "canceled": "CANCELED",
+      "running": "RUNNING",
+      "partial": "PARTIAL",
+      "pending": "PENDING"
     }
   }
 }
