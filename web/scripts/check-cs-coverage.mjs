@@ -135,25 +135,7 @@ function hasBOM(buffer) {
 function checkMissingKeys(enFlat, csFlat, namespace) {
   const errors = []
 
-  // Build set of en plural bases that have _one/_other pairs (v4 CLDR style).
-  // Czech uses the same one/other split as English, so _one IS expected --
-  // but we tolerate locales that collapse to _other only (i18next falls back).
-  const v4PluralBases = new Set()
-  for (const key of enFlat.keys()) {
-    if (key.endsWith("_one")) {
-      const base = key.slice(0, -4)
-      if (enFlat.has(`${base}_other`)) {
-        v4PluralBases.add(base)
-      }
-    }
-  }
-
   for (const [key, value] of enFlat) {
-    // Skip _one keys for v4 plural pairs -- a locale providing only _other is valid.
-    if (key.endsWith("_one") && v4PluralBases.has(key.slice(0, -4))) {
-      continue
-    }
-
     if (!csFlat.has(key)) {
       const truncated = value.length > 80 ? `${value.slice(0, 77)}...` : value
       errors.push(`${namespace}.${key}: ${JSON.stringify(truncated)}`)
@@ -168,11 +150,6 @@ function checkExtraKeys(enFlat, csFlat, namespace) {
 
   for (const key of csFlat.keys()) {
     if (!enFlat.has(key)) {
-      // If cs has _other and en has _one/_other pair, that is fine.
-      if (key.endsWith("_other") && enFlat.has(`${key.slice(0, -6)}_one`)) {
-        continue
-      }
-
       errors.push(`${namespace}.${key}`)
     }
   }
