@@ -1,77 +1,77 @@
 {
-  "pageTitle": "Search Indexers",
-  "pageDescription": "Search across all enabled indexers. Pick a query type or leave Auto to have categories detected automatically.",
+  "pageTitle": "Prohledat indexery",
+  "pageDescription": "Prohledejte všechny povolené indexery. Vyberte typ dotazu nebo ponechte Auto, aby byly kategorie detekovány automaticky.",
   "indexerSummary": {
-    "label": "Indexers",
-    "noEnabled": "No enabled indexers",
-    "allEnabled": "All enabled ({{count}})",
-    "selected": "{{selected}} of {{total}} selected"
+    "label": "Indexery",
+    "noEnabled": "Žádné povolené indexery",
+    "allEnabled": "Všechny povolené ({{count}})",
+    "selected": "{{selected}} z {{total}} vybráno"
   },
   "indexerSheet": {
-    "title": "Indexer selection",
-    "description": "Pick which indexers to include in searches.",
-    "selectAll": "Select all",
-    "clearSelection": "Clear selection",
-    "noCategories": "No categories",
+    "title": "Výběr indexerů",
+    "description": "Vyberte, které indexery mají být zahrnuty do vyhledávání.",
+    "selectAll": "Vybrat vše",
+    "clearSelection": "Vymazat výběr",
+    "noCategories": "Žádné kategorie",
     "backend": {
       "prowlarr": "Prowlarr",
-      "native": "Native",
+      "native": "Nativní",
       "jackett": "Jackett"
     },
-    "footer": "{{selected}} of {{total}} enabled indexers selected",
-    "done": "Done"
+    "footer": "{{selected}} z {{total}} povolených indexerů vybráno",
+    "done": "Hotovo"
   },
   "instanceSelector": {
-    "chooseTarget": "Choose target instance",
-    "noInstances": "No instances",
-    "offline": "Offline",
-    "targetNamed": "Target: {{name}}",
-    "targetNamedOffline": "Target: {{name}} (offline)",
-    "clearSelection": "Clear selection",
-    "noInstancesConfigured": "No instances configured",
-    "addInstanceNote": "Add a download instance under Settings > Instances."
+    "chooseTarget": "Vyberte cílovou instanci",
+    "noInstances": "Žádné instance",
+    "offline": "Nedostupné",
+    "targetNamed": "Cíl: {{name}}",
+    "targetNamedOffline": "Cíl: {{name}} (offline)",
+    "clearSelection": "Vymazat výběr",
+    "noInstancesConfigured": "Žádné instance nakonfigurovány",
+    "addInstanceNote": "Přidejte instanci ke stahování pod Nastavení > Instance."
   },
   "searchForm": {
-    "advanced": "Advanced",
-    "active": "Active",
-    "clear": "Clear",
-    "searching": "Searching...",
-    "search": "Search",
-    "advancedNote": "Optional (but recommended) Torznab parameters.",
-    "searchType": "Search type",
-    "searchQuery": "Search Query",
-    "noIndexers": "No enabled indexers available. Please add and enable indexers in the",
-    "indexersPage": "Indexers page"
+    "advanced": "Pokročilé",
+    "active": "Aktivní",
+    "clear": "Vymazat",
+    "searching": "Hledá se...",
+    "search": "Hledat",
+    "advancedNote": "Volitelné (ale doporučené) Torznab parametry.",
+    "searchType": "Typ hledání",
+    "searchQuery": "Hledaný dotaz",
+    "noIndexers": "Žádné povolené indexery. Přidejte a povolte indexery na stránce",
+    "indexersPage": "Indexery"
   },
   "searchTypes": {
     "auto": {
-      "label": "Auto detect",
-      "description": "Automatically infer the right categories",
-      "placeholder": "Try: \"Sample Movie 2024\", \"tt1234567\", \"tvdb 123456\", or \"Example Artist – Example Album\""
+      "label": "Auto detekovat",
+      "description": "Automaticky detekovat správné kategorie",
+      "placeholder": "Zkuste: \"Sample Movie 2024\", \"tt1234567\", \"tvdb 123456\", nebo \"Example Artist - Example Album\""
     },
     "movies": {
-      "label": "Movies",
-      "placeholder": "e.g., \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""
+      "label": "Filmy",
+      "placeholder": "např. \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""
     },
     "tv": {
       "label": "TV",
-      "placeholder": "e.g., \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\""
+      "placeholder": "např. \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\""
     },
     "music": {
-      "label": "Music",
-      "placeholder": "e.g., \"Example Artist – Example Album\", \"Sample Band – Debut EP\""
+      "label": "Hudba",
+      "placeholder": "např. \"Example Artist - Example Album\", \"Sample Band - Debut EP\""
     },
     "books": {
-      "label": "Books & comics",
-      "placeholder": "e.g., \"Example Book Title\", \"Fictional Series Book 1\""
+      "label": "Knihy & komiksy",
+      "placeholder": "např. \"Example Book Title\", \"Fictional Series Book 1\""
     },
     "apps": {
-      "label": "Apps & games",
-      "placeholder": "e.g., \"Sample OS ISO\", \"Example App 2025\""
+      "label": "Aplikace & hry",
+      "placeholder": "např. \"Sample OS ISO\", \"Example App 2025\""
     },
     "xxx": {
-      "label": "Adult",
-      "placeholder": "Enter a specific adult release name"
+      "label": "Dospělé",
+      "placeholder": "Zadejte specifický název releasu pro dospělé"
     }
   },
   "advanced": {
@@ -84,19 +84,19 @@
       "placeholder": "12345"
     },
     "year": {
-      "label": "Year",
+      "label": "Rok",
       "placeholder": "2024"
     },
     "season": {
-      "label": "Season",
+      "label": "Série",
       "placeholder": "1"
     },
     "episode": {
-      "label": "Episode",
+      "label": "Epizoda",
       "placeholder": "2"
     },
     "artist": {
-      "label": "Artist",
+      "label": "Umělec",
       "placeholder": "Nine Inch Nails"
     },
     "album": {
@@ -108,87 +108,87 @@
       "placeholder": "100"
     },
     "offset": {
-      "label": "Offset",
+      "label": "Posun",
       "placeholder": "0"
     }
   },
   "results": {
-    "showing": "Showing {{filtered}} of {{total}} results",
-    "filterPlaceholder": "Filter results...",
-    "clearSearch": "Clear search",
-    "clearAllFilters": "Clear all column filters",
-    "pickInstance": "Pick instance",
-    "download": "Download",
-    "viewDetails": "View details",
-    "clearSelectionButton": "Clear selection",
-    "actions": "Actions",
-    "quickAddTo": "Quick add to...",
-    "cachedSummary": "Cached {{cached}} · Expires {{expires}}",
-    "cacheSource": "Source: {{source}} · Scope: {{scope}}",
-    "refreshReadyIn": "Ready in {{seconds}}s",
-    "refreshFromIndexers": "Refresh from indexers",
+    "showing": "Zobrazujeme {{filtered}} z {{total}} výsledků",
+    "filterPlaceholder": "Filtrovat výsledky...",
+    "clearSearch": "Vymazat hledání",
+    "clearAllFilters": "Vymazat všechny filtry",
+    "pickInstance": "Vybrat instanci",
+    "download": "Stáhnout",
+    "viewDetails": "Zobrazit detaily",
+    "clearSelectionButton": "Vymazat výběr",
+    "actions": "Akce",
+    "quickAddTo": "Rychlé přidání do...",
+    "cachedSummary": "V cache {{cached}} · Vyprší {{expires}}",
+    "cacheSource": "Zdroj: {{source}} · Rozsah: {{scope}}",
+    "refreshReadyIn": "Připraveno za {{seconds}}s",
+    "refreshFromIndexers": "Obnovit z indexerů",
     "noValue": "-",
-    "categoryFallback": "Category {{id}}",
-    "noResultsFor": "No results found for \"{{query}}\"",
-    "enterQuery": "Enter a search query to get started",
+    "categoryFallback": "Kategorie {{id}}",
+    "noResultsFor": "Žádné výsledky pro \"{{query}}\"",
+    "enterQuery": "Zadejte hledaný dotaz pro začátek",
     "free": "Free",
-    "freeNeutral": "Neutral",
-    "noInfoUrlAvailable": "No info URL available"
+    "freeNeutral": "Neutrální",
+    "noInfoUrlAvailable": "Žádné info URL"
   },
-  "historyMeta": "{{type}} · {{count}} results · {{timestamp}}",
+  "historyMeta": "{{type}} · {{count}} výsledků · {{timestamp}}",
   "table": {
-    "title": "Title",
-    "indexer": "Indexer",
-    "size": "Size",
+    "title": "Název",
+    "indexer": "Indexerů",
+    "size": "Velikost",
     "seeders": "Seeders",
-    "category": "Category",
-    "source": "Source",
-    "collection": "Collection",
-    "group": "Group",
+    "category": "Kategorie",
+    "source": "Zdroj",
+    "collection": "Kolekce",
+    "group": "Skupina",
     "freeleech": "Freeleech",
-    "published": "Published",
-    "actions": "Actions",
-    "downloadTorrent": "Download .torrent",
-    "viewDetails": "View details",
-    "noInfoUrl": "No info URL"
+    "published": "Publikováno",
+    "actions": "Akce",
+    "downloadTorrent": "Stáhnout .torrent",
+    "viewDetails": "Zobrazit detaily",
+    "noInfoUrl": "Žádné info URL"
   },
   "refreshDialog": {
-    "title": "Bypass the cache?",
-    "description": "This will send the request directly to every selected indexer. Use sparingly to avoid rate limits. You can refresh again after a short cooldown.",
-    "cancel": "Cancel",
-    "refreshNow": "Refresh now"
+    "title": "Obejít cache?",
+    "description": "Toto bude poslat požadavek přímo každému vybranému indexeru. Používejte opatrně, aby jste se vyhnuli limitům rychlosti. Můžete obnovit znovu po krátké odezvě.",
+    "cancel": "Zrušit",
+    "refreshNow": "Obnovit nyní"
   },
   "cache": {
-    "cacheAndLive": "Cache + live",
-    "cacheHit": "Cache hit",
-    "liveFetch": "Live fetch"
+    "cacheAndLive": "Cache + živé",
+    "cacheHit": "Cache zásah",
+    "liveFetch": "Živé načítání"
   },
   "card": {
-    "actions": "Actions",
-    "addToInstance": "Add to instance",
-    "addToNamed": "Add to {{name}}",
-    "addToNamedOffline": "Add to {{name}} (offline)",
-    "quickAddTo": "Quick add to...",
-    "download": "Download",
-    "viewDetails": "View details",
-    "clearSelection": "Clear selection",
-    "seeders": "{{count}} seeders",
-    "published": "Published {{date}}"
+    "actions": "Akce",
+    "addToInstance": "Přidat do instance",
+    "addToNamed": "Přidat do {{name}}",
+    "addToNamedOffline": "Přidat do {{name}} (offline)",
+    "quickAddTo": "Rychlé přidání do...",
+    "download": "Stáhnout",
+    "viewDetails": "Zobrazit detaily",
+    "clearSelection": "Vymazat výběr",
+    "seeders": "{{count}} seederů",
+    "published": "Publikováno {{date}}"
   },
   "toast": {
-    "enterSearchQuery": "Please enter a search query or fill in advanced parameters",
-    "selectIndexer": "Please select at least one indexer",
-    "noEnabledIndexers": "No enabled indexers available. Please add and enable indexers first.",
-    "noResults": "No results found",
-    "foundResults": "Found {{total}} results{{suffix}}",
-    "cached": " (cached)",
-    "searchFailed": "Search failed: {{error}}",
-    "failedToLoadIndexers": "Failed to load indexers",
-    "addInstanceFirst": "Add a download instance under Settings -> Instances",
-    "chooseInstance": "Choose an instance to add torrents",
-    "noDownloadUrl": "No download URL available for this result",
-    "noInfoUrl": "No additional info available for this result",
-    "invalidProtocol": "Invalid URL protocol",
-    "invalidUrl": "Invalid URL format"
+    "enterSearchQuery": "Zadejte hledaný dotaz nebo vyplňte pokročilé parametry",
+    "selectIndexer": "Vyberte alespoň jeden indexer",
+    "noEnabledIndexers": "Žádné povolené indexery. Nejprve přidejte a povolte indexery.",
+    "noResults": "Žádné výsledky",
+    "foundResults": "Nalezeno {{total}} výsledků{{suffix}}",
+    "cached": " (v cache)",
+    "searchFailed": "Hledání selhalo: {{error}}",
+    "failedToLoadIndexers": "Nepodařilo se načíst indexery",
+    "addInstanceFirst": "Přidejte instanci ke stahování pod Nastavení > Instance",
+    "chooseInstance": "Vyberte instanci ke stahování",
+    "noDownloadUrl": "Žádné stahovací URL pro tento výsledek",
+    "noInfoUrl": "Žádné další informace pro tento výsledek",
+    "invalidProtocol": "Neplatný URL protokol",
+    "invalidUrl": "Neplatný formát URL"
   }
 }
