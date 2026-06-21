@@ -162,7 +162,7 @@
     "hardlinkReflink": "Hardlink / Reflink Mode",
     "noActiveInstances": "No active instances. Add instances first.",
     "hardlinkDescription": "Create hardlinked or reflinked (copy-on-write) file trees for cross-seeds. Each instance can be configured independently. The base directory must be on the same filesystem as the instance's download paths.",
-    "reflinkNote": " Reflink mode allows safe cross-seeding of torrents with extra/missing files. When extra files are present, qui triggers a recheck; if below threshold, the torrent stays paused for manual review.",
+    "reflinkNote": "Reflink mode allows safe cross-seeding of torrents with extra/missing files. When extra files are present, qui triggers a recheck; if below threshold, the torrent stays paused for manual review.",
     "crossSeedMode": "Cross-seed mode",
     "enableLocalFilesystem": "Enable \"Local filesystem access\" in Instance Settings to use hardlink or reflink modes.",
     "regular": "Regular",
