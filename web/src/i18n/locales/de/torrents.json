@@ -486,6 +486,12 @@
   },
   "creationTasks": {
     "dialogTitle": "Aufgaben zur Torrent-Erstellung",
+    "statusLabels": {
+      "Queued": "In Warteschlange",
+      "Running": "Läuft",
+      "Finished": "Abgeschlossen",
+      "Failed": "Fehlgeschlagen"
+    },
     "loadingTasks": "Aufgaben werden geladen...",
     "noTasks": "Keine Aufgaben zur Torrent-Erstellung gefunden",
     "tableHeaders": {

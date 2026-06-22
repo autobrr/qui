@@ -501,6 +501,12 @@
       "downloadFailed": "Download del file torrent non riuscito",
       "taskDeleted": "Attività di creazione torrent eliminata",
       "taskDeleteFailed": "Eliminazione dell'attività di creazione non riuscita"
+    },
+    "statusLabels": {
+      "Queued": "In coda",
+      "Running": "In esecuzione",
+      "Finished": "Completato",
+      "Failed": "Non riuscito"
     }
   },
   "commentDialog": {

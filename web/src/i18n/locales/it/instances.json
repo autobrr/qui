@@ -968,6 +968,12 @@
         "deletionFailed": "Impossibile avviare l'eliminazione",
         "exportedFiles": "Esportati {{count}} file in CSV",
         "exportFailed": "Impossibile esportare i file"
+      },
+      "statusLabels": {
+        "pending": "In attesa",
+        "deleted": "Eliminato",
+        "skipped": "Ignorato",
+        "failed": "Non riuscito"
       }
     },
     "orphanScanSettings": {
@@ -1863,6 +1869,13 @@
       "failedToDeleteBackup": "Eliminazione dell'esecuzione del backup non riuscita",
       "allBackupsDeleted": "Tutti i backup eliminati",
       "failedToDeleteBackups": "Eliminazione dei backup non riuscita"
+    },
+    "statusLabels": {
+      "pending": "In attesa",
+      "running": "In esecuzione",
+      "success": "Riuscito",
+      "failed": "Non riuscito",
+      "canceled": "Annullato"
     }
   }
 }
