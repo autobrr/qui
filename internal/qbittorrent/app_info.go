@@ -99,14 +99,30 @@ func (c *Client) GetAppInfo(ctx context.Context) (*AppInfo, error) {
 	}
 
 	c.appInfoMu.RLock()
-	if c.appInfoCache != nil && time.Since(c.appInfoFetchedAt) < appInfoCacheTTL {
-		cached := cloneAppInfo(c.appInfoCache)
-		c.appInfoMu.RUnlock()
-		return cached, nil
-	}
+	cached := cloneAppInfo(c.appInfoCache)
+	fresh := c.appInfoCache != nil && time.Since(c.appInfoFetchedAt) < appInfoCacheTTL
 	c.appInfoMu.RUnlock()
 
-	return c.refreshAppInfo(ctx)
+	if fresh {
+		return cached, nil
+	}
+
+	info, err := c.refreshAppInfo(ctx)
+	if err != nil {
+		// A saturated qBittorrent WebUI times out even trivial calls. Serve the
+		// last known app info rather than failing the whole torrent stream tick;
+		// only surface the error when there is nothing cached to fall back on.
+		if cached != nil {
+			log.Debug().
+				Err(err).
+				Int("instanceID", c.instanceID).
+				Msg("Serving stale qBittorrent app info after refresh failure")
+			return cached, nil
+		}
+		return nil, err
+	}
+
+	return info, nil
 }
 
 func (c *Client) refreshAppInfo(ctx context.Context) (*AppInfo, error) {
