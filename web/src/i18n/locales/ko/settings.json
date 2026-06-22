@@ -451,22 +451,22 @@
         "activationRequiredDescription": "이 컴퓨터에서 라이선스를 활성화해야 합니다"
       },
       "portalHelp": {
-        "prefix": "DodoPayments에서 구매한 다음, 여기에 라이선스 키를 입력하세요. 키를 분실한 경우 다음을 통해 복구하세요:",
-        "suffix": "."
+        "prefix": "DodoPayments에서 구매한 다음, 여기에 라이선스 키를 입력하세요. 키를 분실한 경우",
+        "suffix": "에서 복구할 수 있습니다."
       },
       "discord": {
         "title": "Discord 혜택",
-        "prefix": "다음을 받으세요:",
-        "afterRole": "역할을 받으면 비공개 채널에 접근할 수 있습니다.",
+        "prefix": "비공개 채널에 접근하려면",
+        "afterRole": "역할을 받으세요.",
         "openDiscord": "qui Discord 열기",
         "opensInNewTab": "(새 탭에서 열림)",
-        "afterLink": ", 다음을 실행",
+        "afterLink": "를 클릭한 다음,",
         "copyVerifyAriaLabel": "/verify 명령 복사",
         "copyVerifyTitle": "클릭하여 복사",
         "verifyCommand": "/verify",
-        "afterVerify": "위치:",
+        "afterVerify": "명령을",
         "channel": "#qui",
-        "suffix": ", 그리고 라이선스 이메일로 로그인하세요."
+        "suffix": " 채널에서 실행하고, 라이선스 이메일로 로그인하세요."
       },
       "details": {
         "productAdded": "{{productName}} • 추가됨 {{date}}",
@@ -518,10 +518,10 @@
             "cryptoDescription": "암호화폐 결제도 DodoPayments 결제에서 완료됩니다.",
             "xmrHelp": "XMR은 수동입니다: Discord로 문의하거나 s0up4200@pm.me로 이메일을 보내세요.",
             "cryptoSteps": {
-              "readmePrefix": "다음의 주소를 사용하여 기부하세요:",
-              "readmeSuffix": ".",
-              "verifyPrefix": "다음에서 확인하세요:",
-              "verifySuffix": "하면 할인 코드를 받습니다.",
+              "readmePrefix": "기부할 때는",
+              "readmeSuffix": "의 주소를 사용하세요.",
+              "verifyPrefix": "할인 코드를 받으려면",
+              "verifySuffix": "에서 인증하세요.",
               "applyCode": "DodoPayments 결제를 열고, 할인 코드 칸에 코드를 붙여 넣은 다음, 적용을 클릭하세요.",
               "completeCheckout": "총액이 $0.00인지 확인한 다음 결제를 완료하세요."
             }
@@ -671,6 +671,27 @@
       "failedIndexers": "실패한 인덱서: {{names}}",
       "capsSynced": "백엔드에서 기능이 동기화되었습니다",
       "failedToSyncCaps": "기능을 동기화하지 못했습니다"
+    },
+    "priorityLabels": {
+      "interactive": "대화형",
+      "rss": "RSS",
+      "completion": "완료",
+      "background": "백그라운드"
+    },
+    "contentTypeLabels": {
+      "movie": "영화",
+      "tv": "TV",
+      "tv_daily": "TV(일일)",
+      "xxx": "성인",
+      "music": "음악",
+      "audiobook": "오디오북",
+      "book": "도서",
+      "comic": "만화",
+      "magazine": "잡지",
+      "education": "교육",
+      "app": "앱",
+      "game": "게임",
+      "unknown": "알 수 없음"
     },
     "page": {
       "summary": "{{enabled}}개 활성화됨, {{capabilities}}개 기능 보유",
@@ -850,7 +871,7 @@
       "workersStatus": "워커 {{used}}/{{total}}",
       "runningCount": "{{count}}개 실행 중",
       "queuedCount": "{{count}}개 대기 중",
-      "cooldownCount": "{{count}}개 대기 시간",
+      "cooldownCount": "쿨다운 {{count}}개",
       "ready": "준비됨",
       "left": "{{time}} 남음"
     },

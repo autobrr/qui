@@ -60,7 +60,7 @@
     "unregisteredTorrents": "등록되지 않은 토렌트",
     "trackerDown": "트래커 다운",
     "errors": "오류",
-    "reannounceTooltip": "자동 트래커 재공지 활성화됨",
+    "reannounceTooltip": "자동 트래커 재요청 활성화됨",
     "altSpeedLimits": "대체 속도 제한: {{status}}",
     "localFileAccess": "로컬 파일 접근 활성화됨",
     "connectable": "연결 가능",

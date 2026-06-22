@@ -11,7 +11,7 @@
     "instances": "인스턴스",
     "generalSettings": "일반 설정",
     "manageInstances": "인스턴스 관리",
-    "appearance": "모양",
+    "appearance": "테마",
     "instanceBackups": "인스턴스 백업"
   },
   "sidebar": {
@@ -120,7 +120,7 @@
   },
   "themeToggle": {
     "changeTheme": "테마 변경",
-    "appearance": "모양",
+    "appearance": "테마",
     "mode": "모드",
     "light": "밝게",
     "dark": "어둡게",

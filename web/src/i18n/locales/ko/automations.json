@@ -5,10 +5,10 @@
     "noInstances": "아직 구성된 인스턴스가 없습니다. 서비스를 사용하려면 설정에서 인스턴스를 추가하세요."
   },
   "reannounce": {
-    "title": "재공지",
+    "title": "재요청",
     "noInstances": "구성된 인스턴스가 없습니다. 이 서비스를 사용하려면 설정에서 인스턴스를 추가하세요.",
-    "tooltip": "qBittorrent은 실패한 공지를 빠르게 재시도하지 않습니다. 트래커가 새 업로드를 늦게 등록하거나 오류를 반환하면 계속 기다리게 될 수 있습니다. qui는 트래커에 과도한 요청을 보내지 않으면서 이를 자동으로 처리합니다.",
-    "description": "<strong>정체된</strong> 토렌트를 모니터링하고 정상인 트래커가 없을 때 재공지합니다.",
+    "tooltip": "qBittorrent은 실패한 요청를 빠르게 재시도하지 않습니다. 트래커가 새 업로드를 늦게 등록하거나 오류를 반환하면 계속 기다리게 될 수 있습니다. qui는 트래커에 과도한 요청을 보내지 않으면서 이를 자동으로 처리합니다.",
+    "description": "<strong>정체된</strong> 토렌트를 모니터링하고 정상인 트래커가 없을 때 재요청합니다.",
     "today": "오늘 {{count}}개",
     "failed": "실패 {{count}}개",
     "notConfigured": "구성되지 않음",
@@ -102,6 +102,7 @@
     "max": "최대",
     "selectState": "상태 선택",
     "selectScope": "범위 선택",
+    "selectTrackerStatus": "상태 선택",
     "true": "참",
     "false": "거짓",
     "selectCategory": "카테고리 선택",
@@ -145,6 +146,8 @@
       "RLS_GROUP": "그룹 (RLS)",
       "STATE": "상태",
       "TRACKER": "트래커",
+      "TRACKER_STATUS": "트래커 상태",
+      "TRACKER_MESSAGE": "트래커 메시지",
       "COMMENT": "설명",
       "SIZE": "크기",
       "TOTAL_SIZE": "전체 크기",
@@ -160,7 +163,7 @@
       "LAST_ACTIVITY": "비활성 시간",
       "SEEN_COMPLETE": "완료 확인 경과 시간",
       "ETA": "ETA",
-      "REANNOUNCE": "재공지까지",
+      "REANNOUNCE": "재요청까지",
       "SEEDING_TIME": "시딩 시간",
       "TIME_ACTIVE": "활성 시간",
       "MAX_SEEDING_TIME": "최대 시딩 시간",
@@ -260,6 +263,14 @@
       "none": "없음",
       "torrents_only": "다른 토렌트만",
       "outside_qbittorrent": "qBittorrent 외부 (라이브러리/가져오기)"
+    },
+    "trackerStatuses": {
+      "not_contacted": "접속 시도 안 함",
+      "working": "정상",
+      "updating": "업데이트 중",
+      "error": "오류",
+      "tracker_error": "트래커 오류",
+      "unreachable": "접속 불가"
     },
     "deleteModes": {
       "delete": "클라이언트에서 제거",
