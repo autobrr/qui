@@ -327,15 +327,117 @@ func TestMarkSyncSuccess_ResetsBackoff(t *testing.T) {
 	require.Equal(t, defaultSyncInterval, state.interval, "interval should be reset to default")
 }
 
-func TestMarkSyncSuccess_NoOpWithoutPriorState(t *testing.T) {
+func TestMarkSyncSuccess_PrimesWithoutPriorState(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil)
 
-	// Calling success without prior failure should be a no-op
+	// First success without a prior failure should create a primed entry so the
+	// next sync uses the incremental budget.
 	manager.markSyncSuccess(99)
 
-	// Backoff state should not exist for this instance
-	_, exists := manager.syncBackoff[99]
-	require.False(t, exists, "backoff state should not be created by markSyncSuccess")
+	state, exists := manager.syncBackoff[99]
+	require.True(t, exists, "first success should create a primed backoff entry")
+	require.True(t, state.primed, "first success should prime the instance")
+	require.Equal(t, 0, state.attempt)
+}
+
+func TestStreamManager_syncTimeout(t *testing.T) {
+	tests := []struct {
+		name  string
+		state *backoffState
+		want  time.Duration
+	}{
+		{name: "no_state_uses_full", state: nil, want: syncTimeoutFull},
+		{name: "unprimed_attempt0_uses_full", state: &backoffState{primed: false, attempt: 0}, want: syncTimeoutFull},
+		{name: "unprimed_with_attempts_uses_full", state: &backoffState{primed: false, attempt: 2}, want: syncTimeoutFull},
+		{name: "failure_streak_uses_full", state: &backoffState{primed: true, attempt: 1}, want: syncTimeoutFull},
+		{name: "deep_failure_streak_uses_full", state: &backoffState{primed: true, attempt: 4}, want: syncTimeoutFull},
+		{name: "primed_healthy_uses_incremental", state: &backoffState{primed: true, attempt: 0}, want: syncTimeoutIncremental},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager := NewStreamManager(nil, nil, nil)
+			if tt.state != nil {
+				manager.syncBackoff[1] = tt.state
+			}
+			require.Equal(t, tt.want, manager.syncTimeout(1))
+		})
+	}
+}
+
+func TestStreamManager_syncTimeout_concurrent(t *testing.T) {
+	// syncTimeout reads backoffState fields that markSyncSuccess/markSyncFailure
+	// mutate under m.mu. This must stay race-free; run under `go test -race`.
+	manager := NewStreamManager(nil, nil, nil)
+
+	const goroutines = 8
+	const iterations = 500
+
+	var wg sync.WaitGroup
+	wg.Add(goroutines * 3)
+
+	for range goroutines {
+		go func() {
+			defer wg.Done()
+			for range iterations {
+				_ = manager.syncTimeout(1)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			for range iterations {
+				manager.markSyncFailure(1)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			for range iterations {
+				manager.markSyncSuccess(1)
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	// State stays readable and yields a valid budget after concurrent access.
+	require.Contains(t, []time.Duration{syncTimeoutIncremental, syncTimeoutFull}, manager.syncTimeout(1))
+}
+
+func TestStreamManager_markSyncSuccess_primes(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+
+	manager.markSyncSuccess(1)
+
+	require.True(t, manager.syncBackoff[1].primed, "first success should prime the instance")
+	require.Equal(t, syncTimeoutIncremental, manager.syncTimeout(1), "primed healthy instance uses incremental budget")
+}
+
+func TestStreamManager_failureAfterPrimeKeepsFull_thenRecovers(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+
+	manager.markSyncSuccess(1)
+	require.Equal(t, syncTimeoutIncremental, manager.syncTimeout(1))
+
+	manager.markSyncFailure(1)
+	require.Positive(t, manager.syncBackoff[1].attempt, "failure should advance attempt")
+	require.True(t, manager.syncBackoff[1].primed, "failure must not clear primed")
+	require.Equal(t, syncTimeoutFull, manager.syncTimeout(1), "failure streak uses full budget")
+
+	manager.markSyncSuccess(1)
+	require.Equal(t, 0, manager.syncBackoff[1].attempt, "recovery resets attempt")
+	require.True(t, manager.syncBackoff[1].primed)
+	require.Equal(t, syncTimeoutIncremental, manager.syncTimeout(1), "recovered instance returns to incremental budget")
+}
+
+func TestStreamManager_unprimedFirstSyncUsesFull(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+
+	// Failure before the first success creates an unprimed entry (the wedge condition).
+	manager.markSyncFailure(1)
+	require.Equal(t, syncTimeoutFull, manager.syncTimeout(1), "unprimed instance uses full budget")
+
+	manager.markSyncSuccess(1)
+	require.Equal(t, syncTimeoutIncremental, manager.syncTimeout(1), "first success drops to incremental budget")
 }
 
 func TestBackoffState_IndependentPerInstance(t *testing.T) {
@@ -490,7 +592,6 @@ func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
 	// First enqueue sets hasPending and sends
 	group.mu.Lock()
 	group.pendingMeta = &StreamMeta{InstanceID: 1, Timestamp: time.Now()}
-	group.pendingType = streamEventUpdate
 	group.hasPending = true
 	group.sending = true // Simulate that processGroup is already running
 	group.mu.Unlock()
@@ -499,7 +600,6 @@ func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
 	newMeta := &StreamMeta{InstanceID: 1, Timestamp: time.Now().Add(time.Second)}
 	group.mu.Lock()
 	group.pendingMeta = newMeta
-	group.pendingType = streamEventUpdate
 	group.hasPending = true
 	// sending stays true - no new goroutine needed
 	group.mu.Unlock()
@@ -508,7 +608,6 @@ func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
 	finalMeta := &StreamMeta{InstanceID: 1, Timestamp: time.Now().Add(2 * time.Second)}
 	group.mu.Lock()
 	group.pendingMeta = finalMeta
-	group.pendingType = streamEventUpdate
 	group.hasPending = true
 	group.mu.Unlock()
 

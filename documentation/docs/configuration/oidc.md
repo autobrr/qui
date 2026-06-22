@@ -11,7 +11,7 @@ If your provider advertises PKCE (`S256`) support, qui uses it automatically for
 To confirm it is active, inspect `/api/auth/oidc/config` and verify `authorizationUrl` includes both `code_challenge=` and `code_challenge_method=S256`.
 qui does not currently emit a dedicated "PKCE enabled" log line, so the authorize URL is the easiest check.
 
-For the full mapping (TOML keys + environment variables + defaults), see [Configuration Reference](./reference).
+For the full mapping (TOML keys + environment variables + defaults), see [Configuration Reference](./reference.md).
 
 ## Configuration Options
 
@@ -36,7 +36,7 @@ When reverse proxying, include your base URL:
 https://host/qui/api/auth/oidc/callback
 ```
 
-If you run OIDC behind an SSO proxy (Cloudflare Access, Pangolin, etc.), review [SSO proxies and CORS](../advanced/sso-proxy-cors) for browser fetch behavior and proxy-side configuration.
+If you run OIDC behind an SSO proxy (Cloudflare Access, Pangolin, etc.), review [SSO proxies and CORS](../advanced/sso-proxy-cors.md) for browser fetch behavior and proxy-side configuration.
 
 ## Example Configuration
 

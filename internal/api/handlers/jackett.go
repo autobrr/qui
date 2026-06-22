@@ -58,6 +58,7 @@ func (h *JackettHandler) Routes(r chi.Router) {
 			r.Post("/", h.CreateIndexer)
 			r.Post("/discover", h.DiscoverIndexers)
 			r.Get("/health", h.GetAllHealth)
+			r.Get("/tracker-domains", h.GetIndexerTrackerDomains)
 			r.Get("/{indexerID}", h.GetIndexer)
 			r.Put("/{indexerID}", h.UpdateIndexer)
 			r.Delete("/{indexerID}", h.DeleteIndexer)
@@ -913,6 +914,30 @@ func (h *JackettHandler) GetAllHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusOK, health)
+}
+
+// GetIndexerTrackerDomains godoc
+// @Summary List tracker domains for enabled indexers
+// @Description Returns tracker domains derived from enabled indexers whose domain can be resolved reliably (native and Prowlarr backends). Jackett indexers are omitted because their base URL is the Jackett server, not the tracker. Used to populate tracker selectors with trackers that have no active torrents.
+// @Tags torznab
+// @Produce json
+// @Success 200 {array} string
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers/tracker-domains [get]
+func (h *JackettHandler) GetIndexerTrackerDomains(w http.ResponseWriter, r *http.Request) {
+	domains, err := h.service.GetConfiguredTrackerDomains(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get indexer tracker domains")
+		RespondError(w, http.StatusInternalServerError, "Failed to get indexer tracker domains")
+		return
+	}
+
+	if domains == nil {
+		domains = []string{}
+	}
+
+	RespondJSON(w, http.StatusOK, domains)
 }
 
 // GetIndexerHealth godoc

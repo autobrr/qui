@@ -2179,6 +2179,12 @@ class ApiClient {
     return this.request<TorznabIndexer[]>("/torznab/indexers")
   }
 
+  // Returns tracker domains derived from enabled indexers whose domain can be
+  // resolved reliably (native + Prowlarr backends; Jackett is omitted server-side).
+  async getIndexerTrackerDomains(): Promise<string[]> {
+    return this.request<string[]>("/torznab/indexers/tracker-domains")
+  }
+
   async getTorznabIndexer(id: number): Promise<TorznabIndexer> {
     return this.request<TorznabIndexer>(`/torznab/indexers/${id}`)
   }

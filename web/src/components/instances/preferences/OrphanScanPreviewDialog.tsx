@@ -171,7 +171,7 @@ export function OrphanScanPreviewDialog({
                     </td>
                     <td className="p-2">
                       <div className="text-xs font-mono text-muted-foreground">
-                        {f.status}
+                        {t(`preferences.orphanScanPreview.statusLabels.${f.status}`, f.status)}
                         {f.errorMessage ? (
                           <div className="mt-1 text-[11px] text-muted-foreground/80 whitespace-pre-wrap break-all">
                             {f.errorMessage}

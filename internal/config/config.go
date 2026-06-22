@@ -124,6 +124,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
 	c.viper.SetDefault("crossSeedRecoverErroredTorrents", false)
 	c.viper.SetDefault("pprofEnabled", false)
+	c.viper.SetDefault("pprofAddr", "127.0.0.1:6060")
 	c.viper.SetDefault("metricsEnabled", false)
 	c.viper.SetDefault("metricsHost", "127.0.0.1")
 	c.viper.SetDefault("metricsPort", 9074)
@@ -227,6 +228,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
 	c.viper.BindEnv("crossSeedRecoverErroredTorrents", envPrefix+"CROSS_SEED_RECOVER_ERRORED_TORRENTS")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
+	c.viper.BindEnv("pprofAddr", envPrefix+"PPROF_ADDR")
 	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
 	c.viper.BindEnv("metricsHost", envPrefix+"METRICS_HOST")
 	c.viper.BindEnv("metricsPort", envPrefix+"METRICS_PORT")
@@ -342,6 +344,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
 	c.Config.CrossSeedRecoverErroredTorrents = c.viper.GetBool("crossSeedRecoverErroredTorrents")
 	c.Config.PprofEnabled = c.viper.GetBool("pprofEnabled")
+	c.Config.PprofAddr = c.viper.GetString("pprofAddr")
 
 	c.Config.MetricsEnabled = c.viper.GetBool("metricsEnabled")
 	c.Config.MetricsHost = c.viper.GetString("metricsHost")

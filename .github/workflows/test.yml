@@ -26,7 +26,7 @@ jobs:
           --health-retries 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -66,7 +66,7 @@ jobs:
       MIGRATION_TMPDIR: .tmp/migration-ci
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
 
       - name: Setup Go
         uses: actions/setup-go@v6

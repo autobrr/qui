@@ -962,6 +962,12 @@
       "exportCSV": "Export CSV",
       "close": "Close",
       "deleteFiles": "Delete Files",
+      "statusLabels": {
+        "pending": "Pending",
+        "deleted": "Deleted",
+        "skipped": "Skipped",
+        "failed": "Failed"
+      },
       "toast": {
         "deletionStarted": "Deletion started",
         "deletionDescription": "Orphan files are being removed",
@@ -1627,8 +1633,15 @@
   "backups": {
     "pageTitle": "Backups",
     "pageDescription": "Manage torrent backups for your instances",
-    "selectInstancePlaceholder": "Select instance",
+    "selectInstancePlaceholder": "Select an instance",
     "loadingCapabilities": "Loading instance capabilities...",
+    "statusLabels": {
+      "pending": "Pending",
+      "running": "Running",
+      "success": "Success",
+      "failed": "Failed",
+      "canceled": "Canceled"
+    },
     "runKinds": {
       "manual": "Manual",
       "hourly": "Hourly",

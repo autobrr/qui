@@ -56,7 +56,7 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 )
 
-replace github.com/moistari/rls => github.com/autobrr/rls v0.8.0
+replace github.com/moistari/rls => github.com/autobrr/rls v0.8.1
 
 require (
 	code.gitea.io/sdk/gitea v0.22.1 // indirect
