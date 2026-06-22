@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest"
-import { mergeStreamedFirstPage } from "@/lib/stream-merge"
+import { applyOrderedDelta, mergeStreamedFirstPage } from "@/lib/stream-merge"
 
 type Row = { hash: string }
 const rows = (...hashes: string[]): Row[] => hashes.map(hash => ({ hash }))
@@ -141,5 +141,74 @@ describe("mergeStreamedFirstPage", () => {
       const merged = mergeStreamedFirstPage(prev, next, 4, keyOf)
       expect(keys(merged)).toEqual(["1:x", "2:x", "1:z"])
     })
+  })
+})
+
+describe("applyOrderedDelta", () => {
+  type Named = { hash: string; name: string }
+  const named = (hash: string, name = hash): Named => ({ hash, name })
+  const keyOf = (row: Named) => row.hash
+  const order = (list: Named[]) => list.map(row => row.hash)
+
+  it("returns the previous rows by reference on an aggregate-only tick", () => {
+    const prev = [named("a"), named("b")]
+    const result = applyOrderedDelta(prev, [], undefined, keyOf)
+    expect(result.changed).toBe(false)
+    expect(result.rows).toBe(prev)
+  })
+
+  it("applies an in-place value change while keeping unchanged rows referentially stable", () => {
+    const a = named("a")
+    const b = named("b")
+    const bUpdated = named("b", "b-new")
+    const { rows, changed } = applyOrderedDelta([a, b], [bUpdated], undefined, keyOf)
+    expect(changed).toBe(true)
+    expect(order(rows)).toEqual(["a", "b"])
+    expect(rows[0]).toBe(a) // unchanged row keeps its reference
+    expect(rows[1]).toBe(bUpdated) // changed row swapped in
+  })
+
+  it("inserts an added row at the position given by order", () => {
+    const { rows } = applyOrderedDelta(
+      [named("a"), named("b")],
+      [named("d")],
+      ["a", "d", "b"],
+      keyOf
+    )
+    expect(order(rows)).toEqual(["a", "d", "b"])
+  })
+
+  it("drops a removed row via the new order", () => {
+    const { rows } = applyOrderedDelta(
+      [named("a"), named("b"), named("c")],
+      [],
+      ["a", "c"],
+      keyOf
+    )
+    expect(order(rows)).toEqual(["a", "c"])
+  })
+
+  it("clears the page on a present-but-empty order (N->0 delete), not treating it as aggregate-only", () => {
+    // The page drained to zero rows. A present empty order must produce an empty
+    // page with changed:true, distinct from an absent order (aggregate-only tick)
+    // which would keep the previous rows.
+    const result = applyOrderedDelta([named("a"), named("b")], [], [], keyOf)
+    expect(result.changed).toBe(true)
+    expect(result.rows).toEqual([])
+  })
+
+  it("reorders existing rows without new payloads, preserving references", () => {
+    const a = named("a")
+    const b = named("b")
+    const c = named("c")
+    const { rows } = applyOrderedDelta([a, b, c], [], ["c", "b", "a"], keyOf)
+    expect(order(rows)).toEqual(["c", "b", "a"])
+    expect(rows[0]).toBe(c)
+    expect(rows[2]).toBe(a)
+  })
+
+  it("ignores an order key with no known row (defensive against a missed add)", () => {
+    const { rows } = applyOrderedDelta([named("a")], [], ["a", "ghost"], keyOf)
+    expect(order(rows)).toEqual(["a"])
   })
 })

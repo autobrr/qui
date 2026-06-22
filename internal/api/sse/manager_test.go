@@ -592,7 +592,6 @@ func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
 	// First enqueue sets hasPending and sends
 	group.mu.Lock()
 	group.pendingMeta = &StreamMeta{InstanceID: 1, Timestamp: time.Now()}
-	group.pendingType = streamEventUpdate
 	group.hasPending = true
 	group.sending = true // Simulate that processGroup is already running
 	group.mu.Unlock()
@@ -601,7 +600,6 @@ func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
 	newMeta := &StreamMeta{InstanceID: 1, Timestamp: time.Now().Add(time.Second)}
 	group.mu.Lock()
 	group.pendingMeta = newMeta
-	group.pendingType = streamEventUpdate
 	group.hasPending = true
 	// sending stays true - no new goroutine needed
 	group.mu.Unlock()
@@ -610,7 +608,6 @@ func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
 	finalMeta := &StreamMeta{InstanceID: 1, Timestamp: time.Now().Add(2 * time.Second)}
 	group.mu.Lock()
 	group.pendingMeta = finalMeta
-	group.pendingType = streamEventUpdate
 	group.hasPending = true
 	group.mu.Unlock()
 
