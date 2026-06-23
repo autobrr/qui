@@ -110,7 +110,7 @@
   },
   "status": {
     "disabled": "비활성화됨",
-    "notContacted": "연결 안 됨",
+    "notContacted": "접속 시도 안 함",
     "working": "정상",
     "updating": "업데이트 중",
     "error": "오류",
