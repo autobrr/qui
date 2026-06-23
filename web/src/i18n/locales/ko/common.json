@@ -144,7 +144,7 @@
     "title": "이런! 군집 속에서 길을 잃으셨나요?",
     "subtitle": "미지의 영역으로 들어오신 것 같습니다.",
     "bugReport": "누락된 링크가 아니라 버그라고 생각되시면,",
-    "reportTo": "편하게 다음으로 보고해 주세요",
+    "reportTo": "편하게 다음 위치에 보고해 주세요:",
     "githubRepository": "GitHub 저장소",
     "getBackOnTrack": "그렇지 않다면, 다시 제자리로 돌아가도록 도와드리겠습니다!",
     "returnToDashboard": "대시보드로 돌아가기"

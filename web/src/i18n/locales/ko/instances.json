@@ -54,7 +54,7 @@
   },
   "errorDisplay": {
     "passwordRequired": "비밀번호 필요",
-    "decryptionDescription": "저장된 비밀번호를 해독할 수 없습니다. 일반적으로 세션 비밀이 변경되었을 때 발생합니다.",
+    "decryptionDescription": "저장된 비밀번호를 해독할 수 없습니다. 일반적으로 세션 시크릿이 변경되었을 때 발생합니다.",
     "reenterPassword": "비밀번호 다시 입력",
     "recentErrors": "최근 오류 ({{count}})"
   },
@@ -609,7 +609,7 @@
       "alertTitle": "필요하지 않으면 끄세요",
       "alertDescription1": "새 업로드를 늦게 등록하는 일부 트래커에만 도움이 됩니다.",
       "alertDescription2": "정체된 토렌트가 보이지 않으면 활성화하지 마세요.",
-      "dialogTitle": "자동 재요청를 활성화하시겠습니까?",
+      "dialogTitle": "자동 재요청을 활성화하시겠습니까?",
       "dialogDescription1": "이 인스턴스에서 정체된 토렌트가 실제 문제일 때만 사용하세요.",
       "dialogDescription2": "새 업로드를 늦게 등록하는 소수의 트래커에만 도움이 됩니다.",
       "dialogDescription3": "토렌트가 정상적으로 작동하면 꺼 두세요.",
@@ -1101,7 +1101,7 @@
     "reannounceOverview": {
       "title": "재요청",
       "noInstancesDescription": "구성된 인스턴스가 없습니다. 이 서비스를 사용하려면 설정에서 인스턴스를 추가하세요.",
-      "tooltip": "qBittorrent은 실패한 요청를 빠르게 재시도하지 않습니다. 트래커가 새 업로드를\n늦게 등록하거나 오류를 반환하면 계속 기다리게 될 수 있습니다. qui는 트래커에\n과도한 요청을 보내지 않으면서 이를 자동으로 처리합니다.",
+      "tooltip": "qBittorrent은 실패한 요청을 빠르게 재시도하지 않습니다. 트래커가 새 업로드를\n늦게 등록하거나 오류를 반환하면 계속 기다리게 될 수 있습니다. qui는 트래커에\n과도한 요청을 보내지 않으면서 이를 자동으로 처리합니다.",
       "description": "<strong>정체된</strong> 토렌트를 모니터링하고 정상인 트래커가 없을 때 재요청합니다.",
       "on": "켜짐",
       "off": "꺼짐",
