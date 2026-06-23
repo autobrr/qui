@@ -930,7 +930,13 @@
         "label": "Flux hors ligne, interrogation en cours",
         "message": "Basculement vers l'actualisation périodique pendant l'indisponibilité du flux.",
         "serverRetry": "Nouvelle tentative du serveur dans {{seconds}} s, interrogation de secours active",
-        "retrying": "Nouvelle tentative automatique avec interrogation de secours"
+        "retrying": "Nouvelle tentative automatique avec interrogation de secours",
+        "degraded": {
+          "label": "Mises à jour en direct en pause",
+          "message": "Affichage des derniers résultats en attendant le rétablissement de la connexion.",
+          "dataAge": "Dernière mise à jour {{age}}",
+          "dataAgeRetry": "Dernière mise à jour {{age}} • nouvelle tentative dans {{seconds}} s"
+        }
       },
       "connecting": {
         "label": "Connexion au flux…",
