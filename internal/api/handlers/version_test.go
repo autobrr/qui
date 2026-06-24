@@ -29,7 +29,7 @@ func (s stubReleaseProvider) GetLatestRelease(context.Context) *version.Release 
 func TestVersionHandler_GetVersion_NoUpdate(t *testing.T) {
 	handler := NewVersionHandler(stubReleaseProvider{release: nil}, "v1.2.3")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/version", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/version", nil)
 	rec := httptest.NewRecorder()
 	handler.GetVersion(rec, req)
 
@@ -49,7 +49,7 @@ func TestVersionHandler_GetVersion_UpdateAvailable(t *testing.T) {
 		PublishedAt: time.Date(2026, 3, 2, 10, 0, 0, 0, time.UTC),
 	}}, "v1.2.3")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/version", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/version", nil)
 	rec := httptest.NewRecorder()
 	handler.GetVersion(rec, req)
 
