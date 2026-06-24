@@ -866,7 +866,7 @@ func TestSearchCachePersistGate(t *testing.T) {
 					return nil
 				},
 			}
-			service.searchExecutor = func(ctx context.Context, indexers []*models.TorznabIndexer, params url.Values, meta *searchContext) ([]Result, []int, error) {
+			service.searchExecutor = func(_ context.Context, indexers []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
 				results := []Result{{
 					IndexerID: indexers[0].ID,
 					Tracker:   indexers[0].Name,
