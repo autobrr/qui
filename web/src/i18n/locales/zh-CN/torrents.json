@@ -1132,7 +1132,7 @@
   "filePriority": {
     "header": "优先级",
     "doNotDownload": "不下载",
-    "normal": "普通",
+    "normal": "正常",
     "high": "高",
     "maximum": "最高",
     "mixed": "混合"
