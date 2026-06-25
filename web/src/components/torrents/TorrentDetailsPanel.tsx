@@ -521,14 +521,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   })
   const hasWebseeds = (webseedsData?.length ?? 0) > 0
 
-  // Redirect away from the webseeds tab only on a confirmed empty successful load
-  // (e.g. switching to a torrent without web seeds). On a cold-error we keep the tab
-  // so its retry UI stays reachable instead of silently hiding the failure.
-  useEffect(() => {
-    if (activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds && !webseedsError) {
-      setActiveTab("general")
-    }
-  }, [activeTab, hasWebseeds, loadingWebseeds, webseedsError, setActiveTab])
+  // Fall back to the general tab only on a confirmed empty successful load
+  // (e.g. switching to a torrent without web seeds). While loading or on a
+  // cold-error we keep the webseeds tab so its loading/retry UI stays reachable
+  // instead of silently hiding the failure. Derived during render so the tab is
+  // hidden immediately without an extra state-sync render, and the persisted tab
+  // preference is left intact for torrents that do have web seeds.
+  const effectiveActiveTab = activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds && !webseedsError ? "general" : activeTab
 
   // Add peers mutation
   const addPeersMutation = useMutation({
@@ -903,7 +902,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   return (
     <div className="h-full flex flex-col">
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
+      <Tabs value={effectiveActiveTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
         <div className="border-b flex items-center">
           <div className="flex-1 overflow-x-auto scroll-smooth">
             <TabsList className="w-full justify-start rounded-none h-8 bg-background px-4 sm:px-2 flex-nowrap overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
