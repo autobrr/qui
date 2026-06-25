@@ -42,9 +42,13 @@ export function FilePrioritySelect({ value, disabled, onChange, className }: Fil
         onChange(Number(next) as FilePriorityValue)
       }}
     >
+      {/*
+        h-6! is intentional: the shared SelectTrigger sets its height via a data-[size]:h-*
+        variant whose attribute selector outspecifies a plain h-* utility, so a non-important
+        height would be ignored. Callers pass width only; height is owned here.
+      */}
       <SelectTrigger
-        size="sm"
-        className={cn("h-7 gap-1 px-2 text-xs", className)}
+        className={cn("h-6! gap-1 px-2 text-xs", className)}
         onClick={(e: ReactMouseEvent) => e.stopPropagation()}
         aria-label={t("filePriority.header")}
       >

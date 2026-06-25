@@ -344,7 +344,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                           value={node.priority}
                           disabled={isPending}
                           onChange={(priority) => onSetFilePriority(file, priority)}
-                          className="h-6 w-32 shrink-0"
+                          className="w-32 shrink-0"
                         />
                       )}
                     </div>
@@ -460,7 +460,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                       <FilePrioritySelect
                         value={node.priority}
                         onChange={(priority) => onSetFolderPriority(node.id, priority)}
-                        className="h-6 w-32 shrink-0"
+                        className="w-32 shrink-0"
                       />
                     )}
                   </div>

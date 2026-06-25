@@ -367,7 +367,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
         ref={scrollContainerRef}
         className="flex-1 min-h-0 overflow-auto scrollbar-thin"
       >
-        <div className="min-w-[640px]">
+        <div className={cn("min-w-[500px]", supportsFilePriority && "min-w-[640px]")}>
           {/* Header - sticky */}
           <div className="sticky top-0 z-10 bg-background border-b flex text-xs">
             {supportsFilePriority && (
@@ -480,7 +480,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                       <FilePrioritySelect
                         value={node.priority}
                         disabled={isPending}
-                        className="w-full h-6"
+                        className="w-full"
                         onChange={(priority: FilePriorityValue) => {
                           if (isFile && file) {
                             onSetFilePriority(file, priority)
