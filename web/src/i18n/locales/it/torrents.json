@@ -1188,6 +1188,14 @@
       "urlCopied": "URL copiato negli appunti"
     }
   },
+  "filePriority": {
+    "header": "Priorità",
+    "doNotDownload": "Non scaricare",
+    "normal": "Normale",
+    "high": "Alta",
+    "maximum": "Massima",
+    "mixed": "Mista"
+  },
   "fileTable": {
     "expandAll": "Espandi tutto",
     "collapseAll": "Comprimi tutto",

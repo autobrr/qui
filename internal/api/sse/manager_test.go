@@ -96,6 +96,64 @@ func TestStreamManagerHandleSyncErrorStampsLastSuccessfulSync(t *testing.T) {
 		"last successful sync must not advance on a failed attempt")
 }
 
+func TestStreamManagerHandleSyncErrorResolvesStampOffCallbackGoroutine(t *testing.T) {
+	// Regression for a self-deadlock: HandleSyncError used to resolve the staleness
+	// stamp synchronously. go-qbittorrent invokes OnError while holding its SyncManager
+	// write lock, and the stamp reads LastSuccessfulSyncTime() which takes that same
+	// non-reentrant lock — wedging the sync loop and starving every cached reader
+	// (e.g. GET /api/instances). The stamp must be resolved on a fresh goroutine, so
+	// HandleSyncError must return without waiting on lastSuccessfulSyncFn.
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	stampStarted := make(chan struct{})
+	releaseStamp := make(chan struct{})
+	manager.lastSuccessfulSyncFn = func(_ context.Context, _ int) time.Time {
+		close(stampStarted)
+		<-releaseStamp
+		return time.Time{}
+	}
+
+	sub := &subscriptionState{
+		id:      "subscription-async-stamp",
+		options: StreamOptions{InstanceID: 42},
+		created: time.Now(),
+	}
+	manager.subscriptions[sub.id] = sub
+	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
+		sub.id: sub,
+	}
+
+	returned := make(chan struct{})
+	go func() {
+		manager.HandleSyncError(sub.options.InstanceID, errors.New("sync failed"))
+		close(returned)
+	}()
+
+	// The stamp must run on a separate goroutine...
+	select {
+	case <-stampStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("lastSuccessfulSyncFn was never invoked")
+	}
+
+	// ...and HandleSyncError must have already returned to the (lock-holding) sync
+	// loop even though the stamp is still in flight. If the stamp were resolved
+	// synchronously, HandleSyncError would block here on releaseStamp.
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("HandleSyncError blocked on the staleness stamp; it must resolve it off the sync-loop callback goroutine")
+	}
+
+	close(releaseStamp)
+
+	require.Eventually(t, func() bool {
+		return len(provider.messagesFor(sub.id)) == 1
+	}, time.Second, 5*time.Millisecond, "error frame should still be published once the stamp resolves")
+}
+
 func TestStreamManagerHandleSyncErrorOmitsLastSuccessfulSyncWhenUnknown(t *testing.T) {
 	// A nil client pool means the default source cannot resolve a sync time, so the
 	// field must be omitted rather than serialized as the time.Time zero value.

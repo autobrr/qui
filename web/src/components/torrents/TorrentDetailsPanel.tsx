@@ -453,6 +453,33 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     })
   }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
 
+  const handleSetFilePriority = useCallback((file: TorrentFile, priority: number) => {
+    if (!torrent || !supportsFilePriority || file.priority === priority) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({ indices: [file.index], priority, hash: torrent.hash })
+  }, [setFilePriorityMutation, supportsFilePriority, torrent])
+
+  const handleSetFolderPriority = useCallback((folderPath: string, priority: number) => {
+    if (!torrent || !supportsFilePriority || !files) {
+      return
+    }
+
+    // Apply to every descendant file that isn't already at the target priority.
+    const folderPrefix = folderPath + "/"
+    const indices = files
+      .filter(f => f.name.startsWith(folderPrefix))
+      .filter(f => f.priority !== priority)
+      .map(f => f.index)
+
+    if (indices.length === 0) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({ indices, priority, hash: torrent.hash })
+  }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
+
   // Fetch torrent peers with optimized refetch
   const isPeersTabActive = activeTab === "peers"
   const peersQueryKey = ["torrent-peers", instanceId, torrent?.hash] as const
@@ -1679,6 +1706,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 torrentHash={torrent.hash}
                 onToggleFile={handleToggleFileDownload}
                 onToggleFolder={handleToggleFolderDownload}
+                onSetFilePriority={handleSetFilePriority}
+                onSetFolderPriority={handleSetFolderPriority}
                 onRenameFile={handleRenameFileClick}
                 onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
                 onDownloadFile={hasLocalFilesystemAccess ? handleDownloadFile : undefined}
@@ -1733,6 +1762,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                       torrentHash={torrent.hash}
                       onToggleFile={handleToggleFileDownload}
                       onToggleFolder={handleToggleFolderDownload}
+                      onSetFilePriority={handleSetFilePriority}
+                      onSetFolderPriority={handleSetFolderPriority}
                       onRenameFile={handleRenameFileClick}
                       onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
                       onDownloadFile={hasLocalFilesystemAccess ? handleDownloadFile : undefined}

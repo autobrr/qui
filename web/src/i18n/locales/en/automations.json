@@ -144,6 +144,7 @@
       "RLS_AUDIO": "Audio (RLS)",
       "RLS_CHANNELS": "Channels (RLS)",
       "RLS_GROUP": "Group (RLS)",
+      "RLS_YEAR": "Year (RLS)",
       "STATE": "State",
       "TRACKER": "Tracker",
       "TRACKER_STATUS": "Tracker status",

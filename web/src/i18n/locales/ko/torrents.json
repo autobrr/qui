@@ -1129,6 +1129,14 @@
       "urlCopied": "URL이 클립보드에 복사되었습니다"
     }
   },
+  "filePriority": {
+    "header": "우선순위",
+    "doNotDownload": "다운로드 안 함",
+    "normal": "보통",
+    "high": "높음",
+    "maximum": "최대",
+    "mixed": "혼합"
+  },
   "fileTable": {
     "expandAll": "모두 펼치기",
     "collapseAll": "모두 접기",
