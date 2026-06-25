@@ -160,7 +160,7 @@ Note: if you have **Settings → Tracker Customizations** configured, the **Trac
 | Release Audio      | Parsed release specifier (e.g. `TrueHD`; may be empty)                                     |
 | Release Channels   | Parsed release specifier (e.g. `5.1`; may be empty)                                        |
 | Release Group      | Parsed release specifier (e.g. `NTb`; may be empty)                                        |
-| Release Year       | Year parsed from the torrent name (e.g. `2021`). Numeric; best for movies/dated releases. Releases with no detectable year — including most TV episodes (`S14E05`) — never match, for any operator (including `!=`) |
+| Release Year       | Year parsed from the torrent name (e.g. `2021`). Numeric; best for movies/dated releases. Releases with no detectable year (including most TV episodes like `S14E05`) never match any comparison operator, including `!=`. The condition's NOT toggle wraps the whole leaf, so `NOT (year = X)` still matches yearless releases |
 | Group Size         | Size of the selected group for this condition (requires grouping; see [Grouping](#grouping)) |
 | Is Grouped         | Boolean - true when selected group size > 1 (requires grouping; see [Grouping](#grouping)) |
 
