@@ -526,7 +526,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
 
     const serverRetrySeconds =
-      typeof streamMeta?.retryInSeconds === "number" && streamMeta.retryInSeconds > 0? streamMeta.retryInSeconds: null
+      typeof streamMeta?.retryInSeconds === "number" && streamMeta.retryInSeconds > 0 ? streamMeta.retryInSeconds : null
     const safeRetryAttempt =
       typeof streamRetryAttempt === "number" && streamRetryAttempt > 0 ? streamRetryAttempt : 1
     const hasClientRetryScheduled = typeof streamNextRetryAt === "number"
@@ -541,7 +541,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         return {
           label: t("statusBar.streamStatus.reconnecting.label"),
           message: backendStreamError ?? t("statusBar.streamStatus.reconnecting.message"),
-          secondary: hasClientRetryScheduled? t("statusBar.streamStatus.reconnecting.retryQueued", { attempt: safeRetryAttempt }): t("statusBar.streamStatus.reconnecting.pollingContinues"),
+          secondary: hasClientRetryScheduled ? t("statusBar.streamStatus.reconnecting.retryQueued", { attempt: safeRetryAttempt }) : t("statusBar.streamStatus.reconnecting.pollingContinues"),
           tone: "warning" as const,
           animate: true,
         }
@@ -939,7 +939,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : hasConnectionStatus ? Ban : Globe
   const listenPort = metadata?.preferences?.listen_port
-  const connectionStatusTooltip = hasConnectionStatus? `${isConnectable ? t("statusBar.connectionConnectable") : connectionStatusDisplay}${listenPort ? `. ${t("statusBar.connectionPort", { port: listenPort })}` : ""}`: t("statusBar.connectionUnknown")
+  const connectionStatusTooltip = hasConnectionStatus ? `${isConnectable ? t("statusBar.connectionConnectable") : connectionStatusDisplay}${listenPort ? `. ${t("statusBar.connectionPort", { port: listenPort })}` : ""}` : t("statusBar.connectionUnknown")
   const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
   const connectionStatusAriaLabel = hasConnectionStatus ? t("statusBar.connectionAriaLabel", { status: connectionStatusDisplay || formattedConnectionStatus }) : t("statusBar.connectionAriaLabelUnknown")
 
