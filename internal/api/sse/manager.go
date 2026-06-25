@@ -352,10 +352,14 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvid
 }
 
 // instanceLastSuccessfulSync returns the instance's last successful sync time, or
-// the zero time when no client is available. It uses the offline pool accessor so a
-// sync-error callback can stamp staleness metadata without triggering a connection
-// attempt that could block the sync loop. GetLastSyncUpdate reports the success-only
+// the zero time when no client is available. It uses the offline pool accessor to
+// avoid triggering a connection attempt. GetLastSyncUpdate reports the success-only
 // clock, so a failing instance keeps reporting its last good sync rather than now.
+//
+// GetLastSyncUpdate reads go-qbittorrent's LastSuccessfulSyncTime(), which locks the
+// SyncManager mutex. go-qbittorrent already holds that (non-reentrant) lock while it
+// invokes our OnError/OnUpdate callbacks, so this must never be called synchronously
+// from inside those callbacks (see HandleSyncError, which defers it to a goroutine).
 func (m *StreamManager) instanceLastSuccessfulSync(ctx context.Context, instanceID int) time.Time {
 	if m.clientPool == nil || instanceID <= 0 {
 		return time.Time{}
@@ -638,7 +642,6 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 		Timestamp:      time.Now(),
 		RetryInSeconds: retrySeconds,
 	}
-	m.stampLastSuccessfulSync(m.ctx, meta, instanceID)
 
 	payload := &StreamPayload{
 		Type: streamEventError,
@@ -646,10 +649,21 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 		Err:  message,
 	}
 
-	// Publish asynchronously so a slow or stalled subscriber can't block the
-	// qBittorrent sync loop's OnError callback during the synchronous fan-out.
-	// Mirrors HandleMainData.
-	go m.publishToInstance(instanceID, payload)
+	// Resolve the staleness stamp and publish asynchronously so the qBittorrent sync
+	// loop's OnError callback (this function) never blocks during the fan-out.
+	//
+	// The stamp MUST NOT be resolved synchronously here: go-qbittorrent invokes
+	// OnError while holding its SyncManager write lock, and stampLastSuccessfulSync
+	// reads LastSuccessfulSyncTime(), which takes a read lock on that same
+	// (non-reentrant) mutex. Calling it on this goroutine re-enters the held lock and
+	// self-deadlocks the sync loop, wedging the instance's client and starving every
+	// cached reader (e.g. GET /api/instances and cross-instance stream init). Doing it
+	// on a fresh goroutine lets the sync loop release its lock first. Mirrors
+	// HandleMainData.
+	go func() {
+		m.stampLastSuccessfulSync(m.ctx, meta, instanceID)
+		m.publishToInstance(instanceID, payload)
+	}()
 }
 
 // Serve implements the HTTP handler for GET /stream and multiplexes multiple subscriptions over one SSE session.
