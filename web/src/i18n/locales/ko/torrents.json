@@ -879,7 +879,13 @@
         "label": "스트림 오프라인, 폴링 사용 중",
         "message": "스트림을 사용할 수 없는 동안 주기적 새로 고침으로 대체합니다.",
         "serverRetry": "{{seconds}}초 후 서버 재시도, 폴링 대체 활성",
-        "retrying": "폴링 대체로 자동 재시도 중"
+        "retrying": "폴링 대체로 자동 재시도 중",
+        "degraded": {
+          "label": "실시간 업데이트 일시 중지",
+          "message": "연결이 복구되는 동안 마지막 결과를 표시합니다.",
+          "dataAge": "마지막 업데이트 {{age}}",
+          "dataAgeRetry": "마지막 업데이트 {{age}} • {{seconds}}초 후 재시도"
+        }
       },
       "connecting": {
         "label": "스트림에 연결 중…",

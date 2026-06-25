@@ -879,7 +879,13 @@
         "label": "数据流离线，改用轮询",
         "message": "数据流不可用期间，回退到定期刷新。",
         "serverRetry": "服务器将在 {{seconds}} 秒后重试，轮询回退已启用",
-        "retrying": "正在自动重试，使用轮询回退"
+        "retrying": "正在自动重试，使用轮询回退",
+        "degraded": {
+          "label": "实时更新已暂停",
+          "message": "正在显示最近的结果，等待连接恢复。",
+          "dataAge": "数据更新于 {{age}}",
+          "dataAgeRetry": "数据更新于 {{age}} • {{seconds}} 秒后重试"
+        }
       },
       "connecting": {
         "label": "正在连接数据流…",

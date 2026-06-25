@@ -930,7 +930,13 @@
         "label": "Stream offline, using polling",
         "message": "Falling back to periodic refresh while the stream is unavailable.",
         "serverRetry": "Server retry in {{seconds}}s, polling fallback active",
-        "retrying": "Retrying automatically with polling fallback"
+        "retrying": "Retrying automatically with polling fallback",
+        "degraded": {
+          "label": "Live updates paused",
+          "message": "Showing the last results while the connection catches up.",
+          "dataAge": "Data from {{age}}",
+          "dataAgeRetry": "Data from {{age}} • retry in {{seconds}}s"
+        }
       },
       "connecting": {
         "label": "Connecting to stream…",

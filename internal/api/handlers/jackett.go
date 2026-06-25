@@ -741,13 +741,15 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		Msg("Testing torznab indexer connectivity")
 
 	// Run a lightweight search via the service to validate connectivity
-	// Use CacheModeBypass and SkipHistory to prevent test searches from cluttering search history
+	// Use CacheModeBypass + SkipHistory + SkipCachePersist to keep test searches from
+	// cluttering search history or persisting a bogus "test" entry into the Torznab result cache.
 	testReq := &jackett.TorznabSearchRequest{
-		Query:       "test",
-		Limit:       1,
-		IndexerIDs:  []int{id},
-		CacheMode:   jackett.CacheModeBypass,
-		SkipHistory: true,
+		Query:            "test",
+		Limit:            1,
+		IndexerIDs:       []int{id},
+		CacheMode:        jackett.CacheModeBypass,
+		SkipHistory:      true,
+		SkipCachePersist: true,
 		OnAllComplete: func(*jackett.SearchResponse, error) {
 			// Ignore results for connectivity test
 		},

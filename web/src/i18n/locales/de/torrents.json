@@ -930,7 +930,13 @@
         "label": "Stream offline, Abruf wird verwendet",
         "message": "Wechsel zur regelmäßigen Aktualisierung, während der Stream nicht verfügbar ist.",
         "serverRetry": "Server-Wiederholung in {{seconds}} s, Abruf-Fallback aktiv",
-        "retrying": "Automatische Wiederholung mit Abruf-Fallback"
+        "retrying": "Automatische Wiederholung mit Abruf-Fallback",
+        "degraded": {
+          "label": "Live-Aktualisierungen pausiert",
+          "message": "Die letzten Ergebnisse werden angezeigt, während die Verbindung wiederhergestellt wird.",
+          "dataAge": "Letzte Aktualisierung {{age}}",
+          "dataAgeRetry": "Letzte Aktualisierung {{age}} • Wiederholung in {{seconds}} s"
+        }
       },
       "connecting": {
         "label": "Verbindung zum Stream wird hergestellt…",

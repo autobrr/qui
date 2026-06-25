@@ -263,6 +263,10 @@ export interface TorrentStreamMeta {
   rid?: number
   fullUpdate?: boolean
   timestamp: string
+  // lastSuccessfulSync is when the instance's data last actually updated (RFC3339).
+  // Present on stream-error frames so the UI can show how stale the retained rows are
+  // without that age resetting on every failed attempt. Omitted when unknown.
+  lastSuccessfulSync?: string
   retryInSeconds?: number
   streamKey?: string
 }
