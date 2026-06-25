@@ -43,8 +43,15 @@ type TorznabSearchRequest struct {
 	CacheMode string `json:"cache_mode,omitempty"`
 	// OmitQueryForIDs when true, omits the q parameter if IDs are present (for cross-seed ID-driven searches)
 	OmitQueryForIDs bool `json:"-"`
-	// SkipHistory prevents recording this search in the history buffer
+	// SkipHistory prevents recording this search in the history buffer. It does NOT
+	// gate cache persistence; that concern is governed separately by SkipCachePersist.
 	SkipHistory bool `json:"-"`
+	// SkipCachePersist prevents persisting this search's results into the Torznab
+	// result cache (cache reads remain governed by CacheMode, not this flag).
+	// Independent of SkipHistory: internal continuation passes (e.g. the cross-seed
+	// alternate connector-spelling pass) skip history but still persist results, so
+	// repeated passes reuse the cache instead of re-hitting indexers.
+	SkipCachePersist bool `json:"-"`
 	// ReturnAllResults skips response pagination for internal callers that need the complete result set.
 	ReturnAllResults bool `json:"-"`
 	// OnComplete is called when a search job for an indexer completes

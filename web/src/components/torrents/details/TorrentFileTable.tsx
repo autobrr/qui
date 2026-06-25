@@ -3,11 +3,13 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { FilePrioritySelect } from "@/components/torrents/FilePrioritySelect"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { TruncatedText } from "@/components/ui/truncated-text"
+import { FILE_PRIORITY, foldFolderPriority, normalizeFilePriority, type FilePriorityValue, type FolderPriority } from "@/lib/file-priority"
 import { getLinuxFileName, getLinuxFolderName } from "@/lib/incognito"
 import { cn, formatBytes } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
@@ -25,6 +27,8 @@ interface TorrentFileTableProps {
   torrentHash: string
   onToggleFile: (file: TorrentFile, selected: boolean) => void
   onToggleFolder: (folderPath: string, selected: boolean) => void
+  onSetFilePriority: (file: TorrentFile, priority: number) => void
+  onSetFolderPriority: (folderPath: string, priority: number) => void
   onRenameFile?: (filePath: string) => void
   onRenameFolder?: (folderPath: string) => void
   onDownloadFile?: (file: TorrentFile) => void
@@ -41,6 +45,7 @@ interface FileTreeNode {
   totalProgress: number
   selectedCount: number
   totalCount: number
+  priority: FolderPriority
 }
 
 interface FlatRow {
@@ -94,6 +99,7 @@ function buildFileTree(
           totalProgress: isLeaf ? file.progress * file.size : 0,
           selectedCount: isLeaf && file.priority !== 0 ? 1 : 0,
           totalCount: isLeaf ? 1 : 0,
+          priority: isLeaf ? normalizeFilePriority(file.priority) : FILE_PRIORITY.normal,
         }
         nodeMap.set(currentPath, node)
 
@@ -119,6 +125,9 @@ function buildFileTree(
       node.totalProgress = node.children.reduce((sum, child) => sum + child.totalProgress, 0)
       node.selectedCount = node.children.reduce((sum, child) => sum + child.selectedCount, 0)
       node.totalCount = node.children.reduce((sum, child) => sum + child.totalCount, 0)
+      if (node.children.length > 0) {
+        node.priority = node.children.map(child => child.priority).reduce(foldFolderPriority)
+      }
     }
   }
 
@@ -181,6 +190,8 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   torrentHash,
   onToggleFile,
   onToggleFolder,
+  onSetFilePriority,
+  onSetFolderPriority,
   onRenameFile,
   onRenameFolder,
   onDownloadFile,
@@ -356,7 +367,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
         ref={scrollContainerRef}
         className="flex-1 min-h-0 overflow-auto scrollbar-thin"
       >
-        <div className="min-w-[500px]">
+        <div className={cn("min-w-[500px]", supportsFilePriority && "min-w-[640px]")}>
           {/* Header - sticky */}
           <div className="sticky top-0 z-10 bg-background border-b flex text-xs">
             {supportsFilePriority && (
@@ -365,6 +376,9 @@ export const TorrentFileTable = memo(function TorrentFileTable({
             <div className="flex-1 px-2 py-1.5 text-left font-medium text-muted-foreground">{t("fileTable.headers.name")}</div>
             <div className="w-28 px-2 py-1.5 text-left font-medium text-muted-foreground shrink-0">{t("fileTable.headers.progress")}</div>
             <div className="w-24 px-2 py-1.5 text-right font-medium text-muted-foreground shrink-0">{t("fileTable.headers.size")}</div>
+            {supportsFilePriority && (
+              <div className="w-36 px-2 py-1.5 text-left font-medium text-muted-foreground shrink-0">{t("filePriority.header")}</div>
+            )}
           </div>
           {/* Virtualized body */}
           <div
@@ -461,6 +475,22 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                   <div className="w-24 px-2 py-1.5 text-right tabular-nums shrink-0">
                     {formatBytes(node.totalSize)}
                   </div>
+                  {supportsFilePriority && (
+                    <div className="w-36 px-2 shrink-0 flex items-center">
+                      <FilePrioritySelect
+                        value={node.priority}
+                        disabled={isPending}
+                        className="w-full"
+                        onChange={(priority: FilePriorityValue) => {
+                          if (isFile && file) {
+                            onSetFilePriority(file, priority)
+                          } else {
+                            onSetFolderPriority(node.id, priority)
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               )
 
