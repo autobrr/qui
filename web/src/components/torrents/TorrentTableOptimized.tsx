@@ -70,10 +70,12 @@ import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences.ts"
 import { useInstances } from "@/hooks/useInstances"
 import { api } from "@/lib/api"
+import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { useIncognitoMode } from "@/lib/incognito"
 import { isAllInstancesScope } from "@/lib/instances"
 import { resolveFooterSpeeds } from "@/lib/scoped-speeds"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
+import { resolveStreamFallbackStatus } from "@/lib/stream-status"
 import { cn } from "@/lib/utils"
 import type {
   Category,
@@ -490,6 +492,10 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     order: activeSortOrder,
   })
 
+  // When the stream drops but rows are already on screen, the data is stale but
+  // usable, so the fallback banner degrades to amber instead of a red error.
+  const hasTorrentRows = torrents.length > 0
+
   const derivedStreamPhase = useMemo<StreamPhase>(() => {
     if (streamRetrying || typeof streamNextRetryAt === "number") {
       return "reconnecting"
@@ -520,9 +526,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
     }
 
     const serverRetrySeconds =
-      typeof streamMeta?.retryInSeconds === "number" && streamMeta.retryInSeconds > 0
-        ? streamMeta.retryInSeconds
-        : null
+      typeof streamMeta?.retryInSeconds === "number" && streamMeta.retryInSeconds > 0 ? streamMeta.retryInSeconds : null
     const safeRetryAttempt =
       typeof streamRetryAttempt === "number" && streamRetryAttempt > 0 ? streamRetryAttempt : 1
     const hasClientRetryScheduled = typeof streamNextRetryAt === "number"
@@ -537,23 +541,40 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         return {
           label: t("statusBar.streamStatus.reconnecting.label"),
           message: backendStreamError ?? t("statusBar.streamStatus.reconnecting.message"),
-          secondary: hasClientRetryScheduled
-            ? t("statusBar.streamStatus.reconnecting.retryQueued", { attempt: safeRetryAttempt })
-            : t("statusBar.streamStatus.reconnecting.pollingContinues"),
+          secondary: hasClientRetryScheduled ? t("statusBar.streamStatus.reconnecting.retryQueued", { attempt: safeRetryAttempt }) : t("statusBar.streamStatus.reconnecting.pollingContinues"),
           tone: "warning" as const,
           animate: true,
         }
-      case "fallback":
+      case "fallback": {
+        const plan = resolveStreamFallbackStatus({
+          hasData: hasTorrentRows,
+          hasLastSuccessfulSync: Boolean(streamMeta?.lastSuccessfulSync),
+        })
+        const retrySecondary = serverRetrySeconds && serverRetrySeconds > 0 ? t("statusBar.streamStatus.fallback.serverRetry", { seconds: serverRetrySeconds }) : t("statusBar.streamStatus.fallback.retrying")
+
+        if (plan.variant === "degraded") {
+          const staleAge = plan.showStaleAge ? formatRelativeTime(streamMeta?.lastSuccessfulSync) : null
+          let degradedSecondary = retrySecondary
+          if (staleAge) {
+            degradedSecondary = serverRetrySeconds && serverRetrySeconds > 0 ? t("statusBar.streamStatus.fallback.degraded.dataAgeRetry", { age: staleAge, seconds: serverRetrySeconds }) : t("statusBar.streamStatus.fallback.degraded.dataAge", { age: staleAge })
+          }
+          return {
+            label: t("statusBar.streamStatus.fallback.degraded.label"),
+            message: t("statusBar.streamStatus.fallback.degraded.message"),
+            secondary: degradedSecondary,
+            tone: plan.tone,
+            animate: false,
+          }
+        }
+
         return {
           label: t("statusBar.streamStatus.fallback.label"),
           message: backendStreamError ?? t("statusBar.streamStatus.fallback.message"),
-          secondary:
-            serverRetrySeconds && serverRetrySeconds > 0
-              ? t("statusBar.streamStatus.fallback.serverRetry", { seconds: serverRetrySeconds })
-              : t("statusBar.streamStatus.fallback.retrying"),
-          tone: "error" as const,
+          secondary: retrySecondary,
+          tone: plan.tone,
           animate: false,
         }
+      }
       case "healthy":
         return {
           label: "",
@@ -572,6 +593,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
         }
     }
   }, [
+    hasTorrentRows,
     isCrossSeedFiltering,
     stableStreamPhase,
     streamConnected,
@@ -787,8 +809,8 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
       ...(isCrossSeedFiltering && {
         columnFilters: columnFilters.map(filter => ({
           id: filter.columnId,
-          value: filter.value
-        }))
+          value: filter.value,
+        })),
       }),
     },
     onSortingChange: setSorting,
@@ -917,9 +939,7 @@ export const TorrentTableOptimized = memo(function TorrentTableOptimized({
   const isFirewalled = normalizedConnectionStatus === "firewalled"
   const ConnectionStatusIcon = isConnectable ? Globe : isFirewalled ? BrickWallFire : hasConnectionStatus ? Ban : Globe
   const listenPort = metadata?.preferences?.listen_port
-  const connectionStatusTooltip = hasConnectionStatus
-    ? `${isConnectable ? t("statusBar.connectionConnectable") : connectionStatusDisplay}${listenPort ? `. ${t("statusBar.connectionPort", { port: listenPort })}` : ""}`
-    : t("statusBar.connectionUnknown")
+  const connectionStatusTooltip = hasConnectionStatus ? `${isConnectable ? t("statusBar.connectionConnectable") : connectionStatusDisplay}${listenPort ? `. ${t("statusBar.connectionPort", { port: listenPort })}` : ""}` : t("statusBar.connectionUnknown")
   const connectionStatusIconClass = hasConnectionStatus ? isConnectable ? "text-green-500" : isFirewalled ? "text-amber-500" : "text-destructive" : "text-muted-foreground"
   const connectionStatusAriaLabel = hasConnectionStatus ? t("statusBar.connectionAriaLabel", { status: connectionStatusDisplay || formattedConnectionStatus }) : t("statusBar.connectionAriaLabelUnknown")
 

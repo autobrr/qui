@@ -930,7 +930,13 @@
         "label": "Flusso offline, uso del polling",
         "message": "Passaggio all'aggiornamento periodico mentre il flusso non è disponibile.",
         "serverRetry": "Nuovo tentativo del server tra {{seconds}}s, polling di riserva attivo",
-        "retrying": "Nuovo tentativo automatico con polling di riserva"
+        "retrying": "Nuovo tentativo automatico con polling di riserva",
+        "degraded": {
+          "label": "Aggiornamenti in tempo reale in pausa",
+          "message": "Mostra gli ultimi risultati in attesa del ripristino della connessione.",
+          "dataAge": "Ultimo aggiornamento {{age}}",
+          "dataAgeRetry": "Ultimo aggiornamento {{age}} • nuovo tentativo tra {{seconds}} s"
+        }
       },
       "connecting": {
         "label": "Connessione al flusso…",
@@ -1181,6 +1187,14 @@
     "toast": {
       "urlCopied": "URL copiato negli appunti"
     }
+  },
+  "filePriority": {
+    "header": "Priorità",
+    "doNotDownload": "Non scaricare",
+    "normal": "Normale",
+    "high": "Alta",
+    "maximum": "Massima",
+    "mixed": "Mista"
   },
   "fileTable": {
     "expandAll": "Espandi tutto",

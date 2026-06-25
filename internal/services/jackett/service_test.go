@@ -831,6 +831,97 @@ func TestSearchCachesPartialCoverageAfterDeadline(t *testing.T) {
 	}
 }
 
+// TestSearchCachePersistGate locks in that cache persistence is gated by
+// SkipCachePersist and is independent of SkipHistory (issue #1997). The
+// alternate connector-spelling pass sets SkipHistory but leaves SkipCachePersist
+// unset, so it must still populate the cache; only SkipCachePersist suppresses
+// the store.
+func TestSearchCachePersistGate(t *testing.T) {
+	cases := []struct {
+		name             string
+		skipHistory      bool
+		skipCachePersist bool
+		wantStored       bool
+	}{
+		{name: "default persists", wantStored: true},
+		{name: "skip history still persists cache", skipHistory: true, wantStored: true},
+		{name: "skip cache persist suppresses store", skipCachePersist: true, wantStored: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &mockTorznabIndexerStore{
+				indexers: []*models.TorznabIndexer{
+					{ID: 1, Name: "IndexerOne", Enabled: true},
+					{ID: 2, Name: "IndexerTwo", Enabled: true},
+				},
+			}
+			service := NewService(store)
+			service.searchCacheEnabled = true
+			service.searchCacheTTL = time.Hour
+			var stored *models.TorznabSearchCacheEntry
+			service.searchCache = &fakeSearchCache{
+				storeFn: func(_ context.Context, entry *models.TorznabSearchCacheEntry) error {
+					stored = entry
+					return nil
+				},
+			}
+			service.searchExecutor = func(_ context.Context, indexers []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+				results := []Result{{
+					IndexerID: indexers[0].ID,
+					Tracker:   indexers[0].Name,
+					Title:     "Example",
+					GUID:      "guid-1",
+					Link:      "http://example/1",
+				}}
+				coverage := make([]int, 0, len(indexers))
+				for _, idx := range indexers {
+					coverage = append(coverage, idx.ID)
+				}
+				return results, coverage, context.DeadlineExceeded
+			}
+
+			req := &TorznabSearchRequest{
+				Query:            "Example",
+				Categories:       []int{CategoryTV},
+				SkipHistory:      tc.skipHistory,
+				SkipCachePersist: tc.skipCachePersist,
+			}
+			respCh := make(chan *SearchResponse, 1)
+			errCh := make(chan error, 1)
+			req.OnAllComplete = func(resp *SearchResponse, err error) {
+				if err != nil {
+					errCh <- err
+				} else {
+					respCh <- resp
+				}
+			}
+
+			if err := service.Search(context.Background(), req); err != nil {
+				t.Fatalf("Search returned error: %v", err)
+			}
+
+			select {
+			case resp := <-respCh:
+				if resp == nil {
+					t.Fatal("expected response")
+				}
+			case err := <-errCh:
+				t.Fatalf("Search callback returned error: %v", err)
+			case <-time.After(1 * time.Second):
+				t.Fatal("Search timed out")
+			}
+
+			if tc.wantStored && stored == nil {
+				t.Fatal("expected cache entry to be stored")
+			}
+			if !tc.wantStored && stored != nil {
+				t.Fatalf("expected no cache entry to be stored, got %+v", stored.IndexerIDs)
+			}
+		})
+	}
+}
+
 func TestBuildSearchParams(t *testing.T) {
 	s := &Service{}
 	tests := []struct {

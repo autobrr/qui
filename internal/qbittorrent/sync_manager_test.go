@@ -36,6 +36,65 @@ func TestAddTorrentURLsErrorSummaryDoesNotExposeRawURLs(t *testing.T) {
 	require.NotContains(t, summary, urls[1])
 }
 
+func TestNewCacheMetadata(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 6, 22, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name           string
+		lastSuccessful time.Time
+		wantAge        int
+		wantSource     string
+		wantStale      bool
+	}{
+		{
+			name:           "fresh within one second",
+			lastSuccessful: now.Add(-500 * time.Millisecond),
+			wantAge:        0,
+			wantSource:     "fresh",
+			wantStale:      false,
+		},
+		{
+			name:           "exactly one second is still fresh",
+			lastSuccessful: now.Add(-1 * time.Second),
+			wantAge:        1,
+			wantSource:     "fresh",
+			wantStale:      false,
+		},
+		{
+			name:           "older than one second is cached and stale",
+			lastSuccessful: now.Add(-5 * time.Second),
+			wantAge:        5,
+			wantSource:     "cache",
+			wantStale:      true,
+		},
+		{
+			// Regression for the failed-sync clock bug: freshness is derived
+			// from the last SUCCESSFUL sync, so a sync that last succeeded long
+			// ago reads as stale even though the attempt clock (LastSyncTime)
+			// may have advanced moments ago on a failed sync.
+			name:           "long-stale successful sync stays stale",
+			lastSuccessful: now.Add(-2 * time.Minute),
+			wantAge:        120,
+			wantSource:     "cache",
+			wantStale:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			meta := newCacheMetadata(tt.lastSuccessful, now)
+
+			require.Equal(t, tt.wantAge, meta.Age)
+			require.Equal(t, tt.wantSource, meta.Source)
+			require.Equal(t, tt.wantStale, meta.IsStale)
+			require.Equal(t, now.Add(time.Second).Format(time.RFC3339), meta.NextRefresh)
+		})
+	}
+}
+
 func TestNormalizeHashes(t *testing.T) {
 	t.Parallel()
 

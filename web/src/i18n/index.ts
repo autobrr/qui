@@ -49,7 +49,7 @@ async function loadLanguageResources(lng: string): Promise<void> {
   loadedLanguages.add(lng)
 }
 
-export const supportedLanguages = ["en", "uk", "zh-CN", "fr", "de", "it"] as const
+export const supportedLanguages = ["en", "uk", "zh-CN", "fr", "de", "it", "ko"] as const
 export type AppLanguage = (typeof supportedLanguages)[number]
 const LANGUAGE_STORAGE_KEY = "qui.language"
 
@@ -60,6 +60,7 @@ export const languageNames: Record<AppLanguage, string> = {
   fr: "Français",
   de: "Deutsch",
   it: "Italiano",
+  ko: "한국어",
 }
 
 function isAppLanguage(value: string | null): value is AppLanguage {
