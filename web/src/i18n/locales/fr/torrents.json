@@ -1188,6 +1188,14 @@
       "urlCopied": "URL copiée dans le presse-papiers"
     }
   },
+  "filePriority": {
+    "header": "Priorité",
+    "doNotDownload": "Ne pas télécharger",
+    "normal": "Normale",
+    "high": "Haute",
+    "maximum": "Maximale",
+    "mixed": "Mixte"
+  },
   "fileTable": {
     "expandAll": "Tout développer",
     "collapseAll": "Tout réduire",
