@@ -831,6 +831,97 @@ func TestSearchCachesPartialCoverageAfterDeadline(t *testing.T) {
 	}
 }
 
+// TestSearchCachePersistGate locks in that cache persistence is gated by
+// SkipCachePersist and is independent of SkipHistory (issue #1997). The
+// alternate connector-spelling pass sets SkipHistory but leaves SkipCachePersist
+// unset, so it must still populate the cache; only SkipCachePersist suppresses
+// the store.
+func TestSearchCachePersistGate(t *testing.T) {
+	cases := []struct {
+		name             string
+		skipHistory      bool
+		skipCachePersist bool
+		wantStored       bool
+	}{
+		{name: "default persists", wantStored: true},
+		{name: "skip history still persists cache", skipHistory: true, wantStored: true},
+		{name: "skip cache persist suppresses store", skipCachePersist: true, wantStored: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &mockTorznabIndexerStore{
+				indexers: []*models.TorznabIndexer{
+					{ID: 1, Name: "IndexerOne", Enabled: true},
+					{ID: 2, Name: "IndexerTwo", Enabled: true},
+				},
+			}
+			service := NewService(store)
+			service.searchCacheEnabled = true
+			service.searchCacheTTL = time.Hour
+			var stored *models.TorznabSearchCacheEntry
+			service.searchCache = &fakeSearchCache{
+				storeFn: func(_ context.Context, entry *models.TorznabSearchCacheEntry) error {
+					stored = entry
+					return nil
+				},
+			}
+			service.searchExecutor = func(_ context.Context, indexers []*models.TorznabIndexer, _ url.Values, _ *searchContext) ([]Result, []int, error) {
+				results := []Result{{
+					IndexerID: indexers[0].ID,
+					Tracker:   indexers[0].Name,
+					Title:     "Example",
+					GUID:      "guid-1",
+					Link:      "http://example/1",
+				}}
+				coverage := make([]int, 0, len(indexers))
+				for _, idx := range indexers {
+					coverage = append(coverage, idx.ID)
+				}
+				return results, coverage, context.DeadlineExceeded
+			}
+
+			req := &TorznabSearchRequest{
+				Query:            "Example",
+				Categories:       []int{CategoryTV},
+				SkipHistory:      tc.skipHistory,
+				SkipCachePersist: tc.skipCachePersist,
+			}
+			respCh := make(chan *SearchResponse, 1)
+			errCh := make(chan error, 1)
+			req.OnAllComplete = func(resp *SearchResponse, err error) {
+				if err != nil {
+					errCh <- err
+				} else {
+					respCh <- resp
+				}
+			}
+
+			if err := service.Search(context.Background(), req); err != nil {
+				t.Fatalf("Search returned error: %v", err)
+			}
+
+			select {
+			case resp := <-respCh:
+				if resp == nil {
+					t.Fatal("expected response")
+				}
+			case err := <-errCh:
+				t.Fatalf("Search callback returned error: %v", err)
+			case <-time.After(1 * time.Second):
+				t.Fatal("Search timed out")
+			}
+
+			if tc.wantStored && stored == nil {
+				t.Fatal("expected cache entry to be stored")
+			}
+			if !tc.wantStored && stored != nil {
+				t.Fatalf("expected no cache entry to be stored, got %+v", stored.IndexerIDs)
+			}
+		})
+	}
+}
+
 func TestBuildSearchParams(t *testing.T) {
 	s := &Service{}
 	tests := []struct {
@@ -1781,6 +1872,85 @@ func TestSearchRespectsRequestedIndexerIDs(t *testing.T) {
 	}
 }
 
+func TestGetConfiguredTrackerDomains(t *testing.T) {
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "Native A", Backend: models.TorznabBackendNative, BaseURL: "https://aither.cc/torznab", Enabled: true},
+			{ID: 2, Name: "Native A dup host", Backend: models.TorznabBackendNative, BaseURL: "https://aither.cc/api/torznab", Enabled: true},
+			{ID: 3, Name: "Native B", Backend: models.TorznabBackendNative, BaseURL: "https://blutopia.cc/torznab", Enabled: true},
+			// Jackett base_url is the Jackett server, not the tracker — must be skipped.
+			{ID: 4, Name: "Jackett", Backend: models.TorznabBackendJackett, BaseURL: "http://jackett:9117/api/v2.0/indexers/aither/results/torznab", Enabled: true},
+			// Disabled indexers are filtered out by ListEnabled.
+			{ID: 5, Name: "Disabled native", Backend: models.TorznabBackendNative, BaseURL: "https://disabled.cc/torznab", Enabled: false},
+			// A native indexer without a base URL yields no domain.
+			{ID: 6, Name: "Native no url", Backend: models.TorznabBackendNative, BaseURL: "", Enabled: true},
+			// Prowlarr with a non-numeric IndexerID hits getProwlarrTrackerDomains'
+			// server-host fallback (no API call). The Prowlarr server host must NOT
+			// leak into the result.
+			{ID: 7, Name: "Prowlarr bad id", Backend: models.TorznabBackendProwlarr, BaseURL: "http://prowlarr:9696", IndexerID: "not-a-number", Enabled: true},
+			// A tracker./www./api. host must NOT be stripped: the domain has to match the
+			// full host qBittorrent reports for the active tracker, or the matcher silently
+			// fails ("foo.net" != "tracker.foo.net").
+			{ID: 8, Name: "Native subdomain", Backend: models.TorznabBackendNative, BaseURL: "https://tracker.foo.net/torznab", Enabled: true},
+			// A mixed-case host must be lowercased to match the qBittorrent-keyed active trackers.
+			{ID: 9, Name: "Native mixed case", Backend: models.TorznabBackendNative, BaseURL: "https://API.Example.ORG/torznab", Enabled: true},
+		},
+	}
+	s := NewService(store)
+
+	domains, err := s.GetConfiguredTrackerDomains(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"aither.cc", "api.example.org", "blutopia.cc", "tracker.foo.net"}
+	if !slices.Equal(domains, want) {
+		t.Fatalf("GetConfiguredTrackerDomains() = %v, want %v", domains, want)
+	}
+	// Guard against the Prowlarr server host leaking via the fallback.
+	if slices.Contains(domains, "prowlarr") {
+		t.Fatalf("GetConfiguredTrackerDomains() leaked Prowlarr server host: %v", domains)
+	}
+}
+
+func TestGetConfiguredTrackerDomains_ProwlarrResolvesRealDomain(t *testing.T) {
+	// Prowlarr resolves the real tracker domain from its API. Serve an indexer detail whose
+	// baseUrl field points at the real tracker and assert that domain is emitted (lowercased)
+	// and deduped against a native indexer for the same host. This is the core reason Prowlarr
+	// support exists in GetConfiguredTrackerDomains; a regression that dropped real domains
+	// instead of only the Prowlarr server-host fallback would fail here.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/indexer/5" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(`{"id":5,"name":"RealTracker","fields":[{"name":"baseUrl","value":"https://RealTracker.org"}]}`)); err != nil {
+			t.Errorf("write prowlarr response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	store := &mockTorznabIndexerStore{
+		indexers: []*models.TorznabIndexer{
+			{ID: 1, Name: "Prowlarr", Backend: models.TorznabBackendProwlarr, BaseURL: server.URL, IndexerID: "5", TimeoutSeconds: 5, Enabled: true},
+			// Native indexer for the same tracker: the resolved Prowlarr domain must dedup against it.
+			{ID: 2, Name: "Native same host", Backend: models.TorznabBackendNative, BaseURL: "https://realtracker.org/torznab", Enabled: true},
+		},
+	}
+	s := NewService(store)
+
+	domains, err := s.GetConfiguredTrackerDomains(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"realtracker.org"}
+	if !slices.Equal(domains, want) {
+		t.Fatalf("GetConfiguredTrackerDomains() = %v, want %v", domains, want)
+	}
+}
+
 // Helper functions
 //
 // Mock store for testing
@@ -2213,14 +2383,14 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 			},
 			expected: map[string]string{
 				"t":      "tvsearch",
-				"q":      "S17 1080p",
+				"q":      "S17",
 				"imdbid": "1785123",
 			},
 			meta: &searchContext{
 				originalQuery: "Some.Show.S17.1080p.HULU.WEB-DL.AAC2.0.H.264-RAWR",
 				releaseName:   "Some.Show.S17.1080p.HULU.WEB-DL.AAC2.0.H.264-RAWR",
 			},
-			description: "Prowlarr indexer should keep TV token and resolution for ID-driven TV searches",
+			description: "Prowlarr indexer should keep only the TV token for ID-driven TV searches; resolution must not be added to q (breaks series-name-only indexers)",
 		},
 		{
 			name:    "prowlarr id driven tv drops title from restored query",
@@ -2235,12 +2405,12 @@ func TestProwlarrYearParameterWorkaround(t *testing.T) {
 			},
 			expected: map[string]string{
 				"t":      "tvsearch",
-				"q":      "S22 720",
+				"q":      "S22",
 				"imdbid": "0413573",
 				"tvdbid": "73762",
 				"tmdbid": "1416",
 			},
-			description: "Prowlarr indexer should not include title in q when IDs are present",
+			description: "Prowlarr indexer should drop title and resolution from q when IDs are present",
 		},
 	}
 

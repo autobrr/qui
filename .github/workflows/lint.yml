@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
         with:
           fetch-depth: 0
 
@@ -36,12 +36,16 @@ jobs:
           webfiles=$({ git diff --name-only --diff-filter=d "origin/${{ github.base_ref }}"...HEAD -- 'web/'; } | sort -u | sed 's|^web/||' | grep -E '\.(ts|tsx|js|jsx)$' || true)
           if [ -n "$webfiles" ]; then echo "$webfiles" | xargs pnpm eslint; else echo "No frontend files to lint."; fi
 
+      - name: Check i18n coverage
+        working-directory: web
+        run: pnpm check:i18n
+
   backend:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
         with:
           fetch-depth: 0
 

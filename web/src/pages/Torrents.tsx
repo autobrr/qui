@@ -495,6 +495,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
         {!isMobile && (
           <div className="flex flex-col h-full">
             <ResizablePanelGroup
+              className="flex-1 min-h-0"
               direction="vertical"
               defaultLayout={defaultLayout}
               onLayoutChange={onLayoutChange}
@@ -558,6 +559,7 @@ export function Torrents({ instanceId, instanceName, isAllInstancesView = false,
                 </>
               )}
             </ResizablePanelGroup>
+            <div id="qui-status-bar-container" className="flex-shrink-0 bg-background" />
           </div>
         )}
 

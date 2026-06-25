@@ -263,13 +263,28 @@ export interface TorrentStreamMeta {
   rid?: number
   fullUpdate?: boolean
   timestamp: string
+  // lastSuccessfulSync is when the instance's data last actually updated (RFC3339).
+  // Present on stream-error frames so the UI can show how stale the retained rows are
+  // without that age resetting on every failed attempt. Omitted when unknown.
+  lastSuccessfulSync?: string
   retryInSeconds?: number
   streamKey?: string
 }
 
+// TorrentStreamDelta reconciles a delta frame's page-0 window against the previous
+// frame. The added/changed rows ride in the frame's `data.torrents` (or
+// `cross_instance_torrents`); `order` is the full page key sequence, present only
+// when membership or ordering changed (otherwise changed rows apply in place). Keys
+// are the torrent hash for single-instance streams and "<instanceId>:<hash>" for
+// cross-instance streams.
+export interface TorrentStreamDelta {
+  order?: string[]
+}
+
 export interface TorrentStreamPayload {
-  type: "init" | "update" | "stream-error" | "heartbeat"
+  type: "init" | "update" | "delta" | "stream-error" | "heartbeat"
   data?: TorrentResponse
+  delta?: TorrentStreamDelta
   meta?: TorrentStreamMeta
   error?: string
 }

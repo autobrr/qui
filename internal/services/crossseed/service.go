@@ -4955,7 +4955,14 @@ func (s *Service) processCrossSeedCandidate(
 		}
 
 		forceManualSavePath := false
-		if rootlessContentDir != "" {
+		switch {
+		case addPlan.savePathOverride != "":
+			// Rootless single file -> matched folder with a name mismatch: pin the save path to the
+			// matched folder so the file is injected into the existing content dir regardless of
+			// autoTMM/category configuration. Alignment renames the bare file to match.
+			savePath = addPlan.savePathOverride
+			forceManualSavePath = true
+		case rootlessContentDir != "":
 			normalizedSavePath := normalizePath(savePath)
 			normalizedRootlessDir := normalizePath(rootlessContentDir)
 			if normalizedRootlessDir != "" && normalizedRootlessDir != normalizedSavePath {
@@ -7307,9 +7314,7 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			}
 		}
 
-		safeQuery := buildSafeSearchQuery(sourceTorrent.Name, queryRelease, baseQuery, SearchQueryOptions{
-			IncludeResolution: contentInfo.ContentType == "tv",
-		})
+		safeQuery := buildSafeSearchQuery(sourceTorrent.Name, queryRelease, baseQuery)
 		query = strings.TrimSpace(safeQuery.Query)
 		if query == "" {
 			// Fallback to a basic title-based query to avoid empty searches
@@ -7736,7 +7741,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				// primary search rather than a separate tracked job: skip its search-history
 				// recording so it does not create parallel history entries. Outcome reporting
 				// keys on indexer ID under the primary job (which already searched these
-				// indexers), so the merged candidates attribute correctly.
+				// indexers), so the merged candidates attribute correctly. Cache persistence
+				// is intentionally left enabled (SkipCachePersist unset) so repeated alternate
+				// passes reuse the Torznab result cache instead of re-hitting indexers.
 				altReq.SkipHistory = true
 				if altResp, altErr := s.searchOnce(waitCtx, &altReq); altErr != nil {
 					log.Debug().

@@ -432,7 +432,10 @@ describe("SyncStreamContext", () => {
 
       const source = MockEventSource.instances[0]
       act(() => {
-        source.emitOpen() // arms the 15s stale watchdog
+        source.emitOpen()
+        // The first event switches the watchdog from the init grace to the 15s
+        // steady-state budget this test exercises.
+        source.emit("heartbeat")
       })
       expect(MockEventSource.instances).toHaveLength(1)
 
@@ -449,6 +452,39 @@ describe("SyncStreamContext", () => {
       expect(source.closed).toBe(true)
       expect(controls.getState().retrying).toBe(true)
       expect(controls.getState().retryAttempt).toBe(1)
+    })
+
+    it("does NOT kill a slow init whose first event lands after 15s but within the grace", () => {
+      // The init is a single large SSE event that can take longer than the 15s
+      // steady-state budget to drain on a big instance; the pre-first-event grace
+      // must keep the connection alive so it is not torn down into a reconnect storm.
+      renderSubscriber(BASE_PARAMS)
+      flushConnectionQueue()
+
+      const source = MockEventSource.instances[0]
+      act(() => {
+        source.emitOpen()
+      })
+
+      // 30s with no event yet: past the old 15s watchdog, still within the grace.
+      act(() => {
+        vi.advanceTimersByTime(30_000)
+      })
+      expect(source.closed).toBe(false)
+      expect(MockEventSource.instances).toHaveLength(1)
+
+      // The init finally lands; from here the normal 15s budget applies.
+      act(() => {
+        source.emit("init", { type: "init", meta: { instanceId: 1, timestamp: "now", streamKey: createStreamKey(BASE_PARAMS) }, data: { torrents: [], total: 0 } })
+      })
+      act(() => {
+        vi.advanceTimersByTime(STALE - 1)
+      })
+      expect(source.closed).toBe(false)
+      act(() => {
+        vi.advanceTimersByTime(1)
+      })
+      expect(source.closed).toBe(true)
     })
 
     it("does NOT reconnect while heartbeats keep resetting the watchdog", () => {
@@ -483,7 +519,9 @@ describe("SyncStreamContext", () => {
 
       const source = MockEventSource.instances[0]
       act(() => {
-        source.emitOpen() // arms the 15s stale watchdog, readyState = OPEN
+        source.emitOpen() // readyState = OPEN
+        // First event -> steady-state 15s watchdog (this test asserts that budget).
+        source.emit("heartbeat")
       })
 
       // Tab goes hidden: the stale timer is cleared (timing is meaningless while throttled).
@@ -630,21 +668,27 @@ describe("SyncStreamContext", () => {
       expect(controls.getState().retryAttempt).toBe(1)
     })
 
-    it("still escalates a connection stuck in CONNECTING via the 15s stale watchdog", () => {
+    it("still escalates a connection stuck in CONNECTING via the initial stale grace", () => {
       const { controls } = renderSubscriber(BASE_PARAMS)
       flushConnectionQueue()
       const source = MockEventSource.instances[0]
 
       act(() => {
-        source.emitOpen() // arms the 15s stale watchdog
+        source.emitOpen() // arms the watchdog (init grace, no event yet)
       })
       act(() => {
         source.emitTransientError() // CONNECTING: does not escalate
       })
       expect(source.closed).toBe(false)
 
+      // No event ever arrives, so the longer pre-first-event grace applies; just
+      // under it the connection is still alive, and crossing it escalates.
       act(() => {
-        vi.advanceTimersByTime(STALE) // 15000
+        vi.advanceTimersByTime(INITIAL_GRACE - 1)
+      })
+      expect(source.closed).toBe(false)
+      act(() => {
+        vi.advanceTimersByTime(1)
       })
 
       expect(source.closed).toBe(true)
@@ -667,9 +711,10 @@ describe("SyncStreamContext", () => {
 
       // ...but a connection that never opens must still escalate via the stale
       // watchdog armed at connection creation (not only in onopen), so qui's own
-      // backoff and offline state engage instead of waiting silently forever.
+      // backoff and offline state engage instead of waiting silently forever. No
+      // event ever arrives, so the longer pre-first-event grace governs the timing.
       act(() => {
-        vi.advanceTimersByTime(STALE)
+        vi.advanceTimersByTime(INITIAL_GRACE)
       })
       expect(source.closed).toBe(true)
       expect(controls.getState().retrying).toBe(true)
@@ -876,7 +921,8 @@ describe("SyncStreamContext", () => {
   })
 })
 
-const STALE = 15000 // STREAM_STALE_TIMEOUT_MS
+const STALE = 15000 // STREAM_STALE_TIMEOUT_MS (applies once the first event has arrived)
+const INITIAL_GRACE = 60000 // STREAM_INITIAL_TIMEOUT_MS (applies until the first event)
 const GRACE = 1200 // HANDOFF_GRACE_PERIOD_MS
 
 // jsdom defaults document.visibilityState to "visible" and makes it read-only,

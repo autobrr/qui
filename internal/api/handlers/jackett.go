@@ -58,6 +58,7 @@ func (h *JackettHandler) Routes(r chi.Router) {
 			r.Post("/", h.CreateIndexer)
 			r.Post("/discover", h.DiscoverIndexers)
 			r.Get("/health", h.GetAllHealth)
+			r.Get("/tracker-domains", h.GetIndexerTrackerDomains)
 			r.Get("/{indexerID}", h.GetIndexer)
 			r.Put("/{indexerID}", h.UpdateIndexer)
 			r.Delete("/{indexerID}", h.DeleteIndexer)
@@ -740,13 +741,15 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		Msg("Testing torznab indexer connectivity")
 
 	// Run a lightweight search via the service to validate connectivity
-	// Use CacheModeBypass and SkipHistory to prevent test searches from cluttering search history
+	// Use CacheModeBypass + SkipHistory + SkipCachePersist to keep test searches from
+	// cluttering search history or persisting a bogus "test" entry into the Torznab result cache.
 	testReq := &jackett.TorznabSearchRequest{
-		Query:       "test",
-		Limit:       1,
-		IndexerIDs:  []int{id},
-		CacheMode:   jackett.CacheModeBypass,
-		SkipHistory: true,
+		Query:            "test",
+		Limit:            1,
+		IndexerIDs:       []int{id},
+		CacheMode:        jackett.CacheModeBypass,
+		SkipHistory:      true,
+		SkipCachePersist: true,
 		OnAllComplete: func(*jackett.SearchResponse, error) {
 			// Ignore results for connectivity test
 		},
@@ -913,6 +916,30 @@ func (h *JackettHandler) GetAllHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusOK, health)
+}
+
+// GetIndexerTrackerDomains godoc
+// @Summary List tracker domains for enabled indexers
+// @Description Returns tracker domains derived from enabled indexers whose domain can be resolved reliably (native and Prowlarr backends). Jackett indexers are omitted because their base URL is the Jackett server, not the tracker. Used to populate tracker selectors with trackers that have no active torrents.
+// @Tags torznab
+// @Produce json
+// @Success 200 {array} string
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers/tracker-domains [get]
+func (h *JackettHandler) GetIndexerTrackerDomains(w http.ResponseWriter, r *http.Request) {
+	domains, err := h.service.GetConfiguredTrackerDomains(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get indexer tracker domains")
+		RespondError(w, http.StatusInternalServerError, "Failed to get indexer tracker domains")
+		return
+	}
+
+	if domains == nil {
+		domains = []string{}
+	}
+
+	RespondJSON(w, http.StatusOK, domains)
 }
 
 // GetIndexerHealth godoc

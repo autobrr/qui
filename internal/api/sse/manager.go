@@ -32,12 +32,24 @@ const (
 	maxLimit             = 2000
 	streamEventInit      = "init"
 	streamEventUpdate    = "update"
+	streamEventDelta     = "delta"
 	streamEventError     = "stream-error"
 	streamEventHeartbeat = "heartbeat"
 	streamEventActivity  = "activity"
 	defaultSyncInterval  = 2 * time.Second
 	maxSyncInterval      = 30 * time.Second
-	heartbeatInterval    = 5 * time.Second
+	// syncTimeoutIncremental bounds a steady-state incremental /sync/maindata tick.
+	// Healthy delta updates finish well under this even on large instances, so the
+	// short budget keeps the ~2s loop snappy and frees the goroutine when qbit is
+	// briefly slow.
+	syncTimeoutIncremental = 10 * time.Second
+	// syncTimeoutFull bounds a full /sync/maindata update (first sync for an instance,
+	// or any sync after a failure when qBittorrent has reset the rid and resends the
+	// whole torrent set). A 20k-torrent full fetch+parse can exceed 10s; this is
+	// aligned with the qbit HTTP client timeout (60s, see ClientPool.GetClient) so the
+	// per-sync budget is bounded by the transport, not a tighter inner deadline.
+	syncTimeoutFull   = 60 * time.Second
+	heartbeatInterval = 5 * time.Second
 	// maxStreamRequests caps the number of stream subscriptions a single SSE
 	// connection may request, bounding per-connection fan-out and resource use.
 	maxStreamRequests = 64
@@ -159,6 +171,11 @@ type StreamManager struct {
 	syncManager syncProvider
 	instanceDB  *models.InstanceStore
 
+	// lastSuccessfulSyncFn resolves an instance's last successful sync time for
+	// stream-error meta. Defaults to an offline client-pool lookup; tests override it
+	// to inject a known time without standing up a real pool.
+	lastSuccessfulSyncFn func(ctx context.Context, instanceID int) time.Time
+
 	// activityHub feeds qui-owned server events (backups, scans, cross-seed, etc.)
 	// onto connected SSE sessions. nil disables the activity channel entirely, in
 	// which case Serve/onSession behave exactly as before.
@@ -207,10 +224,18 @@ type subscriptionGroup struct {
 	sending     bool
 	hasPending  bool
 	pendingMeta *StreamMeta
-	pendingType string
 
 	subsMu sync.RWMutex
 	subs   map[string]*subscriptionState
+
+	// Delta baseline for this group's page-0 window, owned by the single tick
+	// processor (processGroup) and guarded by baselineMu against the unrelated init
+	// path. baselineFP maps each row key to its last-broadcast change fingerprint;
+	// baselineOrder is the last-broadcast key order. See buildUpdatePayload.
+	baselineMu     sync.Mutex
+	baselineFP     map[string]uint64
+	baselineOrder  []string
+	baselineSeeded bool
 }
 
 type syncLoopState struct {
@@ -225,24 +250,54 @@ type heartbeatLoopState struct {
 type backoffState struct {
 	attempt  int
 	interval time.Duration
+	// primed is set true once the instance has completed at least one successful
+	// sync. Before priming the next sync is a full /sync/maindata and must use the
+	// full-sync timeout. primed is never cleared by a failure (failure streaks are
+	// tracked by attempt > 0); it is only dropped when the whole entry is deleted on
+	// unregister, so a re-registered instance correctly resyncs full first.
+	primed bool
 }
 
 // StreamPayload is the message envelope sent to the frontend.
 type StreamPayload struct {
-	Type string                       `json:"type"`
-	Data *qbittorrent.TorrentResponse `json:"data,omitempty"`
-	Meta *StreamMeta                  `json:"meta,omitempty"`
-	Err  string                       `json:"error,omitempty"`
+	Type  string                       `json:"type"`
+	Data  *qbittorrent.TorrentResponse `json:"data,omitempty"`
+	Delta *StreamDelta                 `json:"delta,omitempty"`
+	Meta  *StreamMeta                  `json:"meta,omitempty"`
+	Err   string                       `json:"error,omitempty"`
+}
+
+// StreamDelta describes how to reconcile a group's page-0 window against the
+// previous frame on a "delta" event. The added or changed rows themselves ride in
+// StreamPayload.Data.Torrents (single-instance) or Data.CrossInstanceTorrents
+// (cross-instance); Order lists the full page key sequence and is present only when
+// membership or ordering changed. When Order is omitted the client applies the
+// changed rows in place at their existing positions. Keys are the torrent hash for
+// single-instance streams and "<instanceID>:<hash>" for cross-instance streams.
+//
+// Order is a pointer so a present-but-empty order (the page drained to zero rows,
+// e.g. every match deleted) serializes as `[]` and stays distinct from an absent
+// order. A plain `[]string` with omitempty would drop the empty slice on the wire,
+// making a full clear indistinguishable from an aggregate-only tick and leaving the
+// deleted rows on screen until the next keyframe.
+type StreamDelta struct {
+	Order *[]string `json:"order,omitempty"`
 }
 
 // StreamMeta carries lightweight metadata about the sync update.
 type StreamMeta struct {
-	InstanceID     int       `json:"instanceId"`
-	RID            int64     `json:"rid,omitempty"`
-	FullUpdate     bool      `json:"fullUpdate,omitempty"`
-	Timestamp      time.Time `json:"timestamp"`
-	RetryInSeconds int       `json:"retryInSeconds,omitempty"`
-	StreamKey      string    `json:"streamKey,omitempty"`
+	InstanceID int       `json:"instanceId"`
+	RID        int64     `json:"rid,omitempty"`
+	FullUpdate bool      `json:"fullUpdate,omitempty"`
+	Timestamp  time.Time `json:"timestamp"`
+	// LastSuccessfulSync is when the instance's data last actually updated, sourced
+	// from the success-only sync clock. On stream-error frames it lets the client
+	// show how stale the retained torrents are ("data from N ago") without that age
+	// resetting on every failed attempt. A pointer so the zero time is omitted on the
+	// wire rather than serialized as 0001-01-01 (omitempty has no effect on a struct).
+	LastSuccessfulSync *time.Time `json:"lastSuccessfulSync,omitempty"`
+	RetryInSeconds     int        `json:"retryInSeconds,omitempty"`
+	StreamKey          string     `json:"streamKey,omitempty"`
 }
 
 // ActivityPayload is the message envelope for qui-owned server activity events.
@@ -290,8 +345,37 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvid
 		cancel:         cancel,
 	}
 
+	m.lastSuccessfulSyncFn = m.instanceLastSuccessfulSync
+
 	m.server.OnSession = m.onSession
 	return m
+}
+
+// instanceLastSuccessfulSync returns the instance's last successful sync time, or
+// the zero time when no client is available. It uses the offline pool accessor so a
+// sync-error callback can stamp staleness metadata without triggering a connection
+// attempt that could block the sync loop. GetLastSyncUpdate reports the success-only
+// clock, so a failing instance keeps reporting its last good sync rather than now.
+func (m *StreamManager) instanceLastSuccessfulSync(ctx context.Context, instanceID int) time.Time {
+	if m.clientPool == nil || instanceID <= 0 {
+		return time.Time{}
+	}
+	client, err := m.clientPool.GetClientOffline(ctx, instanceID)
+	if err != nil || client == nil {
+		return time.Time{}
+	}
+	return client.GetLastSyncUpdate()
+}
+
+// stampLastSuccessfulSync sets meta.LastSuccessfulSync from the configured source,
+// leaving it nil (omitted on the wire) when the time is unknown.
+func (m *StreamManager) stampLastSuccessfulSync(ctx context.Context, meta *StreamMeta, instanceID int) {
+	if meta == nil || m.lastSuccessfulSyncFn == nil {
+		return
+	}
+	if ts := m.lastSuccessfulSyncFn(ctx, instanceID); !ts.IsZero() {
+		meta.LastSuccessfulSync = &ts
+	}
 }
 
 // SetActivityHub wires the qui-owned server-event hub and starts forwarding its
@@ -520,7 +604,7 @@ func (m *StreamManager) HandleMainData(instanceID int, data *qbt.MainData) {
 		Timestamp:  time.Now(),
 	}
 
-	go m.publishInstance(instanceID, streamEventUpdate, meta)
+	go m.publishInstance(instanceID, meta)
 }
 
 // HandleSyncError implements qbittorrent.SyncEventSink.
@@ -549,14 +633,17 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 
 	message := fmt.Sprintf("Sync with qBittorrent failed (%s); retrying in %ds", err.Error(), retrySeconds)
 
+	meta := &StreamMeta{
+		InstanceID:     instanceID,
+		Timestamp:      time.Now(),
+		RetryInSeconds: retrySeconds,
+	}
+	m.stampLastSuccessfulSync(m.ctx, meta, instanceID)
+
 	payload := &StreamPayload{
 		Type: streamEventError,
-		Meta: &StreamMeta{
-			InstanceID:     instanceID,
-			Timestamp:      time.Now(),
-			RetryInSeconds: retrySeconds,
-		},
-		Err: message,
+		Meta: meta,
+		Err:  message,
 	}
 
 	// Publish asynchronously so a slow or stalled subscriber can't block the
@@ -944,6 +1031,13 @@ func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscript
 		return
 	}
 
+	// Seed the delta baseline from this init snapshot so the client's first frame and
+	// the server baseline match exactly; the next tick is then a clean delta. No-op if
+	// the group is already seeded (a tick or an earlier joiner got there first).
+	if payload.Data != nil {
+		group.seedBaselineIfEmpty(group.options, payload.Data)
+	}
+
 	m.writePayloadToSession(w, clonePayloadForSubscriber(payload, sub))
 }
 
@@ -1013,7 +1107,7 @@ func flushSession(w http.ResponseWriter) {
 	}
 }
 
-func (m *StreamManager) publishInstance(instanceID int, eventType string, meta *StreamMeta) {
+func (m *StreamManager) publishInstance(instanceID int, meta *StreamMeta) {
 	if m.closing.Load() {
 		return
 	}
@@ -1024,7 +1118,7 @@ func (m *StreamManager) publishInstance(instanceID int, eventType string, meta *
 	}
 
 	for _, group := range groups {
-		m.enqueueGroup(group, eventType, meta)
+		m.enqueueGroup(group, meta)
 	}
 }
 
@@ -1048,7 +1142,7 @@ func (m *StreamManager) groupsForInstance(instanceID int) []*subscriptionGroup {
 	return result
 }
 
-func (m *StreamManager) enqueueGroup(group *subscriptionGroup, eventType string, meta *StreamMeta) {
+func (m *StreamManager) enqueueGroup(group *subscriptionGroup, meta *StreamMeta) {
 	if group == nil || m.closing.Load() {
 		return
 	}
@@ -1057,7 +1151,6 @@ func (m *StreamManager) enqueueGroup(group *subscriptionGroup, eventType string,
 
 	group.mu.Lock()
 	group.pendingMeta = metaCopy
-	group.pendingType = eventType
 	group.hasPending = true
 	if group.sending {
 		group.mu.Unlock()
@@ -1090,7 +1183,6 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 			group.mu.Unlock()
 			return
 		}
-		eventType := group.pendingType
 		meta := group.pendingMeta
 		opts := group.options
 		group.hasPending = false
@@ -1101,7 +1193,10 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 			continue
 		}
 
-		payload := m.buildGroupPayload(group, opts, eventType, meta)
+		// Every enqueued group event is a tick update (init is written synchronously
+		// in onSession, never routed here), so build an incremental update: a delta
+		// against the group baseline, or a full keyframe. See buildUpdatePayload.
+		payload := m.buildGroupUpdatePayload(group, opts, meta)
 		if payload == nil {
 			continue
 		}
@@ -1119,17 +1214,49 @@ func (m *StreamManager) processGroup(group *subscriptionGroup) {
 	}
 }
 
+// buildGroupPayload materializes the current page and wraps it as a full snapshot
+// of the given event type. Used for the synchronous init write; tick updates go
+// through buildGroupUpdatePayload instead.
 func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamOptions, eventType string, meta *StreamMeta) *StreamPayload {
-	if group == nil || m.syncManager == nil {
-		return nil
-	}
-
-	if m.closing.Load() {
+	if group == nil || m.syncManager == nil || m.closing.Load() {
 		return nil
 	}
 
 	metaCopy := cloneMeta(meta)
+	response, errPayload := m.materializeGroupResponse(opts, metaCopy, group.key)
+	if errPayload != nil {
+		return errPayload
+	}
 
+	return &StreamPayload{
+		Type: eventType,
+		Data: response,
+		Meta: metaCopy,
+	}
+}
+
+// buildGroupUpdatePayload materializes the current page and turns it into a tick
+// frame: an incremental delta against the group baseline, or a full keyframe. See
+// buildUpdatePayload for the delta-vs-full decision and baseline advancement.
+func (m *StreamManager) buildGroupUpdatePayload(group *subscriptionGroup, opts StreamOptions, meta *StreamMeta) *StreamPayload {
+	if group == nil || m.syncManager == nil || m.closing.Load() {
+		return nil
+	}
+
+	metaCopy := cloneMeta(meta)
+	response, errPayload := m.materializeGroupResponse(opts, metaCopy, group.key)
+	if errPayload != nil {
+		return errPayload
+	}
+
+	return group.buildUpdatePayload(opts, response, metaCopy)
+}
+
+// materializeGroupResponse fetches the current filtered/sorted/paginated page for
+// the group's view from the warm sync cache. On success it returns the response and
+// a nil payload; on failure it returns a nil response and a ready-to-send
+// stream-error payload (carrying a retry hint).
+func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *StreamMeta, groupKey string) (*qbittorrent.TorrentResponse, *StreamPayload) {
 	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
 	ctx = qbittorrent.WithSkipFreshData(ctx)
@@ -1179,7 +1306,7 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 		log.Error().Err(err).
 			Int("instanceID", opts.InstanceID).
 			Ints("instanceIDs", opts.InstanceIDs).
-			Str("groupKey", group.key).
+			Str("groupKey", groupKey).
 			Msg("Failed to build torrent response for SSE subscribers")
 
 		// Carry a retry hint so the frontend can show a recovery countdown and keep
@@ -1188,8 +1315,12 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 			metaCopy = &StreamMeta{InstanceID: opts.InstanceID, Timestamp: time.Now()}
 		}
 		metaCopy.RetryInSeconds = m.currentRetrySeconds(retryInstanceID)
+		// Stamp how stale the retained data is. For multi-instance groups this uses the
+		// representative instance (same one the retry hint is keyed on); a per-instance
+		// rollup is intentionally out of scope here.
+		m.stampLastSuccessfulSync(ctx, metaCopy, retryInstanceID)
 
-		return &StreamPayload{
+		return nil, &StreamPayload{
 			Type: streamEventError,
 			Meta: metaCopy,
 			Err:  errMsg,
@@ -1202,11 +1333,7 @@ func (m *StreamManager) buildGroupPayload(group *subscriptionGroup, opts StreamO
 		response.InstanceMeta = m.buildInstanceMeta(ctx, opts.InstanceID)
 	}
 
-	return &StreamPayload{
-		Type: eventType,
-		Data: response,
-		Meta: metaCopy,
-	}
+	return response, nil
 }
 
 // currentRetrySeconds reports the instance's current sync interval (in seconds)
@@ -1632,11 +1759,8 @@ func (m *StreamManager) markSyncSuccess(instanceID int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	state, ok := m.syncBackoff[instanceID]
-	if !ok {
-		return
-	}
-
+	state := m.ensureBackoffStateLocked(instanceID)
+	state.primed = true
 	state.attempt = 0
 
 	if state.interval != defaultSyncInterval {
@@ -1728,12 +1852,29 @@ func jitteredInterval(interval time.Duration) time.Duration {
 	return interval + jitter
 }
 
+// syncTimeout returns the context budget for the next forceSync of instanceID.
+// A full /sync/maindata is likely when the instance has never completed a sync
+// (no entry / not primed) or is in a failure streak (attempt > 0): qBittorrent
+// resets the rid on these and resends the whole torrent set, which can exceed the
+// incremental budget on large instances. A primed instance with no active failure
+// streak is in a healthy delta streak and gets the short budget.
+func (m *StreamManager) syncTimeout(instanceID int) time.Duration {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	state, ok := m.syncBackoff[instanceID]
+	if !ok || !state.primed || state.attempt > 0 {
+		return syncTimeoutFull
+	}
+	return syncTimeoutIncremental
+}
+
 func (m *StreamManager) forceSync(parent context.Context, instanceID int) {
 	if m.closing.Load() {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	ctx, cancel := context.WithTimeout(parent, m.syncTimeout(instanceID))
 	defer cancel()
 
 	syncMgr, err := m.syncManager.GetQBittorrentSyncManager(ctx, instanceID)

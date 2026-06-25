@@ -450,6 +450,45 @@ func TestActionConditionsUseField_IgnoresDisabledActions(t *testing.T) {
 	require.False(t, actionConditionsUseField(ac, FieldHasMissingFiles))
 }
 
+func TestRulesUseTrackerEntryData(t *testing.T) {
+	deleteRule := func(cond *models.RuleCondition) *models.Automation {
+		return &models.Automation{
+			Enabled: true,
+			Conditions: &models.ActionConditions{
+				Delete: &models.DeleteAction{Enabled: true, Condition: cond},
+			},
+		}
+	}
+
+	statusRule := deleteRule(&models.RuleCondition{Field: models.FieldTrackerStatus, Operator: models.OperatorEqual, Value: "error"})
+	nestedMessageRule := deleteRule(&models.RuleCondition{
+		Operator: models.OperatorOr,
+		Conditions: []*models.RuleCondition{
+			{Field: models.FieldName, Operator: models.OperatorContains, Value: "pack"},
+			{Field: models.FieldTrackerMessage, Operator: models.OperatorEqual, Value: "nil"},
+		},
+	})
+	unrelatedRule := deleteRule(&models.RuleCondition{Field: models.FieldName, Operator: models.OperatorContains, Value: "pack"})
+
+	tests := []struct {
+		name  string
+		rules []*models.Automation
+		want  bool
+	}{
+		{name: "status field", rules: []*models.Automation{statusRule}, want: true},
+		{name: "message field nested in group", rules: []*models.Automation{nestedMessageRule}, want: true},
+		{name: "no tracker entry fields", rules: []*models.Automation{unrelatedRule}, want: false},
+		{name: "mixed rules detect tracker field", rules: []*models.Automation{unrelatedRule, statusRule}, want: true},
+		{name: "no rules", rules: nil, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, rulesUseTrackerEntryData(tt.rules))
+		})
+	}
+}
+
 func TestComputePreviewScore_UsesFrozenScoreMap(t *testing.T) {
 	rule := &models.Automation{
 		SortingConfig: &models.SortingConfig{

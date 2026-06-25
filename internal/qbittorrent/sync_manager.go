@@ -118,6 +118,28 @@ type CacheMetadata struct {
 	NextRefresh string `json:"nextRefresh"` // When next refresh will occur (ISO 8601 string)
 }
 
+// newCacheMetadata derives the freshness signal from the last successful sync.
+// Data is considered fresh only if it updated within the last second; anything
+// older is reported as cached and stale so the UI can flag it during a sync
+// outage. lastSuccessfulSync must be the last SUCCESSFUL sync time, not the last
+// attempt, otherwise a failing instance would falsely report as fresh.
+func newCacheMetadata(lastSuccessfulSync, now time.Time) *CacheMetadata {
+	age := int(now.Sub(lastSuccessfulSync).Seconds())
+	isFresh := age <= 1
+
+	source := "cache"
+	if isFresh {
+		source = "fresh"
+	}
+
+	return &CacheMetadata{
+		Source:      source,
+		Age:         age,
+		IsStale:     !isFresh,
+		NextRefresh: now.Add(time.Second).Format(time.RFC3339),
+	}
+}
+
 // TorrentResponse represents a response containing torrents with stats
 type TrackerHealth string
 
@@ -1321,29 +1343,17 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		}
 	}
 
-	// Determine cache metadata based on last sync update time
+	// Determine cache metadata from the last SUCCESSFUL sync. LastSyncTime
+	// advances on failed syncs too, so deriving freshness from it would report
+	// "fresh" exactly when qBittorrent is failing to sync and the data is
+	// stalest. LastSuccessfulSyncTime only moves when the data actually updated.
 	var cacheMetadata *CacheMetadata
 	var serverState *qbt.ServerState
 	var appInfo *AppInfo
 	var appPreferences *qbt.AppPreferences
 
 	if syncManager != nil {
-		lastSyncTime := syncManager.LastSyncTime()
-		now := time.Now()
-		age := int(now.Sub(lastSyncTime).Seconds())
-		isFresh := age <= 1 // Fresh if updated within the last second
-
-		source := "cache"
-		if isFresh {
-			source = "fresh"
-		}
-
-		cacheMetadata = &CacheMetadata{
-			Source:      source,
-			Age:         age,
-			IsStale:     !isFresh,
-			NextRefresh: now.Add(time.Second).Format(time.RFC3339),
-		}
+		cacheMetadata = newCacheMetadata(syncManager.LastSuccessfulSyncTime(), time.Now())
 	}
 
 	if client != nil {
@@ -3074,7 +3084,7 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 
 	// qBittorrent may emit pseudo tracker labels (e.g. "[DHT]", "[PeX]", "[LSD]").
 	// These are peer-discovery mechanisms, not real tracker domains.
-	if isPseudoTrackerLabel(urlStr) {
+	if IsPseudoTrackerLabel(urlStr) {
 		urlCache.Set(urlStr, "", ttlcache.DefaultTTL)
 		return ""
 	}
@@ -3137,7 +3147,7 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	if domain != unknown {
 		domain = strings.Trim(domain, "[]")
 		domain = strings.ToLower(domain)
-		if isPseudoTrackerLabel(domain) {
+		if IsPseudoTrackerLabel(domain) {
 			domain = ""
 		}
 	} else {
@@ -3149,7 +3159,10 @@ func (sm *SyncManager) ExtractDomainFromURL(urlStr string) string {
 	return domain
 }
 
-func isPseudoTrackerLabel(value string) bool {
+// IsPseudoTrackerLabel reports whether value is one of qBittorrent's DHT/PeX/LSD
+// pseudo-tracker labels (e.g. "** [DHT] **"). These are peer-discovery mechanisms,
+// not real trackers, and should be ignored when evaluating per-tracker conditions.
+func IsPseudoTrackerLabel(value string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	normalized = strings.Trim(normalized, "*")
 	normalized = strings.TrimSpace(normalized)
@@ -4063,6 +4076,23 @@ func (sm *SyncManager) getAllTorrentsForStats(ctx context.Context, instanceID in
 // GetAllTorrents returns the current torrent list for an instance without pagination.
 func (sm *SyncManager) GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
 	return sm.getAllTorrentsForStats(ctx, instanceID, "")
+}
+
+// HydrateTorrentTrackers enriches torrents with per-tracker status/message data when supported.
+// Returns the original slice unchanged when hydration is unavailable or fails.
+func (sm *SyncManager) HydrateTorrentTrackers(ctx context.Context, instanceID int, torrents []qbt.Torrent) []qbt.Torrent {
+	if len(torrents) == 0 {
+		return torrents
+	}
+
+	client, _, err := sm.getClientAndSyncManager(ctx, instanceID)
+	if err != nil {
+		log.Debug().Err(err).Int("instanceID", instanceID).Msg("Skipping tracker hydration for automations")
+		return torrents
+	}
+
+	enriched, _, _ := sm.enrichTorrentsWithTrackerData(ctx, client, torrents, nil)
+	return enriched
 }
 
 func normalizeForSearch(text string) string {

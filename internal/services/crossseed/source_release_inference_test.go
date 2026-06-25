@@ -170,10 +170,8 @@ func TestSelectSourceReleaseForSearch_UsesTVDetectionReleaseForTVCategories(t *t
 	require.Equal(t, rls.Episode, searchRelease.Type)
 	require.Equal(t, 37, searchRelease.Episode)
 
-	query := buildSafeSearchQuery("[SubsPlease] Some, Anime (2025) [720p]", searchRelease, searchRelease.Title, SearchQueryOptions{
-		IncludeResolution: true,
-	})
-	require.Equal(t, "Some, Anime 720", query.Query)
+	query := buildSafeSearchQuery("[SubsPlease] Some, Anime (2025) [720p]", searchRelease, searchRelease.Title)
+	require.Equal(t, "Some, Anime", query.Query)
 	require.NotNil(t, query.Episode)
 	require.Equal(t, 37, *query.Episode)
 }

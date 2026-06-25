@@ -674,6 +674,27 @@
       "capsSynced": "Capabilities synced from backend",
       "failedToSyncCaps": "Failed to sync caps"
     },
+    "priorityLabels": {
+      "interactive": "Interactive",
+      "rss": "RSS",
+      "completion": "Completion",
+      "background": "Background"
+    },
+    "contentTypeLabels": {
+      "movie": "Movie",
+      "tv": "TV",
+      "tv_daily": "TV (Daily)",
+      "xxx": "XXX",
+      "music": "Music",
+      "audiobook": "Audiobook",
+      "book": "Book",
+      "comic": "Comic",
+      "magazine": "Magazine",
+      "education": "Education",
+      "app": "App",
+      "game": "Game",
+      "unknown": "Unknown"
+    },
     "page": {
       "summary": "{{enabled}} enabled, {{capabilities}} with capabilities",
       "description": "Manage Torznab indexers powered by Jackett, Prowlarr, or native tracker endpoints",
