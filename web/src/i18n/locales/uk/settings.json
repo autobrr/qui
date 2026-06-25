@@ -187,7 +187,7 @@
     "pathPlaceholder": "/usr/bin/my-script.sh або C:\\Scripts\\my-script.bat",
     "pathDescription": "Повний шлях до виконуваного файлу",
     "argumentsLabel": "Шаблон аргументів",
-    "argumentsPlaceholder": "\"{hash}\" \"{name}\" --збереження шляху \"{save_path}\"",
+    "argumentsPlaceholder": "\"{hash}\" \"{name}\" --save-path \"{save_path}\"",
     "argumentsDescription": "Повний шлях до сценарію з аргументами",
     "availablePlaceholders": "Доступні заповнювачі:",
     "pathMappings": "Відображення шляхів",
