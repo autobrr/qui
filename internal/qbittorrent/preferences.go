@@ -72,13 +72,14 @@ func (c *Client) GetCachedAppPreferences() *qbt.AppPreferences {
 	return cloneAppPreferences(c.preferencesCache)
 }
 
-// GetCachedAppPreferencesAt returns the time the cached app preferences were last
-// fetched, or the zero time if they have never been fetched.
-func (c *Client) GetCachedAppPreferencesAt() time.Time {
+// GetCachedAppPreferencesSnapshot returns the last cached app preferences together
+// with the time they were fetched, read under a single lock so the body and its
+// timestamp are always a consistent pair.
+func (c *Client) GetCachedAppPreferencesSnapshot() (*qbt.AppPreferences, time.Time) {
 	c.preferencesMu.RLock()
 	defer c.preferencesMu.RUnlock()
 
-	return c.preferencesFetchedAt
+	return cloneAppPreferences(c.preferencesCache), c.preferencesFetchedAt
 }
 
 // InvalidateAppPreferencesCache clears the cached preferences to force a refresh on next access.
@@ -119,20 +120,12 @@ func (c *Client) storeAlternativeSpeedLimitsMode(enabled bool) {
 	c.altSpeedMu.Unlock()
 }
 
-// GetCachedAlternativeSpeedLimitsMode returns the last-known-good alternative-speed-limits
-// mode. The second return value reports whether a value has ever been cached.
-func (c *Client) GetCachedAlternativeSpeedLimitsMode() (bool, bool) {
+// GetCachedAlternativeSpeedLimitsModeSnapshot returns the last-known-good mode, the
+// time it was fetched, and whether a value has ever been cached, all read under a
+// single lock so they form a consistent snapshot.
+func (c *Client) GetCachedAlternativeSpeedLimitsModeSnapshot() (mode bool, fetchedAt time.Time, ok bool) {
 	c.altSpeedMu.RLock()
 	defer c.altSpeedMu.RUnlock()
 
-	return c.altSpeedMode, c.altSpeedFetched
-}
-
-// GetCachedAlternativeSpeedLimitsModeAt returns the time the alternative-speed-limits
-// mode was last successfully fetched, or the zero time if it has never been fetched.
-func (c *Client) GetCachedAlternativeSpeedLimitsModeAt() time.Time {
-	c.altSpeedMu.RLock()
-	defer c.altSpeedMu.RUnlock()
-
-	return c.altSpeedFetchedAt
+	return c.altSpeedMode, c.altSpeedFetchedAt, c.altSpeedFetched
 }

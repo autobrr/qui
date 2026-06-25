@@ -65,10 +65,10 @@ func (h *PreferencesHandler) GetPreferences(w http.ResponseWriter, r *http.Reque
 		// offline client lookup so an unreachable/slow qBittorrent does not trigger
 		// another doomed live health-check round trip (issue #2052).
 		if client, clientErr := h.syncManager.GetClientOffline(r.Context(), instanceID); clientErr == nil {
-			if cached := client.GetCachedAppPreferences(); cached != nil {
+			if cached, fetchedAt := client.GetCachedAppPreferencesSnapshot(); cached != nil {
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("Serving cached app preferences after live fetch failed")
 
-				setCachedAtHeader(w, client.GetCachedAppPreferencesAt())
+				setCachedAtHeader(w, fetchedAt)
 				w.Header().Set("Content-Type", "application/json")
 				if encodeErr := json.NewEncoder(w).Encode(cached); encodeErr != nil {
 					log.Error().Err(encodeErr).Int("instanceID", instanceID).Msg("Failed to encode cached preferences response")
@@ -163,10 +163,10 @@ func (h *PreferencesHandler) GetAlternativeSpeedLimitsMode(w http.ResponseWriter
 		// Use an offline client lookup so an unreachable/slow qBittorrent does not trigger
 		// another doomed live health-check round trip (issue #2052).
 		if client, clientErr := h.syncManager.GetClientOffline(r.Context(), instanceID); clientErr == nil {
-			if cached, ok := client.GetCachedAlternativeSpeedLimitsMode(); ok {
+			if cached, fetchedAt, ok := client.GetCachedAlternativeSpeedLimitsModeSnapshot(); ok {
 				log.Warn().Err(err).Int("instanceID", instanceID).Msg("Serving cached alternative speed limits mode after live fetch failed")
 
-				setCachedAtHeader(w, client.GetCachedAlternativeSpeedLimitsModeAt())
+				setCachedAtHeader(w, fetchedAt)
 				w.Header().Set("Content-Type", "application/json")
 				if encodeErr := json.NewEncoder(w).Encode(map[string]bool{"enabled": cached}); encodeErr != nil {
 					log.Error().Err(encodeErr).Int("instanceID", instanceID).Msg("Failed to encode cached alternative speed limits mode response")

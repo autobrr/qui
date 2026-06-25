@@ -207,7 +207,7 @@ func TestGetAlternativeSpeedLimitsMode_GracefulDegradation(t *testing.T) {
 		require.True(t, body["enabled"])
 
 		// The successful live fetch must have populated the last-known-good cache.
-		cached, ok := h.client.GetCachedAlternativeSpeedLimitsMode()
+		cached, _, ok := h.client.GetCachedAlternativeSpeedLimitsModeSnapshot()
 		require.True(t, ok)
 		require.True(t, cached)
 	})
