@@ -4451,6 +4451,20 @@ paths:
         '204':
           description: No update available - current version is latest
 
+  /api/version:
+    get:
+      tags:
+        - System
+      summary: Get current running version
+      description: Returns the version qui is currently running, along with whether a newer release is available. Useful for monitoring tools (e.g. Argus) that track the deployed version of a service.
+      responses:
+        '200':
+          description: Current version information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
+
   /api/instances/{instanceID}/backups/import:
     post:
       tags:
@@ -6163,6 +6177,26 @@ components:
           format: date-time
           description: When the release was published
           example: "2025-09-23T10:30:00Z"
+
+    VersionResponse:
+      type: object
+      description: The version qui is currently running and whether a newer release is available
+      required:
+        - version
+        - updateAvailable
+      properties:
+        version:
+          type: string
+          description: The version qui is currently running
+          example: "v1.2.3"
+        latestVersion:
+          type: string
+          description: The latest available release tag. Present only when a newer release than the running version has been detected.
+          example: "v1.3.0"
+        updateAvailable:
+          type: boolean
+          description: Whether a newer release than the running version is available
+          example: true
 
     QBittorrentBuildInfo:
       type: object
