@@ -7707,7 +7707,9 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 				// primary search rather than a separate tracked job: skip its search-history
 				// recording so it does not create parallel history entries. Outcome reporting
 				// keys on indexer ID under the primary job (which already searched these
-				// indexers), so the merged candidates attribute correctly.
+				// indexers), so the merged candidates attribute correctly. Cache persistence
+				// is intentionally left enabled (SkipCachePersist unset) so repeated alternate
+				// passes reuse the Torznab result cache instead of re-hitting indexers.
 				altReq.SkipHistory = true
 				if altResp, altErr := s.searchOnce(waitCtx, &altReq); altErr != nil {
 					log.Debug().
