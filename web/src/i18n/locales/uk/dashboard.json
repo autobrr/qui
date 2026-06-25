@@ -20,19 +20,19 @@
     "itemsPerPage": "Елементів на сторінці",
     "sortColumnLabels": {
       "tracker": "Назва трекера",
-      "uploaded": "Віддано",
+      "uploaded": "Вивантажено",
       "downloaded": "Завантажено",
-      "ratio": "Рейтинг",
+      "ratio": "Співвідношення",
       "buffer": "Буфер",
       "count": "Торенти",
       "size": "Розмір",
-      "performance": "Засіяно"
+      "performance": "Роздано"
     }
   },
   "speedLimits": {
     "title": "Ліміти швидкості",
     "download": "Завантаження",
-    "upload": "Віддача",
+    "upload": "Вивантаження",
     "current": "Поточна: {{speed}}",
     "unlimited": "Без обмежень"
   },
@@ -43,7 +43,7 @@
     "active": "Активних",
     "total": "Всього",
     "download": "Завантаження",
-    "upload": "Віддача",
+    "upload": "Вивантаження",
     "totalSize": "Загальний розмір",
     "totalSizeTooltip": "Загальний розмір всіх торентів, включно з крос-сідами",
     "freeSpace": "Вільне місце",
@@ -83,7 +83,7 @@
     "torrents": "Торенти",
     "activeCount": "{{count}} активних",
     "download": "Завантаження",
-    "upload": "Віддача"
+    "upload": "Вивантаження"
   },
   "globalStats": {
     "instances": "Екземпляри",
@@ -92,18 +92,18 @@
     "activeTotal": "{{active}} активних — загальний розмір {{size}}",
     "totalDownload": "Всього завантажено",
     "downloadingActive": "{{count}} активних — залишилось {{size}}",
-    "totalUpload": "Всього віддано",
+    "totalUpload": "Всього вивантажено",
     "seedingActive": "{{count}} активних — роздається {{size}}"
   },
   "serverStats": {
     "title": "Статистика сервера",
-    "ratio": "Рейтинг:",
+    "ratio": "Співвідношення:",
     "peers": "Піри:",
     "tableHeaders": {
       "instance": "Екземпляр",
       "downloaded": "Завантажено",
-      "uploaded": "Віддано",
-      "ratio": "Рейтинг",
+      "uploaded": "Вивантажено",
+      "ratio": "Співвідношення",
       "peers": "Піри"
     }
   },
@@ -115,24 +115,24 @@
     "sort": "Сортування: {{column}}",
     "sortOptions": {
       "tracker": "Трекер",
-      "uploaded": "Віддано",
+      "uploaded": "Вивантажено",
       "downloaded": "Завантажено",
-      "ratio": "Рейтинг",
+      "ratio": "Співвідношення",
       "torrents": "Торенти",
       "size": "Розмір",
-      "seeded": "Засіяно"
+      "seeded": "Роздано"
     },
     "tableHeaders": {
       "tracker": "Трекер",
-      "uploaded": "Віддано",
+      "uploaded": "Вивантажено",
       "downloaded": "Завантажено",
-      "ratio": "Рейтинг",
+      "ratio": "Співвідношення",
       "buffer": "Буфер",
       "torrents": "Торенти",
       "size": "Розмір",
-      "seeded": "Засіяно"
+      "seeded": "Роздано"
     },
-    "seededTooltip": "Віддано ÷ Розмір вмісту — скільки разів ви засіяли свій вміст",
+    "seededTooltip": "Вивантажено ÷ Розмір вмісту — скільки разів ви роздали свій вміст",
     "mergedFrom": "Об'єднано з: {{domains}}",
     "original": "Оригінал: {{domain}}",
     "mergeTooltip": "Об'єднати вибрані трекери в цю групу",
@@ -167,10 +167,10 @@
       "title": "Імпорт налаштувань трекерів",
       "description": "Вставте JSON для імпорту налаштувань трекерів (перейменування та об'єднання).",
       "jsonData": "Дані JSON",
-      "invalidFormat": "Невірний формат: очікується масив trackerCustomizations",
-      "missingDisplayName": "Невірний запис: відсутній displayName",
-      "invalidDomains": "Невірний запис: domains має бути непорожнім масивом",
-      "invalidJson": "Невірний JSON",
+      "invalidFormat": "Неправильний формат: очікується масив trackerCustomizations",
+      "missingDisplayName": "Неправильний запис: відсутній displayName",
+      "invalidDomains": "Неправильний запис: domains має бути непорожнім масивом",
+      "invalidJson": "Неправильний JSON",
       "newCount": "{{count}} нових",
       "conflictCount": "{{count}} конфлікт",
       "conflictCount_plural": "{{count}} конфліктів",

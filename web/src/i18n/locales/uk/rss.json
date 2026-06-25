@@ -76,7 +76,7 @@
     "episodeFilterHelp": "Формат: S01-S03;E01-E10 (діапазони сезонів та епізодів)",
     "useRegex": "Використовувати Regex",
     "smartFilter": "Розумний фільтр епізодів",
-    "affectedFeeds": "Відповідні стрічки",
+    "affectedFeeds": "Цільові стрічки",
     "noFeedsAvailable": "Стрічки недоступні",
     "savePath": "Шлях збереження",
     "savePathPlaceholder": "/downloads/серіали",
@@ -158,10 +158,10 @@
     "connecting": "SSE підключається",
     "reconnecting": "Перепідключення",
     "reconnectingAttempt": "Перепідключення ({{attempt}}/5)",
-    "disconnected": "Відключено"
+    "disconnected": "Від'єднано"
   },
   "toast": {
-    "liveRssDisconnected": "Live RSS оновлення відключено",
+    "liveRssDisconnected": "Трансляцію оновлень RSS від'єднано",
     "rssProcessingEnabled": "Обробку RSS увімкнено",
     "failedToEnableProcessing": "Не вдалося увімкнути обробку RSS",
     "rssAutoDownloadEnabled": "Автозавантаження RSS увімкнено",

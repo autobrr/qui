@@ -47,7 +47,7 @@
     "addFirst": "Додайте свій перший екземпляр",
     "titleBarSpeeds": {
       "label": "Швидкість рядка заголовка",
-      "description": "Показати швидкість завантаження/upload у заголовку вкладки браузера"
+      "description": "Показати швидкість завантаження/вивантаження у заголовку вкладки браузера"
     },
     "addDialog": {
       "title": "Додати екземпляр",
@@ -65,7 +65,7 @@
     "description": "Налаштуйте екземпляри Sonarr і Radarr для розширеного перехресного пошуку за допомогою зовнішніх ідентифікаторів"
   },
   "clientApiKeys": {
-    "cardTitle": "Ключі проксі клієнта API",
+    "cardTitle": "API-ключі клієнтського проксі",
     "cardDescription": "Керуйте ключами API для зовнішніх програм для підключення до екземплярів qBittorrent через qui",
     "createButton": "Створити ключ клієнта API",
     "loading": "Завантаження ключів клієнта API...",
@@ -86,14 +86,14 @@
       "title": "Створити ключ клієнта API",
       "description": "Створіть ключ API для конкретного клієнта, щоб підключитися до екземпляра qBittorrent.",
       "clientNameLabel": "Ім'я клієнта",
-      "clientNamePlaceholder": "наприклад, autobrr, tqm, sonarr, radar, cross-seed",
+      "clientNamePlaceholder": "наприклад, autobrr, tqm, sonarr, radarr, cross-seed",
       "instanceLabel": "Екземпляр qBittorrent",
       "instancePlaceholder": "Виберіть екземпляр",
       "creating": "Створення..."
     },
     "newKey": {
       "title": "Ключ API створено",
-      "warning": "Ця інформація відображається лише один раз. Збережіть його в менеджері паролів, перш ніж закрити діалогове вікно.",
+      "warning": "Ця інформація відображається лише один раз. Збережіть її в менеджері паролів, перш ніж закрити діалогове вікно.",
       "proxyUrl": "Проксі URL",
       "showProxyUrl": "Показати проксі URL",
       "hideProxyUrl": "Приховати проксі URL",
@@ -140,7 +140,7 @@
     },
     "newKey": {
       "label": "Ваш новий ключ API",
-      "warning": "Збережіть цей ключ зараз. Ви більше не зможете це побачити.",
+      "warning": "Збережіть цей ключ зараз. Ви більше не зможете його побачити.",
       "done": "Готово"
     },
     "deleteDialog": {
@@ -167,7 +167,7 @@
     "loading": "Завантаження зовнішніх програм...",
     "loadFailed": "Не вдалося завантажити зовнішні програми",
     "unknownError": "Невідома помилка",
-    "empty": "Зовнішні програми не налаштовані. Створіть його, щоб почати.",
+    "empty": "Зовнішні програми не налаштовано. Створіть одну, щоб почати.",
     "enabled": "Увімкнено",
     "disabled": "Вимкнено",
     "created": "Створено {{date}}",
@@ -222,14 +222,14 @@
     "placeholders": {
       "hash": "Хеш торента",
       "name": "Назва торента",
-      "savePath": "Зберегти шлях",
+      "savePath": "Шлях збереження",
       "contentPath": "Шлях вмісту",
       "category": "Категорія",
       "tags": "Теги (розділені комами)",
       "state": "Стан торента",
       "size": "Розмір у байтах",
       "progress": "Прогрес (0-1)",
-      "comment": "Торент коментар"
+      "comment": "Коментар торента"
     }
   },
   "notifications": {
@@ -238,7 +238,7 @@
     "addButton": "Додати ціль сповіщення",
     "loading": "Завантаження цілей сповіщень...",
     "loadFailed": "Не вдалося завантажити цілі сповіщень",
-    "empty": "Цілі сповіщень не налаштовано. Додайте один, щоб почати отримувати сповіщення.",
+    "empty": "Цілі сповіщень не налаштовано. Додайте одну, щоб почати отримувати сповіщення.",
     "allEvents": "Усі події",
     "showList": "Показати список",
     "hideList": "Приховати список",
@@ -249,9 +249,9 @@
     "groups": {
       "torrent": "Торент",
       "maintenance": "Технічне обслуговування",
-      "crossSeed": "Крос-сіди",
+      "crossSeed": "Крос-сід",
       "automations": "Автоматизації",
-      "other": "інше",
+      "other": "Інше",
       "unknown": "Невідомо"
     },
     "form": {
@@ -266,7 +266,7 @@
         "discord": "discord://token@id"
       },
       "enabled": "Увімкнено",
-      "enabledDescription": "Перемкнути доставку для цієї цілі.",
+      "enabledDescription": "Увімкнути або вимкнути доставку для цієї цілі.",
       "events": "Події",
       "selectAll": "Вибрати все",
       "select": "Виберіть",
@@ -274,7 +274,7 @@
       "loadingEventTypes": "Завантаження типів подій..."
     },
     "dialog": {
-      "newTitle": "Нова мета сповіщення",
+      "newTitle": "Нова ціль сповіщення",
       "newDescription": "Налаштуйте, куди qui має надсилати сповіщення та оновлення статусу.",
       "editTitle": "Редагувати ціль сповіщення",
       "editDescription": "Оновіть налаштування доставки для цієї цілі.",
@@ -317,7 +317,7 @@
       "UTC": "UTC",
       "Americas": "Америки",
       "Europe": "Європа",
-      "Asia": "Азії",
+      "Asia": "Азія",
       "Africa": "Африка",
       "Oceania": "Океанія"
     },
@@ -367,42 +367,42 @@
       "path": "Шлях до файлу журналу",
       "pathPlaceholder": "Залиште порожнім лише для stdout",
       "maxSize": "Максимальний розмір (MB)",
-      "maxBackups": "Максимальне резервне копіювання",
+      "maxBackups": "Макс. кількість резервних копій",
       "saving": "Збереження...",
       "saveSettings": "Зберегти налаштування"
     },
     "viewer": {
       "connected": "Підключено",
-      "disconnected": "Відключено",
-      "searchPlaceholder": "Журнали пошуку...",
+      "disconnected": "Від'єднано",
+      "searchPlaceholder": "Пошук у журналах...",
       "allLevels": "Усі рівні",
       "all": "Усі",
       "none": "Немає",
-      "levelCount_one": "Рівень {{count}}",
-      "levelCount_other": "Рівні {{count}}",
-      "mutedCount_one": "{{count}} Вимкнено",
-      "mutedCount_other": "{{count}} Вимкнено",
+      "levelCount_one": "{{count}} рівень",
+      "levelCount_other": "{{count}} рівня",
+      "mutedCount_one": "{{count}} вимкнено",
+      "mutedCount_other": "{{count}} вимкнено",
       "mutedMessages": "Приглушені повідомлення",
       "clearAll": "Очистити все",
       "clear": "Очистити",
       "autoScroll": "Автопрокручування",
       "noEntriesMatch": "Немає записів, що відповідають поточному фільтру",
       "waiting": "Очікування записів журналу...",
-      "showing": "Показано записи {{shown}} із {{total}} ({{max}} {{mode}})",
+      "showing": "Показано {{shown}} із {{total}} записів ({{max}} {{mode}})",
       "maxLive": "макс",
       "maxPaused": "макс. під час паузи",
       "oldestEntriesDropped": "• найстаріші записи видалено",
       "muteSimilarEntries": "Вимкнути схожі записи",
-      "levelCount_few": "Рівні {{count}}",
-      "levelCount_many": "Рівнів {{count}}",
-      "mutedCount_few": "{{count}} Вимкнено",
-      "mutedCount_many": "{{count}} Вимкнено"
+      "levelCount_few": "{{count}} рівні",
+      "levelCount_many": "{{count}} рівнів",
+      "mutedCount_few": "{{count}} вимкнено",
+      "mutedCount_many": "{{count}} вимкнено"
     },
     "entryDialog": {
       "title": "Запис у журналі",
       "rawLine": "Необроблений рядок журналу",
       "copyRaw": "Копіювати Raw",
-      "copyJson": "Копія JSON",
+      "copyJson": "Копіювати JSON",
       "close": "Закрити"
     },
     "toasts": {
@@ -417,20 +417,20 @@
     "selector": {
       "title": "Вибір теми",
       "loadingDescription": "Завантаження доступних тем...",
-      "description": "Виберіть із доступних тем. Преміум-теми require мають дійсну ліцензію.",
+      "description": "Виберіть із доступних тем. Преміум-теми потребують дійсної ліцензії.",
       "verificationUnavailable": "Перевірка ліцензії недоступна. Перемикання преміум-тем тимчасово вимкнено.",
-      "freeBadge": "безкоштовно",
+      "freeBadge": "Безкоштовно",
       "freeThemes": "Безкоштовні теми",
       "premiumBadge": "Преміум",
       "premiumThemes": "Преміум-теми",
-      "notLoaded": "Преміум теми не завантажено",
+      "notLoaded": "Преміум-теми не завантажено",
       "notLoadedDescription": "Налаштувати",
-      "notLoadedAnd": "і бігти",
+      "notLoadedAnd": "і запустити",
       "premium": "Преміум",
       "pro": "Pro",
-      "free": "безкоштовно",
+      "free": "Безкоштовно",
       "locked": "Заблоковано",
-      "lock": "Замок"
+      "lock": "Заблокувати"
     },
     "toasts": {
       "verifyFailed": "Перевірка ліцензії недоступна",
@@ -453,7 +453,7 @@
         "unlockDescription": "Платіть, скільки хочете (мінімум $4,99) • Довічна ліцензія • Усі теми",
         "activeTitle": "Преміум доступ активний",
         "activeDescription": "Ви маєте доступ до всіх поточних і майбутніх преміум-тем",
-        "activationRequiredTitle": "Активація ліцензії Required",
+        "activationRequiredTitle": "Потрібна активація ліцензії",
         "activationRequiredDescription": "Ваша ліцензія має бути активована на цій машині"
       },
       "portalHelp": {
@@ -461,33 +461,33 @@
         "suffix": "."
       },
       "discord": {
-        "title": "Discord перк",
-        "prefix": "Вимагайте",
-        "afterRole": "роль доступу до приватного каналу.",
+        "title": "Бонус Discord",
+        "prefix": "Отримайте",
+        "afterRole": "роль для доступу до приватного каналу.",
         "openDiscord": "Відкрийте qui Discord",
         "opensInNewTab": "(відкривається в новій вкладці)",
-        "afterLink": ", бігти",
+        "afterLink": ", запустіть",
         "copyVerifyAriaLabel": "Копіювати команду /verify",
         "copyVerifyTitle": "Натисніть, щоб скопіювати",
         "verifyCommand": "/verify",
         "afterVerify": "в",
         "channel": "#qui",
-        "suffix": "і ввійдіть, використовуючи електронну адресу вашої ліцензії."
+        "suffix": ", і ввійдіть, використовуючи електронну адресу вашої ліцензії."
       },
       "details": {
         "productAdded": "{{productName}} • Додано {{date}}",
         "productStatusAndAdded": "{{productName}} • Статус: {{status}} • Додано {{date}}"
       },
       "invalid": {
-        "polarPrefix": "Ця ліцензія не активна на цій машині. Натисніть повторно активувати, щоб використовувати його тут. Якщо ви досягли ліміту активації, деактивуйте його на іншій машині, де він активний, або керуйте активаціями через",
+        "polarPrefix": "Ця ліцензія не активна на цій машині. Натисніть «Повторно активувати», щоб використовувати її тут. Якщо ви досягли ліміту активацій, деактивуйте її на іншій машині, де вона активна, або керуйте активаціями через",
         "polarSuffix": ".",
-        "dodo": "Ця ліцензія не активна на цій машині. Натисніть повторно активувати, щоб використовувати його тут. Якщо ви досягли ліміту активації, деактивуйте його на іншій машині, де він зараз активний."
+        "dodo": "Ця ліцензія не активна на цій машині. Натисніть «Повторно активувати», щоб використовувати її тут. Якщо ви досягли ліміту активацій, деактивуйте її на іншій машині, де вона зараз активна."
       },
       "actions": {
         "addLicense": "Додати ліцензію",
         "remove": "Вилучити",
         "removing": "Видалення...",
-        "getPremium": "Отримайте Premium",
+        "getPremium": "Отримати Premium",
         "reactivate": "Повторна активація ліцензії",
         "activating": "Активація...",
         "copyLicenseKey": "Копіювати ліцензійний ключ",
@@ -546,7 +546,7 @@
       "failedCopyVerify": "Не вдалося скопіювати команду перевірки",
       "toasts": {
         "activationSuccess": "Ліцензію успішно активовано!",
-        "activationSuccessPremium": "Преміум доступ активовано! дякую!",
+        "activationSuccessPremium": "Преміум-доступ активовано! Дякуємо!",
         "paymentCompleted": "Оплату завершено. Додайте преміальний ліцензійний ключ, щоб завершити налаштування.",
         "paymentNotCompleted": "Платіж не виконано.",
         "returnedFromCheckout": "Повернуто з каси. Коли будете готові, додайте преміум-ліцензійний ключ.",
@@ -660,19 +660,19 @@
     "deleteIndexer": "Видалити індексатор",
     "deleteIndexerDescription": "Ви впевнені, що хочете видалити \"{{name}}\"? Цю дію не можна скасувати.",
     "deleteAllIndexers": "Видалити усі індексатори",
-    "deleteAllDescription": "Ви впевнені, що бажаєте видалити усі індексатори {{count}}? Цю дію не можна скасувати.",
+    "deleteAllDescription": "Ви впевнені, що бажаєте видалити усі {{count}} індексаторів? Цю дію не можна скасувати.",
     "toast": {
       "loadFailed": "Не вдалося завантажити індексатори",
       "deletedSuccess": "Індексатор видалено",
       "deleteFailed": "Не вдалося видалити індексатор",
       "allDeletedSuccess": "Усі індексатори видалено",
       "allDeletedFailed": "Не вдалося видалити усі індексатори",
-      "deleteAllSuccess": "Видалено усі індексатори {{count}}",
-      "deleteAllPartial": "Видалені індексатори {{success}}, помилка {{failed}}: {{names}}",
+      "deleteAllSuccess": "Видалено усі {{count}} індексаторів",
+      "deleteAllPartial": "Видалено {{success}} індексаторів, {{failed}} не вдалося: {{names}}",
       "testSuccess": "Перевірка підключення успішна",
       "noIndexersToTest": "Немає індексаторів для перевірки",
-      "testing": "Тестування індексаторів {{count}}...",
-      "testAllSuccess": "Усі індексатори {{count}} успішно протестовано",
+      "testing": "Тестування {{count}} індексаторів...",
+      "testAllSuccess": "Усі {{count}} індексаторів успішно протестовано",
       "testAllPartial": "{{success}} пройшло, {{failed}} не вдалося",
       "failedIndexers": "Помилка індексаторів: {{names}}",
       "capsSynced": "Можливості, синхронізовані з серверної частини",
@@ -682,8 +682,8 @@
       "summary": "{{enabled}} увімкнено, {{capabilities}} із можливостями",
       "description": "Керуйте індексаторами Torznab на базі Jackett, Prowlarr або власних кінцевих точок трекера",
       "deleteAll": "Видалити все",
-      "discover": "Відкрийте для себе",
-      "addSingle": "Додати сингл"
+      "discover": "Виявити",
+      "addSingle": "Додати окремо"
     },
     "dialog": {
       "addTitle": "Додати індексатор",
@@ -693,8 +693,8 @@
       "labels": {
         "name": "Назва",
         "backend": "Backend",
-        "baseUrl": "Основа URL",
-        "indexerId": "Індексатор ID",
+        "baseUrl": "Базовий URL",
+        "indexerId": "ID індексатора",
         "apiKey": "Ключ API",
         "priority": "Пріоритет",
         "timeout": "Час очікування (секунди)",
@@ -709,20 +709,20 @@
         "selectBackend": "Виберіть бекенд",
         "apiKeyEdit": "Залиште поле порожнім, щоб зберегти",
         "apiKeyCreate": "Ваш ключ API",
-        "indexerIdProwlarr": "Prowlarr індексатор ID (наприклад, 1)",
-        "indexerIdJackett": "Додатковий індексатор Jackett ID (наприклад, будь-який)",
+        "indexerIdProwlarr": "ID індексатора Prowlarr (наприклад, 1)",
+        "indexerIdJackett": "Необов'язковий ID індексатора Jackett (наприклад, aither)",
         "username": "Ім'я користувача",
         "password": "Пароль"
       },
       "hints": {
         "indexerIdProwlarr": "Введіть числовий ID зі сторінки деталей індексатора в Prowlarr.",
-        "indexerIdJackett": "Додатково для Jackett. Залиште поле порожнім, щоб дозволити qui отримати його автоматично.",
+        "indexerIdJackett": "Необов'язково для Jackett. Залиште поле порожнім, щоб дозволити qui визначити його автоматично.",
         "basicPasswordKeep": "Залиште як <redacted>, щоб зберегти наявний пароль."
       },
       "backends": {
         "jackett": "Jackett",
         "prowlarr": "Prowlarr",
-        "native": "Рідний Torznab"
+        "native": "Власний Torznab"
       },
       "buttons": {
         "save": "Зберегти",
@@ -743,11 +743,11 @@
       }
     },
     "autodiscovery": {
-      "title": "Відкрийте для себе індексатори",
-      "descriptionInput": "Підключіться до Jackett або Prowlarr, щоб знайти налаштовані індексатори",
+      "title": "Виявлення індексаторів",
+      "descriptionInput": "Підключіться до Jackett або Prowlarr, щоб виявити налаштовані індексатори",
       "descriptionSelect": "Виберіть індексатори для імпорту",
       "labels": {
-        "indexerUrl": "Індексатор URL",
+        "indexerUrl": "URL індексатора",
         "apiKey": "Ключ API",
         "basicAuth": "Основна авторизація",
         "basicAuthDescription": "Використовуйте базову автентифікацію HTTP для Jackett/Prowlarr за зворотним проксі.",
@@ -756,7 +756,7 @@
       },
       "placeholders": {
         "indexerUrl": "http://localhost:9696",
-        "apiKey": "Ключ вашого індексатора API",
+        "apiKey": "API-ключ вашого індексатора",
         "username": "Ім'я користувача",
         "password": "Пароль"
       },
@@ -765,28 +765,28 @@
       },
       "buttons": {
         "cancel": "Скасувати",
-        "discover": "Відкрийте для себе",
+        "discover": "Виявити",
         "discovering": "Виявлення...",
         "back": "Назад",
         "importing": "Імпорт...",
-        "import": "Імпорт індексатора {{count}}",
-        "importPlural": "Імпорт індексаторів {{count}}",
+        "import": "Імпортувати {{count}} індексатор",
+        "importPlural": "Імпортувати {{count}} індексатори",
         "selectAll": "Виберіть усі",
         "deselectAll": "Зняти вибір із усіх"
       },
       "selectionCount": "Вибрано {{selected}} з {{total}}",
       "noIndexersFound": "Індексаторів не знайдено",
       "willUpdate": "Буде оновлено",
-      "typeLabel": "тип:",
-      "backendLabel": "Сервер:",
+      "typeLabel": "Тип:",
+      "backendLabel": "Бекенд:",
       "notConfigured": "(Не налаштовано)",
       "unknownError": "Невідома помилка",
       "toast": {
         "urlRequired": "Потрібен URL індексатора",
         "basicAuthRequired": "Ім'я користувача та пароль Basic Auth обов'язкові",
         "urlRequiredBeforeImport": "Перед імпортом надайте індексатор URL",
-        "discoveredWithExisting": "Знайдено індексатори {{total}} ({{existing}} вже існує)",
-        "discovered": "Знайдено індексатори {{count}}",
+        "discoveredWithExisting": "Знайдено {{total}} індексаторів ({{existing}} вже існує)",
+        "discovered": "Знайдено {{count}} індексаторів",
         "discoverFailed": "Не вдалося виявити індексатори: {{error}}",
         "importSuccess": "Успіх: {{details}}",
         "importWithWarnings": "{{details}} ({{warningCount}} із застереженнями)",
@@ -811,11 +811,11 @@
       "disabled": "Вимкнено",
       "working": "Працює",
       "failed": "Не вдалося",
-      "untested": "Неперевірений",
+      "untested": "Неперевірено",
       "testAll": "Перевірити все",
       "filters": "Фільтри",
       "clearFilters": "Очистити фільтри",
-      "showingCount": "Показано {{shown}} індексаторів {{total}}",
+      "showingCount": "Показано {{shown}} із {{total}} індексаторів",
       "loading": "Завантаження...",
       "noIndexers": "Індексатори не налаштовані. Додайте один, щоб почати.",
       "noMatch": "Жоден індексатор не відповідає поточним фільтрам",
@@ -826,68 +826,89 @@
       "filterTestStatus": "Статус тесту",
       "filterBackend": "Backend",
       "filterAll": "Усі",
-      "filterEnabledOnly": "Тільки ввімкнено",
+      "filterEnabledOnly": "Лише ввімкнені",
       "filterDisabledOnly": "Лише вимкнено",
-      "filterWorkingOnly": "Тільки робочі",
-      "filterFailedOnly": "Тільки не вдалося",
-      "filterUntestedOnly": "Тільки не перевірено",
+      "filterWorkingOnly": "Лише робочі",
+      "filterFailedOnly": "Лише з помилкою",
+      "filterUntestedOnly": "Лише неперевірені",
       "filterJackett": "Jackett",
       "filterProwlarr": "Prowlarr",
-      "filterNative": "Рідна",
+      "filterNative": "Власний",
       "tooltipTest": "Перевірити підключення",
       "tooltipSyncCaps": "Можливості синхронізації",
       "tooltipEdit": "Редагувати",
       "tooltipDelete": "Видалити",
       "tooltipSyncCapsFromBackend": "Можливості синхронізації з серверної частини",
       "capability": "Можливість: {{name}}",
-      "clickToShowAllCapabilities": "Натисніть, щоб показати усі можливості {{count}}"
+      "clickToShowAllCapabilities": "Натисніть, щоб показати усі {{count}} можливостей"
     },
     "activity": {
-      "title": "Діяльність планувальника",
-      "idle": "Бездіяльність",
+      "title": "Активність планувальника",
+      "idle": "Простій",
       "queueLength": "Черга",
-      "workers": "Робітники",
+      "workers": "Воркери",
       "cooldown": "Кулдаун",
       "running": "Виконується",
       "queued": "У черзі",
-      "rateLimited": "Rate Limited",
+      "rateLimited": "Обмежено за швидкістю",
       "noActiveTasks": "Немає активних завдань або обмежень по швидкості",
       "andMore": "...та ще {{count}}",
-      "workersStatus": "{{used}}/{{total}} працівників",
+      "workersStatus": "{{used}}/{{total}} воркерів",
       "runningCount": "{{count}} працює",
       "queuedCount": "{{count}} у черзі",
       "cooldownCount": "{{count}} кулдаун",
-      "ready": "Готовий",
+      "ready": "Готово",
       "left": "залишилось {{time}}"
     },
     "searchHistory": {
       "title": "Історія пошуку",
-      "searches": "Пошуки {{count}}",
-      "searchesWithErrors": "Пошуки {{count}}, помилки {{errors}}",
+      "searches": "{{count}} пошуків",
+      "searchesWithErrors": "{{count}} пошуків, {{errors}} помилок",
       "noSearchesYet": "Пошуків ще немає",
       "successful": "{{count}} успішно",
       "failed": "{{count}} не вдалося",
       "source": "Джерело: {{source}}",
-      "results": "Результати {{count}}",
+      "results": "{{count}} результатів",
       "detail": {
         "release": "Реліз",
         "results": "Результати",
         "duration": "Тривалість",
         "priority": "Пріоритет",
-        "crossSeed": "Крос-сіди",
+        "crossSeed": "Крос-сід",
         "added": "Додано {{count}}",
         "error": "Помилка",
         "searchParameters": "Параметри пошуку",
-        "mode": "режим:",
-        "type": "тип:",
-        "job": "Робота {{id}}",
+        "mode": "Режим:",
+        "type": "Тип:",
+        "job": "Завдання {{id}}",
         "statusSuccess": "Успіх",
         "statusFailed": "Не вдалося",
         "statusSkipped": "Пропущено",
-        "statusRateLimited": "Rate Limited",
+        "statusRateLimited": "Обмежено за швидкістю",
         "season": "Сезон",
         "episode": "Епізод"
       }
+    },
+    "priorityLabels": {
+      "interactive": "Інтерактивний",
+      "rss": "RSS",
+      "completion": "Завершення",
+      "background": "Фоновий"
+    },
+    "contentTypeLabels": {
+      "movie": "Фільм",
+      "tv": "Серіали",
+      "tv_daily": "Серіали (щоденні)",
+      "xxx": "XXX",
+      "music": "Музика",
+      "audiobook": "Аудіокнига",
+      "book": "Книга",
+      "comic": "Комікс",
+      "magazine": "Журнал",
+      "education": "Освіта",
+      "app": "Застосунок",
+      "game": "Гра",
+      "unknown": "Невідомо"
     }
   },
   "searchCache": {
@@ -901,8 +922,8 @@
     "saveTTL": "Зберегти",
     "ttlHelper": "Мінімум {{min}} хвилин. Вищі значення зменшують навантаження на індексатор.",
     "entries": "Записи",
-    "hitCount": "Підрахунок звернень",
-    "approxSize": "прибл. Розмір",
+    "hitCount": "Кількість звернень",
+    "approxSize": "Приблизний розмір",
     "ttl": "TTL",
     "newestEntry": "Найновіший запис",
     "lastUsed": "Останнє використання",
@@ -912,12 +933,12 @@
     "timestamps": {
       "justNow": "тільки зараз",
       "ago": "{{duration}} тому",
-      "inFuture": "в {{duration}}"
+      "inFuture": "через {{duration}}"
     },
     "toasts": {
       "ttlUpdated": "Кеш TTL оновлено до {{minutes}} хвилин",
       "ttlUpdateFailed": "Не вдалося оновити кеш TTL",
-      "invalidNumber": "Введіть дійсний номер",
+      "invalidNumber": "Введіть дійсне число",
       "ttlMinimum": "TTL має становити принаймні {{min}} хвилин"
     }
   },
@@ -925,7 +946,7 @@
     "loading": "Завантаження...",
     "loadFailed": "Не вдалося завантажити інформацію про програму",
     "build": {
-      "title": "Будувати",
+      "title": "Збірка",
       "description": "Деталі версії та збірки.",
       "refresh": "Оновити",
       "version": "Версія",
@@ -970,11 +991,11 @@
       "title": "Зберігання",
       "description": "Шлях до бази даних і файлової системи.",
       "database": "База даних",
-      "bind": "Прив'язати адресу",
+      "bind": "Адреса прив'язки",
       "configDir": "Каталог конфігурацій",
       "dataDir": "Каталог даних"
     },
-    "copyTitle": "Копія {{label}}",
+    "copyTitle": "Копіювати {{label}}",
     "toasts": {
       "copied": "{{label}} скопійовано в буфер обміну",
       "copyFailed": "Не вдалося скопіювати {{label}}"

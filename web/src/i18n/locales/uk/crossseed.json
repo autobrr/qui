@@ -4,10 +4,10 @@
   "automationOnBadge": "Автоматизацію увімкнено",
   "automationOffBadge": "Автоматизацію вимкнено",
   "indexersMissing": {
-    "title": "Відсутні Torznab індексери",
-    "description": "RSS автоматизація потребує принаймні одного увімкненого Torznab індексера. Пошук серед торентів, що роздаються, може все ще знаходити збіги OPS/RED через Gazelle, якщо увімкнено.",
-    "manageLink": "Керувати індексерами в Налаштуваннях",
-    "linkSuffix": "щоб додати або увімкнути один."
+    "title": "Відсутні Torznab індексатори",
+    "description": "RSS автоматизація потребує принаймні одного увімкненого Torznab індексатора. Пошук серед торентів, що роздаються, може все ще знаходити збіги OPS/RED через Gazelle, якщо увімкнено.",
+    "manageLink": "Керувати індексаторами в Налаштуваннях",
+    "linkSuffix": "щоб додати або увімкнути індексатор."
   },
   "overview": {
     "rssAutomation": {
@@ -19,7 +19,8 @@
       "cooldown": "Затримка {{display}}",
       "ready": "Готово",
       "disabled": "Вимкнено",
-      "noRunsYet": "Запусків ще не було"
+      "noRunsYet": "Запусків ще не було",
+      "disabledUpper": "ВИМКНЕНО"
     },
     "seededSearch": {
       "title": "Пошук серед торентів, що роздаються",
@@ -30,9 +31,9 @@
       "now": "Зараз",
       "running": "Виконується...",
       "idle": "Очікування",
-      "gazelleFullDescription": "Gazelle перевіряє RED/OPS для кожного вихідного торента. Torznab запитує вибрані не-OPS/RED індексери.",
-      "gazellePartialDescription": "Gazelle перевіряє налаштовані сайти для кожного вихідного торента. Torznab запитує вибрані індексери.",
-      "noGazelleDescription": "Без Gazelle всі збіги покладаються на Torznab індексери."
+      "gazelleFullDescription": "Gazelle перевіряє RED/OPS для кожного вихідного торента. Torznab запитує вибрані не-OPS/RED індексатори.",
+      "gazellePartialDescription": "Gazelle перевіряє налаштовані сайти для кожного вихідного торента. Torznab запитує вибрані індексатори.",
+      "noGazelleDescription": "Без Gazelle всі збіги покладаються на Torznab індексатори."
     }
   },
   "tabs": {
@@ -47,19 +48,19 @@
     "description": "Опитуйте RSS-стрічки трекерів з фіксованим інтервалом і автоматично додавайте відповідні крос-сіди.",
     "enableSwitch": "Увімкнути RSS автоматизацію",
     "intervalLabel": "Інтервал запуску RSS (хвилини)",
-    "intervalTooltip": "Автоматизація обробляє повну стрічку від кожного увімкненого Torznab індексера при кожному запуску. Мінімальний інтервал — {{min}} хвилин, щоб не перевантажувати індексери.",
+    "intervalTooltip": "Автоматизація обробляє повну стрічку від кожного увімкненого Torznab індексатора при кожному запуску. Мінімальний інтервал — {{min}} хвилин, щоб не перевантажувати індексатори.",
     "targetInstances": "Цільові екземпляри",
     "selectInstances": "Вибрати екземпляри qBittorrent",
     "noActiveInstances": "Немає доступних активних екземплярів",
     "noInstancesAvailable": "Екземпляри недоступні.",
     "pickInstance": "Виберіть принаймні один екземпляр для отримання крос-сідів.",
     "instancesSelected": "Вибрано {{count}} екземпляр(ів).",
-    "targetIndexers": "Цільові індексери",
-    "allEnabledIndexers": "Всі увімкнені індексери (залиште порожнім для всіх)",
-    "noIndexersConfigured": "Torznab індексери не налаштовано",
-    "noIndexersConfiguredDot": "Torznab індексери не налаштовано.",
-    "allIndexersEligible": "Всі увімкнені Torznab індексери доступні для RSS автоматизації.",
-    "selectedIndexersPolled": "Буде опитано лише {{count}} вибраний(-их) індексер(-ів).",
+    "targetIndexers": "Цільові індексатори",
+    "allEnabledIndexers": "Всі увімкнені індексатори (залиште порожнім для всіх)",
+    "noIndexersConfigured": "Torznab індексатори не налаштовано",
+    "noIndexersConfiguredDot": "Torznab індексатори не налаштовано.",
+    "allIndexersEligible": "Всі увімкнені Torznab індексатори доступні для RSS автоматизації.",
+    "selectedIndexersPolled": "Буде опитано лише {{count}} вибраний(-их) індексатор(-ів).",
     "includeCategories": "Включити категорії",
     "allCategories": "Всі категорії (залиште порожнім для всіх)",
     "typeToAddCategories": "Введіть для додавання категорій",
@@ -91,11 +92,12 @@
     "runNow": "Запустити зараз",
     "saveSettings": "Зберегти налаштування RSS автоматизації",
     "reset": "Скинути",
-    "requiresTorznabIndexer": "Запуски RSS автоматизації потребують принаймні одного Torznab індексера.",
+    "requiresTorznabIndexer": "Запуски RSS автоматизації потребують принаймні одного Torznab індексатора.",
     "items": "{{count}} елементів",
     "failedCount": "{{count}} невдалих",
     "runSummary": "{{runs}} запусків • +{{added}}",
-    "runSummaryWithFailures": "{{runs}} запусків • +{{added}} • {{failed}} невдалих"
+    "runSummaryWithFailures": "{{runs}} запусків • +{{added}} • {{failed}} невдалих",
+    "scheduledUpper": "ЗА РОЗКЛАДОМ"
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -112,7 +114,7 @@
     "waitTimeDescription": "Час очікування перед скануванням наступного торента, що роздається. Мінімум {{min}} секунд.",
     "gazelleOnlyNote": " Рекомендовано 10с+; це темп на торент, і кожен торент може викликати кілька API-викликів Gazelle.",
     "cooldownLabel": "Затримка (хвилини)",
-    "cooldownDescription": "Пропускати торенти, що роздаються, якщо їх вже шукали нещодавніше ніж це вікно. Мінімум {{min}} хвилин.",
+    "cooldownDescription": "Пропускати торенти, що роздаються, для яких пошук виконувався в межах цього вікна. Мінімум {{min}} хвилин.",
     "categories": "Категорії",
     "tags": "Теги",
     "allCategoriesAll": "Всі категорії (залиште порожнім для всіх)",
@@ -128,8 +130,8 @@
     "sourceInstance": "Вихідний екземпляр",
     "selectAnInstance": "Вибрати екземпляр",
     "addInstanceToSearch": "Додайте екземпляр для пошуку серед торентів, які ви вже роздаєте.",
-    "torznabIndexers": "Torznab індексери",
-    "torznabIndexersNonOpsRed": "Torznab індексери (не OPS/RED)",
+    "torznabIndexers": "Torznab індексатори",
+    "torznabIndexersNonOpsRed": "Torznab індексатори (не OPS/RED)",
     "torznab": "Torznab",
     "status": "Статус",
     "currentlyProcessing": "Обробляється зараз:",
@@ -139,7 +141,7 @@
     "resultsDetail": "{{added}} додано / {{skipped}} пропущено / {{failed}} невдалих",
     "started": "Розпочато:",
     "estCompletion": "Очік. завершення:",
-    "etaDetail": "≈ {{remaining}} торентів залишилось @ {{interval}}с інтервали",
+    "etaDetail": "≈ {{remaining}} торентів залишилось з інтервалом {{interval}}с",
     "recentRuns": "Останні запуски",
     "noRunsYet": "Запусків ще не було",
     "noSearchRunsRecorded": "Запуски пошуку ще не зафіксовано.",
@@ -151,7 +153,7 @@
     "idleUpper": "ОЧІКУВАННЯ",
     "runSummary": "{{runs}} запусків • +{{added}}",
     "runSummaryWithFailures": "{{runs}} запусків • +{{added}} • {{failed}} невдалих",
-    "searchNeedsTorznabUnlessGazelle": "Пошук серед торентів, що роздаються, потребує Torznab індексерів (якщо тільки ви не скануєте OPS/RED через Gazelle).",
+    "searchNeedsTorznabUnlessGazelle": "Пошук серед торентів, що роздаються, потребує Torznab індексаторів (якщо тільки ви не скануєте OPS/RED через Gazelle).",
     "scannedProgress": "{{processed}}/{{total}} відскановано",
     "torrentsCount": "{{count}} торентів",
     "failedCount": "{{count}} невдалих"
@@ -218,7 +220,7 @@
         "whenResolution": "Коли",
         "fromSource": "з",
         "anySource": "Будь-яке джерело",
-        "fileAs": "файл як",
+        "fileAs": "у категорію",
         "fallbackLabel": "Все інше",
         "fallbackDescriptionBefore": "Необов'язково. Категорія для ін'єкцій сезонних паків, які не відповідають жодному правилу вище (наприклад, ",
         "fallbackDescriptionAfter": "). Залиште порожнім, щоб дотримуватись режиму категорії нижче.",
@@ -232,7 +234,7 @@
     },
     "gazelle": {
       "title": "Gazelle (OPS/RED)",
-      "description": "Увімкніть пряме зіставлення через API з Orpheus та Redacted. Це працює разом з Torznab; Torznab індексери OPS/RED ігноруються.",
+      "description": "Увімкніть пряме зіставлення через API з Orpheus та Redacted. Це працює разом з Torznab; Torznab індексатори OPS/RED ігноруються.",
       "enableMatching": "Увімкнути зіставлення Gazelle",
       "enableDescription": "Застосовується до всіх вихідних торентів. Якщо можливо, qui також перевіряє RED/OPS через Gazelle.",
       "redactedApiKey": "API ключ Redacted",
@@ -249,7 +251,7 @@
       "sizeTolerance": "Допуск розміру (%)",
       "sizeToleranceDescription": "Максимальна різниця розміру для зіставлення. Також встановлює поріг автовідновлення (наприклад, 5% = відновити при >=95%).",
       "crossSeedEpisodes": "Крос-сід епізодів з паків",
-      "crossSeedEpisodesDescription": "Ваші локальні сезонні паки можуть відповідати окремим торентам епізодів на індексерах, дозволяючи роздавати обидва формати."
+      "crossSeedEpisodesDescription": "Ваші локальні сезонні паки можуть відповідати окремим торентам епізодів на індексаторах, дозволяючи роздавати обидва формати."
     },
     "safety": {
       "title": "Безпека та перевірка",
@@ -272,9 +274,9 @@
       "categoryAffixDescription": "Відокремлює крос-сіди від *arr додатків для запобігання циклам імпорту.",
       "prefix": "Префікс",
       "suffix": "Суфікс",
-      "indexerCategory": "Використовувати назву індексера як категорію",
-      "indexerCategoryHelp": "Створює категорію з назвою індексера. AutoTMM вимкнено; шлях збереження встановлено відповідно до оригінального торента. Корисно для відстеження, який індексер надав кожен крос-сід.",
-      "indexerCategoryDescription": "Встановити категорію за назвою індексера (наприклад, TorrentDB, BroadcasTheNet).",
+      "indexerCategory": "Використовувати назву індексатора як категорію",
+      "indexerCategoryHelp": "Створює категорію з назвою індексатора. AutoTMM вимкнено; шлях збереження встановлено відповідно до оригінального торента. Корисно для відстеження, який індексатор надав кожен крос-сід.",
+      "indexerCategoryDescription": "Встановити категорію за назвою індексатора (наприклад, TorrentDB, BroadcasTheNet).",
       "customCategory": "Власна категорія",
       "customCategoryHelp": "Всі крос-сіди будуть розміщені в одній власній категорії. AutoTMM вимкнено; шлях збереження встановлено відповідно до оригінального торента.",
       "customCategoryDescription": "Використовувати фіксовану назву категорії для всіх крос-сідів.",
@@ -366,7 +368,18 @@
     "failedCount_few": "{{count}} невдалі",
     "failedCount_many": "{{count}} невдалих",
     "showSkippedCount_few": "Показати {{count}} пропущені",
-    "showSkippedCount_many": "Показати {{count}} пропущених"
+    "showSkippedCount_many": "Показати {{count}} пропущених",
+    "statusLabels": {
+      "ready": "Готово",
+      "skipped": "Пропущено",
+      "applied": "Застосовано",
+      "failed": "Невдало",
+      "ready_no_threshold": "Готово (без порогу)"
+    },
+    "phases": {
+      "check": "Перевірка",
+      "apply": "Застосування"
+    }
   },
   "cancelDialog": {
     "title": "Скасувати запуск RSS автоматизації?",
@@ -380,22 +393,22 @@
     "searchRunCanceled": "Запуск пошуку скасовано",
     "automationRunStarted": "Запуск автоматизації розпочато",
     "rssAutomationRunCanceled": "Запуск RSS автоматизації скасовано",
-    "noIndexersConfiguredDescription": "{{context}} Додайте принаймні один увімкнений індексер у Налаштування → Індексери.",
+    "noIndexersConfiguredDescription": "{{context}} Додайте принаймні один увімкнений індексатор у Налаштування → Індексатори.",
     "settingsSaved": "Налаштування збережено",
     "failedToSaveSettings": "Не вдалося зберегти налаштування",
     "cannotEnableMode": "Неможливо увімкнути режим {{mode}}",
     "noLocalFilesystemAccess": "Екземпляр «{{name}}» не має увімкненого локального доступу до файлової системи.",
     "baseDirRequired": "Спочатку потрібно встановити базову директорію.",
     "unknownError": "Невідома помилка",
-    "noIndexersConfigured": "Torznab індексери не налаштовано",
+    "noIndexersConfigured": "Torznab індексатори не налаштовано",
     "pickInstanceBeforeRunning": "Виберіть принаймні один екземпляр для отримання крос-сідів перед запуском RSS автоматизації.",
-    "enableAutomationAfterIndexers": "Увімкніть RSS автоматизацію лише після налаштування Torznab індексерів.",
+    "enableAutomationAfterIndexers": "Увімкніть RSS автоматизацію лише після налаштування Torznab індексаторів.",
     "saveSettingsFirst": "Збережіть налаштування RSS автоматизації для застосування оновлених цільових екземплярів перед запуском.",
     "selectInstanceToRun": "Виберіть екземпляр для запуску",
     "seededSearchNeedsGazelle": "Для пошуку серед торентів, що роздаються, потрібен Gazelle",
     "enableGazelleDescription": "Увімкніть зіставлення Gazelle (OPS/RED) перед запуском з вимкненим Torznab.",
     "seededSearchNeedsTorznabOrGazelle": "Для пошуку серед торентів, що роздаються, потрібен Torznab або Gazelle",
-    "configureTorznabOrGazelle": "Налаштуйте принаймні один Torznab індексер або увімкніть зіставлення Gazelle для торентів OPS/RED.",
+    "configureTorznabOrGazelle": "Налаштуйте принаймні один Torznab індексатор або увімкніть зіставлення Gazelle для торентів OPS/RED.",
     "selectAtLeastOneInstance": "Виберіть принаймні один екземпляр для RSS автоматизації.",
     "customCategoryRequired": "Режим власної категорії потребує назви категорії"
   },
@@ -412,13 +425,13 @@
       "unavailable": "Фільтрація недоступна в цьому перегляді",
       "singleSelectionOnly": "Фільтрація крос-сідів працює лише з одним вибраним торентом",
       "identifying": "Визначення крос-сід торентів...",
-      "noResults": "Крос-засіяних торентів не знайдено",
+      "noResults": "Крос-сід торентів не знайдено",
       "found": "Знайдено {{matches}} крос-сід торентів (усього показано {{total}})",
       "failed": "Не вдалося визначити крос-сід торенти"
     },
     "search": {
       "noMatches": "Збігів крос-сіду не знайдено",
-      "noIndexers": "Налаштуйте принаймні один Torznab індексер для пошуку крос-сідів",
+      "noIndexers": "Налаштуйте принаймні один Torznab індексатор для пошуку крос-сідів",
       "completedOnly": "Крос-сідинг можливий лише для завершених торентів",
       "selectTracker": "Виберіть принаймні один трекер для власного пошуку",
       "selectResult": "Виберіть принаймні один результат для додавання",
@@ -426,8 +439,8 @@
       "analyzeFailed": "Не вдалося проаналізувати торент",
       "addFailed": "Не вдалося додати крос-сіди",
       "refreshReadyIn": "Готово через {{seconds}}с",
-      "rateLimitSearch": "Активне обмеження швидкості: {{message}}. Це захищає від банів трекерів. Деякі індексери тимчасово недоступні.",
-      "rateLimitAnalyze": "Обмеження швидкості під час аналізу: {{message}}. Деякі індексери можуть бути тимчасово недоступні. Це нормально і захищає від бану. Спробуйте знову через 30-60 хвилин.",
+      "rateLimitSearch": "Активне обмеження швидкості: {{message}}. Це захищає від банів трекерів. Деякі індексатори тимчасово недоступні.",
+      "rateLimitAnalyze": "Обмеження швидкості під час аналізу: {{message}}. Деякі індексатори можуть бути тимчасово недоступні. Це нормально і захищає від бану. Спробуйте знову через 30-60 хвилин.",
       "applySuccess_one": "Додано {{count}} крос-сід",
       "applySuccess_other": "Додано {{count}} крос-сідів",
       "applySuccessWithCompleted_one": "Додано {{count}} крос-сід (+{{completed}} завершено)",
@@ -542,7 +555,10 @@
       "success": "Успіх",
       "failed": "Невдача",
       "added": "Додано",
-      "canceled": "Скасовано"
+      "canceled": "Скасовано",
+      "running": "Виконується",
+      "partial": "Частково",
+      "pending": "Очікує"
     },
     "table": {
       "started": "Розпочато",
@@ -571,7 +587,7 @@
       "defaultToleranceLabel": "Допуск розміру за замовчуванням (%)",
       "sizeToleranceLabel": "Допуск розміру (%)",
       "sizeToleranceHelp": "Дозволяє невеликі відмінності розміру при порівнянні файлів (корисно для незначних перепакувань). Тримайте низьким для найкращої точності.",
-      "minPieceRatioLabel": "Мінімальний коефіцієнт фрагментів (%)",
+      "minPieceRatioLabel": "Мінімальне співвідношення фрагментів (%)",
       "minPieceRatioHelp": "Використовується лише для часткових збігів. Потребує принаймні цього % даних торента вже на диску.",
       "maxSearcheesPerRunLabel": "Макс. об'єктів пошуку за запуск",
       "maxSearcheesPerRunHelp": "0 = без обмежень. Корисно, коли ви хочете, щоб великі директорії завершувалися за кілька запусків: кожен запуск перевіряє директорію, пропускає завершені елементи і повторює незавершені.",
@@ -622,9 +638,9 @@
       "selectTags": "Вибрати теги",
       "matchModeLabel": "Режим зіставлення",
       "matchModeSearch": "Пошук (Torznab)",
-      "matchModeSearchDescription": "Пошук в індексерах через Torznab для кожного придатного файлу.",
+      "matchModeSearchDescription": "Пошук в індексаторах через Torznab для кожного придатного файлу.",
       "matchModeLink": "Дерево посилань",
-      "matchModeLinkDescription": "Пропустити Torznab. Побудувати дерево файлів з локальних даних і ввести безпосередньо. Найкраще для повторного імпорту відомого вмісту.",
+      "matchModeLinkDescription": "Пропустити Torznab. Побудувати дерево файлів з локальних даних та ін'єктувати безпосередньо. Найкраще для повторного імпорту відомого вмісту.",
       "categoryOverrideLabel": "Перевизначення категорії",
       "useGlobalCategory": "Використовувати глобальну категорію за замовчуванням",
       "typeToAddCategory": "Введіть для додавання категорії",
@@ -649,6 +665,36 @@
       "description": "Це видалить директорію сканування та її історію запусків. Вже додані торенти не постраждають.",
       "cancel": "Скасувати",
       "delete": "Видалити"
+    },
+    "contentTypeLabels": {
+      "movie": "Фільм",
+      "tv": "Серіал",
+      "music": "Музика",
+      "audiobook": "Аудіокнига",
+      "book": "Книга",
+      "comic": "Комікс",
+      "game": "Гра",
+      "app": "Застосунок",
+      "adult": "Для дорослих",
+      "unknown": "Невідомо"
+    },
+    "linkModeLabels": {
+      "regular": "Звичайний",
+      "hardlink": "Жорстке посилання",
+      "reflink": "Рефлінк"
+    },
+    "statusLabelsUpper": {
+      "queued": "У ЧЕРЗІ",
+      "scanning": "СКАНУВАННЯ",
+      "searching": "ПОШУК",
+      "injecting": "ІН'ЄКЦІЯ",
+      "success": "УСПІХ",
+      "failed": "НЕВДАЛО",
+      "added": "ДОДАНО",
+      "canceled": "СКАСОВАНО",
+      "running": "ВИКОНУЄТЬСЯ",
+      "partial": "ЧАСТКОВО",
+      "pending": "ОЧІКУЄ"
     }
   }
 }
