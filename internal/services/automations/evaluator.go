@@ -393,6 +393,9 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 		return compareString(torrentRlsChannels(torrent, ctx), cond)
 	case FieldRlsGroup:
 		return compareString(torrentRlsGroup(torrent, ctx), cond)
+	case FieldRlsYear:
+		// Numeric RLS-derived field. A parsed year of 0 means "unknown" and never matches.
+		return compareRlsYearIfSet(torrentRlsYear(torrent, ctx), cond)
 	case FieldState:
 		return compareState(torrent, cond, ctx)
 	case FieldTracker:
@@ -1097,8 +1100,10 @@ func tagEndsWith(tag, condValue string) bool {
 
 // compareInt64 compares an int64 value against the condition.
 func compareInt64(value int64, cond *RuleCondition) bool {
-	// Parse the condition value as int64
-	condValue, err := strconv.ParseInt(cond.Value, 10, 64)
+	// Parse the condition value as int64. Trim first so a whitespace-padded value
+	// (e.g. from an imported config) compares the same way save-time validation
+	// accepts it, instead of parsing-failing and silently never matching.
+	condValue, err := strconv.ParseInt(strings.TrimSpace(cond.Value), 10, 64)
 	if err != nil && cond.Value != "" {
 		return false
 	}
@@ -1128,8 +1133,9 @@ func compareInt64(value int64, cond *RuleCondition) bool {
 
 // compareFloat64 compares a float64 value against the condition.
 func compareFloat64(value float64, cond *RuleCondition) bool {
-	// Parse the condition value as float64
-	condValue, err := strconv.ParseFloat(cond.Value, 64)
+	// Parse the condition value as float64. Trim first so whitespace-padded values
+	// stay consistent with save-time validation instead of silently never matching.
+	condValue, err := strconv.ParseFloat(strings.TrimSpace(cond.Value), 64)
 	if err != nil && cond.Value != "" {
 		return false
 	}
@@ -1246,6 +1252,15 @@ func compareAgeIfSet(timestamp int64, cond *RuleCondition, ctx *EvalContext) boo
 		return false
 	}
 	return compareAge(timestamp, cond, ctx)
+}
+
+// compareRlsYearIfSet compares a parsed release year and treats an unparsed year (<= 0)
+// as unknown/no-match, mirroring compareAgeIfSet for timestamp-backed fields.
+func compareRlsYearIfSet(year int64, cond *RuleCondition) bool {
+	if year <= 0 {
+		return false
+	}
+	return compareInt64(year, cond)
 }
 
 // splitTags splits a comma-separated tag string into individual tags.
