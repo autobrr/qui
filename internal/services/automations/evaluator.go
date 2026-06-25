@@ -1100,8 +1100,10 @@ func tagEndsWith(tag, condValue string) bool {
 
 // compareInt64 compares an int64 value against the condition.
 func compareInt64(value int64, cond *RuleCondition) bool {
-	// Parse the condition value as int64
-	condValue, err := strconv.ParseInt(cond.Value, 10, 64)
+	// Parse the condition value as int64. Trim first so a whitespace-padded value
+	// (e.g. from an imported config) compares the same way save-time validation
+	// accepts it, instead of parsing-failing and silently never matching.
+	condValue, err := strconv.ParseInt(strings.TrimSpace(cond.Value), 10, 64)
 	if err != nil && cond.Value != "" {
 		return false
 	}
@@ -1131,8 +1133,9 @@ func compareInt64(value int64, cond *RuleCondition) bool {
 
 // compareFloat64 compares a float64 value against the condition.
 func compareFloat64(value float64, cond *RuleCondition) bool {
-	// Parse the condition value as float64
-	condValue, err := strconv.ParseFloat(cond.Value, 64)
+	// Parse the condition value as float64. Trim first so whitespace-padded values
+	// stay consistent with save-time validation instead of silently never matching.
+	condValue, err := strconv.ParseFloat(strings.TrimSpace(cond.Value), 64)
 	if err != nil && cond.Value != "" {
 		return false
 	}

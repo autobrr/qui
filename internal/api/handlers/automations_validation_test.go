@@ -7,8 +7,10 @@ import (
 	"context"
 	"net/http"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/automations"
@@ -30,6 +32,8 @@ func TestValidateRlsYearConditions(t *testing.T) {
 		}
 	}
 
+	maxYear := time.Now().Year() + 1
+
 	tests := []struct {
 		name       string
 		conditions *models.ActionConditions
@@ -40,6 +44,12 @@ func TestValidateRlsYearConditions(t *testing.T) {
 		{name: "year far in future", conditions: yearConditions(models.OperatorEqual, "3000", nil, nil), wantErr: true},
 		{name: "zero rejected", conditions: yearConditions(models.OperatorEqual, "0", nil, nil), wantErr: true},
 		{name: "non-numeric rejected", conditions: yearConditions(models.OperatorEqual, "abc", nil, nil), wantErr: true},
+		{name: "exact min year accepted", conditions: yearConditions(models.OperatorEqual, strconv.Itoa(minRlsYear), nil, nil), wantErr: false},
+		{name: "below min rejected", conditions: yearConditions(models.OperatorEqual, strconv.Itoa(minRlsYear-1), nil, nil), wantErr: true},
+		{name: "exact max year accepted", conditions: yearConditions(models.OperatorEqual, strconv.Itoa(maxYear), nil, nil), wantErr: false},
+		{name: "above max rejected", conditions: yearConditions(models.OperatorEqual, strconv.Itoa(maxYear+1), nil, nil), wantErr: true},
+		{name: "less-than out-of-range bound rejected", conditions: yearConditions(models.OperatorLessThan, strconv.Itoa(minRlsYear-1), nil, nil), wantErr: true},
+		{name: "whitespace padded value accepted", conditions: yearConditions(models.OperatorEqual, " 2021 ", nil, nil), wantErr: false},
 		{name: "valid between", conditions: yearConditions(models.OperatorBetween, "", new(float64(2000)), new(float64(2020))), wantErr: false},
 		{name: "between fractional bound rejected", conditions: yearConditions(models.OperatorBetween, "", new(2000.5), new(float64(2020))), wantErr: true},
 		{name: "between missing max", conditions: yearConditions(models.OperatorBetween, "", new(float64(2000)), nil), wantErr: true},

@@ -1271,6 +1271,39 @@ func TestEvaluateCondition_RlsYear(t *testing.T) {
 			ctx:      &EvalContext{},
 			expected: false,
 		},
+		{
+			name:     "not equal wrong year matches",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorNotEqual, Value: "2020"},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: true,
+		},
+		{
+			name:     "not equal parsed year does not match",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorNotEqual, Value: "2021"},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: false,
+		},
+		{
+			// The documented invariant: an unparsed year never matches for ANY
+			// operator, including !=. Guards the year <= 0 short-circuit so a
+			// "!= X" condition can't silently sweep up every yearless release.
+			name:     "unparsed year never matches not equal",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorNotEqual, Value: "2020"},
+			torrent:  qbt.Torrent{Name: noYear},
+			ctx:      parsed,
+			expected: false,
+		},
+		{
+			// A whitespace-padded value must compare the same as the trimmed form
+			// (save-time validation accepts it); regression guard for compareInt64.
+			name:     "whitespace padded value matches",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorEqual, Value: " 2021 "},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: true,
+		},
 	}
 
 	for _, tt := range tests {
