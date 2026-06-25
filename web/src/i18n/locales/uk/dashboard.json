@@ -1,0 +1,212 @@
+{
+  "title": "Панель керування",
+  "description": "Огляд всіх ваших екземплярів qBittorrent",
+  "settingsDialog": {
+    "button": "Налаштування макету",
+    "title": "Налаштування панелі керування",
+    "description": "Налаштуйте, які розділи відображаються та їх порядок.",
+    "sections": "Розділи",
+    "sectionLabels": {
+      "server-stats": "Статистика сервера",
+      "tracker-breakdown": "Розбивка за трекерами",
+      "global-stats": "Загальна статистика",
+      "instances": "Картки екземплярів"
+    },
+    "trackerDefaults": "Налаштування розбивки за трекерами",
+    "defaultSort": "Сортування за замовчуванням",
+    "direction": "Напрямок",
+    "descending": "За спаданням",
+    "ascending": "За зростанням",
+    "itemsPerPage": "Елементів на сторінці",
+    "sortColumnLabels": {
+      "tracker": "Назва трекера",
+      "uploaded": "Вивантажено",
+      "downloaded": "Завантажено",
+      "ratio": "Співвідношення",
+      "buffer": "Буфер",
+      "count": "Торенти",
+      "size": "Розмір",
+      "performance": "Роздано"
+    }
+  },
+  "speedLimits": {
+    "title": "Ліміти швидкості",
+    "download": "Завантаження",
+    "upload": "Вивантаження",
+    "current": "Поточна: {{speed}}",
+    "unlimited": "Без обмежень"
+  },
+  "instanceCard": {
+    "loadingStats": "Завантаження статистики...",
+    "failedToLoadStats": "Не вдалося завантажити статистику",
+    "downloading": "Завантажується",
+    "active": "Активних",
+    "total": "Всього",
+    "download": "Завантаження",
+    "upload": "Вивантаження",
+    "totalSize": "Загальний розмір",
+    "totalSizeTooltip": "Загальний розмір всіх торентів, включно з крос-сідами",
+    "freeSpace": "Вільне місце",
+    "showMore": "Показати більше",
+    "showLess": "Показати менше",
+    "uptime": "Час роботи",
+    "peerConnections": "З'єднання з пірами",
+    "queuedIOJobs": "Завдань I/O у черзі",
+    "bufferSize": "Розмір буфера",
+    "totalQueued": "Всього в черзі",
+    "avgQueueTime": "Середній час черги",
+    "externalIPv4": "Зовнішній IPv4",
+    "externalIPv6": "Зовнішній IPv6",
+    "unregisteredTorrents": "Незареєстровані торенти",
+    "trackerDown": "Трекер недоступний",
+    "errors": "Помилки",
+    "reannounceTooltip": "Автоматичне повторне оголошення трекера увімкнено",
+    "altSpeedLimits": "Альтернативні ліміти швидкості: {{status}}",
+    "localFileAccess": "Локальний доступ до файлів увімкнено",
+    "connectable": "Підключення можливе",
+    "portInfo": ". Порт: {{port}}",
+    "connectionStatus": "Статус з'єднання qBittorrent: {{status}}",
+    "altSpeedDialog": {
+      "enableTitle": "Увімкнути альтернативні ліміти швидкості?",
+      "disableTitle": "Вимкнути альтернативні ліміти швидкості?",
+      "enableDescription": "Це увімкне альтернативні ліміти швидкості для {{name}}, що зменшить швидкість передачі відповідно до ваших налаштувань.",
+      "disableDescription": "Це вимкне альтернативні ліміти швидкості для {{name}} і поверне нормальні ліміти.",
+      "enable": "Увімкнути",
+      "disable": "Вимкнути",
+      "cancel": "Скасувати"
+    }
+  },
+  "mobileOverview": {
+    "title": "Огляд",
+    "instances": "Екземпляри",
+    "connected": "Підключено",
+    "torrents": "Торенти",
+    "activeCount": "{{count}} активних",
+    "download": "Завантаження",
+    "upload": "Вивантаження"
+  },
+  "globalStats": {
+    "instances": "Екземпляри",
+    "connectedInstances": "Підключені екземпляри",
+    "totalTorrents": "Всього торентів",
+    "activeTotal": "{{active}} активних — загальний розмір {{size}}",
+    "totalDownload": "Всього завантажено",
+    "downloadingActive": "{{count}} активних — залишилось {{size}}",
+    "totalUpload": "Всього вивантажено",
+    "seedingActive": "{{count}} активних — роздається {{size}}"
+  },
+  "serverStats": {
+    "title": "Статистика сервера",
+    "ratio": "Співвідношення:",
+    "peers": "Піри:",
+    "tableHeaders": {
+      "instance": "Екземпляр",
+      "downloaded": "Завантажено",
+      "uploaded": "Вивантажено",
+      "ratio": "Співвідношення",
+      "peers": "Піри"
+    }
+  },
+  "trackerBreakdown": {
+    "title": "Розбивка за трекерами",
+    "trackersCount": "{{count}} трекерів",
+    "importTooltip": "Імпортувати налаштування",
+    "exportTooltip": "Експортувати налаштування",
+    "sort": "Сортування: {{column}}",
+    "sortOptions": {
+      "tracker": "Трекер",
+      "uploaded": "Вивантажено",
+      "downloaded": "Завантажено",
+      "ratio": "Співвідношення",
+      "torrents": "Торенти",
+      "size": "Розмір",
+      "seeded": "Роздано"
+    },
+    "tableHeaders": {
+      "tracker": "Трекер",
+      "uploaded": "Вивантажено",
+      "downloaded": "Завантажено",
+      "ratio": "Співвідношення",
+      "buffer": "Буфер",
+      "torrents": "Торенти",
+      "size": "Розмір",
+      "seeded": "Роздано"
+    },
+    "seededTooltip": "Вивантажено ÷ Розмір вмісту — скільки разів ви роздали свій вміст",
+    "mergedFrom": "Об'єднано з: {{domains}}",
+    "original": "Оригінал: {{domain}}",
+    "mergeTooltip": "Об'єднати вибрані трекери в цю групу",
+    "mergeIntoGroup": "Об'єднати в групу",
+    "addToMerge": "Додати до об'єднання",
+    "rename": "Перейменувати",
+    "pagination": {
+      "range": "{{start}}-{{end}} з {{total}} трекерів",
+      "previous": "Попередня",
+      "next": "Наступна"
+    },
+    "customizeDialog": {
+      "editTitle": "Редагувати назву трекера",
+      "renameTitle": "Перейменувати трекер",
+      "mergeTitle": "Об'єднати трекери",
+      "editDescription": "Оновіть відображувану назву цього трекера.",
+      "renameDescription": "Дайте цьому трекеру власну відображувану назву.",
+      "mergeDescription": "Об'єднайте ці трекери в один запис з власною назвою.",
+      "displayName": "Відображувана назва",
+      "displayNamePlaceholder": "наприклад, TorrentLeech",
+      "domains": "Домен(и)",
+      "selectedTrackers": "Вибраний(-і) трекер(-и)",
+      "uncheckDuplicate": "Зніміть позначку з дублікатів URL трекерів, щоб уникнути подвійного підрахунку торентів.",
+      "primary": "Основний",
+      "cancel": "Скасувати",
+      "saving": "Збереження...",
+      "save": "Зберегти",
+      "renameAction": "Перейменувати",
+      "mergeAction": "Об'єднати"
+    },
+    "importDialog": {
+      "title": "Імпорт налаштувань трекерів",
+      "description": "Вставте JSON для імпорту налаштувань трекерів (перейменування та об'єднання).",
+      "jsonData": "Дані JSON",
+      "invalidFormat": "Неправильний формат: очікується масив trackerCustomizations",
+      "missingDisplayName": "Неправильний запис: відсутній displayName",
+      "invalidDomains": "Неправильний запис: domains має бути непорожнім масивом",
+      "invalidJson": "Неправильний JSON",
+      "newCount": "{{count}} нових",
+      "conflictCount": "{{count}} конфлікт",
+      "conflictCount_plural": "{{count}} конфліктів",
+      "unchangedCount": "{{count}} без змін",
+      "resolveConflicts": "Вирішити конфлікти",
+      "conflictsWith": "Конфліктує з: {{name}}",
+      "skip": "Пропустити",
+      "overwrite": "Перезаписати",
+      "cancel": "Скасувати",
+      "importing": "Імпортування...",
+      "import": "Імпортувати"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "Немає налаштувань для експорту",
+      "copiedToClipboard": "Скопійовано до буфера обміну",
+      "failedToCopy": "Не вдалося скопіювати до буфера обміну",
+      "createFailed": "Не вдалося створити налаштування трекера",
+      "updateFailed": "Не вдалося оновити налаштування трекера",
+      "deleteFailed": "Не вдалося видалити налаштування трекера",
+      "failedToImport": "Не вдалося імпортувати: {{names}}",
+      "importedAndSkipped": "Імпортовано {{imported}}, пропущено {{skipped}}",
+      "importedCount": "Імпортовано {{count}} налаштування",
+      "importedCount_plural": "Імпортовано {{count}} налаштувань",
+      "noCustomizationsImported": "Налаштувань не імпортовано"
+    }
+  },
+  "quickActions": {
+    "addTorrent": "Додати торент",
+    "addTo": "Додати до {{name}}"
+  },
+  "addInstance": "Додати екземпляр",
+  "emptyState": {
+    "noInstances": "Екземпляри не налаштовано",
+    "getStarted": "Розпочніть, додавши перший екземпляр qBittorrent",
+    "allDisabled": "Всі екземпляри вимкнено",
+    "enableInstance": "Увімкніть екземпляр у Налаштуваннях → Екземпляри для перегляду статистики панелі.",
+    "manageInstances": "Керувати екземплярами"
+  }
+}
