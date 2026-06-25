@@ -238,6 +238,7 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 	instanceID := plan.InstanceID
 	var warnings []string
 	var pendingResume []string
+	pinnedSavePaths := 0
 
 	for _, spec := range plan.Torrents.Add {
 		if err := ctx.Err(); err != nil {
@@ -285,6 +286,20 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 			options["tags"] = strings.Join(spec.Manifest.Tags, ",")
 		}
 
+		// Pin the captured per-torrent save path so torrents whose on-disk
+		// location diverges from their category (cross-seed hardlinks, manual
+		// relocations, Auto TMM off) land where their data already is. The path
+		// is only present when capture decided it cannot be reproduced from the
+		// category (see resolveBackupSavePath), so any non-empty value is pinned.
+		// savepath-on-add (+autoTMM=false) places the torrent without moving
+		// files; the path is passed verbatim because it is an opaque
+		// qBittorrent-side path that may target a different host OS.
+		if savePath := strings.TrimSpace(spec.Manifest.SavePath); savePath != "" {
+			options["autoTMM"] = "false"
+			options["savepath"] = savePath
+			pinnedSavePaths++
+		}
+
 		if _, err := s.torrentWriter.AddTorrent(ctx, instanceID, payload, options); err != nil {
 			appendRestoreError(errs, "add_torrent", spec.Manifest.Hash, err)
 			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", spec.Manifest.Hash).Msg("Restore: add torrent failed")
@@ -310,6 +325,10 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 		if opts.SkipHashCheck && opts.AutoResumeVerified {
 			pendingResume = append(pendingResume, spec.Manifest.Hash)
 		}
+	}
+
+	if pinnedSavePaths > 0 {
+		warnings = append(warnings, fmt.Sprintf("%d torrent(s) were placed at their saved path with Auto TMM disabled; ensure those locations exist on this host", pinnedSavePaths))
 	}
 
 	for _, update := range plan.Torrents.Update {
