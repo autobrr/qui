@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { mergeStreamedFirstPage } from "@/lib/stream-merge"
-import type { CrossInstanceTorrent, Torrent, TorrentResponse } from "@/types"
+import { applyOrderedDelta, mergeStreamedFirstPage } from "@/lib/stream-merge"
+import type { CrossInstanceTorrent, Torrent, TorrentResponse, TorrentStreamPayload } from "@/types"
 
 // RawCrossInstanceTorrent models a cross-instance torrent before normalization.
 // The backend's CrossInstanceTorrentView serializes instance metadata as
@@ -111,6 +111,57 @@ export function resolveStreamedCrossInstanceTorrents(
 // torrent cross-seeded onto two instances shares a hash but is two distinct rows.
 const crossInstanceRowKey = (torrent: CrossInstanceTorrent): string =>
   `${torrent.instanceId}:${torrent.hash}`
+
+// A single-instance row's identity is its torrent hash.
+const singleInstanceRowKey = (torrent: Torrent): string => torrent.hash
+
+// applyStreamDelta reconstructs a full page-0 snapshot from the previous snapshot
+// and an incremental delta frame, routing single-instance vs cross-instance shapes
+// and normalizing the changed cross-instance rows to camelCase. The delta frame's
+// `data` carries every aggregate field plus only the added/changed rows (in
+// `torrents` or `cross_instance_torrents`); this swaps those changed rows back for
+// the reconstructed full page so the result is shaped exactly like a full snapshot
+// and can flow through the same sinks. `changed` is false on an aggregate-only tick
+// (no row adds/removes/reorders/changes), letting the caller leave table state
+// untouched while still refreshing stats and server state.
+export function applyStreamDelta(
+  prev: TorrentResponse,
+  payload: TorrentStreamPayload,
+  isCrossInstance: boolean
+): { data: TorrentResponse; changed: boolean } {
+  const order = payload.delta?.order
+  const frame = payload.data ?? ({} as TorrentResponse)
+
+  if (isCrossInstance) {
+    const prevRows = prev.crossInstanceTorrents ?? []
+    const changedRows = normalizeCrossInstanceTorrents(
+      (frame.crossInstanceTorrents ?? frame.cross_instance_torrents) as RawCrossInstanceTorrent[] | undefined
+    ) ?? []
+
+    const { rows, changed } = applyOrderedDelta(prevRows, changedRows, order, crossInstanceRowKey)
+
+    return {
+      data: {
+        ...frame,
+        crossInstanceTorrents: rows,
+        cross_instance_torrents: rows,
+      },
+      changed,
+    }
+  }
+
+  const prevRows = prev.torrents ?? []
+  const changedRows = frame.torrents ?? []
+  const { rows, changed } = applyOrderedDelta(prevRows, changedRows, order, singleInstanceRowKey)
+
+  return {
+    data: {
+      ...frame,
+      torrents: rows,
+    },
+    changed,
+  }
+}
 
 // mergeStreamedCrossInstanceFirstPage folds an aggregated SSE snapshot into the
 // list the unified table already displays. The stream only ever serves page 0, so

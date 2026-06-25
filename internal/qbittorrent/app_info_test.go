@@ -4,8 +4,10 @@
 package qbittorrent
 
 import (
+	"context"
 	"errors"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
@@ -88,4 +90,38 @@ func TestBuildProcessInfo(t *testing.T) {
 			require.Equal(t, tc.wantLaunchTime, info.LaunchTime)
 		})
 	}
+}
+
+func TestGetAppInfoServesStaleCacheWhenRefreshFails(t *testing.T) {
+	c := &Client{
+		Client:     qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:0"}),
+		instanceID: 1,
+	}
+	c.appInfoCache = &AppInfo{Version: "4.6.7", WebAPIVersion: "2.11.4"}
+	c.appInfoFetchedAt = time.Now().Add(-2 * appInfoCacheTTL) // force the cache stale
+
+	// A canceled context makes the refresh fail immediately, standing in for a
+	// saturated qBittorrent WebUI that times out every request.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	info, err := c.GetAppInfo(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	require.Equal(t, "4.6.7", info.Version)
+	require.Equal(t, "2.11.4", info.WebAPIVersion)
+}
+
+func TestGetAppInfoReturnsErrorWhenNoCacheAndRefreshFails(t *testing.T) {
+	c := &Client{
+		Client:     qbt.NewClient(qbt.Config{Host: "http://127.0.0.1:0"}),
+		instanceID: 1,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	info, err := c.GetAppInfo(ctx)
+	require.Error(t, err)
+	require.Nil(t, info)
 }

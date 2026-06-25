@@ -197,13 +197,17 @@ func (c *Client) GetLastHealthCheck() time.Time {
 	return c.lastHealthCheck
 }
 
+// GetLastSyncUpdate returns the time the cached data last actually updated, i.e.
+// the last SUCCESSFUL sync. It deliberately does not use LastSyncTime, which
+// advances on failed sync attempts too and would mask a stalled instance from
+// readiness/staleness checks.
 func (c *Client) GetLastSyncUpdate() time.Time {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if c.syncManager == nil {
 		return time.Time{}
 	}
-	return c.syncManager.LastSyncTime()
+	return c.syncManager.LastSuccessfulSyncTime()
 }
 
 func (c *Client) updateHealthStatus(healthy bool) {

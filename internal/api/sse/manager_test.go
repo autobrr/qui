@@ -57,6 +57,72 @@ func TestStreamManagerHandleSyncErrorPublishesErrorEvent(t *testing.T) {
 	require.Contains(t, payload.Err, "sync failed")
 }
 
+func TestStreamManagerHandleSyncErrorStampsLastSuccessfulSync(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	// Source the last good sync from a fixed point well in the past so the test can
+	// prove the error meta reports when data was last fresh, not when the failure
+	// happened. That distinction is the whole point of issue #2052's staleness badge.
+	lastGood := time.Now().Add(-90 * time.Second)
+	manager.lastSuccessfulSyncFn = func(_ context.Context, _ int) time.Time {
+		return lastGood
+	}
+
+	sub := &subscriptionState{
+		id:      "subscription-stale",
+		options: StreamOptions{InstanceID: 42},
+		created: time.Now(),
+	}
+	manager.subscriptions[sub.id] = sub
+	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
+		sub.id: sub,
+	}
+
+	manager.HandleSyncError(sub.options.InstanceID, errors.New("sync failed"))
+
+	require.Eventually(t, func() bool {
+		return len(provider.messagesFor(sub.id)) == 1
+	}, time.Second, 5*time.Millisecond, "expected a single broadcast message")
+
+	payload := decodeStreamPayload(t, provider.messagesFor(sub.id)[0])
+	require.Equal(t, streamEventError, payload.Type)
+	require.NotNil(t, payload.Meta.LastSuccessfulSync, "error meta must carry the last successful sync time")
+	require.WithinDuration(t, lastGood, *payload.Meta.LastSuccessfulSync, time.Second)
+	// It must reflect the last good sync, not "now" when the failure fired, otherwise
+	// the staleness badge would reset on every failed attempt.
+	require.True(t, payload.Meta.LastSuccessfulSync.Before(time.Now().Add(-30*time.Second)),
+		"last successful sync must not advance on a failed attempt")
+}
+
+func TestStreamManagerHandleSyncErrorOmitsLastSuccessfulSyncWhenUnknown(t *testing.T) {
+	// A nil client pool means the default source cannot resolve a sync time, so the
+	// field must be omitted rather than serialized as the time.Time zero value.
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	sub := &subscriptionState{
+		id:      "subscription-unknown",
+		options: StreamOptions{InstanceID: 7},
+		created: time.Now(),
+	}
+	manager.subscriptions[sub.id] = sub
+	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
+		sub.id: sub,
+	}
+
+	manager.HandleSyncError(sub.options.InstanceID, errors.New("boom"))
+
+	require.Eventually(t, func() bool {
+		return len(provider.messagesFor(sub.id)) == 1
+	}, time.Second, 5*time.Millisecond, "expected a single broadcast message")
+
+	payload := decodeStreamPayload(t, provider.messagesFor(sub.id)[0])
+	require.Nil(t, payload.Meta.LastSuccessfulSync, "no resolvable client means the field must be omitted")
+}
+
 func TestStreamManagerHandleSyncErrorWithoutSubscribers(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil)
 	provider := newRecordingProvider()
@@ -592,7 +658,6 @@ func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
 	// First enqueue sets hasPending and sends
 	group.mu.Lock()
 	group.pendingMeta = &StreamMeta{InstanceID: 1, Timestamp: time.Now()}
-	group.pendingType = streamEventUpdate
 	group.hasPending = true
 	group.sending = true // Simulate that processGroup is already running
 	group.mu.Unlock()
@@ -601,7 +666,6 @@ func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
 	newMeta := &StreamMeta{InstanceID: 1, Timestamp: time.Now().Add(time.Second)}
 	group.mu.Lock()
 	group.pendingMeta = newMeta
-	group.pendingType = streamEventUpdate
 	group.hasPending = true
 	// sending stays true - no new goroutine needed
 	group.mu.Unlock()
@@ -610,7 +674,6 @@ func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
 	finalMeta := &StreamMeta{InstanceID: 1, Timestamp: time.Now().Add(2 * time.Second)}
 	group.mu.Lock()
 	group.pendingMeta = finalMeta
-	group.pendingType = streamEventUpdate
 	group.hasPending = true
 	group.mu.Unlock()
 
