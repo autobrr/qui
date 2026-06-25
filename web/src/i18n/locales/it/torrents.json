@@ -1509,7 +1509,7 @@
     "failedToRenameFolder": "Impossibile rinominare la cartella"
   },
   "detailCache": {
-    "showingCached": "Visualizzazione dei dati in cache",
+    "showingCached": "Visualizzazione dei dati in cache ({{age}})",
     "failedToLoad": "Caricamento non riuscito",
     "retry": "Riprova"
   }

@@ -1509,7 +1509,7 @@
     "failedToRenameFolder": "Ordner konnte nicht umbenannt werden"
   },
   "detailCache": {
-    "showingCached": "Zwischengespeicherte Daten werden angezeigt",
+    "showingCached": "Zwischengespeicherte Daten werden angezeigt ({{age}})",
     "failedToLoad": "Laden fehlgeschlagen",
     "retry": "Erneut versuchen"
   }

@@ -27,9 +27,7 @@ export function CachedDataBadge({ updatedAt, className }: CachedDataBadgeProps) 
       )}
     >
       <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400 shadow-[0_0_0_2px] shadow-amber-400/25" />
-      <span>
-        {t("detailCache.showingCached")} {relativeAge}
-      </span>
+      <span>{t("detailCache.showingCached", { age: relativeAge })}</span>
     </span>
   )
 }

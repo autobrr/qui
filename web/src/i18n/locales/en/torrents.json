@@ -1509,7 +1509,7 @@
     "failedToRenameFolder": "Failed to rename folder"
   },
   "detailCache": {
-    "showingCached": "Showing cached data",
+    "showingCached": "Showing cached data ({{age}})",
     "failedToLoad": "Failed to load",
     "retry": "Retry"
   }

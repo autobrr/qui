@@ -52,11 +52,10 @@ export function useInstancePreferences(
         return undefined
       }
 
-      if (cachedMetadata?.preferences) {
-        queryClient.setQueryData<Date | null>(cachedAtQueryKey, null)
-        return cachedMetadata.preferences
-      }
-
+      // Always hit the backend so an explicit refetch (e.g. when the dialog opens)
+      // re-checks qBittorrent and re-derives staleness. Cached metadata only seeds the
+      // initial render via initialData below; short-circuiting here would return stale
+      // data with a cleared cachedAt even while qBittorrent is still unreachable.
       const { preferences: fresh, cachedAt } = await api.getInstancePreferencesWithMeta(instanceId)
       queryClient.setQueryData<Date | null>(cachedAtQueryKey, cachedAt)
       // Only enrich an existing metadata entry with the fetched preferences. Creating

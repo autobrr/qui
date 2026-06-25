@@ -494,12 +494,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   })
   const hasWebseeds = (webseedsData?.length ?? 0) > 0
 
-  // Redirect away from webseeds tab if it becomes hidden (e.g., switching to a torrent without web seeds)
+  // Redirect away from the webseeds tab only on a confirmed empty successful load
+  // (e.g. switching to a torrent without web seeds). On a cold-error we keep the tab
+  // so its retry UI stays reachable instead of silently hiding the failure.
   useEffect(() => {
-    if (activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds) {
+    if (activeTab === "webseeds" && !hasWebseeds && !loadingWebseeds && !webseedsError) {
       setActiveTab("general")
     }
-  }, [activeTab, hasWebseeds, loadingWebseeds, setActiveTab])
+  }, [activeTab, hasWebseeds, loadingWebseeds, webseedsError, setActiveTab])
 
   // Add peers mutation
   const addPeersMutation = useMutation({
@@ -887,7 +889,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               <TabsTrigger value="peers" className="text-xs shrink-0">
                 {t("detailsPanel.tabs.peers")}
               </TabsTrigger>
-              {hasWebseeds && (
+              {(hasWebseeds || webseedsError) && (
                 <TabsTrigger value="webseeds" className="text-xs shrink-0">
                   {t("detailsPanel.tabs.httpSources")}
                 </TabsTrigger>

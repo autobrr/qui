@@ -1509,7 +1509,7 @@
     "failedToRenameFolder": "Échec du renommage du dossier"
   },
   "detailCache": {
-    "showingCached": "Affichage des données en cache",
+    "showingCached": "Affichage des données en cache ({{age}})",
     "failedToLoad": "Échec du chargement",
     "retry": "Réessayer"
   }

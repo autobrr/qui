@@ -21,6 +21,7 @@ vi.mock("@/lib/api", () => ({
 import { api } from "@/lib/api"
 import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstanceMetadata, type InstanceMetadata } from "@/hooks/useInstanceMetadata"
+import type { AppPreferences } from "@/types"
 
 const mockedApi = vi.mocked(api, true)
 
@@ -157,5 +158,37 @@ describe("useInstancePreferences metadata interaction", () => {
 
     expect(mockedApi.updateInstancePreferences).toHaveBeenCalledWith(1, { listen_port: 6882 })
     expect(prefs.result.current.cachedAt).toBeNull()
+  })
+
+  // After the metadata short-circuit was removed: an explicit refetch must hit the
+  // backend even when metadata already carries preferences, so staleness is re-derived
+  // instead of returning cached metadata with a cleared cachedAt.
+  it("refetch hits the backend even when metadata already has preferences", async () => {
+    const cachedAt = new Date("2026-06-25T11:00:00Z")
+    mockedApi.getInstancePreferencesWithMeta.mockResolvedValue({
+      preferences: { listen_port: 7000 },
+      cachedAt,
+    } as never)
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData<InstanceMetadata>(["instance-metadata", 1], {
+      categories: { movies: { name: "movies", savePath: "/data/movies" } },
+      tags: ["linux"],
+      preferences: { listen_port: 6881 } as AppPreferences,
+    })
+    const wrapper = makeWrapper(client)
+
+    const prefs = renderHook(() => useInstancePreferences(1), { wrapper })
+
+    // The query is disabled while metadata supplies preferences, so nothing fetched yet.
+    expect(mockedApi.getInstancePreferencesWithMeta).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await prefs.result.current.refetch()
+      await vi.advanceTimersByTimeAsync(10)
+    })
+
+    expect(mockedApi.getInstancePreferencesWithMeta).toHaveBeenCalledWith(1)
+    expect(prefs.result.current.cachedAt).toEqual(cachedAt)
   })
 })
