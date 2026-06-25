@@ -22,20 +22,22 @@ func TestSearchResultUsable(t *testing.T) {
 	s := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
 
 	const (
-		webripDotted = "Law.and.Order.Special.Victims.Unit.S05.1080p.AMZN.WEBRip.DD2.0.x264-NTb"
-		webdlDotted  = "Law.and.Order.Special.Victims.Unit.S05.1080p.AMZN.WEB-DL.DD+2.0.x264-NTb"
-		otherShow    = "Law.and.Order.Organized.Crime.S05.1080p.AMZN.WEB-DL.DD+2.0.x264-NTb"
-		size         = int64(115_682_424_111)
+		webripDotted  = "Law.and.Order.Special.Victims.Unit.S05.1080p.AMZN.WEBRip.DD2.0.x264-NTb"
+		webdlDotted   = "Law.and.Order.Special.Victims.Unit.S05.1080p.AMZN.WEB-DL.DD+2.0.x264-NTb"
+		otherShow     = "Law.and.Order.Organized.Crime.S05.1080p.AMZN.WEB-DL.DD+2.0.x264-NTb"
+		episodeDotted = "Law.and.Order.Special.Victims.Unit.S05E03.1080p.AMZN.WEB-DL.DD+2.0.x264-NTb"
+		size          = int64(115_682_424_111)
 	)
 
 	tests := []struct {
-		name          string
-		sourceName    string
-		candidateName string
-		sourceSize    int64
-		candidateSize int64
-		tolerance     float64
-		want          bool
+		name                   string
+		sourceName             string
+		candidateName          string
+		sourceSize             int64
+		candidateSize          int64
+		tolerance              float64
+		findIndividualEpisodes bool
+		want                   bool
 	}{
 		{
 			name:       "direct match within tolerance is usable",
@@ -67,13 +69,35 @@ func TestSearchResultUsable(t *testing.T) {
 			sourceSize: size, candidateSize: size, tolerance: 5,
 			want: false,
 		},
+		{
+			// findIndividualEpisodes makes a season-pack source match an individual
+			// episode candidate, and ignoreSizeCheck then bypasses the size gate.
+			// The candidate is 2x the source size (well outside tolerance) yet still
+			// usable, which is only possible if the size bypass is honored.
+			name:       "episode within season pack is usable despite size mismatch (size bypass)",
+			sourceName: webdlDotted, candidateName: episodeDotted,
+			sourceSize: size, candidateSize: size * 2, tolerance: 3,
+			findIndividualEpisodes: true,
+			want:                   true,
+		},
+		{
+			// Reverse pairing: a season-pack candidate against a single-episode source
+			// is a forbidden cross-seed even under findIndividualEpisodes. Sizes are
+			// equal (within tolerance) and the show/season match, so the ONLY thing
+			// that makes this not usable is the season-pack-from-episode rejection.
+			name:       "season pack candidate against episode source is rejected (pairing rule)",
+			sourceName: episodeDotted, candidateName: webdlDotted,
+			sourceSize: size, candidateSize: size, tolerance: 5,
+			findIndividualEpisodes: true,
+			want:                   false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			source := rls.ParseString(tt.sourceName)
 			candidate := rls.ParseString(tt.candidateName)
-			got := s.searchResultUsable(&source, &candidate, tt.sourceName, tt.sourceSize, tt.candidateName, tt.candidateSize, nil, tt.tolerance, false)
+			got := s.searchResultUsable(&source, &candidate, tt.sourceName, tt.sourceSize, tt.candidateName, tt.candidateSize, nil, tt.tolerance, tt.findIndividualEpisodes)
 			require.Equal(t, tt.want, got)
 		})
 	}
