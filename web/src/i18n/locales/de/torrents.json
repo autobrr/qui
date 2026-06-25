@@ -1182,6 +1182,14 @@
       "urlCopied": "URL in die Zwischenablage kopiert"
     }
   },
+  "filePriority": {
+    "header": "Priorität",
+    "doNotDownload": "Nicht herunterladen",
+    "normal": "Normal",
+    "high": "Hoch",
+    "maximum": "Maximal",
+    "mixed": "Gemischt"
+  },
   "fileTable": {
     "expandAll": "Alle ausklappen",
     "collapseAll": "Alle einklappen",

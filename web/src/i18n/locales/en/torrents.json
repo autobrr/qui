@@ -1182,6 +1182,14 @@
       "urlCopied": "URL copied to clipboard"
     }
   },
+  "filePriority": {
+    "header": "Priority",
+    "doNotDownload": "Do not download",
+    "normal": "Normal",
+    "high": "High",
+    "maximum": "Maximum",
+    "mixed": "Mixed"
+  },
   "fileTable": {
     "expandAll": "Expand All",
     "collapseAll": "Collapse All",

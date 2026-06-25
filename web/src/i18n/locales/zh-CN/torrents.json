@@ -1123,6 +1123,14 @@
       "urlCopied": "URL 已复制到剪贴板"
     }
   },
+  "filePriority": {
+    "header": "优先级",
+    "doNotDownload": "不下载",
+    "normal": "普通",
+    "high": "高",
+    "maximum": "最高",
+    "mixed": "混合"
+  },
   "fileTable": {
     "expandAll": "全部展开",
     "collapseAll": "全部折叠",
