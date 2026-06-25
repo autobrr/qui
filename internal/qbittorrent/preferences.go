@@ -10,6 +10,7 @@ import (
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/rs/zerolog/log"
 )
 
 const appPreferencesCacheTTL = 30 * time.Second
@@ -35,14 +36,30 @@ func (c *Client) GetAppPreferences(ctx context.Context) (*qbt.AppPreferences, er
 	}
 
 	c.preferencesMu.RLock()
-	if c.preferencesCache != nil && time.Since(c.preferencesFetchedAt) < appPreferencesCacheTTL {
-		cached := cloneAppPreferences(c.preferencesCache)
-		c.preferencesMu.RUnlock()
-		return cached, nil
-	}
+	cached := cloneAppPreferences(c.preferencesCache)
+	fresh := c.preferencesCache != nil && time.Since(c.preferencesFetchedAt) < appPreferencesCacheTTL
 	c.preferencesMu.RUnlock()
 
-	return c.refreshAppPreferences(ctx)
+	if fresh {
+		return cached, nil
+	}
+
+	prefs, err := c.refreshAppPreferences(ctx)
+	if err != nil {
+		// Mirror GetAppInfo: a saturated qBittorrent WebUI times out even cheap
+		// calls, so serve the last known preferences instead of failing the
+		// torrent stream tick; only surface the error when nothing is cached.
+		if cached != nil {
+			log.Debug().
+				Err(err).
+				Int("instanceID", c.instanceID).
+				Msg("Serving stale qBittorrent app preferences after refresh failure")
+			return cached, nil
+		}
+		return nil, err
+	}
+
+	return prefs, nil
 }
 
 func (c *Client) refreshAppPreferences(ctx context.Context) (*qbt.AppPreferences, error) {
