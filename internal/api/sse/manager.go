@@ -171,6 +171,11 @@ type StreamManager struct {
 	syncManager syncProvider
 	instanceDB  *models.InstanceStore
 
+	// lastSuccessfulSyncFn resolves an instance's last successful sync time for
+	// stream-error meta. Defaults to an offline client-pool lookup; tests override it
+	// to inject a known time without standing up a real pool.
+	lastSuccessfulSyncFn func(ctx context.Context, instanceID int) time.Time
+
 	// activityHub feeds qui-owned server events (backups, scans, cross-seed, etc.)
 	// onto connected SSE sessions. nil disables the activity channel entirely, in
 	// which case Serve/onSession behave exactly as before.
@@ -281,12 +286,18 @@ type StreamDelta struct {
 
 // StreamMeta carries lightweight metadata about the sync update.
 type StreamMeta struct {
-	InstanceID     int       `json:"instanceId"`
-	RID            int64     `json:"rid,omitempty"`
-	FullUpdate     bool      `json:"fullUpdate,omitempty"`
-	Timestamp      time.Time `json:"timestamp"`
-	RetryInSeconds int       `json:"retryInSeconds,omitempty"`
-	StreamKey      string    `json:"streamKey,omitempty"`
+	InstanceID int       `json:"instanceId"`
+	RID        int64     `json:"rid,omitempty"`
+	FullUpdate bool      `json:"fullUpdate,omitempty"`
+	Timestamp  time.Time `json:"timestamp"`
+	// LastSuccessfulSync is when the instance's data last actually updated, sourced
+	// from the success-only sync clock. On stream-error frames it lets the client
+	// show how stale the retained torrents are ("data from N ago") without that age
+	// resetting on every failed attempt. A pointer so the zero time is omitted on the
+	// wire rather than serialized as 0001-01-01 (omitempty has no effect on a struct).
+	LastSuccessfulSync *time.Time `json:"lastSuccessfulSync,omitempty"`
+	RetryInSeconds     int        `json:"retryInSeconds,omitempty"`
+	StreamKey          string     `json:"streamKey,omitempty"`
 }
 
 // ActivityPayload is the message envelope for qui-owned server activity events.
@@ -334,8 +345,37 @@ func NewStreamManager(clientPool *qbittorrent.ClientPool, syncManager syncProvid
 		cancel:         cancel,
 	}
 
+	m.lastSuccessfulSyncFn = m.instanceLastSuccessfulSync
+
 	m.server.OnSession = m.onSession
 	return m
+}
+
+// instanceLastSuccessfulSync returns the instance's last successful sync time, or
+// the zero time when no client is available. It uses the offline pool accessor so a
+// sync-error callback can stamp staleness metadata without triggering a connection
+// attempt that could block the sync loop. GetLastSyncUpdate reports the success-only
+// clock, so a failing instance keeps reporting its last good sync rather than now.
+func (m *StreamManager) instanceLastSuccessfulSync(ctx context.Context, instanceID int) time.Time {
+	if m.clientPool == nil || instanceID <= 0 {
+		return time.Time{}
+	}
+	client, err := m.clientPool.GetClientOffline(ctx, instanceID)
+	if err != nil || client == nil {
+		return time.Time{}
+	}
+	return client.GetLastSyncUpdate()
+}
+
+// stampLastSuccessfulSync sets meta.LastSuccessfulSync from the configured source,
+// leaving it nil (omitted on the wire) when the time is unknown.
+func (m *StreamManager) stampLastSuccessfulSync(ctx context.Context, meta *StreamMeta, instanceID int) {
+	if meta == nil || m.lastSuccessfulSyncFn == nil {
+		return
+	}
+	if ts := m.lastSuccessfulSyncFn(ctx, instanceID); !ts.IsZero() {
+		meta.LastSuccessfulSync = &ts
+	}
 }
 
 // SetActivityHub wires the qui-owned server-event hub and starts forwarding its
@@ -593,14 +633,17 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 
 	message := fmt.Sprintf("Sync with qBittorrent failed (%s); retrying in %ds", err.Error(), retrySeconds)
 
+	meta := &StreamMeta{
+		InstanceID:     instanceID,
+		Timestamp:      time.Now(),
+		RetryInSeconds: retrySeconds,
+	}
+	m.stampLastSuccessfulSync(m.ctx, meta, instanceID)
+
 	payload := &StreamPayload{
 		Type: streamEventError,
-		Meta: &StreamMeta{
-			InstanceID:     instanceID,
-			Timestamp:      time.Now(),
-			RetryInSeconds: retrySeconds,
-		},
-		Err: message,
+		Meta: meta,
+		Err:  message,
 	}
 
 	// Publish asynchronously so a slow or stalled subscriber can't block the
@@ -1272,6 +1315,10 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 			metaCopy = &StreamMeta{InstanceID: opts.InstanceID, Timestamp: time.Now()}
 		}
 		metaCopy.RetryInSeconds = m.currentRetrySeconds(retryInstanceID)
+		// Stamp how stale the retained data is. For multi-instance groups this uses the
+		// representative instance (same one the retry hint is keyed on); a per-instance
+		// rollup is intentionally out of scope here.
+		m.stampLastSuccessfulSync(ctx, metaCopy, retryInstanceID)
 
 		return nil, &StreamPayload{
 			Type: streamEventError,

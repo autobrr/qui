@@ -739,6 +739,56 @@ func TestServeDeliversStreamErrorOnBuildFailure(t *testing.T) {
 	}
 }
 
+// TestServeStampsLastSuccessfulSyncOnBuildFailure covers the materializeGroupResponse
+// error path's staleness stamp (issue #2052): when a cross-instance build fails, the
+// stream-error frame must carry LastSuccessfulSync resolved from the representative
+// instance (retryInstanceID = InstanceIDs[0]) so the client can show how stale the
+// retained rows are. The HandleSyncError stamp path is covered separately in
+// manager_test.go; this exercises the second, group-refresh callsite.
+func TestServeStampsLastSuccessfulSyncOnBuildFailure(t *testing.T) {
+	store, cleanup := newTestInstanceStore(t)
+	defer cleanup()
+
+	provider := &fakeSyncProvider{
+		torrentsResponse:      cannedResponse(),
+		crossInstanceResponse: cannedResponse(),
+	}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	// Source the last good sync from a fixed point in the past, keyed on the instance
+	// the group's retry hint resolves to. Returning the zero time for any other id
+	// proves the stamp is keyed on the representative instance, not stamped blindly.
+	lastGood := time.Now().Add(-90 * time.Second)
+	manager.lastSuccessfulSyncFn = func(_ context.Context, id int) time.Time {
+		if id == instanceID {
+			return lastGood
+		}
+		return time.Time{}
+	}
+
+	// Multi-instance group so retryInstanceID falls back to InstanceIDs[0].
+	payload := streamPayload(instanceID, "stream-err")
+	payload[0]["instanceId"] = 0
+	payload[0]["instanceIds"] = []int{instanceID}
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, payload)
+
+	reader.waitForEvent(t, streamEventInit, 5*time.Second)
+	provider.setCrossInstanceErr(errors.New("boom"))
+
+	errPayload := reader.waitForErrorTriggered(t, "failed to refresh torrent list", 5*time.Second, func() {
+		manager.HandleMainData(instanceID, &qbt.MainData{Rid: 1})
+	})
+	require.Equal(t, streamEventError, errPayload.Type)
+	require.NotNil(t, errPayload.Meta, "error event must carry meta")
+	require.NotNil(t, errPayload.Meta.LastSuccessfulSync, "group build-failure meta must carry the last successful sync time")
+	require.WithinDuration(t, lastGood, *errPayload.Meta.LastSuccessfulSync, time.Second)
+}
+
 // decodeStreamPayloadData unmarshals the JSON data segment of an SSE event.
 func decodeStreamPayloadData(t *testing.T, data string) *StreamPayload {
 	t.Helper()
