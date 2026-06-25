@@ -166,6 +166,7 @@
       "loadingFallback": "Caricamento...",
       "errorFallback": "Impossibile caricare le impostazioni. Riprova.",
       "retry": "Riprova",
+      "cachedNotice": "Visualizzazione delle impostazioni in cache ({{age}}) — qBittorrent non ha risposto in tempo.",
       "deleteDialog": {
         "title": "Elimina istanza",
         "description": "Vuoi davvero eliminare \"{{name}}\"? Questa azione non può essere annullata.",

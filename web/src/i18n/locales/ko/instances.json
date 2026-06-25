@@ -166,6 +166,7 @@
       "loadingFallback": "불러오는 중...",
       "errorFallback": "설정을 불러오지 못했습니다. 다시 시도해 주세요.",
       "retry": "다시 시도",
+      "cachedNotice": "캐시된 설정을 표시 중입니다 ({{age}}) — qBittorrent가 제때 응답하지 않았습니다.",
       "deleteDialog": {
         "title": "인스턴스 삭제",
         "description": "\"{{name}}\"을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",

@@ -166,6 +166,7 @@
       "loadingFallback": "Wird geladen…",
       "errorFallback": "Einstellungen konnten nicht geladen werden. Bitte versuche es erneut.",
       "retry": "Erneut versuchen",
+      "cachedNotice": "Zwischengespeicherte Einstellungen werden angezeigt ({{age}}) — qBittorrent hat nicht rechtzeitig geantwortet.",
       "deleteDialog": {
         "title": "Instanz löschen",
         "description": "Bist du sicher, dass du \"{{name}}\" löschen möchtest? Diese Aktion kann nicht rückgängig gemacht werden.",

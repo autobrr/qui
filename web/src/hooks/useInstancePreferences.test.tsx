@@ -13,6 +13,7 @@ vi.mock("@/lib/api", () => ({
     getCategories: vi.fn(),
     getTags: vi.fn(),
     getInstancePreferences: vi.fn(),
+    getInstancePreferencesWithMeta: vi.fn(),
     updateInstancePreferences: vi.fn(),
   },
 }))
@@ -37,6 +38,10 @@ describe("useInstancePreferences metadata interaction", () => {
     } as never)
     mockedApi.getTags.mockResolvedValue(["linux", "iso"] as never)
     mockedApi.getInstancePreferences.mockResolvedValue({ listen_port: 6881 } as never)
+    mockedApi.getInstancePreferencesWithMeta.mockResolvedValue({
+      preferences: { listen_port: 6881 },
+      cachedAt: null,
+    } as never)
   })
 
   afterEach(() => {
@@ -59,8 +64,9 @@ describe("useInstancePreferences metadata interaction", () => {
       await vi.advanceTimersByTimeAsync(10)
     })
 
-    expect(mockedApi.getInstancePreferences).toHaveBeenCalledWith(1)
+    expect(mockedApi.getInstancePreferencesWithMeta).toHaveBeenCalledWith(1)
     expect(prefs.result.current.preferences).toEqual({ listen_port: 6881 })
+    expect(prefs.result.current.cachedAt).toBeNull()
 
     // It must not have fabricated a metadata entry with empty categories/tags.
     const metadataAfterPrefs = client.getQueryData<InstanceMetadata>(["instance-metadata", 1])
@@ -100,5 +106,56 @@ describe("useInstancePreferences metadata interaction", () => {
     expect(md?.preferences).toEqual({ listen_port: 6881 })
     expect(Object.keys(md?.categories ?? {})).toContain("movies")
     expect(md?.tags).toEqual(["linux"])
+  })
+
+  // Graceful degradation: when the backend serves cached preferences (X-Qui-Cached-At
+  // header present), the hook surfaces the parsed timestamp via cachedAt so the dialog
+  // can warn the user.
+  it("surfaces the cachedAt timestamp when the backend serves cached preferences", async () => {
+    const cachedAt = new Date("2026-06-25T10:00:00Z")
+    mockedApi.getInstancePreferencesWithMeta.mockResolvedValue({
+      preferences: { listen_port: 6881 },
+      cachedAt,
+    } as never)
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = makeWrapper(client)
+
+    const prefs = renderHook(() => useInstancePreferences(1), { wrapper })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10)
+    })
+
+    expect(prefs.result.current.preferences).toEqual({ listen_port: 6881 })
+    expect(prefs.result.current.cachedAt).toEqual(cachedAt)
+  })
+
+  // A successful preferences write proves qBittorrent is reachable again, so the stale
+  // "showing cached settings" marker must clear instead of sticking from the earlier
+  // degraded load (the fetch-once query would otherwise never re-run to clear it).
+  it("clears the cachedAt marker after a successful preferences update", async () => {
+    const cachedAt = new Date("2026-06-25T10:00:00Z")
+    mockedApi.getInstancePreferencesWithMeta.mockResolvedValue({
+      preferences: { listen_port: 6881 },
+      cachedAt,
+    } as never)
+    mockedApi.updateInstancePreferences.mockResolvedValue({ listen_port: 6882 } as never)
+
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = makeWrapper(client)
+
+    const prefs = renderHook(() => useInstancePreferences(1), { wrapper })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10)
+    })
+    expect(prefs.result.current.cachedAt).toEqual(cachedAt)
+
+    await act(async () => {
+      prefs.result.current.updatePreferences({ listen_port: 6882 })
+      await vi.advanceTimersByTimeAsync(10)
+    })
+
+    expect(mockedApi.updateInstancePreferences).toHaveBeenCalledWith(1, { listen_port: 6882 })
+    expect(prefs.result.current.cachedAt).toBeNull()
   })
 })

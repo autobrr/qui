@@ -1507,5 +1507,10 @@
     "failedToUpdatePriorities": "Failed to update file priorities",
     "failedToRenameFile": "Failed to rename file",
     "failedToRenameFolder": "Failed to rename folder"
+  },
+  "detailCache": {
+    "showingCached": "Showing cached data",
+    "failedToLoad": "Failed to load",
+    "retry": "Retry"
   }
 }

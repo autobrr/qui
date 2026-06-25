@@ -166,6 +166,7 @@
       "loadingFallback": "加载中...",
       "errorFallback": "加载设置失败。请重试。",
       "retry": "重试",
+      "cachedNotice": "正在显示缓存的设置（{{age}}）——qBittorrent 未能及时响应。",
       "deleteDialog": {
         "title": "删除实例",
         "description": "确定要删除\"{{name}}\"吗？此操作无法撤销。",

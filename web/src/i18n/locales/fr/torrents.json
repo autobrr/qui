@@ -1507,5 +1507,10 @@
     "failedToUpdatePriorities": "Échec de la mise à jour des priorités des fichiers",
     "failedToRenameFile": "Échec du renommage du fichier",
     "failedToRenameFolder": "Échec du renommage du dossier"
+  },
+  "detailCache": {
+    "showingCached": "Affichage des données en cache",
+    "failedToLoad": "Échec du chargement",
+    "retry": "Réessayer"
   }
 }

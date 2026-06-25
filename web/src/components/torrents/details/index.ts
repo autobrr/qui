@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+export { CachedDataBadge } from "./CachedDataBadge"
 export { CrossSeedTable } from "./CrossSeedTable"
 export { GeneralTabHorizontal } from "./GeneralTabHorizontal"
 export { PeersTable } from "./PeersTable"

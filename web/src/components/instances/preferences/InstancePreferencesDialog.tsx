@@ -23,11 +23,13 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { useInstances } from "@/hooks/useInstances"
+import { formatRelativeTime } from "@/lib/dateTimeUtils"
 import { cn, formatErrorMessage } from "@/lib/utils"
 import type { Instance } from "@/types"
 import { Clock, Cog, Folder, Gauge, MoreVertical, Power, Radar, RefreshCw, Server, Settings, Trash2, Upload, Wifi } from "lucide-react"
-import { Component, lazy, Suspense, useCallback, useMemo, useState, type ErrorInfo, type ReactNode } from "react"
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useState, type ErrorInfo, type ReactNode } from "react"
 
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -150,6 +152,20 @@ export function InstancePreferencesDialog({
   const displayInstanceName = currentInstance?.name ?? instanceName
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [lazyRetryKey, setLazyRetryKey] = useState(0)
+
+  // Read the preferences staleness timestamp so we can warn when the backend served
+  // a cached copy after a live qBittorrent call failed. Only fetch while the dialog
+  // is open; the underlying query is shared with the per-tab forms.
+  const { cachedAt: preferencesCachedAt, refetch: refetchPreferences } = useInstancePreferences(instanceId, { enabled: open })
+
+  // Re-check preferences freshness whenever the dialog opens. The underlying query is
+  // fetch-once (disabled once cached), so without this the staleness notice would stick
+  // from a single degraded load and never clear after qBittorrent recovers.
+  useEffect(() => {
+    if (open && typeof instanceId === "number") {
+      void refetchPreferences()
+    }
+  }, [open, instanceId, refetchPreferences])
 
   const handleLazyRetry = useCallback(() => {
     setLazyRetryKey((prev) => prev + 1)
@@ -276,6 +292,12 @@ export function InstancePreferencesDialog({
             <DialogDescription>
               {t("preferences.dialog.configureDescription")} <strong className="truncate max-w-xs inline-block align-bottom" title={displayInstanceName}>{displayInstanceName}</strong>
             </DialogDescription>
+            {preferencesCachedAt && (
+              <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400 shadow-[0_0_0_2px] shadow-amber-400/25" />
+                <span>{t("preferences.dialog.cachedNotice", { age: formatRelativeTime(preferencesCachedAt) })}</span>
+              </p>
+            )}
           </DialogHeader>
 
           <Tabs defaultValue={defaultTab ?? "instance"} className="flex w-full min-h-0 flex-1 flex-col">
