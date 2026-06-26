@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { FILE_PRIORITY, foldFolderPriority, normalizeFilePriority, type FilePriorityValue, type FolderPriority } from "@/lib/file-priority"
-import { getLinuxFileName, getLinuxFolderName } from "@/lib/incognito"
+import { getLinuxFileName, getLinuxFolderName, getLinuxSavePath } from "@/lib/incognito"
 import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -507,7 +507,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                     <ContextMenuContent>
                       <ContextMenuItem
                         onClick={async () => {
-                          const fullPath = savePath ? joinPath(savePath, node.id) : node.id
+                          const fullPath = incognitoMode? joinPath(getLinuxSavePath(torrentHash), node.name): savePath? joinPath(savePath, node.id): node.id
                           try {
                             await copyTextToClipboard(fullPath)
                             toast.success(isFile ? t("fileTable.filePathCopied") : t("fileTable.folderPathCopied"))

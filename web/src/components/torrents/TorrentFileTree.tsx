@@ -7,7 +7,7 @@ import { FilePrioritySelect } from "@/components/torrents/FilePrioritySelect"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { FILE_PRIORITY, foldFolderPriority, normalizeFilePriority, type FolderPriority } from "@/lib/file-priority"
-import { getLinuxFileName } from "@/lib/incognito"
+import { getLinuxFileName, getLinuxSavePath } from "@/lib/incognito"
 import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -382,7 +382,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                 <ContextMenuContent>
                   <ContextMenuItem
                     onClick={async () => {
-                      const fullPath = savePath ? joinPath(savePath, file.name) : file.name
+                      const fullPath = incognitoMode? joinPath(getLinuxSavePath(torrentHash), node.name): savePath? joinPath(savePath, file.name): file.name
                       try {
                         await copyTextToClipboard(fullPath)
                         toast.success(t("fileTree.filePathCopied"))
@@ -510,7 +510,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                 <ContextMenuItem
                   onClick={async (e) => {
                     e.stopPropagation()
-                    const fullPath = savePath ? joinPath(savePath, node.id) : node.id
+                    const fullPath = incognitoMode? joinPath(getLinuxSavePath(torrentHash), node.name): savePath? joinPath(savePath, node.id): node.id
                     try {
                       await copyTextToClipboard(fullPath)
                       toast.success(t("fileTree.folderPathCopied"))
