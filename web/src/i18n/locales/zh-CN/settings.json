@@ -561,7 +561,8 @@
       "refresh": "刷新",
       "detectedCount": "找到的主题：{{total}}",
       "parseErrorsTitle": "无法解析以下文件：",
-      "noneFound": "未找到自定义主题。请将 .css 文件放入主题目录，然后点击刷新。"
+      "noneFound": "未找到自定义主题。请将 .css 文件放入主题目录，然后点击刷新。",
+      "loadError": "无法加载自定义主题。请检查服务器日志和主题目录权限。"
     }
   },
   "arrInstances": {

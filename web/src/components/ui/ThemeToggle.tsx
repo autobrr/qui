@@ -13,7 +13,7 @@ import {
   getThemeVariation,
   type ThemeMode
 } from "@/utils/theme";
-import { themes, isThemePremium, type Theme } from "@/config/themes";
+import { themes, isThemePremium, getThemeById, type Theme } from "@/config/themes";
 import { Sun, Moon, Monitor, Check, Palette, CornerDownRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -145,7 +145,7 @@ export const ThemeToggle: React.FC = () => {
     setOpen(false);
     await setTheme(themeId);
 
-    const theme = themes.find(th => th.id === themeId);
+    const theme = getThemeById(themeId);
     toast.success(t("themeToggle.switchedToTheme", { theme: theme?.name || themeId }));
   }, [canSwitchPremium, isError, t]);
 
@@ -165,7 +165,7 @@ export const ThemeToggle: React.FC = () => {
     await setTheme(themeId);
     await setThemeVariation(variationId);
 
-    const theme = themes.find(th => th.id === themeId);
+    const theme = getThemeById(themeId);
     toast.success(t("themeToggle.switchedToThemeVariation", { theme: theme?.name || themeId, variation: variationId }));
 
     setOpen(false);

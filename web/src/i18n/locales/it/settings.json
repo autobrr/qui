@@ -563,7 +563,8 @@
       "refresh": "Aggiorna",
       "detectedCount": "Temi trovati: {{total}}",
       "parseErrorsTitle": "Impossibile analizzare questi file:",
-      "noneFound": "Nessun tema personalizzato trovato. Inserisci un file .css nella cartella dei temi e fai clic su Aggiorna."
+      "noneFound": "Nessun tema personalizzato trovato. Inserisci un file .css nella cartella dei temi e fai clic su Aggiorna.",
+      "loadError": "Impossibile caricare i temi personalizzati. Controlla i log del server e i permessi della cartella dei temi."
     }
   },
   "arrInstances": {

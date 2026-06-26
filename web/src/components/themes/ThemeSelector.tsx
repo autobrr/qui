@@ -157,6 +157,7 @@ export function ThemeSelector() {
     errors: customThemeErrors,
     directory: customThemesDirectory,
     isFetching: customThemesFetching,
+    isError: customThemesError,
     refetch: refetchCustomThemes,
   } = useCustomThemes()
 
@@ -355,12 +356,21 @@ export function ThemeSelector() {
                     {t("themes.custom.refresh")}
                   </Button>
                 </div>
-                <code className="block text-xs bg-muted px-2 py-1 rounded break-all">
-                  {customThemesDirectory || "…"}
-                </code>
-                <p className="text-xs text-muted-foreground">
-                  {t("themes.custom.detectedCount", { total: customThemes.length })}
-                </p>
+                {customThemesDirectory && (
+                  <code className="block text-xs bg-muted px-2 py-1 rounded break-all">
+                    {customThemesDirectory}
+                  </code>
+                )}
+                {customThemesError ? (
+                  <p className="text-xs font-medium text-destructive flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    {t("themes.custom.loadError")}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {t("themes.custom.detectedCount", { total: customThemes.length })}
+                  </p>
+                )}
                 {customThemeErrors.length > 0 && (
                   <div className="space-y-1">
                     <p className="text-xs font-medium text-destructive flex items-center gap-1">
@@ -377,7 +387,7 @@ export function ThemeSelector() {
               </div>
 
               {customThemes.length === 0 ? (
-                !customThemesFetching && (
+                !customThemesFetching && !customThemesError && (
                   <p className="text-sm text-muted-foreground">{t("themes.custom.noneFound")}</p>
                 )
               ) : (

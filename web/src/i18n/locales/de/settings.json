@@ -563,7 +563,8 @@
       "refresh": "Aktualisieren",
       "detectedCount": "Gefundene Themes: {{total}}",
       "parseErrorsTitle": "Diese Dateien konnten nicht gelesen werden:",
-      "noneFound": "Keine eigenen Themes gefunden. Lege eine .css-Datei im Themes-Verzeichnis ab und klicke auf Aktualisieren."
+      "noneFound": "Keine eigenen Themes gefunden. Lege eine .css-Datei im Themes-Verzeichnis ab und klicke auf Aktualisieren.",
+      "loadError": "Eigene Themes konnten nicht geladen werden. Prüfe die Serverprotokolle und die Berechtigungen des Themes-Verzeichnisses."
     }
   },
   "arrInstances": {

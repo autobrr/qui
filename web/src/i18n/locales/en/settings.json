@@ -563,7 +563,8 @@
       "refresh": "Refresh",
       "detectedCount": "Themes found: {{total}}",
       "parseErrorsTitle": "Could not parse these files:",
-      "noneFound": "No custom themes found. Drop a .css file into the themes directory and click Refresh."
+      "noneFound": "No custom themes found. Drop a .css file into the themes directory and click Refresh.",
+      "loadError": "Couldn't load custom themes. Check the server logs and the themes directory permissions."
     }
   },
   "arrInstances": {

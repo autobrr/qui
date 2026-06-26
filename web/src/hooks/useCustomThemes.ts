@@ -82,6 +82,8 @@ export function useCustomThemes() {
     directory: query.data?.directory ?? "",
     isLoading: query.isLoading,
     isFetching: query.isFetching,
+    // Surfaced so consumers can distinguish a failed load from an empty result.
+    isError: query.isError,
     refetch: query.refetch,
   }
 }
