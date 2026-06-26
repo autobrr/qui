@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package config
@@ -17,6 +17,7 @@ import (
 	"sync"
 	"text/template"
 	"time"
+	"unicode"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/rs/zerolog"
@@ -100,20 +101,40 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("host", host)
 	c.viper.SetDefault("port", 7476)
 	c.viper.SetDefault("baseUrl", "/")
+	c.viper.SetDefault("corsAllowedOrigins", []string{})
 	c.viper.SetDefault("sessionSecret", sessionSecret)
 	c.viper.SetDefault("logLevel", "INFO")
 	c.viper.SetDefault("logPath", "")
 	c.viper.SetDefault("logMaxSize", 50)
 	c.viper.SetDefault("logMaxBackups", 3)
 	c.viper.SetDefault("dataDir", "") // Empty means auto-detect (next to config file)
+	c.viper.SetDefault("databaseEngine", "sqlite")
+	c.viper.SetDefault("databaseDsn", "")
+	c.viper.SetDefault("databaseHost", "localhost")
+	c.viper.SetDefault("databasePort", 5432)
+	c.viper.SetDefault("databaseUser", "")
+	c.viper.SetDefault("databasePassword", "")
+	c.viper.SetDefault("databaseName", "qui")
+	c.viper.SetDefault("databaseSSLMode", "disable")
+	c.viper.SetDefault("databaseConnectTimeout", 10)
+	c.viper.SetDefault("databaseMaxOpenConns", 25)
+	c.viper.SetDefault("databaseMaxIdleConns", 5)
+	c.viper.SetDefault("databaseConnMaxLifetime", 300)
 	c.viper.SetDefault("checkForUpdates", true)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
+	c.viper.SetDefault("crossSeedRecoverErroredTorrents", false)
 	c.viper.SetDefault("pprofEnabled", false)
+	c.viper.SetDefault("pprofAddr", "127.0.0.1:6060")
 	c.viper.SetDefault("metricsEnabled", false)
 	c.viper.SetDefault("metricsHost", "127.0.0.1")
 	c.viper.SetDefault("metricsPort", 9074)
 	c.viper.SetDefault("metricsBasicAuthUsers", "")
 	c.viper.SetDefault("externalProgramAllowList", []string{})
+
+	// Auth disabled
+	c.viper.SetDefault("authDisabled", false)
+	c.viper.SetDefault("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA", false)
+	c.viper.SetDefault("authDisabledAllowedCIDRs", []string{})
 
 	// OIDC defaults
 	c.viper.SetDefault("oidcEnabled", false)
@@ -184,19 +205,38 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("host", envPrefix+"HOST")
 	c.viper.BindEnv("port", envPrefix+"PORT")
 	c.viper.BindEnv("baseUrl", envPrefix+"BASE_URL")
+	c.viper.BindEnv("corsAllowedOrigins", envPrefix+"CORS_ALLOWED_ORIGINS")
 	c.bindOrReadFromFile("sessionSecret", envPrefix+"SESSION_SECRET")
 	c.viper.BindEnv("logLevel", envPrefix+"LOG_LEVEL")
 	c.viper.BindEnv("logPath", envPrefix+"LOG_PATH")
 	c.viper.BindEnv("logMaxSize", envPrefix+"LOG_MAX_SIZE")
 	c.viper.BindEnv("logMaxBackups", envPrefix+"LOG_MAX_BACKUPS")
 	c.viper.BindEnv("dataDir", envPrefix+"DATA_DIR")
+	c.viper.BindEnv("databaseEngine", envPrefix+"DATABASE_ENGINE")
+	c.bindOrReadFromFile("databaseDsn", envPrefix+"DATABASE_DSN")
+	c.viper.BindEnv("databaseHost", envPrefix+"DATABASE_HOST")
+	c.viper.BindEnv("databasePort", envPrefix+"DATABASE_PORT")
+	c.viper.BindEnv("databaseUser", envPrefix+"DATABASE_USER")
+	c.bindOrReadFromFile("databasePassword", envPrefix+"DATABASE_PASSWORD")
+	c.viper.BindEnv("databaseName", envPrefix+"DATABASE_NAME")
+	c.viper.BindEnv("databaseSSLMode", envPrefix+"DATABASE_SSL_MODE")
+	c.viper.BindEnv("databaseConnectTimeout", envPrefix+"DATABASE_CONNECT_TIMEOUT")
+	c.viper.BindEnv("databaseMaxOpenConns", envPrefix+"DATABASE_MAX_OPEN_CONNS")
+	c.viper.BindEnv("databaseMaxIdleConns", envPrefix+"DATABASE_MAX_IDLE_CONNS")
+	c.viper.BindEnv("databaseConnMaxLifetime", envPrefix+"DATABASE_CONN_MAX_LIFETIME")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
+	c.viper.BindEnv("crossSeedRecoverErroredTorrents", envPrefix+"CROSS_SEED_RECOVER_ERRORED_TORRENTS")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
+	c.viper.BindEnv("pprofAddr", envPrefix+"PPROF_ADDR")
 	c.viper.BindEnv("metricsEnabled", envPrefix+"METRICS_ENABLED")
 	c.viper.BindEnv("metricsHost", envPrefix+"METRICS_HOST")
 	c.viper.BindEnv("metricsPort", envPrefix+"METRICS_PORT")
 	c.viper.BindEnv("metricsBasicAuthUsers", envPrefix+"METRICS_BASIC_AUTH_USERS")
+
+	c.viper.BindEnv("authDisabled", envPrefix+"AUTH_DISABLED")
+	c.viper.BindEnv("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA", envPrefix+"I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
+	c.viper.BindEnv("authDisabledAllowedCIDRs", envPrefix+"AUTH_DISABLED_ALLOWED_CIDRS")
 
 	// OIDC environment variables
 	c.viper.BindEnv("oidcEnabled", envPrefix+"OIDC_ENABLED")
@@ -215,6 +255,14 @@ func (c *AppConfig) watchConfig() {
 		c.configMu.Lock()
 		defer c.configMu.Unlock()
 
+		previousAuthSettings := authReloadSettings{
+			authDisabled:               c.Config.AuthDisabled,
+			iAcknowledgeThisIsABadIdea: c.Config.IAcknowledgeThisIsABadIdea,
+			authDisabledAllowedCIDRs:   append([]string(nil), c.Config.AuthDisabledAllowedCIDRs...),
+			oidcEnabled:                c.Config.OIDCEnabled,
+			corsAllowedOrigins:         append([]string(nil), c.Config.CORSAllowedOrigins...),
+		}
+
 		// Reload configuration
 		if err := c.viper.Unmarshal(c.Config); err != nil {
 			log.Error().Err(err).Msg("Failed to reload configuration")
@@ -223,14 +271,45 @@ func (c *AppConfig) watchConfig() {
 		c.hydrateConfigFromViper()
 
 		// Apply dynamic changes
-		c.applyDynamicChanges()
+		c.applyDynamicChanges(previousAuthSettings)
 	})
 }
 
-func (c *AppConfig) applyDynamicChanges() {
+type authReloadSettings struct {
+	authDisabled               bool
+	iAcknowledgeThisIsABadIdea bool
+	authDisabledAllowedCIDRs   []string
+	oidcEnabled                bool
+	corsAllowedOrigins         []string
+}
+
+func (c *AppConfig) applyDynamicChanges(previousAuthSettings authReloadSettings) {
 	c.Config.Version = c.version
 	if err := c.ApplyLogConfig(); err != nil {
 		log.Error().Err(err).Msg("Failed to apply log configuration")
+	}
+
+	if err := c.Config.ValidateAuthDisabledConfig(); err != nil {
+		log.Error().Err(err).Msg("auth-disabled config is invalid after reload; keeping previous valid auth-disabled settings")
+		c.Config.AuthDisabled = previousAuthSettings.authDisabled
+		c.Config.IAcknowledgeThisIsABadIdea = previousAuthSettings.iAcknowledgeThisIsABadIdea
+		c.Config.AuthDisabledAllowedCIDRs = append([]string(nil), previousAuthSettings.authDisabledAllowedCIDRs...)
+		c.Config.OIDCEnabled = previousAuthSettings.oidcEnabled
+		c.Config.CORSAllowedOrigins = append([]string(nil), previousAuthSettings.corsAllowedOrigins...)
+
+		return
+	}
+
+	if err := c.Config.NormalizeCORSAllowedOrigins(); err != nil {
+		log.Error().Err(err).Msg("CORS config is invalid after reload; keeping previous valid corsAllowedOrigins")
+		c.Config.CORSAllowedOrigins = append([]string(nil), previousAuthSettings.corsAllowedOrigins...)
+	}
+
+	switch {
+	case c.Config.IsAuthDisabled():
+		log.Warn().Strs("authDisabledAllowedCIDRs", c.Config.AuthDisabledAllowedCIDRs).Msg("Authentication is disabled via QUI__AUTH_DISABLED. Access is restricted to authDisabledAllowedCIDRs. Make sure qui is behind a reverse proxy with its own authentication.")
+	case c.Config.AuthDisabled != c.Config.IAcknowledgeThisIsABadIdea:
+		log.Warn().Msg("Only one of QUI__AUTH_DISABLED and QUI__I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA is set. Authentication remains enabled. Set both to disable authentication.")
 	}
 
 	c.notifyListeners()
@@ -240,6 +319,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.Host = c.viper.GetString("host")
 	c.Config.Port = c.viper.GetInt("port")
 	c.Config.BaseURL = c.viper.GetString("baseUrl")
+	c.Config.CORSAllowedOrigins = c.getNormalizedStringSlice("corsAllowedOrigins")
 	c.Config.SessionSecret = c.viper.GetString("sessionSecret")
 
 	c.Config.LogLevel = c.viper.GetString("logLevel")
@@ -248,16 +328,34 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.LogMaxBackups = c.viper.GetInt("logMaxBackups")
 
 	c.Config.DataDir = c.viper.GetString("dataDir")
+	c.Config.DatabaseEngine = c.viper.GetString("databaseEngine")
+	c.Config.DatabaseDSN = c.viper.GetString("databaseDsn")
+	c.Config.DatabaseHost = c.viper.GetString("databaseHost")
+	c.Config.DatabasePort = c.viper.GetInt("databasePort")
+	c.Config.DatabaseUser = c.viper.GetString("databaseUser")
+	c.Config.DatabasePassword = c.viper.GetString("databasePassword")
+	c.Config.DatabaseName = c.viper.GetString("databaseName")
+	c.Config.DatabaseSSLMode = c.viper.GetString("databaseSSLMode")
+	c.Config.DatabaseConnectTimeout = c.viper.GetInt("databaseConnectTimeout")
+	c.Config.DatabaseMaxOpenConns = c.viper.GetInt("databaseMaxOpenConns")
+	c.Config.DatabaseMaxIdleConns = c.viper.GetInt("databaseMaxIdleConns")
+	c.Config.DatabaseConnMaxLifetime = c.viper.GetInt("databaseConnMaxLifetime")
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
+	c.Config.CrossSeedRecoverErroredTorrents = c.viper.GetBool("crossSeedRecoverErroredTorrents")
 	c.Config.PprofEnabled = c.viper.GetBool("pprofEnabled")
+	c.Config.PprofAddr = c.viper.GetString("pprofAddr")
 
 	c.Config.MetricsEnabled = c.viper.GetBool("metricsEnabled")
 	c.Config.MetricsHost = c.viper.GetString("metricsHost")
 	c.Config.MetricsPort = c.viper.GetInt("metricsPort")
 	c.Config.MetricsBasicAuthUsers = c.viper.GetString("metricsBasicAuthUsers")
 
-	c.Config.ExternalProgramAllowList = c.viper.GetStringSlice("externalProgramAllowList")
+	c.Config.ExternalProgramAllowList = c.getNormalizedStringSlice("externalProgramAllowList")
+
+	c.Config.AuthDisabled = c.viper.GetBool("authDisabled")
+	c.Config.IAcknowledgeThisIsABadIdea = c.viper.GetBool("I_ACKNOWLEDGE_THIS_IS_A_BAD_IDEA")
+	c.Config.AuthDisabledAllowedCIDRs = c.getNormalizedStringSlice("authDisabledAllowedCIDRs")
 
 	c.Config.OIDCEnabled = c.viper.GetBool("oidcEnabled")
 	c.Config.OIDCIssuer = c.viper.GetString("oidcIssuer")
@@ -265,6 +363,55 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.OIDCClientSecret = c.viper.GetString("oidcClientSecret")
 	c.Config.OIDCRedirectURL = c.viper.GetString("oidcRedirectUrl")
 	c.Config.OIDCDisableBuiltInLogin = c.viper.GetBool("oidcDisableBuiltInLogin")
+}
+
+func (c *AppConfig) getNormalizedStringSlice(key string) []string {
+	switch value := c.viper.Get(key).(type) {
+	case []string:
+		return normalizeStringSlice(value)
+	case []any:
+		normalized := make([]string, 0, len(value))
+		for _, item := range value {
+			entry, ok := item.(string)
+			if !ok {
+				continue
+			}
+			trimmed := strings.TrimSpace(entry)
+			if trimmed != "" {
+				normalized = append(normalized, trimmed)
+			}
+		}
+		return normalized
+	case string:
+		return splitStringSliceValue(value)
+	default:
+		return normalizeStringSlice(c.viper.GetStringSlice(key))
+	}
+}
+
+func normalizeStringSlice(values []string) []string {
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			normalized = append(normalized, trimmed)
+		}
+	}
+
+	return normalized
+}
+
+func splitStringSliceValue(value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+
+	parts := strings.FieldsFunc(trimmed, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	})
+
+	return normalizeStringSlice(parts)
 }
 
 // RegisterReloadListener registers a callback that's invoked when the configuration file is reloaded.
@@ -321,6 +468,13 @@ port = {{ .port }}
 # Optional
 #baseUrl = "/qui/"
 
+# CORS allowlist
+# Empty (default) disables CORS.
+# Entries must be explicit origins (scheme + host + optional non-default port).
+# Wildcards are not allowed.
+# Example:
+#corsAllowedOrigins = ["https://sso.example.com", "https://panel.example.com"]
+
 # Session secret
 # Auto-generated if not provided
 # WARNING: Changing this value will break decryption of existing instance passwords!
@@ -345,6 +499,24 @@ sessionSecret = "{{ .sessionSecret }}"
 # Database file (qui.db) will be created inside this directory
 #dataDir = "/var/db/qui"
 
+# Database engine
+# Options: "sqlite" (default), "postgres"
+#databaseEngine = "sqlite"
+
+# Postgres connection settings (used when databaseEngine = "postgres")
+# Preferred: provide a DSN and ignore host/user/password fields.
+#databaseDsn = "postgres://user:password@localhost:5432/qui?sslmode=disable"
+#databaseHost = "localhost"
+#databasePort = 5432
+#databaseUser = ""
+#databasePassword = ""
+#databaseName = "qui"
+#databaseSSLMode = "disable"
+#databaseConnectTimeout = 10
+#databaseMaxOpenConns = 25
+#databaseMaxIdleConns = 5
+#databaseConnMaxLifetime = 300
+
 # Check for new releases via api.autobrr.com
 # Default: true
 #checkForUpdates = true
@@ -353,6 +525,13 @@ sessionSecret = "{{ .sessionSecret }}"
 # Disable to prevent qui from requesting tracker favicons from remote trackers.
 # Default: true
 #trackerIconsFetchEnabled = true
+
+# Cross-seed errored torrent recovery (requires restart)
+# When enabled, cross-seed automation will attempt to recover torrents in error/missingFiles state
+# by triggering recheck and waiting for completion. This can cause runs to take 25+ minutes.
+# When disabled (default), errored torrents are simply excluded from candidate selection.
+# Default: false
+#crossSeedRecoverErroredTorrents = false
 
 # Log level
 # Default: "INFO"

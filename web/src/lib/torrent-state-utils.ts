@@ -1,7 +1,9 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
+
+import type { TFunction } from "i18next"
 
 // Human-friendly labels for qBittorrent torrent states
 const TORRENT_STATE_LABELS: Record<string, string> = {
@@ -34,9 +36,10 @@ const TORRENT_STATE_LABELS: Record<string, string> = {
   moving: "Moving",
 }
 
-export function getStateLabel(state: string): string {
-  return TORRENT_STATE_LABELS[state] ?? state
+export function getStateLabel(state: string, t?: TFunction): string {
+  const fallback = TORRENT_STATE_LABELS[state] ?? state
+  if (t) {
+    return t(`stateLabels.${state}`, { defaultValue: fallback })
+  }
+  return fallback
 }
-
-
-

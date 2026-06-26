@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -10,8 +10,10 @@ import { ReannounceSettingsDialog } from "@/components/instances/preferences/Rea
 import { WorkflowsOverview } from "@/components/instances/preferences/WorkflowsOverview"
 import { useInstances } from "@/hooks/useInstances"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 
 export function Automations() {
+  const { t } = useTranslation("automations")
   const { instances } = useInstances()
   const [configureInstanceId, setConfigureInstanceId] = useState<number | null>(null)
   const [configureOrphanScanId, setConfigureOrphanScanId] = useState<number | null>(null)
@@ -30,7 +32,7 @@ export function Automations() {
   // Extract expanded instances for a specific card
   const getExpandedForCard = (cardPrefix: string): string[] => {
     if (!expandedAccordion) return []
-    const [prefix, instanceId] = expandedAccordion.split(':')
+    const [prefix, instanceId] = expandedAccordion.split(":")
     return prefix === cardPrefix ? [instanceId] : []
   }
 
@@ -38,12 +40,12 @@ export function Automations() {
   const configureOrphanScanInstance = instances?.find((inst) => inst.id === configureOrphanScanId)
 
   return (
-    <div className="container mx-auto px-6 space-y-6 py-6">
+    <div className="container mx-auto px-6 space-y-6 py-6 overflow-x-hidden">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex-1 space-y-2">
-          <h1 className="text-2xl font-semibold">Automations</h1>
+          <h1 className="text-2xl font-semibold">{t("page.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Instance-level automation services managed by qui.
+            {t("page.description")}
           </p>
         </div>
       </div>
@@ -51,18 +53,18 @@ export function Automations() {
       {/* Workflows full width, then Reannounce + Orphan Scan side by side */}
       <div className="space-y-6">
         <WorkflowsOverview
-          expandedInstances={getExpandedForCard('workflows')}
-          onExpandedInstancesChange={handleAccordionChange('workflows')}
+          expandedInstances={getExpandedForCard("workflows")}
+          onExpandedInstancesChange={handleAccordionChange("workflows")}
         />
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
           <ReannounceOverview
-            expandedInstances={getExpandedForCard('reannounce')}
-            onExpandedInstancesChange={handleAccordionChange('reannounce')}
+            expandedInstances={getExpandedForCard("reannounce")}
+            onExpandedInstancesChange={handleAccordionChange("reannounce")}
             onConfigureInstance={setConfigureInstanceId}
           />
           <OrphanScanOverview
-            expandedInstances={getExpandedForCard('orphan')}
-            onExpandedInstancesChange={handleAccordionChange('orphan')}
+            expandedInstances={getExpandedForCard("orphan")}
+            onExpandedInstancesChange={handleAccordionChange("orphan")}
             onConfigureInstance={setConfigureOrphanScanId}
           />
         </div>
@@ -70,7 +72,7 @@ export function Automations() {
 
       {instances && instances.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          No instances configured yet. Add one in Settings to use services.
+          {t("page.noInstances")}
         </p>
       )}
 

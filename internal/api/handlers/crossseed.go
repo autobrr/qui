@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -24,28 +25,47 @@ import (
 
 // CrossSeedHandler handles cross-seed API endpoints
 type CrossSeedHandler struct {
-	service         *crossseed.Service
-	completionStore *models.InstanceCrossSeedCompletionStore
-	instanceStore   *models.InstanceStore
+	service            *crossseed.Service
+	completionStore    *models.InstanceCrossSeedCompletionStore
+	instanceStore      *models.InstanceStore
+	seasonPackRunStore *models.SeasonPackRunStore
 }
 
+var infoHashRegex = regexp.MustCompile(`^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$`)
+
 type automationSettingsRequest struct {
-	Enabled                      bool     `json:"enabled"`
-	RunIntervalMinutes           int      `json:"runIntervalMinutes"`
-	StartPaused                  bool     `json:"startPaused"`
-	Category                     *string  `json:"category"`
-	IgnorePatterns               []string `json:"ignorePatterns"`
-	TargetInstanceIDs            []int    `json:"targetInstanceIds"`
-	TargetIndexerIDs             []int    `json:"targetIndexerIds"`
-	MaxResultsPerRun             int      `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
-	FindIndividualEpisodes       bool     `json:"findIndividualEpisodes"`
-	SizeMismatchTolerancePercent float64  `json:"sizeMismatchTolerancePercent"`
-	UseCategoryFromIndexer       bool     `json:"useCategoryFromIndexer"`
-	UseCrossCategorySuffix       bool     `json:"useCrossCategorySuffix"`
-	UseCustomCategory            bool     `json:"useCustomCategory"`
-	CustomCategory               string   `json:"customCategory"`
-	RunExternalProgramID         *int     `json:"runExternalProgramId"`
-	SkipRecheck                  bool     `json:"skipRecheck"`
+	Enabled                      bool                            `json:"enabled"`
+	RunIntervalMinutes           int                             `json:"runIntervalMinutes"`
+	StartPaused                  bool                            `json:"startPaused"`
+	Category                     *string                         `json:"category"`
+	TargetInstanceIDs            []int                           `json:"targetInstanceIds"`
+	TargetIndexerIDs             []int                           `json:"targetIndexerIds"`
+	MaxResultsPerRun             int                             `json:"maxResultsPerRun"` // Deprecated: automation now processes full feeds and ignores this value
+	FindIndividualEpisodes       bool                            `json:"findIndividualEpisodes"`
+	SizeMismatchTolerancePercent float64                         `json:"sizeMismatchTolerancePercent"`
+	UseCategoryFromIndexer       bool                            `json:"useCategoryFromIndexer"`
+	UseCrossCategoryAffix        bool                            `json:"useCrossCategoryAffix"`
+	CategoryAffixMode            string                          `json:"categoryAffixMode"`
+	CategoryAffix                string                          `json:"categoryAffix"`
+	UseCustomCategory            bool                            `json:"useCustomCategory"`
+	CustomCategory               string                          `json:"customCategory"`
+	RunExternalProgramID         *int                            `json:"runExternalProgramId"`
+	SkipRecheck                  bool                            `json:"skipRecheck"`
+	SeasonPackEnabled            bool                            `json:"seasonPackEnabled"`
+	SeasonPackSkipRepackCompare  bool                            `json:"seasonPackSkipRepackCompare"`
+	SeasonPackSimplifyHDRCompare bool                            `json:"seasonPackSimplifyHdrCompare"`
+	SeasonPackSimplifyWEBCompare bool                            `json:"seasonPackSimplifyWebCompare"`
+	SeasonPackSkipYearCompare    bool                            `json:"seasonPackSkipYearCompare"`
+	SeasonPackCoverageThreshold  float64                         `json:"seasonPackCoverageThreshold"`
+	SeasonPackTags               []string                        `json:"seasonPackTags"`
+	SeasonPackCategory           string                          `json:"seasonPackCategory"`
+	SeasonPackCategoryRules      []models.SeasonPackCategoryRule `json:"seasonPackCategoryRules"`
+	// Gazelle (OPS/RED) cross-seed settings.
+	GazelleEnabled       bool   `json:"gazelleEnabled"`
+	RedactedAPIKey       string `json:"redactedApiKey"`
+	OrpheusAPIKey        string `json:"orpheusApiKey"`
+	SeasonPackTVDBAPIKey string `json:"seasonPackTvdbApiKey"`
+	SeasonPackTVDBPIN    string `json:"seasonPackTvdbPin"`
 }
 
 type automationSettingsPatchRequest struct {
@@ -53,7 +73,6 @@ type automationSettingsPatchRequest struct {
 	RunIntervalMinutes *int           `json:"runIntervalMinutes,omitempty"`
 	StartPaused        *bool          `json:"startPaused,omitempty"`
 	Category           optionalString `json:"category"`
-	IgnorePatterns     *[]string      `json:"ignorePatterns,omitempty"`
 	TargetInstanceIDs  *[]int         `json:"targetInstanceIds,omitempty"`
 	TargetIndexerIDs   *[]int         `json:"targetIndexerIds,omitempty"`
 	MaxResultsPerRun   *int           `json:"maxResultsPerRun,omitempty"` // Deprecated: automation now processes full feeds and ignores this value
@@ -70,7 +89,9 @@ type automationSettingsPatchRequest struct {
 	FindIndividualEpisodes         *bool       `json:"findIndividualEpisodes,omitempty"`
 	SizeMismatchTolerancePercent   *float64    `json:"sizeMismatchTolerancePercent,omitempty"`
 	UseCategoryFromIndexer         *bool       `json:"useCategoryFromIndexer,omitempty"`
-	UseCrossCategorySuffix         *bool       `json:"useCrossCategorySuffix,omitempty"`
+	UseCrossCategoryAffix          *bool       `json:"useCrossCategoryAffix,omitempty"`
+	CategoryAffixMode              *string     `json:"categoryAffixMode,omitempty"`
+	CategoryAffix                  *string     `json:"categoryAffix,omitempty"`
 	UseCustomCategory              *bool       `json:"useCustomCategory,omitempty"`
 	CustomCategory                 *string     `json:"customCategory,omitempty"`
 	RunExternalProgramID           optionalInt `json:"runExternalProgramId"`
@@ -87,6 +108,22 @@ type automationSettingsPatchRequest struct {
 	SkipAutoResumeWebhook        *bool `json:"skipAutoResumeWebhook,omitempty"`
 	SkipRecheck                  *bool `json:"skipRecheck,omitempty"`
 	SkipPieceBoundarySafetyCheck *bool `json:"skipPieceBoundarySafetyCheck,omitempty"`
+	// Gazelle (OPS/RED) cross-seed settings.
+	// Season pack settings
+	SeasonPackEnabled            *bool                            `json:"seasonPackEnabled,omitempty"`
+	SeasonPackSkipRepackCompare  *bool                            `json:"seasonPackSkipRepackCompare,omitempty"`
+	SeasonPackSimplifyHDRCompare *bool                            `json:"seasonPackSimplifyHdrCompare,omitempty"`
+	SeasonPackSimplifyWEBCompare *bool                            `json:"seasonPackSimplifyWebCompare,omitempty"`
+	SeasonPackSkipYearCompare    *bool                            `json:"seasonPackSkipYearCompare,omitempty"`
+	SeasonPackCoverageThreshold  *float64                         `json:"seasonPackCoverageThreshold,omitempty"`
+	SeasonPackTags               *[]string                        `json:"seasonPackTags,omitempty"`
+	SeasonPackCategory           *string                          `json:"seasonPackCategory,omitempty"`
+	SeasonPackCategoryRules      *[]models.SeasonPackCategoryRule `json:"seasonPackCategoryRules,omitempty"`
+	GazelleEnabled               *bool                            `json:"gazelleEnabled,omitempty"`
+	RedactedAPIKey               *string                          `json:"redactedApiKey,omitempty"`
+	OrpheusAPIKey                *string                          `json:"orpheusApiKey,omitempty"`
+	SeasonPackTVDBAPIKey         *string                          `json:"seasonPackTvdbApiKey,omitempty"`
+	SeasonPackTVDBPIN            *string                          `json:"seasonPackTvdbPin,omitempty"`
 }
 
 type optionalString struct {
@@ -150,7 +187,6 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.RunIntervalMinutes == nil &&
 		r.StartPaused == nil &&
 		!r.Category.Set &&
-		r.IgnorePatterns == nil &&
 		r.TargetInstanceIDs == nil &&
 		r.TargetIndexerIDs == nil &&
 		r.MaxResultsPerRun == nil &&
@@ -165,7 +201,9 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.FindIndividualEpisodes == nil &&
 		r.SizeMismatchTolerancePercent == nil &&
 		r.UseCategoryFromIndexer == nil &&
-		r.UseCrossCategorySuffix == nil &&
+		r.UseCrossCategoryAffix == nil &&
+		r.CategoryAffixMode == nil &&
+		r.CategoryAffix == nil &&
 		r.UseCustomCategory == nil &&
 		r.CustomCategory == nil &&
 		!r.RunExternalProgramID.Set &&
@@ -179,7 +217,21 @@ func (r automationSettingsPatchRequest) isEmpty() bool {
 		r.SkipAutoResumeCompletion == nil &&
 		r.SkipAutoResumeWebhook == nil &&
 		r.SkipRecheck == nil &&
-		r.SkipPieceBoundarySafetyCheck == nil
+		r.SkipPieceBoundarySafetyCheck == nil &&
+		r.SeasonPackEnabled == nil &&
+		r.SeasonPackSkipRepackCompare == nil &&
+		r.SeasonPackSimplifyHDRCompare == nil &&
+		r.SeasonPackSimplifyWEBCompare == nil &&
+		r.SeasonPackSkipYearCompare == nil &&
+		r.SeasonPackCoverageThreshold == nil &&
+		r.SeasonPackTags == nil &&
+		r.SeasonPackCategory == nil &&
+		r.SeasonPackCategoryRules == nil &&
+		r.GazelleEnabled == nil &&
+		r.RedactedAPIKey == nil &&
+		r.OrpheusAPIKey == nil &&
+		r.SeasonPackTVDBAPIKey == nil &&
+		r.SeasonPackTVDBPIN == nil
 }
 
 func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, patch automationSettingsPatchRequest) {
@@ -203,9 +255,6 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 				settings.Category = &trimmed
 			}
 		}
-	}
-	if patch.IgnorePatterns != nil {
-		settings.IgnorePatterns = *patch.IgnorePatterns
 	}
 	if patch.TargetInstanceIDs != nil {
 		settings.TargetInstanceIDs = *patch.TargetInstanceIDs
@@ -251,8 +300,14 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.UseCategoryFromIndexer != nil {
 		settings.UseCategoryFromIndexer = *patch.UseCategoryFromIndexer
 	}
-	if patch.UseCrossCategorySuffix != nil {
-		settings.UseCrossCategorySuffix = *patch.UseCrossCategorySuffix
+	if patch.UseCrossCategoryAffix != nil {
+		settings.UseCrossCategoryAffix = *patch.UseCrossCategoryAffix
+	}
+	if patch.CategoryAffixMode != nil {
+		settings.CategoryAffixMode = *patch.CategoryAffixMode
+	}
+	if patch.CategoryAffix != nil {
+		settings.CategoryAffix = strings.TrimSpace(*patch.CategoryAffix)
 	}
 	if patch.UseCustomCategory != nil {
 		settings.UseCustomCategory = *patch.UseCustomCategory
@@ -298,6 +353,94 @@ func applyAutomationSettingsPatch(settings *models.CrossSeedAutomationSettings, 
 	if patch.SkipPieceBoundarySafetyCheck != nil {
 		settings.SkipPieceBoundarySafetyCheck = *patch.SkipPieceBoundarySafetyCheck
 	}
+	// Season pack settings
+	if patch.SeasonPackEnabled != nil {
+		settings.SeasonPackEnabled = *patch.SeasonPackEnabled
+	}
+	if patch.SeasonPackSkipRepackCompare != nil {
+		settings.SeasonPackSkipRepackCompare = *patch.SeasonPackSkipRepackCompare
+	}
+	if patch.SeasonPackSimplifyHDRCompare != nil {
+		settings.SeasonPackSimplifyHDRCompare = *patch.SeasonPackSimplifyHDRCompare
+	}
+	if patch.SeasonPackSimplifyWEBCompare != nil {
+		settings.SeasonPackSimplifyWEBCompare = *patch.SeasonPackSimplifyWEBCompare
+	}
+	if patch.SeasonPackSkipYearCompare != nil {
+		settings.SeasonPackSkipYearCompare = *patch.SeasonPackSkipYearCompare
+	}
+	if patch.SeasonPackCoverageThreshold != nil {
+		settings.SeasonPackCoverageThreshold = *patch.SeasonPackCoverageThreshold
+	}
+	if patch.SeasonPackTags != nil {
+		settings.SeasonPackTags = *patch.SeasonPackTags
+	}
+	if patch.SeasonPackCategory != nil {
+		settings.SeasonPackCategory = strings.TrimSpace(*patch.SeasonPackCategory)
+	}
+	if patch.SeasonPackCategoryRules != nil {
+		settings.SeasonPackCategoryRules = normalizeSeasonPackCategoryRules(*patch.SeasonPackCategoryRules)
+	}
+	if patch.GazelleEnabled != nil {
+		settings.GazelleEnabled = *patch.GazelleEnabled
+	}
+	if patch.RedactedAPIKey != nil {
+		settings.RedactedAPIKey = strings.TrimSpace(*patch.RedactedAPIKey)
+	}
+	if patch.OrpheusAPIKey != nil {
+		settings.OrpheusAPIKey = strings.TrimSpace(*patch.OrpheusAPIKey)
+	}
+	if patch.SeasonPackTVDBAPIKey != nil {
+		settings.SeasonPackTVDBAPIKey = strings.TrimSpace(*patch.SeasonPackTVDBAPIKey)
+	}
+	if patch.SeasonPackTVDBPIN != nil {
+		settings.SeasonPackTVDBPIN = strings.TrimSpace(*patch.SeasonPackTVDBPIN)
+	}
+}
+
+var validSeasonPackRuleSources = map[string]struct{}{
+	"WEB":    {},
+	"BLURAY": {},
+	"REMUX":  {},
+	"HDTV":   {},
+}
+
+// normalizeSeasonPackCategoryRules cleans up incoming category routing rules:
+// it trims fields, lowercases the resolution, uppercases the source, drops rules
+// missing a resolution or category or carrying an unrecognized source, and
+// dedupes on (resolution, source) keeping the first match. An empty source means
+// "any"; an unrecognized non-empty source drops the rule rather than silently
+// widening it to "any".
+func normalizeSeasonPackCategoryRules(rules []models.SeasonPackCategoryRule) []models.SeasonPackCategoryRule {
+	normalized := make([]models.SeasonPackCategoryRule, 0, len(rules))
+	seen := make(map[string]struct{}, len(rules))
+	for _, rule := range rules {
+		resolution := strings.ToLower(strings.TrimSpace(rule.Resolution))
+		category := strings.TrimSpace(rule.Category)
+		if resolution == "" || category == "" {
+			continue
+		}
+
+		source := strings.ToUpper(strings.TrimSpace(rule.Source))
+		if source != "" {
+			if _, ok := validSeasonPackRuleSources[source]; !ok {
+				continue
+			}
+		}
+
+		key := resolution + "|" + source
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		normalized = append(normalized, models.SeasonPackCategoryRule{
+			Resolution: resolution,
+			Source:     source,
+			Category:   category,
+		})
+	}
+	return normalized
 }
 
 type automationRunRequest struct {
@@ -310,41 +453,65 @@ type searchRunRequest struct {
 	Tags            []string `json:"tags"`
 	IntervalSeconds int      `json:"intervalSeconds"`
 	IndexerIDs      []int    `json:"indexerIds"`
+	DisableTorznab  bool     `json:"disableTorznab"`
 	CooldownMinutes int      `json:"cooldownMinutes"`
 
 	// TODO: Surface remaining crossseed.SearchRunOptions fields (e.g. FindIndividualEpisodes,
 	// StartPaused, and category/tag overrides) when the API needs to expose them per run.
 }
 
+type CrossSeedBlocklistRequest struct {
+	InstanceID int    `json:"instanceId"`
+	InfoHash   string `json:"infoHash"`
+	Note       string `json:"note"`
+}
+
 // NewCrossSeedHandler creates a new cross-seed handler
-func NewCrossSeedHandler(service *crossseed.Service, completionStore *models.InstanceCrossSeedCompletionStore, instanceStore *models.InstanceStore) *CrossSeedHandler {
+func NewCrossSeedHandler(
+	service *crossseed.Service,
+	completionStore *models.InstanceCrossSeedCompletionStore,
+	instanceStore *models.InstanceStore,
+	seasonPackRunStore *models.SeasonPackRunStore,
+) *CrossSeedHandler {
 	return &CrossSeedHandler{
-		service:         service,
-		completionStore: completionStore,
-		instanceStore:   instanceStore,
+		service:            service,
+		completionStore:    completionStore,
+		instanceStore:      instanceStore,
+		seasonPackRunStore: seasonPackRunStore,
 	}
 }
 
-// Routes registers the cross-seed routes
-func (h *CrossSeedHandler) Routes(r chi.Router) {
+// Routes registers the cross-seed routes with explicit middleware ordering.
+func (h *CrossSeedHandler) Routes(r chi.Router, authMiddleware func(http.Handler) http.Handler, apiKeyQueryMiddleware func(http.Handler) http.Handler) {
 	// Register instance-scoped route at top level
-	r.Get("/instances/{instanceID}/cross-seed/status", h.GetCrossSeedStatus)
+	r.With(authMiddleware).Get("/instances/{instanceID}/cross-seed/status", h.GetCrossSeedStatus)
 
 	r.Route("/cross-seed", func(r chi.Router) {
-		r.Post("/apply", h.AutobrrApply)
-		r.Route("/torrents", func(r chi.Router) {
+		r.With(apiKeyQueryMiddleware, authMiddleware).Post("/apply", h.AutobrrApply)
+		r.Route("/webhook", func(r chi.Router) {
+			r.With(apiKeyQueryMiddleware, authMiddleware).Post("/check", h.WebhookCheck)
+		})
+
+		r.With(authMiddleware).Route("/torrents", func(r chi.Router) {
 			r.Get("/{instanceID}/{hash}/analyze", h.AnalyzeTorrentForSearch)
 			r.Get("/{instanceID}/{hash}/async-status", h.GetAsyncFilteringStatus)
+			r.Get("/{instanceID}/{hash}/local-matches", h.GetLocalMatches)
 			r.Post("/{instanceID}/{hash}/search", h.SearchTorrentMatches)
 			r.Post("/{instanceID}/{hash}/apply", h.ApplyTorrentSearchResults)
 		})
-		r.Get("/settings", h.GetAutomationSettings)
-		r.Patch("/settings", h.PatchAutomationSettings)
-		r.Put("/settings", h.UpdateAutomationSettings)
-		r.Get("/status", h.GetAutomationStatus)
-		r.Get("/runs", h.ListAutomationRuns)
-		r.Post("/run", h.TriggerAutomationRun)
-		r.Route("/search", func(r chi.Router) {
+		r.With(authMiddleware).Get("/settings", h.GetAutomationSettings)
+		r.With(authMiddleware).Patch("/settings", h.PatchAutomationSettings)
+		r.With(authMiddleware).Put("/settings", h.UpdateAutomationSettings)
+		r.With(authMiddleware).Get("/status", h.GetAutomationStatus)
+		r.With(authMiddleware).Get("/runs", h.ListAutomationRuns)
+		r.With(authMiddleware).Post("/run", h.TriggerAutomationRun)
+		r.With(authMiddleware).Post("/run/cancel", h.CancelAutomationRun)
+		r.With(authMiddleware).Route("/blocklist", func(r chi.Router) {
+			r.Get("/", h.ListBlocklist)
+			r.Post("/", h.AddBlocklistEntry)
+			r.Delete("/{instanceID}/{infohash}", h.DeleteBlocklistEntry)
+		})
+		r.With(authMiddleware).Route("/search", func(r chi.Router) {
 			r.Get("/settings", h.GetSearchSettings)
 			r.Patch("/settings", h.PatchSearchSettings)
 			r.Get("/status", h.GetSearchRunStatus)
@@ -352,14 +519,43 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 			r.Post("/run/cancel", h.CancelSearchRun)
 			r.Get("/runs", h.ListSearchRunHistory)
 		})
-		r.Route("/completion", func(r chi.Router) {
+		r.With(authMiddleware).Route("/completion", func(r chi.Router) {
 			r.Get("/{instanceID}", h.GetInstanceCompletionSettings)
 			r.Put("/{instanceID}", h.UpdateInstanceCompletionSettings)
 		})
-		r.Route("/webhook", func(r chi.Router) {
-			r.Post("/check", h.WebhookCheck)
+		r.Route("/season-pack", func(r chi.Router) {
+			r.With(apiKeyQueryMiddleware, authMiddleware).Post("/check", h.SeasonPackCheck)
+			r.With(apiKeyQueryMiddleware, authMiddleware).Post("/apply", h.SeasonPackApply)
+			r.With(authMiddleware).Get("/runs", h.ListSeasonPackRuns)
 		})
 	})
+}
+
+// parseTorrentParams extracts and validates instanceID and hash from URL parameters.
+// Returns instanceID, hash, and ok (false if validation failed and error response was sent).
+func parseTorrentParams(w http.ResponseWriter, r *http.Request) (instanceID int, hash string, ok bool) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	id, err := strconv.Atoi(instanceIDStr)
+	if err != nil || id <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return 0, "", false
+	}
+
+	h := strings.TrimSpace(chi.URLParam(r, "hash"))
+	if h == "" {
+		RespondError(w, http.StatusBadRequest, "hash is required")
+		return 0, "", false
+	}
+
+	return id, h, true
+}
+
+func normalizeInfoHashInput(value string) (string, bool) {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	if trimmed == "" || !infoHashRegex.MatchString(trimmed) {
+		return "", false
+	}
+	return trimmed, true
 }
 
 // AnalyzeTorrentForSearch godoc
@@ -375,16 +571,8 @@ func (h *CrossSeedHandler) Routes(r chi.Router) {
 // @Security ApiKeyAuth
 // @Router /api/cross-seed/torrents/{instanceID}/{hash}/analyze [get]
 func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *http.Request) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
-		return
-	}
-
-	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "hash is required")
+	instanceID, hash, ok := parseTorrentParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -416,16 +604,8 @@ func (h *CrossSeedHandler) AnalyzeTorrentForSearch(w http.ResponseWriter, r *htt
 // @Security ApiKeyAuth
 // @Router /api/cross-seed/torrents/{instanceID}/{hash}/async-status [get]
 func (h *CrossSeedHandler) GetAsyncFilteringStatus(w http.ResponseWriter, r *http.Request) {
-	instanceIDStr := chi.URLParam(r, "instanceID")
-	instanceID, err := strconv.Atoi(instanceIDStr)
-	if err != nil || instanceID <= 0 {
-		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
-		return
-	}
-
-	hash := strings.TrimSpace(chi.URLParam(r, "hash"))
-	if hash == "" {
-		RespondError(w, http.StatusBadRequest, "hash is required")
+	instanceID, hash, ok := parseTorrentParams(w, r)
+	if !ok {
 		return
 	}
 
@@ -442,6 +622,44 @@ func (h *CrossSeedHandler) GetAsyncFilteringStatus(w http.ResponseWriter, r *htt
 	}
 
 	RespondJSON(w, http.StatusOK, filteringState)
+}
+
+// GetLocalMatches godoc
+// @Summary Find existing torrents that match the source torrent across all instances
+// @Description Returns torrents from all instances that match the source torrent using proper release metadata parsing (rls library), not fuzzy string matching.
+// @Tags cross-seed
+// @Produce json
+// @Param instanceID path int true "Source instance ID"
+// @Param hash path string true "Source torrent hash"
+// @Param strict query bool false "When true, fail if file overlap checks cannot complete (use for delete dialogs)"
+// @Success 200 {object} crossseed.LocalMatchesResponse
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/torrents/{instanceID}/{hash}/local-matches [get]
+func (h *CrossSeedHandler) GetLocalMatches(w http.ResponseWriter, r *http.Request) {
+	instanceID, hash, ok := parseTorrentParams(w, r)
+	if !ok {
+		return
+	}
+
+	// strict=true for delete dialogs: fail if overlap checks can't complete
+	// ParseBool accepts true/TRUE/1/t etc., defaults to false when absent/invalid
+	strict, _ := strconv.ParseBool(r.URL.Query().Get("strict")) //nolint:errcheck // intentional: default to false
+
+	response, err := h.service.FindLocalMatches(r.Context(), instanceID, hash, strict)
+	if err != nil {
+		status := mapCrossSeedErrorStatus(err)
+		log.Error().
+			Err(err).
+			Int("instanceID", instanceID).
+			Str("hash", hash).
+			Msg("Failed to find local cross-seed matches")
+		RespondError(w, status, err.Error())
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, response)
 }
 
 // SearchTorrentMatches godoc
@@ -526,10 +744,16 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 	var totalSize int64
 	var fileCount int
 	if torrentBytes, err := base64.StdEncoding.DecodeString(req.TorrentData); err == nil {
-		if name, hash, files, info, err := crossseed.ParseTorrentMetadataWithInfo(torrentBytes); err == nil {
-			torrentName, torrentHash = name, hash
-			totalSize = info.TotalLength()
-			fileCount = len(files)
+		if meta, err := crossseed.ParseTorrentMetadataWithInfo(torrentBytes); err == nil {
+			torrentName = meta.Name
+			torrentHash = meta.HashV1
+			if meta.Info != nil && !meta.Info.HasV1() && meta.HashV2 != "" {
+				torrentHash = meta.HashV2
+			}
+			if meta.Info != nil {
+				totalSize = meta.Info.TotalLength()
+			}
+			fileCount = len(meta.Files)
 		}
 	}
 
@@ -540,7 +764,7 @@ func (h *CrossSeedHandler) AutobrrApply(w http.ResponseWriter, r *http.Request) 
 		Int64("size", totalSize).
 		Int("fileCount", fileCount).
 		Ints("instanceIds", req.InstanceIDs).
-		Str("indexerName", req.IndexerName).
+		Str("indexer", req.Indexer).
 		Str("category", req.Category).
 		Msg("Webhook apply: received request")
 
@@ -679,19 +903,56 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		}
 	}
 
+	// Validate categoryAffixMode if provided OR if UseCrossCategoryAffix is enabled
+	if req.CategoryAffixMode != "" || req.UseCrossCategoryAffix {
+		if req.CategoryAffixMode != models.CategoryAffixModePrefix && req.CategoryAffixMode != models.CategoryAffixModeSuffix {
+			RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
+			return
+		}
+	}
+
+	req.CategoryAffix = strings.TrimSpace(req.CategoryAffix)
+
+	if req.CategoryAffix != "" {
+		// No backslashes allowed
+		if strings.Contains(req.CategoryAffix, "\\") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain backslashes")
+			return
+		}
+		// No double slashes allowed
+		if strings.Contains(req.CategoryAffix, "//") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain double slashes")
+			return
+		}
+		// Prefix mode: cannot start with a slash (would create leading slash in category)
+		if req.CategoryAffixMode == models.CategoryAffixModePrefix && strings.HasPrefix(req.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category prefix cannot start with a slash")
+			return
+		}
+		// Suffix mode: cannot end with a slash (would create trailing slash in category)
+		if req.CategoryAffixMode == models.CategoryAffixModeSuffix && strings.HasSuffix(req.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category suffix cannot end with a slash")
+			return
+		}
+	}
+
 	// Validate mutual exclusivity: category modes are mutually exclusive
 	enabledModes := 0
 	if req.UseCategoryFromIndexer {
 		enabledModes++
 	}
-	if req.UseCrossCategorySuffix {
+	if req.UseCrossCategoryAffix {
 		enabledModes++
 	}
 	if req.UseCustomCategory {
 		enabledModes++
 	}
 	if enabledModes > 1 {
-		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, .cross suffix, or custom category.")
+		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, category affix, or custom category.")
+		return
+	}
+	if req.SeasonPackCoverageThreshold <= 0 || req.SeasonPackCoverageThreshold > 1 {
+		RespondError(w, http.StatusBadRequest, "Season pack coverage threshold must be between 0 (exclusive) and 1 (inclusive)")
 		return
 	}
 
@@ -700,18 +961,33 @@ func (h *CrossSeedHandler) UpdateAutomationSettings(w http.ResponseWriter, r *ht
 		RunIntervalMinutes:           req.RunIntervalMinutes,
 		StartPaused:                  req.StartPaused,
 		Category:                     category,
-		IgnorePatterns:               req.IgnorePatterns,
 		TargetInstanceIDs:            req.TargetInstanceIDs,
 		TargetIndexerIDs:             req.TargetIndexerIDs,
 		MaxResultsPerRun:             req.MaxResultsPerRun,
 		FindIndividualEpisodes:       req.FindIndividualEpisodes,
 		SizeMismatchTolerancePercent: req.SizeMismatchTolerancePercent,
 		UseCategoryFromIndexer:       req.UseCategoryFromIndexer,
-		UseCrossCategorySuffix:       req.UseCrossCategorySuffix,
+		UseCrossCategoryAffix:        req.UseCrossCategoryAffix,
+		CategoryAffixMode:            req.CategoryAffixMode,
+		CategoryAffix:                req.CategoryAffix,
 		UseCustomCategory:            req.UseCustomCategory,
 		CustomCategory:               req.CustomCategory,
 		RunExternalProgramID:         req.RunExternalProgramID,
 		SkipRecheck:                  req.SkipRecheck,
+		SeasonPackEnabled:            req.SeasonPackEnabled,
+		SeasonPackSkipRepackCompare:  req.SeasonPackSkipRepackCompare,
+		SeasonPackSimplifyHDRCompare: req.SeasonPackSimplifyHDRCompare,
+		SeasonPackSimplifyWEBCompare: req.SeasonPackSimplifyWEBCompare,
+		SeasonPackSkipYearCompare:    req.SeasonPackSkipYearCompare,
+		SeasonPackCoverageThreshold:  req.SeasonPackCoverageThreshold,
+		SeasonPackTags:               req.SeasonPackTags,
+		SeasonPackCategory:           strings.TrimSpace(req.SeasonPackCategory),
+		SeasonPackCategoryRules:      normalizeSeasonPackCategoryRules(req.SeasonPackCategoryRules),
+		GazelleEnabled:               req.GazelleEnabled,
+		RedactedAPIKey:               strings.TrimSpace(req.RedactedAPIKey),
+		OrpheusAPIKey:                strings.TrimSpace(req.OrpheusAPIKey),
+		SeasonPackTVDBAPIKey:         strings.TrimSpace(req.SeasonPackTVDBAPIKey),
+		SeasonPackTVDBPIN:            strings.TrimSpace(req.SeasonPackTVDBPIN),
 	}
 
 	updated, err := h.service.UpdateAutomationSettings(r.Context(), settings)
@@ -766,6 +1042,21 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 			Msg("[API] Received source filter patch request")
 	}
 
+	// Validate categoryAffixMode if provided
+	if req.CategoryAffixMode != nil && *req.CategoryAffixMode != "" && *req.CategoryAffixMode != models.CategoryAffixModePrefix && *req.CategoryAffixMode != models.CategoryAffixModeSuffix {
+		RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
+		return
+	}
+
+	// Validate season pack coverage threshold if provided
+	if req.SeasonPackCoverageThreshold != nil {
+		t := *req.SeasonPackCoverageThreshold
+		if t <= 0 || t > 1 {
+			RespondError(w, http.StatusBadRequest, "Season pack coverage threshold must be between 0 (exclusive) and 1 (inclusive)")
+			return
+		}
+	}
+
 	current, err := h.service.GetAutomationSettings(r.Context())
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to load cross-seed automation settings for patch")
@@ -776,19 +1067,48 @@ func (h *CrossSeedHandler) PatchAutomationSettings(w http.ResponseWriter, r *htt
 	merged := *current
 	applyAutomationSettingsPatch(&merged, req)
 
+	if merged.CategoryAffix != "" {
+		// No backslashes allowed
+		if strings.Contains(merged.CategoryAffix, "\\") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain backslashes")
+			return
+		}
+		// No double slashes allowed
+		if strings.Contains(merged.CategoryAffix, "//") {
+			RespondError(w, http.StatusBadRequest, "Category affix cannot contain double slashes")
+			return
+		}
+		// Prefix mode: cannot start with a slash (would create leading slash in category)
+		if merged.CategoryAffixMode == models.CategoryAffixModePrefix && strings.HasPrefix(merged.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category prefix cannot start with a slash")
+			return
+		}
+		// Suffix mode: cannot end with a slash (would create trailing slash in category)
+		if merged.CategoryAffixMode == models.CategoryAffixModeSuffix && strings.HasSuffix(merged.CategoryAffix, "/") {
+			RespondError(w, http.StatusBadRequest, "Category suffix cannot end with a slash")
+			return
+		}
+	}
+
+	// Validate categoryAffixMode if UseCrossCategoryAffix is enabled
+	if merged.UseCrossCategoryAffix && merged.CategoryAffixMode != models.CategoryAffixModePrefix && merged.CategoryAffixMode != models.CategoryAffixModeSuffix {
+		RespondError(w, http.StatusBadRequest, "Category affix mode must be either 'prefix' or 'suffix'")
+		return
+	}
+
 	// Validate mutual exclusivity: category modes are mutually exclusive
 	enabledModes := 0
 	if merged.UseCategoryFromIndexer {
 		enabledModes++
 	}
-	if merged.UseCrossCategorySuffix {
+	if merged.UseCrossCategoryAffix {
 		enabledModes++
 	}
 	if merged.UseCustomCategory {
 		enabledModes++
 	}
 	if enabledModes > 1 {
-		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, .cross suffix, or custom category.")
+		RespondError(w, http.StatusBadRequest, "Category modes are mutually exclusive. Enable only one of: indexer name, category affix, or custom category.")
 		return
 	}
 
@@ -916,6 +1236,154 @@ func (h *CrossSeedHandler) TriggerAutomationRun(w http.ResponseWriter, r *http.R
 	RespondJSON(w, http.StatusAccepted, run)
 }
 
+// CancelAutomationRun godoc
+// @Summary Cancel RSS automation run
+// @Description Stops the currently running RSS automation run, if any.
+// @Tags cross-seed
+// @Success 204
+// @Failure 409 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/run/cancel [post]
+func (h *CrossSeedHandler) CancelAutomationRun(w http.ResponseWriter, r *http.Request) {
+	canceled := h.service.CancelAutomationRun()
+	if !canceled {
+		RespondError(w, http.StatusConflict, "No automation run is currently active")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ListBlocklist godoc
+// @Summary List cross-seed blocklist entries
+// @Description Returns the per-instance cross-seed blocklist entries.
+// @Tags cross-seed
+// @Produce json
+// @Param instanceId query int false "Instance ID"
+// @Success 200 {array} models.CrossSeedBlocklistEntry
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/blocklist [get]
+func (h *CrossSeedHandler) ListBlocklist(w http.ResponseWriter, r *http.Request) {
+	instanceID := 0
+	if raw := strings.TrimSpace(r.URL.Query().Get("instanceId")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			RespondError(w, http.StatusBadRequest, "instanceId must be a positive integer")
+			return
+		}
+		instanceID = parsed
+	}
+
+	entries, err := h.service.ListBlocklist(r.Context(), instanceID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list cross-seed blocklist")
+		RespondError(w, http.StatusInternalServerError, "Failed to load blocklist")
+		return
+	}
+	if entries == nil {
+		entries = []*models.CrossSeedBlocklistEntry{}
+	}
+
+	RespondJSON(w, http.StatusOK, entries)
+}
+
+// AddBlocklistEntry godoc
+// @Summary Add cross-seed blocklist entry
+// @Description Adds or updates a blocked infohash for a specific instance.
+// @Tags cross-seed
+// @Accept json
+// @Produce json
+// @Param request body CrossSeedBlocklistRequest true "Blocklist entry"
+// @Success 201 {object} models.CrossSeedBlocklistEntry
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/blocklist [post]
+func (h *CrossSeedHandler) AddBlocklistEntry(w http.ResponseWriter, r *http.Request) {
+	var payload CrossSeedBlocklistRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if payload.InstanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceId must be a positive integer")
+		return
+	}
+	if h.instanceStore != nil {
+		_, err := h.instanceStore.Get(r.Context(), payload.InstanceID)
+		switch {
+		case err == nil:
+		case errors.Is(err, models.ErrInstanceNotFound):
+			RespondError(w, http.StatusNotFound, "Instance not found")
+			return
+		default:
+			log.Error().Err(err).Int("instanceID", payload.InstanceID).Msg("Failed to validate instance for cross-seed blocklist")
+			RespondError(w, http.StatusInternalServerError, "Failed to validate instance")
+			return
+		}
+	}
+
+	infohash, ok := normalizeInfoHashInput(payload.InfoHash)
+	if !ok {
+		RespondError(w, http.StatusBadRequest, "infoHash must be a valid hex infohash")
+		return
+	}
+
+	entry := &models.CrossSeedBlocklistEntry{
+		InstanceID: payload.InstanceID,
+		InfoHash:   infohash,
+		Note:       strings.TrimSpace(payload.Note),
+	}
+
+	created, err := h.service.UpsertBlocklistEntry(r.Context(), entry)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to add cross-seed blocklist entry")
+		RespondError(w, http.StatusInternalServerError, "Failed to add blocklist entry")
+		return
+	}
+
+	RespondJSON(w, http.StatusCreated, created)
+}
+
+// DeleteBlocklistEntry godoc
+// @Summary Remove cross-seed blocklist entry
+// @Description Removes a blocked infohash for a specific instance.
+// @Tags cross-seed
+// @Success 204
+// @Failure 400 {object} httphelpers.ErrorResponse
+// @Failure 404 {object} httphelpers.ErrorResponse
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/cross-seed/blocklist/{instanceID}/{infohash} [delete]
+func (h *CrossSeedHandler) DeleteBlocklistEntry(w http.ResponseWriter, r *http.Request) {
+	instanceIDStr := chi.URLParam(r, "instanceID")
+	instanceID, err := strconv.Atoi(instanceIDStr)
+	if err != nil || instanceID <= 0 {
+		RespondError(w, http.StatusBadRequest, "instanceID must be a positive integer")
+		return
+	}
+
+	infohash, ok := normalizeInfoHashInput(chi.URLParam(r, "infohash"))
+	if !ok {
+		RespondError(w, http.StatusBadRequest, "infohash must be a valid hex infohash")
+		return
+	}
+
+	if err := h.service.DeleteBlocklistEntry(r.Context(), instanceID, infohash); err != nil {
+		if errors.Is(err, crossseed.ErrBlocklistEntryNotFound) {
+			RespondError(w, http.StatusNotFound, "Blocklist entry not found")
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to delete cross-seed blocklist entry")
+		RespondError(w, http.StatusInternalServerError, "Failed to delete blocklist entry")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // GetSearchSettings godoc
 // @Summary Get seeded torrent search settings
 // @Description Returns the persisted defaults used by Seeded Torrent Search runs.
@@ -1008,6 +1476,7 @@ func (h *CrossSeedHandler) StartSearchRun(w http.ResponseWriter, r *http.Request
 		Tags:            req.Tags,
 		IntervalSeconds: req.IntervalSeconds,
 		IndexerIDs:      req.IndexerIDs,
+		DisableTorznab:  req.DisableTorznab,
 		CooldownMinutes: req.CooldownMinutes,
 		RequestedBy:     "api",
 	})
@@ -1190,35 +1659,121 @@ func webhookResponseStatus(response *crossseed.WebhookCheckResponse) int {
 	}
 }
 
+// SeasonPackCheck checks whether a season pack can be reconstructed from existing episodes.
+func (h *CrossSeedHandler) SeasonPackCheck(w http.ResponseWriter, r *http.Request) {
+	var req crossseed.SeasonPackCheckRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	resp, err := h.service.CheckSeasonPackWebhook(r.Context(), &req)
+	if err != nil {
+		log.Error().Err(err).Str("torrentName", req.TorrentName).Msg("Season pack check failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to check season pack")
+		return
+	}
+
+	if resp.Ready {
+		RespondJSON(w, http.StatusOK, resp)
+		return
+	}
+	RespondJSON(w, http.StatusNotFound, resp)
+}
+
+// SeasonPackApply attempts to add a season pack torrent using linked episode data.
+func (h *CrossSeedHandler) SeasonPackApply(w http.ResponseWriter, r *http.Request) {
+	var req crossseed.SeasonPackApplyRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	resp, err := h.service.ApplySeasonPackWebhook(context.WithoutCancel(r.Context()), &req)
+	if err != nil {
+		log.Error().Err(err).Str("torrentName", req.TorrentName).Msg("Season pack apply failed")
+		RespondError(w, http.StatusInternalServerError, "Failed to apply season pack")
+		return
+	}
+	if resp == nil || !resp.Applied {
+		reason := ""
+		if resp != nil {
+			reason = resp.Reason
+		}
+		log.Error().
+			Str("torrentName", req.TorrentName).
+			Str("reason", reason).
+			Msg("Season pack apply returned failure response")
+		RespondError(w, http.StatusInternalServerError, "Failed to apply season pack")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, resp)
+}
+
+// ListSeasonPackRuns returns recent season-pack processing activity.
+func (h *CrossSeedHandler) ListSeasonPackRuns(w http.ResponseWriter, r *http.Request) {
+	if h.seasonPackRunStore == nil {
+		log.Error().Msg("Season pack run store not configured")
+		RespondError(w, http.StatusServiceUnavailable, "Season pack run store not configured")
+		return
+	}
+
+	limit := 20
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 200 {
+			limit = parsed
+		}
+	}
+
+	runs, err := h.seasonPackRunStore.List(r.Context(), limit)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to list season pack runs")
+		RespondError(w, http.StatusInternalServerError, "Failed to list season pack runs")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, runs)
+}
+
 // instanceCompletionSettingsResponse is the API response for per-instance completion settings.
 type instanceCompletionSettingsResponse struct {
-	InstanceID        int      `json:"instanceId"`
-	Enabled           bool     `json:"enabled"`
-	Categories        []string `json:"categories"`
-	Tags              []string `json:"tags"`
-	ExcludeCategories []string `json:"excludeCategories"`
-	ExcludeTags       []string `json:"excludeTags"`
+	InstanceID         int      `json:"instanceId"`
+	Enabled            bool     `json:"enabled"`
+	Categories         []string `json:"categories"`
+	Tags               []string `json:"tags"`
+	ExcludeCategories  []string `json:"excludeCategories"`
+	ExcludeTags        []string `json:"excludeTags"`
+	IndexerIDs         []int    `json:"indexerIds"`
+	BypassTorznabCache bool     `json:"bypassTorznabCache"`
+	DelaySeconds       int      `json:"delaySeconds"`
 }
 
 // toInstanceCompletionSettingsResponse converts model to API response.
 func toInstanceCompletionSettingsResponse(s *models.InstanceCrossSeedCompletionSettings) instanceCompletionSettingsResponse {
 	return instanceCompletionSettingsResponse{
-		InstanceID:        s.InstanceID,
-		Enabled:           s.Enabled,
-		Categories:        s.Categories,
-		Tags:              s.Tags,
-		ExcludeCategories: s.ExcludeCategories,
-		ExcludeTags:       s.ExcludeTags,
+		InstanceID:         s.InstanceID,
+		Enabled:            s.Enabled,
+		Categories:         s.Categories,
+		Tags:               s.Tags,
+		ExcludeCategories:  s.ExcludeCategories,
+		ExcludeTags:        s.ExcludeTags,
+		IndexerIDs:         s.IndexerIDs,
+		BypassTorznabCache: s.BypassTorznabCache,
+		DelaySeconds:       s.DelaySeconds,
 	}
 }
 
 // instanceCompletionSettingsRequest is the API request for updating per-instance completion settings.
 type instanceCompletionSettingsRequest struct {
-	Enabled           bool     `json:"enabled"`
-	Categories        []string `json:"categories"`
-	Tags              []string `json:"tags"`
-	ExcludeCategories []string `json:"excludeCategories"`
-	ExcludeTags       []string `json:"excludeTags"`
+	Enabled            bool     `json:"enabled"`
+	Categories         []string `json:"categories"`
+	Tags               []string `json:"tags"`
+	ExcludeCategories  []string `json:"excludeCategories"`
+	ExcludeTags        []string `json:"excludeTags"`
+	IndexerIDs         []int    `json:"indexerIds"`
+	BypassTorznabCache bool     `json:"bypassTorznabCache"`
+	DelaySeconds       int      `json:"delaySeconds"`
 }
 
 // GetInstanceCompletionSettings returns the completion settings for a specific instance.
@@ -1298,13 +1853,21 @@ func (h *CrossSeedHandler) UpdateInstanceCompletionSettings(w http.ResponseWrite
 		return
 	}
 
+	if req.DelaySeconds < 0 || req.DelaySeconds > models.MaxCompletionDelaySeconds {
+		RespondError(w, http.StatusBadRequest, fmt.Sprintf("delaySeconds must be between 0 and %d", models.MaxCompletionDelaySeconds))
+		return
+	}
+
 	settings := &models.InstanceCrossSeedCompletionSettings{
-		InstanceID:        instanceID,
-		Enabled:           req.Enabled,
-		Categories:        req.Categories,
-		Tags:              req.Tags,
-		ExcludeCategories: req.ExcludeCategories,
-		ExcludeTags:       req.ExcludeTags,
+		InstanceID:         instanceID,
+		Enabled:            req.Enabled,
+		Categories:         req.Categories,
+		Tags:               req.Tags,
+		ExcludeCategories:  req.ExcludeCategories,
+		ExcludeTags:        req.ExcludeTags,
+		IndexerIDs:         req.IndexerIDs,
+		BypassTorznabCache: req.BypassTorznabCache,
+		DelaySeconds:       req.DelaySeconds,
 	}
 
 	saved, err := h.completionStore.Upsert(r.Context(), settings)

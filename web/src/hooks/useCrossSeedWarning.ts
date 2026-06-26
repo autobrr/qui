@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -7,8 +7,9 @@ import { useQuery } from "@tanstack/react-query"
 import { useCallback, useMemo, useState } from "react"
 
 import { api } from "@/lib/api"
-import { isInsideBase, normalizePath, searchCrossSeedMatches, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
-import type { Torrent } from "@/types"
+import { toCompatibleMatch, type CrossSeedTorrent } from "@/lib/cross-seed-utils"
+import { isAllInstancesScope } from "@/lib/instances"
+import type { CrossInstanceTorrent, Torrent } from "@/types"
 
 interface UseCrossSeedWarningOptions {
   instanceId: number
@@ -35,12 +36,18 @@ export interface CrossSeedWarningResult {
   reset: () => void
 }
 
+function isCrossInstanceTorrent(t: Torrent): t is CrossInstanceTorrent {
+  return "instanceId" in t && typeof (t as CrossInstanceTorrent).instanceId === "number"
+}
+
 /**
- * Hook to detect cross-seeded torrents on the current instance that would be
- * affected when deleting files.
+ * Hook to detect cross-seeded torrents that would be affected when deleting files.
  *
  * Search is opt-in - call `search()` to check for cross-seeds.
  * Checks ALL selected torrents, not just the first one.
+ *
+ * In unified (all-instances) view, resolves each torrent's instance from its
+ * own instanceId field (CrossInstanceTorrent) and checks per-instance.
  */
 export function useCrossSeedWarning({
   instanceId,
@@ -50,6 +57,8 @@ export function useCrossSeedWarning({
   const [searchState, setSearchState] = useState<CrossSeedSearchState>("idle")
   const [affectedTorrents, setAffectedTorrents] = useState<CrossSeedTorrent[]>([])
   const [checkedCount, setCheckedCount] = useState(0)
+
+  const isUnified = isAllInstancesScope(instanceId)
 
   const hashesBeingDeleted = useMemo(
     () => new Set(torrents.map(t => t.hash)),
@@ -69,75 +78,62 @@ export function useCrossSeedWarning({
   )
 
   const search = useCallback(async () => {
-    if (!instance || torrents.length === 0) return
+    if (torrents.length === 0) return
+
+    // In single-instance view, we need the instance to exist.
+    // In unified view, we resolve per torrent.
+    if (!isUnified && !instance) return
 
     setSearchState("searching")
     setCheckedCount(0)
     setAffectedTorrents([])
 
     const allMatches: CrossSeedTorrent[] = []
-    const seenHashes = new Set<string>()
+    const seenKeys = new Set<string>()
 
-    // Get hardlink base directory for this instance (to exclude hardlink-mode torrents)
-    const hardlinkBase = normalizePath(instance.hardlinkBaseDir || "")
+    // Build a lookup for instance names when in unified view
+    const instanceNameLookup = new Map<number, string>()
+    if (isUnified && instances) {
+      for (const inst of instances) {
+        instanceNameLookup.set(inst.id, inst.name)
+      }
+    }
 
     try {
-      // Check each torrent for cross-seeds
       for (let i = 0; i < torrents.length; i++) {
         const torrent = torrents[i]
 
-        // Normalize source torrent paths
-        const srcSave = normalizePath(torrent.save_path || "")
-        const srcContent = normalizePath(torrent.content_path || "")
+        // Resolve the instance ID and name for this specific torrent
+        let torrentInstanceId: number
+        let torrentInstanceName: string
 
-        // Skip source torrents inside hardlink base (they don't share files with originals)
-        if (isInsideBase(srcSave, hardlinkBase)) {
-          setCheckedCount(i + 1)
-          continue
+        if (isUnified && isCrossInstanceTorrent(torrent)) {
+          torrentInstanceId = torrent.instanceId
+          torrentInstanceName = instanceNameLookup.get(torrent.instanceId)
+            ?? torrent.instanceName
+            ?? `Instance ${torrent.instanceId}`
+        } else {
+          torrentInstanceId = instanceId
+          torrentInstanceName = instanceName
         }
 
-        // Fetch files for this torrent
-        let torrentFiles: Awaited<ReturnType<typeof api.getTorrentFiles>> = []
-        try {
-          torrentFiles = await api.getTorrentFiles(instanceId, torrent.hash)
-        } catch {
-          // Continue without files - will use weaker matching
-        }
+        const matches = await api.getLocalCrossSeedMatches(torrentInstanceId, torrent.hash, true)
 
-        // Search for cross-seeds
-        const matches = await searchCrossSeedMatches(
-          torrent,
-          instance,
-          instanceId,
-          torrentFiles,
-          torrent.infohash_v1 || torrent.hash,
-          torrent.infohash_v2
-        )
-
-        // Filter and dedupe matches - only include matches that share the same on-disk files
         for (const match of matches) {
+          // Skip if not on the same instance as the torrent being deleted
+          if (match.instanceId !== torrentInstanceId) continue
           // Skip torrents being deleted
           if (hashesBeingDeleted.has(match.hash)) continue
-          // Skip if not on this instance
-          if (match.instanceId !== instanceId) continue
-          // Skip duplicates
-          if (seenHashes.has(match.hash)) continue
+          // Only include matches that share the same on-disk location
+          if (match.matchType !== "content_path") continue
+          // Skip duplicates (instance-aware to handle same hash on multiple instances)
+          const dedupeKey = isUnified ? `${match.instanceId}:${match.hash}` : match.hash
+          if (seenKeys.has(dedupeKey)) continue
 
-          // Normalize match paths
-          const mSave = normalizePath(match.save_path || "")
-          const mContent = normalizePath(match.content_path || "")
-
-          // Skip matches inside hardlink base directory (hardlink-mode cross-seeds)
-          if (isInsideBase(mSave, hardlinkBase)) continue
-
-          // Only include matches that share the SAME on-disk files:
-          // Both save_path AND content_path must match exactly
-          if (!srcSave || !srcContent || mSave !== srcSave || mContent !== srcContent) continue
-
-          seenHashes.add(match.hash)
+          seenKeys.add(dedupeKey)
           allMatches.push({
-            ...match,
-            instanceName,
+            ...toCompatibleMatch(match),
+            instanceName: torrentInstanceName,
           })
         }
 
@@ -150,7 +146,7 @@ export function useCrossSeedWarning({
       console.error("[CrossSeedWarning] Search failed:", error)
       setSearchState("error")
     }
-  }, [instance, torrents, instanceId, instanceName, hashesBeingDeleted])
+  }, [instance, instances, isUnified, torrents, instanceId, instanceName, hashesBeingDeleted])
 
   const reset = useCallback(() => {
     setSearchState("idle")

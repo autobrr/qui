@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package pathutil
@@ -108,87 +108,6 @@ func TestSanitizePathSegment(t *testing.T) {
 				t.Errorf("SanitizePathSegment(%q) = %q, want %q", tt.input, result, tt.expected)
 			}
 		})
-	}
-}
-
-func TestTorrentKey(t *testing.T) {
-	tests := []struct {
-		name         string
-		infohash     string
-		torrentName  string
-		expectedLen  int  // Expected minimum length (hash prefix + separator + sanitized name)
-		expectPrefix bool // Should start with infohash prefix
-	}{
-		{
-			name:         "simple torrent",
-			infohash:     "abcdef1234567890abcdef1234567890abcdef12",
-			torrentName:  "My.Movie.2024.1080p.BluRay.x264",
-			expectedLen:  10, // at least hash prefix + separator
-			expectPrefix: true,
-		},
-		{
-			name:         "torrent with special chars",
-			infohash:     "0123456789abcdef0123456789abcdef01234567",
-			torrentName:  "Movie <with> special:chars",
-			expectedLen:  10,
-			expectPrefix: true,
-		},
-		{
-			name:         "short infohash",
-			infohash:     "abc",
-			torrentName:  "ShortHash",
-			expectedLen:  3, // uses full short hash when < 8 chars
-			expectPrefix: false,
-		},
-		{
-			name:         "empty torrent name",
-			infohash:     "abcdef1234567890abcdef1234567890abcdef12",
-			torrentName:  "",
-			expectedLen:  8, // hash prefix only
-			expectPrefix: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := TorrentKey(tt.infohash, tt.torrentName)
-			if len(result) < tt.expectedLen {
-				t.Errorf("TorrentKey(%q, %q) = %q (len %d), want len >= %d",
-					tt.infohash, tt.torrentName, result, len(result), tt.expectedLen)
-			}
-
-			// Verify no illegal path characters
-			for _, c := range result {
-				if c == '<' || c == '>' || c == ':' || c == '"' || c == '/' || c == '\\' || c == '|' || c == '?' || c == '*' {
-					t.Errorf("TorrentKey result %q contains illegal path character %q", result, string(c))
-				}
-			}
-		})
-	}
-}
-
-func TestTorrentKeyDeterministic(t *testing.T) {
-	// Same inputs should produce same output
-	infohash := "abcdef1234567890abcdef1234567890abcdef12"
-	name := "My.Movie.2024.1080p.BluRay.x264"
-
-	result1 := TorrentKey(infohash, name)
-	result2 := TorrentKey(infohash, name)
-
-	if result1 != result2 {
-		t.Errorf("TorrentKey should be deterministic, got %q and %q", result1, result2)
-	}
-}
-
-func TestTorrentKeyUniqueness(t *testing.T) {
-	// Different infohashes should produce different keys
-	name := "Same.Movie.Name"
-
-	key1 := TorrentKey("abcdef1234567890abcdef1234567890abcdef12", name)
-	key2 := TorrentKey("1234567890abcdef1234567890abcdef12345678", name)
-
-	if key1 == key2 {
-		t.Errorf("TorrentKey should be unique for different infohashes, both got %q", key1)
 	}
 }
 

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -18,7 +21,6 @@ func TestAutobrrApplyDefaultsToAutomationSetting(t *testing.T) {
 		automationSettingsLoader: func(context.Context) (*models.CrossSeedAutomationSettings, error) {
 			return &models.CrossSeedAutomationSettings{
 				FindIndividualEpisodes: true,
-				IgnorePatterns:         []string{"*.nfo"},
 			}, nil
 		},
 	}
@@ -38,7 +40,6 @@ func TestAutobrrApplyDefaultsToAutomationSetting(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.True(t, captured.FindIndividualEpisodes)
-	require.Equal(t, []string{"*.nfo"}, captured.IgnorePatterns)
 }
 
 func TestAutobrrApplyHonorsRequestOverride(t *testing.T) {
@@ -63,14 +64,12 @@ func TestAutobrrApplyHonorsRequestOverride(t *testing.T) {
 		TorrentData:            "ZGF0YQ==",
 		InstanceIDs:            []int{1},
 		FindIndividualEpisodes: &override,
-		IgnorePatterns:         []string{"*.txt"},
 	}
 
 	_, err := service.AutobrrApply(ctx, req)
 	require.NoError(t, err)
 	require.NotNil(t, captured)
 	require.False(t, captured.FindIndividualEpisodes)
-	require.Equal(t, []string{"*.txt"}, captured.IgnorePatterns)
 }
 
 func TestAutobrrApplyTargetInstanceIDs(t *testing.T) {
@@ -137,27 +136,27 @@ func TestAutobrrApplyTargetInstanceIDs(t *testing.T) {
 	}
 }
 
-// TestAutobrrApply_IndexerNamePassthrough verifies that IndexerName from the request
+// TestAutobrrApply_IndexerPassthrough verifies that Indexer from the request
 // is passed through to the CrossSeedRequest, enabling "Use indexer name as category" mode
 // for webhook applies where the indexer cannot be derived from the torrent file.
-func TestAutobrrApply_IndexerNamePassthrough(t *testing.T) {
+func TestAutobrrApply_IndexerPassthrough(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 
 	tests := []struct {
 		name              string
-		indexerName       string
+		indexer           string
 		expectIndexerName string
 	}{
 		{
-			name:              "indexer name passed through",
-			indexerName:       "TorrentDB",
-			expectIndexerName: "TorrentDB",
+			name:              "indexer passed through",
+			indexer:           "hdb",
+			expectIndexerName: "hdb",
 		},
 		{
-			name:              "empty indexer name remains empty",
-			indexerName:       "",
+			name:              "empty indexer remains empty",
+			indexer:           "",
 			expectIndexerName: "",
 		},
 	}
@@ -176,7 +175,7 @@ func TestAutobrrApply_IndexerNamePassthrough(t *testing.T) {
 			req := &AutobrrApplyRequest{
 				TorrentData: "ZGF0YQ==",
 				InstanceIDs: []int{1},
-				IndexerName: tt.indexerName,
+				Indexer:     tt.indexer,
 			}
 
 			_, err := service.AutobrrApply(ctx, req)

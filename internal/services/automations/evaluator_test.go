@@ -1,12 +1,15 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package automations
 
 import (
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/pkg/releases"
 )
 
 func TestEvaluateCondition_StringFields(t *testing.T) {
@@ -97,6 +100,46 @@ func TestEvaluateCondition_StringFields(t *testing.T) {
 			expected: true,
 		},
 		{
+			name: "category equals empty (uncategorized)",
+			cond: &RuleCondition{
+				Field:    FieldCategory,
+				Operator: OperatorEqual,
+				Value:    "",
+			},
+			torrent:  qbt.Torrent{Category: ""},
+			expected: true,
+		},
+		{
+			name: "category equals empty - no match when categorized",
+			cond: &RuleCondition{
+				Field:    FieldCategory,
+				Operator: OperatorEqual,
+				Value:    "",
+			},
+			torrent:  qbt.Torrent{Category: "movies"},
+			expected: false,
+		},
+		{
+			name: "category not equals empty - match when categorized",
+			cond: &RuleCondition{
+				Field:    FieldCategory,
+				Operator: OperatorNotEqual,
+				Value:    "",
+			},
+			torrent:  qbt.Torrent{Category: "movies"},
+			expected: true,
+		},
+		{
+			name: "category not equals empty - no match when uncategorized",
+			cond: &RuleCondition{
+				Field:    FieldCategory,
+				Operator: OperatorNotEqual,
+				Value:    "",
+			},
+			torrent:  qbt.Torrent{Category: ""},
+			expected: false,
+		},
+		{
 			name: "state equals uploading",
 			cond: &RuleCondition{
 				Field:    FieldState,
@@ -177,11 +220,77 @@ func TestEvaluateCondition_StringFields(t *testing.T) {
 			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
 			expected: true,
 		},
+		{
+			name: "not_contains regex - false when regex matches",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorNotContains,
+				Value:    "^Test.*2024$",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: false,
+		},
+		{
+			name: "not_contains regex - true when regex does not match",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorNotContains,
+				Value:    "^Movie.*2024$",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: true,
+		},
+		{
+			name: "not_equal regex - false when regex matches",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorNotEqual,
+				Value:    ".*Torrent.*",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: false,
+		},
+		{
+			name: "not_equal regex - true when regex does not match",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorNotEqual,
+				Value:    "^Movie",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: true,
+		},
+		{
+			name: "contains regex - true when regex matches",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorContains,
+				Value:    "Torrent",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: true,
+		},
+		{
+			name: "contains regex - false when regex does not match",
+			cond: &RuleCondition{
+				Field:    FieldName,
+				Operator: OperatorContains,
+				Value:    "^Movie",
+				Regex:    true,
+			},
+			torrent:  qbt.Torrent{Name: "Test.Torrent.2024"},
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, tt.torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -189,11 +298,113 @@ func TestEvaluateCondition_StringFields(t *testing.T) {
 	}
 }
 
+func TestEvaluateCondition_TrackerField_DisplayNameAndNegation(t *testing.T) {
+	torrent := qbt.Torrent{Tracker: "https://beyond-hd.me/announce"}
+	ctx := &EvalContext{
+		TrackerDisplayNameByDomain: map[string]string{
+			"beyond-hd.me": "BHD",
+		},
+	}
+
+	t.Run("equals display name", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorEqual,
+			Value:    "BHD",
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got != true {
+			t.Fatalf("expected true, got %v", got)
+		}
+	})
+
+	t.Run("not equals display name", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorNotEqual,
+			Value:    "BHD",
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got != false {
+			t.Fatalf("expected false, got %v", got)
+		}
+	})
+
+	t.Run("domain still matches without ctx", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorEqual,
+			Value:    "beyond-hd.me",
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, nil, 0); got != true {
+			t.Fatalf("expected true, got %v", got)
+		}
+	})
+
+	t.Run("display name does not match without ctx", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorEqual,
+			Value:    "BHD",
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, nil, 0); got != false {
+			t.Fatalf("expected false, got %v", got)
+		}
+	})
+
+	t.Run("not_equal regex - false when any candidate matches (display name)", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorNotEqual,
+			Value:    "^BHD$",
+			Regex:    true,
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got != false {
+			t.Fatalf("expected false, got %v", got)
+		}
+	})
+
+	t.Run("not_contains regex - false when any candidate matches (display name)", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorNotContains,
+			Value:    "BHD",
+			Regex:    true,
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got != false {
+			t.Fatalf("expected false, got %v", got)
+		}
+	})
+
+	t.Run("not_equal regex - true when no candidate matches", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorNotEqual,
+			Value:    "^XYZ$",
+			Regex:    true,
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got != true {
+			t.Fatalf("expected true, got %v", got)
+		}
+	})
+
+	t.Run("not_contains regex - true when no candidate matches", func(t *testing.T) {
+		cond := &RuleCondition{
+			Field:    FieldTracker,
+			Operator: OperatorNotContains,
+			Value:    "XYZ",
+			Regex:    true,
+		}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got != true {
+			t.Fatalf("expected true, got %v", got)
+		}
+	})
+}
+
 func TestEvaluateCondition_NumericFields(t *testing.T) {
 	tests := []struct {
 		name     string
 		cond     *RuleCondition
 		torrent  qbt.Torrent
+		evalCtx  *EvalContext
 		expected bool
 	}{
 		{
@@ -227,6 +438,61 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			expected: true,
 		},
 		{
+			// Cross-seeded torrent: data already on disk, downloaded ~ 0,
+			// qBit's Ratio explodes (uploaded / 0) but uploaded/total_size is sane.
+			name: "uploaded over size greater than 1.0 (cross-seeded torrent)",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorGreaterThan,
+				Value:    "1.0",
+			},
+			torrent:  qbt.Torrent{Uploaded: 7_500_000_000, TotalSize: 5_000_000_000, Downloaded: 0},
+			expected: true,
+		},
+		{
+			name: "uploaded over size below threshold",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorGreaterThanOrEqual,
+				Value:    "1.0",
+			},
+			torrent:  qbt.Torrent{Uploaded: 500_000_000, TotalSize: 5_000_000_000},
+			expected: false,
+		},
+		{
+			name: "uploaded over size between 0.5 and 2.0",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorBetween,
+				MinValue: new(0.5),
+				MaxValue: new(2.0),
+			},
+			torrent:  qbt.Torrent{Uploaded: 5_000_000_000, TotalSize: 5_000_000_000},
+			expected: true,
+		},
+		{
+			// TotalSize == 0 should not divide-by-zero; field returns false
+			// regardless of operator, so an automation gated on this won't fire.
+			name: "uploaded over size returns false when total size is zero",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorGreaterThan,
+				Value:    "0",
+			},
+			torrent:  qbt.Torrent{Uploaded: 1_000_000, TotalSize: 0},
+			expected: false,
+		},
+		{
+			name: "uploaded over size with zero uploaded equals 0",
+			cond: &RuleCondition{
+				Field:    FieldUploadedOverSize,
+				Operator: OperatorEqual,
+				Value:    "0",
+			},
+			torrent:  qbt.Torrent{Uploaded: 0, TotalSize: 5_000_000_000},
+			expected: true,
+		},
+		{
 			name: "progress equals 1.0",
 			cond: &RuleCondition{
 				Field:    FieldProgress,
@@ -235,6 +501,38 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			},
 			torrent:  qbt.Torrent{Progress: 1.0},
 			expected: true,
+		},
+		{
+			name: "progress less than 100% (legacy percent value)",
+			cond: &RuleCondition{
+				Field:    FieldProgress,
+				Operator: OperatorLessThan,
+				Value:    "100",
+			},
+			torrent:  qbt.Torrent{Progress: 1.0},
+			expected: false,
+		},
+		{
+			name: "progress between 50-100% (legacy percent values)",
+			cond: &RuleCondition{
+				Field:    FieldProgress,
+				Operator: OperatorBetween,
+				MinValue: new(float64(50)),
+				MaxValue: new(float64(100)),
+			},
+			torrent:  qbt.Torrent{Progress: 0.6},
+			expected: true,
+		},
+		{
+			name: "progress between 50-100% excludes lower progress",
+			cond: &RuleCondition{
+				Field:    FieldProgress,
+				Operator: OperatorBetween,
+				MinValue: new(float64(50)),
+				MaxValue: new(float64(100)),
+			},
+			torrent:  qbt.Torrent{Progress: 0.2},
+			expected: false,
 		},
 		{
 			name: "seeding time greater than 1 hour",
@@ -257,12 +555,34 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			expected: true,
 		},
 		{
+			name: "free space greater than 1GB",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorGreaterThan,
+				Value:    "1073741824",
+			},
+			evalCtx: &EvalContext{
+				FreeSpace: 2147483648,
+			},
+			expected: true,
+		},
+		{
+			name: "free space returns false with nil context",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorGreaterThan,
+				Value:    "1073741824",
+			},
+			evalCtx:  nil,
+			expected: false,
+		},
+		{
 			name: "ratio between values",
 			cond: &RuleCondition{
 				Field:    FieldRatio,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(1.0),
-				MaxValue: float64Ptr(3.0),
+				MinValue: new(1.0),
+				MaxValue: new(3.0),
 			},
 			torrent:  qbt.Torrent{Ratio: 2.0},
 			expected: true,
@@ -272,8 +592,8 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldRatio,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(1.0),
-				MaxValue: float64Ptr(2.0),
+				MinValue: new(1.0),
+				MaxValue: new(2.0),
 			},
 			torrent:  qbt.Torrent{Ratio: 3.0},
 			expected: false,
@@ -292,11 +612,182 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, tt.torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.evalCtx, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
 		})
+	}
+}
+
+func TestEvaluateCondition_SystemTimeFields(t *testing.T) {
+	evalTime := time.Date(2025, time.August, 15, 14, 30, 0, 0, time.Local) // Friday (5)
+	ctx := &EvalContext{
+		NowUnix: evalTime.Unix(),
+	}
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		expected bool
+	}{
+		{
+			name:     "system hour equals",
+			cond:     &RuleCondition{Field: models.FieldSystemHour, Operator: OperatorEqual, Value: "14"},
+			expected: true,
+		},
+		{
+			name:     "system minute greater than",
+			cond:     &RuleCondition{Field: models.FieldSystemMinute, Operator: OperatorGreaterThan, Value: "20"},
+			expected: true,
+		},
+		{
+			name:     "system day of week equals Friday (5)",
+			cond:     &RuleCondition{Field: models.FieldSystemDayOfWeek, Operator: OperatorEqual, Value: "5"},
+			expected: true,
+		},
+		{
+			name:     "system day equals 15",
+			cond:     &RuleCondition{Field: models.FieldSystemDay, Operator: OperatorEqual, Value: "15"},
+			expected: true,
+		},
+		{
+			name:     "system month equals 8",
+			cond:     &RuleCondition{Field: models.FieldSystemMonth, Operator: OperatorEqual, Value: "8"},
+			expected: true,
+		},
+		{
+			name:     "system year equals 2025",
+			cond:     &RuleCondition{Field: models.FieldSystemYear, Operator: OperatorEqual, Value: "2025"},
+			expected: true,
+		},
+		// False cases: verify non-matching values are rejected
+		{
+			name:     "system hour not equal",
+			cond:     &RuleCondition{Field: models.FieldSystemHour, Operator: OperatorEqual, Value: "9"},
+			expected: false,
+		},
+		{
+			name:     "system minute not greater than",
+			cond:     &RuleCondition{Field: models.FieldSystemMinute, Operator: OperatorGreaterThan, Value: "45"},
+			expected: false,
+		},
+		{
+			name:     "system day of week not Saturday",
+			cond:     &RuleCondition{Field: models.FieldSystemDayOfWeek, Operator: OperatorEqual, Value: "6"},
+			expected: false,
+		},
+		{
+			name:     "system day less than actual",
+			cond:     &RuleCondition{Field: models.FieldSystemDay, Operator: OperatorLessThan, Value: "10"},
+			expected: false,
+		},
+		{
+			name:     "system month not equal",
+			cond:     &RuleCondition{Field: models.FieldSystemMonth, Operator: OperatorEqual, Value: "3"},
+			expected: false,
+		},
+		{
+			name:     "system year not equal",
+			cond:     &RuleCondition{Field: models.FieldSystemYear, Operator: OperatorEqual, Value: "2024"},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, ctx, 0)
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestEvaluateCondition_GroupFields_UseConditionGroupID(t *testing.T) {
+	torrent := qbt.Torrent{Hash: "a"}
+
+	defaultIdx := &groupIndex{
+		sizeByHash: map[string]int{
+			"a": 1,
+		},
+	}
+	releaseIdx := &groupIndex{
+		sizeByHash: map[string]int{
+			"a": 3,
+		},
+	}
+
+	ctx := &EvalContext{
+		ActiveRuleID:        42,
+		activeGroupIndex:    defaultIdx,
+		groupIndexCache:     map[int]map[string]*groupIndex{42: {"release_item": releaseIdx}},
+		FreeSpaceStates:     nil,
+		CategoryIndex:       nil,
+		CategoryNames:       nil,
+		UnregisteredSet:     nil,
+		TrackerDownSet:      nil,
+		HardlinkScopeByHash: nil,
+	}
+
+	condWithGroupID := &RuleCondition{
+		Field:    FieldGroupSize,
+		GroupID:  "release_item",
+		Operator: OperatorEqual,
+		Value:    "3",
+	}
+	if got := EvaluateConditionWithContext(condWithGroupID, torrent, ctx, 0); !got {
+		t.Fatalf("expected grouped condition with explicit groupId to use cached release_item index")
+	}
+
+	condCaseInsensitive := &RuleCondition{
+		Field:    FieldGroupSize,
+		GroupID:  "ReLeAsE_Item",
+		Operator: OperatorEqual,
+		Value:    "3",
+	}
+	if got := EvaluateConditionWithContext(condCaseInsensitive, torrent, ctx, 0); !got {
+		t.Fatalf("expected groupId lookup to be case-insensitive")
+	}
+
+	condFallbackDefault := &RuleCondition{
+		Field:    FieldGroupSize,
+		Operator: OperatorEqual,
+		Value:    "1",
+	}
+	if got := EvaluateConditionWithContext(condFallbackDefault, torrent, ctx, 0); !got {
+		t.Fatalf("expected unscoped grouped condition to use active default group")
+	}
+
+	condMissingGroup := &RuleCondition{
+		Field:    FieldIsGrouped,
+		GroupID:  "does_not_exist",
+		Operator: OperatorEqual,
+		Value:    "true",
+	}
+	if got := EvaluateConditionWithContext(condMissingGroup, torrent, ctx, 0); got {
+		t.Fatalf("expected false when requested groupId is not available")
+	}
+}
+
+func TestEvaluateCondition_GroupFields_WorkWithZeroRuleID(t *testing.T) {
+	torrent := qbt.Torrent{Hash: "a"}
+	ctx := &EvalContext{
+		ActiveRuleID:     0,
+		groupIndexCache:  map[int]map[string]*groupIndex{0: {"release_item": {sizeByHash: map[string]int{"a": 2}}}},
+		activeGroupIndex: nil,
+	}
+
+	cond := &RuleCondition{
+		Field:    FieldGroupSize,
+		GroupID:  "release_item",
+		Operator: OperatorEqual,
+		Value:    "2",
+	}
+
+	if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); !got {
+		t.Fatalf("expected grouped condition lookup to work for temporary rule ID 0")
 	}
 }
 
@@ -341,7 +832,7 @@ func TestEvaluateCondition_BooleanFields(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, tt.torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -382,7 +873,7 @@ func TestEvaluateCondition_Negate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, tt.torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -442,7 +933,7 @@ func TestEvaluateCondition_ANDGroup(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -500,7 +991,7 @@ func TestEvaluateCondition_ORGroup(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -583,7 +1074,7 @@ func TestEvaluateCondition_NestedGroups(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -602,7 +1093,7 @@ func TestEvaluateCondition_MaxDepth(t *testing.T) {
 
 	// Build 25 levels of nesting (exceeds maxConditionDepth of 20)
 	current := cond
-	for i := 0; i < 25; i++ {
+	for range 25 {
 		nested := &RuleCondition{
 			Operator: OperatorAnd,
 			Conditions: []*RuleCondition{
@@ -616,7 +1107,7 @@ func TestEvaluateCondition_MaxDepth(t *testing.T) {
 	torrent := qbt.Torrent{Category: "movies", Ratio: 2.0}
 
 	// Should return false because we hit max depth
-	result := EvaluateCondition(cond, torrent, 0)
+	result := EvaluateConditionWithContext(cond, torrent, nil, 0)
 	if result {
 		t.Error("expected false due to max depth, got true")
 	}
@@ -624,7 +1115,7 @@ func TestEvaluateCondition_MaxDepth(t *testing.T) {
 
 func TestEvaluateCondition_NilCondition(t *testing.T) {
 	torrent := qbt.Torrent{Name: "Test"}
-	result := EvaluateCondition(nil, torrent, 0)
+	result := EvaluateConditionWithContext(nil, torrent, nil, 0)
 	if result {
 		t.Error("expected false for nil condition")
 	}
@@ -639,7 +1130,7 @@ func TestEvaluateCondition_EmptyGroup(t *testing.T) {
 		Conditions: []*RuleCondition{},
 	}
 	// Empty conditions means it's not a group, so evaluateLeaf is called with unknown field
-	result := EvaluateCondition(andCond, torrent, 0)
+	result := EvaluateConditionWithContext(andCond, torrent, nil, 0)
 	if result {
 		t.Error("empty AND group should return false (not a valid group)")
 	}
@@ -675,8 +1166,154 @@ func TestEvaluateCondition_StateTrackerDown_WithContext(t *testing.T) {
 	})
 }
 
-func float64Ptr(v float64) *float64 {
-	return &v
+func TestEvaluateCondition_StateTrackerError_WithContext(t *testing.T) {
+	cond := &RuleCondition{
+		Field:    FieldState,
+		Operator: OperatorEqual,
+		Value:    "tracker_error",
+	}
+
+	torrent := qbt.Torrent{
+		Hash:  "hash1",
+		State: qbt.TorrentStateUploading,
+	}
+
+	t.Run("matches when in TrackerErrorSet", func(t *testing.T) {
+		ctx := &EvalContext{
+			TrackerErrorSet: map[string]struct{}{"hash1": {}},
+		}
+		got := EvaluateConditionWithContext(cond, torrent, ctx, 0)
+		if !got {
+			t.Fatalf("expected true, got false")
+		}
+	})
+
+	t.Run("does not match without TrackerErrorSet", func(t *testing.T) {
+		got := EvaluateConditionWithContext(cond, torrent, &EvalContext{}, 0)
+		if got {
+			t.Fatalf("expected false, got true")
+		}
+	})
+}
+
+func TestEvaluateCondition_RlsYear(t *testing.T) {
+	parsed := &EvalContext{ReleaseParser: releases.NewDefaultParser()}
+	const movie = "Movie.Title.2021.1080p.WEB-DL-GROUP"
+	const noYear = "Some Release Without A Year"
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		ctx      *EvalContext
+		expected bool
+	}{
+		{
+			name:     "equals parsed year",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorEqual, Value: "2021"},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: true,
+		},
+		{
+			name:     "equals wrong year",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorEqual, Value: "2020"},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: false,
+		},
+		{
+			name:     "greater than",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorGreaterThan, Value: "2000"},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: true,
+		},
+		{
+			name:     "less than",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorLessThan, Value: "2000"},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: false,
+		},
+		{
+			name:     "between inclusive match",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorBetween, MinValue: new(float64(2020)), MaxValue: new(float64(2023))},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: true,
+		},
+		{
+			name:     "between outside range",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorBetween, MinValue: new(float64(2010)), MaxValue: new(float64(2019))},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: false,
+		},
+		{
+			name:     "unparsed year never matches equals zero",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorEqual, Value: "0"},
+			torrent:  qbt.Torrent{Name: noYear},
+			ctx:      parsed,
+			expected: false,
+		},
+		{
+			name:     "unparsed year never matches greater than",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorGreaterThan, Value: "1900"},
+			torrent:  qbt.Torrent{Name: noYear},
+			ctx:      parsed,
+			expected: false,
+		},
+		{
+			name:     "nil parser treats year as unknown",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorEqual, Value: "2021"},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      &EvalContext{},
+			expected: false,
+		},
+		{
+			name:     "not equal wrong year matches",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorNotEqual, Value: "2020"},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: true,
+		},
+		{
+			name:     "not equal parsed year does not match",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorNotEqual, Value: "2021"},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: false,
+		},
+		{
+			// The documented invariant: an unparsed year never matches for ANY
+			// operator, including !=. Guards the year <= 0 short-circuit so a
+			// "!= X" condition can't silently sweep up every yearless release.
+			name:     "unparsed year never matches not equal",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorNotEqual, Value: "2020"},
+			torrent:  qbt.Torrent{Name: noYear},
+			ctx:      parsed,
+			expected: false,
+		},
+		{
+			// A whitespace-padded value must compare the same as the trimmed form
+			// (save-time validation accepts it); regression guard for compareInt64.
+			name:     "whitespace padded value matches",
+			cond:     &RuleCondition{Field: FieldRlsYear, Operator: OperatorEqual, Value: " 2021 "},
+			torrent:  qbt.Torrent{Name: movie},
+			ctx:      parsed,
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.ctx, 0)
+			if got != tt.expected {
+				t.Errorf("EvaluateConditionWithContext() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
 }
 
 func TestEvaluateCondition_ExistsIn(t *testing.T) {
@@ -1083,7 +1720,7 @@ func TestEvaluateCondition_ErrorCases(t *testing.T) {
 				Field:    FieldRatio,
 				Operator: OperatorBetween,
 				MinValue: nil,
-				MaxValue: float64Ptr(5.0),
+				MaxValue: new(5.0),
 			},
 			expected: false,
 		},
@@ -1092,7 +1729,7 @@ func TestEvaluateCondition_ErrorCases(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldRatio,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(1.0),
+				MinValue: new(1.0),
 				MaxValue: nil,
 			},
 			expected: false,
@@ -1113,7 +1750,7 @@ func TestEvaluateCondition_ErrorCases(t *testing.T) {
 				Field:    FieldSeedingTime,
 				Operator: OperatorBetween,
 				MinValue: nil,
-				MaxValue: float64Ptr(7200),
+				MaxValue: new(float64(7200)),
 			},
 			expected: false,
 		},
@@ -1157,7 +1794,7 @@ func TestEvaluateCondition_ErrorCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
 			}
@@ -1215,8 +1852,8 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldAddedOnAge,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(3600), // 1 hour
-				MaxValue: float64Ptr(7200), // 2 hours
+				MinValue: new(float64(3600)), // 1 hour
+				MaxValue: new(float64(7200)), // 2 hours
 			},
 			torrent:  qbt.Torrent{AddedOn: nowUnix - 5400}, // added 1.5 hours ago
 			ctx:      &EvalContext{NowUnix: nowUnix},
@@ -1227,10 +1864,21 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldAddedOnAge,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(3600), // 1 hour
-				MaxValue: float64Ptr(7200), // 2 hours
+				MinValue: new(float64(3600)), // 1 hour
+				MaxValue: new(float64(7200)), // 2 hours
 			},
 			torrent:  qbt.Torrent{AddedOn: nowUnix - 10800}, // added 3 hours ago
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
+		{
+			name: "added_on_age unset (0) - does not match",
+			cond: &RuleCondition{
+				Field:    FieldAddedOnAge,
+				Operator: OperatorGreaterThan,
+				Value:    "0",
+			},
+			torrent:  qbt.Torrent{AddedOn: 0},
 			ctx:      &EvalContext{NowUnix: nowUnix},
 			expected: false,
 		},
@@ -1270,12 +1918,23 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			expected: false,
 		},
 		{
+			name: "completion_on_age unset (-1 qBittorrent) - does not match",
+			cond: &RuleCondition{
+				Field:    FieldCompletionOnAge,
+				Operator: OperatorGreaterThanOrEqual,
+				Value:    "86400", // 1 day
+			},
+			torrent:  qbt.Torrent{CompletionOn: -1}, // qBittorrent uses -1 for incomplete torrents
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
+		{
 			name: "completion_on_age between - matches",
 			cond: &RuleCondition{
 				Field:    FieldCompletionOnAge,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(3600),
-				MaxValue: float64Ptr(7200),
+				MinValue: new(float64(3600)),
+				MaxValue: new(float64(7200)),
 			},
 			torrent:  qbt.Torrent{CompletionOn: nowUnix - 5400}, // completed 1.5 hours ago
 			ctx:      &EvalContext{NowUnix: nowUnix},
@@ -1321,8 +1980,8 @@ func TestEvaluateCondition_AgeFields(t *testing.T) {
 			cond: &RuleCondition{
 				Field:    FieldLastActivityAge,
 				Operator: OperatorBetween,
-				MinValue: float64Ptr(3600),
-				MaxValue: float64Ptr(7200),
+				MinValue: new(float64(3600)),
+				MaxValue: new(float64(7200)),
 			},
 			torrent:  qbt.Torrent{LastActivity: nowUnix - 5400}, // active 1.5 hours ago
 			ctx:      &EvalContext{NowUnix: nowUnix},
@@ -1543,6 +2202,228 @@ func TestEvaluateCondition_HardlinkScope(t *testing.T) {
 			expected: true,
 		},
 	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EvaluateConditionWithContext(tt.cond, torrent, tt.evalCtx, 0)
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestEvaluateCondition_HardlinkScopeCross(t *testing.T) {
+	torrent := qbt.Torrent{
+		Hash: "abc123",
+		Name: "Test.Torrent",
+	}
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		evalCtx  *EvalContext
+		expected bool
+	}{
+		{
+			name: "cross scope torrents_only - match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeTorrentsOnly,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeTorrentsOnly},
+			},
+			expected: true,
+		},
+		{
+			name: "cross scope outside_qbittorrent - match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeOutsideQBitTorrent,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeOutsideQBitTorrent},
+			},
+			expected: true,
+		},
+		{
+			name: "cross scope not outside - match (torrents_only)",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorNotEqual,
+				Value:    HardlinkScopeOutsideQBitTorrent,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeTorrentsOnly},
+			},
+			expected: true,
+		},
+		{
+			name: "nil cross scope map - no match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeNone,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: nil,
+			},
+			expected: false,
+		},
+		{
+			name: "no local access - no match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeNone,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   false,
+				HardlinkCrossScopeByHash: map[string]string{"abc123": HardlinkScopeNone},
+			},
+			expected: false,
+		},
+		{
+			name: "unknown hash - no match",
+			cond: &RuleCondition{
+				Field:    FieldHardlinkScopeCross,
+				Operator: OperatorEqual,
+				Value:    HardlinkScopeNone,
+			},
+			evalCtx: &EvalContext{
+				InstanceHasLocalAccess:   true,
+				HardlinkCrossScopeByHash: map[string]string{},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EvaluateConditionWithContext(tt.cond, torrent, tt.evalCtx, 0)
+			if result != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestEvaluateCondition_FreeSpaceWithSpaceToClear(t *testing.T) {
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		evalCtx  *EvalContext
+		expected bool
+	}{
+		{
+			name: "free space condition considers SpaceToClear - now above threshold",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorLessThan,
+				Value:    "500000000000", // 500GB
+			},
+			evalCtx: &EvalContext{
+				FreeSpace:    400000000000, // 400GB actual
+				SpaceToClear: 150000000000, // 150GB to be cleared
+				// Effective: 550GB > 500GB, so condition (< 500GB) is false
+			},
+			expected: false,
+		},
+		{
+			name: "free space condition considers SpaceToClear - still below threshold",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorLessThan,
+				Value:    "500000000000", // 500GB
+			},
+			evalCtx: &EvalContext{
+				FreeSpace:    400000000000, // 400GB actual
+				SpaceToClear: 50000000000,  // 50GB to be cleared
+				// Effective: 450GB < 500GB, so condition is true
+			},
+			expected: true,
+		},
+		{
+			name: "free space with zero SpaceToClear",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorLessThan,
+				Value:    "500000000000", // 500GB
+			},
+			evalCtx: &EvalContext{
+				FreeSpace:    400000000000, // 400GB actual
+				SpaceToClear: 0,
+			},
+			expected: true, // 400GB < 500GB
+		},
+		{
+			name: "free space greater than with SpaceToClear",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorGreaterThan,
+				Value:    "500000000000", // 500GB
+			},
+			evalCtx: &EvalContext{
+				FreeSpace:    400000000000, // 400GB actual
+				SpaceToClear: 200000000000, // 200GB to be cleared
+				// Effective: 600GB > 500GB
+			},
+			expected: true,
+		},
+		{
+			name: "free space equal with SpaceToClear",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorEqual,
+				Value:    "500000000000", // 500GB
+			},
+			evalCtx: &EvalContext{
+				FreeSpace:    300000000000, // 300GB actual
+				SpaceToClear: 200000000000, // 200GB to be cleared
+				// Effective: 500GB == 500GB
+			},
+			expected: true,
+		},
+		{
+			name: "free space between with SpaceToClear",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorBetween,
+				MinValue: new(float64(400000000000)), // 400GB
+				MaxValue: new(float64(600000000000)), // 600GB
+			},
+			evalCtx: &EvalContext{
+				FreeSpace:    300000000000, // 300GB actual
+				SpaceToClear: 200000000000, // 200GB to be cleared
+				// Effective: 500GB, within [400GB, 600GB]
+			},
+			expected: true,
+		},
+		{
+			name: "free space between with SpaceToClear - outside range",
+			cond: &RuleCondition{
+				Field:    FieldFreeSpace,
+				Operator: OperatorBetween,
+				MinValue: new(float64(400000000000)), // 400GB
+				MaxValue: new(float64(500000000000)), // 500GB
+			},
+			evalCtx: &EvalContext{
+				FreeSpace:    300000000000, // 300GB actual
+				SpaceToClear: 300000000000, // 300GB to be cleared
+				// Effective: 600GB, outside [400GB, 500GB]
+			},
+			expected: false,
+		},
+	}
+
+	torrent := qbt.Torrent{Name: "Test"}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1859,9 +2740,857 @@ func TestEvaluateCondition_Tags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EvaluateCondition(tt.cond, tt.torrent, 0)
+			result := EvaluateConditionWithContext(tt.cond, tt.torrent, nil, 0)
 			if result != tt.expected {
 				t.Errorf("expected %v, got %v", tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestEvaluateCondition_GoQBitTorrentAdditionalFields(t *testing.T) {
+	nowUnix := int64(1705320000)
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		ctx      *EvalContext
+		expected bool
+	}{
+		{
+			name:     "infohash v1",
+			cond:     &RuleCondition{Field: FieldInfohashV1, Operator: OperatorEqual, Value: "abc123"},
+			torrent:  qbt.Torrent{InfohashV1: "abc123"},
+			expected: true,
+		},
+		{
+			name:     "infohash v2",
+			cond:     &RuleCondition{Field: FieldInfohashV2, Operator: OperatorEqual, Value: "def456"},
+			torrent:  qbt.Torrent{InfohashV2: "def456"},
+			expected: true,
+		},
+		{
+			name:     "magnet uri contains",
+			cond:     &RuleCondition{Field: FieldMagnetURI, Operator: OperatorContains, Value: "btih"},
+			torrent:  qbt.Torrent{MagnetURI: "magnet:?xt=urn:btih:abc123"},
+			expected: true,
+		},
+		{
+			name:     "download path",
+			cond:     &RuleCondition{Field: FieldDownloadPath, Operator: OperatorEqual, Value: "/data/downloading"},
+			torrent:  qbt.Torrent{DownloadPath: "/data/downloading"},
+			expected: true,
+		},
+		{
+			name:     "created by",
+			cond:     &RuleCondition{Field: FieldCreatedBy, Operator: OperatorEqual, Value: "mktorrent"},
+			torrent:  qbt.Torrent{CreatedBy: "mktorrent"},
+			expected: true,
+		},
+		{
+			name: "trackers list contains domain",
+			cond: &RuleCondition{Field: FieldTrackers, Operator: OperatorContains, Value: "trackerb.org"},
+			torrent: qbt.Torrent{
+				Trackers: []qbt.TorrentTracker{
+					{Url: "https://trackera.org/announce"},
+					{Url: "udp://trackerb.org:1337/announce"},
+				},
+			},
+			expected: true,
+		},
+		{
+			name: "trackers list matches customization display name",
+			cond: &RuleCondition{Field: FieldTrackers, Operator: OperatorEqual, Value: "BHD"},
+			torrent: qbt.Torrent{
+				Trackers: []qbt.TorrentTracker{
+					{Url: "https://beyond-hd.me/announce"},
+				},
+			},
+			ctx: &EvalContext{
+				TrackerDisplayNameByDomain: map[string]string{
+					"beyond-hd.me": "BHD",
+				},
+			},
+			expected: true,
+		},
+		{
+			name:     "completed bytes",
+			cond:     &RuleCondition{Field: FieldCompleted, Operator: OperatorEqual, Value: "1024"},
+			torrent:  qbt.Torrent{Completed: 1024},
+			expected: true,
+		},
+		{
+			name:     "downloaded session bytes",
+			cond:     &RuleCondition{Field: FieldDownloadedSession, Operator: OperatorEqual, Value: "2048"},
+			torrent:  qbt.Torrent{DownloadedSession: 2048},
+			expected: true,
+		},
+		{
+			name:     "uploaded session bytes",
+			cond:     &RuleCondition{Field: FieldUploadedSession, Operator: OperatorEqual, Value: "3072"},
+			torrent:  qbt.Torrent{UploadedSession: 3072},
+			expected: true,
+		},
+		{
+			name:     "added on timestamp evaluated as age duration",
+			cond:     &RuleCondition{Field: FieldAddedOn, Operator: OperatorGreaterThan, Value: "3600"},
+			torrent:  qbt.Torrent{AddedOn: nowUnix - 7200},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+		{
+			name:     "completion on timestamp evaluated as age duration",
+			cond:     &RuleCondition{Field: FieldCompletionOn, Operator: OperatorLessThan, Value: "3600"},
+			torrent:  qbt.Torrent{CompletionOn: nowUnix - 1800},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+		{
+			name:     "completion on unset does not match",
+			cond:     &RuleCondition{Field: FieldCompletionOn, Operator: OperatorGreaterThan, Value: "0"},
+			torrent:  qbt.Torrent{CompletionOn: 0},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
+		{
+			name:     "last activity timestamp evaluated as age duration",
+			cond:     &RuleCondition{Field: FieldLastActivity, Operator: OperatorGreaterThanOrEqual, Value: "3600"},
+			torrent:  qbt.Torrent{LastActivity: nowUnix - 3600},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+		{
+			name:     "last activity unset does not match",
+			cond:     &RuleCondition{Field: FieldLastActivity, Operator: OperatorGreaterThan, Value: "0"},
+			torrent:  qbt.Torrent{LastActivity: 0},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
+		{
+			name:     "seen complete timestamp evaluated as age duration",
+			cond:     &RuleCondition{Field: FieldSeenComplete, Operator: OperatorBetween, MinValue: new(float64(3600)), MaxValue: new(float64(7200))},
+			torrent:  qbt.Torrent{SeenComplete: nowUnix - 5400},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: true,
+		},
+		{
+			name:     "seen complete unset does not match",
+			cond:     &RuleCondition{Field: FieldSeenComplete, Operator: OperatorGreaterThan, Value: "0"},
+			torrent:  qbt.Torrent{SeenComplete: 0},
+			ctx:      &EvalContext{NowUnix: nowUnix},
+			expected: false,
+		},
+		{
+			name:     "eta duration",
+			cond:     &RuleCondition{Field: FieldETA, Operator: OperatorEqual, Value: "600"},
+			torrent:  qbt.Torrent{ETA: 600},
+			expected: true,
+		},
+		{
+			name:     "reannounce duration",
+			cond:     &RuleCondition{Field: FieldReannounce, Operator: OperatorEqual, Value: "1200"},
+			torrent:  qbt.Torrent{Reannounce: 1200},
+			expected: true,
+		},
+		{
+			name:     "max seeding time",
+			cond:     &RuleCondition{Field: FieldMaxSeedingTime, Operator: OperatorEqual, Value: "3600"},
+			torrent:  qbt.Torrent{MaxSeedingTime: 3600},
+			expected: true,
+		},
+		{
+			name:     "max inactive seeding time",
+			cond:     &RuleCondition{Field: FieldMaxInactiveSeedingTime, Operator: OperatorEqual, Value: "7200"},
+			torrent:  qbt.Torrent{MaxInactiveSeedingTime: 7200},
+			expected: true,
+		},
+		{
+			name:     "seeding time limit",
+			cond:     &RuleCondition{Field: FieldSeedingTimeLimit, Operator: OperatorEqual, Value: "1800"},
+			torrent:  qbt.Torrent{SeedingTimeLimit: 1800},
+			expected: true,
+		},
+		{
+			name:     "inactive seeding time limit",
+			cond:     &RuleCondition{Field: FieldInactiveSeedingTimeLimit, Operator: OperatorEqual, Value: "900"},
+			torrent:  qbt.Torrent{InactiveSeedingTimeLimit: 900},
+			expected: true,
+		},
+		{
+			name:     "ratio limit",
+			cond:     &RuleCondition{Field: FieldRatioLimit, Operator: OperatorEqual, Value: "2.5"},
+			torrent:  qbt.Torrent{RatioLimit: 2.5},
+			expected: true,
+		},
+		{
+			name:     "max ratio",
+			cond:     &RuleCondition{Field: FieldMaxRatio, Operator: OperatorEqual, Value: "5.0"},
+			torrent:  qbt.Torrent{MaxRatio: 5.0},
+			expected: true,
+		},
+		{
+			name:     "popularity",
+			cond:     &RuleCondition{Field: FieldPopularity, Operator: OperatorEqual, Value: "0.75"},
+			torrent:  qbt.Torrent{Popularity: 0.75},
+			expected: true,
+		},
+		{
+			name:     "download limit",
+			cond:     &RuleCondition{Field: FieldDlLimit, Operator: OperatorEqual, Value: "1048576"},
+			torrent:  qbt.Torrent{DlLimit: 1048576},
+			expected: true,
+		},
+		{
+			name:     "upload limit",
+			cond:     &RuleCondition{Field: FieldUpLimit, Operator: OperatorEqual, Value: "524288"},
+			torrent:  qbt.Torrent{UpLimit: 524288},
+			expected: true,
+		},
+		{
+			name:     "priority",
+			cond:     &RuleCondition{Field: FieldPriority, Operator: OperatorEqual, Value: "3"},
+			torrent:  qbt.Torrent{Priority: 3},
+			expected: true,
+		},
+		{
+			name:     "auto managed",
+			cond:     &RuleCondition{Field: FieldAutoManaged, Operator: OperatorEqual, Value: "true"},
+			torrent:  qbt.Torrent{AutoManaged: true},
+			expected: true,
+		},
+		{
+			name:     "first last piece priority",
+			cond:     &RuleCondition{Field: FieldFirstLastPiecePrio, Operator: OperatorEqual, Value: "true"},
+			torrent:  qbt.Torrent{FirstLastPiecePrio: true},
+			expected: true,
+		},
+		{
+			name:     "force start",
+			cond:     &RuleCondition{Field: FieldForceStart, Operator: OperatorEqual, Value: "true"},
+			torrent:  qbt.Torrent{ForceStart: true},
+			expected: true,
+		},
+		{
+			name:     "sequential download",
+			cond:     &RuleCondition{Field: FieldSequentialDownload, Operator: OperatorEqual, Value: "true"},
+			torrent:  qbt.Torrent{SequentialDownload: true},
+			expected: true,
+		},
+		{
+			name:     "super seeding",
+			cond:     &RuleCondition{Field: FieldSuperSeeding, Operator: OperatorEqual, Value: "true"},
+			torrent:  qbt.Torrent{SuperSeeding: true},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.ctx, 0)
+			if got != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestEvaluateCondition_CrossInstanceFields(t *testing.T) {
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		ctx      *EvalContext
+		expected bool
+	}{
+		// EXISTS_ON_OTHER_INSTANCE
+		{
+			name: "exists on other instance - hash present in set",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				CrossInstanceHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: true,
+		},
+		{
+			name: "exists on other instance - hash not in set",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "xyz789"},
+			ctx: &EvalContext{
+				CrossInstanceHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: false,
+		},
+		{
+			name: "exists on other instance - equals false when not present",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "false",
+			},
+			torrent: qbt.Torrent{Hash: "xyz789"},
+			ctx: &EvalContext{
+				CrossInstanceHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: true,
+		},
+		{
+			name: "exists on other instance - not equals true when not present",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorNotEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "xyz789"},
+			ctx: &EvalContext{
+				CrossInstanceHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: true,
+		},
+		{
+			name: "exists on other instance - nil context returns false",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent:  qbt.Torrent{Hash: "abc123"},
+			ctx:      nil,
+			expected: false,
+		},
+		{
+			name: "exists on other instance - nil hash set returns false",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent:  qbt.Torrent{Hash: "abc123"},
+			ctx:      &EvalContext{},
+			expected: false,
+		},
+		{
+			name: "exists on other instance - empty hash set returns false",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				CrossInstanceHashSet: map[string]struct{}{},
+			},
+			expected: false,
+		},
+		{
+			name: "exists on other instance - negated equals true inverts result",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+				Negate:   true,
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				CrossInstanceHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: false,
+		},
+		// SEEDING_ON_OTHER_INSTANCE
+		{
+			name: "seeding on other instance - hash present in seeding set",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				CrossInstanceSeedingHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: true,
+		},
+		{
+			name: "seeding on other instance - hash not in seeding set",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				CrossInstanceSeedingHashSet: map[string]struct{}{"other": {}},
+			},
+			expected: false,
+		},
+		{
+			name: "seeding on other instance - nil context returns false",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent:  qbt.Torrent{Hash: "abc123"},
+			ctx:      nil,
+			expected: false,
+		},
+		{
+			name: "seeding on other instance - equals false when not seeding",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnOtherInstance,
+				Operator: OperatorEqual,
+				Value:    "false",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				CrossInstanceSeedingHashSet: map[string]struct{}{},
+			},
+			expected: true,
+		},
+		// EXISTS_ON_SAME_INSTANCE
+		{
+			name: "exists on same instance - cross-seed present",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: true,
+		},
+		{
+			name: "exists on same instance - no cross-seed",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedHashSet: map[string]struct{}{},
+			},
+			expected: false,
+		},
+		{
+			name: "exists on same instance - equals false when no cross-seed",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "false",
+			},
+			torrent: qbt.Torrent{Hash: "lone_torrent"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: true,
+		},
+		{
+			name: "exists on same instance - not equals true when no cross-seed",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorNotEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "lone_torrent"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedHashSet: map[string]struct{}{},
+			},
+			expected: true,
+		},
+		{
+			name: "exists on same instance - nil context returns false",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent:  qbt.Torrent{Hash: "abc123"},
+			ctx:      nil,
+			expected: false,
+		},
+		{
+			name: "exists on same instance - nil hash set returns false",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent:  qbt.Torrent{Hash: "abc123"},
+			ctx:      &EvalContext{},
+			expected: false,
+		},
+		{
+			name: "exists on same instance - negated equals true inverts result",
+			cond: &RuleCondition{
+				Field:    FieldExistsOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+				Negate:   true,
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: false,
+		},
+		// SEEDING_ON_SAME_INSTANCE
+		{
+			name: "seeding on same instance - cross-seed seeding",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedSeedingHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: true,
+		},
+		{
+			name: "seeding on same instance - cross-seed not seeding",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedSeedingHashSet: map[string]struct{}{},
+			},
+			expected: false,
+		},
+		{
+			name: "seeding on same instance - equals false when not seeding",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "false",
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedSeedingHashSet: map[string]struct{}{},
+			},
+			expected: true,
+		},
+		{
+			name: "seeding on same instance - nil context returns false",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent:  qbt.Torrent{Hash: "abc123"},
+			ctx:      nil,
+			expected: false,
+		},
+		{
+			name: "seeding on same instance - nil hash set returns false",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+			},
+			torrent:  qbt.Torrent{Hash: "abc123"},
+			ctx:      &EvalContext{},
+			expected: false,
+		},
+		{
+			name: "seeding on same instance - negated equals true inverts result",
+			cond: &RuleCondition{
+				Field:    FieldSeedingOnSameInstance,
+				Operator: OperatorEqual,
+				Value:    "true",
+				Negate:   true,
+			},
+			torrent: qbt.Torrent{Hash: "abc123"},
+			ctx: &EvalContext{
+				SameInstanceCrossSeedSeedingHashSet: map[string]struct{}{"abc123": {}},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EvaluateConditionWithContext(tt.cond, tt.torrent, tt.ctx, 0)
+			if got != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, got)
+			}
+		})
+	}
+}
+
+func TestEvaluateCondition_CrossSeedCompositeConditions(t *testing.T) {
+	ctx := &EvalContext{
+		CrossInstanceHashSet:                map[string]struct{}{"abc123": {}},
+		SameInstanceCrossSeedHashSet:        map[string]struct{}{"abc123": {}},
+		SameInstanceCrossSeedSeedingHashSet: map[string]struct{}{"abc123": {}},
+	}
+
+	t.Run("AND - exists on other AND seeding on same", func(t *testing.T) {
+		cond := &RuleCondition{
+			Operator: OperatorAnd,
+			Conditions: []*RuleCondition{
+				{Field: FieldExistsOnOtherInstance, Operator: OperatorEqual, Value: "true"},
+				{Field: FieldSeedingOnSameInstance, Operator: OperatorEqual, Value: "true"},
+			},
+		}
+		torrent := qbt.Torrent{Hash: "abc123"}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); !got {
+			t.Error("expected AND condition to match when both are true")
+		}
+	})
+
+	t.Run("AND - exists on other AND seeding on same - one false", func(t *testing.T) {
+		cond := &RuleCondition{
+			Operator: OperatorAnd,
+			Conditions: []*RuleCondition{
+				{Field: FieldExistsOnOtherInstance, Operator: OperatorEqual, Value: "true"},
+				{Field: FieldSeedingOnSameInstance, Operator: OperatorEqual, Value: "true"},
+			},
+		}
+		torrent := qbt.Torrent{Hash: "not_in_set"}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got {
+			t.Error("expected AND condition to not match when hash not in sets")
+		}
+	})
+
+	t.Run("OR - exists on same OR exists on other", func(t *testing.T) {
+		ctxOnlyOther := &EvalContext{
+			CrossInstanceHashSet:         map[string]struct{}{"abc123": {}},
+			SameInstanceCrossSeedHashSet: map[string]struct{}{},
+		}
+		cond := &RuleCondition{
+			Operator: OperatorOr,
+			Conditions: []*RuleCondition{
+				{Field: FieldExistsOnSameInstance, Operator: OperatorEqual, Value: "true"},
+				{Field: FieldExistsOnOtherInstance, Operator: OperatorEqual, Value: "true"},
+			},
+		}
+		torrent := qbt.Torrent{Hash: "abc123"}
+		if got := EvaluateConditionWithContext(cond, torrent, ctxOnlyOther, 0); !got {
+			t.Error("expected OR condition to match when one child is true")
+		}
+	})
+
+	t.Run("OR - neither matches", func(t *testing.T) {
+		cond := &RuleCondition{
+			Operator: OperatorOr,
+			Conditions: []*RuleCondition{
+				{Field: FieldExistsOnSameInstance, Operator: OperatorEqual, Value: "true"},
+				{Field: FieldExistsOnOtherInstance, Operator: OperatorEqual, Value: "true"},
+			},
+		}
+		torrent := qbt.Torrent{Hash: "not_in_any_set"}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); got {
+			t.Error("expected OR condition to not match when neither child matches")
+		}
+	})
+
+	t.Run("nested - same instance AND (ratio > 2 OR seeding on same)", func(t *testing.T) {
+		cond := &RuleCondition{
+			Operator: OperatorAnd,
+			Conditions: []*RuleCondition{
+				{Field: FieldExistsOnSameInstance, Operator: OperatorEqual, Value: "true"},
+				{
+					Operator: OperatorOr,
+					Conditions: []*RuleCondition{
+						{Field: FieldRatio, Operator: OperatorGreaterThan, Value: "2"},
+						{Field: FieldSeedingOnSameInstance, Operator: OperatorEqual, Value: "true"},
+					},
+				},
+			},
+		}
+		torrent := qbt.Torrent{Hash: "abc123", Ratio: 1.5}
+		if got := EvaluateConditionWithContext(cond, torrent, ctx, 0); !got {
+			t.Error("expected nested condition to match (exists=true, ratio<2 but seeding=true)")
+		}
+	})
+}
+
+func TestEvaluateCondition_TrackerStatusAndMessage(t *testing.T) {
+	t.Parallel()
+
+	const (
+		realURL  = "https://tracker.example.com/announce"
+		dhtLabel = "** [DHT] **"
+	)
+
+	tests := []struct {
+		name     string
+		cond     *RuleCondition
+		torrent  qbt.Torrent
+		expected bool
+	}{
+		// Status: positive matches across the alias / numeric value set.
+		{
+			name: "status working matches OK tracker",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "working"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusOK},
+			}},
+			expected: true,
+		},
+		{
+			name: "status ok alias matches OK tracker",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "ok"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusOK},
+			}},
+			expected: true,
+		},
+		{
+			name: "status not_contacted matches",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "not_contacted"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusNotContacted},
+			}},
+			expected: true,
+		},
+		{
+			name: "status updating matches",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "updating"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusUpdating},
+			}},
+			expected: true,
+		},
+		{
+			name: "status error matches NotWorking",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "error"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusNotWorking},
+			}},
+			expected: true,
+		},
+		{
+			name: "status tracker_error matches code 5",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "tracker_error"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusTrackerError},
+			}},
+			expected: true,
+		},
+		{
+			name: "status unreachable matches code 6",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "unreachable"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusUnreachable},
+			}},
+			expected: true,
+		},
+		{
+			name: "status numeric value matches raw code",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "5"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusTrackerError},
+			}},
+			expected: true,
+		},
+		{
+			name: "status not_equal satisfied by a differing tracker",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorNotEqual, Value: "error"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusOK},
+			}},
+			expected: true,
+		},
+		{
+			name:     "status no trackers does not match",
+			cond:     &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorEqual, Value: "working"},
+			torrent:  qbt.Torrent{},
+			expected: false,
+		},
+		// Status: DHT/PeX/LSD pseudo-trackers must be ignored (regression guard).
+		{
+			name: "pseudo DHT tracker is ignored, real tracker decides not_equal",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorNotEqual, Value: "working"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: dhtLabel, Status: qbt.TrackerStatusDisabled},
+				{Url: realURL, Status: qbt.TrackerStatusOK},
+			}},
+			expected: false,
+		},
+		{
+			name: "pseudo-only torrent never matches a real status",
+			cond: &RuleCondition{Field: FieldTrackerStatus, Operator: OperatorNotEqual, Value: "working"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: dhtLabel, Status: qbt.TrackerStatusDisabled},
+				{Url: "** [PeX] **", Status: qbt.TrackerStatusDisabled},
+			}},
+			expected: false,
+		},
+		// Message.
+		{
+			name: "message contains substring",
+			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorContains, Value: "Torrent deleted"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusNotWorking, Message: "Torrent deleted: get pack:"},
+			}},
+			expected: true,
+		},
+		{
+			name: "message nil matches empty real tracker message",
+			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorEqual, Value: "nil"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusOK, Message: ""},
+			}},
+			expected: true,
+		},
+		{
+			name: "message nil not_equal matches non-empty message",
+			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorNotEqual, Value: "nil"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusNotWorking, Message: "unregistered torrent"},
+			}},
+			expected: true,
+		},
+		{
+			name: "message nil contains does not match literal nil",
+			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorContains, Value: "nil"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: realURL, Status: qbt.TrackerStatusOK, Message: ""},
+				{Url: realURL, Status: qbt.TrackerStatusNotWorking, Message: "contains nil literal"},
+			}},
+			expected: false,
+		},
+		{
+			name:     "message no trackers does not match",
+			cond:     &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorEqual, Value: "nil"},
+			torrent:  qbt.Torrent{},
+			expected: false,
+		},
+		// Message: pseudo-tracker empty message must not satisfy "nil" (regression guard).
+		{
+			name: "pseudo DHT empty message does not satisfy message nil",
+			cond: &RuleCondition{Field: FieldTrackerMessage, Operator: OperatorEqual, Value: "nil"},
+			torrent: qbt.Torrent{Trackers: []qbt.TorrentTracker{
+				{Url: dhtLabel, Status: qbt.TrackerStatusDisabled, Message: ""},
+				{Url: realURL, Status: qbt.TrackerStatusOK, Message: "seeding ok"},
+			}},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := EvaluateConditionWithContext(tt.cond, tt.torrent, nil, 0)
+			if got != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, got)
 			}
 		})
 	}

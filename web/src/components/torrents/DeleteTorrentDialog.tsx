@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -11,11 +11,13 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { CrossSeedWarning } from "./CrossSeedWarning"
 import { DeleteFilesPreference } from "./DeleteFilesPreference"
 import type { CrossSeedWarningResult } from "@/hooks/useCrossSeedWarning"
+import { Checkbox } from "@/components/ui/checkbox"
+import { useTranslation } from "react-i18next"
 
 interface DeleteTorrentDialogProps {
   open: boolean
@@ -29,7 +31,10 @@ interface DeleteTorrentDialogProps {
   onToggleDeleteFilesLock: () => void
   deleteCrossSeeds: boolean
   onDeleteCrossSeedsChange: (checked: boolean) => void
-  crossSeedWarning: CrossSeedWarningResult
+  showBlockCrossSeeds: boolean
+  blockCrossSeeds: boolean
+  onBlockCrossSeedsChange: (checked: boolean) => void
+  crossSeedWarning?: CrossSeedWarningResult | null
   onConfirm: () => void
 }
 
@@ -45,24 +50,27 @@ export function DeleteTorrentDialog({
   onToggleDeleteFilesLock,
   deleteCrossSeeds,
   onDeleteCrossSeedsChange,
+  showBlockCrossSeeds,
+  blockCrossSeeds,
+  onBlockCrossSeedsChange,
   crossSeedWarning,
   onConfirm,
 }: DeleteTorrentDialogProps) {
+  const { t } = useTranslation("torrents")
   // Include cross-seeds in the displayed count when selected
-  const displayCount = deleteCrossSeeds
-    ? count + crossSeedWarning.affectedTorrents.length
-    : count
+  const crossSeedCount = deleteCrossSeeds ? (crossSeedWarning?.affectedTorrents.length ?? 0) : 0
+  const displayCount = count + crossSeedCount
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="!max-w-2xl">
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete {displayCount} torrent(s)?</AlertDialogTitle>
+          <AlertDialogTitle>{t("deleteDialog.title", { count: displayCount })}</AlertDialogTitle>
           <AlertDialogDescription>
-            This action cannot be undone. The torrents will be removed from qBittorrent.
+            {t("deleteDialog.description")}
             {totalSize > 0 && (
               <span className="block mt-2 text-xs text-muted-foreground">
-                Total size: {formattedSize}
+                {t("deleteDialog.totalSize", { size: formattedSize })}
               </span>
             )}
           </AlertDialogDescription>
@@ -74,24 +82,41 @@ export function DeleteTorrentDialog({
           isLocked={isDeleteFilesLocked}
           onToggleLock={onToggleDeleteFilesLock}
         />
-        <CrossSeedWarning
-          affectedTorrents={crossSeedWarning.affectedTorrents}
-          searchState={crossSeedWarning.searchState}
-          hasWarning={crossSeedWarning.hasWarning}
-          deleteFiles={deleteFiles}
-          deleteCrossSeeds={deleteCrossSeeds}
-          onDeleteCrossSeedsChange={onDeleteCrossSeedsChange}
-          onSearch={crossSeedWarning.search}
-          totalToCheck={crossSeedWarning.totalToCheck}
-          checkedCount={crossSeedWarning.checkedCount}
-        />
+        {crossSeedWarning && (
+          <CrossSeedWarning
+            affectedTorrents={crossSeedWarning.affectedTorrents}
+            searchState={crossSeedWarning.searchState}
+            hasWarning={crossSeedWarning.hasWarning}
+            deleteFiles={deleteFiles}
+            deleteCrossSeeds={deleteCrossSeeds}
+            onDeleteCrossSeedsChange={onDeleteCrossSeedsChange}
+            onSearch={crossSeedWarning.search}
+            totalToCheck={crossSeedWarning.totalToCheck}
+            checkedCount={crossSeedWarning.checkedCount}
+          />
+        )}
+        {showBlockCrossSeeds && (
+          <div className="mt-3 flex items-center gap-2">
+            <Checkbox
+              id="blockCrossSeeds"
+              checked={blockCrossSeeds}
+              onCheckedChange={(checked) => onBlockCrossSeedsChange(checked === true)}
+            />
+            <label
+              htmlFor="blockCrossSeeds"
+              className="text-xs cursor-pointer select-none"
+            >
+              {t("deleteDialog.blockCrossSeeds")}
+            </label>
+          </div>
+        )}
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>{t("deleteDialog.cancel")}</AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            Delete
+            {t("deleteDialog.delete")}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

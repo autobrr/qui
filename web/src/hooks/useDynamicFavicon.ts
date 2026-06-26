@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -26,7 +26,7 @@ export function useDynamicFavicon() {
       if (!currentTheme) return
 
       // Use dark mode color
-      const primaryColor = getThemeColors(currentTheme, '--primary', 'dark')
+      const primaryColor = getThemeColors(currentTheme, "--primary", "dark")
 
       const svg = `
         <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024">

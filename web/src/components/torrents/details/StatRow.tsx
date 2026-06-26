@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn, copyTextToClipboard } from "@/lib/utils"
 import { Copy } from "lucide-react"
 import { memo } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface StatRowProps {
@@ -35,22 +36,22 @@ export const StatRow = memo(function StatRow({
   tooltip,
   highlight,
 }: StatRowProps) {
+  const { t } = useTranslation("torrents")
+
   const handleCopy = () => {
     const textToCopy = copyValue || (typeof value === "string" ? value : "")
     if (textToCopy) {
       copyTextToClipboard(textToCopy)
-      toast.success(`${label} copied to clipboard`)
+      toast.success(t("detailsPanel.toast.copied", { type: label }))
     }
   }
 
-  const highlightClass = highlight
-    ? {
-        green: "text-green-500",
-        blue: "text-blue-500",
-        yellow: "text-yellow-500",
-        red: "text-red-500",
-      }[highlight]
-    : ""
+  const highlightClass = highlight? {
+    green: "text-green-500",
+    blue: "text-blue-500",
+    yellow: "text-yellow-500",
+    red: "text-red-500",
+  }[highlight]: ""
 
   const content = (
     <div className={cn("flex items-center gap-1.5 text-xs", className)}>
@@ -73,7 +74,7 @@ export const StatRow = memo(function StatRow({
           size="icon"
           className="h-5 w-5 shrink-0 opacity-50 hover:opacity-100"
           onClick={handleCopy}
-          aria-label={`Copy ${label}`}
+          aria-label={`${t("contextMenu.copy").replace("...", "")} ${label}`}
         >
           <Copy className="h-3 w-3" />
         </Button>

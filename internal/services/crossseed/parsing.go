@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/anacrolix/torrent/metainfo"
+	infohash_v2 "github.com/anacrolix/torrent/types/infohash-v2"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
 )
@@ -178,12 +179,12 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 	switch release.Type {
 	case rls.Movie:
 		info.ContentType = "movie"
-		info.Categories = []int{2000} // Movies
+		info.Categories = []int{2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080} // Movies
 		info.SearchType = "movie"
 		info.RequiredCaps = []string{"movie-search"}
 	case rls.Episode, rls.Series:
 		info.ContentType = "tv"
-		info.Categories = []int{5000} // TV
+		info.Categories = []int{5000, 5010, 5020, 5030, 5040, 5045, 5070, 5080} // TV
 		info.SearchType = "tvsearch"
 		info.RequiredCaps = []string{"tv-search"}
 	case rls.Music:
@@ -222,12 +223,12 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 		// Fallback logic based on series/episode/year detection for unknown types
 		if release.Series > 0 || release.Episode > 0 {
 			info.ContentType = "tv"
-			info.Categories = []int{5000}
+			info.Categories = []int{5000, 5010, 5020, 5030, 5040, 5045, 5070, 5080}
 			info.SearchType = "tvsearch"
 			info.RequiredCaps = []string{"tv-search"}
 		} else if release.Year > 0 {
 			info.ContentType = "movie"
-			info.Categories = []int{2000}
+			info.Categories = []int{2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080}
 			info.SearchType = "movie"
 			info.RequiredCaps = []string{"movie-search"}
 		} else {
@@ -252,7 +253,7 @@ func DetermineContentType(release *rls.Release) ContentTypeInfo {
 			case "dvd-video", "bluray", "hd-dvd", "ld-30cm", "ld-20cm", "vhs", "umd-video", "video-cd":
 				// Assume movie unless we have better detection
 				info.ContentType = "movie"
-				info.Categories = []int{2000}
+				info.Categories = []int{2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080}
 				info.SearchType = "movie"
 				info.RequiredCaps = []string{"movie-search"}
 			case "dvd-audio":
@@ -383,54 +384,6 @@ func containsVideoTokens(value string, tokens []string) bool {
 	return false
 }
 
-// OptimizeContentTypeForIndexers optimizes content type information for specific indexers
-// This function takes the basic content type and adjusts categories based on indexer capabilities
-func OptimizeContentTypeForIndexers(basicInfo ContentTypeInfo, indexerCategories []int) ContentTypeInfo {
-	if len(indexerCategories) == 0 || len(basicInfo.Categories) == 0 {
-		return basicInfo
-	}
-
-	// Create a map of available categories from the indexer
-	availableCategories := make(map[int]struct{})
-	for _, cat := range indexerCategories {
-		availableCategories[cat] = struct{}{}
-	}
-
-	// Filter the basic categories to only include those supported by the indexer
-	optimizedCategories := make([]int, 0, len(basicInfo.Categories))
-	for _, cat := range basicInfo.Categories {
-		if _, exists := availableCategories[cat]; exists {
-			optimizedCategories = append(optimizedCategories, cat)
-		} else {
-			// Try parent category
-			parent := cat / 100 * 100
-			if parent != cat {
-				if _, exists := availableCategories[parent]; exists {
-					optimizedCategories = append(optimizedCategories, parent)
-				}
-			}
-		}
-	}
-
-	// If no categories match, fall back to parent categories
-	if len(optimizedCategories) == 0 {
-		for _, cat := range basicInfo.Categories {
-			parent := cat / 100 * 100
-			if _, exists := availableCategories[parent]; exists {
-				optimizedCategories = append(optimizedCategories, parent)
-			}
-		}
-	}
-
-	// Create optimized info
-	optimizedInfo := basicInfo
-	if len(optimizedCategories) > 0 {
-		optimizedInfo.Categories = optimizedCategories
-	}
-
-	return optimizedInfo
-}
-
 // ParseMusicReleaseFromTorrentName extracts music-specific metadata from torrent name
 // First tries RLS's built-in parsing, then falls back to manual "Artist - Album" format parsing
 func ParseMusicReleaseFromTorrentName(baseRelease *rls.Release, torrentName string) *rls.Release {
@@ -484,41 +437,48 @@ func ParseMusicReleaseFromTorrentName(baseRelease *rls.Release, torrentName stri
 	return &musicRelease
 }
 
-// ParseTorrentName extracts the name and info hash from torrent bytes using anacrolix/torrent
-func ParseTorrentName(torrentBytes []byte) (name string, hash string, err error) {
-	name, hash, _, err = ParseTorrentMetadata(torrentBytes)
-	return name, hash, err
-}
-
-// ParseTorrentMetadata extracts comprehensive metadata from torrent bytes
-func ParseTorrentMetadata(torrentBytes []byte) (name string, hash string, files qbt.TorrentFiles, err error) {
-	name, hash, files, _, err = ParseTorrentMetadataWithInfo(torrentBytes)
-	return name, hash, files, err
+type TorrentMetadata struct {
+	Name   string
+	HashV1 string
+	HashV2 string
+	Files  qbt.TorrentFiles
+	Info   *metainfo.Info
 }
 
 // ParseTorrentMetadataWithInfo extracts comprehensive metadata from torrent bytes,
 // including the raw metainfo.Info for piece-level operations.
-func ParseTorrentMetadataWithInfo(torrentBytes []byte) (name, hash string, files qbt.TorrentFiles, info *metainfo.Info, err error) {
+func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) {
 	mi, err := metainfo.Load(bytes.NewReader(torrentBytes))
 	if err != nil {
-		return "", "", nil, nil, fmt.Errorf("failed to parse torrent metainfo: %w", err)
+		return TorrentMetadata{}, fmt.Errorf("failed to parse torrent metainfo: %w", err)
 	}
 
 	infoVal, err := mi.UnmarshalInfo()
 	if err != nil {
-		return "", "", nil, nil, fmt.Errorf("failed to unmarshal torrent info: %w", err)
+		return TorrentMetadata{}, fmt.Errorf("failed to unmarshal torrent info: %w", err)
 	}
 
-	name = infoVal.Name
-	hash = mi.HashInfoBytes().HexString()
+	name := infoVal.Name
+	hashV1 := strings.ToLower(mi.HashInfoBytes().HexString())
+	var hashV2 string
+	if infoVal.HasV2() {
+		h := infohash_v2.HashBytes([]byte(mi.InfoBytes))
+		hashV2 = strings.ToLower(h.HexString())
+	}
 
 	if name == "" {
-		return "", "", nil, nil, errors.New("torrent has no name")
+		return TorrentMetadata{}, errors.New("torrent has no name")
 	}
 
-	files = BuildTorrentFilesFromInfo(name, infoVal)
+	files := BuildTorrentFilesFromInfo(name, infoVal)
 
-	return name, hash, files, &infoVal, nil
+	return TorrentMetadata{
+		Name:   name,
+		HashV1: hashV1,
+		HashV2: hashV2,
+		Files:  files,
+		Info:   &infoVal,
+	}, nil
 }
 
 // BuildTorrentFilesFromInfo creates qBittorrent-compatible file list from torrent info
@@ -660,16 +620,7 @@ func extractDomainFromAnnounce(announceURL string) string {
 
 // FindLargestFile returns the file with the largest size from a list of torrent files.
 // This is useful for content type detection as the largest file usually represents the main content.
-func FindLargestFile(files qbt.TorrentFiles) *struct {
-	Availability float32 `json:"availability"`
-	Index        int     `json:"index"`
-	IsSeed       bool    `json:"is_seed,omitempty"`
-	Name         string  `json:"name"`
-	PieceRange   []int   `json:"piece_range"`
-	Priority     int     `json:"priority"`
-	Progress     float32 `json:"progress"`
-	Size         int64   `json:"size"`
-} {
+func FindLargestFile(files qbt.TorrentFiles) *qbt.TorrentFile {
 	if len(files) == 0 {
 		return nil
 	}

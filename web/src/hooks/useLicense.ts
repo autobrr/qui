@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -8,6 +8,7 @@ import { getLicenseErrorMessage } from "@/lib/license-errors.ts"
 import { clearLicenseEntitlement, setLicenseEntitlement } from "@/lib/license-entitlement"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 // Hook to check premium access status
@@ -33,13 +34,14 @@ export const usePremiumAccess = () => {
 
 // Hook to activate a license
 export const useActivateLicense = () => {
+  const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (licenseKey: string) => api.activateLicense(licenseKey),
     onSuccess: (data) => {
       if (data.valid) {
-        const message = "Premium access activated! Thank you!"
+        const message = t("themes.license.toasts.activationSuccessPremium")
         toast.success(message)
         // Invalidate license queries to refresh the UI
         queryClient.invalidateQueries({ queryKey: ["licenses"] })
@@ -53,13 +55,16 @@ export const useActivateLicense = () => {
 
 // Hook to validate a license
 export const useValidateLicense = () => {
+  const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (licenseKey: string) => api.validateLicense(licenseKey),
     onSuccess: (data) => {
       if (data.valid) {
-        const message = data.productName === "premium-access"? "Premium access activated! Thank you!": "License activated successfully!"
+        const message = data.productName === "premium-access"
+          ? t("themes.license.toasts.activationSuccessPremium")
+          : t("themes.license.toasts.activationSuccess")
         toast.success(message)
         // Invalidate license queries to refresh the UI
         queryClient.invalidateQueries({ queryKey: ["licenses"] })
@@ -73,35 +78,37 @@ export const useValidateLicense = () => {
 
 // Hook to delete a license
 export const useDeleteLicense = () => {
+  const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (licenseKey: string) => api.deleteLicense(licenseKey),
     onSuccess: () => {
-      toast.success("License released successfully")
+      toast.success(t("themes.license.toasts.removedFromMachine"))
       clearLicenseEntitlement()
       // Invalidate license queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["licenses"] })
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Failed to release license")
+      toast.error(getLicenseErrorMessage(error))
     },
   })
 }
 
 // Hook to refresh all licenses
 export const useRefreshLicenses = () => {
+  const { t } = useTranslation("settings")
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: () => api.refreshLicenses(),
     onSuccess: () => {
-      toast.success("All licenses refreshed successfully")
+      toast.success(t("themes.license.toasts.refreshedAll"))
       // Invalidate license queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["licenses"] })
     },
     onError: (error: Error) => {
-      toast.error(error.message || "Failed to refresh licenses")
+      toast.error(error.message || t("themes.license.toasts.refreshFailed"))
     },
   })
 }

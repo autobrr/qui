@@ -1,0 +1,14 @@
+.git
+.github
+documentation
+scripts
+web/node_modules
+**/*_test.go
+**/*.md
+!go.md
+.goreleaser*.yml
+.pre-commit-config.yaml
+LICENSE
+AGENTS.md
+CLAUDE.md
+distrib/docker/docker-compose*.yml

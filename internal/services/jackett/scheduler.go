@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package jackett
 
 import (
@@ -6,9 +9,11 @@ import (
 	"fmt"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/services/activity"
 )
 
 // Rate limiting constants and types
@@ -42,6 +47,10 @@ var priorityMultipliers = map[RateLimitPriority]float64{
 const (
 	// Keep RSS responsive; we'll skip indexers that need more than this wait.
 	rssMaxWait = 15 * time.Second
+	// Completion searches should not be blocked indefinitely by a single rate-limited/down indexer.
+	// Keep this modest so the overall end-to-end completion automation stays bounded even when some
+	// indexers are slow or temporarily unavailable.
+	completionMaxWait = 30 * time.Second
 	// Background jobs are least urgent; allow more wait before skipping.
 	backgroundMaxWait = 60 * time.Second
 	// Maximum interval for retry timer to prevent starvation when all tasks have long waits.
@@ -92,9 +101,16 @@ func (e *RateLimitWaitError) Is(target error) bool {
 }
 
 type indexerRateState struct {
-	lastRequest     time.Duration
+	lastStarted     time.Duration
+	lastCompleted   time.Duration
 	cooldownUntil   time.Duration
 	escalationLevel int
+}
+
+type taskExecResult struct {
+	results  []Result
+	coverage []int
+	err      error
 }
 
 // RateLimiter tracks per-indexer request timing and computes wait times.
@@ -117,7 +133,7 @@ func NewRateLimiter(minInterval time.Duration) *RateLimiter {
 	}
 }
 
-func (r *RateLimiter) RecordRequest(indexerID int, ts time.Time) {
+func (r *RateLimiter) RecordRequestStart(indexerID int, ts time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -127,7 +143,74 @@ func (r *RateLimiter) RecordRequest(indexerID int, ts time.Time) {
 	} else {
 		dur = ts.Sub(r.startTime)
 	}
-	r.recordLocked(indexerID, dur)
+	state := r.getStateLocked(indexerID)
+	state.lastStarted = dur
+}
+
+func (r *RateLimiter) RecordRequestComplete(indexerID int, ts time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var dur time.Duration
+	if ts.IsZero() {
+		dur = time.Since(r.startTime)
+	} else {
+		dur = ts.Sub(r.startTime)
+	}
+	state := r.getStateLocked(indexerID)
+	state.lastCompleted = dur
+}
+
+// WaitForMinInterval blocks until a new request slot is available for the given indexer according to the
+// configured min interval and priority multiplier, then reserves the slot for callers that do not report
+// request completion separately.
+//
+// Note: this intentionally does NOT wait for cooldown windows. Callers that care about cooldowns should
+// check IsInCooldown separately (downloads typically return immediately when in cooldown).
+func (r *RateLimiter) WaitForMinInterval(ctx context.Context, indexer *models.TorznabIndexer, opts *RateLimitOptions) error {
+	if r == nil || indexer == nil {
+		return nil
+	}
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	cfg := r.resolveOptions(opts)
+
+	for {
+		r.mu.Lock()
+		state := r.getStateLocked(indexer.ID)
+		now := time.Since(r.startTime)
+
+		wait := time.Duration(0)
+		if cfg.MinInterval > 0 && state.lastCompleted >= 0 {
+			next := state.lastCompleted + cfg.MinInterval
+			if next > now {
+				wait = next - now
+			}
+		}
+
+		if wait <= 0 {
+			if ctx.Err() != nil {
+				r.mu.Unlock()
+				return ctx.Err()
+			}
+			state.lastStarted = now
+			state.lastCompleted = now
+			r.mu.Unlock()
+			return nil
+		}
+		r.mu.Unlock()
+
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 func (r *RateLimiter) SetCooldown(indexerID int, until time.Time) {
@@ -239,8 +322,8 @@ func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time
 		wait = state.cooldownUntil - now
 	}
 
-	if minInterval > 0 && state.lastRequest >= 0 {
-		next := state.lastRequest + minInterval
+	if minInterval > 0 && state.lastCompleted >= 0 {
+		next := state.lastCompleted + minInterval
 		if next > now {
 			delay := next - now
 			if delay > wait {
@@ -255,15 +338,10 @@ func (r *RateLimiter) computeWaitLocked(indexer *models.TorznabIndexer, now time
 func (r *RateLimiter) getStateLocked(indexerID int) *indexerRateState {
 	state, ok := r.states[indexerID]
 	if !ok {
-		state = &indexerRateState{lastRequest: -1}
+		state = &indexerRateState{lastStarted: -1, lastCompleted: -1}
 		r.states[indexerID] = state
 	}
 	return state
-}
-
-func (r *RateLimiter) recordLocked(indexerID int, ts time.Duration) {
-	state := r.getStateLocked(indexerID)
-	state.lastRequest = ts
 }
 
 // NextWait returns the amount of time the caller would need to wait before a request could be made
@@ -425,6 +503,30 @@ type searchScheduler struct {
 
 	// historyRecorder records completed searches for history tracking
 	historyRecorder HistoryRecorder
+
+	// activityPublisher signals connected clients when the scheduler's visible
+	// activity changes (task enqueue/completion, search-history append). Stored
+	// atomically so it can be wired after construction without locking the hot path.
+	activityPublisher atomic.Pointer[activity.Publisher]
+}
+
+// setActivityPublisher wires the server-event hub. Safe to call once at startup.
+func (s *searchScheduler) setActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher.Store(&publisher)
+}
+
+// publishActivity emits a coarse activity signal if a publisher is wired.
+// Must not be called while holding s.mu.
+func (s *searchScheduler) publishActivity(kind activity.Kind) {
+	if s == nil {
+		return
+	}
+	if p := s.activityPublisher.Load(); p != nil && *p != nil {
+		(*p).Publish(activity.Event{Kind: kind})
+	}
 }
 
 func newSearchScheduler(rl *RateLimiter, maxWorkers int) *searchScheduler {
@@ -565,13 +667,19 @@ func (s *searchScheduler) enqueueTasks(tasks []workerTask) {
 		})
 	}
 	s.mu.Unlock()
+
+	// A new batch of work entered the visible queue. Published after releasing
+	// the lock so the publisher never blocks the scheduler.
+	if len(tasks) > 0 {
+		s.publishActivity(activity.KindIndexerActivity)
+	}
 }
 
 func (s *searchScheduler) dispatchTasks() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if s.taskQueue.Len() == 0 {
+		s.mu.Unlock()
 		return
 	}
 
@@ -583,11 +691,19 @@ func (s *searchScheduler) dispatchTasks() {
 
 	var blocked []*taskItem
 
+	// Track whether any task completed (so we emit a single queue-state signal)
+	// and whether any of them recorded a search-history entry, so we can emit the
+	// matching activity signals once after releasing s.mu. Both consuming panels
+	// rely on these events instead of polling.
+	var taskCompleted bool
+	var historyRecorded bool
+
 	for _, item := range items {
 		// Check if context was explicitly cancelled (user/system stopped the search)
 		if item.task.ctx.Err() == context.Canceled {
 			item.started = time.Now() // Mark as "started" now for skipped tasks
-			s.handleTaskCompleteLocked(item, nil, nil, item.task.ctx.Err())
+			taskCompleted = true
+			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, item.task.ctx.Err()) || historyRecorded
 			if item.task.isRSS {
 				delete(s.pendingRSS, item.task.indexer.ID)
 			}
@@ -608,7 +724,8 @@ func (s *searchScheduler) dispatchTasks() {
 		if item.task.ctx.Err() != nil && item.task.ctxCancel != nil {
 			item.task.ctxCancel()
 			item.started = time.Now()
-			s.handleTaskCompleteLocked(item, nil, nil, item.task.ctx.Err())
+			taskCompleted = true
+			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, item.task.ctx.Err()) || historyRecorded
 			if item.task.isRSS {
 				delete(s.pendingRSS, item.task.indexer.ID)
 			}
@@ -643,7 +760,8 @@ func (s *searchScheduler) dispatchTasks() {
 				Priority:    priority,
 			}
 			item.started = time.Now() // Mark as "started" now for skipped tasks
-			s.handleTaskCompleteLocked(item, nil, nil, err)
+			taskCompleted = true
+			historyRecorded = s.handleTaskCompleteLocked(item, nil, nil, err) || historyRecorded
 			if item.task.isRSS {
 				delete(s.pendingRSS, item.task.indexer.ID)
 			}
@@ -674,13 +792,32 @@ func (s *searchScheduler) dispatchTasks() {
 
 	// Schedule retry timer for blocked tasks
 	s.scheduleRetryTimerLocked()
+
+	s.mu.Unlock()
+
+	// Tasks completed here (cancelled, deadline-exceeded, or rate-limit skipped)
+	// without going through executeTask, so their activity signals must be emitted
+	// from this path. Published after releasing the lock so the publisher never
+	// blocks the scheduler. Mirrors the success path in executeTask.
+	if taskCompleted {
+		s.publishActivity(activity.KindIndexerActivity)
+	}
+	if historyRecorded {
+		s.publishActivity(activity.KindSearchHistory)
+	}
 }
 
 func (s *searchScheduler) executeTask(item *taskItem) {
 	task := item.task
 	var panicked bool
+	var requestStarted bool
+	var requestCompleted bool
 
 	defer func() {
+		if requestStarted && !requestCompleted {
+			s.rateLimiter.RecordRequestComplete(task.indexer.ID, time.Time{})
+		}
+
 		// Cancel fresh context if one was created for this task
 		if task.ctxCancel != nil {
 			task.ctxCancel()
@@ -690,12 +827,19 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 			panicked = true
 			err := fmt.Errorf("scheduler worker panic: %v", r)
 			s.mu.Lock()
-			s.handleTaskCompleteLocked(item, nil, nil, err)
+			historyRecorded := s.handleTaskCompleteLocked(item, nil, nil, err)
 			delete(s.inFlight, task.indexer.ID)
 			if task.isRSS {
 				delete(s.pendingRSS, task.indexer.ID)
 			}
 			s.mu.Unlock()
+
+			// A task finished (via panic recovery), changing the scheduler's visible
+			// activity. Emitted after releasing the lock, mirroring the success path.
+			s.publishActivity(activity.KindIndexerActivity)
+			if historyRecorded {
+				s.publishActivity(activity.KindSearchHistory)
+			}
 		}
 
 		// Release worker
@@ -708,29 +852,70 @@ func (s *searchScheduler) executeTask(item *taskItem) {
 		}
 	}()
 
-	// Record request BEFORE execution (reserve slot)
-	s.rateLimiter.RecordRequest(task.indexer.ID, time.Time{})
+	s.rateLimiter.RecordRequestStart(task.indexer.ID, time.Time{})
+	requestStarted = true
 
 	// Capture start time for duration tracking
 	item.started = time.Now()
 
-	// Execute the search
-	results, coverage, err := task.exec(task.ctx, []*models.TorznabIndexer{task.indexer}, task.params, task.meta)
+	execCtx := task.ctx
+	execCancel := func() {}
+	if task.ctxCancel != nil {
+		execCancel = task.ctxCancel
+	}
+	defer execCancel()
+
+	done := make(chan taskExecResult, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- taskExecResult{err: fmt.Errorf("scheduler worker panic: %v", r)}
+			}
+		}()
+
+		results, coverage, err := task.exec(execCtx, []*models.TorznabIndexer{task.indexer}, task.params, task.meta)
+		done <- taskExecResult{results: results, coverage: coverage, err: err}
+	}()
+
+	var (
+		results  []Result
+		coverage []int
+		err      error
+	)
+	select {
+	case result := <-done:
+		results = result.results
+		coverage = result.coverage
+		err = result.err
+	case <-execCtx.Done():
+		err = execCtx.Err()
+	}
+	s.rateLimiter.RecordRequestComplete(task.indexer.ID, time.Time{})
+	requestCompleted = true
 
 	// Handle completion (only if we didn't panic)
 	if !panicked {
 		s.mu.Lock()
-		s.handleTaskCompleteLocked(item, results, coverage, err)
+		historyRecorded := s.handleTaskCompleteLocked(item, results, coverage, err)
 		delete(s.inFlight, task.indexer.ID)
 		if task.isRSS {
 			delete(s.pendingRSS, task.indexer.ID)
 		}
 		s.mu.Unlock()
+
+		// A task finished, changing the scheduler's visible activity. Published
+		// after releasing the lock so the publisher never blocks the scheduler.
+		s.publishActivity(activity.KindIndexerActivity)
+		if historyRecorded {
+			s.publishActivity(activity.KindSearchHistory)
+		}
 	}
 }
 
 // handleTaskCompleteLocked handles task completion. Caller must hold s.mu.
-func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Result, coverage []int, err error) {
+// Returns true when a search-history entry was recorded so the caller can emit
+// the corresponding activity signal after releasing the lock.
+func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Result, coverage []int, err error) (historyRecorded bool) {
 	task := item.task
 
 	// Call OnComplete callback
@@ -792,14 +977,19 @@ func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Res
 			entry.Status = "success"
 		}
 
-		// Record asynchronously to avoid blocking
-		go s.historyRecorder.Record(entry)
+		// Record synchronously so the entry is committed before the caller emits
+		// the KindSearchHistory activity signal after releasing s.mu; otherwise a
+		// client refetch can race ahead of the write and miss the new row, and the
+		// panel no longer polls to self-heal. Record -> buffer.Push is an in-memory,
+		// non-blocking append, so this does not stall the worker.
+		s.historyRecorder.Record(entry)
+		historyRecorded = true
 	}
 
 	// Track job completion
 	job, exists := s.jobs[task.jobID]
 	if !exists {
-		return
+		return historyRecorded
 	}
 
 	job.completedTasks++
@@ -811,6 +1001,8 @@ func (s *searchScheduler) handleTaskCompleteLocked(item *taskItem, results []Res
 		}
 		delete(s.jobs, task.jobID)
 	}
+
+	return historyRecorded
 }
 
 func (s *searchScheduler) getMaxWait(item *taskItem) time.Duration {
@@ -825,7 +1017,7 @@ func (s *searchScheduler) getMaxWait(item *taskItem) time.Duration {
 		case RateLimitPriorityRSS:
 			return rssMaxWait
 		case RateLimitPriorityCompletion:
-			return 0 // No limit - completion searches queue and wait for rate limits
+			return completionMaxWait
 		case RateLimitPriorityBackground:
 			return backgroundMaxWait
 		case RateLimitPriorityInteractive:

@@ -1,0 +1,998 @@
+{
+  "title": "设置",
+  "description": "管理您的应用偏好和安全设置",
+  "tabs": {
+    "application": "应用",
+    "instances": "实例",
+    "indexers": "索引器",
+    "searchCache": "搜索缓存",
+    "integrations": "集成",
+    "clientProxy": "客户端代理",
+    "apiKeys": "API 密钥",
+    "externalPrograms": "外部程序",
+    "notifications": "通知",
+    "dateTime": "时间与语言",
+    "premiumThemes": "高级主题",
+    "security": "安全",
+    "logs": "日志"
+  },
+  "language": {
+    "cardTitle": "语言",
+    "cardDescription": "选择您偏好的显示语言"
+  },
+  "changePassword": {
+    "currentPassword": "当前密码",
+    "newPassword": "新密码",
+    "confirmPassword": "确认新密码",
+    "submit": "修改密码",
+    "submitting": "修改中...",
+    "toasts": {
+      "success": "密码修改成功",
+      "error": "密码修改失败，请检查当前密码。"
+    },
+    "validation": {
+      "currentRequired": "当前密码为必填项",
+      "newRequired": "新密码为必填项",
+      "minLength": "密码至少需要 8 个字符",
+      "confirmRequired": "请确认密码",
+      "mismatch": "两次输入的密码不一致"
+    }
+  },
+  "instances": {
+    "title": "实例",
+    "description": "管理您的 qBittorrent 连接设置",
+    "addButton": "添加实例",
+    "loading": "正在加载实例...",
+    "empty": "尚未配置任何实例",
+    "addFirst": "添加您的第一个实例",
+    "titleBarSpeeds": {
+      "label": "标题栏速度",
+      "description": "在浏览器标签页标题中显示下载/上传速度"
+    },
+    "addDialog": {
+      "title": "添加实例",
+      "description": "配置一个新的 qBittorrent 实例",
+      "cancel": "取消",
+      "submit": "添加实例",
+      "adding": "添加中..."
+    },
+    "toasts": {
+      "reorderFailed": "重新排序实例失败"
+    }
+  },
+  "integrations": {
+    "title": "ARR 集成",
+    "description": "配置 Sonarr 和 Radarr 实例，以使用外部 ID 进行增强的 cross-seed 搜索"
+  },
+  "clientApiKeys": {
+    "cardTitle": "客户端代理 API 密钥",
+    "cardDescription": "管理外部应用通过 qui 连接 qBittorrent 实例的 API 密钥",
+    "createButton": "创建客户端 API 密钥",
+    "loading": "正在加载客户端 API 密钥...",
+    "loadFailed": "无法加载客户端 API 密钥",
+    "featureUnavailable": "此版本可能不支持该功能",
+    "unknownError": "发生了未知错误",
+    "instanceDeleted": "实例已删除",
+    "empty": "尚未创建任何客户端 API 密钥",
+    "idLabel": "ID：{{id}}",
+    "labels": {
+      "created": "创建时间：",
+      "lastUsed": "最后使用：",
+      "host": "主机：",
+      "showHost": "显示主机",
+      "hideHost": "隐藏主机"
+    },
+    "createDialog": {
+      "title": "创建客户端 API 密钥",
+      "description": "为特定客户端创建一个 API 密钥，用于连接 qBittorrent 实例。",
+      "clientNameLabel": "客户端名称",
+      "clientNamePlaceholder": "例如：autobrr、tqm、sonarr、radarr、cross-seed",
+      "instanceLabel": "qBittorrent 实例",
+      "instancePlaceholder": "选择一个实例",
+      "creating": "创建中..."
+    },
+    "newKey": {
+      "title": "API 密钥已创建",
+      "warning": "此信息仅显示一次。请在关闭对话框前将其保存到您的密码管理器中。",
+      "proxyUrl": "代理 URL",
+      "showProxyUrl": "显示代理 URL",
+      "hideProxyUrl": "隐藏代理 URL",
+      "copyProxyUrl": "复制代理 URL",
+      "done": "完成"
+    },
+    "deleteDialog": {
+      "title": "删除客户端 API 密钥？",
+      "description": "此操作无法撤销。使用此密钥的所有应用将无法访问该 qBittorrent 实例。",
+      "cancel": "取消",
+      "delete": "删除",
+      "deleteLabel": "删除 API 密钥 {{name}}"
+    },
+    "toasts": {
+      "created": "客户端 API 密钥创建成功",
+      "createFailed": "创建客户端 API 密钥失败",
+      "deleted": "客户端 API 密钥已删除",
+      "deleteFailed": "删除客户端 API 密钥失败：{{error}}",
+      "clientNameRequired": "客户端名称为必填项",
+      "selectInstance": "请选择一个 qBittorrent 实例",
+      "proxyCopied": "代理 URL 已复制到剪贴板",
+      "copyFailed": "复制到剪贴板失败"
+    }
+  },
+  "apiKeys": {
+    "cardTitle": "API 密钥",
+    "loadingAuthMode": "正在加载认证模式...",
+    "authDisabledTitle": "内置认证已禁用，API 密钥不可用",
+    "authDisabledDescription": "通过反向代理和 CIDR 允许列表的请求可以直接使用 qui API。",
+    "cardDescription": "管理用于外部访问的 API 密钥",
+    "apiDocs": "API 文档",
+    "description": "API 密钥允许外部应用访问您的 qBittorrent 实例。",
+    "createButton": "创建 API 密钥",
+    "loading": "正在加载 API 密钥...",
+    "empty": "尚未创建任何 API 密钥",
+    "createDialog": {
+      "title": "创建 API 密钥",
+      "description": "为您的 API 密钥取一个描述性名称，以便记住其用途。",
+      "nameLabel": "名称",
+      "namePlaceholder": "例如：自动化脚本",
+      "nameRequired": "名称为必填项",
+      "submit": "创建 API 密钥",
+      "creating": "创建中..."
+    },
+    "newKey": {
+      "label": "您的新 API 密钥",
+      "warning": "请立即保存此密钥。之后将无法再次查看。",
+      "done": "完成"
+    },
+    "deleteDialog": {
+      "title": "删除 API 密钥？",
+      "description": "此操作无法撤销。使用此密钥的所有应用将无法访问。",
+      "cancel": "取消",
+      "delete": "删除"
+    },
+    "toasts": {
+      "created": "API 密钥创建成功",
+      "createFailed": "创建 API 密钥失败",
+      "deleted": "API 密钥已删除",
+      "deleteFailed": "删除 API 密钥失败",
+      "copied": "API 密钥已复制到剪贴板",
+      "copyFailed": "复制到剪贴板失败"
+    }
+  },
+  "externalPrograms": {
+    "cardTitle": "外部程序",
+    "cardDescription": "配置可从 Torrent 右键菜单执行的外部程序或脚本",
+    "createButton": "创建外部程序",
+    "createTitle": "创建外部程序",
+    "createDescription": "配置一个可从 Torrent 右键菜单执行的外部程序或脚本。",
+    "loading": "正在加载外部程序...",
+    "loadFailed": "加载外部程序失败",
+    "unknownError": "未知错误",
+    "empty": "尚未配置外部程序。创建一个以开始使用。",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "created": "创建于 {{date}}",
+    "updated": "更新于 {{date}}",
+    "programPath": "程序路径：",
+    "argumentsTemplate": "参数模板：",
+    "editTitle": "编辑外部程序",
+    "deleteTitle": "删除外部程序",
+    "delete": "删除",
+    "deleteConflictIntro": "此程序正被以下自动化规则使用：",
+    "deleteConflictDescription": "如果继续，外部程序操作将从这些自动化规则中移除。",
+    "deleteDescription": "确定要删除「{{name}}」吗？此操作无法撤销。",
+    "deleteAnyway": "仍然删除",
+    "nameLabel": "名称 *",
+    "namePlaceholder": "我的外部程序",
+    "pathLabel": "程序路径 *",
+    "pathPlaceholder": "/usr/bin/my-script.sh or C:\\Scripts\\my-script.bat",
+    "pathDescription": "可执行文件的完整路径",
+    "argumentsLabel": "参数模板",
+    "argumentsPlaceholder": "\"{hash}\" \"{name}\" --save-path \"{save_path}\"",
+    "argumentsDescription": "带参数的脚本完整路径",
+    "availablePlaceholders": "可用占位符：",
+    "pathMappings": "路径映射",
+    "remotePathPlaceholder": "远程路径（例如：/mnt/remote-storage）",
+    "localPathPlaceholder": "本地路径（例如：/home/user/mounts/remote）",
+    "removePathMapping": "移除路径映射",
+    "addPathMapping": "添加路径映射",
+    "pathMappingsDescription": "路径映射将远程路径转换为本地挂载点。当在本地 qui 服务器上运行外部程序而 qBittorrent 在远程时非常有用。路径按最长前缀优先匹配。请使用与远程 qBittorrent 实例相同的路径分隔符风格（Linux 使用 /，Windows 使用 \\）。",
+    "launchInTerminal": "在终端窗口中启动",
+    "launchInTerminalDescription": "启用后，程序将在新的终端窗口中打开。对于 GUI 应用或不需要终端输出的程序，请禁用此选项。",
+    "enableProgram": "启用此程序",
+    "cancel": "取消",
+    "saving": "保存中...",
+    "updateButton": "更新",
+    "createSubmit": "创建",
+    "ariaLabels": {
+      "edit": "编辑 {{name}}",
+      "delete": "删除 {{name}}"
+    },
+    "toasts": {
+      "created": "外部程序创建成功",
+      "createFailed": "创建外部程序失败：{{error}}",
+      "updated": "外部程序更新成功",
+      "updateFailed": "更新外部程序失败：{{error}}",
+      "deleted": "外部程序已删除",
+      "deleteFailed": "删除外部程序失败：{{error}}"
+    },
+    "validation": {
+      "nameRequired": "程序名称为必填项",
+      "pathRequired": "程序路径为必填项"
+    },
+    "placeholders": {
+      "hash": "Torrent 哈希值",
+      "name": "Torrent 名称",
+      "savePath": "保存路径",
+      "contentPath": "内容路径",
+      "category": "分类",
+      "tags": "标签（逗号分隔）",
+      "state": "Torrent 状态",
+      "size": "大小（字节）",
+      "progress": "进度（0-1）",
+      "comment": "Torrent 备注"
+    }
+  },
+  "notifications": {
+    "cardTitle": "通知",
+    "cardDescription": "通过任何 Shoutrrr 支持的服务发送警报和状态更新",
+    "addButton": "添加通知目标",
+    "loading": "正在加载通知目标…",
+    "loadFailed": "加载通知目标失败",
+    "empty": "尚未配置通知目标。添加一个以开始接收警报。",
+    "allEvents": "全部事件",
+    "showList": "显示列表",
+    "hideList": "隐藏列表",
+    "badges": {
+      "enabled": "已启用",
+      "disabled": "已禁用"
+    },
+    "groups": {
+      "torrent": "种子",
+      "maintenance": "维护",
+      "crossSeed": "辅种",
+      "automations": "自动化",
+      "other": "其他",
+      "unknown": "未知"
+    },
+    "form": {
+      "name": "名称",
+      "namePlaceholder": "我的 Discord",
+      "url": "Shoutrrr URL",
+      "urlPlaceholder": "discord://token@id or notifiarrapi://apikey",
+      "urlDescriptionPrefix": "可使用任何 Shoutrrr 支持的 URL 方案。Notifiarr API 使用",
+      "urlDescriptionSuffix": "Discord webhook URL 会自动转换为",
+      "examples": {
+        "notifiarr": "notifiarrapi://apikey",
+        "discord": "discord://token@id"
+      },
+      "enabled": "已启用",
+      "enabledDescription": "切换此目标的投递状态。",
+      "events": "事件",
+      "selectAll": "全选",
+      "select": "选择",
+      "clear": "清除",
+      "loadingEventTypes": "正在加载事件类型…"
+    },
+    "dialog": {
+      "newTitle": "新建通知目标",
+      "newDescription": "配置 qui 应将警报和状态更新发送到何处。",
+      "editTitle": "编辑通知目标",
+      "editDescription": "更新此目标的投递设置。",
+      "deleteTitle": "删除通知目标？",
+      "deleteDescription": "这将移除 {{name}}。如有需要，可以稍后重新添加。",
+      "cancel": "取消",
+      "saving": "保存中…",
+      "save": "保存",
+      "delete": "删除"
+    },
+    "validation": {
+      "nameRequired": "名称为必填项",
+      "urlRequired": "通知 URL 为必填项",
+      "selectEvent": "请至少选择一个事件"
+    },
+    "toasts": {
+      "created": "通知目标创建成功",
+      "createFailed": "创建通知目标失败",
+      "updated": "通知目标更新成功",
+      "updateFailed": "更新通知目标失败",
+      "deleted": "通知目标已删除",
+      "deleteFailed": "删除通知目标失败",
+      "testSent": "测试通知发送成功",
+      "testFailed": "发送测试通知失败"
+    },
+    "ariaLabels": {
+      "sendTest": "发送测试到 {{name}}",
+      "edit": "编辑 {{name}}",
+      "delete": "删除 {{name}}"
+    }
+  },
+  "dateTime": {
+    "cardTitle": "日期与时间偏好",
+    "cardDescription": "配置时区、日期格式和时间显示偏好",
+    "timezone": "时区",
+    "timezoneDescription": "选择您的本地时区以准确显示时间",
+    "selectTimezone": "选择时区",
+    "detected": "已检测",
+    "regions": {
+      "UTC": "UTC",
+      "Americas": "美洲",
+      "Europe": "欧洲",
+      "Asia": "亚洲",
+      "Africa": "非洲",
+      "Oceania": "大洋洲"
+    },
+    "timeFormat": "时间格式",
+    "use12Hour": "使用 12 小时制（AM/PM）",
+    "use12HourDescription": "在 12 小时制和 24 小时制之间切换",
+    "dateFormat": "日期格式",
+    "dateFormatDescription": "选择整个应用中日期的显示方式",
+    "selectDateFormat": "选择日期格式",
+    "isoFormat": "ISO 8601（YYYY-MM-DD）",
+    "usFormat": "美国格式（MM/DD/YYYY）",
+    "euFormat": "欧洲格式（DD/MM/YYYY）",
+    "relativeFormat": "相对（例如：「2 小时前」）",
+    "preview": "预览",
+    "previewDescription": "日期和时间将以此方式在应用中显示",
+    "savePreferences": "保存偏好",
+    "toasts": {
+      "success": "日期和时间偏好已保存",
+      "error": "保存日期和时间偏好失败"
+    }
+  },
+  "security": {
+    "changePassword": {
+      "title": "修改密码",
+      "description": "更新您的账户密码"
+    },
+    "browserIntegration": {
+      "title": "浏览器集成",
+      "description": "配置浏览器处理磁力链接的方式",
+      "registerDescription": "将 qui 注册为浏览器的磁力链接处理程序。这允许您直接在 qui 中打开磁力链接。",
+      "registerButton": "注册为处理程序",
+      "toasts": {
+        "requested": "已请求注册磁力链接处理程序",
+        "failed": "注册磁力链接处理程序失败"
+      }
+    }
+  },
+  "logs": {
+    "title": "日志",
+    "description": "查看实时日志并配置日志设置",
+    "settingsSrOnly": "打开日志设置",
+    "configuration": {
+      "title": "配置",
+      "description": "调整日志级别、输出路径和轮转设置。",
+      "level": "日志级别",
+      "levelPlaceholder": "选择日志级别",
+      "path": "日志文件路径",
+      "pathPlaceholder": "留空则仅输出到 stdout",
+      "maxSize": "最大大小（MB）",
+      "maxBackups": "最大备份数",
+      "saving": "保存中...",
+      "saveSettings": "保存设置"
+    },
+    "viewer": {
+      "connected": "已连接",
+      "disconnected": "已断开",
+      "searchPlaceholder": "搜索日志...",
+      "allLevels": "所有级别",
+      "all": "全部",
+      "none": "无",
+      "levelCount_other": "{{count}} 个级别",
+      "mutedCount_other": "{{count}} 个已静音",
+      "mutedMessages": "已静音消息",
+      "clearAll": "清除全部",
+      "clear": "清除",
+      "autoScroll": "自动滚动",
+      "noEntriesMatch": "没有条目匹配当前筛选条件",
+      "waiting": "等待日志条目...",
+      "showing": "显示 {{shown}} / {{total}} 条（最多 {{max}} 条，{{mode}}）",
+      "maxLive": "实时最大值",
+      "maxPaused": "暂停时最大值",
+      "oldestEntriesDropped": "· 最早的条目已丢弃",
+      "muteSimilarEntries": "静音类似条目"
+    },
+    "entryDialog": {
+      "title": "日志条目",
+      "rawLine": "原始日志行",
+      "copyRaw": "复制原始内容",
+      "copyJson": "复制 JSON",
+      "close": "关闭"
+    },
+    "toasts": {
+      "settingsUpdated": "日志设置已更新",
+      "settingsFailed": "更新日志设置失败",
+      "jsonCopied": "JSON 日志条目已复制",
+      "rawCopied": "原始日志条目已复制",
+      "copyFailed": "复制日志条目失败"
+    }
+  },
+  "themes": {
+    "selector": {
+      "title": "主题选择",
+      "loadingDescription": "正在加载可用主题...",
+      "description": "从可用主题中选择。高级主题需要有效的许可证。",
+      "verificationUnavailable": "许可证验证不可用。高级主题切换暂时禁用。",
+      "freeBadge": "免费",
+      "freeThemes": "免费主题",
+      "premiumBadge": "高级",
+      "premiumThemes": "高级主题",
+      "notLoaded": "高级主题未加载",
+      "notLoadedDescription": "配置",
+      "notLoadedAnd": "并运行",
+      "premium": "高级",
+      "pro": "Pro",
+      "free": "免费",
+      "locked": "已锁定",
+      "lock": "锁定"
+    },
+    "toasts": {
+      "verifyFailed": "许可证验证不可用",
+      "verifyFailedDescription": "高级主题切换暂时禁用。",
+      "premiumRequired": "需要高级许可证",
+      "premiumRequiredDescription": "添加有效的高级许可证以解锁高级主题。"
+    },
+    "license": {
+      "loadingTitle": "许可证管理",
+      "loadingDescription": "正在加载主题许可证...",
+      "managementTitle": "许可证管理",
+      "managementDescription": "管理您的主题许可证和高级访问权限",
+      "providers": {
+        "dodoPortal": "Dodo 门户",
+        "polarPortal": "Polar 门户",
+        "legacyPolarPortal": "旧版 Polar 门户"
+      },
+      "status": {
+        "unlockTitle": "解锁高级主题",
+        "unlockDescription": "随心付费（最低 $4.99）· 终身许可证 · 所有主题",
+        "activeTitle": "高级访问已激活",
+        "activeDescription": "您可以访问所有当前和未来的高级主题",
+        "activationRequiredTitle": "需要激活许可证",
+        "activationRequiredDescription": "您的许可证需要在此设备上激活"
+      },
+      "portalHelp": {
+        "prefix": "在 DodoPayments 购买，然后在此输入您的许可证密钥。如果丢失了密钥，可通过",
+        "suffix": "找回。"
+      },
+      "discord": {
+        "title": "Discord 福利",
+        "prefix": "领取",
+        "afterRole": "身份组以访问私密频道。",
+        "openDiscord": "打开 qui Discord",
+        "opensInNewTab": "（在新标签页中打开）",
+        "afterLink": "，运行",
+        "copyVerifyAriaLabel": "复制 /verify 命令",
+        "copyVerifyTitle": "点击复制",
+        "verifyCommand": "/verify",
+        "afterVerify": "在",
+        "channel": "#qui",
+        "suffix": "，并使用您的许可证邮箱登录。"
+      },
+      "details": {
+        "productAdded": "{{productName}} · 添加于 {{date}}",
+        "productStatusAndAdded": "{{productName}} · 状态：{{status}} · 添加于 {{date}}"
+      },
+      "invalid": {
+        "polarPrefix": "此许可证未在此设备上激活。点击重新激活以在此使用。如果达到激活上限，请在另一台已激活的设备上停用，或通过",
+        "polarSuffix": "管理激活。",
+        "dodo": "此许可证未在此设备上激活。点击重新激活以在此使用。如果达到激活上限，请在另一台当前已激活的设备上停用。"
+      },
+      "actions": {
+        "addLicense": "添加许可证",
+        "remove": "移除",
+        "removing": "移除中...",
+        "getPremium": "获取高级版",
+        "reactivate": "重新激活许可证",
+        "activating": "激活中...",
+        "copyLicenseKey": "复制许可证密钥",
+        "activate": "激活许可证",
+        "validating": "验证中...",
+        "openDodoCheckout": "打开 DodoPayments 结账",
+        "openDodoPortal": "打开 Dodo 门户"
+      },
+      "deleteDialog": {
+        "title": "移除许可证？",
+        "description": "确定要从此设备移除此许可证吗？qui 也会尝试释放远程激活名额，但即使该请求失败，本地移除仍会完成。",
+        "keyLabel": "要移除的许可证密钥：",
+        "recoverPrefix": "如有需要，您可以稍后从"
+      },
+      "addDialog": {
+        "title": "添加高级许可证",
+        "description": "输入您的高级主题许可证密钥以解锁所有高级主题。",
+        "label": "许可证密钥",
+        "placeholder": "输入您的高级主题许可证密钥",
+        "recoverKey": "找回密钥？",
+        "validation": {
+          "required": "许可证密钥为必填项"
+        }
+      },
+      "paymentDialog": {
+        "title": "获取高级许可证",
+        "description": "随心付费（最低 $4.99）· 终身许可证 · 所有主题",
+        "steps": {
+          "choosePaymentMethod": {
+            "title": "选择支付方式",
+            "cardTitle": "银行卡或本地支付",
+            "cardDescription": "直接在 DodoPayments 中支付。支付完成后将返回 qui。",
+            "cryptoTitle": "加密货币",
+            "cryptoDescription": "加密货币支付仍在 DodoPayments 结账中完成。",
+            "xmrHelp": "XMR 为手动支付：请在 Discord 上联系或发邮件至 s0up4200@pm.me。",
+            "cryptoSteps": {
+              "readmePrefix": "使用",
+              "readmeSuffix": "中的地址进行捐赠。",
+              "verifyPrefix": "在",
+              "verifySuffix": "进行验证以获取折扣码。",
+              "applyCode": "打开 DodoPayments 结账，在折扣码处粘贴代码，然后点击应用。",
+              "completeCheckout": "确认总计为 $0.00，然后完成结账。"
+            }
+          },
+          "findLicenseKey": {
+            "title": "找到您的许可证密钥",
+            "description": "许可证密钥会在结账后显示。您也可以稍后从 Dodo 客户门户找回。"
+          },
+          "activateLicense": {
+            "title": "激活您的许可证",
+            "description": "从结账返回后，使用「添加许可证」来激活您的密钥。"
+          }
+        }
+      },
+      "copiedVerify": "验证命令已复制",
+      "failedCopyVerify": "复制验证命令失败",
+      "toasts": {
+        "activationSuccess": "许可证激活成功！",
+        "activationSuccessPremium": "高级访问已激活！感谢您的支持！",
+        "paymentCompleted": "支付完成。请添加您的高级许可证密钥以完成设置。",
+        "paymentNotCompleted": "支付未成功完成。",
+        "returnedFromCheckout": "已从结账返回。准备好后请添加您的高级许可证密钥。",
+        "keyCopied": "许可证密钥已复制到剪贴板",
+        "copyFailed": "复制许可证密钥失败",
+        "removedFromMachine": "许可证已从此设备移除",
+        "refreshedAll": "所有许可证刷新成功",
+        "refreshFailed": "刷新许可证失败"
+      }
+    }
+  },
+  "arrInstances": {
+    "addButton": "添加 ARR 实例",
+    "addDialog": {
+      "title": "添加 ARR 实例",
+      "description": "配置一个 Sonarr 或 Radarr 实例，用于 cross-seed 搜索时的 ID 查找。"
+    },
+    "editDialog": {
+      "title": "编辑 ARR 实例"
+    },
+    "deleteDialog": {
+      "title": "删除 ARR 实例？",
+      "description": "确定要删除「{{name}}」吗？此操作无法撤销。"
+    },
+    "badges": {
+      "enabled": "已启用",
+      "disabled": "已禁用",
+      "connected": "已连接",
+      "failed": "失败"
+    },
+    "loading": "正在加载 ARR 实例...",
+    "loadFailed": "加载 ARR 实例失败",
+    "empty": "尚未配置 ARR 实例。添加一个 Sonarr 或 Radarr 实例以启用基于 ID 的 cross-seed 搜索。",
+    "created": "创建于 {{date}}",
+    "sonarrInstances": "Sonarr 实例",
+    "radarrInstances": "Radarr 实例",
+    "unknownError": "未知错误",
+    "actions": {
+      "testConnection": "测试连接",
+      "testing": "测试中...",
+      "cancel": "取消",
+      "delete": "删除",
+      "create": "创建",
+      "update": "更新",
+      "saving": "保存中..."
+    },
+    "form": {
+      "type": "类型 *",
+      "selectType": "选择类型",
+      "name": "名称 *",
+      "namePlaceholder": "我的 {{type}}",
+      "baseUrl": "基础 URL *",
+      "baseUrlDescription": "您的 {{type}} 实例的基础 URL",
+      "apiKey": "API 密钥 *",
+      "apiKeyOptional": "API 密钥（留空以保留当前值）",
+      "apiKeyPlaceholder": "输入 API 密钥",
+      "apiKeyPlaceholderEdit": "••••••••",
+      "apiKeyDescription": "在 {{type}} 的 Settings > General 中可找到",
+      "basicAuth": "基本认证",
+      "basicAuthDescription": "对反向代理后的 ARR 使用 HTTP 基本认证。",
+      "basicUsername": "基本认证用户名",
+      "basicUsernamePlaceholder": "用户名",
+      "basicPassword": "基本认证密码",
+      "basicPasswordPlaceholder": "密码",
+      "basicPasswordPlaceholderEdit": "<redacted>",
+      "basicPasswordKeep": "保留 <redacted> 以保持现有密码。",
+      "priority": "优先级",
+      "priorityDescription": "优先级较高的实例将优先查询",
+      "timeoutSeconds": "超时时间（秒）",
+      "enabled": "启用此实例",
+      "types": {
+        "sonarr": "Sonarr（电视剧）",
+        "radarr": "Radarr（电影）",
+        "sonarrShort": "Sonarr",
+        "radarrShort": "Radarr"
+      }
+    },
+    "validation": {
+      "nameRequired": "名称为必填项",
+      "baseUrlRequired": "基础 URL 为必填项",
+      "apiKeyRequired": "API 密钥为必填项",
+      "baseUrlAndApiKeyRequired": "测试连接需要基础 URL 和 API 密钥",
+      "basicUsernameRequired": "基本认证用户名为必填项",
+      "basicPasswordRequired": "测试连接需要基本认证密码",
+      "basicPasswordRequiredSubmit": "基本认证密码为必填项",
+      "basicPasswordKeepOrEnter": "请输入新的基本认证密码或保留现有密码"
+    },
+    "ariaLabels": {
+      "testConnection": "测试 {{name}} 的连接",
+      "edit": "编辑 {{name}}",
+      "delete": "删除 {{name}}"
+    },
+    "toasts": {
+      "created": "ARR 实例创建成功",
+      "createFailed": "创建 ARR 实例失败：{{error}}",
+      "updated": "ARR 实例更新成功",
+      "updateFailed": "更新 ARR 实例失败：{{error}}",
+      "deleted": "ARR 实例已删除",
+      "deleteFailed": "删除 ARR 实例失败：{{error}}",
+      "connectionSuccess": "连接成功",
+      "connectionFailed": "连接失败：{{error}}",
+      "testFailed": "测试连接失败：{{error}}"
+    }
+  },
+  "indexers": {
+    "title": "Torznab 索引器",
+    "addIndexer": "添加索引器",
+    "autodiscoverProwlarr": "从 Prowlarr 自动发现",
+    "noIndexers": "尚未配置索引器。",
+    "noIndexersDescription": "添加一个 Torznab 兼容的索引器以启用自动 cross-seed 搜索。",
+    "deleteIndexer": "删除索引器",
+    "deleteIndexerDescription": "确定要删除「{{name}}」吗？此操作无法撤销。",
+    "deleteAllIndexers": "删除所有索引器",
+    "deleteAllDescription": "确定要删除全部 {{count}} 个索引器吗？此操作无法撤销。",
+    "toast": {
+      "loadFailed": "加载索引器失败",
+      "deletedSuccess": "索引器已删除",
+      "deleteFailed": "删除索引器失败",
+      "allDeletedSuccess": "所有索引器已删除",
+      "allDeletedFailed": "删除所有索引器失败",
+      "deleteAllSuccess": "已删除全部 {{count}} 个索引器",
+      "deleteAllPartial": "已删除 {{success}} 个索引器，{{failed}} 个失败：{{names}}",
+      "testSuccess": "连接测试成功",
+      "noIndexersToTest": "没有可测试的索引器",
+      "testing": "正在测试 {{count}} 个索引器...",
+      "testAllSuccess": "全部 {{count}} 个索引器测试成功",
+      "testAllPartial": "{{success}} 个通过，{{failed}} 个失败",
+      "failedIndexers": "失败的索引器：{{names}}",
+      "capsSynced": "已从后端同步功能信息",
+      "failedToSyncCaps": "同步功能信息失败"
+    },
+    "priorityLabels": {
+      "interactive": "交互式",
+      "rss": "RSS",
+      "completion": "补全",
+      "background": "后台"
+    },
+    "contentTypeLabels": {
+      "movie": "电影",
+      "tv": "剧集",
+      "tv_daily": "每日剧集",
+      "xxx": "成人",
+      "music": "音乐",
+      "audiobook": "有声书",
+      "book": "书籍",
+      "comic": "漫画",
+      "magazine": "杂志",
+      "education": "教育",
+      "app": "应用",
+      "game": "游戏",
+      "unknown": "未知"
+    },
+    "page": {
+      "summary": "{{enabled}} 个已启用，{{capabilities}} 个有功能信息",
+      "description": "管理由 Jackett、Prowlarr 或原生 Tracker 端点驱动的 Torznab 索引器",
+      "deleteAll": "删除全部",
+      "discover": "发现",
+      "addSingle": "添加单个"
+    },
+    "dialog": {
+      "addTitle": "添加索引器",
+      "editTitle": "编辑索引器",
+      "addDescription": "添加一个新的 Torznab 索引器用于 cross-seed 发现",
+      "editDescription": "更新索引器设置",
+      "labels": {
+        "name": "名称",
+        "backend": "后端",
+        "baseUrl": "基础 URL",
+        "indexerId": "索引器 ID",
+        "apiKey": "API 密钥",
+        "priority": "优先级",
+        "timeout": "超时时间（秒）",
+        "enabled": "已启用",
+        "basicAuth": "基本认证",
+        "basicAuthDescription": "对反向代理后的 Torznab 使用 HTTP 基本认证。",
+        "basicUsername": "基本认证用户名",
+        "basicPassword": "基本认证密码"
+      },
+      "placeholders": {
+        "name": "我的索引器",
+        "selectBackend": "选择后端",
+        "apiKeyEdit": "留空以保留现有值",
+        "apiKeyCreate": "您的 API 密钥",
+        "indexerIdProwlarr": "Prowlarr 索引器 ID（例如：1）",
+        "indexerIdJackett": "可选的 Jackett 索引器 ID（例如：aither）",
+        "username": "用户名",
+        "password": "密码"
+      },
+      "hints": {
+        "indexerIdProwlarr": "输入 Prowlarr 索引器详情页中的数字 ID。",
+        "indexerIdJackett": "Jackett 可选。留空则由 qui 自动推导。",
+        "basicPasswordKeep": "保留 <redacted> 以保持现有密码。"
+      },
+      "backends": {
+        "jackett": "Jackett",
+        "prowlarr": "Prowlarr",
+        "native": "原生 Torznab"
+      },
+      "buttons": {
+        "save": "保存",
+        "add": "添加",
+        "saving": "保存中...",
+        "cancel": "取消"
+      },
+      "toast": {
+        "createdSuccess": "索引器创建成功",
+        "createdWithWarnings": "索引器已创建，但有警告：{{warnings}}",
+        "updatedSuccess": "索引器更新成功",
+        "updatedWithWarnings": "索引器已更新，但有警告：{{warnings}}",
+        "failedCreate": "创建索引器失败",
+        "failedEdit": "编辑索引器失败",
+        "basicUsernameRequired": "基本认证用户名为必填项",
+        "basicPasswordRequired": "基本认证密码为必填项",
+        "basicPasswordRequiredOrKeep": "基本认证密码为必填项（或保留 <redacted>）"
+      }
+    },
+    "autodiscovery": {
+      "title": "发现索引器",
+      "descriptionInput": "连接到 Jackett 或 Prowlarr 以发现已配置的索引器",
+      "descriptionSelect": "选择要导入的索引器",
+      "labels": {
+        "indexerUrl": "索引器 URL",
+        "apiKey": "API 密钥",
+        "basicAuth": "基本认证",
+        "basicAuthDescription": "对反向代理后的 Jackett/Prowlarr 使用 HTTP 基本认证。",
+        "basicUsername": "基本认证用户名",
+        "basicPassword": "基本认证密码"
+      },
+      "placeholders": {
+        "indexerUrl": "http://localhost:9696",
+        "apiKey": "您的索引器 API 密钥",
+        "username": "用户名",
+        "password": "密码"
+      },
+      "hints": {
+        "indexerUrl": "Prowlarr 默认为 http://localhost:9696，Jackett 默认为 http://localhost:9117。"
+      },
+      "buttons": {
+        "cancel": "取消",
+        "discover": "发现",
+        "discovering": "发现中...",
+        "back": "返回",
+        "importing": "导入中...",
+        "import": "导入 {{count}} 个索引器",
+        "importPlural": "导入 {{count}} 个索引器",
+        "selectAll": "全选",
+        "deselectAll": "取消全选"
+      },
+      "selectionCount": "已选择 {{selected}} / {{total}}",
+      "noIndexersFound": "未找到索引器",
+      "willUpdate": "将更新",
+      "typeLabel": "类型：",
+      "backendLabel": "后端：",
+      "notConfigured": "（未配置）",
+      "unknownError": "未知错误",
+      "toast": {
+        "urlRequired": "索引器 URL 为必填项",
+        "basicAuthRequired": "基本认证需要用户名和密码",
+        "urlRequiredBeforeImport": "请在导入前提供索引器 URL",
+        "discoveredWithExisting": "找到 {{total}} 个索引器（{{existing}} 个已存在）",
+        "discovered": "找到 {{count}} 个索引器",
+        "discoverFailed": "发现索引器失败：{{error}}",
+        "importSuccess": "成功：{{details}}",
+        "importWithWarnings": "{{details}}（{{warningCount}} 个有警告）",
+        "moreWarnings": "...还有 {{count}} 个警告",
+        "importErrors": "{{details}}",
+        "moreErrors": "...还有 {{count}} 个错误",
+        "created": "{{count}} 个已创建",
+        "updated": "{{count}} 个已更新",
+        "failed": "{{count}} 个失败"
+      }
+    },
+    "table": {
+      "name": "名称",
+      "backend": "后端",
+      "priority": "优先级",
+      "status": "状态",
+      "testStatus": "测试状态",
+      "capabilities": "功能",
+      "timeout": "超时",
+      "actions": "操作",
+      "enabled": "已启用",
+      "disabled": "已禁用",
+      "working": "正常",
+      "failed": "失败",
+      "untested": "未测试",
+      "testAll": "全部测试",
+      "filters": "筛选",
+      "clearFilters": "清除筛选",
+      "showingCount": "显示 {{shown}} / {{total}} 个索引器",
+      "loading": "加载中...",
+      "noIndexers": "尚未配置索引器。添加一个以开始使用。",
+      "noMatch": "没有索引器匹配当前筛选条件",
+      "noCapabilities": "无功能信息",
+      "sync": "同步",
+      "collapse": "折叠",
+      "filterStatus": "状态",
+      "filterTestStatus": "测试状态",
+      "filterBackend": "后端",
+      "filterAll": "全部",
+      "filterEnabledOnly": "仅已启用",
+      "filterDisabledOnly": "仅已禁用",
+      "filterWorkingOnly": "仅正常",
+      "filterFailedOnly": "仅失败",
+      "filterUntestedOnly": "仅未测试",
+      "filterJackett": "Jackett",
+      "filterProwlarr": "Prowlarr",
+      "filterNative": "原生",
+      "tooltipTest": "测试连接",
+      "tooltipSyncCaps": "同步功能",
+      "tooltipEdit": "编辑",
+      "tooltipDelete": "删除",
+      "tooltipSyncCapsFromBackend": "从后端同步功能信息",
+      "capability": "功能：{{name}}",
+      "clickToShowAllCapabilities": "点击显示全部 {{count}} 项功能"
+    },
+    "activity": {
+      "title": "调度器活动",
+      "idle": "空闲",
+      "queueLength": "队列",
+      "workers": "工作线程",
+      "cooldown": "冷却",
+      "running": "运行中",
+      "queued": "排队中",
+      "rateLimited": "速率受限",
+      "noActiveTasks": "没有活动任务或速率限制",
+      "andMore": "...还有 {{count}} 个",
+      "workersStatus": "{{used}}/{{total}} 个工作线程",
+      "runningCount": "{{count}} 个运行中",
+      "queuedCount": "{{count}} 个排队中",
+      "cooldownCount": "{{count}} 个冷却中",
+      "ready": "就绪",
+      "left": "剩余 {{time}}"
+    },
+    "searchHistory": {
+      "title": "搜索历史",
+      "searches": "{{count}} 次搜索",
+      "searchesWithErrors": "{{count}} 次搜索，{{errors}} 个错误",
+      "noSearchesYet": "暂无搜索记录",
+      "successful": "{{count}} 次成功",
+      "failed": "{{count}} 次失败",
+      "source": "来源：{{source}}",
+      "results": "{{count}} 个结果",
+      "detail": {
+        "release": "发布",
+        "results": "结果",
+        "duration": "耗时",
+        "priority": "优先级",
+        "crossSeed": "辅种",
+        "added": "已添加 {{count}} 个",
+        "error": "错误",
+        "searchParameters": "搜索参数",
+        "mode": "模式：",
+        "type": "类型：",
+        "job": "任务 {{id}}",
+        "statusSuccess": "成功",
+        "statusFailed": "失败",
+        "statusSkipped": "已跳过",
+        "statusRateLimited": "速率受限",
+        "season": "季",
+        "episode": "集"
+      }
+    }
+  },
+  "searchCache": {
+    "title": "搜索缓存",
+    "description": "来自 Torznab 索引器的缓存搜索结果。",
+    "refreshStats": "刷新",
+    "configTitle": "缓存配置",
+    "configDescription": "调整搜索结果的缓存时长。",
+    "cacheTTL": "缓存 TTL（分钟）",
+    "saving": "保存中...",
+    "saveTTL": "保存",
+    "ttlHelper": "最低 {{min}} 分钟。值越高，索引器负载越低。",
+    "entries": "条目",
+    "hitCount": "命中次数",
+    "approxSize": "大致大小",
+    "ttl": "TTL",
+    "newestEntry": "最新条目",
+    "lastUsed": "最后使用",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "ttlValue": "{{minutes}} 分钟",
+    "timestamps": {
+      "justNow": "刚刚",
+      "ago": "{{duration}}前",
+      "inFuture": "{{duration}}后"
+    },
+    "toasts": {
+      "ttlUpdated": "缓存 TTL 已更新为 {{minutes}} 分钟",
+      "ttlUpdateFailed": "更新缓存 TTL 失败",
+      "invalidNumber": "请输入有效的数字",
+      "ttlMinimum": "TTL 至少为 {{min}} 分钟"
+    }
+  },
+  "application": {
+    "loading": "加载中...",
+    "loadFailed": "加载应用信息失败",
+    "build": {
+      "title": "构建",
+      "description": "版本和构建详情。",
+      "refresh": "刷新",
+      "version": "版本",
+      "commit": "提交",
+      "buildDate": "构建日期",
+      "updateStatus": "更新状态",
+      "statuses": {
+        "unknown": "未知",
+        "unknownDetail": "无法确定更新状态",
+        "disabled": "已禁用",
+        "disabledDetail": "更新检查已禁用",
+        "devBuild": "开发版本",
+        "checking": "检查中...",
+        "checkingDetail": "正在检查更新",
+        "updateAvailable": "有可用更新",
+        "upToDate": "已是最新",
+        "upToDateDetail": "正在运行最新版本",
+        "notCheckedYet": "尚未检查",
+        "lastChecked": "上次检查 {{date}}"
+      }
+    },
+    "runtime": {
+      "title": "运行时",
+      "description": "服务器运行时信息。",
+      "uptime": "运行时间",
+      "runtime": "运行时"
+    },
+    "auth": {
+      "title": "认证",
+      "description": "认证配置。",
+      "currentSessionAuth": "当前会话",
+      "unknown": "未知",
+      "loading": "加载中...",
+      "unavailable": "不可用",
+      "yes": "是",
+      "no": "否",
+      "oidcEnabled": "OIDC 已启用",
+      "builtInLoginEnabled": "内置登录",
+      "oidcIssuerHost": "OIDC 签发者"
+    },
+    "storage": {
+      "title": "存储",
+      "description": "数据库和文件系统路径。",
+      "database": "数据库",
+      "bind": "绑定地址",
+      "configDir": "配置目录",
+      "dataDir": "数据目录"
+    },
+    "copyTitle": "复制 {{label}}",
+    "toasts": {
+      "copied": "{{label}} 已复制到剪贴板",
+      "copyFailed": "复制 {{label}} 失败"
+    }
+  }
+}

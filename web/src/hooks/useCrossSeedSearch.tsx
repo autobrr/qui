@@ -1,5 +1,11 @@
+/*
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 import { CrossSeedDialog } from "@/components/torrents/CrossSeedDialog"
@@ -9,12 +15,13 @@ import type {
   CrossSeedTorrentSearchResponse,
   CrossSeedTorrentSearchSelection,
   Torrent,
-  TorznabIndexer,
+  TorznabIndexer
 } from "@/types"
 
 const CROSS_SEED_REFRESH_COOLDOWN_MS = 30_000
 
 export function useCrossSeedSearch(instanceId: number) {
+  const { t } = useTranslation("crossseed")
   const queryClient = useQueryClient()
 
   const { data: torznabIndexers } = useQuery({
@@ -78,13 +85,11 @@ export function useCrossSeedSearch(instanceId: number) {
       candidateIds = new Set(filteredIds)
     }
 
-    const excludedIdSet = excludedIds
-      ? new Set(
-          Object.keys(excludedIds)
-            .map(id => Number(id))
-            .filter(id => !Number.isNaN(id))
-        )
-      : null
+    const excludedIdSet = excludedIds? new Set(
+      Object.keys(excludedIds)
+        .map(id => Number(id))
+        .filter(id => !Number.isNaN(id))
+    ): null
 
     return sortedEnabledIndexers
       .filter(indexer => (!candidateIds || candidateIds.has(indexer.id)) && (!excludedIdSet || !excludedIdSet.has(indexer.id)))
@@ -201,11 +206,11 @@ export function useCrossSeedSearch(instanceId: number) {
           setCrossSeedSelectedKeys(defaultSelection)
 
           if (response.results.length === 0) {
-            toast.info("No cross-seed matches found")
+            toast.info(t("hooks.search.noMatches"))
           }
         })
         .catch((error: unknown) => {
-          let message = error instanceof Error ? error.message : "Failed to search for cross-seeds"
+          let message = error instanceof Error ? error.message : t("hooks.search.searchFailed")
 
           if (
             message.includes("429") ||
@@ -214,7 +219,7 @@ export function useCrossSeedSearch(instanceId: number) {
             message.includes("rate-limited") ||
             message.includes("cooldown")
           ) {
-            message = `Rate limit active: ${message}. This protects against tracker bans. Some indexers are temporarily unavailable.`
+            message = t("hooks.search.rateLimitSearch", { message })
           }
 
           setCrossSeedSearchError(message)
@@ -234,6 +239,7 @@ export function useCrossSeedSearch(instanceId: number) {
       excludedIndexerIds,
       sortedEnabledIndexers,
       instanceId,
+      t,
     ]
   )
 
@@ -250,12 +256,12 @@ export function useCrossSeedSearch(instanceId: number) {
   const handleCrossSeedSearch = useCallback(
     (torrent: Torrent) => {
       if (!hasEnabledCrossSeedIndexers) {
-        toast.error("Configure at least one Torznab indexer to search for cross-seeds")
+        toast.error(t("hooks.search.noIndexers"))
         return
       }
 
       if (typeof torrent.progress === "number" && torrent.progress < 1) {
-        toast.info("Only completed torrents can be cross-seeded")
+        toast.info(t("hooks.search.completedOnly"))
         return
       }
 
@@ -279,10 +285,10 @@ export function useCrossSeedSearch(instanceId: number) {
           })
         })
         .catch((error: unknown) => {
-          let message = error instanceof Error ? error.message : "Failed to analyze torrent"
+          let message = error instanceof Error ? error.message : t("hooks.search.analyzeFailed")
 
           if (message.includes("429") || message.includes("rate limit") || message.includes("too many requests")) {
-            message = `Rate limit encountered during analysis: ${message}. Some indexers may be temporarily unavailable. This is normal and protects against being banned. Try again in 30-60 minutes.`
+            message = t("hooks.search.rateLimitAnalyze", { message })
           }
 
           setCrossSeedSearchError(message)
@@ -291,7 +297,7 @@ export function useCrossSeedSearch(instanceId: number) {
           })
         })
     },
-    [hasEnabledCrossSeedIndexers, instanceId]
+    [hasEnabledCrossSeedIndexers, instanceId, t]
   )
 
   const handleRetryCrossSeedSearch = useCallback(() => {
@@ -306,7 +312,7 @@ export function useCrossSeedSearch(instanceId: number) {
     }
 
     if (crossSeedIndexerMode === "custom" && crossSeedIndexerSelection.length === 0) {
-      toast.warning("Select at least one tracker to run a custom search")
+      toast.warning(t("hooks.search.selectTracker"))
       return
     }
 
@@ -387,7 +393,7 @@ export function useCrossSeedSearch(instanceId: number) {
     })
 
     if (selections.length === 0) {
-      toast.warning("Select at least one result to add")
+      toast.warning(t("hooks.search.selectResult"))
       return
     }
 
@@ -405,11 +411,54 @@ export function useCrossSeedSearch(instanceId: number) {
 
       setCrossSeedApplyResult(response)
 
-      toast.success(`Submitted ${selections.length} cross-seed${selections.length > 1 ? "s" : ""}`)
+      // Count successes and failures from instance results
+      let addedCount = 0
+      let failedCount = 0
+      let completedWithoutDetails = 0
+      for (const result of response.results) {
+        const instanceResults = result.instanceResults ?? []
+        if (instanceResults.length > 0) {
+          for (const ir of instanceResults) {
+            if (ir.status === "added" || ir.status === "added_hardlink" || ir.status === "added_reflink") {
+              addedCount++
+            } else if (!ir.success) {
+              failedCount++
+            }
+          }
+        } else if (result.success) {
+          completedWithoutDetails++
+        } else {
+          failedCount++
+        }
+      }
+
+      // Build toast message based on results
+      const hasAdded = addedCount > 0
+      const hasFailed = failedCount > 0
+      const hasCompleted = completedWithoutDetails > 0
+
+      if (hasAdded && !hasFailed) {
+        toast.success(
+          hasCompleted
+            ? t("hooks.search.applySuccessWithCompleted", { count: addedCount, completed: completedWithoutDetails })
+            : t("hooks.search.applySuccess", { count: addedCount })
+        )
+      } else if (hasAdded && hasFailed) {
+        const completedPart = hasCompleted ? t("hooks.search.applyCompletedPart", { count: completedWithoutDetails }) : ""
+        toast.warning(t("hooks.search.applyPartial", { added: addedCount, failed: failedCount, completedPart }))
+      } else if (hasFailed) {
+        const completedPrefix = hasCompleted ? t("hooks.search.applyCompletedPrefix", { count: completedWithoutDetails }) : ""
+        toast.error(t("hooks.search.applyFailed", { completedPrefix, failed: failedCount }))
+      } else if (hasCompleted) {
+        toast.success(t("hooks.search.applyCompletedUnavailable"))
+      } else {
+        toast.info(t("hooks.search.applyNoChanges"))
+      }
+
       queryClient.invalidateQueries({ queryKey: ["torrents-list", instanceId], exact: false })
       queryClient.invalidateQueries({ queryKey: ["torrent-counts", instanceId], exact: false })
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to add cross-seeds"
+      const message = error instanceof Error ? error.message : t("hooks.search.addFailed")
       toast.error(message)
     } finally {
       setCrossSeedSubmitting(false)
@@ -425,13 +474,16 @@ export function useCrossSeedSearch(instanceId: number) {
     getCrossSeedResultKey,
     instanceId,
     queryClient,
+    t,
   ])
 
   const crossSeedResults = useMemo(() => crossSeedSearchResponse?.results ?? [], [crossSeedSearchResponse?.results])
   const crossSeedSourceTorrent = crossSeedSearchResponse?.sourceTorrent
   const crossSeedSelectionCount = crossSeedSelectedKeys.size
   const crossSeedRefreshRemaining = Math.max(0, crossSeedRefreshCooldownUntil - Date.now())
-  const crossSeedRefreshLabel = crossSeedRefreshRemaining > 0 ? `Ready in ${Math.ceil(crossSeedRefreshRemaining / 1000)}s` : undefined
+  const crossSeedRefreshLabel = crossSeedRefreshRemaining > 0
+    ? t("hooks.search.refreshReadyIn", { seconds: Math.ceil(crossSeedRefreshRemaining / 1000) })
+    : undefined
   const canForceCrossSeedRefresh = !!crossSeedTorrent && !crossSeedSearchLoading && crossSeedRefreshRemaining <= 0
 
   useEffect(() => {

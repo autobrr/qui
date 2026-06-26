@@ -1,9 +1,16 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
+import { UnifiedScopeDropdownSection } from "@/components/layout/UnifiedScopeDropdownSection"
 import { Logo } from "@/components/ui/Logo"
 import { NapsterLogo } from "@/components/ui/NapsterLogo"
 import { Separator } from "@/components/ui/separator"
@@ -12,17 +19,24 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { UpdateBanner } from "@/components/ui/UpdateBanner"
 import { useAuth } from "@/hooks/useAuth"
 import { useCrossSeedInstanceState } from "@/hooks/useCrossSeedInstanceState"
+import { usePersistedUnifiedInstanceFilter } from "@/hooks/usePersistedUnifiedInstanceFilter"
 import { useTheme } from "@/hooks/useTheme"
+import { changeLanguage, languageNames, supportedLanguages } from "@/i18n"
 import { api } from "@/lib/api"
 import { getAppVersion } from "@/lib/build-info"
+import { normalizeUnifiedInstanceIds } from "@/lib/instances"
 import { cn } from "@/lib/utils"
 import { useQuery } from "@tanstack/react-query"
-import { Link, useLocation } from "@tanstack/react-router"
+import { Link, useLocation, useNavigate, useSearch } from "@tanstack/react-router"
+import { navigateWithSearch } from "@/lib/router-search"
 import {
   Archive,
+  Check,
+  Code,
   Copyright,
+  FileText,
   GitBranch,
-  Github,
+  Globe,
   HardDrive,
   Home,
   Loader2,
@@ -33,50 +47,79 @@ import {
   Settings,
   Zap
 } from "lucide-react"
+import { useCallback, useMemo } from "react"
+import { useTranslation } from "react-i18next"
 
 interface NavItem {
-  title: string
+  id: string
+  titleKey: string
   href: string
   icon: React.ComponentType<{ className?: string }>
   params?: Record<string, string>
+  search?: Record<string, unknown>
+  isActive?: (pathname: string, search: Record<string, unknown> | undefined) => boolean
 }
 
 const navigation: NavItem[] = [
   {
-    title: "Dashboard",
+    id: "dashboard",
+    titleKey: "nav.dashboard",
     href: "/dashboard",
     icon: Home,
   },
   {
-    title: "Search",
+    id: "search",
+    titleKey: "nav.search",
     href: "/search",
     icon: Search,
   },
   {
-    title: "Cross-Seed",
+    id: "cross-seed",
+    titleKey: "nav.crossSeed",
     href: "/cross-seed",
     icon: GitBranch,
     params: {},
   },
   {
-    title: "Automations",
+    id: "automations",
+    titleKey: "nav.automations",
     href: "/automations",
     icon: Zap,
   },
   {
-    title: "Backups",
+    id: "backups",
+    titleKey: "nav.backups",
     href: "/backups",
     icon: Archive,
   },
   {
-    title: "Settings",
+    id: "rss",
+    titleKey: "nav.rss",
+    href: "/rss",
+    icon: Rss,
+  },
+  {
+    id: "settings",
+    titleKey: "nav.settings",
     href: "/settings",
     icon: Settings,
+    isActive: (pathname, search) => pathname === "/settings" && search?.tab !== "logs",
+  },
+  {
+    id: "logs",
+    titleKey: "nav.logs",
+    href: "/settings",
+    icon: FileText,
+    search: { tab: "logs" },
+    isActive: (pathname, search) => pathname === "/settings" && search?.tab === "logs",
   },
 ]
 
 export function Sidebar() {
+  const { t, i18n } = useTranslation("common")
   const location = useLocation()
+  const navigate = useNavigate()
+  const routeSearch = useSearch({ strict: false }) as Record<string, unknown> | undefined
   const { logout } = useAuth()
   const { theme } = useTheme()
 
@@ -84,7 +127,44 @@ export function Sidebar() {
     queryKey: ["instances"],
     queryFn: () => api.getInstances(),
   })
-  const activeInstances = instances?.filter(instance => instance.isActive) ?? []
+  const activeInstances = useMemo(
+    () => (instances ?? []).filter(instance => instance.isActive),
+    [instances]
+  )
+  const activeInstanceIds = useMemo(
+    () => activeInstances.map(instance => instance.id),
+    [activeInstances]
+  )
+  const [persistedUnifiedFilter, saveUnifiedFilter] = usePersistedUnifiedInstanceFilter()
+  const normalizedUnifiedInstanceIds = useMemo(
+    () => normalizeUnifiedInstanceIds(persistedUnifiedFilter, activeInstanceIds),
+    [persistedUnifiedFilter, activeInstanceIds]
+  )
+  const effectiveUnifiedInstanceIds = normalizedUnifiedInstanceIds.length > 0? normalizedUnifiedInstanceIds: activeInstanceIds
+  const isAllInstancesActive = location.pathname === "/instances" || location.pathname === "/instances/"
+  const hasMultipleActiveInstances = activeInstances.length > 1
+  const applyUnifiedScope = useCallback((nextIds: number[]) => {
+    const normalizedIds = normalizeUnifiedInstanceIds(nextIds, activeInstanceIds)
+    saveUnifiedFilter(normalizedIds)
+    const nextSearch: Record<string, unknown> = isAllInstancesActive ? { ...(routeSearch || {}) } : {}
+
+    navigateWithSearch({
+      navigate,
+      to: "/instances",
+      search: nextSearch,
+      replace: isAllInstancesActive,
+    })
+  }, [activeInstanceIds, isAllInstancesActive, navigate, routeSearch, saveUnifiedFilter])
+  const toggleUnifiedScopeInstance = useCallback((instanceId: number) => {
+    const currentlySelected = effectiveUnifiedInstanceIds.includes(instanceId)
+    const nextIds = currentlySelected? effectiveUnifiedInstanceIds.filter(id => id !== instanceId): [...effectiveUnifiedInstanceIds, instanceId]
+
+    if (nextIds.length === 0) {
+      return
+    }
+
+    applyUnifiedScope(nextIds)
+  }, [applyUnifiedScope, effectiveUnifiedInstanceIds])
   const hasConfiguredInstances = (instances?.length ?? 0) > 0
 
   const { state: crossSeedInstanceState } = useCrossSeedInstanceState()
@@ -106,24 +186,25 @@ export function Sidebar() {
         </h2>
       </div>
 
-      <nav className="flex flex-1 min-h-0 flex-col px-3">
+      <nav className="flex flex-1 min-h-0 flex-col overflow-y-auto px-3">
         <div className="space-y-1">
           {navigation.map((item) => {
             const Icon = item.icon
-            const isActive = location.pathname === item.href
+            const isActive = item.isActive? item.isActive(location.pathname, routeSearch): location.pathname === item.href
 
             return (
               <Link
-                key={item.href}
+                key={item.id}
                 to={item.href}
                 params={item.params}
+                search={item.search}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
                   isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 )}
               >
                 <Icon className="h-4 w-4" />
-                {item.title}
+                {t(item.titleKey)}
               </Link>
             )
           })}
@@ -131,126 +212,170 @@ export function Sidebar() {
 
         <Separator className="my-4" />
 
-        <div className="flex-1 min-h-0">
-          <div className="flex h-full min-h-0 flex-col">
-            <p className="px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/70">
-              Instances
-            </p>
-            <div className="mt-1 flex-1 overflow-y-auto space-y-1 pr-1">
-              {activeInstances.map((instance) => {
-                const instancePath = `/instances/${instance.id}`
-                const isActive = location.pathname === instancePath || location.pathname.startsWith(`${instancePath}/`)
-                const csState = crossSeedInstanceState[instance.id]
-                const hasRss = csState?.rssEnabled || csState?.rssRunning
-                const hasSearch = csState?.searchRunning
+        <p className="px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/70">
+          {t("sidebar.instances")}
+        </p>
+        <div className="mt-1 space-y-1 pr-1">
+          {hasMultipleActiveInstances && (
+            <>
+              <UnifiedScopeDropdownSection
+                activeInstances={activeInstances}
+                effectiveUnifiedInstanceIds={effectiveUnifiedInstanceIds}
+                isAllInstancesRoute={isAllInstancesActive}
+                onResetUnifiedScope={() => applyUnifiedScope(activeInstanceIds)}
+                onToggleUnifiedScopeInstance={toggleUnifiedScopeInstance}
+                scopeKeyPrefix="sidebar-scope"
+                variant="sidebar"
+              />
+              <Separator className="my-2" />
+            </>
+          )}
+          {activeInstances.map((instance) => {
+            const instancePath = `/instances/${instance.id}`
+            const isActive = location.pathname === instancePath || location.pathname.startsWith(`${instancePath}/`)
+            const csState = crossSeedInstanceState[instance.id]
+            const hasRss = csState?.rssEnabled || csState?.rssRunning
+            const hasSearch = csState?.searchRunning
 
-                return (
-                  <Link
-                    key={instance.id}
-                    to="/instances/$instanceId"
-                    params={{ instanceId: instance.id.toString() }}
+            return (
+              <Link
+                key={instance.id}
+                to="/instances/$instanceId"
+                params={{ instanceId: instance.id.toString() }}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
+                  isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                )}
+              >
+                <HardDrive className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate max-w-36" title={instance.name}>{instance.name}</span>
+                <span className="ml-auto flex items-center gap-1.5">
+                  {hasRss && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center">
+                          {csState?.rssRunning ? (
+                            <Loader2 className={cn(
+                              "h-3 w-3 animate-spin",
+                              isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
+                            )} />
+                          ) : (
+                            <Rss className={cn(
+                              "h-3 w-3",
+                              isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
+                            )} />
+                          )}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="text-xs">
+                        {csState?.rssRunning ? t("sidebar.rssRunning") : t("sidebar.rssEnabled")}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  {hasSearch && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex items-center">
+                          <SearchCode className={cn(
+                            "h-3 w-3",
+                            isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
+                          )} />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="text-xs">
+                        {t("sidebar.scanRunning")}
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  <span
                     className={cn(
-                      "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all duration-200 ease-out",
-                      isActive? "bg-sidebar-primary text-sidebar-primary-foreground": "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      "h-2 w-2 rounded-full flex-shrink-0",
+                      instance.connected ? "bg-green-500" : "bg-red-500"
                     )}
-                  >
-                    <HardDrive className="h-4 w-4 flex-shrink-0" />
-                    <span className="truncate max-w-36" title={instance.name}>{instance.name}</span>
-                    <span className="ml-auto flex items-center gap-1.5">
-                      {hasRss && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="flex items-center">
-                              {csState?.rssRunning ? (
-                                <Loader2 className={cn(
-                                  "h-3 w-3 animate-spin",
-                                  isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
-                                )} />
-                              ) : (
-                                <Rss className={cn(
-                                  "h-3 w-3",
-                                  isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
-                                )} />
-                              )}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className="text-xs">
-                            RSS {csState?.rssRunning ? "running" : "enabled"}
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                      {hasSearch && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="flex items-center">
-                              <SearchCode className={cn(
-                                "h-3 w-3",
-                                isActive ? "text-sidebar-primary-foreground/70" : "text-sidebar-foreground/70"
-                              )} />
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent side="right" className="text-xs">
-                            Scan running
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-                      <span
-                        className={cn(
-                          "h-2 w-2 rounded-full flex-shrink-0",
-                          instance.connected ? "bg-green-500" : "bg-red-500"
-                        )}
-                      />
-                    </span>
-                  </Link>
-                )
-              })}
-              {activeInstances.length === 0 && (
-                <p className="px-3 py-2 text-sm text-sidebar-foreground/50">
-                  {hasConfiguredInstances ? "All instances are disabled" : "No instances configured"}
-                </p>
-              )}
-            </div>
-          </div>
+                  />
+                </span>
+              </Link>
+            )
+          })}
+          {activeInstances.length === 0 && (
+            <p className="px-3 py-2 text-sm text-sidebar-foreground/50">
+              {hasConfiguredInstances ? t("sidebar.allInstancesDisabled") : t("sidebar.noInstancesConfigured")}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-auto space-y-3 pt-3">
+          <UpdateBanner />
+
+          <Button
+            variant="ghost"
+            className="w-full justify-start"
+            onClick={() => logout()}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            {t("sidebar.logout")}
+          </Button>
         </div>
       </nav>
 
-      <div className="mt-auto space-y-3 p-3">
-        <UpdateBanner />
-
-        <Button
-          variant="ghost"
-          className="w-full justify-start"
-          onClick={() => logout()}
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          Logout
-        </Button>
-
+      <div className="flex-shrink-0 p-3">
         <Separator className="mx-3 mb-3" />
 
         <div className="flex items-center justify-between px-3 pb-3">
           <div className="flex flex-col gap-1 text-[10px] text-sidebar-foreground/40 select-none">
-            <span className="font-medium text-sidebar-foreground/50">Version {appVersion}</span>
+            <span className="font-medium text-sidebar-foreground/50">{t("sidebar.version", { version: appVersion })}</span>
             <div className="flex items-center gap-1">
               <Copyright className="h-2.5 w-2.5" />
               <span>{new Date().getFullYear()} autobrr</span>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-sidebar-foreground/40 hover:text-sidebar-foreground"
-            asChild
-          >
-            <a
-              href="https://github.com/autobrr/qui"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="View on GitHub"
+          <div className="flex items-center gap-0.5">
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-sidebar-foreground/40 hover:text-sidebar-foreground"
+                    >
+                      <Globe className="h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {t("sidebar.language")}
+                </TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" side="top">
+                {supportedLanguages.map((lng) => (
+                  <DropdownMenuItem
+                    key={lng}
+                    onClick={() => changeLanguage(lng)}
+                    className="flex items-center justify-between gap-4"
+                  >
+                    {languageNames[lng]}
+                    {i18n.language === lng && <Check className="h-3.5 w-3.5" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-sidebar-foreground/40 hover:text-sidebar-foreground"
+              asChild
             >
-              <Github className="h-3.5 w-3.5" />
-            </a>
-          </Button>
+              <a
+                href="https://github.com/autobrr/qui"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={t("sidebar.viewOnGitHub")}
+              >
+                <Code className="h-3.5 w-3.5" />
+              </a>
+            </Button>
+          </div>
         </div>
       </div>
     </div>

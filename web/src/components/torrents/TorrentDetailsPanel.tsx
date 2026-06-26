@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -15,12 +15,13 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useSyncStream } from "@/contexts/SyncStreamContext"
 import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
 import { api } from "@/lib/api"
-import { isHardlinkManaged, useCrossSeedMatches } from "@/lib/cross-seed-utils"
+import { isHardlinkManaged, useLocalCrossSeedMatches } from "@/lib/cross-seed-utils"
 import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
 import { renderTextWithLinks } from "@/lib/linkUtils"
 import { formatSpeedWithUnit, useSpeedUnits } from "@/lib/speedUnits"
@@ -29,14 +30,16 @@ import { getStateLabel } from "@/lib/torrent-state-utils"
 import { resolveTorrentHashes } from "@/lib/torrent-utils"
 import { getTrackerStatusBadge } from "@/lib/tracker-utils"
 import { cn, copyTextToClipboard, formatBytes, formatDuration } from "@/lib/utils"
-import type { SortedPeersResponse, Torrent, TorrentFile, TorrentPeer, TorrentTracker } from "@/types"
+import type { SortedPeersResponse, Torrent, TorrentFile, TorrentFilters, TorrentStreamPayload, TorrentTracker, TorrentPeer } from "@/types"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import "flag-icons/css/flag-icons.min.css"
 import { Ban, Copy, Loader2, Trash2, UserPlus, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { CrossSeedTable, GeneralTabHorizontal, PeersTable, TorrentFileTable, TrackerContextMenu, TrackersTable, WebSeedsTable } from "./details"
 import { EditTrackerDialog, RenameTorrentFileDialog, RenameTorrentFolderDialog } from "./TorrentDialogs"
+import { TorrentFileMediaInfoDialog } from "./TorrentFileMediaInfoDialog"
 import { TorrentFileTree } from "./TorrentFileTree"
 
 interface TorrentDetailsPanelProps {
@@ -61,6 +64,7 @@ function isTabValue(value: string): value is TabValue {
 
 
 export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceId, torrent, initialTab, onInitialTabConsumed, layout = "vertical", onClose, onNavigateToTorrent }: TorrentDetailsPanelProps) {
+  const { t } = useTranslation("torrents")
   const [activeTab, setActiveTab] = usePersistedTabState<TabValue>(TAB_STORAGE_KEY, DEFAULT_TAB, isTabValue)
 
   // Apply initialTab override when provided
@@ -89,6 +93,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const incognitoHash = incognitoMode && torrent?.hash ? getLinuxHash(torrent.hash) : undefined
   const [pendingFileIndices, setPendingFileIndices] = useState<Set<number>>(() => new Set())
   const supportsFilePriority = capabilities?.supportsFilePriority ?? false
+  const { data: instances } = useQuery({ queryKey: ["instances"], queryFn: () => api.getInstances(), staleTime: 60000 })
+  const hasLocalFilesystemAccess = instances?.find(i => i.id === instanceId)?.hasLocalFilesystemAccess ?? false
   const [selectedCrossSeedTorrents, setSelectedCrossSeedTorrents] = useState<Set<string>>(() => new Set())
   const [showDeleteCrossSeedDialog, setShowDeleteCrossSeedDialog] = useState(false)
   const [deleteCrossSeedFiles, setDeleteCrossSeedFiles] = useState(false)
@@ -100,11 +106,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   const copyToClipboard = useCallback(async (text: string, type: string) => {
     try {
       await copyTextToClipboard(text)
-      toast.success(`${type} copied to clipboard`)
+      toast.success(t("detailsPanel.toast.copied", { type }))
     } catch {
-      toast.error("Failed to copy to clipboard")
+      toast.error(t("detailsPanel.toast.copyFailed"))
     }
-  }, [])
+  }, [t])
   // Wait for component animation before enabling queries when torrent changes
   useEffect(() => {
     setIsReady(false)
@@ -125,6 +131,71 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   const isContentTabActive = activeTab === "content"
   const isCrossSeedTabActive = activeTab === "crossseed"
+  const hashFilter = useMemo<TorrentFilters | undefined>(() => {
+    if (!torrent?.hash) {
+      return undefined
+    }
+
+    return {
+      expr: `Hash == "${torrent.hash}"`,
+      status: [],
+      excludeStatus: [],
+      categories: [],
+      excludeCategories: [],
+      tags: [],
+      excludeTags: [],
+      trackers: [],
+      excludeTrackers: [],
+    }
+  }, [torrent?.hash])
+  const streamParams = useMemo(() => {
+    if (!hashFilter || !isReady) {
+      return null
+    }
+
+    return {
+      instanceId,
+      page: 0,
+      limit: 1,
+      sort: "added_on",
+      order: "desc" as const,
+      filters: hashFilter,
+    }
+  }, [hashFilter, instanceId, isReady])
+  const [streamTorrent, setStreamTorrent] = useState<Torrent | null>(null)
+  const handleStreamPayload = useCallback(
+    (payload: TorrentStreamPayload) => {
+      if (!payload?.data || !torrent?.hash) {
+        return
+      }
+
+      const nextTorrent = payload.data.torrents?.find(item => item.hash === torrent.hash) ?? null
+      if (!nextTorrent && payload.data.total === 0) {
+        setStreamTorrent(null)
+        return
+      }
+      if (nextTorrent) {
+        setStreamTorrent(nextTorrent)
+      }
+    },
+    [torrent?.hash]
+  )
+  const streamState = useSyncStream(streamParams, {
+    enabled: Boolean(streamParams),
+    onMessage: handleStreamPayload,
+  })
+
+  useEffect(() => {
+    setStreamTorrent(null)
+  }, [torrent?.hash])
+
+  // Drop the streamed snapshot when the stream is not live so the merge below falls
+  // back to fresh poll data instead of freezing on a stale pre-disconnect snapshot.
+  useEffect(() => {
+    if (!streamState.connected || streamState.error) {
+      setStreamTorrent(null)
+    }
+  }, [streamState.connected, streamState.error])
 
   // Fetch torrent properties
   const { data: properties, isLoading: loadingProperties } = useQuery({
@@ -139,8 +210,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
 
 
-  // Use the cross-seed hook to find matching torrents
-  const { matchingTorrents, isLoadingMatches, allInstances } = useCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
+  // Use the cross-seed hook to find matching torrents (uses backend API with rls library)
+  const { matchingTorrents, isLoadingMatches, allInstances } = useLocalCrossSeedMatches(instanceId, torrent, isCrossSeedTabActive)
 
   // Build instance lookup map for CrossSeedTable
   const instanceById = useMemo(
@@ -150,12 +221,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
   // Create a stable key string for detecting changes in matching torrents
   const matchingTorrentsKeys = useMemo(() => {
-    return matchingTorrents.map(t => `${t.instanceId}-${t.hash}`).sort().join(',')
+    return matchingTorrents.map(t => `${t.instanceId}-${t.hash}`).sort().join(",")
   }, [matchingTorrents])
 
   // Prune stale selections when matching torrents change
   useEffect(() => {
-    const validKeysArray = matchingTorrentsKeys.split(',').filter(k => k)
+    const validKeysArray = matchingTorrentsKeys.split(",").filter(k => k)
 
     setSelectedCrossSeedTorrents(prev => {
       if (validKeysArray.length === 0 && prev.size === 0) {
@@ -186,33 +257,25 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     gcTime: 5 * 60 * 1000,
   })
 
-  // Poll for live torrent data (the prop is a stale snapshot from selection time)
-  // This keeps state, priority, progress, and other fields up-to-date across all tabs
-  const { data: liveTorrent } = useQuery({
+  const shouldUseFallbackPolling = !!torrent && isReady && (!streamState.connected || !!streamState.error)
+
+  // SSE is primary for live row state; polling only runs while stream is unavailable.
+  const { data: polledLiveTorrent } = useQuery({
     queryKey: ["torrent-live-state", instanceId, torrent?.hash],
     queryFn: async () => {
       const response = await api.getTorrents(instanceId, {
-        filters: {
-          expr: `Hash == "${torrent!.hash}"`,
-          status: [],
-          excludeStatus: [],
-          categories: [],
-          excludeCategories: [],
-          tags: [],
-          excludeTags: [],
-          trackers: [],
-          excludeTrackers: [],
-        },
+        filters: hashFilter!,
         limit: 1,
       })
       return response.torrents[0] ?? null
     },
-    enabled: !!torrent && isReady,
+    enabled: shouldUseFallbackPolling && !!hashFilter,
     staleTime: 1000,
-    refetchInterval: 2000,
+    refetchInterval: shouldUseFallbackPolling ? 2000 : false,
   })
 
   // Merge live data with prop, preferring live values for frequently-changing fields
+  const liveTorrent = streamTorrent ?? polledLiveTorrent ?? null
   const displayTorrent = useMemo(() => {
     if (!torrent) return null
     if (!liveTorrent) return torrent
@@ -255,7 +318,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
     },
     onError: (error) => {
-      const message = error instanceof Error ? error.message : "Failed to update file priorities"
+      const message = error instanceof Error ? error.message : t("details.failedToUpdatePriorities")
       toast.error(message)
     },
     onSettled: (_, __, variables) => {
@@ -350,8 +413,35 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     setFilePriorityMutation.mutate({
       indices,
       priority: selected ? 1 : 0,
-      hash: torrent.hash
+      hash: torrent.hash,
     })
+  }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
+
+  const handleSetFilePriority = useCallback((file: TorrentFile, priority: number) => {
+    if (!torrent || !supportsFilePriority || file.priority === priority) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({ indices: [file.index], priority, hash: torrent.hash })
+  }, [setFilePriorityMutation, supportsFilePriority, torrent])
+
+  const handleSetFolderPriority = useCallback((folderPath: string, priority: number) => {
+    if (!torrent || !supportsFilePriority || !files) {
+      return
+    }
+
+    // Apply to every descendant file that isn't already at the target priority.
+    const folderPrefix = folderPath + "/"
+    const indices = files
+      .filter(f => f.name.startsWith(folderPrefix))
+      .filter(f => f.priority !== priority)
+      .map(f => f.index)
+
+    if (indices.length === 0) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({ indices, priority, hash: torrent.hash })
   }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
 
   // Fetch torrent peers with optimized refetch
@@ -397,13 +487,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       await api.addPeersToTorrents(instanceId, [torrent.hash], peers)
     },
     onSuccess: () => {
-      toast.success("Peers added successfully")
+      toast.success(t("detailsPanel.toast.peersAdded"))
       setShowAddPeersDialog(false)
       setPeersToAdd("")
       queryClient.invalidateQueries({ queryKey: ["torrent-peers", instanceId, torrent?.hash] })
     },
     onError: (error) => {
-      toast.error(`Failed to add peers: ${error.message}`)
+      toast.error(t("detailsPanel.toast.peersFailed", { error: error.message }))
     },
   })
 
@@ -413,13 +503,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       await api.banPeers(instanceId, [peer])
     },
     onSuccess: () => {
-      toast.success("Peer banned successfully")
+      toast.success(t("detailsPanel.toast.peerBanned"))
       setShowBanPeerDialog(false)
       setPeerToBan(null)
       queryClient.invalidateQueries({ queryKey: ["torrent-peers", instanceId, torrent?.hash] })
     },
     onError: (error) => {
-      toast.error(`Failed to ban peer: ${error.message}`)
+      toast.error(t("detailsPanel.toast.peerBanFailed", { error: error.message }))
     },
   })
 
@@ -435,13 +525,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       })
     },
     onSuccess: () => {
-      toast.success("Tracker URL updated successfully")
+      toast.success(t("detailsPanel.toast.trackerUpdated"))
       setShowEditTrackerDialog(false)
       setTrackerToEdit(null)
       queryClient.invalidateQueries({ queryKey: ["torrent-trackers", instanceId, torrent?.hash] })
     },
     onError: (error: Error) => {
-      toast.error("Failed to update tracker", {
+      toast.error(t("detailsPanel.toast.trackerUpdateFailed"), {
         description: error.message,
       })
     },
@@ -472,7 +562,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       await api.renameTorrentFile(instanceId, hash, oldPath, newPath)
     },
     onSuccess: async (_data, variables) => {
-      toast.success("File renamed successfully")
+      toast.success(t("detailsPanel.toast.fileRenamed"))
       setShowRenameFileDialog(false)
       setRenameFilePath(null)
       // Small delay to let qBittorrent process the rename internally
@@ -481,7 +571,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
     },
     onError: (error) => {
-      const message = error instanceof Error ? error.message : "Failed to rename file"
+      const message = error instanceof Error ? error.message : t("details.failedToRenameFile")
       toast.error(message)
     },
   })
@@ -496,7 +586,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       await api.renameTorrentFolder(instanceId, hash, oldPath, newPath)
     },
     onSuccess: async (_data, variables) => {
-      toast.success("Folder renamed successfully")
+      toast.success(t("detailsPanel.toast.folderRenamed"))
       setShowRenameFolderDialog(false)
       setRenameFolderPath(null)
       // Small delay to let qBittorrent process the rename internally
@@ -505,7 +595,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       await queryClient.invalidateQueries({ queryKey: ["torrent-files", instanceId, variables.hash] })
     },
     onError: (error) => {
-      const message = error instanceof Error ? error.message : "Failed to rename folder"
+      const message = error instanceof Error ? error.message : t("details.failedToRenameFolder")
       toast.error(message)
     },
   })
@@ -520,12 +610,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     const peerAddress = `${peer.ip}:${peer.port}`
     try {
       await copyTextToClipboard(peerAddress)
-      toast.success(`Copied ${peerAddress} to clipboard`)
+      toast.success(t("detailsPanel.toast.copied", { type: t("peersTable.address") }))
     } catch (err) {
       console.error("Failed to copy to clipboard:", err)
-      toast.error("Failed to copy to clipboard")
+      toast.error(t("detailsPanel.toast.copyFailed"))
     }
-  }, [])
+  }, [t])
 
   // Handle ban peer click
   const handleBanPeerClick = useCallback((peer: TorrentPeer) => {
@@ -594,12 +684,15 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
           api.bulkAction(instId, {
             hashes,
             action: "delete",
-            deleteFiles: deleteCrossSeedFiles
+            deleteFiles: deleteCrossSeedFiles,
           })
         )
       )
 
-      toast.success(`Deleted ${torrentsToDelete.length} torrent${torrentsToDelete.length > 1 ? 's' : ''}`)
+      toast.success(t("detailsPanel.toast.deletedTorrents", {
+        count: torrentsToDelete.length,
+        plural: torrentsToDelete.length > 1 ? "s" : "",
+      }))
 
       // Refresh all instances
       for (const instId of byInstance.keys()) {
@@ -609,9 +702,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       setSelectedCrossSeedTorrents(new Set())
       setShowDeleteCrossSeedDialog(false)
     } catch (error) {
-      toast.error(`Failed to delete: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      toast.error(t("detailsPanel.toast.deleteFailed", {
+        error: error instanceof Error ? error.message : t("detailsPanel.unknownError"),
+      }))
     }
-  }, [selectedCrossSeedTorrents, matchingTorrents, deleteCrossSeedFiles, queryClient])
+  }, [selectedCrossSeedTorrents, matchingTorrents, deleteCrossSeedFiles, queryClient, t])
 
   const handleDeleteCurrent = useCallback(async () => {
     if (!torrent) return
@@ -620,19 +715,21 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       await api.bulkAction(instanceId, {
         hashes: [torrent.hash],
         action: "delete",
-        deleteFiles: deleteCurrentFiles
+        deleteFiles: deleteCurrentFiles,
       })
 
-      toast.success(`Deleted torrent: ${torrent.name}`)
+      toast.success(t("detailsPanel.toast.deletedTorrent", { name: torrent.name }))
       queryClient.invalidateQueries({ queryKey: ["torrents", instanceId] })
       setShowDeleteCurrentDialog(false)
 
       // Close the details panel by clearing selection (parent component should handle this)
       // The user will be returned to the torrent list
     } catch (error) {
-      toast.error(`Failed to delete: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      toast.error(t("detailsPanel.toast.deleteFailed", {
+        error: error instanceof Error ? error.message : t("detailsPanel.unknownError"),
+      }))
     }
-  }, [torrent, instanceId, deleteCurrentFiles, queryClient])
+  }, [torrent, instanceId, deleteCurrentFiles, queryClient, t])
 
   const handleRenameFileDialogOpenChange = useCallback((open: boolean) => {
     setShowRenameFileDialog(open)
@@ -653,6 +750,31 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     renameFileMutation.mutate({ hash: torrent.hash, oldPath, newPath })
   }, [renameFileMutation, torrent])
 
+  // Handle download content file
+  const handleDownloadFile = useCallback((file: TorrentFile) => {
+    if (!torrent || incognitoMode) return
+    api.downloadContentFile(instanceId, torrent.hash, file.index)
+  }, [instanceId, torrent, incognitoMode])
+
+  const [showMediaInfoDialog, setShowMediaInfoDialog] = useState(false)
+  const [mediaInfoFile, setMediaInfoFile] = useState<TorrentFile | null>(null)
+  const [mediaInfoTorrentHash, setMediaInfoTorrentHash] = useState<string | null>(null)
+
+  const handleShowMediaInfo = useCallback((file: TorrentFile) => {
+    if (!torrent) return
+    setMediaInfoFile(file)
+    setMediaInfoTorrentHash(torrent.hash)
+    setShowMediaInfoDialog(true)
+  }, [torrent])
+
+  const handleMediaInfoDialogOpenChange = useCallback((open: boolean) => {
+    setShowMediaInfoDialog(open)
+    if (!open) {
+      setMediaInfoFile(null)
+      setMediaInfoTorrentHash(null)
+    }
+  }, [])
+
   // Handle rename folder
   const handleRenameFolderConfirm = useCallback(({ oldPath, newPath }: { oldPath: string; newPath: string }) => {
     if (!torrent) return
@@ -670,11 +792,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     const folderSet = new Set<string>()
     if (files) {
       files.forEach(file => {
-        const parts = file.name.split('/').filter(Boolean)
+        const parts = file.name.split("/").filter(Boolean)
         if (parts.length <= 1) return
 
         // Build all folder paths progressively
-        let current = ''
+        let current = ""
         for (let i = 0; i < parts.length - 1; i++) {
           current = current ? `${current}/${parts[i]}` : parts[i]
           folderSet.add(current)
@@ -722,63 +844,50 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
   return (
     <div className="h-full flex flex-col">
       <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
-        <TabsList className="w-full justify-start rounded-none border-b h-8 bg-background px-4 sm:px-6 py-0">
-          <TabsTrigger
-            value="general"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            General
-          </TabsTrigger>
-          <TabsTrigger
-            value="trackers"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            Trackers
-          </TabsTrigger>
-          <TabsTrigger
-            value="peers"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            Peers
-          </TabsTrigger>
-          {hasWebseeds && (
-            <TabsTrigger
-              value="webseeds"
-              className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-            >
-              HTTP Sources
-            </TabsTrigger>
-          )}
-          <TabsTrigger
-            value="content"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            Content
-          </TabsTrigger>
-          <TabsTrigger
-            value="crossseed"
-            className="relative text-xs rounded-none data-[state=active]:bg-transparent data-[state=active]:shadow-none hover:bg-accent/50 transition-all px-3 sm:px-4 cursor-pointer focus-visible:outline-none focus-visible:ring-0 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-primary after:scale-x-0 data-[state=active]:after:scale-x-100 after:transition-transform"
-          >
-            Cross-Seed
-          </TabsTrigger>
+        <div className="border-b flex items-center">
+          <div className="flex-1 overflow-x-auto scroll-smooth">
+            <TabsList className="w-full justify-start rounded-none h-8 bg-background px-4 sm:px-2 flex-nowrap overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <TabsTrigger value="general" className="text-xs shrink-0">
+                {t("detailsPanel.tabs.general")}
+              </TabsTrigger>
+              <TabsTrigger value="trackers" className="text-xs shrink-0">
+                {t("detailsPanel.tabs.trackers")}
+              </TabsTrigger>
+              <TabsTrigger value="peers" className="text-xs shrink-0">
+                {t("detailsPanel.tabs.peers")}
+              </TabsTrigger>
+              {hasWebseeds && (
+                <TabsTrigger value="webseeds" className="text-xs shrink-0">
+                  {t("detailsPanel.tabs.httpSources")}
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="content" className="text-xs shrink-0">
+                {t("detailsPanel.tabs.content")}
+              </TabsTrigger>
+              <TabsTrigger value="crossseed" className="text-xs shrink-0">
+                {t("detailsPanel.tabs.crossSeed")}
+              </TabsTrigger>
+            </TabsList>
+          </div>
           {onClose && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-5 w-10 shrink-0"
+              className="h-8 w-10 shrink-0 rounded-none"
               onClick={onClose}
-              aria-label="Close details panel"
+              aria-label={t("detailsPanel.closePanel")}
             >
               <X className="h-3 w-3" />
             </Button>
           )}
-        </TabsList>
+        </div>
 
 
         <div className="flex-1 min-h-0 overflow-hidden">
           <TabsContent value="general" className="m-0 h-full">
             {isHorizontal ? (
               <GeneralTabHorizontal
+                instanceId={instanceId}
                 torrent={displayTorrent!}
                 properties={properties}
                 loading={loadingProperties}
@@ -794,9 +903,6 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 displayComment={displayComment}
                 displayCreatedBy={displayCreatedBy}
                 queueingEnabled={metadata?.preferences?.queueing_enabled}
-                maxActiveDownloads={metadata?.preferences?.max_active_downloads}
-                maxActiveUploads={metadata?.preferences?.max_active_uploads}
-                maxActiveTorrents={metadata?.preferences?.max_active_torrents}
               />
             ) : (
               <ScrollArea className="h-full">
@@ -807,25 +913,132 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     </div>
                   ) : properties ? (
                     <div className="space-y-6">
-                      {/* Transfer Statistics Section */}
                       <div className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Transfer Statistics</h3>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("detailsPanel.sections.generalInformation")}</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.torrentName")}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs flex-1 break-all">{displayName || t("generalTab.na")}</p>
+                                {displayName && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    onClick={() => copyToClipboard(displayName, t("detailsPanel.labels.torrentName"))}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.infoHashV1")}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs flex-1 break-all font-mono">{displayInfohashV1 || t("generalTab.na")}</p>
+                                {displayInfohashV1 && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    onClick={() => copyToClipboard(displayInfohashV1, t("detailsPanel.labels.infoHashV1"))}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+
+                            {displayInfohashV2 && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.infoHashV2")}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs flex-1 break-all font-mono">{displayInfohashV2}</p>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    onClick={() => copyToClipboard(displayInfohashV2, t("detailsPanel.labels.infoHashV2"))}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.savePath")}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs flex-1 break-all font-mono">{displaySavePath || t("generalTab.na")}</p>
+                                {displaySavePath && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    onClick={() => copyToClipboard(displaySavePath, t("detailsPanel.labels.savePath"))}
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+
+                            {tempPathEnabled && displayTempPath && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.downloadPath")}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs flex-1 break-all font-mono">{displayTempPath || t("generalTab.na")}</p>
+                                  {displayTempPath && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 shrink-0"
+                                      onClick={() => copyToClipboard(displayTempPath, t("detailsPanel.labels.downloadPath"))}
+                                    >
+                                      <Copy className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {displayCreatedBy && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.createdBy")}</p>
+                                <div className="text-xs">{renderTextWithLinks(displayCreatedBy)}</div>
+                              </div>
+                            )}
+
+                            {displayComment && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.comment")}</p>
+                                <div className="font-mono text-xs whitespace-pre-wrap break-words">{renderTextWithLinks(displayComment)}</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("detailsPanel.sections.transferStatistics")}</h3>
                         <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 space-y-4 border border-border/50">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Total Size</p>
+                              <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.totalSize")}</p>
                               <p className="text-lg font-semibold">{formatBytes(properties.total_size || torrent.size)}</p>
                             </div>
                             <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Share Ratio</p>
+                              <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.shareRatio")}</p>
                               <p className="text-lg font-semibold">{(properties.share_ratio || 0).toFixed(2)}</p>
                             </div>
                             <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Downloaded</p>
+                              <p className="text-xs text-muted-foreground">{t("generalTab.downloaded")}</p>
                               <p className="text-base font-medium">{formatBytes(properties.total_downloaded || 0)}</p>
                             </div>
                             <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Uploaded</p>
+                              <p className="text-xs text-muted-foreground">{t("generalTab.uploaded")}</p>
                               <p className="text-base font-medium">{formatBytes(properties.total_uploaded || 0)}</p>
                             </div>
                           </div>
@@ -834,70 +1047,67 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Pieces</p>
+                              <p className="text-xs text-muted-foreground">{t("generalTab.pieces")}</p>
                               <p className="text-sm font-medium">{properties.pieces_have || 0} / {properties.pieces_num || 0}</p>
-                              <p className="text-xs text-muted-foreground">({formatBytes(properties.piece_size || 0)} each)</p>
+                              <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.pieceSizeEach", { size: formatBytes(properties.piece_size || 0) })}</p>
                             </div>
                             <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Wasted</p>
+                              <p className="text-xs text-muted-foreground">{t("generalTab.wasted")}</p>
                               <p className="text-sm font-medium">{formatBytes(properties.total_wasted || 0)}</p>
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Speed Section */}
                       <div className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Speed</h3>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("detailsPanel.sections.speed")}</h3>
                         <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Download Speed</p>
+                              <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.downloadSpeed")}</p>
                               <p className="text-base font-semibold text-green-500">{formatSpeedWithUnit(properties.dl_speed || 0, speedUnit)}</p>
-                              <p className="text-xs text-muted-foreground">avg: {formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit)}</p>
-                              <p className="text-xs text-muted-foreground">Limit: {downloadLimitLabel}</p>
+                              <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.average", { value: formatSpeedWithUnit(properties.dl_speed_avg || 0, speedUnit) })}</p>
+                              <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.limit", { value: downloadLimitLabel })}</p>
                             </div>
                             <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Upload Speed</p>
+                              <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.uploadSpeed")}</p>
                               <p className="text-base font-semibold text-blue-500">{formatSpeedWithUnit(properties.up_speed || 0, speedUnit)}</p>
-                              <p className="text-xs text-muted-foreground">avg: {formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit)}</p>
-                              <p className="text-xs text-muted-foreground">Limit: {uploadLimitLabel}</p>
+                              <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.average", { value: formatSpeedWithUnit(properties.up_speed_avg || 0, speedUnit) })}</p>
+                              <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.limit", { value: uploadLimitLabel })}</p>
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Peers Section */}
                       <div className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Network</h3>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("generalTab.network")}</h3>
                         <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Seeds</p>
+                              <p className="text-xs text-muted-foreground">{t("generalTab.seeds")}</p>
                               <p className="text-base font-semibold">{properties.seeds || 0} <span className="text-sm font-normal text-muted-foreground">/ {properties.seeds_total || 0}</span></p>
                             </div>
                             <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Peers</p>
+                              <p className="text-xs text-muted-foreground">{t("generalTab.peers")}</p>
                               <p className="text-base font-semibold">{properties.peers || 0} <span className="text-sm font-normal text-muted-foreground">/ {properties.peers_total || 0}</span></p>
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Queue Information */}
                       {metadata?.preferences?.queueing_enabled && (
                         <div className="space-y-3">
-                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Queue Management</h3>
+                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("detailsPanel.sections.queueManagement")}</h3>
                           <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-3">
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-muted-foreground">Priority</span>
+                              <span className="text-sm text-muted-foreground">{t("detailsPanel.labels.priority")}</span>
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-semibold">
-                                  {displayTorrent?.priority && displayTorrent.priority > 0 ? displayTorrent.priority : "Normal"}
+                                  {displayTorrent?.priority && displayTorrent.priority > 0 ? displayTorrent.priority : t("detailsPanel.values.normal")}
                                 </span>
                                 {(displayTorrent?.state === "queuedDL" || displayTorrent?.state === "queuedUP") && (
                                   <Badge variant="secondary" className="text-xs">
-                                    Queued {displayTorrent.state === "queuedDL" ? "DL" : "UP"}
+                                    {t("detailsPanel.values.queued", { state: displayTorrent.state === "queuedDL" ? "DL" : "UP" })}
                                   </Badge>
                                 )}
                               </div>
@@ -905,193 +1115,73 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             {(metadata.preferences.max_active_downloads > 0 ||
                               metadata.preferences.max_active_uploads > 0 ||
                               metadata.preferences.max_active_torrents > 0) && (
-                                <>
-                                  <Separator className="opacity-50" />
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                                    {metadata.preferences.max_active_downloads > 0 && (
-                                      <div className="space-y-1">
-                                        <p className="text-muted-foreground">Max Downloads</p>
-                                        <p className="font-medium">{metadata.preferences.max_active_downloads}</p>
-                                      </div>
-                                    )}
-                                    {metadata.preferences.max_active_uploads > 0 && (
-                                      <div className="space-y-1">
-                                        <p className="text-muted-foreground">Max Uploads</p>
-                                        <p className="font-medium">{metadata.preferences.max_active_uploads}</p>
-                                      </div>
-                                    )}
-                                    {metadata.preferences.max_active_torrents > 0 && (
-                                      <div className="space-y-1">
-                                        <p className="text-muted-foreground">Max Active</p>
-                                        <p className="font-medium">{metadata.preferences.max_active_torrents}</p>
-                                      </div>
-                                    )}
-                                  </div>
-                                </>
-                              )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Time Information */}
-                      <div className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Time Information</h3>
-                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Time Active</p>
-                              <p className="text-sm font-medium">{formatDuration(properties.time_elapsed || 0)}</p>
-                            </div>
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Seeding Time</p>
-                              <p className="text-sm font-medium">{formatDuration(properties.seeding_time || 0)}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Save Path */}
-                      <div className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Save Path</h3>
-                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                          <div className="flex items-center gap-2">
-                            <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground bg-background/50 rounded px-2.5 py-2 select-text flex-1">
-                              {displaySavePath || "N/A"}
-                            </div>
-                            {displaySavePath && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 shrink-0"
-                                onClick={() => copyToClipboard(displaySavePath, "File location")}
-                              >
-                                <Copy className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Temporary Download Path - shown if temp_path_enabled */}
-                      {tempPathEnabled && (
-                        <div className="space-y-3">
-                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Download Path</h3>
-                          <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                            <div className="flex items-center gap-2">
-                              <div className="font-mono text-xs sm:text-sm break-all text-muted-foreground bg-background/50 rounded px-2.5 py-2 select-text flex-1">
-                                {displayTempPath || "N/A"}
-                              </div>
-                              {displayTempPath && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 shrink-0"
-                                  onClick={() => copyToClipboard(displayTempPath, "Temporary path")}
-                                >
-                                  <Copy className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Info Hash Display */}
-                      <div className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Torrent Identifiers</h3>
-                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-4">
-                          <div className="space-y-2">
-                            <p className="text-xs text-muted-foreground">Info Hash v1</p>
-                            <div className="flex items-center gap-2">
-                              <div className="text-xs font-mono bg-background/50 p-2.5 rounded flex-1 break-all select-text">
-                                {displayInfohashV1 || "N/A"}
-                              </div>
-                              {displayInfohashV1 && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 shrink-0"
-                                  onClick={() => copyToClipboard(displayInfohashV1, "Info Hash v1")}
-                                >
-                                  <Copy className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                          {displayInfohashV2 && (
-                            <>
-                              <Separator className="opacity-50" />
-                              <div className="space-y-2">
-                                <p className="text-xs text-muted-foreground">Info Hash v2</p>
-                                <div className="flex items-center gap-2">
-                                  <div className="text-xs font-mono bg-background/50 p-2.5 rounded flex-1 break-all select-text">
-                                    {displayInfohashV2}
-                                  </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 shrink-0"
-                                    onClick={() => copyToClipboard(displayInfohashV2, "Info Hash v2")}
-                                  >
-                                    <Copy className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Timestamps */}
-                      <div className="space-y-3">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Timestamps</h3>
-                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div className="space-y-1">
-                              <p className="text-xs text-muted-foreground">Added</p>
-                              <p className="text-sm">{formatTimestamp(properties.addition_date)}</p>
-                            </div>
-                            {properties.completion_date && properties.completion_date !== -1 && (
-                              <div className="space-y-1">
-                                <p className="text-xs text-muted-foreground">Completed</p>
-                                <p className="text-sm">{formatTimestamp(properties.completion_date)}</p>
-                              </div>
-                            )}
-                            {properties.creation_date && properties.creation_date !== -1 && (
-                              <div className="space-y-1">
-                                <p className="text-xs text-muted-foreground">Created</p>
-                                <p className="text-sm">{formatTimestamp(properties.creation_date)}</p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Additional Information */}
-                      {(displayComment || displayCreatedBy) && (
-                        <div className="space-y-3">
-                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Additional Information</h3>
-                          <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50 space-y-3">
-                            {displayCreatedBy && (
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Created By</p>
-                                <div className="text-sm">{renderTextWithLinks(displayCreatedBy)}</div>
-                              </div>
-                            )}
-                            {displayComment && (
                               <>
-                                {displayCreatedBy && <Separator className="opacity-50" />}
-                                <div>
-                                  <p className="text-xs text-muted-foreground mb-2">Comment</p>
-                                  <div className="text-sm bg-background/50 p-3 rounded break-words">
-                                    {renderTextWithLinks(displayComment)}
-                                  </div>
+                                <Separator className="opacity-50" />
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                                  {metadata.preferences.max_active_downloads > 0 && (
+                                    <div className="space-y-1">
+                                      <p className="text-muted-foreground">{t("detailsPanel.labels.maxDownloads")}</p>
+                                      <p className="font-medium">{metadata.preferences.max_active_downloads}</p>
+                                    </div>
+                                  )}
+                                  {metadata.preferences.max_active_uploads > 0 && (
+                                    <div className="space-y-1">
+                                      <p className="text-muted-foreground">{t("detailsPanel.labels.maxUploads")}</p>
+                                      <p className="font-medium">{metadata.preferences.max_active_uploads}</p>
+                                    </div>
+                                  )}
+                                  {metadata.preferences.max_active_torrents > 0 && (
+                                    <div className="space-y-1">
+                                      <p className="text-muted-foreground">{t("detailsPanel.labels.maxActive")}</p>
+                                      <p className="font-medium">{metadata.preferences.max_active_torrents}</p>
+                                    </div>
+                                  )}
                                 </div>
                               </>
                             )}
                           </div>
                         </div>
                       )}
+
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("detailsPanel.sections.timeInformation")}</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">{t("generalTab.timeActive")}</p>
+                              <p className="text-sm font-medium">{formatDuration(properties.time_elapsed || 0)}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">{t("generalTab.seedingTime")}</p>
+                              <p className="text-sm font-medium">{formatDuration(properties.seeding_time || 0)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("detailsPanel.sections.timestamps")}</h3>
+                        <div className="bg-card/50 backdrop-blur-sm rounded-lg p-4 border border-border/50">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="space-y-1">
+                              <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.added")}</p>
+                              <p className="text-sm">{formatTimestamp(properties.addition_date, true)}</p>
+                            </div>
+                            {properties.completion_date && properties.completion_date !== -1 && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.completed")}</p>
+                                <p className="text-sm">{formatTimestamp(properties.completion_date, true)}</p>
+                              </div>
+                            )}
+                            {properties.creation_date && properties.creation_date !== -1 && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.created")}</p>
+                                <p className="text-sm">{formatTimestamp(properties.creation_date, true)}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -1118,8 +1208,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   ) : trackers && trackers.length > 0 ? (
                     <div className="space-y-3">
                       <div className="flex items-center justify-between mb-1">
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Trackers</h3>
-                        <span className="text-xs text-muted-foreground">{trackers.length} tracker{trackers.length !== 1 ? "s" : ""}</span>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("detailsPanel.sections.activeTrackers")}</h3>
+                        <span className="text-xs text-muted-foreground">{t("detailsPanel.counts.trackers", { count: trackers.length })}</span>
                       </div>
                       <div className="space-y-2">
                         {trackers
@@ -1158,19 +1248,19 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                   <Separator className="opacity-50" />
                                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                     <div className="space-y-1">
-                                      <p className="text-xs text-muted-foreground">Seeds</p>
+                                      <p className="text-xs text-muted-foreground">{t("trackersTable.seeds")}</p>
                                       <p className="text-sm font-medium">{tracker.num_seeds}</p>
                                     </div>
                                     <div className="space-y-1">
-                                      <p className="text-xs text-muted-foreground">Peers</p>
+                                      <p className="text-xs text-muted-foreground">{t("generalTab.peers")}</p>
                                       <p className="text-sm font-medium">{tracker.num_peers}</p>
                                     </div>
                                     <div className="space-y-1">
-                                      <p className="text-xs text-muted-foreground">Leechers</p>
+                                      <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.leechers")}</p>
                                       <p className="text-sm font-medium">{tracker.num_leeches}</p>
                                     </div>
                                     <div className="space-y-1">
-                                      <p className="text-xs text-muted-foreground">Downloaded</p>
+                                      <p className="text-xs text-muted-foreground">{t("trackersTable.downloaded")}</p>
                                       <p className="text-sm font-medium">{tracker.num_downloaded}</p>
                                     </div>
                                   </div>
@@ -1192,7 +1282,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     </div>
                   ) : (
                     <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-                      No trackers found
+                      {t("trackersTable.noTrackersFound")}
                     </div>
                   )}
                 </div>
@@ -1205,7 +1295,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               <div className="h-full flex flex-col">
                 <div className="flex items-center justify-between px-3 py-1.5 border-b text-xs">
                   <span className="text-muted-foreground">
-                    {peersData?.sorted_peers?.length ?? 0} peer{(peersData?.sorted_peers?.length ?? 0) !== 1 ? "s" : ""} connected
+                    {t("detailsPanel.counts.connectedPeers", { count: peersData?.sorted_peers?.length ?? 0 })}
                   </span>
                   <Button
                     variant="outline"
@@ -1214,7 +1304,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     onClick={() => setShowAddPeersDialog(true)}
                   >
                     <UserPlus className="h-3 w-3 mr-1.5" />
-                    Add Peers
+                    {t("detailsPanel.addPeers.title")}
                   </Button>
                 </div>
                 <div className="flex-1 overflow-hidden">
@@ -1239,8 +1329,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     <div className="space-y-3">
                       <div className="flex items-center justify-between mb-1">
                         <div>
-                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Connected Peers</h3>
-                          <p className="text-xs text-muted-foreground mt-1">{Object.keys(peersData.peers).length} peer{Object.keys(peersData.peers).length !== 1 ? "s" : ""} connected</p>
+                          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("detailsPanel.sections.connectedPeers")}</h3>
+                          <p className="text-xs text-muted-foreground mt-1">{t("detailsPanel.counts.connectedPeers", { count: Object.keys(peersData.peers).length })}</p>
                         </div>
                         <Button
                           variant="outline"
@@ -1248,7 +1338,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           onClick={() => setShowAddPeersDialog(true)}
                         >
                           <UserPlus className="h-4 w-4 mr-2" />
-                          Add Peers
+                          {t("detailsPanel.addPeers.title")}
                         </Button>
                       </div>
                       <div className="space-y-4 mt-4">
@@ -1290,10 +1380,10 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                           />
                                         )}
                                         {isSeeder && (
-                                          <Badge variant="secondary" className="text-xs">Seeder</Badge>
+                                          <Badge variant="secondary" className="text-xs">{t("detailsPanel.values.seeder")}</Badge>
                                         )}
                                       </div>
-                                      <p className="text-xs text-muted-foreground">{peer.client || "Unknown client"}</p>
+                                      <p className="text-xs text-muted-foreground">{peer.client || t("detailsPanel.values.unknownClient")}</p>
                                     </div>
                                   </div>
 
@@ -1301,7 +1391,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
                                   {/* Progress Bar */}
                                   <div className="space-y-1">
-                                    <p className="text-xs text-muted-foreground">Peer Progress</p>
+                                    <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.peerProgress")}</p>
                                     <div className="flex items-center gap-2">
                                       <Progress value={progressPercent} className="flex-1 h-1.5" />
                                       <span className={`text-xs font-medium ${isSeeder ? "text-green-500" : ""}`}>
@@ -1313,13 +1403,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                   {/* Transfer Speeds */}
                                   <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1">
-                                      <p className="text-xs text-muted-foreground">Download Speed</p>
+                                      <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.downloadSpeed")}</p>
                                       <p className={`text-sm font-medium ${peer.dl_speed && peer.dl_speed > 0 ? "text-green-500" : ""}`}>
                                         {formatSpeedWithUnit(peer.dl_speed || 0, speedUnit)}
                                       </p>
                                     </div>
                                     <div className="space-y-1">
-                                      <p className="text-xs text-muted-foreground">Upload Speed</p>
+                                      <p className="text-xs text-muted-foreground">{t("detailsPanel.labels.uploadSpeed")}</p>
                                       <p className={`text-sm font-medium ${peer.up_speed && peer.up_speed > 0 ? "text-blue-500" : ""}`}>
                                         {formatSpeedWithUnit(peer.up_speed || 0, speedUnit)}
                                       </p>
@@ -1329,11 +1419,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                   {/* Data Transfer Info */}
                                   <div className="grid grid-cols-2 gap-3 text-xs">
                                     <div className="space-y-1">
-                                      <p className="text-muted-foreground">Downloaded</p>
+                                      <p className="text-muted-foreground">{t("generalTab.downloaded")}</p>
                                       <p className="font-medium">{formatBytes(peer.downloaded || 0)}</p>
                                     </div>
                                     <div className="space-y-1">
-                                      <p className="text-muted-foreground">Uploaded</p>
+                                      <p className="text-muted-foreground">{t("generalTab.uploaded")}</p>
                                       <p className="font-medium">{formatBytes(peer.uploaded || 0)}</p>
                                     </div>
                                   </div>
@@ -1345,12 +1435,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                       <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                                         {peer.connection && (
                                           <div>
-                                            <span className="opacity-70">Connection:</span> {peer.connection}
+                                            <span className="opacity-70">{t("detailsPanel.labels.connection")}</span> {peer.connection}
                                           </div>
                                         )}
                                         {hasFlagDetails && (
                                           <div className="flex items-center gap-2">
-                                            <span className="opacity-70">Flags:</span>
+                                            <span className="opacity-70">{t("detailsPanel.labels.flags")}</span>
                                             <span className="inline-flex flex-wrap gap-1">
                                               {flagDetails.map(({ flag, description }, index) => {
                                                 const flagKey = `${flag}-${index}`
@@ -1362,7 +1452,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                                     <span
                                                       key={flagKey}
                                                       className={badgeClass}
-                                                      aria-label={`Flag ${flag}`}
+                                                      aria-label={t("detailsPanel.peer.flagLabel", { flag })}
                                                     >
                                                       {flag}
                                                     </span>
@@ -1398,7 +1488,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                   onClick={() => handleCopyPeer(peer)}
                                 >
                                   <Copy className="h-4 w-4 mr-2" />
-                                  Copy IP:port
+                                  {t("detailsPanel.actions.copyIpPort")}
                                 </ContextMenuItem>
                                 <ContextMenuSeparator />
                                 <ContextMenuItem
@@ -1406,7 +1496,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                   className="text-destructive focus:text-destructive"
                                 >
                                   <Ban className="h-4 w-4 mr-2" />
-                                  Ban peer permanently
+                                  {t("detailsPanel.actions.banPeerPermanently")}
                                 </ContextMenuItem>
                               </ContextMenuContent>
                             </ContextMenu>
@@ -1416,14 +1506,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center h-32 text-sm text-muted-foreground gap-3">
-                      <p>No peers connected</p>
+                      <p>{t("peersTable.noPeersConnected")}</p>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setShowAddPeersDialog(true)}
                       >
                         <UserPlus className="h-4 w-4 mr-2" />
-                        Add Peers
+                        {t("detailsPanel.addPeers.title")}
                       </Button>
                     </div>
                   )}
@@ -1449,8 +1539,8 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                   ) : webseedsData && webseedsData.length > 0 ? (
                     <div className="space-y-3">
                       <div>
-                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">HTTP Sources</h3>
-                        <p className="text-xs text-muted-foreground mt-1">{webseedsData.length} source{webseedsData.length !== 1 ? "s" : ""}</p>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("webSeedsTable.httpSources", { count: webseedsData.length, plural: webseedsData.length === 1 ? "" : "s" })}</h3>
+                        <p className="text-xs text-muted-foreground mt-1">{t("detailsPanel.counts.httpSources", { count: webseedsData.length })}</p>
                       </div>
                       <div className="space-y-2 mt-4">
                         {webseedsData.map((webseed, index) => (
@@ -1467,13 +1557,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 onClick={() => {
                                   if (!incognitoMode) {
                                     copyTextToClipboard(webseed.url)
-                                    toast.success("URL copied to clipboard")
+                                    toast.success(t("webSeedsTable.toast.urlCopied"))
                                   }
                                 }}
                                 disabled={incognitoMode}
                               >
                                 <Copy className="h-3.5 w-3.5 mr-2" />
-                                Copy URL
+                                {t("webSeedsTable.copyUrl")}
                               </ContextMenuItem>
                             </ContextMenuContent>
                           </ContextMenu>
@@ -1482,7 +1572,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                     </div>
                   ) : (
                     <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-                      No HTTP sources
+                      {t("webSeedsTable.noHttpSources")}
                     </div>
                   )}
                 </div>
@@ -1502,8 +1592,12 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 savePath={properties?.save_path}
                 onToggleFile={handleToggleFileDownload}
                 onToggleFolder={handleToggleFolderDownload}
+                onSetFilePriority={handleSetFilePriority}
+                onSetFolderPriority={handleSetFolderPriority}
                 onRenameFile={handleRenameFileClick}
                 onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
+                onDownloadFile={hasLocalFilesystemAccess ? handleDownloadFile : undefined}
+                onShowMediaInfo={hasLocalFilesystemAccess ? handleShowMediaInfo : undefined}
               />
             ) : activeTab === "content" && loadingFiles && !files ? (
               <div className="flex items-center justify-center p-8 flex-1">
@@ -1513,11 +1607,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
               <>
                 <div className="flex items-start justify-between gap-3 px-4 sm:px-6 py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
                   <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">File Contents</h3>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("detailsPanel.sections.fileContents")}</h3>
                     <span className="text-xs text-muted-foreground">
-                      {supportsFilePriority
-                        ? `${selectedFileCount} of ${totalFiles} selected`
-                        : `${files.length} file${files.length !== 1 ? "s" : ""}`}
+                      {supportsFilePriority? t("detailsPanel.counts.selectedFiles", { selected: selectedFileCount, total: totalFiles }): t("detailsPanel.counts.files", { count: files.length })}
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -1530,7 +1622,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           onClick={handleSelectAllFiles}
                           disabled={!canSelectAll || setFilePriorityMutation.isPending}
                         >
-                          All
+                          {t("detailsPanel.actions.selectAll")}
                         </Button>
                         <Button
                           variant="ghost"
@@ -1539,7 +1631,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           onClick={handleDeselectAllFiles}
                           disabled={!canDeselectAll || setFilePriorityMutation.isPending}
                         >
-                          None
+                          {t("detailsPanel.actions.selectNone")}
                         </Button>
                       </>
                     )}
@@ -1557,15 +1649,19 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                       savePath={properties?.save_path}
                       onToggleFile={handleToggleFileDownload}
                       onToggleFolder={handleToggleFolderDownload}
+                      onSetFilePriority={handleSetFilePriority}
+                      onSetFolderPriority={handleSetFolderPriority}
                       onRenameFile={handleRenameFileClick}
                       onRenameFolder={(folderPath) => { void handleRenameFolderDialogOpen(folderPath) }}
+                      onDownloadFile={hasLocalFilesystemAccess ? handleDownloadFile : undefined}
+                      onShowMediaInfo={hasLocalFilesystemAccess ? handleShowMediaInfo : undefined}
                     />
                   </div>
                 </ScrollArea>
               </>
             ) : (
               <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-                No files found
+                {t("detailsPanel.emptyStates.noFilesFound")}
               </div>
             )}
           </TabsContent>
@@ -1597,17 +1693,13 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                       <div className="flex flex-col gap-3">
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2">
-                            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cross-Seed Matches</h3>
+                            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("detailsPanel.crossSeed.title")}</h3>
                             {isLoadingMatches && (
                               <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                             )}
                           </div>
                           <span className="text-xs text-muted-foreground">
-                            {selectedCrossSeedTorrents.size > 0
-                              ? `${selectedCrossSeedTorrents.size} of ${matchingTorrents.length} selected`
-                              : isLoadingMatches
-                                ? `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found, checking more instances...`
-                                : `${matchingTorrents.length} matching torrent${matchingTorrents.length !== 1 ? 's' : ''} found across all instances`}
+                            {selectedCrossSeedTorrents.size > 0? t("detailsPanel.crossSeed.selectedSummary", { selected: selectedCrossSeedTorrents.size, total: matchingTorrents.length }): isLoadingMatches? t("detailsPanel.crossSeed.loadingSummary", { count: matchingTorrents.length }): t("detailsPanel.crossSeed.loadedSummary", { count: matchingTorrents.length })}
                           </span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -1618,7 +1710,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 size="sm"
                                 onClick={handleDeselectAllCrossSeed}
                               >
-                                Deselect All
+                                {t("detailsPanel.deselectAll")}
                               </Button>
                               <Button
                                 variant="destructive"
@@ -1626,7 +1718,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                 onClick={() => setShowDeleteCrossSeedDialog(true)}
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />
-                                Delete Matches ({selectedCrossSeedTorrents.size})
+                                {t("detailsPanel.crossSeed.deleteMatches", { count: selectedCrossSeedTorrents.size })}
                               </Button>
                             </>
                           ) : (
@@ -1635,7 +1727,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               size="sm"
                               onClick={handleSelectAllCrossSeed}
                             >
-                              Select All
+                              {t("detailsPanel.selectAll")}
                             </Button>
                           )}
                           <Button
@@ -1644,7 +1736,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                             onClick={() => setShowDeleteCurrentDialog(true)}
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
-                            Delete This Torrent
+                            {t("detailsPanel.crossSeed.deleteThisTorrent")}
                           </Button>
                         </div>
                       </div>
@@ -1668,19 +1760,23 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
 
                           // Get enriched status (tracker-aware)
                           const trackerHealth = match.tracker_health ?? null
-                          let statusLabel = getStateLabel(match.state)
+                          let statusLabel = getStateLabel(match.state, t)
                           let statusVariant: "default" | "secondary" | "destructive" | "outline" = "outline"
                           let statusClass = ""
 
                           // Check tracker health first (if supported)
                           if (trackerHealth === "unregistered") {
-                            statusLabel = "Unregistered"
+                            statusLabel = t("crossSeedTable.statusLabels.unregistered")
                             statusVariant = "outline"
                             statusClass = "text-destructive border-destructive/40 bg-destructive/10"
                           } else if (trackerHealth === "tracker_down") {
-                            statusLabel = "Tracker Down"
+                            statusLabel = t("crossSeedTable.statusLabels.trackerDown")
                             statusVariant = "outline"
                             statusClass = "text-yellow-500 border-yellow-500/40 bg-yellow-500/10"
+                          } else if (trackerHealth === "tracker_error") {
+                            statusLabel = t("crossSeedTable.statusLabels.trackerError")
+                            statusVariant = "outline"
+                            statusClass = "text-orange-500 border-orange-500/40 bg-orange-500/10"
                           } else {
                             // Normal state-based styling
                             if (match.state === "downloading" || match.state === "uploading") {
@@ -1700,15 +1796,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                           }
 
                           // Match type display
-                          const matchType = match.matchType as 'infohash' | 'content_path' | 'save_path' | 'name'
-                          const matchLabel = matchType === 'infohash' ? 'Info Hash'
-                            : matchType === 'content_path' ? 'Content Path'
-                              : matchType === 'save_path' ? 'Save Path'
-                                : 'Name'
-                          const matchDescription = matchType === 'infohash' ? 'Exact same torrent (same info hash)'
-                            : matchType === 'content_path' ? 'Same content location on disk'
-                              : matchType === 'save_path' ? 'Same save directory and filename'
-                                : 'Same torrent name'
+                          const matchType = match.matchType as "infohash" | "content_path" | "save_path" | "name"
+                          const matchLabel = matchType === "infohash"? t("detailsPanel.crossSeed.infoHashMatch"): matchType === "content_path"? t("crossSeedTable.matchTypes.contentPath.label"): matchType === "save_path"? t("detailsPanel.crossSeed.savePathMatch"): t("crossSeedTable.matchTypes.name.label")
+                          const matchDescription = matchType === "infohash"? t("detailsPanel.crossSeed.infoHashDescription"): matchType === "content_path"? t("crossSeedTable.matchTypes.contentPath.description"): matchType === "save_path"? t("detailsPanel.crossSeed.savePathDescription"): t("crossSeedTable.matchTypes.name.description")
 
                           return (
                             <div
@@ -1719,7 +1809,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                               )}
                               onClick={(e) => {
                                 // Don't navigate if clicking checkbox
-                                if ((e.target as HTMLElement).closest('[role="checkbox"]')) return
+                                if ((e.target as HTMLElement).closest("[role=\"checkbox\"]")) return
                                 onNavigateToTorrent?.(match.instanceId, match.hash)
                               }}
                             >
@@ -1729,7 +1819,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                     checked={isSelected}
                                     onCheckedChange={() => handleToggleCrossSeedSelection(torrentKey)}
                                     className="mt-0.5 shrink-0"
-                                    aria-label={`Select ${displayName}`}
+                                    aria-label={t("detailsPanel.crossSeed.selectTorrent", { name: displayName })}
                                   />
                                   <div className="flex-1 min-w-0 space-y-1">
                                     <div className="flex items-start gap-2">
@@ -1738,22 +1828,22 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                         <Tooltip>
                                           <TooltipTrigger asChild>
                                             <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0 text-blue-500 border-blue-500/40">
-                                              Hardlink
+                                              {t("crossSeedTable.hardlink")}
                                             </Badge>
                                           </TooltipTrigger>
                                           <TooltipContent>
-                                            <p className="text-xs">Files stored in hardlink directory (separate from source)</p>
+                                            <p className="text-xs">{t("crossSeedTable.hardlinkTooltip")}</p>
                                           </TooltipContent>
                                         </Tooltip>
                                       )}
                                     </div>
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                                      <span className="shrink-0">Instance: {match.instanceName}</span>
+                                      <span className="shrink-0">{t("crossSeedTable.instance")}: {match.instanceName}</span>
                                       <span className="shrink-0">•</span>
                                       <Tooltip>
                                         <TooltipTrigger asChild>
                                           <span className="cursor-help underline decoration-dotted shrink-0">
-                                            Match: {matchLabel}
+                                            {t("crossSeedTable.match")}: {matchLabel}
                                           </span>
                                         </TooltipTrigger>
                                         <TooltipContent>
@@ -1763,19 +1853,19 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                                       {trackerHostname && (
                                         <>
                                           <span className="shrink-0">•</span>
-                                          <span className="break-all">Tracker: {incognitoMode ? getLinuxTracker(`${match.hash}-0`) : trackerHostname}</span>
+                                          <span className="break-all">{t("crossSeedTable.tracker")}: {incognitoMode ? getLinuxTracker(`${match.hash}-0`) : trackerHostname}</span>
                                         </>
                                       )}
                                       {match.category && (
                                         <>
                                           <span className="shrink-0">•</span>
-                                          <span className="break-all">Category: {incognitoMode ? getLinuxCategory(match.hash) : match.category}</span>
+                                          <span className="break-all">{t("tableColumns.category")}: {incognitoMode ? getLinuxCategory(match.hash) : match.category}</span>
                                         </>
                                       )}
                                       {match.tags && (
                                         <>
                                           <span className="shrink-0">•</span>
-                                          <span className="break-all">Tags: {incognitoMode ? getLinuxTags(match.hash) : match.tags}</span>
+                                          <span className="break-all">{t("tableColumns.tags")}: {incognitoMode ? getLinuxTags(match.hash) : match.tags}</span>
                                         </>
                                       )}
                                     </div>
@@ -1814,14 +1904,14 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                         <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
                           <Loader2 className="h-3 w-3 animate-spin" />
                           <span>
-                            Checking more instances...
+                            {t("detailsPanel.crossSeed.checkingMoreInstances")}
                           </span>
                         </div>
                       )}
                     </div>
                   ) : (
                     <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
-                      No matching torrents found on other instances
+                      {t("crossSeedTable.noMatches")}
                     </div>
                   )}
                 </div>
@@ -1835,21 +1925,18 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       <Dialog open={showAddPeersDialog} onOpenChange={setShowAddPeersDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Peers</DialogTitle>
+            <DialogTitle>{t("detailsPanel.addPeers.title")}</DialogTitle>
             <DialogDescription>
-              Add one or more peers to this torrent. Enter each peer as IP:port, one per line or comma-separated.
+              {t("detailsPanel.addPeers.description")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="peers">Peers</Label>
+              <Label htmlFor="peers">{t("detailsPanel.addPeers.label")}</Label>
               <Textarea
                 id="peers"
                 className="min-h-[100px]"
-                placeholder={`192.168.1.100:51413
-10.0.0.5:6881
-tracker.example.com:8080
-[2001:db8::1]:6881`}
+                placeholder={t("detailsPanel.addPeers.placeholder")}
                 value={peersToAdd}
                 onChange={(e) => setPeersToAdd(e.target.value)}
               />
@@ -1857,14 +1944,14 @@ tracker.example.com:8080
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddPeersDialog(false)}>
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button
               onClick={handleAddPeersSubmit}
               disabled={!peersToAdd.trim() || addPeersMutation.isPending}
             >
               {addPeersMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Add Peers
+              {t("detailsPanel.addPeers.title")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1874,26 +1961,26 @@ tracker.example.com:8080
       <Dialog open={showBanPeerDialog} onOpenChange={setShowBanPeerDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Ban Peer Permanently</DialogTitle>
+            <DialogTitle>{t("detailsPanel.banPeerPermanent.title")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to permanently ban this peer? This action cannot be undone.
+              {t("detailsPanel.banPeerPermanent.description")}
             </DialogDescription>
           </DialogHeader>
           {peerToBan && (
             <div className="space-y-2 text-sm">
               <div>
-                <span className="text-muted-foreground">IP Address:</span>
+                <span className="text-muted-foreground">{t("detailsPanel.banPeerPermanent.ipAddress")}</span>
                 <span className="ml-2 font-mono">{peerToBan.ip}:{peerToBan.port}</span>
               </div>
               {peerToBan.client && (
                 <div>
-                  <span className="text-muted-foreground">Client:</span>
+                  <span className="text-muted-foreground">{t("peersTable.client")}:</span>
                   <span className="ml-2">{peerToBan.client}</span>
                 </div>
               )}
               {peerToBan.country && (
                 <div>
-                  <span className="text-muted-foreground">Country:</span>
+                  <span className="text-muted-foreground">{t("detailsPanel.banPeerPermanent.country")}</span>
                   <span className="ml-2">{peerToBan.country}</span>
                 </div>
               )}
@@ -1907,7 +1994,7 @@ tracker.example.com:8080
                 setPeerToBan(null)
               }}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -1915,7 +2002,7 @@ tracker.example.com:8080
               disabled={banPeerMutation.isPending}
             >
               {banPeerMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Ban Peer
+              {t("peersTable.banPeer")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1925,9 +2012,9 @@ tracker.example.com:8080
       <Dialog open={showDeleteCrossSeedDialog} onOpenChange={setShowDeleteCrossSeedDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Selected Torrents</DialogTitle>
+            <DialogTitle>{t("detailsPanel.deleteSelected.title")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete {selectedCrossSeedTorrents.size} torrent{selectedCrossSeedTorrents.size !== 1 ? 's' : ''}?
+              {t("detailsPanel.deleteSelected.description", { count: selectedCrossSeedTorrents.size })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1941,14 +2028,14 @@ tracker.example.com:8080
                 htmlFor="delete-files"
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
-                Also delete files from disk
+                {t("deleteFilesPreference.label")}
               </Label>
             </div>
             <div className="text-sm text-muted-foreground">
               {deleteCrossSeedFiles ? (
-                <p className="text-destructive">⚠️ This will permanently delete the torrent files from disk!</p>
+                <p className="text-destructive">{t("detailsPanel.deleteWarnings.deleteFiles")}</p>
               ) : (
-                <p>Torrents will be removed but files will remain on disk.</p>
+                <p>{t("detailsPanel.deleteWarnings.keepFilesPlural")}</p>
               )}
             </div>
           </div>
@@ -1957,14 +2044,14 @@ tracker.example.com:8080
               variant="outline"
               onClick={() => setShowDeleteCrossSeedDialog(false)}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button
               variant="destructive"
               onClick={handleDeleteCrossSeed}
             >
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete {selectedCrossSeedTorrents.size} Torrent{selectedCrossSeedTorrents.size !== 1 ? 's' : ''}
+              {t("detailsPanel.deleteSelected.confirm", { count: selectedCrossSeedTorrents.size })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1974,9 +2061,9 @@ tracker.example.com:8080
       <Dialog open={showDeleteCurrentDialog} onOpenChange={setShowDeleteCurrentDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete This Torrent</DialogTitle>
+            <DialogTitle>{t("detailsPanel.crossSeed.deleteThisTorrent")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{incognitoMode ? getLinuxFileName(torrent?.hash ?? "", 0) : torrent?.name}"?
+              {t("detailsPanel.deleteCurrent.description", { name: incognitoMode ? getLinuxFileName(torrent?.hash ?? "", 0) : torrent?.name })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1990,14 +2077,14 @@ tracker.example.com:8080
                 htmlFor="delete-current-files"
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
               >
-                Also delete files from disk
+                {t("deleteFilesPreference.label")}
               </Label>
             </div>
             <div className="text-sm text-muted-foreground">
               {deleteCurrentFiles ? (
-                <p className="text-destructive">⚠️ This will permanently delete the torrent files from disk!</p>
+                <p className="text-destructive">{t("detailsPanel.deleteWarnings.deleteFiles")}</p>
               ) : (
-                <p>Torrent will be removed but files will remain on disk.</p>
+                <p>{t("detailsPanel.deleteWarnings.keepFilesSingle")}</p>
               )}
             </div>
           </div>
@@ -2006,14 +2093,14 @@ tracker.example.com:8080
               variant="outline"
               onClick={() => setShowDeleteCurrentDialog(false)}
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
             <Button
               variant="destructive"
               onClick={handleDeleteCurrent}
             >
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete Torrent
+              {t("detailsPanel.deleteCurrent.confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2051,6 +2138,14 @@ tracker.example.com:8080
         selectedHashes={torrent ? [torrent.hash] : []}
         onConfirm={(oldURL, newURL) => editTrackerMutation.mutate({ oldURL, newURL })}
         isPending={editTrackerMutation.isPending}
+      />
+
+      <TorrentFileMediaInfoDialog
+        open={showMediaInfoDialog}
+        onOpenChange={handleMediaInfoDialogOpenChange}
+        instanceId={instanceId}
+        torrentHash={mediaInfoTorrentHash ?? ""}
+        file={mediaInfoFile}
       />
     </div>
   )

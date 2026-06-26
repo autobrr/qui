@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -24,10 +24,12 @@ import {
   getCoreRowModel,
   getSortedRowModel,
   useReactTable,
-  type SortingState,
+  type SortingState
 } from "@tanstack/react-table"
+import type { TFunction } from "i18next"
 import { Copy, Loader2, Trash2 } from "lucide-react"
 import { memo, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
 interface CrossSeedTableProps {
@@ -46,16 +48,18 @@ interface CrossSeedTableProps {
 
 const columnHelper = createColumnHelper<CrossSeedTorrent>()
 
-function getStatusInfo(match: CrossSeedTorrent): { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string } {
+function getStatusInfo(match: CrossSeedTorrent, t: TFunction): { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string } {
   const trackerHealth = match.tracker_health ?? null
-  let label = getStateLabel(match.state)
+  const label = getStateLabel(match.state, t)
   let variant: "default" | "secondary" | "destructive" | "outline" = "outline"
-  let className = ""
+  const className = ""
 
   if (trackerHealth === "unregistered") {
-    return { label: "Unregistered", variant: "outline", className: "text-destructive border-destructive/40 bg-destructive/10" }
+    return { label: t("crossSeedTable.statusLabels.unregistered"), variant: "outline", className: "text-destructive border-destructive/40 bg-destructive/10" }
   } else if (trackerHealth === "tracker_down") {
-    return { label: "Tracker Down", variant: "outline", className: "text-yellow-500 border-yellow-500/40 bg-yellow-500/10" }
+    return { label: t("crossSeedTable.statusLabels.trackerDown"), variant: "outline", className: "text-yellow-500 border-yellow-500/40 bg-yellow-500/10" }
+  } else if (trackerHealth === "tracker_error") {
+    return { label: t("crossSeedTable.statusLabels.trackerError"), variant: "outline", className: "text-orange-500 border-orange-500/40 bg-orange-500/10" }
   }
 
   if (match.state === "downloading" || match.state === "uploading") {
@@ -76,16 +80,23 @@ function getStatusInfo(match: CrossSeedTorrent): { label: string; variant: "defa
   return { label, variant, className }
 }
 
-function getMatchTypeLabel(matchType: string): { label: string; description: string } {
+function getMatchTypeLabel(matchType: string, t: (key: string, options?: Record<string, unknown>) => string): { label: string; description: string } {
   switch (matchType) {
-    case "infohash":
-      return { label: "Info Hash", description: "Exact same torrent (same info hash)" }
     case "content_path":
-      return { label: "Content", description: "Same content location on disk" }
-    case "save_path":
-      return { label: "Save Path", description: "Same save directory and filename" }
+      return {
+        label: t("crossSeedTable.matchTypes.contentPath.label"),
+        description: t("crossSeedTable.matchTypes.contentPath.description"),
+      }
     case "name":
-      return { label: "Name", description: "Same torrent name" }
+      return {
+        label: t("crossSeedTable.matchTypes.name.label"),
+        description: t("crossSeedTable.matchTypes.name.description"),
+      }
+    case "release":
+      return {
+        label: t("crossSeedTable.matchTypes.release.label"),
+        description: t("crossSeedTable.matchTypes.release.description"),
+      }
     default:
       return { label: matchType, description: matchType }
   }
@@ -104,6 +115,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
   instanceById,
   onNavigateToTorrent,
 }: CrossSeedTableProps) {
+  const { t } = useTranslation("torrents")
   const [sorting, setSorting] = useState<SortingState>([])
   const { data: trackerIcons } = useTrackerIcons()
   const { data: trackerCustomizations } = useTrackerCustomizations()
@@ -135,11 +147,9 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       size: 30,
     }),
     columnHelper.accessor("name", {
-      header: "Name",
+      header: t("crossSeedTable.name"),
       cell: (info) => {
-        const name = incognitoMode
-          ? getLinuxFileName(info.row.original.hash, 0)
-          : info.getValue()
+        const name = incognitoMode? getLinuxFileName(info.row.original.hash, 0): info.getValue()
         const isHardlink = isHardlinkManaged(info.row.original, instanceById.get(info.row.original.instanceId))
         return (
           <div className="flex items-center gap-1.5 min-w-0">
@@ -155,11 +165,11 @@ export const CrossSeedTable = memo(function CrossSeedTable({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0 text-blue-500 border-blue-500/40">
-                    Hardlink
+                    {t("crossSeedTable.hardlink")}
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="text-xs">Files stored in hardlink directory (separate from source)</p>
+                  <p className="text-xs">{t("crossSeedTable.hardlinkTooltip")}</p>
                 </TooltipContent>
               </Tooltip>
             )}
@@ -169,16 +179,16 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       size: 300,
     }),
     columnHelper.accessor("instanceName", {
-      header: "Instance",
+      header: t("crossSeedTable.instance"),
       cell: (info) => (
         <span className="truncate block">{info.getValue()}</span>
       ),
       size: 70,
     }),
     columnHelper.accessor("matchType", {
-      header: "Match",
+      header: t("crossSeedTable.match"),
       cell: (info) => {
-        const { label, description } = getMatchTypeLabel(info.getValue() as string)
+        const { label, description } = getMatchTypeLabel(info.getValue() as string, t)
         return (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -193,7 +203,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       size: 70,
     }),
     columnHelper.accessor("tracker", {
-      header: "Tracker",
+      header: t("crossSeedTable.tracker"),
       cell: (info) => {
         const tracker = info.getValue()
         if (!tracker) return <span className="text-muted-foreground">-</span>
@@ -205,9 +215,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
           // Keep original if parsing fails
         }
 
-        const displayName = incognitoMode
-          ? getLinuxTracker(`${info.row.original.hash}-0`)
-          : trackerDisplayNames.get(hostname.toLowerCase()) || hostname
+        const displayName = incognitoMode? getLinuxTracker(`${info.row.original.hash}-0`): trackerDisplayNames.get(hostname.toLowerCase()) || hostname
 
         // In incognito mode, pass obfuscated key to prevent real tracker icon lookup
         const iconKey = incognitoMode ? displayName : hostname
@@ -231,9 +239,9 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       size: 130,
     }),
     columnHelper.accessor("state", {
-      header: "Status",
+      header: t("crossSeedTable.status"),
       cell: (info) => {
-        const { label, variant, className } = getStatusInfo(info.row.original)
+        const { label, variant, className } = getStatusInfo(info.row.original, t)
         return (
           <Badge variant={variant} className={cn("text-[10px] px-1.5 py-0", className)}>
             {label}
@@ -243,7 +251,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       size: 90,
     }),
     columnHelper.accessor("progress", {
-      header: "Progress",
+      header: t("crossSeedTable.progress"),
       cell: (info) => {
         const progress = info.getValue() * 100
         const isComplete = progress === 100
@@ -259,14 +267,14 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       size: 85,
     }),
     columnHelper.accessor("size", {
-      header: "Size",
+      header: t("crossSeedTable.size"),
       cell: (info) => (
         <span className="tabular-nums">{formatBytes(info.getValue())}</span>
       ),
       size: 80,
     }),
     columnHelper.accessor("save_path", {
-      header: "Save Path",
+      header: t("crossSeedTable.savePath"),
       cell: (info) => {
         const path = info.getValue()
         if (!path) return <span className="text-muted-foreground">-</span>
@@ -289,9 +297,9 @@ export const CrossSeedTable = memo(function CrossSeedTable({
               onClick={(e) => {
                 e.stopPropagation()
                 copyTextToClipboard(path).then(() => {
-                  toast.success("Save path copied")
+                  toast.success(t("crossSeedTable.toast.savePathCopied"))
                 }).catch(() => {
-                  toast.error("Failed to copy")
+                  toast.error(t("crossSeedTable.toast.copyFailed"))
                 })
               }}
             >
@@ -302,7 +310,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
       },
       size: 130,
     }),
-  ], [incognitoMode, selectedTorrents, onToggleSelection, trackerDisplayNames, trackerIcons, instanceById])
+  ], [incognitoMode, selectedTorrents, onToggleSelection, trackerDisplayNames, trackerIcons, instanceById, t])
 
   const table = useReactTable({
     data: matches,
@@ -324,7 +332,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
   if (matches.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-        No matching torrents found on other instances
+        {t("crossSeedTable.noMatches", { defaultValue: "No matching torrents found on other instances" })}
       </div>
     )
   }
@@ -336,8 +344,8 @@ export const CrossSeedTable = memo(function CrossSeedTable({
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">
             {selectedTorrents.size > 0
-              ? `${selectedTorrents.size} of ${matches.length} selected`
-              : `${matches.length} match${matches.length !== 1 ? "es" : ""}`}
+              ? t("crossSeedTable.selectedCount", { selected: selectedTorrents.size, total: matches.length })
+              : t("crossSeedTable.matchCount", { count: matches.length })}
           </span>
           {loading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
         </div>
@@ -350,7 +358,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
                 className="h-6 text-xs"
                 onClick={onDeselectAll}
               >
-                Deselect
+                {t("detailsPanel.deselectAll")}
               </Button>
               <Button
                 variant="destructive"
@@ -359,7 +367,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
                 onClick={onDeleteMatches}
               >
                 <Trash2 className="h-3 w-3 mr-1" />
-                Delete ({selectedTorrents.size})
+                {t("crossSeedTable.deleteSelected", { count: selectedTorrents.size })}
               </Button>
             </>
           ) : (
@@ -369,7 +377,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
               className="h-6 text-xs"
               onClick={onSelectAll}
             >
-              Select All
+              {t("detailsPanel.selectAll")}
             </Button>
           )}
           <Button
@@ -379,7 +387,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
             onClick={onDeleteCurrent}
           >
             <Trash2 className="h-3 w-3 mr-1" />
-            Delete This
+            {t("crossSeedTable.deleteThis")}
           </Button>
         </div>
       </div>
@@ -421,7 +429,7 @@ export const CrossSeedTable = memo(function CrossSeedTable({
                   )}
                   onClick={(e) => {
                     // Don't navigate if clicking checkbox or button
-                    if ((e.target as HTMLElement).closest('button, [role="checkbox"]')) return
+                    if ((e.target as HTMLElement).closest("button, [role=\"checkbox\"]")) return
                     if (onNavigateToTorrent) {
                       onNavigateToTorrent(row.original.instanceId, row.original.hash)
                     }

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -140,6 +140,37 @@ func (h *InstancesHandler) GetReannounceCandidates(w http.ResponseWriter, r *htt
 	RespondJSON(w, http.StatusOK, normalized)
 }
 
+// GetTransferInfo returns lightweight transfer stats for an instance.
+func (h *InstancesHandler) GetTransferInfo(w http.ResponseWriter, r *http.Request) {
+	instanceID, err := strconv.Atoi(chi.URLParam(r, "instanceID"))
+	if err != nil {
+		RespondError(w, http.StatusBadRequest, "Invalid instance ID")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	client, err := h.clientPool.GetClient(ctx, instanceID)
+	if err != nil {
+		if respondIfInstanceDisabled(w, err, instanceID, "instances:getTransferInfo") {
+			return
+		}
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for transfer info")
+		RespondError(w, http.StatusServiceUnavailable, "Failed to load transfer info")
+		return
+	}
+
+	info, err := client.GetTransferInfoCtx(ctx)
+	if err != nil {
+		log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get transfer info")
+		RespondError(w, http.StatusInternalServerError, "Failed to get transfer info")
+		return
+	}
+
+	RespondJSON(w, http.StatusOK, info)
+}
+
 func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, instances []*models.Instance) []InstanceResponse {
 	if len(instances) == 0 {
 		return []InstanceResponse{}
@@ -170,6 +201,7 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				Name:                     instances[i].Name,
 				Host:                     instances[i].Host,
 				Username:                 instances[i].Username,
+				HasAPIKey:                instances[i].APIKeyEncrypted != "",
 				BasicUsername:            instances[i].BasicUsername,
 				TLSSkipVerify:            instances[i].TLSSkipVerify,
 				HasLocalFilesystemAccess: instances[i].HasLocalFilesystemAccess,
@@ -204,8 +236,8 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 	var connectionStatus string
 	if !instance.IsActive {
 		connectionStatus = "disabled"
-	} else if client != nil {
-		if status := strings.TrimSpace(client.GetCachedConnectionStatus()); status != "" {
+	} else if client != nil && h.syncManager != nil {
+		if status := strings.TrimSpace(h.syncManager.ReadCachedConnectionStatus(ctx, instance.ID)); status != "" {
 			connectionStatus = strings.ToLower(status)
 		}
 	}
@@ -218,6 +250,7 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		Name:                     instance.Name,
 		Host:                     instance.Host,
 		Username:                 instance.Username,
+		HasAPIKey:                instance.APIKeyEncrypted != "",
 		BasicUsername:            instance.BasicUsername,
 		TLSSkipVerify:            instance.TLSSkipVerify,
 		HasLocalFilesystemAccess: instance.HasLocalFilesystemAccess,
@@ -225,6 +258,7 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		HardlinkBaseDir:          instance.HardlinkBaseDir,
 		HardlinkDirPreset:        instance.HardlinkDirPreset,
 		UseReflinks:              instance.UseReflinks,
+		FallbackToRegularMode:    instance.FallbackToRegularMode,
 		Connected:                healthy,
 		HasDecryptionError:       hasDecryptionError,
 		ConnectionStatus:         connectionStatus,
@@ -259,6 +293,7 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		Name:                     instance.Name,
 		Host:                     instance.Host,
 		Username:                 instance.Username,
+		HasAPIKey:                instance.APIKeyEncrypted != "",
 		BasicUsername:            instance.BasicUsername,
 		TLSSkipVerify:            instance.TLSSkipVerify,
 		HasLocalFilesystemAccess: instance.HasLocalFilesystemAccess,
@@ -266,6 +301,7 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		HardlinkBaseDir:          instance.HardlinkBaseDir,
 		HardlinkDirPreset:        instance.HardlinkDirPreset,
 		UseReflinks:              instance.UseReflinks,
+		FallbackToRegularMode:    instance.FallbackToRegularMode,
 		Connected:                false, // Will be updated asynchronously
 		HasDecryptionError:       false,
 		SortOrder:                instance.SortOrder,
@@ -341,6 +377,7 @@ type CreateInstanceRequest struct {
 	Host                     string                             `json:"host"`
 	Username                 string                             `json:"username"`
 	Password                 string                             `json:"password"`
+	APIKey                   string                             `json:"apiKey,omitempty"`
 	BasicUsername            *string                            `json:"basicUsername,omitempty"`
 	BasicPassword            *string                            `json:"basicPassword,omitempty"`
 	TLSSkipVerify            bool                               `json:"tlsSkipVerify,omitempty"`
@@ -354,6 +391,7 @@ type UpdateInstanceRequest struct {
 	Host                     string                             `json:"host"`
 	Username                 string                             `json:"username"`
 	Password                 string                             `json:"password,omitempty"` // Optional for updates
+	APIKey                   *string                            `json:"apiKey,omitempty"`
 	BasicUsername            *string                            `json:"basicUsername,omitempty"`
 	BasicPassword            *string                            `json:"basicPassword,omitempty"`
 	TLSSkipVerify            *bool                              `json:"tlsSkipVerify,omitempty"`
@@ -362,6 +400,7 @@ type UpdateInstanceRequest struct {
 	HardlinkBaseDir          *string                            `json:"hardlinkBaseDir,omitempty"`
 	HardlinkDirPreset        *string                            `json:"hardlinkDirPreset,omitempty"`
 	UseReflinks              *bool                              `json:"useReflinks,omitempty"`
+	FallbackToRegularMode    *bool                              `json:"fallbackToRegularMode,omitempty"`
 	ReannounceSettings       *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
 }
 
@@ -375,6 +414,7 @@ type InstanceResponse struct {
 	Name                     string                            `json:"name"`
 	Host                     string                            `json:"host"`
 	Username                 string                            `json:"username"`
+	HasAPIKey                bool                              `json:"hasApiKey"`
 	BasicUsername            *string                           `json:"basicUsername,omitempty"`
 	TLSSkipVerify            bool                              `json:"tlsSkipVerify"`
 	HasLocalFilesystemAccess bool                              `json:"hasLocalFilesystemAccess"`
@@ -382,6 +422,7 @@ type InstanceResponse struct {
 	HardlinkBaseDir          string                            `json:"hardlinkBaseDir"`
 	HardlinkDirPreset        string                            `json:"hardlinkDirPreset"`
 	UseReflinks              bool                              `json:"useReflinks"`
+	FallbackToRegularMode    bool                              `json:"fallbackToRegularMode"`
 	Connected                bool                              `json:"connected"`
 	HasDecryptionError       bool                              `json:"hasDecryptionError"`
 	RecentErrors             []models.InstanceError            `json:"recentErrors,omitempty"`
@@ -562,7 +603,7 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 	}
 
 	// Create instance
-	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify, req.HasLocalFilesystemAccess)
+	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify, req.HasLocalFilesystemAccess, req.APIKey)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to create instance")
@@ -628,6 +669,11 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		req.BasicPassword = existingInstance.BasicPasswordEncrypted
 	}
 
+	// Handle redacted API key - if redacted, preserve the existing API key
+	if req.APIKey != nil && domain.IsRedactedString(*req.APIKey) {
+		req.APIKey = nil
+	}
+
 	// Validate hardlink/reflink settings
 	effectiveLocalAccess := existingInstance.HasLocalFilesystemAccess
 	if req.HasLocalFilesystemAccess != nil {
@@ -682,8 +728,9 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		HardlinkBaseDir:          req.HardlinkBaseDir,
 		HardlinkDirPreset:        req.HardlinkDirPreset,
 		UseReflinks:              req.UseReflinks,
+		FallbackToRegularMode:    req.FallbackToRegularMode,
 	}
-	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, updateParams)
+	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, updateParams, req.APIKey)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")

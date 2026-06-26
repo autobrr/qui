@@ -1,26 +1,37 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import type { Instance } from "@/types"
 import { Cog } from "lucide-react"
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { InstancePreferencesDialog } from "./preferences/InstancePreferencesDialog"
 
 interface InstanceSettingsButtonProps {
   instanceId: number
   instanceName: string
+  instance?: Instance
   onClick?: (e: React.MouseEvent) => void
   showButton?: boolean
+  defaultTab?: string
+  /** Use a proper Button component instead of a span */
+  asButton?: boolean
 }
 
 export function InstanceSettingsButton({
   instanceId,
   instanceName,
+  instance,
   onClick,
   showButton = true,
+  defaultTab,
+  asButton = false,
 }: InstanceSettingsButtonProps) {
+  const { t } = useTranslation("instances")
   const [preferencesOpen, setPreferencesOpen] = useState(false)
 
   const handleClick = (e: React.MouseEvent) => {
@@ -35,23 +46,36 @@ export function InstanceSettingsButton({
       {showButton && (
         <Tooltip>
           <TooltipTrigger asChild>
-            <span
-              role="button"
-              tabIndex={0}
-              className="cursor-pointer"
-              onClick={handleClick}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault()
-                  handleClick(e as unknown as React.MouseEvent)
-                }
-              }}
-            >
-              <Cog className="h-4 w-4" />
-            </span>
+            {asButton ? (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 p-0"
+                onClick={handleClick}
+                aria-label={t("header.instanceSettings", { ns: "common" })}
+              >
+                <Cog className="h-4 w-4" />
+              </Button>
+            ) : (
+              <span
+                aria-label={t("header.instanceSettings", { ns: "common" })}
+                role="button"
+                tabIndex={0}
+                className="cursor-pointer"
+                onClick={handleClick}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    handleClick(e as unknown as React.MouseEvent)
+                  }
+                }}
+              >
+                <Cog className="h-4 w-4" />
+              </span>
+            )}
           </TooltipTrigger>
           <TooltipContent>
-            Instance Settings
+            {t("settingsButton.tooltip")}
           </TooltipContent>
         </Tooltip>
       )}
@@ -61,6 +85,8 @@ export function InstanceSettingsButton({
         onOpenChange={setPreferencesOpen}
         instanceId={instanceId}
         instanceName={instanceName}
+        instance={instance}
+        defaultTab={defaultTab}
       />
     </>
   )

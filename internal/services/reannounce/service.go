@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package reannounce
@@ -17,6 +17,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 )
 
 // Config controls the background scan cadence and debounce behavior.
@@ -47,6 +48,8 @@ type Service struct {
 	historySkipped   map[int][]ActivityEvent
 	historyMu        sync.RWMutex
 	historyCap       int
+
+	activityPublisher activity.Publisher
 }
 
 type reannounceJob struct {
@@ -122,22 +125,32 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, settingsStore *
 		cfg.HistorySize = DefaultConfig().HistorySize
 	}
 	svc := &Service{
-		cfg:              cfg,
-		instanceStore:    instanceStore,
-		settingsStore:    settingsStore,
-		settingsCache:    cache,
-		clientPool:       clientPool,
-		syncManager:      syncManager,
-		j:                make(map[int]map[string]*reannounceJob),
-		historySucceeded: make(map[int][]ActivityEvent),
-		historyFailed:    make(map[int][]ActivityEvent),
-		historySkipped:   make(map[int][]ActivityEvent),
-		historyCap:       cfg.HistorySize,
+		cfg:               cfg,
+		instanceStore:     instanceStore,
+		settingsStore:     settingsStore,
+		settingsCache:     cache,
+		clientPool:        clientPool,
+		syncManager:       syncManager,
+		j:                 make(map[int]map[string]*reannounceJob),
+		historySucceeded:  make(map[int][]ActivityEvent),
+		historyFailed:     make(map[int][]ActivityEvent),
+		historySkipped:    make(map[int][]ActivityEvent),
+		historyCap:        cfg.HistorySize,
+		activityPublisher: activity.NopPublisher{},
 	}
 	svc.now = time.Now
 	svc.runJob = svc.executeJob
 	svc.spawn = func(fn func()) { go fn() }
 	return svc
+}
+
+// SetActivityPublisher wires the qui server-event hub so reannounce activity is
+// pushed to connected clients instead of polled. Safe to call once at startup.
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
 }
 
 // Start launches the background monitoring loop.
@@ -782,19 +795,11 @@ func normalizeHashes(hashes []string) []string {
 	return result
 }
 
-// DebugState returns current job counts for observability.
-func (s *Service) DebugState() string {
-	s.jobsMu.Lock()
-	defer s.jobsMu.Unlock()
-	return fmt.Sprintf("instances=%d", len(s.j))
-}
-
 func (s *Service) recordActivity(instanceID int, hash string, torrentName string, trackers string, outcome ActivityOutcome, reason string) {
 	if s == nil || instanceID == 0 {
 		return
 	}
 	s.historyMu.Lock()
-	defer s.historyMu.Unlock()
 
 	// Initialize maps if needed
 	if s.historySucceeded == nil {
@@ -840,6 +845,16 @@ func (s *Service) recordActivity(instanceID int, hash string, torrentName string
 		if len(s.historySkipped[instanceID]) > limit {
 			s.historySkipped[instanceID] = s.historySkipped[instanceID][len(s.historySkipped[instanceID])-limit:]
 		}
+	}
+	s.historyMu.Unlock()
+
+	// Signal connected clients that this instance's reannounce activity changed so
+	// they refetch instead of polling. Published after releasing the lock.
+	if s.activityPublisher != nil {
+		s.activityPublisher.Publish(activity.Event{
+			Kind:       activity.KindReannounceActivity,
+			InstanceID: instanceID,
+		})
 	}
 }
 

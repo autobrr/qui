@@ -1,9 +1,14 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package orphanscan
 
 import "time"
+
+// MaxSyncAge is the maximum age of sync data trusted by orphan scan readiness checks.
+const (
+	MaxSyncAge = 2 * time.Minute
+)
 
 // Config holds the service configuration.
 type Config struct {
@@ -33,7 +38,8 @@ func DefaultSettings() Settings {
 		GracePeriodMinutes:  10,
 		IgnorePaths:         []string{},
 		ScanIntervalHours:   24,
-		MaxFilesPerRun:      10000,
+		PreviewSort:         "size_desc",
+		MaxFilesPerRun:      1000,
 		AutoCleanupEnabled:  false,
 		AutoCleanupMaxFiles: 100,
 	}

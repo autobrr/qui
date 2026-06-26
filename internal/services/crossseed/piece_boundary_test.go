@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package crossseed
@@ -40,7 +40,7 @@ func buildMultiFileTorrent(t *testing.T, rootName string, pieceLength int64, fil
 
 	for name, content := range files {
 		path := filepath.Join(root, name)
-		require.NoError(t, os.WriteFile(path, content, 0o644))
+		require.NoError(t, os.WriteFile(path, content, 0o600))
 	}
 
 	info := metainfo.Info{
@@ -439,40 +439,6 @@ func TestCheckPieceBoundarySafety(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestCheckPieceBoundarySafetyFromMetainfo tests the metainfo wrapper.
-func TestCheckPieceBoundarySafetyFromMetainfo(t *testing.T) {
-	const pieceLength = int64(16)
-
-	// Build a torrent with content file ending mid-piece followed by ignored file
-	main := bytes.Repeat([]byte("M"), int(pieceLength*3+5)) // 53 bytes, ends mid-piece
-	extra := bytes.Repeat([]byte("E"), 11)                  // NFO-like extra file
-
-	torrentData := buildMultiFileTorrent(t, "test-root", pieceLength, map[string][]byte{
-		"a-main.mkv":  main,
-		"b-extra.nfo": extra,
-	})
-
-	_, info := mustLoadTorrent(t, torrentData)
-
-	// Test with extra file marked as ignored (should be unsafe)
-	// Path format includes root folder: "test-root/a-main.mkv"
-	result := CheckPieceBoundarySafetyFromMetainfo(&info, func(path string) bool {
-		return path == "test-root/a-main.mkv" // Only main is content
-	})
-
-	require.False(t, result.Safe, "should detect unsafe boundary when ignored file starts mid-piece")
-	require.Len(t, result.UnsafeBoundaries, 1)
-	require.Equal(t, "test-root/a-main.mkv", result.UnsafeBoundaries[0].ContentFile)
-	require.Equal(t, "test-root/b-extra.nfo", result.UnsafeBoundaries[0].IgnoredFile)
-
-	// Test with both files marked as content (should be safe - no transitions)
-	result2 := CheckPieceBoundarySafetyFromMetainfo(&info, func(path string) bool {
-		return true // All content
-	})
-
-	require.True(t, result2.Safe, "should be safe when all files are content")
 }
 
 // TestHasUnsafeIgnoredExtras tests the main entry point function.

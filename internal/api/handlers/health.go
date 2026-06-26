@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
-
-	"github.com/go-chi/chi/v5"
 )
 
 type HealthHandler struct {
@@ -16,11 +14,6 @@ type HealthHandler struct {
 
 func NewHealthHandler() *HealthHandler {
 	return &HealthHandler{}
-}
-
-func (h *HealthHandler) Routes(r chi.Router) {
-	r.Get("/readiness", h.HandleReady)
-	r.Get("/liveness", h.HandleLiveness)
 }
 
 func (h *HealthHandler) HandleHealth(w http.ResponseWriter, r *http.Request) {

@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import React from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useTranslation } from "react-i18next"
 
 interface NumberInputWithUnlimitedProps {
   label: string
@@ -32,27 +33,29 @@ export function NumberInputWithUnlimited({
   placeholder,
   disabled = false,
 }: NumberInputWithUnlimitedProps) {
+  const { t } = useTranslation("common")
+
   // Display value: show empty string for -1 when unlimited is allowed
   const displayValue = allowUnlimited && value === -1 ? "" : value.toString()
 
   // Default placeholder based on unlimited support
-  const defaultPlaceholder = allowUnlimited ? "Unlimited" : undefined
+  const defaultPlaceholder = allowUnlimited ? t("numberInput.unlimited") : undefined
   const actualPlaceholder = placeholder ?? defaultPlaceholder
-  
+
   // Track previous value to detect when we hit 0 and should transition to unlimited
   const prevValueRef = React.useRef(value)
-  
+
   React.useEffect(() => {
     if (!allowUnlimited) return
-    
+
     const prevValue = prevValueRef.current
     const currentValue = value
-    
+
     // If we stepped down to exactly 0 from a positive value, transition to unlimited
     if (prevValue > 0 && currentValue === 0) {
       onChange(-1)
     }
-    
+
     prevValueRef.current = value
   }, [value, allowUnlimited, onChange])
 
@@ -60,9 +63,9 @@ export function NumberInputWithUnlimited({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!allowUnlimited) return
 
-    if (e.key === 'ArrowUp' && value === -1) {
+    if (e.key === "ArrowUp" && value === -1) {
       e.preventDefault()
-      const stepValue = typeof step === 'string' ? parseFloat(step) : (step || 1)
+      const stepValue = typeof step === "string" ? parseFloat(step) : (step || 1)
       const minPositive = stepValue // Use the step value as the starting point
       onChange(minPositive)
     }
@@ -75,7 +78,7 @@ export function NumberInputWithUnlimited({
         {description && (
           <p className="text-xs text-muted-foreground">
             {description}
-            {allowUnlimited && " (use -1 for unlimited)"}
+            {allowUnlimited && t("numberInput.useUnlimited")}
           </p>
         )}
       </div>
@@ -106,7 +109,7 @@ export function NumberInputWithUnlimited({
               onChange(-1)
               return
             }
-            
+
             // Prevent invalid negative values between -1 and 0
             if (num < 0 && num > -1) {
               // Don't update the value, effectively blocking invalid negative values

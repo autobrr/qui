@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package reflinktree provides utilities for creating reflink (copy-on-write)
@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
@@ -174,6 +175,9 @@ func containsPath(paths []string, path string) bool {
 func isDirNotEmpty(err error) bool {
 	if err == nil {
 		return false
+	}
+	if errors.Is(err, syscall.ENOTEMPTY) {
+		return true
 	}
 	// Different OS have different error messages
 	errStr := err.Error()

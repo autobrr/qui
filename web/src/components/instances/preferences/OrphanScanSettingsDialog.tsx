@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -10,8 +10,9 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from "@/components/ui/dialog"
+import { useTranslation } from "react-i18next"
 import { OrphanScanSettingsForm } from "./OrphanScanSettingsForm"
 
 const FORM_ID = "orphan-scan-settings-dialog-form"
@@ -29,11 +30,13 @@ export function OrphanScanSettingsDialog({
   instanceId,
   instanceName,
 }: OrphanScanSettingsDialogProps) {
+  const { t } = useTranslation("instances")
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl max-h-[90dvh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Configure Orphan Scan</DialogTitle>
+          <DialogTitle>{t("preferences.orphanScan.configureTitle")}</DialogTitle>
           <DialogDescription>{instanceName ?? "Instance"}</DialogDescription>
         </DialogHeader>
 
@@ -47,7 +50,7 @@ export function OrphanScanSettingsDialog({
 
         <DialogFooter className="border-t pt-4">
           <Button type="submit" form={FORM_ID}>
-            Save Changes
+            {t("preferences.orphanScan.saveChanges")}
           </Button>
         </DialogFooter>
       </DialogContent>

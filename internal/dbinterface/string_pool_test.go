@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package dbinterface
@@ -12,15 +12,17 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func TestInternStringsBatch(t *testing.T) {
-	// Create in-memory database
+// newStringPoolTestDB opens an in-memory SQLite database with the string_pool
+// schema. AUTOINCREMENT is load-bearing for tests that read sqlite_sequence.
+func newStringPoolTestDB(tb testing.TB) *sql.DB {
+	tb.Helper()
+
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
-		t.Fatalf("Failed to open database: %v", err)
+		tb.Fatalf("Failed to open database: %v", err)
 	}
-	defer db.Close()
+	tb.Cleanup(func() { _ = db.Close() })
 
-	// Create string_pool table
 	_, err = db.Exec(`
 		CREATE TABLE string_pool (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,8 +30,14 @@ func TestInternStringsBatch(t *testing.T) {
 		)
 	`)
 	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
+		tb.Fatalf("Failed to create table: %v", err)
 	}
+
+	return db
+}
+
+func TestInternStringsBatch(t *testing.T) {
+	db := newStringPoolTestDB(t)
 
 	ctx := context.Background()
 
@@ -91,7 +99,7 @@ func TestInternStringsBatch(t *testing.T) {
 		t.Errorf("Expected empty result for empty input, got %d items", len(emptyIDs))
 	}
 
-	// Test single value (fast path)
+	// Test single value
 	singleIDs, err := InternStrings(ctx, tx, "single_value")
 	if err != nil {
 		t.Fatalf("InternStrings with single value failed: %v", err)
@@ -111,21 +119,7 @@ func TestInternStringsBatch(t *testing.T) {
 
 func TestInternStringsLargeBatch(t *testing.T) {
 	// Test that we can handle batches larger than SQLite's parameter limit
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("Failed to open database: %v", err)
-	}
-	defer db.Close()
-
-	_, err = db.Exec(`
-		CREATE TABLE string_pool (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			value TEXT NOT NULL UNIQUE
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
-	}
+	db := newStringPoolTestDB(t)
 
 	ctx := context.Background()
 	tx, err := db.Begin()
@@ -136,7 +130,7 @@ func TestInternStringsLargeBatch(t *testing.T) {
 
 	// Create 2000 unique values (well over the 900 chunk limit)
 	largeValues := make([]string, 2000)
-	for i := 0; i < 2000; i++ {
+	for i := range 2000 {
 		largeValues[i] = fmt.Sprintf("value_%d", i)
 	}
 
@@ -167,25 +161,11 @@ func TestInternStringsLargeBatch(t *testing.T) {
 }
 
 func BenchmarkInternStringsIndividual(b *testing.B) {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		b.Fatalf("Failed to open database: %v", err)
-	}
-	defer db.Close()
-
-	_, err = db.Exec(`
-		CREATE TABLE string_pool (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			value TEXT NOT NULL UNIQUE
-		)
-	`)
-	if err != nil {
-		b.Fatalf("Failed to create table: %v", err)
-	}
+	db := newStringPoolTestDB(b)
 
 	ctx := context.Background()
 	values := make([]string, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		values[i] = "value" + string(rune(i))
 	}
 
@@ -208,25 +188,11 @@ func BenchmarkInternStringsIndividual(b *testing.B) {
 }
 
 func BenchmarkInternStringsBatch(b *testing.B) {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		b.Fatalf("Failed to open database: %v", err)
-	}
-	defer db.Close()
-
-	_, err = db.Exec(`
-		CREATE TABLE string_pool (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			value TEXT NOT NULL UNIQUE
-		)
-	`)
-	if err != nil {
-		b.Fatalf("Failed to create table: %v", err)
-	}
+	db := newStringPoolTestDB(b)
 
 	ctx := context.Background()
 	values := make([]string, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		values[i] = "value" + string(rune(i))
 	}
 
@@ -247,23 +213,7 @@ func BenchmarkInternStringsBatch(b *testing.B) {
 }
 
 func TestGetStringID(t *testing.T) {
-	// Create in-memory database
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("Failed to open database: %v", err)
-	}
-	defer db.Close()
-
-	// Create string_pool table
-	_, err = db.Exec(`
-		CREATE TABLE string_pool (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			value TEXT NOT NULL UNIQUE
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
-	}
+	db := newStringPoolTestDB(t)
 
 	ctx := context.Background()
 
@@ -337,23 +287,8 @@ func TestGetStringID(t *testing.T) {
 }
 
 func TestInternEmptyString(t *testing.T) {
-	// Create in-memory database
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("Failed to open database: %v", err)
-	}
-	defer db.Close()
-
-	// Create string_pool table WITHOUT the empty string
-	_, err = db.Exec(`
-		CREATE TABLE string_pool (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			value TEXT NOT NULL UNIQUE
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create table: %v", err)
-	}
+	// Fresh table, so the empty string does not exist yet
+	db := newStringPoolTestDB(t)
 
 	ctx := context.Background()
 
@@ -413,5 +348,109 @@ func TestInternEmptyString(t *testing.T) {
 
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("Failed to commit transaction: %v", err)
+	}
+}
+
+// TestInternStringsDoesNotConsumeIDsForExistingValues guards the SELECT-first
+// interning order. Re-interning existing values must not attempt inserts:
+// conflicting inserts consume autoincrement/sequence values without adding
+// rows (on Postgres this exhausted the int4 string_pool_id_seq).
+// sqlite_sequence exhibits the same advance-on-conflict behavior, so it
+// serves as the burn detector here.
+func TestInternStringsDoesNotConsumeIDsForExistingValues(t *testing.T) {
+	db := newStringPoolTestDB(t)
+
+	ctx := context.Background()
+
+	readSeq := func() int64 {
+		t.Helper()
+		var seq int64
+		err := db.QueryRowContext(ctx, "SELECT seq FROM sqlite_sequence WHERE name = 'string_pool'").Scan(&seq)
+		if err != nil {
+			t.Fatalf("Failed to read sqlite_sequence: %v", err)
+		}
+		return seq
+	}
+
+	intern := func(values ...string) []int64 {
+		t.Helper()
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatalf("Failed to begin transaction: %v", err)
+		}
+		defer func() { _ = tx.Rollback() }()
+
+		ids, err := InternStrings(ctx, tx, values...)
+		if err != nil {
+			t.Fatalf("InternStrings(%q) failed: %v", values, err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatalf("Failed to commit transaction: %v", err)
+		}
+		return ids
+	}
+
+	firstIDs := intern("hash1", "hash2", "hash3", "name1")
+	seqAfterFirst := readSeq()
+
+	// Re-interning the same values (batch path) must not touch the sequence
+	secondIDs := intern("hash1", "hash2", "hash3", "name1")
+	if seq := readSeq(); seq != seqAfterFirst {
+		t.Errorf("Batch re-intern advanced sequence from %d to %d; expected no inserts for existing values", seqAfterFirst, seq)
+	}
+	for i := range firstIDs {
+		if secondIDs[i] != firstIDs[i] {
+			t.Errorf("ID changed on re-intern at index %d: first=%d, second=%d", i, firstIDs[i], secondIDs[i])
+		}
+	}
+
+	// A single-value call must not touch the sequence either
+	singleIDs := intern("hash2")
+	if seq := readSeq(); seq != seqAfterFirst {
+		t.Errorf("Single re-intern advanced sequence from %d to %d", seqAfterFirst, seq)
+	}
+	if singleIDs[0] != firstIDs[1] {
+		t.Errorf("Single re-intern returned %d, expected %d", singleIDs[0], firstIDs[1])
+	}
+
+	// Mixed batch: only the genuinely new value may consume an ID
+	mixedIDs := intern("hash1", "newvalue", "hash3")
+	if mixedIDs[0] != firstIDs[0] || mixedIDs[2] != firstIDs[2] {
+		t.Errorf("Existing values changed IDs in mixed batch: got %v", mixedIDs)
+	}
+	if mixedIDs[1] != seqAfterFirst+1 {
+		t.Errorf("New value got ID %d, expected %d (exactly one ID consumed)", mixedIDs[1], seqAfterFirst+1)
+	}
+
+	// InternEmptyString: second call must not touch the sequence
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("Failed to begin transaction: %v", err)
+	}
+	emptyID1, err := InternEmptyString(ctx, tx)
+	if err != nil {
+		t.Fatalf("InternEmptyString failed: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Failed to commit transaction: %v", err)
+	}
+	seqAfterEmpty := readSeq()
+
+	tx, err = db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("Failed to begin transaction: %v", err)
+	}
+	emptyID2, err := InternEmptyString(ctx, tx)
+	if err != nil {
+		t.Fatalf("Second InternEmptyString failed: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Failed to commit transaction: %v", err)
+	}
+	if emptyID2 != emptyID1 {
+		t.Errorf("InternEmptyString returned different IDs: %d then %d", emptyID1, emptyID2)
+	}
+	if seq := readSeq(); seq != seqAfterEmpty {
+		t.Errorf("InternEmptyString re-call advanced sequence from %d to %d", seqAfterEmpty, seq)
 	}
 }

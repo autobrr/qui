@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //go:build windows
@@ -33,27 +33,4 @@ func isSymlink(fi os.FileInfo) bool {
 	}
 	reserved0 := reserved0Field.Uint()
 	return reserved0 == syscall.IO_REPARSE_TAG_SYMLINK || reserved0 == 0xA0000003
-}
-
-func getLinkCount(fi os.FileInfo, path string) (uint64, error) {
-	pathp, err := syscall.UTF16PtrFromString(path)
-	if err != nil {
-		return 0, err
-	}
-	attrs := uint32(syscall.FILE_FLAG_BACKUP_SEMANTICS)
-	if isSymlink(fi) {
-		// FILE_FLAG_OPEN_REPARSE_POINT to not follow symlinks
-		attrs |= syscall.FILE_FLAG_OPEN_REPARSE_POINT
-	}
-	h, err := syscall.CreateFile(pathp, 0, 0, nil, syscall.OPEN_EXISTING, attrs, 0)
-	if err != nil {
-		return 0, err
-	}
-	defer syscall.CloseHandle(h)
-
-	var info syscall.ByHandleFileInformation
-	if err := syscall.GetFileInformationByHandle(h, &info); err != nil {
-		return 0, err
-	}
-	return uint64(info.NumberOfLinks), nil
 }

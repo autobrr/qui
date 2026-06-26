@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 // Package orphanscan finds and removes orphan files not associated with any torrent.
@@ -10,10 +10,12 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
@@ -21,7 +23,16 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
+	"github.com/autobrr/qui/internal/services/notifications"
 )
+
+// healthChecker is the subset of *qbittorrent.Client methods needed for readiness checks.
+// Extracted as an interface to enable unit testing without a real qBittorrent connection.
+type healthChecker interface {
+	IsHealthy() bool
+	GetLastSyncUpdate() time.Time
+}
 
 // Service handles orphan file scanning and deletion.
 type Service struct {
@@ -29,6 +40,9 @@ type Service struct {
 	instanceStore *models.InstanceStore
 	store         *models.OrphanScanStore
 	syncManager   *qbittorrent.SyncManager
+	notifier      notifications.Notifier
+
+	activityPublisher activity.Publisher
 
 	// Per-instance mutex to prevent overlapping scans
 	instanceMu map[int]*sync.Mutex
@@ -37,10 +51,17 @@ type Service struct {
 	// In-memory cancel handles keyed by runID
 	cancelFuncs map[int64]context.CancelFunc
 	cancelMu    sync.Mutex
+
+	// Providers for testing (nil = use real sync manager)
+	getAllTorrentsProvider       func(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	getTorrentFilesBatchProvider func(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
+	getClientProvider            func(ctx context.Context, instanceID int) (healthChecker, error)
+	listInstancesProvider        func(ctx context.Context) ([]*models.Instance, error)
+	getLastCompletedRunProvider  func(ctx context.Context, instanceID int) (*models.OrphanScanRun, error)
 }
 
 // NewService creates a new orphan scan service.
-func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.OrphanScanStore, syncManager *qbittorrent.SyncManager) *Service {
+func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.OrphanScanStore, syncManager *qbittorrent.SyncManager, notifier notifications.Notifier) *Service {
 	if cfg.SchedulerInterval <= 0 {
 		cfg.SchedulerInterval = DefaultConfig().SchedulerInterval
 	}
@@ -51,13 +72,137 @@ func NewService(cfg Config, instanceStore *models.InstanceStore, store *models.O
 		cfg.StuckRunThreshold = DefaultConfig().StuckRunThreshold
 	}
 	return &Service{
-		cfg:           cfg,
-		instanceStore: instanceStore,
-		store:         store,
-		syncManager:   syncManager,
-		instanceMu:    make(map[int]*sync.Mutex),
-		cancelFuncs:   make(map[int64]context.CancelFunc),
+		cfg:               cfg,
+		instanceStore:     instanceStore,
+		store:             store,
+		syncManager:       syncManager,
+		notifier:          notifier,
+		activityPublisher: activity.NopPublisher{},
+		instanceMu:        make(map[int]*sync.Mutex),
+		cancelFuncs:       make(map[int64]context.CancelFunc),
 	}
+}
+
+// SetActivityPublisher wires the qui server-event hub so orphan scan run status
+// transitions are pushed to connected clients instead of polled. Safe to call
+// once at startup.
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
+}
+
+// emitRun signals connected clients that an orphan scan run changed status.
+// Call only after the status transition has been persisted and any held lock
+// released; never inside per-file progress loops.
+func (s *Service) emitRun(instanceID int, runID int64) {
+	if s == nil || s.activityPublisher == nil {
+		return
+	}
+	s.activityPublisher.Publish(activity.Event{
+		Kind:       activity.KindOrphanScanRun,
+		InstanceID: instanceID,
+		ResourceID: strconv.FormatInt(runID, 10),
+	})
+}
+
+// getAllTorrents returns all torrents for an instance, using the provider if set.
+func (s *Service) getAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error) {
+	if s.getAllTorrentsProvider != nil {
+		return s.getAllTorrentsProvider(ctx, instanceID)
+	}
+	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("get all torrents: %w", err)
+	}
+	return torrents, nil
+}
+
+// getTorrentFilesBatch returns files for multiple torrents, using the provider if set.
+func (s *Service) getTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error) {
+	if s.getTorrentFilesBatchProvider != nil {
+		return s.getTorrentFilesBatchProvider(ctx, instanceID, hashes)
+	}
+	files, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
+	if err != nil {
+		return nil, fmt.Errorf("get torrent files batch: %w", err)
+	}
+	return files, nil
+}
+
+// getClient returns a client for an instance, using the provider if set.
+func (s *Service) getClient(ctx context.Context, instanceID int) (healthChecker, error) {
+	if s.getClientProvider != nil {
+		return s.getClientProvider(ctx, instanceID)
+	}
+	client, err := s.syncManager.GetClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("get client: %w", err)
+	}
+	return client, nil
+}
+
+func (s *Service) listInstances(ctx context.Context) ([]*models.Instance, error) {
+	if s.listInstancesProvider != nil {
+		return s.listInstancesProvider(ctx)
+	}
+	instances, err := s.instanceStore.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list instances: %w", err)
+	}
+	return instances, nil
+}
+
+func (s *Service) getLastCompletedRun(ctx context.Context, instanceID int) (*models.OrphanScanRun, error) {
+	if s.getLastCompletedRunProvider != nil {
+		return s.getLastCompletedRunProvider(ctx, instanceID)
+	}
+	if s.store == nil {
+		return nil, errors.New("orphan scan store unavailable")
+	}
+	return s.store.GetLastCompletedRun(ctx, instanceID)
+}
+
+func scanRootsFromTorrents(torrents []qbt.Torrent) []string {
+	scanRoots := make(map[string]struct{})
+	for i := range torrents {
+		addAbsoluteScanRoot(scanRoots, torrents[i].SavePath)
+
+		// Auto TMM can rewrite save_path to a category root without moving the
+		// payload. content_path still points at the real file/folder on disk, and
+		// using it directly is enough for conservative overlap detection.
+		addAbsoluteScanRoot(scanRoots, torrents[i].ContentPath)
+	}
+
+	roots := make([]string, 0, len(scanRoots))
+	for r := range scanRoots {
+		roots = append(roots, r)
+	}
+	return roots
+}
+
+func scanRootsOverlap(a, b []string) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+
+	for _, ra := range a {
+		na := normalizePath(ra)
+		if na == "" {
+			continue
+		}
+		for _, rb := range b {
+			nb := normalizePath(rb)
+			if nb == "" {
+				continue
+			}
+			if na == nb || isPathUnderNormalized(na, nb) || isPathUnderNormalized(nb, na) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Start starts the background scheduler.
@@ -88,10 +233,22 @@ func (s *Service) loop(ctx context.Context) {
 }
 
 func (s *Service) recoverStuckRuns(ctx context.Context) error {
-	// Mark old pending/scanning runs as failed (they won't resume)
-	// Note: preview_ready is intentionally excluded - valid to keep around indefinitely
-	// Note: deleting is excluded - let user decide how to handle interrupted deletions
-	return s.store.MarkStuckRunsFailed(ctx, s.cfg.StuckRunThreshold, []string{"pending", "scanning"})
+	// Immediately terminate interrupted deletions after restart.
+	// We do NOT attempt to resume; user can run a new scan if desired.
+	if err := s.store.MarkDeletingRunsFailed(ctx, "Deletion interrupted by restart"); err != nil {
+		return fmt.Errorf("mark deleting runs failed: %w", err)
+	}
+
+	// Mark old pending/scanning runs as failed (they won't resume).
+	// Note: preview_ready is intentionally excluded - valid to keep around indefinitely.
+	if err := s.store.MarkStuckRunsFailed(ctx, s.cfg.StuckRunThreshold, []string{"pending", "scanning"}); err != nil {
+		return fmt.Errorf("mark stuck runs failed: %w", err)
+	}
+
+	// Crash recovery operates in bulk without per-run identifiers, so emit a coarse
+	// signal that prompts clients to refetch any runs they were tracking.
+	s.emitRun(0, 0)
+	return nil
 }
 
 func (s *Service) checkScheduledScans(ctx context.Context) {
@@ -151,7 +308,6 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 
 	// Launch goroutines for each due scan (jitter handled via timer)
 	for _, scan := range due {
-		scan := scan // capture
 		go func() {
 			// Wait for jitter-adjusted trigger time
 			delay := time.Until(scan.triggerAt)
@@ -168,11 +324,26 @@ func (s *Service) checkScheduledScans(ctx context.Context) {
 				return
 			}
 
-			// TriggerScan internally uses context.Background() for the scan goroutine
-			// so shutdown won't cancel in-progress scans, only prevents new starts
+			// Pre-check 1: Get client (cheap, before 60s settling)
+			client, clientErr := s.getClient(ctx, scan.instanceID)
+			if clientErr != nil {
+				log.Debug().Err(clientErr).Int("instance", scan.instanceID).
+					Msg("orphanscan: skipping scheduled scan (client unavailable)")
+				return
+			}
+
+			// Pre-check 2: Readiness gates (health + fresh sync)
+			if readinessErr := checkReadinessGates(client); readinessErr != nil {
+				log.Debug().Err(readinessErr).Int("instance", scan.instanceID).
+					Msg("orphanscan: skipping scheduled scan (readiness check failed)")
+				return
+			}
+
+			// All pre-checks passed - now safe to create run and execute
 			if _, err := s.TriggerScan(ctx, scan.instanceID, "scheduled"); err != nil {
 				if !errors.Is(err, ErrScanInProgress) {
-					log.Error().Err(err).Int("instance", scan.instanceID).Msg("orphanscan: scheduled scan failed")
+					log.Error().Err(err).Int("instance", scan.instanceID).
+						Msg("orphanscan: scheduled scan failed")
 				}
 			}
 		}()
@@ -208,6 +379,9 @@ func (s *Service) TriggerScan(ctx context.Context, instanceID int, triggeredBy s
 	s.cancelFuncs[runID] = cancel
 	s.cancelMu.Unlock()
 
+	// Run created (pending) - notify clients so they begin tracking it.
+	s.emitRun(instanceID, runID)
+
 	go func() {
 		defer func() {
 			s.cancelMu.Lock()
@@ -240,11 +414,30 @@ func (s *Service) CancelRun(ctx context.Context, runID int64) error {
 		s.cancelMu.Unlock()
 
 		// Mark as canceled in DB
-		return s.store.UpdateRunStatus(ctx, runID, "canceled")
+		if err := s.store.UpdateRunStatus(ctx, runID, "canceled"); err != nil {
+			return err
+		}
+		s.emitRun(run.InstanceID, runID)
+		return nil
 
 	case "deleting":
-		// Deletion in progress - refuse to cancel mid-delete for safety
-		return ErrCannotCancelDuringDeletion
+		// If deletion is truly in progress (in-memory cancel func exists), refuse to cancel mid-delete.
+		// If there's no cancel func, we assume this is a stale DB state (e.g. after restart) and allow
+		// cancellation to unblock future scans.
+		s.cancelMu.Lock()
+		_, inProgress := s.cancelFuncs[runID]
+		s.cancelMu.Unlock()
+		if inProgress {
+			return ErrCannotCancelDuringDeletion
+		}
+		if warnErr := s.store.UpdateRunWarning(ctx, runID, "Deletion was interrupted; marked canceled"); warnErr != nil {
+			log.Warn().Err(warnErr).Int64("runID", runID).Msg("orphanscan: failed to set warning on interrupted deletion")
+		}
+		if err := s.store.UpdateRunStatus(ctx, runID, "canceled"); err != nil {
+			return fmt.Errorf("update run status: %w", err)
+		}
+		s.emitRun(run.InstanceID, runID)
+		return nil
 
 	case "completed", "failed", "canceled":
 		return fmt.Errorf("%w: %s", ErrRunAlreadyFinished, run.Status)
@@ -303,6 +496,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		log.Error().Err(err).Msg("orphanscan: failed to update run status")
 		return
 	}
+	s.emitRun(instanceID, runID)
 
 	// Get settings (fall back to defaults if none exist yet)
 	settings, err := s.store.GetSettings(ctx, instanceID)
@@ -311,7 +505,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled during settings fetch")
 			return
 		}
-		s.failRun(ctx, runID, "failed to get settings")
+		s.failRun(ctx, runID, instanceID, "failed to get settings")
 		return
 	}
 	if settings == nil {
@@ -322,6 +516,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			GracePeriodMinutes:  defaults.GracePeriodMinutes,
 			IgnorePaths:         defaults.IgnorePaths,
 			ScanIntervalHours:   defaults.ScanIntervalHours,
+			PreviewSort:         defaults.PreviewSort,
 			MaxFilesPerRun:      defaults.MaxFilesPerRun,
 			AutoCleanupEnabled:  defaults.AutoCleanupEnabled,
 			AutoCleanupMaxFiles: defaults.AutoCleanupMaxFiles,
@@ -329,7 +524,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 	}
 
 	// Build file map
-	tfm, scanRoots, err := s.buildFileMap(ctx, instanceID)
+	result, err := s.buildFileMap(ctx, instanceID)
 	if err != nil {
 		// Check if this was a cancellation - preserve canceled status instead of marking failed
 		if ctx.Err() != nil {
@@ -337,11 +532,27 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 		log.Error().Err(err).Msg("orphanscan: failed to build file map")
-		s.failRun(ctx, runID, fmt.Sprintf("failed to build file map: %v", err))
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to build file map: %v", err))
 		return
 	}
 
-	log.Info().Int("files", tfm.Len()).Int("roots", len(scanRoots)).Msg("orphanscan: built file map")
+	tfm := result.fileMap
+	scanRoots := result.scanRoots
+
+	log.Info().
+		Int("files", tfm.Len()).
+		Int("roots", len(scanRoots)).
+		Int("torrentCount", result.torrentCount).
+		Msg("orphanscan: built file map")
+
+	if len(result.skippedRoots) > 0 {
+		warnMsg := fmt.Sprintf(
+			"Skipped %d scan path(s) because qBittorrent had transitional torrents with unavailable file lists:\n%s",
+			len(result.skippedRoots),
+			strings.Join(result.skippedRoots, "\n"),
+		)
+		s.warnRun(ctx, runID, warnMsg)
+	}
 
 	// Update scan paths
 	if err := s.store.UpdateRunScanPaths(ctx, runID, scanRoots); err != nil {
@@ -350,40 +561,46 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 
 	if len(scanRoots) == 0 {
 		log.Warn().Msg("orphanscan: no scan roots found")
-		s.failRun(ctx, runID, "no scan roots found (no torrents with absolute save paths)")
+		if len(result.skippedRoots) > 0 {
+			s.failRun(ctx, runID, instanceID, "no scan roots available: qBittorrent still has transitional torrents with unavailable file lists")
+			return
+		}
+		s.failRun(ctx, runID, instanceID, "no scan roots found (no torrents with absolute save paths)")
 		return
 	}
 
+	allIgnorePaths := append(append([]string(nil), settings.IgnorePaths...), result.skippedRoots...)
+
 	// Normalize ignore paths
-	ignorePaths, err := NormalizeIgnorePaths(settings.IgnorePaths)
+	ignorePaths, err := NormalizeIgnorePaths(allIgnorePaths)
 	if err != nil {
 		if ctx.Err() != nil {
 			log.Info().Int64("run", runID).Msg("orphanscan: scan canceled during ignore path normalization")
 			return
 		}
-		s.failRun(ctx, runID, fmt.Sprintf("invalid ignore paths: %v", err))
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("invalid ignore paths: %v", err))
 		return
 	}
 
 	gracePeriod := time.Duration(settings.GracePeriodMinutes) * time.Minute
 
-	// Walk each scan root and collect orphans
+	// Walk each scan root and collect orphans.
+	// Note: we intentionally do NOT enforce MaxFilesPerRun during the walk.
+	// We want the max-files cap to be applied *after sorting* so the preview
+	// and truncation reflect the user's configured ordering.
 	var allOrphans []OrphanFile
 	var walkErrors []string
-	truncated := false
-	remaining := settings.MaxFilesPerRun
-	var bytesFound int64
 
 	for _, root := range scanRoots {
 		if ctx.Err() != nil {
-			s.markCanceled(ctx, runID)
+			s.markCanceled(ctx, instanceID, runID)
 			return
 		}
 
-		orphans, wasTruncated, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, remaining)
+		orphans, _, err := walkScanRoot(ctx, root, tfm, ignorePaths, gracePeriod, 0)
 		if err != nil {
 			if ctx.Err() != nil {
-				s.markCanceled(ctx, runID)
+				s.markCanceled(ctx, instanceID, runID)
 				return
 			}
 			log.Error().Err(err).Str("root", root).Msg("orphanscan: walk error")
@@ -392,21 +609,58 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		}
 
 		allOrphans = append(allOrphans, orphans...)
-		for _, o := range orphans {
-			bytesFound += o.Size
-		}
-		remaining -= len(orphans)
+	}
 
-		if wasTruncated || remaining <= 0 {
-			truncated = true
-			break
+	// Deduplicate across scan roots.
+	// Some instances can produce overlapping scan roots (e.g. /data and /data/subdir),
+	// which would otherwise result in the same absolute path appearing multiple times.
+	allOrphans = dedupeOrphans(allOrphans)
+
+	previewSort := strings.TrimSpace(settings.PreviewSort)
+	if previewSort == "" {
+		previewSort = "size_desc"
+	}
+
+	sort.Slice(allOrphans, func(i, j int) bool {
+		a, b := allOrphans[i], allOrphans[j]
+
+		switch previewSort {
+		case "directory_size_desc":
+			da := strings.ToLower(filepath.Clean(filepath.Dir(a.Path)))
+			db := strings.ToLower(filepath.Clean(filepath.Dir(b.Path)))
+			if da != db {
+				return da < db
+			}
+			if a.Size != b.Size {
+				return a.Size > b.Size
+			}
+			return strings.ToLower(a.Path) < strings.ToLower(b.Path)
+		default: // "size_desc"
+			if a.Size != b.Size {
+				return a.Size > b.Size
+			}
+			return strings.ToLower(a.Path) < strings.ToLower(b.Path)
 		}
+	})
+
+	maxFiles := settings.MaxFilesPerRun
+	if maxFiles <= 0 {
+		maxFiles = DefaultSettings().MaxFilesPerRun
+	}
+	truncated := maxFiles > 0 && len(allOrphans) > maxFiles
+	if truncated {
+		allOrphans = allOrphans[:maxFiles]
+	}
+
+	var bytesFound int64
+	for _, o := range allOrphans {
+		bytesFound += o.Size
 	}
 
 	// If no orphans found but we had walk errors, all roots likely failed
 	if len(allOrphans) == 0 && len(walkErrors) > 0 {
 		errMsg := fmt.Sprintf("Failed to access %d scan path(s):\n%s", len(walkErrors), strings.Join(walkErrors, "\n"))
-		s.failRun(ctx, runID, errMsg)
+		s.failRun(ctx, runID, instanceID, errMsg)
 		return
 	}
 
@@ -437,7 +691,7 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			return
 		}
 		log.Error().Err(err).Msg("orphanscan: failed to insert files")
-		s.failRun(ctx, runID, fmt.Sprintf("failed to insert files: %v", err))
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to insert files: %v", err))
 		return
 	}
 
@@ -456,6 +710,17 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 			log.Error().Err(err).Msg("orphanscan: failed to update run status to completed")
 			return
 		}
+		s.emitRun(instanceID, runID)
+		startedAt, completedAt := s.getRunTimes(ctx, runID)
+		s.notify(ctx, notifications.Event{
+			Type:                     notifications.EventOrphanScanCompleted,
+			InstanceID:               instanceID,
+			OrphanScanRunID:          runID,
+			OrphanScanFilesDeleted:   0,
+			OrphanScanFoldersDeleted: 0,
+			StartedAt:                startedAt,
+			CompletedAt:              completedAt,
+		})
 		log.Info().Int64("run", runID).Msg("orphanscan: clean (no orphan files found)")
 		return
 	}
@@ -469,11 +734,41 @@ func (s *Service) executeScan(ctx context.Context, instanceID int, runID int64) 
 		log.Error().Err(err).Msg("orphanscan: failed to update run status to preview_ready")
 		return
 	}
+	s.emitRun(instanceID, runID)
 
 	log.Info().Int64("run", runID).Int("files", len(allOrphans)).Msg("orphanscan: preview ready")
 
 	// Check if auto-cleanup should be triggered for scheduled scans
 	s.maybeAutoCleanup(ctx, instanceID, runID, settings, len(allOrphans))
+}
+
+func dedupeOrphans(allOrphans []OrphanFile) []OrphanFile {
+	if len(allOrphans) <= 1 {
+		return allOrphans
+	}
+
+	byPath := make(map[string]OrphanFile, len(allOrphans))
+	for _, o := range allOrphans {
+		key := normalizePath(o.Path)
+		existing, ok := byPath[key]
+		if !ok {
+			byPath[key] = o
+			continue
+		}
+		if o.Size > existing.Size {
+			existing.Size = o.Size
+		}
+		if o.ModifiedAt.After(existing.ModifiedAt) {
+			existing.ModifiedAt = o.ModifiedAt
+		}
+		byPath[key] = existing
+	}
+
+	out := make([]OrphanFile, 0, len(byPath))
+	for _, o := range byPath {
+		out = append(out, o)
+	}
+	return out
 }
 
 // maybeAutoCleanup checks if auto-cleanup should be triggered for a scheduled scan.
@@ -532,26 +827,42 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		log.Error().Err(err).Msg("orphanscan: failed to update run status to deleting")
 		return
 	}
+	s.emitRun(instanceID, runID)
 
 	// Get run details
 	run, err := s.store.GetRun(ctx, runID)
 	if err != nil || run == nil {
-		s.failRun(ctx, runID, "failed to get run details")
+		s.failRun(ctx, runID, instanceID, "failed to get run details")
 		return
 	}
 
 	// Build fresh file map for re-checking
-	tfm, _, err := s.buildFileMap(ctx, instanceID)
+	fileMapResult, err := s.buildFileMap(ctx, instanceID)
 	if err != nil {
 		log.Error().Err(err).Msg("orphanscan: failed to rebuild file map for deletion")
-		s.failRun(ctx, runID, fmt.Sprintf("failed to rebuild file map: %v", err))
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to rebuild file map: %v", err))
 		return
+	}
+	tfm := fileMapResult.fileMap
+
+	// Load ignore paths before deletion loop
+	settings, err := s.store.GetSettings(ctx, instanceID)
+	if err != nil {
+		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: failed to load settings for deletion")
+	}
+	var ignorePaths []string
+	if settings != nil {
+		ignorePaths, err = NormalizeIgnorePaths(settings.IgnorePaths)
+		if err != nil {
+			log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during deletion, using unnormalized paths")
+			ignorePaths = settings.IgnorePaths // Fall back to unnormalized to preserve protection
+		}
 	}
 
 	// Get files for deletion
 	files, err := s.store.GetFilesForDeletion(ctx, runID)
 	if err != nil {
-		s.failRun(ctx, runID, fmt.Sprintf("failed to get files: %v", err))
+		s.failRun(ctx, runID, instanceID, fmt.Sprintf("failed to get files: %v", err))
 		return
 	}
 
@@ -580,14 +891,14 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			continue
 		}
 
-		disp, err := safeDeleteFile(scanRoot, f.FilePath, tfm)
+		disp, err := safeDeleteTarget(scanRoot, f.FilePath, tfm, ignorePaths)
 		if err != nil {
 			s.updateFileStatus(ctx, f.ID, "failed", err.Error())
-			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete file")
+			log.Warn().Err(err).Str("path", f.FilePath).Msg("orphanscan: failed to delete target")
 			failedDeletes++
 
 			// Detect error type for user-facing message
-			if errors.Is(err, syscall.EROFS) || strings.Contains(err.Error(), "read-only file system") {
+			if isReadOnlyFSError(err) || strings.Contains(err.Error(), "read-only file system") {
 				sawReadOnly = true
 			} else if os.IsPermission(err) || strings.Contains(err.Error(), "permission denied") || strings.Contains(err.Error(), "operation not permitted") {
 				sawPermissionDenied = true
@@ -601,6 +912,8 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		case deleteDispositionSkippedMissing:
 			s.updateFileStatus(ctx, f.ID, "skipped", "file no longer exists")
 			deletedOrMissingPaths = append(deletedOrMissingPaths, f.FilePath)
+		case deleteDispositionSkippedIgnored:
+			s.updateFileStatus(ctx, f.ID, "skipped", "path is protected by ignore paths")
 		case deleteDispositionDeleted:
 			s.updateFileStatus(ctx, f.ID, "deleted", "")
 			filesDeleted++
@@ -613,19 +926,6 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 	}
 
 	// Clean up empty directories
-	settings, err := s.store.GetSettings(ctx, instanceID)
-	if err != nil {
-		log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: failed to load settings for directory cleanup")
-	}
-	var ignorePaths []string
-	if settings != nil {
-		ignorePaths, err = NormalizeIgnorePaths(settings.IgnorePaths)
-		if err != nil {
-			log.Warn().Err(err).Int("instance", instanceID).Msg("orphanscan: invalid ignore paths during directory cleanup, using unnormalized paths")
-			ignorePaths = settings.IgnorePaths // Fall back to unnormalized to preserve protection
-		}
-	}
-
 	var foldersDeleted int
 	candidateDirs := collectCandidateDirsForCleanup(deletedOrMissingPaths, run.ScanPaths, ignorePaths)
 	for _, dir := range candidateDirs {
@@ -662,6 +962,16 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 			log.Error().Err(err).Msg("orphanscan: failed to mark run as failed")
 			return
 		}
+		s.emitRun(instanceID, runID)
+		startedAt, completedAt := s.getRunTimes(ctx, runID)
+		s.notify(ctx, notifications.Event{
+			Type:            notifications.EventOrphanScanFailed,
+			InstanceID:      instanceID,
+			OrphanScanRunID: runID,
+			ErrorMessage:    failureMessage,
+			StartedAt:       startedAt,
+			CompletedAt:     completedAt,
+		})
 		log.Warn().
 			Int64("run", runID).
 			Int("failedDeletes", failedDeletes).
@@ -674,6 +984,18 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		log.Error().Err(err).Msg("orphanscan: failed to update run completed")
 		return
 	}
+	s.emitRun(instanceID, runID)
+
+	startedAt, completedAt := s.getRunTimes(ctx, runID)
+	s.notify(ctx, notifications.Event{
+		Type:                     notifications.EventOrphanScanCompleted,
+		InstanceID:               instanceID,
+		OrphanScanRunID:          runID,
+		OrphanScanFilesDeleted:   filesDeleted,
+		OrphanScanFoldersDeleted: foldersDeleted,
+		StartedAt:                startedAt,
+		CompletedAt:              completedAt,
+	})
 
 	// Add warning for partial failures
 	if failedDeletes > 0 {
@@ -691,20 +1013,34 @@ func (s *Service) executeDeletion(ctx context.Context, instanceID int, runID int
 		Msg("orphanscan: deletion complete")
 }
 
-func (s *Service) markCanceled(ctx context.Context, runID int64) {
+func (s *Service) markCanceled(ctx context.Context, instanceID int, runID int64) {
 	if err := s.store.UpdateRunStatus(ctx, runID, "canceled"); err != nil {
 		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to mark run canceled")
+		return
 	}
+	s.emitRun(instanceID, runID)
 }
 
-func (s *Service) failRun(ctx context.Context, runID int64, message string) {
+func (s *Service) failRun(ctx context.Context, runID int64, instanceID int, message string) {
 	if ctx.Err() != nil {
 		log.Info().Int64("run", runID).Msg("orphanscan: run canceled, skipping failure update")
 		return
 	}
 	if err := s.store.UpdateRunFailed(ctx, runID, message); err != nil {
 		log.Error().Err(err).Int64("run", runID).Msg("orphanscan: failed to mark run failed")
+		return
 	}
+	s.emitRun(instanceID, runID)
+
+	startedAt, completedAt := s.getRunTimes(ctx, runID)
+	s.notify(ctx, notifications.Event{
+		Type:            notifications.EventOrphanScanFailed,
+		InstanceID:      instanceID,
+		OrphanScanRunID: runID,
+		ErrorMessage:    message,
+		StartedAt:       startedAt,
+		CompletedAt:     completedAt,
+	})
 }
 
 func (s *Service) warnRun(ctx context.Context, runID int64, message string) {
@@ -716,76 +1052,403 @@ func (s *Service) warnRun(ctx context.Context, runID int64, message string) {
 	}
 }
 
+func (s *Service) notify(ctx context.Context, event notifications.Event) {
+	if s == nil || s.notifier == nil {
+		return
+	}
+	s.notifier.Notify(ctx, event)
+}
+
+func (s *Service) getRunTimes(ctx context.Context, runID int64) (*time.Time, *time.Time) {
+	if s == nil || s.store == nil || runID <= 0 {
+		return nil, nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	run, err := s.store.GetRun(ctx, runID)
+	if err != nil || run == nil {
+		return nil, nil
+	}
+	var startedAt *time.Time
+	if !run.StartedAt.IsZero() {
+		started := run.StartedAt
+		startedAt = &started
+	}
+	return startedAt, run.CompletedAt
+}
+
 func (s *Service) updateFileStatus(ctx context.Context, fileID int64, status, errorMessage string) {
 	if err := s.store.UpdateFileStatus(ctx, fileID, status, errorMessage); err != nil {
 		log.Error().Err(err).Int64("file", fileID).Str("status", status).Msg("orphanscan: failed to update file status")
 	}
 }
 
-func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*TorrentFileMap, []string, error) {
-	// Add timeout to prevent indefinite blocking if qBittorrent is unresponsive
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancel()
-
-	torrents, err := s.syncManager.GetAllTorrents(ctx, instanceID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get torrents: %w", err)
+// checkReadinessGates performs cheap pre-checks before building a file map.
+func checkReadinessGates(client healthChecker) error {
+	if !client.IsHealthy() {
+		return errors.New("qBittorrent client is unhealthy")
 	}
 
-	// Build hash→torrent lookup with both original and canonical forms
-	// SyncManager.GetTorrentFilesBatch returns map keyed by canonicalizeHash (lowercase+trimmed)
-	hashToTorrent := make(map[string]qbt.Torrent, len(torrents)*2)
-	hashes := make([]string, 0, len(torrents))
-	for _, t := range torrents {
-		hashes = append(hashes, t.Hash)
-		// Store under both original and canonical to handle either key format
-		hashToTorrent[t.Hash] = t
-		hashToTorrent[canonicalizeHash(t.Hash)] = t
+	lastSync := client.GetLastSyncUpdate()
+	if lastSync.IsZero() {
+		return errors.New("instance not ready: waiting for first sync")
+	}
+	if time.Since(lastSync) > MaxSyncAge {
+		return fmt.Errorf("sync data stale (last sync %v ago, threshold %v)",
+			time.Since(lastSync).Round(time.Second), MaxSyncAge)
 	}
 
-	filesByHash, err := s.syncManager.GetTorrentFilesBatch(ctx, instanceID, hashes)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get torrent files: %w", err)
+	return nil
+}
+
+//nolint:exhaustive // Only transient torrent states belong here; all others are non-transient.
+func isTransientTorrentStateForOrphanScan(state qbt.TorrentState) bool {
+	switch state {
+	case qbt.TorrentStateMetaDl,
+		qbt.TorrentStateCheckingResumeData,
+		qbt.TorrentStateCheckingDl,
+		qbt.TorrentStateCheckingUp,
+		qbt.TorrentStateAllocating,
+		qbt.TorrentStateMoving:
+		return true
+	default:
+		return false
+	}
+}
+
+func sortedRoots(roots map[string]struct{}) []string {
+	items := make([]string, 0, len(roots))
+	for root := range roots {
+		items = append(items, root)
+	}
+	sort.Strings(items)
+	return items
+}
+
+func mergeRootLists(rootLists ...[]string) []string {
+	merged := make(map[string]struct{})
+	for _, roots := range rootLists {
+		for _, root := range roots {
+			merged[filepath.Clean(root)] = struct{}{}
+		}
+	}
+	return sortedRoots(merged)
+}
+
+func isSameOrDescendantPath(path, base string) bool {
+	nPath := normalizePath(path)
+	nBase := normalizePath(base)
+	return nPath == nBase || isPathUnderNormalized(nPath, nBase)
+}
+
+func filterScanRootsCoveredBySkippedRoots(scanRoots, skippedRoots []string) []string {
+	filtered := make([]string, 0, len(scanRoots))
+	for _, root := range scanRoots {
+		covered := false
+		for _, skippedRoot := range skippedRoots {
+			if isSameOrDescendantPath(root, skippedRoot) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			filtered = append(filtered, filepath.Clean(root))
+		}
+	}
+	return filtered
+}
+
+func addAbsoluteScanRoot(scanRoots map[string]struct{}, root string) {
+	root = filepath.Clean(root)
+	if root == "" || !filepath.IsAbs(root) {
+		return
+	}
+	scanRoots[root] = struct{}{}
+}
+
+func torrentRootFolder(files qbt.TorrentFiles) string {
+	rootFolder := ""
+
+	for _, f := range files {
+		name := path.Clean(strings.ReplaceAll(f.Name, "\\", "/"))
+		parts := strings.Split(name, "/")
+		if len(parts) <= 1 {
+			return ""
+		}
+		if rootFolder == "" {
+			rootFolder = parts[0]
+			continue
+		}
+		if rootFolder != parts[0] {
+			return ""
+		}
 	}
 
+	return rootFolder
+}
+
+func actualSavePathFromContentPath(savePath, contentPath string, files qbt.TorrentFiles) string {
+	savePath = filepath.Clean(savePath)
+	contentPath = filepath.Clean(contentPath)
+	if contentPath == "" || !filepath.IsAbs(contentPath) || len(files) == 0 {
+		return ""
+	}
+	if savePath != "" && filepath.IsAbs(savePath) && contentPath == savePath {
+		return savePath
+	}
+
+	var actualSavePath string
+	if len(files) == 1 {
+		firstFileName := filepath.Clean(filepath.FromSlash(files[0].Name))
+		actualSavePath = strings.TrimSuffix(contentPath, string(filepath.Separator)+firstFileName)
+		if actualSavePath == "" || actualSavePath == contentPath {
+			actualSavePath = filepath.Dir(contentPath)
+		}
+	} else {
+		rootFolder := torrentRootFolder(files)
+		if rootFolder == "" {
+			actualSavePath = contentPath
+		} else {
+			actualSavePath = strings.TrimSuffix(contentPath, string(filepath.Separator)+filepath.FromSlash(rootFolder))
+			if actualSavePath == "" || actualSavePath == contentPath {
+				firstFileName := filepath.Clean(filepath.FromSlash(files[0].Name))
+				actualSavePath = strings.TrimSuffix(contentPath, string(filepath.Separator)+firstFileName)
+				if actualSavePath == "" || actualSavePath == contentPath {
+					actualSavePath = filepath.Dir(contentPath)
+				}
+			}
+		}
+	}
+	if actualSavePath == "" || !filepath.IsAbs(actualSavePath) {
+		return ""
+	}
+
+	return filepath.Clean(actualSavePath)
+}
+
+// buildFileMapResult contains the file map plus metadata for storage
+type buildFileMapResult struct {
+	fileMap      *TorrentFileMap
+	scanRoots    []string
+	skippedRoots []string
+	torrentCount int
+}
+
+func buildFileMapFromTorrents(torrents []qbt.Torrent, filesByHash map[string]qbt.TorrentFiles) (*buildFileMapResult, error) {
 	tfm := NewTorrentFileMap()
 	scanRoots := make(map[string]struct{})
+	skippedRoots := make(map[string]struct{})
+	stableMissingFiles := 0
 
-	// Iterate the returned map - keys are canonical (lowercase)
-	for hash, files := range filesByHash {
-		t, ok := hashToTorrent[hash]
-		if !ok {
-			continue // Shouldn't happen given double-keying
+	for i := range torrents {
+		torrent := torrents[i]
+		savePath := filepath.Clean(torrent.SavePath)
+		hasAbsSavePath := savePath != "" && filepath.IsAbs(savePath)
+		files, ok := filesByHash[canonicalizeHash(torrent.Hash)]
+		hasFiles := ok && len(files) > 0
+
+		if !hasFiles {
+			if isTransientTorrentStateForOrphanScan(torrent.State) {
+				if hasAbsSavePath {
+					skippedRoots[savePath] = struct{}{}
+				}
+				continue
+			}
+
+			stableMissingFiles++
+			continue
 		}
-		savePath := filepath.Clean(t.SavePath)
-		if !filepath.IsAbs(savePath) {
-			continue // Skip non-absolute paths
+
+		if !hasAbsSavePath {
+			continue
 		}
+
 		scanRoots[savePath] = struct{}{}
-
 		for _, f := range files {
-			fullPath := filepath.Join(savePath, f.Name)
-			tfm.Add(normalizePath(fullPath))
+			tfm.Add(normalizePath(filepath.Join(savePath, f.Name)))
+		}
+
+		// Auto TMM can update save_path to the category root without moving the
+		// payload. content_path still reflects the real on-disk location.
+		actualSavePath := actualSavePathFromContentPath(savePath, torrent.ContentPath, files)
+		if actualSavePath != "" && actualSavePath != savePath {
+			scanRoots[actualSavePath] = struct{}{}
+			for _, f := range files {
+				tfm.Add(normalizePath(filepath.Join(actualSavePath, f.Name)))
+			}
 		}
 	}
 
-	roots := make([]string, 0, len(scanRoots))
-	for r := range scanRoots {
-		roots = append(roots, r)
+	if stableMissingFiles > 0 {
+		return nil, fmt.Errorf("%d stable torrents returned no files - partial data detected", stableMissingFiles)
 	}
 
-	return tfm, roots, nil
+	skippedRootList := sortedRoots(skippedRoots)
+	scanRootList := filterScanRootsCoveredBySkippedRoots(sortedRoots(scanRoots), skippedRootList)
+
+	return &buildFileMapResult{
+		fileMap:      tfm,
+		scanRoots:    scanRootList,
+		skippedRoots: skippedRootList,
+		torrentCount: len(torrents),
+	}, nil
+}
+
+func (s *Service) getOtherLocalInstances(ctx context.Context, excludeInstanceID int) ([]*models.Instance, error) {
+	instances, err := s.listInstances(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	local := make([]*models.Instance, 0, len(instances))
+	for _, inst := range instances {
+		if inst == nil || inst.ID == excludeInstanceID {
+			continue
+		}
+		if inst.IsActive && inst.HasLocalFilesystemAccess {
+			local = append(local, inst)
+		}
+	}
+	return local, nil
+}
+
+func (s *Service) buildInstanceScanRoots(ctx context.Context, instanceID int, timeout time.Duration) ([]string, error) {
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	client, err := s.getClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+	if readinessErr := checkReadinessGates(client); readinessErr != nil {
+		return nil, readinessErr
+	}
+
+	torrents, err := s.getAllTorrents(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get torrents: %w", err)
+	}
+
+	return scanRootsFromTorrents(torrents), nil
+}
+
+func (s *Service) instanceScanRootsForOverlap(ctx context.Context, instanceID int) (roots []string, source string, err error) {
+	roots, err = s.buildInstanceScanRoots(ctx, instanceID, 15*time.Second)
+	if err == nil {
+		return roots, "live", nil
+	}
+
+	lastRun, lastErr := s.getLastCompletedRun(ctx, instanceID)
+	if lastErr != nil {
+		return nil, "", err
+	}
+	if lastRun == nil || len(lastRun.ScanPaths) == 0 {
+		return nil, "", err
+	}
+
+	return lastRun.ScanPaths, "last_completed_run", nil
+}
+
+func (s *Service) buildInstanceFileMap(ctx context.Context, instanceID int, timeout time.Duration) (*buildFileMapResult, error) {
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	client, err := s.getClient(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+	if readinessErr := checkReadinessGates(client); readinessErr != nil {
+		return nil, readinessErr
+	}
+
+	torrents, err := s.getAllTorrents(ctx, instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get torrents: %w", err)
+	}
+
+	filesCtx := qbittorrent.WithForceFilesRefresh(ctx)
+	filesByHash, err := s.getTorrentFilesBatch(filesCtx, instanceID, torrentHashes(torrents))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get torrent files: %w", err)
+	}
+
+	return buildFileMapFromTorrents(torrents, filesByHash)
+}
+
+func (s *Service) buildFileMap(ctx context.Context, instanceID int) (*buildFileMapResult, error) {
+	result, err := s.buildInstanceFileMap(ctx, instanceID, 5*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+
+	otherLocalInstances, err := s.getOtherLocalInstances(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
+	for _, inst := range otherLocalInstances {
+		otherRoots, source, rootsErr := s.instanceScanRootsForOverlap(ctx, inst.ID)
+		if rootsErr != nil {
+			return nil, fmt.Errorf(
+				"could not determine scan roots for other local-access instance (id=%d name=%q): %w",
+				inst.ID, inst.Name, rootsErr,
+			)
+		}
+
+		if !scanRootsOverlap(result.scanRoots, otherRoots) {
+			confirmedRoots, err := s.buildInstanceScanRoots(ctx, inst.ID, 90*time.Second)
+			if err != nil {
+				return nil, fmt.Errorf("could not confirm non-overlapping scan roots for other local-access instance (id=%d name=%q): %w", inst.ID, inst.Name, err)
+			}
+			if !scanRootsOverlap(result.scanRoots, confirmedRoots) {
+				continue
+			}
+		}
+
+		otherResult, err := s.buildInstanceFileMap(ctx, inst.ID, 2*time.Minute)
+		if err != nil {
+			return nil, fmt.Errorf("overlapping local-access instance unavailable (id=%d name=%q): %w", inst.ID, inst.Name, err)
+		}
+
+		added := result.fileMap.MergeFrom(otherResult.fileMap)
+		result.skippedRoots = mergeRootLists(result.skippedRoots, otherResult.skippedRoots)
+		result.scanRoots = filterScanRootsCoveredBySkippedRoots(result.scanRoots, result.skippedRoots)
+		log.Debug().
+			Int("instance", inst.ID).
+			Int("filesAdded", added).
+			Str("rootsSource", source).
+			Msg("orphanscan: merged cross-instance torrent files (overlapping scan roots)")
+	}
+
+	return result, nil
+}
+
+func torrentHashes(torrents []qbt.Torrent) []string {
+	hashes := make([]string, 0, len(torrents))
+	for i := range torrents {
+		hashes = append(hashes, torrents[i].Hash)
+	}
+	return hashes
 }
 
 // findScanRoot finds the scan root that contains the given path.
 func findScanRoot(path string, scanRoots []string) string {
+	nPath := normalizePath(path)
+
 	longest := ""
 	for _, root := range scanRoots {
-		if len(path) < len(root) || path[:len(root)] != root {
+		nRoot := normalizePath(root)
+		if len(nPath) < len(nRoot) || nPath[:len(nRoot)] != nRoot {
 			continue
 		}
 		// Ensure it's at a path boundary.
-		if len(path) > len(root) && path[len(root)] != filepath.Separator {
+		if len(nPath) > len(nRoot) && nPath[len(nRoot)] != filepath.Separator {
 			continue
 		}
 		if len(root) > len(longest) {

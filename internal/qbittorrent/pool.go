@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package qbittorrent
@@ -63,7 +63,9 @@ type ClientPool struct {
 	stopHealth        chan struct{}
 	failureTracker    map[int]*failureInfo
 	decryptionTracker map[int]*decryptionErrorInfo
+	syncEventSink     SyncEventSink
 	completionHandler TorrentCompletionHandler
+	addedHandler      TorrentAddedHandler
 	syncManager       *SyncManager // Reference for starting background tasks
 }
 
@@ -91,6 +93,18 @@ func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.Insta
 	return cp, nil
 }
 
+// SetSyncEventSink configures the sink that should receive sync notifications
+// from every client managed by this pool. Existing clients are updated
+// immediately.
+func (cp *ClientPool) SetSyncEventSink(sink SyncEventSink) {
+	cp.mu.Lock()
+	cp.syncEventSink = sink
+	for _, client := range cp.clients {
+		client.SetSyncEventSink(sink)
+	}
+	cp.mu.Unlock()
+}
+
 // SetTorrentCompletionHandler registers a callback for new and existing clients when torrents complete.
 func (cp *ClientPool) SetTorrentCompletionHandler(handler TorrentCompletionHandler) {
 	cp.mu.Lock()
@@ -104,6 +118,22 @@ func (cp *ClientPool) SetTorrentCompletionHandler(handler TorrentCompletionHandl
 
 	for _, client := range clients {
 		client.SetTorrentCompletionHandler(handler)
+	}
+}
+
+// SetTorrentAddedHandler registers a callback for new and existing clients when torrents are added.
+func (cp *ClientPool) SetTorrentAddedHandler(handler TorrentAddedHandler) {
+	cp.mu.Lock()
+	cp.addedHandler = handler
+
+	clients := make([]*Client, 0, len(cp.clients))
+	for _, client := range cp.clients {
+		clients = append(clients, client)
+	}
+	cp.mu.Unlock()
+
+	for _, client := range clients {
+		client.SetTorrentAddedHandler(handler)
 	}
 }
 
@@ -212,31 +242,38 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 		return nil, ErrInstanceDisabled
 	}
 
-	// Decrypt password
-	password, err := cp.instanceStore.GetDecryptedPassword(instance)
+	password, err := cp.decryptField(instanceID, instance.Name, "password", func() (string, error) {
+		return cp.instanceStore.GetDecryptedPassword(instance)
+	})
 	if err != nil {
-		if cp.isDecryptionError(err) && cp.shouldLogDecryptionError(instanceID) {
-			log.Error().Err(err).Int("instanceID", instanceID).Str("instanceName", instance.Name).
-				Msg("Failed to decrypt password - likely due to sessionSecret change. Instance will be unavailable until password is re-entered via web UI")
-		}
-		return nil, fmt.Errorf("failed to decrypt password: %w", err)
+		return nil, err
+	}
+
+	apiKey, err := cp.decryptField(instanceID, instance.Name, "api key", func() (string, error) {
+		return cp.instanceStore.GetDecryptedAPIKey(instance)
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Decrypt basic auth password if present
 	var basicPassword *string
 	if instance.BasicPasswordEncrypted != nil {
-		basicPassword, err = cp.instanceStore.GetDecryptedBasicPassword(instance)
-		if err != nil {
-			if cp.isDecryptionError(err) && cp.shouldLogDecryptionError(instanceID) {
-				log.Error().Err(err).Int("instanceID", instanceID).Str("instanceName", instance.Name).
-					Msg("Failed to decrypt basic auth password - likely due to sessionSecret change. Instance will be unavailable until password is re-entered via web UI")
+		decryptedBasicPassword, err := cp.decryptField(instanceID, instance.Name, "basic auth password", func() (string, error) {
+			decrypted, err := cp.instanceStore.GetDecryptedBasicPassword(instance)
+			if err != nil || decrypted == nil {
+				return "", err
 			}
-			return nil, fmt.Errorf("failed to decrypt basic auth password: %w", err)
+			return *decrypted, nil
+		})
+		if err != nil {
+			return nil, err
 		}
+		basicPassword = &decryptedBasicPassword
 	}
 
 	// Create new client with custom timeout
-	client, err := NewClientWithTimeout(instanceID, instance.Host, instance.Username, password, instance.BasicUsername, basicPassword, instance.TLSSkipVerify, timeout)
+	client, err := NewClientWithTimeout(instanceID, instance.Host, instance.Username, password, apiKey, instance.BasicUsername, basicPassword, instance.TLSSkipVerify, timeout)
 	if err != nil {
 		cp.trackFailure(instanceID, err)
 		return nil, fmt.Errorf("failed to create client: %w", err)
@@ -244,14 +281,21 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 
 	// Store in pool (need write lock for this)
 	cp.mu.Lock()
+	if cp.syncEventSink != nil {
+		client.SetSyncEventSink(cp.syncEventSink)
+	}
 	cp.clients[instanceID] = client
 	// Reset failure tracking on successful connection
 	cp.resetFailureTrackingLocked(instanceID)
-	handler := cp.completionHandler
+	completionHandler := cp.completionHandler
+	addedHandler := cp.addedHandler
 	cp.mu.Unlock()
 
-	if handler != nil {
-		client.SetTorrentCompletionHandler(handler)
+	if completionHandler != nil {
+		client.SetTorrentCompletionHandler(completionHandler)
+	}
+	if addedHandler != nil {
+		client.SetTorrentAddedHandler(addedHandler)
 	}
 
 	// Start the sync manager
@@ -270,6 +314,20 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	}
 
 	return client, nil
+}
+
+func (cp *ClientPool) decryptField(instanceID int, instanceName, fieldName string, decryptFn func() (string, error)) (string, error) {
+	value, err := decryptFn()
+	if err == nil {
+		return value, nil
+	}
+
+	if cp.isDecryptionError(err) && cp.shouldLogDecryptionError(instanceID) {
+		log.Error().Err(err).Int("instanceID", instanceID).Str("instanceName", instanceName).
+			Msgf("Failed to decrypt %s - likely due to sessionSecret change. Instance will be unavailable until %s is re-entered via web UI", fieldName, fieldName)
+	}
+
+	return "", fmt.Errorf("failed to decrypt %s: %w", fieldName, err)
 }
 
 // RemoveClient removes a client from the pool

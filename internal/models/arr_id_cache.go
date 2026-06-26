@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models
@@ -7,8 +7,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/autobrr/qui/internal/dbinterface"
@@ -34,6 +34,8 @@ type ArrIDCacheEntry struct {
 	ContentType   string      `json:"content_type"`
 	ArrInstanceID *int        `json:"arr_instance_id,omitempty"`
 	ExternalIDs   ExternalIDs `json:"external_ids"`
+	Titles        []string    `json:"titles,omitempty"`
+	HasTitles     bool        `json:"has_titles"`
 	IsNegative    bool        `json:"is_negative"`
 	CachedAt      time.Time   `json:"cached_at"`
 	ExpiresAt     time.Time   `json:"expires_at"`
@@ -51,24 +53,33 @@ func NewArrIDCacheStore(db dbinterface.Querier) *ArrIDCacheStore {
 
 // ComputeTitleHash computes a SHA256 hash of the normalized title for cache lookup
 func ComputeTitleHash(title string) string {
-	normalized := strings.ToLower(strings.TrimSpace(title))
+	normalized := normalizeLowerTrim(title)
 	hash := sha256.Sum256([]byte(normalized))
 	return hex.EncodeToString(hash[:])
 }
 
-// Get retrieves a cached ID entry if it exists and hasn't expired
+// Get retrieves a cached ID entry if it exists and hasn't expired.
+//
+// Expiry is compared against a bound UTC time parameter rather than SQL's
+// CURRENT_TIMESTAMP. expires_at is stored by binding a Go time.Time, which the
+// SQLite driver serializes as a string; CURRENT_TIMESTAMP returns its own UTC
+// string in a different format, so a lexical comparison of the two only behaves
+// chronologically when the process runs in UTC. Binding the comparison value
+// through the same driver path (and storing expires_at in UTC, see SetWithTitles)
+// makes the comparison timezone-independent on both SQLite and Postgres (#1961).
 func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string) (*ArrIDCacheEntry, error) {
 	query := `
-		SELECT id, title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, is_negative, cached_at, expires_at
+		SELECT id, title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, titles_json, is_negative, cached_at, expires_at
 		FROM arr_id_cache
-		WHERE title_hash = ? AND content_type = ? AND expires_at > CURRENT_TIMESTAMP
+		WHERE title_hash = ? AND content_type = ? AND expires_at > ?
 	`
 
 	var entry ArrIDCacheEntry
-	var imdbID *string
+	var imdbID, titlesJSON *string
 	var tmdbID, tvdbID, tvmazeID *int
+	var isNegative int
 
-	err := s.db.QueryRowContext(ctx, query, titleHash, contentType).Scan(
+	err := s.db.QueryRowContext(ctx, query, titleHash, contentType, time.Now().UTC()).Scan(
 		&entry.ID,
 		&entry.TitleHash,
 		&entry.ContentType,
@@ -77,7 +88,8 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 		&tmdbID,
 		&tvdbID,
 		&tvmazeID,
-		&entry.IsNegative,
+		&titlesJSON,
+		&isNegative,
 		&entry.CachedAt,
 		&entry.ExpiresAt,
 	)
@@ -98,16 +110,31 @@ func (s *ArrIDCacheStore) Get(ctx context.Context, titleHash, contentType string
 	if tvmazeID != nil {
 		entry.ExternalIDs.TVMazeID = *tvmazeID
 	}
+	if titlesJSON != nil {
+		entry.HasTitles = true
+		if err := json.Unmarshal([]byte(*titlesJSON), &entry.Titles); err != nil {
+			return nil, fmt.Errorf("failed to decode arr id cache titles: %w", err)
+		}
+	}
+	entry.IsNegative = SQLiteIntToBool(isNegative)
 
 	return &entry, nil
 }
 
 // Set creates or updates a cache entry (upsert)
 func (s *ArrIDCacheStore) Set(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, isNegative bool, ttl time.Duration) error {
-	expiresAt := time.Now().Add(ttl)
+	return s.SetWithTitles(ctx, titleHash, contentType, arrInstanceID, ids, nil, isNegative, ttl)
+}
+
+// SetWithTitles creates or updates a cache entry with known ARR title aliases.
+func (s *ArrIDCacheStore) SetWithTitles(ctx context.Context, titleHash, contentType string, arrInstanceID *int, ids *ExternalIDs, titles []string, isNegative bool, ttl time.Duration) error {
+	// Store expires_at in UTC so the bound-UTC comparisons in Get/CleanupExpired/
+	// CountValid are timezone-independent. Without .UTC() the value carries the
+	// process-local offset and the cache silently misses in non-UTC zones (#1961).
+	expiresAt := time.Now().Add(ttl).UTC()
 
 	// Prepare nullable values
-	var imdbID *string
+	var imdbID, titlesJSON *string
 	var tmdbID, tvdbID, tvmazeID *int
 
 	if ids != nil {
@@ -124,22 +151,31 @@ func (s *ArrIDCacheStore) Set(ctx context.Context, titleHash, contentType string
 			tvmazeID = &ids.TVMazeID
 		}
 	}
+	if titles != nil {
+		encodedTitles, err := json.Marshal(titles)
+		if err != nil {
+			return fmt.Errorf("failed to encode arr id cache titles: %w", err)
+		}
+		titlesValue := string(encodedTitles)
+		titlesJSON = &titlesValue
+	}
 
 	query := `
-		INSERT INTO arr_id_cache (title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, is_negative, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO arr_id_cache (title_hash, content_type, arr_instance_id, imdb_id, tmdb_id, tvdb_id, tvmaze_id, titles_json, is_negative, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(title_hash, content_type) DO UPDATE SET
 			arr_instance_id = excluded.arr_instance_id,
 			imdb_id = excluded.imdb_id,
 			tmdb_id = excluded.tmdb_id,
 			tvdb_id = excluded.tvdb_id,
 			tvmaze_id = excluded.tvmaze_id,
+			titles_json = excluded.titles_json,
 			is_negative = excluded.is_negative,
 			cached_at = CURRENT_TIMESTAMP,
 			expires_at = excluded.expires_at
 	`
 
-	_, err := s.db.ExecContext(ctx, query, titleHash, contentType, arrInstanceID, imdbID, tmdbID, tvdbID, tvmazeID, isNegative, expiresAt)
+	_, err := s.db.ExecContext(ctx, query, titleHash, contentType, arrInstanceID, imdbID, tmdbID, tvdbID, tvmazeID, titlesJSON, BoolToSQLite(isNegative), expiresAt)
 	if err != nil {
 		return fmt.Errorf("failed to set arr id cache entry: %w", err)
 	}
@@ -173,9 +209,10 @@ func (s *ArrIDCacheStore) DeleteByArrInstance(ctx context.Context, arrInstanceID
 
 // CleanupExpired removes all expired cache entries
 func (s *ArrIDCacheStore) CleanupExpired(ctx context.Context) (int64, error) {
-	query := `DELETE FROM arr_id_cache WHERE expires_at <= CURRENT_TIMESTAMP`
+	// Compare against a bound UTC time rather than CURRENT_TIMESTAMP; see Get (#1961).
+	query := `DELETE FROM arr_id_cache WHERE expires_at <= ?`
 
-	result, err := s.db.ExecContext(ctx, query)
+	result, err := s.db.ExecContext(ctx, query, time.Now().UTC())
 	if err != nil {
 		return 0, fmt.Errorf("failed to cleanup expired arr id cache entries: %w", err)
 	}
@@ -200,8 +237,9 @@ func (s *ArrIDCacheStore) Count(ctx context.Context) (int64, error) {
 
 // CountValid returns the number of non-expired cache entries
 func (s *ArrIDCacheStore) CountValid(ctx context.Context) (int64, error) {
+	// Compare against a bound UTC time rather than CURRENT_TIMESTAMP; see Get (#1961).
 	var count int64
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM arr_id_cache WHERE expires_at > CURRENT_TIMESTAMP").Scan(&count)
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM arr_id_cache WHERE expires_at > ?", time.Now().UTC()).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count valid arr id cache entries: %w", err)
 	}

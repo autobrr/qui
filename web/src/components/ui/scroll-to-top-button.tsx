@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 import { useEffect, useState, useRef } from "react"
 import { ArrowUp } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -19,6 +20,7 @@ export function ScrollToTopButton({
   threshold = 300,
   className,
 }: ScrollToTopButtonProps) {
+  const { t } = useTranslation("common")
   const [isVisible, setIsVisible] = useState(false)
   const animationFrameRef = useRef<number | undefined>(undefined)
 
@@ -59,11 +61,11 @@ export function ScrollToTopButton({
       variant="outline"
       size="icon"
       className={cn(
-        "absolute z-10 shadow-lg bg-background/80 backdrop-blur-sm transition-all duration-200",
+        "fixed lg:absolute z-10 shadow-lg bg-background/80 backdrop-blur-sm transition-all duration-200",
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none",
         className
       )}
-      aria-label="Scroll to top"
+      aria-label={t("actions.scrollToTop")}
     >
       <ArrowUp className="h-4 w-4" />
     </Button>

@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //go:build linux
@@ -6,11 +6,26 @@
 package reflinktree
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"syscall"
+	"time"
 
 	"golang.org/x/sys/unix"
+)
+
+const (
+	reflinkCloneRetryAttempts  = 5
+	reflinkCloneRetryBaseDelay = 25 * time.Millisecond
+)
+
+var (
+	ioctlFileClone      = unix.IoctlFileClone
+	ioctlFileCloneRange = unix.IoctlFileCloneRange
+	sleepForRetry       = time.Sleep
 )
 
 // SupportsReflink tests whether the given directory supports reflinks
@@ -53,8 +68,8 @@ func SupportsReflink(dir string) (supported bool, reason string) {
 }
 
 // cloneFile creates a reflink (copy-on-write clone) of src at dst.
-// On Linux, this uses the FICLONE ioctl.
-func cloneFile(src, dst string) error {
+// On Linux, this uses the FICLONE ioctl with a FICLONERANGE fallback.
+func cloneFile(src, dst string) (retErr error) {
 	// Open source file
 	srcFile, err := os.Open(src)
 	if err != nil {
@@ -73,9 +88,9 @@ func cloneFile(src, dst string) error {
 		return fmt.Errorf("create destination: %w", err)
 	}
 	defer func() {
-		dstFile.Close()
-		if err != nil {
-			os.Remove(dst)
+		_ = dstFile.Close()
+		if retErr != nil {
+			_ = os.Remove(dst)
 		}
 	}()
 
@@ -83,11 +98,72 @@ func cloneFile(src, dst string) error {
 	srcFd := int(srcFile.Fd())
 	dstFd := int(dstFile.Fd())
 
-	err = unix.IoctlFileClone(dstFd, srcFd)
-	if err != nil {
-		os.Remove(dst)
-		return fmt.Errorf("ioctl FICLONE: %w", err)
+	var cloneErr error
+	for attempt := range reflinkCloneRetryAttempts {
+		cloneErr = ioctlFileClone(dstFd, srcFd)
+		if cloneErr == nil {
+			return nil
+		}
+		if shouldRetryCloneError(cloneErr) {
+			if attempt == reflinkCloneRetryAttempts-1 {
+				return fmt.Errorf("ioctl FICLONE: %w (retries exhausted)%s", cloneErr, cloneDiagnostics(src, dst))
+			}
+			sleepForRetry(reflinkCloneRetryBaseDelay * time.Duration(1<<attempt))
+			continue
+		}
+		break
 	}
 
-	return nil
+	if shouldTryCloneRange(cloneErr) {
+		cloneRange := unix.FileCloneRange{
+			Src_fd:      int64(srcFd),
+			Src_offset:  0,
+			Src_length:  0,
+			Dest_offset: 0,
+		}
+		if rangeErr := ioctlFileCloneRange(dstFd, &cloneRange); rangeErr != nil {
+			return fmt.Errorf("ioctl FICLONERANGE: %w%s", rangeErr, cloneDiagnostics(src, dst))
+		}
+		return nil
+	}
+
+	return fmt.Errorf("ioctl FICLONE: %w%s", cloneErr, cloneDiagnostics(src, dst))
+}
+
+func shouldRetryCloneError(err error) bool {
+	return errors.Is(err, unix.EAGAIN) || errors.Is(err, unix.EINVAL)
+}
+
+func shouldTryCloneRange(err error) bool {
+	return errors.Is(err, unix.EOPNOTSUPP) ||
+		errors.Is(err, unix.ENOTTY) ||
+		errors.Is(err, unix.ENOSYS)
+}
+
+func cloneDiagnostics(srcPath, dstPath string) string {
+	srcDev := deviceID(srcPath)
+	dstDev := deviceID(dstPath)
+	srcFsType := filesystemType(srcPath)
+	dstFsType := filesystemType(dstPath)
+	return fmt.Sprintf(" (srcDev=%s dstDev=%s srcFsType=%s dstFsType=%s)", srcDev, dstDev, srcFsType, dstFsType)
+}
+
+func deviceID(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "unknown"
+	}
+	sys, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return "unknown"
+	}
+	return strconv.FormatUint(sys.Dev, 10)
+}
+
+func filesystemType(path string) string {
+	var stat unix.Statfs_t
+	if err := unix.Statfs(path, &stat); err != nil {
+		return "unknown"
+	}
+	return fmt.Sprintf("0x%x", uint64(stat.Type))
 }

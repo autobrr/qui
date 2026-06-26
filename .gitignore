@@ -40,11 +40,14 @@ package-lock.json
 web/build
 bin/
 dist/
+/qui
+/build/
+/web-dist.tar.gz
 .run/
 .dev/
 tmp/
-.golangci.yml
 web/eslint-sarif-report.sarif
+web/coverage/
 test/mockindexer/feeds/*
 test/mockindexer/files/*
 cpu.pprof
@@ -57,14 +60,28 @@ web/src/themes/premium/
 web/src/themes/premium/*
 docs/*
 !docs/CROSS_SEEDING.md
+!docs/architecture.md
+!docs/linting.md
 .mcp_unused.json
 config.toml
 .env
+.envrc
 .mcp.json
 components.json
 .cache/
+.worktrees/
 tracker-icons/*
 .device-id-*
 backups/*
 .gocache/*
+.gomodcache/*
+.golangci-cache/*
 torrentfiles/*
+analyses/*
+
+# Local reference dumps
+dodopayments.txt
+polar.txt
+
+# Local-only planning notes
+plans/

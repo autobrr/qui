@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package handlers
@@ -16,8 +16,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog/log"
 
+	"github.com/autobrr/qui/internal/domain"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/pkg/redact"
 )
 
 const (
@@ -56,6 +58,7 @@ func (h *JackettHandler) Routes(r chi.Router) {
 			r.Post("/", h.CreateIndexer)
 			r.Post("/discover", h.DiscoverIndexers)
 			r.Get("/health", h.GetAllHealth)
+			r.Get("/tracker-domains", h.GetIndexerTrackerDomains)
 			r.Get("/{indexerID}", h.GetIndexer)
 			r.Put("/{indexerID}", h.UpdateIndexer)
 			r.Delete("/{indexerID}", h.DeleteIndexer)
@@ -335,6 +338,8 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		BaseURL        string                          `json:"base_url"`
 		IndexerID      string                          `json:"indexer_id"`
 		APIKey         string                          `json:"api_key"`
+		BasicUsername  *string                         `json:"basic_username,omitempty"`
+		BasicPassword  *string                         `json:"basic_password,omitempty"`
 		Backend        string                          `json:"backend"`
 		Enabled        *bool                           `json:"enabled"`
 		Priority       *int                            `json:"priority"`
@@ -353,6 +358,8 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 	baseURL := strings.TrimSpace(req.BaseURL)
 	apiKey := strings.TrimSpace(req.APIKey)
 	indexerID := strings.TrimSpace(req.IndexerID)
+	baseURL, req.BasicUsername, req.BasicPassword = normalizeBasicAuthFromURL(baseURL, req.BasicUsername, req.BasicPassword)
+	req.BasicUsername, req.BasicPassword = normalizeBasicAuthForCreate(req.BasicUsername, req.BasicPassword)
 
 	// Validate required fields
 	if name == "" {
@@ -397,9 +404,13 @@ func (h *JackettHandler) CreateIndexer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	indexer, err := h.indexerStore.CreateWithIndexerID(r.Context(), name, baseURL, indexerID, apiKey, enabled, priority, timeoutSeconds, backend)
+	indexer, err := h.indexerStore.CreateWithIndexerID(r.Context(), name, baseURL, indexerID, apiKey, req.BasicUsername, req.BasicPassword, enabled, priority, timeoutSeconds, backend)
 	if err != nil {
 		if errors.Is(err, models.ErrTorznabIndexerIDRequired) {
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if errors.Is(err, models.ErrBasicAuthPasswordRequired) {
 			RespondError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -517,6 +528,8 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		BaseURL        string                          `json:"base_url"`
 		IndexerID      *string                         `json:"indexer_id"`
 		APIKey         string                          `json:"api_key"`
+		BasicUsername  *string                         `json:"basic_username,omitempty"`
+		BasicPassword  *string                         `json:"basic_password,omitempty"`
 		Backend        *string                         `json:"backend"`
 		Enabled        *bool                           `json:"enabled"`
 		Priority       *int                            `json:"priority"`
@@ -534,6 +547,7 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 	trimmedName := strings.TrimSpace(req.Name)
 	trimmedBaseURL := strings.TrimSpace(req.BaseURL)
 	trimmedAPIKey := strings.TrimSpace(req.APIKey)
+	trimmedBaseURL, req.BasicUsername, req.BasicPassword = normalizeBasicAuthFromURL(trimmedBaseURL, req.BasicUsername, req.BasicPassword)
 
 	params := models.TorznabIndexerUpdateParams{
 		Name:     trimmedName,
@@ -565,6 +579,14 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 		params.Backend = &backend
 	}
 
+	// Basic auth: treat "<redacted>" as "keep existing".
+	if req.BasicPassword != nil && domain.IsRedactedString(strings.TrimSpace(*req.BasicPassword)) {
+		req.BasicPassword = nil
+	}
+	req.BasicUsername, req.BasicPassword = normalizeBasicAuthForUpdate(req.BasicUsername, req.BasicPassword)
+	params.BasicUsername = req.BasicUsername
+	params.BasicPassword = req.BasicPassword
+
 	indexer, err := h.indexerStore.Update(r.Context(), id, params)
 	if err != nil {
 		switch {
@@ -572,6 +594,9 @@ func (h *JackettHandler) UpdateIndexer(w http.ResponseWriter, r *http.Request) {
 			RespondError(w, http.StatusNotFound, "Indexer not found")
 			return
 		case errors.Is(err, models.ErrTorznabIndexerIDRequired):
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		case errors.Is(err, models.ErrBasicAuthPasswordRequired):
 			RespondError(w, http.StatusBadRequest, err.Error())
 			return
 		default:
@@ -716,13 +741,15 @@ func (h *JackettHandler) TestIndexer(w http.ResponseWriter, r *http.Request) {
 		Msg("Testing torznab indexer connectivity")
 
 	// Run a lightweight search via the service to validate connectivity
-	// Use CacheModeBypass and SkipHistory to prevent test searches from cluttering search history
+	// Use CacheModeBypass + SkipHistory + SkipCachePersist to keep test searches from
+	// cluttering search history or persisting a bogus "test" entry into the Torznab result cache.
 	testReq := &jackett.TorznabSearchRequest{
-		Query:       "test",
-		Limit:       1,
-		IndexerIDs:  []int{id},
-		CacheMode:   jackett.CacheModeBypass,
-		SkipHistory: true,
+		Query:            "test",
+		Limit:            1,
+		IndexerIDs:       []int{id},
+		CacheMode:        jackett.CacheModeBypass,
+		SkipHistory:      true,
+		SkipCachePersist: true,
 		OnAllComplete: func(*jackett.SearchResponse, error) {
 			// Ignore results for connectivity test
 		},
@@ -837,8 +864,10 @@ func (h *JackettHandler) SyncIndexerCaps(w http.ResponseWriter, r *http.Request)
 // @Router /api/torznab/indexers/discover [post]
 func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		BaseURL string `json:"base_url"`
-		APIKey  string `json:"api_key"`
+		BaseURL       string  `json:"base_url"`
+		APIKey        string  `json:"api_key"`
+		BasicUsername *string `json:"basic_username,omitempty"`
+		BasicPassword *string `json:"basic_password,omitempty"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -856,9 +885,12 @@ func (h *JackettHandler) DiscoverIndexers(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	result, err := jackett.DiscoverJackettIndexers(r.Context(), req.BaseURL, req.APIKey)
+	req.BaseURL, req.BasicUsername, req.BasicPassword = normalizeBasicAuthFromURL(req.BaseURL, req.BasicUsername, req.BasicPassword)
+	req.BasicUsername, req.BasicPassword = normalizeBasicAuthForCreate(req.BasicUsername, req.BasicPassword)
+
+	result, err := jackett.DiscoverJackettIndexers(r.Context(), req.BaseURL, req.APIKey, req.BasicUsername, req.BasicPassword)
 	if err != nil {
-		log.Error().Err(err).Str("base_url", req.BaseURL).Msg("Failed to discover indexers")
+		log.Error().Str("base_url", redact.URLString(req.BaseURL)).Str("error", redact.String(err.Error())).Msg("Failed to discover indexers")
 		RespondError(w, http.StatusInternalServerError, "Failed to discover indexers")
 		return
 	}
@@ -884,6 +916,30 @@ func (h *JackettHandler) GetAllHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	RespondJSON(w, http.StatusOK, health)
+}
+
+// GetIndexerTrackerDomains godoc
+// @Summary List tracker domains for enabled indexers
+// @Description Returns tracker domains derived from enabled indexers whose domain can be resolved reliably (native and Prowlarr backends). Jackett indexers are omitted because their base URL is the Jackett server, not the tracker. Used to populate tracker selectors with trackers that have no active torrents.
+// @Tags torznab
+// @Produce json
+// @Success 200 {array} string
+// @Failure 500 {object} httphelpers.ErrorResponse
+// @Security ApiKeyAuth
+// @Router /api/torznab/indexers/tracker-domains [get]
+func (h *JackettHandler) GetIndexerTrackerDomains(w http.ResponseWriter, r *http.Request) {
+	domains, err := h.service.GetConfiguredTrackerDomains(r.Context())
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get indexer tracker domains")
+		RespondError(w, http.StatusInternalServerError, "Failed to get indexer tracker domains")
+		return
+	}
+
+	if domains == nil {
+		domains = []string{}
+	}
+
+	RespondJSON(w, http.StatusOK, domains)
 }
 
 // GetIndexerHealth godoc
@@ -996,10 +1052,7 @@ func (h *JackettHandler) GetSearchHistory(w http.ResponseWriter, r *http.Request
 	limit := 50
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
-			limit = parsed
-			if limit > 500 {
-				limit = 500
-			}
+			limit = min(parsed, 500)
 		}
 	}
 

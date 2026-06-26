@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package models
@@ -59,7 +59,7 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 	clientAPIKey := &ClientAPIKey{}
 	var createdAt, lastUsedAt sql.NullTime
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO client_api_keys (key_hash, client_name_id, instance_id) 
+		INSERT INTO client_api_keys (key_hash, client_name_id, instance_id)
 		VALUES (?, ?, ?)
 		RETURNING id, key_hash, instance_id, created_at, last_used_at
 	`, keyHash, ids[0], instanceID).Scan(
@@ -90,8 +90,8 @@ func (s *ClientAPIKeyStore) Create(ctx context.Context, clientName string, insta
 
 func (s *ClientAPIKeyStore) GetAll(ctx context.Context) ([]*ClientAPIKey, error) {
 	query := `
-		SELECT id, key_hash, client_name, instance_id, created_at, last_used_at 
-		FROM client_api_keys_view 
+		SELECT id, key_hash, client_name, instance_id, created_at, last_used_at
+		FROM client_api_keys_view
 		ORDER BY created_at DESC
 	`
 
@@ -127,8 +127,8 @@ func (s *ClientAPIKeyStore) GetAll(ctx context.Context) ([]*ClientAPIKey, error)
 
 func (s *ClientAPIKeyStore) GetByKeyHash(ctx context.Context, keyHash string) (*ClientAPIKey, error) {
 	query := `
-		SELECT id, key_hash, client_name, instance_id, created_at, last_used_at 
-		FROM client_api_keys_view 
+		SELECT id, key_hash, client_name, instance_id, created_at, last_used_at
+		FROM client_api_keys_view
 		WHERE key_hash = ?
 	`
 
@@ -207,26 +207,6 @@ func (s *ClientAPIKeyStore) Delete(ctx context.Context, id int) error {
 
 	if rowsAffected == 0 {
 		return ErrClientAPIKeyNotFound
-	}
-
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return nil
-}
-
-func (s *ClientAPIKeyStore) DeleteByInstanceID(ctx context.Context, instanceID int) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	query := `DELETE FROM client_api_keys WHERE instance_id = ?`
-	_, err = tx.ExecContext(ctx, query, instanceID)
-	if err != nil {
-		return err
 	}
 
 	if err = tx.Commit(); err != nil {

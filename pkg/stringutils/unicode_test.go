@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package stringutils
@@ -83,17 +83,31 @@ func TestNormalizeForMatching(t *testing.T) {
 
 		// Apostrophe handling
 		{"straight apostrophe", "Bob's Burgers", "bobs burgers"},
-		{"curly apostrophe right", "Don't Stop", "dont stop"},
-		{"curly apostrophe left", "It's Fine", "its fine"},
+		{"curly apostrophe right", "Don\u2019t Stop", "dont stop"},
+		{"curly apostrophe left", "\u2018Tis Fine", "tis fine"},
+		{"modifier letter apostrophe", "Haibara\u02bcs Teenage New Game", "haibaras teenage new game"},
 		{"backtick", "Rock`n Roll", "rockn roll"},
 
 		// Colon handling
 		{"colon", "CSI: Miami", "csi miami"},
 		{"colon with space", "City: Downtown", "city downtown"},
+		{"comma", "Signal, Bloom", "signal bloom"},
+		{"comma without space", "Signal,Bloom", "signal bloom"},
 
 		// Hyphen handling
 		{"hyphen", "Spider-Man", "spider man"},
 		{"multiple hyphens", "X-Men: Days of Future Past", "x men days of future past"},
+
+		// Decorative anime title symbols
+		{"star separator", "Classic★Stars", "classic stars"},
+		{"hollow star separator", "Idol☆Time", "idol time"},
+		{"middle dot separator", "Kaguya・Sama", "kaguya sama"},
+		{"music note separator", "Love♪Live", "love live"},
+
+		// Ampersand handling
+		{"ampersand", "His & Hers", "his and hers"},
+		{"ampersand no spaces", "Law&Order", "law and order"},
+		{"ampersand with spaces", "Will & Grace", "will and grace"},
 
 		// Combined
 		{"all punctuation", "Bob's Place: Spider-Man", "bobs place spider man"},
@@ -142,6 +156,11 @@ func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
 			"Bobs Burgers S01",
 		},
 		{
+			"curly vs straight apostrophe",
+			"Haibara's Teenage New Game+",
+			"Haibara\u2019s Teenage New Game+",
+		},
+		{
 			"pokemon accent",
 			"Pokémon Journeys",
 			"Pokemon Journeys",
@@ -155,6 +174,11 @@ func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
 			"csi colon",
 			"CSI: Miami S01",
 			"CSI Miami S01",
+		},
+		{
+			"comma title separator",
+			"Signal, Bloom S01",
+			"Signal Bloom S01",
 		},
 		{
 			"leon accent and colon",
@@ -200,6 +224,36 @@ func TestNormalizeForMatching_RealWorldPairs(t *testing.T) {
 			"curly vs straight apostrophe",
 			"It's Always Sunny",
 			"It's Always Sunny",
+		},
+		{
+			"ampersand vs and",
+			"His & Hers S01",
+			"His and Hers S01",
+		},
+		{
+			"ampersand law and order",
+			"Law & Order SVU",
+			"Law and Order SVU",
+		},
+		{
+			"anime star separator",
+			"Classic★Stars",
+			"Classic Stars",
+		},
+		{
+			"anime hollow star separator",
+			"Idol☆Time",
+			"Idol Time",
+		},
+		{
+			"anime middle dot separator",
+			"Kaguya・Sama",
+			"Kaguya Sama",
+		},
+		{
+			"anime music note separator",
+			"Love♪Live",
+			"Love Live",
 		},
 	}
 

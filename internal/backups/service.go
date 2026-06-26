@@ -1,4 +1,4 @@
-// Copyright (c) 2025, s0up and the autobrr contributors.
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 package backups
@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,20 +27,25 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/activity"
 	"github.com/autobrr/qui/internal/services/jackett"
+	"github.com/autobrr/qui/internal/services/notifications"
 	"github.com/autobrr/qui/pkg/torrentname"
 )
 
 var (
 	// ErrInstanceBusy is returned when a backup is already running for the instance.
 	ErrInstanceBusy = errors.New("backup already running for this instance")
+	removeFile      = os.Remove
 )
 
 // Config controls background backup scheduling.
 type Config struct {
-	DataDir      string
-	PollInterval time.Duration
-	WorkerCount  int
+	DataDir         string
+	PollInterval    time.Duration
+	WorkerCount     int
+	FailureCooldown time.Duration
+	ExportThrottle  time.Duration
 }
 
 type BackupProgress struct {
@@ -55,11 +61,16 @@ type missingTorrent struct {
 }
 
 type Service struct {
-	store       *models.BackupStore
-	syncManager *qbittorrent.SyncManager
-	jackettSvc  *jackett.Service
-	cfg         Config
-	cacheDir    string
+	store          *models.BackupStore
+	reader         backupReader
+	tracker        backupTrackerSource
+	categoryWriter backupCategoryMutator
+	tagWriter      backupTagMutator
+	torrentWriter  backupTorrentMutator
+	jackettSvc     *jackett.Service
+	notifier       notifications.Notifier
+	cfg            Config
+	cacheDir       string
 
 	jobs   chan job
 	wg     sync.WaitGroup
@@ -74,6 +85,35 @@ type Service struct {
 	progressMu sync.RWMutex
 
 	now func() time.Time
+
+	activityPublisher activity.Publisher
+}
+
+type backupReader interface {
+	GetAllTorrents(ctx context.Context, instanceID int) ([]qbt.Torrent, error)
+	GetCategories(ctx context.Context, instanceID int) (map[string]qbt.Category, error)
+	GetTags(ctx context.Context, instanceID int) ([]string, error)
+	GetInstanceWebAPIVersion(ctx context.Context, instanceID int) (string, error)
+	ExportTorrent(ctx context.Context, instanceID int, hash string) ([]byte, string, string, error)
+}
+
+type backupCategoryMutator interface {
+	CreateCategory(ctx context.Context, instanceID int, name string, path string) error
+	EditCategory(ctx context.Context, instanceID int, name string, path string) error
+	RemoveCategories(ctx context.Context, instanceID int, categories []string) error
+}
+
+type backupTagMutator interface {
+	CreateTags(ctx context.Context, instanceID int, tags []string) error
+	DeleteTags(ctx context.Context, instanceID int, tags []string) error
+}
+
+type backupTorrentMutator interface {
+	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
+	SetCategory(ctx context.Context, instanceID int, hashes []string, category string) error
+	SetTags(ctx context.Context, instanceID int, hashes []string, tags string) error
+	ResumeWhenComplete(instanceID int, hashes []string, opts qbittorrent.ResumeWhenCompleteOptions)
+	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 }
 
 type job struct {
@@ -106,12 +146,18 @@ type ManifestItem struct {
 	TorrentBlob string   `json:"torrentBlob,omitempty"`
 }
 
-func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager, jackettSvc interface{}, cfg Config) *Service {
+func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, cfg Config, notifier notifications.Notifier) *Service {
 	if cfg.WorkerCount <= 0 {
 		cfg.WorkerCount = 1
 	}
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = time.Minute
+	}
+	if cfg.FailureCooldown <= 0 {
+		cfg.FailureCooldown = 10 * time.Minute
+	}
+	if cfg.ExportThrottle <= 0 {
+		cfg.ExportThrottle = 100 * time.Millisecond
 	}
 
 	cacheDir := ""
@@ -127,17 +173,58 @@ func NewService(store *models.BackupStore, syncManager *qbittorrent.SyncManager,
 		_ = svc // TODO: jackettService = svc when jackett fallback is re-enabled
 	}
 
-	return &Service{
-		store:       store,
-		syncManager: syncManager,
-		jackettSvc:  jackettService,
-		cfg:         cfg,
-		cacheDir:    cacheDir,
-		jobs:        make(chan job, cfg.WorkerCount*2),
-		inflight:    make(map[int]int64),
-		progress:    make(map[int64]*BackupProgress),
-		now:         func() time.Time { return time.Now().UTC() },
+	svc := &Service{
+		store:      store,
+		reader:     reader,
+		jackettSvc: jackettService,
+		notifier:   notifier,
+		cfg:        cfg,
+		cacheDir:   cacheDir,
+		jobs:       make(chan job, cfg.WorkerCount*2),
+		inflight:   make(map[int]int64),
+		progress:   make(map[int64]*BackupProgress),
+		now:        func() time.Time { return time.Now().UTC() },
+
+		activityPublisher: activity.NopPublisher{},
 	}
+	if tracker, ok := reader.(backupTrackerSource); ok {
+		svc.tracker = tracker
+	}
+	if writer, ok := reader.(backupCategoryMutator); ok {
+		svc.categoryWriter = writer
+	}
+	if writer, ok := reader.(backupTagMutator); ok {
+		svc.tagWriter = writer
+	}
+	if writer, ok := reader.(backupTorrentMutator); ok {
+		svc.torrentWriter = writer
+	}
+
+	return svc
+}
+
+// SetActivityPublisher wires the qui server-event hub so backup run status
+// changes are pushed to connected clients instead of polled. Safe to call once
+// at startup.
+func (s *Service) SetActivityPublisher(publisher activity.Publisher) {
+	if s == nil || publisher == nil {
+		return
+	}
+	s.activityPublisher = publisher
+}
+
+// emitRunActivity signals connected clients that a backup run's status changed
+// so they refetch instead of polling. Must be called after the state transition
+// is persisted and any held lock released.
+func (s *Service) emitRunActivity(instanceID int, runID int64) {
+	if s == nil || s.activityPublisher == nil {
+		return
+	}
+	s.activityPublisher.Publish(activity.Event{
+		Kind:       activity.KindBackupRun,
+		InstanceID: instanceID,
+		ResourceID: strconv.FormatInt(runID, 10),
+	})
 }
 
 func normalizeBackupSettings(settings *models.BackupSettings) bool {
@@ -221,9 +308,7 @@ func (s *Service) Start(ctx context.Context) {
 	}
 
 	// Check for missed backups and queue exactly one if applicable
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	s.wg.Go(func() {
 		if err := s.checkMissedBackups(ctx); err != nil {
 			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 				log.Debug().Msg("Missed-backup check canceled")
@@ -231,7 +316,7 @@ func (s *Service) Start(ctx context.Context) {
 				log.Warn().Err(err).Msg("Failed to check for missed backups")
 			}
 		}
-	}()
+	})
 
 	s.wg.Add(1)
 	go s.scheduler(ctx)
@@ -265,10 +350,7 @@ func (s *Service) recoverIncompleteRuns(ctx context.Context) error {
 	totalChunks := (len(runIDs) + chunkSize - 1) / chunkSize
 
 	for i := 0; i < len(runIDs); i += chunkSize {
-		end := i + chunkSize
-		if end > len(runIDs) {
-			end = len(runIDs)
-		}
+		end := min(i+chunkSize, len(runIDs))
 		chunk := runIDs[i:end]
 		chunkNum := (i / chunkSize) + 1
 
@@ -285,6 +367,11 @@ func (s *Service) recoverIncompleteRuns(ctx context.Context) error {
 	}
 
 	log.Info().Int("count", len(incompleteRuns)).Msg("Successfully recovered incomplete backup runs")
+
+	// Notify connected clients that these runs transitioned to failed.
+	for _, run := range incompleteRuns {
+		s.emitRunActivity(run.InstanceID, run.ID)
+	}
 	return nil
 }
 
@@ -302,6 +389,30 @@ func (s *Service) isBackupMissed(ctx context.Context, instanceID int, kind model
 		}
 		// On DB error treat as not missed to avoid accidental scheduling
 		return false
+	}
+
+	// Short-circuit if the latest run is still in flight or within failure cooldown.
+	for _, r := range runs {
+		if r == nil {
+			continue
+		}
+		switch r.Status {
+		case models.BackupRunStatusPending, models.BackupRunStatusRunning:
+			return false
+		case models.BackupRunStatusFailed, models.BackupRunStatusCanceled:
+			if s.cfg.FailureCooldown > 0 {
+				ref := r.CompletedAt
+				if ref == nil {
+					ref = &r.RequestedAt
+				}
+				if ref != nil && now.Before(ref.Add(s.cfg.FailureCooldown)) {
+					return false
+				}
+			}
+		case models.BackupRunStatusSuccess:
+			// Success is handled below when selecting schedule reference.
+		}
+		break
 	}
 
 	// Find the most recent successful run
@@ -417,7 +528,7 @@ func (s *Service) worker(ctx context.Context) {
 }
 
 func (s *Service) handleJob(ctx context.Context, j job) {
-	if s.syncManager == nil {
+	if s.reader == nil {
 		now := s.now()
 		msg := "sync manager not configured"
 		_ = s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
@@ -428,6 +539,15 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 		})
 		s.clearInstance(j.instanceID, j.runID)
 		log.Error().Int("instanceID", j.instanceID).Msg("Backup run failed: sync manager not configured")
+		s.notify(ctx, notifications.Event{
+			Type:         notifications.EventBackupFailed,
+			InstanceID:   j.instanceID,
+			BackupKind:   j.kind,
+			BackupRunID:  j.runID,
+			ErrorMessage: msg,
+			CompletedAt:  &now,
+		})
+		s.emitRunActivity(j.instanceID, j.runID)
 		return
 	}
 
@@ -443,6 +563,7 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 		log.Error().Err(err).Int("instanceID", j.instanceID).Msg("Failed to mark backup run as running")
 		return
 	}
+	s.emitRunActivity(j.instanceID, j.runID)
 
 	result, execErr := s.executeBackup(ctx, j)
 	if execErr != nil {
@@ -455,6 +576,16 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 			return nil
 		})
 		log.Error().Err(execErr).Int("instanceID", j.instanceID).Int64("runID", j.runID).Msg("Backup run failed")
+		s.notify(ctx, notifications.Event{
+			Type:         notifications.EventBackupFailed,
+			InstanceID:   j.instanceID,
+			BackupKind:   j.kind,
+			BackupRunID:  j.runID,
+			ErrorMessage: msg,
+			StartedAt:    &start,
+			CompletedAt:  &now,
+		})
+		s.emitRunActivity(j.instanceID, j.runID)
 	} else {
 		now := s.now()
 		_ = s.store.UpdateRunMetadata(ctx, j.runID, func(run *models.BackupRun) error {
@@ -483,9 +614,26 @@ func (s *Service) handleJob(ctx context.Context, j job) {
 				log.Warn().Err(err).Int("instanceID", j.instanceID).Msg("Failed to apply backup retention")
 			}
 		}
+		s.notify(ctx, notifications.Event{
+			Type:               notifications.EventBackupSucceeded,
+			InstanceID:         j.instanceID,
+			BackupKind:         j.kind,
+			BackupRunID:        j.runID,
+			BackupTorrentCount: result.torrentCount,
+			StartedAt:          &start,
+			CompletedAt:        &now,
+		})
+		s.emitRunActivity(j.instanceID, j.runID)
 	}
 
 	s.clearInstance(j.instanceID, j.runID)
+}
+
+func (s *Service) notify(ctx context.Context, event notifications.Event) {
+	if s == nil || s.notifier == nil {
+		return
+	}
+	s.notifier.Notify(ctx, event)
 }
 
 type backupResult struct {
@@ -499,6 +647,14 @@ type backupResult struct {
 	tags            []string
 }
 
+func shouldSkipLiveExportForBackup(torrent qbt.Torrent, hasCachedBlob bool, cacheErr error) bool {
+	if hasCachedBlob || cacheErr != nil {
+		return false
+	}
+
+	return strings.TrimSpace(torrent.InfohashV1) != "" && strings.TrimSpace(torrent.InfohashV2) != ""
+}
+
 func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, error) {
 	settings, err := s.store.GetSettings(ctx, j.instanceID)
 	if err != nil {
@@ -506,7 +662,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}
 	s.normalizeAndPersistSettings(ctx, settings)
 
-	torrents, err := s.syncManager.GetAllTorrents(ctx, j.instanceID)
+	torrents, err := s.reader.GetAllTorrents(ctx, j.instanceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load torrents: %w", err)
 	}
@@ -524,9 +680,11 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		return nil, fmt.Errorf("failed to prepare backup directory: %w", err)
 	}
 
+	var lastExportElapsed time.Duration
+
 	var snapshotCategories map[string]models.CategorySnapshot
 	if settings.IncludeCategories {
-		categories, err := s.syncManager.GetCategories(ctx, j.instanceID)
+		categories, err := s.reader.GetCategories(ctx, j.instanceID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load categories: %w", err)
 		}
@@ -540,7 +698,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 	var snapshotTags []string
 	if settings.IncludeTags {
-		tags, err := s.syncManager.GetTags(ctx, j.instanceID)
+		tags, err := s.reader.GetTags(ctx, j.instanceID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load tags: %w", err)
 		}
@@ -554,7 +712,7 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 
 	webAPIVersion := ""
 	patchTrackers := false
-	if version, err := s.syncManager.GetInstanceWebAPIVersion(ctx, j.instanceID); err != nil {
+	if version, err := s.reader.GetInstanceWebAPIVersion(ctx, j.instanceID); err != nil {
 		log.Debug().Err(err).Int("instanceID", j.instanceID).Msg("Unable to determine qBittorrent API version for tracker patching")
 	} else {
 		webAPIVersion = version
@@ -606,9 +764,9 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 			blobRelPath   *string
 		)
 
-		cachedTorrent, err := s.loadCachedTorrent(ctx, j.instanceID, torrent.Hash)
-		if err != nil {
-			log.Warn().Err(err).Str("hash", torrent.Hash).Msg("Failed to load cached torrent blob")
+		cachedTorrent, cacheErr := s.loadCachedTorrent(ctx, j.instanceID, torrent.Hash)
+		if cacheErr != nil {
+			log.Warn().Err(cacheErr).Str("hash", torrent.Hash).Msg("Failed to load cached torrent blob")
 		}
 		if cachedTorrent != nil {
 			data = cachedTorrent.data
@@ -619,16 +777,40 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		}
 
 		if data == nil {
+			if shouldSkipLiveExportForBackup(torrent, cachedTorrent != nil, cacheErr) {
+				log.Warn().
+					Str("hash", torrent.Hash).
+					Str("name", torrent.Name).
+					Int("instanceID", j.instanceID).
+					Msg("Skipping torrent export; live qBittorrent export disabled for hybrid torrents")
+				s.updateProgress(j.runID, idx+1)
+				continue
+			}
+			if err := adaptiveExportDelay(ctx, s.cfg.ExportThrottle, lastExportElapsed); err != nil {
+				return nil, err
+			}
+			exportStart := time.Now()
 			var tracker string
-			data, suggestedName, tracker, err = s.syncManager.ExportTorrent(ctx, j.instanceID, torrent.Hash)
+			data, suggestedName, tracker, err = s.reader.ExportTorrent(ctx, j.instanceID, torrent.Hash)
+			lastExportElapsed = time.Since(exportStart)
 			if err != nil {
+				if isExportMetadataUnavailable(err) {
+					log.Warn().
+						Err(err).
+						Str("hash", torrent.Hash).
+						Str("name", torrent.Name).
+						Int("instanceID", j.instanceID).
+						Msg("Skipping torrent export; metadata not downloaded yet")
+					s.updateProgress(j.runID, idx+1)
+					continue
+				}
 				return nil, fmt.Errorf("export torrent %s: %w", torrent.Hash, err)
 			}
 			trackerDomain = tracker
 		}
 
 		if patchTrackers {
-			trackers := gatherTrackerURLs(ctx, s.syncManager, j.instanceID, torrent)
+			trackers := gatherTrackerURLs(ctx, s.tracker, j.instanceID, torrent)
 			if patched, changed, err := patchTorrentTrackers(data, trackers); err != nil {
 				log.Warn().Err(err).Str("hash", torrent.Hash).Int("instanceID", j.instanceID).Msg("Failed to patch exported torrent trackers")
 			} else if changed {
@@ -778,6 +960,27 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 	}, nil
 }
 
+// adaptiveExportDelay waits between export API calls with back-pressure.
+// The delay is at least minDelay, but extends to match the previous export's
+// response time when qBittorrent is under load. This prevents overwhelming
+// qBittorrent during large backup operations.
+func adaptiveExportDelay(ctx context.Context, minDelay, lastExportDuration time.Duration) error {
+	if minDelay <= 0 {
+		return nil
+	}
+
+	delay := max(minDelay, lastExportDuration)
+	t := time.NewTimer(delay)
+	defer t.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
 func (s *Service) resolveBasePaths(ctx context.Context, _ *models.BackupSettings, instanceID int) (string, string, error) {
 	var baseSegment string
 	if name, err := s.store.GetInstanceName(ctx, instanceID); err == nil {
@@ -891,6 +1094,16 @@ func (s *Service) updateProgress(runID int64, current int) {
 	}
 }
 
+func isExportMetadataUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, qbt.ErrTorrentMetadataNotDownloadedYet) {
+		return true
+	}
+	return strings.Contains(err.Error(), "status code: 409")
+}
+
 func (s *Service) GetProgress(runID int64) *BackupProgress {
 	s.progressMu.RLock()
 	defer s.progressMu.RUnlock()
@@ -949,6 +1162,7 @@ func (s *Service) QueueRun(ctx context.Context, instanceID int, kind models.Back
 	case s.jobs <- job{runID: run.ID, instanceID: instanceID, kind: kind}:
 	}
 
+	s.emitRunActivity(instanceID, run.ID)
 	return run, nil
 }
 
@@ -1275,6 +1489,7 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 	}
 
 	log.Info().Int64("runID", run.ID).Msg("Backup run created successfully")
+	s.emitRunActivity(instanceID, run.ID)
 
 	// Convert manifest items to backup items
 	items := make([]models.BackupItem, 0, len(manifest.Items))
@@ -1390,11 +1605,9 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 		}
 		s.progressMu.Unlock()
 		log.Info().Int64("runID", run.ID).Int("total", len(missing)).Msg("Initialized import progress")
-		s.wg.Add(1)
-		go func() {
-			defer s.wg.Done()
+		s.wg.Go(func() {
 			s.downloadMissingTorrents(run.ID, instanceID, missing)
-		}()
+		})
 	} else {
 		// No missing torrents, mark as completed immediately
 		now := s.now()
@@ -1407,6 +1620,7 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 		}); err != nil {
 			log.Warn().Err(err).Int64("runID", run.ID).Msg("Failed to mark import run as completed")
 		}
+		s.emitRunActivity(instanceID, run.ID)
 	}
 
 	// Update the run with total bytes and torrent count
@@ -1476,9 +1690,9 @@ func (s *Service) copyTorrentFromTemp(srcPath, destPath string) error {
 
 // downloadMissingTorrents downloads torrent blobs in the background for imported manifests
 func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing []missingTorrent) {
-	if s.syncManager == nil {
+	if s.reader == nil {
 		log.Warn().Int64("runID", runID).Msg("No sync manager available for background torrent downloads")
-		s.markImportComplete(runID)
+		s.markImportComplete(instanceID, runID)
 		return
 	}
 
@@ -1493,7 +1707,7 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 			select {
 			case <-s.ctx.Done():
 				log.Info().Int64("runID", runID).Int("completed", successCount).Int("total", total).Msg("Background download cancelled due to shutdown")
-				s.markImportComplete(runID)
+				s.markImportComplete(instanceID, runID)
 				return
 			default:
 			}
@@ -1514,7 +1728,7 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 		if ctx == nil {
 			ctx = context.Background()
 		}
-		if data, _, _, err := s.syncManager.ExportTorrent(ctx, instanceID, mt.hash); err == nil {
+		if data, _, _, err := s.reader.ExportTorrent(ctx, instanceID, mt.hash); err == nil {
 			// Ensure directory exists
 			if err := os.MkdirAll(filepath.Dir(mt.absPath), 0o755); err != nil {
 				log.Error().Err(err).Int("downloaded", successCount).Int("total", total).Int64("runID", runID).Str("hash", mt.hash).Str("path", mt.absPath).Msg("Failed to create directory for torrent blob")
@@ -1589,11 +1803,11 @@ func (s *Service) downloadMissingTorrents(runID int64, instanceID int, missing [
 		log.Info().Int64("runID", runID).Int64("totalBytes", totalTorrentBytes).Msg("Updated run metadata with torrent file sizes")
 	}
 
-	s.markImportComplete(runID)
+	s.markImportComplete(instanceID, runID)
 }
 
 // markImportComplete marks an import run as completed and cleans up progress
-func (s *Service) markImportComplete(runID int64) {
+func (s *Service) markImportComplete(instanceID int, runID int64) {
 	ctx := context.Background()
 	now := time.Now().UTC()
 
@@ -1612,6 +1826,9 @@ func (s *Service) markImportComplete(runID int64) {
 	s.progressMu.Lock()
 	delete(s.progress, runID)
 	s.progressMu.Unlock()
+
+	// Notify connected clients after the progress lock is released.
+	s.emitRunActivity(instanceID, runID)
 }
 
 // DataDir returns the base data directory used for backups.
@@ -1730,22 +1947,16 @@ func (s *Service) deleteFilesParallel(ctx context.Context, paths []string) {
 		return
 	}
 
-	var wg sync.WaitGroup
-	for _, p := range paths {
-		wg.Add(1)
-		go func(path string) {
-			defer wg.Done()
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-				log.Warn().Err(err).Str("path", path).Msg("Failed to remove file during bulk cleanup")
-			}
-		}(p)
+	for _, path := range paths {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		if err := removeFile(path); err != nil && !os.IsNotExist(err) {
+			log.Warn().Err(err).Str("path", path).Msg("Failed to remove file during bulk cleanup")
+		}
 	}
-	wg.Wait()
 }
 
 func trackerDomainFromTorrent(t qbt.Torrent) string {

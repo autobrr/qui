@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026, s0up and the autobrr contributors.
+// SPDX-License-Identifier: GPL-2.0-or-later
+
 package crossseed
 
 import (
@@ -54,7 +57,7 @@ func TestReleasesMatch_SiteMustMatch(t *testing.T) {
 			description: "same fansub group should match",
 		},
 		{
-			name: "source has site, candidate does not - should not match",
+			name: "source has site, candidate does not - should match",
 			source: rls.Release{
 				Title:   "Kingdom",
 				Series:  6,
@@ -66,8 +69,59 @@ func TestReleasesMatch_SiteMustMatch(t *testing.T) {
 				Series:  6,
 				Episode: 11,
 			},
+			wantMatch:   true,
+			description: "missing site metadata should not block a match",
+		},
+		{
+			name: "source site matches candidate group",
+			source: rls.Release{
+				Title:   "Kingdom",
+				Series:  6,
+				Episode: 11,
+				Site:    "SubsPlease",
+			},
+			candidate: rls.Release{
+				Title:   "Kingdom",
+				Series:  6,
+				Episode: 11,
+				Group:   "SubsPlease",
+			},
+			wantMatch:   true,
+			description: "anime site and scene-style group can describe the same release group",
+		},
+		{
+			name: "source site rejects different candidate group",
+			source: rls.Release{
+				Title:   "Kingdom",
+				Series:  6,
+				Episode: 11,
+				Site:    "SubsPlease",
+			},
+			candidate: rls.Release{
+				Title:   "Kingdom",
+				Series:  6,
+				Episode: 11,
+				Group:   "BiOMA",
+			},
 			wantMatch:   false,
-			description: "candidate must have matching site when source has one",
+			description: "candidate group is concrete metadata and must not conflict with anime site",
+		},
+		{
+			name: "source group matches candidate site",
+			source: rls.Release{
+				Title:   "Kingdom",
+				Series:  6,
+				Episode: 11,
+				Group:   "SubsPlease",
+			},
+			candidate: rls.Release{
+				Title:   "Kingdom",
+				Series:  6,
+				Episode: 11,
+				Site:    "SubsPlease",
+			},
+			wantMatch:   true,
+			description: "group matching should also accept candidate site metadata",
 		},
 		{
 			name: "candidate has site, source does not - should match",
@@ -101,6 +155,40 @@ func TestReleasesMatch_SiteMustMatch(t *testing.T) {
 			},
 			wantMatch:   true,
 			description: "site comparison should be case insensitive",
+		},
+		{
+			name: "source site matches candidate group case insensitively",
+			source: rls.Release{
+				Title:   "Show",
+				Series:  1,
+				Episode: 1,
+				Site:    "SUBSPLEASE",
+			},
+			candidate: rls.Release{
+				Title:   "Show",
+				Series:  1,
+				Episode: 1,
+				Group:   "subsplease",
+			},
+			wantMatch:   true,
+			description: "site to group comparison should be case insensitive",
+		},
+		{
+			name: "source group matches candidate site case insensitively",
+			source: rls.Release{
+				Title:   "Show",
+				Series:  1,
+				Episode: 1,
+				Group:   "subsplease",
+			},
+			candidate: rls.Release{
+				Title:   "Show",
+				Series:  1,
+				Episode: 1,
+				Site:    "SUBSPLEASE",
+			},
+			wantMatch:   true,
+			description: "group to site comparison should be case insensitive",
 		},
 	}
 

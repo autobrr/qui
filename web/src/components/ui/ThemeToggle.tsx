@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -17,6 +17,7 @@ import { themes, isThemePremium } from "@/config/themes";
 import { Sun, Moon, Monitor, Check, Palette, CornerDownRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,6 +60,7 @@ const useThemeChange = () => {
 };
 
 export const ThemeToggle: React.FC = () => {
+  const { t } = useTranslation("common");
   const { currentMode, currentTheme, isDark } = useThemeChange();
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess();
   const [open, setOpen] = useState(false);
@@ -125,19 +127,19 @@ export const ThemeToggle: React.FC = () => {
   const handleModeSelect = useCallback(async (mode: ThemeMode) => {
     await setThemeMode(mode);
 
-    const modeNames = { light: "Light", dark: "Dark", auto: "System" };
-    toast.success(`Switched to ${modeNames[mode]} mode`);
-  }, []);
+    const modeNames = { light: t("themeToggle.light"), dark: t("themeToggle.dark"), auto: t("themeToggle.system") };
+    toast.success(t("themeToggle.switchedToMode", { mode: modeNames[mode] }));
+  }, [t]);
 
   const handleThemeSelect = useCallback(async (themeId: string) => {
     const isPremium = isThemePremium(themeId);
     if (isPremium && !canSwitchPremium) {
       if (isError) {
-        toast.error("Unable to verify license", {
-          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        toast.error(t("themeToggle.unableToVerifyLicense"), {
+          description: t("themeToggle.licenseCheckFailed"),
         });
       } else {
-        toast.error("This is a premium theme. Open Settings → Themes to activate a license.");
+        toast.error(t("themeToggle.premiumThemeError"));
       }
       return;
     }
@@ -145,19 +147,19 @@ export const ThemeToggle: React.FC = () => {
     setOpen(false);
     await setTheme(themeId);
 
-    const theme = themes.find(t => t.id === themeId);
-    toast.success(`Switched to ${theme?.name || themeId} theme`);
-  }, [canSwitchPremium, isError]);
+    const theme = themes.find(th => th.id === themeId);
+    toast.success(t("themeToggle.switchedToTheme", { theme: theme?.name || themeId }));
+  }, [canSwitchPremium, isError, t]);
 
   const handleVariationSelect = useCallback(async (themeId: string, variationId: string) => {
     const isPremium = isThemePremium(themeId);
     if (isPremium && !canSwitchPremium) {
       if (isError) {
-        toast.error("Unable to verify license", {
-          description: "License check failed. Premium theme switching is temporarily unavailable.",
+        toast.error(t("themeToggle.unableToVerifyLicense"), {
+          description: t("themeToggle.licenseCheckFailed"),
         });
       } else {
-        toast.error("This is a premium theme. Open Settings → Themes to activate a license.");
+        toast.error(t("themeToggle.premiumThemeError"));
       }
       return;
     }
@@ -165,11 +167,11 @@ export const ThemeToggle: React.FC = () => {
     await setTheme(themeId);
     await setThemeVariation(variationId);
 
-    const theme = themes.find(t => t.id === themeId);
-    toast.success(`Switched to ${theme?.name || themeId} theme (${variationId})`);
+    const theme = themes.find(th => th.id === themeId);
+    toast.success(t("themeToggle.switchedToThemeVariation", { theme: theme?.name || themeId, variation: variationId }));
 
     setOpen(false);
-  }, [canSwitchPremium, isError]);
+  }, [canSwitchPremium, isError, t]);
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -180,21 +182,21 @@ export const ThemeToggle: React.FC = () => {
           className={cn("transition-transform duration-300")}
         >
           <Palette className={cn("h-5 w-5 transition-transform duration-200")} />
-          <span className="sr-only">Change theme</span>
+          <span className="sr-only">{t("themeToggle.changeTheme")}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("themeToggle.appearance")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
 
         {/* Mode Selection */}
-        <div className="px-2 py-1.5 text-sm font-medium">Mode</div>
+        <div className="px-2 py-1.5 text-sm font-medium">{t("themeToggle.mode")}</div>
         <DropdownMenuItem
           onClick={() => handleModeSelect("light")}
           className="flex items-center gap-2"
         >
           <Sun className="h-4 w-4" />
-          <span className="flex-1">Light</span>
+          <span className="flex-1">{t("themeToggle.light")}</span>
           {currentMode === "light" && <Check className="h-4 w-4" />}
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -202,7 +204,7 @@ export const ThemeToggle: React.FC = () => {
           className="flex items-center gap-2"
         >
           <Moon className="h-4 w-4" />
-          <span className="flex-1">Dark</span>
+          <span className="flex-1">{t("themeToggle.dark")}</span>
           {currentMode === "dark" && <Check className="h-4 w-4" />}
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -210,97 +212,95 @@ export const ThemeToggle: React.FC = () => {
           className="flex items-center gap-2"
         >
           <Monitor className="h-4 w-4" />
-          <span className="flex-1">System</span>
+          <span className="flex-1">{t("themeToggle.system")}</span>
           {currentMode === "auto" && <Check className="h-4 w-4" />}
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
 
         {/* Theme Selection */}
-        <div className="px-2 py-1.5 text-sm font-medium">Theme</div>
+        <div className="px-2 py-1.5 text-sm font-medium">{t("themeToggle.theme")}</div>
         {sortedThemes.map((theme) => {
-            const isPremium = isThemePremium(theme.id);
-            const isLocked = isPremium && !canSwitchPremium;
-            const colors = getPreviewColors(theme);
-            const showVariations = activeThemeId === theme.id;
-            const currentVariation = showVariations ? getThemeVariation(theme.id) : null;
+          const isPremium = isThemePremium(theme.id);
+          const isLocked = isPremium && !canSwitchPremium;
+          const colors = getPreviewColors(theme);
+          const showVariations = activeThemeId === theme.id;
+          const currentVariation = showVariations ? getThemeVariation(theme.id) : null;
 
-            return (
-              <DropdownMenuItem
-                key={theme.id}
-                onClick={() => handleThemeSelect(theme.id)}
-                onMouseEnter={() => {
-                  if (theme.variations && theme.variations.length > 0) {
-                    setActiveThemeId(theme.id);
-                  }
-                }}
-                onFocus={() => {
-                  if (theme.variations && theme.variations.length > 0) {
-                    setActiveThemeId(theme.id);
-                  }
-                }}
-                className={cn(
-                  "flex items-center gap-2",
-                  isLocked && "opacity-60"
-                )}
-                disabled={isLocked}
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 flex-1">
-                    <div
-                      className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 transition-all duration-300 ease-out"
-                      style={{
-                        backgroundColor: colors.primary,
-                        backgroundImage: "none",
-                        background: colors.primary + " !important",
-                      }}
-                    />
-                    <div className="flex items-center justify-between gap-1.5 flex-1">
-                      <span>{theme.name}</span>
-                      {isPremium && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium">
-                          Premium
-                        </span>
-                      )}
+          return (
+            <DropdownMenuItem
+              key={theme.id}
+              onClick={() => handleThemeSelect(theme.id)}
+              onMouseEnter={() => {
+                if (theme.variations && theme.variations.length > 0) {
+                  setActiveThemeId(theme.id);
+                }
+              }}
+              onFocus={() => {
+                if (theme.variations && theme.variations.length > 0) {
+                  setActiveThemeId(theme.id);
+                }
+              }}
+              className={cn(
+                "flex items-center gap-2",
+                isLocked && "opacity-60"
+              )}
+              disabled={isLocked}
+            >
+              <div className="flex-1">
+                <div className="flex items-center gap-2 flex-1">
+                  <div
+                    className="h-4 w-4 rounded-full ring-1 ring-black/10 dark:ring-white/10 transition-all duration-300 ease-out"
+                    style={{
+                      backgroundColor: colors.primary,
+                      backgroundImage: "none",
+                      background: colors.primary + " !important",
+                    }}
+                  />
+                  <div className="flex items-center justify-between gap-1.5 flex-1">
+                    <span>{theme.name}</span>
+                    {isPremium && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium">
+                        {t("themeToggle.premium")}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Variation pills */}
+                {showVariations && colors.variations && colors.variations.length > 0 && (
+                  <div className="flex items-center gap-1.5 pl-1.5">
+                    <CornerDownRight className="h-3 w-3 text-muted-foreground" />
+                    <div className="flex gap-1 mt-1.5">
+                      {colors.variations.map((variation) => {
+                        const isSelected = currentVariation === variation.id;
+                        return (
+                          <div
+                            key={variation.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleVariationSelect(theme.id, variation.id);
+                            }}
+                            className={cn(
+                              "w-4 h-4 rounded-full transition-all cursor-pointer",
+                              isSelected? "ring-2 ring-black dark:ring-white": "ring-1 ring-black/10 dark:ring-white/10"
+                            )}
+                            style={{
+                              backgroundColor: variation.color,
+                              backgroundImage: "none",
+                              background: variation.color + " !important",
+                            }}
+                          />
+                        );
+                      })}
                     </div>
                   </div>
-
-                  {/* Variation pills */}
-                  {showVariations && colors.variations && colors.variations.length > 0 && (
-                    <div className="flex items-center gap-1.5 pl-1.5">
-                      <CornerDownRight className="h-3 w-3 text-muted-foreground" />
-                      <div className="flex gap-1 mt-1.5">
-                        {colors.variations.map((variation) => {
-                          const isSelected = currentVariation === variation.id;
-                          return (
-                            <div
-                              key={variation.id}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleVariationSelect(theme.id, variation.id);
-                              }}
-                              className={cn(
-                                "w-4 h-4 rounded-full transition-all cursor-pointer",
-                                isSelected
-                                  ? "ring-2 ring-black dark:ring-white"
-                                  : "ring-1 ring-black/10 dark:ring-white/10"
-                              )}
-                              style={{
-                                backgroundColor: variation.color,
-                                backgroundImage: "none",
-                                background: variation.color + " !important",
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-                {currentTheme.id === theme.id && <Check className="h-4 w-4 self-center" />}
-              </DropdownMenuItem>
-            );
-          })}
+                )}
+              </div>
+              {currentTheme.id === theme.id && <Check className="h-4 w-4 self-center" />}
+            </DropdownMenuItem>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );

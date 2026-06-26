@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, s0up and the autobrr contributors.
+ * Copyright (c) 2025-2026, s0up and the autobrr contributors.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
@@ -14,7 +14,7 @@ export interface DateTimePreferences {
 const DEFAULT_PREFERENCES: DateTimePreferences = {
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   timeFormat: "24h",
-  dateFormat: "iso"
+  dateFormat: "iso",
 }
 
 export function usePersistedDateTimePreferences() {
@@ -28,7 +28,7 @@ export function usePersistedDateTimePreferences() {
         const parsed = JSON.parse(stored)
         return {
           ...DEFAULT_PREFERENCES,
-          ...parsed
+          ...parsed,
         }
       }
     } catch (error) {
@@ -64,17 +64,17 @@ export function usePersistedDateTimePreferences() {
   const setPreferences = (newPreferences: Partial<DateTimePreferences>) => {
     setPreferencesState((prev) => {
       const updated = { ...prev, ...newPreferences }
-      
+
       try {
         localStorage.setItem(storageKey, JSON.stringify(updated))
       } catch (error) {
         console.error("Failed to save date/time preferences to localStorage:", error)
       }
-      
+
       // Notify other components via CustomEvent
       const evt = new CustomEvent(storageKey, { detail: { preferences: updated } })
       window.dispatchEvent(evt)
-      
+
       return updated
     })
   }
@@ -82,6 +82,6 @@ export function usePersistedDateTimePreferences() {
   return {
     preferences,
     setPreferences,
-    resetToDefaults: () => setPreferences(DEFAULT_PREFERENCES)
+    resetToDefaults: () => setPreferences(DEFAULT_PREFERENCES),
   } as const
 }
