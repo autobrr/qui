@@ -13,7 +13,7 @@ A web interface for qBittorrent. Manage multiple qBittorrent instances from a si
 - **Single Binary**: No dependencies, just download and run
 - **Multi-Instance Support**: Manage all your qBittorrent instances from one place
 - **Large Collections**: Handles thousands of torrents efficiently
-- **Themeable**: Multiple color themes available
+- **Themeable**: Multiple built-in color themes, plus sideloadable [custom themes](./features/custom-themes.md) (premium)
 - **Base URL Support**: Serve from a subdirectory (e.g., `/qui/`) for reverse proxy setups
 - **OIDC Single Sign-On**: Authenticate through your OpenID Connect provider
 - **External Programs**: Launch custom scripts from the torrent context menu
