@@ -94,6 +94,12 @@ const removeCustomThemeStyle = (): void => {
   document.getElementById(CUSTOM_THEME_STYLE_ID)?.remove();
 };
 
+// Returns the raw CSS currently injected for a custom theme, or null if none is
+// applied. Used to detect when an active custom theme's file changed on refresh.
+export const getAppliedCustomThemeCss = (): string | null => {
+  return document.getElementById(CUSTOM_THEME_STYLE_ID)?.textContent ?? null;
+};
+
 // Sync the html/body background to the theme and persist the critical vars so
 // the anti-FOUC inline script can paint the right background on next load.
 const applyCriticalBackground = (root: HTMLElement, cssVars: Record<string, string>): void => {

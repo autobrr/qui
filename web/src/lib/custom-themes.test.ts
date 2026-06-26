@@ -4,7 +4,8 @@
  */
 
 import { describe, it, expect } from "vitest"
-import { parseCustomThemes, isCustomThemeId, CUSTOM_THEME_PREFIX } from "./custom-themes"
+import { parseCustomThemes, isCustomThemeId, decideCustomThemeAction, CUSTOM_THEME_PREFIX, type CustomThemeDecisionInput } from "./custom-themes"
+import type { Theme } from "@/config/themes"
 
 const validCss = `/* @name: Ocean
  * @description: Calm blue
@@ -76,5 +77,87 @@ describe("isCustomThemeId", () => {
     expect(isCustomThemeId(null)).toBe(false)
     expect(isCustomThemeId(undefined)).toBe(false)
     expect(isCustomThemeId("")).toBe(false)
+  })
+})
+
+describe("decideCustomThemeAction", () => {
+  const ocean: Theme = {
+    id: "custom:ocean",
+    name: "Ocean",
+    isCustom: true,
+    isPremium: true,
+    rawCss: ":root{--primary:blue}",
+    cssVars: { light: {}, dark: {} },
+  }
+
+  const base: CustomThemeDecisionInput = {
+    isLoading: false,
+    isError: false,
+    hasPremiumAccess: true,
+    hasData: true,
+    storedThemeId: null,
+    themes: [],
+    appliedCustomCss: null,
+  }
+
+  it("does nothing while the license check is loading or errored", () => {
+    expect(decideCustomThemeAction({ ...base, isLoading: true })).toBe("noop")
+    expect(decideCustomThemeAction({ ...base, isError: true })).toBe("noop")
+  })
+
+  it("clears and downgrades a stored custom theme when premium is lost", () => {
+    expect(
+      decideCustomThemeAction({ ...base, hasPremiumAccess: false, storedThemeId: "custom:ocean" })
+    ).toBe("clear-and-downgrade")
+  })
+
+  it("only clears (no downgrade) when not premium and the selection is built-in", () => {
+    expect(
+      decideCustomThemeAction({ ...base, hasPremiumAccess: false, storedThemeId: "minimal" })
+    ).toBe("clear")
+  })
+
+  it("waits for data before registering when premium", () => {
+    expect(decideCustomThemeAction({ ...base, hasData: false, storedThemeId: "custom:ocean" })).toBe("noop")
+  })
+
+  it("registers without applying when the selection is a built-in theme", () => {
+    expect(decideCustomThemeAction({ ...base, storedThemeId: "minimal", themes: [ocean] })).toBe("register")
+  })
+
+  it("downgrades when the stored custom theme is gone", () => {
+    expect(
+      decideCustomThemeAction({ ...base, storedThemeId: "custom:gone", themes: [ocean] })
+    ).toBe("register-and-downgrade")
+  })
+
+  it("re-applies when the active custom theme is not yet injected", () => {
+    expect(
+      decideCustomThemeAction({ ...base, storedThemeId: "custom:ocean", themes: [ocean], appliedCustomCss: null })
+    ).toBe("register-and-reapply")
+  })
+
+  // Regression for the Codex finding: editing the active theme's CSS and hitting
+  // Refresh must re-apply the new CSS even though the theme id is unchanged.
+  it("re-applies when the active custom theme's CSS changed on refresh", () => {
+    expect(
+      decideCustomThemeAction({
+        ...base,
+        storedThemeId: "custom:ocean",
+        themes: [{ ...ocean, rawCss: ":root{--primary:teal}" }],
+        appliedCustomCss: ":root{--primary:blue}", // old, stale CSS still injected
+      })
+    ).toBe("register-and-reapply")
+  })
+
+  it("does not re-apply when the active custom theme's CSS is unchanged", () => {
+    expect(
+      decideCustomThemeAction({
+        ...base,
+        storedThemeId: "custom:ocean",
+        themes: [ocean],
+        appliedCustomCss: ocean.rawCss!,
+      })
+    ).toBe("register")
   })
 })

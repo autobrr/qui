@@ -7,9 +7,9 @@ import { useEffect, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api"
 import { useHasPremiumAccess } from "@/hooks/useLicense"
-import { parseCustomThemes, isCustomThemeId, type ParsedCustomThemes } from "@/lib/custom-themes"
+import { parseCustomThemes, decideCustomThemeAction, type ParsedCustomThemes } from "@/lib/custom-themes"
 import { registerCustomThemes, getDefaultTheme } from "@/config/themes"
-import { setTheme } from "@/utils/theme"
+import { setTheme, getAppliedCustomThemeCss } from "@/utils/theme"
 
 const EMPTY: ParsedCustomThemes = { themes: [], errors: [] }
 
@@ -38,38 +38,41 @@ export function useCustomThemes() {
 
   // Sync the runtime registry and the stored selection with the latest list.
   useEffect(() => {
-    // While the license check is in flight, or on a transient error, leave the
-    // registry and stored selection untouched. Downgrading here would clobber a
-    // premium user's stored custom theme before their license even resolves.
-    if (isLoading || isError) return
+    const storedThemeId = localStorage.getItem("color-theme")
+    const action = decideCustomThemeAction({
+      isLoading,
+      isError,
+      hasPremiumAccess,
+      hasData: !!query.data,
+      storedThemeId,
+      themes: parsed.themes,
+      appliedCustomCss: getAppliedCustomThemeCss(),
+    })
 
-    if (!hasPremiumAccess) {
-      // Confirmed no premium: drop custom themes and downgrade a stored custom
-      // selection to the default free theme.
-      registerCustomThemes([])
-      if (isCustomThemeId(localStorage.getItem("color-theme"))) {
+    switch (action) {
+      case "clear":
+        registerCustomThemes([])
+        break
+      case "clear-and-downgrade":
+        registerCustomThemes([])
         void setTheme(getDefaultTheme().id)
-      }
-      return
-    }
-
-    if (!query.data) return
-
-    registerCustomThemes(parsed.themes)
-
-    const storedId = localStorage.getItem("color-theme")
-    if (!isCustomThemeId(storedId)) return
-
-    if (!parsed.themes.some(theme => theme.id === storedId)) {
-      // The selected custom theme's file was removed/renamed - fall back.
-      void setTheme(getDefaultTheme().id)
-      return
-    }
-
-    // Apply the stored custom theme now that it is registered; it could not be
-    // resolved synchronously during the initial (pre-fetch) theme init.
-    if (document.documentElement.getAttribute("data-theme") !== storedId) {
-      void setTheme(storedId!)
+        break
+      case "register":
+        registerCustomThemes(parsed.themes)
+        break
+      case "register-and-reapply":
+        // Apply the stored custom theme: it wasn't resolvable during the initial
+        // pre-fetch init, or its file was edited and refreshed (CSS changed).
+        registerCustomThemes(parsed.themes)
+        void setTheme(storedThemeId!)
+        break
+      case "register-and-downgrade":
+        // The selected custom theme's file was removed/renamed - fall back.
+        registerCustomThemes(parsed.themes)
+        void setTheme(getDefaultTheme().id)
+        break
+      case "noop":
+        break
     }
   }, [hasPremiumAccess, isLoading, isError, query.data, parsed])
 
