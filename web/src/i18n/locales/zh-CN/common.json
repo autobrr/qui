@@ -132,7 +132,8 @@
     "switchedToThemeVariation": "已切换到{{theme}}主题（{{variation}}）",
     "unableToVerifyLicense": "无法验证许可证",
     "licenseCheckFailed": "许可证检查失败，高级主题切换暂时不可用。",
-    "premiumThemeError": "这是高级主题。请前往设置 > 主题激活许可证。"
+    "premiumThemeError": "这是高级主题。请前往设置 > 主题激活许可证。",
+    "custom": "自定义"
   },
   "updateBanner": {
     "updateAvailable": "有可用更新",

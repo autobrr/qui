@@ -13,7 +13,7 @@ import {
   getThemeVariation,
   type ThemeMode
 } from "@/utils/theme";
-import { themes, isThemePremium } from "@/config/themes";
+import { themes, isThemePremium, type Theme } from "@/config/themes";
 import { Sun, Moon, Monitor, Check, Palette, CornerDownRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts";
+import { useCustomThemes } from "@/hooks/useCustomThemes";
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement";
 
 // Constants
@@ -63,6 +64,7 @@ export const ThemeToggle: React.FC = () => {
   const { t } = useTranslation("common");
   const { currentMode, currentTheme, isDark } = useThemeChange();
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess();
+  const { customThemes } = useCustomThemes();
   const [open, setOpen] = useState(false);
   const [activeThemeId, setActiveThemeId] = useState<string | null>(null);
 
@@ -73,13 +75,9 @@ export const ThemeToggle: React.FC = () => {
   });
 
   const sortedThemes = useMemo(() => {
-    return [...themes].sort((a, b) => {
-      const aIsPremium = isThemePremium(a.id);
-      const bIsPremium = isThemePremium(b.id);
-      if (aIsPremium === bIsPremium) return 0;
-      return aIsPremium ? 1 : -1;
-    });
-  }, []);
+    const rank = (theme: Theme) => (theme.isCustom ? 2 : isThemePremium(theme.id) ? 1 : 0);
+    return [...themes, ...customThemes].sort((a, b) => rank(a) - rank(b));
+  }, [customThemes]);
 
   const previewColorsCache = useMemo(() => new Map<string, {
     primary: string;
@@ -259,7 +257,11 @@ export const ThemeToggle: React.FC = () => {
                   />
                   <div className="flex items-center justify-between gap-1.5 flex-1">
                     <span>{theme.name}</span>
-                    {isPremium && (
+                    {theme.isCustom ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium">
+                        {t("themeToggle.custom")}
+                      </span>
+                    ) : isPremium && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground font-medium">
                         {t("themeToggle.premium")}
                       </span>

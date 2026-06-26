@@ -550,6 +550,18 @@
         "refreshedAll": "所有许可证刷新成功",
         "refreshFailed": "刷新许可证失败"
       }
+    },
+    "custom": {
+      "badge": "自定义",
+      "title": "自定义主题",
+      "lockedTitle": "自定义主题是高级功能",
+      "lockedDescription": "解锁高级版即可从磁盘目录加载你自己的主题 CSS 文件。",
+      "unlockCta": "解锁高级版",
+      "directoryLabel": "主题目录",
+      "refresh": "刷新",
+      "detectedCount": "找到的主题：{{total}}",
+      "parseErrorsTitle": "无法解析以下文件：",
+      "noneFound": "未找到自定义主题。请将 .css 文件放入主题目录，然后点击刷新。"
     }
   },
   "arrInstances": {

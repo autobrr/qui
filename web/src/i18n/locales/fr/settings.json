@@ -552,6 +552,18 @@
         "refreshedAll": "Licences rafraîchies avec succès",
         "refreshFailed": "Échec du rafraîchissement des licences"
       }
+    },
+    "custom": {
+      "badge": "Personnalisé",
+      "title": "Thèmes personnalisés",
+      "lockedTitle": "Les thèmes personnalisés sont une fonctionnalité premium",
+      "lockedDescription": "Débloquez le premium pour charger vos propres fichiers CSS de thème depuis un dossier sur le disque.",
+      "unlockCta": "Débloquer le premium",
+      "directoryLabel": "Dossier des thèmes",
+      "refresh": "Actualiser",
+      "detectedCount": "Thèmes trouvés : {{total}}",
+      "parseErrorsTitle": "Impossible d'analyser ces fichiers :",
+      "noneFound": "Aucun thème personnalisé trouvé. Déposez un fichier .css dans le dossier des thèmes puis cliquez sur Actualiser."
     }
   },
   "arrInstances": {

@@ -552,6 +552,18 @@
         "refreshedAll": "All licenses refreshed successfully",
         "refreshFailed": "Failed to refresh licenses"
       }
+    },
+    "custom": {
+      "badge": "Custom",
+      "title": "Custom Themes",
+      "lockedTitle": "Custom themes are a premium feature",
+      "lockedDescription": "Unlock premium to sideload your own theme CSS files from a directory on disk.",
+      "unlockCta": "Unlock premium",
+      "directoryLabel": "Themes directory",
+      "refresh": "Refresh",
+      "detectedCount": "Themes found: {{total}}",
+      "parseErrorsTitle": "Could not parse these files:",
+      "noneFound": "No custom themes found. Drop a .css file into the themes directory and click Refresh."
     }
   },
   "arrInstances": {

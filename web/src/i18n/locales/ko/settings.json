@@ -550,6 +550,18 @@
         "refreshedAll": "모든 라이선스가 새로 고쳐졌습니다",
         "refreshFailed": "라이선스를 새로 고치지 못했습니다"
       }
+    },
+    "custom": {
+      "badge": "사용자 지정",
+      "title": "사용자 지정 테마",
+      "lockedTitle": "사용자 지정 테마는 프리미엄 기능입니다",
+      "lockedDescription": "프리미엄을 잠금 해제하면 디스크의 디렉터리에서 직접 만든 테마 CSS 파일을 불러올 수 있습니다.",
+      "unlockCta": "프리미엄 잠금 해제",
+      "directoryLabel": "테마 디렉터리",
+      "refresh": "새로 고침",
+      "detectedCount": "찾은 테마: {{total}}개",
+      "parseErrorsTitle": "다음 파일을 분석할 수 없습니다:",
+      "noneFound": "사용자 지정 테마를 찾을 수 없습니다. 테마 디렉터리에 .css 파일을 넣고 새로 고침을 클릭하세요."
     }
   },
   "arrInstances": {

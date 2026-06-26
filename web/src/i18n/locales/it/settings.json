@@ -552,6 +552,18 @@
         "refreshedAll": "Tutte le licenze aggiornate con successo",
         "refreshFailed": "Aggiornamento delle licenze non riuscito"
       }
+    },
+    "custom": {
+      "badge": "Personalizzato",
+      "title": "Temi personalizzati",
+      "lockedTitle": "I temi personalizzati sono una funzione premium",
+      "lockedDescription": "Sblocca il premium per caricare i tuoi file CSS dei temi da una cartella sul disco.",
+      "unlockCta": "Sblocca premium",
+      "directoryLabel": "Cartella dei temi",
+      "refresh": "Aggiorna",
+      "detectedCount": "Temi trovati: {{total}}",
+      "parseErrorsTitle": "Impossibile analizzare questi file:",
+      "noneFound": "Nessun tema personalizzato trovato. Inserisci un file .css nella cartella dei temi e fai clic su Aggiorna."
     }
   },
   "arrInstances": {
