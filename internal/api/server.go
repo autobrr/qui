@@ -348,6 +348,7 @@ func (s *Server) Handler() (*chi.Mux, error) {
 	trackerIconHandler := handlers.NewTrackerIconHandler(s.trackerIconService)
 	proxyHandler := proxy.NewHandler(s.clientPool, s.clientAPIKeyStore, s.instanceStore, s.syncManager, s.reannounceCache, s.reannounceService, s.config.Config.BaseURL)
 	licenseHandler := handlers.NewLicenseHandler(s.licenseService)
+	themesHandler := handlers.NewThemesHandler(s.config, s.licenseService)
 	crossSeedHandler := handlers.NewCrossSeedHandler(
 		s.crossSeedService,
 		s.instanceCrossSeedCompletionStore,
@@ -423,6 +424,9 @@ func (s *Server) Handler() (*chi.Mux, error) {
 			r.Put("/auth/change-password", authHandler.ChangePassword)
 
 			r.Route("/license", licenseHandler.Routes)
+
+			// Sideloaded custom themes (premium-gated inside the handler)
+			r.Get("/themes/custom", themesHandler.ListCustomThemes)
 
 			// Jackett routes (if configured)
 			if jackettHandler != nil {

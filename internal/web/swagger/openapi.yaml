@@ -2977,6 +2977,38 @@ paths:
         '500':
           description: Failed to refresh licenses
 
+  /api/themes/custom:
+    get:
+      tags:
+        - Themes
+      summary: List custom themes
+      description: List sideloaded custom theme CSS files and their contents. Requires premium access.
+      responses:
+        '200':
+          description: Custom themes listed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  directory:
+                    type: string
+                  themes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        filename:
+                          type: string
+                        css:
+                          type: string
+        '403':
+          description: Premium access required
+        '500':
+          description: Failed to list custom themes
+
   /api/torrents/cross-instance:
     get:
       tags:
@@ -8454,5 +8486,7 @@ tags:
     description: RSS feed and auto-download rule management
   - name: Theme Licenses
     description: Theme license management (optional feature)
+  - name: Themes
+    description: Sideloaded custom theme listing (premium)
   - name: Proxy
     description: qBittorrent-compatible proxy endpoints authenticated by client API key

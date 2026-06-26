@@ -49,6 +49,10 @@ type Config struct {
 	MetricsBasicAuthUsers    string `toml:"metricsBasicAuthUsers" mapstructure:"metricsBasicAuthUsers"`
 	TrackerIconsFetchEnabled bool   `toml:"trackerIconsFetchEnabled" mapstructure:"trackerIconsFetchEnabled"`
 
+	// CustomThemesDir is the directory sideloaded custom theme CSS files are read from.
+	// Empty means <config-dir>/themes. A relative value is resolved against the config dir.
+	CustomThemesDir string `toml:"customThemesDir" mapstructure:"customThemesDir"`
+
 	ExternalProgramAllowList []string `toml:"externalProgramAllowList" mapstructure:"externalProgramAllowList"`
 
 	// CrossSeedRecoverErroredTorrents enables recovery attempts for errored/missingFiles torrents
