@@ -1384,6 +1384,10 @@ paths:
                     type: integer
                   limit:
                     type: integer
+                  preferences:
+                    type: object
+                    nullable: true
+                    description: qBittorrent preferences when available; null means a fresh preference fetch failed without a cached value; omitted means no preference update is available for this response.
     post:
       tags:
         - Torrents

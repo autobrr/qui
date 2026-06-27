@@ -4,15 +4,19 @@
 package sse
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -111,6 +115,120 @@ func TestOnSessionAbortsWhenInitWriteFails(t *testing.T) {
 	require.Nil(t, topics)
 }
 
+func TestOnSessionAbortsWhenInitFlushFails(t *testing.T) {
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+	logs := captureSSELogs(t)
+
+	id, err := manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, "failing-flush")
+	require.NoError(t, err)
+
+	ctx := context.WithValue(context.Background(), subscriptionIDsContextKey, []string{id})
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
+
+	topics, ok := manager.onSession(&flushErrorResponseWriter{}, req)
+
+	require.False(t, ok)
+	require.Nil(t, topics)
+	require.Equal(t, uint64(0), manager.eventsPublished.Load())
+	require.Equal(t, uint64(1), manager.eventsDropped.Load())
+	requireSSEPayloadFlushLog(t, logs.String(), streamEventInit)
+}
+
+func TestOnSessionAbortsWhenKeepaliveFlushFails(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+	logs := captureSSELogs(t)
+
+	ctx := context.WithValue(context.Background(), activityTopicContextKey, "activity-topic")
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
+
+	topics, ok := manager.onSession(&flushErrorResponseWriter{}, req)
+
+	require.False(t, ok)
+	require.Nil(t, topics)
+	require.Equal(t, uint64(0), manager.eventsPublished.Load())
+	require.Equal(t, uint64(1), manager.eventsDropped.Load())
+	requireSSEPayloadFlushLog(t, logs.String(), streamEventHeartbeat)
+}
+
+func TestWritePayloadToSessionFlushesHTTPFlusher(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+	rec := httptest.NewRecorder()
+
+	ok := manager.writePayloadToSession(rec, &StreamPayload{
+		Type: streamEventHeartbeat,
+		Meta: &StreamMeta{Timestamp: time.Now()},
+	})
+
+	require.True(t, ok)
+	require.True(t, rec.Flushed)
+	require.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))
+	require.Contains(t, rec.Body.String(), "event: heartbeat")
+	require.Equal(t, uint64(1), manager.eventsPublished.Load())
+	require.Equal(t, uint64(0), manager.eventsDropped.Load())
+}
+
+func TestWritePayloadToSessionFlushFailureLogsExactPayloadType(t *testing.T) {
+	payloadTypes := []string{
+		streamEventInit,
+		streamEventHeartbeat,
+		"",
+		"init-heartbeat",
+		"heartbeat-extra",
+	}
+
+	for _, payloadType := range payloadTypes {
+		t.Run("type="+payloadType, func(t *testing.T) {
+			manager := NewStreamManager(nil, nil, nil)
+			t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+			logs := captureSSELogs(t)
+
+			ok := manager.writePayloadToSession(&flushErrorResponseWriter{}, &StreamPayload{
+				Type: payloadType,
+				Meta: &StreamMeta{Timestamp: time.Now()},
+			})
+
+			require.False(t, ok)
+			require.Equal(t, uint64(0), manager.eventsPublished.Load())
+			require.Equal(t, uint64(1), manager.eventsDropped.Load())
+			requireSSEPayloadFlushLog(t, logs.String(), payloadType)
+		})
+	}
+}
+
+func captureSSELogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	var buf bytes.Buffer
+	origLogger := log.Logger
+	origLevel := zerolog.GlobalLevel()
+	log.Logger = zerolog.New(&buf).Level(zerolog.TraceLevel)
+	zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	t.Cleanup(func() {
+		log.Logger = origLogger
+		zerolog.SetGlobalLevel(origLevel)
+	})
+
+	return &buf
+}
+
+func requireSSEPayloadFlushLog(t *testing.T, logOutput, payloadType string) {
+	t.Helper()
+
+	require.Contains(t, logOutput, `"message":"Failed to flush SSE payload"`)
+	require.Contains(t, logOutput, `"type":`+quoteJSONString(payloadType))
+	require.NotContains(t, logOutput, "Failed to flush SSE init payload")
+	require.NotContains(t, logOutput, "timestamp")
+	require.NotContains(t, strings.ToLower(logOutput), "torrent")
+}
+
+func quoteJSONString(s string) string {
+	return fmt.Sprintf("%q", s)
+}
+
 // erroringResponseWriter is a fake socket whose Write always fails, used to drive
 // the drain goroutine's write-error drop path — the mechanism that drops a stuck-
 // then-erroring client when its rolling streamWriteTimeout deadline fires.
@@ -132,6 +250,27 @@ func (w *erroringResponseWriter) Write([]byte) (int, error) {
 func (w *erroringResponseWriter) WriteHeader(int) {}
 
 func (w *erroringResponseWriter) Flush() {}
+
+type flushErrorResponseWriter struct {
+	header http.Header
+}
+
+func (w *flushErrorResponseWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = make(http.Header)
+	}
+	return w.header
+}
+
+func (w *flushErrorResponseWriter) Write(p []byte) (int, error) {
+	return len(p), nil
+}
+
+func (w *flushErrorResponseWriter) WriteHeader(int) {}
+
+func (w *flushErrorResponseWriter) Flush() error {
+	return errors.New("socket flush failed")
+}
 
 // TestDrainDropsOnWriteError covers the drain goroutine's error path (distinct
 // from the Flush queue-overflow drop): when a queued socket write fails, the

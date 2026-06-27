@@ -16,6 +16,7 @@ import type {
   AppPreferences,
   QBittorrentAppInfo,
   Torrent,
+  TorrentCounts,
   TorrentFilters,
   TorrentResponse,
   TorrentStreamPayload
@@ -54,9 +55,10 @@ interface UseTorrentsListOptions {
 
 /**
  * Loads a paginated torrent list and keeps page 0 current with SSE when possible.
- * The hook updates shared instance metadata from stream/REST responses, clears
- * stale regular-instance preferences when the backend omits them, and falls back
- * to REST polling when streaming is disabled or disconnected.
+ * The hook updates shared instance metadata from stream/REST responses, preserves
+ * cached preferences and sidebar counts when stream frames omit them, clears
+ * preferences on explicit null responses, and falls back to REST polling when
+ * streaming is disabled or disconnected.
  */
 export function useTorrentsList(
   instanceId: number,
@@ -82,6 +84,8 @@ export function useTorrentsList(
   const [lastKnownTotal, setLastKnownTotal] = useState(0)
   const [lastProcessedPage, setLastProcessedPage] = useState(-1)
   const [lastStreamSnapshot, setLastStreamSnapshot] = useState<TorrentResponse | null>(null)
+  const [lastCountsSnapshot, setLastCountsSnapshot] = useState<{ scopeKey: string; counts?: TorrentCounts }>({ scopeKey: "" })
+  const lastStreamSnapshotScopeRef = useRef("")
   // The last full page-0 snapshot, retained as the base that incoming SSE deltas are
   // applied against. Held in a ref (not state) so a delta can read the just-applied
   // snapshot synchronously without re-running this callback. Seeded by every full
@@ -121,12 +125,15 @@ export function useTorrentsList(
       queryClient.setQueryData<InstanceMetadata | undefined>(
         metadataQueryKey,
         previous => {
-          // Treat omitted metadata arrays/maps as empty for regular instance responses.
-          // Backend omitempty omits empty tags/categories, and we must clear stale cache values.
+          // Treat omitted tags/categories as empty for regular instance responses:
+          // backend omitempty drops empty collections, and those should clear stale
+          // sidebar values. Omitted preferences are different because stale stream
+          // frames may not carry them; only an explicit preferences property updates
+          // or clears preference caches.
           const nextCategories = isCrossInstanceSource? (previous?.categories ?? {}): (source.categories ?? {})
           const nextTags = isCrossInstanceSource? (previous?.tags ?? []): (source.tags ?? [])
           const nextPreferences =
-            hasPreferences? ((source.preferences as AppPreferences | null | undefined) ?? undefined): (isCrossInstanceSource? previous?.preferences: undefined)
+            hasPreferences? ((source.preferences as AppPreferences | null | undefined) ?? undefined): previous?.preferences
 
           const next: InstanceMetadata = {
             categories: nextCategories,
@@ -138,7 +145,7 @@ export function useTorrentsList(
         }
       )
 
-      if (!isCrossInstanceSource || (hasPreferences && source.preferences !== undefined)) {
+      if (hasPreferences) {
         const nextPreferences = (source.preferences as AppPreferences | null | undefined) ?? undefined
         if (nextPreferences !== undefined) {
           queryClient.setQueryData<AppPreferences | undefined>(
@@ -174,6 +181,9 @@ export function useTorrentsList(
     () => (instanceIds && instanceIds.length > 0 ? [...instanceIds].sort((left, right) => left - right).join(",") : ""),
     [instanceIds]
   )
+  const filterKey = JSON.stringify(filters)
+  const searchKey = search || ""
+  const viewScopeKey = `${instanceId}|${instanceIdsKey}|${filterKey}|${searchKey}|${sort}|${order}|${useCrossInstanceEndpoint}|${isCrossSeedFiltering}`
 
   const streamQueryKey = useMemo(
     () => ["torrents-list", instanceId, instanceIdsKey, 0, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering] as const,
@@ -278,6 +288,7 @@ export function useTorrentsList(
 
       // Retain the reconstructed full snapshot as the base for the next delta.
       lastFullSnapshotRef.current = data
+      lastStreamSnapshotScopeRef.current = viewScopeKey
 
       setLastStreamSnapshot(data)
       updateAppInfoCache(data)
@@ -331,7 +342,7 @@ export function useTorrentsList(
         setHasLoadedAll(!data.hasMore)
       }
     },
-    [currentPage, queryClient, streamQueryKey, updateAppInfoCache, updateMetadataCache, useCrossInstanceEndpoint]
+    [currentPage, queryClient, streamQueryKey, updateAppInfoCache, updateMetadataCache, useCrossInstanceEndpoint, viewScopeKey]
   )
 
   const streamState = useSyncStream(streamParams, {
@@ -352,9 +363,6 @@ export function useTorrentsList(
 
   // Reset state when instanceId, filters, search, or sort changes
   // Use JSON.stringify to avoid resetting on every object reference change during polling
-  const filterKey = JSON.stringify(filters)
-  const searchKey = search || ""
-
   useEffect(() => {
     setCurrentPage(0)
     setAllTorrents([])
@@ -362,10 +370,11 @@ export function useTorrentsList(
     setLastKnownTotal(0)
     setLastProcessedPage(-1)
     setLastStreamSnapshot(null)
+    lastStreamSnapshotScopeRef.current = ""
     // Drop the delta baseline so a delta from the previous view can never be applied
     // against the new one; the new subscription's init reseeds it.
     lastFullSnapshotRef.current = null
-  }, [instanceId, filterKey, searchKey, sort, order, instanceIdsKey])
+  }, [viewScopeKey])
 
   useEffect(() => {
     if (lastKnownTotal <= 0) {
@@ -424,12 +433,15 @@ export function useTorrentsList(
   const { data: capabilities } = useInstanceCapabilities(instanceId, { enabled: enabled && !isAllInstancesView })
 
   const activeData = useMemo(() => {
-    if (shouldDisablePolling && lastStreamSnapshot) {
-      return lastStreamSnapshot
+    const scopedStreamSnapshot =
+      lastStreamSnapshotScopeRef.current === viewScopeKey ? lastStreamSnapshot : null
+
+    if (shouldDisablePolling && scopedStreamSnapshot) {
+      return scopedStreamSnapshot
     }
 
-    return data ?? lastStreamSnapshot ?? null
-  }, [data, lastStreamSnapshot, shouldDisablePolling])
+    return data ?? scopedStreamSnapshot ?? null
+  }, [data, lastStreamSnapshot, shouldDisablePolling, viewScopeKey])
 
   // Update torrents when data arrives or changes (including optimistic updates)
   useEffect(() => {
@@ -586,12 +598,34 @@ export function useTorrentsList(
 
   const responseUseSubcategories = activeData?.useSubcategories ?? activeData?.serverState?.use_subcategories ?? data?.useSubcategories ?? data?.serverState?.use_subcategories ?? false
   const supportsSubcategories = isAllInstancesView ? responseUseSubcategories : (capabilities?.supportsSubcategories ?? false)
+  const countsScopeKey = viewScopeKey
+  const responseCounts = activeData?.counts ?? data?.counts
+
+  // Stream snapshots can omit counts when tracker hydration is intentionally
+  // skipped. Keep the latest counts for the same view so the sidebar does not
+  // regress to stale/empty state while the connected stream owns activeData.
+  const effectiveCounts = responseCounts ?? (
+    lastCountsSnapshot.scopeKey === countsScopeKey ? lastCountsSnapshot.counts : undefined
+  )
+
+  useEffect(() => {
+    if (responseCounts !== undefined) {
+      setLastCountsSnapshot(previous =>
+        previous.scopeKey === countsScopeKey && previous.counts === responseCounts? previous: { scopeKey: countsScopeKey, counts: responseCounts }
+      )
+      return
+    }
+
+    setLastCountsSnapshot(previous =>
+      previous.scopeKey === countsScopeKey ? previous : { scopeKey: countsScopeKey }
+    )
+  }, [countsScopeKey, responseCounts])
 
   return {
     torrents: allTorrents,
     totalCount: effectiveTotalCount,
     stats,
-    counts: activeData?.counts ?? data?.counts,
+    counts: effectiveCounts,
     appInfo: activeData?.appInfo ?? data?.appInfo ?? null,
     categories: activeData?.categories ?? data?.categories,
     tags: activeData?.tags ?? data?.tags,

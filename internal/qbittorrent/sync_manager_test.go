@@ -5,6 +5,7 @@ package qbittorrent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -17,6 +18,68 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 )
+
+func TestTorrentResponseMarshalPreferencesPresence(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		response    TorrentResponse
+		wantPresent bool
+		wantNull    bool
+	}{
+		{
+			name: "omits preferences when producer has no value and no explicit failure",
+			response: TorrentResponse{
+				Torrents: []TorrentView{},
+			},
+		},
+		{
+			name: "emits null when producer marks fresh failure without cached preferences",
+			response: TorrentResponse{
+				Torrents:              []TorrentView{},
+				appPreferencesPresent: true,
+			},
+			wantPresent: true,
+			wantNull:    true,
+		},
+		{
+			name: "emits object when preferences are available",
+			response: TorrentResponse{
+				Torrents:              []TorrentView{},
+				AppPreferences:        &qbt.AppPreferences{AnnounceIP: "203.0.113.7"},
+				appPreferencesPresent: true,
+			},
+			wantPresent: true,
+		},
+		{
+			name: "emits object even when explicit presence flag is false",
+			response: TorrentResponse{
+				Torrents:       []TorrentView{},
+				AppPreferences: &qbt.AppPreferences{AnnounceIP: "203.0.113.8"},
+			},
+			wantPresent: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			body, err := json.Marshal(tt.response)
+			require.NoError(t, err)
+
+			var fields map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(body, &fields))
+
+			preferences, ok := fields["preferences"]
+			require.Equal(t, tt.wantPresent, ok)
+			if tt.wantPresent {
+				require.Equal(t, tt.wantNull, string(preferences) == "null")
+			}
+		})
+	}
+}
 
 func TestAddTorrentURLsErrorSummaryDoesNotExposeRawURLs(t *testing.T) {
 	t.Parallel()
@@ -173,6 +236,402 @@ func TestSeedValidatedTrackerMappingFromMainData(t *testing.T) {
 	require.NotContains(t, mapping.DomainToHashes, "stale.example")
 	require.NotContains(t, mapping.DomainToHashes, "stale-multi.example")
 	require.NotContains(t, mapping.DomainToHashes, "")
+}
+
+func TestSeedValidatedTrackerMappingFromMainDataClearsStaleMappingWhenNoCurrentHashesMatch(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			7: {
+				HashToDomains: map[string]map[string]struct{}{
+					"old-hash": {"stale.example": {}},
+				},
+				DomainToHashes: map[string]map[string]struct{}{
+					"stale.example": {"old-hash": {}},
+				},
+				UpdatedAt: time.Now().Add(-time.Hour),
+			},
+		},
+	}
+	torrents := []qbt.Torrent{
+		{Hash: "current-hash", Tracker: "https://current.example/announce"},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"https://stale.example/announce": {"old-hash"},
+		},
+	}
+
+	sm.seedValidatedTrackerMappingFromMainData(7, torrents, mainData, time.Now())
+
+	mapping := sm.getValidatedTrackerMapping(7)
+	require.NotNil(t, mapping)
+	require.Empty(t, mapping.HashToDomains)
+	require.Empty(t, mapping.DomainToHashes)
+	require.NotContains(t, mapping.HashToDomains, "old-hash")
+	require.NotContains(t, mapping.DomainToHashes, "stale.example")
+}
+
+func TestSeedValidatedTrackerMappingFromMainDataClearsStaleMappingForEmptyCurrentList(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			7: {
+				HashToDomains: map[string]map[string]struct{}{
+					"old-hash": {"stale.example": {}},
+				},
+				DomainToHashes: map[string]map[string]struct{}{
+					"stale.example": {"old-hash": {}},
+				},
+				UpdatedAt: time.Now().Add(-time.Hour),
+			},
+		},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"https://stale.example/announce": {"old-hash"},
+		},
+	}
+
+	sm.seedValidatedTrackerMappingFromMainData(7, nil, mainData, time.Now())
+
+	mapping := sm.getValidatedTrackerMapping(7)
+	require.NotNil(t, mapping)
+	require.Empty(t, mapping.HashToDomains)
+	require.Empty(t, mapping.DomainToHashes)
+}
+
+func TestFallbackTrackerMappingDoesNotDriveCountsAndFilters(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
+	}
+	client := &Client{instanceID: 7}
+	torrents := []qbt.Torrent{
+		{Hash: "current-hash", Tracker: ""},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"https://stale.example/announce": {"current-hash"},
+		},
+	}
+
+	sm.seedFallbackTrackerMappingFromMainData(7, torrents, mainData, time.Now())
+
+	mapping := sm.getValidatedTrackerMapping(7)
+	require.NotNil(t, mapping)
+	require.True(t, mapping.FallbackOnly)
+	require.Contains(t, mapping.DomainToHashes, "stale.example")
+
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
+	require.NotContains(t, counts.Trackers, "stale.example")
+	require.NotContains(t, counts.TrackerTransfers, "stale.example")
+
+	filtered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, nil, false)
+	require.Empty(t, filtered)
+}
+
+func TestDirectTrackerEditDoesNotPromoteFallbackTrackerMapping(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
+	}
+	client := &Client{instanceID: 7}
+	torrents := []qbt.Torrent{
+		{Hash: "current-hash", Tracker: "https://new.example/announce", Uploaded: 10, Downloaded: 20, Size: 30, ContentPath: "/data/current"},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"https://stale.example/announce": {"current-hash"},
+		},
+	}
+
+	sm.seedFallbackTrackerMappingFromMainData(7, torrents, mainData, time.Now())
+	sm.updateTrackerMappingForEdit(7, "current-hash", "stale.example", "new.example")
+
+	mapping := sm.getValidatedTrackerMapping(7)
+	require.NotNil(t, mapping)
+	require.False(t, mapping.FallbackOnly)
+	require.NotContains(t, mapping.DomainToHashes, "stale.example")
+	require.Contains(t, mapping.DomainToHashes, "new.example")
+	require.Contains(t, mapping.HashToDomains["current-hash"], "new.example")
+
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
+	require.NotContains(t, counts.Trackers, "stale.example")
+	require.Equal(t, 1, counts.Trackers["new.example"])
+
+	staleFiltered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, nil, false)
+	require.Empty(t, staleFiltered)
+
+	currentFiltered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"new.example"}}, mainData, nil, false)
+	require.Len(t, currentFiltered, 1)
+	require.Equal(t, "current-hash", currentFiltered[0].Hash)
+}
+
+func TestUnsupportedTrackerHydrationSeedDropsStaleDomainsFromCountsAndFilters(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			7: {
+				HashToDomains: map[string]map[string]struct{}{
+					"old-hash": {"stale.example": {}},
+				},
+				DomainToHashes: map[string]map[string]struct{}{
+					"stale.example": {"old-hash": {}},
+				},
+				UpdatedAt: time.Now().Add(-time.Hour),
+			},
+		},
+	}
+	client := &Client{instanceID: 7}
+	torrents := []qbt.Torrent{
+		{
+			Hash:        "current-hash",
+			Tracker:     "https://current.example/announce",
+			ContentPath: "/data/current",
+			Size:        100,
+			Uploaded:    20,
+			Downloaded:  30,
+		},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"https://current.example/announce": {"current-hash"},
+			"https://stale.example/announce":   {"old-hash"},
+		},
+	}
+
+	sm.seedValidatedTrackerMappingFromMainData(7, torrents, mainData, time.Now())
+
+	mapping := sm.getValidatedTrackerMapping(7)
+	require.NotNil(t, mapping)
+	require.Contains(t, mapping.DomainToHashes, "current.example")
+	require.NotContains(t, mapping.DomainToHashes, "stale.example")
+	require.NotContains(t, mapping.HashToDomains, "old-hash")
+
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
+	require.Equal(t, 1, counts.Trackers["current.example"])
+	require.NotContains(t, counts.Trackers, "stale.example")
+	require.Equal(t, TrackerTransferStats{
+		Uploaded:   20,
+		Downloaded: 30,
+		TotalSize:  100,
+		Count:      1,
+	}, counts.TrackerTransfers["current.example"])
+
+	staleFiltered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, nil, false)
+	require.Empty(t, staleFiltered)
+
+	currentFiltered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"current.example"}}, mainData, nil, false)
+	require.Len(t, currentFiltered, 1)
+	require.Equal(t, "current-hash", currentFiltered[0].Hash)
+}
+
+func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedValidatedDomain(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			7: {
+				HashToDomains: map[string]map[string]struct{}{
+					"hash-a": {"stale.example": {}},
+				},
+				DomainToHashes: map[string]map[string]struct{}{
+					"stale.example": {"hash-a": {}},
+				},
+				UpdatedAt: time.Now(),
+			},
+		},
+	}
+	client := &Client{
+		instanceID: 7,
+		trackerExclusions: map[string]map[string]struct{}{
+			"stale.example": {"hash-a": {}},
+		},
+	}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://new.example/announce"},
+	}
+
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, nil, false, false)
+
+	require.NotContains(t, counts.Trackers, "stale.example")
+	require.NotContains(t, counts.TrackerTransfers, "stale.example")
+	require.Nil(t, client.getTrackerExclusionsCopy())
+
+	filtered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, nil, nil, false)
+	require.Empty(t, filtered)
+}
+
+func TestCalculateCountsFromTorrentsWithTrackersPreservesPartiallyLiveValidatedDomain(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			7: {
+				HashToDomains: map[string]map[string]struct{}{
+					"hash-a": {"tracker.example": {}},
+					"hash-b": {"tracker.example": {}},
+				},
+				DomainToHashes: map[string]map[string]struct{}{
+					"tracker.example": {"hash-a": {}, "hash-b": {}},
+				},
+				UpdatedAt: time.Now(),
+			},
+		},
+	}
+	client := &Client{
+		instanceID: 7,
+		trackerExclusions: map[string]map[string]struct{}{
+			"tracker.example": {"hash-a": {}},
+		},
+	}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://tracker.example/announce", Uploaded: 10, Downloaded: 20, Size: 30, ContentPath: "a"},
+		{Hash: "hash-b", Tracker: "https://tracker.example/announce", Uploaded: 100, Downloaded: 200, Size: 300, ContentPath: "b"},
+	}
+
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, nil, false, false)
+
+	require.Equal(t, 1, counts.Trackers["tracker.example"])
+	require.Equal(t, TrackerTransferStats{Uploaded: 100, Downloaded: 200, TotalSize: 300, Count: 1}, counts.TrackerTransfers["tracker.example"])
+	exclusions := client.getTrackerExclusionsCopy()
+	require.Contains(t, exclusions, "tracker.example")
+	require.Contains(t, exclusions["tracker.example"], "hash-a")
+}
+
+func TestCalculateCountsFromTorrentsWithTrackersPreservesValidatedCountsWithoutExclusions(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			7: {
+				HashToDomains: map[string]map[string]struct{}{
+					"hash-a": {"tracker.example": {}},
+					"hash-b": {"tracker.example": {}},
+				},
+				DomainToHashes: map[string]map[string]struct{}{
+					"tracker.example": {"hash-a": {}, "hash-b": {}},
+				},
+				UpdatedAt: time.Now(),
+			},
+		},
+	}
+	client := &Client{
+		instanceID:        7,
+		trackerExclusions: make(map[string]map[string]struct{}),
+	}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://tracker.example/announce", Uploaded: 10, Downloaded: 20, Size: 30, ContentPath: "same-path"},
+		{Hash: "hash-b", Tracker: "https://tracker.example/announce", Uploaded: 100, Downloaded: 200, Size: 300, ContentPath: "same-path"},
+	}
+
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, nil, false, false)
+
+	require.Equal(t, 2, counts.Trackers["tracker.example"])
+	require.Equal(t, TrackerTransferStats{Uploaded: 110, Downloaded: 220, TotalSize: 30, Count: 2}, counts.TrackerTransfers["tracker.example"])
+	require.Nil(t, client.getTrackerExclusionsCopy())
+}
+
+func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedFallbackDomain(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	client := &Client{
+		instanceID: 7,
+		trackerExclusions: map[string]map[string]struct{}{
+			"stale.example": {"hash-a": {}},
+		},
+	}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://new.example/announce"},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"https://stale.example/announce": {"hash-a"},
+		},
+	}
+
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
+
+	require.NotContains(t, counts.Trackers, "stale.example")
+	require.NotContains(t, counts.TrackerTransfers, "stale.example")
+	require.Nil(t, client.getTrackerExclusionsCopy())
+
+	filtered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, nil, false)
+	require.Empty(t, filtered)
+}
+
+func TestFallbackTrackerCountsOmitPseudoTrackersAndPreserveUnknown(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	client := &Client{instanceID: 7}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-pseudo", Tracker: "** [DHT] **", Uploaded: 10, Downloaded: 20, Size: 30, ContentPath: "pseudo"},
+		{Hash: "hash-unknown", Tracker: "/not-a-tracker", Uploaded: 100, Downloaded: 200, Size: 300, ContentPath: "unknown"},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"** [DHT] **":    {"hash-pseudo"},
+			"/not-a-tracker": {"hash-unknown"},
+		},
+	}
+
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
+
+	require.NotContains(t, counts.Trackers, "")
+	require.Equal(t, 1, counts.Trackers["Unknown"])
+	require.Equal(t, TrackerTransferStats{
+		Uploaded:   100,
+		Downloaded: 200,
+		TotalSize:  300,
+		Count:      1,
+	}, counts.TrackerTransfers["Unknown"])
+}
+
+func TestManualTrackerFiltersDoNotTreatPseudoTrackersAsUnknown(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	client := &Client{instanceID: 7}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-pseudo", Tracker: "** [DHT] **"},
+		{Hash: "hash-unknown", Tracker: "/not-a-tracker"},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"** [DHT] **":    {"hash-pseudo"},
+			"/not-a-tracker": {"hash-unknown"},
+		},
+	}
+
+	includeUnknown := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"Unknown"}}, mainData, nil, false)
+	require.Equal(t, []qbt.Torrent{{Hash: "hash-unknown", Tracker: "/not-a-tracker"}}, includeUnknown)
+
+	excludeUnknown := sm.applyManualFilters(client, torrents, FilterOptions{ExcludeTrackers: []string{"Unknown"}}, mainData, nil, false)
+	require.Equal(t, []qbt.Torrent{{Hash: "hash-pseudo", Tracker: "** [DHT] **"}}, excludeUnknown)
+}
+
+func TestManualTrackerFiltersFallbackOmitPseudoPrimaryTracker(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-pseudo", Tracker: "** [DHT] **"},
+		{Hash: "hash-unknown", Tracker: "/not-a-tracker"},
+	}
+
+	includeUnknown := sm.applyManualFilters(nil, torrents, FilterOptions{Trackers: []string{"Unknown"}}, nil, nil, false)
+	require.Equal(t, []qbt.Torrent{{Hash: "hash-unknown", Tracker: "/not-a-tracker"}}, includeUnknown)
+
+	excludeUnknown := sm.applyManualFilters(nil, torrents, FilterOptions{ExcludeTrackers: []string{"Unknown"}}, nil, nil, false)
+	require.Equal(t, []qbt.Torrent{{Hash: "hash-pseudo", Tracker: "** [DHT] **"}}, excludeUnknown)
 }
 
 func TestNormalizeHashes(t *testing.T) {

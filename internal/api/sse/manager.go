@@ -1076,8 +1076,8 @@ func (m *StreamManager) writeKeepaliveToSession(w http.ResponseWriter) bool {
 }
 
 // writePayloadToSession encodes payload as an SSE event and writes it straight
-// to the session response writer, then flushes. It returns false after marshal or
-// socket write failure so onSession can avoid subscribing a broken connection.
+// to the session response writer, then flushes. It returns false after marshal,
+// socket write, or flush failure so onSession can avoid subscribing a broken connection.
 // It is only safe to call from within onSession, before go-sse subscribes the
 // session and starts writing to the same writer from its provider loop.
 func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *StreamPayload) bool {
@@ -1088,7 +1088,7 @@ func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *St
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		m.eventsDropped.Add(1)
-		log.Error().Err(err).Str("type", payload.Type).Msg("Failed to marshal SSE init payload")
+		log.Error().Err(err).Str("type", payload.Type).Msg("Failed to marshal SSE payload")
 		return false
 	}
 
@@ -1104,11 +1104,19 @@ func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *St
 		if isClientDisconnect(err) {
 			event = log.Debug()
 		}
-		event.Err(err).Str("type", payload.Type).Msg("Failed to write SSE init payload")
+		event.Err(err).Str("type", payload.Type).Msg("Failed to write SSE payload")
 		return false
 	}
 
-	flushSession(w)
+	if err := flushSession(w); err != nil {
+		m.eventsDropped.Add(1)
+		event := log.Error()
+		if isClientDisconnect(err) {
+			event = log.Debug()
+		}
+		event.Err(err).Str("type", payload.Type).Msg("Failed to flush SSE payload")
+		return false
+	}
 	m.eventsPublished.Add(1)
 	return true
 }
@@ -1136,19 +1144,18 @@ func isClientDisconnect(err error) bool {
 // writer. The writer go-sse hands onSession is its own ResponseWriter wrapper
 // whose Flush returns an error, so try that first, then fall back to the
 // standard http.Flusher (unwrapping as needed).
-func flushSession(w http.ResponseWriter) {
+func flushSession(w http.ResponseWriter) error {
 	if f, ok := w.(interface{ Flush() error }); ok {
-		_ = f.Flush()
-		return
+		return f.Flush()
 	}
 	for {
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
-			return
+			return nil
 		}
 		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
 		if !ok {
-			return
+			return nil
 		}
 		w = u.Unwrap()
 	}
