@@ -290,6 +290,32 @@ func TestClientPoolSetSyncEventSinkWithNoClients(t *testing.T) {
 	assert.Equal(t, sink, poolSink, "pool should have stored the sink even with no clients")
 }
 
+func TestClientPoolSetSyncEventSinkUpdatesSyncManager(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	sm := NewSyncManager(nil, nil)
+	pool.SetSyncManager(sm)
+
+	sink := &mockPoolSyncEventSink{}
+	pool.SetSyncEventSink(sink)
+
+	assert.Equal(t, sink, sm.getSyncEventSink(), "sync manager should receive pool sink")
+}
+
+func TestClientPoolSetSyncManagerReceivesExistingSink(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	sink := &mockPoolSyncEventSink{}
+	pool.SetSyncEventSink(sink)
+
+	sm := NewSyncManager(nil, nil)
+	pool.SetSyncManager(sm)
+
+	assert.Equal(t, sink, sm.getSyncEventSink(), "new sync manager should receive existing pool sink")
+}
+
 func TestClientPoolSetSyncEventSinkReplacesExisting(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
@@ -317,4 +343,5 @@ type mockPoolSyncEventSink struct {
 }
 
 func (m *mockPoolSyncEventSink) HandleMainData(_ int, _ *qbt.MainData) {}
+func (m *mockPoolSyncEventSink) HandleTrackerHealthUpdated(_ int)      {}
 func (m *mockPoolSyncEventSink) HandleSyncError(_ int, _ error)        {}

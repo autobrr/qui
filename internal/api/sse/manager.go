@@ -291,6 +291,10 @@ type StreamMeta struct {
 	RID        int64     `json:"rid,omitempty"`
 	FullUpdate bool      `json:"fullUpdate,omitempty"`
 	Timestamp  time.Time `json:"timestamp"`
+	// IncludeCounts asks materialization to include cached aggregate counts even
+	// when the tick skips tracker hydration. Used after background tracker-health
+	// refreshes so dashboards receive the new health totals without inline qbit work.
+	IncludeCounts bool `json:"includeCounts,omitempty"`
 	// LastSuccessfulSync is when the instance's data last actually updated, sourced
 	// from the success-only sync clock. On stream-error frames it lets the client
 	// show how stale the retained torrents are ("data from N ago") without that age
@@ -607,6 +611,21 @@ func (m *StreamManager) HandleMainData(instanceID int, data *qbt.MainData) {
 		RID:        data.Rid,
 		FullUpdate: data.FullUpdate,
 		Timestamp:  time.Now(),
+	}
+
+	go m.publishInstance(instanceID, meta)
+}
+
+// HandleTrackerHealthUpdated republishes instance streams after tracker health cache refreshes.
+func (m *StreamManager) HandleTrackerHealthUpdated(instanceID int) {
+	if m.closing.Load() {
+		return
+	}
+
+	meta := &StreamMeta{
+		InstanceID:    instanceID,
+		Timestamp:     time.Now(),
+		IncludeCounts: true,
 	}
 
 	go m.publishInstance(instanceID, meta)
@@ -1330,6 +1349,9 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 	defer cancel()
 	ctx = qbittorrent.WithSkipFreshData(ctx)
 	ctx = qbittorrent.WithSkipTrackerHydration(ctx)
+	if metaCopy != nil && metaCopy.IncludeCounts {
+		ctx = qbittorrent.WithCachedCountsWhenSkippingTrackerHydration(ctx)
+	}
 
 	// A representative instance id for retry hints / logging (multi-instance groups
 	// have InstanceID == 0).

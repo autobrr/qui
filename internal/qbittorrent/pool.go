@@ -93,16 +93,20 @@ func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.Insta
 	return cp, nil
 }
 
-// SetSyncEventSink configures the sink that should receive sync notifications
-// from every client managed by this pool. Existing clients are updated
-// immediately.
+// SetSyncEventSink configures the sink that receives sync notifications from
+// every managed client and SyncManager-owned background refreshes.
 func (cp *ClientPool) SetSyncEventSink(sink SyncEventSink) {
 	cp.mu.Lock()
 	cp.syncEventSink = sink
 	for _, client := range cp.clients {
 		client.SetSyncEventSink(sink)
 	}
+	sm := cp.syncManager
 	cp.mu.Unlock()
+
+	if sm != nil {
+		sm.SetSyncEventSink(sink)
+	}
 }
 
 // SetTorrentCompletionHandler registers a callback for new and existing clients when torrents complete.
@@ -137,12 +141,17 @@ func (cp *ClientPool) SetTorrentAddedHandler(handler TorrentAddedHandler) {
 	}
 }
 
-// SetSyncManager sets the SyncManager reference for starting background tasks.
-// This creates a bidirectional relationship: ClientPool -> SyncManager for notifications.
+// SetSyncManager sets the SyncManager reference used for background tasks and
+// passes through any existing sync event sink.
 func (cp *ClientPool) SetSyncManager(sm *SyncManager) {
 	cp.mu.Lock()
-	defer cp.mu.Unlock()
 	cp.syncManager = sm
+	sink := cp.syncEventSink
+	cp.mu.Unlock()
+
+	if sm != nil {
+		sm.SetSyncEventSink(sink)
+	}
 }
 
 // getInstanceLock gets or creates a per-instance creation lock

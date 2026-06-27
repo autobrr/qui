@@ -345,6 +345,9 @@ type SyncManager struct {
 	trackerCustomizationStore TrackerCustomizationLister
 	// Cached tracker display name map (domain -> displayName), refreshed periodically
 	trackerDisplayNameCache *ttlcache.Cache[string, map[string]string]
+
+	syncEventSinkMu sync.RWMutex
+	syncEventSink   SyncEventSink
 }
 
 // ResumeWhenCompleteOptions configure resume monitoring behavior.
@@ -399,6 +402,20 @@ func NewSyncManager(clientPool *ClientPool, trackerCustomizationStore TrackerCus
 	}
 
 	return sm
+}
+
+// SetSyncEventSink registers the sink that receives SyncManager-owned background notifications.
+func (sm *SyncManager) SetSyncEventSink(sink SyncEventSink) {
+	sm.syncEventSinkMu.Lock()
+	sm.syncEventSink = sink
+	sm.syncEventSinkMu.Unlock()
+}
+
+// getSyncEventSink returns the current background notification sink without holding the lock for callbacks.
+func (sm *SyncManager) getSyncEventSink() SyncEventSink {
+	sm.syncEventSinkMu.RLock()
+	defer sm.syncEventSinkMu.RUnlock()
+	return sm.syncEventSink
 }
 
 // SetFilesManager sets the files manager for caching in a thread-safe manner
@@ -581,6 +598,7 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 			Int("torrentCount", 0).
 			Dur("elapsed", time.Since(started)).
 			Msg("Refreshed empty tracker health counts")
+		sm.notifyTrackerHealthUpdated(instanceID)
 		return
 	}
 
@@ -666,6 +684,14 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 		Int("totalTorrents", len(torrents)).
 		Dur("elapsed", time.Since(started)).
 		Msg("Refreshed tracker health counts and validated tracker mapping")
+	sm.notifyTrackerHealthUpdated(instanceID)
+}
+
+// notifyTrackerHealthUpdated wakes stream subscribers after tracker health cache writes.
+func (sm *SyncManager) notifyTrackerHealthUpdated(instanceID int) {
+	if sink := sm.getSyncEventSink(); sink != nil {
+		sink.HandleTrackerHealthUpdated(instanceID)
+	}
 }
 
 // GetTrackerHealthCounts returns a copy of the cached tracker health counts for an instance.
@@ -1241,6 +1267,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	skipFreshData := shouldSkipFreshData(ctx)
 	skipTrackerHydration := shouldSkipTrackerHydration(ctx)
+	// Tracker-health stream ticks skip inline hydration but still need cached
+	// aggregate counts so dashboard health totals update without navigation.
+	includeCachedCounts := !skipTrackerHydration || shouldIncludeCachedCountsWhenSkippingTrackerHydration(ctx)
 
 	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
 	if skipTrackerHydration {
@@ -1528,7 +1557,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	var enrichedAll []qbt.Torrent
 
-	if skipTrackerHydration {
+	if !includeCachedCounts {
 		counts = nil
 	} else {
 		if len(allTorrents) == 0 {

@@ -37,11 +37,13 @@ type fakeSyncProvider struct {
 	torrentsGate          chan struct{}
 	torrentsSkipFresh     bool
 	torrentsSkipTracker   bool
+	torrentsCachedCounts  bool
 	crossInstanceResponse *qbittorrent.TorrentResponse
 	crossInstanceErr      error
 	crossInstanceCalls    int
 	crossSkipFresh        bool
 	crossSkipTracker      bool
+	crossCachedCounts     bool
 }
 
 func (f *fakeSyncProvider) GetTorrentsWithFilters(ctx context.Context, _ int, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions) (*qbittorrent.TorrentResponse, error) {
@@ -49,6 +51,7 @@ func (f *fakeSyncProvider) GetTorrentsWithFilters(ctx context.Context, _ int, _,
 	f.torrentsCalls++
 	f.torrentsSkipFresh = qbittorrent.SkipFreshDataRequested(ctx)
 	f.torrentsSkipTracker = qbittorrent.SkipTrackerHydrationRequested(ctx)
+	f.torrentsCachedCounts = qbittorrent.CachedCountsWhenSkippingTrackerHydrationRequested(ctx)
 	err := f.torrentsErr
 	gate := f.torrentsGate
 	var resp *qbittorrent.TorrentResponse
@@ -74,6 +77,7 @@ func (f *fakeSyncProvider) GetCrossInstanceTorrentsWithFilters(ctx context.Conte
 	f.crossInstanceCalls++
 	f.crossSkipFresh = qbittorrent.SkipFreshDataRequested(ctx)
 	f.crossSkipTracker = qbittorrent.SkipTrackerHydrationRequested(ctx)
+	f.crossCachedCounts = qbittorrent.CachedCountsWhenSkippingTrackerHydrationRequested(ctx)
 	if f.crossInstanceErr != nil {
 		return nil, f.crossInstanceErr
 	}
@@ -504,6 +508,41 @@ func TestServeEndToEndDeliversInitAndUpdate(t *testing.T) {
 	require.Equal(t, canned.Total, updatePayload.Data.Total)
 	require.Equal(t, canned.SessionID, updatePayload.Data.SessionID)
 	require.Equal(t, instanceID, updatePayload.Meta.InstanceID)
+}
+
+func TestServeEndToEndDeliversTrackerHealthUpdate(t *testing.T) {
+	store, cleanup := newTestInstanceStore(t)
+	defer cleanup()
+
+	canned := cannedResponse()
+	provider := &fakeSyncProvider{torrentsResponse: canned}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, streamPayload(instanceID, "stream-health"))
+
+	initEvent := reader.waitForEvent(t, streamEventInit, 5*time.Second)
+	initPayload := decodeStreamPayloadData(t, initEvent.data)
+	require.Equal(t, streamEventInit, initPayload.Type)
+
+	updateEvent := reader.waitForTickTriggered(t, 5*time.Second, func() {
+		manager.HandleTrackerHealthUpdated(instanceID)
+	})
+	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
+	require.True(t, isTickEvent(updatePayload.Type), "expected a tick frame, got %q", updatePayload.Type)
+	require.NotNil(t, updatePayload.Data, "tracker-health tick should rematerialize dashboard data")
+	require.Equal(t, canned.Total, updatePayload.Data.Total)
+	require.Equal(t, instanceID, updatePayload.Meta.InstanceID)
+	require.True(t, updatePayload.Meta.IncludeCounts)
+
+	provider.mu.Lock()
+	require.True(t, provider.torrentsSkipFresh, "tracker-health tick should use cached qbit data")
+	require.True(t, provider.torrentsSkipTracker, "tracker-health tick should not hydrate trackers inline")
+	require.True(t, provider.torrentsCachedCounts, "tracker-health tick should still request cached counts")
+	provider.mu.Unlock()
 }
 
 // TestServeCoalescesBurstOfUpdates verifies that a rapid burst of HandleMainData

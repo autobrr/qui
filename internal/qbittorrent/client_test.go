@@ -17,9 +17,10 @@ import (
 
 // mockSyncEventSink is a test helper that records calls to HandleMainData and HandleSyncError.
 type mockSyncEventSink struct {
-	mu         sync.Mutex
-	mainData   []*mainDataCall
-	syncErrors []*syncErrorCall
+	mu                   sync.Mutex
+	mainData             []*mainDataCall
+	trackerHealthUpdates []int
+	syncErrors           []*syncErrorCall
 }
 
 type mainDataCall struct {
@@ -44,6 +45,12 @@ func (m *mockSyncEventSink) HandleSyncError(instanceID int, err error) {
 	m.syncErrors = append(m.syncErrors, &syncErrorCall{instanceID: instanceID, err: err})
 }
 
+func (m *mockSyncEventSink) HandleTrackerHealthUpdated(instanceID int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.trackerHealthUpdates = append(m.trackerHealthUpdates, instanceID)
+}
+
 func (m *mockSyncEventSink) getMainDataCalls() []*mainDataCall {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -54,6 +61,12 @@ func (m *mockSyncEventSink) getSyncErrorCalls() []*syncErrorCall {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.syncErrors
+}
+
+func (m *mockSyncEventSink) getTrackerHealthUpdates() []int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]int(nil), m.trackerHealthUpdates...)
 }
 
 func TestClientUpdateServerStateDoesNotBlockOnClientMutex(t *testing.T) {
@@ -295,6 +308,18 @@ func TestClientHandleSyncManagerErrorMarksUnhealthyForRealError(t *testing.T) {
 	require.False(t, client.IsHealthy())
 	require.Nil(t, client.GetCachedServerState())
 	require.Len(t, sink.getSyncErrorCalls(), 1)
+}
+
+func TestSyncManagerNotifyTrackerHealthUpdatedCallsSink(t *testing.T) {
+	t.Parallel()
+
+	sink := &mockSyncEventSink{}
+	sm := NewSyncManager(nil, nil)
+	sm.SetSyncEventSink(sink)
+
+	sm.notifyTrackerHealthUpdated(42)
+
+	require.Equal(t, []int{42}, sink.getTrackerHealthUpdates())
 }
 
 func TestClientSetSyncEventSinkUpdatesDispatch(t *testing.T) {
