@@ -280,10 +280,10 @@ type DuplicateTorrentMatch struct {
 	MatchedHashes []string `json:"matched_hashes,omitempty"`
 }
 
-// SyncManager manages torrent operations
 // TrackerHealthCounts holds cached tracker health status counts and hash sets for an instance.
 // These are refreshed in the background to avoid blocking API requests.
-// The counts are used for sidebar display, while the hash sets enable per-torrent health display.
+// The counts are used for sidebar display, while the hash sets enable per-torrent
+// health display, health-status filtering, and state sorting on cache-only SSE refreshes.
 type TrackerHealthCounts struct {
 	Unregistered    int                 // count for sidebar
 	TrackerDown     int                 // count for sidebar
@@ -733,36 +733,49 @@ func (sm *SyncManager) GetTrackerHealthCounts(instanceID int) *TrackerHealthCoun
 }
 
 // RemoveHashesFromTrackerHealthCache removes the given hashes from the tracker health cache.
-// This should be called when torrents are deleted to immediately update sidebar counts.
+// It publishes a tracker-health update only when cached counts actually changed.
+// Call it when torrents are deleted or tracker edits may have changed health
+// state so sidebar counts and health-filtered streams are refreshed immediately.
 func (sm *SyncManager) RemoveHashesFromTrackerHealthCache(instanceID int, hashes []string) {
+	if sm.removeHashesFromTrackerHealthCache(instanceID, hashes) {
+		sm.notifyTrackerHealthUpdated(instanceID)
+	}
+}
+
+func (sm *SyncManager) removeHashesFromTrackerHealthCache(instanceID int, hashes []string) bool {
 	sm.trackerHealthMu.Lock()
 	defer sm.trackerHealthMu.Unlock()
 
 	counts := sm.trackerHealthCache[instanceID]
 	if counts == nil {
-		return
+		return false
 	}
 
+	changed := false
 	for _, hash := range hashes {
 		if _, exists := counts.UnregisteredSet[hash]; exists {
 			delete(counts.UnregisteredSet, hash)
+			changed = true
 			if counts.Unregistered > 0 {
 				counts.Unregistered--
 			}
 		}
 		if _, exists := counts.TrackerDownSet[hash]; exists {
 			delete(counts.TrackerDownSet, hash)
+			changed = true
 			if counts.TrackerDown > 0 {
 				counts.TrackerDown--
 			}
 		}
 		if _, exists := counts.TrackerErrorSet[hash]; exists {
 			delete(counts.TrackerErrorSet, hash)
+			changed = true
 			if counts.TrackerError > 0 {
 				counts.TrackerError--
 			}
 		}
 	}
+	return changed
 }
 
 // getValidatedTrackerMapping returns a deep copy of the validated tracker mapping for an instance.
@@ -1253,7 +1266,8 @@ func (sm *SyncManager) validateTorrentsExist(client *Client, hashes []string, op
 // filters, search, sorting, and pagination. When the context requests stale data,
 // torrent and preference metadata are read from the existing sync caches instead
 // of forcing fresh qBittorrent calls; unavailable cached preferences are omitted
-// from the response.
+// from the response. When the context skips tracker hydration, cached tracker
+// health is still used for tracker-health filters and state sorting when available.
 func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
 	var filteredTorrents []qbt.Torrent
 	var allTorrentsForCounts []qbt.Torrent
@@ -1272,6 +1286,10 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	includeCachedCounts := !skipTrackerHydration || shouldIncludeCachedCountsWhenSkippingTrackerHydration(ctx)
 
 	trackerHealthSupported := trackerHealthSupportedByClient(client)
+	var cachedHealth *TrackerHealthCounts
+	if trackerHealthSupported && skipTrackerHydration {
+		cachedHealth = sm.GetTrackerHealthCounts(instanceID)
+	}
 	canHydrateTrackerHealth := trackerHealthHydrationEnabled(trackerHealthSupported, skipTrackerHydration)
 	needsTrackerHealthSorting := canHydrateTrackerHealth && sort == "state"
 
@@ -1404,7 +1422,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap)
 		}
 
-		filteredTorrents = sm.applyManualFilters(client, filteredTorrents, filters, mainData, categories, useSubcategories)
+		filteredTorrents = sm.applyManualFiltersWithTrackerHealth(client, filteredTorrents, filters, mainData, categories, useSubcategories, cachedHealth)
 	} else {
 		// Use library filtering for single selections
 		log.Trace().
@@ -1490,7 +1508,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	if sort == "state" {
-		sm.sortTorrentsByStatus(filteredTorrents, order == "desc", trackerHealthSupported)
+		sm.sortTorrentsByStatusWithTrackerHealth(filteredTorrents, order == "desc", trackerHealthSupported, cachedHealth)
 	}
 
 	if sort == "tracker" {
@@ -1601,8 +1619,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 
 	// Convert to UI view models with tracker health metadata
 	// Use cached hash sets for tracker health when torrents aren't enriched
-	var cachedHealth *TrackerHealthCounts
-	if trackerHealthSupported {
+	if trackerHealthSupported && cachedHealth == nil {
 		cachedHealth = sm.GetTrackerHealthCounts(instanceID)
 	}
 
@@ -1611,18 +1628,8 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		paginatedViews = make([]TorrentView, len(paginatedTorrents))
 		for i, torrent := range paginatedTorrents {
 			view := TorrentView{Torrent: &torrent}
-			// First try to determine health from enriched tracker data
-			if health := sm.determineTrackerHealth(&torrent); health != "" {
+			if health := sm.resolveTrackerHealth(&torrent, cachedHealth); health != "" {
 				view.TrackerHealth = health
-			} else if cachedHealth != nil {
-				// Fall back to cached hash sets if torrent wasn't enriched
-				if _, ok := cachedHealth.UnregisteredSet[torrent.Hash]; ok {
-					view.TrackerHealth = TrackerHealthUnregistered
-				} else if _, ok := cachedHealth.TrackerDownSet[torrent.Hash]; ok {
-					view.TrackerHealth = TrackerHealthDown
-				} else if _, ok := cachedHealth.TrackerErrorSet[torrent.Hash]; ok {
-					view.TrackerHealth = TrackerHealthError
-				}
 			}
 			paginatedViews[i] = view
 		}
@@ -3293,6 +3300,27 @@ func (sm *SyncManager) determineTrackerHealth(torrent *qbt.Torrent) TrackerHealt
 	return ""
 }
 
+// resolveTrackerHealth returns live tracker health first, then falls back to
+// cached hash sets for cache-only torrent rows.
+func (sm *SyncManager) resolveTrackerHealth(torrent *qbt.Torrent, cachedHealth *TrackerHealthCounts) TrackerHealth {
+	if health := sm.determineTrackerHealth(torrent); health != "" {
+		return health
+	}
+	if torrent == nil || cachedHealth == nil || torrent.Hash == "" {
+		return ""
+	}
+	if _, ok := cachedHealth.UnregisteredSet[torrent.Hash]; ok {
+		return TrackerHealthUnregistered
+	}
+	if _, ok := cachedHealth.TrackerDownSet[torrent.Hash]; ok {
+		return TrackerHealthDown
+	}
+	if _, ok := cachedHealth.TrackerErrorSet[torrent.Hash]; ok {
+		return TrackerHealthError
+	}
+	return ""
+}
+
 func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client *Client, torrents []qbt.Torrent, trackerMap map[string][]qbt.TorrentTracker) ([]qbt.Torrent, map[string][]qbt.TorrentTracker, []string) {
 	if client == nil || len(torrents) == 0 {
 		return torrents, trackerMap, nil
@@ -4539,6 +4567,21 @@ func (sm *SyncManager) applyManualFilters(
 	categories map[string]qbt.Category,
 	useSubcategories bool,
 ) []qbt.Torrent {
+	return sm.applyManualFiltersWithTrackerHealth(client, torrents, filters, mainData, categories, useSubcategories, nil)
+}
+
+// applyManualFiltersWithTrackerHealth applies manual filters and lets
+// health-status filters match cached tracker-health sets when torrents were not
+// hydrated with tracker data.
+func (sm *SyncManager) applyManualFiltersWithTrackerHealth(
+	client *Client,
+	torrents []qbt.Torrent,
+	filters FilterOptions,
+	mainData *qbt.MainData,
+	categories map[string]qbt.Category,
+	useSubcategories bool,
+	cachedHealth *TrackerHealthCounts,
+) []qbt.Torrent {
 	var filtered []qbt.Torrent
 
 	hashFilterSet := make(map[string]struct{}, len(filters.Hashes))
@@ -4735,7 +4778,7 @@ torrentsLoop:
 		if len(filters.Status) > 0 {
 			matched := false
 			for _, status := range filters.Status {
-				if sm.matchTorrentStatus(torrent, status) {
+				if sm.matchTorrentStatusWithTrackerHealth(torrent, status, cachedHealth) {
 					matched = true
 					break
 				}
@@ -4747,7 +4790,7 @@ torrentsLoop:
 
 		if len(filters.ExcludeStatus) > 0 {
 			for _, status := range filters.ExcludeStatus {
-				if sm.matchTorrentStatus(torrent, status) {
+				if sm.matchTorrentStatusWithTrackerHealth(torrent, status, cachedHealth) {
 					continue torrentsLoop
 				}
 			}
@@ -5093,13 +5136,20 @@ func (sm *SyncManager) shouldClearOptimisticUpdate(currentState qbt.TorrentState
 
 // matchTorrentStatus checks if a torrent matches a specific status filter
 func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bool {
+	return sm.matchTorrentStatusWithTrackerHealth(torrent, status, nil)
+}
+
+// matchTorrentStatusWithTrackerHealth uses cached tracker-health data only for
+// tracker-health statuses; all qBittorrent state filters keep their normal
+// state-based matching.
+func (sm *SyncManager) matchTorrentStatusWithTrackerHealth(torrent qbt.Torrent, status string, cachedHealth *TrackerHealthCounts) bool {
 	switch strings.ToLower(status) {
 	case "unregistered":
-		return sm.determineTrackerHealth(&torrent) == TrackerHealthUnregistered
+		return sm.resolveTrackerHealth(&torrent, cachedHealth) == TrackerHealthUnregistered
 	case "tracker_down":
-		return sm.determineTrackerHealth(&torrent) == TrackerHealthDown
+		return sm.resolveTrackerHealth(&torrent, cachedHealth) == TrackerHealthDown
 	case "tracker_error":
-		return sm.determineTrackerHealth(&torrent) == TrackerHealthError
+		return sm.resolveTrackerHealth(&torrent, cachedHealth) == TrackerHealthError
 	}
 
 	// Handle special cases first
@@ -5133,11 +5183,18 @@ func (sm *SyncManager) matchTorrentStatus(torrent qbt.Torrent, status string) bo
 }
 
 func (sm *SyncManager) trackerHealthPriority(torrent qbt.Torrent, trackerHealthSupported bool) int {
+	return sm.trackerHealthPriorityWithTrackerHealth(torrent, trackerHealthSupported, nil)
+}
+
+// trackerHealthPriorityWithTrackerHealth ranks tracker-health problem states
+// ahead of normal qBittorrent states, using cached health when live tracker data
+// is unavailable.
+func (sm *SyncManager) trackerHealthPriorityWithTrackerHealth(torrent qbt.Torrent, trackerHealthSupported bool, cachedHealth *TrackerHealthCounts) int {
 	if !trackerHealthSupported {
 		return 10
 	}
 
-	switch sm.determineTrackerHealth(&torrent) {
+	switch sm.resolveTrackerHealth(&torrent, cachedHealth) {
 	case TrackerHealthUnregistered:
 		return 0
 	case TrackerHealthDown:
@@ -5158,6 +5215,13 @@ func stateSortPriority(state qbt.TorrentState) int {
 }
 
 func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, trackerHealthSupported bool) {
+	sm.sortTorrentsByStatusWithTrackerHealth(torrents, desc, trackerHealthSupported, nil)
+}
+
+// sortTorrentsByStatusWithTrackerHealth sorts torrents in place by tracker
+// health priority first, then qBittorrent state priority, preserving the cached
+// health behavior used by cache-only SSE refreshes.
+func (sm *SyncManager) sortTorrentsByStatusWithTrackerHealth(torrents []qbt.Torrent, desc bool, trackerHealthSupported bool, cachedHealth *TrackerHealthCounts) {
 	if len(torrents) == 0 {
 		return
 	}
@@ -5194,7 +5258,7 @@ func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, t
 		}
 		label := strings.ToLower(string(t.State))
 		if trackerHealthSupported {
-			switch sm.determineTrackerHealth(&t) {
+			switch sm.resolveTrackerHealth(&t, cachedHealth) {
 			case TrackerHealthUnregistered:
 				label = "unregistered"
 			case TrackerHealthDown:
@@ -5204,7 +5268,7 @@ func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, t
 			}
 		}
 		meta := statusSortMeta{
-			trackerPriority: sm.trackerHealthPriority(t, trackerHealthSupported),
+			trackerPriority: sm.trackerHealthPriorityWithTrackerHealth(t, trackerHealthSupported, cachedHealth),
 			statePriority:   stateSortPriority(t.State),
 			label:           label,
 		}

@@ -292,8 +292,8 @@ type StreamMeta struct {
 	FullUpdate bool      `json:"fullUpdate,omitempty"`
 	Timestamp  time.Time `json:"timestamp"`
 	// IncludeCounts asks materialization to include cached aggregate counts even
-	// when the tick skips tracker hydration. Used after background tracker-health
-	// refreshes so dashboards receive the new health totals without inline qbit work.
+	// when the tick skips tracker hydration. Used after tracker-health cache writes
+	// so dashboards receive new health totals without inline qbit work.
 	IncludeCounts bool `json:"includeCounts,omitempty"`
 	// LastSuccessfulSync is when the instance's data last actually updated, sourced
 	// from the success-only sync clock. On stream-error frames it lets the client

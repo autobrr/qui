@@ -535,16 +535,16 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
 
           applyInstanceData(instance.id, current => {
             const next: InstanceStreamData = {
-              stats: data.stats ?? null,
-              serverState: data.serverState ?? null,
+              stats: data.stats ?? current.stats,
+              serverState: data.serverState ?? current.serverState,
               torrentCounts: resolveDashboardTorrentCounts(data.counts, current.torrentCounts),
               appInfo: data.appInfo ?? current.appInfo,
-              altSpeedEnabled: data.serverState?.use_alt_speed_limits || false,
+              altSpeedEnabled: data.serverState?.use_alt_speed_limits ?? current.altSpeedEnabled,
               isLoading: false,
               error: null,
               streamConnected: true,
               streamError: null,
-              cacheMetadata: data.cacheMetadata ?? null,
+              cacheMetadata: data.cacheMetadata ?? current.cacheMetadata,
               instanceMeta: data.instanceMeta ?? current.instanceMeta,
             }
 
