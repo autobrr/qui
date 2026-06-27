@@ -125,6 +125,56 @@ func TestNewCacheMetadata(t *testing.T) {
 	}
 }
 
+func TestSeedValidatedTrackerMappingFromMainData(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: make(map[int]*ValidatedTrackerMapping),
+	}
+
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://tracker-a.example/announce"},
+		{Hash: "hash-b", Tracker: "udp://tracker-b.example:80/announce"},
+		{Hash: "hash-stale", Tracker: "https://current.example/announce"},
+		{Hash: "hash-empty-primary"},
+		{
+			Hash: "hash-multi",
+			Trackers: []qbt.TorrentTracker{
+				{Url: "https://multi-one.example/announce"},
+				{Url: "https://multi-two.example/announce"},
+			},
+		},
+	}
+	mainData := &qbt.MainData{
+		Trackers: map[string][]string{
+			"https://tracker-a.example/announce": {"hash-a", "hash-missing"},
+			"udp://tracker-b.example:80/announce": {
+				"hash-b",
+			},
+			"https://stale.example/announce":       {"hash-stale"},
+			"https://fallback.example/announce":    {"hash-empty-primary"},
+			"** [DHT] **":                          {"hash-a"},
+			"https://multi-two.example/announce":   {"hash-multi"},
+			"https://stale-multi.example/announce": {"hash-multi"},
+		},
+	}
+
+	sm.seedValidatedTrackerMappingFromMainData(7, torrents, mainData, time.Now())
+
+	mapping := sm.getValidatedTrackerMapping(7)
+	require.NotNil(t, mapping)
+	require.Contains(t, mapping.HashToDomains["hash-a"], "tracker-a.example")
+	require.Contains(t, mapping.HashToDomains["hash-b"], "tracker-b.example")
+	require.Contains(t, mapping.HashToDomains["hash-empty-primary"], "fallback.example")
+	require.Contains(t, mapping.HashToDomains["hash-multi"], "multi-two.example")
+
+	require.NotContains(t, mapping.HashToDomains, "hash-missing")
+	require.NotContains(t, mapping.HashToDomains, "hash-stale")
+	require.NotContains(t, mapping.DomainToHashes, "stale.example")
+	require.NotContains(t, mapping.DomainToHashes, "stale-multi.example")
+	require.NotContains(t, mapping.DomainToHashes, "")
+}
+
 func TestNormalizeHashes(t *testing.T) {
 	t.Parallel()
 

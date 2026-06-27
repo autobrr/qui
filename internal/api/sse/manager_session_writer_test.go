@@ -94,6 +94,23 @@ func TestMultiSubscriptionInitIsRaceFree(t *testing.T) {
 	}
 }
 
+func TestOnSessionAbortsWhenInitWriteFails(t *testing.T) {
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	id, err := manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, "failing-init")
+	require.NoError(t, err)
+
+	ctx := context.WithValue(context.Background(), subscriptionIDsContextKey, []string{id})
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
+
+	topics, ok := manager.onSession(&erroringResponseWriter{}, req)
+
+	require.False(t, ok)
+	require.Nil(t, topics)
+}
+
 // erroringResponseWriter is a fake socket whose Write always fails, used to drive
 // the drain goroutine's write-error drop path — the mechanism that drops a stuck-
 // then-erroring client when its rolling streamWriteTimeout deadline fires.

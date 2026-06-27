@@ -29,6 +29,12 @@ func shouldSkipTrackerHydration(ctx context.Context) bool {
 	return ok && val
 }
 
+// SkipTrackerHydrationRequested reports whether ctx disables tracker enrichment
+// and tracker-specific count hydration.
+func SkipTrackerHydrationRequested(ctx context.Context) bool {
+	return shouldSkipTrackerHydration(ctx)
+}
+
 // WithSkipFreshData marks the context so qBittorrent cache reads avoid triggering fresh syncs.
 func WithSkipFreshData(ctx context.Context) context.Context {
 	if ctx == nil {
@@ -44,4 +50,10 @@ func shouldSkipFreshData(ctx context.Context) bool {
 	}
 	val, ok := ctx.Value(skipFreshDataKey).(bool)
 	return ok && val
+}
+
+// SkipFreshDataRequested reports whether ctx prefers cached qBittorrent data
+// over request-triggered fresh sync work.
+func SkipFreshDataRequested(ctx context.Context) bool {
+	return shouldSkipFreshData(ctx)
 }

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -997,7 +998,9 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 			return nil, false
 		}
 
-		m.writeInitToSession(w, sub, group)
+		if !m.writeInitToSession(w, sub, group) {
+			return nil, false
+		}
 	}
 
 	// Write an immediate keepalive to the activity topic's session (if any) so the
@@ -1007,7 +1010,9 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 	// heartbeatInterval. Written directly for the same race-free reason as the init
 	// snapshot above.
 	if activityTopic != "" {
-		m.writeKeepaliveToSession(w)
+		if !m.writeKeepaliveToSession(w) {
+			return nil, false
+		}
 	}
 
 	// The init snapshots (and optional keepalive) are now on the wire, written
@@ -1028,10 +1033,12 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 }
 
 // writeInitToSession builds the current snapshot for the group and writes it as
-// an init event directly to the still-unsubscribed session writer.
-func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscriptionState, group *subscriptionGroup) {
+// an init event directly to the still-unsubscribed session writer. It returns
+// false when setup should abort because the snapshot could not be built or
+// written.
+func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscriptionState, group *subscriptionGroup) bool {
 	if sub == nil || group == nil || m.closing.Load() {
-		return
+		return false
 	}
 
 	meta := &StreamMeta{
@@ -1042,7 +1049,7 @@ func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscript
 
 	payload := m.buildGroupPayload(group, group.options, streamEventInit, meta)
 	if payload == nil || m.closing.Load() {
-		return
+		return false
 	}
 
 	// Seed the delta baseline from this init snapshot so the client's first frame and
@@ -1052,35 +1059,37 @@ func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscript
 		group.seedBaselineIfEmpty(group.options, payload.Data)
 	}
 
-	m.writePayloadToSession(w, clonePayloadForSubscriber(payload, sub))
+	return m.writePayloadToSession(w, clonePayloadForSubscriber(payload, sub))
 }
 
-// writeKeepaliveToSession writes a single heartbeat directly to the session writer.
-func (m *StreamManager) writeKeepaliveToSession(w http.ResponseWriter) {
+// writeKeepaliveToSession writes a single heartbeat directly to the session
+// writer. It returns false when the heartbeat could not be written.
+func (m *StreamManager) writeKeepaliveToSession(w http.ResponseWriter) bool {
 	if m.closing.Load() {
-		return
+		return false
 	}
 
-	m.writePayloadToSession(w, &StreamPayload{
+	return m.writePayloadToSession(w, &StreamPayload{
 		Type: streamEventHeartbeat,
 		Meta: &StreamMeta{Timestamp: time.Now()},
 	})
 }
 
-// writePayloadToSession encodes payload as an SSE event and writes it straight to
-// the session response writer, then flushes. It is only safe to call from within
-// onSession, before go-sse subscribes the session and starts writing to the same
-// writer from its provider loop.
-func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *StreamPayload) {
+// writePayloadToSession encodes payload as an SSE event and writes it straight
+// to the session response writer, then flushes. It returns false after marshal or
+// socket write failure so onSession can avoid subscribing a broken connection.
+// It is only safe to call from within onSession, before go-sse subscribes the
+// session and starts writing to the same writer from its provider loop.
+func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *StreamPayload) bool {
 	if payload == nil {
-		return
+		return false
 	}
 
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		m.eventsDropped.Add(1)
 		log.Error().Err(err).Str("type", payload.Type).Msg("Failed to marshal SSE init payload")
-		return
+		return false
 	}
 
 	message := &sse.Message{Type: sse.Type(payload.Type)}
@@ -1091,12 +1100,36 @@ func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *St
 	w.Header().Set("Content-Type", "text/event-stream")
 	if _, err := message.WriteTo(w); err != nil {
 		m.eventsDropped.Add(1)
-		log.Error().Err(err).Str("type", payload.Type).Msg("Failed to write SSE init payload")
-		return
+		event := log.Error()
+		if isClientDisconnect(err) {
+			event = log.Debug()
+		}
+		event.Err(err).Str("type", payload.Type).Msg("Failed to write SSE init payload")
+		return false
 	}
 
 	flushSession(w)
 	m.eventsPublished.Add(1)
+	return true
+}
+
+// isClientDisconnect reports whether err is an expected client-side SSE socket
+// close rather than an internal server write failure.
+func isClientDisconnect(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "use of closed network connection") ||
+		strings.Contains(msg, "forcibly closed by the remote host") ||
+		strings.Contains(msg, "connection was aborted") ||
+		strings.Contains(msg, "wsasend:")
 }
 
 // flushSession flushes whatever buffered bytes were written to the session
@@ -1276,6 +1309,7 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
 	ctx = qbittorrent.WithSkipFreshData(ctx)
+	ctx = qbittorrent.WithSkipTrackerHydration(ctx)
 
 	// A representative instance id for retry hints / logging (multi-instance groups
 	// have InstanceID == 0).

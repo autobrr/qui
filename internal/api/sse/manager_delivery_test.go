@@ -35,14 +35,20 @@ type fakeSyncProvider struct {
 	torrentsErr           error
 	torrentsCalls         int
 	torrentsGate          chan struct{}
+	torrentsSkipFresh     bool
+	torrentsSkipTracker   bool
 	crossInstanceResponse *qbittorrent.TorrentResponse
 	crossInstanceErr      error
 	crossInstanceCalls    int
+	crossSkipFresh        bool
+	crossSkipTracker      bool
 }
 
-func (f *fakeSyncProvider) GetTorrentsWithFilters(_ context.Context, _ int, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions) (*qbittorrent.TorrentResponse, error) {
+func (f *fakeSyncProvider) GetTorrentsWithFilters(ctx context.Context, _ int, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions) (*qbittorrent.TorrentResponse, error) {
 	f.mu.Lock()
 	f.torrentsCalls++
+	f.torrentsSkipFresh = qbittorrent.SkipFreshDataRequested(ctx)
+	f.torrentsSkipTracker = qbittorrent.SkipTrackerHydrationRequested(ctx)
 	err := f.torrentsErr
 	gate := f.torrentsGate
 	var resp *qbittorrent.TorrentResponse
@@ -61,11 +67,13 @@ func (f *fakeSyncProvider) GetTorrentsWithFilters(_ context.Context, _ int, _, _
 	return resp, err
 }
 
-func (f *fakeSyncProvider) GetCrossInstanceTorrentsWithFilters(_ context.Context, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions, _ []int) (*qbittorrent.TorrentResponse, error) {
+func (f *fakeSyncProvider) GetCrossInstanceTorrentsWithFilters(ctx context.Context, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions, _ []int) (*qbittorrent.TorrentResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.crossInstanceCalls++
+	f.crossSkipFresh = qbittorrent.SkipFreshDataRequested(ctx)
+	f.crossSkipTracker = qbittorrent.SkipTrackerHydrationRequested(ctx)
 	if f.crossInstanceErr != nil {
 		return nil, f.crossInstanceErr
 	}
@@ -82,6 +90,26 @@ func (f *fakeSyncProvider) torrentsCallCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.torrentsCalls
+}
+
+func TestMaterializeGroupResponseSkipsFreshDataAndTrackerHydration(t *testing.T) {
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	response, errPayload := manager.materializeGroupResponse(
+		StreamOptions{InstanceID: 1, Limit: 100},
+		&StreamMeta{Timestamp: time.Now()},
+		"skip-hydration",
+	)
+
+	require.NotNil(t, response)
+	require.Nil(t, errPayload)
+
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	require.True(t, provider.torrentsSkipFresh)
+	require.True(t, provider.torrentsSkipTracker)
 }
 
 // gateTorrentBuilds makes every subsequent torrents build park until the returned
