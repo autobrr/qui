@@ -1671,7 +1671,6 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 				Err(err).
 				Int("instanceID", instanceID).
 				Msg("Failed to retrieve qBittorrent app preferences for torrent stream")
-			appPreferencesPresent = true
 		} else {
 			appPreferences = prefs
 			appPreferencesPresent = true

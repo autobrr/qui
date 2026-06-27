@@ -932,8 +932,14 @@ func TestSyncManager_SortTorrentsByStatusUsesCachedTrackerHealth(t *testing.T) {
 	sm.sortTorrentsByStatusWithTrackerHealth(torrents, false, true, cachedHealth)
 	assert.Equal(t, []string{"unregistered", "down", "error", "healthy"}, hashes(torrents))
 
-	sm.sortTorrentsByStatusWithTrackerHealth(torrents, false, false, cachedHealth)
-	assert.Equal(t, []string{"unregistered", "down", "error", "healthy"}, hashes(torrents))
+	unsupportedTorrents := []qbt.Torrent{
+		{Hash: "unregistered", Name: "Delta", State: qbt.TorrentStateDownloading, AddedOn: 100},
+		{Hash: "down", Name: "Charlie", State: qbt.TorrentStateDownloading, AddedOn: 100},
+		{Hash: "error", Name: "Bravo", State: qbt.TorrentStateDownloading, AddedOn: 100},
+		{Hash: "healthy", Name: "Alpha", State: qbt.TorrentStateDownloading, AddedOn: 100},
+	}
+	sm.sortTorrentsByStatusWithTrackerHealth(unsupportedTorrents, false, false, cachedHealth)
+	assert.Equal(t, []string{"healthy", "error", "down", "unregistered"}, hashes(unsupportedTorrents))
 }
 
 func TestSyncManager_SortTorrentsByStatus_TieBreakAddedOn(t *testing.T) {
