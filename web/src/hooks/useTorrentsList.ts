@@ -58,9 +58,10 @@ interface UseTorrentsListOptions {
  * The hook updates shared instance metadata from stream/REST responses, preserves
  * cached preferences and sidebar counts when stream frames omit them, clears
  * preferences on explicit null responses, and falls back to REST polling when
- * streaming is disabled or disconnected. Stream frames are scoped to the current
- * view identity so frames from a previous filter/search/sort cannot repopulate
- * rows after a reset.
+ * streaming is disabled or disconnected. Stream frames are scoped to the last
+ * committed view identity so frames from a previous filter/search/sort cannot
+ * repopulate rows after a reset, while abandoned renders cannot suppress the
+ * active stream callback.
  */
 export function useTorrentsList(
   instanceId: number,
@@ -216,9 +217,12 @@ export function useTorrentsList(
   const filterKey = JSON.stringify(filters)
   const searchKey = search || ""
   const viewScopeKey = `${instanceId}|${instanceIdsKey}|${filterKey}|${searchKey}|${sort}|${order}|${useCrossInstanceEndpoint}|${isCrossSeedFiltering}`
-  // Lets old stream callbacks detect that their closure scope was abandoned.
+  // Lets old stream callbacks detect committed scope changes without observing
+  // abandoned render state.
   const currentViewScopeKeyRef = useRef(viewScopeKey)
-  currentViewScopeKeyRef.current = viewScopeKey
+  useEffect(() => {
+    currentViewScopeKeyRef.current = viewScopeKey
+  }, [viewScopeKey])
 
   const streamQueryKey = useMemo(
     () => ["torrents-list", instanceId, instanceIdsKey, 0, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering] as const,

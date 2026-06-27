@@ -97,7 +97,9 @@ func (f *fakeSyncProvider) torrentsCallCount() int {
 }
 
 func TestMaterializeGroupResponseSkipsFreshDataAndTrackerHydration(t *testing.T) {
-	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	canned := cannedResponse()
+	canned.TrackerHealthSupported = true
+	provider := &fakeSyncProvider{torrentsResponse: canned}
 	manager := NewStreamManager(nil, provider, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
 
@@ -109,6 +111,7 @@ func TestMaterializeGroupResponseSkipsFreshDataAndTrackerHydration(t *testing.T)
 
 	require.NotNil(t, response)
 	require.Nil(t, errPayload)
+	require.True(t, response.TrackerHealthSupported)
 
 	provider.mu.Lock()
 	defer provider.mu.Unlock()

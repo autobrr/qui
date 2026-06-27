@@ -81,6 +81,27 @@ func TestTorrentResponseMarshalPreferencesPresence(t *testing.T) {
 	}
 }
 
+func TestTrackerHealthSupportSurvivesSkippedHydration(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{trackerIncludeSupported: true}
+
+	trackerHealthSupported := trackerHealthSupportedByClient(client)
+	require.True(t, trackerHealthSupported)
+	require.False(t, trackerHealthHydrationEnabled(trackerHealthSupported, true))
+	require.True(t, trackerHealthHydrationEnabled(trackerHealthSupported, false))
+}
+
+func TestTrackerHealthUnsupportedClientDoesNotHydrate(t *testing.T) {
+	t.Parallel()
+
+	client := &Client{trackerIncludeSupported: false}
+
+	trackerHealthSupported := trackerHealthSupportedByClient(client)
+	require.False(t, trackerHealthSupported)
+	require.False(t, trackerHealthHydrationEnabled(trackerHealthSupported, false))
+}
+
 func TestAddTorrentURLsErrorSummaryDoesNotExposeRawURLs(t *testing.T) {
 	t.Parallel()
 

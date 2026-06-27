@@ -656,6 +656,67 @@ describe("useTorrentsList", () => {
     expect(result.current.totalCount).toBe(1)
   })
 
+  it("keeps the committed stream callback active when a scope render is abandoned", async () => {
+    streamState = { ...DISCONNECTED, connected: true }
+    const pending = new Promise<never>(() => undefined)
+    let committedList: ReturnType<typeof useTorrentsList> | undefined
+
+    function Probe({ search, suspend }: { search?: string; suspend?: boolean }) {
+      const list = useTorrentsList(1, { pollingEnabled: false, search })
+
+      useEffect(() => {
+        committedList = list
+      }, [list])
+
+      if (suspend) {
+        throw pending
+      }
+
+      return null
+    }
+
+    const view = render(
+      <Suspense fallback={null}>
+        <Probe search={undefined} />
+      </Suspense>,
+      { wrapper: makeWrapper() }
+    )
+
+    const committedOnMessage = capturedOnMessage
+    expect(typeof committedOnMessage).toBe("function")
+
+    act(() => {
+      committedOnMessage?.({
+        type: "init",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "old" })], total: 1, hasMore: false }),
+      })
+    })
+    await flush()
+    expect(committedList?.torrents.map(t => t.hash)).toEqual(["old"])
+
+    act(() => {
+      startTransition(() => {
+        view.rerender(
+          <Suspense fallback={null}>
+            <Probe search="abandoned" suspend />
+          </Suspense>
+        )
+      })
+    })
+    await flush()
+
+    act(() => {
+      committedOnMessage?.({
+        type: "update",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "still-active" })], total: 1, hasMore: false }),
+      })
+    })
+    await flush()
+
+    expect(committedList?.torrents.map(t => t.hash)).toEqual(["still-active"])
+    expect(committedList?.totalCount).toBe(1)
+  })
+
   it("does not publish counts from an abandoned stream render", async () => {
     streamState = { ...DISCONNECTED, connected: true }
     const committedCounts = makeCounts({ status: { all: 1 }, total: 1 })

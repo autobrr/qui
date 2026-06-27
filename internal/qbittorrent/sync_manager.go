@@ -206,26 +206,27 @@ type TorrentTarget struct {
 // contract: omitted means leave any existing frontend cache unchanged, a value
 // replaces the cache, and explicit null clears stale cached preferences.
 type TorrentResponse struct {
-	Torrents               []TorrentView              `json:"torrents"`
-	CrossInstanceTorrents  []CrossInstanceTorrentView `json:"cross_instance_torrents,omitempty"`
-	Total                  int                        `json:"total"`
-	ActiveTaskCount        int                        `json:"activeTaskCount"`
-	Stats                  *TorrentStats              `json:"stats,omitempty"`
-	Counts                 *TorrentCounts             `json:"counts,omitempty"`      // Include counts for sidebar
-	Categories             map[string]qbt.Category    `json:"categories,omitempty"`  // Include categories for sidebar
-	Tags                   []string                   `json:"tags,omitempty"`        // Include tags for sidebar
-	ServerState            *qbt.ServerState           `json:"serverState,omitempty"` // Include server state for Dashboard
-	AppInfo                *AppInfo                   `json:"appInfo,omitempty"`     // Include qBittorrent application info
-	AppPreferences         *qbt.AppPreferences        `json:"preferences,omitempty"` // Include or clear qBittorrent application preferences
-	appPreferencesPresent  bool
-	UseSubcategories       bool           `json:"useSubcategories"`    // Whether subcategories are enabled
-	HasMore                bool           `json:"hasMore"`             // Whether more pages are available
-	SessionID              string         `json:"sessionId,omitempty"` // Optional session tracking
-	CacheMetadata          *CacheMetadata `json:"cacheMetadata,omitempty"`
-	TrackerHealthSupported bool           `json:"trackerHealthSupported"`
-	IsCrossInstance        bool           `json:"isCrossInstance"`        // Whether this is a cross-instance response
-	PartialResults         bool           `json:"partialResults"`         // Whether some instances failed to respond
-	InstanceMeta           *InstanceMeta  `json:"instanceMeta,omitempty"` // Real-time instance health for SSE
+	Torrents              []TorrentView              `json:"torrents"`
+	CrossInstanceTorrents []CrossInstanceTorrentView `json:"cross_instance_torrents,omitempty"`
+	Total                 int                        `json:"total"`
+	ActiveTaskCount       int                        `json:"activeTaskCount"`
+	Stats                 *TorrentStats              `json:"stats,omitempty"`
+	Counts                *TorrentCounts             `json:"counts,omitempty"`      // Include counts for sidebar
+	Categories            map[string]qbt.Category    `json:"categories,omitempty"`  // Include categories for sidebar
+	Tags                  []string                   `json:"tags,omitempty"`        // Include tags for sidebar
+	ServerState           *qbt.ServerState           `json:"serverState,omitempty"` // Include server state for Dashboard
+	AppInfo               *AppInfo                   `json:"appInfo,omitempty"`     // Include qBittorrent application info
+	AppPreferences        *qbt.AppPreferences        `json:"preferences,omitempty"` // Include or clear qBittorrent application preferences
+	appPreferencesPresent bool
+	UseSubcategories      bool           `json:"useSubcategories"`    // Whether subcategories are enabled
+	HasMore               bool           `json:"hasMore"`             // Whether more pages are available
+	SessionID             string         `json:"sessionId,omitempty"` // Optional session tracking
+	CacheMetadata         *CacheMetadata `json:"cacheMetadata,omitempty"`
+	// TrackerHealthSupported reports capability even when this response skipped inline tracker hydration.
+	TrackerHealthSupported bool          `json:"trackerHealthSupported"`
+	IsCrossInstance        bool          `json:"isCrossInstance"`        // Whether this is a cross-instance response
+	PartialResults         bool          `json:"partialResults"`         // Whether some instances failed to respond
+	InstanceMeta           *InstanceMeta `json:"instanceMeta,omitempty"` // Real-time instance health for SSE
 }
 
 func (r TorrentResponse) MarshalJSON() ([]byte, error) {
@@ -1197,6 +1198,18 @@ func (sm *SyncManager) GetInstanceWebAPIVersion(ctx context.Context, instanceID 
 	return strings.TrimSpace(client.GetWebAPIVersion()), nil
 }
 
+// trackerHealthSupportedByClient reports qBittorrent capability, independent of
+// whether the current request will hydrate tracker health data inline.
+func trackerHealthSupportedByClient(client *Client) bool {
+	return client != nil && client.supportsTrackerInclude()
+}
+
+// trackerHealthHydrationEnabled reports whether this request should resolve
+// per-torrent tracker health details in addition to advertising support.
+func trackerHealthHydrationEnabled(trackerHealthSupported bool, skipTrackerHydration bool) bool {
+	return trackerHealthSupported && !skipTrackerHydration
+}
+
 // getClientAndSyncManager gets both client and sync manager with error handling
 func (sm *SyncManager) getClientAndSyncManager(ctx context.Context, instanceID int) (*Client, *qbt.SyncManager, error) {
 	// Get client
@@ -1258,11 +1271,9 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	// aggregate counts so dashboard health totals update without navigation.
 	includeCachedCounts := !skipTrackerHydration || shouldIncludeCachedCountsWhenSkippingTrackerHydration(ctx)
 
-	trackerHealthSupported := client != nil && client.supportsTrackerInclude()
-	if skipTrackerHydration {
-		trackerHealthSupported = false
-	}
-	needsTrackerHealthSorting := trackerHealthSupported && sort == "state"
+	trackerHealthSupported := trackerHealthSupportedByClient(client)
+	canHydrateTrackerHealth := trackerHealthHydrationEnabled(trackerHealthSupported, skipTrackerHydration)
+	needsTrackerHealthSorting := canHydrateTrackerHealth && sort == "state"
 
 	// Get MainData for tracker filtering (if needed)
 	var mainData *qbt.MainData
@@ -1389,7 +1400,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		allTorrentsForCounts = filteredTorrents
 
 		// Apply manual filtering for multiple selections
-		if trackerHealthSupported && needsTrackerHydration {
+		if canHydrateTrackerHealth && needsTrackerHydration {
 			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap)
 		}
 
@@ -1453,7 +1464,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 		// Use library filtering and sorting
 		filteredTorrents = getTorrents(torrentFilterOptions)
 
-		if trackerHealthSupported && needsTrackerHealthSorting {
+		if canHydrateTrackerHealth && needsTrackerHealthSorting {
 			filteredTorrents, trackerMap, _ = sm.enrichTorrentsWithTrackerData(ctx, client, filteredTorrents, trackerMap)
 		}
 	}
@@ -1558,7 +1569,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 	}
 
 	// Reuse enriched tracker data for paginated torrents to avoid duplicate fetches
-	if len(paginatedTorrents) > 0 && trackerHealthSupported {
+	if len(paginatedTorrents) > 0 && canHydrateTrackerHealth {
 		var enrichedLookup map[string]qbt.Torrent
 		for i := range paginatedTorrents {
 			hash := paginatedTorrents[i].Hash

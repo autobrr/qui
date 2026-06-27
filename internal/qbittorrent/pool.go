@@ -64,6 +64,7 @@ type ClientPool struct {
 	failureTracker    map[int]*failureInfo
 	decryptionTracker map[int]*decryptionErrorInfo
 	syncEventSink     SyncEventSink
+	syncEventSinkSeq  uint64
 	completionHandler TorrentCompletionHandler
 	addedHandler      TorrentAddedHandler
 	syncManager       *SyncManager // Reference for starting background tasks
@@ -98,15 +99,15 @@ func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.Insta
 func (cp *ClientPool) SetSyncEventSink(sink SyncEventSink) {
 	cp.mu.Lock()
 	cp.syncEventSink = sink
+	cp.syncEventSinkSeq++
+	sinkSeq := cp.syncEventSinkSeq
 	for _, client := range cp.clients {
 		client.SetSyncEventSink(sink)
 	}
 	sm := cp.syncManager
 	cp.mu.Unlock()
 
-	if sm != nil {
-		sm.SetSyncEventSink(sink)
-	}
+	cp.applySyncManagerSinkIfCurrent(sm, sink, sinkSeq)
 }
 
 // SetTorrentCompletionHandler registers a callback for new and existing clients when torrents complete.
@@ -147,11 +148,26 @@ func (cp *ClientPool) SetSyncManager(sm *SyncManager) {
 	cp.mu.Lock()
 	cp.syncManager = sm
 	sink := cp.syncEventSink
+	sinkSeq := cp.syncEventSinkSeq
 	cp.mu.Unlock()
 
-	if sm != nil {
-		sm.SetSyncEventSink(sink)
+	cp.applySyncManagerSinkIfCurrent(sm, sink, sinkSeq)
+}
+
+// applySyncManagerSinkIfCurrent forwards a captured sink only if neither the
+// active SyncManager nor the pool sink changed since the caller observed them.
+func (cp *ClientPool) applySyncManagerSinkIfCurrent(sm *SyncManager, sink SyncEventSink, sinkSeq uint64) {
+	if sm == nil {
+		return
 	}
+
+	cp.mu.RLock()
+	defer cp.mu.RUnlock()
+	if cp.syncManager != sm || cp.syncEventSinkSeq != sinkSeq {
+		return
+	}
+
+	sm.SetSyncEventSink(sink)
 }
 
 // getInstanceLock gets or creates a per-instance creation lock

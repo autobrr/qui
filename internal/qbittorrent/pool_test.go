@@ -316,6 +316,29 @@ func TestClientPoolSetSyncManagerReceivesExistingSink(t *testing.T) {
 	assert.Equal(t, sink, sm.getSyncEventSink(), "new sync manager should receive existing pool sink")
 }
 
+func TestClientPoolSetSyncManagerSkipsStaleSinkReplay(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	oldSink := &mockPoolSyncEventSink{id: 1}
+	newSink := &mockPoolSyncEventSink{id: 2}
+	pool.SetSyncEventSink(oldSink)
+
+	sm := NewSyncManager(nil, nil)
+	pool.SetSyncManager(sm)
+
+	pool.mu.RLock()
+	staleSeq := pool.syncEventSinkSeq
+	pool.mu.RUnlock()
+
+	pool.SetSyncEventSink(newSink)
+	require.Equal(t, newSink, sm.getSyncEventSink(), "sync manager should receive newer pool sink")
+
+	pool.applySyncManagerSinkIfCurrent(sm, oldSink, staleSeq)
+
+	assert.Equal(t, newSink, sm.getSyncEventSink(), "stale captured sink replay should not overwrite newer sink")
+}
+
 func TestClientPoolSetSyncEventSinkReplacesExisting(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
