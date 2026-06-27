@@ -68,7 +68,7 @@ import type {
 } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
+import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Database, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -711,6 +711,9 @@ function InstanceCard({
     altSpeedEnabled,
     isLoading,
     error,
+    streamConnected,
+    streamError,
+    cacheMetadata,
   } = instanceData
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
 
@@ -765,6 +768,43 @@ function InstanceCard({
   const listenPort = preferences?.listen_port
   const connectionStatusTooltip = connectionStatusDisplay ? `${isConnectable ? t("instanceCard.connectable") : connectionStatusDisplay}${listenPort ? t("instanceCard.portInfo", { port: listenPort }) : ""}` : ""
 
+  const dashboardDataStatus = (() => {
+    if (streamError) {
+      return {
+        Icon: AlertCircle,
+        iconClassName: "text-destructive",
+        tooltip: t("instanceCard.streamStatus.error"),
+      }
+    }
+
+    if (streamConnected) {
+      return {
+        Icon: Zap,
+        iconClassName: "text-green-500",
+        tooltip: t("instanceCard.streamStatus.live"),
+      }
+    }
+
+    if (cacheMetadata?.source === "cache") {
+      return {
+        Icon: Database,
+        iconClassName: cacheMetadata.isStale ? "text-amber-500" : "text-blue-500",
+        tooltip: t("instanceCard.streamStatus.cached"),
+      }
+    }
+
+    if (!isFirstLoad) {
+      return {
+        Icon: RefreshCcw,
+        iconClassName: "text-muted-foreground",
+        tooltip: t("instanceCard.streamStatus.fallback"),
+      }
+    }
+
+    return null
+  })()
+  const DashboardDataStatusIcon = dashboardDataStatus?.Icon
+
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
 
@@ -794,6 +834,21 @@ function InstanceCard({
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             </Link>
             <div className="flex items-center gap-1 justify-end shrink-0 basis-full sm:basis-auto sm:min-w-[4.5rem]">
+              {dashboardDataStatus && DashboardDataStatusIcon && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      aria-label={dashboardDataStatus.tooltip}
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${dashboardDataStatus.iconClassName}`}
+                    >
+                      <DashboardDataStatusIcon className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {dashboardDataStatus.tooltip}
+                  </TooltipContent>
+                </Tooltip>
+              )}
               {instance.reannounceSettings?.enabled && (
                 <Tooltip>
                   <TooltipTrigger asChild>
