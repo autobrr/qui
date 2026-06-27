@@ -343,10 +343,12 @@ func TestDirectTrackerEditDoesNotPromoteFallbackTrackerMapping(t *testing.T) {
 	client := &Client{instanceID: 7}
 	torrents := []qbt.Torrent{
 		{Hash: "current-hash", Tracker: "https://new.example/announce", Uploaded: 10, Downloaded: 20, Size: 30, ContentPath: "/data/current"},
+		{Hash: "untouched-hash", Tracker: "https://fallback.example/announce", Uploaded: 1, Downloaded: 2, Size: 3, ContentPath: "/data/untouched"},
 	}
 	mainData := &qbt.MainData{
 		Trackers: map[string][]string{
-			"https://stale.example/announce": {"current-hash"},
+			"https://stale.example/announce":    {"current-hash"},
+			"https://fallback.example/announce": {"untouched-hash"},
 		},
 	}
 
@@ -355,21 +357,63 @@ func TestDirectTrackerEditDoesNotPromoteFallbackTrackerMapping(t *testing.T) {
 
 	mapping := sm.getValidatedTrackerMapping(7)
 	require.NotNil(t, mapping)
-	require.False(t, mapping.FallbackOnly)
+	require.True(t, mapping.FallbackOnly)
 	require.NotContains(t, mapping.DomainToHashes, "stale.example")
 	require.Contains(t, mapping.DomainToHashes, "new.example")
+	require.Contains(t, mapping.DomainToHashes["fallback.example"], "untouched-hash")
 	require.Contains(t, mapping.HashToDomains["current-hash"], "new.example")
+	require.Contains(t, mapping.HashToDomains["untouched-hash"], "fallback.example")
 
 	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, mainData, nil, false, false)
 	require.NotContains(t, counts.Trackers, "stale.example")
-	require.Equal(t, 1, counts.Trackers["new.example"])
+	require.NotContains(t, counts.Trackers, "new.example")
+	require.Equal(t, 1, counts.Trackers["fallback.example"])
 
 	staleFiltered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"stale.example"}}, mainData, nil, false)
 	require.Empty(t, staleFiltered)
 
-	currentFiltered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"new.example"}}, mainData, nil, false)
-	require.Len(t, currentFiltered, 1)
-	require.Equal(t, "current-hash", currentFiltered[0].Hash)
+	untouchedFiltered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"fallback.example"}}, mainData, nil, false)
+	require.Len(t, untouchedFiltered, 1)
+	require.Equal(t, "untouched-hash", untouchedFiltered[0].Hash)
+}
+
+func TestFallbackTrackerMappingMutationsPreserveSnapshot(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			7: {
+				HashToDomains: map[string]map[string]struct{}{
+					"hash-a": {"tracker-a.example": {}},
+					"hash-b": {"tracker-b.example": {}},
+					"hash-c": {"tracker-c.example": {}},
+				},
+				DomainToHashes: map[string]map[string]struct{}{
+					"tracker-a.example": {"hash-a": {}},
+					"tracker-b.example": {"hash-b": {}},
+					"tracker-c.example": {"hash-c": {}},
+				},
+				UpdatedAt:    time.Now(),
+				FallbackOnly: true,
+			},
+		},
+	}
+
+	sm.addHashToTrackerMapping(7, "hash-a", "tracker-new.example")
+	sm.removeHashFromTrackerMapping(7, "hash-b", "tracker-b.example")
+	sm.removeHashFromAllTrackerMappings(7, []string{"hash-c"})
+
+	mapping := sm.getValidatedTrackerMapping(7)
+	require.NotNil(t, mapping)
+	require.True(t, mapping.FallbackOnly)
+	require.Contains(t, mapping.HashToDomains["hash-a"], "tracker-a.example")
+	require.Contains(t, mapping.HashToDomains["hash-a"], "tracker-new.example")
+	require.Contains(t, mapping.DomainToHashes["tracker-a.example"], "hash-a")
+	require.Contains(t, mapping.DomainToHashes["tracker-new.example"], "hash-a")
+	require.NotContains(t, mapping.HashToDomains, "hash-b")
+	require.NotContains(t, mapping.DomainToHashes, "tracker-b.example")
+	require.NotContains(t, mapping.HashToDomains, "hash-c")
+	require.NotContains(t, mapping.DomainToHashes, "tracker-c.example")
 }
 
 func TestUnsupportedTrackerHydrationSeedDropsStaleDomainsFromCountsAndFilters(t *testing.T) {

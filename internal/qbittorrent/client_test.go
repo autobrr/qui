@@ -261,6 +261,36 @@ func TestClientHandleSyncManagerErrorIgnoresContextStopped(t *testing.T) {
 			name: "retry wrapper text",
 			err:  errors.New("could not get main data: error making request: All attempts fail: context canceled"),
 		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			sink := &mockSyncEventSink{}
+			client := &Client{
+				instanceID:      42,
+				isHealthy:       true,
+				syncEventSink:   sink,
+				lastServerState: &qbt.ServerState{ConnectionStatus: "connected"},
+			}
+
+			client.handleSyncManagerError(tc.err)
+
+			require.True(t, client.IsHealthy())
+			require.NotNil(t, client.GetCachedServerState())
+			require.Empty(t, sink.getSyncErrorCalls())
+		})
+	}
+}
+
+func TestClientHandleSyncManagerErrorMarksUnhealthyForDeadline(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+	}{
 		{
 			name: "deadline sentinel",
 			err:  fmt.Errorf("could not get main data: %w", context.DeadlineExceeded),
@@ -285,9 +315,9 @@ func TestClientHandleSyncManagerErrorIgnoresContextStopped(t *testing.T) {
 
 			client.handleSyncManagerError(tc.err)
 
-			require.True(t, client.IsHealthy())
-			require.NotNil(t, client.GetCachedServerState())
-			require.Empty(t, sink.getSyncErrorCalls())
+			require.False(t, client.IsHealthy())
+			require.Nil(t, client.GetCachedServerState())
+			require.Len(t, sink.getSyncErrorCalls(), 1)
 		})
 	}
 }

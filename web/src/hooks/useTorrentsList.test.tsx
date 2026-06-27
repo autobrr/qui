@@ -611,6 +611,51 @@ describe("useTorrentsList", () => {
     expect(result.current.counts).toBeUndefined()
   })
 
+  it("ignores full stream frames from a previous scope after search changes", async () => {
+    streamState = { ...DISCONNECTED, connected: true }
+
+    const { result, rerender } = renderHook(
+      ({ search }: { search?: string }) => useTorrentsList(1, { pollingEnabled: false, search }),
+      { wrapper: makeWrapper(), initialProps: { search: undefined } as { search?: string } }
+    )
+
+    const previousOnMessage = capturedOnMessage
+    expect(typeof previousOnMessage).toBe("function")
+
+    act(() => {
+      previousOnMessage?.({
+        type: "init",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "old" })], total: 1, hasMore: false }),
+      })
+    })
+    await flush()
+    expect(result.current.torrents.map(t => t.hash)).toEqual(["old"])
+
+    rerender({ search: "new scope" })
+    await flush()
+    expect(result.current.torrents).toEqual([])
+
+    act(() => {
+      previousOnMessage?.({
+        type: "update",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "stale" })], total: 1, hasMore: false }),
+      })
+    })
+    await flush()
+    expect(result.current.torrents).toEqual([])
+    expect(result.current.totalCount).toBe(0)
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "update",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "fresh" })], total: 1, hasMore: false }),
+      })
+    })
+    await flush()
+    expect(result.current.torrents.map(t => t.hash)).toEqual(["fresh"])
+    expect(result.current.totalCount).toBe(1)
+  })
+
   it("does not publish counts from an abandoned stream render", async () => {
     streamState = { ...DISCONNECTED, connected: true }
     const committedCounts = makeCounts({ status: { all: 1 }, total: 1 })

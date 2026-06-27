@@ -982,8 +982,10 @@ func (sm *SyncManager) getDomainsForTorrent(t *qbt.Torrent) map[string]struct{} 
 	return domains
 }
 
-// updateTrackerMappingForEdit updates the validated tracker mapping when a tracker is edited.
-// Removes hash from oldDomain and adds to newDomain.
+// updateTrackerMappingForEdit records a tracker edit in the cached mapping.
+// Fallback-only mappings stay provisional after the mutation so untouched
+// MainData-backed hashes remain available until a fully hydrated rebuild
+// promotes a new authoritative mapping.
 func (sm *SyncManager) updateTrackerMappingForEdit(instanceID int, hash, oldDomain, newDomain string) {
 	sm.validatedTrackerMu.Lock()
 	defer sm.validatedTrackerMu.Unlock()
@@ -991,10 +993,6 @@ func (sm *SyncManager) updateTrackerMappingForEdit(instanceID int, hash, oldDoma
 	mapping := sm.validatedTrackerMapping[instanceID]
 	if mapping == nil {
 		return
-	}
-	if mapping.FallbackOnly {
-		mapping = newValidatedTrackerMapping()
-		sm.validatedTrackerMapping[instanceID] = mapping
 	}
 
 	// Remove from old domain (skip "Unknown" - it's never added to the cache)
@@ -1024,7 +1022,7 @@ func (sm *SyncManager) updateTrackerMappingForEdit(instanceID int, hash, oldDoma
 	}
 }
 
-// addHashToTrackerMapping adds a hash to a domain in the validated tracker mapping.
+// addHashToTrackerMapping records a hash/domain membership without promoting provisional mappings.
 func (sm *SyncManager) addHashToTrackerMapping(instanceID int, hash, domain string) {
 	if domain == "" || domain == "Unknown" {
 		return
@@ -1036,10 +1034,6 @@ func (sm *SyncManager) addHashToTrackerMapping(instanceID int, hash, domain stri
 	mapping := sm.validatedTrackerMapping[instanceID]
 	if mapping == nil {
 		return
-	}
-	if mapping.FallbackOnly {
-		mapping = newValidatedTrackerMapping()
-		sm.validatedTrackerMapping[instanceID] = mapping
 	}
 
 	if mapping.DomainToHashes[domain] == nil {
@@ -1053,7 +1047,7 @@ func (sm *SyncManager) addHashToTrackerMapping(instanceID int, hash, domain stri
 	mapping.HashToDomains[hash][domain] = struct{}{}
 }
 
-// removeHashFromTrackerMapping removes a hash from a domain in the validated tracker mapping.
+// removeHashFromTrackerMapping removes a hash/domain membership without promoting provisional mappings.
 func (sm *SyncManager) removeHashFromTrackerMapping(instanceID int, hash, domain string) {
 	if domain == "" || domain == "Unknown" {
 		return
@@ -1065,10 +1059,6 @@ func (sm *SyncManager) removeHashFromTrackerMapping(instanceID int, hash, domain
 	mapping := sm.validatedTrackerMapping[instanceID]
 	if mapping == nil {
 		return
-	}
-	if mapping.FallbackOnly {
-		mapping = newValidatedTrackerMapping()
-		sm.validatedTrackerMapping[instanceID] = mapping
 	}
 
 	if hashes, ok := mapping.DomainToHashes[domain]; ok {
@@ -1086,18 +1076,15 @@ func (sm *SyncManager) removeHashFromTrackerMapping(instanceID int, hash, domain
 	}
 }
 
-// removeHashFromAllTrackerMappings removes a hash from all domains in the validated tracker mapping.
-// Used when torrents are deleted.
+// removeHashFromAllTrackerMappings removes hashes from every cached domain.
+// Fallback-only mappings are pruned in place instead of being replaced, preserving
+// untouched provisional MainData memberships until hydration completes.
 func (sm *SyncManager) removeHashFromAllTrackerMappings(instanceID int, hashes []string) {
 	sm.validatedTrackerMu.Lock()
 	defer sm.validatedTrackerMu.Unlock()
 
 	mapping := sm.validatedTrackerMapping[instanceID]
 	if mapping == nil {
-		return
-	}
-	if mapping.FallbackOnly {
-		sm.validatedTrackerMapping[instanceID] = newValidatedTrackerMapping()
 		return
 	}
 

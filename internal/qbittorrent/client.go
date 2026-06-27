@@ -218,7 +218,9 @@ func (c *Client) IsHealthy() bool {
 	return c.isHealthy
 }
 
-// handleSyncManagerError records real qBittorrent sync failures while ignoring caller-stopped sync attempts.
+// handleSyncManagerError records qBittorrent sync failures while ignoring explicit caller cancellation.
+// Deadline expiry is treated as a real sync failure so stream error handling can
+// mark cached health stale instead of preserving a stale healthy state.
 func (c *Client) handleSyncManagerError(err error) {
 	if err == nil {
 		return
@@ -239,17 +241,19 @@ func (c *Client) handleSyncManagerError(err error) {
 	c.dispatchSyncError(err)
 }
 
-// isContextStopped recognizes context stop errors even after retry wrappers flatten the sentinel.
+// isContextStopped recognizes explicit context cancellation even after retry wrappers flatten the sentinel.
+// It deliberately excludes deadline expiry, which means the qBittorrent request
+// timed out rather than the caller intentionally stopped the sync attempt.
 func isContextStopped(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.Canceled) {
 		return true
 	}
 
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "context canceled") || strings.Contains(msg, "context deadline exceeded")
+	return strings.Contains(msg, "context canceled")
 }
 
 func (c *Client) SupportsTorrentCreation() bool {

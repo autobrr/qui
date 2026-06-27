@@ -58,7 +58,9 @@ interface UseTorrentsListOptions {
  * The hook updates shared instance metadata from stream/REST responses, preserves
  * cached preferences and sidebar counts when stream frames omit them, clears
  * preferences on explicit null responses, and falls back to REST polling when
- * streaming is disabled or disconnected.
+ * streaming is disabled or disconnected. Stream frames are scoped to the current
+ * view identity so frames from a previous filter/search/sort cannot repopulate
+ * rows after a reset.
  */
 export function useTorrentsList(
   instanceId: number,
@@ -84,7 +86,13 @@ export function useTorrentsList(
   const [lastKnownTotal, setLastKnownTotal] = useState(0)
   const [lastProcessedPage, setLastProcessedPage] = useState(-1)
   const [lastStreamSnapshot, setLastStreamSnapshot] = useState<TorrentResponse | null>(null)
+  // Last committed counts for the current view identity. Stream snapshots may
+  // omit counts while tracker hydration catches up, so render-time counts can
+  // fall back to this same-scope snapshot without deriving state in an effect.
   const [lastCountsSnapshot, setLastCountsSnapshot] = useState<{ scopeKey: string; counts?: TorrentCounts }>({ scopeKey: "" })
+  // Mirrors the committed counts snapshot for stream callbacks. A callback from
+  // a render that later suspends must not publish uncommitted counts as fallback.
+  const committedCountsSnapshotRef = useRef(lastCountsSnapshot)
   const lastStreamSnapshotScopeRef = useRef("")
   // The last full page-0 snapshot, retained as the base that incoming SSE deltas are
   // applied against. Held in a ref (not state) so a delta can read the just-applied
@@ -93,6 +101,10 @@ export function useTorrentsList(
   const lastFullSnapshotRef = useRef<TorrentResponse | null>(null)
   const pageSize = 300 // Load 300 at a time (backend default)
   const queryClient = useQueryClient()
+
+  useEffect(() => {
+    committedCountsSnapshotRef.current = lastCountsSnapshot
+  }, [lastCountsSnapshot])
 
   // Pause the heavy list stream while the tab is backgrounded (see
   // STREAM_HIDDEN_PAUSE_DELAY_MS). isHiddenDelayed only trips after a grace period,
@@ -171,6 +183,26 @@ export function useTorrentsList(
     [appInfoQueryKey, queryClient]
   )
 
+  // Records counts only from committed data write paths. If a stream frame omits
+  // counts, reuse the last committed same-scope snapshot rather than deriving
+  // fallback state from the current render.
+  const rememberCountsSnapshot = useCallback((
+    scopeKey: string,
+    counts: TorrentCounts | undefined,
+    fallbackSnapshot?: { scopeKey: string; counts?: TorrentCounts }
+  ) => {
+    const nextCounts = counts ?? (
+      fallbackSnapshot?.scopeKey === scopeKey ? fallbackSnapshot.counts : undefined
+    )
+    if (nextCounts === undefined) {
+      return
+    }
+
+    setLastCountsSnapshot(previous =>
+      previous.scopeKey === scopeKey && previous.counts === nextCounts? previous: { scopeKey, counts: nextCounts }
+    )
+  }, [])
+
   // Detect if this is cross-seed filtering based on expression content
   const isCrossSeedFiltering = useMemo(() => {
     return filters?.expr?.includes("Hash ==") && filters?.expr?.includes("||")
@@ -184,6 +216,9 @@ export function useTorrentsList(
   const filterKey = JSON.stringify(filters)
   const searchKey = search || ""
   const viewScopeKey = `${instanceId}|${instanceIdsKey}|${filterKey}|${searchKey}|${sort}|${order}|${useCrossInstanceEndpoint}|${isCrossSeedFiltering}`
+  // Lets old stream callbacks detect that their closure scope was abandoned.
+  const currentViewScopeKeyRef = useRef(viewScopeKey)
+  currentViewScopeKeyRef.current = viewScopeKey
 
   const streamQueryKey = useMemo(
     () => ["torrents-list", instanceId, instanceIdsKey, 0, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering] as const,
@@ -255,6 +290,12 @@ export function useTorrentsList(
         return
       }
 
+      // Drop full and delta frames from a superseded subscription before they can
+      // write snapshots, query cache, rows, totals, or pagination flags.
+      if (viewScopeKey !== currentViewScopeKeyRef.current) {
+        return
+      }
+
       // Resolve the frame to a full page-0 snapshot. Full frames (init/update and the
       // periodic delta keyframe) carry the whole page; a delta frame carries only the
       // changed rows and is reconstructed against the retained baseline. Either way the
@@ -291,6 +332,7 @@ export function useTorrentsList(
       lastStreamSnapshotScopeRef.current = viewScopeKey
 
       setLastStreamSnapshot(data)
+      rememberCountsSnapshot(viewScopeKey, data.counts, committedCountsSnapshotRef.current)
       updateAppInfoCache(data)
       updateMetadataCache(data)
       queryClient.setQueryData(streamQueryKey, data)
@@ -342,7 +384,7 @@ export function useTorrentsList(
         setHasLoadedAll(!data.hasMore)
       }
     },
-    [currentPage, queryClient, streamQueryKey, updateAppInfoCache, updateMetadataCache, useCrossInstanceEndpoint, viewScopeKey]
+    [currentPage, queryClient, rememberCountsSnapshot, streamQueryKey, updateAppInfoCache, updateMetadataCache, useCrossInstanceEndpoint, viewScopeKey]
   )
 
   const streamState = useSyncStream(streamParams, {
@@ -462,6 +504,7 @@ export function useTorrentsList(
 
     updateAppInfoCache(data)
     updateMetadataCache(data)
+    rememberCountsSnapshot(viewScopeKey, data.counts, committedCountsSnapshotRef.current)
 
     if (data.total !== undefined) {
       setLastKnownTotal(data.total)
@@ -517,7 +560,7 @@ export function useTorrentsList(
     }
 
     setIsLoadingMore(false)
-  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData, updateAppInfoCache, updateMetadataCache])
+  }, [data, currentPage, lastProcessedPage, isFetching, isPlaceholderData, rememberCountsSnapshot, updateAppInfoCache, updateMetadataCache, viewScopeKey])
 
   // Load more function for pagination - following TanStack Query best practices
   const loadMore = () => {
@@ -607,19 +650,6 @@ export function useTorrentsList(
   const effectiveCounts = responseCounts ?? (
     lastCountsSnapshot.scopeKey === countsScopeKey ? lastCountsSnapshot.counts : undefined
   )
-
-  useEffect(() => {
-    if (responseCounts !== undefined) {
-      setLastCountsSnapshot(previous =>
-        previous.scopeKey === countsScopeKey && previous.counts === responseCounts? previous: { scopeKey: countsScopeKey, counts: responseCounts }
-      )
-      return
-    }
-
-    setLastCountsSnapshot(previous =>
-      previous.scopeKey === countsScopeKey ? previous : { scopeKey: countsScopeKey }
-    )
-  }, [countsScopeKey, responseCounts])
 
   return {
     torrents: allTorrents,
