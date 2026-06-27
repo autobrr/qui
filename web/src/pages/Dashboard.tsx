@@ -45,6 +45,7 @@ import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
+import { resolveDashboardTorrentCounts } from "@/lib/dashboard-stream"
 import { copyTextToClipboard, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type {
   CacheMetadata,
@@ -445,7 +446,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
             const next: InstanceStreamData = {
               stats: data.stats ?? null,
               serverState: data.serverState ?? null,
-              torrentCounts: data.counts,
+              torrentCounts: resolveDashboardTorrentCounts(data.counts, current.torrentCounts),
               appInfo: data.appInfo ?? current.appInfo,
               altSpeedEnabled: data.serverState?.use_alt_speed_limits || false,
               isLoading: false,
@@ -549,14 +550,12 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
 
     const stats = isFallbackActive ? (fallbackData?.stats ?? state.stats) : state.stats
     const serverState = isFallbackActive ? (fallbackData?.serverState ?? state.serverState) : state.serverState
-    const torrentCounts = isFallbackActive ? (fallbackData?.counts ?? state.torrentCounts) : state.torrentCounts
+    const torrentCounts = isFallbackActive? resolveDashboardTorrentCounts(fallbackData?.counts, state.torrentCounts): resolveDashboardTorrentCounts(state.torrentCounts, fallbackData?.counts)
     const appInfo = isFallbackActive ? (fallbackData?.appInfo ?? state.appInfo) : state.appInfo
     const cacheMetadata = isFallbackActive ? (fallbackData?.cacheMetadata ?? state.cacheMetadata) : state.cacheMetadata
 
     const hasHydratedData = Boolean(stats || serverState || torrentCounts)
-    const isLoading = isFallbackActive
-      ? (!hasHydratedData && (state.isLoading || fallbackQuery?.isLoading || fallbackQuery?.isFetching))
-      : state.isLoading
+    const isLoading = isFallbackActive? (!hasHydratedData && (state.isLoading || fallbackQuery?.isLoading || fallbackQuery?.isFetching)): state.isLoading
     const error = (() => {
       if (!isFallbackActive) {
         return state.error
@@ -572,14 +571,12 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
 
     // Merge SSE instanceMeta into the instance object for real-time status updates
     // This allows components to use SSE-based connection status instead of polled data
-    const mergedInstance: InstanceResponse = state.streamConnected && state.instanceMeta
-      ? {
-        ...instance,
-        connected: state.instanceMeta.connected,
-        hasDecryptionError: state.instanceMeta.hasDecryptionError,
-        recentErrors: state.instanceMeta.recentErrors,
-      }
-      : instance
+    const mergedInstance: InstanceResponse = state.streamConnected && state.instanceMeta? {
+      ...instance,
+      connected: state.instanceMeta.connected,
+      hasDecryptionError: state.instanceMeta.hasDecryptionError,
+      recentErrors: state.instanceMeta.recentErrors,
+    }: instance
 
     return {
       instance: mergedInstance,
@@ -1366,9 +1363,7 @@ function SortIcon({ column, sortColumn, sortDirection }: { column: TrackerSortCo
   if (sortColumn !== column) {
     return <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
   }
-  return sortDirection === "asc"
-    ? <ArrowUp className="h-3 w-3" />
-    : <ArrowDown className="h-3 w-3" />
+  return sortDirection === "asc"? <ArrowUp className="h-3 w-3" />: <ArrowDown className="h-3 w-3" />
 }
 
 // Extended tracker stats with customization support
@@ -2877,7 +2872,7 @@ export function Dashboard() {
   // Handler for section collapsed state changes
   const handleSectionCollapsedChange = (sectionId: string, collapsed: boolean) => {
     updateSettings.mutate({
-      sectionCollapsed: { ...settings.sectionCollapsed, [sectionId]: collapsed }
+      sectionCollapsed: { ...settings.sectionCollapsed, [sectionId]: collapsed },
     })
   }
 
