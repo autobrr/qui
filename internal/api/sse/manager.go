@@ -1127,7 +1127,7 @@ func isClientDisconnect(err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, net.ErrClosed) {
+	if isContextStopped(err) || errors.Is(err, net.ErrClosed) {
 		return true
 	}
 
@@ -1138,6 +1138,19 @@ func isClientDisconnect(err error) bool {
 		strings.Contains(msg, "forcibly closed by the remote host") ||
 		strings.Contains(msg, "connection was aborted") ||
 		strings.Contains(msg, "wsasend:")
+}
+
+// isContextStopped reports caller-side cancellation and deadline expiry, including retry-wrapped errors.
+func isContextStopped(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "context canceled") || strings.Contains(msg, "context deadline exceeded")
 }
 
 // flushSession flushes whatever buffered bytes were written to the session
@@ -1950,7 +1963,11 @@ func (m *StreamManager) forceSync(parent context.Context, instanceID int) {
 	}
 
 	if err := syncMgr.Sync(ctx); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to force sync during SSE loop")
+		event := log.Warn()
+		if isContextStopped(err) {
+			event = log.Debug()
+		}
+		event.Err(err).Int("instanceID", instanceID).Msg("Failed to force sync during SSE loop")
 		// qBittorrent SyncManager calls OnError for sync failures, which already routes
 		// through the client sync event sink to this StreamManager.
 		// Avoid double-reporting the same failure and advancing backoff twice.

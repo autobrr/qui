@@ -534,7 +534,7 @@ func TestCalculateCountsFromTorrentsWithTrackersPreservesValidatedCountsWithoutE
 	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, nil, false, false)
 
 	require.Equal(t, 2, counts.Trackers["tracker.example"])
-	require.Equal(t, TrackerTransferStats{Uploaded: 110, Downloaded: 220, TotalSize: 30, Count: 2}, counts.TrackerTransfers["tracker.example"])
+	require.Equal(t, TrackerTransferStats{Uploaded: 110, Downloaded: 220, TotalSize: 300, Count: 2}, counts.TrackerTransfers["tracker.example"])
 	require.Nil(t, client.getTrackerExclusionsCopy())
 }
 

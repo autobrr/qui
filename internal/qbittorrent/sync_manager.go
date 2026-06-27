@@ -3631,24 +3631,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 			}
 			counts.Trackers[domain] = len(hashSet)
 
-			// aggregate upload/download/size for this domain
-			// Size is deduplicated by ContentPath to avoid inflating with cross-seeds
-			var uploaded, downloaded, totalSize int64
-			var missingCount int
-			sizeSeen := make(map[string]struct{})
-			for hash := range hashSet {
-				if torrent, ok := torrentMap[hash]; ok {
-					uploaded += torrent.Uploaded
-					downloaded += torrent.Downloaded
-					// Only count size once per unique content path
-					if _, seen := sizeSeen[torrent.ContentPath]; !seen {
-						sizeSeen[torrent.ContentPath] = struct{}{}
-						totalSize += torrent.Size
-					}
-				} else {
-					missingCount++
-				}
-			}
+			stats, missingCount := trackerTransferStatsForHashes(hashSet, torrentMap)
 			if missingCount > 0 {
 				log.Debug().
 					Str("domain", domain).
@@ -3656,12 +3639,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 					Int("total", len(hashSet)).
 					Msg("tracker stats aggregation skipped missing torrents")
 			}
-			counts.TrackerTransfers[domain] = TrackerTransferStats{
-				Uploaded:   uploaded,
-				Downloaded: downloaded,
-				TotalSize:  totalSize,
-				Count:      len(hashSet),
-			}
+			counts.TrackerTransfers[domain] = stats
 		}
 
 		// If the domain disappeared entirely after exclusions, clear the override so future syncs don't skip it unnecessarily
@@ -3740,24 +3718,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 			}
 			counts.Trackers[domain] = len(hashSet)
 
-			// aggregate upload/download/size for this domain
-			// Size is deduplicated by ContentPath to avoid inflating with cross-seeds
-			var uploaded, downloaded, totalSize int64
-			var missingCount int
-			sizeSeen := make(map[string]struct{})
-			for hash := range hashSet {
-				if torrent, ok := torrentMap[hash]; ok {
-					uploaded += torrent.Uploaded
-					downloaded += torrent.Downloaded
-					// Only count size once per unique content path
-					if _, seen := sizeSeen[torrent.ContentPath]; !seen {
-						sizeSeen[torrent.ContentPath] = struct{}{}
-						totalSize += torrent.Size
-					}
-				} else {
-					missingCount++
-				}
-			}
+			stats, missingCount := trackerTransferStatsForHashes(hashSet, torrentMap)
 			if missingCount > 0 {
 				log.Debug().
 					Str("domain", domain).
@@ -3765,12 +3726,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 					Int("total", len(hashSet)).
 					Msg("tracker stats aggregation skipped missing torrents")
 			}
-			counts.TrackerTransfers[domain] = TrackerTransferStats{
-				Uploaded:   uploaded,
-				Downloaded: downloaded,
-				TotalSize:  totalSize,
-				Count:      len(hashSet),
-			}
+			counts.TrackerTransfers[domain] = stats
 		}
 
 		// If the domain disappeared entirely after exclusions, clear the override so future syncs don't skip it unnecessarily
@@ -5838,6 +5794,34 @@ func (sm *SyncManager) sortTorrentsByTimestamp(torrents []qbt.Torrent, desc bool
 		}
 		return compareByStateThenName(a, b)
 	})
+}
+
+// trackerTransferStatsForHashes aggregates per-tracker transfer totals and counts size once per content path.
+// When cross-seeds disagree on size for the same content path, the largest size is kept for deterministic totals.
+func trackerTransferStatsForHashes(hashSet map[string]bool, torrentMap map[string]*qbt.Torrent) (TrackerTransferStats, int) {
+	stats := TrackerTransferStats{Count: len(hashSet)}
+	sizeByContentPath := make(map[string]int64)
+	missingCount := 0
+
+	for hash := range hashSet {
+		torrent, ok := torrentMap[hash]
+		if !ok {
+			missingCount++
+			continue
+		}
+
+		stats.Uploaded += torrent.Uploaded
+		stats.Downloaded += torrent.Downloaded
+		if torrent.Size > sizeByContentPath[torrent.ContentPath] {
+			sizeByContentPath[torrent.ContentPath] = torrent.Size
+		}
+	}
+
+	for _, size := range sizeByContentPath {
+		stats.TotalSize += size
+	}
+
+	return stats, missingCount
 }
 
 // calculateStats calculates torrent statistics from a list of torrents.

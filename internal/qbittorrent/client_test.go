@@ -4,7 +4,9 @@
 package qbittorrent
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -229,6 +231,70 @@ func TestClientDispatchSyncErrorNilErrorDoesNotCallSink(t *testing.T) {
 	if len(calls) != 0 {
 		t.Errorf("expected 0 calls to HandleSyncError for nil error, got %d", len(calls))
 	}
+}
+
+func TestClientHandleSyncManagerErrorIgnoresContextStopped(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "wrapped sentinel",
+			err:  fmt.Errorf("could not get main data: %w", context.Canceled),
+		},
+		{
+			name: "retry wrapper text",
+			err:  errors.New("could not get main data: error making request: All attempts fail: context canceled"),
+		},
+		{
+			name: "deadline sentinel",
+			err:  fmt.Errorf("could not get main data: %w", context.DeadlineExceeded),
+		},
+		{
+			name: "retry deadline text",
+			err:  errors.New("could not get main data: error making request: All attempts fail: context deadline exceeded"),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			sink := &mockSyncEventSink{}
+			client := &Client{
+				instanceID:      42,
+				isHealthy:       true,
+				syncEventSink:   sink,
+				lastServerState: &qbt.ServerState{ConnectionStatus: "connected"},
+			}
+
+			client.handleSyncManagerError(tc.err)
+
+			require.True(t, client.IsHealthy())
+			require.NotNil(t, client.GetCachedServerState())
+			require.Empty(t, sink.getSyncErrorCalls())
+		})
+	}
+}
+
+func TestClientHandleSyncManagerErrorMarksUnhealthyForRealError(t *testing.T) {
+	t.Parallel()
+
+	sink := &mockSyncEventSink{}
+	client := &Client{
+		instanceID:      42,
+		isHealthy:       true,
+		syncEventSink:   sink,
+		lastServerState: &qbt.ServerState{ConnectionStatus: "connected"},
+	}
+
+	client.handleSyncManagerError(errors.New("connection refused"))
+
+	require.False(t, client.IsHealthy())
+	require.Nil(t, client.GetCachedServerState())
+	require.Len(t, sink.getSyncErrorCalls(), 1)
 }
 
 func TestClientSetSyncEventSinkUpdatesDispatch(t *testing.T) {

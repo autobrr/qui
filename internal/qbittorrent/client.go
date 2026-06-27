@@ -160,13 +160,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 		client.dispatchMainData(data)
 	}
 
-	syncOpts.OnError = func(err error) {
-		client.updateHealthStatus(false)
-		client.clearServerState()
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Sync manager error received, marking client as unhealthy")
-
-		client.dispatchSyncError(err)
-	}
+	syncOpts.OnError = client.handleSyncManagerError
 
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
 
@@ -222,6 +216,40 @@ func (c *Client) IsHealthy() bool {
 	c.healthMu.RLock()
 	defer c.healthMu.RUnlock()
 	return c.isHealthy
+}
+
+// handleSyncManagerError records real qBittorrent sync failures while ignoring caller-stopped sync attempts.
+func (c *Client) handleSyncManagerError(err error) {
+	if err == nil {
+		return
+	}
+
+	if isContextStopped(err) {
+		log.Debug().
+			Err(err).
+			Int("instanceID", c.instanceID).
+			Msg("Sync manager context stopped, keeping client health unchanged")
+		return
+	}
+
+	c.updateHealthStatus(false)
+	c.clearServerState()
+	log.Warn().Err(err).Int("instanceID", c.instanceID).Msg("Sync manager error received, marking client as unhealthy")
+
+	c.dispatchSyncError(err)
+}
+
+// isContextStopped recognizes context stop errors even after retry wrappers flatten the sentinel.
+func isContextStopped(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "context canceled") || strings.Contains(msg, "context deadline exceeded")
 }
 
 func (c *Client) SupportsTorrentCreation() bool {
