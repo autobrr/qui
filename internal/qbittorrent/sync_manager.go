@@ -110,22 +110,36 @@ func withoutCancelPreservingDeadline(ctx context.Context) (context.Context, cont
 	return context.WithoutCancel(ctx), func() {}
 }
 
-// CacheMetadata provides information about cache state
+// CacheMetadata describes whether torrent response data came from a recent
+// qBittorrent sync or from the last retained cache snapshot.
 type CacheMetadata struct {
-	Source      string `json:"source"`      // "cache" or "fresh"
-	Age         int    `json:"age"`         // Age in seconds
-	IsStale     bool   `json:"isStale"`     // Whether data is stale
-	NextRefresh string `json:"nextRefresh"` // When next refresh will occur (ISO 8601 string)
+	// Source is "fresh" when the last successful sync is at most one second old;
+	// otherwise it is "cache".
+	Source string `json:"source"`
+	// Age is the whole-second age of the last successful sync.
+	Age int `json:"age"`
+	// IsStale reports whether the last successful sync is older than one second.
+	IsStale bool `json:"isStale"`
+	// NextRefresh is the RFC3339 time when the next refresh is expected.
+	NextRefresh string `json:"nextRefresh"`
 }
 
 // newCacheMetadata derives the freshness signal from the last successful sync.
+// A zero lastSuccessfulSync means the age is unknown, so no cache metadata is emitted.
 // Data is considered fresh only if it updated within the last second; anything
 // older is reported as cached and stale so the UI can flag it during a sync
-// outage. lastSuccessfulSync must be the last SUCCESSFUL sync time, not the last
-// attempt, otherwise a failing instance would falsely report as fresh.
+// outage. Age is still rounded down to whole seconds for display; freshness is
+// calculated from the full duration. lastSuccessfulSync must be the last
+// SUCCESSFUL sync time, not the last attempt, otherwise a failing instance would
+// falsely report as fresh.
 func newCacheMetadata(lastSuccessfulSync, now time.Time) *CacheMetadata {
-	age := int(now.Sub(lastSuccessfulSync).Seconds())
-	isFresh := age <= 1
+	if lastSuccessfulSync.IsZero() {
+		return nil
+	}
+
+	ageDuration := max(now.Sub(lastSuccessfulSync), 0)
+	age := int(ageDuration.Seconds())
+	isFresh := ageDuration <= time.Second
 
 	source := "cache"
 	if isFresh {
@@ -964,7 +978,11 @@ func (sm *SyncManager) validateTorrentsExist(client *Client, hashes []string, op
 	return nil
 }
 
-// GetTorrentsWithFilters gets torrents with filters, search, sorting, and pagination
+// GetTorrentsWithFilters returns torrents plus sidebar metadata after applying
+// filters, search, sorting, and pagination. When the context requests stale data,
+// torrent and preference metadata are read from the existing sync caches instead
+// of forcing fresh qBittorrent calls; unavailable cached preferences are omitted
+// from the response.
 func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters FilterOptions) (*TorrentResponse, error) {
 	var filteredTorrents []qbt.Torrent
 	var allTorrentsForCounts []qbt.Torrent

@@ -739,13 +739,13 @@ func TestServeDeliversStreamErrorOnBuildFailure(t *testing.T) {
 	}
 }
 
-// TestServeStampsLastSuccessfulSyncOnBuildFailure covers the materializeGroupResponse
-// error path's staleness stamp (issue #2052): when a cross-instance build fails, the
-// stream-error frame must carry LastSuccessfulSync resolved from the representative
-// instance (retryInstanceID = InstanceIDs[0]) so the client can show how stale the
-// retained rows are. The HandleSyncError stamp path is covered separately in
-// manager_test.go; this exercises the second, group-refresh callsite.
-func TestServeStampsLastSuccessfulSyncOnBuildFailure(t *testing.T) {
+// TestServeStampsLastSuccessfulSyncOnSingleMemberBuildFailure covers the
+// materializeGroupResponse error path's staleness stamp (issue #2052): when a
+// one-member aggregate build fails, the stream-error frame can carry
+// LastSuccessfulSync for that concrete instance. The HandleSyncError stamp path is
+// covered separately in manager_test.go; this exercises the second, group-refresh
+// callsite.
+func TestServeStampsLastSuccessfulSyncOnSingleMemberBuildFailure(t *testing.T) {
 	store, cleanup := newTestInstanceStore(t)
 	defer cleanup()
 
@@ -758,9 +758,9 @@ func TestServeStampsLastSuccessfulSyncOnBuildFailure(t *testing.T) {
 
 	instanceID := seedActiveInstance(t, manager)
 
-	// Source the last good sync from a fixed point in the past, keyed on the instance
-	// the group's retry hint resolves to. Returning the zero time for any other id
-	// proves the stamp is keyed on the representative instance, not stamped blindly.
+	// Source the last good sync from a fixed point in the past, keyed on the only
+	// instance in the group. Returning the zero time for any other id proves the
+	// stamp is keyed on that concrete instance, not stamped blindly.
 	lastGood := time.Now().Add(-90 * time.Second)
 	manager.lastSuccessfulSyncFn = func(_ context.Context, id int) time.Time {
 		if id == instanceID {
@@ -769,7 +769,7 @@ func TestServeStampsLastSuccessfulSyncOnBuildFailure(t *testing.T) {
 		return time.Time{}
 	}
 
-	// Multi-instance group so retryInstanceID falls back to InstanceIDs[0].
+	// One-member aggregate group so retryInstanceID falls back to InstanceIDs[0].
 	payload := streamPayload(instanceID, "stream-err")
 	payload[0]["instanceId"] = 0
 	payload[0]["instanceIds"] = []int{instanceID}

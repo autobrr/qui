@@ -23,7 +23,9 @@ import type {
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
+/** Fallback REST polling interval used while the torrent SSE stream is unavailable. */
 export const TORRENT_STREAM_POLL_INTERVAL_MS = 3000
+/** Fallback REST polling interval in whole seconds for stream request metadata. */
 export const TORRENT_STREAM_POLL_INTERVAL_SECONDS = Math.max(
   1,
   Math.round(TORRENT_STREAM_POLL_INTERVAL_MS / 1000)
@@ -50,8 +52,12 @@ interface UseTorrentsListOptions {
   instanceIds?: number[]
 }
 
-// Hook that manages paginated torrent loading with stale-while-revalidate pattern
-// Backend handles all caching complexity and returns fresh or stale data immediately
+/**
+ * Loads a paginated torrent list and keeps page 0 current with SSE when possible.
+ * The hook updates shared instance metadata from stream/REST responses, clears
+ * stale regular-instance preferences when the backend omits them, and falls back
+ * to REST polling when streaming is disabled or disconnected.
+ */
 export function useTorrentsList(
   instanceId: number,
   options: UseTorrentsListOptions = {}
@@ -120,7 +126,7 @@ export function useTorrentsList(
           const nextCategories = isCrossInstanceSource? (previous?.categories ?? {}): (source.categories ?? {})
           const nextTags = isCrossInstanceSource? (previous?.tags ?? []): (source.tags ?? [])
           const nextPreferences =
-            hasPreferences && source.preferences !== undefined? (source.preferences as AppPreferences | undefined) ?? previous?.preferences: previous?.preferences
+            hasPreferences? ((source.preferences as AppPreferences | null | undefined) ?? undefined): (isCrossInstanceSource? previous?.preferences: undefined)
 
           const next: InstanceMetadata = {
             categories: nextCategories,
@@ -132,13 +138,15 @@ export function useTorrentsList(
         }
       )
 
-      if (hasPreferences && source.preferences !== undefined) {
-        const nextPreferences = source.preferences as AppPreferences | undefined
+      if (!isCrossInstanceSource || (hasPreferences && source.preferences !== undefined)) {
+        const nextPreferences = (source.preferences as AppPreferences | null | undefined) ?? undefined
         if (nextPreferences !== undefined) {
           queryClient.setQueryData<AppPreferences | undefined>(
             ["instance-preferences", instanceId],
             nextPreferences
           )
+        } else if (!isCrossInstanceSource) {
+          queryClient.removeQueries({ queryKey: ["instance-preferences", instanceId], exact: true })
         }
       }
     },
@@ -190,11 +198,6 @@ export function useTorrentsList(
     return filtered.length > 0 ? filtered : undefined
   }, [useCrossInstanceEndpoint, instanceIds, activeInstanceIds])
 
-  const streamInstanceIdsKey = useMemo(
-    () => (streamInstanceIds ? [...streamInstanceIds].sort((a, b) => a - b).join(",") : ""),
-    [streamInstanceIds]
-  )
-
   // Single-instance views stream directly; aggregated views stream the cross-instance
   // endpoint once a concrete member set is known (otherwise fall back to polling below).
   const streamParams = useMemo(() => {
@@ -234,8 +237,7 @@ export function useTorrentsList(
       search: search || undefined,
       filters,
     }
-    // streamInstanceIdsKey captures streamInstanceIds membership for memoization.
-  }, [enabled, filters, instanceId, useCrossInstanceEndpoint, isCrossSeedFiltering, streamInstanceIds, streamInstanceIdsKey, order, pageSize, search, sort])
+  }, [enabled, filters, instanceId, useCrossInstanceEndpoint, isCrossSeedFiltering, streamInstanceIds, order, pageSize, search, sort])
 
   const handleStreamPayload = useCallback(
     (payload: TorrentStreamPayload) => {
@@ -329,7 +331,7 @@ export function useTorrentsList(
         setHasLoadedAll(!data.hasMore)
       }
     },
-    [currentPage, pageSize, queryClient, streamQueryKey, updateAppInfoCache, updateMetadataCache, useCrossInstanceEndpoint]
+    [currentPage, queryClient, streamQueryKey, updateAppInfoCache, updateMetadataCache, useCrossInstanceEndpoint]
   )
 
   const streamState = useSyncStream(streamParams, {

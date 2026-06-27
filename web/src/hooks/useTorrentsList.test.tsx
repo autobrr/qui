@@ -94,10 +94,11 @@ function makeResponse(overrides: Partial<TorrentResponse> = {}): TorrentResponse
   }
 }
 
-function makeWrapper() {
-  const queryClient = new QueryClient({
+function makeWrapper(
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
+) {
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
@@ -728,5 +729,35 @@ describe("useTorrentsList background stream gating", () => {
     rerender()
 
     expect(lastStreamOptions?.enabled).toBe(true)
+  })
+
+  it("clears stale preference caches when a regular stream frame omits preferences", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    queryClient.setQueryData(["instance-preferences", 1], { listen_port: 6881 })
+    queryClient.setQueryData(["instance-metadata", 1], {
+      categories: {},
+      tags: [],
+      preferences: { listen_port: 6881 },
+    })
+
+    renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper(queryClient) })
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "update",
+        data: {
+          torrents: [],
+          total: 0,
+          hasMore: false,
+          categories: {},
+          tags: [],
+        },
+      })
+    })
+
+    expect(queryClient.getQueryData<{ preferences?: unknown }>(["instance-metadata", 1])?.preferences).toBeUndefined()
+    expect(queryClient.getQueryData(["instance-preferences", 1])).toBeUndefined()
   })
 })

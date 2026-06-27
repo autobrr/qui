@@ -1269,7 +1269,9 @@ func (m *StreamManager) buildGroupUpdatePayload(group *subscriptionGroup, opts S
 // materializeGroupResponse fetches the current filtered/sorted/paginated page for
 // the group's view from the warm sync cache. On success it returns the response and
 // a nil payload; on failure it returns a nil response and a ready-to-send
-// stream-error payload (carrying a retry hint).
+// stream-error payload. Error payloads include retry and retained-data age metadata
+// only when the stream maps to one concrete instance; multi-member aggregate streams
+// omit scalar instance metadata because member backoff and freshness can differ.
 func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *StreamMeta, groupKey string) (*qbittorrent.TorrentResponse, *StreamPayload) {
 	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
@@ -1323,16 +1325,24 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 			Str("groupKey", groupKey).
 			Msg("Failed to build torrent response for SSE subscribers")
 
-		// Carry a retry hint so the frontend can show a recovery countdown and keep
-		// its last data instead of permanently flipping to the fallback state.
+		// Carry a retry hint only when it maps to one concrete instance. Multi-member
+		// aggregate groups can have different per-instance backoff intervals, so a
+		// scalar retry hint would be misleading.
 		if metaCopy == nil {
 			metaCopy = &StreamMeta{InstanceID: opts.InstanceID, Timestamp: time.Now()}
 		}
-		metaCopy.RetryInSeconds = m.currentRetrySeconds(retryInstanceID)
-		// Stamp how stale the retained data is. For multi-instance groups this uses the
-		// representative instance (same one the retry hint is keyed on); a per-instance
-		// rollup is intentionally out of scope here.
-		m.stampLastSuccessfulSync(ctx, metaCopy, retryInstanceID)
+		hasSingleConcreteInstance := retryInstanceID > 0 && (!opts.isMultiInstance() || len(opts.InstanceIDs) == 1)
+		if hasSingleConcreteInstance {
+			metaCopy.RetryInSeconds = m.currentRetrySeconds(retryInstanceID)
+		}
+		// Stamp how stale the retained data is only when the scalar timestamp maps to
+		// one concrete instance. Mixed aggregate rows can come from multiple clocks.
+		if hasSingleConcreteInstance {
+			m.stampLastSuccessfulSync(ctx, metaCopy, retryInstanceID)
+		} else {
+			metaCopy.RetryInSeconds = 0
+			metaCopy.LastSuccessfulSync = nil
+		}
 
 		return nil, &StreamPayload{
 			Type: streamEventError,

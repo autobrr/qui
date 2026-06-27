@@ -43,10 +43,15 @@ func TestNewCacheMetadata(t *testing.T) {
 	tests := []struct {
 		name           string
 		lastSuccessful time.Time
+		wantNil        bool
 		wantAge        int
 		wantSource     string
 		wantStale      bool
 	}{
+		{
+			name:    "unknown successful sync omits metadata",
+			wantNil: true,
+		},
 		{
 			name:           "fresh within one second",
 			lastSuccessful: now.Add(-500 * time.Millisecond),
@@ -58,6 +63,27 @@ func TestNewCacheMetadata(t *testing.T) {
 			name:           "exactly one second is still fresh",
 			lastSuccessful: now.Add(-1 * time.Second),
 			wantAge:        1,
+			wantSource:     "fresh",
+			wantStale:      false,
+		},
+		{
+			name:           "fractional age over one second is stale",
+			lastSuccessful: now.Add(-1500 * time.Millisecond),
+			wantAge:        1,
+			wantSource:     "cache",
+			wantStale:      true,
+		},
+		{
+			name:           "nanosecond over one second is stale",
+			lastSuccessful: now.Add(-(time.Second + time.Nanosecond)),
+			wantAge:        1,
+			wantSource:     "cache",
+			wantStale:      true,
+		},
+		{
+			name:           "future successful sync clamps to fresh zero age",
+			lastSuccessful: now.Add(time.Minute),
+			wantAge:        0,
 			wantSource:     "fresh",
 			wantStale:      false,
 		},
@@ -86,6 +112,10 @@ func TestNewCacheMetadata(t *testing.T) {
 			t.Parallel()
 
 			meta := newCacheMetadata(tt.lastSuccessful, now)
+			if tt.wantNil {
+				require.Nil(t, meta)
+				return
+			}
 
 			require.Equal(t, tt.wantAge, meta.Age)
 			require.Equal(t, tt.wantSource, meta.Source)
