@@ -45,7 +45,13 @@ import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
-import { resolveDashboardTorrentCounts } from "@/lib/dashboard-stream"
+import {
+  DASHBOARD_STATS_FALLBACK_ORDER,
+  DASHBOARD_STATS_FALLBACK_SORT,
+  createDashboardStatsFallbackQueryKey,
+  mergeDashboardStatsSnapshot,
+  resolveDashboardTorrentCounts
+} from "@/lib/dashboard-stream"
 import { copyTextToClipboard, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type {
   CacheMetadata,
@@ -169,6 +175,73 @@ function recordsShallowEqual(
   return true
 }
 
+function hasDashboardInstanceData(data: InstanceStreamData | null | undefined) {
+  return Boolean(data?.stats || data?.serverState || data?.torrentCounts)
+}
+
+function instanceStreamDataFromResponse(
+  response: TorrentResponse | undefined,
+  current?: InstanceStreamData
+): InstanceStreamData | undefined {
+  if (!response) {
+    return undefined
+  }
+
+  return {
+    stats: response.stats ?? current?.stats ?? null,
+    serverState: response.serverState ?? current?.serverState ?? null,
+    torrentCounts: resolveDashboardTorrentCounts(response.counts, current?.torrentCounts),
+    appInfo: response.appInfo ?? current?.appInfo ?? null,
+    altSpeedEnabled: response.serverState?.use_alt_speed_limits ?? current?.altSpeedEnabled ?? false,
+    isLoading: false,
+    error: null,
+    streamConnected: current?.streamConnected ?? false,
+    streamError: current?.streamError ?? null,
+    cacheMetadata: response.cacheMetadata ?? current?.cacheMetadata ?? null,
+    instanceMeta: response.instanceMeta ?? current?.instanceMeta ?? null,
+  }
+}
+
+function mergeCachedInstanceData(
+  current: InstanceStreamData | undefined,
+  cached: InstanceStreamData | undefined
+) {
+  if (!current) {
+    return cached
+  }
+  if (!cached) {
+    return current
+  }
+
+  const next: InstanceStreamData = {
+    ...current,
+    stats: current.stats ?? cached.stats,
+    serverState: current.serverState ?? cached.serverState,
+    torrentCounts: resolveDashboardTorrentCounts(current.torrentCounts, cached.torrentCounts),
+    appInfo: current.appInfo ?? cached.appInfo,
+    altSpeedEnabled: current.serverState?.use_alt_speed_limits ?? cached.serverState?.use_alt_speed_limits ?? current.altSpeedEnabled,
+    isLoading: current.isLoading && !hasDashboardInstanceData(cached),
+    error: current.error,
+    cacheMetadata: current.cacheMetadata ?? cached.cacheMetadata,
+    instanceMeta: current.instanceMeta ?? cached.instanceMeta,
+  }
+
+  if (
+    next.stats === current.stats &&
+    next.serverState === current.serverState &&
+    next.torrentCounts === current.torrentCounts &&
+    next.appInfo === current.appInfo &&
+    next.altSpeedEnabled === current.altSpeedEnabled &&
+    next.isLoading === current.isLoading &&
+    next.cacheMetadata === current.cacheMetadata &&
+    next.instanceMeta === current.instanceMeta
+  ) {
+    return current
+  }
+
+  return next
+}
+
 // Shared hook for computing global stats across all instances
 function useGlobalStats(statsData: DashboardInstanceStats[]) {
   return useMemo(() => {
@@ -267,12 +340,12 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
         // alive while an instance's stream is down. It does NOT share the torrent
         // list's cache entry (that key now also encodes filters/scope), so keep this
         // request minimal rather than relying on reuse.
-        queryKey: ["dashboard-stats-fallback", instance.id, "added_on", "desc"] as const,
+        queryKey: createDashboardStatsFallbackQueryKey(instance.id),
         queryFn: () => api.getTorrents(instance.id, {
           page: 0,
           limit: 1,
-          sort: "added_on",
-          order: "desc",
+          sort: DASHBOARD_STATS_FALLBACK_SORT,
+          order: DASHBOARD_STATS_FALLBACK_ORDER,
         }),
         enabled: fallbackEnabled,
         refetchInterval: fallbackEnabled ? 5000 : false,
@@ -285,6 +358,17 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       }
     }),
   })
+
+  const getCachedInstanceData = useCallback(
+    (instanceId: number, current?: InstanceStreamData) => {
+      const cachedResponse = queryClient.getQueryData<TorrentResponse>(
+        createDashboardStatsFallbackQueryKey(instanceId)
+      )
+
+      return instanceStreamDataFromResponse(cachedResponse, current)
+    },
+    [queryClient]
+  )
 
   const flushInstanceData = useCallback(
     (force = false) => {
@@ -315,7 +399,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       const currentRecord = latestDataRef.current
       let current = currentRecord[instanceId]
       if (!current) {
-        current = createDefaultInstanceStreamData()
+        current = getCachedInstanceData(instanceId) ?? createDefaultInstanceStreamData()
         currentRecord[instanceId] = current
       }
 
@@ -335,17 +419,20 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
         scheduleFlush()
       }
     },
-    [flushInstanceData, scheduleFlush]
+    [flushInstanceData, getCachedInstanceData, scheduleFlush]
   )
 
   useEffect(() => {
     const nextRecord: Record<number, InstanceStreamData> = {}
     instances.forEach(instance => {
-      nextRecord[instance.id] = latestDataRef.current[instance.id] ?? createDefaultInstanceStreamData()
+      const current = latestDataRef.current[instance.id]
+      nextRecord[instance.id] =
+        mergeCachedInstanceData(current, getCachedInstanceData(instance.id, current)) ??
+        createDefaultInstanceStreamData()
     })
     latestDataRef.current = nextRecord
     flushInstanceData(true)
-  }, [instances, flushInstanceData])
+  }, [instances, flushInstanceData, getCachedInstanceData])
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -438,6 +525,10 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
           }
 
           const data = payload.data
+          queryClient.setQueryData<TorrentResponse | undefined>(
+            createDashboardStatsFallbackQueryKey(instance.id),
+            current => mergeDashboardStatsSnapshot(data, current)
+          )
           if (data.appInfo) {
             queryClient.setQueryData(["qbittorrent-app-info", instance.id], data.appInfo)
           }
@@ -528,13 +619,15 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
   }, [instances, syncStream, baseStreamParams, queryClient, applyInstanceData, streamEnabled])
 
   useEffect(() => {
+    const streamConnections = streamConnectionsRef.current
+
     return () => {
-      streamConnectionsRef.current.forEach(entry => {
+      streamConnections.forEach(entry => {
         entry.cancelRef.current = true
         entry.disconnect()
         entry.unsubscribe()
       })
-      streamConnectionsRef.current.clear()
+      streamConnections.clear()
       if (flushTimerRef.current) {
         clearTimeout(flushTimerRef.current)
         flushTimerRef.current = null
@@ -543,7 +636,10 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
   }, [])
 
   return instances.map<DashboardInstanceStats>((instance, index) => {
-    const state = instanceData[instance.id] ?? createDefaultInstanceStreamData()
+    const cachedState = getCachedInstanceData(instance.id, instanceData[instance.id])
+    const state =
+      mergeCachedInstanceData(instanceData[instance.id], cachedState) ??
+      createDefaultInstanceStreamData()
     const fallbackQuery = fallbackQueries[index]
     const fallbackData = fallbackQuery?.data as TorrentResponse | undefined
     const isFallbackActive = !state.streamConnected

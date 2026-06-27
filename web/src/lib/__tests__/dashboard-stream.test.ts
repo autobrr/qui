@@ -5,7 +5,13 @@
 
 import { describe, expect, it } from "vitest"
 
-import { resolveDashboardTorrentCounts } from "@/lib/dashboard-stream"
+import {
+  DASHBOARD_STATS_FALLBACK_ORDER,
+  DASHBOARD_STATS_FALLBACK_SORT,
+  createDashboardStatsFallbackQueryKey,
+  mergeDashboardStatsSnapshot,
+  resolveDashboardTorrentCounts
+} from "@/lib/dashboard-stream"
 import type { TorrentCounts } from "@/types"
 
 function makeCounts(overrides: Partial<TorrentCounts> = {}): TorrentCounts {
@@ -39,5 +45,48 @@ describe("resolveDashboardTorrentCounts", () => {
     const incomingCounts = makeCounts({ status: { all: 0 }, trackers: {}, trackerTransfers: {}, total: 0 })
 
     expect(resolveDashboardTorrentCounts(incomingCounts, currentCounts)).toBe(incomingCounts)
+  })
+})
+
+describe("createDashboardStatsFallbackQueryKey", () => {
+  it("uses the same lightweight scope for stream snapshots and fallback probes", () => {
+    expect(createDashboardStatsFallbackQueryKey(7)).toEqual([
+      "dashboard-stats-fallback",
+      7,
+      DASHBOARD_STATS_FALLBACK_SORT,
+      DASHBOARD_STATS_FALLBACK_ORDER,
+    ])
+  })
+})
+
+describe("mergeDashboardStatsSnapshot", () => {
+  it("preserves cached tracker counts when an incoming lightweight snapshot omits counts", () => {
+    const cachedCounts = makeCounts()
+    const merged = mergeDashboardStatsSnapshot(
+      {
+        torrents: [],
+        total: 1,
+        stats: {
+          totalDownloadSpeed: 1,
+          totalUploadSpeed: 2,
+          totalSize: 3,
+          totalRemainingSize: 4,
+          totalSeedingSize: 5,
+          downloading: 6,
+          seeding: 7,
+          total: 8,
+          paused: 9,
+          error: 10,
+        },
+      },
+      {
+        torrents: [],
+        total: 1,
+        counts: cachedCounts,
+      }
+    )
+
+    expect(merged.counts).toBe(cachedCounts)
+    expect(merged.stats?.totalDownloadSpeed).toBe(1)
   })
 })
