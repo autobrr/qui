@@ -9,6 +9,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { TruncatedText } from "@/components/ui/truncated-text"
+import { useFileRangeSelection } from "@/hooks/useFileRangeSelection"
 import { FILE_PRIORITY, foldFolderPriority, normalizeFilePriority, type FilePriorityValue, type FolderPriority } from "@/lib/file-priority"
 import { getLinuxFileName, getLinuxFolderName } from "@/lib/incognito"
 import { cn, formatBytes } from "@/lib/utils"
@@ -26,6 +27,7 @@ interface TorrentFileTableProps {
   incognitoMode: boolean
   torrentHash: string
   onToggleFile: (file: TorrentFile, selected: boolean) => void
+  onToggleFileRange: (indices: number[], selected: boolean) => void
   onToggleFolder: (folderPath: string, selected: boolean) => void
   onSetFilePriority: (file: TorrentFile, priority: number) => void
   onSetFolderPriority: (folderPath: string, priority: number) => void
@@ -189,6 +191,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   incognitoMode,
   torrentHash,
   onToggleFile,
+  onToggleFileRange,
   onToggleFolder,
   onSetFilePriority,
   onSetFolderPriority,
@@ -307,6 +310,13 @@ export const TorrentFileTable = memo(function TorrentFileTable({
     setExpandedFolders(new Set())
   }, [])
 
+  const { handleCheckboxPointerDown, clearShift, handleFileCheckbox } = useFileRangeSelection({
+    getRows: () => filteredRows,
+    onToggleFile,
+    onToggleFileRange,
+    resetKey: torrentHash,
+  })
+
   if (loading && !files) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -415,10 +425,12 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                     <div className="w-8 px-2 py-1.5 shrink-0 flex items-center">
                       <Checkbox
                         checked={isIndeterminate ? "indeterminate" : isSelected}
+                        onPointerDown={handleCheckboxPointerDown}
                         onCheckedChange={(checked) => {
                           if (isFile && file) {
-                            onToggleFile(file, checked === true)
+                            handleFileCheckbox(file, virtualRow.index, checked === true)
                           } else {
+                            clearShift()
                             onToggleFolder(node.id, checked === true)
                           }
                         }}
