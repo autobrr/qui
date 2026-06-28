@@ -380,6 +380,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     const rangeSet = new Set(indices)
     const targetIndices = files
       .filter(file => rangeSet.has(file.index))
+      .filter(file => !pendingFileIndices.has(file.index))
       .filter(file => selected ? file.priority === 0 : file.priority !== 0)
       .map(file => file.index)
 
@@ -388,7 +389,7 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     }
 
     setFilePriorityMutation.mutate({ indices: targetIndices, priority: selected ? 1 : 0, hash: torrent.hash })
-  }, [files, setFilePriorityMutation, supportsFilePriority, torrent])
+  }, [files, pendingFileIndices, setFilePriorityMutation, supportsFilePriority, torrent])
 
   const handleSelectAllFiles = useCallback(() => {
     if (!torrent || !supportsFilePriority || !files) {
