@@ -136,6 +136,33 @@ func TestOnSessionAbortsWhenInitFlushFails(t *testing.T) {
 	requireSSEPayloadFlushLog(t, logs.String(), streamEventInit)
 }
 
+func TestOnSessionAbortsWhenBufferedInitFlushFails(t *testing.T) {
+	provider := &fakeSyncProvider{torrentsResponse: cannedResponse()}
+	manager := NewStreamManager(nil, provider, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+	logs := captureSSELogs(t)
+
+	id, err := manager.registerSubscription(StreamOptions{InstanceID: 1, Limit: 50}, "failing-buffered-flush")
+	require.NoError(t, err)
+
+	rw := &flushErrorResponseWriter{}
+	bw := newBufferedSessionWriter(rw, http.NewResponseController(rw), streamWriteTimeout, func() {})
+	t.Cleanup(bw.Close)
+
+	ctx := context.WithValue(context.Background(), subscriptionIDsContextKey, []string{id})
+	ctx = context.WithValue(ctx, sessionWriterContextKey, bw)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/stream", nil)
+
+	topics, ok := manager.onSession(bw, req)
+
+	require.False(t, ok)
+	require.Nil(t, topics)
+	require.False(t, bw.buffered.Load())
+	require.Equal(t, uint64(0), manager.eventsPublished.Load())
+	require.Equal(t, uint64(1), manager.eventsDropped.Load())
+	requireSSEPayloadFlushLog(t, logs.String(), streamEventInit)
+}
+
 func TestOnSessionAbortsWhenKeepaliveFlushFails(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })

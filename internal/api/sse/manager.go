@@ -854,6 +854,9 @@ type bufferedSessionWriter struct {
 	drainOnce sync.Once
 	failed    atomic.Bool
 	closeOnce sync.Once
+	// initFlushErr carries the no-return Flush() init-phase error to
+	// flushSession without changing the http.Flusher-shaped public method.
+	initFlushErr atomic.Value // stores error
 }
 
 func newBufferedSessionWriter(w http.ResponseWriter, rc *http.ResponseController, timeout time.Duration, cancel context.CancelFunc) *bufferedSessionWriter {
@@ -904,11 +907,14 @@ func (w *bufferedSessionWriter) Write(p []byte) (int, error) {
 
 // Flush, in buffered mode, enqueues the staged message for the drain goroutine
 // and returns immediately; in the init phase it flushes the synchronous write
-// straight through. Its no-return signature keeps the writer matching go-sse's
-// http.Flusher detection (writeFlusher) rather than the FlushError path.
+// straight through and records any error for flushSession. Its no-return
+// signature keeps the writer matching go-sse's http.Flusher detection
+// (writeFlusher) rather than the FlushError path.
 func (w *bufferedSessionWriter) Flush() {
 	if !w.buffered.Load() {
-		_ = w.rc.Flush()
+		if err := w.rc.Flush(); err != nil {
+			w.initFlushErr.Store(err)
+		}
 		return
 	}
 
@@ -926,6 +932,16 @@ func (w *bufferedSessionWriter) Flush() {
 	default:
 		w.drop() // queue full: client cannot keep up
 	}
+}
+
+// initFlushError returns the last init-phase flush failure recorded by Flush.
+// It exists so flushSession can observe synchronous init failures without making
+// bufferedSessionWriter implement a non-go-sse FlushError shape.
+func (w *bufferedSessionWriter) initFlushError() error {
+	if err, ok := w.initFlushErr.Load().(error); ok {
+		return err
+	}
+	return nil
 }
 
 // drain writes queued messages to the real socket under a rolling deadline. It
@@ -1175,7 +1191,8 @@ func isContextStopped(err error) bool {
 // flushSession flushes whatever buffered bytes were written to the session
 // writer. The writer go-sse hands onSession is its own ResponseWriter wrapper
 // whose Flush returns an error, so try that first, then fall back to the
-// standard http.Flusher (unwrapping as needed).
+// standard http.Flusher. If a no-return Flush records an init-phase error,
+// flushSession returns it so onSession can abort before subscribing.
 func flushSession(w http.ResponseWriter) error {
 	if f, ok := w.(interface{ Flush() error }); ok {
 		return f.Flush()
@@ -1183,7 +1200,22 @@ func flushSession(w http.ResponseWriter) error {
 	for {
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
+			return initFlushError(w)
+		}
+		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
 			return nil
+		}
+		w = u.Unwrap()
+	}
+}
+
+// initFlushError unwraps response writers until it finds an init-phase flush
+// error recorded by bufferedSessionWriter.
+func initFlushError(w http.ResponseWriter) error {
+	for {
+		if f, ok := w.(interface{ initFlushError() error }); ok {
+			return f.initFlushError()
 		}
 		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
 		if !ok {

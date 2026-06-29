@@ -77,6 +77,7 @@ const (
 	postAddRecheckReadyInterval = 500 * time.Millisecond
 	postAddRecheckSyncTimeout   = 5 * time.Second
 	trackerHealthRefreshTimeout = 30 * time.Second
+	torrentResponseFreshWindow  = 2 * time.Second
 )
 
 var errPostAddRecheckNotReady = errors.New("torrent still checking resume data after post-add wait")
@@ -114,12 +115,13 @@ func withoutCancelPreservingDeadline(ctx context.Context) (context.Context, cont
 // CacheMetadata describes whether torrent response data came from a recent
 // qBittorrent sync or from the last retained cache snapshot.
 type CacheMetadata struct {
-	// Source is "fresh" when the last successful sync is at most one second old;
-	// otherwise it is "cache".
+	// Source is "fresh" when the last successful sync is within the response
+	// freshness window; otherwise it is "cache".
 	Source string `json:"source"`
 	// Age is the whole-second age of the last successful sync.
 	Age int `json:"age"`
-	// IsStale reports whether the last successful sync is older than one second.
+	// IsStale reports whether the last successful sync is outside the response
+	// freshness window.
 	IsStale bool `json:"isStale"`
 	// NextRefresh is the RFC3339 time when the next refresh is expected.
 	NextRefresh string `json:"nextRefresh"`
@@ -127,9 +129,9 @@ type CacheMetadata struct {
 
 // newCacheMetadata derives the freshness signal from the last successful sync.
 // A zero lastSuccessfulSync means the age is unknown, so no cache metadata is emitted.
-// Data is considered fresh only if it updated within the last second; anything
-// older is reported as cached and stale so the UI can flag it during a sync
-// outage. Age is still rounded down to whole seconds for display; freshness is
+// Data stays fresh for the expected torrent response cadence; anything older is
+// reported as cached and stale so the UI can flag it after a sync window is
+// missed. Age is still rounded down to whole seconds for display; freshness is
 // calculated from the full duration. lastSuccessfulSync must be the last
 // SUCCESSFUL sync time, not the last attempt, otherwise a failing instance would
 // falsely report as fresh.
@@ -140,7 +142,7 @@ func newCacheMetadata(lastSuccessfulSync, now time.Time) *CacheMetadata {
 
 	ageDuration := max(now.Sub(lastSuccessfulSync), 0)
 	age := int(ageDuration.Seconds())
-	isFresh := ageDuration <= time.Second
+	isFresh := ageDuration <= torrentResponseFreshWindow
 
 	source := "cache"
 	if isFresh {
@@ -151,7 +153,7 @@ func newCacheMetadata(lastSuccessfulSync, now time.Time) *CacheMetadata {
 		Source:      source,
 		Age:         age,
 		IsStale:     !isFresh,
-		NextRefresh: now.Add(time.Second).Format(time.RFC3339),
+		NextRefresh: lastSuccessfulSync.Add(torrentResponseFreshWindow).Format(time.RFC3339),
 	}
 }
 
@@ -256,6 +258,32 @@ func marshalTorrentResponsePreferences(prefs *qbt.AppPreferences, includeNull bo
 	return nil, nil
 }
 
+// torrentResponseAppPreferences resolves the tri-state preferences field for a
+// torrent response. A fresh fetch failure with no cached preferences is
+// represented as an explicit null so consumers can clear stale cached values;
+// cache-only responses omit the field when no cached value exists.
+func torrentResponseAppPreferences(ctx context.Context, client *Client, skipFreshData bool, instanceID int) (*qbt.AppPreferences, bool) {
+	if client == nil {
+		return nil, false
+	}
+
+	if skipFreshData {
+		prefs := client.GetCachedAppPreferences()
+		return prefs, prefs != nil
+	}
+
+	prefs, err := client.GetAppPreferences(ctx)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", instanceID).
+			Msg("Failed to retrieve qBittorrent app preferences for torrent stream")
+		return nil, true
+	}
+
+	return prefs, true
+}
+
 // TorrentStats represents aggregated torrent statistics
 type TorrentStats struct {
 	Total              int   `json:"total"`
@@ -297,10 +325,11 @@ type TrackerHealthCounts struct {
 // ValidatedTrackerMapping holds the current tracker-to-hash relationships used
 // by tracker filters and health counts.
 //
-// Background refreshes first store a provisional MainData-backed mapping scoped
+// Background refreshes may store a provisional MainData-backed mapping scoped
 // to the current torrent list, then replace it with fully hydrated tracker data.
-// Direct tracker edits update the mapping immediately. This keeps requests from
-// walking MainData.Trackers on every call while preventing stale memberships from
+// Fallback-only seeds never replace an existing authoritative mapping. Direct
+// tracker edits update the mapping immediately. This keeps requests from walking
+// MainData.Trackers on every call while preventing stale memberships from
 // surviving timeout or no-match refresh paths.
 type ValidatedTrackerMapping struct {
 	HashToDomains  map[string]map[string]struct{} // hash -> set of domains
@@ -582,9 +611,18 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 			Bool("supportsTrackerInclude", false).
 			Dur("elapsed", time.Since(started)).
 			Msg("Skipping tracker health refresh")
+		sm.notifyTrackerHealthUpdated(instanceID)
 		return
 	}
 	if len(torrents) == 0 {
+		if err := refreshCtx.Err(); err != nil {
+			log.Debug().
+				Err(err).
+				Int("instanceID", instanceID).
+				Dur("elapsed", time.Since(started)).
+				Msg("Tracker health refresh stopped before empty cache update")
+			return
+		}
 		sm.trackerHealthMu.Lock()
 		sm.trackerHealthCache[instanceID] = &TrackerHealthCounts{
 			UnregisteredSet: make(map[string]struct{}),
@@ -889,9 +927,28 @@ func (sm *SyncManager) seedValidatedTrackerMappingFromMainData(instanceID int, t
 
 // seedFallbackTrackerMappingFromMainData stores a non-authoritative MainData
 // seed. It preserves a provisional snapshot for diagnostics and unsupported
-// clients while preventing timeout-truncated data from driving counts or filters.
+// clients while preventing timeout-truncated data from replacing an existing
+// authoritative mapping or driving counts and filters.
 func (sm *SyncManager) seedFallbackTrackerMappingFromMainData(instanceID int, torrents []qbt.Torrent, mainData *qbt.MainData, started time.Time) {
+	if sm.hasAuthoritativeTrackerMapping(instanceID) {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Int("torrentCount", len(torrents)).
+			Dur("elapsed", time.Since(started)).
+			Msg("Preserved authoritative tracker mapping instead of storing fallback seed")
+		return
+	}
 	sm.seedTrackerMappingFromMainData(instanceID, torrents, mainData, started, true)
+}
+
+// hasAuthoritativeTrackerMapping reports whether counts and filters already have
+// a hydrated mapping that fallback-only seeds must not replace.
+func (sm *SyncManager) hasAuthoritativeTrackerMapping(instanceID int) bool {
+	sm.validatedTrackerMu.RLock()
+	defer sm.validatedTrackerMu.RUnlock()
+
+	mapping := sm.validatedTrackerMapping[instanceID]
+	return mapping != nil && !mapping.FallbackOnly
 }
 
 // seedTrackerMappingFromMainData builds a tracker mapping from qBittorrent
@@ -1663,18 +1720,7 @@ func (sm *SyncManager) GetTorrentsWithFilters(ctx context.Context, instanceID in
 			appInfo = info
 		}
 
-		if skipFreshData {
-			appPreferences = client.GetCachedAppPreferences()
-			appPreferencesPresent = appPreferences != nil
-		} else if prefs, err := client.GetAppPreferences(ctx); err != nil {
-			log.Warn().
-				Err(err).
-				Int("instanceID", instanceID).
-				Msg("Failed to retrieve qBittorrent app preferences for torrent stream")
-		} else {
-			appPreferences = prefs
-			appPreferencesPresent = true
-		}
+		appPreferences, appPreferencesPresent = torrentResponseAppPreferences(ctx, client, skipFreshData, instanceID)
 	}
 
 	response := &TorrentResponse{
@@ -5181,10 +5227,6 @@ func (sm *SyncManager) matchTorrentStatusWithTrackerHealth(torrent qbt.Torrent, 
 	return string(torrent.State) == status
 }
 
-func (sm *SyncManager) trackerHealthPriority(torrent qbt.Torrent, trackerHealthSupported bool) int {
-	return sm.trackerHealthPriorityWithTrackerHealth(torrent, trackerHealthSupported, nil)
-}
-
 // trackerHealthPriorityWithTrackerHealth ranks tracker-health problem states
 // ahead of normal qBittorrent states, using cached health when live tracker data
 // is unavailable.
@@ -5886,8 +5928,11 @@ func (sm *SyncManager) sortTorrentsByTimestamp(torrents []qbt.Torrent, desc bool
 	})
 }
 
-// trackerTransferStatsForHashes aggregates per-tracker transfer totals and counts size once per content path.
-// When cross-seeds disagree on size for the same content path, the largest size is kept for deterministic totals.
+// trackerTransferStatsForHashes aggregates per-tracker transfer totals and
+// counts size once per non-empty content path. Empty content paths are counted
+// per torrent because they are unknown identities, not proof of shared data.
+// When cross-seeds disagree on size for the same content path, the largest size
+// is kept for deterministic totals.
 func trackerTransferStatsForHashes(hashSet map[string]bool, torrentMap map[string]*qbt.Torrent) (TrackerTransferStats, int) {
 	stats := TrackerTransferStats{Count: len(hashSet)}
 	sizeByContentPath := make(map[string]int64)
@@ -5902,6 +5947,10 @@ func trackerTransferStatsForHashes(hashSet map[string]bool, torrentMap map[strin
 
 		stats.Uploaded += torrent.Uploaded
 		stats.Downloaded += torrent.Downloaded
+		if torrent.ContentPath == "" {
+			stats.TotalSize += torrent.Size
+			continue
+		}
 		if torrent.Size > sizeByContentPath[torrent.ContentPath] {
 			sizeByContentPath[torrent.ContentPath] = torrent.Size
 		}
