@@ -35,14 +35,24 @@ type fakeSyncProvider struct {
 	torrentsErr           error
 	torrentsCalls         int
 	torrentsGate          chan struct{}
+	torrentsSkipFresh     bool
+	torrentsSkipTracker   bool
+	torrentsCachedCounts  bool
 	crossInstanceResponse *qbittorrent.TorrentResponse
 	crossInstanceErr      error
 	crossInstanceCalls    int
+	crossSkipFresh        bool
+	crossSkipTracker      bool
+	crossCachedCounts     bool
+	connectionStatus      string
 }
 
-func (f *fakeSyncProvider) GetTorrentsWithFilters(_ context.Context, _ int, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions) (*qbittorrent.TorrentResponse, error) {
+func (f *fakeSyncProvider) GetTorrentsWithFilters(ctx context.Context, _ int, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions) (*qbittorrent.TorrentResponse, error) {
 	f.mu.Lock()
 	f.torrentsCalls++
+	f.torrentsSkipFresh = qbittorrent.SkipFreshDataRequested(ctx)
+	f.torrentsSkipTracker = qbittorrent.SkipTrackerHydrationRequested(ctx)
+	f.torrentsCachedCounts = qbittorrent.CachedCountsWhenSkippingTrackerHydrationRequested(ctx)
 	err := f.torrentsErr
 	gate := f.torrentsGate
 	var resp *qbittorrent.TorrentResponse
@@ -61,11 +71,14 @@ func (f *fakeSyncProvider) GetTorrentsWithFilters(_ context.Context, _ int, _, _
 	return resp, err
 }
 
-func (f *fakeSyncProvider) GetCrossInstanceTorrentsWithFilters(_ context.Context, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions, _ []int) (*qbittorrent.TorrentResponse, error) {
+func (f *fakeSyncProvider) GetCrossInstanceTorrentsWithFilters(ctx context.Context, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions, _ []int) (*qbittorrent.TorrentResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.crossInstanceCalls++
+	f.crossSkipFresh = qbittorrent.SkipFreshDataRequested(ctx)
+	f.crossSkipTracker = qbittorrent.SkipTrackerHydrationRequested(ctx)
+	f.crossCachedCounts = qbittorrent.CachedCountsWhenSkippingTrackerHydrationRequested(ctx)
 	if f.crossInstanceErr != nil {
 		return nil, f.crossInstanceErr
 	}
@@ -78,10 +91,39 @@ func (f *fakeSyncProvider) GetQBittorrentSyncManager(_ context.Context, _ int) (
 	return nil, errors.New("sync manager unavailable in test")
 }
 
+func (f *fakeSyncProvider) ReadCachedConnectionStatus(_ context.Context, _ int) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.connectionStatus
+}
+
 func (f *fakeSyncProvider) torrentsCallCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.torrentsCalls
+}
+
+func TestMaterializeGroupResponseSkipsFreshDataAndTrackerHydration(t *testing.T) {
+	canned := cannedResponse()
+	canned.TrackerHealthSupported = true
+	provider := &fakeSyncProvider{torrentsResponse: canned}
+	manager := NewStreamManager(nil, provider, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	response, errPayload := manager.materializeGroupResponse(
+		StreamOptions{InstanceID: 1, Limit: 100},
+		&StreamMeta{Timestamp: time.Now()},
+		"skip-hydration",
+	)
+
+	require.NotNil(t, response)
+	require.Nil(t, errPayload)
+	require.True(t, response.TrackerHealthSupported)
+
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	require.True(t, provider.torrentsSkipFresh)
+	require.True(t, provider.torrentsSkipTracker)
 }
 
 // gateTorrentBuilds makes every subsequent torrents build park until the returned
@@ -478,6 +520,41 @@ func TestServeEndToEndDeliversInitAndUpdate(t *testing.T) {
 	require.Equal(t, instanceID, updatePayload.Meta.InstanceID)
 }
 
+func TestServeEndToEndDeliversTrackerHealthUpdate(t *testing.T) {
+	store, cleanup := newTestInstanceStore(t)
+	defer cleanup()
+
+	canned := cannedResponse()
+	provider := &fakeSyncProvider{torrentsResponse: canned}
+	manager := NewStreamManager(nil, provider, store)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	instanceID := seedActiveInstance(t, manager)
+
+	srv := startStreamServer(t, manager)
+	reader, _ := connectStream(t, srv, streamPayload(instanceID, "stream-health"))
+
+	initEvent := reader.waitForEvent(t, streamEventInit, 5*time.Second)
+	initPayload := decodeStreamPayloadData(t, initEvent.data)
+	require.Equal(t, streamEventInit, initPayload.Type)
+
+	updateEvent := reader.waitForTickTriggered(t, 5*time.Second, func() {
+		manager.HandleTrackerHealthUpdated(instanceID)
+	})
+	updatePayload := decodeStreamPayloadData(t, updateEvent.data)
+	require.True(t, isTickEvent(updatePayload.Type), "expected a tick frame, got %q", updatePayload.Type)
+	require.NotNil(t, updatePayload.Data, "tracker-health tick should rematerialize dashboard data")
+	require.Equal(t, canned.Total, updatePayload.Data.Total)
+	require.Equal(t, instanceID, updatePayload.Meta.InstanceID)
+	require.True(t, updatePayload.Meta.IncludeCounts)
+
+	provider.mu.Lock()
+	require.True(t, provider.torrentsSkipFresh, "tracker-health tick should use cached qbit data")
+	require.True(t, provider.torrentsSkipTracker, "tracker-health tick should not hydrate trackers inline")
+	require.True(t, provider.torrentsCachedCounts, "tracker-health tick should still request cached counts")
+	provider.mu.Unlock()
+}
+
 // TestServeCoalescesBurstOfUpdates verifies that a rapid burst of HandleMainData
 // calls collapses into far fewer torrent builds than events while still
 // delivering at least one update to the connected subscriber.
@@ -739,13 +816,13 @@ func TestServeDeliversStreamErrorOnBuildFailure(t *testing.T) {
 	}
 }
 
-// TestServeStampsLastSuccessfulSyncOnBuildFailure covers the materializeGroupResponse
-// error path's staleness stamp (issue #2052): when a cross-instance build fails, the
-// stream-error frame must carry LastSuccessfulSync resolved from the representative
-// instance (retryInstanceID = InstanceIDs[0]) so the client can show how stale the
-// retained rows are. The HandleSyncError stamp path is covered separately in
-// manager_test.go; this exercises the second, group-refresh callsite.
-func TestServeStampsLastSuccessfulSyncOnBuildFailure(t *testing.T) {
+// TestServeStampsLastSuccessfulSyncOnSingleMemberBuildFailure covers the
+// materializeGroupResponse error path's staleness stamp (issue #2052): when a
+// one-member aggregate build fails, the stream-error frame can carry
+// LastSuccessfulSync for that concrete instance. The HandleSyncError stamp path is
+// covered separately in manager_test.go; this exercises the second, group-refresh
+// callsite.
+func TestServeStampsLastSuccessfulSyncOnSingleMemberBuildFailure(t *testing.T) {
 	store, cleanup := newTestInstanceStore(t)
 	defer cleanup()
 
@@ -758,9 +835,9 @@ func TestServeStampsLastSuccessfulSyncOnBuildFailure(t *testing.T) {
 
 	instanceID := seedActiveInstance(t, manager)
 
-	// Source the last good sync from a fixed point in the past, keyed on the instance
-	// the group's retry hint resolves to. Returning the zero time for any other id
-	// proves the stamp is keyed on the representative instance, not stamped blindly.
+	// Source the last good sync from a fixed point in the past, keyed on the only
+	// instance in the group. Returning the zero time for any other id proves the
+	// stamp is keyed on that concrete instance, not stamped blindly.
 	lastGood := time.Now().Add(-90 * time.Second)
 	manager.lastSuccessfulSyncFn = func(_ context.Context, id int) time.Time {
 		if id == instanceID {
@@ -769,7 +846,7 @@ func TestServeStampsLastSuccessfulSyncOnBuildFailure(t *testing.T) {
 		return time.Time{}
 	}
 
-	// Multi-instance group so retryInstanceID falls back to InstanceIDs[0].
+	// One-member aggregate group so retryInstanceID falls back to InstanceIDs[0].
 	payload := streamPayload(instanceID, "stream-err")
 	payload[0]["instanceId"] = 0
 	payload[0]["instanceIds"] = []int{instanceID}

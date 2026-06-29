@@ -8,10 +8,11 @@ import (
 )
 
 // SyncEventSink receives notifications from qBittorrent sync managers whenever
-// new MainData snapshots arrive or a sync error occurs. Implementations are
-// expected to return quickly; heavy processing should be offloaded to other
-// goroutines to avoid blocking the sync loop.
+// new MainData snapshots arrive, tracker health cache changes, or a sync error
+// occurs. Implementations are expected to return quickly; heavy processing should
+// be offloaded to other goroutines to avoid blocking the sync loop.
 type SyncEventSink interface {
 	HandleMainData(instanceID int, data *qbt.MainData)
+	HandleTrackerHealthUpdated(instanceID int)
 	HandleSyncError(instanceID int, err error)
 }

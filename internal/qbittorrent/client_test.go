@@ -4,7 +4,9 @@
 package qbittorrent
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -15,9 +17,10 @@ import (
 
 // mockSyncEventSink is a test helper that records calls to HandleMainData and HandleSyncError.
 type mockSyncEventSink struct {
-	mu         sync.Mutex
-	mainData   []*mainDataCall
-	syncErrors []*syncErrorCall
+	mu                   sync.Mutex
+	mainData             []*mainDataCall
+	trackerHealthUpdates []int
+	syncErrors           []*syncErrorCall
 }
 
 type mainDataCall struct {
@@ -42,6 +45,12 @@ func (m *mockSyncEventSink) HandleSyncError(instanceID int, err error) {
 	m.syncErrors = append(m.syncErrors, &syncErrorCall{instanceID: instanceID, err: err})
 }
 
+func (m *mockSyncEventSink) HandleTrackerHealthUpdated(instanceID int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.trackerHealthUpdates = append(m.trackerHealthUpdates, instanceID)
+}
+
 func (m *mockSyncEventSink) getMainDataCalls() []*mainDataCall {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -52,6 +61,12 @@ func (m *mockSyncEventSink) getSyncErrorCalls() []*syncErrorCall {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.syncErrors
+}
+
+func (m *mockSyncEventSink) getTrackerHealthUpdates() []int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]int(nil), m.trackerHealthUpdates...)
 }
 
 func TestClientUpdateServerStateDoesNotBlockOnClientMutex(t *testing.T) {
@@ -229,6 +244,112 @@ func TestClientDispatchSyncErrorNilErrorDoesNotCallSink(t *testing.T) {
 	if len(calls) != 0 {
 		t.Errorf("expected 0 calls to HandleSyncError for nil error, got %d", len(calls))
 	}
+}
+
+func TestClientHandleSyncManagerErrorIgnoresContextStopped(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "wrapped sentinel",
+			err:  fmt.Errorf("could not get main data: %w", context.Canceled),
+		},
+		{
+			name: "retry wrapper text",
+			err:  errors.New("could not get main data: error making request: All attempts fail: context canceled"),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			sink := &mockSyncEventSink{}
+			client := &Client{
+				instanceID:      42,
+				isHealthy:       true,
+				syncEventSink:   sink,
+				lastServerState: &qbt.ServerState{ConnectionStatus: "connected"},
+			}
+
+			client.handleSyncManagerError(tc.err)
+
+			require.True(t, client.IsHealthy())
+			require.NotNil(t, client.GetCachedServerState())
+			require.Empty(t, sink.getSyncErrorCalls())
+		})
+	}
+}
+
+func TestClientHandleSyncManagerErrorMarksUnhealthyForDeadline(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "deadline sentinel",
+			err:  fmt.Errorf("could not get main data: %w", context.DeadlineExceeded),
+		},
+		{
+			name: "retry deadline text",
+			err:  errors.New("could not get main data: error making request: All attempts fail: context deadline exceeded"),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			sink := &mockSyncEventSink{}
+			client := &Client{
+				instanceID:      42,
+				isHealthy:       true,
+				syncEventSink:   sink,
+				lastServerState: &qbt.ServerState{ConnectionStatus: "connected"},
+			}
+
+			client.handleSyncManagerError(tc.err)
+
+			require.False(t, client.IsHealthy())
+			require.Nil(t, client.GetCachedServerState())
+			require.Len(t, sink.getSyncErrorCalls(), 1)
+		})
+	}
+}
+
+func TestClientHandleSyncManagerErrorMarksUnhealthyForRealError(t *testing.T) {
+	t.Parallel()
+
+	sink := &mockSyncEventSink{}
+	client := &Client{
+		instanceID:      42,
+		isHealthy:       true,
+		syncEventSink:   sink,
+		lastServerState: &qbt.ServerState{ConnectionStatus: "connected"},
+	}
+
+	client.handleSyncManagerError(errors.New("connection refused"))
+
+	require.False(t, client.IsHealthy())
+	require.Nil(t, client.GetCachedServerState())
+	require.Len(t, sink.getSyncErrorCalls(), 1)
+}
+
+func TestSyncManagerNotifyTrackerHealthUpdatedCallsSink(t *testing.T) {
+	t.Parallel()
+
+	sink := &mockSyncEventSink{}
+	sm := NewSyncManager(nil, nil)
+	sm.SetSyncEventSink(sink)
+
+	sm.notifyTrackerHealthUpdated(42)
+
+	require.Equal(t, []int{42}, sink.getTrackerHealthUpdates())
 }
 
 func TestClientSetSyncEventSinkUpdatesDispatch(t *testing.T) {

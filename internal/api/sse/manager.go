@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -157,6 +158,7 @@ type syncProvider interface {
 	GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters qbittorrent.FilterOptions) (*qbittorrent.TorrentResponse, error)
 	GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters qbittorrent.FilterOptions, instanceIDs []int) (*qbittorrent.TorrentResponse, error)
 	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
+	ReadCachedConnectionStatus(ctx context.Context, instanceID int) string
 }
 
 // StreamManager owns the SSE server and keeps subscriptions in sync with qBittorrent updates.
@@ -290,6 +292,10 @@ type StreamMeta struct {
 	RID        int64     `json:"rid,omitempty"`
 	FullUpdate bool      `json:"fullUpdate,omitempty"`
 	Timestamp  time.Time `json:"timestamp"`
+	// IncludeCounts asks materialization to include cached aggregate counts even
+	// when the tick skips tracker hydration. Used after tracker-health cache writes
+	// so dashboards receive new health totals without inline qbit work.
+	IncludeCounts bool `json:"includeCounts,omitempty"`
 	// LastSuccessfulSync is when the instance's data last actually updated, sourced
 	// from the success-only sync clock. On stream-error frames it lets the client
 	// show how stale the retained torrents are ("data from N ago") without that age
@@ -611,6 +617,21 @@ func (m *StreamManager) HandleMainData(instanceID int, data *qbt.MainData) {
 	go m.publishInstance(instanceID, meta)
 }
 
+// HandleTrackerHealthUpdated republishes instance streams after tracker health cache refreshes.
+func (m *StreamManager) HandleTrackerHealthUpdated(instanceID int) {
+	if m.closing.Load() {
+		return
+	}
+
+	meta := &StreamMeta{
+		InstanceID:    instanceID,
+		Timestamp:     time.Now(),
+		IncludeCounts: true,
+	}
+
+	go m.publishInstance(instanceID, meta)
+}
+
 // HandleSyncError implements qbittorrent.SyncEventSink.
 func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 	if err == nil {
@@ -834,6 +855,9 @@ type bufferedSessionWriter struct {
 	drainOnce sync.Once
 	failed    atomic.Bool
 	closeOnce sync.Once
+	// initFlushErr carries the no-return Flush() init-phase error to
+	// flushSession without changing the http.Flusher-shaped public method.
+	initFlushErr atomic.Value // stores error
 }
 
 func newBufferedSessionWriter(w http.ResponseWriter, rc *http.ResponseController, timeout time.Duration, cancel context.CancelFunc) *bufferedSessionWriter {
@@ -884,11 +908,14 @@ func (w *bufferedSessionWriter) Write(p []byte) (int, error) {
 
 // Flush, in buffered mode, enqueues the staged message for the drain goroutine
 // and returns immediately; in the init phase it flushes the synchronous write
-// straight through. Its no-return signature keeps the writer matching go-sse's
-// http.Flusher detection (writeFlusher) rather than the FlushError path.
+// straight through and records any error for flushSession. Its no-return
+// signature keeps the writer matching go-sse's http.Flusher detection
+// (writeFlusher) rather than the FlushError path.
 func (w *bufferedSessionWriter) Flush() {
 	if !w.buffered.Load() {
-		_ = w.rc.Flush()
+		if err := w.rc.Flush(); err != nil {
+			w.initFlushErr.Store(err)
+		}
 		return
 	}
 
@@ -906,6 +933,16 @@ func (w *bufferedSessionWriter) Flush() {
 	default:
 		w.drop() // queue full: client cannot keep up
 	}
+}
+
+// initFlushError returns the last init-phase flush failure recorded by Flush.
+// It exists so flushSession can observe synchronous init failures without making
+// bufferedSessionWriter implement a non-go-sse FlushError shape.
+func (w *bufferedSessionWriter) initFlushError() error {
+	if err, ok := w.initFlushErr.Load().(error); ok {
+		return err
+	}
+	return nil
 }
 
 // drain writes queued messages to the real socket under a rolling deadline. It
@@ -997,7 +1034,9 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 			return nil, false
 		}
 
-		m.writeInitToSession(w, sub, group)
+		if !m.writeInitToSession(w, sub, group) {
+			return nil, false
+		}
 	}
 
 	// Write an immediate keepalive to the activity topic's session (if any) so the
@@ -1007,7 +1046,9 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 	// heartbeatInterval. Written directly for the same race-free reason as the init
 	// snapshot above.
 	if activityTopic != "" {
-		m.writeKeepaliveToSession(w)
+		if !m.writeKeepaliveToSession(w) {
+			return nil, false
+		}
 	}
 
 	// The init snapshots (and optional keepalive) are now on the wire, written
@@ -1028,10 +1069,12 @@ func (m *StreamManager) onSession(w http.ResponseWriter, r *http.Request) ([]str
 }
 
 // writeInitToSession builds the current snapshot for the group and writes it as
-// an init event directly to the still-unsubscribed session writer.
-func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscriptionState, group *subscriptionGroup) {
+// an init event directly to the still-unsubscribed session writer. It returns
+// false when setup should abort because the snapshot could not be built or
+// written.
+func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscriptionState, group *subscriptionGroup) bool {
 	if sub == nil || group == nil || m.closing.Load() {
-		return
+		return false
 	}
 
 	meta := &StreamMeta{
@@ -1042,7 +1085,7 @@ func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscript
 
 	payload := m.buildGroupPayload(group, group.options, streamEventInit, meta)
 	if payload == nil || m.closing.Load() {
-		return
+		return false
 	}
 
 	// Seed the delta baseline from this init snapshot so the client's first frame and
@@ -1052,35 +1095,37 @@ func (m *StreamManager) writeInitToSession(w http.ResponseWriter, sub *subscript
 		group.seedBaselineIfEmpty(group.options, payload.Data)
 	}
 
-	m.writePayloadToSession(w, clonePayloadForSubscriber(payload, sub))
+	return m.writePayloadToSession(w, clonePayloadForSubscriber(payload, sub))
 }
 
-// writeKeepaliveToSession writes a single heartbeat directly to the session writer.
-func (m *StreamManager) writeKeepaliveToSession(w http.ResponseWriter) {
+// writeKeepaliveToSession writes a single heartbeat directly to the session
+// writer. It returns false when the heartbeat could not be written.
+func (m *StreamManager) writeKeepaliveToSession(w http.ResponseWriter) bool {
 	if m.closing.Load() {
-		return
+		return false
 	}
 
-	m.writePayloadToSession(w, &StreamPayload{
+	return m.writePayloadToSession(w, &StreamPayload{
 		Type: streamEventHeartbeat,
 		Meta: &StreamMeta{Timestamp: time.Now()},
 	})
 }
 
-// writePayloadToSession encodes payload as an SSE event and writes it straight to
-// the session response writer, then flushes. It is only safe to call from within
-// onSession, before go-sse subscribes the session and starts writing to the same
-// writer from its provider loop.
-func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *StreamPayload) {
+// writePayloadToSession encodes payload as an SSE event and writes it straight
+// to the session response writer, then flushes. It returns false after marshal,
+// socket write, or flush failure so onSession can avoid subscribing a broken connection.
+// It is only safe to call from within onSession, before go-sse subscribes the
+// session and starts writing to the same writer from its provider loop.
+func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *StreamPayload) bool {
 	if payload == nil {
-		return
+		return false
 	}
 
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		m.eventsDropped.Add(1)
-		log.Error().Err(err).Str("type", payload.Type).Msg("Failed to marshal SSE init payload")
-		return
+		log.Error().Err(err).Str("type", payload.Type).Msg("Failed to marshal SSE payload")
+		return false
 	}
 
 	message := &sse.Message{Type: sse.Type(payload.Type)}
@@ -1091,31 +1136,91 @@ func (m *StreamManager) writePayloadToSession(w http.ResponseWriter, payload *St
 	w.Header().Set("Content-Type", "text/event-stream")
 	if _, err := message.WriteTo(w); err != nil {
 		m.eventsDropped.Add(1)
-		log.Error().Err(err).Str("type", payload.Type).Msg("Failed to write SSE init payload")
-		return
+		event := log.Error()
+		if isClientDisconnect(err) {
+			event = log.Debug()
+		}
+		event.Err(err).Str("type", payload.Type).Msg("Failed to write SSE payload")
+		return false
 	}
 
-	flushSession(w)
+	if err := flushSession(w); err != nil {
+		m.eventsDropped.Add(1)
+		event := log.Error()
+		if isClientDisconnect(err) {
+			event = log.Debug()
+		}
+		event.Err(err).Str("type", payload.Type).Msg("Failed to flush SSE payload")
+		return false
+	}
 	m.eventsPublished.Add(1)
+	return true
+}
+
+// isClientDisconnect reports whether err is an expected client-side SSE socket
+// close rather than an internal server write failure.
+func isClientDisconnect(err error) bool {
+	if err == nil {
+		return false
+	}
+	if isContextStopped(err) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "use of closed network connection") ||
+		strings.Contains(msg, "forcibly closed by the remote host") ||
+		strings.Contains(msg, "connection was aborted") ||
+		strings.Contains(msg, "wsasend:")
+}
+
+// isContextStopped reports caller-side cancellation and deadline expiry, including retry-wrapped errors.
+func isContextStopped(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "context canceled") || strings.Contains(msg, "context deadline exceeded")
 }
 
 // flushSession flushes whatever buffered bytes were written to the session
 // writer. The writer go-sse hands onSession is its own ResponseWriter wrapper
 // whose Flush returns an error, so try that first, then fall back to the
-// standard http.Flusher (unwrapping as needed).
-func flushSession(w http.ResponseWriter) {
+// standard http.Flusher. If a no-return Flush records an init-phase error,
+// flushSession returns it so onSession can abort before subscribing.
+func flushSession(w http.ResponseWriter) error {
 	if f, ok := w.(interface{ Flush() error }); ok {
-		_ = f.Flush()
-		return
+		return f.Flush()
 	}
 	for {
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
-			return
+			return initFlushError(w)
 		}
 		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
 		if !ok {
-			return
+			return nil
+		}
+		w = u.Unwrap()
+	}
+}
+
+// initFlushError unwraps response writers until it finds an init-phase flush
+// error recorded by bufferedSessionWriter.
+func initFlushError(w http.ResponseWriter) error {
+	for {
+		if f, ok := w.(interface{ initFlushError() error }); ok {
+			return f.initFlushError()
+		}
+		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return nil
 		}
 		w = u.Unwrap()
 	}
@@ -1269,11 +1374,17 @@ func (m *StreamManager) buildGroupUpdatePayload(group *subscriptionGroup, opts S
 // materializeGroupResponse fetches the current filtered/sorted/paginated page for
 // the group's view from the warm sync cache. On success it returns the response and
 // a nil payload; on failure it returns a nil response and a ready-to-send
-// stream-error payload (carrying a retry hint).
+// stream-error payload. Error payloads include retry and retained-data age metadata
+// only when the stream maps to one concrete instance; multi-member aggregate streams
+// omit scalar instance metadata because member backoff and freshness can differ.
 func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *StreamMeta, groupKey string) (*qbittorrent.TorrentResponse, *StreamPayload) {
 	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
 	ctx = qbittorrent.WithSkipFreshData(ctx)
+	ctx = qbittorrent.WithSkipTrackerHydration(ctx)
+	if metaCopy != nil && metaCopy.IncludeCounts {
+		ctx = qbittorrent.WithCachedCountsWhenSkippingTrackerHydration(ctx)
+	}
 
 	// A representative instance id for retry hints / logging (multi-instance groups
 	// have InstanceID == 0).
@@ -1323,16 +1434,24 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 			Str("groupKey", groupKey).
 			Msg("Failed to build torrent response for SSE subscribers")
 
-		// Carry a retry hint so the frontend can show a recovery countdown and keep
-		// its last data instead of permanently flipping to the fallback state.
+		// Carry a retry hint only when it maps to one concrete instance. Multi-member
+		// aggregate groups can have different per-instance backoff intervals, so a
+		// scalar retry hint would be misleading.
 		if metaCopy == nil {
 			metaCopy = &StreamMeta{InstanceID: opts.InstanceID, Timestamp: time.Now()}
 		}
-		metaCopy.RetryInSeconds = m.currentRetrySeconds(retryInstanceID)
-		// Stamp how stale the retained data is. For multi-instance groups this uses the
-		// representative instance (same one the retry hint is keyed on); a per-instance
-		// rollup is intentionally out of scope here.
-		m.stampLastSuccessfulSync(ctx, metaCopy, retryInstanceID)
+		hasSingleConcreteInstance := retryInstanceID > 0 && (!opts.isMultiInstance() || len(opts.InstanceIDs) == 1)
+		if hasSingleConcreteInstance {
+			metaCopy.RetryInSeconds = m.currentRetrySeconds(retryInstanceID)
+		}
+		// Stamp how stale the retained data is only when the scalar timestamp maps to
+		// one concrete instance. Mixed aggregate rows can come from multiple clocks.
+		if hasSingleConcreteInstance {
+			m.stampLastSuccessfulSync(ctx, metaCopy, retryInstanceID)
+		} else {
+			metaCopy.RetryInSeconds = 0
+			metaCopy.LastSuccessfulSync = nil
+		}
 
 		return nil, &StreamPayload{
 			Type: streamEventError,
@@ -1388,6 +1507,12 @@ func (m *StreamManager) buildInstanceMeta(ctx context.Context, instanceID int) *
 	}
 
 	healthy := client != nil && client.IsHealthy() && instance.IsActive
+	connectionStatus := ""
+	if !instance.IsActive {
+		connectionStatus = "disabled"
+	} else if m.syncManager != nil {
+		connectionStatus = qbittorrent.NormalizeConnectionStatus(m.syncManager.ReadCachedConnectionStatus(ctx, instanceID))
+	}
 
 	// Check for decryption errors
 	decryptionErrorInstances := m.clientPool.GetInstancesWithDecryptionErrors()
@@ -1396,6 +1521,7 @@ func (m *StreamManager) buildInstanceMeta(ctx context.Context, instanceID int) *
 	meta := &qbittorrent.InstanceMeta{
 		Connected:          healthy,
 		HasDecryptionError: hasDecryptionError,
+		ConnectionStatus:   connectionStatus,
 	}
 
 	// Fetch recent errors for disconnected instances
@@ -1899,7 +2025,11 @@ func (m *StreamManager) forceSync(parent context.Context, instanceID int) {
 	}
 
 	if err := syncMgr.Sync(ctx); err != nil {
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Failed to force sync during SSE loop")
+		event := log.Warn()
+		if isContextStopped(err) {
+			event = log.Debug()
+		}
+		event.Err(err).Int("instanceID", instanceID).Msg("Failed to force sync during SSE loop")
 		// qBittorrent SyncManager calls OnError for sync failures, which already routes
 		// through the client sync event sink to this StreamManager.
 		// Avoid double-reporting the same failure and advancing backoff twice.

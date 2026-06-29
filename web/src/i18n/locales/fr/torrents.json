@@ -525,11 +525,14 @@
     "renameFolder": "Renommer le dossier",
     "download": "Télécharger",
     "mediaInfo": "MediaInfo",
-    "rename": "Renommer",
     "toggle": "Basculer",
     "selectFileForDownload": "Sélectionner un fichier à télécharger",
     "skipFileDownload": "Ignorer le téléchargement du fichier",
-    "selectAllFilesIn": "Sélectionner tous les fichiers dans {{name}}"
+    "selectAllFilesIn": "Sélectionner tous les fichiers dans {{name}}",
+    "copyPath": "Copier le chemin",
+    "filePathCopied": "Chemin du fichier copié dans le presse-papiers",
+    "folderPathCopied": "Chemin du dossier copié dans le presse-papiers",
+    "copyPathFailed": "Échec de la copie du chemin dans le presse-papiers"
   },
   "mediaInfoDialog": {
     "title": "MediaInfo",
@@ -1211,7 +1214,11 @@
     "download": "Télécharger",
     "mediaInfo": "MediaInfo",
     "renameFile": "Renommer le fichier",
-    "renameFolder": "Renommer le dossier"
+    "renameFolder": "Renommer le dossier",
+    "copyPath": "Copier le chemin",
+    "filePathCopied": "Chemin du fichier copié dans le presse-papiers",
+    "folderPathCopied": "Chemin du dossier copié dans le presse-papiers",
+    "copyPathFailed": "Échec de la copie du chemin dans le presse-papiers"
   },
   "crossSeedTable": {
     "name": "Nom",

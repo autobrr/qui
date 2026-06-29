@@ -601,6 +601,30 @@ func TestSyncManager_RemoveHashesFromTrackerHealthCache_NoCache(t *testing.T) {
 	// If we get here without panic, the test passes
 }
 
+func TestSyncManager_RemoveHashesFromTrackerHealthCache_NotifiesOnlyOnChange(t *testing.T) {
+	sm := NewSyncManager(nil, nil)
+	sink := &mockSyncEventSink{}
+	sm.SetSyncEventSink(sink)
+	sm.trackerHealthCache[1] = &TrackerHealthCounts{
+		Unregistered:    1,
+		TrackerDown:     1,
+		TrackerError:    1,
+		UnregisteredSet: map[string]struct{}{"unregistered": {}},
+		TrackerDownSet:  map[string]struct{}{"down": {}},
+		TrackerErrorSet: map[string]struct{}{"error": {}},
+	}
+
+	sm.RemoveHashesFromTrackerHealthCache(1, []string{"down", "missing"})
+	assert.Equal(t, []int{1}, sink.getTrackerHealthUpdates())
+	assert.Equal(t, 0, sm.trackerHealthCache[1].TrackerDown)
+	assert.NotContains(t, sm.trackerHealthCache[1].TrackerDownSet, "down")
+
+	sm.RemoveHashesFromTrackerHealthCache(1, []string{"missing"})
+	sm.RemoveHashesFromTrackerHealthCache(2, []string{"unregistered"})
+	sm.RemoveHashesFromTrackerHealthCache(1, nil)
+	assert.Equal(t, []int{1}, sink.getTrackerHealthUpdates())
+}
+
 func TestSyncManager_TrackerHealthCache_ConcurrentAccess(t *testing.T) {
 	// This test verifies that concurrent reads (GetTrackerHealthCounts) and writes
 	// (RemoveHashesFromTrackerHealthCache) don't cause data races.
@@ -778,6 +802,30 @@ func TestFiltersRequireTrackerData(t *testing.T) {
 	}
 }
 
+func TestSyncManager_ApplyManualFiltersUsesCachedTrackerHealth(t *testing.T) {
+	sm := &SyncManager{}
+	cachedHealth := &TrackerHealthCounts{
+		UnregisteredSet: map[string]struct{}{"unregistered": {}},
+		TrackerDownSet:  map[string]struct{}{"down": {}},
+		TrackerErrorSet: map[string]struct{}{"error": {}},
+	}
+	torrents := []qbt.Torrent{
+		{Hash: "healthy", Name: "Healthy"},
+		{Hash: "unregistered", Name: "Unregistered"},
+		{Hash: "down", Name: "Down"},
+		{Hash: "error", Name: "Error"},
+	}
+
+	filtered := sm.applyManualFiltersWithTrackerHealth(nil, torrents, FilterOptions{Status: []string{"unregistered", "tracker_error"}}, nil, nil, false, cachedHealth)
+	assert.Equal(t, []qbt.Torrent{torrents[1], torrents[3]}, filtered)
+
+	excluded := sm.applyManualFiltersWithTrackerHealth(nil, torrents, FilterOptions{ExcludeStatus: []string{"tracker_down"}}, nil, nil, false, cachedHealth)
+	assert.Equal(t, []qbt.Torrent{torrents[0], torrents[1], torrents[3]}, excluded)
+
+	withoutCache := sm.applyManualFilters(nil, torrents, FilterOptions{Status: []string{"unregistered"}}, nil, nil, false)
+	assert.Empty(t, withoutCache)
+}
+
 func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
 	sm := &SyncManager{}
 
@@ -857,6 +905,41 @@ func TestSyncManager_SortTorrentsByStatus(t *testing.T) {
 
 	sm.sortTorrentsByStatus(torrents, false, true)
 	assert.Equal(t, []string{"unreg", "down", "downloading", "stalled_dl", "uploading", "uploading_old", "paused", "paused_old"}, hashes(torrents))
+}
+
+func TestSyncManager_SortTorrentsByStatusUsesCachedTrackerHealth(t *testing.T) {
+	sm := &SyncManager{}
+	cachedHealth := &TrackerHealthCounts{
+		UnregisteredSet: map[string]struct{}{"unregistered": {}},
+		TrackerDownSet:  map[string]struct{}{"down": {}},
+		TrackerErrorSet: map[string]struct{}{"error": {}},
+	}
+	torrents := []qbt.Torrent{
+		{Hash: "healthy", Name: "Healthy", State: qbt.TorrentStateDownloading, AddedOn: 1},
+		{Hash: "error", Name: "Error", State: qbt.TorrentStateDownloading, AddedOn: 2},
+		{Hash: "down", Name: "Down", State: qbt.TorrentStateDownloading, AddedOn: 3},
+		{Hash: "unregistered", Name: "Unregistered", State: qbt.TorrentStateDownloading, AddedOn: 4},
+	}
+
+	hashes := func(ts []qbt.Torrent) []string {
+		out := make([]string, len(ts))
+		for i, torrent := range ts {
+			out[i] = torrent.Hash
+		}
+		return out
+	}
+
+	sm.sortTorrentsByStatusWithTrackerHealth(torrents, false, true, cachedHealth)
+	assert.Equal(t, []string{"unregistered", "down", "error", "healthy"}, hashes(torrents))
+
+	unsupportedTorrents := []qbt.Torrent{
+		{Hash: "unregistered", Name: "Delta", State: qbt.TorrentStateDownloading, AddedOn: 100},
+		{Hash: "down", Name: "Charlie", State: qbt.TorrentStateDownloading, AddedOn: 100},
+		{Hash: "error", Name: "Bravo", State: qbt.TorrentStateDownloading, AddedOn: 100},
+		{Hash: "healthy", Name: "Alpha", State: qbt.TorrentStateDownloading, AddedOn: 100},
+	}
+	sm.sortTorrentsByStatusWithTrackerHealth(unsupportedTorrents, false, false, cachedHealth)
+	assert.Equal(t, []string{"healthy", "error", "down", "unregistered"}, hashes(unsupportedTorrents))
 }
 
 func TestSyncManager_SortTorrentsByStatus_TieBreakAddedOn(t *testing.T) {
