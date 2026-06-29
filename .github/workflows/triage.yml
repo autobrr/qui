@@ -100,6 +100,10 @@ jobs:
         if: steps.check-duplicate.outputs.skip != 'true'
         uses: anthropics/claude-code-action@v1.0.153
         with:
+          # The dispatch job re-triggers this run via workflow_dispatch using
+          # GITHUB_TOKEN, so the actor is github-actions[bot]. Allow it past the
+          # agent-mode human-actor guard. Scoped to github-actions only (not '*').
+          allowed_bots: "github-actions"
           prompt: |
             You're a triage assistant for GitHub discussions. Your task is to analyze the discussion and select appropriate labels from the provided list.
 

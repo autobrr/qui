@@ -70,6 +70,10 @@ jobs:
       - name: Run Claude Code for Deduplication
         uses: anthropics/claude-code-action@v1.0.153
         with:
+          # The dispatch job re-triggers this run via workflow_dispatch using
+          # GITHUB_TOKEN, so the actor is github-actions[bot]. Allow it past the
+          # agent-mode human-actor guard. Scoped to github-actions only (not '*').
+          allowed_bots: "github-actions"
           prompt: |
             You're a deduplication assistant for GitHub discussions. Your task is to find potential duplicates and handle them appropriately.
 
