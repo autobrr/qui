@@ -66,6 +66,12 @@
     "connectable": "可连接",
     "portInfo": "。端口：{{port}}",
     "connectionStatus": "qBittorrent 连接状态：{{status}}",
+    "streamStatus": {
+      "live": "实时流已连接",
+      "cached": "刷新时显示缓存的仪表盘快照",
+      "fallback": "正在刷新仪表盘统计信息",
+      "error": "流出现问题；正在使用备用刷新"
+    },
     "altSpeedDialog": {
       "enableTitle": "启用备用速度限制？",
       "disableTitle": "禁用备用速度限制？",

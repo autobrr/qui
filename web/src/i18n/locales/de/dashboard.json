@@ -66,6 +66,12 @@
     "connectable": "Verbindbar",
     "portInfo": ". Port: {{port}}",
     "connectionStatus": "qBittorrent-Verbindungsstatus: {{status}}",
+    "streamStatus": {
+      "live": "Live-Stream verbunden",
+      "cached": "Zwischengespeicherter Dashboard-Snapshot wird während der Aktualisierung angezeigt",
+      "fallback": "Dashboard-Statistiken werden aktualisiert",
+      "error": "Stream-Problem; Fallback-Aktualisierung wird verwendet"
+    },
     "altSpeedDialog": {
       "enableTitle": "Alternative Geschwindigkeitsbegrenzungen aktivieren?",
       "disableTitle": "Alternative Geschwindigkeitsbegrenzungen deaktivieren?",

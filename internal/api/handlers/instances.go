@@ -237,8 +237,8 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 	if !instance.IsActive {
 		connectionStatus = "disabled"
 	} else if client != nil && h.syncManager != nil {
-		if status := strings.TrimSpace(h.syncManager.ReadCachedConnectionStatus(ctx, instance.ID)); status != "" {
-			connectionStatus = strings.ToLower(status)
+		if status := internalqbittorrent.NormalizeConnectionStatus(h.syncManager.ReadCachedConnectionStatus(ctx, instance.ID)); status != "" {
+			connectionStatus = status
 		}
 	}
 

@@ -1384,6 +1384,10 @@ paths:
                     type: integer
                   limit:
                     type: integer
+                  preferences:
+                    type: object
+                    nullable: true
+                    description: qBittorrent preferences when available; null means a fresh preference fetch failed without a cached value; omitted means no preference update is available for this response.
     post:
       tags:
         - Torrents
@@ -5733,6 +5737,14 @@ components:
         hasDecryptionError:
           type: boolean
           description: Whether there's a password decryption error
+        recentErrors:
+          type: array
+          description: Recent connection/auth/decryption errors for this instance.
+          items:
+            $ref: '#/components/schemas/InstanceError'
+        connectionStatus:
+          type: string
+          description: Normalized qBittorrent connection status from cached server state, or `disabled` for inactive instances.
         tlsSkipVerify:
           type: boolean
           description: When true, TLS certificate errors from the upstream qBittorrent instance are ignored.
@@ -5759,6 +5771,37 @@ components:
           type: integer
           description: Display order preference for the instance.
 
+
+    InstanceError:
+      type: object
+      properties:
+        id:
+          type: integer
+        instanceId:
+          type: integer
+        errorType:
+          type: string
+        errorMessage:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+
+    InstanceMeta:
+      type: object
+      description: Real-time instance auth/decryption and connection metadata emitted with torrent stream snapshots.
+      properties:
+        connected:
+          type: boolean
+        hasDecryptionError:
+          type: boolean
+        recentErrors:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstanceError'
+        connectionStatus:
+          type: string
+          description: Normalized qBittorrent connection status from cached server state, or `disabled` for inactive instances.
 
     InstanceCapabilities:
       type: object

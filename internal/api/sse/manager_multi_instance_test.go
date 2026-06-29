@@ -5,6 +5,7 @@ package sse
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -95,6 +96,86 @@ func TestToStreamOptionsMultiInstance(t *testing.T) {
 		require.False(t, opts.isMultiInstance())
 		require.Equal(t, []int{5}, opts.instanceIDs())
 	})
+}
+
+func TestMaterializeGroupResponseOmitsInstanceScopedMetaWithoutSingleConcreteInstance(t *testing.T) {
+	lastGood := time.Now().Add(-90 * time.Second)
+
+	tests := []struct {
+		name      string
+		opts      StreamOptions
+		provider  *fakeSyncProvider
+		wantRetry bool
+	}{
+		{
+			name: "two member aggregate",
+			opts: StreamOptions{InstanceIDs: []int{1, 2}, Limit: 100},
+			provider: &fakeSyncProvider{
+				crossInstanceErr: errors.New("boom"),
+			},
+		},
+		{
+			name: "empty ids with zero instance",
+			opts: StreamOptions{Limit: 100},
+			provider: &fakeSyncProvider{
+				torrentsErr: errors.New("boom"),
+			},
+		},
+		{
+			name: "zero representative aggregate",
+			opts: StreamOptions{InstanceIDs: []int{0}, Limit: 100},
+			provider: &fakeSyncProvider{
+				crossInstanceErr: errors.New("boom"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager := NewStreamManager(nil, tt.provider, nil)
+			t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+			var stampCalls int
+			manager.lastSuccessfulSyncFn = func(_ context.Context, _ int) time.Time {
+				stampCalls++
+				return lastGood
+			}
+
+			_, errPayload := manager.materializeGroupResponse(tt.opts, &StreamMeta{Timestamp: time.Now()}, "test-group")
+
+			require.NotNil(t, errPayload)
+			require.NotNil(t, errPayload.Meta)
+			require.Nil(t, errPayload.Meta.LastSuccessfulSync)
+			if tt.wantRetry {
+				require.Positive(t, errPayload.Meta.RetryInSeconds)
+			} else {
+				require.Zero(t, errPayload.Meta.RetryInSeconds)
+			}
+			require.Zero(t, stampCalls, "ambiguous aggregate errors must not resolve a representative freshness stamp")
+		})
+	}
+}
+
+func TestMaterializeGroupResponseOmitsRetryForMultiMemberAggregateWithDifferentBackoff(t *testing.T) {
+	manager := NewStreamManager(nil, &fakeSyncProvider{crossInstanceErr: errors.New("boom")}, nil)
+	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
+
+	manager.mu.Lock()
+	manager.syncBackoff[1] = &backoffState{interval: 4 * time.Second}
+	manager.syncBackoff[2] = &backoffState{interval: 16 * time.Second}
+	manager.mu.Unlock()
+
+	lastSuccessfulSync := time.Now().Add(-time.Minute)
+	_, errPayload := manager.materializeGroupResponse(
+		StreamOptions{InstanceIDs: []int{1, 2}, Limit: 100},
+		&StreamMeta{Timestamp: time.Now(), RetryInSeconds: 99, LastSuccessfulSync: &lastSuccessfulSync},
+		"test-group",
+	)
+
+	require.NotNil(t, errPayload)
+	require.NotNil(t, errPayload.Meta)
+	require.Zero(t, errPayload.Meta.RetryInSeconds, "multi-member aggregate retry must not expose a single member interval")
+	require.Nil(t, errPayload.Meta.LastSuccessfulSync, "multi-member aggregate freshness must not expose one member timestamp")
 }
 
 // A member instance's update must rebuild the multi-instance group through the

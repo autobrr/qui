@@ -64,6 +64,7 @@ type ClientPool struct {
 	failureTracker    map[int]*failureInfo
 	decryptionTracker map[int]*decryptionErrorInfo
 	syncEventSink     SyncEventSink
+	syncEventSinkSeq  uint64
 	completionHandler TorrentCompletionHandler
 	addedHandler      TorrentAddedHandler
 	syncManager       *SyncManager // Reference for starting background tasks
@@ -93,16 +94,20 @@ func NewClientPool(instanceStore *models.InstanceStore, errorStore *models.Insta
 	return cp, nil
 }
 
-// SetSyncEventSink configures the sink that should receive sync notifications
-// from every client managed by this pool. Existing clients are updated
-// immediately.
+// SetSyncEventSink configures the sink that receives sync notifications from
+// every managed client and SyncManager-owned background refreshes.
 func (cp *ClientPool) SetSyncEventSink(sink SyncEventSink) {
 	cp.mu.Lock()
 	cp.syncEventSink = sink
+	cp.syncEventSinkSeq++
+	sinkSeq := cp.syncEventSinkSeq
 	for _, client := range cp.clients {
 		client.SetSyncEventSink(sink)
 	}
+	sm := cp.syncManager
 	cp.mu.Unlock()
+
+	cp.applySyncManagerSinkIfCurrent(sm, sink, sinkSeq)
 }
 
 // SetTorrentCompletionHandler registers a callback for new and existing clients when torrents complete.
@@ -137,12 +142,32 @@ func (cp *ClientPool) SetTorrentAddedHandler(handler TorrentAddedHandler) {
 	}
 }
 
-// SetSyncManager sets the SyncManager reference for starting background tasks.
-// This creates a bidirectional relationship: ClientPool -> SyncManager for notifications.
+// SetSyncManager sets the SyncManager reference used for background tasks and
+// passes through any existing sync event sink.
 func (cp *ClientPool) SetSyncManager(sm *SyncManager) {
 	cp.mu.Lock()
-	defer cp.mu.Unlock()
 	cp.syncManager = sm
+	sink := cp.syncEventSink
+	sinkSeq := cp.syncEventSinkSeq
+	cp.mu.Unlock()
+
+	cp.applySyncManagerSinkIfCurrent(sm, sink, sinkSeq)
+}
+
+// applySyncManagerSinkIfCurrent forwards a captured sink only if neither the
+// active SyncManager nor the pool sink changed since the caller observed them.
+func (cp *ClientPool) applySyncManagerSinkIfCurrent(sm *SyncManager, sink SyncEventSink, sinkSeq uint64) {
+	if sm == nil {
+		return
+	}
+
+	cp.mu.RLock()
+	defer cp.mu.RUnlock()
+	if cp.syncManager != sm || cp.syncEventSinkSeq != sinkSeq {
+		return
+	}
+
+	sm.SetSyncEventSink(sink)
 }
 
 // getInstanceLock gets or creates a per-instance creation lock
@@ -316,6 +341,9 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	return client, nil
 }
 
+// decryptField runs a stored-secret decrypt operation and returns an actionable
+// remediation message when authentication failure indicates encrypted settings
+// must be re-entered in the web UI.
 func (cp *ClientPool) decryptField(instanceID int, instanceName, fieldName string, decryptFn func() (string, error)) (string, error) {
 	value, err := decryptFn()
 	if err == nil {
@@ -325,6 +353,10 @@ func (cp *ClientPool) decryptField(instanceID int, instanceName, fieldName strin
 	if cp.isDecryptionError(err) && cp.shouldLogDecryptionError(instanceID) {
 		log.Error().Err(err).Int("instanceID", instanceID).Str("instanceName", instanceName).
 			Msgf("Failed to decrypt %s - likely due to sessionSecret change. Instance will be unavailable until %s is re-entered via web UI", fieldName, fieldName)
+	}
+
+	if cp.isDecryptionError(err) {
+		return "", fmt.Errorf("failed to decrypt %s; instance will be unavailable until %s is re-entered via web UI: %w", fieldName, fieldName, err)
 	}
 
 	return "", fmt.Errorf("failed to decrypt %s: %w", fieldName, err)

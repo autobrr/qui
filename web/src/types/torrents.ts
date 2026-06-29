@@ -182,6 +182,12 @@ export interface TrackerTransferStats {
   count: number
 }
 
+/**
+ * Sidebar count groups returned with a torrent list response.
+ *
+ * Tracker keys are normalized tracker domains. qBittorrent pseudo tracker
+ * labels such as DHT, PeX, and LSD are omitted rather than folded into Unknown.
+ */
 export interface TorrentCounts {
   status: Record<string, number>
   categories: Record<string, number>
@@ -193,6 +199,10 @@ export interface TorrentCounts {
   total: number
 }
 
+/**
+ * Manual torrent filters accepted by list endpoints and stream subscriptions.
+ * Tracker filters use the same normalized domain keys as TorrentCounts.trackers.
+ */
 export interface TorrentFilters {
   status: string[]
   excludeStatus: string[]
@@ -207,13 +217,24 @@ export interface TorrentFilters {
   expr?: string
 }
 
-// InstanceMeta provides real-time instance health via SSE, reducing need for polling
+/**
+ * Real-time instance auth/decryption and connection metadata emitted on torrent
+ * stream snapshots.
+ */
 export interface InstanceMeta {
   connected: boolean
   hasDecryptionError: boolean
   recentErrors?: InstanceError[]
+  /** Normalized qBittorrent connection status, or "disabled" for inactive instances. */
+  connectionStatus?: string
 }
 
+/**
+ * Torrent list response shared by REST and stream snapshots.
+ *
+ * `preferences` is tri-state: omitted leaves existing frontend preference caches
+ * unchanged, a value replaces them, and `null` clears stale cached preferences.
+ */
 export interface TorrentResponse {
   torrents: Torrent[]
   crossInstanceTorrents?: CrossInstanceTorrent[]
@@ -226,7 +247,8 @@ export interface TorrentResponse {
   tags?: string[]
   serverState?: ServerState
   appInfo?: QBittorrentAppInfo
-  preferences?: AppPreferences
+  /** qBittorrent preferences for this instance; `null` explicitly clears cached preferences. */
+  preferences?: AppPreferences | null
   useSubcategories?: boolean
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
