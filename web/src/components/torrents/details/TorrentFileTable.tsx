@@ -10,13 +10,14 @@ import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { FILE_PRIORITY, foldFolderPriority, normalizeFilePriority, type FilePriorityValue, type FolderPriority } from "@/lib/file-priority"
-import { getLinuxFileName, getLinuxFolderName } from "@/lib/incognito"
-import { cn, formatBytes } from "@/lib/utils"
+import { getLinuxFileName, getLinuxFolderName, getLinuxSavePath } from "@/lib/incognito"
+import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { ChevronDown, ChevronRight, Download, File, Folder, Info, Loader2, Pencil, Search, X } from "lucide-react"
+import { ChevronDown, ChevronRight, Copy, Download, File, Folder, Info, Loader2, Pencil, Search, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 
 interface TorrentFileTableProps {
   files: TorrentFile[] | undefined
@@ -25,6 +26,7 @@ interface TorrentFileTableProps {
   pendingFileIndices: Set<number>
   incognitoMode: boolean
   torrentHash: string
+  savePath?: string
   onToggleFile: (file: TorrentFile, selected: boolean) => void
   onToggleFolder: (folderPath: string, selected: boolean) => void
   onSetFilePriority: (file: TorrentFile, priority: number) => void
@@ -188,6 +190,7 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   pendingFileIndices,
   incognitoMode,
   torrentHash,
+  savePath,
   onToggleFile,
   onToggleFolder,
   onSetFilePriority,
@@ -502,6 +505,20 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                       {rowContent}
                     </ContextMenuTrigger>
                     <ContextMenuContent>
+                      <ContextMenuItem
+                        onClick={async () => {
+                          const fullPath = incognitoMode? joinPath(getLinuxSavePath(torrentHash), node.name): savePath? joinPath(savePath, node.id): node.id
+                          try {
+                            await copyTextToClipboard(fullPath)
+                            toast.success(isFile ? t("fileTable.filePathCopied") : t("fileTable.folderPathCopied"))
+                          } catch {
+                            toast.error(t("fileTable.copyPathFailed"))
+                          }
+                        }}
+                      >
+                        <Copy className="h-3.5 w-3.5 mr-2" />
+                        {t("fileTable.copyPath")}
+                      </ContextMenuItem>
                       {isFile && onDownloadFile && node.file && (
                         <ContextMenuItem
                           onClick={() => onDownloadFile(node.file!)}
