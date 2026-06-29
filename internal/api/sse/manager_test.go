@@ -892,6 +892,30 @@ func TestHandleSyncError_NilError(t *testing.T) {
 	require.Empty(t, messages, "nil error should not produce any messages")
 }
 
+func TestIsContextStopped(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "canceled sentinel", err: context.Canceled, want: true},
+		{name: "deadline sentinel", err: context.DeadlineExceeded, want: true},
+		{name: "wrapped canceled text", err: errors.New("All attempts fail: context canceled"), want: true},
+		{name: "wrapped deadline text", err: errors.New("All attempts fail: context deadline exceeded"), want: true},
+		{name: "real error", err: errors.New("connection refused"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, isContextStopped(tt.err))
+		})
+	}
+}
+
 func TestParseStreamRequests_EmptyStreamsParam(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/stream", nil)
 	_, err := parseStreamRequests(req)

@@ -368,6 +368,29 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
     setFilePriorityMutation.mutate({ indices: [file.index], priority: desiredPriority, hash: torrent.hash })
   }, [setFilePriorityMutation, supportsFilePriority, torrent])
 
+  const handleToggleFileRange = useCallback((indices: number[], selected: boolean) => {
+    if (!torrent || !supportsFilePriority || !files || indices.length === 0) {
+      return
+    }
+
+    // Only touch files that actually need changing, mirroring handleSelectAllFiles
+    // and handleToggleFolderDownload. This preserves High/Maximum priority on
+    // already-selected files (a blanket priority:1 would downgrade them to Normal)
+    // and skips no-op churn for files already in the desired state.
+    const rangeSet = new Set(indices)
+    const targetIndices = files
+      .filter(file => rangeSet.has(file.index))
+      .filter(file => !pendingFileIndices.has(file.index))
+      .filter(file => selected ? file.priority === 0 : file.priority !== 0)
+      .map(file => file.index)
+
+    if (targetIndices.length === 0) {
+      return
+    }
+
+    setFilePriorityMutation.mutate({ indices: targetIndices, priority: selected ? 1 : 0, hash: torrent.hash })
+  }, [files, pendingFileIndices, setFilePriorityMutation, supportsFilePriority, torrent])
+
   const handleSelectAllFiles = useCallback(() => {
     if (!torrent || !supportsFilePriority || !files) {
       return
@@ -1589,7 +1612,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                 pendingFileIndices={pendingFileIndices}
                 incognitoMode={incognitoMode}
                 torrentHash={torrent.hash}
+                savePath={properties?.save_path}
                 onToggleFile={handleToggleFileDownload}
+                onToggleFileRange={handleToggleFileRange}
                 onToggleFolder={handleToggleFolderDownload}
                 onSetFilePriority={handleSetFilePriority}
                 onSetFolderPriority={handleSetFolderPriority}
@@ -1645,7 +1670,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
                       pendingFileIndices={pendingFileIndices}
                       incognitoMode={incognitoMode}
                       torrentHash={torrent.hash}
+                      savePath={properties?.save_path}
                       onToggleFile={handleToggleFileDownload}
+                      onToggleFileRange={handleToggleFileRange}
                       onToggleFolder={handleToggleFolderDownload}
                       onSetFilePriority={handleSetFilePriority}
                       onSetFolderPriority={handleSetFolderPriority}

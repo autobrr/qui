@@ -45,6 +45,15 @@ import { usePersistedTitleBarSpeeds } from "@/hooks/usePersistedTitleBarSpeeds"
 import { useQBittorrentAppInfo } from "@/hooks/useQBittorrentAppInfo"
 import { useTitleBarSpeeds } from "@/hooks/useTitleBarSpeeds"
 import { api } from "@/lib/api"
+import {
+  DASHBOARD_STATS_FALLBACK_ORDER,
+  DASHBOARD_STATS_FALLBACK_SORT,
+  createDashboardStatsFallbackQueryKey,
+  mergeDashboardInstanceMeta,
+  mergeDashboardStatsSnapshot,
+  resolveDashboardStreamError,
+  resolveDashboardTorrentCounts
+} from "@/lib/dashboard-stream"
 import { copyTextToClipboard, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type {
   CacheMetadata,
@@ -61,7 +70,7 @@ import type {
 } from "@/types"
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
-import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
+import { Activity, AlertCircle, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, BrickWallFire, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Database, Download, ExternalLink, Eye, EyeOff, Globe, HardDrive, Info, Link2, Minus, Pencil, Plus, Rabbit, RefreshCcw, Trash2, Turtle, Upload, X, Zap } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -168,6 +177,73 @@ function recordsShallowEqual(
   return true
 }
 
+function hasDashboardInstanceData(data: InstanceStreamData | null | undefined) {
+  return Boolean(data?.stats || data?.serverState || data?.torrentCounts)
+}
+
+function instanceStreamDataFromResponse(
+  response: TorrentResponse | undefined,
+  current?: InstanceStreamData
+): InstanceStreamData | undefined {
+  if (!response) {
+    return undefined
+  }
+
+  return {
+    stats: response.stats ?? current?.stats ?? null,
+    serverState: response.serverState ?? current?.serverState ?? null,
+    torrentCounts: resolveDashboardTorrentCounts(response.counts, current?.torrentCounts),
+    appInfo: response.appInfo ?? current?.appInfo ?? null,
+    altSpeedEnabled: response.serverState?.use_alt_speed_limits ?? current?.altSpeedEnabled ?? false,
+    isLoading: false,
+    error: null,
+    streamConnected: current?.streamConnected ?? false,
+    streamError: current?.streamError ?? null,
+    cacheMetadata: response.cacheMetadata ?? current?.cacheMetadata ?? null,
+    instanceMeta: response.instanceMeta ?? current?.instanceMeta ?? null,
+  }
+}
+
+function mergeCachedInstanceData(
+  current: InstanceStreamData | undefined,
+  cached: InstanceStreamData | undefined
+) {
+  if (!current) {
+    return cached
+  }
+  if (!cached) {
+    return current
+  }
+
+  const next: InstanceStreamData = {
+    ...current,
+    stats: current.stats ?? cached.stats,
+    serverState: current.serverState ?? cached.serverState,
+    torrentCounts: resolveDashboardTorrentCounts(current.torrentCounts, cached.torrentCounts),
+    appInfo: current.appInfo ?? cached.appInfo,
+    altSpeedEnabled: current.serverState?.use_alt_speed_limits ?? cached.serverState?.use_alt_speed_limits ?? current.altSpeedEnabled,
+    isLoading: current.isLoading && !hasDashboardInstanceData(cached),
+    error: current.error,
+    cacheMetadata: current.cacheMetadata ?? cached.cacheMetadata,
+    instanceMeta: current.instanceMeta ?? cached.instanceMeta,
+  }
+
+  if (
+    next.stats === current.stats &&
+    next.serverState === current.serverState &&
+    next.torrentCounts === current.torrentCounts &&
+    next.appInfo === current.appInfo &&
+    next.altSpeedEnabled === current.altSpeedEnabled &&
+    next.isLoading === current.isLoading &&
+    next.cacheMetadata === current.cacheMetadata &&
+    next.instanceMeta === current.instanceMeta
+  ) {
+    return current
+  }
+
+  return next
+}
+
 // Shared hook for computing global stats across all instances
 function useGlobalStats(statsData: DashboardInstanceStats[]) {
   return useMemo(() => {
@@ -266,12 +342,12 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
         // alive while an instance's stream is down. It does NOT share the torrent
         // list's cache entry (that key now also encodes filters/scope), so keep this
         // request minimal rather than relying on reuse.
-        queryKey: ["dashboard-stats-fallback", instance.id, "added_on", "desc"] as const,
+        queryKey: createDashboardStatsFallbackQueryKey(instance.id),
         queryFn: () => api.getTorrents(instance.id, {
           page: 0,
           limit: 1,
-          sort: "added_on",
-          order: "desc",
+          sort: DASHBOARD_STATS_FALLBACK_SORT,
+          order: DASHBOARD_STATS_FALLBACK_ORDER,
         }),
         enabled: fallbackEnabled,
         refetchInterval: fallbackEnabled ? 5000 : false,
@@ -284,6 +360,17 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       }
     }),
   })
+
+  const getCachedInstanceData = useCallback(
+    (instanceId: number, current?: InstanceStreamData) => {
+      const cachedResponse = queryClient.getQueryData<TorrentResponse>(
+        createDashboardStatsFallbackQueryKey(instanceId)
+      )
+
+      return instanceStreamDataFromResponse(cachedResponse, current)
+    },
+    [queryClient]
+  )
 
   const flushInstanceData = useCallback(
     (force = false) => {
@@ -314,7 +401,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       const currentRecord = latestDataRef.current
       let current = currentRecord[instanceId]
       if (!current) {
-        current = createDefaultInstanceStreamData()
+        current = getCachedInstanceData(instanceId) ?? createDefaultInstanceStreamData()
         currentRecord[instanceId] = current
       }
 
@@ -334,17 +421,20 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
         scheduleFlush()
       }
     },
-    [flushInstanceData, scheduleFlush]
+    [flushInstanceData, getCachedInstanceData, scheduleFlush]
   )
 
   useEffect(() => {
     const nextRecord: Record<number, InstanceStreamData> = {}
     instances.forEach(instance => {
-      nextRecord[instance.id] = latestDataRef.current[instance.id] ?? createDefaultInstanceStreamData()
+      const current = latestDataRef.current[instance.id]
+      nextRecord[instance.id] =
+        mergeCachedInstanceData(current, getCachedInstanceData(instance.id, current)) ??
+        createDefaultInstanceStreamData()
     })
     latestDataRef.current = nextRecord
     flushInstanceData(true)
-  }, [instances, flushInstanceData])
+  }, [instances, flushInstanceData, getCachedInstanceData])
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -437,22 +527,26 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
           }
 
           const data = payload.data
+          queryClient.setQueryData<TorrentResponse | undefined>(
+            createDashboardStatsFallbackQueryKey(instance.id),
+            current => mergeDashboardStatsSnapshot(data, current)
+          )
           if (data.appInfo) {
             queryClient.setQueryData(["qbittorrent-app-info", instance.id], data.appInfo)
           }
 
           applyInstanceData(instance.id, current => {
             const next: InstanceStreamData = {
-              stats: data.stats ?? null,
-              serverState: data.serverState ?? null,
-              torrentCounts: data.counts,
+              stats: data.stats ?? current.stats,
+              serverState: data.serverState ?? current.serverState,
+              torrentCounts: resolveDashboardTorrentCounts(data.counts, current.torrentCounts),
               appInfo: data.appInfo ?? current.appInfo,
-              altSpeedEnabled: data.serverState?.use_alt_speed_limits || false,
+              altSpeedEnabled: data.serverState?.use_alt_speed_limits ?? current.altSpeedEnabled,
               isLoading: false,
               error: null,
               streamConnected: true,
               streamError: null,
-              cacheMetadata: data.cacheMetadata ?? null,
+              cacheMetadata: data.cacheMetadata ?? current.cacheMetadata,
               instanceMeta: data.instanceMeta ?? current.instanceMeta,
             }
 
@@ -527,13 +621,15 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
   }, [instances, syncStream, baseStreamParams, queryClient, applyInstanceData, streamEnabled])
 
   useEffect(() => {
+    const streamConnections = streamConnectionsRef.current
+
     return () => {
-      streamConnectionsRef.current.forEach(entry => {
+      streamConnections.forEach(entry => {
         entry.cancelRef.current = true
         entry.disconnect()
         entry.unsubscribe()
       })
-      streamConnectionsRef.current.clear()
+      streamConnections.clear()
       if (flushTimerRef.current) {
         clearTimeout(flushTimerRef.current)
         flushTimerRef.current = null
@@ -542,21 +638,22 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
   }, [])
 
   return instances.map<DashboardInstanceStats>((instance, index) => {
-    const state = instanceData[instance.id] ?? createDefaultInstanceStreamData()
+    const cachedState = getCachedInstanceData(instance.id, instanceData[instance.id])
+    const state =
+      mergeCachedInstanceData(instanceData[instance.id], cachedState) ??
+      createDefaultInstanceStreamData()
     const fallbackQuery = fallbackQueries[index]
     const fallbackData = fallbackQuery?.data as TorrentResponse | undefined
     const isFallbackActive = !state.streamConnected
 
     const stats = isFallbackActive ? (fallbackData?.stats ?? state.stats) : state.stats
     const serverState = isFallbackActive ? (fallbackData?.serverState ?? state.serverState) : state.serverState
-    const torrentCounts = isFallbackActive ? (fallbackData?.counts ?? state.torrentCounts) : state.torrentCounts
+    const torrentCounts = isFallbackActive? resolveDashboardTorrentCounts(fallbackData?.counts, state.torrentCounts): resolveDashboardTorrentCounts(state.torrentCounts, fallbackData?.counts)
     const appInfo = isFallbackActive ? (fallbackData?.appInfo ?? state.appInfo) : state.appInfo
     const cacheMetadata = isFallbackActive ? (fallbackData?.cacheMetadata ?? state.cacheMetadata) : state.cacheMetadata
 
     const hasHydratedData = Boolean(stats || serverState || torrentCounts)
-    const isLoading = isFallbackActive
-      ? (!hasHydratedData && (state.isLoading || fallbackQuery?.isLoading || fallbackQuery?.isFetching))
-      : state.isLoading
+    const isLoading = isFallbackActive? (!hasHydratedData && (state.isLoading || fallbackQuery?.isLoading || fallbackQuery?.isFetching)): state.isLoading
     const error = (() => {
       if (!isFallbackActive) {
         return state.error
@@ -570,16 +667,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       return state.error
     })()
 
-    // Merge SSE instanceMeta into the instance object for real-time status updates
-    // This allows components to use SSE-based connection status instead of polled data
-    const mergedInstance: InstanceResponse = state.streamConnected && state.instanceMeta
-      ? {
-        ...instance,
-        connected: state.instanceMeta.connected,
-        hasDecryptionError: state.instanceMeta.hasDecryptionError,
-        recentErrors: state.instanceMeta.recentErrors,
-      }
-      : instance
+    const mergedInstance = mergeDashboardInstanceMeta(instance, state.streamConnected, state.instanceMeta)
 
     return {
       instance: mergedInstance,
@@ -591,7 +679,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       isLoading,
       error,
       streamConnected: state.streamConnected,
-      streamError: state.streamError,
+      streamError: resolveDashboardStreamError(state.streamError, isFallbackActive, fallbackData),
       cacheMetadata,
       instanceMeta: state.instanceMeta,
     }
@@ -618,6 +706,9 @@ function InstanceCard({
     altSpeedEnabled,
     isLoading,
     error,
+    streamConnected,
+    streamError,
+    cacheMetadata,
   } = instanceData
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
 
@@ -657,7 +748,7 @@ function InstanceCard({
   const hasError = Boolean(error) || (!isFirstLoad && !stats)
   const hasDecryptionOrRecentErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
 
-  const rawConnectionStatus = serverState?.connection_status ?? instance.connectionStatus ?? ""
+  const rawConnectionStatus = instance.connectionStatus ?? serverState?.connection_status ?? ""
   const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
   const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
   const connectionStatusDisplay = formattedConnectionStatus ? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()) : ""
@@ -671,6 +762,43 @@ function InstanceCard({
 
   const listenPort = preferences?.listen_port
   const connectionStatusTooltip = connectionStatusDisplay ? `${isConnectable ? t("instanceCard.connectable") : connectionStatusDisplay}${listenPort ? t("instanceCard.portInfo", { port: listenPort }) : ""}` : ""
+
+  const dashboardDataStatus = (() => {
+    if (streamError) {
+      return {
+        Icon: AlertCircle,
+        iconClassName: "text-destructive",
+        tooltip: t("instanceCard.streamStatus.error"),
+      }
+    }
+
+    if (streamConnected) {
+      return {
+        Icon: Zap,
+        iconClassName: "text-green-500",
+        tooltip: t("instanceCard.streamStatus.live"),
+      }
+    }
+
+    if (cacheMetadata?.source === "cache") {
+      return {
+        Icon: Database,
+        iconClassName: cacheMetadata.isStale ? "text-amber-500" : "text-blue-500",
+        tooltip: t("instanceCard.streamStatus.cached"),
+      }
+    }
+
+    if (!isFirstLoad) {
+      return {
+        Icon: RefreshCcw,
+        iconClassName: "text-muted-foreground",
+        tooltip: t("instanceCard.streamStatus.fallback"),
+      }
+    }
+
+    return null
+  })()
+  const DashboardDataStatusIcon = dashboardDataStatus?.Icon
 
   // Determine if settings button should show
   const showSettingsButton = instance.connected && !isFirstLoad && !hasDecryptionOrRecentErrors
@@ -701,6 +829,21 @@ function InstanceCard({
               <ExternalLink className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             </Link>
             <div className="flex items-center gap-1 justify-end shrink-0 basis-full sm:basis-auto sm:min-w-[4.5rem]">
+              {dashboardDataStatus && DashboardDataStatusIcon && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      aria-label={dashboardDataStatus.tooltip}
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-md ${dashboardDataStatus.iconClassName}`}
+                    >
+                      <DashboardDataStatusIcon className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {dashboardDataStatus.tooltip}
+                  </TooltipContent>
+                </Tooltip>
+              )}
               {instance.reannounceSettings?.enabled && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1366,9 +1509,7 @@ function SortIcon({ column, sortColumn, sortDirection }: { column: TrackerSortCo
   if (sortColumn !== column) {
     return <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />
   }
-  return sortDirection === "asc"
-    ? <ArrowUp className="h-3 w-3" />
-    : <ArrowDown className="h-3 w-3" />
+  return sortDirection === "asc"? <ArrowUp className="h-3 w-3" />: <ArrowDown className="h-3 w-3" />
 }
 
 // Extended tracker stats with customization support
@@ -2877,7 +3018,7 @@ export function Dashboard() {
   // Handler for section collapsed state changes
   const handleSectionCollapsedChange = (sectionId: string, collapsed: boolean) => {
     updateSettings.mutate({
-      sectionCollapsed: { ...settings.sectionCollapsed, [sectionId]: collapsed }
+      sectionCollapsed: { ...settings.sectionCollapsed, [sectionId]: collapsed },
     })
   }
 

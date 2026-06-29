@@ -525,11 +525,14 @@
     "renameFolder": "Rename folder",
     "download": "Download",
     "mediaInfo": "MediaInfo",
-    "rename": "Rename",
     "toggle": "Toggle",
     "selectFileForDownload": "Select file for download",
     "skipFileDownload": "Skip file download",
-    "selectAllFilesIn": "Select all files in {{name}}"
+    "selectAllFilesIn": "Select all files in {{name}}",
+    "copyPath": "Copy Path",
+    "filePathCopied": "File path copied to clipboard",
+    "folderPathCopied": "Folder path copied to clipboard",
+    "copyPathFailed": "Failed to copy path to clipboard"
   },
   "mediaInfoDialog": {
     "title": "MediaInfo",
@@ -1211,7 +1214,11 @@
     "download": "Download",
     "mediaInfo": "MediaInfo",
     "renameFile": "Rename File",
-    "renameFolder": "Rename Folder"
+    "renameFolder": "Rename Folder",
+    "copyPath": "Copy Path",
+    "filePathCopied": "File path copied to clipboard",
+    "folderPathCopied": "Folder path copied to clipboard",
+    "copyPathFailed": "Failed to copy path to clipboard"
   },
   "crossSeedTable": {
     "name": "Name",
