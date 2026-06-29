@@ -129,5 +129,5 @@ jobs:
             --max-turns 25
             --mcp-config /tmp/mcp-config/mcp-servers.json
           settings: |
-            {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}"}}
+            {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "DISCUSSION_WRITE_ALLOWED_OPS": "add-label,comment"}}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

@@ -17,9 +17,22 @@
 #   ./.github/scripts/discussion-write.sh remove-label <name> [<name>...]
 #   ./.github/scripts/discussion-write.sh comment       <body>
 #
+# The calling workflow restricts which of those operations are permitted via
+# DISCUSSION_WRITE_ALLOWED_OPS (comma-separated). Triage is label-only; only the
+# dedup workflow opts into `comment`. It defaults to label operations so a
+# workflow that forgets to set it still cannot post comments.
+#
 set -euo pipefail
 
 die() { echo "Error: $*" >&2; exit 1; }
+
+ALLOWED_OPS="${DISCUSSION_WRITE_ALLOWED_OPS:-add-label,remove-label}"
+op_allowed() {
+  case ",${ALLOWED_OPS}," in
+    *",$1,"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 # --- Resolve the target discussion from the event payload (not from Claude) ---
 [[ -n "${GITHUB_EVENT_PATH:-}" && -f "$GITHUB_EVENT_PATH" ]] || die "GITHUB_EVENT_PATH not available"
@@ -85,12 +98,15 @@ apply_labels() {
 cmd="${1:-}"; shift || true
 case "$cmd" in
   add-label)
+    op_allowed add-label || die "add-label is not permitted here (allowed: $ALLOWED_OPS)"
     apply_labels addLabelsToLabelable "$@"
     ;;
   remove-label)
+    op_allowed remove-label || die "remove-label is not permitted here (allowed: $ALLOWED_OPS)"
     apply_labels removeLabelsFromLabelable "$@"
     ;;
   comment)
+    op_allowed comment || die "comment is not permitted here (allowed: $ALLOWED_OPS)"
     [[ $# -eq 1 ]] || die "comment requires exactly one body argument"
     [[ -n "$1" ]] || die "comment body is empty"
     node_id=$(discussion_id)

@@ -119,7 +119,7 @@ jobs:
 
             TASK OVERVIEW:
 
-            1. First, fetch the list of labels available in this repository by running: `gh label list --json name,id --limit 100`. Run exactly this command with nothing else.
+            1. First, fetch the list of labels available in this repository by running: `gh label list --json name,id --limit 500`. Run exactly this command with nothing else.
 
             2. Next, use the GitHub tools to get context about the discussion:
                - You have access to these tools:
@@ -168,5 +168,5 @@ jobs:
             --max-turns 25
             --mcp-config /tmp/mcp-config/mcp-servers.json
           settings: |
-            {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}"}}
+            {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "DISCUSSION_WRITE_ALLOWED_OPS": "add-label,remove-label"}}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
