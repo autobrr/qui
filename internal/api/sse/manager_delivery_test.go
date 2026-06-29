@@ -44,6 +44,7 @@ type fakeSyncProvider struct {
 	crossSkipFresh        bool
 	crossSkipTracker      bool
 	crossCachedCounts     bool
+	connectionStatus      string
 }
 
 func (f *fakeSyncProvider) GetTorrentsWithFilters(ctx context.Context, _ int, _, _ int, _, _, _ string, _ qbittorrent.FilterOptions) (*qbittorrent.TorrentResponse, error) {
@@ -88,6 +89,12 @@ func (f *fakeSyncProvider) GetQBittorrentSyncManager(_ context.Context, _ int) (
 	// These tests drive delivery through HandleMainData rather than the real sync
 	// loop, so the loop's attempt to fetch a sync manager always fails fast.
 	return nil, errors.New("sync manager unavailable in test")
+}
+
+func (f *fakeSyncProvider) ReadCachedConnectionStatus(_ context.Context, _ int) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.connectionStatus
 }
 
 func (f *fakeSyncProvider) torrentsCallCount() int {

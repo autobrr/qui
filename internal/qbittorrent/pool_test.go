@@ -234,6 +234,30 @@ func TestClientPool_IsBanError(t *testing.T) {
 	}
 }
 
+func TestClientPoolDecryptFieldReturnsActionableDecryptionError(t *testing.T) {
+	pool := &ClientPool{decryptionTracker: make(map[int]*decryptionErrorInfo)}
+
+	_, err := pool.decryptField(1, "test", "password", func() (string, error) {
+		return "", errors.New("cipher: message authentication failed")
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to decrypt password")
+	assert.Contains(t, err.Error(), "instance will be unavailable until password is re-entered via web UI")
+	assert.Contains(t, err.Error(), "cipher: message authentication failed")
+}
+
+func TestClientPoolDecryptFieldKeepsGenericErrorConcise(t *testing.T) {
+	pool := &ClientPool{decryptionTracker: make(map[int]*decryptionErrorInfo)}
+
+	_, err := pool.decryptField(1, "test", "password", func() (string, error) {
+		return "", errors.New("storage unavailable")
+	})
+
+	require.Error(t, err)
+	assert.EqualError(t, err, "failed to decrypt password: storage unavailable")
+}
+
 func TestClientPoolSetSyncEventSinkUpdatesExistingClients(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()

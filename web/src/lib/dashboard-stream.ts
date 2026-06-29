@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { TorrentCounts, TorrentResponse } from "@/types"
+import type { InstanceMeta, InstanceResponse, TorrentCounts, TorrentResponse } from "@/types"
 
 export const DASHBOARD_STATS_FALLBACK_SORT = "added_on"
 export const DASHBOARD_STATS_FALLBACK_ORDER = "desc"
@@ -33,6 +33,41 @@ export function resolveDashboardTorrentCounts(
   fallbackCounts: TorrentCounts | undefined
 ) {
   return primaryCounts ?? fallbackCounts
+}
+
+/**
+ * Once the REST fallback has returned data, dashboard status should describe
+ * the active fallback path instead of a stale stream failure.
+ */
+export function resolveDashboardStreamError(
+  streamError: string | null,
+  fallbackActive: boolean,
+  fallbackData: TorrentResponse | undefined
+) {
+  return fallbackActive && fallbackData ? null : streamError
+}
+
+/**
+ * Applies live SSE instance metadata to the REST instance snapshot used by the
+ * dashboard. Metadata is ignored after stream disconnect so stale stream auth or
+ * connection state cannot overwrite the latest REST/fallback instance row.
+ */
+export function mergeDashboardInstanceMeta(
+  instance: InstanceResponse,
+  streamConnected: boolean,
+  instanceMeta: InstanceMeta | null
+): InstanceResponse {
+  if (!streamConnected || !instanceMeta) {
+    return instance
+  }
+
+  return {
+    ...instance,
+    connected: instanceMeta.connected,
+    hasDecryptionError: instanceMeta.hasDecryptionError,
+    recentErrors: instanceMeta.recentErrors,
+    connectionStatus: instanceMeta.connectionStatus ?? instance.connectionStatus,
+  }
 }
 
 /**

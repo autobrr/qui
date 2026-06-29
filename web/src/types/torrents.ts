@@ -217,11 +217,16 @@ export interface TorrentFilters {
   expr?: string
 }
 
-// InstanceMeta provides real-time instance health via SSE, reducing need for polling
+/**
+ * Real-time instance auth/decryption and connection metadata emitted on torrent
+ * stream snapshots.
+ */
 export interface InstanceMeta {
   connected: boolean
   hasDecryptionError: boolean
   recentErrors?: InstanceError[]
+  /** Normalized qBittorrent connection status, or "disabled" for inactive instances. */
+  connectionStatus?: string
 }
 
 /**

@@ -341,6 +341,9 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 	return client, nil
 }
 
+// decryptField runs a stored-secret decrypt operation and returns an actionable
+// remediation message when authentication failure indicates encrypted settings
+// must be re-entered in the web UI.
 func (cp *ClientPool) decryptField(instanceID int, instanceName, fieldName string, decryptFn func() (string, error)) (string, error) {
 	value, err := decryptFn()
 	if err == nil {
@@ -350,6 +353,10 @@ func (cp *ClientPool) decryptField(instanceID int, instanceName, fieldName strin
 	if cp.isDecryptionError(err) && cp.shouldLogDecryptionError(instanceID) {
 		log.Error().Err(err).Int("instanceID", instanceID).Str("instanceName", instanceName).
 			Msgf("Failed to decrypt %s - likely due to sessionSecret change. Instance will be unavailable until %s is re-entered via web UI", fieldName, fieldName)
+	}
+
+	if cp.isDecryptionError(err) {
+		return "", fmt.Errorf("failed to decrypt %s; instance will be unavailable until %s is re-entered via web UI: %w", fieldName, fieldName, err)
 	}
 
 	return "", fmt.Errorf("failed to decrypt %s: %w", fieldName, err)

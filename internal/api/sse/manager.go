@@ -158,6 +158,7 @@ type syncProvider interface {
 	GetTorrentsWithFilters(ctx context.Context, instanceID int, limit, offset int, sort, order, search string, filters qbittorrent.FilterOptions) (*qbittorrent.TorrentResponse, error)
 	GetCrossInstanceTorrentsWithFilters(ctx context.Context, limit, offset int, sort, order, search string, filters qbittorrent.FilterOptions, instanceIDs []int) (*qbittorrent.TorrentResponse, error)
 	GetQBittorrentSyncManager(ctx context.Context, instanceID int) (*qbt.SyncManager, error)
+	ReadCachedConnectionStatus(ctx context.Context, instanceID int) string
 }
 
 // StreamManager owns the SSE server and keeps subscriptions in sync with qBittorrent updates.
@@ -1506,6 +1507,12 @@ func (m *StreamManager) buildInstanceMeta(ctx context.Context, instanceID int) *
 	}
 
 	healthy := client != nil && client.IsHealthy() && instance.IsActive
+	connectionStatus := ""
+	if !instance.IsActive {
+		connectionStatus = "disabled"
+	} else if m.syncManager != nil {
+		connectionStatus = qbittorrent.NormalizeConnectionStatus(m.syncManager.ReadCachedConnectionStatus(ctx, instanceID))
+	}
 
 	// Check for decryption errors
 	decryptionErrorInstances := m.clientPool.GetInstancesWithDecryptionErrors()
@@ -1514,6 +1521,7 @@ func (m *StreamManager) buildInstanceMeta(ctx context.Context, instanceID int) *
 	meta := &qbittorrent.InstanceMeta{
 		Connected:          healthy,
 		HasDecryptionError: hasDecryptionError,
+		ConnectionStatus:   connectionStatus,
 	}
 
 	// Fetch recent errors for disconnected instances

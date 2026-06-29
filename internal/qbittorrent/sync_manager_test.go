@@ -111,6 +111,14 @@ func TestTorrentResponseAppPreferencesOmitsCacheOnlyMiss(t *testing.T) {
 	require.False(t, present)
 }
 
+func TestNormalizeConnectionStatus(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "connected", NormalizeConnectionStatus(" Connected "))
+	require.Equal(t, "firewalled", NormalizeConnectionStatus("FIREWALLED"))
+	require.Empty(t, NormalizeConnectionStatus(" \t"))
+}
+
 func TestTrackerHealthSupportSurvivesSkippedHydration(t *testing.T) {
 	t.Parallel()
 
@@ -599,6 +607,95 @@ func TestUnsupportedTrackerHydrationSeedDropsStaleDomainsFromCountsAndFilters(t 
 	currentFiltered := sm.applyManualFilters(client, torrents, FilterOptions{Trackers: []string{"current.example"}}, mainData, nil, false)
 	require.Len(t, currentFiltered, 1)
 	require.Equal(t, "current-hash", currentFiltered[0].Hash)
+}
+
+func TestCalculateCountsFromTorrentsWithTrackersIgnoresHealthCacheWhenUnsupported(t *testing.T) {
+	t.Parallel()
+
+	sm := &SyncManager{
+		trackerHealthCache: map[int]*TrackerHealthCounts{
+			7: {
+				Unregistered:    1,
+				TrackerDown:     2,
+				TrackerError:    3,
+				UnregisteredSet: map[string]struct{}{"hash-a": {}},
+				TrackerDownSet:  map[string]struct{}{"hash-b": {}},
+				TrackerErrorSet: map[string]struct{}{"hash-c": {}},
+				UpdatedAt:       time.Now(),
+			},
+		},
+	}
+	client := &Client{instanceID: 7, trackerIncludeSupported: false}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://tracker.example/announce"},
+	}
+
+	counts, _, _ := sm.calculateCountsFromTorrentsWithTrackers(context.Background(), client, torrents, nil, nil, false, false)
+
+	require.Zero(t, counts.Status["unregistered"])
+	require.Zero(t, counts.Status["tracker_down"])
+	require.Zero(t, counts.Status["tracker_error"])
+}
+
+func TestApplyTrackerHealthRefreshResultSkipsPartialHydration(t *testing.T) {
+	t.Parallel()
+
+	started := time.Now()
+	sm := &SyncManager{
+		trackerHealthCache: map[int]*TrackerHealthCounts{
+			7: {
+				Unregistered:    2,
+				TrackerDown:     1,
+				TrackerError:    0,
+				UnregisteredSet: map[string]struct{}{"old-unregistered": {}, "old-unregistered-2": {}},
+				TrackerDownSet:  map[string]struct{}{"old-down": {}},
+				TrackerErrorSet: make(map[string]struct{}),
+				UpdatedAt:       started.Add(-time.Minute),
+			},
+		},
+		validatedTrackerMapping: map[int]*ValidatedTrackerMapping{
+			7: {
+				HashToDomains: map[string]map[string]struct{}{
+					"old-unregistered": {"old.example": {}},
+					"old-down":         {"old.example": {}},
+				},
+				DomainToHashes: map[string]map[string]struct{}{
+					"old.example": {"old-unregistered": {}, "old-down": {}},
+				},
+				UpdatedAt: started.Add(-time.Minute),
+			},
+		},
+	}
+	torrents := []qbt.Torrent{
+		{Hash: "hash-a", Tracker: "https://new.example/announce"},
+		{Hash: "hash-b", Tracker: "https://missing.example/announce"},
+	}
+	enriched := []qbt.Torrent{
+		{
+			Hash: "hash-a",
+			Trackers: []qbt.TorrentTracker{
+				{Url: "https://new.example/announce", Status: qbt.TrackerStatusNotWorking},
+			},
+		},
+	}
+
+	applied := sm.applyTrackerHealthRefreshResult(7, torrents, enriched, []string{"hash-b"}, started)
+
+	require.False(t, applied)
+
+	cached := sm.GetTrackerHealthCounts(7)
+	require.NotNil(t, cached)
+	require.Equal(t, 2, cached.Unregistered)
+	require.Equal(t, 1, cached.TrackerDown)
+	require.Contains(t, cached.UnregisteredSet, "old-unregistered")
+	require.Contains(t, cached.TrackerDownSet, "old-down")
+	require.NotContains(t, cached.TrackerDownSet, "hash-a")
+
+	mapping := sm.getValidatedTrackerMapping(7)
+	require.NotNil(t, mapping)
+	require.Contains(t, mapping.DomainToHashes, "old.example")
+	require.NotContains(t, mapping.DomainToHashes, "new.example")
+	require.NotContains(t, mapping.HashToDomains, "hash-a")
 }
 
 func TestCalculateCountsFromTorrentsWithTrackersClearsAllExcludedValidatedDomain(t *testing.T) {
@@ -1845,6 +1942,55 @@ func TestSortCrossInstanceTorrents_CommonFields(t *testing.T) {
 			require.Equal(t, tc.lastHash, torrents[len(torrents)-1].Hash)
 		})
 	}
+}
+
+func TestSortCrossInstanceTorrentsStateUsesTrackerHealthPriority(t *testing.T) {
+	t.Parallel()
+
+	sm := NewSyncManager(nil, nil)
+	torrents := []CrossInstanceTorrentView{
+		{
+			TorrentView: &TorrentView{
+				Torrent: &qbt.Torrent{
+					Hash:  "hash-normal",
+					Name:  "Normal",
+					State: qbt.TorrentStateDownloading,
+				},
+			},
+			InstanceID:   1,
+			InstanceName: "One",
+		},
+		{
+			TorrentView: &TorrentView{
+				Torrent: &qbt.Torrent{
+					Hash:  "hash-error",
+					Name:  "Tracker Error",
+					State: qbt.TorrentStatePausedUp,
+				},
+				TrackerHealth: TrackerHealthError,
+			},
+			InstanceID:   2,
+			InstanceName: "Two",
+		},
+		{
+			TorrentView: &TorrentView{
+				Torrent: &qbt.Torrent{
+					Hash:  "hash-unregistered",
+					Name:  "Unregistered",
+					State: qbt.TorrentStatePausedUp,
+				},
+				TrackerHealth: TrackerHealthUnregistered,
+			},
+			InstanceID:   3,
+			InstanceName: "Three",
+		},
+	}
+
+	sm.sortCrossInstanceTorrents(torrents, "state", false)
+
+	require.Equal(t, "hash-unregistered", torrents[0].Hash)
+	require.Equal(t, "hash-error", torrents[1].Hash)
+	require.Equal(t, "hash-normal", torrents[2].Hash)
 }
 
 func TestSortTorrentsByTimestamp_Tiebreaker(t *testing.T) {

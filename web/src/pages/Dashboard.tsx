@@ -49,7 +49,9 @@ import {
   DASHBOARD_STATS_FALLBACK_ORDER,
   DASHBOARD_STATS_FALLBACK_SORT,
   createDashboardStatsFallbackQueryKey,
+  mergeDashboardInstanceMeta,
   mergeDashboardStatsSnapshot,
+  resolveDashboardStreamError,
   resolveDashboardTorrentCounts
 } from "@/lib/dashboard-stream"
 import { copyTextToClipboard, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
@@ -665,14 +667,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       return state.error
     })()
 
-    // Merge SSE instanceMeta into the instance object for real-time status updates
-    // This allows components to use SSE-based connection status instead of polled data
-    const mergedInstance: InstanceResponse = state.streamConnected && state.instanceMeta? {
-      ...instance,
-      connected: state.instanceMeta.connected,
-      hasDecryptionError: state.instanceMeta.hasDecryptionError,
-      recentErrors: state.instanceMeta.recentErrors,
-    }: instance
+    const mergedInstance = mergeDashboardInstanceMeta(instance, state.streamConnected, state.instanceMeta)
 
     return {
       instance: mergedInstance,
@@ -684,7 +679,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       isLoading,
       error,
       streamConnected: state.streamConnected,
-      streamError: state.streamError,
+      streamError: resolveDashboardStreamError(state.streamError, isFallbackActive, fallbackData),
       cacheMetadata,
       instanceMeta: state.instanceMeta,
     }
@@ -753,7 +748,7 @@ function InstanceCard({
   const hasError = Boolean(error) || (!isFirstLoad && !stats)
   const hasDecryptionOrRecentErrors = instance.hasDecryptionError || (instance.recentErrors && instance.recentErrors.length > 0)
 
-  const rawConnectionStatus = serverState?.connection_status ?? instance.connectionStatus ?? ""
+  const rawConnectionStatus = instance.connectionStatus ?? serverState?.connection_status ?? ""
   const normalizedConnectionStatus = rawConnectionStatus ? rawConnectionStatus.trim().toLowerCase() : ""
   const formattedConnectionStatus = normalizedConnectionStatus ? normalizedConnectionStatus.replace(/_/g, " ") : ""
   const connectionStatusDisplay = formattedConnectionStatus ? formattedConnectionStatus.replace(/\b\w/g, (char: string) => char.toUpperCase()) : ""

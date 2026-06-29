@@ -127,6 +127,12 @@ type CacheMetadata struct {
 	NextRefresh string `json:"nextRefresh"`
 }
 
+// NormalizeConnectionStatus returns the canonical wire value used by REST and
+// stream instance metadata for qBittorrent connection state.
+func NormalizeConnectionStatus(status string) string {
+	return strings.ToLower(strings.TrimSpace(status))
+}
+
 // newCacheMetadata derives the freshness signal from the last successful sync.
 // A zero lastSuccessfulSync means the age is unknown, so no cache metadata is emitted.
 // Data stays fresh for the expected torrent response cadence; anything older is
@@ -181,12 +187,17 @@ type CrossInstanceTorrentView struct {
 	InstanceName string `json:"instance_name"`
 }
 
-// InstanceMeta provides real-time instance connection status for SSE subscribers.
-// This allows the frontend to get instance health without separate polling.
+// InstanceMeta provides real-time instance auth/decryption and connection status
+// for SSE subscribers.
 type InstanceMeta struct {
-	Connected          bool            `json:"connected"`
-	HasDecryptionError bool            `json:"hasDecryptionError"`
-	RecentErrors       []InstanceError `json:"recentErrors,omitempty"`
+	// Connected mirrors the current client health for an active instance.
+	Connected bool `json:"connected"`
+	// HasDecryptionError reports whether stored credentials currently fail to decrypt.
+	HasDecryptionError bool `json:"hasDecryptionError"`
+	// RecentErrors carries the same recent instance errors exposed by the REST instance response.
+	RecentErrors []InstanceError `json:"recentErrors,omitempty"`
+	// ConnectionStatus is the normalized qBittorrent connection status, or "disabled" for inactive instances.
+	ConnectionStatus string `json:"connectionStatus,omitempty"`
 }
 
 // InstanceError represents a recent error for an instance (mirrors models.InstanceError for SSE).
@@ -662,6 +673,28 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 		return
 	}
 
+	if !sm.applyTrackerHealthRefreshResult(instanceID, torrents, enriched, remaining, started) {
+		return
+	}
+
+	sm.notifyTrackerHealthUpdated(instanceID)
+}
+
+// applyTrackerHealthRefreshResult promotes a fully hydrated tracker-health pass
+// into the shared cache and validated mapping. It returns false when hydration is
+// partial so callers do not replace a complete previous snapshot with incomplete
+// tracker counts or domain mappings.
+func (sm *SyncManager) applyTrackerHealthRefreshResult(instanceID int, torrents, enriched []qbt.Torrent, remaining []string, started time.Time) bool {
+	if len(remaining) > 0 {
+		log.Debug().
+			Int("instanceID", instanceID).
+			Int("failedToEnrich", len(remaining)).
+			Int("totalTorrents", len(torrents)).
+			Dur("elapsed", time.Since(started)).
+			Msg("Skipping tracker health cache and mapping update after partial hydration")
+		return false
+	}
+
 	// Build health counts and hash sets
 	counts := &TrackerHealthCounts{
 		UnregisteredSet: make(map[string]struct{}),
@@ -723,7 +756,7 @@ func (sm *SyncManager) refreshTrackerHealthCounts(ctx context.Context, instanceI
 		Int("totalTorrents", len(torrents)).
 		Dur("elapsed", time.Since(started)).
 		Msg("Refreshed tracker health counts and validated tracker mapping")
-	sm.notifyTrackerHealthUpdated(instanceID)
+	return true
 }
 
 // notifyTrackerHealthUpdated wakes stream subscribers after tracker health cache writes.
@@ -1908,7 +1941,7 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 		return nil, err
 	}
 
-	_, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
+	client, syncManager, err := sm.getClientAndSyncManager(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -1919,7 +1952,10 @@ func (sm *SyncManager) GetCachedInstanceTorrents(ctx context.Context, instanceID
 	}
 
 	// Get cached tracker health counts for this instance
-	cachedHealth := sm.GetTrackerHealthCounts(instanceID)
+	var cachedHealth *TrackerHealthCounts
+	if trackerHealthSupportedByClient(client) {
+		cachedHealth = sm.GetTrackerHealthCounts(instanceID)
+	}
 
 	views := make([]CrossInstanceTorrentView, len(torrents))
 	for i, torrent := range torrents {
@@ -3649,8 +3685,7 @@ func (sm *SyncManager) countTorrentStatuses(torrent qbt.Torrent, counts map[stri
 // Tracker health counts (unregistered, tracker_down) are fetched from a background cache
 // that is refreshed every 60 seconds per instance. This avoids blocking API requests
 // while still providing accurate counts in the sidebar for qBittorrent 5.1+ users.
-func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, _ bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
-
+func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context, client *Client, allTorrents []qbt.Torrent, mainData *qbt.MainData, trackerMap map[string][]qbt.TorrentTracker, trackerHealthSupported bool, useSubcategories bool) (*TorrentCounts, map[string][]qbt.TorrentTracker, []qbt.Torrent) {
 	// Initialize counts
 	counts := &TorrentCounts{
 		Status: map[string]int{
@@ -3930,7 +3965,7 @@ func (sm *SyncManager) calculateCountsFromTorrentsWithTrackers(_ context.Context
 
 	// Use cached tracker health counts for unregistered/tracker_down
 	// These are refreshed in the background to avoid blocking API requests
-	if client != nil {
+	if client != nil && trackerHealthSupported {
 		if cached := sm.GetTrackerHealthCounts(client.instanceID); cached != nil {
 			counts.Status["unregistered"] = cached.Unregistered
 			counts.Status["tracker_down"] = cached.TrackerDown
@@ -5255,6 +5290,21 @@ func stateSortPriority(state qbt.TorrentState) int {
 	return 1000
 }
 
+// trackerHealthSortPriority orders unhealthy tracker states ahead of normal
+// torrent-state sorting, matching the single-instance status sort behavior.
+func trackerHealthSortPriority(health TrackerHealth) int {
+	switch health {
+	case TrackerHealthUnregistered:
+		return 0
+	case TrackerHealthDown:
+		return 1
+	case TrackerHealthError:
+		return 2
+	default:
+		return 10
+	}
+}
+
 func (sm *SyncManager) sortTorrentsByStatus(torrents []qbt.Torrent, desc bool, trackerHealthSupported bool) {
 	sm.sortTorrentsByStatusWithTrackerHealth(torrents, desc, trackerHealthSupported, nil)
 }
@@ -5586,6 +5636,7 @@ func (sm *SyncManager) sortCrossInstanceTorrents(torrents []CrossInstanceTorrent
 			}
 		case "state":
 			result := cmp.Or(
+				cmp.Compare(trackerHealthSortPriority(a.TrackerHealth), trackerHealthSortPriority(b.TrackerHealth)),
 				cmp.Compare(stateSortPriority(a.State), stateSortPriority(b.State)),
 				strings.Compare(strings.ToLower(string(a.State)), strings.ToLower(string(b.State))),
 			)
