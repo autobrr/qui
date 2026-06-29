@@ -6,14 +6,16 @@
 import { FilePrioritySelect } from "@/components/torrents/FilePrioritySelect"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
+import { useFileRangeSelection } from "@/hooks/useFileRangeSelection"
 import { FILE_PRIORITY, foldFolderPriority, normalizeFilePriority, type FolderPriority } from "@/lib/file-priority"
-import { getLinuxFileName } from "@/lib/incognito"
-import { cn, formatBytes } from "@/lib/utils"
+import { getLinuxFileName, getLinuxSavePath } from "@/lib/incognito"
+import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { ChevronRight, Download, FilePen, FolderPen, Info, Loader2 } from "lucide-react"
+import { ChevronRight, Copy, Download, FilePen, FolderPen, Info, Loader2 } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 
 interface TorrentFileTreeProps {
   files: TorrentFile[]
@@ -21,7 +23,9 @@ interface TorrentFileTreeProps {
   pendingFileIndices: Set<number>
   incognitoMode: boolean
   torrentHash: string
+  savePath?: string
   onToggleFile: (file: TorrentFile, selected: boolean) => void
+  onToggleFileRange: (indices: number[], selected: boolean) => void
   onToggleFolder: (folderPath: string, selected: boolean) => void
   onSetFilePriority: (file: TorrentFile, priority: number) => void
   onSetFolderPriority: (folderPath: string, priority: number) => void
@@ -187,7 +191,9 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   pendingFileIndices,
   incognitoMode,
   torrentHash,
+  savePath,
   onToggleFile,
+  onToggleFileRange,
   onToggleFolder,
   onSetFilePriority,
   onSetFolderPriority,
@@ -275,6 +281,13 @@ export const TorrentFileTree = memo(function TorrentFileTree({
     })
   }, [])
 
+  const { handleCheckboxPointerDown, handleFileCheckbox } = useFileRangeSelection({
+    getRows: () => flatRows,
+    onToggleFile,
+    onToggleFileRange,
+    resetKey: torrentHash,
+  })
+
   return (
     <div
       ref={scrollContainerRef}
@@ -328,7 +341,8 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                         <Checkbox
                           checked={!isSkipped}
                           disabled={isPending}
-                          onCheckedChange={(checked) => onToggleFile(file, checked === true)}
+                          onPointerDown={handleCheckboxPointerDown}
+                          onCheckedChange={(checked) => handleFileCheckbox(file, virtualRow.index, checked === true)}
                           aria-label={isSkipped ? t("fileTree.selectFileForDownload") : t("fileTree.skipFileDownload")}
                           className="shrink-0"
                         />
@@ -377,6 +391,20 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                   </div>
                 </ContextMenuTrigger>
                 <ContextMenuContent>
+                  <ContextMenuItem
+                    onClick={async () => {
+                      const fullPath = incognitoMode? joinPath(getLinuxSavePath(torrentHash), node.name): savePath? joinPath(savePath, file.name): file.name
+                      try {
+                        await copyTextToClipboard(fullPath)
+                        toast.success(t("fileTree.filePathCopied"))
+                      } catch {
+                        toast.error(t("fileTree.copyPathFailed"))
+                      }
+                    }}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    {t("fileTree.copyPath")}
+                  </ContextMenuItem>
                   {onDownloadFile && file && (
                     <ContextMenuItem
                       onClick={() => onDownloadFile(file)}
@@ -400,7 +428,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                     disabled={incognitoMode}
                   >
                     <FilePen className="h-4 w-4 mr-2" />
-                    {t("fileTree.rename")}
+                    {t("fileTree.renameFile")}
                   </ContextMenuItem>
                 </ContextMenuContent>
               </ContextMenu>
@@ -491,6 +519,21 @@ export const TorrentFileTree = memo(function TorrentFileTree({
               </ContextMenuTrigger>
               <ContextMenuContent>
                 <ContextMenuItem
+                  onClick={async (e) => {
+                    e.stopPropagation()
+                    const fullPath = incognitoMode? joinPath(getLinuxSavePath(torrentHash), node.name): savePath? joinPath(savePath, node.id): node.id
+                    try {
+                      await copyTextToClipboard(fullPath)
+                      toast.success(t("fileTree.folderPathCopied"))
+                    } catch {
+                      toast.error(t("fileTree.copyPathFailed"))
+                    }
+                  }}
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  {t("fileTree.copyPath")}
+                </ContextMenuItem>
+                <ContextMenuItem
                   onClick={(e) => {
                     e.stopPropagation()
                     onRenameFolder(node.id)
@@ -498,7 +541,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                   disabled={incognitoMode}
                 >
                   <FolderPen className="h-4 w-4 mr-2" />
-                  {t("fileTree.rename")}
+                  {t("fileTree.renameFolder")}
                 </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>

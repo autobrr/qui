@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { parseTrackerDomains } from "@/lib/utils"
+import { joinPath, parseTrackerDomains } from "@/lib/utils"
 import type { Automation } from "@/types"
 import { describe, expect, it } from "vitest"
 
@@ -30,5 +30,24 @@ describe("parseTrackerDomains", () => {
     }))
 
     expect(result).toEqual(["a.com", "b.com", "c.com"])
+  })
+})
+
+describe("joinPath", () => {
+  it("joins a unix base with a slash-delimited relative path", () => {
+    expect(joinPath("/data/torrents", "Movie/file.mkv")).toBe("/data/torrents/Movie/file.mkv")
+  })
+
+  it("strips a single trailing separator from the base", () => {
+    expect(joinPath("/data/torrents/", "file.mkv")).toBe("/data/torrents/file.mkv")
+    expect(joinPath("C:\\dl\\", "file.mkv")).toBe("C:\\dl\\file.mkv")
+  })
+
+  it("normalizes relative separators to backslashes for a windows base", () => {
+    expect(joinPath("C:\\dl", "Movie/file.mkv")).toBe("C:\\dl\\Movie\\file.mkv")
+  })
+
+  it("returns the relative path unchanged when the base is empty", () => {
+    expect(joinPath("", "Movie/file.mkv")).toBe("Movie/file.mkv")
   })
 })

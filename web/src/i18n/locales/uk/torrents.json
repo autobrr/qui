@@ -621,11 +621,14 @@
     "renameFolder": "Перейменувати папку",
     "download": "Завантажити",
     "mediaInfo": "MediaInfo",
-    "rename": "Перейменувати",
     "toggle": "Перемикач",
     "selectFileForDownload": "Виберіть файл для завантаження",
     "skipFileDownload": "Пропустити завантаження файлу",
-    "selectAllFilesIn": "Виберіть усі файли в {{name}}"
+    "selectAllFilesIn": "Виберіть усі файли в {{name}}",
+    "copyPath": "Копіювати шлях",
+    "filePathCopied": "Шлях до файлу скопійовано в буфер обміну",
+    "folderPathCopied": "Шлях до папки скопійовано в буфер обміну",
+    "copyPathFailed": "Не вдалося скопіювати шлях у буфер обміну"
   },
   "mediaInfoDialog": {
     "title": "MediaInfo",
@@ -1321,7 +1324,11 @@
     "download": "Завантажити",
     "mediaInfo": "MediaInfo",
     "renameFile": "Перейменувати файл",
-    "renameFolder": "Перейменувати папку"
+    "renameFolder": "Перейменувати папку",
+    "copyPath": "Копіювати шлях",
+    "filePathCopied": "Шлях до файлу скопійовано в буфер обміну",
+    "folderPathCopied": "Шлях до папки скопійовано в буфер обміну",
+    "copyPathFailed": "Не вдалося скопіювати шлях у буфер обміну"
   },
   "crossSeedTable": {
     "name": "Назва",

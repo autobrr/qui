@@ -69,7 +69,7 @@ jobs:
 
       - name: Checkout repository
         if: steps.check-duplicate.outputs.skip != 'true'
-        uses: actions/checkout@v6.0.3
+        uses: actions/checkout@v7.0.0
 
       - name: Setup GitHub MCP Server
         if: steps.check-duplicate.outputs.skip != 'true'
@@ -98,7 +98,7 @@ jobs:
 
       - name: Run Claude Code for Discussion Triage
         if: steps.check-duplicate.outputs.skip != 'true'
-        uses: anthropics/claude-code-action@v1.0.148
+        uses: anthropics/claude-code-action@v1.0.153
         with:
           prompt: |
             You're a triage assistant for GitHub discussions. Your task is to analyze the discussion and select appropriate labels from the provided list.

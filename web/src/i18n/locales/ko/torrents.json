@@ -477,11 +477,14 @@
     "renameFolder": "폴더 이름 바꾸기",
     "download": "다운로드",
     "mediaInfo": "MediaInfo",
-    "rename": "이름 바꾸기",
     "toggle": "전환",
     "selectFileForDownload": "다운로드할 파일 선택",
     "skipFileDownload": "파일 다운로드 건너뛰기",
-    "selectAllFilesIn": "{{name}}의 모든 파일 선택"
+    "selectAllFilesIn": "{{name}}의 모든 파일 선택",
+    "copyPath": "경로 복사",
+    "filePathCopied": "파일 경로가 클립보드에 복사되었습니다",
+    "folderPathCopied": "폴더 경로가 클립보드에 복사되었습니다",
+    "copyPathFailed": "경로를 클립보드에 복사하지 못했습니다"
   },
   "mediaInfoDialog": {
     "title": "MediaInfo",
@@ -1152,7 +1155,11 @@
     "download": "다운로드",
     "mediaInfo": "MediaInfo",
     "renameFile": "파일 이름 바꾸기",
-    "renameFolder": "폴더 이름 바꾸기"
+    "renameFolder": "폴더 이름 바꾸기",
+    "copyPath": "경로 복사",
+    "filePathCopied": "파일 경로가 클립보드에 복사되었습니다",
+    "folderPathCopied": "폴더 경로가 클립보드에 복사되었습니다",
+    "copyPathFailed": "경로를 클립보드에 복사하지 못했습니다"
   },
   "crossSeedTable": {
     "name": "이름",
