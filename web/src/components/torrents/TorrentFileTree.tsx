@@ -6,6 +6,7 @@
 import { FilePrioritySelect } from "@/components/torrents/FilePrioritySelect"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
+import { useFileRangeSelection } from "@/hooks/useFileRangeSelection"
 import { FILE_PRIORITY, foldFolderPriority, normalizeFilePriority, type FolderPriority } from "@/lib/file-priority"
 import { getLinuxFileName, getLinuxSavePath } from "@/lib/incognito"
 import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
@@ -24,6 +25,7 @@ interface TorrentFileTreeProps {
   torrentHash: string
   savePath?: string
   onToggleFile: (file: TorrentFile, selected: boolean) => void
+  onToggleFileRange: (indices: number[], selected: boolean) => void
   onToggleFolder: (folderPath: string, selected: boolean) => void
   onSetFilePriority: (file: TorrentFile, priority: number) => void
   onSetFolderPriority: (folderPath: string, priority: number) => void
@@ -191,6 +193,7 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   torrentHash,
   savePath,
   onToggleFile,
+  onToggleFileRange,
   onToggleFolder,
   onSetFilePriority,
   onSetFolderPriority,
@@ -278,6 +281,13 @@ export const TorrentFileTree = memo(function TorrentFileTree({
     })
   }, [])
 
+  const { handleCheckboxPointerDown, handleFileCheckbox } = useFileRangeSelection({
+    getRows: () => flatRows,
+    onToggleFile,
+    onToggleFileRange,
+    resetKey: torrentHash,
+  })
+
   return (
     <div
       ref={scrollContainerRef}
@@ -331,7 +341,8 @@ export const TorrentFileTree = memo(function TorrentFileTree({
                         <Checkbox
                           checked={!isSkipped}
                           disabled={isPending}
-                          onCheckedChange={(checked) => onToggleFile(file, checked === true)}
+                          onPointerDown={handleCheckboxPointerDown}
+                          onCheckedChange={(checked) => handleFileCheckbox(file, virtualRow.index, checked === true)}
                           aria-label={isSkipped ? t("fileTree.selectFileForDownload") : t("fileTree.skipFileDownload")}
                           className="shrink-0"
                         />
