@@ -98,8 +98,16 @@ jobs:
 
       - name: Run Claude Code for Discussion Triage
         if: steps.check-duplicate.outputs.skip != 'true'
+        env:
+          # Bound how many times Claude can invoke the write helper per run, so a
+          # prompt-injection in discussion content cannot spam label mutations.
+          CLAUDE_CODE_SCRIPT_CAPS: '{"discussion-write.sh": 5}'
         uses: anthropics/claude-code-action@v1.0.153
         with:
+          # The dispatch job re-triggers this run via workflow_dispatch using
+          # GITHUB_TOKEN, so the actor is github-actions[bot]. Allow it past the
+          # agent-mode human-actor guard. Scoped to github-actions only (not '*').
+          allowed_bots: "github-actions"
           prompt: |
             You're a triage assistant for GitHub discussions. Your task is to analyze the discussion and select appropriate labels from the provided list.
 
@@ -111,7 +119,7 @@ jobs:
 
             TASK OVERVIEW:
 
-            1. First, fetch the list of labels available in this repository by running: `gh label list --json name,id --limit 100`. Run exactly this command with nothing else.
+            1. First, fetch the list of labels available in this repository by running: `gh label list --json name,id --limit 500`. Run exactly this command with nothing else.
 
             2. Next, use the GitHub tools to get context about the discussion:
                - You have access to these tools:
@@ -135,32 +143,30 @@ jobs:
                - Consider platform labels if applicable
                - Do NOT apply the "duplicate" label - that is handled by a separate workflow
 
-            5. Apply the selected labels using GraphQL:
-               - First, get the discussion's GraphQL node ID by running:
-                 gh api graphql -f query='query { repository(owner:"${{ github.repository_owner }}", name:"${{ github.event.repository.name }}") { discussion(number: ${{ inputs.discussion_number || github.event.discussion.number }}) { id } } }'
-               - Then add labels using the addLabelsToLabelable mutation. Example:
-                 gh api graphql -f query='mutation { addLabelsToLabelable(input: {labelIds: ["LABEL_ID_1", "LABEL_ID_2"], labelableId: "DISCUSSION_NODE_ID"}) { clientMutationId } }'
-               - Replace LABEL_ID_1, LABEL_ID_2 with actual label IDs from step 1, and DISCUSSION_NODE_ID with the ID from the query above
+            5. Apply the selected labels with the write helper. The discussion is
+               fixed by the workflow, so you only pass label NAMES (not IDs):
+               - Run: `./.github/scripts/discussion-write.sh add-label "LABEL_NAME_1" "LABEL_NAME_2"`
+               - Use the exact label names from step 1. The helper validates each
+                 name against the repository's labels and silently ignores any
+                 name that does not exist, so only pass names you saw in step 1.
                - DO NOT post any comments explaining your decision
                - DO NOT communicate directly with users
-               - If no labels are clearly applicable, do not apply any labels
+               - If no labels are clearly applicable, do not run the helper at all
 
             6. After applying labels, remove the "needs-triage" label if present:
-               - Use the removeLabelsFromLabelable mutation:
-                 gh api graphql -f query='mutation { removeLabelsFromLabelable(input: {labelIds: ["NEEDS_TRIAGE_LABEL_ID"], labelableId: "DISCUSSION_NODE_ID"}) { clientMutationId } }'
-               - Get the "needs-triage" label ID from the label list in step 1
-               - Only remove it if you successfully applied at least one label
+               - Run: `./.github/scripts/discussion-write.sh remove-label "needs-triage"`
+               - Only do this if you successfully applied at least one label in step 5
 
             IMPORTANT GUIDELINES:
             - Be thorough in your analysis
             - Only select labels from the repository's label list
             - DO NOT post any comments to the discussion
-            - Your ONLY action should be to apply labels using the GraphQL mutation
+            - Your ONLY action should be to apply labels via ./.github/scripts/discussion-write.sh
             - It's okay to not add any labels if none are clearly applicable
           claude_args: |
-            --allowedTools "Bash(gh label list:*),Bash(gh api graphql:*),mcp__github__get_discussion,mcp__github__get_discussion_comments,mcp__github__list_discussions"
+            --allowedTools "Bash(gh label list:*),Bash(./.github/scripts/discussion-write.sh:*),mcp__github__get_discussion,mcp__github__get_discussion_comments,mcp__github__list_discussions"
             --max-turns 25
             --mcp-config /tmp/mcp-config/mcp-servers.json
           settings: |
-            {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}"}}
+            {"env": {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "DISCUSSION_WRITE_ALLOWED_OPS": "add-label,remove-label"}}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
