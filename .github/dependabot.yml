@@ -40,3 +40,17 @@ updates:
       semver-patch-days: 3
       semver-minor-days: 7
       semver-major-days: 14
+
+  - package-ecosystem: npm
+    directory: /documentation
+    schedule:
+      interval: monthly
+    groups:
+      npm:
+        patterns:
+          - "*"
+    cooldown:
+      default-days: 7
+      semver-patch-days: 3
+      semver-minor-days: 7
+      semver-major-days: 14
