@@ -74,6 +74,12 @@
       "enable": "Povolit",
       "disable": "Zakázat",
       "cancel": "Zrušit"
+    },
+    "streamStatus": {
+      "live": "Živý stream připojen",
+      "cached": "Zobrazuje se uložený snímek přehledu během obnovování",
+      "fallback": "Obnovování statistik přehledu",
+      "error": "Problém se streamem; používá se záložní obnovování"
     }
   },
   "mobileOverview": {

@@ -968,6 +968,12 @@
         "deletionFailed": "Selhalo spuštění smazání",
         "exportedFiles": "Exportováno {{count}} souborů do CSV",
         "exportFailed": "Selhalo exportování souborů"
+      },
+      "statusLabels": {
+        "pending": "Čeká",
+        "deleted": "Smazáno",
+        "skipped": "Přeskočeno",
+        "failed": "Selhalo"
       }
     },
     "orphanScanSettings": {
@@ -1863,6 +1869,13 @@
       "failedToDeleteBackup": "Selhalo smazání zálohy",
       "allBackupsDeleted": "Všechny zálohy smazány",
       "failedToDeleteBackups": "Selhalo smazání záloh"
+    },
+    "statusLabels": {
+      "pending": "Čeká",
+      "running": "Běží",
+      "success": "Úspěch",
+      "failed": "Selhalo",
+      "canceled": "Zrušeno"
     }
   }
 }

@@ -206,7 +206,10 @@
       "SEEDING_ON_OTHER_INSTANCE": "Seeduje na jiné instanci",
       "EXISTS_ON_SAME_INSTANCE": "Křížové sdílení existuje na stejné instanci",
       "SEEDING_ON_SAME_INSTANCE": "Křížové sdílení na stejné instanci",
-      "HARDLINK_SCOPE": "Rozsah hardlinků"
+      "HARDLINK_SCOPE": "Rozsah hardlinků",
+      "RLS_YEAR": "Rok (RLS)",
+      "TRACKER_STATUS": "Stav trackeru",
+      "TRACKER_MESSAGE": "Zpráva trackeru"
     },
     "fieldGroups": {
       "Identity": "Identita",
@@ -276,6 +279,15 @@
     "capabilityReasons": {
       "trackerHealth": "Vyžaduje qBittorrent 5.1+",
       "localFilesystemAccess": "Vyžaduje přístup do lokálního souborového systému"
+    },
+    "selectTrackerStatus": "Vybrat stav",
+    "trackerStatuses": {
+      "not_contacted": "Nekontaktováno",
+      "working": "Funguje",
+      "updating": "Aktualizuje se",
+      "error": "Chyba",
+      "tracker_error": "Chyba trackeru",
+      "unreachable": "Nedostupné"
     }
   }
 }

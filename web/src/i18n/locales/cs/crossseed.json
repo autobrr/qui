@@ -19,7 +19,8 @@
       "cooldown": "Vyčkávání {{display}}",
       "ready": "Připraveno",
       "disabled": "Vypnuto",
-      "noRunsYet": "Žádné spuštění"
+      "noRunsYet": "Žádné spuštění",
+      "disabledUpper": "VYPNUTO"
     },
     "seededSearch": {
       "title": "Hledání torrentů, které již seedujete",
@@ -95,7 +96,8 @@
     "items": "{{count}} položek",
     "failedCount": "{{count}} selhalo",
     "runSummary": "{{runs}} spuštění • +{{added}}",
-    "runSummaryWithFailures": "{{runs}} spuštění • +{{added}} • {{failed}} selhalo"
+    "runSummaryWithFailures": "{{runs}} spuštění • +{{added}} • {{failed}} selhalo",
+    "scheduledUpper": "NAPLÁNOVÁNO"
   },
   "webhook": {
     "title": "Webhook / autobrr",
@@ -358,7 +360,18 @@
     "coverage": "Pokrytí",
     "episodes": "Epizody",
     "instance": "Instance",
-    "mode": "Režim"
+    "mode": "Režim",
+    "statusLabels": {
+      "ready": "Připraveno",
+      "skipped": "Přeskočeno",
+      "applied": "Použito",
+      "failed": "Selhalo",
+      "ready_no_threshold": "Připraveno (bez prahu)"
+    },
+    "phases": {
+      "check": "Kontrola",
+      "apply": "Použít"
+    }
   },
   "cancelDialog": {
     "title": "Zrušit automatizaci RSS?",
@@ -528,7 +541,10 @@
       "success": "Úspěch",
       "failed": "Selhalo",
       "added": "Přidáno",
-      "canceled": "Zrušeno"
+      "canceled": "Zrušeno",
+      "running": "Běží",
+      "partial": "Částečně",
+      "pending": "Čeká"
     },
     "table": {
       "started": "Spuštěno",
@@ -635,6 +651,36 @@
       "description": "Toto odstraní adresář pro skenování a jeho historii. Torrenty již přidáné nebudou ovlivněny.",
       "cancel": "Zrušit",
       "delete": "Odstranit"
+    },
+    "contentTypeLabels": {
+      "movie": "Film",
+      "tv": "Seriál",
+      "music": "Hudba",
+      "audiobook": "Audiokniha",
+      "book": "Kniha",
+      "comic": "Komiks",
+      "game": "Hra",
+      "app": "Aplikace",
+      "adult": "Pro dospělé",
+      "unknown": "Neznámé"
+    },
+    "linkModeLabels": {
+      "regular": "Běžný",
+      "hardlink": "Hardlink",
+      "reflink": "Reflink"
+    },
+    "statusLabelsUpper": {
+      "queued": "VE FRONTĚ",
+      "scanning": "SKENOVÁNÍ",
+      "searching": "HLEDÁNÍ",
+      "injecting": "VKLÁDÁNÍ",
+      "success": "ÚSPĚCH",
+      "failed": "SELHALO",
+      "added": "PŘIDÁNO",
+      "canceled": "ZRUŠENO",
+      "running": "BĚŽÍ",
+      "partial": "ČÁSTEČNĚ",
+      "pending": "ČEKÁ"
     }
   }
 }

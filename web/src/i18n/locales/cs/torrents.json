@@ -501,6 +501,12 @@
       "downloadFailed": "Nepodařilo se stáhnout soubor torrentu",
       "taskDeleted": "Úkol vytvoření torrentu byl smazán",
       "taskDeleteFailed": "Nepodařilo se smazat úkol vytvoření torrentu"
+    },
+    "statusLabels": {
+      "Queued": "Ve frontě",
+      "Running": "Běží",
+      "Finished": "Dokončeno",
+      "Failed": "Selhalo"
     }
   },
   "commentDialog": {
@@ -519,11 +525,14 @@
     "renameFolder": "Přejmenovat složku",
     "download": "Stáhnout",
     "mediaInfo": "MediaInfo",
-    "rename": "Přejmenovat",
     "toggle": "Přepnout",
     "selectFileForDownload": "Vybrat soubor pro stahování",
     "skipFileDownload": "Přeskakovat stahování souboru",
-    "selectAllFilesIn": "Vybrat všechny soubory v {{name}}"
+    "selectAllFilesIn": "Vybrat všechny soubory v {{name}}",
+    "copyPath": "Kopírovat cestu",
+    "filePathCopied": "Cesta k souboru zkopírována do schránky",
+    "folderPathCopied": "Cesta ke složce zkopírována do schránky",
+    "copyPathFailed": "Nepodařilo se zkopírovat cestu do schránky"
   },
   "mediaInfoDialog": {
     "title": "MediaInfo",
@@ -924,7 +933,13 @@
         "label": "Stream odpojen, použiji dotazování",
         "message": "Přechod na periodickou aktualizaci, když stream není dostupný.",
         "serverRetry": "Server opakuje pokus za {{seconds}}s, přepnuté dotazování je aktivní",
-        "retrying": "Opakovaný pokus automaticky s přepnutým dotazováním"
+        "retrying": "Opakovaný pokus automaticky s přepnutým dotazováním",
+        "degraded": {
+          "label": "Živé aktualizace pozastaveny",
+          "message": "Zobrazují se poslední výsledky, dokud se připojení neobnoví.",
+          "dataAge": "Data z {{age}}",
+          "dataAgeRetry": "Data z {{age}} • opakování za {{seconds}}s"
+        }
       },
       "connecting": {
         "label": "Připojení k streamu…",
@@ -1167,13 +1182,13 @@
   },
   "webSeedsTable": {
     "url": "URL",
-    "noHttpSources": "No HTTP sources",
-    "searchUrls": "Search URLs...",
+    "noHttpSources": "Žádné HTTP zdroje",
+    "searchUrls": "Hledat URL...",
     "httpSources": "{{count}} HTTP source{{plural}}",
     "filteredCount": "{{filtered}} of {{total}}",
-    "copyUrl": "Copy URL",
+    "copyUrl": "Kopírovat URL",
     "toast": {
-      "urlCopied": "URL copied to clipboard"
+      "urlCopied": "URL zkopírována do schránky"
     }
   },
   "fileTable": {
@@ -1191,7 +1206,11 @@
     "download": "Stáhnout",
     "mediaInfo": "MediaInfo",
     "renameFile": "Přejmenovat soubor",
-    "renameFolder": "Přejmenovat složku"
+    "renameFolder": "Přejmenovat složku",
+    "copyPath": "Kopírovat cestu",
+    "filePathCopied": "Cesta k souboru zkopírována do schránky",
+    "folderPathCopied": "Cesta ke složce zkopírována do schránky",
+    "copyPathFailed": "Nepodařilo se zkopírovat cestu do schránky"
   },
   "crossSeedTable": {
     "name": "Název",
@@ -1495,5 +1514,13 @@
     "failedToUpdatePriorities": "Nepodařilo se aktualizovat prioritu souborů",
     "failedToRenameFile": "Nepodařilo se přejmenovat soubor",
     "failedToRenameFolder": "Nepodařilo se přejmenovat složku"
+  },
+  "filePriority": {
+    "header": "Priorita",
+    "doNotDownload": "Nestahovat",
+    "normal": "Normální",
+    "high": "Vysoká",
+    "maximum": "Maximální",
+    "mixed": "Smíšené"
   }
 }

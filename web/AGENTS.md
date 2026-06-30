@@ -46,6 +46,7 @@ English is fallback/eager-loaded. Other languages are lazy-loaded by `initI18n()
 - `pnpm check:i18n:zh-cn`
 - `pnpm check:i18n:fr`
 - `pnpm check:i18n:de`
+- `pnpm check:i18n:cs`
 - `pnpm check:i18n:it`
 - `pnpm check:i18n:ko`
 

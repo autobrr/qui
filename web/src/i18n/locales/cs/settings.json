@@ -884,6 +884,27 @@
         "season": "Sezóna",
         "episode": "Epizoda"
       }
+    },
+    "priorityLabels": {
+      "interactive": "Interaktivní",
+      "rss": "RSS",
+      "completion": "Dokončení",
+      "background": "Na pozadí"
+    },
+    "contentTypeLabels": {
+      "movie": "Film",
+      "tv": "Seriál",
+      "tv_daily": "Seriál (denní)",
+      "xxx": "XXX",
+      "music": "Hudba",
+      "audiobook": "Audiokniha",
+      "book": "Kniha",
+      "comic": "Komiks",
+      "magazine": "Časopis",
+      "education": "Vzdělávání",
+      "app": "Aplikace",
+      "game": "Hra",
+      "unknown": "Neznámé"
     }
   },
   "searchCache": {
