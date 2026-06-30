@@ -557,9 +557,11 @@ func applyConnectionPragmas(ctx context.Context, exec pragmaExecFn, readOnly boo
 func New(databasePath string) (*DB, error) {
 	log.Info().Msgf("Initializing database at: %s", databasePath)
 
-	// Ensure the directory exists
+	// Ensure the directory exists. Use 0o750 (not other-traversable) like the
+	// config and log dirs: the database holds encrypted credentials and API
+	// keys, so a content-sharing UMASK must not expose it to other users.
 	dir := filepath.Dir(databasePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("failed to create database directory %s: %w", dir, err)
 	}
 	log.Debug().Msgf("Database directory ensured: %s", dir)

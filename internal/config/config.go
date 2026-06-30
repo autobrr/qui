@@ -603,8 +603,10 @@ logLevel = "{{ .logLevel }}"
 		return fmt.Errorf("failed to parse config template: %w", err)
 	}
 
-	// Create config file
-	f, err := os.Create(path)
+	// Create config file with owner-only permissions. It holds the session
+	// secret, so it must never be group/world readable or writable, regardless
+	// of the process umask (e.g. when UMASK is set for content sharing).
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
