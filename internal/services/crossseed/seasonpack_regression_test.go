@@ -85,7 +85,7 @@ func TestRollbackSeasonPackTree_PreservesUnrelatedFilesInRoot(t *testing.T) {
 		Files: []hardlinktree.FilePlan{
 			{TargetPath: plannedFile},
 		},
-	})
+	}, rootDir)
 
 	require.NoError(t, err)
 	require.NoFileExists(t, plannedFile)
@@ -180,8 +180,9 @@ func TestApplySeasonPackWebhook_SelectsConcreteBaseDirFromCommaSeparatedConfig(t
 	require.NoError(t, err)
 	require.True(t, resp.Applied)
 	require.NotNil(t, capturedPlan)
-	require.Equal(t, filepath.Join(selectedBaseDir, fix.packName), capturedPlan.RootDir)
+	require.Equal(t, selectedBaseDir, capturedPlan.RootDir)
 	require.Equal(t, capturedPlan.RootDir, sm.addCalls[0].options["savepath"])
+	require.Equal(t, filepath.Join(selectedBaseDir, fix.packName), filepath.Dir(capturedPlan.Files[0].TargetPath))
 }
 
 func TestApplySeasonPackWebhook_ReturnsOperationalFailureWhenExistingHashCheckFails(t *testing.T) {
