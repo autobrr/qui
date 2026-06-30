@@ -1,0 +1,218 @@
+{
+  "title": "대시보드",
+  "description": "모든 qBittorrent 인스턴스 개요",
+  "settingsDialog": {
+    "button": "레이아웃 설정",
+    "title": "대시보드 설정",
+    "description": "표시할 섹션과 순서를 사용자 지정합니다.",
+    "sections": "섹션",
+    "sectionLabels": {
+      "server-stats": "서버 통계",
+      "tracker-breakdown": "트래커 분석",
+      "global-stats": "전체 통계 카드",
+      "instances": "인스턴스 카드"
+    },
+    "trackerDefaults": "트래커 분석 기본값",
+    "defaultSort": "기본 정렬",
+    "direction": "방향",
+    "descending": "내림차순",
+    "ascending": "오름차순",
+    "itemsPerPage": "페이지당 항목 수",
+    "sortColumnLabels": {
+      "tracker": "트래커 이름",
+      "uploaded": "업로드됨",
+      "downloaded": "다운로드됨",
+      "ratio": "비율",
+      "buffer": "버퍼",
+      "count": "토렌트",
+      "size": "크기",
+      "performance": "시드됨"
+    }
+  },
+  "speedLimits": {
+    "title": "속도 제한",
+    "download": "다운로드",
+    "upload": "업로드",
+    "current": "현재: {{speed}}",
+    "unlimited": "무제한"
+  },
+  "instanceCard": {
+    "loadingStats": "통계 불러오는 중...",
+    "failedToLoadStats": "통계를 불러오지 못했습니다",
+    "downloading": "다운로드 중",
+    "active": "활성",
+    "total": "전체",
+    "download": "다운로드",
+    "upload": "업로드",
+    "totalSize": "전체 크기",
+    "totalSizeTooltip": "cross-seed를 포함한 모든 토렌트의 전체 크기",
+    "freeSpace": "여유 공간",
+    "showMore": "더 보기",
+    "showLess": "간략히 보기",
+    "uptime": "가동 시간",
+    "peerConnections": "피어 연결",
+    "queuedIOJobs": "대기 중인 I/O 작업",
+    "bufferSize": "버퍼 크기",
+    "totalQueued": "전체 대기 중",
+    "avgQueueTime": "평균 대기 시간",
+    "externalIPv4": "외부 IPv4",
+    "externalIPv6": "외부 IPv6",
+    "unregisteredTorrents": "등록되지 않은 토렌트",
+    "trackerDown": "트래커 다운",
+    "errors": "오류",
+    "reannounceTooltip": "자동 트래커 재요청 활성화됨",
+    "altSpeedLimits": "대체 속도 제한: {{status}}",
+    "localFileAccess": "로컬 파일 접근 활성화됨",
+    "connectable": "연결 가능",
+    "portInfo": ". 포트: {{port}}",
+    "connectionStatus": "qBittorrent 연결 상태: {{status}}",
+    "streamStatus": {
+      "live": "라이브 스트림 연결됨",
+      "cached": "새로 고치는 동안 캐시된 대시보드 스냅샷 표시",
+      "fallback": "대시보드 통계 새로 고침 중",
+      "error": "스트림 문제; 대체 새로 고침 사용 중"
+    },
+    "altSpeedDialog": {
+      "enableTitle": "대체 속도 제한을 활성화하시겠습니까?",
+      "disableTitle": "대체 속도 제한을 비활성화하시겠습니까?",
+      "enableDescription": "{{name}}의 대체 속도 제한을 활성화하면 구성된 제한에 따라 전송 속도가 줄어듭니다.",
+      "disableDescription": "{{name}}의 대체 속도 제한을 비활성화하고 일반 속도 제한으로 돌아갑니다.",
+      "enable": "활성화",
+      "disable": "비활성화",
+      "cancel": "취소"
+    }
+  },
+  "mobileOverview": {
+    "title": "개요",
+    "instances": "인스턴스",
+    "connected": "연결됨",
+    "torrents": "토렌트",
+    "activeCount": "{{count}}개 활성",
+    "download": "다운로드",
+    "upload": "업로드"
+  },
+  "globalStats": {
+    "instances": "인스턴스",
+    "connectedInstances": "연결된 인스턴스",
+    "totalTorrents": "전체 토렌트",
+    "activeTotal": "{{active}}개 활성 - 전체 크기 {{size}}",
+    "totalDownload": "전체 다운로드",
+    "downloadingActive": "{{count}}개 활성 - {{size}} 남음",
+    "totalUpload": "전체 업로드",
+    "seedingActive": "{{count}}개 활성 - {{size}} 시드 중"
+  },
+  "serverStats": {
+    "title": "서버 통계",
+    "ratio": "비율:",
+    "peers": "피어:",
+    "tableHeaders": {
+      "instance": "인스턴스",
+      "downloaded": "다운로드됨",
+      "uploaded": "업로드됨",
+      "ratio": "비율",
+      "peers": "피어"
+    }
+  },
+  "trackerBreakdown": {
+    "title": "트래커 분석",
+    "trackersCount": "트래커 {{count}}개",
+    "importTooltip": "사용자 지정 가져오기",
+    "exportTooltip": "사용자 지정 내보내기",
+    "sort": "정렬: {{column}}",
+    "sortOptions": {
+      "tracker": "트래커",
+      "uploaded": "업로드됨",
+      "downloaded": "다운로드됨",
+      "ratio": "비율",
+      "torrents": "토렌트",
+      "size": "크기",
+      "seeded": "시드됨"
+    },
+    "tableHeaders": {
+      "tracker": "트래커",
+      "uploaded": "업로드됨",
+      "downloaded": "다운로드됨",
+      "ratio": "비율",
+      "buffer": "버퍼",
+      "torrents": "토렌트",
+      "size": "크기",
+      "seeded": "시드됨"
+    },
+    "seededTooltip": "업로드 ÷ 콘텐츠 크기 — 콘텐츠를 몇 번 시드했는지를 나타냅니다",
+    "mergedFrom": "병합 출처: {{domains}}",
+    "original": "원본: {{domain}}",
+    "mergeTooltip": "선택한 트래커를 이 그룹으로 병합",
+    "mergeIntoGroup": "그룹으로 병합",
+    "addToMerge": "병합에 추가",
+    "rename": "이름 바꾸기",
+    "pagination": {
+      "range": "트래커 {{total}}개 중 {{start}}-{{end}}",
+      "previous": "이전",
+      "next": "다음"
+    },
+    "customizeDialog": {
+      "editTitle": "트래커 이름 편집",
+      "renameTitle": "트래커 이름 바꾸기",
+      "mergeTitle": "트래커 병합",
+      "editDescription": "이 트래커의 표시 이름을 업데이트합니다.",
+      "renameDescription": "이 트래커에 사용자 지정 표시 이름을 지정합니다.",
+      "mergeDescription": "이 트래커들을 사용자 지정 이름의 단일 항목으로 결합합니다.",
+      "displayName": "표시 이름",
+      "displayNamePlaceholder": "예: TorrentLeech",
+      "domains": "도메인",
+      "selectedTrackers": "선택한 트래커",
+      "uncheckDuplicate": "동일한 토렌트를 두 번 계산하지 않도록 중복 트래커 URL의 선택을 해제하세요.",
+      "primary": "기본",
+      "cancel": "취소",
+      "saving": "저장 중...",
+      "save": "저장",
+      "renameAction": "이름 바꾸기",
+      "mergeAction": "병합"
+    },
+    "importDialog": {
+      "title": "트래커 사용자 지정 가져오기",
+      "description": "트래커 사용자 지정(이름 바꾸기 및 병합)을 가져오려면 JSON을 붙여 넣으세요.",
+      "jsonData": "JSON 데이터",
+      "invalidFormat": "잘못된 형식: trackerCustomizations 배열이 필요합니다",
+      "missingDisplayName": "잘못된 항목: displayName 누락",
+      "invalidDomains": "잘못된 항목: domains는 비어 있지 않은 배열이어야 합니다",
+      "invalidJson": "잘못된 JSON",
+      "newCount": "신규 {{count}}개",
+      "conflictCount": "충돌 {{count}}개",
+      "conflictCount_plural": "충돌 {{count}}개",
+      "unchangedCount": "변경 없음 {{count}}개",
+      "resolveConflicts": "충돌 해결",
+      "conflictsWith": "충돌 대상: {{name}}",
+      "skip": "건너뛰기",
+      "overwrite": "덮어쓰기",
+      "cancel": "취소",
+      "importing": "가져오는 중...",
+      "import": "가져오기"
+    },
+    "toasts": {
+      "noCustomizationsToExport": "내보낼 사용자 지정이 없습니다",
+      "copiedToClipboard": "클립보드에 복사됨",
+      "failedToCopy": "클립보드에 복사하지 못했습니다",
+      "createFailed": "트래커 사용자 지정을 생성하지 못했습니다",
+      "updateFailed": "트래커 사용자 지정을 업데이트하지 못했습니다",
+      "deleteFailed": "트래커 사용자 지정을 삭제하지 못했습니다",
+      "failedToImport": "가져오지 못했습니다: {{names}}",
+      "importedAndSkipped": "{{imported}}개 가져옴, {{skipped}}개 건너뜀",
+      "importedCount": "사용자 지정 {{count}}개 가져옴",
+      "importedCount_plural": "사용자 지정 {{count}}개 가져옴",
+      "noCustomizationsImported": "가져온 사용자 지정이 없습니다"
+    }
+  },
+  "quickActions": {
+    "addTorrent": "토렌트 추가",
+    "addTo": "{{name}}에 추가"
+  },
+  "addInstance": "인스턴스 추가",
+  "emptyState": {
+    "noInstances": "구성된 인스턴스가 없습니다",
+    "getStarted": "첫 번째 qBittorrent 인스턴스를 추가하여 시작하세요",
+    "allDisabled": "모든 인스턴스가 비활성화되어 있습니다",
+    "enableInstance": "설정 → 인스턴스에서 인스턴스를 활성화하면 대시보드 통계를 볼 수 있습니다.",
+    "manageInstances": "인스턴스 관리"
+  }
+}

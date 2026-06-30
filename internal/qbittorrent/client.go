@@ -160,13 +160,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 		client.dispatchMainData(data)
 	}
 
-	syncOpts.OnError = func(err error) {
-		client.updateHealthStatus(false)
-		client.clearServerState()
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Sync manager error received, marking client as unhealthy")
-
-		client.dispatchSyncError(err)
-	}
+	syncOpts.OnError = client.handleSyncManagerError
 
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
 
@@ -197,13 +191,17 @@ func (c *Client) GetLastHealthCheck() time.Time {
 	return c.lastHealthCheck
 }
 
+// GetLastSyncUpdate returns the time the cached data last actually updated, i.e.
+// the last SUCCESSFUL sync. It deliberately does not use LastSyncTime, which
+// advances on failed sync attempts too and would mask a stalled instance from
+// readiness/staleness checks.
 func (c *Client) GetLastSyncUpdate() time.Time {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if c.syncManager == nil {
 		return time.Time{}
 	}
-	return c.syncManager.LastSyncTime()
+	return c.syncManager.LastSuccessfulSyncTime()
 }
 
 func (c *Client) updateHealthStatus(healthy bool) {
@@ -218,6 +216,44 @@ func (c *Client) IsHealthy() bool {
 	c.healthMu.RLock()
 	defer c.healthMu.RUnlock()
 	return c.isHealthy
+}
+
+// handleSyncManagerError records qBittorrent sync failures while ignoring explicit caller cancellation.
+// Deadline expiry is treated as a real sync failure so stream error handling can
+// mark cached health stale instead of preserving a stale healthy state.
+func (c *Client) handleSyncManagerError(err error) {
+	if err == nil {
+		return
+	}
+
+	if isContextStopped(err) {
+		log.Debug().
+			Err(err).
+			Int("instanceID", c.instanceID).
+			Msg("Sync manager context stopped, keeping client health unchanged")
+		return
+	}
+
+	c.updateHealthStatus(false)
+	c.clearServerState()
+	log.Warn().Err(err).Int("instanceID", c.instanceID).Msg("Sync manager error received, marking client as unhealthy")
+
+	c.dispatchSyncError(err)
+}
+
+// isContextStopped recognizes explicit context cancellation even after retry wrappers flatten the sentinel.
+// It deliberately excludes deadline expiry, which means the qBittorrent request
+// timed out rather than the caller intentionally stopped the sync attempt.
+func isContextStopped(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "context canceled")
 }
 
 func (c *Client) SupportsTorrentCreation() bool {

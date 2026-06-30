@@ -525,11 +525,14 @@
     "renameFolder": "Ordner umbenennen",
     "download": "Herunterladen",
     "mediaInfo": "MediaInfo",
-    "rename": "Umbenennen",
     "toggle": "Umschalten",
     "selectFileForDownload": "Datei zum Herunterladen auswählen",
     "skipFileDownload": "Datei beim Download überspringen",
-    "selectAllFilesIn": "Alle Dateien in {{name}} auswählen"
+    "selectAllFilesIn": "Alle Dateien in {{name}} auswählen",
+    "copyPath": "Pfad kopieren",
+    "filePathCopied": "Dateipfad in die Zwischenablage kopiert",
+    "folderPathCopied": "Ordnerpfad in die Zwischenablage kopiert",
+    "copyPathFailed": "Pfad konnte nicht in die Zwischenablage kopiert werden"
   },
   "mediaInfoDialog": {
     "title": "MediaInfo",
@@ -930,7 +933,13 @@
         "label": "Stream offline, Abruf wird verwendet",
         "message": "Wechsel zur regelmäßigen Aktualisierung, während der Stream nicht verfügbar ist.",
         "serverRetry": "Server-Wiederholung in {{seconds}} s, Abruf-Fallback aktiv",
-        "retrying": "Automatische Wiederholung mit Abruf-Fallback"
+        "retrying": "Automatische Wiederholung mit Abruf-Fallback",
+        "degraded": {
+          "label": "Live-Aktualisierungen pausiert",
+          "message": "Die letzten Ergebnisse werden angezeigt, während die Verbindung wiederhergestellt wird.",
+          "dataAge": "Letzte Aktualisierung {{age}}",
+          "dataAgeRetry": "Letzte Aktualisierung {{age}} • Wiederholung in {{seconds}} s"
+        }
       },
       "connecting": {
         "label": "Verbindung zum Stream wird hergestellt…",
@@ -1182,6 +1191,14 @@
       "urlCopied": "URL in die Zwischenablage kopiert"
     }
   },
+  "filePriority": {
+    "header": "Priorität",
+    "doNotDownload": "Nicht herunterladen",
+    "normal": "Normal",
+    "high": "Hoch",
+    "maximum": "Maximal",
+    "mixed": "Gemischt"
+  },
   "fileTable": {
     "expandAll": "Alle ausklappen",
     "collapseAll": "Alle einklappen",
@@ -1197,7 +1214,11 @@
     "download": "Herunterladen",
     "mediaInfo": "MediaInfo",
     "renameFile": "Datei umbenennen",
-    "renameFolder": "Ordner umbenennen"
+    "renameFolder": "Ordner umbenennen",
+    "copyPath": "Pfad kopieren",
+    "filePathCopied": "Dateipfad in die Zwischenablage kopiert",
+    "folderPathCopied": "Ordnerpfad in die Zwischenablage kopiert",
+    "copyPathFailed": "Pfad konnte nicht in die Zwischenablage kopiert werden"
   },
   "crossSeedTable": {
     "name": "Name",

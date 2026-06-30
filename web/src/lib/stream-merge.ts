@@ -63,3 +63,55 @@ export function mergeStreamedFirstPage<T extends { hash: string }>(
 
   return [...nextTorrents, ...trailing]
 }
+
+/**
+ * Apply an incremental SSE delta to the previous page-0 window, reconstructing the
+ * full page from the changed rows plus the rows already held.
+ *
+ * The backend sends only added or changed rows (`changedRows`) and, when membership
+ * or ordering changed, the full page key sequence (`order`). Reconstruction:
+ *
+ *   1. Index the previous rows by key, then upsert the changed rows. Unchanged rows
+ *      keep their exact previous object reference, so a row that only moved (or did
+ *      not change at all) stays referentially stable and the table re-renders only
+ *      the rows whose data actually changed.
+ *   2. Materialize the page in `order` when present; otherwise reuse the previous
+ *      order (the backend omits `order` only when no row was added or removed and
+ *      nothing reordered, so the previous key sequence is still authoritative).
+ *
+ * Returns `changed: false` only when there is nothing to apply (no `order`, no
+ * changed rows), in which case the previous rows are returned by reference so the
+ * caller can skip touching table state entirely on an aggregate-only tick.
+ */
+export function applyOrderedDelta<T>(
+  prevRows: T[],
+  changedRows: T[],
+  order: string[] | undefined,
+  keyOf: (row: T) => string
+): { rows: T[]; changed: boolean } {
+  if (!order && changedRows.length === 0) {
+    return { rows: prevRows, changed: false }
+  }
+
+  const byKey = new Map<string, T>()
+  for (const row of prevRows) {
+    byKey.set(keyOf(row), row)
+  }
+  for (const row of changedRows) {
+    byKey.set(keyOf(row), row)
+  }
+
+  // Without an explicit order the membership is unchanged, so the previous key
+  // sequence still describes the page; the changed rows were applied in place above.
+  const keys = order ?? prevRows.map(keyOf)
+
+  const rows: T[] = []
+  for (const key of keys) {
+    const row = byKey.get(key)
+    if (row !== undefined) {
+      rows.push(row)
+    }
+  }
+
+  return { rows, changed: true }
+}

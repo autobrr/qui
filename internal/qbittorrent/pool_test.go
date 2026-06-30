@@ -234,6 +234,30 @@ func TestClientPool_IsBanError(t *testing.T) {
 	}
 }
 
+func TestClientPoolDecryptFieldReturnsActionableDecryptionError(t *testing.T) {
+	pool := &ClientPool{decryptionTracker: make(map[int]*decryptionErrorInfo)}
+
+	_, err := pool.decryptField(1, "test", "password", func() (string, error) {
+		return "", errors.New("cipher: message authentication failed")
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to decrypt password")
+	assert.Contains(t, err.Error(), "instance will be unavailable until password is re-entered via web UI")
+	assert.Contains(t, err.Error(), "cipher: message authentication failed")
+}
+
+func TestClientPoolDecryptFieldKeepsGenericErrorConcise(t *testing.T) {
+	pool := &ClientPool{decryptionTracker: make(map[int]*decryptionErrorInfo)}
+
+	_, err := pool.decryptField(1, "test", "password", func() (string, error) {
+		return "", errors.New("storage unavailable")
+	})
+
+	require.Error(t, err)
+	assert.EqualError(t, err, "failed to decrypt password: storage unavailable")
+}
+
 func TestClientPoolSetSyncEventSinkUpdatesExistingClients(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
@@ -290,6 +314,55 @@ func TestClientPoolSetSyncEventSinkWithNoClients(t *testing.T) {
 	assert.Equal(t, sink, poolSink, "pool should have stored the sink even with no clients")
 }
 
+func TestClientPoolSetSyncEventSinkUpdatesSyncManager(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	sm := NewSyncManager(nil, nil)
+	pool.SetSyncManager(sm)
+
+	sink := &mockPoolSyncEventSink{}
+	pool.SetSyncEventSink(sink)
+
+	assert.Equal(t, sink, sm.getSyncEventSink(), "sync manager should receive pool sink")
+}
+
+func TestClientPoolSetSyncManagerReceivesExistingSink(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	sink := &mockPoolSyncEventSink{}
+	pool.SetSyncEventSink(sink)
+
+	sm := NewSyncManager(nil, nil)
+	pool.SetSyncManager(sm)
+
+	assert.Equal(t, sink, sm.getSyncEventSink(), "new sync manager should receive existing pool sink")
+}
+
+func TestClientPoolSetSyncManagerSkipsStaleSinkReplay(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	oldSink := &mockPoolSyncEventSink{id: 1}
+	newSink := &mockPoolSyncEventSink{id: 2}
+	pool.SetSyncEventSink(oldSink)
+
+	sm := NewSyncManager(nil, nil)
+	pool.SetSyncManager(sm)
+
+	pool.mu.RLock()
+	staleSeq := pool.syncEventSinkSeq
+	pool.mu.RUnlock()
+
+	pool.SetSyncEventSink(newSink)
+	require.Equal(t, newSink, sm.getSyncEventSink(), "sync manager should receive newer pool sink")
+
+	pool.applySyncManagerSinkIfCurrent(sm, oldSink, staleSeq)
+
+	assert.Equal(t, newSink, sm.getSyncEventSink(), "stale captured sink replay should not overwrite newer sink")
+}
+
 func TestClientPoolSetSyncEventSinkReplacesExisting(t *testing.T) {
 	pool := setupTestPool(t)
 	defer pool.Close()
@@ -317,4 +390,5 @@ type mockPoolSyncEventSink struct {
 }
 
 func (m *mockPoolSyncEventSink) HandleMainData(_ int, _ *qbt.MainData) {}
+func (m *mockPoolSyncEventSink) HandleTrackerHealthUpdated(_ int)      {}
 func (m *mockPoolSyncEventSink) HandleSyncError(_ int, _ error)        {}

@@ -477,11 +477,14 @@
     "renameFolder": "重命名文件夹",
     "download": "下载",
     "mediaInfo": "媒体信息",
-    "rename": "重命名",
     "toggle": "切换",
     "selectFileForDownload": "选择文件以下载",
     "skipFileDownload": "跳过文件下载",
-    "selectAllFilesIn": "选择 {{name}} 中的所有文件"
+    "selectAllFilesIn": "选择 {{name}} 中的所有文件",
+    "copyPath": "复制路径",
+    "filePathCopied": "文件路径已复制到剪贴板",
+    "folderPathCopied": "文件夹路径已复制到剪贴板",
+    "copyPathFailed": "复制路径到剪贴板失败"
   },
   "mediaInfoDialog": {
     "title": "媒体信息",
@@ -879,7 +882,13 @@
         "label": "数据流离线，改用轮询",
         "message": "数据流不可用期间，回退到定期刷新。",
         "serverRetry": "服务器将在 {{seconds}} 秒后重试，轮询回退已启用",
-        "retrying": "正在自动重试，使用轮询回退"
+        "retrying": "正在自动重试，使用轮询回退",
+        "degraded": {
+          "label": "实时更新已暂停",
+          "message": "正在显示最近的结果，等待连接恢复。",
+          "dataAge": "数据更新于 {{age}}",
+          "dataAgeRetry": "数据更新于 {{age}} • {{seconds}} 秒后重试"
+        }
       },
       "connecting": {
         "label": "正在连接数据流…",
@@ -1123,6 +1132,14 @@
       "urlCopied": "URL 已复制到剪贴板"
     }
   },
+  "filePriority": {
+    "header": "优先级",
+    "doNotDownload": "不下载",
+    "normal": "正常",
+    "high": "高",
+    "maximum": "最高",
+    "mixed": "混合"
+  },
   "fileTable": {
     "expandAll": "全部展开",
     "collapseAll": "全部折叠",
@@ -1138,7 +1155,11 @@
     "download": "下载",
     "mediaInfo": "媒体信息",
     "renameFile": "重命名文件",
-    "renameFolder": "重命名文件夹"
+    "renameFolder": "重命名文件夹",
+    "copyPath": "复制路径",
+    "filePathCopied": "文件路径已复制到剪贴板",
+    "folderPathCopied": "文件夹路径已复制到剪贴板",
+    "copyPathFailed": "复制路径到剪贴板失败"
   },
   "crossSeedTable": {
     "name": "名称",

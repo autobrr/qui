@@ -95,6 +95,12 @@ func torrentRlsGroup(t qbt.Torrent, ctx *EvalContext) string {
 	return strings.ToUpper(strings.TrimSpace(r.Group))
 }
 
+// torrentRlsYear returns the release year parsed from the torrent name.
+// Returns 0 when no year could be parsed; the evaluator treats 0 as unknown (no match).
+func torrentRlsYear(t qbt.Torrent, ctx *EvalContext) int64 {
+	return int64(parsedTorrentRelease(t, ctx).Year)
+}
+
 func joinUpperSortedUnique(slice []string) string {
 	if len(slice) == 0 {
 		return ""

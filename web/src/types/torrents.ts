@@ -182,6 +182,12 @@ export interface TrackerTransferStats {
   count: number
 }
 
+/**
+ * Sidebar count groups returned with a torrent list response.
+ *
+ * Tracker keys are normalized tracker domains. qBittorrent pseudo tracker
+ * labels such as DHT, PeX, and LSD are omitted rather than folded into Unknown.
+ */
 export interface TorrentCounts {
   status: Record<string, number>
   categories: Record<string, number>
@@ -193,6 +199,10 @@ export interface TorrentCounts {
   total: number
 }
 
+/**
+ * Manual torrent filters accepted by list endpoints and stream subscriptions.
+ * Tracker filters use the same normalized domain keys as TorrentCounts.trackers.
+ */
 export interface TorrentFilters {
   status: string[]
   excludeStatus: string[]
@@ -207,13 +217,24 @@ export interface TorrentFilters {
   expr?: string
 }
 
-// InstanceMeta provides real-time instance health via SSE, reducing need for polling
+/**
+ * Real-time instance auth/decryption and connection metadata emitted on torrent
+ * stream snapshots.
+ */
 export interface InstanceMeta {
   connected: boolean
   hasDecryptionError: boolean
   recentErrors?: InstanceError[]
+  /** Normalized qBittorrent connection status, or "disabled" for inactive instances. */
+  connectionStatus?: string
 }
 
+/**
+ * Torrent list response shared by REST and stream snapshots.
+ *
+ * `preferences` is tri-state: omitted leaves existing frontend preference caches
+ * unchanged, a value replaces them, and `null` clears stale cached preferences.
+ */
 export interface TorrentResponse {
   torrents: Torrent[]
   crossInstanceTorrents?: CrossInstanceTorrent[]
@@ -226,7 +247,8 @@ export interface TorrentResponse {
   tags?: string[]
   serverState?: ServerState
   appInfo?: QBittorrentAppInfo
-  preferences?: AppPreferences
+  /** qBittorrent preferences for this instance; `null` explicitly clears cached preferences. */
+  preferences?: AppPreferences | null
   useSubcategories?: boolean
   cacheMetadata?: CacheMetadata
   hasMore?: boolean
@@ -263,13 +285,28 @@ export interface TorrentStreamMeta {
   rid?: number
   fullUpdate?: boolean
   timestamp: string
+  // lastSuccessfulSync is when the instance's data last actually updated (RFC3339).
+  // Present on stream-error frames so the UI can show how stale the retained rows are
+  // without that age resetting on every failed attempt. Omitted when unknown.
+  lastSuccessfulSync?: string
   retryInSeconds?: number
   streamKey?: string
 }
 
+// TorrentStreamDelta reconciles a delta frame's page-0 window against the previous
+// frame. The added/changed rows ride in the frame's `data.torrents` (or
+// `cross_instance_torrents`); `order` is the full page key sequence, present only
+// when membership or ordering changed (otherwise changed rows apply in place). Keys
+// are the torrent hash for single-instance streams and "<instanceId>:<hash>" for
+// cross-instance streams.
+export interface TorrentStreamDelta {
+  order?: string[]
+}
+
 export interface TorrentStreamPayload {
-  type: "init" | "update" | "stream-error" | "heartbeat"
+  type: "init" | "update" | "delta" | "stream-error" | "heartbeat"
   data?: TorrentResponse
+  delta?: TorrentStreamDelta
   meta?: TorrentStreamMeta
   error?: string
 }

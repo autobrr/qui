@@ -82,6 +82,7 @@ Frontend-specific rules live in `web/AGENTS.md`. Read that file before editing `
 - DB schema changes need SQLite + Postgres migrations, matching model/store updates, same PR.
 - Open PRs: consolidate schema work to at most one new SQLite migration and one new Postgres migration; edit draft migrations before merge.
 - API contract changes must update `internal/web/swagger` and pass `make test-openapi`.
+- New `string_pool` FK columns need a leading index in BOTH the SQLite and Postgres migrations, plus an entry in `referencedStringsInsertQuery`. Neither engine auto-indexes FK child columns and the daily string_pool GC full-scans unindexed ones (discussion #2048). `TestStringPoolFKColumnsAreIndexed` enforces this on SQLite; the Postgres index is on you.
 - Keep diffs minimal in high-churn areas: `internal/services/crossseed`, `internal/qbittorrent`, `internal/models`.
 
 ## Commits / PRs

@@ -29,6 +29,7 @@ export const CONDITION_FIELDS = {
   RLS_AUDIO: { label: "Audio (RLS)", type: "string" as const, description: "Parsed audio tags (e.g. DTS, TRUEHD, AAC)" },
   RLS_CHANNELS: { label: "Channels (RLS)", type: "string" as const, description: "Parsed audio channels (e.g. 5.1, 7.1)" },
   RLS_GROUP: { label: "Group (RLS)", type: "string" as const, description: "Parsed release group (e.g. NTb, FLUX, FraMeSToR)" },
+  RLS_YEAR: { label: "Year (RLS)", type: "integer" as const, description: "Year parsed from the torrent name (e.g. 2021). Best for movies and dated releases; most TV episodes (e.g. S14E05) have no year and never match any comparison operator (the NOT toggle inverts that, so it matches yearless releases)." },
   STATE: { label: "State", type: "state" as const, description: "Torrent status (matches sidebar filters)" },
   TRACKER: { label: "Tracker", type: "string" as const, description: "Primary tracker (URL, domain, or display name)" },
   TRACKER_STATUS: { label: "Tracker status", type: "trackerStatus" as const, description: "Per-tracker announce status (matches if any tracker matches)" },
@@ -249,7 +250,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Release",
-    fields: ["CONTENT_TYPE", "EFFECTIVE_NAME", "RLS_SOURCE", "RLS_RESOLUTION", "RLS_CODEC", "RLS_HDR", "RLS_AUDIO", "RLS_CHANNELS", "RLS_GROUP"],
+    fields: ["CONTENT_TYPE", "EFFECTIVE_NAME", "RLS_SOURCE", "RLS_RESOLUTION", "RLS_CODEC", "RLS_HDR", "RLS_AUDIO", "RLS_CHANNELS", "RLS_GROUP", "RLS_YEAR"],
   },
   {
     label: "Grouping",

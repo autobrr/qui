@@ -57,6 +57,130 @@ func TestStreamManagerHandleSyncErrorPublishesErrorEvent(t *testing.T) {
 	require.Contains(t, payload.Err, "sync failed")
 }
 
+func TestStreamManagerHandleSyncErrorStampsLastSuccessfulSync(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	// Source the last good sync from a fixed point well in the past so the test can
+	// prove the error meta reports when data was last fresh, not when the failure
+	// happened. That distinction is the whole point of issue #2052's staleness badge.
+	lastGood := time.Now().Add(-90 * time.Second)
+	manager.lastSuccessfulSyncFn = func(_ context.Context, _ int) time.Time {
+		return lastGood
+	}
+
+	sub := &subscriptionState{
+		id:      "subscription-stale",
+		options: StreamOptions{InstanceID: 42},
+		created: time.Now(),
+	}
+	manager.subscriptions[sub.id] = sub
+	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
+		sub.id: sub,
+	}
+
+	manager.HandleSyncError(sub.options.InstanceID, errors.New("sync failed"))
+
+	require.Eventually(t, func() bool {
+		return len(provider.messagesFor(sub.id)) == 1
+	}, time.Second, 5*time.Millisecond, "expected a single broadcast message")
+
+	payload := decodeStreamPayload(t, provider.messagesFor(sub.id)[0])
+	require.Equal(t, streamEventError, payload.Type)
+	require.NotNil(t, payload.Meta.LastSuccessfulSync, "error meta must carry the last successful sync time")
+	require.WithinDuration(t, lastGood, *payload.Meta.LastSuccessfulSync, time.Second)
+	// It must reflect the last good sync, not "now" when the failure fired, otherwise
+	// the staleness badge would reset on every failed attempt.
+	require.True(t, payload.Meta.LastSuccessfulSync.Before(time.Now().Add(-30*time.Second)),
+		"last successful sync must not advance on a failed attempt")
+}
+
+func TestStreamManagerHandleSyncErrorResolvesStampOffCallbackGoroutine(t *testing.T) {
+	// Regression for a self-deadlock: HandleSyncError used to resolve the staleness
+	// stamp synchronously. go-qbittorrent invokes OnError while holding its SyncManager
+	// write lock, and the stamp reads LastSuccessfulSyncTime() which takes that same
+	// non-reentrant lock — wedging the sync loop and starving every cached reader
+	// (e.g. GET /api/instances). The stamp must be resolved on a fresh goroutine, so
+	// HandleSyncError must return without waiting on lastSuccessfulSyncFn.
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	stampStarted := make(chan struct{})
+	releaseStamp := make(chan struct{})
+	manager.lastSuccessfulSyncFn = func(_ context.Context, _ int) time.Time {
+		close(stampStarted)
+		<-releaseStamp
+		return time.Time{}
+	}
+
+	sub := &subscriptionState{
+		id:      "subscription-async-stamp",
+		options: StreamOptions{InstanceID: 42},
+		created: time.Now(),
+	}
+	manager.subscriptions[sub.id] = sub
+	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
+		sub.id: sub,
+	}
+
+	returned := make(chan struct{})
+	go func() {
+		manager.HandleSyncError(sub.options.InstanceID, errors.New("sync failed"))
+		close(returned)
+	}()
+
+	// The stamp must run on a separate goroutine...
+	select {
+	case <-stampStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("lastSuccessfulSyncFn was never invoked")
+	}
+
+	// ...and HandleSyncError must have already returned to the (lock-holding) sync
+	// loop even though the stamp is still in flight. If the stamp were resolved
+	// synchronously, HandleSyncError would block here on releaseStamp.
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("HandleSyncError blocked on the staleness stamp; it must resolve it off the sync-loop callback goroutine")
+	}
+
+	close(releaseStamp)
+
+	require.Eventually(t, func() bool {
+		return len(provider.messagesFor(sub.id)) == 1
+	}, time.Second, 5*time.Millisecond, "error frame should still be published once the stamp resolves")
+}
+
+func TestStreamManagerHandleSyncErrorOmitsLastSuccessfulSyncWhenUnknown(t *testing.T) {
+	// A nil client pool means the default source cannot resolve a sync time, so the
+	// field must be omitted rather than serialized as the time.Time zero value.
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	sub := &subscriptionState{
+		id:      "subscription-unknown",
+		options: StreamOptions{InstanceID: 7},
+		created: time.Now(),
+	}
+	manager.subscriptions[sub.id] = sub
+	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
+		sub.id: sub,
+	}
+
+	manager.HandleSyncError(sub.options.InstanceID, errors.New("boom"))
+
+	require.Eventually(t, func() bool {
+		return len(provider.messagesFor(sub.id)) == 1
+	}, time.Second, 5*time.Millisecond, "expected a single broadcast message")
+
+	payload := decodeStreamPayload(t, provider.messagesFor(sub.id)[0])
+	require.Nil(t, payload.Meta.LastSuccessfulSync, "no resolvable client means the field must be omitted")
+}
+
 func TestStreamManagerHandleSyncErrorWithoutSubscribers(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil)
 	provider := newRecordingProvider()
@@ -592,7 +716,6 @@ func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
 	// First enqueue sets hasPending and sends
 	group.mu.Lock()
 	group.pendingMeta = &StreamMeta{InstanceID: 1, Timestamp: time.Now()}
-	group.pendingType = streamEventUpdate
 	group.hasPending = true
 	group.sending = true // Simulate that processGroup is already running
 	group.mu.Unlock()
@@ -601,7 +724,6 @@ func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
 	newMeta := &StreamMeta{InstanceID: 1, Timestamp: time.Now().Add(time.Second)}
 	group.mu.Lock()
 	group.pendingMeta = newMeta
-	group.pendingType = streamEventUpdate
 	group.hasPending = true
 	// sending stays true - no new goroutine needed
 	group.mu.Unlock()
@@ -610,7 +732,6 @@ func TestStreamManager_ProcessGroupCoalescing(t *testing.T) {
 	finalMeta := &StreamMeta{InstanceID: 1, Timestamp: time.Now().Add(2 * time.Second)}
 	group.mu.Lock()
 	group.pendingMeta = finalMeta
-	group.pendingType = streamEventUpdate
 	group.hasPending = true
 	group.mu.Unlock()
 
@@ -769,6 +890,30 @@ func TestHandleSyncError_NilError(t *testing.T) {
 
 	messages := provider.allMessages()
 	require.Empty(t, messages, "nil error should not produce any messages")
+}
+
+func TestIsContextStopped(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "canceled sentinel", err: context.Canceled, want: true},
+		{name: "deadline sentinel", err: context.DeadlineExceeded, want: true},
+		{name: "wrapped canceled text", err: errors.New("All attempts fail: context canceled"), want: true},
+		{name: "wrapped deadline text", err: errors.New("All attempts fail: context deadline exceeded"), want: true},
+		{name: "real error", err: errors.New("connection refused"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, isContextStopped(tt.err))
+		})
+	}
 }
 
 func TestParseStreamRequests_EmptyStreamsParam(t *testing.T) {

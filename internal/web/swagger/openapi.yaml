@@ -1384,6 +1384,10 @@ paths:
                     type: integer
                   limit:
                     type: integer
+                  preferences:
+                    type: object
+                    nullable: true
+                    description: qBittorrent preferences when available; null means a fresh preference fetch failed without a cached value; omitted means no preference update is available for this response.
     post:
       tags:
         - Torrents
@@ -4451,6 +4455,20 @@ paths:
         '204':
           description: No update available - current version is latest
 
+  /api/version:
+    get:
+      tags:
+        - System
+      summary: Get current running version
+      description: Returns the version qui is currently running, along with whether a newer release is available. Useful for monitoring tools (e.g. Argus) that track the deployed version of a service.
+      responses:
+        '200':
+          description: Current version information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
+
   /api/instances/{instanceID}/backups/import:
     post:
       tags:
@@ -5719,6 +5737,14 @@ components:
         hasDecryptionError:
           type: boolean
           description: Whether there's a password decryption error
+        recentErrors:
+          type: array
+          description: Recent connection/auth/decryption errors for this instance.
+          items:
+            $ref: '#/components/schemas/InstanceError'
+        connectionStatus:
+          type: string
+          description: Normalized qBittorrent connection status from cached server state, or `disabled` for inactive instances.
         tlsSkipVerify:
           type: boolean
           description: When true, TLS certificate errors from the upstream qBittorrent instance are ignored.
@@ -5745,6 +5771,37 @@ components:
           type: integer
           description: Display order preference for the instance.
 
+
+    InstanceError:
+      type: object
+      properties:
+        id:
+          type: integer
+        instanceId:
+          type: integer
+        errorType:
+          type: string
+        errorMessage:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+
+    InstanceMeta:
+      type: object
+      description: Real-time instance auth/decryption and connection metadata emitted with torrent stream snapshots.
+      properties:
+        connected:
+          type: boolean
+        hasDecryptionError:
+          type: boolean
+        recentErrors:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstanceError'
+        connectionStatus:
+          type: string
+          description: Normalized qBittorrent connection status from cached server state, or `disabled` for inactive instances.
 
     InstanceCapabilities:
       type: object
@@ -6163,6 +6220,26 @@ components:
           format: date-time
           description: When the release was published
           example: "2025-09-23T10:30:00Z"
+
+    VersionResponse:
+      type: object
+      description: The version qui is currently running and whether a newer release is available
+      required:
+        - version
+        - updateAvailable
+      properties:
+        version:
+          type: string
+          description: The version qui is currently running
+          example: "v1.2.3"
+        latestVersion:
+          type: string
+          description: The latest available release tag. Present only when a newer release than the running version has been detected.
+          example: "v1.3.0"
+        updateAvailable:
+          type: boolean
+          description: Whether a newer release than the running version is available
+          example: true
 
     QBittorrentBuildInfo:
       type: object
