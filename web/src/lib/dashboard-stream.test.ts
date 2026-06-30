@@ -9,10 +9,13 @@ import {
   DASHBOARD_STATS_FALLBACK_ORDER,
   DASHBOARD_STATS_FALLBACK_SORT,
   createDashboardStatsFallbackQueryKey,
+  hasDashboardStatsPayload,
   mergeDashboardInstanceMeta,
   mergeDashboardStatsSnapshot,
+  resolveDashboardDataStatusKind,
   resolveDashboardStreamError,
-  resolveDashboardTorrentCounts
+  resolveDashboardTorrentCounts,
+  shouldUseDashboardStatsFallback
 } from "@/lib/dashboard-stream"
 import type { InstanceResponse, TorrentCounts } from "@/types"
 
@@ -94,6 +97,31 @@ describe("resolveDashboardTorrentCounts", () => {
   })
 })
 
+describe("shouldUseDashboardStatsFallback", () => {
+  it("keeps fallback active when the stream is connected but has no fresh stream stats yet", () => {
+    expect(shouldUseDashboardStatsFallback(true, false)).toBe(true)
+  })
+
+  it("keeps fallback active after reconnect even when cached stats exist", () => {
+    const cachedData = {
+      stats: { totalDownloadSpeed: 1 },
+    }
+
+    expect(hasDashboardStatsPayload(cachedData)).toBe(true)
+    expect(shouldUseDashboardStatsFallback(true, false)).toBe(true)
+  })
+
+  it("uses live stream data once a fresh connected payload exists", () => {
+    expect(shouldUseDashboardStatsFallback(true, true)).toBe(false)
+  })
+
+  it("treats counts-only snapshots as usable dashboard data", () => {
+    expect(hasDashboardStatsPayload({
+      counts: makeCounts(),
+    })).toBe(true)
+  })
+})
+
 describe("resolveDashboardStreamError", () => {
   it("clears stale stream errors after fallback data succeeds", () => {
     expect(resolveDashboardStreamError("stream down", true, { torrents: [], total: 0 })).toBeNull()
@@ -105,6 +133,48 @@ describe("resolveDashboardStreamError", () => {
 
   it("keeps stream errors while the stream is active", () => {
     expect(resolveDashboardStreamError("stream down", false, { torrents: [], total: 0 })).toBe("stream down")
+  })
+})
+
+describe("resolveDashboardDataStatusKind", () => {
+  it("reports fallback before live when fallback data is active on a connected stream", () => {
+    expect(resolveDashboardDataStatusKind({
+      streamError: null,
+      fallbackActive: true,
+      cacheMetadata: null,
+      isFirstLoad: false,
+      streamConnected: true,
+    })).toBe("fallback")
+  })
+
+  it("reports cached before live when fallback-active data came from cache", () => {
+    expect(resolveDashboardDataStatusKind({
+      streamError: null,
+      fallbackActive: true,
+      cacheMetadata: { source: "cache", age: 0, isStale: false },
+      isFirstLoad: false,
+      streamConnected: true,
+    })).toBe("cached")
+  })
+
+  it("keeps initial fallback-active no-data state from reporting live", () => {
+    expect(resolveDashboardDataStatusKind({
+      streamError: null,
+      fallbackActive: true,
+      cacheMetadata: null,
+      isFirstLoad: true,
+      streamConnected: true,
+    })).toBeNull()
+  })
+
+  it("reports live when connected and no fallback data is active", () => {
+    expect(resolveDashboardDataStatusKind({
+      streamError: null,
+      fallbackActive: false,
+      cacheMetadata: null,
+      isFirstLoad: false,
+      streamConnected: true,
+    })).toBe("live")
   })
 })
 
