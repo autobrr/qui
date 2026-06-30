@@ -157,6 +157,16 @@ describe("resolveDashboardDataStatusKind", () => {
     })).toBe("cached")
   })
 
+  it("keeps initial fallback-active no-data state from reporting live", () => {
+    expect(resolveDashboardDataStatusKind({
+      streamError: null,
+      fallbackActive: true,
+      cacheMetadata: null,
+      isFirstLoad: true,
+      streamConnected: true,
+    })).toBeNull()
+  })
+
   it("reports live when connected and no fallback data is active", () => {
     expect(resolveDashboardDataStatusKind({
       streamError: null,

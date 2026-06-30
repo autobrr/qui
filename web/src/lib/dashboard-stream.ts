@@ -79,6 +79,7 @@ export function resolveDashboardDataStatusKind({
     if (!isFirstLoad) {
       return "fallback"
     }
+    return null
   }
 
   if (streamConnected) {
