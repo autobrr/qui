@@ -36,6 +36,7 @@ func TestApplyUmask(t *testing.T) {
 		{name: "empty value leaves umask unchanged", set: true, value: "", baseline: 0o027, want: 0o027},
 		{name: "invalid value leaves umask unchanged", set: true, value: "notoctal", baseline: 0o027, want: 0o027},
 		{name: "non-octal digits leave umask unchanged", set: true, value: "099", baseline: 0o027, want: 0o027},
+		{name: "out-of-range value leaves umask unchanged", set: true, value: "1000", baseline: 0o027, want: 0o027},
 	}
 
 	for _, tt := range tests {

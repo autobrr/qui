@@ -36,6 +36,10 @@ func applyUmask() {
 		log.Warn().Str("umask", v).Err(err).Msg("ignoring invalid UMASK (expected octal, e.g. 002)")
 		return
 	}
+	if mask > 0o777 {
+		log.Warn().Str("umask", v).Msg("ignoring out-of-range UMASK (expected octal 000-777)")
+		return
+	}
 
 	syscall.Umask(int(mask))
 	log.Debug().Str("umask", v).Msg("applied process umask from UMASK environment variable")

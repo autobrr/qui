@@ -554,6 +554,32 @@ func applyConnectionPragmas(ctx context.Context, exec pragmaExecFn, readOnly boo
 	return nil
 }
 
+// secureDatabaseFiles makes the SQLite database and its WAL/SHM sidecars
+// owner-only (0o600) so a content-sharing process umask (see discussion #1704)
+// cannot expose the encrypted credentials and API keys they hold. The main file
+// is created 0o600 before SQLite opens it; SQLite then propagates that mode to
+// the -wal/-shm files it creates. Pre-existing files (e.g. from an older install
+// or a prior crash) are tightened too. On Windows os.Chmod only toggles the
+// read-only bit, but privacy there is governed by ACLs rather than umask.
+func secureDatabaseFiles(databasePath string) error {
+	f, err := os.OpenFile(databasePath, os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("failed to create database file %s: %w", databasePath, err)
+	}
+	_ = f.Close()
+
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		p := databasePath + suffix
+		if _, statErr := os.Stat(p); statErr != nil {
+			continue
+		}
+		if err := os.Chmod(p, 0o600); err != nil {
+			return fmt.Errorf("failed to secure database file %s: %w", p, err)
+		}
+	}
+	return nil
+}
+
 func New(databasePath string) (*DB, error) {
 	log.Info().Msgf("Initializing database at: %s", databasePath)
 
@@ -565,6 +591,10 @@ func New(databasePath string) (*DB, error) {
 		return nil, fmt.Errorf("failed to create database directory %s: %w", dir, err)
 	}
 	log.Debug().Msgf("Database directory ensured: %s", dir)
+
+	if err := secureDatabaseFiles(databasePath); err != nil {
+		return nil, err
+	}
 
 	registerConnectionHook()
 
