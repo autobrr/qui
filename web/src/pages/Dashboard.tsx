@@ -49,10 +49,13 @@ import {
   DASHBOARD_STATS_FALLBACK_ORDER,
   DASHBOARD_STATS_FALLBACK_SORT,
   createDashboardStatsFallbackQueryKey,
+  hasDashboardStatsPayload,
+  resolveDashboardDataStatusKind,
   mergeDashboardInstanceMeta,
   mergeDashboardStatsSnapshot,
   resolveDashboardStreamError,
-  resolveDashboardTorrentCounts
+  resolveDashboardTorrentCounts,
+  shouldUseDashboardStatsFallback
 } from "@/lib/dashboard-stream"
 import { copyTextToClipboard, formatBytes, formatDuration, getRatioColor } from "@/lib/utils"
 import type {
@@ -104,6 +107,8 @@ interface DashboardInstanceStats {
   error: unknown
   streamConnected: boolean
   streamError: string | null
+  hasLiveDashboardStatsPayload: boolean
+  isDashboardStatsFallbackActive: boolean
   cacheMetadata: CacheMetadata | null | undefined
   instanceMeta: InstanceMeta | null  // Real-time instance health from SSE
 }
@@ -118,6 +123,7 @@ type InstanceStreamData = {
   error: unknown
   streamConnected: boolean
   streamError: string | null
+  hasLiveDashboardStatsPayload: boolean
   cacheMetadata: CacheMetadata | null | undefined
   instanceMeta: InstanceMeta | null  // Real-time instance health from SSE
 }
@@ -132,6 +138,7 @@ const createDefaultInstanceStreamData = (): InstanceStreamData => ({
   error: null,
   streamConnected: false,
   streamError: null,
+  hasLiveDashboardStatsPayload: false,
   cacheMetadata: null,
   instanceMeta: null,
 })
@@ -178,7 +185,7 @@ function recordsShallowEqual(
 }
 
 function hasDashboardInstanceData(data: InstanceStreamData | null | undefined) {
-  return Boolean(data?.stats || data?.serverState || data?.torrentCounts)
+  return hasDashboardStatsPayload(data)
 }
 
 function instanceStreamDataFromResponse(
@@ -199,6 +206,7 @@ function instanceStreamDataFromResponse(
     error: null,
     streamConnected: current?.streamConnected ?? false,
     streamError: current?.streamError ?? null,
+    hasLiveDashboardStatsPayload: current?.hasLiveDashboardStatsPayload ?? false,
     cacheMetadata: response.cacheMetadata ?? current?.cacheMetadata ?? null,
     instanceMeta: response.instanceMeta ?? current?.instanceMeta ?? null,
   }
@@ -224,6 +232,7 @@ function mergeCachedInstanceData(
     altSpeedEnabled: current.serverState?.use_alt_speed_limits ?? cached.serverState?.use_alt_speed_limits ?? current.altSpeedEnabled,
     isLoading: current.isLoading && !hasDashboardInstanceData(cached),
     error: current.error,
+    hasLiveDashboardStatsPayload: current.hasLiveDashboardStatsPayload,
     cacheMetadata: current.cacheMetadata ?? cached.cacheMetadata,
     instanceMeta: current.instanceMeta ?? cached.instanceMeta,
   }
@@ -235,6 +244,7 @@ function mergeCachedInstanceData(
     next.appInfo === current.appInfo &&
     next.altSpeedEnabled === current.altSpeedEnabled &&
     next.isLoading === current.isLoading &&
+    next.hasLiveDashboardStatsPayload === current.hasLiveDashboardStatsPayload &&
     next.cacheMetadata === current.cacheMetadata &&
     next.instanceMeta === current.instanceMeta
   ) {
@@ -335,7 +345,10 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
   const fallbackQueries = useQueries({
     queries: instances.map(instance => {
       const streamState = instanceData[instance.id] ?? latestDataRef.current[instance.id]
-      const fallbackEnabled = streamEnabled && (!streamState || !streamState.streamConnected)
+      const fallbackEnabled = streamEnabled && shouldUseDashboardStatsFallback(
+        streamState?.streamConnected ?? false,
+        streamState?.hasLiveDashboardStatsPayload ?? false
+      )
 
       return {
         // Independent lightweight (limit:1) probe used only to keep dashboard stats
@@ -514,6 +527,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
                   error: payload.error ?? current.error,
                   streamError: payload.error ?? current.streamError,
                   streamConnected: false,
+                  hasLiveDashboardStatsPayload: false,
                   instanceMeta: null,
                 },
                 immediate: true,
@@ -527,6 +541,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
           }
 
           const data = payload.data
+          const hasLiveDashboardStatsPayload = hasDashboardStatsPayload(data)
           queryClient.setQueryData<TorrentResponse | undefined>(
             createDashboardStatsFallbackQueryKey(instance.id),
             current => mergeDashboardStatsSnapshot(data, current)
@@ -546,6 +561,7 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
               error: null,
               streamConnected: true,
               streamError: null,
+              hasLiveDashboardStatsPayload: current.hasLiveDashboardStatsPayload || hasLiveDashboardStatsPayload,
               cacheMetadata: data.cacheMetadata ?? current.cacheMetadata,
               instanceMeta: data.instanceMeta ?? current.instanceMeta,
             }
@@ -567,6 +583,9 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
               ...current,
               streamConnected: snapshot.connected,
               streamError: snapshot.error ?? (snapshot.connected ? null : current.streamError),
+              hasLiveDashboardStatsPayload: snapshot.connected &&
+                !snapshot.error &&
+                current.hasLiveDashboardStatsPayload,
             }
 
             if (snapshot.error) {
@@ -591,6 +610,9 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
               ...current,
               streamConnected: initialSnapshot.connected,
               streamError: initialSnapshot.error ?? current.streamError,
+              hasLiveDashboardStatsPayload: initialSnapshot.connected &&
+                !initialSnapshot.error &&
+                current.hasLiveDashboardStatsPayload,
             }
 
             if (initialSnapshot.error) {
@@ -644,7 +666,10 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       createDefaultInstanceStreamData()
     const fallbackQuery = fallbackQueries[index]
     const fallbackData = fallbackQuery?.data as TorrentResponse | undefined
-    const isFallbackActive = !state.streamConnected
+    const isFallbackActive = shouldUseDashboardStatsFallback(
+      state.streamConnected,
+      state.hasLiveDashboardStatsPayload
+    )
 
     const stats = isFallbackActive ? (fallbackData?.stats ?? state.stats) : state.stats
     const serverState = isFallbackActive ? (fallbackData?.serverState ?? state.serverState) : state.serverState
@@ -680,6 +705,8 @@ function useAllInstanceStats(instances: InstanceResponse[], options: { enabled: 
       error,
       streamConnected: state.streamConnected,
       streamError: resolveDashboardStreamError(state.streamError, isFallbackActive, fallbackData),
+      hasLiveDashboardStatsPayload: state.hasLiveDashboardStatsPayload,
+      isDashboardStatsFallbackActive: isFallbackActive,
       cacheMetadata,
       instanceMeta: state.instanceMeta,
     }
@@ -708,6 +735,7 @@ function InstanceCard({
     error,
     streamConnected,
     streamError,
+    isDashboardStatsFallbackActive,
     cacheMetadata,
   } = instanceData
   const [showSpeedLimitDialog, setShowSpeedLimitDialog] = useState(false)
@@ -763,40 +791,42 @@ function InstanceCard({
   const listenPort = preferences?.listen_port
   const connectionStatusTooltip = connectionStatusDisplay ? `${isConnectable ? t("instanceCard.connectable") : connectionStatusDisplay}${listenPort ? t("instanceCard.portInfo", { port: listenPort }) : ""}` : ""
 
+  const dashboardDataStatusKind = resolveDashboardDataStatusKind({
+    streamError,
+    fallbackActive: isDashboardStatsFallbackActive,
+    cacheMetadata,
+    isFirstLoad,
+    streamConnected,
+  })
   const dashboardDataStatus = (() => {
-    if (streamError) {
-      return {
-        Icon: AlertCircle,
-        iconClassName: "text-destructive",
-        tooltip: t("instanceCard.streamStatus.error"),
-      }
+    switch (dashboardDataStatusKind) {
+      case "error":
+        return {
+          Icon: AlertCircle,
+          iconClassName: "text-destructive",
+          tooltip: t("instanceCard.streamStatus.error"),
+        }
+      case "cached":
+        return {
+          Icon: Database,
+          iconClassName: cacheMetadata?.isStale ? "text-amber-500" : "text-blue-500",
+          tooltip: t("instanceCard.streamStatus.cached"),
+        }
+      case "fallback":
+        return {
+          Icon: RefreshCcw,
+          iconClassName: "text-muted-foreground",
+          tooltip: t("instanceCard.streamStatus.fallback"),
+        }
+      case "live":
+        return {
+          Icon: Zap,
+          iconClassName: "text-green-500",
+          tooltip: t("instanceCard.streamStatus.live"),
+        }
+      default:
+        return null
     }
-
-    if (streamConnected) {
-      return {
-        Icon: Zap,
-        iconClassName: "text-green-500",
-        tooltip: t("instanceCard.streamStatus.live"),
-      }
-    }
-
-    if (cacheMetadata?.source === "cache") {
-      return {
-        Icon: Database,
-        iconClassName: cacheMetadata.isStale ? "text-amber-500" : "text-blue-500",
-        tooltip: t("instanceCard.streamStatus.cached"),
-      }
-    }
-
-    if (!isFirstLoad) {
-      return {
-        Icon: RefreshCcw,
-        iconClassName: "text-muted-foreground",
-        tooltip: t("instanceCard.streamStatus.fallback"),
-      }
-    }
-
-    return null
   })()
   const DashboardDataStatusIcon = dashboardDataStatus?.Icon
 
