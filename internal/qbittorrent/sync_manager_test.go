@@ -9,11 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -2159,4 +2162,46 @@ func TestCompareByStateThenName(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGetCrossInstanceTorrents_UnreachableInstancePreservesReachableAsPartial verifies
+// that when one instance is unreachable and burns the shared aggregation deadline, the
+// unified view degrades to a partial result instead of returning a hard error that blanks
+// the whole table (discussion #2096).
+func TestGetCrossInstanceTorrents_UnreachableInstancePreservesReachableAsPartial(t *testing.T) {
+	// A blocking qBittorrent endpoint: accepts the connection but never responds,
+	// so the health check blocks until the caller's context deadline expires.
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	// inst1 has the lower ID, so the deterministic ID-ascending loop processes it
+	// first; inst2 must never be contacted once inst1 consumes the shared deadline.
+	inst1, err := pool.instanceStore.Create(ctx, "offline", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	_, err = pool.instanceStore.Create(ctx, "other", "http://192.0.2.2:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	// Pre-seed inst1 as an existing, unhealthy client pointed at the blocking server.
+	// GetClient takes the exists-&&-unhealthy branch -> HealthCheck -> GetWebAPIVersionCtx,
+	// which blocks until our short deadline fires.
+	pool.mu.Lock()
+	pool.clients[inst1.ID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: inst1.ID}
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	callCtx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancel()
+
+	resp, err := sm.GetCrossInstanceTorrentsWithFilters(callCtx, 0, 0, "", "", "", FilterOptions{}, nil)
+
+	require.NoError(t, err, "unreachable instance must not fail the whole aggregate")
+	require.NotNil(t, resp)
+	assert.True(t, resp.PartialResults, "expected partial results when one instance is unreachable")
 }

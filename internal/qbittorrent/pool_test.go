@@ -4,8 +4,10 @@
 package qbittorrent
 
 import (
+	"context"
 	"errors"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
@@ -173,6 +175,34 @@ func TestClientPool_ResetFailureTracking(t *testing.T) {
 	pool.mu.RUnlock()
 
 	assert.False(t, exists, "Failure info should be cleared after reset")
+}
+
+// TestClientPool_GetClientWithTimeout_UnhealthyInBackoffFastFails verifies that an
+// existing but unhealthy client already in backoff fast-fails instead of running a
+// live HealthCheck that would block on the unreachable host every call (discussion #2096).
+func TestClientPool_GetClientWithTimeout_UnhealthyInBackoffFastFails(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	const instanceID = 1
+
+	// Existing but unhealthy client (zero-value isHealthy == false).
+	pool.mu.Lock()
+	pool.clients[instanceID] = &Client{instanceID: instanceID}
+	pool.mu.Unlock()
+
+	// Drive the instance into failure backoff.
+	pool.trackFailure(instanceID, errors.New("connection refused"))
+	require.True(t, pool.isInBackoff(instanceID), "instance should be in backoff")
+
+	start := time.Now()
+	client, err := pool.GetClientWithTimeout(context.Background(), instanceID, 60*time.Second)
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	require.Nil(t, client)
+	assert.Contains(t, err.Error(), "backoff period", "backed-off unhealthy client should return the backoff error, not attempt a health check")
+	assert.Less(t, elapsed, time.Second, "backoff fast-path must not perform a network health check")
 }
 
 func TestClientPool_IsBanError(t *testing.T) {

@@ -2034,9 +2034,13 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 			}
 		}
 
-		// Check for context cancellation before each network call
+		// If the shared deadline fired mid-aggregation (typically because an
+		// earlier, unreachable instance burned the budget), return what the
+		// reachable instances already gave us instead of discarding everything
+		// and blanking the whole unified view. See discussion #2096.
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			partialResults = true
+			break
 		}
 
 		instanceResponse, err := sm.GetTorrentsWithFilters(ctx, instance.ID, 0, 0, "", "", search, filters)
@@ -2048,11 +2052,6 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 				Msg("Failed to get torrents from instance for cross-instance filtering")
 			partialResults = true
 			continue
-		}
-
-		// Check for context cancellation after potentially blocking call
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
 		}
 
 		// Convert TorrentView to CrossInstanceTorrentView

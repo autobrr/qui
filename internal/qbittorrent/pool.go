@@ -222,11 +222,23 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 			return client, nil
 		}
 
+		// An unhealthy client that is already in failure backoff must not be
+		// re-probed on every call. A fully-unreachable instance otherwise blocks
+		// each caller (SSE materialize, unified view) on a live HealthCheck until
+		// the context deadline, on every refresh. Fast-fail like the create path
+		// below does. See discussion #2096.
+		if cp.isInBackoff(instanceID) {
+			return nil, fmt.Errorf("instance %d is in backoff period, will retry later", instanceID)
+		}
+
 		if err := client.HealthCheck(ctx); err != nil {
-			// Healthcheck failed, just return nil
+			// Record the failure so subsequent callers hit the backoff fast-path
+			// above instead of re-blocking on the unreachable host.
+			cp.trackFailure(instanceID, err)
 			return nil, errors.Wrap(err, "client healthcheck failed")
 		}
-		// Healthcheck succeeded, return client
+		// Healthcheck succeeded, clear backoff and return client
+		cp.ResetFailureTracking(instanceID)
 		return client, nil
 	}
 	// Only create client if it does not exist
