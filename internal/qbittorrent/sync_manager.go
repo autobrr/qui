@@ -2086,6 +2086,13 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		totalCount += len(instanceResponse.Torrents)
 	}
 
+	// The last/only instance can return cached data without observing a
+	// cancellation that landed mid-fetch, so the in-loop checks above miss it.
+	// Surface it here rather than returning a success the gone caller can't use.
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return nil, ctx.Err()
+	}
+
 	// Apply sorting if specified - always use deterministic secondary sort
 	if sort != "" {
 		sm.sortCrossInstanceTorrents(allTorrents, sort, order == "desc")
