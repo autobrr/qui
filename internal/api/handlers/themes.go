@@ -6,6 +6,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -106,13 +107,8 @@ func (h *ThemesHandler) ListCustomThemes(w http.ResponseWriter, r *http.Request)
 		if !strings.EqualFold(filepath.Ext(name), ".css") {
 			continue
 		}
-		info, err := entry.Info()
-		if err != nil || info.Size() > maxCustomThemeFileSize {
-			continue
-		}
-		css, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			log.Warn().Err(err).Str("file", name).Msg("Failed to read custom theme file")
+		css, ok := readCustomThemeCSS(filepath.Join(dir, name))
+		if !ok {
 			continue
 		}
 		themes = append(themes, CustomTheme{
@@ -123,4 +119,20 @@ func (h *ThemesHandler) ListCustomThemes(w http.ResponseWriter, r *http.Request)
 	}
 
 	RespondJSON(w, http.StatusOK, CustomThemesResponse{Directory: dir, Themes: themes})
+}
+
+func readCustomThemeCSS(path string) ([]byte, bool) {
+	file, err := os.Open(path)
+	if err != nil {
+		log.Warn().Err(err).Str("file", path).Msg("Failed to open custom theme file")
+		return nil, false
+	}
+	defer file.Close()
+
+	css, err := io.ReadAll(io.LimitReader(file, maxCustomThemeFileSize+1))
+	if err != nil || int64(len(css)) > maxCustomThemeFileSize {
+		return nil, false
+	}
+
+	return css, true
 }

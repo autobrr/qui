@@ -117,6 +117,17 @@ func TestThemesHandler_SkipsOversizeFiles(t *testing.T) {
 	require.Equal(t, "small.css", resp.Themes[0].Filename)
 }
 
+func TestReadCustomThemeCSSRejectsOversizeFiles(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "huge.css")
+	big := make([]byte, maxCustomThemeFileSize+1)
+	require.NoError(t, os.WriteFile(path, big, 0o600))
+
+	css, ok := readCustomThemeCSS(path)
+
+	require.False(t, ok)
+	require.Nil(t, css)
+}
+
 func TestThemesHandler_CapsFileCount(t *testing.T) {
 	dir := t.TempDir()
 	for i := range maxCustomThemeFiles + 10 {

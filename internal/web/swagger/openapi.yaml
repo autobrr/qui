@@ -2989,7 +2989,7 @@ paths:
       description: List sideloaded custom theme CSS files and their contents. Requires premium access.
       responses:
         '200':
-          description: Custom themes listed successfully
+          description: Custom themes listed successfully. If the custom themes directory cannot be prepared, the response still succeeds with the resolved directory and an empty themes array.
           content:
             application/json:
               schema:
@@ -3011,7 +3011,7 @@ paths:
         '403':
           description: Premium access required
         '500':
-          description: Failed to list custom themes
+          description: Failed to check premium access or read the custom themes directory
 
   /api/torrents/cross-instance:
     get:
