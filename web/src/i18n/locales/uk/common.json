@@ -132,7 +132,8 @@
     "switchedToThemeVariation": "Перемкнуто на тему {{theme}} ({{variation}})",
     "unableToVerifyLicense": "Не вдалося перевірити ліцензію",
     "licenseCheckFailed": "Перевірка ліцензії не вдалася. Перемикання преміум тем тимчасово недоступне.",
-    "premiumThemeError": "Це преміум тема. Відкрийте Налаштування → Теми для активації ліцензії."
+    "premiumThemeError": "Це преміум тема. Відкрийте Налаштування → Теми для активації ліцензії.",
+    "custom": "Власна"
   },
   "updateBanner": {
     "updateAvailable": "Доступне оновлення",

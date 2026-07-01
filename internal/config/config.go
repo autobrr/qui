@@ -122,6 +122,7 @@ func (c *AppConfig) defaults() {
 	c.viper.SetDefault("databaseConnMaxLifetime", 300)
 	c.viper.SetDefault("checkForUpdates", true)
 	c.viper.SetDefault("trackerIconsFetchEnabled", true)
+	c.viper.SetDefault("customThemesDir", "") // Empty means <config-dir>/themes
 	c.viper.SetDefault("crossSeedRecoverErroredTorrents", false)
 	c.viper.SetDefault("pprofEnabled", false)
 	c.viper.SetDefault("pprofAddr", "127.0.0.1:6060")
@@ -226,6 +227,7 @@ func (c *AppConfig) loadFromEnv() {
 	c.viper.BindEnv("databaseConnMaxLifetime", envPrefix+"DATABASE_CONN_MAX_LIFETIME")
 	c.viper.BindEnv("checkForUpdates", envPrefix+"CHECK_FOR_UPDATES")
 	c.viper.BindEnv("trackerIconsFetchEnabled", envPrefix+"TRACKER_ICONS_FETCH_ENABLED")
+	c.viper.BindEnv("customThemesDir", envPrefix+"CUSTOM_THEMES_DIR")
 	c.viper.BindEnv("crossSeedRecoverErroredTorrents", envPrefix+"CROSS_SEED_RECOVER_ERRORED_TORRENTS")
 	c.viper.BindEnv("pprofEnabled", envPrefix+"PPROF_ENABLED")
 	c.viper.BindEnv("pprofAddr", envPrefix+"PPROF_ADDR")
@@ -342,6 +344,7 @@ func (c *AppConfig) hydrateConfigFromViper() {
 	c.Config.DatabaseConnMaxLifetime = c.viper.GetInt("databaseConnMaxLifetime")
 	c.Config.CheckForUpdates = c.viper.GetBool("checkForUpdates")
 	c.Config.TrackerIconsFetchEnabled = c.viper.GetBool("trackerIconsFetchEnabled")
+	c.Config.CustomThemesDir = c.viper.GetString("customThemesDir")
 	c.Config.CrossSeedRecoverErroredTorrents = c.viper.GetBool("crossSeedRecoverErroredTorrents")
 	c.Config.PprofEnabled = c.viper.GetBool("pprofEnabled")
 	c.Config.PprofAddr = c.viper.GetString("pprofAddr")
@@ -498,6 +501,11 @@ sessionSecret = "{{ .sessionSecret }}"
 # Data directory (default: next to config file)
 # Database file (qui.db) will be created inside this directory
 #dataDir = "/var/db/qui"
+
+# Custom themes directory (default: <config-dir>/themes, auto-created)
+# Drop sideloaded *.css theme files here. Listing requires premium access.
+# A relative path is resolved against the config directory.
+#customThemesDir = "/config/themes"
 
 # Database engine
 # Options: "sqlite" (default), "postgres"
@@ -794,6 +802,30 @@ func (c *AppConfig) GetConfigDir() string {
 	}
 	// Fallback to default config directory when no config file is explicitly used
 	return GetDefaultConfigDir()
+}
+
+// GetCustomThemesDir returns the resolved custom themes directory.
+// Empty config defaults to <config-dir>/themes; a relative override is resolved
+// against the config directory, an absolute override is used verbatim.
+func (c *AppConfig) GetCustomThemesDir() string {
+	dir := strings.TrimSpace(c.Config.CustomThemesDir)
+	if dir == "" {
+		return filepath.Join(c.GetConfigDir(), "themes")
+	}
+	if !filepath.IsAbs(dir) {
+		return filepath.Join(c.GetConfigDir(), dir)
+	}
+	return dir
+}
+
+// EnsureCustomThemesDir resolves the custom themes directory and creates it if missing.
+// The resolved path is returned even when creation fails so callers can report it.
+func (c *AppConfig) EnsureCustomThemesDir() (string, error) {
+	dir := c.GetCustomThemesDir()
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return dir, fmt.Errorf("failed to create custom themes directory %s: %w", dir, err)
+	}
+	return dir, nil
 }
 
 // ResolveLogPath resolves a log path, making relative paths relative to the config directory.

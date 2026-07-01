@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next"
 import { MobileScrollProvider } from "@/contexts/MobileScrollContext"
 import { TorrentSelectionProvider } from "@/contexts/TorrentSelectionContext"
 import { ThemeValidator } from "@/components/themes/ThemeValidator"
+import { CustomThemesLoader } from "@/components/themes/CustomThemesLoader"
 
 function AppLayoutContent() {
   const { t } = useTranslation("common")
@@ -76,6 +77,7 @@ export function AppLayout() {
   return (
     <LayoutRouteProvider>
       <ThemeValidator />
+      <CustomThemesLoader />
       <TorrentSelectionProvider>
         <MobileScrollProvider>
           <AppLayoutContent />
