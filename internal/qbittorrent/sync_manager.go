@@ -2037,8 +2037,13 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		// If the shared deadline fired mid-aggregation (typically because an
 		// earlier, unreachable instance burned the budget), return what the
 		// reachable instances already gave us instead of discarding everything
-		// and blanking the whole unified view. See discussion #2096.
-		if ctx.Err() != nil {
+		// and blanking the whole unified view. A genuine cancellation (caller
+		// disconnect or shutdown) is different: the consumer is gone, so surface
+		// the error rather than fabricate a partial success. See discussion #2096.
+		if err := ctx.Err(); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil, err
+			}
 			partialResults = true
 			break
 		}

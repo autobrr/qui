@@ -2205,3 +2205,42 @@ func TestGetCrossInstanceTorrents_UnreachableInstancePreservesReachableAsPartial
 	require.NotNil(t, resp)
 	assert.True(t, resp.PartialResults, "expected partial results when one instance is unreachable")
 }
+
+// TestGetCrossInstanceTorrents_CallerCancellationReturnsError verifies that a genuine
+// caller cancellation surfaces as an error, not a fabricated partial-success 200. Only a
+// deadline (an unreachable instance) degrades to partial results (adversarial review of #2096).
+func TestGetCrossInstanceTorrents_CallerCancellationReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	inst1, err := pool.instanceStore.Create(ctx, "offline", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	_, err = pool.instanceStore.Create(ctx, "other", "http://192.0.2.2:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	pool.mu.Lock()
+	pool.clients[inst1.ID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: inst1.ID}
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	callCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	// Cancel while inst1's health probe is in flight so the loop observes a genuine
+	// caller cancellation rather than the shared-deadline timeout.
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	resp, err := sm.GetCrossInstanceTorrentsWithFilters(callCtx, 0, 0, "", "", "", FilterOptions{}, nil)
+
+	require.ErrorIs(t, err, context.Canceled, "caller cancellation must surface as an error, not a partial success")
+	assert.Nil(t, resp)
+}
