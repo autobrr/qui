@@ -2244,3 +2244,38 @@ func TestGetCrossInstanceTorrents_CallerCancellationReturnsError(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled, "caller cancellation must surface as an error, not a partial success")
 	assert.Nil(t, resp)
 }
+
+// TestGetCrossInstanceTorrents_CancellationDuringLastInstanceReturnsError covers the case the
+// top-of-loop check can't: a single (last) instance whose fetch is interrupted by caller
+// cancellation must return the error, not a masked partial-success 200 (review of #2096).
+func TestGetCrossInstanceTorrents_CancellationDuringLastInstanceReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	inst, err := pool.instanceStore.Create(ctx, "offline", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: inst.ID}
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	callCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	resp, err := sm.GetCrossInstanceTorrentsWithFilters(callCtx, 0, 0, "", "", "", FilterOptions{}, nil)
+
+	require.ErrorIs(t, err, context.Canceled, "cancellation during the only instance's fetch must surface, not become a partial success")
+	assert.Nil(t, resp)
+}

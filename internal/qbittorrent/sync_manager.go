@@ -2050,6 +2050,13 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 
 		instanceResponse, err := sm.GetTorrentsWithFilters(ctx, instance.ID, 0, 0, "", "", search, filters)
 		if err != nil {
+			// A caller cancellation mid-fetch (including on the last/only instance,
+			// which the top-of-loop check can't catch on a later iteration) must
+			// surface as an error, not a fabricated partial success. A deadline
+			// (unreachable/too slow) still degrades to partial. See discussion #2096.
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return nil, ctx.Err()
+			}
 			log.Warn().
 				Int("instanceID", instance.ID).
 				Str("instanceName", instance.Name).
