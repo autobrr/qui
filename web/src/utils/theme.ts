@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import { themes, getThemeById, getCustomThemes, getDefaultTheme, type Theme } from "@/config/themes";
+import { themes, getThemeById, getDefaultTheme, type Theme } from "@/config/themes";
 import { loadThemeFonts } from "./fontLoader";
 import { getStoredVariation, setStoredVariation } from "@/hooks/usePersistedThemeVariation";
 
@@ -256,10 +256,10 @@ const isThemeAccessible = (themeId: string): boolean => {
   const theme = getThemeById(themeId);
 
   // Custom themes are registered only after a backend premium check, so being
-  // present in the registry IS the access grant. An unregistered custom id
+  // present in the registry is the access grant. An unregistered custom id
   // (not yet fetched, or unlicensed) is not accessible and falls back to default.
   if (theme?.isCustom) {
-    return getCustomThemes().some(t => t.id === themeId);
+    return true;
   }
 
   // During initialization (before license data loads), trust the stored theme

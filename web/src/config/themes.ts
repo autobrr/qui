@@ -33,10 +33,6 @@ export function registerCustomThemes(list: Theme[]): void {
   customThemes = list;
 }
 
-export function getCustomThemes(): Theme[] {
-  return customThemes;
-}
-
 // Helper functions
 export function getThemeById(id: string): Theme | undefined {
   return themes.find(theme => theme.id === id) ?? customThemes.find(theme => theme.id === id);
