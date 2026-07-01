@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-import type { InstanceMeta, InstanceResponse, TorrentCounts, TorrentResponse } from "@/types"
+import type { CacheMetadata, InstanceMeta, InstanceResponse, TorrentCounts, TorrentResponse } from "@/types"
 
 export const DASHBOARD_STATS_FALLBACK_SORT = "added_on"
 export const DASHBOARD_STATS_FALLBACK_ORDER = "desc"
@@ -33,6 +33,68 @@ export function resolveDashboardTorrentCounts(
   fallbackCounts: TorrentCounts | undefined
 ) {
   return primaryCounts ?? fallbackCounts
+}
+
+export function hasDashboardStatsPayload(
+  data: {
+    stats?: unknown
+    serverState?: unknown
+    counts?: unknown
+    torrentCounts?: unknown
+  } | null | undefined
+) {
+  return Boolean(data?.stats || data?.serverState || data?.counts || data?.torrentCounts)
+}
+
+export function shouldUseDashboardStatsFallback(
+  streamConnected: boolean,
+  hasLiveDashboardStatsPayload: boolean
+) {
+  return !streamConnected || !hasLiveDashboardStatsPayload
+}
+
+export type DashboardDataStatusKind = "error" | "cached" | "fallback" | "live" | null
+
+export function resolveDashboardDataStatusKind({
+  streamError,
+  fallbackActive,
+  cacheMetadata,
+  isFirstLoad,
+  streamConnected,
+}: {
+  streamError: string | null
+  fallbackActive: boolean
+  cacheMetadata: CacheMetadata | null | undefined
+  isFirstLoad: boolean
+  streamConnected: boolean
+}): DashboardDataStatusKind {
+  if (streamError) {
+    return "error"
+  }
+
+  if (fallbackActive) {
+    if (cacheMetadata?.source === "cache") {
+      return "cached"
+    }
+    if (!isFirstLoad) {
+      return "fallback"
+    }
+    return null
+  }
+
+  if (streamConnected) {
+    return "live"
+  }
+
+  if (cacheMetadata?.source === "cache") {
+    return "cached"
+  }
+
+  if (!isFirstLoad) {
+    return "fallback"
+  }
+
+  return null
 }
 
 /**

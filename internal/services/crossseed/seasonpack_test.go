@@ -881,15 +881,16 @@ func TestApplySeasonPackWebhook_UsesHardlinkMode(t *testing.T) {
 	require.Equal(t, "hardlink", resp.LinkMode)
 	require.Equal(t, 4, resp.MatchedEpisodes)
 
-	// Verify the link tree plan was built correctly.
+	// Verify the link tree plan was built correctly. RootDir is the PARENT dir so
+	// qBittorrent's Original layout adds the pack folder exactly once (#2082 / #2087).
 	require.NotNil(t, capturedPlan)
-	require.Equal(t, filepath.Join(baseDir, fix.packName), capturedPlan.RootDir)
+	require.Equal(t, baseDir, capturedPlan.RootDir)
 	require.Len(t, capturedPlan.Files, 4)
 
-	// Verify each file maps from source to the pack layout.
+	// Verify each file maps from source into a single pack folder (no double nesting).
 	for _, fp := range capturedPlan.Files {
 		require.Contains(t, filepath.ToSlash(fp.SourcePath), "/media/")
-		require.Contains(t, fp.TargetPath, fix.packName)
+		require.Equal(t, filepath.Join(baseDir, fix.packName), filepath.Dir(fp.TargetPath))
 	}
 
 	// Verify AddTorrent was called with expected options.
@@ -898,6 +899,97 @@ func TestApplySeasonPackWebhook_UsesHardlinkMode(t *testing.T) {
 	require.Equal(t, "Original", sm.addCalls[0].options["contentLayout"])
 	require.Equal(t, capturedPlan.RootDir, sm.addCalls[0].options["savepath"])
 	require.Equal(t, "true", sm.addCalls[0].options["skip_checking"])
+}
+
+func TestApplySeasonPackWebhook_SavePathHonorsDirPreset(t *testing.T) {
+	// Regression for discussions #2082 / #2087: the season-pack save path must be the
+	// PARENT directory (so qBittorrent's "Original" content layout adds the pack root
+	// folder exactly once, not twice), and it must honor the instance's hardlink
+	// directory-organization preset just like the regular cross-seed apply path.
+	tests := []struct {
+		name        string
+		preset      string
+		wantRootDir func(baseDir string) string
+	}{
+		{
+			name:        "flat preset places pack under base dir without double nesting",
+			preset:      "flat",
+			wantRootDir: func(baseDir string) string { return baseDir },
+		},
+		{
+			name:        "by-tracker preset places pack under tracker subfolder",
+			preset:      "by-tracker",
+			wantRootDir: func(baseDir string) string { return filepath.Join(baseDir, "tracker.example.com") },
+		},
+		{
+			name:        "by-instance preset places pack under instance subfolder",
+			preset:      "by-instance",
+			wantRootDir: func(baseDir string) string { return filepath.Join(baseDir, "HardlinkInst") },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fix := newSeasonPackFixture(t)
+			baseDir := t.TempDir()
+
+			inst := &models.Instance{
+				ID: 1, Name: "HardlinkInst", IsActive: true,
+				HasLocalFilesystemAccess: true,
+				UseHardlinks:             true,
+				HardlinkBaseDir:          baseDir,
+				HardlinkDirPreset:        tt.preset,
+			}
+
+			episodeTorrents := []qbt.Torrent{
+				{Hash: "e01", Name: "Cool.Show.S01E01.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E01.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+				{Hash: "e02", Name: "Cool.Show.S01E02.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E02.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+				{Hash: "e03", Name: "Cool.Show.S01E03.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E03.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+				{Hash: "e04", Name: "Cool.Show.S01E04.1080p.WEB.x264-GRP", ContentPath: "/media/Cool.Show.S01E04.1080p.WEB.x264-GRP.mkv", Progress: 1.0},
+			}
+
+			baseSM := newMultiFakeSyncManager(
+				map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+				map[int]*models.Instance{inst.ID: inst},
+			)
+			baseSM.files = seasonPackEpisodeFiles(t, fix.torrentData, "e01", "e02", "e03", "e04")
+			sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
+
+			var capturedPlan *hardlinktree.TreePlan
+			svc := &Service{
+				instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+				syncManager:              sm,
+				releaseCache:             NewReleaseCache(),
+				automationSettingsLoader: defaultSettings(true, 0.75),
+				seasonPackLinkCreator: func(plan *hardlinktree.TreePlan) error {
+					capturedPlan = plan
+					return nil
+				},
+			}
+
+			resp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+				TorrentName: fix.packName,
+				TorrentData: fix.torrentData,
+				InstanceIDs: []int{inst.ID},
+			})
+
+			require.NoError(t, err)
+			require.True(t, resp.Applied)
+			require.NotNil(t, capturedPlan)
+
+			wantRoot := tt.wantRootDir(baseDir)
+			// Save path is the parent dir; qBittorrent's Original layout adds the pack folder.
+			require.Equal(t, wantRoot, capturedPlan.RootDir)
+			require.Equal(t, wantRoot, sm.addCalls[0].options["savepath"])
+
+			// Each file lands at <root>/<packName>/<file>, never <root>/<packName>/<packName>/...
+			packFolder := filepath.Join(wantRoot, fix.packName)
+			require.Len(t, capturedPlan.Files, 4)
+			for _, fp := range capturedPlan.Files {
+				require.Equal(t, packFolder, filepath.Dir(fp.TargetPath))
+			}
+		})
+	}
 }
 
 func TestApplySeasonPackWebhook_UsesReflinkMode(t *testing.T) {
