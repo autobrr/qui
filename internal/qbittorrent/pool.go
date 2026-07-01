@@ -231,18 +231,20 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 			return nil, fmt.Errorf("instance %d is in backoff period, will retry later", instanceID)
 		}
 
-		// Serialize the probe per instance (same lock the create path uses) so a
-		// burst of concurrent callers runs ONE health check and records ONE
-		// failure per backoff window. Otherwise each caller advances the failure
-		// backoff, inflating it toward maxBackoff far faster than the real outage
-		// and delaying recovery, since both this path and the background health
-		// loop skip backed-off instances. See discussion #2096.
+		// Let a single caller probe this instance at a time (same per-instance
+		// lock the create path uses) so a burst runs ONE health check and records
+		// ONE failure per backoff window, instead of each caller advancing the
+		// backoff and inflating it toward maxBackoff far faster than the real
+		// outage. TryLock, not Lock: a queued caller must be able to honor its own
+		// context rather than block behind a slow probe. See discussion #2096.
 		instanceLock := cp.getInstanceLock(instanceID)
-		instanceLock.Lock()
+		if !instanceLock.TryLock() {
+			return nil, fmt.Errorf("instance %d health check already in progress", instanceID)
+		}
 		defer instanceLock.Unlock()
 
-		// Re-check under the lock: a prior holder may have recovered the client
-		// or already recorded the failure while we waited.
+		// Re-check: a probe that finished just before we acquired the lock may
+		// have recovered the client or already recorded the failure.
 		if client.IsHealthy() {
 			return client, nil
 		}
@@ -251,7 +253,14 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 		}
 
 		if err := client.HealthCheck(ctx); err != nil {
-			cp.trackFailure(instanceID, err)
+			// A caller-cancelled probe (client disconnect / shutdown) is not
+			// evidence the instance is down, so don't record a failure or back it
+			// off. A deadline (unreachable / too slow) is a real failure and still
+			// tracks. isContextStopped matches even after go-qbt's retry wrapper
+			// flattens the cancellation sentinel into a string.
+			if !isContextStopped(err) {
+				cp.trackFailure(instanceID, err)
+			}
 			return nil, errors.Wrap(err, "client healthcheck failed")
 		}
 		// Healthcheck succeeded, clear backoff and return client
