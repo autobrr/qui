@@ -231,9 +231,26 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 			return nil, fmt.Errorf("instance %d is in backoff period, will retry later", instanceID)
 		}
 
+		// Serialize the probe per instance (same lock the create path uses) so a
+		// burst of concurrent callers runs ONE health check and records ONE
+		// failure per backoff window. Otherwise each caller advances the failure
+		// backoff, inflating it toward maxBackoff far faster than the real outage
+		// and delaying recovery, since both this path and the background health
+		// loop skip backed-off instances. See discussion #2096.
+		instanceLock := cp.getInstanceLock(instanceID)
+		instanceLock.Lock()
+		defer instanceLock.Unlock()
+
+		// Re-check under the lock: a prior holder may have recovered the client
+		// or already recorded the failure while we waited.
+		if client.IsHealthy() {
+			return client, nil
+		}
+		if cp.isInBackoff(instanceID) {
+			return nil, fmt.Errorf("instance %d is in backoff period, will retry later", instanceID)
+		}
+
 		if err := client.HealthCheck(ctx); err != nil {
-			// Record the failure so subsequent callers hit the backoff fast-path
-			// above instead of re-blocking on the unreachable host.
 			cp.trackFailure(instanceID, err)
 			return nil, errors.Wrap(err, "client healthcheck failed")
 		}

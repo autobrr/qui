@@ -6,6 +6,9 @@ package qbittorrent
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -203,6 +206,43 @@ func TestClientPool_GetClientWithTimeout_UnhealthyInBackoffFastFails(t *testing.
 	require.Nil(t, client)
 	assert.Contains(t, err.Error(), "backoff period", "backed-off unhealthy client should return the backoff error, not attempt a health check")
 	assert.Less(t, elapsed, time.Second, "backoff fast-path must not perform a network health check")
+}
+
+// TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce verifies that
+// a burst of concurrent callers against one unhealthy, not-yet-backed-off instance records
+// a single failure (advances backoff once), not once per caller (adversarial review of #2096).
+func TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce(t *testing.T) {
+	// Blocking endpoint so the probes overlap in time instead of failing instantly.
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	const instanceID = 1
+	pool.mu.Lock()
+	pool.clients[instanceID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: instanceID}
+	pool.mu.Unlock()
+
+	const callers = 8
+	var wg sync.WaitGroup
+	for range callers {
+		wg.Go(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+			defer cancel()
+			_, _ = pool.GetClientWithTimeout(ctx, instanceID, 60*time.Second)
+		})
+	}
+	wg.Wait()
+
+	pool.mu.RLock()
+	info := pool.failureTracker[instanceID]
+	pool.mu.RUnlock()
+
+	require.NotNil(t, info, "one failure should have been recorded")
+	assert.Equal(t, 1, info.attempts, "concurrent probes must advance the backoff exactly once, not once per caller")
 }
 
 func TestClientPool_IsBanError(t *testing.T) {
