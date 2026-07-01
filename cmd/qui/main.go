@@ -475,6 +475,12 @@ func (app *Application) runServer() {
 	}
 	// Make tracker icon service globally accessible for background fetching
 	trackericons.SetGlobal(trackerIconService)
+
+	// Ensure the custom themes directory exists so users have a place to drop
+	// sideloaded *.css files. Non-fatal: the themes handler also ensures lazily.
+	if themesDir, err := cfg.EnsureCustomThemesDir(); err != nil {
+		log.Warn().Err(err).Str("dir", themesDir).Msg("Failed to create custom themes directory")
+	}
 	cfg.RegisterReloadListener(func(conf *domain.Config) {
 		trackericons.SetFetchEnabled(conf.TrackerIconsFetchEnabled)
 		log.Debug().Bool("enabled", conf.TrackerIconsFetchEnabled).Msg("Tracker icon fetch setting updated")

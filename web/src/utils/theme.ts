@@ -16,6 +16,7 @@ const THEME_AUTO = "auto";
 const THEME_TRANSITION_CLASS = "theme-transition";
 const THEME_TRANSITION_DURATION = 150;
 const THEME_STYLES_ID = "theme-transitions";
+const CUSTOM_THEME_STYLE_ID = "custom-theme-style";
 const ENABLE_THEME_TRANSITIONS = false;
 
 // CSS for theme transitions - lightweight version for performance
@@ -74,6 +75,52 @@ const dispatchThemeChange = (mode: ThemeMode, theme: Theme, isSystemChange: bool
   window.dispatchEvent(event);
 };
 
+// Inject (or update) the raw CSS for a sideloaded custom theme. Appended to
+// <head> after the bundle's stylesheet so its :root/.dark blocks win on
+// document order (provided inline custom-property vars are cleared first).
+const applyCustomThemeStyle = (rawCss: string): void => {
+  let style = document.getElementById(CUSTOM_THEME_STYLE_ID) as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement("style");
+    style.id = CUSTOM_THEME_STYLE_ID;
+    document.head.appendChild(style);
+  }
+  if (style.textContent !== rawCss) {
+    style.textContent = rawCss;
+  }
+};
+
+const removeCustomThemeStyle = (): void => {
+  document.getElementById(CUSTOM_THEME_STYLE_ID)?.remove();
+};
+
+// Returns the raw CSS currently injected for a custom theme, or null if none is
+// applied. Used to detect when an active custom theme's file changed on refresh.
+export const getAppliedCustomThemeCss = (): string | null => {
+  return document.getElementById(CUSTOM_THEME_STYLE_ID)?.textContent ?? null;
+};
+
+// Sync the html/body background to the theme and persist the critical vars so
+// the anti-FOUC inline script can paint the right background on next load.
+const applyCriticalBackground = (root: HTMLElement, cssVars: Record<string, string>): void => {
+  const backgroundColor = cssVars["--background"];
+  if (!backgroundColor) {
+    return;
+  }
+  root.style.backgroundColor = backgroundColor;
+  if (document.body) {
+    document.body.style.backgroundColor = backgroundColor;
+  }
+  try {
+    localStorage.setItem("theme-critical-vars", JSON.stringify({
+      background: backgroundColor,
+      foreground: cssVars["--foreground"] || "",
+    }));
+  } catch {
+    // Ignore localStorage errors
+  }
+};
+
 // Core theme application logic
 const applyTheme = async (theme: Theme, variation: string | null, isDark: boolean, withTransition = false): Promise<void> => {
   const root = document.documentElement;
@@ -103,49 +150,44 @@ const applyTheme = async (theme: Theme, variation: string | null, isDark: boolea
     root.classList.remove(THEME_DARK);
   }
 
-  // Clean up all variation variables to prevent stale values
-  Array.from(root.style)
-    .filter(prop => prop.startsWith("--variation"))
-    .forEach(prop => root.style.removeProperty(prop));
-
-  // Apply theme CSS variables (lightOnly themes always use light vars)
+  // lightOnly themes always use light vars (used for preview/FOUC, not applied
+  // inline for custom themes)
   const cssVars = effectiveIsDark ? theme.cssVars.dark : theme.cssVars.light;
-  Object.entries(cssVars).forEach(([key, value]) => {
-    root.style.setProperty(key, value);
-  });
 
-  // Apply variation if provided
-  if (variation && theme.variations && theme.variations.length > 0) {
-    const variationColor = cssVars[`--variation-${variation}`];
-    if (variationColor) {
-      root.style.setProperty("--variation-color", variationColor);
+  if (theme.isCustom && theme.rawCss) {
+    // Raw stylesheet injection. Inline custom properties (set by a previous
+    // built-in theme) outrank any stylesheet rule, so they MUST be cleared for
+    // the injected :root/.dark blocks to take effect.
+    Array.from(root.style)
+      .filter(prop => prop.startsWith("--"))
+      .forEach(prop => root.style.removeProperty(prop));
+
+    applyCustomThemeStyle(theme.rawCss);
+    root.setAttribute("data-theme", theme.id);
+    applyCriticalBackground(root, cssVars);
+  } else {
+    // Built-in theme: drop any injected custom stylesheet and apply vars inline.
+    removeCustomThemeStyle();
+
+    // Clean up all variation variables to prevent stale values
+    Array.from(root.style)
+      .filter(prop => prop.startsWith("--variation"))
+      .forEach(prop => root.style.removeProperty(prop));
+
+    Object.entries(cssVars).forEach(([key, value]) => {
+      root.style.setProperty(key, value);
+    });
+
+    // Apply variation if provided
+    if (variation && theme.variations && theme.variations.length > 0) {
+      const variationColor = cssVars[`--variation-${variation}`];
+      if (variationColor) {
+        root.style.setProperty("--variation-color", variationColor);
+      }
     }
-  }
 
-  // Add theme class
-  root.setAttribute("data-theme", theme.id);
-
-  // Update HTML and body background color to match theme
-  // This prevents flash of hardcoded background color
-  const backgroundColor = cssVars["--background"];
-  if (backgroundColor) {
-    // Apply to both html and body for consistency
-    root.style.backgroundColor = backgroundColor;
-    if (document.body) {
-      document.body.style.backgroundColor = backgroundColor;
-    }
-
-    // Store critical vars in localStorage for immediate application on next load
-    // This prevents FOUC by allowing the inline script to apply the exact theme color
-    try {
-      const criticalVars = {
-        background: backgroundColor,
-        foreground: cssVars["--foreground"] || "",
-      };
-      localStorage.setItem("theme-critical-vars", JSON.stringify(criticalVars));
-    } catch {
-      // Ignore localStorage errors
-    }
+    root.setAttribute("data-theme", theme.id);
+    applyCriticalBackground(root, cssVars);
   }
 
   if (ENABLE_THEME_TRANSITIONS && withTransition) {
@@ -211,6 +253,15 @@ export const setValidatedThemes = (themeIds: string[]): void => {
 };
 
 const isThemeAccessible = (themeId: string): boolean => {
+  const theme = getThemeById(themeId);
+
+  // Custom themes are registered only after a backend premium check, so being
+  // present in the registry is the access grant. An unregistered custom id
+  // (not yet fetched, or unlicensed) is not accessible and falls back to default.
+  if (theme?.isCustom) {
+    return true;
+  }
+
   // During initialization (before license data loads), trust the stored theme
   // This prevents the theme from resetting on hard refresh
   if (isInitializing && !validatedThemes) {
@@ -222,7 +273,6 @@ const isThemeAccessible = (themeId: string): boolean => {
   // If we haven't received validation data yet but initialization is complete,
   // only allow non-premium themes
   if (!validatedThemes) {
-    const theme = getThemeById(themeId);
     return !theme?.isPremium;
   }
 

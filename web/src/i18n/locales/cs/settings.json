@@ -552,6 +552,19 @@
         "refreshedAll": "Všechny licence obnoveny úspěšně",
         "refreshFailed": "Nepodařilo se obnovit licence"
       }
+    },
+    "custom": {
+      "badge": "Vlastní",
+      "title": "Vlastní motivy",
+      "lockedTitle": "Vlastní motivy jsou premiová funkce",
+      "lockedDescription": "Odemkněte premium a načítejte vlastní CSS soubory motivů z adresáře na disku.",
+      "unlockCta": "Odemknout premium",
+      "directoryLabel": "Adresář motivů",
+      "refresh": "Obnovit",
+      "detectedCount": "Nalezené motivy: {{total}}",
+      "parseErrorsTitle": "Tyto soubory se nepodařilo zpracovat:",
+      "noneFound": "Nenalezeny žádné vlastní motivy. Vložte soubor .css do adresáře motivů a klikněte na Obnovit.",
+      "loadError": "Nepodařilo se načíst vlastní motivy. Zkontrolujte logy serveru a oprávnění adresáře motivů."
     }
   },
   "arrInstances": {

@@ -5,13 +5,15 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { themes, isThemePremium, type Theme } from "@/config/themes"
 import { useHasPremiumAccess } from "@/hooks/useLicense.ts"
+import { useCustomThemes } from "@/hooks/useCustomThemes"
 import { useTheme } from "@/hooks/useTheme"
 import { getThemeColors, getThemeVariation } from "@/utils/theme"
 import { canSwitchToPremiumTheme } from "@/lib/license-entitlement"
-import { Sparkles, Lock, Check, Palette, AlertTriangle, WifiOff } from "lucide-react"
+import { Sparkles, Lock, Check, Palette, AlertTriangle, WifiOff, FolderOpen, RefreshCw } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 
@@ -116,7 +118,12 @@ function ThemeCard({ theme, isSelected, isLocked, onSelect, onVariationSelect }:
 
         {/* Badges */}
         <div className="flex items-center gap-1 sm:gap-2">
-          {theme.isPremium ? (
+          {theme.isCustom ? (
+            <Badge variant="secondary" className="text-xs px-1.5 sm:px-2">
+              <FolderOpen className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />
+              {t("themes.custom.badge")}
+            </Badge>
+          ) : theme.isPremium ? (
             <Badge variant="secondary" className="text-xs px-1.5 sm:px-2">
               <Sparkles className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />
               <span className="hidden sm:inline">{t("themes.selector.premium")}</span>
@@ -145,6 +152,14 @@ export function ThemeSelector() {
   const { t } = useTranslation("settings")
   const { theme: currentTheme, setTheme, setVariation } = useTheme()
   const { hasPremiumAccess, isLoading, isError } = useHasPremiumAccess()
+  const {
+    customThemes,
+    errors: customThemeErrors,
+    directory: customThemesDirectory,
+    isFetching: customThemesFetching,
+    isError: customThemesError,
+    refetch: refetchCustomThemes,
+  } = useCustomThemes()
 
   const canSwitchPremium = canSwitchToPremiumTheme({
     hasPremiumAccess,
@@ -188,6 +203,10 @@ export function ThemeSelector() {
     } else {
       showThemeLockedToast()
     }
+  }
+
+  const scrollToLicenseManager = () => {
+    document.getElementById("license-manager")?.scrollIntoView({ behavior: "smooth", block: "start" })
   }
 
   if (isLoading) {
@@ -294,6 +313,97 @@ export function ThemeSelector() {
                   />
                 )
               })}
+            </div>
+          )}
+        </div>
+
+        <Separator />
+
+        {/* Custom Themes (sideloaded CSS, premium feature) */}
+        <div>
+          <h4 className="font-medium mb-3 flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs">
+              <FolderOpen className="h-3 w-3 mr-1" />
+              {t("themes.custom.badge")}
+            </Badge>
+            {t("themes.custom.title")}
+          </h4>
+
+          {!hasPremiumAccess ? (
+            <div className="flex flex-col items-center py-8 space-y-3 rounded-md border border-dashed">
+              <Lock className="h-5 w-5 text-muted-foreground" />
+              <p className="font-medium text-sm">{t("themes.custom.lockedTitle")}</p>
+              <p className="text-sm text-muted-foreground text-center max-w-sm">
+                {t("themes.custom.lockedDescription")}
+              </p>
+              <Button variant="outline" size="sm" onClick={scrollToLicenseManager}>
+                <Sparkles className="h-3 w-3 mr-1" />
+                {t("themes.custom.unlockCta")}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="rounded-md border p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-muted-foreground">{t("themes.custom.directoryLabel")}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => refetchCustomThemes()}
+                    disabled={customThemesFetching}
+                  >
+                    <RefreshCw className={`h-3 w-3 mr-1 ${customThemesFetching ? "animate-spin" : ""}`} />
+                    {t("themes.custom.refresh")}
+                  </Button>
+                </div>
+                {customThemesDirectory && (
+                  <code className="block text-xs bg-muted px-2 py-1 rounded break-all">
+                    {customThemesDirectory}
+                  </code>
+                )}
+                {customThemesError ? (
+                  <p className="text-xs font-medium text-destructive flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    {t("themes.custom.loadError")}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {t("themes.custom.detectedCount", { total: customThemes.length })}
+                  </p>
+                )}
+                {customThemeErrors.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-destructive flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" />
+                      {t("themes.custom.parseErrorsTitle")}
+                    </p>
+                    <ul className="text-xs text-destructive space-y-0.5 list-disc list-inside">
+                      {customThemeErrors.map((error) => (
+                        <li key={error.filename}>{error.filename}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {customThemes.length === 0 ? (
+                !customThemesFetching && !customThemesError && (
+                  <p className="text-sm text-muted-foreground">{t("themes.custom.noneFound")}</p>
+                )
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
+                  {customThemes.map((theme) => (
+                    <ThemeCard
+                      key={theme.id}
+                      theme={theme}
+                      isSelected={currentTheme === theme.id}
+                      isLocked={false}
+                      onSelect={() => handleThemeSelect(theme.id)}
+                      onVariationSelect={handleVariationSelect}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

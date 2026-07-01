@@ -132,7 +132,8 @@
     "switchedToThemeVariation": "Přepnuto na {{theme}} vzhled ({{variation}})",
     "unableToVerifyLicense": "Nelze ověřit licenci",
     "licenseCheckFailed": "Ověření licence se nezdařilo. Přepnutí vzhledu premium je dočasně nedostupné.",
-    "premiumThemeError": "Tento vzhled je premiový. Otevřete Nastavení → Vzhledy pro aktivaci licence."
+    "premiumThemeError": "Tento vzhled je premiový. Otevřete Nastavení → Vzhledy pro aktivaci licence.",
+    "custom": "Vlastní"
   },
   "updateBanner": {
     "updateAvailable": "Aktualizace dostupná",

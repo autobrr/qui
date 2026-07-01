@@ -1997,6 +1997,14 @@ class ApiClient {
     return this.request("/license/refresh", { method: "POST" })
   }
 
+  // Custom themes (sideloaded CSS files; premium-gated server-side)
+  async getCustomThemes(): Promise<{
+    directory: string
+    themes: Array<{ id: string; filename: string; css: string }>
+  }> {
+    return this.request("/themes/custom")
+  }
+
   // Preferences endpoints
   async getInstancePreferences(instanceId: number): Promise<AppPreferences> {
     return this.request<AppPreferences>(`/instances/${instanceId}/preferences`)

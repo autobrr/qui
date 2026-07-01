@@ -552,6 +552,19 @@
         "refreshedAll": "Alle Lizenzen erfolgreich aktualisiert",
         "refreshFailed": "Lizenzen konnten nicht aktualisiert werden"
       }
+    },
+    "custom": {
+      "badge": "Eigene",
+      "title": "Eigene Themes",
+      "lockedTitle": "Eigene Themes sind eine Premium-Funktion",
+      "lockedDescription": "Schalte Premium frei, um eigene Theme-CSS-Dateien aus einem Verzeichnis auf der Festplatte zu laden.",
+      "unlockCta": "Premium freischalten",
+      "directoryLabel": "Themes-Verzeichnis",
+      "refresh": "Aktualisieren",
+      "detectedCount": "Gefundene Themes: {{total}}",
+      "parseErrorsTitle": "Diese Dateien konnten nicht gelesen werden:",
+      "noneFound": "Keine eigenen Themes gefunden. Lege eine .css-Datei im Themes-Verzeichnis ab und klicke auf Aktualisieren.",
+      "loadError": "Eigene Themes konnten nicht geladen werden. Prüfe die Serverprotokolle und die Berechtigungen des Themes-Verzeichnisses."
     }
   },
   "arrInstances": {
