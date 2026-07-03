@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -109,11 +110,11 @@ func TestStreamManagerHandleSyncErrorPreservesBackoffStatus(t *testing.T) {
 		sub.id: sub,
 	}
 
-	manager.HandleSyncError(sub.options.InstanceID, &qbittorrent.InstanceHealthBlockerError{
+	manager.HandleSyncError(sub.options.InstanceID, fmt.Errorf("failed to get client: %w", &qbittorrent.InstanceHealthBlockerError{
 		Kind:       qbittorrent.InstanceHealthBlockerBackoff,
 		InstanceID: sub.options.InstanceID,
 		RetryAfter: 12 * time.Second,
-	})
+	}))
 
 	require.Eventually(t, func() bool {
 		return len(provider.messagesFor(sub.id)) == 1
@@ -121,7 +122,7 @@ func TestStreamManagerHandleSyncErrorPreservesBackoffStatus(t *testing.T) {
 
 	payload := decodeStreamPayload(t, provider.messagesFor(sub.id)[0])
 	require.Equal(t, streamEventError, payload.Type)
-	require.Positive(t, payload.Meta.RetryInSeconds, "expected retry interval to be populated")
+	require.Equal(t, 12, payload.Meta.RetryInSeconds, "retry hint must tick on the blocker's clock, not the sync loop's")
 	require.Contains(t, payload.Err, "paused")
 	require.Contains(t, payload.Err, "health-check backoff")
 	require.Contains(t, payload.Err, "retrying in 12s")

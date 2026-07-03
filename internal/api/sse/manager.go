@@ -649,6 +649,9 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 	if retrySeconds <= 0 {
 		retrySeconds = int(defaultSyncInterval.Round(time.Second) / time.Second)
 	}
+	if seconds, ok := blockerRetrySeconds(err); ok {
+		retrySeconds = seconds
+	}
 
 	log.Warn().
 		Err(err).
@@ -685,6 +688,17 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 		m.stampLastSuccessfulSync(m.ctx, meta, instanceID)
 		m.publishToInstance(instanceID, payload)
 	}()
+}
+
+// blockerRetrySeconds returns the pool's remaining health-blocker backoff so
+// SSE retry hints tick on the same clock as the blocker message text, which
+// embeds that backoff rather than the sync loop's own interval.
+func blockerRetrySeconds(err error) (int, bool) {
+	var blocker *qbittorrent.InstanceHealthBlockerError
+	if errors.As(err, &blocker) && blocker.RetryAfter > 0 {
+		return int(blocker.RetryAfter.Round(time.Second) / time.Second), true
+	}
+	return 0, false
 }
 
 // syncErrorMessage formats SSE sync errors without duplicating retry hints that
@@ -1458,7 +1472,11 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 		}
 		hasSingleConcreteInstance := retryInstanceID > 0 && (!opts.isMultiInstance() || len(opts.InstanceIDs) == 1)
 		if hasSingleConcreteInstance {
-			metaCopy.RetryInSeconds = m.currentRetrySeconds(retryInstanceID)
+			if seconds, ok := blockerRetrySeconds(err); ok {
+				metaCopy.RetryInSeconds = seconds
+			} else {
+				metaCopy.RetryInSeconds = m.currentRetrySeconds(retryInstanceID)
+			}
 		}
 		// Stamp how stale the retained data is only when the scalar timestamp maps to
 		// one concrete instance. Mixed aggregate rows can come from multiple clocks.
