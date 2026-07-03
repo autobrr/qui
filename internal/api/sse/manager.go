@@ -656,7 +656,7 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 		Dur("retryIn", backoff).
 		Msg("Sync manager error propagated to SSE stream")
 
-	message := fmt.Sprintf("Sync with qBittorrent failed (%s); retrying in %ds", err.Error(), retrySeconds)
+	message := syncErrorMessage(err, retrySeconds)
 
 	meta := &StreamMeta{
 		InstanceID:     instanceID,
@@ -685,6 +685,13 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 		m.stampLastSuccessfulSync(m.ctx, meta, instanceID)
 		m.publishToInstance(instanceID, payload)
 	}()
+}
+
+func syncErrorMessage(err error, retrySeconds int) string {
+	if message, ok := qbittorrent.InstanceHealthBlockerMessage(err); ok {
+		return fmt.Sprintf("Sync with qBittorrent paused: %s; retrying in %ds", message, retrySeconds)
+	}
+	return fmt.Sprintf("Sync with qBittorrent failed (%s); retrying in %ds", err.Error(), retrySeconds)
 }
 
 // Serve implements the HTTP handler for GET /stream and multiplexes multiple subscriptions over one SSE session.
@@ -1422,7 +1429,9 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 	}
 	if err != nil {
 		errMsg := "failed to refresh torrent list"
-		if errors.Is(err, context.DeadlineExceeded) {
+		if message, ok := qbittorrent.InstanceHealthBlockerMessage(err); ok {
+			errMsg = message
+		} else if errors.Is(err, context.DeadlineExceeded) {
 			errMsg = "torrent list refresh timed out"
 		} else if errors.Is(err, context.Canceled) {
 			errMsg = "refresh was cancelled"

@@ -18,9 +18,16 @@ import (
 )
 
 var (
-	ErrClientNotFound   = errors.New("qBittorrent client not found")
-	ErrPoolClosed       = errors.New("client pool is closed")
+	// ErrClientNotFound indicates the pool has no cached client for the instance.
+	ErrClientNotFound = errors.New("qBittorrent client not found")
+	// ErrPoolClosed indicates the client pool has already shut down.
+	ErrPoolClosed = errors.New("client pool is closed")
+	// ErrInstanceDisabled indicates the instance exists but is not active.
 	ErrInstanceDisabled = errors.New("qBittorrent instance is disabled")
+	// ErrInstanceInBackoff classifies a transient health-check backoff blocker.
+	ErrInstanceInBackoff = errors.New("qBittorrent instance is in backoff")
+	// ErrHealthCheckInProgress classifies a transient in-flight health-check blocker.
+	ErrHealthCheckInProgress = errors.New("qBittorrent instance health check already in progress")
 )
 
 // Backoff constants
@@ -47,6 +54,81 @@ type failureInfo struct {
 type decryptionErrorInfo struct {
 	logged    bool
 	lastError time.Time
+}
+
+// InstanceHealthBlockerKind identifies a transient client-pool blocker.
+type InstanceHealthBlockerKind string
+
+const (
+	// InstanceHealthBlockerBackoff means a failed health check put the instance in retry backoff.
+	InstanceHealthBlockerBackoff InstanceHealthBlockerKind = "backoff"
+	// InstanceHealthBlockerHealthCheckInProgress means another caller is already probing this instance.
+	InstanceHealthBlockerHealthCheckInProgress InstanceHealthBlockerKind = "health-check-in-progress"
+)
+
+// InstanceHealthBlockerError preserves transient client-pool blocker cause and retry context.
+type InstanceHealthBlockerError struct {
+	// Kind identifies which transient blocker stopped client access.
+	Kind InstanceHealthBlockerKind
+	// InstanceID is the qBittorrent instance that could not be served.
+	InstanceID int
+	// RetryAfter is the remaining backoff duration when Kind is InstanceHealthBlockerBackoff.
+	RetryAfter time.Duration
+}
+
+// Error returns a stable, instance-specific blocker message.
+func (e *InstanceHealthBlockerError) Error() string {
+	if e == nil {
+		return ""
+	}
+
+	switch e.Kind {
+	case InstanceHealthBlockerBackoff:
+		if e.RetryAfter > 0 {
+			return fmt.Sprintf("instance %d is in backoff period, will retry in %s", e.InstanceID, e.RetryAfter.Round(time.Second))
+		}
+		return fmt.Sprintf("instance %d is in backoff period, will retry later", e.InstanceID)
+	case InstanceHealthBlockerHealthCheckInProgress:
+		return fmt.Sprintf("instance %d health check already in progress", e.InstanceID)
+	default:
+		return fmt.Sprintf("instance %d qBittorrent health is blocked", e.InstanceID)
+	}
+}
+
+// Is lets callers classify blocker errors with errors.Is.
+func (e *InstanceHealthBlockerError) Is(target error) bool {
+	if e == nil {
+		return false
+	}
+	switch target {
+	case ErrInstanceInBackoff:
+		return e.Kind == InstanceHealthBlockerBackoff
+	case ErrHealthCheckInProgress:
+		return e.Kind == InstanceHealthBlockerHealthCheckInProgress
+	default:
+		return false
+	}
+}
+
+// InstanceHealthBlockerMessage returns an actionable user-facing message for
+// transient qBittorrent health blockers while preserving errors.Is/As wrapping.
+func InstanceHealthBlockerMessage(err error) (string, bool) {
+	var blocker *InstanceHealthBlockerError
+	if !errors.As(err, &blocker) {
+		return "", false
+	}
+
+	switch blocker.Kind {
+	case InstanceHealthBlockerBackoff:
+		if blocker.RetryAfter > 0 {
+			return fmt.Sprintf("qBittorrent instance %d is in health-check backoff after a failed connection; retrying in %s", blocker.InstanceID, blocker.RetryAfter.Round(time.Second)), true
+		}
+		return fmt.Sprintf("qBittorrent instance %d is in health-check backoff after a failed connection; retrying later", blocker.InstanceID), true
+	case InstanceHealthBlockerHealthCheckInProgress:
+		return fmt.Sprintf("qBittorrent instance %d is already running a health check; retry shortly", blocker.InstanceID), true
+	default:
+		return blocker.Error(), true
+	}
 }
 
 // ClientPool manages multiple qBittorrent client connections
@@ -228,7 +310,7 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 		// the context deadline, on every refresh. Fast-fail like the create path
 		// below does. See discussion #2096.
 		if cp.isInBackoff(instanceID) {
-			return nil, fmt.Errorf("instance %d is in backoff period, will retry later", instanceID)
+			return nil, cp.instanceInBackoffError(instanceID)
 		}
 
 		// Let a single caller probe this instance at a time (same per-instance
@@ -239,7 +321,7 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 		// context rather than block behind a slow probe. See discussion #2096.
 		instanceLock := cp.getInstanceLock(instanceID)
 		if !instanceLock.TryLock() {
-			return nil, fmt.Errorf("instance %d health check already in progress", instanceID)
+			return nil, &InstanceHealthBlockerError{Kind: InstanceHealthBlockerHealthCheckInProgress, InstanceID: instanceID}
 		}
 		defer instanceLock.Unlock()
 
@@ -249,7 +331,7 @@ func (cp *ClientPool) GetClientWithTimeout(ctx context.Context, instanceID int, 
 			return client, nil
 		}
 		if cp.isInBackoff(instanceID) {
-			return nil, fmt.Errorf("instance %d is in backoff period, will retry later", instanceID)
+			return nil, cp.instanceInBackoffError(instanceID)
 		}
 
 		if err := client.HealthCheck(ctx); err != nil {
@@ -280,11 +362,12 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 
 	// Check if instance is in backoff period (need to acquire read lock for this)
 	cp.mu.RLock()
-	inBackoff := cp.isInBackoffLocked(instanceID)
+	remainingBackoff := cp.backoffRemainingLocked(instanceID)
+	inBackoff := remainingBackoff > 0
 	cp.mu.RUnlock()
 
 	if inBackoff {
-		return nil, fmt.Errorf("instance %d is in backoff period, will retry later", instanceID)
+		return nil, &InstanceHealthBlockerError{Kind: InstanceHealthBlockerBackoff, InstanceID: instanceID, RetryAfter: remainingBackoff}
 	}
 
 	// Double-check if client was created while we were waiting for the lock
@@ -542,11 +625,26 @@ func (cp *ClientPool) isInBackoff(instanceID int) bool {
 
 // isInBackoffLocked checks if an instance is in backoff period (caller must hold lock)
 func (cp *ClientPool) isInBackoffLocked(instanceID int) bool {
+	return cp.backoffRemainingLocked(instanceID) > 0
+}
+
+func (cp *ClientPool) instanceInBackoffError(instanceID int) error {
+	cp.mu.RLock()
+	retryAfter := cp.backoffRemainingLocked(instanceID)
+	cp.mu.RUnlock()
+	return &InstanceHealthBlockerError{Kind: InstanceHealthBlockerBackoff, InstanceID: instanceID, RetryAfter: retryAfter}
+}
+
+func (cp *ClientPool) backoffRemainingLocked(instanceID int) time.Duration {
 	info, exists := cp.failureTracker[instanceID]
 	if !exists {
-		return false
+		return 0
 	}
-	return time.Now().Before(info.nextRetry)
+	remaining := time.Until(info.nextRetry)
+	if remaining <= 0 {
+		return 0
+	}
+	return remaining
 }
 
 // trackFailure records a failure and applies exponential backoff

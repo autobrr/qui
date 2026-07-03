@@ -21,6 +21,7 @@ import (
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 func TestStreamManagerHandleSyncErrorPublishesErrorEvent(t *testing.T) {
@@ -55,6 +56,39 @@ func TestStreamManagerHandleSyncErrorPublishesErrorEvent(t *testing.T) {
 	require.Equal(t, sub.options.InstanceID, payload.Meta.InstanceID)
 	require.Positive(t, payload.Meta.RetryInSeconds, "expected retry interval to be populated")
 	require.Contains(t, payload.Err, "sync failed")
+}
+
+func TestStreamManagerHandleSyncErrorPreservesHealthBlockerStatus(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	sub := &subscriptionState{
+		id:      "subscription-blocked",
+		options: StreamOptions{InstanceID: 42},
+		created: time.Now(),
+	}
+
+	manager.subscriptions[sub.id] = sub
+	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
+		sub.id: sub,
+	}
+
+	manager.HandleSyncError(sub.options.InstanceID, &qbittorrent.InstanceHealthBlockerError{
+		Kind:       qbittorrent.InstanceHealthBlockerHealthCheckInProgress,
+		InstanceID: sub.options.InstanceID,
+	})
+
+	require.Eventually(t, func() bool {
+		return len(provider.messagesFor(sub.id)) == 1
+	}, time.Second, 5*time.Millisecond, "expected a single broadcast message")
+
+	payload := decodeStreamPayload(t, provider.messagesFor(sub.id)[0])
+	require.Equal(t, streamEventError, payload.Type)
+	require.Positive(t, payload.Meta.RetryInSeconds, "expected retry interval to be populated")
+	require.Contains(t, payload.Err, "paused")
+	require.Contains(t, payload.Err, "already running a health check")
+	require.Contains(t, payload.Err, "retry shortly")
 }
 
 func TestStreamManagerHandleSyncErrorStampsLastSuccessfulSync(t *testing.T) {

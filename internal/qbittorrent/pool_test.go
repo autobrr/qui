@@ -204,7 +204,12 @@ func TestClientPool_GetClientWithTimeout_UnhealthyInBackoffFastFails(t *testing.
 
 	require.Error(t, err)
 	require.Nil(t, client)
+	require.ErrorIs(t, err, ErrInstanceInBackoff)
 	assert.Contains(t, err.Error(), "backoff period", "backed-off unhealthy client should return the backoff error, not attempt a health check")
+	message, ok := InstanceHealthBlockerMessage(err)
+	require.True(t, ok, "backoff error should expose an actionable boundary message")
+	assert.Contains(t, message, "health-check backoff")
+	assert.Contains(t, message, "retrying in")
 	assert.Less(t, elapsed, time.Second, "backoff fast-path must not perform a network health check")
 }
 
@@ -302,6 +307,11 @@ func TestClientPool_GetClientWithTimeout_ProbeInProgressFastFails(t *testing.T) 
 
 	require.Error(t, err)
 	require.Nil(t, client)
+	require.ErrorIs(t, err, ErrHealthCheckInProgress)
+	message, ok := InstanceHealthBlockerMessage(err)
+	require.True(t, ok, "in-flight probe error should expose an actionable boundary message")
+	assert.Contains(t, message, "already running a health check")
+	assert.Contains(t, message, "retry shortly")
 	assert.Less(t, elapsed, time.Second, "caller must fast-fail rather than block behind an in-flight probe")
 }
 
