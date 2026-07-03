@@ -135,15 +135,10 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 	}
 
 	if err := client.RefreshCapabilities(ctx); err != nil {
-		log.Warn().
-			Err(err).
-			Int("instanceID", instanceID).
-			Str("host", instanceHost).
-			Msg("Failed to refresh qBittorrent capabilities during client creation")
 		client.updateHealthStatus(false)
-	} else {
-		client.updateHealthStatus(true)
+		return nil, fmt.Errorf("failed to verify qBittorrent session: %w", err)
 	}
+	client.updateHealthStatus(true)
 
 	// Initialize sync manager with default options
 	syncOpts := qbt.DefaultSyncOptions()
@@ -291,6 +286,9 @@ func (c *Client) RefreshCapabilities(ctx context.Context) error {
 	version = strings.TrimSpace(version)
 	if version == "" {
 		return fmt.Errorf("web API version is empty")
+	}
+	if _, err := semver.NewVersion(version); err != nil {
+		return fmt.Errorf("invalid qBittorrent WebAPI version %q: %w", version, err)
 	}
 
 	c.mu.Lock()
