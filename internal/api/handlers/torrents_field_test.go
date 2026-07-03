@@ -119,7 +119,9 @@ func TestListCrossInstanceTorrentsSkipsFreshData(t *testing.T) {
 	handler, release := createStaleCrossInstanceReadHarness(t)
 	defer release()
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/torrents/cross-instance?limit=10", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/torrents/cross-instance?limit=10", nil)
 	rec := httptest.NewRecorder()
 
 	done := make(chan struct{})
@@ -131,17 +133,26 @@ func TestListCrossInstanceTorrentsSkipsFreshData(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(time.Second):
+		cancel()
+		release()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+		}
 		t.Fatal("cross-instance list joined a stale in-flight sync")
 	}
 
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Empty(t, rec.Header().Get("X-Data-Source"))
 }
 
 func TestGetTorrentFieldCrossInstanceReadSkipsFreshData(t *testing.T) {
 	handler, release := createStaleCrossInstanceReadHarness(t)
 	defer release()
 
-	req := newTorrentFieldRequest(t, allInstancesID, map[string]any{
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := newTorrentFieldRequestWithContext(t, ctx, allInstancesID, map[string]any{
 		"field": "magnet_uri",
 	})
 	rec := httptest.NewRecorder()
@@ -155,6 +166,12 @@ func TestGetTorrentFieldCrossInstanceReadSkipsFreshData(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(time.Second):
+		cancel()
+		release()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+		}
 		t.Fatal("cross-instance torrent field read joined a stale in-flight sync")
 	}
 
@@ -285,11 +302,16 @@ func newStaleCachedClient(t *testing.T, host string, torrents []qbt.Torrent) *qu
 
 func newTorrentFieldRequest(t *testing.T, instanceID int, payload map[string]any) *http.Request {
 	t.Helper()
+	return newTorrentFieldRequestWithContext(t, context.Background(), instanceID, payload)
+}
+
+func newTorrentFieldRequestWithContext(t *testing.T, ctx context.Context, instanceID int, payload map[string]any) *http.Request {
+	t.Helper()
 
 	body, err := json.Marshal(payload)
 	require.NoError(t, err)
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/instances/"+strconv.Itoa(instanceID)+"/torrents/field", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/instances/"+strconv.Itoa(instanceID)+"/torrents/field", bytes.NewReader(body))
 	routeCtx := chi.NewRouteContext()
 	routeCtx.URLParams.Add("instanceID", strconv.Itoa(instanceID))
 

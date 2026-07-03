@@ -177,7 +177,50 @@ func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 	go func() {
 		refreshDone <- client.RefreshCapabilities(context.Background())
 	}()
-	time.Sleep(100 * time.Millisecond)
+
+	writerQueued := make(chan struct{})
+	stopWriterProbe := make(chan struct{})
+	var stopWriterProbeOnce sync.Once
+	stopProbe := func() {
+		stopWriterProbeOnce.Do(func() { close(stopWriterProbe) })
+	}
+	defer stopProbe()
+	go func() {
+		for {
+			select {
+			case <-stopWriterProbe:
+				return
+			default:
+			}
+
+			probeDone := make(chan struct{})
+			go func() {
+				client.mu.RLock()
+				client.mu.RUnlock()
+				close(probeDone)
+			}()
+
+			select {
+			case <-probeDone:
+			case <-stopWriterProbe:
+				return
+			case <-time.After(10 * time.Millisecond):
+				close(writerQueued)
+				return
+			}
+		}
+	}()
+
+	refreshComplete := false
+	select {
+	case err := <-refreshDone:
+		require.NoError(t, err)
+		refreshComplete = true
+	case <-writerQueued:
+	case <-time.After(time.Second):
+		t.Fatal("capability refresh neither completed nor queued for the client lock")
+	}
+	stopProbe()
 
 	readDone := make(chan bool, 1)
 	go func() {
@@ -193,11 +236,13 @@ func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 
 	release()
 
-	select {
-	case err := <-refreshDone:
-		require.NoError(t, err)
-	case <-time.After(time.Second):
-		t.Fatal("capability refresh did not finish")
+	if !refreshComplete {
+		select {
+		case err := <-refreshDone:
+			require.NoError(t, err)
+		case <-time.After(time.Second):
+			t.Fatal("capability refresh did not finish")
+		}
 	}
 
 	select {
