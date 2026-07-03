@@ -196,6 +196,7 @@ func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
 			probeDone := make(chan struct{})
 			go func() {
 				client.mu.RLock()
+				_ = client.supportsSetTags
 				client.mu.RUnlock()
 				close(probeDone)
 			}()

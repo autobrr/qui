@@ -152,7 +152,7 @@ func TestGetTorrentFieldCrossInstanceReadSkipsFreshData(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	req := newTorrentFieldRequestWithContext(t, ctx, allInstancesID, map[string]any{
+	req := newTorrentFieldRequestWithContext(ctx, t, allInstancesID, map[string]any{
 		"field": "magnet_uri",
 	})
 	rec := httptest.NewRecorder()
@@ -302,10 +302,10 @@ func newStaleCachedClient(t *testing.T, host string, torrents []qbt.Torrent) *qu
 
 func newTorrentFieldRequest(t *testing.T, instanceID int, payload map[string]any) *http.Request {
 	t.Helper()
-	return newTorrentFieldRequestWithContext(t, context.Background(), instanceID, payload)
+	return newTorrentFieldRequestWithContext(context.Background(), t, instanceID, payload)
 }
 
-func newTorrentFieldRequestWithContext(t *testing.T, ctx context.Context, instanceID int, payload map[string]any) *http.Request {
+func newTorrentFieldRequestWithContext(ctx context.Context, t *testing.T, instanceID int, payload map[string]any) *http.Request {
 	t.Helper()
 
 	body, err := json.Marshal(payload)
