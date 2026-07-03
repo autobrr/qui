@@ -532,3 +532,25 @@ type mockPoolSyncEventSink struct {
 func (m *mockPoolSyncEventSink) HandleMainData(_ int, _ *qbt.MainData) {}
 func (m *mockPoolSyncEventSink) HandleTrackerHealthUpdated(_ int)      {}
 func (m *mockPoolSyncEventSink) HandleSyncError(_ int, _ error)        {}
+
+// TestClientPool_CreateDoubleCheckReturnsExistingUnhealthyClient guards the
+// create-path double-check against re-creating a client another caller just
+// stored: creation can legitimately succeed with a not-yet-verified
+// (unhealthy) client, and callers queued on the instance lock must reuse it
+// instead of serially re-logging in and overwriting the pool entry.
+func TestClientPool_CreateDoubleCheckReturnsExistingUnhealthyClient(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	const instanceID = 1
+
+	existing := &Client{instanceID: instanceID} // zero-value isHealthy == false
+	pool.mu.Lock()
+	pool.clients[instanceID] = existing
+	pool.mu.Unlock()
+
+	client, err := pool.createClientWithTimeout(context.Background(), instanceID, time.Second)
+
+	require.NoError(t, err, "double-check must return the pooled client, not attempt a re-create")
+	require.Same(t, existing, client)
+}

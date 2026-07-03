@@ -160,6 +160,19 @@ func TestStreamManagerHandleSyncErrorMapsAuthFailure(t *testing.T) {
 	require.NotContains(t, payload.Err, "Sync with qBittorrent failed")
 }
 
+func TestBlockerRetrySecondsFloorsSubSecondBackoff(t *testing.T) {
+	seconds, ok := blockerRetrySeconds(fmt.Errorf("failed to get client: %w", &qbittorrent.InstanceHealthBlockerError{
+		Kind:       qbittorrent.InstanceHealthBlockerBackoff,
+		InstanceID: 1,
+		RetryAfter: 300 * time.Millisecond,
+	}))
+	require.True(t, ok)
+	require.Equal(t, 1, seconds, "sub-second backoff must not round to 0 (omitempty would drop the hint)")
+
+	_, ok = blockerRetrySeconds(errors.New("plain failure"))
+	require.False(t, ok)
+}
+
 func TestSyncErrorMessageRetryHints(t *testing.T) {
 	blocker := &qbittorrent.InstanceHealthBlockerError{
 		Kind:       qbittorrent.InstanceHealthBlockerBackoff,

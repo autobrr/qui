@@ -44,6 +44,8 @@ func TestActionableAuthFailureMessageHeuristics(t *testing.T) {
 		{"otp hostname in transport error", `health check failed: Get "http://otp-gateway.local:8080/api/v2/app/webapiVersion": context deadline exceeded`, false},
 		{"mfa path in transport error", `could not sync: Get "https://qbit.example.com/mfa/login?next=/api": connection refused`, false},
 		{"identifier containing 2fa", "dial tcp: connect to host my2fabox failed", false},
+		{"bare otp hostname in dns error", `Get "http://otp-gateway.local:8080/api/v2/sync/maindata?rid=5": dial tcp: lookup otp-gateway.local: no such host`, false},
+		{"bare 2fa hostname label", "dial tcp: lookup 2fa.example.com: no such host", false},
 		{"plain connectivity failure", "dial tcp 192.168.1.10:8080: connect: connection refused", false},
 		{"two-factor mention", "WebUI: two-factor authentication is enabled", true},
 		{"otp mention", "login rejected: OTP required", true},

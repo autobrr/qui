@@ -696,7 +696,11 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 func blockerRetrySeconds(err error) (int, bool) {
 	var blocker *qbittorrent.InstanceHealthBlockerError
 	if errors.As(err, &blocker) && blocker.RetryAfter > 0 {
-		return int(blocker.RetryAfter.Round(time.Second) / time.Second), true
+		seconds := max(int(blocker.RetryAfter.Round(time.Second)/time.Second),
+			// A sub-second remainder must not round to 0: retryInSeconds is
+			// omitempty on the wire, so 0 would drop the hint entirely.
+			1)
+		return seconds, true
 	}
 	return 0, false
 }

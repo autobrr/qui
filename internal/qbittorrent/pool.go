@@ -370,9 +370,15 @@ func (cp *ClientPool) createClientWithTimeout(ctx context.Context, instanceID in
 		return nil, &InstanceHealthBlockerError{Kind: InstanceHealthBlockerBackoff, InstanceID: instanceID, RetryAfter: remainingBackoff}
 	}
 
-	// Double-check if client was created while we were waiting for the lock
+	// Double-check if client was created while we were waiting for the lock.
+	// Return it regardless of health: creation can succeed with a
+	// not-yet-verified (unhealthy) client when the capability fetch times out,
+	// and re-creating here would make every caller queued on the instance lock
+	// serially re-login and overwrite the pool entry, resetting failure
+	// tracking each time. Unhealthy pooled clients are probed with backoff by
+	// GetClientWithTimeout on the next acquisition instead.
 	cp.mu.RLock()
-	if client, exists := cp.clients[instanceID]; exists && client.IsHealthy() {
+	if client, exists := cp.clients[instanceID]; exists {
 		cp.mu.RUnlock()
 		return client, nil
 	}
