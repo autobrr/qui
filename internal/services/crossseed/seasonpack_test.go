@@ -18,6 +18,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	internalqb "github.com/autobrr/qui/internal/qbittorrent"
+	"github.com/autobrr/qui/internal/services/arr"
 	"github.com/autobrr/qui/internal/testutil/testdb"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
@@ -212,6 +213,406 @@ func TestCheckSeasonPackWebhook_ReturnsReadyWhenCoveragePasses(t *testing.T) {
 	require.Len(t, store.runs, 1)
 	require.Equal(t, "check", store.runs[0].Phase)
 	require.Equal(t, "ready", store.runs[0].Status)
+}
+
+func TestCheckSeasonPackWebhook_MatchesEpisodesViaARRAlternateTitles(t *testing.T) {
+	// The pack carries the romaji title; the local episodes carry the English title.
+	// Only the show's Sonarr alternate titles bridge the two, so this exercises the
+	// alias plumbing end to end: prepareSeasonPack -> computeCoverage -> matcher.
+	packName := "Jidou.Hanbaiki.S01.1080p.WEB.x264-GRP"
+	packFiles := []string{
+		"Jidou.Hanbaiki.S01E01.1080p.WEB.x264-GRP.mkv",
+		"Jidou.Hanbaiki.S01E02.1080p.WEB.x264-GRP.mkv",
+		"Jidou.Hanbaiki.S01E03.1080p.WEB.x264-GRP.mkv",
+		"Jidou.Hanbaiki.S01E04.1080p.WEB.x264-GRP.mkv",
+	}
+	torrentData := base64.StdEncoding.EncodeToString(createTestTorrent(t, packName, packFiles, 262144))
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          t.TempDir(),
+	}
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e01", Name: "Reborn.Vending.Machine.S01E01.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e02", Name: "Reborn.Vending.Machine.S01E02.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e03", Name: "Reborn.Vending.Machine.S01E03.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e04", Name: "Reborn.Vending.Machine.S01E04.1080p.WEB.x264-GRP", Progress: 1.0},
+	}
+
+	newSvc := func(arrSvc arrLookupService) *Service {
+		return &Service{
+			instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+			syncManager: newMultiFakeSyncManager(
+				map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+				map[int]*models.Instance{inst.ID: inst},
+			),
+			releaseCache:             NewReleaseCache(),
+			automationSettingsLoader: defaultSettings(true, 0.75),
+			seasonPackRunStore:       &stubSeasonPackRunStore{},
+			arrService:               arrSvc,
+		}
+	}
+
+	req := &SeasonPackCheckRequest{TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID}}
+
+	// Without ARR aliases the two titles are disjoint and nothing matches.
+	respNoARR, err := newSvc(nil).CheckSeasonPackWebhook(context.Background(), req)
+	require.NoError(t, err)
+	require.False(t, respNoARR.Ready)
+	require.Equal(t, "no_matches", respNoARR.Reason)
+
+	// With Sonarr returning both the romaji and English titles (via the season lookup),
+	// coverage completes.
+	spy := &spyARRLookupService{seasonResult: &arr.SeasonEpisodeTotalResult{
+		TotalEpisodes: 4,
+		Titles:        []string{"Jidou Hanbaiki", "Reborn Vending Machine"},
+	}}
+	respARR, err := newSvc(spy).CheckSeasonPackWebhook(context.Background(), req)
+	require.NoError(t, err)
+	require.True(t, respARR.Ready, "expected ready via ARR alternate titles")
+	require.NotEmpty(t, respARR.Matches)
+	require.Equal(t, 4, respARR.Matches[0].MatchedEpisodes)
+}
+
+func TestCheckSeasonPackWebhook_SingleSeasonLookupPerPrepare(t *testing.T) {
+	// The season episode total and the alias titles come from the SAME
+	// LookupSeasonEpisodeTotal result. The lookup is uncached live Sonarr traffic
+	// (/parse + /episode per call), so a second call per webhook doubles it.
+	packName := "Jidou.Hanbaiki.S01.1080p.WEB.x264-GRP"
+	packFiles := []string{
+		"Jidou.Hanbaiki.S01E01.1080p.WEB.x264-GRP.mkv",
+		"Jidou.Hanbaiki.S01E02.1080p.WEB.x264-GRP.mkv",
+	}
+	torrentData := base64.StdEncoding.EncodeToString(createTestTorrent(t, packName, packFiles, 262144))
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          t.TempDir(),
+	}
+	spy := &spyARRLookupService{seasonResult: &arr.SeasonEpisodeTotalResult{
+		TotalEpisodes: 2,
+		Titles:        []string{"Jidou Hanbaiki"},
+	}}
+	svc := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager: newMultiFakeSyncManager(
+			map[int][]qbt.Torrent{inst.ID: {}},
+			map[int]*models.Instance{inst.ID: inst},
+		),
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackRunStore:       &stubSeasonPackRunStore{},
+		arrService:               spy,
+	}
+
+	_, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
+		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, spy.seasonCalls, "full prepare must make exactly one season lookup")
+
+	spy.seasonCalls = 0
+	_, err = svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
+		TorrentName: packName, InstanceIDs: []int{inst.ID},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, spy.seasonCalls, "light prepare must make exactly one season lookup")
+}
+
+func TestCheckSeasonPackWebhook_MatchesSeasonlessAbsoluteAnimeEpisodes(t *testing.T) {
+	// A seasoned anime pack whose files use absolute numbering ("Cool Show - 25"),
+	// matched against local episodes that are also absolute-numbered and parse
+	// seasonless (Series 0). Both sides carry the same absolute number, so stamping the
+	// pack season onto the local identity unifies them without any metadata lookup.
+	// Without the stamp, the local ids are {0,25..28} and the pack ids {3,25..28}, so
+	// nothing matches (the current 0% behaviour) — which makes this assertion load-bearing.
+	packName := "Cool.Show.S03.1080p.WEB.x264-GRP"
+	packFiles := []string{
+		"Cool.Show.-.25.1080p.WEB.x264-GRP.mkv",
+		"Cool.Show.-.26.1080p.WEB.x264-GRP.mkv",
+		"Cool.Show.-.27.1080p.WEB.x264-GRP.mkv",
+		"Cool.Show.-.28.1080p.WEB.x264-GRP.mkv",
+	}
+	torrentData := base64.StdEncoding.EncodeToString(createTestTorrent(t, packName, packFiles, 262144))
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          t.TempDir(),
+	}
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e25", Name: "Cool.Show.-.25.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e26", Name: "Cool.Show.-.26.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e27", Name: "Cool.Show.-.27.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e28", Name: "Cool.Show.-.28.1080p.WEB.x264-GRP", Progress: 1.0},
+	}
+
+	svc := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager: newMultiFakeSyncManager(
+			map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+			map[int]*models.Instance{inst.ID: inst},
+		),
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackRunStore:       &stubSeasonPackRunStore{},
+	}
+
+	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
+		TorrentName: packName,
+		TorrentData: torrentData,
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.True(t, resp.Ready, "expected ready when absolute-numbered episodes align with the pack season")
+	require.NotEmpty(t, resp.Matches)
+	require.Equal(t, 4, resp.Matches[0].MatchedEpisodes)
+}
+
+func TestCheckSeasonPackWebhook_RejectsAbsoluteLocalsAgainstSxxExxPack(t *testing.T) {
+	// A pack whose files use within-season SxxExx numbering must NOT match local
+	// episodes numbered by absolute number. Absolute episode 1 is S01E01, not S03E01,
+	// so equating them would inflate coverage and could hardlink the wrong episode.
+	// The pack season may only be stamped onto a seasonless local when the pack episode
+	// with that number was itself absolute-numbered.
+	packName := "Cool.Show.S03.1080p.WEB.x264-GRP"
+	packFiles := []string{
+		"Cool.Show.S03E01.1080p.WEB.x264-GRP.mkv",
+		"Cool.Show.S03E02.1080p.WEB.x264-GRP.mkv",
+		"Cool.Show.S03E03.1080p.WEB.x264-GRP.mkv",
+		"Cool.Show.S03E04.1080p.WEB.x264-GRP.mkv",
+	}
+	torrentData := base64.StdEncoding.EncodeToString(createTestTorrent(t, packName, packFiles, 262144))
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          t.TempDir(),
+	}
+	// Local episodes are absolute-numbered and parse seasonless (Series 0).
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e01", Name: "Cool.Show.-.1.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e02", Name: "Cool.Show.-.2.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e03", Name: "Cool.Show.-.3.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e04", Name: "Cool.Show.-.4.1080p.WEB.x264-GRP", Progress: 1.0},
+	}
+
+	svc := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager: newMultiFakeSyncManager(
+			map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+			map[int]*models.Instance{inst.ID: inst},
+		),
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackRunStore:       &stubSeasonPackRunStore{},
+	}
+
+	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
+		TorrentName: packName,
+		TorrentData: torrentData,
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.False(t, resp.Ready, "absolute-numbered locals must not satisfy an SxxExx pack")
+	require.Equal(t, "no_matches", resp.Reason)
+}
+
+func TestCheckSeasonPackWebhook_RejectsSxxExxLocalsAgainstAbsolutePack(t *testing.T) {
+	// Reverse of the SxxExx-pack case: an absolute-numbered pack (files "Cool.Show - 13")
+	// must NOT match SxxExx locals. Absolute 13 is S02E01 when S01 had 12 episodes, not
+	// S02E13, so the numbering-space guard must reject in this direction too.
+	packName := "Cool.Show.S02.1080p.WEB.x264-GRP"
+	packFiles := []string{
+		"Cool.Show.-.13.1080p.WEB.x264-GRP.mkv",
+		"Cool.Show.-.14.1080p.WEB.x264-GRP.mkv",
+		"Cool.Show.-.15.1080p.WEB.x264-GRP.mkv",
+		"Cool.Show.-.16.1080p.WEB.x264-GRP.mkv",
+	}
+	torrentData := base64.StdEncoding.EncodeToString(createTestTorrent(t, packName, packFiles, 262144))
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          t.TempDir(),
+	}
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e13", Name: "Cool.Show.S02E13.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e14", Name: "Cool.Show.S02E14.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e15", Name: "Cool.Show.S02E15.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "e16", Name: "Cool.Show.S02E16.1080p.WEB.x264-GRP", Progress: 1.0},
+	}
+
+	svc := &Service{
+		instanceStore: &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager: newMultiFakeSyncManager(
+			map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+			map[int]*models.Instance{inst.ID: inst},
+		),
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackRunStore:       &stubSeasonPackRunStore{},
+	}
+
+	resp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
+		TorrentName: packName,
+		TorrentData: torrentData,
+		InstanceIDs: []int{inst.ID},
+	})
+
+	require.NoError(t, err)
+	require.False(t, resp.Ready, "SxxExx locals must not satisfy an absolute-numbered pack")
+	require.Equal(t, "no_matches", resp.Reason)
+}
+
+// TestFixC_CRCollection_CheckAndApplyBothReject pins fix C: the pack season is
+// stamped onto a seasonless local BEFORE the release match, so the seasonless-only
+// collection tolerance (unknownSeasonTV) can no longer pass at check while apply
+// (which matches stamped file releases) rejects. Pack carries CR, locals do not:
+// both stages must reject. Reverting the stamp-before-match ordering turns this red.
+func TestFixC_CRCollection_CheckAndApplyBothReject(t *testing.T) {
+	packName := "Cool.Show.S03.1080p.CR.WEB-DL.x264-GRP"
+	packFiles := []string{
+		"Cool.Show.-.25.1080p.CR.WEB-DL.x264-GRP.mkv",
+		"Cool.Show.-.26.1080p.CR.WEB-DL.x264-GRP.mkv",
+		"Cool.Show.-.27.1080p.CR.WEB-DL.x264-GRP.mkv",
+		"Cool.Show.-.28.1080p.CR.WEB-DL.x264-GRP.mkv",
+	}
+	torrentData := base64.StdEncoding.EncodeToString(createTestTorrent(t, packName, packFiles, 262144))
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          t.TempDir(),
+	}
+	// Locals lack the CR collection tag.
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e25", Name: "Cool.Show.-.25.1080p.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.25.1080p.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e26", Name: "Cool.Show.-.26.1080p.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.26.1080p.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e27", Name: "Cool.Show.-.27.1080p.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.27.1080p.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e28", Name: "Cool.Show.-.28.1080p.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.28.1080p.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+	}
+
+	baseSM := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackRunStore:       &stubSeasonPackRunStore{},
+	}
+
+	checkResp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
+		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
+	})
+	require.NoError(t, err)
+	require.False(t, checkResp.Ready, "check must reject: pack has CR collection, locals do not")
+
+	applyResp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
+	})
+	require.NoError(t, err)
+	require.False(t, applyResp.Applied, "apply must agree with check")
+	require.Empty(t, sm.addCalls)
+}
+
+// TestFixC_CRCollection_CheckAndApplyBothAccept is the positive control: same CR pack,
+// locals also carry CR. Check is ready and apply succeeds all the way through the
+// stamped pipeline (resolveSeasonPackLocalFilesForCandidates + buildSeasonPackPlan).
+func TestFixC_CRCollection_CheckAndApplyBothAccept(t *testing.T) {
+	packName := "Cool.Show.S03.1080p.CR.WEB-DL.x264-GRP"
+	packFiles := []string{
+		"Cool.Show.-.25.1080p.CR.WEB-DL.x264-GRP.mkv",
+		"Cool.Show.-.26.1080p.CR.WEB-DL.x264-GRP.mkv",
+		"Cool.Show.-.27.1080p.CR.WEB-DL.x264-GRP.mkv",
+		"Cool.Show.-.28.1080p.CR.WEB-DL.x264-GRP.mkv",
+	}
+	torrentData := base64.StdEncoding.EncodeToString(createTestTorrent(t, packName, packFiles, 262144))
+
+	inst := &models.Instance{
+		ID: 1, Name: "Test", IsActive: true,
+		HasLocalFilesystemAccess: true,
+		UseHardlinks:             true,
+		HardlinkBaseDir:          t.TempDir(),
+	}
+	episodeTorrents := []qbt.Torrent{
+		{Hash: "e25", Name: "Cool.Show.-.25.1080p.CR.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.25.1080p.CR.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e26", Name: "Cool.Show.-.26.1080p.CR.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.26.1080p.CR.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e27", Name: "Cool.Show.-.27.1080p.CR.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.27.1080p.CR.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+		{Hash: "e28", Name: "Cool.Show.-.28.1080p.CR.WEB-DL.x264-GRP", ContentPath: "/media/Cool.Show.-.28.1080p.CR.WEB-DL.x264-GRP.mkv", Progress: 1.0},
+	}
+
+	baseSM := newMultiFakeSyncManager(
+		map[int][]qbt.Torrent{inst.ID: episodeTorrents},
+		map[int]*models.Instance{inst.ID: inst},
+	)
+	baseSM.files = seasonPackEpisodeFiles(t, torrentData, "e25", "e26", "e27", "e28")
+	sm := &seasonPackSyncManager{fakeSyncManager: baseSM}
+	svc := &Service{
+		instanceStore:            &fakeInstanceStore{instances: map[int]*models.Instance{inst.ID: inst}},
+		syncManager:              sm,
+		releaseCache:             NewReleaseCache(),
+		automationSettingsLoader: defaultSettings(true, 0.75),
+		seasonPackRunStore:       &stubSeasonPackRunStore{},
+		seasonPackLinkCreator:    func(_ *hardlinktree.TreePlan) error { return nil },
+	}
+
+	checkResp, err := svc.CheckSeasonPackWebhook(context.Background(), &SeasonPackCheckRequest{
+		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
+	})
+	require.NoError(t, err)
+	require.True(t, checkResp.Ready, "check must accept when collections agree")
+
+	applyResp, err := svc.ApplySeasonPackWebhook(context.Background(), &SeasonPackApplyRequest{
+		TorrentName: packName, TorrentData: torrentData, InstanceIDs: []int{inst.ID},
+	})
+	require.NoError(t, err)
+	require.True(t, applyResp.Applied, "apply must agree with check (accept side)")
+	require.Equal(t, 4, applyResp.MatchedEpisodes)
+}
+
+// TestFixC_MatchStoresStampedReleaseWithoutMutatingCache pins that episodeMatch.release
+// is the stamped clone (Series set to the pack season) and that the shared release
+// cache is not mutated by stamping.
+func TestFixC_MatchStoresStampedReleaseWithoutMutatingCache(t *testing.T) {
+	packName := "Cool.Show.S03.1080p.WEB.x264-GRP"
+	parsedPack := rls.ParseString(packName)
+	packRelease := &parsedPack
+
+	packEpisodes := map[episodeIdentity]packEpisodeOrigin{
+		{series: 3, episode: 25}: {absolute: true},
+	}
+
+	inst := &models.Instance{ID: 1, Name: "Test", IsActive: true}
+	local := qbt.Torrent{Hash: "e25", Name: "Cool.Show.-.25.1080p.WEB.x264-GRP", Progress: 1.0}
+	cached := buildCrossInstanceViews(inst, []qbt.Torrent{local})
+
+	svc := &Service{releaseCache: NewReleaseCache()}
+	settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
+
+	got := svc.matchEpisodeCandidatesDetailed(cached, packRelease, packEpisodes, settings, nil)
+	require.Len(t, got, 1)
+	matches, ok := got[episodeIdentity{series: 3, episode: 25}]
+	require.True(t, ok, "identity must be the stamped one")
+	require.Len(t, matches, 1)
+	require.Equal(t, 3, matches[0].release.Series, "stored release must be the stamped clone")
+
+	cachedParse := svc.releaseCache.Parse(local.Name)
+	require.Equal(t, 0, cachedParse.Series, "cached release must not be mutated by stamping")
 }
 
 func TestCheckSeasonPackWebhook_ReturnsNotFoundBelowThreshold(t *testing.T) {
@@ -454,8 +855,8 @@ func TestCheckSeasonPackWebhook_UsesSeasonTotalLookupWhenAvailable(t *testing.T)
 		syncManager:              sm,
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
-		seasonPackEpisodeTotalLookup: func(context.Context, string, *rls.Release) (int, bool) {
-			return 6, true
+		seasonPackEpisodeTotalLookup: func(context.Context, string, *rls.Release) (int, []string, bool) {
+			return 6, nil, true
 		},
 	}
 
@@ -1674,8 +2075,8 @@ func TestCheckSeasonPackWebhook_NoTorrentData_WithMetadata_ThresholdWorks(t *tes
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
 		// Mock metadata lookup returns 4 total episodes.
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, bool) {
-			return 4, true
+		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
+			return 4, nil, true
 		},
 	}
 
@@ -1722,8 +2123,8 @@ func TestCheckSeasonPackWebhook_NoTorrentData_NoMetadata_ReturnsReadyIfMatchesEx
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
 		// No metadata available.
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, bool) {
-			return 0, false
+		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
+			return 0, nil, false
 		},
 	}
 
@@ -1770,8 +2171,8 @@ func TestCheckSeasonPackWebhook_NoTorrentData_NoMetadata_NoMatches_ReturnsNotRea
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, bool) {
-			return 0, false
+		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
+			return 0, nil, false
 		},
 	}
 
@@ -1815,8 +2216,8 @@ func TestCheckSeasonPackWebhook_NoTorrentData_BelowThreshold_ReturnsNotReady(t *
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
 		// Metadata says 10 episodes total.
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, bool) {
-			return 10, true
+		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
+			return 10, nil, true
 		},
 	}
 
@@ -1861,8 +2262,8 @@ func TestCheckSeasonPackWebhook_NoTorrentData_NilPackEpisodes_DeduplicatesByIden
 		releaseCache:             NewReleaseCache(),
 		automationSettingsLoader: defaultSettings(true, 0.75),
 		seasonPackRunStore:       store,
-		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, bool) {
-			return 0, false
+		seasonPackEpisodeTotalLookup: func(_ context.Context, _ string, _ *rls.Release) (int, []string, bool) {
+			return 0, nil, false
 		},
 	}
 

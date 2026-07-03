@@ -167,7 +167,8 @@ func TestSeasonPackMatchingReleaseCompatibility(t *testing.T) {
 			episode := parseSeasonPackTestRelease(t, tt.episode)
 
 			if tt.checkSeasonPack {
-				require.Equal(t, tt.wantSeasonPack, matcher.seasonPackReleasesMatch(pack, episode, tt.strict, tt.settings))
+				match, _ := matcher.seasonPackReleasesMatchWithReason(pack, episode, tt.strict, tt.settings, nil)
+				require.Equal(t, tt.wantSeasonPack, match)
 			}
 			if tt.checkGeneric {
 				require.Equal(t, tt.wantGeneric, matcher.releasesMatch(pack, episode, tt.strict))
@@ -183,4 +184,54 @@ func parseSeasonPackTestRelease(t *testing.T, name string) *rls.Release {
 	require.NotEmpty(t, release.Title, "expected parser to extract a title from %q", name)
 
 	return &release
+}
+
+// TestSeasonPackReleasesMatchWithReason_AliasTitles proves the matcher returns a
+// field-level reject reason (observability, #1) and that a pack and an episode using
+// different title languages/forms only match when the show's alternate titles are
+// supplied on the pack side (alias bridge, #2). The no-alias case is the current 0%
+// behaviour and keeps the fix load-bearing.
+func TestSeasonPackReleasesMatchWithReason_AliasTitles(t *testing.T) {
+	matcher := &Service{stringNormalizer: stringutils.NewDefaultNormalizer()}
+
+	cases := []struct {
+		name    string
+		pack    string
+		episode string
+		aliases []string
+	}{
+		{
+			name:    "romaji pack vs english episode",
+			pack:    "Jidou Hanbaiki ni Umarekawatta Ore wa Meikyuu wo Samayou S03 1080p CR WEB-DL AAC2.0 H.264-SubsPlease",
+			episode: "Reborn as a Vending Machine I Now Wander the Dungeon S03E01 1080p CR WEB-DL AAC2.0 H.264-SubsPlease",
+			aliases: []string{
+				"Reborn as a Vending Machine, I Now Wander the Dungeon",
+				"Jidou Hanbaiki ni Umarekawatta Ore wa Meikyuu wo Samayou",
+			},
+		},
+		{
+			name:    "abbreviated pack title vs full episode title",
+			pack:    "NIPPON SANGOKU S01 1080p AMZN WEB-DL DDP2.0 H.264-VARYG",
+			episode: "NIPPON SANGOKU The Three Nations of the Crimson Sun S01E01 1080p AMZN WEB-DL DDP2.0 H.264-VARYG",
+			aliases: []string{
+				"NIPPON SANGOKU",
+				"NIPPON SANGOKU: The Three Nations of the Crimson Sun",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pack := parseSeasonPackTestRelease(t, tc.pack)
+			episode := parseSeasonPackTestRelease(t, tc.episode)
+
+			ok, reason := matcher.seasonPackReleasesMatchWithReason(pack, episode, true, nil, nil)
+			require.False(t, ok, "expected no match without aliases")
+			require.Equal(t, "title mismatch", reason)
+
+			ok, reason = matcher.seasonPackReleasesMatchWithReason(pack, episode, true, nil, tc.aliases)
+			require.True(t, ok, "expected match with aliases, got reason %q", reason)
+			require.Empty(t, reason)
+		})
+	}
 }

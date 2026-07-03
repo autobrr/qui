@@ -49,10 +49,12 @@ type ExternalIDsResult struct {
 	Source        string              `json:"source,omitempty"`
 }
 
-// SeasonEpisodeTotalResult contains the resolved episode count for a Sonarr season.
+// SeasonEpisodeTotalResult contains the resolved episode count for a Sonarr season,
+// plus the show's alternate titles usable for that season (series-wide + same-season).
 type SeasonEpisodeTotalResult struct {
-	TotalEpisodes int  `json:"total_episodes"`
-	ArrInstanceID *int `json:"arr_instance_id,omitempty"`
+	TotalEpisodes int      `json:"total_episodes"`
+	ArrInstanceID *int     `json:"arr_instance_id,omitempty"`
+	Titles        []string `json:"titles,omitempty"`
 }
 
 // Service orchestrates ARR ID lookups with caching
@@ -376,6 +378,7 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 		return &SeasonEpisodeTotalResult{
 			TotalEpisodes: len(episodes),
 			ArrInstanceID: &instanceID,
+			Titles:        titlesForSeason(parseResp.Series, seasonNumber),
 		}, nil
 	}
 

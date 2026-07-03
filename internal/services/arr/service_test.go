@@ -316,6 +316,71 @@ func newArrLookupTestService(t *testing.T, instanceType models.ArrInstanceType, 
 	return service, cacheStore
 }
 
+func TestService_LookupSeasonEpisodeTotalReturnsSeasonTitles(t *testing.T) {
+	// Pins the wiring at the return site: season-pack alias matching consumes
+	// result.Titles, so dropping the titlesForSeason call would silently kill the
+	// feature while every other test stays green.
+	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{"series": {"id": 7, "title": "Oshi no Ko", "alternateTitles": [
+				{"title": "Oshi no Ko Romaji"},
+				{"title": "Oshi no Ko 2nd Season", "seasonNumber": 2},
+				{"title": "Oshi no Ko 3rd Season", "seasonNumber": 3}
+			]}}`))
+		case "/api/v3/episode":
+			_, _ = w.Write([]byte(`[
+				{"id": 1, "seasonNumber": 2, "episodeNumber": 1},
+				{"id": 2, "seasonNumber": 2, "episodeNumber": 2}
+			]`))
+		default:
+			t.Fatalf("unexpected ARR request: %s", r.URL.Path)
+		}
+	}))
+
+	result, err := service.LookupSeasonEpisodeTotal(context.Background(), "Oshi.no.Ko.S02.1080p.WEB.x264-GRP", 2)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 2, result.TotalEpisodes)
+	require.Contains(t, result.Titles, "Oshi no Ko")
+	require.Contains(t, result.Titles, "Oshi no Ko Romaji")
+	require.Contains(t, result.Titles, "Oshi no Ko 2nd Season", "same-season alias must ride along")
+	require.NotContains(t, result.Titles, "Oshi no Ko 3rd Season", "other-season alias must be filtered")
+}
+
+func TestTitlesForSeason_KeepsSeriesWideAndSameSeasonOnly(t *testing.T) {
+	season := func(i int) *int { return &i }
+	series := &SonarrSeries{
+		Title: "Oshi no Ko",
+		AlternateTitles: []AlternateTitle{
+			{Title: "Oshi no Ko Romaji"},                                 // series-wide (season absent)
+			{Title: "Oshi no Ko Wide", SeasonNumber: season(-1)},         // series-wide (-1)
+			{Title: "Oshi no Ko 2nd Season", SeasonNumber: season(2)},    // scoped to season 2
+			{Title: "Oshi no Ko Scene S3", SceneSeasonNumber: season(3)}, // scoped to season 3
+		},
+	}
+
+	// Season 2: keep series-wide + the season-2 alias, drop the season-3 alias.
+	s2 := titlesForSeason(series, 2)
+	require.Contains(t, s2, "Oshi no Ko")
+	require.Contains(t, s2, "Oshi no Ko Romaji")
+	require.Contains(t, s2, "Oshi no Ko Wide")
+	require.Contains(t, s2, "Oshi no Ko 2nd Season", "same-season alias must be kept (bridges 2nd-season locals)")
+	require.NotContains(t, s2, "Oshi no Ko Scene S3", "a different season's alias must be dropped")
+
+	// Season 1: neither season-scoped alias applies.
+	s1 := titlesForSeason(series, 1)
+	require.Contains(t, s1, "Oshi no Ko Romaji")
+	require.NotContains(t, s1, "Oshi no Ko 2nd Season", "season-2 alias must not bridge into a season-1 pack")
+	require.NotContains(t, s1, "Oshi no Ko Scene S3")
+
+	// titlesFromSeries stays season-blind (search path unchanged): all titles present.
+	all := titlesFromSeries(series)
+	require.Contains(t, all, "Oshi no Ko 2nd Season")
+	require.Contains(t, all, "Oshi no Ko Scene S3")
+}
+
 func TestNewService(t *testing.T) {
 	s := NewService(nil, nil)
 

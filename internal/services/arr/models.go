@@ -83,9 +83,27 @@ type RadarrMovie struct {
 	IMDbID          string           `json:"imdbId"`
 }
 
-// AlternateTitle represents the common title field returned in ARR alternate title resources.
+// AlternateTitle represents an ARR alternate title. SeasonNumber/SceneSeasonNumber scope
+// the title to a specific season when present; Sonarr uses null or -1 for series-wide
+// titles. Radarr movies never set these (movies have no seasons).
 type AlternateTitle struct {
-	Title string `json:"title"`
+	Title             string `json:"title"`
+	SeasonNumber      *int   `json:"seasonNumber"`
+	SceneSeasonNumber *int   `json:"sceneSeasonNumber"`
+}
+
+// seasonScoped reports whether the alternate title names only one season (e.g.
+// "Show 2nd Season") rather than the whole series. Sonarr uses null or -1 for
+// series-wide titles.
+func (a AlternateTitle) seasonScoped() bool {
+	return (a.SeasonNumber != nil && *a.SeasonNumber >= 0) ||
+		(a.SceneSeasonNumber != nil && *a.SceneSeasonNumber >= 0)
+}
+
+// matchesSeason reports whether a season-scoped alternate title names the given season.
+func (a AlternateTitle) matchesSeason(season int) bool {
+	return (a.SeasonNumber != nil && *a.SeasonNumber == season) ||
+		(a.SceneSeasonNumber != nil && *a.SceneSeasonNumber == season)
 }
 
 // ExternalIDsLookupResult contains ARR IDs plus ARR-provided titles for the same content.
@@ -245,6 +263,25 @@ func titlesFromSeries(series *SonarrSeries) []string {
 	titles := make([]string, 0, 1+len(series.AlternateTitles))
 	addUniqueTitle(&titles, series.Title)
 	for _, alternate := range series.AlternateTitles {
+		addUniqueTitle(&titles, alternate.Title)
+	}
+	return titles
+}
+
+// titlesForSeason returns the series title plus the alternate titles usable for the
+// given season: series-wide aliases (romaji/english/abbreviated) and any alias scoped
+// to that season. Aliases scoped to a DIFFERENT season are dropped so, e.g., a
+// "Show 2nd Season" alias cannot bridge season-2 episodes onto a season-1 pack.
+func titlesForSeason(series *SonarrSeries, season int) []string {
+	if series == nil {
+		return nil
+	}
+	titles := make([]string, 0, 1+len(series.AlternateTitles))
+	addUniqueTitle(&titles, series.Title)
+	for _, alternate := range series.AlternateTitles {
+		if alternate.seasonScoped() && !alternate.matchesSeason(season) {
+			continue
+		}
 		addUniqueTitle(&titles, alternate.Title)
 	}
 	return titles

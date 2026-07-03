@@ -425,7 +425,9 @@ type Service struct {
 	recheckResumeCtx    context.Context
 	recheckResumeCancel context.CancelFunc
 
-	seasonPackEpisodeTotalLookup func(context.Context, string, *rls.Release) (int, bool)
+	// Returns the season's episode total, the show's alias titles from the same
+	// lookup (series-wide + same-season), and whether the total resolved.
+	seasonPackEpisodeTotalLookup func(context.Context, string, *rls.Release) (int, []string, bool)
 
 	// Metadata provider for season pack episode totals (TVDB/TVMaze).
 	metadataCredsRevisionLoader func(ctx context.Context) (time.Time, error)
