@@ -76,6 +76,16 @@ Defaults are chosen to match common seasonpackarr expectations.
 | Simplify WEB source matching | Off | Treat WEB-DL as WEB for season-pack matching. | `WEB-DL` matches `WEB` |
 | Ignore year differences | Off | Allow matches when release dates differ or one side omits the year. | `Show.2024.S01E01` matches `Show.2025.S01E01` |
 
+### Alternate titles
+
+When Sonarr resolves the show, qui pulls its series-wide alternate titles and uses them during season-pack matching. This lets a pack and a local episode match when they use different title forms, such as a romaji pack against English-titled episodes, or an abbreviated title against the full one. Season-scoped alternate titles are ignored so they cannot bridge one season's episodes onto another season's pack. Without Sonarr knowing the show, only the literal parsed titles are compared.
+
+### Anime absolute numbering
+
+Absolute-numbered anime episodes (for example `Show - 1140`, with no season number) are matched against a seasoned pack when both sides use the same absolute numbering. qui keys the local episode to the pack's season and relies on the absolute episode number to identify it.
+
+This does not translate between numbering schemes. A pack that uses `SxxExx` numbering will not match local episodes numbered by absolute number (or the reverse), since resolving one to the other needs authoritative per-episode data from a metadata provider. In practice releases that cross-seed cleanly already share a numbering convention.
+
 ## Apply Model
 
 Passing the threshold does **not** require 100% local coverage.

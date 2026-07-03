@@ -85,7 +85,7 @@ Enable trace logging to see detailed rejection reasons:
 loglevel = 'TRACE'
 ```
 
-Look for `[CROSSSEED-MATCH] Release filtered` entries showing exactly which field caused the mismatch (e.g., `group_mismatch`, `resolution_mismatch`, `language_mismatch`).
+For **season-pack** checks, look for `[CROSSSEED-MATCH] Release filtered` entries. Each carries the `pack`, `season`, and `candidate` it compared plus a `reason` field naming the mismatch (e.g. `title mismatch`, `group mismatch`, `resolution mismatch`, `hdr mismatch`, `source mismatch`, `episode not in pack`, or `episode numbering mismatch`). For regular cross-seed search, look for `[CROSSSEED-SEARCH] Candidate filtered out by release match` (at `TRACE`), which names each rejected candidate and the field that failed; `[CROSSSEED-SEARCH] Release filtering rejection summary` (at `DEBUG`) additionally reports per-reason counts.
 
 For content-prefilter decisions, `DEBUG` is enough. Look for messages such as:
 
