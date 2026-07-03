@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 	"github.com/tmaxmax/go-sse"
 
@@ -124,6 +125,37 @@ func TestStreamManagerHandleSyncErrorPreservesBackoffStatus(t *testing.T) {
 	require.Contains(t, payload.Err, "paused")
 	require.Contains(t, payload.Err, "health-check backoff")
 	require.Contains(t, payload.Err, "retrying in 12s")
+	require.NotContains(t, payload.Err, "Sync with qBittorrent failed")
+}
+
+func TestStreamManagerHandleSyncErrorMapsAuthFailure(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	sub := &subscriptionState{
+		id:      "subscription-auth",
+		options: StreamOptions{InstanceID: 42},
+		created: time.Now(),
+	}
+
+	manager.subscriptions[sub.id] = sub
+	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
+		sub.id: sub,
+	}
+
+	manager.HandleSyncError(sub.options.InstanceID, qbt.ErrBadCredentials)
+
+	require.Eventually(t, func() bool {
+		return len(provider.messagesFor(sub.id)) == 1
+	}, time.Second, 5*time.Millisecond, "expected a single broadcast message")
+
+	payload := decodeStreamPayload(t, provider.messagesFor(sub.id)[0])
+	require.Equal(t, streamEventError, payload.Type)
+	require.Contains(t, payload.Err, "paused")
+	require.Contains(t, payload.Err, "2FA")
+	require.Contains(t, payload.Err, "unattended")
+	require.Contains(t, payload.Err, "Update the instance login details")
 	require.NotContains(t, payload.Err, "Sync with qBittorrent failed")
 }
 

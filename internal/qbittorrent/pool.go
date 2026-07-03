@@ -663,7 +663,7 @@ func (cp *ClientPool) trackFailure(instanceID int, err error) {
 	// Record error to database
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if recordErr := cp.errorStore.RecordError(ctx, instanceID, err); recordErr != nil {
+	if recordErr := cp.errorStore.RecordError(ctx, instanceID, ActionableInstanceError(err)); recordErr != nil {
 		log.Error().Err(recordErr).Int("instanceID", instanceID).Msg("Failed to record error to database")
 	}
 

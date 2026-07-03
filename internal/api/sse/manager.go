@@ -691,6 +691,9 @@ func syncErrorMessage(err error, retrySeconds int) string {
 	if message, ok := qbittorrent.InstanceHealthBlockerMessage(err); ok {
 		return fmt.Sprintf("Sync with qBittorrent paused: %s; retrying in %ds", message, retrySeconds)
 	}
+	if message, ok := qbittorrent.ActionableAuthFailureMessage(err); ok {
+		return fmt.Sprintf("Sync with qBittorrent paused: %s; retrying in %ds", message, retrySeconds)
+	}
 	return fmt.Sprintf("Sync with qBittorrent failed (%s); retrying in %ds", err.Error(), retrySeconds)
 }
 
@@ -1430,6 +1433,8 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 	if err != nil {
 		errMsg := "failed to refresh torrent list"
 		if message, ok := qbittorrent.InstanceHealthBlockerMessage(err); ok {
+			errMsg = message
+		} else if message, ok := qbittorrent.ActionableAuthFailureMessage(err); ok {
 			errMsg = message
 		} else if errors.Is(err, context.DeadlineExceeded) {
 			errMsg = "torrent list refresh timed out"
