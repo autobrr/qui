@@ -128,6 +128,85 @@ func TestClientSubcategoriesAlwaysEnabledCapability(t *testing.T) {
 	}
 }
 
+func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
+	syncStarted := make(chan struct{})
+	releaseSync := make(chan struct{})
+	var closeSyncStarted sync.Once
+	var releaseSyncOnce sync.Once
+	release := func() {
+		releaseSyncOnce.Do(func() { close(releaseSync) })
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			closeSyncStarted.Do(func() { close(syncStarted) })
+			<-releaseSync
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	defer release()
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	syncOpts := qbt.DefaultSyncOptions()
+	syncOpts.DynamicSync = true
+	client := &Client{
+		Client:          qbtClient,
+		syncManager:     qbtClient.NewSyncManager(syncOpts),
+		supportsSetTags: true,
+	}
+
+	getterDone := make(chan struct{})
+	go func() {
+		defer close(getterDone)
+		_ = client.getTorrentsByHashes([]string{"abc"})
+	}()
+
+	select {
+	case <-syncStarted:
+	case <-time.After(time.Second):
+		t.Fatal("checked getter did not start a sync")
+	}
+
+	refreshDone := make(chan error, 1)
+	go func() {
+		refreshDone <- client.RefreshCapabilities(context.Background())
+	}()
+	time.Sleep(100 * time.Millisecond)
+
+	readDone := make(chan bool, 1)
+	go func() {
+		readDone <- client.SupportsSetTags()
+	}()
+
+	select {
+	case supported := <-readDone:
+		require.True(t, supported)
+	case <-time.After(time.Second):
+		t.Fatal("capability reader convoyed behind checked getter and pending writer")
+	}
+
+	release()
+
+	select {
+	case err := <-refreshDone:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("capability refresh did not finish")
+	}
+
+	select {
+	case <-getterDone:
+	case <-time.After(time.Second):
+		t.Fatal("checked getter did not finish")
+	}
+}
+
 func TestNewClientWithTimeoutRejectsLoginCookiesWithoutVerifiedSessionMarker(t *testing.T) {
 	t.Parallel()
 

@@ -209,12 +209,11 @@ func (c *Client) GetLastHealthCheck() time.Time {
 // advances on failed sync attempts too and would mask a stalled instance from
 // readiness/staleness checks.
 func (c *Client) GetLastSyncUpdate() time.Time {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if c.syncManager == nil {
+	syncManager := c.GetSyncManager()
+	if syncManager == nil {
 		return time.Time{}
 	}
-	return c.syncManager.LastSuccessfulSyncTime()
+	return syncManager.LastSuccessfulSyncTime()
 }
 
 func (c *Client) updateHealthStatus(healthy bool) {
@@ -488,14 +487,12 @@ func (c *Client) SupportsPathAutocomplete() bool {
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
 func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if c.syncManager == nil {
+	syncManager := c.GetSyncManager()
+	if syncManager == nil {
 		return nil
 	}
 
-	return c.syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
+	return syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
@@ -563,12 +560,11 @@ func (c *Client) GetSyncManager() *qbt.SyncManager {
 }
 
 func (c *Client) trackerManager() *qbt.TrackerManager {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if c.syncManager == nil {
+	syncManager := c.GetSyncManager()
+	if syncManager == nil {
 		return nil
 	}
-	return c.syncManager.Trackers()
+	return syncManager.Trackers()
 }
 
 func (c *Client) supportsTrackerInclude() bool {
@@ -804,21 +800,19 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, _ ma
 	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Msg("Starting optimistic cache update")
 
 	now := time.Now()
+	syncManager := c.GetSyncManager()
 
 	// Apply optimistic updates based on action using sync manager data
 	for _, hash := range hashes {
 		var originalState qbt.TorrentState
 		var progress float64
 
-		// Need mutex only for syncManager access
-		c.mu.RLock()
-		if c.syncManager != nil {
-			if torrent, exists := c.syncManager.GetTorrent(hash); exists {
+		if syncManager != nil {
+			if torrent, exists := syncManager.GetTorrent(hash); exists {
 				originalState = torrent.State
 				progress = torrent.Progress
 			}
 		}
-		c.mu.RUnlock()
 
 		state := getTargetState(action, progress)
 		if state != "" && state != originalState {
