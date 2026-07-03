@@ -649,6 +649,9 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 	if retrySeconds <= 0 {
 		retrySeconds = int(defaultSyncInterval.Round(time.Second) / time.Second)
 	}
+	if seconds, ok := blockerRetrySeconds(err); ok {
+		retrySeconds = seconds
+	}
 
 	log.Warn().
 		Err(err).
@@ -656,7 +659,7 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 		Dur("retryIn", backoff).
 		Msg("Sync manager error propagated to SSE stream")
 
-	message := fmt.Sprintf("Sync with qBittorrent failed (%s); retrying in %ds", err.Error(), retrySeconds)
+	message := syncErrorMessage(err, retrySeconds)
 
 	meta := &StreamMeta{
 		InstanceID:     instanceID,
@@ -685,6 +688,33 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 		m.stampLastSuccessfulSync(m.ctx, meta, instanceID)
 		m.publishToInstance(instanceID, payload)
 	}()
+}
+
+// blockerRetrySeconds returns the pool's remaining health-blocker backoff so
+// SSE retry hints tick on the same clock as the blocker message text, which
+// embeds that backoff rather than the sync loop's own interval.
+func blockerRetrySeconds(err error) (int, bool) {
+	var blocker *qbittorrent.InstanceHealthBlockerError
+	if errors.As(err, &blocker) && blocker.RetryAfter > 0 {
+		seconds := max(int(blocker.RetryAfter.Round(time.Second)/time.Second),
+			// A sub-second remainder must not round to 0: retryInSeconds is
+			// omitempty on the wire, so 0 would drop the hint entirely.
+			1)
+		return seconds, true
+	}
+	return 0, false
+}
+
+// syncErrorMessage formats SSE sync errors without duplicating retry hints that
+// are already embedded in qBittorrent health blocker messages.
+func syncErrorMessage(err error, retrySeconds int) string {
+	if message, ok := qbittorrent.InstanceHealthBlockerMessage(err); ok {
+		return "Sync with qBittorrent paused: " + message
+	}
+	if message, ok := qbittorrent.ActionableAuthFailureMessage(err); ok {
+		return fmt.Sprintf("Sync with qBittorrent paused: %s; retrying in %ds", message, retrySeconds)
+	}
+	return fmt.Sprintf("Sync with qBittorrent failed (%s); retrying in %ds", err.Error(), retrySeconds)
 }
 
 // Serve implements the HTTP handler for GET /stream and multiplexes multiple subscriptions over one SSE session.
@@ -1422,7 +1452,11 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 	}
 	if err != nil {
 		errMsg := "failed to refresh torrent list"
-		if errors.Is(err, context.DeadlineExceeded) {
+		if message, ok := qbittorrent.InstanceHealthBlockerMessage(err); ok {
+			errMsg = message
+		} else if message, ok := qbittorrent.ActionableAuthFailureMessage(err); ok {
+			errMsg = message
+		} else if errors.Is(err, context.DeadlineExceeded) {
 			errMsg = "torrent list refresh timed out"
 		} else if errors.Is(err, context.Canceled) {
 			errMsg = "refresh was cancelled"
@@ -1442,7 +1476,11 @@ func (m *StreamManager) materializeGroupResponse(opts StreamOptions, metaCopy *S
 		}
 		hasSingleConcreteInstance := retryInstanceID > 0 && (!opts.isMultiInstance() || len(opts.InstanceIDs) == 1)
 		if hasSingleConcreteInstance {
-			metaCopy.RetryInSeconds = m.currentRetrySeconds(retryInstanceID)
+			if seconds, ok := blockerRetrySeconds(err); ok {
+				metaCopy.RetryInSeconds = seconds
+			} else {
+				metaCopy.RetryInSeconds = m.currentRetrySeconds(retryInstanceID)
+			}
 		}
 		// Stamp how stale the retained data is only when the scalar timestamp maps to
 		// one concrete instance. Mixed aggregate rows can come from multiple clocks.
