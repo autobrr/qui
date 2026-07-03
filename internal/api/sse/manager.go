@@ -687,9 +687,11 @@ func (m *StreamManager) HandleSyncError(instanceID int, err error) {
 	}()
 }
 
+// syncErrorMessage formats SSE sync errors without duplicating retry hints that
+// are already embedded in qBittorrent health blocker messages.
 func syncErrorMessage(err error, retrySeconds int) string {
 	if message, ok := qbittorrent.InstanceHealthBlockerMessage(err); ok {
-		return fmt.Sprintf("Sync with qBittorrent paused: %s; retrying in %ds", message, retrySeconds)
+		return "Sync with qBittorrent paused: " + message
 	}
 	if message, ok := qbittorrent.ActionableAuthFailureMessage(err); ok {
 		return fmt.Sprintf("Sync with qBittorrent paused: %s; retrying in %ds", message, retrySeconds)

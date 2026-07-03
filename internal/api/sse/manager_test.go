@@ -159,6 +159,24 @@ func TestStreamManagerHandleSyncErrorMapsAuthFailure(t *testing.T) {
 	require.NotContains(t, payload.Err, "Sync with qBittorrent failed")
 }
 
+func TestSyncErrorMessageRetryHints(t *testing.T) {
+	blocker := &qbittorrent.InstanceHealthBlockerError{
+		Kind:       qbittorrent.InstanceHealthBlockerBackoff,
+		InstanceID: 42,
+		RetryAfter: 12 * time.Second,
+	}
+	blockerMessage := syncErrorMessage(blocker, 30)
+	require.Equal(t, "Sync with qBittorrent paused: qBittorrent instance 42 is in health-check backoff after a failed connection; retrying in 12s", blockerMessage)
+	require.NotContains(t, blockerMessage, "retrying in 12s; retrying in 30s")
+
+	authMessage := syncErrorMessage(qbt.ErrBadCredentials, 30)
+	require.Contains(t, authMessage, "Sync with qBittorrent paused:")
+	require.Contains(t, authMessage, "retrying in 30s")
+
+	fallbackMessage := syncErrorMessage(errors.New("temporary sync failure"), 30)
+	require.Equal(t, "Sync with qBittorrent failed (temporary sync failure); retrying in 30s", fallbackMessage)
+}
+
 func TestStreamManagerHandleSyncErrorStampsLastSuccessfulSync(t *testing.T) {
 	manager := NewStreamManager(nil, nil, nil)
 	provider := newRecordingProvider()
