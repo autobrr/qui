@@ -33,6 +33,38 @@ func TestActionableAuthFailureMessageAuthRequired(t *testing.T) {
 	require.Contains(t, message, "unattended")
 }
 
+func TestActionableAuthFailureMessageHeuristics(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  string
+		want bool
+	}{
+		{"otp hostname in transport error", `health check failed: Get "http://otp-gateway.local:8080/api/v2/app/webapiVersion": context deadline exceeded`, false},
+		{"mfa path in transport error", `could not sync: Get "https://qbit.example.com/mfa/login?next=/api": connection refused`, false},
+		{"identifier containing 2fa", "dial tcp: connect to host my2fabox failed", false},
+		{"plain connectivity failure", "dial tcp 192.168.1.10:8080: connect: connection refused", false},
+		{"two-factor mention", "WebUI: two-factor authentication is enabled", true},
+		{"otp mention", "login rejected: OTP required", true},
+		{"2fa mention", "2FA verification needed", true},
+		{"401 status", "could not get main data; status code: 401", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			message, ok := ActionableAuthFailureMessage(errors.New(tc.err))
+
+			require.Equal(t, tc.want, ok, "classification mismatch for %q -> %q", tc.err, message)
+			if tc.want {
+				require.Equal(t, qbittorrentAuthRequiredAction, message)
+			}
+		})
+	}
+}
+
 func TestActionableInstanceErrorPreservesAuthCause(t *testing.T) {
 	t.Parallel()
 
