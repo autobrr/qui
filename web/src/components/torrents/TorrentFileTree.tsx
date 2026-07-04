@@ -215,15 +215,16 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     () => new Set(allFolderIds)
   )
-  const knownFolderIds = useRef<Set<string>>(new Set(allFolderIds))
+  const [knownFolderIds, setKnownFolderIds] = useState(allFolderIds)
 
-  // Keep expandedFolders in sync when folder paths change (e.g., after rename)
-  useEffect(() => {
-    const previousIds = knownFolderIds.current
-    const currentIds = new Set(allFolderIds)
-    knownFolderIds.current = currentIds
-    setExpandedFolders((prev) => reconcileExpandedFolders(prev, previousIds, currentIds))
-  }, [allFolderIds])
+  // Keep expandedFolders in sync when folder paths change (e.g., after rename);
+  // render-time adjustment so the reconciled tree commits in one pass
+  if (knownFolderIds !== allFolderIds) {
+    setKnownFolderIds(allFolderIds)
+    setExpandedFolders(
+      reconcileExpandedFolders(expandedFolders, new Set(knownFolderIds), new Set(allFolderIds))
+    )
+  }
 
   const flatRows = useMemo(
     () => flattenTree(nodes, expandedFolders),

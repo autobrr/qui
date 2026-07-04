@@ -221,30 +221,24 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   const { t } = useTranslation("torrents")
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set())
   const [searchQuery, setSearchQuery] = useState("")
-  const initializedForHash = useRef<string | null>(null)
-  const knownFolderIds = useRef<Set<string>>(new Set())
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const tree = useMemo(
     () => (files ? buildFileTree(files, incognitoMode, torrentHash) : []),
     [files, incognitoMode, torrentHash]
   )
+  const folderIds = useMemo(() => collectFolderIds(tree), [tree])
 
   // Expand all folders by default when tree is first built for a new torrent,
-  // then keep the expanded set keyed to current paths (renames change node ids)
-  useEffect(() => {
-    if (tree.length === 0) return
-    const allFolderIds = collectFolderIds(tree)
-    if (initializedForHash.current !== torrentHash) {
-      initializedForHash.current = torrentHash
-      knownFolderIds.current = allFolderIds
-      setExpandedFolders(allFolderIds)
-      return
-    }
-    const previousIds = knownFolderIds.current
-    knownFolderIds.current = allFolderIds
-    setExpandedFolders((prev) => reconcileExpandedFolders(prev, previousIds, allFolderIds))
-  }, [tree, torrentHash])
+  // then keep the expanded set keyed to current paths (renames change node ids);
+  // render-time adjustment so the reconciled tree commits in one pass
+  const [knownExpansion, setKnownExpansion] = useState<{ hash: string; ids: Set<string> } | null>(null)
+  if (tree.length > 0 && (knownExpansion?.hash !== torrentHash || knownExpansion.ids !== folderIds)) {
+    setKnownExpansion({ hash: torrentHash, ids: folderIds })
+    setExpandedFolders(
+      knownExpansion?.hash === torrentHash? reconcileExpandedFolders(expandedFolders, knownExpansion.ids, folderIds): new Set(folderIds)
+    )
+  }
 
   const flatRows = useMemo(
     () => flattenTree(tree, expandedFolders),
@@ -310,8 +304,8 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   }, [])
 
   const expandAll = useCallback(() => {
-    setExpandedFolders(collectFolderIds(tree))
-  }, [tree])
+    setExpandedFolders(new Set(folderIds))
+  }, [folderIds])
 
   const collapseAll = useCallback(() => {
     setExpandedFolders(new Set())
