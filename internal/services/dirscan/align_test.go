@@ -175,6 +175,9 @@ type alignFakeManager struct {
 	// renameErr, when set, makes every rename fail without touching the file list, simulating a
 	// qBittorrent that does not support renaming (e.g. WebAPI < 2.7.0).
 	renameErr error
+	// recheckErr, when set, makes the "recheck" BulkAction fail, simulating an instance that
+	// briefly could not schedule the post-alignment recheck.
+	recheckErr error
 }
 
 func (m *alignFakeManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
@@ -186,6 +189,9 @@ func (m *alignFakeManager) BulkAction(_ context.Context, _ int, _ []string, acti
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.bulkActions = append(m.bulkActions, action)
+	if action == "recheck" && m.recheckErr != nil {
+		return m.recheckErr
+	}
 	return nil
 }
 
@@ -304,12 +310,13 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 		t.Fatalf("expected success, got %+v", res)
 	}
 
-	// Added force-paused so qBittorrent does not act on the pre-rename paths, and not skip_checking.
+	// Added force-paused AND skip_checking so qBittorrent does not verify (and thereby block renames
+	// on) the pre-rename paths before we align them; the manual recheck after alignment verifies.
 	if manager.addOptions["paused"] != "true" || manager.addOptions["stopped"] != "true" {
 		t.Errorf("expected paused+stopped add options, got %+v", manager.addOptions)
 	}
-	if _, ok := manager.addOptions["skip_checking"]; ok {
-		t.Errorf("did not expect skip_checking when alignment is needed, got %+v", manager.addOptions)
+	if manager.addOptions["skip_checking"] != "true" {
+		t.Errorf("expected skip_checking when alignment is needed, got %+v", manager.addOptions)
 	}
 
 	// The top-level folder was renamed to the on-disk directory name; filenames already matched.
@@ -512,5 +519,66 @@ func TestInjector_Inject_NoAlignmentWhenNamesMatch(t *testing.T) {
 	}
 	if len(manager.bulkActions) != 0 {
 		t.Errorf("expected no recheck on the fast path, got %+v", manager.bulkActions)
+	}
+}
+
+func TestInjector_Inject_AlignmentRecheckFailure_ReportsFailureAndDoesNotResume(t *testing.T) {
+	searcheeDir := filepath.Join(t.TempDir(), "Release 01")
+	if err := os.MkdirAll(searcheeDir, 0o755); err != nil {
+		t.Fatalf("mkdir searchee: %v", err)
+	}
+
+	instance := &models.Instance{ID: 1, Name: "test"}
+
+	// Renames succeed, but the post-alignment recheck can't be scheduled. The torrent was added
+	// force-paused for alignment, so a swallowed recheck error would strand it paused while the
+	// run reports success. It must be reported as a failure instead.
+	manager := &alignFakeManager{
+		hash:       "deadbeef05",
+		files:      qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
+		recheckErr: errors.New("instance temporarily unreachable"),
+	}
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:        "Linux.Distribution.Release.01",
+			InfoHash:    "deadbeef05",
+			Files:       []TorrentFile{{Path: "Linux.Distribution.Release.01/a.iso", Size: 4}},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name:  "Release 01",
+			Path:  searcheeDir,
+			Files: []*ScannedFile{{Path: filepath.Join(searcheeDir, "a.iso"), RelPath: "a.iso", Size: 4}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles:   []MatchedFilePair{{SearcheeFile: &ScannedFile{RelPath: "a.iso", Size: 4}, TorrentFile: TorrentFile{Path: "Linux.Distribution.Release.01/a.iso", Size: 4}}},
+			IsMatch:        true,
+			IsPerfectMatch: true,
+		},
+		SearchResult: &jackett.SearchResult{Indexer: "Test"},
+		StartPaused:  false,
+	}
+
+	res, err := injector.Inject(context.Background(), req)
+	if err != nil {
+		t.Fatalf("inject returned error: %v", err)
+	}
+	if res.Success {
+		t.Fatalf("expected Success=false when the post-alignment recheck fails, got %+v", res)
+	}
+	if res.ErrorMessage == "" {
+		t.Errorf("expected an error message describing the alignment failure")
+	}
+	// The renames landed (alignment itself worked)...
+	if len(manager.folderRenames) != 1 {
+		t.Errorf("expected the folder rename to have been applied, got %+v", manager.folderRenames)
+	}
+	// ...the recheck was attempted and failed, so no resume watcher must be queued.
+	if manager.resumeCount != 0 {
+		t.Errorf("expected no resume watcher when the recheck fails, got %d", manager.resumeCount)
 	}
 }

@@ -229,7 +229,11 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	}
 
 	options := i.buildAddOptions(req, savePath)
-	if !hasUnmatchedFiles && !alignmentNeeded {
+	// Skip the on-add hash check for full matches (the data is already verified by the on-disk
+	// files we matched). Alignment adds MUST keep skip_checking too: qBittorrent blocks file/folder
+	// rename operations while a torrent is being verified, so letting it check the pre-rename paths
+	// would stall the renames. The manual recheck after alignment does the real verification.
+	if !hasUnmatchedFiles {
 		options["skip_checking"] = qbitBoolTrue
 	}
 
@@ -266,7 +270,9 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 			return result, nil
 		}
 	default:
-		i.triggerRecheckForPausedPartial(req, regularAddNeedsRecheck)
+		// Regular (non-aligned) adds are not force-paused, so a failed recheck is non-fatal here:
+		// log and continue rather than failing the injection.
+		_ = i.triggerRecheckForPausedPartial(req, regularAddNeedsRecheck)
 	}
 
 	result.Success = true
@@ -476,13 +482,15 @@ func isPausedOrStoppedState(state qbt.TorrentState) bool {
 
 // triggerRecheckForPausedPartial verifies regular-mode partial or policy-forced
 // full-recheck matches after add, and only queues resume when the request did
-// not ask to stay paused.
-func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest, needsRecheck bool) {
+// not ask to stay paused. Returns an error if the recheck could not be scheduled so
+// callers that force-paused the torrent (alignment) can surface the failure instead
+// of leaving it stranded.
+func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest, needsRecheck bool) error {
 	if i == nil || i.syncManager == nil || req == nil || req.ParsedTorrent == nil || req.MatchResult == nil {
-		return
+		return nil
 	}
 	if !needsRecheck {
-		return
+		return nil
 	}
 
 	hash := req.ParsedTorrent.InfoHash
@@ -493,7 +501,7 @@ func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest, needsReche
 			Int("instanceID", req.InstanceID).
 			Str("hash", hash).
 			Msg("dirscan: failed to trigger recheck after add")
-		return
+		return fmt.Errorf("trigger recheck after add: %w", err)
 	}
 
 	if !req.StartPaused {
@@ -501,6 +509,7 @@ func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest, needsReche
 			Timeout: 60 * time.Minute,
 		})
 	}
+	return nil
 }
 
 func (i *Injector) validateInjectRequest(req *InjectRequest) error {

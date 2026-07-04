@@ -20,6 +20,9 @@ const (
 	alignVerifyTimeout  = 3 * time.Second
 	alignVerifyInterval = 250 * time.Millisecond
 	alignRetryDelay     = 300 * time.Millisecond
+	// alignmentTimeout bounds the whole detached rename sequence. ponytail: fixed ceiling; a torrent
+	// with hundreds of file renames could need more, bump it if that ever shows up in the wild.
+	alignmentTimeout = 5 * time.Minute
 )
 
 type fileRename struct {
@@ -127,8 +130,15 @@ func searcheePathIsDir(path string) bool {
 // recheck and resume-when-complete. Returns whether alignment succeeded. The torrent was added
 // force-paused, so if alignment fails it stays paused for inspection; ResumeWhenComplete only
 // resumes at 100%, so bad data is never seeded.
-func (i *Injector) alignAndRecheck(ctx context.Context, req *InjectRequest, plan alignmentPlan) bool {
+func (i *Injector) alignAndRecheck(_ context.Context, req *InjectRequest, plan alignmentPlan) bool {
 	hash := req.ParsedTorrent.InfoHash
+
+	// Detach from the run context: once the torrent is added, the rename sequence must finish as a
+	// unit. A mid-sequence cancel (user Stop / scheduler) would leave a half-renamed torrent that
+	// TorrentExists skips on the next run, stranding it paused forever. The sibling
+	// triggerRecheckForPartialLinkTree detaches for the same reason.
+	ctx, cancel := context.WithTimeout(context.Background(), alignmentTimeout)
+	defer cancel()
 
 	if !i.applyAlignment(ctx, req.InstanceID, hash, plan) {
 		// Leave the torrent paused and untouched (no recheck/resume) so the user can inspect it.
@@ -151,8 +161,16 @@ func (i *Injector) alignAndRecheck(ctx context.Context, req *InjectRequest, plan
 		Msg("dirscan: aligned torrent content paths to on-disk layout")
 
 	// Recheck so qBittorrent validates the now-aligned data, then resume unless the user asked
-	// to keep it paused.
-	i.triggerRecheckForPausedPartial(req, true)
+	// to keep it paused. If the recheck can't be scheduled the torrent stays force-paused with no
+	// way to resume, so report failure rather than a stranded "success".
+	if err := i.triggerRecheckForPausedPartial(req, true); err != nil {
+		log.Warn().
+			Err(err).
+			Int("instanceID", req.InstanceID).
+			Str("hash", hash).
+			Msg("dirscan: aligned torrent but could not trigger recheck; leaving torrent paused for inspection")
+		return false
+	}
 	return true
 }
 
@@ -234,16 +252,25 @@ func (i *Injector) renameTorrentPath(ctx context.Context, instanceID int, hash, 
 		}
 
 		deadline := time.Now().Add(alignVerifyTimeout)
+		lastStatus := renamePending
 		for {
-			switch i.verifyRename(ctx, instanceID, canonical, oldPath, newPath, folder) {
-			case renameDone, renameUnknown:
+			lastStatus = i.verifyRename(ctx, instanceID, canonical, oldPath, newPath, folder)
+			if lastStatus == renameDone {
 				return true
-			case renamePending:
 			}
 			if ctx.Err() != nil || !time.Now().Before(deadline) {
 				break
 			}
 			time.Sleep(alignVerifyInterval)
+		}
+
+		// A file list we could never read for the whole window (renameUnknown) is treated as
+		// best-effort success rather than retried indefinitely. A still-pending rename means the
+		// async call silently no-op'd (old paths still visible), so fall through and re-issue it.
+		// Only accepting renameUnknown *after* polling closes the window where a transient files
+		// fetch error right after the call is mistaken for a completed rename.
+		if lastStatus == renameUnknown {
+			return true
 		}
 
 		if attempt < alignRenameAttempts && !sleepCtx(ctx, alignRetryDelay) {
@@ -255,7 +282,8 @@ func (i *Injector) renameTorrentPath(ctx context.Context, instanceID int, hash, 
 }
 
 // verifyRename reports whether qBittorrent has applied a rename by inspecting the torrent's
-// current files. renameUnknown means the files could not be read (best-effort success).
+// current files. renameUnknown means the files could not be read; the caller keeps polling and
+// only falls back to best-effort success if it stays unreadable for the whole verify window.
 func (i *Injector) verifyRename(ctx context.Context, instanceID int, canonicalHash, oldPath, newPath string, folder bool) renameStatus {
 	filesMap, err := i.syncManager.GetTorrentFilesBatch(qbsync.WithForceFilesRefresh(ctx), instanceID, []string{canonicalHash})
 	if err != nil {
