@@ -573,7 +573,7 @@ func TestRefreshSearchQueueCountsCooldownEligibleTorrents(t *testing.T) {
 	require.NoError(t, err)
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 	service := &Service{
 		automationStore: store,
@@ -633,7 +633,7 @@ func TestRefreshSearchQueue_TorznabDisabledCountsAllSources(t *testing.T) {
 	require.NoError(t, err)
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	service := &Service{
@@ -690,7 +690,7 @@ func TestRefreshSearchQueue_TorznabDisabledSkipsAlreadyCrossSeeded(t *testing.T)
 	require.NoError(t, err)
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	// Minimal torrent bytes; "source" flag hashing is based on info dict.
@@ -779,7 +779,7 @@ func TestPropagateDuplicateSearchHistory(t *testing.T) {
 	require.NoError(t, err)
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	service := &Service{
@@ -820,7 +820,7 @@ func TestStartSearchRun_AllowsGazelleOnlyWhenTorznabUnavailable(t *testing.T) {
 	require.NoError(t, err)
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	// Seeded Torrent Search should be able to start even with no Torznab indexers configured,
@@ -872,7 +872,7 @@ func TestStartSearchRun_DisableTorznabRequiresGazelle(t *testing.T) {
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	svc := &Service{
@@ -913,7 +913,7 @@ func TestStartSearchRun_DisableTorznabRequiresDecryptableGazelleKey(t *testing.T
 	require.NoError(t, err)
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 	svc := &Service{
 		instanceStore:    instanceStore,
@@ -943,7 +943,7 @@ func TestStartSearchRun_DisableTorznabSkipsJackettProbe(t *testing.T) {
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
@@ -995,7 +995,7 @@ func TestStartSearchRun_FallsBackToGazelleWhenJackettProbeFails(t *testing.T) {
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
@@ -1046,7 +1046,7 @@ func TestStartSearchRun_JackettProbeFailureRequiresGazelle(t *testing.T) {
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	svc := &Service{
@@ -1078,7 +1078,7 @@ func TestStartSearchRun_DisableTorznabUsesGazelleRunIntervalFloor(t *testing.T) 
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	_, err = store.UpsertSettings(ctx, &models.CrossSeedAutomationSettings{
@@ -1131,7 +1131,7 @@ func TestStartSearchRun_TorznabKeepsConservativeIntervalFloor(t *testing.T) {
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	svc := &Service{
@@ -1395,7 +1395,7 @@ func TestSearchTorrentMatches_GazelleSourceWithoutBackendsReturnsError(t *testin
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	sourceHash := "223759985c562a644428312c8cd3585d04686847"
@@ -1435,7 +1435,7 @@ func TestSearchTorrentMatches_DisableTorznabWithoutGazelleReturnsError(t *testin
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	sourceHash := "223759985c562a644428312c8cd3585d04686847"
@@ -1481,7 +1481,7 @@ func TestSearchTorrentMatches_GazelleConfiguredWithoutTargetLookupReturnsNoBacke
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	// Only RED key configured: RED-sourced torrents need OPS as the target, so Gazelle
@@ -1541,7 +1541,7 @@ func TestSearchTorrentMatches_GazelleTargetHashSkipReturnsNoBackendWithoutTorzna
 	require.NoError(t, err)
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	// Enable Gazelle and set OPS key (needed when source is RED and target is OPS).

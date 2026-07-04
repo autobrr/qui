@@ -472,7 +472,7 @@ func seedActiveInstance(t *testing.T, manager *StreamManager) int {
 		"http://localhost:8080",
 		"user",
 		"password",
-		nil, nil, false, nil,
+		nil, nil, false, nil, nil,
 	)
 	require.NoError(t, err, "failed to seed instance")
 	return instance.ID

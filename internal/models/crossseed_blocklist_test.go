@@ -21,7 +21,7 @@ func TestCrossSeedBlocklistStore_UpsertListDelete(t *testing.T) {
 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
-	instance, err := instanceStore.Create(ctx, "Test Instance", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test Instance", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	store := models.NewCrossSeedBlocklistStore(db)

@@ -215,7 +215,9 @@ func (h *InstancesHandler) buildInstanceResponsesParallel(ctx context.Context, i
 				UseHardlinks:             instances[i].UseHardlinks,
 				HardlinkBaseDir:          instances[i].HardlinkBaseDir,
 				HardlinkDirPreset:        instances[i].HardlinkDirPreset,
+				LinkDirName:              instances[i].LinkDirName,
 				UseReflinks:              instances[i].UseReflinks,
+				FallbackToRegularMode:    instances[i].FallbackToRegularMode,
 				Connected:                false,
 				HasDecryptionError:       false,
 				SortOrder:                instances[i].SortOrder,
@@ -264,6 +266,7 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 		UseHardlinks:             instance.UseHardlinks,
 		HardlinkBaseDir:          instance.HardlinkBaseDir,
 		HardlinkDirPreset:        instance.HardlinkDirPreset,
+		LinkDirName:              instance.LinkDirName,
 		UseReflinks:              instance.UseReflinks,
 		FallbackToRegularMode:    instance.FallbackToRegularMode,
 		Connected:                healthy,
@@ -307,6 +310,7 @@ func (h *InstancesHandler) buildQuickInstanceResponse(instance *models.Instance)
 		UseHardlinks:             instance.UseHardlinks,
 		HardlinkBaseDir:          instance.HardlinkBaseDir,
 		HardlinkDirPreset:        instance.HardlinkDirPreset,
+		LinkDirName:              instance.LinkDirName,
 		UseReflinks:              instance.UseReflinks,
 		FallbackToRegularMode:    instance.FallbackToRegularMode,
 		Connected:                false, // Will be updated asynchronously
@@ -389,6 +393,7 @@ type CreateInstanceRequest struct {
 	BasicPassword            *string                            `json:"basicPassword,omitempty"`
 	TLSSkipVerify            bool                               `json:"tlsSkipVerify,omitempty"`
 	HasLocalFilesystemAccess *bool                              `json:"hasLocalFilesystemAccess,omitempty"`
+	LinkDirName              *string                            `json:"linkDirName,omitempty"`
 	ReannounceSettings       *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
 }
 
@@ -406,6 +411,7 @@ type UpdateInstanceRequest struct {
 	UseHardlinks             *bool                              `json:"useHardlinks,omitempty"`
 	HardlinkBaseDir          *string                            `json:"hardlinkBaseDir,omitempty"`
 	HardlinkDirPreset        *string                            `json:"hardlinkDirPreset,omitempty"`
+	LinkDirName              *string                            `json:"linkDirName,omitempty"`
 	UseReflinks              *bool                              `json:"useReflinks,omitempty"`
 	FallbackToRegularMode    *bool                              `json:"fallbackToRegularMode,omitempty"`
 	ReannounceSettings       *InstanceReannounceSettingsPayload `json:"reannounceSettings,omitempty"`
@@ -428,6 +434,7 @@ type InstanceResponse struct {
 	UseHardlinks             bool                              `json:"useHardlinks"`
 	HardlinkBaseDir          string                            `json:"hardlinkBaseDir"`
 	HardlinkDirPreset        string                            `json:"hardlinkDirPreset"`
+	LinkDirName              string                            `json:"linkDirName"`
 	UseReflinks              bool                              `json:"useReflinks"`
 	FallbackToRegularMode    bool                              `json:"fallbackToRegularMode"`
 	Connected                bool                              `json:"connected"`
@@ -609,18 +616,37 @@ func (h *InstancesHandler) CreateInstance(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Create instance
-	instance, err := h.instanceStore.Create(r.Context(), req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, req.TLSSkipVerify, req.HasLocalFilesystemAccess, req.APIKey)
+	req.LinkDirName = normalizeOptionalString(req.LinkDirName)
+
+	settingsPayload := req.ReannounceSettings.toModel(0, nil)
+
+	instance, settings, err := h.instanceStore.CreateWithReannounce(
+		r.Context(),
+		h.reannounceStore,
+		req.Name,
+		req.Host,
+		req.Username,
+		req.Password,
+		req.BasicUsername,
+		req.BasicPassword,
+		req.TLSSkipVerify,
+		req.HasLocalFilesystemAccess,
+		req.LinkDirName,
+		settingsPayload,
+		req.APIKey,
+	)
 	if err != nil {
+		if errors.Is(err, models.ErrInvalidLinkDirName) {
+			RespondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		log.Error().Err(err).Msg("Failed to create instance")
 		RespondError(w, http.StatusInternalServerError, "Failed to create instance")
 		return
 	}
 
-	settings, err := h.persistReannounceSettings(r.Context(), instance.ID, req.ReannounceSettings)
-	if err != nil {
-		RespondError(w, http.StatusInternalServerError, "Failed to save reannounce settings")
-		return
+	if h.reannounceCache != nil && settings != nil {
+		h.reannounceCache.Replace(settings)
 	}
 
 	// Return quickly without testing connection
@@ -675,6 +701,8 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	if req.BasicPassword != nil && *req.BasicPassword != "" && domain.IsRedactedString(*req.BasicPassword) {
 		req.BasicPassword = existingInstance.BasicPasswordEncrypted
 	}
+
+	req.LinkDirName = normalizeOptionalString(req.LinkDirName)
 
 	// Handle redacted API key - if redacted, preserve the existing API key
 	if req.APIKey != nil && domain.IsRedactedString(*req.APIKey) {
@@ -734,13 +762,36 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 		UseHardlinks:             req.UseHardlinks,
 		HardlinkBaseDir:          req.HardlinkBaseDir,
 		HardlinkDirPreset:        req.HardlinkDirPreset,
+		LinkDirName:              req.LinkDirName,
 		UseReflinks:              req.UseReflinks,
 		FallbackToRegularMode:    req.FallbackToRegularMode,
 	}
-	instance, err := h.instanceStore.Update(r.Context(), instanceID, req.Name, req.Host, req.Username, req.Password, req.BasicUsername, req.BasicPassword, updateParams, req.APIKey)
+	var desiredSettings *models.InstanceReannounceSettings
+	if req.ReannounceSettings != nil {
+		desiredSettings = req.ReannounceSettings.toModel(instanceID, nil)
+	}
+
+	instance, settings, err := h.instanceStore.UpdateWithReannounce(
+		r.Context(),
+		instanceID,
+		req.Name,
+		req.Host,
+		req.Username,
+		req.Password,
+		req.BasicUsername,
+		req.BasicPassword,
+		updateParams,
+		h.reannounceStore,
+		desiredSettings,
+		req.APIKey,
+	)
 	if err != nil {
 		if errors.Is(err, models.ErrInstanceNotFound) {
 			RespondError(w, http.StatusNotFound, "Instance not found")
+			return
+		}
+		if errors.Is(err, models.ErrInvalidLinkDirName) {
+			RespondError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		log.Error().Err(err).Msg("Failed to update instance")
@@ -751,16 +802,10 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	// Remove old client from pool to force reconnection
 	h.clientPool.RemoveClient(instanceID)
 
-	var settings *models.InstanceReannounceSettings
-	if req.ReannounceSettings != nil {
-		var err error
-		settings, err = h.persistReannounceSettings(r.Context(), instanceID, req.ReannounceSettings)
-		if err != nil {
-			RespondError(w, http.StatusInternalServerError, "Failed to save reannounce settings")
-			return
-		}
-	} else {
+	if req.ReannounceSettings == nil {
 		settings = h.loadReannounceSettings(r.Context(), instanceID)
+	} else if h.reannounceCache != nil && settings != nil {
+		h.reannounceCache.Replace(settings)
 	}
 
 	// Return quickly without testing connection
@@ -771,6 +816,15 @@ func (h *InstancesHandler) UpdateInstance(w http.ResponseWriter, r *http.Request
 	go h.testConnectionAsync(instance.ID)
 
 	RespondJSON(w, http.StatusOK, response)
+}
+
+func normalizeOptionalString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+
+	trimmed := strings.TrimSpace(*value)
+	return &trimmed
 }
 
 // DeleteInstance deletes an instance

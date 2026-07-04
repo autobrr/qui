@@ -127,7 +127,8 @@ func TestInstanceCreateUsesIntegerBooleanArgs(t *testing.T) {
 			tls_skip_verify INTEGER NOT NULL DEFAULT 0,
 			sort_order INTEGER NOT NULL DEFAULT 0,
 			is_active INTEGER NOT NULL DEFAULT 1,
-			has_local_filesystem_access INTEGER NOT NULL DEFAULT 0
+			has_local_filesystem_access INTEGER NOT NULL DEFAULT 0,
+			link_dir_name TEXT NOT NULL DEFAULT ''
 		)
 	`)
 
@@ -148,9 +149,9 @@ func TestInstanceCreateUsesIntegerBooleanArgs(t *testing.T) {
 
 	ctx := context.Background()
 	hasLocalAccess := true
-	_, err = store.Create(ctx, "main", "http://localhost:8080", "admin", "secret", nil, nil, true, &hasLocalAccess)
+	_, err = store.Create(ctx, "main", "http://localhost:8080", "admin", "secret", nil, nil, true, &hasLocalAccess, nil)
 	require.NoError(t, err)
-	require.Len(t, insertArgs, 9)
+	require.Len(t, insertArgs, 10)
 
 	tlsArg, ok := insertArgs[7].(int)
 	require.Truef(t, ok, "expected int arg for tls_skip_verify, got %T", insertArgs[7])
@@ -159,6 +160,10 @@ func TestInstanceCreateUsesIntegerBooleanArgs(t *testing.T) {
 	localAccessArg, ok := insertArgs[8].(int)
 	require.Truef(t, ok, "expected int arg for has_local_filesystem_access, got %T", insertArgs[8])
 	require.Equal(t, 1, localAccessArg)
+
+	linkDirArg, ok := insertArgs[9].(string)
+	require.Truef(t, ok, "expected string arg for link_dir_name, got %T", insertArgs[9])
+	require.Empty(t, linkDirArg)
 }
 
 func TestTorznabCreateUsesIntegerEnabledArg(t *testing.T) {

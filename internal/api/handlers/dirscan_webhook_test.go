@@ -149,7 +149,7 @@ func TestTriggerScan_ReturnsMatchedDirectoryMetadata(t *testing.T) {
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
 	localAccess := true
-	createdInstance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
+	createdInstance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess, nil)
 	require.NoError(t, err)
 
 	service := dirscan.NewService(
@@ -206,7 +206,7 @@ func TestWebhookTriggerScan_RejectsAmbiguousDuplicateDirectoryPaths(t *testing.T
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
 	localAccess := true
-	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
+	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess, nil)
 	require.NoError(t, err)
 
 	service := dirscan.NewService(
@@ -299,7 +299,7 @@ func TestWebhookTriggerScan_ScansOnlyRequestedSubtree(t *testing.T) {
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
 	localAccess := true
-	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
+	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess, nil)
 	require.NoError(t, err)
 
 	service := dirscan.NewService(
@@ -375,7 +375,7 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientNotAllowed(t *testing.T) {
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
 	localAccess := true
-	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
+	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess, nil)
 	require.NoError(t, err)
 
 	service := dirscan.NewService(
@@ -435,7 +435,7 @@ func TestWebhookTriggerScan_SkipsWhenDownloadClientMissingButFilterExists(t *tes
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
 	localAccess := true
-	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
+	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess, nil)
 	require.NoError(t, err)
 
 	service := dirscan.NewService(
@@ -494,7 +494,7 @@ func TestWebhookTriggerScan_MatchesDownloadClientCaseInsensitively(t *testing.T)
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
 	localAccess := true
-	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
+	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess, nil)
 	require.NoError(t, err)
 
 	service := dirscan.NewService(
@@ -561,7 +561,7 @@ func TestWebhookTriggerScan_SimpleModeBypassesDownloadClientFilter(t *testing.T)
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
 	localAccess := true
-	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
+	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess, nil)
 	require.NoError(t, err)
 
 	service := dirscan.NewService(

@@ -93,6 +93,7 @@ func createInstanceStoreWithInstance(t *testing.T, hasLocalAccess bool) (*models
 				nil,
 				false,
 				&hasLocal,
+				nil,
 			)
 			if err != nil {
 				torrentsHandlerInstanceFixture.err = err

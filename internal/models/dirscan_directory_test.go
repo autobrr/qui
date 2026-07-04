@@ -19,10 +19,10 @@ func TestDirScanStore_CreateDirectory_RejectsDuplicateCleanedPath(t *testing.T) 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
 
-	instanceA, err := instanceStore.Create(ctx, "A", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instanceA, err := instanceStore.Create(ctx, "A", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
-	instanceB, err := instanceStore.Create(ctx, "B", "http://localhost:8081", "user", "pass", nil, nil, false, nil)
+	instanceB, err := instanceStore.Create(ctx, "B", "http://localhost:8081", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	store := models.NewDirScanStore(db)
@@ -51,7 +51,7 @@ func TestDirScanStore_UpdateDirectory_RejectsDuplicateCleanedPath(t *testing.T) 
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
 
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	store := models.NewDirScanStore(db)
@@ -86,7 +86,7 @@ func TestDirScanStore_CreateDirectory_PersistsAllowedDownloadClients(t *testing.
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
 
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	store := models.NewDirScanStore(db)
@@ -111,7 +111,7 @@ func TestDirScanStore_UpdateDirectory_PersistsAllowedDownloadClients(t *testing.
 	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
 	require.NoError(t, err)
 
-	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil)
+	instance, err := instanceStore.Create(ctx, "Test", "http://localhost:8080", "user", "pass", nil, nil, false, nil, nil)
 	require.NoError(t, err)
 
 	store := models.NewDirScanStore(db)

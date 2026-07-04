@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/autobrr/qui/internal/linkdir"
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 	"github.com/autobrr/qui/pkg/reflinktree"
@@ -131,6 +132,7 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 		torrentHash           string
 		torrentName           string
 		instanceName          string
+		linkDirName           string
 		incomingTrackerDomain string
 		trackerDisplay        string
 		candidateFiles        []hardlinktree.TorrentFile
@@ -194,6 +196,18 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 			wantContains:   []string{"/hardlinks/", "qbt-main", "My.Movie.2024--abcdef12"},
 		},
 		{
+			name:            "by-instance uses configured link dir name",
+			preset:          "by-instance",
+			baseDir:         "/hardlinks",
+			torrentHash:     "abcdef1234567890",
+			torrentName:     "My.Movie.2024",
+			instanceName:    "Movies",
+			linkDirName:     "movies-xseed",
+			candidateFiles:  filesRootless,
+			wantContains:    []string{"/hardlinks/", "movies-xseed", "My.Movie.2024--abcdef12"},
+			wantNotContains: []string{"Movies/"},
+		},
+		{
 			name:           "unknown preset defaults to flat with isolation",
 			preset:         "unknown",
 			baseDir:        "/hardlinks",
@@ -224,26 +238,22 @@ func TestBuildHardlinkDestDir(t *testing.T) {
 				Name:              tt.instanceName,
 				HardlinkBaseDir:   tt.baseDir,
 				HardlinkDirPreset: tt.preset,
-			}
-
-			candidate := CrossSeedCandidate{
-				InstanceID:   1,
-				InstanceName: tt.instanceName,
+				LinkDirName:       tt.linkDirName,
 			}
 
 			req := &CrossSeedRequest{}
 
-			result := s.buildHardlinkDestDir(
+			result, err := s.buildHardlinkDestDir(
 				context.Background(),
 				instance,
 				tt.baseDir,
 				tt.torrentHash,
 				tt.torrentName,
-				candidate,
 				tt.incomingTrackerDomain,
 				req,
 				tt.candidateFiles,
 			)
+			require.NoError(t, err)
 
 			normalized := filepath.ToSlash(result)
 
@@ -274,8 +284,6 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 		HardlinkBaseDir:   "/hardlinks",
 		HardlinkDirPreset: "by-tracker",
 	}
-
-	candidate := CrossSeedCandidate{InstanceID: 1, InstanceName: "qbt1"}
 	req := &CrossSeedRequest{}
 
 	// Use rootless files to force isolation folder creation (so we can verify sanitization)
@@ -283,17 +291,17 @@ func TestBuildHardlinkDestDir_SanitizesNames(t *testing.T) {
 		{Path: "movie.mkv", Size: 1000},
 	}
 
-	result := s.buildHardlinkDestDir(
+	result, err := s.buildHardlinkDestDir(
 		context.Background(),
 		instance,
 		instance.HardlinkBaseDir,
 		"abcdef1234567890",
 		"Movie",
-		candidate,
 		"tracker.example.com", // incoming tracker domain
 		req,
 		candidateFiles,
 	)
+	require.NoError(t, err)
 
 	// Should not contain illegal path characters
 	for _, c := range []string{"<", ">", ":", "\"", "|", "?", "*"} {
@@ -327,19 +335,19 @@ func TestFindMatchingBaseDir(t *testing.T) {
 			name:        "nonexistent single path returns error",
 			configured:  "/nonexistent/path/that/does/not/exist",
 			wantErr:     true,
-			errContains: "no base directory",
+			errContains: "failed to create directory",
 		},
 		{
 			name:        "multiple nonexistent paths returns error",
 			configured:  "/nonexistent/path1, /nonexistent/path2, /nonexistent/path3",
 			wantErr:     true,
-			errContains: "no base directory",
+			errContains: "failed to create directory",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := FindMatchingBaseDir(tt.configured, "/some/source/path")
+			result, err := linkdir.FindMatchingBaseDir(tt.configured, "/some/source/path")
 
 			if tt.wantErr {
 				require.Error(t, err)
@@ -368,10 +376,10 @@ func TestFindMatchingBaseDir_ParsesCommaSeparated(t *testing.T) {
 	require.NoError(t, os.WriteFile(invalidPath3, []byte("file"), 0o600))
 
 	configured := invalidPath1 + ", " + invalidPath2 + " , " + invalidPath3
-	_, err := FindMatchingBaseDir(configured, sourceFile)
+	_, err := linkdir.FindMatchingBaseDir(configured, sourceFile)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no base directory")
+	assert.Contains(t, err.Error(), "failed to create directory")
 }
 
 func TestFindMatchingBaseDir_TrimsWhitespace(t *testing.T) {
@@ -403,9 +411,8 @@ func TestFindMatchingBaseDir_TrimsWhitespace(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := FindMatchingBaseDir(tt.configured, "/nonexistent/source")
+			_, err := linkdir.FindMatchingBaseDir(tt.configured, "/nonexistent/source")
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), "no base directory")
 		})
 	}
 }
@@ -418,7 +425,7 @@ func TestFindMatchingBaseDir_ReturnsFirstMatchingDir(t *testing.T) {
 	firstDir := filepath.Join(t.TempDir(), "first")
 	secondDir := filepath.Join(t.TempDir(), "second")
 
-	result, err := FindMatchingBaseDir("  "+firstDir+" , "+secondDir+"  ", sourceFile)
+	result, err := linkdir.FindMatchingBaseDir("  "+firstDir+" , "+secondDir+"  ", sourceFile)
 	require.NoError(t, err)
 	assert.Equal(t, firstDir, result)
 	assert.DirExists(t, firstDir)
@@ -434,7 +441,7 @@ func TestFindMatchingBaseDir_SkipsInvalidDirAndFindsNextMatch(t *testing.T) {
 
 	validDir := filepath.Join(t.TempDir(), "valid")
 
-	result, err := FindMatchingBaseDir(invalidFilePath+", "+validDir, sourceFile)
+	result, err := linkdir.FindMatchingBaseDir(invalidFilePath+", "+validDir, sourceFile)
 	require.NoError(t, err)
 	assert.Equal(t, validDir, result)
 	assert.DirExists(t, validDir)

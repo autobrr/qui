@@ -387,7 +387,7 @@ func TestStreamManagerServeInstanceValidationError(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	_, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "user", "password", nil, nil, false, nil)
+	_, err := store.Create(ctx, "Test Instance", "http://localhost:8080", "user", "password", nil, nil, false, nil, nil)
 	require.NoError(t, err, "failed to seed instance")
 
 	manager := NewStreamManager(nil, nil, store)

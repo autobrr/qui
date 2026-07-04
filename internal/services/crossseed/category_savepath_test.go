@@ -20,6 +20,7 @@ func TestBuildCategorySavePath(t *testing.T) {
 		incomingTrackerDomain string
 		indexerName           string
 		instanceName          string
+		linkDirName           string
 		customizations        []*models.TrackerCustomization
 		expected              string
 	}{
@@ -70,6 +71,16 @@ func TestBuildCategorySavePath(t *testing.T) {
 			indexerName:           "FearNoPeer",
 			instanceName:          "Seedhost-40gb",
 			expected:              "/data/cross-seed/Seedhost-40gb",
+		},
+		{
+			name:                  "by-instance honors link dir name override",
+			preset:                "by-instance",
+			baseDir:               "/data/cross-seed",
+			incomingTrackerDomain: "tracker.example.com",
+			indexerName:           "FearNoPeer",
+			instanceName:          "Seedhost-40gb",
+			linkDirName:           "movies-xseed",
+			expected:              "/data/cross-seed/movies-xseed",
 		},
 		{
 			name:                  "flat returns base dir only",
@@ -123,7 +134,9 @@ func TestBuildCategorySavePath(t *testing.T) {
 			}
 
 			instance := &models.Instance{
+				Name:              tt.instanceName,
 				HardlinkDirPreset: tt.preset,
+				LinkDirName:       tt.linkDirName,
 			}
 
 			candidate := CrossSeedCandidate{

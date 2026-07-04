@@ -20,6 +20,7 @@ Configured per qBittorrent instance in **Cross-Seed → Hardlink Mode**:
 
 - **Base directory** (`HardlinkBaseDir`): root path where link trees are created.
 - **Directory preset** (`HardlinkDirPreset`): controls how trees are grouped below the base directory.
+- **Instance directory name** (`LinkDirName`): optional override for the folder name used by the `by-instance` preset.
 - **Fallback to regular mode** (`FallbackToRegularMode`): if link-tree creation fails, qui can fall back to “regular mode” instead of skipping/failing.
 
 ## Directory Presets
@@ -32,6 +33,8 @@ qui supports three presets:
   - Example: `base/TrackerName/Torrent.Name--abcdef12/...`
 - `by-instance`: groups by instance name, then optional isolation folder
   - Example: `base/MyInstance/Torrent.Name--abcdef12/...`
+
+When `LinkDirName` is set, `by-instance` uses that value instead of the instance name.
 
 ### Tracker Names (by-tracker)
 

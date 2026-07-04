@@ -39,7 +39,7 @@ func TestStartWebhookScan_QueuesAndMergesFollowUpRuns(t *testing.T) {
 	instanceStore, err := models.NewInstanceStore(db, []byte("0123456789abcdef0123456789abcdef"))
 	require.NoError(t, err)
 	localAccess := true
-	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess)
+	instance, err := instanceStore.Create(ctx, "test", "http://localhost:8080", "", "", nil, nil, false, &localAccess, nil)
 	require.NoError(t, err)
 
 	store := models.NewDirScanStore(db)
