@@ -8,9 +8,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 
@@ -161,7 +163,7 @@ func TestBuildAlignmentPlan(t *testing.T) {
 	}
 }
 
-// alignFakeManager is a stateful TorrentAdder that applies renames to an in-memory file list,
+// alignFakeManager is a stateful TorrentManager that applies renames to an in-memory file list,
 // so verification via GetTorrentFilesBatch reflects the renames the injector issued.
 type alignFakeManager struct {
 	mu            sync.Mutex
@@ -170,14 +172,20 @@ type alignFakeManager struct {
 	addOptions    map[string]string
 	fileRenames   [][2]string
 	folderRenames [][2]string
-	bulkActions   []string
-	resumeCount   int
+	// renameLog records file and folder renames in a single call-ordered list ("file"/"folder")
+	// so tests can assert files are renamed before the root folder.
+	renameLog   []string
+	bulkActions []string
+	resumeCount int
 	// renameErr, when set, makes every rename fail without touching the file list, simulating a
 	// qBittorrent that does not support renaming (e.g. WebAPI < 2.7.0).
 	renameErr error
 	// recheckErr, when set, makes the "recheck" BulkAction fail, simulating an instance that
 	// briefly could not schedule the post-alignment recheck.
 	recheckErr error
+	// filesErr, when set, makes GetTorrentFilesBatch fail, simulating an instance whose file list
+	// cannot be read so a rename can never be confirmed.
+	filesErr error
 }
 
 func (m *alignFakeManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
@@ -205,6 +213,7 @@ func (m *alignFakeManager) RenameTorrentFile(_ context.Context, _ int, _, oldPat
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.fileRenames = append(m.fileRenames, [2]string{oldPath, newPath})
+	m.renameLog = append(m.renameLog, "file")
 	if m.renameErr != nil {
 		return m.renameErr
 	}
@@ -220,6 +229,7 @@ func (m *alignFakeManager) RenameTorrentFolder(_ context.Context, _ int, _, oldP
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.folderRenames = append(m.folderRenames, [2]string{oldPath, newPath})
+	m.renameLog = append(m.renameLog, "folder")
 	if m.renameErr != nil {
 		return m.renameErr
 	}
@@ -238,6 +248,9 @@ func (m *alignFakeManager) RenameTorrentFolder(_ context.Context, _ int, _, oldP
 func (m *alignFakeManager) GetTorrentFilesBatch(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.filesErr != nil {
+		return nil, m.filesErr
+	}
 	cloned := make(qbt.TorrentFiles, len(m.files))
 	copy(cloned, m.files)
 	return map[string]qbt.TorrentFiles{strings.ToLower(m.hash): cloned}, nil
@@ -580,5 +593,97 @@ func TestInjector_Inject_AlignmentRecheckFailure_ReportsFailureAndDoesNotResume(
 	// ...the recheck was attempted and failed, so no resume watcher must be queued.
 	if manager.resumeCount != 0 {
 		t.Errorf("expected no resume watcher when the recheck fails, got %d", manager.resumeCount)
+	}
+}
+
+func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
+	// Both the top-level folder and the file name differ from the on-disk layout, so alignment must
+	// rename the file (within the still-nonexistent source root) BEFORE renaming the root folder,
+	// then recheck and resume.
+	searcheeDir := filepath.Join(t.TempDir(), "Release Folder")
+	if err := os.MkdirAll(searcheeDir, 0o755); err != nil {
+		t.Fatalf("mkdir searchee: %v", err)
+	}
+
+	instance := &models.Instance{ID: 1, Name: "test"}
+
+	manager := &alignFakeManager{
+		hash:  "deadbeef07",
+		files: qbt.TorrentFiles{{Name: "Some.Release/movie.2020.mkv", Size: 8}},
+	}
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:        "Some.Release",
+			InfoHash:    "deadbeef07",
+			Files:       []TorrentFile{{Path: "Some.Release/movie.2020.mkv", Size: 8}},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name:  "Release Folder",
+			Path:  searcheeDir,
+			Files: []*ScannedFile{{Path: filepath.Join(searcheeDir, "Movie (2020).mkv"), RelPath: "Movie (2020).mkv", Size: 8}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles:   []MatchedFilePair{{SearcheeFile: &ScannedFile{RelPath: "Movie (2020).mkv", Size: 8}, TorrentFile: TorrentFile{Path: "Some.Release/movie.2020.mkv", Size: 8}}},
+			IsMatch:        true,
+			IsPerfectMatch: true,
+		},
+		SearchResult: &jackett.SearchResult{Indexer: "Test"},
+		StartPaused:  false,
+	}
+
+	res, err := injector.Inject(context.Background(), req)
+	if err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got %+v", res)
+	}
+
+	// The file is renamed within the source root first, then the root folder is renamed onto the
+	// on-disk directory name.
+	if len(manager.fileRenames) != 1 || manager.fileRenames[0] != [2]string{"Some.Release/movie.2020.mkv", "Some.Release/Movie (2020).mkv"} {
+		t.Fatalf("expected one file rename inside the source root, got %+v", manager.fileRenames)
+	}
+	if len(manager.folderRenames) != 1 || manager.folderRenames[0] != [2]string{"Some.Release", "Release Folder"} {
+		t.Fatalf("expected the folder rename to the on-disk name, got %+v", manager.folderRenames)
+	}
+	// Files must be renamed before the folder, otherwise the folder rename would land the file on a
+	// path that already exists on disk.
+	if want := []string{"file", "folder"}; !slices.Equal(manager.renameLog, want) {
+		t.Fatalf("expected renames in order %v, got %v", want, manager.renameLog)
+	}
+	// Every torrent path now lands under the on-disk folder with the on-disk file name.
+	if names := manager.currentNames(); len(names) != 1 || names[0] != "Release Folder/Movie (2020).mkv" {
+		t.Errorf("torrent file not aligned to on-disk layout, got %+v", names)
+	}
+	if len(manager.bulkActions) != 1 || manager.bulkActions[0] != "recheck" {
+		t.Fatalf("expected a single recheck, got %+v", manager.bulkActions)
+	}
+	if manager.resumeCount != 1 {
+		t.Errorf("expected ResumeWhenComplete once, got %d", manager.resumeCount)
+	}
+}
+
+func TestInjector_renameTorrentPath_UnconfirmedRenameFails(t *testing.T) {
+	// The rename API call "succeeds" but the file list can never be read, so the rename cannot be
+	// confirmed. An unconfirmed rename must return false (torrent left paused), never a best-effort
+	// success. A short context keeps the retry/verify budget from stalling the test.
+	manager := &alignFakeManager{
+		hash:     "deadbeef08",
+		files:    qbt.TorrentFiles{{Name: "Some.Release/a.mkv", Size: 4}},
+		filesErr: errors.New("files temporarily unavailable"),
+	}
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: &models.Instance{ID: 1}}, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	if injector.renameTorrentPath(ctx, 1, "deadbeef08", "Some.Release", "Release Folder", true) {
+		t.Fatal("expected renameTorrentPath to fail when the rename cannot be verified")
 	}
 }

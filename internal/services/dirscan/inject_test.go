@@ -485,16 +485,19 @@ func TestInjector_Inject_DiscLayoutPerfect_TriggersRecheckAndResumeWhenComplete(
 		},
 		Searchee: &Searchee{
 			Name: "Movie",
-			Path: sourceDir,
+			// A real searchee's Path is the release directory itself, with file RelPaths relative to
+			// it (scanner.scanSearcheeDir), so the on-disk folder name matches the torrent root and
+			// no content-path alignment is needed here.
+			Path: filepath.Join(sourceDir, "Movie"),
 			Files: []*ScannedFile{{
 				Path:    sourceFile,
-				RelPath: filepath.ToSlash(filepath.Join("Movie", "BDMV", "index.bdmv")),
+				RelPath: "BDMV/index.bdmv",
 				Size:    4,
 			}},
 		},
 		MatchResult: &MatchResult{
 			MatchedFiles: []MatchedFilePair{{
-				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "Movie/BDMV/index.bdmv", Size: 4},
+				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "BDMV/index.bdmv", Size: 4},
 				TorrentFile:  TorrentFile{Path: "Movie/BDMV/index.bdmv", Size: 4},
 			}},
 			IsMatch:        true,

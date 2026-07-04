@@ -251,26 +251,20 @@ func (i *Injector) renameTorrentPath(ctx context.Context, instanceID int, hash, 
 			return false
 		}
 
+		// Only a confirmed rename (renameDone) counts as success. A renamePending (async no-op,
+		// old paths still visible) or renameUnknown (file list unreadable) is never accepted: keep
+		// polling within the window, then retry the whole call. If the rename is never confirmed
+		// across all attempts we return false so the torrent is left paused rather than resumed
+		// on top of paths we could not verify.
 		deadline := time.Now().Add(alignVerifyTimeout)
-		lastStatus := renamePending
 		for {
-			lastStatus = i.verifyRename(ctx, instanceID, canonical, oldPath, newPath, folder)
-			if lastStatus == renameDone {
+			if i.verifyRename(ctx, instanceID, canonical, oldPath, newPath, folder) == renameDone {
 				return true
 			}
 			if ctx.Err() != nil || !time.Now().Before(deadline) {
 				break
 			}
 			time.Sleep(alignVerifyInterval)
-		}
-
-		// A file list we could never read for the whole window (renameUnknown) is treated as
-		// best-effort success rather than retried indefinitely. A still-pending rename means the
-		// async call silently no-op'd (old paths still visible), so fall through and re-issue it.
-		// Only accepting renameUnknown *after* polling closes the window where a transient files
-		// fetch error right after the call is mistaken for a completed rename.
-		if lastStatus == renameUnknown {
-			return true
 		}
 
 		if attempt < alignRenameAttempts && !sleepCtx(ctx, alignRetryDelay) {
@@ -282,8 +276,9 @@ func (i *Injector) renameTorrentPath(ctx context.Context, instanceID int, hash, 
 }
 
 // verifyRename reports whether qBittorrent has applied a rename by inspecting the torrent's
-// current files. renameUnknown means the files could not be read; the caller keeps polling and
-// only falls back to best-effort success if it stays unreadable for the whole verify window.
+// current files. renameUnknown means the files could not be read; it is never treated as success,
+// so the caller keeps polling/retrying and ultimately fails the alignment (leaving the torrent
+// paused) when a rename cannot be confirmed.
 func (i *Injector) verifyRename(ctx context.Context, instanceID int, canonicalHash, oldPath, newPath string, folder bool) renameStatus {
 	filesMap, err := i.syncManager.GetTorrentFilesBatch(qbsync.WithForceFilesRefresh(ctx), instanceID, []string{canonicalHash})
 	if err != nil {

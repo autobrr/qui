@@ -40,7 +40,7 @@ const (
 // Injector handles downloading and injecting torrents into qBittorrent.
 type Injector struct {
 	jackettService            JackettDownloader
-	syncManager               TorrentAdder
+	syncManager               TorrentManager
 	torrentChecker            TorrentChecker
 	instanceStore             InstanceProvider
 	trackerCustomizationStore trackerCustomizationProvider
@@ -51,15 +51,26 @@ type JackettDownloader interface {
 	DownloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 }
 
-// TorrentAdder is the interface for adding torrents to qBittorrent.
+// TorrentAdder adds torrents and drives their lifecycle in qBittorrent.
 type TorrentAdder interface {
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 	ResumeWhenComplete(instanceID int, hashes []string, opts qbsync.ResumeWhenCompleteOptions)
-	// Rename methods align an injected torrent's internal paths with the on-disk files it matched.
+}
+
+// TorrentPathAligner renames an injected torrent's internal folder/file names to match the
+// on-disk files it matched, and reads the current names back to confirm the renames landed.
+type TorrentPathAligner interface {
 	RenameTorrentFile(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
 	RenameTorrentFolder(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
 	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
+}
+
+// TorrentManager is the combined capability the Injector depends on: adding torrents and aligning
+// their content paths. Callers can depend on the narrower TorrentAdder/TorrentPathAligner instead.
+type TorrentManager interface {
+	TorrentAdder
+	TorrentPathAligner
 }
 
 // TorrentChecker is the interface for checking if torrents exist in qBittorrent.
@@ -78,7 +89,7 @@ type trackerCustomizationProvider interface {
 // NewInjector creates a new injector.
 func NewInjector(
 	jackettService JackettDownloader,
-	syncManager TorrentAdder,
+	syncManager TorrentManager,
 	torrentChecker TorrentChecker,
 	instanceStore InstanceProvider,
 	trackerCustomizationStore trackerCustomizationProvider,
