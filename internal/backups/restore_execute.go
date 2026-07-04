@@ -294,16 +294,20 @@ func (s *Service) applyTorrentPlan(ctx context.Context, plan *RestorePlan, appli
 		// savepath-on-add (+autoTMM=false) places the torrent without moving
 		// files; the path is passed verbatim because it is an opaque
 		// qBittorrent-side path that may target a different host OS.
+		pinned := false
 		if savePath := strings.TrimSpace(spec.Manifest.SavePath); savePath != "" {
 			options["autoTMM"] = "false"
 			options["savepath"] = savePath
-			pinnedSavePaths++
+			pinned = true
 		}
 
 		if _, err := s.torrentWriter.AddTorrent(ctx, instanceID, payload, options); err != nil {
 			appendRestoreError(errs, "add_torrent", spec.Manifest.Hash, err)
 			log.Warn().Err(err).Int("instanceID", instanceID).Str("hash", spec.Manifest.Hash).Msg("Restore: add torrent failed")
 			continue
+		}
+		if pinned {
+			pinnedSavePaths++
 		}
 
 		desiredCategory := normalizeCategory(spec.Manifest.Category)
