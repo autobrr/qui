@@ -1789,7 +1789,7 @@ const DEFAULT_RULE_FORM_STATE: RuleFormState = {
 interface RuleFormFieldsProps {
   state: RuleFormState
   onChange: <K extends keyof RuleFormState>(field: K, value: RuleFormState[K]) => void
-  feedUrls: string[]
+  feeds: FeedInfo[]
   categories: Record<string, Category>
   availableTags: string[]
   idPrefix: string
@@ -1798,7 +1798,7 @@ interface RuleFormFieldsProps {
 function RuleFormFields({
   state,
   onChange,
-  feedUrls,
+  feeds,
   categories,
   availableTags,
   idPrefix,
@@ -1865,27 +1865,30 @@ function RuleFormFields({
       <div className="space-y-2">
         <Label>{t("ruleForm.affectedFeeds")}</Label>
         <div className="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto">
-          {feedUrls.map((feedUrl) => (
-            <label key={feedUrl} className="flex items-center gap-2 text-sm">
+          {feeds.map((feed) => (
+            <label key={feed.url} className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={state.affectedFeeds.includes(feedUrl)}
+                checked={state.affectedFeeds.includes(feed.url)}
                 onChange={(e) => {
                   if (e.target.checked) {
-                    onChange("affectedFeeds", [...state.affectedFeeds, feedUrl])
+                    onChange("affectedFeeds", [...state.affectedFeeds, feed.url])
                   } else {
                     onChange(
                       "affectedFeeds",
-                      state.affectedFeeds.filter((f) => f !== feedUrl)
+                      state.affectedFeeds.filter((f) => f !== feed.url)
                     )
                   }
                 }}
                 className="rounded"
               />
-              <span className="truncate">{feedUrl}</span>
+              <div className="flex flex-col min-w-0">
+                <span className="truncate font-medium">{feed.title || feed.url}</span>
+                <span className="truncate text-xs text-muted-foreground">{feed.url}</span>
+              </div>
             </label>
           ))}
-          {feedUrls.length === 0 && (
+          {feeds.length === 0 && (
             <p className="text-sm text-muted-foreground">{t("ruleForm.noFeedsAvailable")}</p>
           )}
         </div>
@@ -2017,7 +2020,7 @@ function AddRuleDialog({
   const [formState, setFormState] = useState<RuleFormState>(DEFAULT_RULE_FORM_STATE)
 
   const setRule = useSetRSSRule(instanceId)
-  const feedUrls = useMemo(() => getFeedUrls(feedsData), [feedsData])
+  const feeds = useMemo(() => getFeedInfos(feedsData), [feedsData])
 
   const handleFieldChange = <K extends keyof RuleFormState>(field: K, value: RuleFormState[K]) => {
     setFormState((prev) => ({ ...prev, [field]: value }))
@@ -2087,7 +2090,7 @@ function AddRuleDialog({
           <RuleFormFields
             state={formState}
             onChange={handleFieldChange}
-            feedUrls={feedUrls}
+            feeds={feeds}
             categories={categories}
             availableTags={availableTags}
             idPrefix="add"
@@ -2137,7 +2140,7 @@ function EditRuleDialog({
   const { formatDate } = useDateTimeFormatters()
 
   const setRuleMutation = useSetRSSRule(instanceId)
-  const feedUrls = useMemo(() => getFeedUrls(feedsData), [feedsData])
+  const feeds = useMemo(() => getFeedInfos(feedsData), [feedsData])
   const lastMatchDate = useMemo(() => {
     if (!rule?.lastMatch) return null
     const parsed = new Date(rule.lastMatch)
@@ -2212,7 +2215,7 @@ function EditRuleDialog({
           <RuleFormFields
             state={formState}
             onChange={handleFieldChange}
-            feedUrls={feedUrls}
+            feeds={feeds}
             categories={categories}
             availableTags={availableTags}
             idPrefix="edit"
@@ -2297,18 +2300,20 @@ function getFolderPaths(items: RSSItems | undefined, prefix = ""): string[] {
   return paths
 }
 
-function getFeedUrls(items: RSSItems | undefined): string[] {
+type FeedInfo = { url: string; title?: string }
+
+function getFeedInfos(items: RSSItems | undefined): FeedInfo[] {
   if (!items) return []
 
-  const urls: string[] = []
+  const infos: FeedInfo[] = []
   for (const item of Object.values(items)) {
     if (isRSSFeed(item)) {
-      urls.push(item.url)
+      infos.push({ url: item.url, title: item.title })
     } else {
-      urls.push(...getFeedUrls(item as RSSItems))
+      infos.push(...getFeedInfos(item as RSSItems))
     }
   }
-  return urls
+  return infos
 }
 
 // ============================================================================
