@@ -157,6 +157,8 @@ docker run -e UMASK=002 ... ghcr.io/autobrr/qui
 When `UMASK` is unset, qui leaves the inherited umask unchanged. The official Docker image runs as root with the default umask `022`, so without `UMASK` it produces `0755` directories, matching previous releases. `UMASK` is a no-op on Windows, where directory permissions follow inherited ACLs.
 :::
 
+The umask only applies to directories qui creates from now on. Directories that already exist keep their current permissions, so after setting `UMASK` you may need a one-time `chmod` over the existing tree, for example `chmod -R g+w /path/to/base`.
+
 ## Hardlink/reflink cross-seed shows "missing files"
 
 When hardlink or reflink mode creates every file needed by the incoming torrent, qui adds it with hash checking skipped and starts it immediately. No automatic recheck is triggered because there are no missing extras for qBittorrent to discover.

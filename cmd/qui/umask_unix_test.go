@@ -6,6 +6,7 @@
 package main
 
 import (
+	"os"
 	"syscall"
 	"testing"
 )
@@ -31,6 +32,7 @@ func TestApplyUmask(t *testing.T) {
 		baseline int
 		want     int
 	}{
+		{name: "unset leaves umask unchanged", set: false, baseline: 0o027, want: 0o027},
 		{name: "applies octal value", set: true, value: "002", baseline: 0o022, want: 0o002},
 		{name: "applies leading-zero value", set: true, value: "0027", baseline: 0o000, want: 0o027},
 		{name: "empty value leaves umask unchanged", set: true, value: "", baseline: 0o027, want: 0o027},
@@ -45,7 +47,10 @@ func TestApplyUmask(t *testing.T) {
 			if tt.set {
 				t.Setenv("UMASK", tt.value)
 			} else {
-				t.Setenv("UMASK", "")
+				// Cover the genuinely-unset (LookupEnv !ok) path, distinct
+				// from the empty-string case. t.Setenv can't unset, so do it
+				// directly; sequential subtests re-set UMASK as needed.
+				os.Unsetenv("UMASK")
 			}
 
 			applyUmask()
