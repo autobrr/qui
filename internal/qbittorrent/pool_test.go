@@ -4,8 +4,13 @@
 package qbittorrent
 
 import (
+	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/assert"
@@ -173,6 +178,141 @@ func TestClientPool_ResetFailureTracking(t *testing.T) {
 	pool.mu.RUnlock()
 
 	assert.False(t, exists, "Failure info should be cleared after reset")
+}
+
+// TestClientPool_GetClientWithTimeout_UnhealthyInBackoffFastFails verifies that an
+// existing but unhealthy client already in backoff fast-fails instead of running a
+// live HealthCheck that would block on the unreachable host every call (discussion #2096).
+func TestClientPool_GetClientWithTimeout_UnhealthyInBackoffFastFails(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	const instanceID = 1
+
+	// Existing but unhealthy client (zero-value isHealthy == false).
+	pool.mu.Lock()
+	pool.clients[instanceID] = &Client{instanceID: instanceID}
+	pool.mu.Unlock()
+
+	// Drive the instance into failure backoff.
+	pool.trackFailure(instanceID, errors.New("connection refused"))
+	require.True(t, pool.isInBackoff(instanceID), "instance should be in backoff")
+
+	start := time.Now()
+	client, err := pool.GetClientWithTimeout(context.Background(), instanceID, 60*time.Second)
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	require.Nil(t, client)
+	require.ErrorIs(t, err, ErrInstanceInBackoff)
+	assert.Contains(t, err.Error(), "backoff period", "backed-off unhealthy client should return the backoff error, not attempt a health check")
+	message, ok := InstanceHealthBlockerMessage(err)
+	require.True(t, ok, "backoff error should expose an actionable boundary message")
+	assert.Contains(t, message, "health-check backoff")
+	assert.Contains(t, message, "retrying in")
+	assert.Less(t, elapsed, time.Second, "backoff fast-path must not perform a network health check")
+}
+
+// TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce verifies that
+// a burst of concurrent callers against one unhealthy, not-yet-backed-off instance records
+// a single failure (advances backoff once), not once per caller (adversarial review of #2096).
+func TestClientPool_GetClientWithTimeout_ConcurrentUnhealthyProbesBackoffOnce(t *testing.T) {
+	// Blocking endpoint so the probes overlap in time instead of failing instantly.
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	const instanceID = 1
+	pool.mu.Lock()
+	pool.clients[instanceID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: instanceID}
+	pool.mu.Unlock()
+
+	const callers = 8
+	var wg sync.WaitGroup
+	for range callers {
+		wg.Go(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+			defer cancel()
+			_, _ = pool.GetClientWithTimeout(ctx, instanceID, 60*time.Second)
+		})
+	}
+	wg.Wait()
+
+	pool.mu.RLock()
+	info := pool.failureTracker[instanceID]
+	pool.mu.RUnlock()
+
+	require.NotNil(t, info, "one failure should have been recorded")
+	assert.Equal(t, 1, info.attempts, "concurrent probes must advance the backoff exactly once, not once per caller")
+}
+
+// TestClientPool_GetClientWithTimeout_CancelledProbeDoesNotBackoff verifies that a probe
+// interrupted by caller cancellation (client disconnect / shutdown) does NOT record a
+// failure or back off the instance, so a healthy instance is not stranded (review of #2096).
+func TestClientPool_GetClientWithTimeout_CancelledProbeDoesNotBackoff(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	const instanceID = 1
+	pool.mu.Lock()
+	pool.clients[instanceID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: instanceID}
+	pool.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err := pool.GetClientWithTimeout(ctx, instanceID, 60*time.Second)
+	require.Error(t, err)
+
+	assert.False(t, pool.isInBackoff(instanceID), "a cancelled probe must not put the instance in backoff")
+	pool.mu.RLock()
+	_, tracked := pool.failureTracker[instanceID]
+	pool.mu.RUnlock()
+	assert.False(t, tracked, "a cancelled probe must not record an instance failure")
+}
+
+// TestClientPool_GetClientWithTimeout_ProbeInProgressFastFails verifies that a caller does
+// not block behind an in-flight probe (TryLock): with a probe holding the per-instance lock,
+// a second caller returns promptly instead of queueing until the probe completes (#2096).
+func TestClientPool_GetClientWithTimeout_ProbeInProgressFastFails(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	const instanceID = 1
+	pool.mu.Lock()
+	pool.clients[instanceID] = &Client{instanceID: instanceID} // unhealthy; never probed (lock is held)
+	pool.mu.Unlock()
+
+	// Simulate an in-flight probe by holding the per-instance lock for the test.
+	lock := pool.getInstanceLock(instanceID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	start := time.Now()
+	client, err := pool.GetClientWithTimeout(context.Background(), instanceID, 60*time.Second)
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	require.Nil(t, client)
+	require.ErrorIs(t, err, ErrHealthCheckInProgress)
+	message, ok := InstanceHealthBlockerMessage(err)
+	require.True(t, ok, "in-flight probe error should expose an actionable boundary message")
+	assert.Contains(t, message, "already running a health check")
+	assert.Contains(t, message, "retry shortly")
+	assert.Less(t, elapsed, time.Second, "caller must fast-fail rather than block behind an in-flight probe")
 }
 
 func TestClientPool_IsBanError(t *testing.T) {
@@ -392,3 +532,25 @@ type mockPoolSyncEventSink struct {
 func (m *mockPoolSyncEventSink) HandleMainData(_ int, _ *qbt.MainData) {}
 func (m *mockPoolSyncEventSink) HandleTrackerHealthUpdated(_ int)      {}
 func (m *mockPoolSyncEventSink) HandleSyncError(_ int, _ error)        {}
+
+// TestClientPool_CreateDoubleCheckReturnsExistingUnhealthyClient guards the
+// create-path double-check against re-creating a client another caller just
+// stored: creation can legitimately succeed with a not-yet-verified
+// (unhealthy) client, and callers queued on the instance lock must reuse it
+// instead of serially re-logging in and overwriting the pool entry.
+func TestClientPool_CreateDoubleCheckReturnsExistingUnhealthyClient(t *testing.T) {
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	const instanceID = 1
+
+	existing := &Client{instanceID: instanceID} // zero-value isHealthy == false
+	pool.mu.Lock()
+	pool.clients[instanceID] = existing
+	pool.mu.Unlock()
+
+	client, err := pool.createClientWithTimeout(context.Background(), instanceID, time.Second)
+
+	require.NoError(t, err, "double-check must return the pooled client, not attempt a re-create")
+	require.Same(t, existing, client)
+}

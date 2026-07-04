@@ -7,6 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -123,6 +126,238 @@ func TestClientSubcategoriesAlwaysEnabledCapability(t *testing.T) {
 			require.Equal(t, tc.expected, client.SubcategoriesAlwaysEnabled())
 		})
 	}
+}
+
+func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
+	syncStarted := make(chan struct{})
+	releaseSync := make(chan struct{})
+	var closeSyncStarted sync.Once
+	var releaseSyncOnce sync.Once
+	release := func() {
+		releaseSyncOnce.Do(func() { close(releaseSync) })
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			closeSyncStarted.Do(func() { close(syncStarted) })
+			<-releaseSync
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	defer release()
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	syncOpts := qbt.DefaultSyncOptions()
+	syncOpts.DynamicSync = true
+	client := &Client{
+		Client:          qbtClient,
+		syncManager:     qbtClient.NewSyncManager(syncOpts),
+		supportsSetTags: true,
+	}
+
+	getterDone := make(chan struct{})
+	go func() {
+		defer close(getterDone)
+		_ = client.getTorrentsByHashes([]string{"abc"})
+	}()
+
+	select {
+	case <-syncStarted:
+	case <-time.After(time.Second):
+		t.Fatal("checked getter did not start a sync")
+	}
+
+	refreshDone := make(chan error, 1)
+	go func() {
+		refreshDone <- client.RefreshCapabilities(context.Background())
+	}()
+
+	writerQueued := make(chan struct{})
+	stopWriterProbe := make(chan struct{})
+	var stopWriterProbeOnce sync.Once
+	stopProbe := func() {
+		stopWriterProbeOnce.Do(func() { close(stopWriterProbe) })
+	}
+	defer stopProbe()
+	go func() {
+		for {
+			select {
+			case <-stopWriterProbe:
+				return
+			default:
+			}
+
+			probeDone := make(chan struct{})
+			go func() {
+				client.mu.RLock()
+				_ = client.supportsSetTags
+				client.mu.RUnlock()
+				close(probeDone)
+			}()
+
+			select {
+			case <-probeDone:
+			case <-stopWriterProbe:
+				return
+			case <-time.After(10 * time.Millisecond):
+				close(writerQueued)
+				return
+			}
+		}
+	}()
+
+	refreshComplete := false
+	select {
+	case err := <-refreshDone:
+		require.NoError(t, err)
+		refreshComplete = true
+	case <-writerQueued:
+	case <-time.After(time.Second):
+		t.Fatal("capability refresh neither completed nor queued for the client lock")
+	}
+	stopProbe()
+
+	readDone := make(chan bool, 1)
+	go func() {
+		readDone <- client.SupportsSetTags()
+	}()
+
+	select {
+	case supported := <-readDone:
+		require.True(t, supported)
+	case <-time.After(time.Second):
+		t.Fatal("capability reader convoyed behind checked getter and pending writer")
+	}
+
+	release()
+
+	if !refreshComplete {
+		select {
+		case err := <-refreshDone:
+			require.NoError(t, err)
+		case <-time.After(time.Second):
+			t.Fatal("capability refresh did not finish")
+		}
+	}
+
+	select {
+	case <-getterDone:
+	case <-time.After(time.Second):
+		t.Fatal("checked getter did not finish")
+	}
+}
+
+func TestNewClientWithTimeoutRejectsLoginCookiesWithoutVerifiedSessionMarker(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			http.SetCookie(w, &http.Cookie{
+				Name:     "SID",
+				Value:    "unverified",
+				Secure:   true,
+				HttpOnly: true,
+				SameSite: http.SameSiteStrictMode,
+			})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("<html><title>Login</title></html>"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second)
+
+	require.Error(t, err)
+	require.Nil(t, client)
+	require.Contains(t, err.Error(), "failed to verify qBittorrent session")
+	require.Contains(t, err.Error(), "invalid qBittorrent WebAPI version")
+}
+
+func TestNewClientWithTimeoutToleratesSlowCapabilitiesFetch(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/auth/login":
+			http.SetCookie(w, &http.Cookie{
+				Name:     "SID",
+				Value:    "slow-instance",
+				Secure:   true,
+				HttpOnly: true,
+				SameSite: http.SameSiteStrictMode,
+			})
+			_, _ = w.Write([]byte("Ok."))
+		case "/api/v2/app/webapiVersion":
+			// A saturated-but-alive WebUI: the request parks until the caller's
+			// deadline expires without ever answering.
+			<-r.Context().Done()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	client, err := NewClientWithTimeout(1, srv.URL, "user", "pass", "", nil, nil, true, time.Second)
+
+	require.NoError(t, err, "transient capability fetch failures must not block client creation")
+	require.NotNil(t, client)
+	require.False(t, client.IsHealthy(), "client should start unhealthy until a capability refresh succeeds")
+}
+
+func TestTruncateWebAPIVersion(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "2.11.2", truncateWebAPIVersion("2.11.2"))
+	require.Equal(t, "<html> <body> login</body> </html>", truncateWebAPIVersion("<html>\n  <body> login</body>\n</html>"))
+
+	got := truncateWebAPIVersion(strings.Repeat(`<div class="login">`, 100))
+	require.LessOrEqual(t, len(got), 67)
+	require.True(t, strings.HasSuffix(got, "..."))
+}
+
+func TestRefreshCapabilitiesBoundsOversizedBodyInError(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("<div>proxy login page</div>", 1024)))
+	}))
+	defer srv.Close()
+
+	client := &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 1})}
+
+	err := client.RefreshCapabilities(context.Background())
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, errInvalidWebAPIVersion)
+	require.Less(t, len(err.Error()), 256, "proxy pages must not flow verbatim into the error chain")
+}
+
+func TestRefreshCapabilitiesRejectsInvalidWebAPIVersionMarker(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("<html><title>Login</title></html>"))
+	}))
+	defer srv.Close()
+
+	client := &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 1})}
+
+	err := client.RefreshCapabilities(context.Background())
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid qBittorrent WebAPI version")
+	require.False(t, client.SupportsSetTags())
+	require.Empty(t, client.GetWebAPIVersion())
 }
 
 func TestClientDispatchMainDataCallsSink(t *testing.T) {

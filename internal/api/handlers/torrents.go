@@ -350,7 +350,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 			if instanceID == allInstancesID && len(req.Targets) == 0 {
 				requestedHashes := buildExcludeHashSet(req.Hashes)
 				response, crossErr := h.syncManager.GetCrossInstanceTorrentsWithFilters(
-					r.Context(),
+					qbittorrent.WithSkipFreshData(r.Context()),
 					0,
 					0,
 					"",
@@ -445,7 +445,7 @@ func (h *TorrentsHandler) GetTorrentField(w http.ResponseWriter, r *http.Request
 
 	if instanceID == allInstancesID {
 		response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(
-			r.Context(),
+			qbittorrent.WithSkipFreshData(r.Context()),
 			0,
 			0,
 			req.Sort,
@@ -2878,7 +2878,16 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 	offset := page * limit
 
 	// Get torrents from all instances with the filter expression
-	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(r.Context(), limit, offset, sort, order, search, filters, instanceIDs)
+	response, err := h.syncManager.GetCrossInstanceTorrentsWithFilters(
+		qbittorrent.WithSkipFreshData(r.Context()),
+		limit,
+		offset,
+		sort,
+		order,
+		search,
+		filters,
+		instanceIDs,
+	)
 	if err != nil {
 		// Note: Cross-instance queries don't have a single instanceID, so we pass 0 for logging purposes
 		if respondIfInstanceDisabled(w, err, 0, "torrents:listCrossInstance") {
@@ -2889,7 +2898,6 @@ func (h *TorrentsHandler) ListCrossInstanceTorrents(w http.ResponseWriter, r *ht
 		return
 	}
 
-	w.Header().Set("X-Data-Source", "fresh")
 	RespondJSON(w, http.StatusOK, response)
 }
 

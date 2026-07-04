@@ -132,7 +132,8 @@
     "switchedToThemeVariation": "Passato al tema {{theme}} ({{variation}})",
     "unableToVerifyLicense": "Impossibile verificare la licenza",
     "licenseCheckFailed": "Verifica della licenza non riuscita. Il cambio di tema Premium è temporaneamente non disponibile.",
-    "premiumThemeError": "Questo è un tema premium. Apri Impostazioni → Temi per attivare una licenza."
+    "premiumThemeError": "Questo è un tema premium. Apri Impostazioni → Temi per attivare una licenza.",
+    "custom": "Personalizzato"
   },
   "updateBanner": {
     "updateAvailable": "Aggiornamento disponibile",

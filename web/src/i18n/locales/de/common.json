@@ -132,7 +132,8 @@
     "switchedToThemeVariation": "Zu Design {{theme}} ({{variation}}) gewechselt",
     "unableToVerifyLicense": "Lizenz konnte nicht überprüft werden",
     "licenseCheckFailed": "Lizenzprüfung fehlgeschlagen. Der Wechsel zu Premium-Designs ist vorübergehend nicht verfügbar.",
-    "premiumThemeError": "Dies ist ein Premium-Design. Öffne Einstellungen → Designs, um eine Lizenz zu aktivieren."
+    "premiumThemeError": "Dies ist ein Premium-Design. Öffne Einstellungen → Designs, um eine Lizenz zu aktivieren.",
+    "custom": "Eigene"
   },
   "updateBanner": {
     "updateAvailable": "Update verfügbar",

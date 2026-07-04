@@ -1,0 +1,7 @@
+allowBuilds:
+  core-js: false
+# Docs-only build tooling pinned past Dependabot advisories. The documentation
+# site is a separate static Docusaurus build; these never ship in the qui binary.
+overrides:
+  js-yaml@3: '3.15.0' # gray-matter<-docusaurus frontmatter parse; GHSA-h67p-54hq-rp68
+  js-yaml@4: '4.2.0' # @docusaurus/* utils; GHSA-h67p-54hq-rp68

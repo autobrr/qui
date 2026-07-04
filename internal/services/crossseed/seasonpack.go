@@ -23,6 +23,7 @@ import (
 	"github.com/autobrr/qui/internal/qbittorrent"
 	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
+	"github.com/autobrr/qui/pkg/pathutil"
 	"github.com/autobrr/qui/pkg/reflinktree"
 	"github.com/autobrr/qui/pkg/stringutils"
 )
@@ -68,6 +69,7 @@ type seasonPackLocalFile struct {
 
 type seasonPackPlanBuild struct {
 	plan              *hardlinktree.TreePlan
+	packDir           string // on-disk pack root folder (<RootDir>/<packName>); used for rollback cleanup
 	materializedPaths map[string]struct{}
 	linkedBytes       int64
 	totalBytes        int64
@@ -378,7 +380,7 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 	linkMode := determineLinkMode(prep.eligible, winner.InstanceID)
 	inst := findInstance(prep.eligible, winner.InstanceID)
 
-	planBuild, torrentBytes, episodes, err := s.assembleSeasonPack(ctx, prep, inst, winner, linkMode)
+	planBuild, torrentBytes, episodes, err := s.assembleSeasonPack(ctx, prep, inst, winner, linkMode, req.Indexer)
 	if err != nil {
 		return s.failApply(ctx, req.TorrentName, err, prep, winner)
 	}
@@ -393,7 +395,7 @@ func (s *Service) ApplySeasonPackWebhook(ctx context.Context, req *SeasonPackApp
 		opts["tags"] = strings.Join(tags, ",")
 	}
 	if _, err := s.syncManager.AddTorrent(ctx, inst.ID, torrentBytes, opts); err != nil {
-		if rollbackErr := rollbackSeasonPackTree(linkMode, planBuild.plan); rollbackErr != nil {
+		if rollbackErr := rollbackSeasonPackTree(linkMode, planBuild.plan, planBuild.packDir); rollbackErr != nil {
 			log.Warn().Err(rollbackErr).Str("torrentName", req.TorrentName).Msg("season pack: failed to rollback after add failure")
 		}
 		s.recordApplyRun(ctx, req.TorrentName, "add_failed", err.Error(), winner.InstanceID, winner.MatchedEpisodes, prep.totalEpisodes, winner.Coverage, linkMode)
@@ -442,6 +444,7 @@ func (s *Service) assembleSeasonPack(
 	inst *models.Instance,
 	winner *SeasonPackCheckMatch,
 	linkMode string,
+	indexer string,
 ) (*seasonPackPlanBuild, []byte, map[episodeIdentity]episodeMatch, error) {
 	if inst == nil {
 		return nil, nil, nil, fmt.Errorf("%w: no instance found for winner", errLayoutMismatch)
@@ -473,9 +476,11 @@ func (s *Service) assembleSeasonPack(
 		return nil, nil, nil, err
 	}
 
+	destDir := s.seasonPackDestDir(ctx, inst, selectedBaseDir, prep.torrentBytes, indexer)
+
 	planBuild, err := buildSeasonPackPlan(
 		prep.meta.Files, prep.packRelease, prep.meta.Name,
-		selectedBaseDir, localFiles, seasonPackNormalizer(s), prep.settings,
+		destDir, localFiles, seasonPackNormalizer(s), prep.settings,
 	)
 	if err != nil {
 		return nil, nil, nil, err
@@ -495,13 +500,30 @@ func (s *Service) assembleSeasonPack(
 		createFn = linkCreatorForMode(linkMode)
 	}
 	if err := createFn(planBuild.plan); err != nil {
-		if rollbackErr := rollbackSeasonPackTree(linkMode, planBuild.plan); rollbackErr != nil {
+		if rollbackErr := rollbackSeasonPackTree(linkMode, planBuild.plan, planBuild.packDir); rollbackErr != nil {
 			return nil, nil, nil, fmt.Errorf("link_failed: %w", errors.Join(err, fmt.Errorf("rollback failed: %w", rollbackErr)))
 		}
 		return nil, nil, nil, fmt.Errorf("link_failed: %w", err)
 	}
 
 	return planBuild, prep.torrentBytes, episodes, nil
+}
+
+// seasonPackDestDir applies the instance's hardlink directory-organization preset
+// (flat / by-tracker / by-instance) to the selected base dir, mirroring buildCategorySavePath
+// on the regular cross-seed apply path. The pack's own root folder provides per-torrent
+// isolation, so unlike buildHardlinkDestDir no isolation folder is added here.
+func (s *Service) seasonPackDestDir(ctx context.Context, inst *models.Instance, baseDir string, torrentBytes []byte, indexer string) string {
+	switch inst.HardlinkDirPreset {
+	case "by-tracker":
+		incomingTrackerDomain := ParseTorrentAnnounceDomain(torrentBytes)
+		trackerDisplayName := s.resolveTrackerDisplayName(ctx, incomingTrackerDomain, &CrossSeedRequest{IndexerName: indexer})
+		return filepath.Join(baseDir, pathutil.SanitizePathSegment(trackerDisplayName))
+	case "by-instance":
+		return filepath.Join(baseDir, pathutil.SanitizePathSegment(inst.Name))
+	default: // "flat" or unknown
+		return baseDir
+	}
 }
 
 func selectSeasonPackBaseDir(configuredDirs string, localFiles map[episodeIdentity]seasonPackLocalFile) (string, error) {
@@ -555,7 +577,7 @@ func seasonPackSourcePaths(localFiles map[episodeIdentity]seasonPackLocalFile) [
 }
 
 func seasonPackBaseDirMatchesAllSources(dir string, sourcePaths []string) (bool, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, fsutil.ContentDirMode); err != nil {
 		return false, fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
@@ -1248,17 +1270,23 @@ func buildSeasonPackPlan(
 	normalizer *stringutils.Normalizer[string, string],
 	settings *models.CrossSeedAutomationSettings,
 ) (*seasonPackPlanBuild, error) {
-	rootDir, ok := safeSeasonPackJoin(destDir, packName)
+	// The pack's own root folder (packName) is supplied by the per-file paths (pf.Name
+	// already starts with "<packName>/") and recreated by qBittorrent's "Original" content
+	// layout. RootDir therefore stays the PARENT directory so the folder is created exactly
+	// once; setting it to <destDir>/<packName> double-nests on disk and in qBittorrent
+	// (discussions #2082 / #2087). packDir is kept for rollback cleanup and to validate packName.
+	packDir, ok := safeSeasonPackJoin(destDir, packName)
 	if !ok {
 		return nil, fmt.Errorf("%w: invalid pack root path %q", errLayoutMismatch, packName)
 	}
 	plan := &hardlinktree.TreePlan{
-		RootDir: rootDir,
+		RootDir: destDir,
 		Files:   make([]hardlinktree.FilePlan, 0, len(packFiles)),
 	}
 	matcher := &Service{stringNormalizer: normalizer}
 	build := &seasonPackPlanBuild{
 		plan:              plan,
+		packDir:           packDir,
 		materializedPaths: make(map[string]struct{}, len(packFiles)),
 		totalFiles:        len(packFiles),
 	}
@@ -1337,8 +1365,10 @@ func safeSeasonPackJoin(rootDir, relativePath string) (string, bool) {
 	return candidatePath, true
 }
 
-// rollbackSeasonPackTree removes a created link tree on failure.
-func rollbackSeasonPackTree(linkMode string, plan *hardlinktree.TreePlan) error {
+// rollbackSeasonPackTree removes a created link tree on failure. packDir is the on-disk
+// pack root folder (<RootDir>/<packName>); it is removed only when empty so the parent
+// RootDir (a shared base/tracker/instance dir) is never touched.
+func rollbackSeasonPackTree(linkMode string, plan *hardlinktree.TreePlan, packDir string) error {
 	if plan == nil || plan.RootDir == "" {
 		return nil
 	}
@@ -1357,10 +1387,12 @@ func rollbackSeasonPackTree(linkMode string, plan *hardlinktree.TreePlan) error 
 		return nil
 	}
 
-	if err := os.Remove(plan.RootDir); err != nil &&
-		!errors.Is(err, os.ErrNotExist) &&
-		!seasonPackDirNotEmpty(err) {
-		errs = append(errs, err)
+	if packDir != "" {
+		if err := os.Remove(packDir); err != nil &&
+			!errors.Is(err, os.ErrNotExist) &&
+			!seasonPackDirNotEmpty(err) {
+			errs = append(errs, err)
+		}
 	}
 	return errors.Join(errs...)
 }

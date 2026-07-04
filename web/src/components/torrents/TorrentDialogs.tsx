@@ -895,10 +895,14 @@ export const RenameTorrentFileDialog = memo(function RenameTorrentFileDialog({
           inputRef.current.focus()
           const dotIndex = fileName.lastIndexOf(".")
           if (dotIndex > 0) {
-            inputRef.current.setSelectionRange(0, dotIndex)
+            // "backward" puts the caret at the start: engines that scroll the
+            // caret into view show the start of the name instead of stopping
+            // just before the extension, which read as select-all (#2107)
+            inputRef.current.setSelectionRange(0, dotIndex, "backward")
           } else {
             inputRef.current.select()
           }
+          inputRef.current.scrollLeft = 0
         }
       }, 50)
     }

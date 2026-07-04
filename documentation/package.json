@@ -19,24 +19,24 @@
     "@docusaurus/plugin-content-docs": "3.10.1",
     "@docusaurus/preset-classic": "3.10.1",
     "@docusaurus/theme-common": "3.10.1",
-    "@easyops-cn/docusaurus-search-local": "0.52.2",
+    "@easyops-cn/docusaurus-search-local": "0.55.2",
     "@mdx-js/react": "^3.1.1",
-    "@tailwindcss/postcss": "^4.1.18",
+    "@tailwindcss/postcss": "^4.3.1",
     "clsx": "^2.1.1",
-    "docusaurus-plugin-llms": "^0.3.0",
-    "postcss": "^8.5.14",
+    "docusaurus-plugin-llms": "^0.4.0",
+    "postcss": "^8.5.16",
     "prism-react-renderer": "^2.4.1",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "redoc": "^2.5.2",
-    "tailwindcss": "^4.1.18"
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "redoc": "^2.5.3",
+    "tailwindcss": "^4.3.1"
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "3.10.1",
     "@docusaurus/tsconfig": "3.10.1",
     "@docusaurus/types": "3.10.1",
     "raw-loader": "^4.0.2",
-    "typescript": "~5.6.3"
+    "typescript": "~6.0.3"
   },
   "browserslist": {
     "production": [
