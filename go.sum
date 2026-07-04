@@ -61,8 +61,8 @@ github.com/autobrr/autobrr v1.80.0 h1:tYoK23lHifpqqoFNlh2OYWIHH0H2zyoPQFPT4fHrzQ
 github.com/autobrr/autobrr v1.80.0/go.mod h1:dUMroJCUlEzeK0HMRvCBx6VsP+EhF+eZRIUiFDVCagA=
 github.com/autobrr/go-mediainfo v0.4.0 h1:S68enHlG067nE9UF61Yg7QoQBWfeXJTRYctyNxPf1UE=
 github.com/autobrr/go-mediainfo v0.4.0/go.mod h1:xVXgHDAYYpIeGQCQCdTBpoiY/O3tojJfflK+rrbzclQ=
-github.com/autobrr/go-qbittorrent v1.16.1-0.20260625085128-43497c5a0d9a h1:cd+oRy4o9QQMo5x+NJY5edSCL86i+HgOIIc5H3+nza8=
-github.com/autobrr/go-qbittorrent v1.16.1-0.20260625085128-43497c5a0d9a/go.mod h1:s36a75VlatWPpHI+pNg4Ta6eB3fRxQvTZPfgMtOsQfY=
+github.com/autobrr/go-qbittorrent v1.16.1-0.20260703161542-1ab32a2fa640 h1:P+fF7RJB6xjzbD2soC/SjnpYnIssei0pOknCZeZp6ws=
+github.com/autobrr/go-qbittorrent v1.16.1-0.20260703161542-1ab32a2fa640/go.mod h1:s36a75VlatWPpHI+pNg4Ta6eB3fRxQvTZPfgMtOsQfY=
 github.com/autobrr/rls v0.8.1 h1:OjoFFVGcTibGrwf6b4pfk7JHsSYrGOX7F5P/8WtS3aE=
 github.com/autobrr/rls v0.8.1/go.mod h1:11YJWgNe5H+UQrfFaNGjnkEy0OEsMFnmV4IL2tRKpPk=
 github.com/avast/retry-go v3.0.0+incompatible h1:4SOWQ7Qs+oroOTQOYnAHqelpCO0biHSxpiH9JdtuBj0=

@@ -231,12 +231,8 @@ func TestStreamManagerHandleSyncErrorStampsLastSuccessfulSync(t *testing.T) {
 }
 
 func TestStreamManagerHandleSyncErrorResolvesStampOffCallbackGoroutine(t *testing.T) {
-	// Regression for a self-deadlock: HandleSyncError used to resolve the staleness
-	// stamp synchronously. go-qbittorrent invokes OnError while holding its SyncManager
-	// write lock, and the stamp reads LastSuccessfulSyncTime() which takes that same
-	// non-reentrant lock — wedging the sync loop and starving every cached reader
-	// (e.g. GET /api/instances). The stamp must be resolved on a fresh goroutine, so
-	// HandleSyncError must return without waiting on lastSuccessfulSyncFn.
+	// The staleness stamp is resolved on a fresh goroutine so this callback's fan-out
+	// does not hold up the qBittorrent sync loop.
 	manager := NewStreamManager(nil, nil, nil)
 	provider := newRecordingProvider()
 	manager.server.Provider = provider

@@ -128,6 +128,131 @@ func TestClientSubcategoriesAlwaysEnabledCapability(t *testing.T) {
 	}
 }
 
+func TestClientCheckedGetterDoesNotConvoyCapabilityReaders(t *testing.T) {
+	syncStarted := make(chan struct{})
+	releaseSync := make(chan struct{})
+	var closeSyncStarted sync.Once
+	var releaseSyncOnce sync.Once
+	release := func() {
+		releaseSyncOnce.Do(func() { close(releaseSync) })
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			closeSyncStarted.Do(func() { close(syncStarted) })
+			<-releaseSync
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	defer release()
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	syncOpts := qbt.DefaultSyncOptions()
+	syncOpts.DynamicSync = true
+	client := &Client{
+		Client:          qbtClient,
+		syncManager:     qbtClient.NewSyncManager(syncOpts),
+		supportsSetTags: true,
+	}
+
+	getterDone := make(chan struct{})
+	go func() {
+		defer close(getterDone)
+		_ = client.getTorrentsByHashes([]string{"abc"})
+	}()
+
+	select {
+	case <-syncStarted:
+	case <-time.After(time.Second):
+		t.Fatal("checked getter did not start a sync")
+	}
+
+	refreshDone := make(chan error, 1)
+	go func() {
+		refreshDone <- client.RefreshCapabilities(context.Background())
+	}()
+
+	writerQueued := make(chan struct{})
+	stopWriterProbe := make(chan struct{})
+	var stopWriterProbeOnce sync.Once
+	stopProbe := func() {
+		stopWriterProbeOnce.Do(func() { close(stopWriterProbe) })
+	}
+	defer stopProbe()
+	go func() {
+		for {
+			select {
+			case <-stopWriterProbe:
+				return
+			default:
+			}
+
+			probeDone := make(chan struct{})
+			go func() {
+				client.mu.RLock()
+				_ = client.supportsSetTags
+				client.mu.RUnlock()
+				close(probeDone)
+			}()
+
+			select {
+			case <-probeDone:
+			case <-stopWriterProbe:
+				return
+			case <-time.After(10 * time.Millisecond):
+				close(writerQueued)
+				return
+			}
+		}
+	}()
+
+	refreshComplete := false
+	select {
+	case err := <-refreshDone:
+		require.NoError(t, err)
+		refreshComplete = true
+	case <-writerQueued:
+	case <-time.After(time.Second):
+		t.Fatal("capability refresh neither completed nor queued for the client lock")
+	}
+	stopProbe()
+
+	readDone := make(chan bool, 1)
+	go func() {
+		readDone <- client.SupportsSetTags()
+	}()
+
+	select {
+	case supported := <-readDone:
+		require.True(t, supported)
+	case <-time.After(time.Second):
+		t.Fatal("capability reader convoyed behind checked getter and pending writer")
+	}
+
+	release()
+
+	if !refreshComplete {
+		select {
+		case err := <-refreshDone:
+			require.NoError(t, err)
+		case <-time.After(time.Second):
+			t.Fatal("capability refresh did not finish")
+		}
+	}
+
+	select {
+	case <-getterDone:
+	case <-time.After(time.Second):
+		t.Fatal("checked getter did not finish")
+	}
+}
+
 func TestNewClientWithTimeoutRejectsLoginCookiesWithoutVerifiedSessionMarker(t *testing.T) {
 	t.Parallel()
 
