@@ -2034,13 +2034,29 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 			}
 		}
 
-		// Check for context cancellation before each network call
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
+		// If the shared deadline fired mid-aggregation (typically because an
+		// earlier, unreachable instance burned the budget), return what the
+		// reachable instances already gave us instead of discarding everything
+		// and blanking the whole unified view. A genuine cancellation (caller
+		// disconnect or shutdown) is different: the consumer is gone, so surface
+		// the error rather than fabricate a partial success. See discussion #2096.
+		if err := ctx.Err(); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil, err
+			}
+			partialResults = true
+			break
 		}
 
 		instanceResponse, err := sm.GetTorrentsWithFilters(ctx, instance.ID, 0, 0, "", "", search, filters)
 		if err != nil {
+			// A caller cancellation mid-fetch (including on the last/only instance,
+			// which the top-of-loop check can't catch on a later iteration) must
+			// surface as an error, not a fabricated partial success. A deadline
+			// (unreachable/too slow) still degrades to partial. See discussion #2096.
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return nil, ctx.Err()
+			}
 			log.Warn().
 				Int("instanceID", instance.ID).
 				Str("instanceName", instance.Name).
@@ -2048,11 +2064,6 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 				Msg("Failed to get torrents from instance for cross-instance filtering")
 			partialResults = true
 			continue
-		}
-
-		// Check for context cancellation after potentially blocking call
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
 		}
 
 		// Convert TorrentView to CrossInstanceTorrentView
@@ -2073,6 +2084,13 @@ func (sm *SyncManager) GetCrossInstanceTorrentsWithFilters(ctx context.Context, 
 		useSubcategories = useSubcategories || instanceResponse.UseSubcategories
 
 		totalCount += len(instanceResponse.Torrents)
+	}
+
+	// The last/only instance can return cached data without observing a
+	// cancellation that landed mid-fetch, so the in-loop checks above miss it.
+	// Surface it here rather than returning a success the gone caller can't use.
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return nil, ctx.Err()
 	}
 
 	// Apply sorting if specified - always use deterministic secondary sort

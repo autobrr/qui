@@ -37,6 +37,12 @@ var (
 	shareLimitsModeMinVersion            = semver.MustParse("2.16.0") // unused still, Web API 2.16.0+
 )
 
+// errInvalidWebAPIVersion marks a session whose webapiVersion endpoint answered
+// with something other than a qBittorrent version (e.g. a reverse-proxy login
+// page whose cookies were accepted during login), as opposed to a transient
+// fetch failure against a real qBittorrent.
+var errInvalidWebAPIVersion = errors.New("invalid qBittorrent WebAPI version")
+
 type Client struct {
 	*qbt.Client
 	instanceID                 int
@@ -135,6 +141,13 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 	}
 
 	if err := client.RefreshCapabilities(ctx); err != nil {
+		if errors.Is(err, errInvalidWebAPIVersion) {
+			client.updateHealthStatus(false)
+			return nil, fmt.Errorf("failed to verify qBittorrent session: %w", err)
+		}
+		// A transient fetch failure (e.g. timeout against a saturated-but-alive
+		// WebUI) must not block client creation; capabilities refresh on the next
+		// health check. Only a positively invalid session is terminal.
 		log.Warn().
 			Err(err).
 			Int("instanceID", instanceID).
@@ -281,6 +294,19 @@ func (c *Client) SupportsTorrentExport() bool {
 	return c.supportsTorrentExport
 }
 
+// truncateWebAPIVersion bounds error text when a proxy answers the webapiVersion
+// endpoint with a full HTML page instead of a version string; the raw body would
+// otherwise flood logs, SSE error payloads, and stored instance errors on every
+// retry.
+func truncateWebAPIVersion(s string) string {
+	const maxLen = 64
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) <= maxLen {
+		return s
+	}
+	return strings.ToValidUTF8(s[:maxLen], "") + "..."
+}
+
 // RefreshCapabilities fetches the latest WebAPI version information and recalculates feature support flags.
 func (c *Client) RefreshCapabilities(ctx context.Context) error {
 	version, err := c.Client.GetWebAPIVersionCtx(ctx)
@@ -290,7 +316,10 @@ func (c *Client) RefreshCapabilities(ctx context.Context) error {
 
 	version = strings.TrimSpace(version)
 	if version == "" {
-		return fmt.Errorf("web API version is empty")
+		return fmt.Errorf("%w: response body is empty", errInvalidWebAPIVersion)
+	}
+	if _, err := semver.NewVersion(version); err != nil {
+		return fmt.Errorf("%w %q: %w", errInvalidWebAPIVersion, truncateWebAPIVersion(version), err)
 	}
 
 	c.mu.Lock()

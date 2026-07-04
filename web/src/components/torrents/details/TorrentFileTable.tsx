@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/progress"
 import { TruncatedText } from "@/components/ui/truncated-text"
 import { useFileRangeSelection } from "@/hooks/useFileRangeSelection"
 import { FILE_PRIORITY, foldFolderPriority, normalizeFilePriority, type FilePriorityValue, type FolderPriority } from "@/lib/file-priority"
+import { reconcileExpandedFolders } from "@/lib/file-tree-expansion"
 import { getLinuxFileName, getLinuxFolderName, getLinuxSavePath } from "@/lib/incognito"
 import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
@@ -155,6 +156,20 @@ function buildFileTree(
   return roots
 }
 
+function collectFolderIds(nodes: FileTreeNode[]): Set<string> {
+  const ids = new Set<string>()
+  function walk(current: FileTreeNode[]) {
+    for (const node of current) {
+      if (node.kind === "folder") {
+        ids.add(node.id)
+        if (node.children) walk(node.children)
+      }
+    }
+  }
+  walk(nodes)
+  return ids
+}
+
 function flattenTree(
   nodes: FileTreeNode[],
   expandedFolders: Set<string>,
@@ -206,31 +221,24 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   const { t } = useTranslation("torrents")
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set())
   const [searchQuery, setSearchQuery] = useState("")
-  const initializedForHash = useRef<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const tree = useMemo(
     () => (files ? buildFileTree(files, incognitoMode, torrentHash) : []),
     [files, incognitoMode, torrentHash]
   )
+  const folderIds = useMemo(() => collectFolderIds(tree), [tree])
 
-  // Expand all folders by default when tree is first built for a new torrent
-  useEffect(() => {
-    if (tree.length > 0 && initializedForHash.current !== torrentHash) {
-      initializedForHash.current = torrentHash
-      const allFolderIds = new Set<string>()
-      function collectFolders(nodes: FileTreeNode[]) {
-        for (const node of nodes) {
-          if (node.kind === "folder") {
-            allFolderIds.add(node.id)
-            if (node.children) collectFolders(node.children)
-          }
-        }
-      }
-      collectFolders(tree)
-      setExpandedFolders(allFolderIds)
-    }
-  }, [tree, torrentHash])
+  // Expand all folders by default when tree is first built for a new torrent,
+  // then keep the expanded set keyed to current paths (renames change node ids);
+  // render-time adjustment so the reconciled tree commits in one pass
+  const [knownExpansion, setKnownExpansion] = useState<{ hash: string; ids: Set<string> } | null>(null)
+  if (tree.length > 0 && (knownExpansion?.hash !== torrentHash || knownExpansion.ids !== folderIds)) {
+    setKnownExpansion({ hash: torrentHash, ids: folderIds })
+    setExpandedFolders(
+      knownExpansion?.hash === torrentHash? reconcileExpandedFolders(expandedFolders, knownExpansion.ids, folderIds): new Set(folderIds)
+    )
+  }
 
   const flatRows = useMemo(
     () => flattenTree(tree, expandedFolders),
@@ -296,18 +304,8 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   }, [])
 
   const expandAll = useCallback(() => {
-    const allFolderIds = new Set<string>()
-    function collectFolders(nodes: FileTreeNode[]) {
-      for (const node of nodes) {
-        if (node.kind === "folder") {
-          allFolderIds.add(node.id)
-          if (node.children) collectFolders(node.children)
-        }
-      }
-    }
-    collectFolders(tree)
-    setExpandedFolders(allFolderIds)
-  }, [tree])
+    setExpandedFolders(new Set(folderIds))
+  }, [folderIds])
 
   const collapseAll = useCallback(() => {
     setExpandedFolders(new Set())

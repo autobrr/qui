@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { useFileRangeSelection } from "@/hooks/useFileRangeSelection"
 import { FILE_PRIORITY, foldFolderPriority, normalizeFilePriority, type FolderPriority } from "@/lib/file-priority"
+import { reconcileExpandedFolders } from "@/lib/file-tree-expansion"
 import { getLinuxFileName, getLinuxSavePath } from "@/lib/incognito"
 import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
@@ -214,33 +215,16 @@ export const TorrentFileTree = memo(function TorrentFileTree({
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
     () => new Set(allFolderIds)
   )
+  const [knownFolderIds, setKnownFolderIds] = useState(allFolderIds)
 
-  // Keep expandedFolders in sync when folder paths change (e.g., after rename)
-  useEffect(() => {
-    setExpandedFolders((prev) => {
-      const allFolderSet = new Set(allFolderIds)
-      const next = new Set(prev)
-      let changed = false
-
-      // Remove folders that no longer exist
-      for (const id of prev) {
-        if (!allFolderSet.has(id)) {
-          next.delete(id)
-          changed = true
-        }
-      }
-
-      // Add new folders as expanded by default
-      for (const id of allFolderIds) {
-        if (!prev.has(id)) {
-          next.add(id)
-          changed = true
-        }
-      }
-
-      return changed ? next : prev
-    })
-  }, [allFolderIds])
+  // Keep expandedFolders in sync when folder paths change (e.g., after rename);
+  // render-time adjustment so the reconciled tree commits in one pass
+  if (knownFolderIds !== allFolderIds) {
+    setKnownFolderIds(allFolderIds)
+    setExpandedFolders(
+      reconcileExpandedFolders(expandedFolders, new Set(knownFolderIds), new Set(allFolderIds))
+    )
+  }
 
   const flatRows = useMemo(
     () => flattenTree(nodes, expandedFolders),

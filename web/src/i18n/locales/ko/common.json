@@ -132,7 +132,8 @@
     "switchedToThemeVariation": "{{theme}} 테마({{variation}})로 전환했습니다",
     "unableToVerifyLicense": "라이선스를 확인할 수 없습니다",
     "licenseCheckFailed": "라이선스 확인에 실패했습니다. 프리미엄 테마 전환을 일시적으로 사용할 수 없습니다.",
-    "premiumThemeError": "프리미엄 테마입니다. 설정 → 테마에서 라이선스를 활성화하세요."
+    "premiumThemeError": "프리미엄 테마입니다. 설정 → 테마에서 라이선스를 활성화하세요.",
+    "custom": "사용자 지정"
   },
   "updateBanner": {
     "updateAvailable": "업데이트 사용 가능",

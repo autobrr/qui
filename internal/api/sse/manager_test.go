@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,11 +17,13 @@ import (
 	"testing"
 	"time"
 
+	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/stretchr/testify/require"
 	"github.com/tmaxmax/go-sse"
 
 	"github.com/autobrr/qui/internal/database"
 	"github.com/autobrr/qui/internal/models"
+	"github.com/autobrr/qui/internal/qbittorrent"
 )
 
 func TestStreamManagerHandleSyncErrorPublishesErrorEvent(t *testing.T) {
@@ -55,6 +58,137 @@ func TestStreamManagerHandleSyncErrorPublishesErrorEvent(t *testing.T) {
 	require.Equal(t, sub.options.InstanceID, payload.Meta.InstanceID)
 	require.Positive(t, payload.Meta.RetryInSeconds, "expected retry interval to be populated")
 	require.Contains(t, payload.Err, "sync failed")
+}
+
+func TestStreamManagerHandleSyncErrorPreservesHealthBlockerStatus(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	sub := &subscriptionState{
+		id:      "subscription-blocked",
+		options: StreamOptions{InstanceID: 42},
+		created: time.Now(),
+	}
+
+	manager.subscriptions[sub.id] = sub
+	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
+		sub.id: sub,
+	}
+
+	manager.HandleSyncError(sub.options.InstanceID, &qbittorrent.InstanceHealthBlockerError{
+		Kind:       qbittorrent.InstanceHealthBlockerHealthCheckInProgress,
+		InstanceID: sub.options.InstanceID,
+	})
+
+	require.Eventually(t, func() bool {
+		return len(provider.messagesFor(sub.id)) == 1
+	}, time.Second, 5*time.Millisecond, "expected a single broadcast message")
+
+	payload := decodeStreamPayload(t, provider.messagesFor(sub.id)[0])
+	require.Equal(t, streamEventError, payload.Type)
+	require.Positive(t, payload.Meta.RetryInSeconds, "expected retry interval to be populated")
+	require.Contains(t, payload.Err, "paused")
+	require.Contains(t, payload.Err, "already running a health check")
+	require.Contains(t, payload.Err, "retry shortly")
+	require.NotContains(t, payload.Err, "Sync with qBittorrent failed")
+}
+
+func TestStreamManagerHandleSyncErrorPreservesBackoffStatus(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	sub := &subscriptionState{
+		id:      "subscription-backoff",
+		options: StreamOptions{InstanceID: 42},
+		created: time.Now(),
+	}
+
+	manager.subscriptions[sub.id] = sub
+	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
+		sub.id: sub,
+	}
+
+	manager.HandleSyncError(sub.options.InstanceID, fmt.Errorf("failed to get client: %w", &qbittorrent.InstanceHealthBlockerError{
+		Kind:       qbittorrent.InstanceHealthBlockerBackoff,
+		InstanceID: sub.options.InstanceID,
+		RetryAfter: 12 * time.Second,
+	}))
+
+	require.Eventually(t, func() bool {
+		return len(provider.messagesFor(sub.id)) == 1
+	}, time.Second, 5*time.Millisecond, "expected a single broadcast message")
+
+	payload := decodeStreamPayload(t, provider.messagesFor(sub.id)[0])
+	require.Equal(t, streamEventError, payload.Type)
+	require.Equal(t, 12, payload.Meta.RetryInSeconds, "retry hint must tick on the blocker's clock, not the sync loop's")
+	require.Contains(t, payload.Err, "paused")
+	require.Contains(t, payload.Err, "health-check backoff")
+	require.Contains(t, payload.Err, "retrying in 12s")
+	require.NotContains(t, payload.Err, "Sync with qBittorrent failed")
+}
+
+func TestStreamManagerHandleSyncErrorMapsAuthFailure(t *testing.T) {
+	manager := NewStreamManager(nil, nil, nil)
+	provider := newRecordingProvider()
+	manager.server.Provider = provider
+
+	sub := &subscriptionState{
+		id:      "subscription-auth",
+		options: StreamOptions{InstanceID: 42},
+		created: time.Now(),
+	}
+
+	manager.subscriptions[sub.id] = sub
+	manager.instanceIndex[sub.options.InstanceID] = map[string]*subscriptionState{
+		sub.id: sub,
+	}
+
+	manager.HandleSyncError(sub.options.InstanceID, qbt.ErrBadCredentials)
+
+	require.Eventually(t, func() bool {
+		return len(provider.messagesFor(sub.id)) == 1
+	}, time.Second, 5*time.Millisecond, "expected a single broadcast message")
+
+	payload := decodeStreamPayload(t, provider.messagesFor(sub.id)[0])
+	require.Equal(t, streamEventError, payload.Type)
+	require.Contains(t, payload.Err, "paused")
+	require.Contains(t, payload.Err, "2FA")
+	require.Contains(t, payload.Err, "unattended")
+	require.Contains(t, payload.Err, "Update the instance login details")
+	require.NotContains(t, payload.Err, "Sync with qBittorrent failed")
+}
+
+func TestBlockerRetrySecondsFloorsSubSecondBackoff(t *testing.T) {
+	seconds, ok := blockerRetrySeconds(fmt.Errorf("failed to get client: %w", &qbittorrent.InstanceHealthBlockerError{
+		Kind:       qbittorrent.InstanceHealthBlockerBackoff,
+		InstanceID: 1,
+		RetryAfter: 300 * time.Millisecond,
+	}))
+	require.True(t, ok)
+	require.Equal(t, 1, seconds, "sub-second backoff must not round to 0 (omitempty would drop the hint)")
+
+	_, ok = blockerRetrySeconds(errors.New("plain failure"))
+	require.False(t, ok)
+}
+
+func TestSyncErrorMessageRetryHints(t *testing.T) {
+	blocker := &qbittorrent.InstanceHealthBlockerError{
+		Kind:       qbittorrent.InstanceHealthBlockerBackoff,
+		InstanceID: 42,
+		RetryAfter: 12 * time.Second,
+	}
+	blockerMessage := syncErrorMessage(blocker, 30)
+	require.Equal(t, "Sync with qBittorrent paused: qBittorrent instance 42 is in health-check backoff after a failed connection; retrying in 12s", blockerMessage)
+	require.NotContains(t, blockerMessage, "retrying in 12s; retrying in 30s")
+
+	authMessage := syncErrorMessage(qbt.ErrBadCredentials, 30)
+	require.Contains(t, authMessage, "Sync with qBittorrent paused:")
+	require.Contains(t, authMessage, "retrying in 30s")
+
+	fallbackMessage := syncErrorMessage(errors.New("temporary sync failure"), 30)
+	require.Equal(t, "Sync with qBittorrent failed (temporary sync failure); retrying in 30s", fallbackMessage)
 }
 
 func TestStreamManagerHandleSyncErrorStampsLastSuccessfulSync(t *testing.T) {
