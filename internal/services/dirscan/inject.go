@@ -56,6 +56,10 @@ type TorrentAdder interface {
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 	ResumeWhenComplete(instanceID int, hashes []string, opts qbsync.ResumeWhenCompleteOptions)
+	// Rename methods align an injected torrent's internal paths with the on-disk files it matched.
+	RenameTorrentFile(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
+	RenameTorrentFolder(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
+	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
 }
 
 // TorrentChecker is the interface for checking if torrents exist in qBittorrent.
@@ -208,6 +212,15 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	regularAddNeedsRecheck := hasUnmatchedFiles || addPolicy.ForcePaused
 	partialLinkTree := isLinkTreeMode(addMode) && hasUnmatchedFiles
 
+	// In regular (reuse) mode the torrent keeps its own folder/file names. When those differ
+	// from the on-disk directory we matched, qBittorrent reports "Missing Files" until the
+	// paths are renamed to match. Scoped to full matches: partial matches are added unpaused so
+	// they can download the missing files, which is incompatible with the pause-rename-recheck
+	// dance here. Link-tree modes build the on-disk layout to match the torrent, so they never
+	// need this either.
+	alignPlan := buildAlignmentPlan(req)
+	alignmentNeeded := addMode == injectModeRegular && !hasUnmatchedFiles && alignPlan.needed()
+
 	// Reject partial link tree injections when downloading missing files is disabled.
 	if partialLinkTree && !req.DownloadMissingFiles {
 		i.rollbackLinkTree(addMode, linkPlan)
@@ -216,13 +229,13 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	}
 
 	options := i.buildAddOptions(req, savePath)
-	if !hasUnmatchedFiles {
+	if !hasUnmatchedFiles && !alignmentNeeded {
 		options["skip_checking"] = qbitBoolTrue
 	}
 
-	// For partial link tree injections, force paused so we can safely recheck
-	// before qBit tries to use the incomplete link tree.
-	if partialLinkTree {
+	// Force paused for partial link tree injections (recheck before qBit uses the incomplete
+	// tree) and for alignment injections (rename the paths before qBit acts on the wrong ones).
+	if partialLinkTree || alignmentNeeded {
 		options["paused"] = qbitBoolTrue
 		options["stopped"] = qbitBoolTrue
 	}
@@ -236,17 +249,27 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		return result, fmt.Errorf("add torrent: %w", err)
 	}
 
-	if partialLinkTree {
+	result.TorrentHash = req.ParsedTorrent.InfoHash
+
+	switch {
+	case partialLinkTree:
 		if err := i.triggerRecheckForPartialLinkTree(req); err != nil {
 			result.ErrorMessage = fmt.Sprintf("torrent added but recheck failed: %v", err)
 			return result, fmt.Errorf("partial link tree recheck: %w", err)
 		}
-	} else {
+	case alignmentNeeded:
+		// The torrent was added force-paused. If the paths could not be aligned to the on-disk
+		// files, report failure so the run surfaces it instead of silently stranding a paused,
+		// mismatched torrent that will never recheck to 100%.
+		if !i.alignAndRecheck(ctx, req, alignPlan) {
+			result.ErrorMessage = "content path alignment failed; torrent added paused for inspection"
+			return result, nil
+		}
+	default:
 		i.triggerRecheckForPausedPartial(req, regularAddNeedsRecheck)
 	}
 
 	result.Success = true
-	result.TorrentHash = req.ParsedTorrent.InfoHash
 	return result, nil
 }
 
