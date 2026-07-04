@@ -9,6 +9,7 @@ const FONT_MAP: Record<string, string> = {
   "Inter": "Inter:wght@300;400;500;600;700",
   "Montserrat": "Montserrat:wght@300;400;500;600;700",
   "Poppins": "Poppins:wght@300;400;500;600;700",
+  "Roboto": "Roboto:wght@300;400;500;600;700",
 
   // Serif fonts
   "Georgia": "", // System font, no need to load
@@ -16,6 +17,7 @@ const FONT_MAP: Record<string, string> = {
   "Lora": "Lora:wght@400;500;600;700",
 
   // Mono fonts
+  "Roboto Mono": "Roboto+Mono:wght@300;400;500;600;700",
   "JetBrains Mono": "JetBrains+Mono:wght@300;400;500;600;700",
   "Fira Code": "Fira+Code:wght@300;400;500;600;700",
   "Source Code Pro": "Source+Code+Pro:wght@300;400;500;600;700",
