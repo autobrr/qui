@@ -717,10 +717,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         plural: torrentsToDelete.length > 1 ? "s" : "",
       }))
 
-      // Refresh all instances
-      for (const instId of byInstance.keys()) {
-        queryClient.invalidateQueries({ queryKey: ["torrents", instId] })
-      }
+      // Instance-scoped keys can't reach the all-instances list (its key is scoped
+      // under instance id 0, not the row's real instance id), so invalidate the
+      // whole family; only the active view actually refetches.
+      queryClient.invalidateQueries({ queryKey: ["torrents-list"] })
+      queryClient.invalidateQueries({ queryKey: ["torrent-counts"] })
 
       setSelectedCrossSeedTorrents(new Set())
       setShowDeleteCrossSeedDialog(false)
@@ -742,7 +743,11 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       })
 
       toast.success(t("detailsPanel.toast.deletedTorrent", { name: torrent.name }))
-      queryClient.invalidateQueries({ queryKey: ["torrents", instanceId] })
+      // Whole family, not ["torrents-list", instanceId]: in the all-instances view
+      // the active list query is scoped under instance id 0, which a real instance
+      // id can never prefix-match. Only the active view actually refetches.
+      queryClient.invalidateQueries({ queryKey: ["torrents-list"] })
+      queryClient.invalidateQueries({ queryKey: ["torrent-counts"] })
       setShowDeleteCurrentDialog(false)
 
       // Close the details panel by clearing selection (parent component should handle this)

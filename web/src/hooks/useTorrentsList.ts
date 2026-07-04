@@ -14,6 +14,7 @@ import { isAllInstancesScope } from "@/lib/instances"
 import { mergeStreamedFirstPage } from "@/lib/stream-merge"
 import type {
   AppPreferences,
+  CrossInstanceTorrent,
   QBittorrentAppInfo,
   Torrent,
   TorrentCounts,
@@ -41,6 +42,42 @@ export const TORRENT_STREAM_POLL_INTERVAL_SECONDS = Math.max(
 // avoids tearing the stream down on quick tab switches; on refocus it resumes at once
 // and refetchOnWindowFocus pulls fresh data immediately.
 export const STREAM_HIDDEN_PAUSE_DELAY_MS = 30000
+
+// Drop duplicate rows, keeping the first occurrence. Pages are fetched (or appended)
+// against a live cache, so a row can reflow across a page boundary between requests
+// and show up twice; identity matches the stream merge (hash, or instanceId+hash for
+// cross-instance rows).
+function dedupeRows<T>(rows: T[], keyOf: (row: T) => string): T[] {
+  return [...new Map(rows.map(row => [keyOf(row), row] as const)).values()]
+}
+
+// Combine the per-page responses of a loaded window (pages 0..N of one view) into a
+// single response shaped like one oversized page. The last page is the base so hasMore
+// reflects whether rows remain past the window; list metadata (counts, categories,
+// tags, serverState, preferences) is computed from the full filtered set on the
+// backend regardless of offset, so the base carries it for the whole window.
+// windowPageCount marks the response as window-shaped so the processing effect knows
+// it may replace the whole list with it.
+function combineWindowPages(pages: TorrentResponse[]): TorrentResponse {
+  const last = pages[pages.length - 1]
+
+  if (last.isCrossInstance) {
+    return {
+      ...last,
+      windowPageCount: pages.length,
+      crossInstanceTorrents: dedupeRows(
+        pages.flatMap(page => page.crossInstanceTorrents ?? page.cross_instance_torrents ?? []),
+        row => `${row.instanceId}:${row.hash}`
+      ),
+    }
+  }
+
+  return {
+    ...last,
+    windowPageCount: pages.length,
+    torrents: dedupeRows(pages.flatMap(page => page.torrents ?? []), row => row.hash),
+  }
+}
 
 interface UseTorrentsListOptions {
   enabled?: boolean
@@ -100,6 +137,11 @@ export function useTorrentsList(
   // snapshot synchronously without re-running this callback. Seeded by every full
   // frame (init/update/keyframe) and reset when the view identity changes.
   const lastFullSnapshotRef = useRef<TorrentResponse | null>(null)
+  // The last REST/query-cache data object already applied to the list. The
+  // processing effect re-runs when its own state writes (lastProcessedPage) change;
+  // re-applying the same data would re-assert hasLoadedAll from hasMore and override
+  // the length>=total fallback effect below, so identical data is applied only once.
+  const lastAppliedDataRef = useRef<TorrentResponse | null>(null)
   const pageSize = 300 // Load 300 at a time (backend default)
   const queryClient = useQueryClient()
 
@@ -420,6 +462,7 @@ export function useTorrentsList(
     // Drop the delta baseline so a delta from the previous view can never be applied
     // against the new one; the new subscription's init reseeds it.
     lastFullSnapshotRef.current = null
+    lastAppliedDataRef.current = null
   }, [viewScopeKey])
 
   useEffect(() => {
@@ -433,31 +476,56 @@ export function useTorrentsList(
     })
   }, [allTorrents.length, lastKnownTotal])
 
+  const listQueryKey = useMemo(
+    () => ["torrents-list", instanceId, instanceIdsKey, currentPage, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering] as const,
+    [instanceId, instanceIdsKey, currentPage, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering]
+  )
+
   // Query for torrents - backend handles stale-while-revalidate
   const { data, isLoading, isFetching, isPlaceholderData } = useQuery<TorrentResponse>({
-    queryKey: ["torrents-list", instanceId, instanceIdsKey, currentPage, filters, search, sort, order, useCrossInstanceEndpoint, isCrossSeedFiltering],
-    queryFn: () => {
-      if (useCrossInstanceEndpoint) {
-        return api.getCrossInstanceTorrents({
-          page: currentPage,
+    queryKey: listQueryKey,
+    queryFn: async () => {
+      const fetchPage = (page: number): Promise<TorrentResponse> => {
+        if (useCrossInstanceEndpoint) {
+          return api.getCrossInstanceTorrents({
+            page,
+            limit: pageSize,
+            sort,
+            order,
+            search,
+            filters,
+            instanceIds,
+          })
+        }
+
+        return api.getTorrents(instanceId, {
+          page,
           limit: pageSize,
           sort,
           order,
           search,
           filters,
-          instanceIds,
+          preferCached: preferCachedQuery,
         })
       }
 
-      return api.getTorrents(instanceId, {
-        page: currentPage,
-        limit: pageSize,
-        sort,
-        order,
-        search,
-        filters,
-        preferCached: preferCachedQuery,
-      })
+      // The first fetch of a page's key is an ordinary pagination step: the earlier
+      // pages are already displayed, so fetch only the new page (the effect below
+      // appends it). A refetch of the same key — the post-mutation refetchQueries in
+      // useTorrentActions, or any invalidation — must instead deliver the whole
+      // loaded window (pages 0..currentPage): once the user has paginated this query
+      // is the only active torrents-list observer, and the SSE stream only refreshes
+      // the page-0 window, so scrolled-in rows would otherwise stay stale until a
+      // full reload. Each page is served from the backend's in-memory sync cache, so
+      // the window costs no qBittorrent calls.
+      if (currentPage === 0 || queryClient.getQueryData(listQueryKey) === undefined) {
+        return fetchPage(currentPage)
+      }
+
+      const pages = await Promise.all(
+        Array.from({ length: currentPage + 1 }, (_, page) => fetchPage(page))
+      )
+      return combineWindowPages(pages)
     },
     // Trust backend cache - it returns immediately with stale data if needed
     staleTime: 0, // Always check with backend (it decides if cache is fresh)
@@ -506,6 +574,11 @@ export function useTorrentsList(
       return
     }
 
+    if (data === lastAppliedDataRef.current) {
+      return
+    }
+    lastAppliedDataRef.current = data
+
     updateAppInfoCache(data)
     updateMetadataCache(data)
     rememberCountsSnapshot(viewScopeKey, data.counts, committedCountsSnapshotRef.current)
@@ -532,35 +605,27 @@ export function useTorrentsList(
       return
     }
 
-    // Check if this is a new page load or data update for current page
-    const isNewPageLoad = currentPage !== lastProcessedPage
-    const isDataUpdate = !isNewPageLoad // Same page, but data changed (optimistic updates)
-
-    // For first page or true data updates (optimistic updates from mutations)
-    if (currentPage === 0 || (isDataUpdate && currentPage === 0)) {
-      // First page OR data update (optimistic updates): replace all
+    if (currentPage === 0) {
+      // First page: replace all (covers polling updates and optimistic cache writes).
       setAllTorrents(torrentsData)
-      // Use backend's HasMore field for accurate pagination
       setHasLoadedAll(!data.hasMore)
-
-      // Mark this page as processed
-      if (isNewPageLoad) {
-        setLastProcessedPage(currentPage)
-      }
-    } else if (isNewPageLoad && currentPage > 0) {
-      // Mark this page as processed FIRST to prevent double processing
       setLastProcessedPage(currentPage)
-
-      // Append to existing for pagination
-      setAllTorrents(prev => {
-        const updatedTorrents = [...prev, ...torrentsData]
-        return updatedTorrents
-      })
-
-      // Use backend's HasMore field for accurate pagination
+    } else if (currentPage !== lastProcessedPage) {
+      // Ordinary pagination step: queryFn fetched only the new page; append it.
+      setAllTorrents(prev => dedupeRows(
+        [...prev, ...torrentsData],
+        data.isCrossInstance? row => `${(row as CrossInstanceTorrent).instanceId}:${row.hash}`: row => row.hash
+      ))
       if (!data.hasMore) {
         setHasLoadedAll(true)
       }
+      setLastProcessedPage(currentPage)
+    } else if (data.windowPageCount) {
+      // Same-key refetch delivered the whole loaded window (pages 0..currentPage —
+      // see queryFn): replace the list wholesale. This is what lets a post-mutation
+      // refetch update rows on every loaded page instead of only page 0.
+      setAllTorrents(torrentsData)
+      setHasLoadedAll(!data.hasMore)
     }
 
     setIsLoadingMore(false)
