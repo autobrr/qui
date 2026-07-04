@@ -1690,6 +1690,8 @@
       "includeCategoriesDescription": "Zeskupit torrenty uvnitř archivu podle jejich kategorie",
       "includeTags": "Zahrnout tagy",
       "includeTagsDescription": "Uložit tagy torrentů v manifestu",
+      "includeSavePaths": "Zahrnout cesty uložení",
+      "includeSavePathsDescription": "Uložit cestu uložení každého torrentu, pokud se liší od jeho kategorie, aby se přemístěné a cross-seed torrenty obnovily do správné složky",
       "schedule": {
         "title": "Automatické časové jednotky",
         "description": "Hodinové, denní, týdenní a měsíční zálohy začnou po dokončení předchozí zálohy a po uplynutí jejich intervalu. Vypněte je všechny, pokud zálohy spouštíte pouze manuálně.",

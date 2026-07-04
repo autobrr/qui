@@ -20,6 +20,7 @@ export interface BackupSettings {
   keepMonthly: number
   includeCategories: boolean
   includeTags: boolean
+  includeSavePaths: boolean
   createdAt?: string
   updatedAt?: string
 }
@@ -59,6 +60,7 @@ export interface BackupManifestItem {
   infohashV2?: string | null
   tags?: string[]
   torrentBlob?: string
+  savePath?: string | null
 }
 
 export interface BackupCategorySnapshot {
@@ -110,6 +112,7 @@ export interface RestorePlanTorrentUpdate {
     trackerUrls?: string[]
     infoHashV1?: string
     infoHashV2?: string
+    savePath?: string
     sizeBytes?: number
   }
   desired: BackupManifestItem & { torrentBlob?: string }

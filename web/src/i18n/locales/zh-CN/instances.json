@@ -1679,6 +1679,8 @@
       "includeCategoriesDescription": "在归档中按分类对种子进行分组",
       "includeTags": "包含标签",
       "includeTagsDescription": "在清单中存储种子标签",
+      "includeSavePaths": "包含保存路径",
+      "includeSavePathsDescription": "当种子的保存路径与其分类不同时进行记录，使已移动和交叉做种的种子能够恢复到正确的目录",
       "schedule": {
         "title": "自动频率",
         "description": "每小时、每天、每周和每月运行在上一次备份完成且间隔已过后开始。全部关闭则仅手动触发备份。",

@@ -182,6 +182,7 @@ type backupSettingsRequest struct {
 	KeepMonthly       int  `json:"keepMonthly"`
 	IncludeCategories bool `json:"includeCategories"`
 	IncludeTags       bool `json:"includeTags"`
+	IncludeSavePaths  bool `json:"includeSavePaths"`
 }
 
 func (h *BackupsHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
@@ -226,6 +227,7 @@ func (h *BackupsHandler) UpdateSettings(w http.ResponseWriter, r *http.Request) 
 		KeepMonthly:       req.KeepMonthly,
 		IncludeCategories: req.IncludeCategories,
 		IncludeTags:       req.IncludeTags,
+		IncludeSavePaths:  req.IncludeSavePaths,
 	}
 
 	if err := h.service.UpdateSettings(r.Context(), settings); err != nil {
