@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 	"unsafe"
@@ -114,6 +115,69 @@ func TestGetTorrentField_MagnetURIReturnsSelectedLinks(t *testing.T) {
 	}, response.Values)
 }
 
+func TestListCrossInstanceTorrentsSkipsFreshData(t *testing.T) {
+	handler, release := createStaleCrossInstanceReadHarness(t)
+	defer release()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/torrents/cross-instance?limit=10", nil)
+	rec := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handler.ListCrossInstanceTorrents(rec, req)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		cancel()
+		release()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+		}
+		t.Fatal("cross-instance list joined a stale in-flight sync")
+	}
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Empty(t, rec.Header().Get("X-Data-Source"))
+}
+
+func TestGetTorrentFieldCrossInstanceReadSkipsFreshData(t *testing.T) {
+	handler, release := createStaleCrossInstanceReadHarness(t)
+	defer release()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req := newTorrentFieldRequestWithContext(ctx, t, allInstancesID, map[string]any{
+		"field": "magnet_uri",
+	})
+	rec := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handler.GetTorrentField(rec, req)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		cancel()
+		release()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+		}
+		t.Fatal("cross-instance torrent field read joined a stale in-flight sync")
+	}
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+}
+
 func createTorrentFieldTestHarness(t *testing.T, torrentsByInstanceName map[string][]qbt.Torrent) (*models.InstanceStore, *quiqbt.SyncManager, map[string]int) {
 	t.Helper()
 
@@ -146,6 +210,49 @@ func createTorrentFieldTestHarness(t *testing.T, torrentsByInstanceName map[stri
 	return instanceStore, syncManager, instanceIDs
 }
 
+func createStaleCrossInstanceReadHarness(t *testing.T) (*TorrentsHandler, func()) {
+	t.Helper()
+
+	releaseSync := make(chan struct{})
+	var releaseSyncOnce sync.Once
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			<-releaseSync
+			_, _ = w.Write([]byte(`{"rid":2,"full_update":true,"torrents":{}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+
+	db := testdb.NewMigratedSQLite(t, "torrents-stale-cross-instance")
+	instanceStore, err := models.NewInstanceStore(db, []byte("01234567890123456789012345678901"))
+	require.NoError(t, err)
+	errorStore := models.NewInstanceErrorStore(db)
+	clientPool, err := quiqbt.NewClientPool(instanceStore, errorStore)
+	require.NoError(t, err)
+
+	instance, err := instanceStore.Create(context.Background(), "alpha", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	client := newStaleCachedClient(t, srv.URL, []qbt.Torrent{
+		{Name: "Alpha", Hash: "aaa", MagnetURI: "magnet:?xt=urn:btih:aaa", AddedOn: 1},
+	})
+	setUnexportedField(t, clientPool, "clients", map[int]*quiqbt.Client{instance.ID: client})
+
+	release := func() {
+		releaseSyncOnce.Do(func() {
+			close(releaseSync)
+			srv.Close()
+			_ = clientPool.Close()
+		})
+	}
+	t.Cleanup(release)
+
+	return NewTorrentsHandler(quiqbt.NewSyncManager(clientPool, nil), nil, instanceStore), release
+}
+
 func newCachedClient(t *testing.T, torrents []qbt.Torrent) *quiqbt.Client {
 	t.Helper()
 
@@ -167,13 +274,44 @@ func newCachedClient(t *testing.T, torrents []qbt.Torrent) *quiqbt.Client {
 	return client
 }
 
+func newStaleCachedClient(t *testing.T, host string, torrents []qbt.Torrent) *quiqbt.Client {
+	t.Helper()
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: host, Timeout: 60})
+	syncOpts := qbt.DefaultSyncOptions()
+	syncOpts.DynamicSync = true
+	syncManager := qbtClient.NewSyncManager(syncOpts)
+
+	torrentMap := make(map[string]qbt.Torrent, len(torrents))
+	for _, torrent := range torrents {
+		torrentMap[torrent.Hash] = torrent
+	}
+
+	setUnexportedField(t, syncManager, "data", &qbt.MainData{Torrents: torrentMap})
+	setUnexportedField(t, syncManager, "allTorrents", append([]qbt.Torrent(nil), torrents...))
+	setUnexportedField(t, syncManager, "lastSync", time.Now().Add(-time.Hour))
+	setUnexportedField(t, syncManager, "lastSuccessfulSync", time.Now().Add(-time.Hour))
+
+	client := &quiqbt.Client{Client: qbtClient}
+	setUnexportedField(t, client, "isHealthy", true)
+	setUnexportedField(t, client, "lastHealthCheck", time.Now())
+	setUnexportedField(t, client, "syncManager", syncManager)
+
+	return client
+}
+
 func newTorrentFieldRequest(t *testing.T, instanceID int, payload map[string]any) *http.Request {
+	t.Helper()
+	return newTorrentFieldRequestWithContext(context.Background(), t, instanceID, payload)
+}
+
+func newTorrentFieldRequestWithContext(ctx context.Context, t *testing.T, instanceID int, payload map[string]any) *http.Request {
 	t.Helper()
 
 	body, err := json.Marshal(payload)
 	require.NoError(t, err)
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/instances/"+strconv.Itoa(instanceID)+"/torrents/field", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/instances/"+strconv.Itoa(instanceID)+"/torrents/field", bytes.NewReader(body))
 	routeCtx := chi.NewRouteContext()
 	routeCtx.URLParams.Add("instanceID", strconv.Itoa(instanceID))
 
