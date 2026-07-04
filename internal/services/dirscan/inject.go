@@ -218,7 +218,7 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	// they can download the missing files, which is incompatible with the pause-rename-recheck
 	// dance here. Link-tree modes build the on-disk layout to match the torrent, so they never
 	// need this either.
-	alignPlan := buildAlignmentPlan(req)
+	alignPlan := buildAlignmentPlan(req, searcheePathIsDir(req.Searchee.Path))
 	alignmentNeeded := addMode == injectModeRegular && !hasUnmatchedFiles && alignPlan.needed()
 
 	// Reject partial link tree injections when downloading missing files is disabled.

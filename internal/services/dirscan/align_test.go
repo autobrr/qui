@@ -21,20 +21,22 @@ import (
 
 func TestBuildAlignmentPlan(t *testing.T) {
 	tests := []struct {
-		name         string
-		torrentFiles []TorrentFile
-		searcheePath string
-		matched      []MatchedFilePair
-		wantNeeded   bool
-		wantSource   string
-		wantTarget   string
-		wantFolder   bool
-		wantFiles    []fileRename
+		name          string
+		torrentFiles  []TorrentFile
+		searcheePath  string
+		searcheeIsDir bool
+		matched       []MatchedFilePair
+		wantNeeded    bool
+		wantSource    string
+		wantTarget    string
+		wantFolder    bool
+		wantFiles     []fileRename
 	}{
 		{
-			name:         "folder mismatch, identical filenames",
-			torrentFiles: []TorrentFile{{Path: "Linux.Distribution.Release.01/a.iso", Size: 1}},
-			searcheePath: "/data/isos/Release 01",
+			name:          "folder mismatch, identical filenames",
+			torrentFiles:  []TorrentFile{{Path: "Linux.Distribution.Release.01/a.iso", Size: 1}},
+			searcheePath:  "/data/isos/Release 01",
+			searcheeIsDir: true,
 			matched: []MatchedFilePair{{
 				SearcheeFile: &ScannedFile{RelPath: "a.iso", Size: 1},
 				TorrentFile:  TorrentFile{Path: "Linux.Distribution.Release.01/a.iso", Size: 1},
@@ -45,9 +47,10 @@ func TestBuildAlignmentPlan(t *testing.T) {
 			wantFolder: true,
 		},
 		{
-			name:         "folder and filename mismatch",
-			torrentFiles: []TorrentFile{{Path: "Some.Release/movie.2020.mkv", Size: 2}},
-			searcheePath: "/media/Release Folder",
+			name:          "folder and filename mismatch",
+			torrentFiles:  []TorrentFile{{Path: "Some.Release/movie.2020.mkv", Size: 2}},
+			searcheePath:  "/media/Release Folder",
+			searcheeIsDir: true,
 			matched: []MatchedFilePair{{
 				SearcheeFile: &ScannedFile{RelPath: "Movie (2020).mkv", Size: 2},
 				TorrentFile:  TorrentFile{Path: "Some.Release/movie.2020.mkv", Size: 2},
@@ -59,9 +62,10 @@ func TestBuildAlignmentPlan(t *testing.T) {
 			wantFiles:  []fileRename{{oldPath: "Some.Release/movie.2020.mkv", newPath: "Some.Release/Movie (2020).mkv"}},
 		},
 		{
-			name:         "nested subdir, folder mismatch only",
-			torrentFiles: []TorrentFile{{Path: "Root/Sub/a.mkv", Size: 3}},
-			searcheePath: "/x/Target",
+			name:          "nested subdir, folder mismatch only",
+			torrentFiles:  []TorrentFile{{Path: "Root/Sub/a.mkv", Size: 3}},
+			searcheePath:  "/x/Target",
+			searcheeIsDir: true,
 			matched: []MatchedFilePair{{
 				SearcheeFile: &ScannedFile{RelPath: "Sub/a.mkv", Size: 3},
 				TorrentFile:  TorrentFile{Path: "Root/Sub/a.mkv", Size: 3},
@@ -72,9 +76,10 @@ func TestBuildAlignmentPlan(t *testing.T) {
 			wantFolder: true,
 		},
 		{
-			name:         "identical folder and filenames, no alignment",
-			torrentFiles: []TorrentFile{{Path: "Release 01/a.iso", Size: 1}},
-			searcheePath: "/data/isos/Release 01",
+			name:          "identical folder and filenames, no alignment",
+			torrentFiles:  []TorrentFile{{Path: "Release 01/a.iso", Size: 1}},
+			searcheePath:  "/data/isos/Release 01",
+			searcheeIsDir: true,
 			matched: []MatchedFilePair{{
 				SearcheeFile: &ScannedFile{RelPath: "a.iso", Size: 1},
 				TorrentFile:  TorrentFile{Path: "Release 01/a.iso", Size: 1},
@@ -82,12 +87,39 @@ func TestBuildAlignmentPlan(t *testing.T) {
 			wantNeeded: false,
 		},
 		{
-			name:         "rootless torrent, no alignment",
-			torrentFiles: []TorrentFile{{Path: "a.iso", Size: 1}},
-			searcheePath: "/data/isos/whatever",
+			name:          "rootless torrent, identical filename, no alignment",
+			torrentFiles:  []TorrentFile{{Path: "a.iso", Size: 1}},
+			searcheePath:  "/data/isos/whatever",
+			searcheeIsDir: true,
 			matched: []MatchedFilePair{{
 				SearcheeFile: &ScannedFile{RelPath: "a.iso", Size: 1},
 				TorrentFile:  TorrentFile{Path: "a.iso", Size: 1},
+			}},
+			wantNeeded: false,
+		},
+		{
+			name:          "rootless torrent, differing filename, file rename only",
+			torrentFiles:  []TorrentFile{{Path: "ep01.mkv", Size: 5}},
+			searcheePath:  "/data/tv/Season 01",
+			searcheeIsDir: true,
+			matched: []MatchedFilePair{{
+				SearcheeFile: &ScannedFile{RelPath: "Show S01E01.mkv", Size: 5},
+				TorrentFile:  TorrentFile{Path: "ep01.mkv", Size: 5},
+			}},
+			wantNeeded: true,
+			wantSource: "",
+			wantTarget: "",
+			wantFolder: false,
+			wantFiles:  []fileRename{{oldPath: "ep01.mkv", newPath: "Show S01E01.mkv"}},
+		},
+		{
+			name:          "foldered torrent matched to single loose file, skipped",
+			torrentFiles:  []TorrentFile{{Path: "Some.Folder/movie.mkv", Size: 7}},
+			searcheePath:  "/downloads/Movie.mkv",
+			searcheeIsDir: false,
+			matched: []MatchedFilePair{{
+				SearcheeFile: &ScannedFile{RelPath: "Movie.mkv", Size: 7},
+				TorrentFile:  TorrentFile{Path: "Some.Folder/movie.mkv", Size: 7},
 			}},
 			wantNeeded: false,
 		},
@@ -100,7 +132,7 @@ func TestBuildAlignmentPlan(t *testing.T) {
 				Searchee:      &Searchee{Path: tt.searcheePath},
 				MatchResult:   &MatchResult{MatchedFiles: tt.matched},
 			}
-			plan := buildAlignmentPlan(req)
+			plan := buildAlignmentPlan(req, tt.searcheeIsDir)
 
 			if plan.needed() != tt.wantNeeded {
 				t.Fatalf("needed() = %v, want %v (plan=%+v)", plan.needed(), tt.wantNeeded, plan)
@@ -300,6 +332,69 @@ func TestInjector_Inject_AlignsFolderToDiskAndRechecks(t *testing.T) {
 	}
 	if manager.resumeCount != 1 {
 		t.Errorf("expected ResumeWhenComplete to be queued once, got %d", manager.resumeCount)
+	}
+}
+
+func TestInjector_Inject_AlignsRootlessFileNameToDisk(t *testing.T) {
+	// A rootless torrent dropped into a directory searchee whose file has a different on-disk name.
+	searcheeDir := filepath.Join(t.TempDir(), "Season 01")
+	if err := os.MkdirAll(searcheeDir, 0o755); err != nil {
+		t.Fatalf("mkdir searchee: %v", err)
+	}
+
+	instance := &models.Instance{ID: 1, Name: "test"}
+
+	manager := &alignFakeManager{
+		hash:  "deadbeef04",
+		files: qbt.TorrentFiles{{Name: "ep01.mkv", Size: 6}},
+	}
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:        "ep01",
+			InfoHash:    "deadbeef04",
+			Files:       []TorrentFile{{Path: "ep01.mkv", Size: 6}},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name:  "Season 01",
+			Path:  searcheeDir,
+			Files: []*ScannedFile{{Path: filepath.Join(searcheeDir, "Show S01E01.mkv"), RelPath: "Show S01E01.mkv", Size: 6}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles:   []MatchedFilePair{{SearcheeFile: &ScannedFile{RelPath: "Show S01E01.mkv", Size: 6}, TorrentFile: TorrentFile{Path: "ep01.mkv", Size: 6}}},
+			IsMatch:        true,
+			IsPerfectMatch: true,
+		},
+		SearchResult: &jackett.SearchResult{Indexer: "Test"},
+		StartPaused:  false,
+	}
+
+	res, err := injector.Inject(context.Background(), req)
+	if err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got %+v", res)
+	}
+
+	if len(manager.folderRenames) != 0 {
+		t.Errorf("expected no folder rename for a rootless torrent, got %+v", manager.folderRenames)
+	}
+	if len(manager.fileRenames) != 1 || manager.fileRenames[0] != [2]string{"ep01.mkv", "Show S01E01.mkv"} {
+		t.Fatalf("expected file rename to on-disk name, got %+v", manager.fileRenames)
+	}
+	if names := manager.currentNames(); len(names) != 1 || names[0] != "Show S01E01.mkv" {
+		t.Errorf("torrent file not aligned to on-disk name, got %+v", names)
+	}
+	if len(manager.bulkActions) != 1 || manager.bulkActions[0] != "recheck" {
+		t.Fatalf("expected a single recheck, got %+v", manager.bulkActions)
+	}
+	if manager.resumeCount != 1 {
+		t.Errorf("expected ResumeWhenComplete once, got %d", manager.resumeCount)
 	}
 }
 

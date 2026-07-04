@@ -5,6 +5,7 @@ package dirscan
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -63,26 +64,33 @@ func detectTorrentRoot(files []TorrentFile) string {
 
 // buildAlignmentPlan derives the renames required to point a matched torrent at the existing
 // on-disk files. It uses the exact torrent->disk file mapping from MatchResult, so no size
-// heuristics are needed. Rootless torrents are left alone: they are injected directly into the
-// searchee directory and already line up.
-func buildAlignmentPlan(req *InjectRequest) alignmentPlan {
+// heuristics are needed. searcheeIsDir reports whether the on-disk searchee is a directory (vs a
+// single loose file), which decides the qBittorrent save-path layout the torrent must line up with.
+func buildAlignmentPlan(req *InjectRequest, searcheeIsDir bool) alignmentPlan {
 	var plan alignmentPlan
 	if req == nil || req.ParsedTorrent == nil || req.Searchee == nil || req.MatchResult == nil {
 		return plan
 	}
 
 	sourceRoot := detectTorrentRoot(req.ParsedTorrent.Files)
-	if sourceRoot == "" {
+	rooted := sourceRoot != ""
+
+	// A foldered torrent matched to a single loose file cannot be aligned: there is no on-disk
+	// folder to rename the torrent root to (filepath.Base would be the file name). Skip rather than
+	// produce a bogus "File.mkv/inner.mkv" layout.
+	if rooted && !searcheeIsDir {
 		return plan
 	}
 
-	targetRoot := filepath.Base(filepath.Clean(req.Searchee.Path))
-	if targetRoot == "" || targetRoot == "." || targetRoot == string(filepath.Separator) {
-		return plan
+	if rooted {
+		targetRoot := filepath.Base(filepath.Clean(req.Searchee.Path))
+		if targetRoot == "" || targetRoot == "." || targetRoot == string(filepath.Separator) {
+			return plan
+		}
+		plan.sourceRoot = sourceRoot
+		plan.targetRoot = targetRoot
+		plan.renameFolder = sourceRoot != targetRoot
 	}
-
-	plan.sourceRoot = sourceRoot
-	plan.targetRoot = targetRoot
 
 	for _, pair := range req.MatchResult.MatchedFiles {
 		if pair.SearcheeFile == nil {
@@ -93,15 +101,26 @@ func buildAlignmentPlan(req *InjectRequest) alignmentPlan {
 		if oldPath == "" || desiredRel == "" {
 			continue
 		}
-		// Rename within the current source root; the folder rename below fixes the root itself.
-		newPath := sourceRoot + "/" + desiredRel
+		// Rooted: rename within the current source root; the folder rename fixes the root itself.
+		// Rootless: the torrent is dropped straight into the save path, so the file must land at the
+		// exact on-disk relative path.
+		newPath := desiredRel
+		if rooted {
+			newPath = sourceRoot + "/" + desiredRel
+		}
 		if oldPath != newPath {
 			plan.fileRenames = append(plan.fileRenames, fileRename{oldPath: oldPath, newPath: newPath})
 		}
 	}
 
-	plan.renameFolder = sourceRoot != targetRoot
 	return plan
+}
+
+// searcheePathIsDir reports whether the searchee path is an existing directory. A missing path is
+// treated as not-a-directory so alignment stays conservative.
+func searcheePathIsDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 // alignAndRecheck renames the just-added torrent to match the on-disk files, then triggers a
