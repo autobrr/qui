@@ -59,6 +59,11 @@ var (
 func main() {
 	config.InitDefaultLogger(buildinfo.Version)
 
+	// Honor the UMASK env var before any command creates files/dirs, so the
+	// process umask controls the final permissions of content directories
+	// (see discussion #1704). No-op when UMASK is unset or on Windows.
+	applyUmask()
+
 	var rootCmd = &cobra.Command{
 		Use:   "qui",
 		Short: "A self-hosted qBittorrent WebUI alternative",

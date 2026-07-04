@@ -577,7 +577,7 @@ func seasonPackSourcePaths(localFiles map[episodeIdentity]seasonPackLocalFile) [
 }
 
 func seasonPackBaseDirMatchesAllSources(dir string, sourcePaths []string) (bool, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, fsutil.ContentDirMode); err != nil {
 		return false, fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
