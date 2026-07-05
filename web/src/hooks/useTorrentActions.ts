@@ -8,7 +8,7 @@ import { usePersistedCrossSeedBlocklist } from "@/hooks/usePersistedCrossSeedBlo
 import { api } from "@/lib/api"
 import type { TagUpdatePlan } from "@/lib/tag-editor"
 import type { Torrent, TorrentFilters } from "@/types"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { useCallback, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -94,10 +94,36 @@ type TagBulkActionResult = {
   error?: Error
 }
 
-// Pending post-action refetch timers, keyed by instanceId so a burst of
-// mutations collapses into a single trailing refetch pair instead of one
-// pair per action (each refetch re-delivers the whole loaded window).
-const pendingListRefetches = new Map<number, ReturnType<typeof setTimeout>[]>()
+// Pending post-action refetch timers; a burst of mutations collapses into a
+// single trailing refetch pair instead of one pair per action (each refetch
+// re-delivers the whole loaded window).
+let pendingListRefetches: ReturnType<typeof setTimeout>[] = []
+
+// Rows outside the SSE live window are only updated by these delayed
+// refetches. The first one can read the backend before its post-action
+// sync has landed, so schedule a second pass to self-correct a read that
+// came back too early. Every mutation that changes list-visible data must
+// refetch through this — including the details panel's delete handlers,
+// which call api.bulkAction directly (the cross-seed path spans instances,
+// which this hook's single-instance mutation can't express).
+// The whole ["torrents-list"] family, not a per-instance key: in the
+// all-instances view the active list query is keyed under instance id 0,
+// which a row's real instance id can never prefix-match. type: "active"
+// keeps it to the visible view.
+export function scheduleTorrentListRefetches(queryClient: QueryClient, firstDelay: number) {
+  const refetchLists = () => {
+    queryClient.refetchQueries({
+      queryKey: ["torrents-list"],
+      exact: false,
+      type: "active",
+    })
+  }
+  pendingListRefetches.forEach(clearTimeout)
+  pendingListRefetches = [
+    setTimeout(refetchLists, firstDelay),
+    setTimeout(refetchLists, firstDelay + 3000),
+  ]
+}
 
 class TagBulkActionError extends Error {
   results: TagBulkActionResult[]
@@ -162,25 +188,9 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
   const [contextHashes, setContextHashes] = useState<string[]>([])
   const [contextTorrents, setContextTorrents] = useState<Torrent[]>([])
 
-  // Rows outside the SSE live window are only updated by these delayed
-  // refetches. The first one can read the backend before its post-action
-  // sync has landed, so schedule a second pass to self-correct a read that
-  // came back too early. Every mutation that changes list-visible data must
-  // refetch through this.
   const scheduleListRefetches = useCallback((firstDelay: number) => {
-    const refetchLists = () => {
-      queryClient.refetchQueries({
-        queryKey: ["torrents-list", instanceId],
-        exact: false,
-        type: "active",
-      })
-    }
-    pendingListRefetches.get(instanceId)?.forEach(clearTimeout)
-    pendingListRefetches.set(instanceId, [
-      setTimeout(refetchLists, firstDelay),
-      setTimeout(refetchLists, firstDelay + 3000),
-    ])
-  }, [queryClient, instanceId])
+    scheduleTorrentListRefetches(queryClient, firstDelay)
+  }, [queryClient])
 
   const mutation = useMutation({
     mutationFn: (data: TorrentActionData) => {

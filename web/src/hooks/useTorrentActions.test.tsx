@@ -36,7 +36,7 @@ vi.mock("react-i18next", () => ({
 
 import { api } from "@/lib/api"
 import { toast } from "sonner"
-import { useTorrentActions } from "@/hooks/useTorrentActions"
+import { scheduleTorrentListRefetches, useTorrentActions } from "@/hooks/useTorrentActions"
 import { makeTorrent } from "@/test/mockTorrent"
 import type { TorrentFilters } from "@/types"
 
@@ -596,6 +596,30 @@ describe("useTorrentActions - post-action refetch backstop", () => {
       await vi.advanceTimersByTimeAsync(3000)
     })
     expect(countListRefetches(refetchSpy)).toBe(2)
+  })
+
+  // The details panel's delete handlers bypass the hook's mutations and call
+  // this directly; an immediate refetch there raced the backend's debounced
+  // post-delete sync and resurrected deleted rows.
+  it("scheduleTorrentListRefetches fires a whole-family refetch pair on the given delay", async () => {
+    const { queryClient, refetchSpy } = makeHarness()
+
+    scheduleTorrentListRefetches(queryClient, 2000)
+
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(refetchSpy).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(refetchSpy).toHaveBeenCalledTimes(1)
+    // Whole ["torrents-list"] family: the all-instances view is keyed under
+    // instance id 0, which a row's real instance id can never prefix-match.
+    expect(refetchSpy.mock.calls[0][0]).toMatchObject({
+      queryKey: ["torrents-list"],
+      type: "active",
+    })
+
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(refetchSpy).toHaveBeenCalledTimes(2)
   })
 
   it("torrent rename schedules the follow-up list refetch too", async () => {
