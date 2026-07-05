@@ -4068,7 +4068,12 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 
 	var timer *time.Timer
 	timer = time.AfterFunc(delay, func() {
-		sm.runDebouncedSync(instanceID, client, operation, timer)
+		// Read timer under the mutex: AfterFunc can fire before the assignment
+		// below completes (the creator holds the lock until it returns).
+		sm.syncDebounceMu.Lock()
+		self := timer
+		sm.syncDebounceMu.Unlock()
+		sm.runDebouncedSync(instanceID, client, operation, self)
 	})
 	sm.debouncedSyncTimers[instanceID] = timer
 }
@@ -4099,8 +4104,16 @@ func (sm *SyncManager) runDebouncedSync(instanceID int, client *Client, operatio
 			jitter = 10 * time.Millisecond
 		}
 		time.Sleep(jitter)
+		// Sync twice: the first call can collapse onto a periodic sync that was
+		// already in flight when the modification ran (go-qbt singleflight) and
+		// inherit its pre-modification snapshot. The second call starts after
+		// that leader finished, so at least one maindata fetch begins after the
+		// modification. The extra call is a cheap rid-based delta request.
 		if err := syncManager.Sync(ctx); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Str("operation", operation).Msg("Failed to sync after modification")
+		}
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("operation", operation).Msg("Failed to re-sync after modification")
 		}
 	}
 }
