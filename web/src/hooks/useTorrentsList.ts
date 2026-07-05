@@ -503,7 +503,7 @@ export function useTorrentsList(
   // Query for torrents - backend handles stale-while-revalidate
   const { data, isLoading, isFetching, isPlaceholderData } = useQuery<TorrentResponse>({
     queryKey: listQueryKey,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const fetchPage = (page: number): Promise<TorrentResponse> => {
         if (useCrossInstanceEndpoint) {
           return api.getCrossInstanceTorrents({
@@ -514,7 +514,7 @@ export function useTorrentsList(
             search,
             filters,
             instanceIds,
-          })
+          }, signal)
         }
 
         return api.getTorrents(instanceId, {
@@ -525,7 +525,7 @@ export function useTorrentsList(
           search,
           filters,
           preferCached: preferCachedQuery,
-        })
+        }, signal)
       }
 
       // The first fetch of a page's key is an ordinary pagination step: the earlier

@@ -234,7 +234,7 @@ describe("useTorrentActions - delete", () => {
     })
     const refetchedKeys = refetchSpy.mock.calls.map(c => (c[0] as { queryKey: unknown[] }).queryKey[0])
     expect(refetchedKeys).toContain("torrents-list")
-    expect(refetchedKeys).toContain("torrent-counts")
+    expect(refetchedKeys).not.toContain("torrent-counts")
   })
 
   it("uses the 2000ms refetch branch when deleteFiles is false", async () => {
@@ -389,7 +389,7 @@ describe("useTorrentActions - non-delete success transitions", () => {
     })
     const refetchedKeys = refetchSpy.mock.calls.map(c => (c[0] as { queryKey: unknown[] }).queryKey[0])
     expect(refetchedKeys).toContain("torrents-list")
-    expect(refetchedKeys).toContain("torrent-counts")
+    expect(refetchedKeys).not.toContain("torrent-counts")
   })
 
   it("setLocation uses the default 1000ms refetch branch and closes the location dialog", async () => {
@@ -423,7 +423,7 @@ describe("useTorrentActions - non-delete success transitions", () => {
     })
     const refetchedKeys = refetchSpy.mock.calls.map(c => (c[0] as { queryKey: unknown[] }).queryKey[0])
     expect(refetchedKeys).toContain("torrents-list")
-    expect(refetchedKeys).toContain("torrent-counts")
+    expect(refetchedKeys).not.toContain("torrent-counts")
   })
 })
 
@@ -507,6 +507,23 @@ describe("useTorrentActions - prepare helpers", () => {
   })
 })
 
+describe("useTorrentActions - dead query keys", () => {
+  it("never refetches or invalidates torrent-counts: no query registers that key", async () => {
+    const { result, refetchSpy, invalidateSpy } = renderActions()
+
+    await act(async () => {
+      result.current.handleAction("pause", ["h1"])
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000)
+    })
+
+    const touchedKeys = [...refetchSpy.mock.calls, ...invalidateSpy.mock.calls]
+      .map(c => (c[0] as { queryKey: unknown[] }).queryKey[0])
+    expect(touchedKeys).not.toContain("torrent-counts")
+  })
+})
+
 describe("useTorrentActions - post-action refetch backstop", () => {
   // Rows outside the SSE live window are only updated by these delayed
   // refetches. The first one can read the backend before its post-action sync
@@ -539,6 +556,27 @@ describe("useTorrentActions - post-action refetch backstop", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3000)
     })
+    expect(countListRefetches(refetchSpy)).toBe(2)
+  })
+
+  it("a burst of mutations collapses into one trailing refetch pair (per-instance debounce)", async () => {
+    const { result, refetchSpy } = renderActions()
+
+    // Five rapid actions: without debouncing this schedules 10 refetches.
+    for (const action of ["pause", "resume", "pause", "resume", "pause"] as const) {
+      await act(async () => {
+        result.current.handleAction(action, ["h1"])
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+    }
+    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(5)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000)
+    })
+    // Only the last action's pair survives: one window refetch + one verification pass.
     expect(countListRefetches(refetchSpy)).toBe(2)
   })
 

@@ -94,6 +94,11 @@ type TagBulkActionResult = {
   error?: Error
 }
 
+// Pending post-action refetch timers, keyed by instanceId so a burst of
+// mutations collapses into a single trailing refetch pair instead of one
+// pair per action (each refetch re-delivers the whole loaded window).
+const pendingListRefetches = new Map<number, ReturnType<typeof setTimeout>[]>()
+
 class TagBulkActionError extends Error {
   results: TagBulkActionResult[]
 
@@ -118,10 +123,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
     await Promise.all([
       queryClient.invalidateQueries({
         queryKey: ["torrents-list", instanceId],
-        exact: false,
-      }),
-      queryClient.invalidateQueries({
-        queryKey: ["torrent-counts", instanceId],
         exact: false,
       }),
       queryClient.invalidateQueries({
@@ -173,14 +174,12 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
         exact: false,
         type: "active",
       })
-      queryClient.refetchQueries({
-        queryKey: ["torrent-counts", instanceId],
-        exact: false,
-        type: "active",
-      })
     }
-    setTimeout(refetchLists, firstDelay)
-    setTimeout(refetchLists, firstDelay + 3000)
+    pendingListRefetches.get(instanceId)?.forEach(clearTimeout)
+    pendingListRefetches.set(instanceId, [
+      setTimeout(refetchLists, firstDelay),
+      setTimeout(refetchLists, firstDelay + 3000),
+    ])
   }, [queryClient, instanceId])
 
   const mutation = useMutation({

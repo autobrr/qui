@@ -816,7 +816,8 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       preferCached?: boolean
-    }
+    },
+    signal?: AbortSignal
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
     if (params.page !== undefined) searchParams.set("page", params.page.toString())
@@ -828,7 +829,8 @@ class ApiClient {
     if (params.preferCached) searchParams.set("prefer", "stale")
 
     return this.request<TorrentResponse>(
-      `/instances/${instanceId}/torrents?${searchParams}`
+      `/instances/${instanceId}/torrents?${searchParams}`,
+      { signal }
     )
   }
 
@@ -919,7 +921,8 @@ class ApiClient {
       search?: string
       filters?: TorrentFilters
       instanceIds?: number[]
-    }
+    },
+    signal?: AbortSignal
   ): Promise<TorrentResponse> {
     const searchParams = new URLSearchParams()
     if (params.page !== undefined) searchParams.set("page", params.page.toString())
@@ -933,7 +936,8 @@ class ApiClient {
     }
 
     const response = await this.request<TorrentResponse>(
-      `/torrents/cross-instance?${searchParams}`
+      `/torrents/cross-instance?${searchParams}`,
+      { signal }
     )
 
     const normalizedCrossInstanceTorrents = normalizeCrossInstanceTorrents(

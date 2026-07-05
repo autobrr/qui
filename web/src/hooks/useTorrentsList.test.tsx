@@ -190,13 +190,23 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents).toHaveLength(2)
     expect(mockedApi.getTorrents).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ page: 0, limit: 300 })
+      expect.objectContaining({ page: 0, limit: 300 }),
+      expect.any(AbortSignal)
     )
     expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b"])
     expect(result.current.totalCount).toBe(5)
     // hasMore=true -> not all loaded
     expect(result.current.hasLoadedAll).toBe(false)
     expect(result.current.isLoading).toBe(false)
+  })
+
+  it("threads the queryFn AbortSignal into the API call so superseded refetches cancel their transfer", async () => {
+    renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
+
+    await flush()
+
+    const signal = mockedApi.getTorrents.mock.calls[0]?.[2]
+    expect(signal).toBeInstanceOf(AbortSignal)
   })
 
   it("flips hasLoadedAll true when the first page reports no more pages", async () => {
@@ -265,7 +275,8 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b", "c", "d"])
     expect(mockedApi.getTorrents).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ page: 1 })
+      expect.objectContaining({ page: 1 }),
+      expect.any(AbortSignal)
     )
     expect(result.current.hasLoadedAll).toBe(true)
   })
@@ -720,7 +731,8 @@ describe("useTorrentsList", () => {
     await flush()
     expect(mockedApi.getTorrents).not.toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ page: 2 })
+      expect.objectContaining({ page: 2 }),
+      expect.anything()
     )
     expect(result.current.torrents).toHaveLength(2)
 
@@ -735,7 +747,8 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents).toHaveLength(3)
     expect(mockedApi.getTorrents).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ page: 2 })
+      expect.objectContaining({ page: 2 }),
+      expect.any(AbortSignal)
     )
   })
 
@@ -1193,7 +1206,8 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents).toHaveLength(3)
     expect(result.current.torrents.map(t => t.hash)).toEqual(["x", "x", "y"])
     expect(mockedApi.getCrossInstanceTorrents).toHaveBeenCalledWith(
-      expect.objectContaining({ page: 1 })
+      expect.objectContaining({ page: 1 }),
+      expect.any(AbortSignal)
     )
 
     // (c) A fresh page-0 stream snapshot must NOT wipe the paginated-in later row:
@@ -1241,7 +1255,8 @@ describe("useTorrentsList", () => {
     expect(polledCalls).toBeGreaterThan(initialCalls)
     expect(mockedApi.getTorrents).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ page: 0 })
+      expect.objectContaining({ page: 0 }),
+      expect.any(AbortSignal)
     )
   })
 
@@ -1304,7 +1319,8 @@ describe("useTorrentsList", () => {
     expect(lastStreamParams).not.toBeNull()
     expect(mockedApi.getTorrents).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ page: 0 })
+      expect.objectContaining({ page: 0 }),
+      expect.any(AbortSignal)
     )
     expect(result.current.torrents[0].hash).toBe("r")
   })
