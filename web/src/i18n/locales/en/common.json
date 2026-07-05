@@ -132,7 +132,8 @@
     "switchedToThemeVariation": "Switched to {{theme}} theme ({{variation}})",
     "unableToVerifyLicense": "Unable to verify license",
     "licenseCheckFailed": "License check failed. Premium theme switching is temporarily unavailable.",
-    "premiumThemeError": "This is a premium theme. Open Settings → Themes to activate a license."
+    "premiumThemeError": "This is a premium theme. Open Settings → Themes to activate a license.",
+    "custom": "Custom"
   },
   "updateBanner": {
     "updateAvailable": "Update Available",

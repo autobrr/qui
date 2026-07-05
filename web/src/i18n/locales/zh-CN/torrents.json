@@ -477,11 +477,14 @@
     "renameFolder": "重命名文件夹",
     "download": "下载",
     "mediaInfo": "媒体信息",
-    "rename": "重命名",
     "toggle": "切换",
     "selectFileForDownload": "选择文件以下载",
     "skipFileDownload": "跳过文件下载",
-    "selectAllFilesIn": "选择 {{name}} 中的所有文件"
+    "selectAllFilesIn": "选择 {{name}} 中的所有文件",
+    "copyPath": "复制路径",
+    "filePathCopied": "文件路径已复制到剪贴板",
+    "folderPathCopied": "文件夹路径已复制到剪贴板",
+    "copyPathFailed": "复制路径到剪贴板失败"
   },
   "mediaInfoDialog": {
     "title": "媒体信息",
@@ -1152,7 +1155,11 @@
     "download": "下载",
     "mediaInfo": "媒体信息",
     "renameFile": "重命名文件",
-    "renameFolder": "重命名文件夹"
+    "renameFolder": "重命名文件夹",
+    "copyPath": "复制路径",
+    "filePathCopied": "文件路径已复制到剪贴板",
+    "folderPathCopied": "文件夹路径已复制到剪贴板",
+    "copyPathFailed": "复制路径到剪贴板失败"
   },
   "crossSeedTable": {
     "name": "名称",

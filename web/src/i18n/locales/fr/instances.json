@@ -1698,6 +1698,8 @@
       "includeCategoriesDescription": "Regrouper les torrents dans l'archive par leur catégorie",
       "includeTags": "Inclure les tags",
       "includeTagsDescription": "Stocker les tags de torrent dans le manifeste",
+      "includeSavePaths": "Inclure les chemins d'enregistrement",
+      "includeSavePathsDescription": "Stocke le chemin d'enregistrement de chaque torrent lorsqu'il diffère de sa catégorie, afin que les torrents déplacés et cross-seed soient restaurés au bon endroit",
       "schedule": {
         "title": "Cadences automatiques",
         "description": "Les exécutions horaires, quotidiennes, hebdomadaires et mensuelles commencent après la fin de la sauvegarde précédente et que leur intervalle s'est écoulé. Laissez-les toutes désactivées si vous ne déclenchez les sauvegardes que manuellement.",

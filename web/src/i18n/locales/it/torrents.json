@@ -525,11 +525,14 @@
     "renameFolder": "Rinomina cartella",
     "download": "Scarica",
     "mediaInfo": "MediaInfo",
-    "rename": "Rinomina",
     "toggle": "Attiva/disattiva",
     "selectFileForDownload": "Seleziona il file da scaricare",
     "skipFileDownload": "Salta il download del file",
-    "selectAllFilesIn": "Seleziona tutti i file in {{name}}"
+    "selectAllFilesIn": "Seleziona tutti i file in {{name}}",
+    "copyPath": "Copia percorso",
+    "filePathCopied": "Percorso del file copiato negli appunti",
+    "folderPathCopied": "Percorso della cartella copiato negli appunti",
+    "copyPathFailed": "Copia del percorso negli appunti non riuscita"
   },
   "mediaInfoDialog": {
     "title": "MediaInfo",
@@ -1211,7 +1214,11 @@
     "download": "Scarica",
     "mediaInfo": "MediaInfo",
     "renameFile": "Rinomina file",
-    "renameFolder": "Rinomina cartella"
+    "renameFolder": "Rinomina cartella",
+    "copyPath": "Copia percorso",
+    "filePathCopied": "Percorso del file copiato negli appunti",
+    "folderPathCopied": "Percorso della cartella copiato negli appunti",
+    "copyPathFailed": "Copia del percorso negli appunti non riuscita"
   },
   "crossSeedTable": {
     "name": "Nome",

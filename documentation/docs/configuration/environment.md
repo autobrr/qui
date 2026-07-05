@@ -51,6 +51,12 @@ QUI__DATA_DIR=...        # Optional: custom runtime data directory (default: nex
 
 `QUI__DATA_DIR` is always used for runtime assets (logs, tracker icon cache, etc.). With `QUI__DATABASE_ENGINE=sqlite`, `qui.db` is also stored there.
 
+```bash
+QUI__CUSTOM_THEMES_DIR=...  # Optional: directory for sideloaded custom theme .css files (default: <config-dir>/themes)
+```
+
+`QUI__CUSTOM_THEMES_DIR` sets where [custom themes](../features/custom-themes.md) are read from. It defaults to a `themes` folder next to the config file (`/config/themes` in Docker) and is created automatically. Loading custom themes requires premium access.
+
 ## Database
 
 ```bash

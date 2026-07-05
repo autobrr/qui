@@ -113,6 +113,7 @@ type SnapshotTorrent struct {
 	Tags        []string `json:"tags,omitempty"`
 	ArchivePath string   `json:"archivePath,omitempty"`
 	BlobPath    string   `json:"blobPath,omitempty"`
+	SavePath    string   `json:"savePath,omitempty"`
 	SizeBytes   int64    `json:"sizeBytes,omitempty"`
 	InfoHashV1  *string  `json:"infoHashV1,omitempty"`
 	InfoHashV2  *string  `json:"infoHashV2,omitempty"`
@@ -142,6 +143,7 @@ type LiveTorrent struct {
 	TrackerURLs []string `json:"trackerUrls,omitempty"`
 	InfoHashV1  string   `json:"infoHashV1,omitempty"`
 	InfoHashV2  string   `json:"infoHashV2,omitempty"`
+	SavePath    string   `json:"savePath,omitempty"`
 	SizeBytes   int64    `json:"sizeBytes,omitempty"`
 }
 
@@ -336,6 +338,7 @@ func (s *Service) loadSnapshotState(ctx context.Context, runID int64) (*Snapshot
 			Tags:        copyTags,
 			ArchivePath: item.ArchivePath,
 			BlobPath:    item.TorrentBlob,
+			SavePath:    item.SavePath,
 			SizeBytes:   item.SizeBytes,
 			InfoHashV1:  item.InfoHashV1,
 			InfoHashV2:  item.InfoHashV2,
@@ -421,6 +424,7 @@ func (s *Service) loadLiveState(ctx context.Context, instanceID int) (*LiveState
 			TrackerURLs: uniqueTrackerURLs(torrent.Trackers),
 			InfoHashV1:  strings.TrimSpace(torrent.InfohashV1),
 			InfoHashV2:  strings.TrimSpace(torrent.InfohashV2),
+			SavePath:    strings.TrimSpace(torrent.SavePath),
 			SizeBytes:   torrent.TotalSize,
 		}
 	}
@@ -610,6 +614,7 @@ func snapshotTorrentToManifestItem(t SnapshotTorrent) ManifestItem {
 		ArchivePath: t.ArchivePath,
 		SizeBytes:   t.SizeBytes,
 		TorrentBlob: t.BlobPath,
+		SavePath:    t.SavePath,
 	}
 	if t.Category != nil {
 		categoryCopy := strings.TrimSpace(*t.Category)
@@ -655,6 +660,18 @@ func computeTorrentChanges(snapshot SnapshotTorrent, live LiveTorrent) []DiffCha
 			Current:   cloneStringSlice(live.Tags),
 			Desired:   cloneStringSlice(snapshot.Tags),
 		})
+	}
+
+	if desiredSave := strings.TrimSpace(snapshot.SavePath); desiredSave != "" {
+		if normalizeSavePathForCompare(desiredSave) != normalizeSavePathForCompare(live.SavePath) {
+			changes = append(changes, DiffChange{
+				Field:     "savePath",
+				Supported: false,
+				Current:   strings.TrimSpace(live.SavePath),
+				Desired:   desiredSave,
+				Message:   "save path differs; relocate the torrent manually to avoid moving existing data",
+			})
+		}
 	}
 
 	if snapshot.InfoHashV1 != nil {
@@ -704,6 +721,7 @@ func cloneLiveTorrent(t LiveTorrent) LiveTorrent {
 		TrackerURLs: cloneStringSlice(t.TrackerURLs),
 		InfoHashV1:  t.InfoHashV1,
 		InfoHashV2:  t.InfoHashV2,
+		SavePath:    t.SavePath,
 		SizeBytes:   t.SizeBytes,
 	}
 }

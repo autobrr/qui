@@ -1698,6 +1698,8 @@
       "includeCategoriesDescription": "Group torrents inside the archive by their category",
       "includeTags": "Include tags",
       "includeTagsDescription": "Store torrent tags in the manifest",
+      "includeSavePaths": "Include save paths",
+      "includeSavePathsDescription": "Store each torrent's save path when it differs from its category, so relocated and cross-seed torrents restore to the right folder",
       "schedule": {
         "title": "Automatic cadences",
         "description": "Hourly, daily, weekly, and monthly runs start after the previous backup finishes and their interval has elapsed. Leave them all off if you only trigger backups manually.",

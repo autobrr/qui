@@ -1,0 +1,194 @@
+{
+  "pageTitle": "Prohledat indexery",
+  "pageDescription": "Prohledejte všechny povolené indexery. Vyberte typ dotazu nebo ponechte Auto, aby byly kategorie detekovány automaticky.",
+  "indexerSummary": {
+    "label": "Indexery",
+    "noEnabled": "Žádné povolené indexery",
+    "allEnabled": "Všechny povolené ({{count}})",
+    "selected": "{{selected}} z {{total}} vybráno"
+  },
+  "indexerSheet": {
+    "title": "Výběr indexerů",
+    "description": "Vyberte, které indexery mají být zahrnuty do vyhledávání.",
+    "selectAll": "Vybrat vše",
+    "clearSelection": "Vymazat výběr",
+    "noCategories": "Žádné kategorie",
+    "backend": {
+      "prowlarr": "Prowlarr",
+      "native": "Nativní",
+      "jackett": "Jackett"
+    },
+    "footer": "{{selected}} z {{total}} povolených indexerů vybráno",
+    "done": "Hotovo"
+  },
+  "instanceSelector": {
+    "chooseTarget": "Vyberte cílovou instanci",
+    "noInstances": "Žádné instance",
+    "offline": "Nedostupné",
+    "targetNamed": "Cíl: {{name}}",
+    "targetNamedOffline": "Cíl: {{name}} (offline)",
+    "clearSelection": "Vymazat výběr",
+    "noInstancesConfigured": "Žádné instance nakonfigurovány",
+    "addInstanceNote": "Přidejte instanci ke stahování pod Nastavení > Instance."
+  },
+  "searchForm": {
+    "advanced": "Pokročilé",
+    "active": "Aktivní",
+    "clear": "Vymazat",
+    "searching": "Hledá se...",
+    "search": "Hledat",
+    "advancedNote": "Volitelné (ale doporučené) Torznab parametry.",
+    "searchType": "Typ hledání",
+    "searchQuery": "Hledaný dotaz",
+    "noIndexers": "Žádné povolené indexery. Přidejte a povolte indexery na stránce",
+    "indexersPage": "Indexery"
+  },
+  "searchTypes": {
+    "auto": {
+      "label": "Auto detekovat",
+      "description": "Automaticky detekovat správné kategorie",
+      "placeholder": "Zkuste: \"Sample Movie 2024\", \"tt1234567\", \"tvdb 123456\", nebo \"Example Artist - Example Album\""
+    },
+    "movies": {
+      "label": "Filmy",
+      "placeholder": "např. \"Sample Movie 2024\", \"Another Film 1999\", \"tt1234567\""
+    },
+    "tv": {
+      "label": "TV",
+      "placeholder": "např. \"Sample Show S01E01\", \"tvdb 123456\", \"Fictional Series S02\""
+    },
+    "music": {
+      "label": "Hudba",
+      "placeholder": "např. \"Example Artist - Example Album\", \"Sample Band - Debut EP\""
+    },
+    "books": {
+      "label": "Knihy & komiksy",
+      "placeholder": "např. \"Example Book Title\", \"Fictional Series Book 1\""
+    },
+    "apps": {
+      "label": "Aplikace & hry",
+      "placeholder": "např. \"Sample OS ISO\", \"Example App 2025\""
+    },
+    "xxx": {
+      "label": "Dospělé",
+      "placeholder": "Zadejte specifický název releasu pro dospělé"
+    }
+  },
+  "advanced": {
+    "imdbId": {
+      "label": "IMDb ID",
+      "placeholder": "tt1234567"
+    },
+    "tvdbId": {
+      "label": "TVDb ID",
+      "placeholder": "12345"
+    },
+    "year": {
+      "label": "Rok",
+      "placeholder": "2024"
+    },
+    "season": {
+      "label": "Série",
+      "placeholder": "1"
+    },
+    "episode": {
+      "label": "Epizoda",
+      "placeholder": "2"
+    },
+    "artist": {
+      "label": "Umělec",
+      "placeholder": "Nine Inch Nails"
+    },
+    "album": {
+      "label": "Album",
+      "placeholder": "The Fragile"
+    },
+    "limit": {
+      "label": "Limit",
+      "placeholder": "100"
+    },
+    "offset": {
+      "label": "Posun",
+      "placeholder": "0"
+    }
+  },
+  "results": {
+    "showing": "Zobrazujeme {{filtered}} z {{total}} výsledků",
+    "filterPlaceholder": "Filtrovat výsledky...",
+    "clearSearch": "Vymazat hledání",
+    "clearAllFilters": "Vymazat všechny filtry",
+    "pickInstance": "Vybrat instanci",
+    "download": "Stáhnout",
+    "viewDetails": "Zobrazit detaily",
+    "clearSelectionButton": "Vymazat výběr",
+    "actions": "Akce",
+    "quickAddTo": "Rychlé přidání do...",
+    "cachedSummary": "V cache {{cached}} · Vyprší {{expires}}",
+    "cacheSource": "Zdroj: {{source}} · Rozsah: {{scope}}",
+    "refreshReadyIn": "Připraveno za {{seconds}}s",
+    "refreshFromIndexers": "Obnovit z indexerů",
+    "noValue": "-",
+    "categoryFallback": "Kategorie {{id}}",
+    "noResultsFor": "Žádné výsledky pro \"{{query}}\"",
+    "enterQuery": "Zadejte hledaný dotaz pro začátek",
+    "free": "Free",
+    "freeNeutral": "Neutrální",
+    "noInfoUrlAvailable": "Žádné info URL"
+  },
+  "historyMeta": "{{type}} · {{count}} výsledků · {{timestamp}}",
+  "table": {
+    "title": "Název",
+    "indexer": "Indexerů",
+    "size": "Velikost",
+    "seeders": "Seeders",
+    "category": "Kategorie",
+    "source": "Zdroj",
+    "collection": "Kolekce",
+    "group": "Skupina",
+    "freeleech": "Freeleech",
+    "published": "Publikováno",
+    "actions": "Akce",
+    "downloadTorrent": "Stáhnout .torrent",
+    "viewDetails": "Zobrazit detaily",
+    "noInfoUrl": "Žádné info URL"
+  },
+  "refreshDialog": {
+    "title": "Obejít cache?",
+    "description": "Toto bude poslat požadavek přímo každému vybranému indexeru. Používejte opatrně, aby jste se vyhnuli limitům rychlosti. Můžete obnovit znovu po krátké odezvě.",
+    "cancel": "Zrušit",
+    "refreshNow": "Obnovit nyní"
+  },
+  "cache": {
+    "cacheAndLive": "Cache + živé",
+    "cacheHit": "Cache zásah",
+    "liveFetch": "Živé načítání"
+  },
+  "card": {
+    "actions": "Akce",
+    "addToInstance": "Přidat do instance",
+    "addToNamed": "Přidat do {{name}}",
+    "addToNamedOffline": "Přidat do {{name}} (offline)",
+    "quickAddTo": "Rychlé přidání do...",
+    "download": "Stáhnout",
+    "viewDetails": "Zobrazit detaily",
+    "clearSelection": "Vymazat výběr",
+    "seeders": "{{count}} seederů",
+    "published": "Publikováno {{date}}"
+  },
+  "toast": {
+    "enterSearchQuery": "Zadejte hledaný dotaz nebo vyplňte pokročilé parametry",
+    "selectIndexer": "Vyberte alespoň jeden indexer",
+    "noEnabledIndexers": "Žádné povolené indexery. Nejprve přidejte a povolte indexery.",
+    "noResults": "Žádné výsledky",
+    "foundResults": "Nalezeno {{total}} výsledků{{suffix}}",
+    "cached": " (v cache)",
+    "searchFailed": "Hledání selhalo: {{error}}",
+    "failedToLoadIndexers": "Nepodařilo se načíst indexery",
+    "addInstanceFirst": "Přidejte instanci ke stahování pod Nastavení > Instance",
+    "chooseInstance": "Vyberte instanci ke stahování",
+    "noDownloadUrl": "Žádné stahovací URL pro tento výsledek",
+    "noInfoUrl": "Žádné další informace pro tento výsledek",
+    "invalidProtocol": "Neplatný URL protokol",
+    "invalidUrl": "Neplatný formát URL"
+  }
+}

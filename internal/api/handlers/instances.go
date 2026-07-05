@@ -61,7 +61,7 @@ func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *htt
 				return
 			}
 			log.Error().Err(err).Int("instanceID", instanceID).Msg("Failed to get client for capabilities")
-			RespondError(w, http.StatusServiceUnavailable, "Failed to load instance capabilities")
+			RespondError(w, http.StatusServiceUnavailable, instanceCapabilitiesClientErrorMessage(err))
 			return
 		}
 	}
@@ -77,6 +77,13 @@ func (h *InstancesHandler) GetInstanceCapabilities(w http.ResponseWriter, r *htt
 
 	capabilities := NewInstanceCapabilitiesResponse(client)
 	RespondJSON(w, http.StatusOK, capabilities)
+}
+
+func instanceCapabilitiesClientErrorMessage(err error) string {
+	if message, ok := internalqbittorrent.InstanceHealthBlockerMessage(err); ok {
+		return message
+	}
+	return "Failed to load instance capabilities"
 }
 
 // GetReannounceActivity returns recent reannounce events for an instance.
@@ -237,8 +244,8 @@ func (h *InstancesHandler) buildInstanceResponse(ctx context.Context, instance *
 	if !instance.IsActive {
 		connectionStatus = "disabled"
 	} else if client != nil && h.syncManager != nil {
-		if status := strings.TrimSpace(h.syncManager.ReadCachedConnectionStatus(ctx, instance.ID)); status != "" {
-			connectionStatus = strings.ToLower(status)
+		if status := internalqbittorrent.NormalizeConnectionStatus(h.syncManager.ReadCachedConnectionStatus(ctx, instance.ID)); status != "" {
+			connectionStatus = status
 		}
 	}
 

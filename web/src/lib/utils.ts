@@ -201,3 +201,20 @@ export function normalizeTrackerDomains(values: string[]): string[] {
 
   return result
 }
+
+/**
+ * Join a base path with a relative path, handling both Unix and Windows separators.
+ * Detects the separator from the base path and uses it for joining. Torrent-internal
+ * relative paths are always slash-delimited, so they are normalized to the detected
+ * separator to avoid mixed separators on Windows (e.g. "C:\dl\Movie/file.mkv").
+ * @param basePath - The base directory path (e.g., "/data/torrents" or "C:\data\torrents")
+ * @param relativePath - The relative path to append
+ * @returns The joined full path
+ */
+export function joinPath(basePath: string, relativePath: string): string {
+  if (!basePath) return relativePath
+  const separator = basePath.includes("\\") ? "\\" : "/"
+  const cleanBase = basePath.replace(/[\\/]$/, "")
+  const normalizedRelative = separator === "\\" ? relativePath.replace(/\//g, "\\") : relativePath
+  return `${cleanBase}${separator}${normalizedRelative}`
+}

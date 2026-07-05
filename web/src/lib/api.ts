@@ -710,6 +710,7 @@ class ApiClient {
     keepMonthly: number
     includeCategories: boolean
     includeTags: boolean
+    includeSavePaths: boolean
   }): Promise<BackupSettings> {
     return this.request<BackupSettings>(`/instances/${instanceId}/backups/settings`, {
       method: "PUT",
@@ -2020,6 +2021,14 @@ class ApiClient {
 
   async refreshLicenses(): Promise<{ message: string }> {
     return this.request("/license/refresh", { method: "POST" })
+  }
+
+  // Custom themes (sideloaded CSS files; premium-gated server-side)
+  async getCustomThemes(): Promise<{
+    directory: string
+    themes: Array<{ id: string; filename: string; css: string }>
+  }> {
+    return this.request("/themes/custom")
   }
 
   // Preferences endpoints

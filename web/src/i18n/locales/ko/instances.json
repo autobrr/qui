@@ -1680,6 +1680,8 @@
       "includeCategoriesDescription": "아카이브 내에서 토렌트를 카테고리별로 그룹화",
       "includeTags": "태그 포함",
       "includeTagsDescription": "매니페스트에 토렌트 태그 저장",
+      "includeSavePaths": "저장 경로 포함",
+      "includeSavePathsDescription": "토렌트의 저장 경로가 카테고리와 다를 때 저장하여, 이동되었거나 크로스 시드된 토렌트가 올바른 폴더로 복원되도록 합니다",
       "schedule": {
         "title": "자동 주기",
         "description": "매시간, 매일, 매주, 매월 실행은 이전 백업이 완료되고 해당 간격이 경과한 후 시작됩니다. 백업을 수동으로만 트리거하려면 모두 꺼 두세요.",

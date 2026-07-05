@@ -1384,6 +1384,10 @@ paths:
                     type: integer
                   limit:
                     type: integer
+                  preferences:
+                    type: object
+                    nullable: true
+                    description: qBittorrent preferences when available; null means a fresh preference fetch failed without a cached value; omitted means no preference update is available for this response.
     post:
       tags:
         - Torrents
@@ -2976,6 +2980,38 @@ paths:
                     type: string
         '500':
           description: Failed to refresh licenses
+
+  /api/themes/custom:
+    get:
+      tags:
+        - Themes
+      summary: List custom themes
+      description: List sideloaded custom theme CSS files and their contents. Requires premium access.
+      responses:
+        '200':
+          description: Custom themes listed successfully. If the custom themes directory cannot be prepared, the response still succeeds with the resolved directory and an empty themes array.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  directory:
+                    type: string
+                  themes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        filename:
+                          type: string
+                        css:
+                          type: string
+        '403':
+          description: Premium access required
+        '500':
+          description: Failed to check premium access or read the custom themes directory
 
   /api/torrents/cross-instance:
     get:
@@ -5733,6 +5769,14 @@ components:
         hasDecryptionError:
           type: boolean
           description: Whether there's a password decryption error
+        recentErrors:
+          type: array
+          description: Recent connection/auth/decryption errors for this instance.
+          items:
+            $ref: '#/components/schemas/InstanceError'
+        connectionStatus:
+          type: string
+          description: Normalized qBittorrent connection status from cached server state, or `disabled` for inactive instances.
         tlsSkipVerify:
           type: boolean
           description: When true, TLS certificate errors from the upstream qBittorrent instance are ignored.
@@ -5759,6 +5803,37 @@ components:
           type: integer
           description: Display order preference for the instance.
 
+
+    InstanceError:
+      type: object
+      properties:
+        id:
+          type: integer
+        instanceId:
+          type: integer
+        errorType:
+          type: string
+        errorMessage:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+
+    InstanceMeta:
+      type: object
+      description: Real-time instance auth/decryption and connection metadata emitted with torrent stream snapshots.
+      properties:
+        connected:
+          type: boolean
+        hasDecryptionError:
+          type: boolean
+        recentErrors:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstanceError'
+        connectionStatus:
+          type: string
+          description: Normalized qBittorrent connection status from cached server state, or `disabled` for inactive instances.
 
     InstanceCapabilities:
       type: object
@@ -8454,5 +8529,7 @@ tags:
     description: RSS feed and auto-download rule management
   - name: Theme Licenses
     description: Theme license management (optional feature)
+  - name: Themes
+    description: Sideloaded custom theme listing (premium)
   - name: Proxy
     description: qBittorrent-compatible proxy endpoints authenticated by client API key

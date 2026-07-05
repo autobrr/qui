@@ -317,6 +317,7 @@ func TestBackupUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 			keep_monthly INTEGER NOT NULL DEFAULT 12,
 			include_categories INTEGER NOT NULL DEFAULT 1,
 			include_tags INTEGER NOT NULL DEFAULT 1,
+			include_save_paths INTEGER NOT NULL DEFAULT 1,
 			custom_path TEXT
 		)
 	`)
@@ -347,13 +348,14 @@ func TestBackupUpsertSettingsUsesIntegerBooleanArgs(t *testing.T) {
 		KeepMonthly:       3,
 		IncludeCategories: true,
 		IncludeTags:       false,
+		IncludeSavePaths:  true,
 	}
 
 	err := store.UpsertSettings(context.Background(), settings)
 	require.NoError(t, err)
-	require.Len(t, insertArgs, 13)
+	require.Len(t, insertArgs, 14)
 
-	boolIndexes := []int{1, 2, 3, 4, 5, 10, 11}
+	boolIndexes := []int{1, 2, 3, 4, 5, 10, 11, 12}
 	for _, idx := range boolIndexes {
 		_, ok := insertArgs[idx].(int)
 		require.Truef(t, ok, "expected int arg at index %d, got %T", idx, insertArgs[idx])

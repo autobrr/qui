@@ -4,7 +4,8 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, renderHook } from "@testing-library/react"
+import { act, render, renderHook } from "@testing-library/react"
+import { startTransition, Suspense, useEffect } from "react"
 import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -14,8 +15,10 @@ import type {
   StreamState
 } from "@/contexts/SyncStreamContext"
 import type {
+  AppPreferences,
   CrossInstanceTorrent,
   Torrent,
+  TorrentCounts,
   TorrentFilters,
   TorrentResponse,
   TorrentStreamPayload
@@ -72,6 +75,7 @@ vi.mock("@/contexts/SyncStreamContext", () => ({
 import { api } from "@/lib/api"
 import { useInstances } from "@/hooks/useInstances"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
+import { useInstancePreferences } from "@/hooks/useInstancePreferences"
 import { STREAM_HIDDEN_PAUSE_DELAY_MS, TORRENT_STREAM_POLL_INTERVAL_MS, useTorrentsList } from "@/hooks/useTorrentsList"
 
 const mockedApi = vi.mocked(api, true)
@@ -94,10 +98,26 @@ function makeResponse(overrides: Partial<TorrentResponse> = {}): TorrentResponse
   }
 }
 
-function makeWrapper() {
-  const queryClient = new QueryClient({
+function makeCounts(overrides: Partial<TorrentCounts> = {}): TorrentCounts {
+  return {
+    status: { all: 1 },
+    categories: {},
+    tags: {},
+    trackers: { "tracker.example": 1 },
+    total: 1,
+    ...overrides,
+  }
+}
+
+function makePreferences(overrides: Partial<AppPreferences> = {}): AppPreferences {
+  return overrides as AppPreferences
+}
+
+function makeWrapper(
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
+) {
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
@@ -502,6 +522,263 @@ describe("useTorrentsList", () => {
     expect(mockedApi.getTorrents).not.toHaveBeenCalled()
   })
 
+  it("preserves last stream counts when a connected stream snapshot omits counts", async () => {
+    streamState = { ...DISCONNECTED, connected: true }
+    const counts = makeCounts()
+
+    const { result } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "init",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "s1" })], total: 1, hasMore: false, counts }),
+      })
+    })
+    await flush()
+    expect(result.current.counts).toBe(counts)
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "update",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "s1" })], total: 1, hasMore: false }),
+      })
+    })
+    await flush()
+
+    expect(result.current.counts).toBe(counts)
+    expect(mockedApi.getTorrents).not.toHaveBeenCalled()
+  })
+
+  it("keeps explicit zero stream counts authoritative over preserved counts", async () => {
+    streamState = { ...DISCONNECTED, connected: true }
+    const previousCounts = makeCounts()
+    const zeroCounts = makeCounts({
+      status: { all: 0 },
+      trackers: {},
+      total: 0,
+    })
+
+    const { result } = renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "init",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "s1" })], total: 1, hasMore: false, counts: previousCounts }),
+      })
+    })
+    await flush()
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "update",
+        data: makeResponse({ torrents: [], total: 0, hasMore: false, counts: zeroCounts }),
+      })
+    })
+    await flush()
+
+    expect(result.current.counts).toBe(zeroCounts)
+  })
+
+  it("does not preserve stream counts across filter scope changes", async () => {
+    streamState = { ...DISCONNECTED, connected: true }
+    const counts = makeCounts()
+    const downloadingFilter = { status: ["downloading"] } as TorrentFilters
+
+    const { result, rerender } = renderHook(
+      ({ filters }: { filters?: TorrentFilters }) => useTorrentsList(1, { filters }),
+      { wrapper: makeWrapper(), initialProps: { filters: undefined } as { filters?: TorrentFilters } }
+    )
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "init",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "s1" })], total: 1, hasMore: false, counts }),
+      })
+    })
+    await flush()
+    expect(result.current.counts).toBe(counts)
+
+    rerender({ filters: downloadingFilter })
+    await flush()
+    act(() => {
+      capturedOnMessage?.({
+        type: "update",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "s2" })], total: 1, hasMore: false }),
+      })
+    })
+    await flush()
+
+    expect(result.current.counts).toBeUndefined()
+  })
+
+  it("ignores full stream frames from a previous scope after search changes", async () => {
+    streamState = { ...DISCONNECTED, connected: true }
+
+    const { result, rerender } = renderHook(
+      ({ search }: { search?: string }) => useTorrentsList(1, { pollingEnabled: false, search }),
+      { wrapper: makeWrapper(), initialProps: { search: undefined } as { search?: string } }
+    )
+
+    const previousOnMessage = capturedOnMessage
+    expect(typeof previousOnMessage).toBe("function")
+
+    act(() => {
+      previousOnMessage?.({
+        type: "init",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "old" })], total: 1, hasMore: false }),
+      })
+    })
+    await flush()
+    expect(result.current.torrents.map(t => t.hash)).toEqual(["old"])
+
+    rerender({ search: "new scope" })
+    await flush()
+    expect(result.current.torrents).toEqual([])
+
+    act(() => {
+      previousOnMessage?.({
+        type: "update",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "stale" })], total: 1, hasMore: false }),
+      })
+    })
+    await flush()
+    expect(result.current.torrents).toEqual([])
+    expect(result.current.totalCount).toBe(0)
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "update",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "fresh" })], total: 1, hasMore: false }),
+      })
+    })
+    await flush()
+    expect(result.current.torrents.map(t => t.hash)).toEqual(["fresh"])
+    expect(result.current.totalCount).toBe(1)
+  })
+
+  it("keeps the committed stream callback active when a scope render is abandoned", async () => {
+    streamState = { ...DISCONNECTED, connected: true }
+    const pending = new Promise<never>(() => undefined)
+    let committedList: ReturnType<typeof useTorrentsList> | undefined
+
+    function Probe({ search, suspend }: { search?: string; suspend?: boolean }) {
+      const list = useTorrentsList(1, { pollingEnabled: false, search })
+
+      useEffect(() => {
+        committedList = list
+      }, [list])
+
+      if (suspend) {
+        throw pending
+      }
+
+      return null
+    }
+
+    const view = render(
+      <Suspense fallback={null}>
+        <Probe search={undefined} />
+      </Suspense>,
+      { wrapper: makeWrapper() }
+    )
+
+    const committedOnMessage = capturedOnMessage
+    expect(typeof committedOnMessage).toBe("function")
+
+    act(() => {
+      committedOnMessage?.({
+        type: "init",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "old" })], total: 1, hasMore: false }),
+      })
+    })
+    await flush()
+    expect(committedList?.torrents.map(t => t.hash)).toEqual(["old"])
+
+    act(() => {
+      startTransition(() => {
+        view.rerender(
+          <Suspense fallback={null}>
+            <Probe search="abandoned" suspend />
+          </Suspense>
+        )
+      })
+    })
+    await flush()
+
+    act(() => {
+      committedOnMessage?.({
+        type: "update",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "still-active" })], total: 1, hasMore: false }),
+      })
+    })
+    await flush()
+
+    expect(committedList?.torrents.map(t => t.hash)).toEqual(["still-active"])
+    expect(committedList?.totalCount).toBe(1)
+  })
+
+  it("does not publish counts from an abandoned stream render", async () => {
+    streamState = { ...DISCONNECTED, connected: true }
+    const committedCounts = makeCounts({ status: { all: 1 }, total: 1 })
+    const abandonedCounts = makeCounts({ status: { all: 2 }, total: 2 })
+    const pending = new Promise<never>(() => undefined)
+    let suspendAfterHook = false
+    let committedList: ReturnType<typeof useTorrentsList> | undefined
+
+    function Probe() {
+      const list = useTorrentsList(1)
+
+      useEffect(() => {
+        committedList = list
+      }, [list])
+
+      if (suspendAfterHook) {
+        throw pending
+      }
+
+      return null
+    }
+
+    render(
+      <Suspense fallback={null}>
+        <Probe />
+      </Suspense>,
+      { wrapper: makeWrapper() }
+    )
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "init",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "s1" })], total: 1, hasMore: false, counts: committedCounts }),
+      })
+    })
+    await flush()
+    expect(committedList?.counts).toBe(committedCounts)
+
+    suspendAfterHook = true
+    act(() => {
+      startTransition(() => {
+        capturedOnMessage?.({
+          type: "update",
+          data: makeResponse({ torrents: [makeTorrent({ hash: "s2" })], total: 2, hasMore: false, counts: abandonedCounts }),
+        })
+      })
+    })
+    await flush()
+    expect(committedList?.counts).toBe(committedCounts)
+
+    suspendAfterHook = false
+    act(() => {
+      capturedOnMessage?.({
+        type: "update",
+        data: makeResponse({ torrents: [makeTorrent({ hash: "s1" })], total: 1, hasMore: false }),
+      })
+    })
+    await flush()
+
+    expect(committedList?.counts).toBe(committedCounts)
+  })
+
   it("merges a streamed cross-instance snapshot for the all-instances view and survives REST pagination (#1983)", async () => {
     // All-instances view with a connected stream routes through the cross-instance
     // STREAM merge branch (mergeStreamedCrossInstanceFirstPage), keyed on
@@ -513,6 +790,7 @@ describe("useTorrentsList", () => {
       { ...makeTorrent({ hash: "x", name: "x-on-1" }), instanceId: 1, instanceName: "one" },
       { ...makeTorrent({ hash: "x", name: "x-on-2" }), instanceId: 2, instanceName: "two" },
     ] as CrossInstanceTorrent[]
+    const aggregateCounts = makeCounts({ status: { all: 2 }, total: 2 })
 
     // A later REST page the user paginates in; must survive the next page-0 snapshot.
     const laterPageRow = [
@@ -548,6 +826,7 @@ describe("useTorrentsList", () => {
           cross_instance_torrents: page0Rows,
           total: 10,
           hasMore: true,
+          counts: aggregateCounts,
         }),
       })
     })
@@ -558,6 +837,7 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents).toHaveLength(2)
     // (b) totalCount comes from the streamed data.total.
     expect(result.current.totalCount).toBe(10)
+    expect(result.current.counts).toBe(aggregateCounts)
     expect(result.current.isStreaming).toBe(true)
     expect(result.current.isCrossInstanceEndpoint).toBe(true)
 
@@ -594,6 +874,7 @@ describe("useTorrentsList", () => {
 
     expect(result.current.torrents).toHaveLength(3)
     expect(result.current.torrents.map(t => t.hash)).toEqual(["x", "x", "y"])
+    expect(result.current.counts).toBe(aggregateCounts)
   })
 
   it("polls page 0 on the configured interval while the stream is disconnected", async () => {
@@ -728,5 +1009,202 @@ describe("useTorrentsList background stream gating", () => {
     rerender()
 
     expect(lastStreamOptions?.enabled).toBe(true)
+  })
+
+  it("preserves preference caches when a regular stream frame omits preferences", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    queryClient.setQueryData(["instance-preferences", 1], makePreferences({ listen_port: 6881, use_subcategories: true }))
+    queryClient.setQueryData(["instance-metadata", 1], {
+      categories: {},
+      tags: [],
+      preferences: makePreferences({ listen_port: 6881, use_subcategories: true }),
+    })
+
+    const { result } = renderHook(() => ({
+      list: useTorrentsList(1, { pollingEnabled: false }),
+      preferences: useInstancePreferences(1, { fetchIfMissing: false }),
+    }), { wrapper: makeWrapper(queryClient) })
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "update",
+        data: {
+          torrents: [],
+          total: 0,
+          hasMore: false,
+          categories: {},
+          tags: [],
+        },
+      })
+    })
+
+    expect(queryClient.getQueryData<{ preferences?: unknown }>(["instance-metadata", 1])?.preferences).toEqual({
+      listen_port: 6881,
+      use_subcategories: true,
+    })
+    expect(queryClient.getQueryData(["instance-preferences", 1])).toEqual({
+      listen_port: 6881,
+      use_subcategories: true,
+    })
+    expect(result.current.preferences.preferences?.use_subcategories).toBe(true)
+  })
+
+  it("preserves preference caches when a regular delta frame omits preferences", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    const preferences = makePreferences({ listen_port: 6881, use_subcategories: true })
+    const torrent = makeTorrent({ hash: "a" })
+
+    renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper(queryClient) })
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "init",
+        data: makeResponse({
+          torrents: [torrent],
+          total: 1,
+          hasMore: false,
+          preferences,
+        }),
+      })
+    })
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "delta",
+        data: makeResponse({ torrents: [], total: 1, hasMore: false }),
+      })
+    })
+
+    expect(queryClient.getQueryData<{ preferences?: unknown }>(["instance-metadata", 1])?.preferences).toBe(preferences)
+    expect(queryClient.getQueryData(["instance-preferences", 1])).toBe(preferences)
+  })
+
+  it("updates preference caches when a regular stream frame includes preferences", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    queryClient.setQueryData(["instance-preferences", 1], makePreferences({ listen_port: 6881, use_subcategories: false }))
+    queryClient.setQueryData(["instance-metadata", 1], {
+      categories: {},
+      tags: [],
+      preferences: makePreferences({ listen_port: 6881, use_subcategories: false }),
+    })
+
+    renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper(queryClient) })
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "update",
+        data: {
+          torrents: [],
+          total: 0,
+          hasMore: false,
+          categories: {},
+          tags: [],
+          preferences: { listen_port: 51413, use_subcategories: true } as unknown as TorrentResponse["preferences"],
+        },
+      })
+    })
+
+    expect(queryClient.getQueryData<{ preferences?: unknown }>(["instance-metadata", 1])?.preferences).toEqual({
+      listen_port: 51413,
+      use_subcategories: true,
+    })
+    expect(queryClient.getQueryData(["instance-preferences", 1])).toEqual({
+      listen_port: 51413,
+      use_subcategories: true,
+    })
+  })
+
+  it("clears preference caches when a regular stream frame explicitly nulls preferences", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    queryClient.setQueryData(["instance-preferences", 1], makePreferences({ listen_port: 6881, use_subcategories: true }))
+    queryClient.setQueryData(["instance-metadata", 1], {
+      categories: {},
+      tags: [],
+      preferences: makePreferences({ listen_port: 6881, use_subcategories: true }),
+    })
+
+    renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper(queryClient) })
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "update",
+        data: {
+          torrents: [],
+          total: 0,
+          hasMore: false,
+          categories: {},
+          tags: [],
+          preferences: null as unknown as TorrentResponse["preferences"],
+        },
+      })
+    })
+
+    expect(queryClient.getQueryData<{ preferences?: unknown }>(["instance-metadata", 1])?.preferences).toBeUndefined()
+    expect(queryClient.getQueryData(["instance-preferences", 1])).toBeUndefined()
+  })
+
+  it("clears stale preference caches when a fresh REST response explicitly nulls preferences", async () => {
+    streamState = { ...DISCONNECTED }
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    queryClient.setQueryData(["instance-preferences", 1], makePreferences({ listen_port: 6881, use_subcategories: true }))
+    queryClient.setQueryData(["instance-metadata", 1], {
+      categories: {},
+      tags: [],
+      preferences: makePreferences({ listen_port: 6881, use_subcategories: true }),
+    })
+    mockedApi.getTorrents.mockResolvedValue(makeResponse({
+      categories: {},
+      tags: [],
+      preferences: null,
+    }))
+
+    renderHook(() => useTorrentsList(1, { pollingEnabled: false }), { wrapper: makeWrapper(queryClient) })
+    await flush()
+
+    expect(queryClient.getQueryData<{ preferences?: unknown }>(["instance-metadata", 1])?.preferences).toBeUndefined()
+    expect(queryClient.getQueryData(["instance-preferences", 1])).toBeUndefined()
+  })
+
+  it("leaves cross-instance metadata untouched when preferences are omitted", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 } },
+    })
+    queryClient.setQueryData(["instance-metadata", 0], {
+      categories: { old: { name: "old", savePath: "" } },
+      tags: ["old"],
+      preferences: makePreferences({ listen_port: 6881, use_subcategories: true }),
+    })
+
+    renderHook(() => useTorrentsList(0, { pollingEnabled: false }), { wrapper: makeWrapper(queryClient) })
+
+    act(() => {
+      capturedOnMessage?.({
+        type: "update",
+        data: makeResponse({
+          isCrossInstance: true,
+          cross_instance_torrents: [],
+          total: 0,
+          hasMore: false,
+          categories: { new: { name: "new", savePath: "" } },
+          tags: ["new"],
+        }),
+      })
+    })
+
+    expect(queryClient.getQueryData(["instance-metadata", 0])).toEqual({
+      categories: { old: { name: "old", savePath: "" } },
+      tags: ["old"],
+      preferences: makePreferences({ listen_port: 6881, use_subcategories: true }),
+    })
   })
 })

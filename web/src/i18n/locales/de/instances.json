@@ -1698,6 +1698,8 @@
       "includeCategoriesDescription": "Torrents im Archiv nach ihrer Kategorie gruppieren",
       "includeTags": "Tags einbeziehen",
       "includeTagsDescription": "Torrent-Tags im Manifest speichern",
+      "includeSavePaths": "Speicherpfade einbeziehen",
+      "includeSavePathsDescription": "Speichert den Speicherpfad jedes Torrents, wenn er von seiner Kategorie abweicht, damit verschobene und Cross-Seed-Torrents am richtigen Ort wiederhergestellt werden",
       "schedule": {
         "title": "Automatische Rhythmen",
         "description": "Stündliche, tägliche, wöchentliche und monatliche Läufe starten, nachdem das vorherige Backup abgeschlossen ist und das jeweilige Intervall verstrichen ist. Lass sie alle aus, wenn du Backups nur manuell auslöst.",

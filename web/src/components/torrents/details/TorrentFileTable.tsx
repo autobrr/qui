@@ -9,14 +9,17 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { TruncatedText } from "@/components/ui/truncated-text"
+import { useFileRangeSelection } from "@/hooks/useFileRangeSelection"
 import { FILE_PRIORITY, foldFolderPriority, normalizeFilePriority, type FilePriorityValue, type FolderPriority } from "@/lib/file-priority"
-import { getLinuxFileName, getLinuxFolderName } from "@/lib/incognito"
-import { cn, formatBytes } from "@/lib/utils"
+import { reconcileExpandedFolders } from "@/lib/file-tree-expansion"
+import { getLinuxFileName, getLinuxFolderName, getLinuxSavePath } from "@/lib/incognito"
+import { cn, copyTextToClipboard, formatBytes, joinPath } from "@/lib/utils"
 import type { TorrentFile } from "@/types"
 import { useVirtualizer } from "@tanstack/react-virtual"
-import { ChevronDown, ChevronRight, Download, File, Folder, Info, Loader2, Pencil, Search, X } from "lucide-react"
+import { ChevronDown, ChevronRight, Copy, Download, File, Folder, Info, Loader2, Pencil, Search, X } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 
 interface TorrentFileTableProps {
   files: TorrentFile[] | undefined
@@ -25,7 +28,9 @@ interface TorrentFileTableProps {
   pendingFileIndices: Set<number>
   incognitoMode: boolean
   torrentHash: string
+  savePath?: string
   onToggleFile: (file: TorrentFile, selected: boolean) => void
+  onToggleFileRange: (indices: number[], selected: boolean) => void
   onToggleFolder: (folderPath: string, selected: boolean) => void
   onSetFilePriority: (file: TorrentFile, priority: number) => void
   onSetFolderPriority: (folderPath: string, priority: number) => void
@@ -151,6 +156,20 @@ function buildFileTree(
   return roots
 }
 
+function collectFolderIds(nodes: FileTreeNode[]): Set<string> {
+  const ids = new Set<string>()
+  function walk(current: FileTreeNode[]) {
+    for (const node of current) {
+      if (node.kind === "folder") {
+        ids.add(node.id)
+        if (node.children) walk(node.children)
+      }
+    }
+  }
+  walk(nodes)
+  return ids
+}
+
 function flattenTree(
   nodes: FileTreeNode[],
   expandedFolders: Set<string>,
@@ -188,7 +207,9 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   pendingFileIndices,
   incognitoMode,
   torrentHash,
+  savePath,
   onToggleFile,
+  onToggleFileRange,
   onToggleFolder,
   onSetFilePriority,
   onSetFolderPriority,
@@ -200,31 +221,24 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   const { t } = useTranslation("torrents")
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set())
   const [searchQuery, setSearchQuery] = useState("")
-  const initializedForHash = useRef<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const tree = useMemo(
     () => (files ? buildFileTree(files, incognitoMode, torrentHash) : []),
     [files, incognitoMode, torrentHash]
   )
+  const folderIds = useMemo(() => collectFolderIds(tree), [tree])
 
-  // Expand all folders by default when tree is first built for a new torrent
-  useEffect(() => {
-    if (tree.length > 0 && initializedForHash.current !== torrentHash) {
-      initializedForHash.current = torrentHash
-      const allFolderIds = new Set<string>()
-      function collectFolders(nodes: FileTreeNode[]) {
-        for (const node of nodes) {
-          if (node.kind === "folder") {
-            allFolderIds.add(node.id)
-            if (node.children) collectFolders(node.children)
-          }
-        }
-      }
-      collectFolders(tree)
-      setExpandedFolders(allFolderIds)
-    }
-  }, [tree, torrentHash])
+  // Expand all folders by default when tree is first built for a new torrent,
+  // then keep the expanded set keyed to current paths (renames change node ids);
+  // render-time adjustment so the reconciled tree commits in one pass
+  const [knownExpansion, setKnownExpansion] = useState<{ hash: string; ids: Set<string> } | null>(null)
+  if (tree.length > 0 && (knownExpansion?.hash !== torrentHash || knownExpansion.ids !== folderIds)) {
+    setKnownExpansion({ hash: torrentHash, ids: folderIds })
+    setExpandedFolders(
+      knownExpansion?.hash === torrentHash? reconcileExpandedFolders(expandedFolders, knownExpansion.ids, folderIds): new Set(folderIds)
+    )
+  }
 
   const flatRows = useMemo(
     () => flattenTree(tree, expandedFolders),
@@ -290,22 +304,19 @@ export const TorrentFileTable = memo(function TorrentFileTable({
   }, [])
 
   const expandAll = useCallback(() => {
-    const allFolderIds = new Set<string>()
-    function collectFolders(nodes: FileTreeNode[]) {
-      for (const node of nodes) {
-        if (node.kind === "folder") {
-          allFolderIds.add(node.id)
-          if (node.children) collectFolders(node.children)
-        }
-      }
-    }
-    collectFolders(tree)
-    setExpandedFolders(allFolderIds)
-  }, [tree])
+    setExpandedFolders(new Set(folderIds))
+  }, [folderIds])
 
   const collapseAll = useCallback(() => {
     setExpandedFolders(new Set())
   }, [])
+
+  const { handleCheckboxPointerDown, clearShift, handleFileCheckbox } = useFileRangeSelection({
+    getRows: () => filteredRows,
+    onToggleFile,
+    onToggleFileRange,
+    resetKey: torrentHash,
+  })
 
   if (loading && !files) {
     return (
@@ -415,10 +426,12 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                     <div className="w-8 px-2 py-1.5 shrink-0 flex items-center">
                       <Checkbox
                         checked={isIndeterminate ? "indeterminate" : isSelected}
+                        onPointerDown={handleCheckboxPointerDown}
                         onCheckedChange={(checked) => {
                           if (isFile && file) {
-                            onToggleFile(file, checked === true)
+                            handleFileCheckbox(file, virtualRow.index, checked === true)
                           } else {
+                            clearShift()
                             onToggleFolder(node.id, checked === true)
                           }
                         }}
@@ -502,6 +515,20 @@ export const TorrentFileTable = memo(function TorrentFileTable({
                       {rowContent}
                     </ContextMenuTrigger>
                     <ContextMenuContent>
+                      <ContextMenuItem
+                        onClick={async () => {
+                          const fullPath = incognitoMode? joinPath(getLinuxSavePath(torrentHash), node.name): savePath? joinPath(savePath, node.id): node.id
+                          try {
+                            await copyTextToClipboard(fullPath)
+                            toast.success(isFile ? t("fileTable.filePathCopied") : t("fileTable.folderPathCopied"))
+                          } catch {
+                            toast.error(t("fileTable.copyPathFailed"))
+                          }
+                        }}
+                      >
+                        <Copy className="h-3.5 w-3.5 mr-2" />
+                        {t("fileTable.copyPath")}
+                      </ContextMenuItem>
                       {isFile && onDownloadFile && node.file && (
                         <ContextMenuItem
                           onClick={() => onDownloadFile(node.file!)}

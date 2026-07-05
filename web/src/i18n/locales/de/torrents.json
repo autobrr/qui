@@ -525,11 +525,14 @@
     "renameFolder": "Ordner umbenennen",
     "download": "Herunterladen",
     "mediaInfo": "MediaInfo",
-    "rename": "Umbenennen",
     "toggle": "Umschalten",
     "selectFileForDownload": "Datei zum Herunterladen auswählen",
     "skipFileDownload": "Datei beim Download überspringen",
-    "selectAllFilesIn": "Alle Dateien in {{name}} auswählen"
+    "selectAllFilesIn": "Alle Dateien in {{name}} auswählen",
+    "copyPath": "Pfad kopieren",
+    "filePathCopied": "Dateipfad in die Zwischenablage kopiert",
+    "folderPathCopied": "Ordnerpfad in die Zwischenablage kopiert",
+    "copyPathFailed": "Pfad konnte nicht in die Zwischenablage kopiert werden"
   },
   "mediaInfoDialog": {
     "title": "MediaInfo",
@@ -1211,7 +1214,11 @@
     "download": "Herunterladen",
     "mediaInfo": "MediaInfo",
     "renameFile": "Datei umbenennen",
-    "renameFolder": "Ordner umbenennen"
+    "renameFolder": "Ordner umbenennen",
+    "copyPath": "Pfad kopieren",
+    "filePathCopied": "Dateipfad in die Zwischenablage kopiert",
+    "folderPathCopied": "Ordnerpfad in die Zwischenablage kopiert",
+    "copyPathFailed": "Pfad konnte nicht in die Zwischenablage kopiert werden"
   },
   "crossSeedTable": {
     "name": "Name",

@@ -37,6 +37,12 @@ var (
 	shareLimitsModeMinVersion            = semver.MustParse("2.16.0") // unused still, Web API 2.16.0+
 )
 
+// errInvalidWebAPIVersion marks a session whose webapiVersion endpoint answered
+// with something other than a qBittorrent version (e.g. a reverse-proxy login
+// page whose cookies were accepted during login), as opposed to a transient
+// fetch failure against a real qBittorrent.
+var errInvalidWebAPIVersion = errors.New("invalid qBittorrent WebAPI version")
+
 type Client struct {
 	*qbt.Client
 	instanceID                 int
@@ -144,6 +150,13 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 	}
 
 	if err := client.RefreshCapabilities(ctx); err != nil {
+		if errors.Is(err, errInvalidWebAPIVersion) {
+			client.updateHealthStatus(false)
+			return nil, fmt.Errorf("failed to verify qBittorrent session: %w", err)
+		}
+		// A transient fetch failure (e.g. timeout against a saturated-but-alive
+		// WebUI) must not block client creation; capabilities refresh on the next
+		// health check. Only a positively invalid session is terminal.
 		log.Warn().
 			Err(err).
 			Int("instanceID", instanceID).
@@ -169,13 +182,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 		client.dispatchMainData(data)
 	}
 
-	syncOpts.OnError = func(err error) {
-		client.updateHealthStatus(false)
-		client.clearServerState()
-		log.Warn().Err(err).Int("instanceID", instanceID).Msg("Sync manager error received, marking client as unhealthy")
-
-		client.dispatchSyncError(err)
-	}
+	syncOpts.OnError = client.handleSyncManagerError
 
 	client.syncManager = qbtClient.NewSyncManager(syncOpts)
 
@@ -211,12 +218,11 @@ func (c *Client) GetLastHealthCheck() time.Time {
 // advances on failed sync attempts too and would mask a stalled instance from
 // readiness/staleness checks.
 func (c *Client) GetLastSyncUpdate() time.Time {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if c.syncManager == nil {
+	syncManager := c.GetSyncManager()
+	if syncManager == nil {
 		return time.Time{}
 	}
-	return c.syncManager.LastSuccessfulSyncTime()
+	return syncManager.LastSuccessfulSyncTime()
 }
 
 func (c *Client) updateHealthStatus(healthy bool) {
@@ -231,6 +237,44 @@ func (c *Client) IsHealthy() bool {
 	c.healthMu.RLock()
 	defer c.healthMu.RUnlock()
 	return c.isHealthy
+}
+
+// handleSyncManagerError records qBittorrent sync failures while ignoring explicit caller cancellation.
+// Deadline expiry is treated as a real sync failure so stream error handling can
+// mark cached health stale instead of preserving a stale healthy state.
+func (c *Client) handleSyncManagerError(err error) {
+	if err == nil {
+		return
+	}
+
+	if isContextStopped(err) {
+		log.Debug().
+			Err(err).
+			Int("instanceID", c.instanceID).
+			Msg("Sync manager context stopped, keeping client health unchanged")
+		return
+	}
+
+	c.updateHealthStatus(false)
+	c.clearServerState()
+	log.Warn().Err(err).Int("instanceID", c.instanceID).Msg("Sync manager error received, marking client as unhealthy")
+
+	c.dispatchSyncError(err)
+}
+
+// isContextStopped recognizes explicit context cancellation even after retry wrappers flatten the sentinel.
+// It deliberately excludes deadline expiry, which means the qBittorrent request
+// timed out rather than the caller intentionally stopped the sync attempt.
+func isContextStopped(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return true
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "context canceled")
 }
 
 func (c *Client) SupportsTorrentCreation() bool {
@@ -258,6 +302,19 @@ func (c *Client) SupportsTorrentExport() bool {
 	return c.supportsTorrentExport
 }
 
+// truncateWebAPIVersion bounds error text when a proxy answers the webapiVersion
+// endpoint with a full HTML page instead of a version string; the raw body would
+// otherwise flood logs, SSE error payloads, and stored instance errors on every
+// retry.
+func truncateWebAPIVersion(s string) string {
+	const maxLen = 64
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) <= maxLen {
+		return s
+	}
+	return strings.ToValidUTF8(s[:maxLen], "") + "..."
+}
+
 // RefreshCapabilities fetches the latest WebAPI version information and recalculates feature support flags.
 func (c *Client) RefreshCapabilities(ctx context.Context) error {
 	version, err := c.Client.GetWebAPIVersionCtx(ctx)
@@ -267,7 +324,10 @@ func (c *Client) RefreshCapabilities(ctx context.Context) error {
 
 	version = strings.TrimSpace(version)
 	if version == "" {
-		return fmt.Errorf("web API version is empty")
+		return fmt.Errorf("%w: response body is empty", errInvalidWebAPIVersion)
+	}
+	if _, err := semver.NewVersion(version); err != nil {
+		return fmt.Errorf("%w %q: %w", errInvalidWebAPIVersion, truncateWebAPIVersion(version), err)
 	}
 
 	c.mu.Lock()
@@ -436,14 +496,12 @@ func (c *Client) SupportsPathAutocomplete() bool {
 
 // getTorrentsByHashes returns multiple torrents by their hashes (O(n) where n is number of requested hashes)
 func (c *Client) getTorrentsByHashes(hashes []string) []qbt.Torrent {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	if c.syncManager == nil {
+	syncManager := c.GetSyncManager()
+	if syncManager == nil {
 		return nil
 	}
 
-	return c.syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
+	return syncManager.GetTorrents(qbt.TorrentFilterOptions{Hashes: hashes})
 }
 
 func (c *Client) HealthCheck(ctx context.Context) error {
@@ -511,12 +569,11 @@ func (c *Client) GetSyncManager() *qbt.SyncManager {
 }
 
 func (c *Client) trackerManager() *qbt.TrackerManager {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if c.syncManager == nil {
+	syncManager := c.GetSyncManager()
+	if syncManager == nil {
 		return nil
 	}
-	return c.syncManager.Trackers()
+	return syncManager.Trackers()
 }
 
 func (c *Client) supportsTrackerInclude() bool {
@@ -752,21 +809,19 @@ func (c *Client) applyOptimisticCacheUpdate(hashes []string, action string, _ ma
 	log.Debug().Int("instanceID", c.instanceID).Str("action", action).Int("hashCount", len(hashes)).Msg("Starting optimistic cache update")
 
 	now := time.Now()
+	syncManager := c.GetSyncManager()
 
 	// Apply optimistic updates based on action using sync manager data
 	for _, hash := range hashes {
 		var originalState qbt.TorrentState
 		var progress float64
 
-		// Need mutex only for syncManager access
-		c.mu.RLock()
-		if c.syncManager != nil {
-			if torrent, exists := c.syncManager.GetTorrent(hash); exists {
+		if syncManager != nil {
+			if torrent, exists := syncManager.GetTorrent(hash); exists {
 				originalState = torrent.State
 				progress = torrent.Progress
 			}
 		}
-		c.mu.RUnlock()
 
 		state := getTargetState(action, progress)
 		if state != "" && state != originalState {
