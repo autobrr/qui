@@ -512,6 +512,12 @@ describe("useTorrentActions - post-action refetch backstop", () => {
   // refetches. The first one can read the backend before its post-action sync
   // has landed (the debounced sync may collapse onto an in-flight pre-action
   // sync), so a single read that lands too early would freeze the row wrong.
+  const countListRefetches = (refetchSpy: ReturnType<typeof makeHarness>["refetchSpy"]) =>
+    refetchSpy.mock.calls.filter(call => {
+      const key = (call[0] as { queryKey?: unknown[] } | undefined)?.queryKey
+      return Array.isArray(key) && key[0] === "torrents-list"
+    }).length
+
   it("schedules a follow-up list refetch after the first one", async () => {
     const { result, refetchSpy } = renderActions()
 
@@ -523,22 +529,52 @@ describe("useTorrentActions - post-action refetch backstop", () => {
     })
     expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
 
-    const listRefetches = () =>
-      refetchSpy.mock.calls.filter(call => {
-        const key = (call[0] as { queryKey?: unknown[] } | undefined)?.queryKey
-        return Array.isArray(key) && key[0] === "torrents-list"
-      }).length
-
-    expect(listRefetches()).toBe(0)
+    expect(countListRefetches(refetchSpy)).toBe(0)
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000)
     })
-    expect(listRefetches()).toBe(1)
+    expect(countListRefetches(refetchSpy)).toBe(1)
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3000)
     })
-    expect(listRefetches()).toBe(2)
+    expect(countListRefetches(refetchSpy)).toBe(2)
+  })
+
+  it("tag updates schedule the follow-up list refetch too", async () => {
+    const { result, refetchSpy } = renderActions()
+
+    await act(async () => {
+      await result.current.handleUpdateTags({ add: ["tag1"], remove: [] }, ["h1"])
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(2)
+  })
+
+  it("torrent rename schedules the follow-up list refetch too", async () => {
+    const { result, refetchSpy } = renderActions()
+
+    await act(async () => {
+      await result.current.handleRenameTorrent("h1", "new name")
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(750)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(2)
   })
 })

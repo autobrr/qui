@@ -161,6 +161,28 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
   const [contextHashes, setContextHashes] = useState<string[]>([])
   const [contextTorrents, setContextTorrents] = useState<Torrent[]>([])
 
+  // Rows outside the SSE live window are only updated by these delayed
+  // refetches. The first one can read the backend before its post-action
+  // sync has landed, so schedule a second pass to self-correct a read that
+  // came back too early. Every mutation that changes list-visible data must
+  // refetch through this.
+  const scheduleListRefetches = useCallback((firstDelay: number) => {
+    const refetchLists = () => {
+      queryClient.refetchQueries({
+        queryKey: ["torrents-list", instanceId],
+        exact: false,
+        type: "active",
+      })
+      queryClient.refetchQueries({
+        queryKey: ["torrent-counts", instanceId],
+        exact: false,
+        type: "active",
+      })
+    }
+    setTimeout(refetchLists, firstDelay)
+    setTimeout(refetchLists, firstDelay + 3000)
+  }, [queryClient, instanceId])
+
   const mutation = useMutation({
     mutationFn: (data: TorrentActionData) => {
       const { clientHashes, clientCount, ...payload } = data
@@ -198,27 +220,6 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       })
     },
     onSuccess: async (_, variables) => {
-      // Rows outside the SSE live window are only updated by these delayed
-      // refetches. The first one can read the backend before its post-action
-      // sync has landed, so schedule a second pass to self-correct a read
-      // that came back too early.
-      const scheduleListRefetches = (firstDelay: number) => {
-        const refetchLists = () => {
-          queryClient.refetchQueries({
-            queryKey: ["torrents-list", instanceId],
-            exact: false,
-            type: "active",
-          })
-          queryClient.refetchQueries({
-            queryKey: ["torrent-counts", instanceId],
-            exact: false,
-            type: "active",
-          })
-        }
-        setTimeout(refetchLists, firstDelay)
-        setTimeout(refetchLists, firstDelay + 3000)
-      }
-
       // Handle delete operations with optimistic updates
       if (variables.action === "delete") {
         // Clear selection and context
@@ -359,18 +360,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       return { results }
     },
     onSuccess: async (_, variables) => {
-      setTimeout(() => {
-        queryClient.refetchQueries({
-          queryKey: ["torrents-list", instanceId],
-          exact: false,
-          type: "active",
-        })
-        queryClient.refetchQueries({
-          queryKey: ["torrent-counts", instanceId],
-          exact: false,
-          type: "active",
-        })
-      }, 1000)
+      scheduleListRefetches(1000)
 
       setShowTagsDialog(false)
       setContextHashes([])
@@ -433,18 +423,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       setContextHashes([])
       setContextTorrents([])
 
-      setTimeout(() => {
-        queryClient.refetchQueries({
-          queryKey: ["torrents-list", instanceId],
-          exact: false,
-          type: "active",
-        })
-        queryClient.refetchQueries({
-          queryKey: ["torrent-counts", instanceId],
-          exact: false,
-          type: "active",
-        })
-      }, 750)
+      scheduleListRefetches(750)
 
       toast.success(t("actionToasts.renameTorrentSuccess", { name: variables.name }))
       onActionComplete?.("renameTorrent")
@@ -470,18 +449,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       setContextHashes([])
       setContextTorrents([])
 
-      setTimeout(() => {
-        queryClient.refetchQueries({
-          queryKey: ["torrents-list", instanceId],
-          exact: false,
-          type: "active",
-        })
-        queryClient.refetchQueries({
-          queryKey: ["torrent-counts", instanceId],
-          exact: false,
-          type: "active",
-        })
-      }, 750)
+      scheduleListRefetches(750)
 
       const newFileName = variables.newPath.split("/").pop() ?? variables.newPath
       toast.success(t("actionToasts.renameFileSuccess", { name: newFileName }))
@@ -508,18 +476,7 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       setContextHashes([])
       setContextTorrents([])
 
-      setTimeout(() => {
-        queryClient.refetchQueries({
-          queryKey: ["torrents-list", instanceId],
-          exact: false,
-          type: "active",
-        })
-        queryClient.refetchQueries({
-          queryKey: ["torrent-counts", instanceId],
-          exact: false,
-          type: "active",
-        })
-      }, 750)
+      scheduleListRefetches(750)
 
       const newFolderName = variables.newPath.split("/").pop() ?? variables.newPath
       toast.success(t("actionToasts.renameFolderSuccess", { name: newFolderName }))
