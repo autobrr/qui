@@ -43,6 +43,18 @@ export const TORRENT_STREAM_POLL_INTERVAL_SECONDS = Math.max(
 // and refetchOnWindowFocus pulls fresh data immediately.
 export const STREAM_HIDDEN_PAUSE_DELAY_MS = 30000
 
+// Self-resolving qBittorrent states with continuously advancing progress. A
+// recheck or move holds a row in one of these for minutes; rows past the
+// stream window get no live updates, so the window query keeps polling while
+// any loaded row is in one of these states.
+const TRANSIENT_TORRENT_STATES = new Set([
+  "checkingDL",
+  "checkingUP",
+  "checkingResumeData",
+  "allocating",
+  "moving",
+])
+
 // Drop duplicate rows, keeping the first occurrence. Pages are fetched (or appended)
 // against a live cache, so a row can reflow across a page boundary between requests
 // and show up twice; identity matches the stream merge (hash, or instanceId+hash for
@@ -440,6 +452,13 @@ export function useTorrentsList(
 
   const shouldDisablePolling = Boolean(streamParams) && streamState.connected && !streamState.error
   const preferCachedQuery = currentPage === 0 && shouldDisablePolling
+  // Polls the scrolled-in window while a recheck/move is in progress anywhere
+  // in it; stops on its own once every row settles. Not gated on the stream:
+  // the stream only covers the first page.
+  const hasTransientRows = useMemo(
+    () => allTorrents.some(t => TRANSIENT_TORRENT_STATES.has(t.state)),
+    [allTorrents]
+  )
   // Keep the REST query (initial fetch + fallback polling) enabled until the
   // stream is actually connected, not just until it errors. While the stream is
   // still connecting (e.g. behind a buffering reverse proxy that delays the init
@@ -538,7 +557,9 @@ export function useTorrentsList(
     refetchInterval:
       currentPage === 0? (
         pollingEnabled && !shouldDisablePolling? (useCrossInstanceEndpoint ? 10000 : TORRENT_STREAM_POLL_INTERVAL_MS): false
-      ): false,
+      ): (
+        pollingEnabled && hasTransientRows? (useCrossInstanceEndpoint ? 10000 : TORRENT_STREAM_POLL_INTERVAL_MS): false
+      ),
     refetchIntervalInBackground, // Controls background polling behavior
     refetchOnWindowFocus: currentPage === 0 && pollingEnabled,
     enabled: queryEnabled,

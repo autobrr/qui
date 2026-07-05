@@ -550,6 +550,70 @@ describe("useTorrentsList", () => {
     expect(pageCalls().filter(page => page === 2).length).toBe(1)
   })
 
+  it("keeps polling the loaded window while a scrolled-in row is checking, and stops when it settles", async () => {
+    // A recheck holds a row in checkingUP for minutes. Rows past the stream
+    // window get no live updates, so the window query must poll while any
+    // loaded row is in a self-resolving state instead of reading it twice
+    // and freezing mid-progress.
+    let checkingState = "checkingUP"
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
+      if (params.page === 0) {
+        return Promise.resolve(makeResponse({
+          torrents: [makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" })],
+          total: 4,
+          hasMore: true,
+        }))
+      }
+      return Promise.resolve(makeResponse({
+        torrents: [makeTorrent({ hash: "c", state: checkingState as Torrent["state"] }), makeTorrent({ hash: "d" })],
+        total: 4,
+        hasMore: false,
+      }))
+    })
+
+    const { result } = renderHook(
+      () => useTorrentsList(1),
+      { wrapper: makeWrapper() }
+    )
+
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600)
+    })
+    act(() => {
+      result.current.loadMore()
+    })
+    await flush()
+    expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b", "c", "d"])
+
+    const pageCalls = () => mockedApi.getTorrents.mock.calls.map(([, params]) => params.page)
+    const page1CallsAfterLoad = pageCalls().filter(page => page === 1).length
+
+    // The checking row keeps the window polling: one interval tick refetches it.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS)
+    })
+    await flush()
+    expect(pageCalls().filter(page => page === 1).length).toBe(page1CallsAfterLoad + 1)
+
+    // The recheck finishes: the next tick delivers the settled state...
+    checkingState = "uploading"
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS)
+    })
+    await flush()
+    const callsAfterSettle = pageCalls().filter(page => page === 1).length
+    expect(callsAfterSettle).toBe(page1CallsAfterLoad + 2)
+    expect(result.current.torrents.find(t => t.hash === "c")?.state).toBe("uploading")
+
+    // ...and polling stops.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS * 3)
+    })
+    await flush()
+    expect(pageCalls().filter(page => page === 1).length).toBe(callsAfterSettle)
+  })
+
   it("keeps a row that reflows across a page boundary mid-fetch as a single entry", async () => {
     // Window pages are fetched in parallel against a live cache, so a row can slip
     // from one page's slice into another between requests and come back twice.
