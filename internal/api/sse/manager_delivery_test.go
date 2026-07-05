@@ -768,6 +768,16 @@ func TestServeDeliversStreamErrorOnBuildFailure(t *testing.T) {
 			wantMsg: "torrent list refresh timed out",
 		},
 		{
+			name: "single instance health check in progress",
+			armErr: func(f *fakeSyncProvider) {
+				f.setTorrentsErr(&qbittorrent.InstanceHealthBlockerError{
+					Kind:       qbittorrent.InstanceHealthBlockerHealthCheckInProgress,
+					InstanceID: 1,
+				})
+			},
+			wantMsg: "qBittorrent instance 1 is already running a health check; retry shortly",
+		},
+		{
 			name:    "cross instance generic failure",
 			multi:   true,
 			armErr:  func(f *fakeSyncProvider) { f.setCrossInstanceErr(errors.New("boom")) },

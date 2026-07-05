@@ -9,11 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
 	qbt "github.com/autobrr/go-qbittorrent"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/autobrr/qui/internal/models"
@@ -2159,4 +2162,120 @@ func TestCompareByStateThenName(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGetCrossInstanceTorrents_UnreachableInstancePreservesReachableAsPartial verifies
+// that when one instance is unreachable and burns the shared aggregation deadline, the
+// unified view degrades to a partial result instead of returning a hard error that blanks
+// the whole table (discussion #2096).
+func TestGetCrossInstanceTorrents_UnreachableInstancePreservesReachableAsPartial(t *testing.T) {
+	// A blocking qBittorrent endpoint: accepts the connection but never responds,
+	// so the health check blocks until the caller's context deadline expires.
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	// inst1 has the lower ID, so the deterministic ID-ascending loop processes it
+	// first; inst2 must never be contacted once inst1 consumes the shared deadline.
+	inst1, err := pool.instanceStore.Create(ctx, "offline", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	_, err = pool.instanceStore.Create(ctx, "other", "http://192.0.2.2:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	// Pre-seed inst1 as an existing, unhealthy client pointed at the blocking server.
+	// GetClient takes the exists-&&-unhealthy branch -> HealthCheck -> GetWebAPIVersionCtx,
+	// which blocks until our short deadline fires.
+	pool.mu.Lock()
+	pool.clients[inst1.ID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: inst1.ID}
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	callCtx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancel()
+
+	resp, err := sm.GetCrossInstanceTorrentsWithFilters(callCtx, 0, 0, "", "", "", FilterOptions{}, nil)
+
+	require.NoError(t, err, "unreachable instance must not fail the whole aggregate")
+	require.NotNil(t, resp)
+	assert.True(t, resp.PartialResults, "expected partial results when one instance is unreachable")
+}
+
+// TestGetCrossInstanceTorrents_CallerCancellationReturnsError verifies that a genuine
+// caller cancellation surfaces as an error, not a fabricated partial-success 200. Only a
+// deadline (an unreachable instance) degrades to partial results (adversarial review of #2096).
+func TestGetCrossInstanceTorrents_CallerCancellationReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	inst1, err := pool.instanceStore.Create(ctx, "offline", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+	_, err = pool.instanceStore.Create(ctx, "other", "http://192.0.2.2:8080", "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	pool.mu.Lock()
+	pool.clients[inst1.ID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: inst1.ID}
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	callCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	// Cancel while inst1's health probe is in flight so the loop observes a genuine
+	// caller cancellation rather than the shared-deadline timeout.
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	resp, err := sm.GetCrossInstanceTorrentsWithFilters(callCtx, 0, 0, "", "", "", FilterOptions{}, nil)
+
+	require.ErrorIs(t, err, context.Canceled, "caller cancellation must surface as an error, not a partial success")
+	assert.Nil(t, resp)
+}
+
+// TestGetCrossInstanceTorrents_CancellationDuringLastInstanceReturnsError covers the case the
+// top-of-loop check can't: a single (last) instance whose fetch is interrupted by caller
+// cancellation must return the error, not a masked partial-success 200 (review of #2096).
+func TestGetCrossInstanceTorrents_CancellationDuringLastInstanceReturnsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	pool := setupTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	inst, err := pool.instanceStore.Create(ctx, "offline", srv.URL, "user", "pass", nil, nil, false, nil)
+	require.NoError(t, err)
+
+	pool.mu.Lock()
+	pool.clients[inst.ID] = &Client{Client: qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60}), instanceID: inst.ID}
+	pool.mu.Unlock()
+
+	sm := NewSyncManager(pool, nil)
+
+	callCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+
+	resp, err := sm.GetCrossInstanceTorrentsWithFilters(callCtx, 0, 0, "", "", "", FilterOptions{}, nil)
+
+	require.ErrorIs(t, err, context.Canceled, "cancellation during the only instance's fetch must surface, not become a partial success")
+	assert.Nil(t, resp)
 }

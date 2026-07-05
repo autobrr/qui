@@ -136,6 +136,81 @@ func TestBuildRestorePlanIncrementalMode(t *testing.T) {
 	require.Empty(t, plan.Torrents.Delete)
 }
 
+func TestBuildRestorePlanCarriesSavePathIntoAddSpec(t *testing.T) {
+	snapshot := &SnapshotState{
+		RunID:      1,
+		InstanceID: 2,
+		Categories: map[string]models.CategorySnapshot{},
+		Tags:       map[string]struct{}{},
+		Torrents: map[string]SnapshotTorrent{
+			"hash1": {
+				Hash:     "hash1",
+				Name:     "Cross Seed",
+				BlobPath: "backups/torrents/hash1.torrent",
+				SavePath: "/data/cross-seed/Show--abc12345",
+			},
+		},
+	}
+
+	live := &LiveState{
+		InstanceID: 2,
+		Categories: map[string]LiveCategory{},
+		Tags:       map[string]struct{}{},
+		Torrents:   map[string]LiveTorrent{},
+	}
+
+	plan, err := buildRestorePlan(snapshot, live, RestoreModeIncremental)
+	require.NoError(t, err)
+
+	require.Len(t, plan.Torrents.Add, 1)
+	require.Equal(t, "/data/cross-seed/Show--abc12345", plan.Torrents.Add[0].Manifest.SavePath)
+}
+
+func TestBuildRestorePlanSurfacesSavePathDiffOnUpdate(t *testing.T) {
+	snapshot := &SnapshotState{
+		RunID:      1,
+		InstanceID: 2,
+		Categories: map[string]models.CategorySnapshot{},
+		Tags:       map[string]struct{}{},
+		Torrents: map[string]SnapshotTorrent{
+			"moved":   {Hash: "moved", Name: "Moved", BlobPath: "b1", SavePath: "/data/new/Show--abc12345"},
+			"inplace": {Hash: "inplace", Name: "InPlace", BlobPath: "b2", SavePath: "/data/same"},
+		},
+	}
+	live := &LiveState{
+		InstanceID: 2,
+		Categories: map[string]LiveCategory{},
+		Tags:       map[string]struct{}{},
+		Torrents: map[string]LiveTorrent{
+			"moved":   {Hash: "moved", Name: "Moved", SavePath: "/data/old/Show"},
+			"inplace": {Hash: "inplace", Name: "InPlace", SavePath: "/data/same/"},
+		},
+	}
+
+	plan, err := buildRestorePlan(snapshot, live, RestoreModeOverwrite)
+	require.NoError(t, err)
+	require.Empty(t, plan.Torrents.Add)
+
+	changesByHash := make(map[string][]DiffChange, len(plan.Torrents.Update))
+	for _, update := range plan.Torrents.Update {
+		changesByHash[update.Hash] = update.Changes
+	}
+
+	var movedDiff *DiffChange
+	for i := range changesByHash["moved"] {
+		if changesByHash["moved"][i].Field == "savePath" {
+			movedDiff = &changesByHash["moved"][i]
+		}
+	}
+	require.NotNil(t, movedDiff, "a divergent live save path must surface an informational diff")
+	require.False(t, movedDiff.Supported, "save path changes must never be auto-applied (no SetLocation)")
+	require.Equal(t, "/data/new/Show--abc12345", movedDiff.Desired)
+
+	for _, change := range changesByHash["inplace"] {
+		require.NotEqual(t, "savePath", change.Field, "matching save paths must not produce a diff")
+	}
+}
+
 func TestParseRestoreMode(t *testing.T) {
 	mode, err := ParseRestoreMode(" overwrite ")
 	require.NoError(t, err)

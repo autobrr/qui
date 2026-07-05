@@ -19,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/autobrr/qui/pkg/fsutil"
 	"github.com/autobrr/qui/pkg/hardlinktree"
 )
 
@@ -63,7 +64,7 @@ func Create(plan *hardlinktree.TreePlan) error {
 	}
 
 	// Create root directory if needed
-	if err := os.MkdirAll(plan.RootDir, 0o755); err != nil {
+	if err := os.MkdirAll(plan.RootDir, fsutil.ContentDirMode); err != nil {
 		return fmt.Errorf("create root directory %s: %w", plan.RootDir, err)
 	}
 
@@ -72,7 +73,7 @@ func Create(plan *hardlinktree.TreePlan) error {
 		// Create parent directory if needed
 		parentDir := filepath.Dir(fp.TargetPath)
 		if parentDir != plan.RootDir {
-			if err := os.MkdirAll(parentDir, 0o755); err != nil {
+			if err := os.MkdirAll(parentDir, fsutil.ContentDirMode); err != nil {
 				return rollbackOnError(fmt.Errorf("create directory %s: %w", parentDir, err))
 			}
 			// Track directories for rollback (only track new ones)

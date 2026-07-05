@@ -1690,6 +1690,8 @@
       "includeCategoriesDescription": "Raggruppa i torrent all'interno dell'archivio per categoria",
       "includeTags": "Includi i tag",
       "includeTagsDescription": "Memorizza i tag dei torrent nel manifesto",
+      "includeSavePaths": "Includi i percorsi di salvataggio",
+      "includeSavePathsDescription": "Memorizza il percorso di salvataggio di ogni torrent quando differisce dalla sua categoria, così i torrent spostati e in cross-seed vengono ripristinati nella cartella corretta",
       "schedule": {
         "title": "Cadenze automatiche",
         "description": "Le esecuzioni orarie, giornaliere, settimanali e mensili iniziano dopo che il backup precedente è terminato e il loro intervallo è trascorso. Lasciale tutte disattivate se attivi i backup solo manualmente.",

@@ -694,7 +694,7 @@ func (i *Injector) materializeLinkTree(ctx context.Context, instance *models.Ins
 	if err != nil {
 		return nil, "", fmt.Errorf("select hardlink base dir: %w", err)
 	}
-	if err := os.MkdirAll(selectedBaseDir, 0o750); err != nil {
+	if err := os.MkdirAll(selectedBaseDir, fsutil.LinkTreeBaseDirMode); err != nil {
 		return nil, "", fmt.Errorf("create hardlink base dir: %w", err)
 	}
 

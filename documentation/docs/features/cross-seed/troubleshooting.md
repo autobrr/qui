@@ -138,6 +138,27 @@ Common causes:
 - **Permissions**: qui cannot read the instance's content paths or write to the hardlink base directory.
 - **Invalid base directory**: The hardlink base directory path doesn't exist and couldn't be created.
 
+## Directory permissions and umask
+
+qui creates the directories in your hardlink/reflink base (and cross-seed/dir-scan link trees) with mode `0777` and then lets the process **umask** decide the final permissions. This is the standard Unix pattern. It never makes anything world-writable by default, it only lets your umask control the group and other bits:
+
+- umask `022` produces `0755` directories (`rwxr-xr-x`), the traditional default.
+- umask `002` produces `0775` directories (`rwxrwxr-x`), preserving group-write.
+
+If qBittorrent and qui run as **different users that share a group** (a common hardlink/reflink setup), or a tool like `fclones` deduplicates across the tree, those processes need group-write on the directories qui creates. Set the umask accordingly, for example `UMASK=002`.
+
+qui honors the `UMASK` environment variable (octal, e.g. `002`) and applies it at startup, so it works on the official Docker image as well as hotio or LinuxServer base images:
+
+```bash
+docker run -e UMASK=002 ... ghcr.io/autobrr/qui
+```
+
+:::note
+When `UMASK` is unset, qui leaves the inherited umask unchanged. The official Docker image runs as root with the default umask `022`, so without `UMASK` it produces `0755` directories, matching previous releases. `UMASK` is a no-op on Windows, where directory permissions follow inherited ACLs.
+:::
+
+The umask only applies to directories qui creates from now on. Directories that already exist keep their current permissions, so after setting `UMASK` you may need a one-time `chmod` over the existing tree, for example `chmod -R g+w /path/to/base`.
+
 ## Hardlink/reflink cross-seed shows "missing files"
 
 When hardlink or reflink mode creates every file needed by the incoming torrent, qui adds it with hash checking skipped and starts it immediately. No automatic recheck is triggered because there are no missing extras for qBittorrent to discover.

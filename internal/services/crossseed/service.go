@@ -13201,7 +13201,7 @@ func FindMatchingBaseDir(configuredDirs string, sourcePath string) (string, erro
 			continue
 		}
 
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, fsutil.ContentDirMode); err != nil {
 			lastErr = fmt.Errorf("failed to create directory %s: %w", dir, err)
 			continue
 		}
