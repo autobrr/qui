@@ -144,6 +144,7 @@ type ManifestItem struct {
 	InfoHashV2  *string  `json:"infohashV2,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
 	TorrentBlob string   `json:"torrentBlob,omitempty"`
+	SavePath    string   `json:"savePath,omitempty"`
 }
 
 func NewService(store *models.BackupStore, reader backupReader, jackettSvc any, cfg Config, notifier notifications.Notifier) *Service {
@@ -873,6 +874,15 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		infohashV1 := strings.TrimSpace(torrent.InfohashV1)
 		infohashV2 := strings.TrimSpace(torrent.InfohashV2)
 
+		// Capture the per-torrent save path only when it diverges from the
+		// category (cross-seed hardlinks, manual relocations, Auto TMM off).
+		// Category-managed torrents store nothing here and are placed by their
+		// recreated category on restore.
+		storeSavePath := ""
+		if settings.IncludeSavePaths {
+			storeSavePath = resolveBackupSavePath(torrent.SavePath, category, snapshotCategories)
+		}
+
 		item := models.BackupItem{
 			RunID:       j.runID,
 			TorrentHash: torrent.Hash,
@@ -898,6 +908,10 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		if blobRelPath != nil {
 			item.TorrentBlobPath = blobRelPath
 		}
+		if storeSavePath != "" {
+			sp := storeSavePath
+			item.SavePath = &sp
+		}
 		items = append(items, item)
 
 		manifestItem := ManifestItem{
@@ -920,6 +934,9 @@ func (s *Service) executeBackup(ctx context.Context, j job) (*backupResult, erro
 		}
 		if blobRelPath != nil {
 			manifestItem.TorrentBlob = *blobRelPath
+		}
+		if storeSavePath != "" {
+			manifestItem.SavePath = storeSavePath
 		}
 		manifestItems = append(manifestItems, manifestItem)
 
@@ -1438,6 +1455,9 @@ func (s *Service) LoadManifest(ctx context.Context, runID int64) (*Manifest, err
 		if item.TorrentBlobPath != nil {
 			entry.TorrentBlob = *item.TorrentBlobPath
 		}
+		if item.SavePath != nil {
+			entry.SavePath = *item.SavePath
+		}
 		manifest.Items = append(manifest.Items, entry)
 	}
 
@@ -1537,6 +1557,10 @@ func (s *Service) ImportManifestFromDir(ctx context.Context, instanceID int, man
 		if len(item.Tags) > 0 {
 			tagsStr := strings.Join(item.Tags, ",")
 			backupItem.Tags = &tagsStr
+		}
+
+		if savePath := strings.TrimSpace(item.SavePath); savePath != "" {
+			backupItem.SavePath = &savePath
 		}
 
 		if item.TorrentBlob != "" {
