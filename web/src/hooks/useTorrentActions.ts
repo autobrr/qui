@@ -198,6 +198,27 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
       })
     },
     onSuccess: async (_, variables) => {
+      // Rows outside the SSE live window are only updated by these delayed
+      // refetches. The first one can read the backend before its post-action
+      // sync has landed, so schedule a second pass to self-correct a read
+      // that came back too early.
+      const scheduleListRefetches = (firstDelay: number) => {
+        const refetchLists = () => {
+          queryClient.refetchQueries({
+            queryKey: ["torrents-list", instanceId],
+            exact: false,
+            type: "active",
+          })
+          queryClient.refetchQueries({
+            queryKey: ["torrent-counts", instanceId],
+            exact: false,
+            type: "active",
+          })
+        }
+        setTimeout(refetchLists, firstDelay)
+        setTimeout(refetchLists, firstDelay + 3000)
+      }
+
       // Handle delete operations with optimistic updates
       if (variables.action === "delete") {
         // Clear selection and context
@@ -236,34 +257,10 @@ export function useTorrentActions({ instanceId, instanceIds, onActionComplete }:
         })
 
         // Refetch later to sync with server
-        const refetchDelay = variables.deleteFiles ? 5000 : 2000
-        setTimeout(() => {
-          queryClient.refetchQueries({
-            queryKey: ["torrents-list", instanceId],
-            exact: false,
-            type: "active",
-          })
-          queryClient.refetchQueries({
-            queryKey: ["torrent-counts", instanceId],
-            exact: false,
-            type: "active",
-          })
-        }, refetchDelay)
+        scheduleListRefetches(variables.deleteFiles ? 5000 : 2000)
       } else {
         // For other operations, refetch after delay
-        const refetchDelay = variables.action === "resume" || variables.action === "forceStart" ? 2000 : 1000
-        setTimeout(() => {
-          queryClient.refetchQueries({
-            queryKey: ["torrents-list", instanceId],
-            exact: false,
-            type: "active",
-          })
-          queryClient.refetchQueries({
-            queryKey: ["torrent-counts", instanceId],
-            exact: false,
-            type: "active",
-          })
-        }, refetchDelay)
+        scheduleListRefetches(variables.action === "resume" || variables.action === "forceStart" ? 2000 : 1000)
         setContextHashes([])
         setContextTorrents([])
       }

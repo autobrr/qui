@@ -506,3 +506,39 @@ describe("useTorrentActions - prepare helpers", () => {
     })
   })
 })
+
+describe("useTorrentActions - post-action refetch backstop", () => {
+  // Rows outside the SSE live window are only updated by these delayed
+  // refetches. The first one can read the backend before its post-action sync
+  // has landed (the debounced sync may collapse onto an in-flight pre-action
+  // sync), so a single read that lands too early would freeze the row wrong.
+  it("schedules a follow-up list refetch after the first one", async () => {
+    const { result, refetchSpy } = renderActions()
+
+    await act(async () => {
+      result.current.handleAction("pause", ["h1"])
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
+
+    const listRefetches = () =>
+      refetchSpy.mock.calls.filter(call => {
+        const key = (call[0] as { queryKey?: unknown[] } | undefined)?.queryKey
+        return Array.isArray(key) && key[0] === "torrents-list"
+      }).length
+
+    expect(listRefetches()).toBe(0)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(listRefetches()).toBe(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    expect(listRefetches()).toBe(2)
+  })
+})
