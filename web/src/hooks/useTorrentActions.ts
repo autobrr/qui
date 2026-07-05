@@ -98,6 +98,7 @@ type TagBulkActionResult = {
 // single trailing refetch pair instead of one pair per action (each refetch
 // re-delivers the whole loaded window).
 let pendingListRefetches: ReturnType<typeof setTimeout>[] = []
+let pendingFinalRefetchAt = 0
 
 // Rows outside the SSE live window are only updated by these delayed
 // refetches. The first one can read the backend before its post-action
@@ -118,11 +119,27 @@ export function scheduleTorrentListRefetches(queryClient: QueryClient, firstDela
       type: "active",
     })
   }
+  // Collapsing a burst must not shorten a slower action's pending verification
+  // window: a pause right after a delete-with-files would otherwise replace the
+  // 5s/8s pair with 1s/4s and leave the last read racing the file deletion.
+  // Keep the furthest final deadline; a stale past deadline goes negative and
+  // loses the max.
+  const finalDelay = Math.max(firstDelay + 3000, pendingFinalRefetchAt - Date.now())
+  pendingFinalRefetchAt = Date.now() + finalDelay
   pendingListRefetches.forEach(clearTimeout)
   pendingListRefetches = [
     setTimeout(refetchLists, firstDelay),
-    setTimeout(refetchLists, firstDelay + 3000),
+    setTimeout(refetchLists, finalDelay),
   ]
+}
+
+// Test-only: the debounce state above is module-level and outlives a test's
+// fake-timer clock, so a deadline left mid-window would stretch the next
+// test's timers.
+export function resetPendingListRefetchesForTests() {
+  pendingListRefetches.forEach(clearTimeout)
+  pendingListRefetches = []
+  pendingFinalRefetchAt = 0
 }
 
 class TagBulkActionError extends Error {

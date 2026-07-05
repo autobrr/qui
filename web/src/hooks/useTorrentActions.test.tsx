@@ -36,7 +36,7 @@ vi.mock("react-i18next", () => ({
 
 import { api } from "@/lib/api"
 import { toast } from "sonner"
-import { scheduleTorrentListRefetches, useTorrentActions } from "@/hooks/useTorrentActions"
+import { resetPendingListRefetchesForTests, scheduleTorrentListRefetches, useTorrentActions } from "@/hooks/useTorrentActions"
 import { makeTorrent } from "@/test/mockTorrent"
 import type { TorrentFilters } from "@/types"
 
@@ -80,6 +80,7 @@ const TORRENTS_LIST_KEY = (extra: unknown = "page-1") => ["torrents-list", INSTA
 
 beforeEach(() => {
   vi.useFakeTimers()
+  resetPendingListRefetchesForTests()
   localStorage.clear()
   mockedApi.bulkAction.mockResolvedValue(undefined as never)
   mockedApi.renameTorrent.mockResolvedValue(undefined as never)
@@ -619,6 +620,28 @@ describe("useTorrentActions - post-action refetch backstop", () => {
     })
 
     await vi.advanceTimersByTimeAsync(3000)
+    expect(refetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it("a fast action does not shorten a slower action's pending verification window", async () => {
+    const { queryClient, refetchSpy } = makeHarness()
+
+    // Delete-with-files schedules the 5000/8000 pair...
+    scheduleTorrentListRefetches(queryClient, 5000)
+    await vi.advanceTimersByTimeAsync(500)
+    // ...then a fast action inside that window would replace it with 1000/4000.
+    scheduleTorrentListRefetches(queryClient, 1000)
+
+    // The fast action's first refetch runs on its own delay (T+1500)...
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(refetchSpy).toHaveBeenCalledTimes(1)
+
+    // ...but the final pass holds the delete's original T+8000 deadline
+    // instead of collapsing to the fast action's T+4500.
+    await vi.advanceTimersByTimeAsync(6499)
+    expect(refetchSpy).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(1)
     expect(refetchSpy).toHaveBeenCalledTimes(2)
   })
 

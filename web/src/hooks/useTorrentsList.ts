@@ -55,9 +55,12 @@ const TRANSIENT_TORRENT_STATES = new Set([
   "moving",
 ])
 
-// Drop duplicate rows, keeping the first occurrence. Pages are fetched (or appended)
-// against a live cache, so a row can reflow across a page boundary between requests
-// and show up twice; identity matches the stream merge (hash, or instanceId+hash for
+// Drop duplicate rows, keeping the first occurrence's position with the last
+// occurrence's data (Map insertion order is first-set, values are last-set): in
+// append mode the later page is the fresher fetch, so the row stays put but
+// carries the newest snapshot. Pages are fetched (or appended) against a live
+// cache, so a row can reflow across a page boundary between requests and show up
+// twice; identity matches the stream merge (hash, or instanceId+hash for
 // cross-instance rows).
 function dedupeRows<T>(rows: T[], keyOf: (row: T) => string): T[] {
   return [...new Map(rows.map(row => [keyOf(row), row] as const)).values()]
