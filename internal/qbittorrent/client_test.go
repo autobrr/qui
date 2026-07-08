@@ -642,6 +642,12 @@ func TestSplitHostUserinfo(t *testing.T) {
 			wantUser: "onlyuser",
 		},
 		{
+			name:     "password-only userinfo",
+			host:     "https://:proxypass@qbit.example.com",
+			wantHost: "https://qbit.example.com",
+			wantPass: "proxypass",
+		},
+		{
 			name:     "empty host",
 			host:     "",
 			wantHost: "",

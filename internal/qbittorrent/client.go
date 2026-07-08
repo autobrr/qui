@@ -136,7 +136,7 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 		if basicPassword != nil {
 			cfg.BasicPass = *basicPassword
 		}
-	} else if hostUser != "" {
+	} else if hostUser != "" || hostPass != "" {
 		cfg.BasicUser = hostUser
 		cfg.BasicPass = hostPass
 	}
