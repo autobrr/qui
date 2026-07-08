@@ -12,7 +12,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -49,9 +51,28 @@ type LogFileEntry struct {
 	ModTime   time.Time `json:"modTime"`
 }
 
-// listLogFiles returns the .log files in the configured log directory.
-// Returns an empty slice when file logging is not configured or the
-// directory does not exist.
+// rotationTimestampRegex matches lumberjack's backup timestamp
+// (2006-01-02T15-04-05.000).
+var rotationTimestampRegex = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}$`)
+
+// isQuiLogFile reports whether name is the configured log file or a lumberjack
+// rotation of it (base-{timestamp}{ext}). Anything else in the directory —
+// including .log files from other services — is not ours to serve.
+func isQuiLogFile(name, base string) bool {
+	if name == base {
+		return true
+	}
+	ext := filepath.Ext(base)
+	prefix := strings.TrimSuffix(base, ext) + "-"
+	if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ext) {
+		return false
+	}
+	return rotationTimestampRegex.MatchString(strings.TrimSuffix(strings.TrimPrefix(name, prefix), ext))
+}
+
+// listLogFiles returns the active and rotated log files for the configured
+// log path. Returns an empty slice when file logging is not configured or
+// the directory does not exist.
 func (h *LogsHandler) listLogFiles() []LogFileEntry {
 	files := make([]LogFileEntry, 0)
 
@@ -65,8 +86,9 @@ func (h *LogsHandler) listLogFiles() []LogFileEntry {
 		return files
 	}
 
+	base := filepath.Base(logPath)
 	for _, entry := range entries {
-		if entry.IsDir() || filepath.Ext(entry.Name()) != ".log" {
+		if entry.IsDir() || !isQuiLogFile(entry.Name(), base) {
 			continue
 		}
 		info, err := entry.Info()
@@ -94,7 +116,7 @@ func (h *LogsHandler) DownloadLogFile(w http.ResponseWriter, r *http.Request) {
 
 	// Traversal guard by construction: the requested name must exactly match
 	// a directory entry from the listing, so client input is never joined
-	// into a path unless it is a real .log file base name.
+	// into a path unless it names one of qui's own log files.
 	found := false
 	for _, entry := range h.listLogFiles() {
 		if entry.Name == filename {

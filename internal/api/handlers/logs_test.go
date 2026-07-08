@@ -218,6 +218,9 @@ func TestLogsHandler_ListLogFiles(t *testing.T) {
 	writeLogsTestFile(t, logDir, "qui.log", "active")
 	writeLogsTestFile(t, logDir, "qui-2026-01-01T00-00-00.000.log", "rotated")
 	writeLogsTestFile(t, logDir, "notes.txt", "not a log")
+	// .log files in the same directory that are not qui's must not be served.
+	writeLogsTestFile(t, logDir, "other-service.log", "someone else's log")
+	writeLogsTestFile(t, logDir, "qui-manual-backup.log", "prefix but not a rotation")
 	if err := os.Mkdir(filepath.Join(logDir, "nested.log"), 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -242,6 +245,34 @@ func TestLogsHandler_ListLogFiles(t *testing.T) {
 		}
 		if file.SizeBytes <= 0 {
 			t.Errorf("expected positive size for %q, got %d", file.Name, file.SizeBytes)
+		}
+	}
+}
+
+func TestLogsHandler_ListLogFiles_NonLogExtension(t *testing.T) {
+	handler, logDir := createTestConfigWithLogPath(t, "logs/qui.txt")
+
+	writeLogsTestFile(t, logDir, "qui.txt", "active")
+	writeLogsTestFile(t, logDir, "qui-2026-01-01T00-00-00.000.txt", "rotated")
+	writeLogsTestFile(t, logDir, "other.log", "not ours")
+
+	rec := httptest.NewRecorder()
+	logsTestRouter(handler).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/logs/files", http.NoBody))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var files []LogFileEntry
+	if err := json.NewDecoder(rec.Body).Decode(&files); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("expected 2 log files, got %d: %+v", len(files), files)
+	}
+	for _, file := range files {
+		if file.Name != "qui.txt" && file.Name != "qui-2026-01-01T00-00-00.000.txt" {
+			t.Errorf("unexpected file in listing: %q", file.Name)
 		}
 	}
 }
@@ -271,6 +302,7 @@ func TestLogsHandler_DownloadLogFile_Rejected(t *testing.T) {
 	handler, logDir := createTestConfigWithLogDir(t)
 	writeLogsTestFile(t, logDir, "qui.log", "log content")
 	writeLogsTestFile(t, logDir, "notes.txt", "not a log")
+	writeLogsTestFile(t, logDir, "other-service.log", "someone else's log")
 	// A .log file outside the log directory that traversal must not reach.
 	writeLogsTestFile(t, filepath.Dir(logDir), "secret.log", "secret")
 
@@ -280,6 +312,7 @@ func TestLogsHandler_DownloadLogFile_Rejected(t *testing.T) {
 	}{
 		{"missing file", "/logs/files/missing.log"},
 		{"non-log extension", "/logs/files/notes.txt"},
+		{"unrelated log in same dir", "/logs/files/other-service.log"},
 		{"posix traversal", "/logs/files/..%2Fsecret.log"},
 		{"posix traversal double-encoded", "/logs/files/%2E%2E%2Fsecret.log"},
 		{"windows traversal", "/logs/files/..%5Csecret.log"},
@@ -357,6 +390,13 @@ func writeLogsTestFile(t *testing.T, dir, name, content string) {
 // configured under a temp directory and returns the log directory.
 func createTestConfigWithLogDir(t *testing.T) (*LogsHandler, string) {
 	t.Helper()
+	return createTestConfigWithLogPath(t, "logs/qui.log")
+}
+
+// createTestConfigWithLogPath is like createTestConfigWithLogDir but with a
+// caller-chosen logPath (slash-relative, under a "logs" subdirectory).
+func createTestConfigWithLogPath(t *testing.T, logPath string) (*LogsHandler, string) {
+	t.Helper()
 
 	tempDir := t.TempDir()
 	logDir := filepath.Join(tempDir, "logs")
@@ -367,7 +407,7 @@ func createTestConfigWithLogDir(t *testing.T) (*LogsHandler, string) {
 	configContent := `host = "127.0.0.1"
 port = 8080
 logLevel = "info"
-logPath = "logs/qui.log"
+logPath = "` + logPath + `"
 `
 	if err := os.WriteFile(filepath.Join(tempDir, "config.toml"), []byte(configContent), 0o600); err != nil {
 		t.Fatalf("failed to create config file: %v", err)
