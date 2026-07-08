@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"mime"
 	"net/http"
 	"os"
@@ -88,7 +89,9 @@ func (h *LogsHandler) listLogFiles() []LogFileEntry {
 
 	base := filepath.Base(logPath)
 	for _, entry := range entries {
-		if entry.IsDir() || !isQuiLogFile(entry.Name(), base) {
+		// Reject symlinks: a link named like a log file must not let the
+		// download endpoint serve a target outside the log directory.
+		if entry.IsDir() || entry.Type()&fs.ModeSymlink != 0 || !isQuiLogFile(entry.Name(), base) {
 			continue
 		}
 		info, err := entry.Info()

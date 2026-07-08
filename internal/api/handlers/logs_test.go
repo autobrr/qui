@@ -277,6 +277,35 @@ func TestLogsHandler_ListLogFiles_NonLogExtension(t *testing.T) {
 	}
 }
 
+func TestLogsHandler_ListLogFiles_RejectsSymlinks(t *testing.T) {
+	handler, logDir := createTestConfigWithLogDir(t)
+	writeLogsTestFile(t, logDir, "qui.log", "active")
+	// A symlink named like a rotation, pointing outside the log directory.
+	writeLogsTestFile(t, filepath.Dir(logDir), "target.log", "outside")
+	linkName := "qui-2026-01-01T00-00-00.000.log"
+	if err := os.Symlink(filepath.Join(filepath.Dir(logDir), "target.log"), filepath.Join(logDir, linkName)); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	router := logsTestRouter(handler)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/logs/files", http.NoBody))
+	var files []LogFileEntry
+	if err := json.NewDecoder(rec.Body).Decode(&files); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(files) != 1 || files[0].Name != "qui.log" {
+		t.Fatalf("expected only qui.log in listing, got %+v", files)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/logs/files/"+linkName, http.NoBody))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected status 404 for symlink, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestLogsHandler_DownloadLogFile(t *testing.T) {
 	handler, logDir := createTestConfigWithLogDir(t)
 	writeLogsTestFile(t, logDir, "qui.log", "log content here")
