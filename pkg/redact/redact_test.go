@@ -149,6 +149,12 @@ func TestURLString(t *testing.T) {
 			wantNotHave: []string{"DEADBEEF01", "abcdef0123456789abcdef0123456789"},
 		},
 		{
+			name:        "magnet with passkey in udp announce url",
+			input:       "magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&tr=udp%3A%2F%2Ftracker.example.com%2Fabcdef0123456789abcdef0123456789%2Fannounce&tr=udp%3A%2F%2Fopen.example.org%3A1337%2Fannounce",
+			wantContain: []string{"c12fe1c06bba254a9dc9f519b335aa7c1367a88a", "tracker.example.com", "open.example.org"},
+			wantNotHave: []string{"abcdef0123456789abcdef0123456789"},
+		},
+		{
 			name:        "short path segments untouched",
 			input:       "http://localhost:8080/api/v2/torrents/info",
 			wantContain: []string{"http://localhost:8080/api/v2/torrents/info"},

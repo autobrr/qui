@@ -102,7 +102,9 @@ func URLString(raw string) string {
 			continue
 		}
 		for i, value := range values {
-			if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
+			// Any scheme, not just http(s): magnet tr= values are often
+			// udp:// announce URLs carrying a passkey in the path.
+			if strings.Contains(value, "://") {
 				if redacted := URLString(value); redacted != value {
 					values[i] = redacted
 					modified = true
