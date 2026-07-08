@@ -883,7 +883,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
 function LogFilesList() {
   const { t } = useTranslation("settings")
   const { formatDate } = useDateTimeFormatters()
-  const [downloadingFile, setDownloadingFile] = useState<string | null>(null)
+  const [downloadingFiles, setDownloadingFiles] = useState<Set<string>>(new Set())
   const { data: files } = useQuery({
     queryKey: ["log-files"],
     queryFn: () => api.getLogFiles(),
@@ -891,13 +891,17 @@ function LogFilesList() {
   })
 
   const handleDownload = async (filename: string) => {
-    setDownloadingFile(filename)
+    setDownloadingFiles((prev) => new Set(prev).add(filename))
     try {
       await api.downloadLogFile(filename)
     } catch {
       toast.error(t("logs.files.toasts.downloadFailed", { filename }))
     } finally {
-      setDownloadingFile(null)
+      setDownloadingFiles((prev) => {
+        const next = new Set(prev)
+        next.delete(filename)
+        return next
+      })
     }
   }
 
@@ -921,10 +925,10 @@ function LogFilesList() {
               size="icon"
               variant="ghost"
               className="shrink-0"
-              disabled={downloadingFile === file.name}
+              disabled={downloadingFiles.has(file.name)}
               onClick={() => handleDownload(file.name)}
             >
-              {downloadingFile === file.name ? (
+              {downloadingFiles.has(file.name) ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Download className="h-4 w-4" />
