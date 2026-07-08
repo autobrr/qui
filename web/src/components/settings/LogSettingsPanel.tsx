@@ -724,7 +724,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
               <Button variant="outline" size="sm" className="h-8 gap-1">
                 <Filter className="h-3.5 w-3.5" />
                 <span className="text-xs">
-                  {selectedLevels.size === ALL_LOG_LEVELS.length? t("logs.viewer.allLevels"): selectedLevels.size === 0? t("logs.viewer.none"): t("logs.viewer.levelCount", { count: selectedLevels.size })}
+                  {selectedLevels.size === ALL_LOG_LEVELS.length ? t("logs.viewer.allLevels") : selectedLevels.size === 0 ? t("logs.viewer.none") : t("logs.viewer.levelCount", { count: selectedLevels.size })}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 opacity-50" />
               </Button>
