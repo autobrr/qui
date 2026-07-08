@@ -173,3 +173,16 @@ func TestDiscoverJackettIndexers_RedactsAPIKey(t *testing.T) {
 			"Error message with apikey param should have value redacted. Got: %s", errStr)
 	}
 }
+
+func TestMagnetDownloadError_RedactsTrackerPasskeys(t *testing.T) {
+	rawMagnet := "magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&tr=https%3A%2F%2Ftracker.example.com%2Fannounce%3Fpasskey%3DDEADBEEF01"
+	err := &MagnetDownloadError{MagnetURL: rawMagnet}
+
+	msg := err.Error()
+	assert.NotContains(t, msg, "DEADBEEF01")
+	assert.Contains(t, msg, "tracker.example.com")
+	assert.Contains(t, msg, "c12fe1c06bba254a9dc9f519b335aa7c1367a88a")
+
+	// The field itself must stay raw: the manual-add handler consumes it.
+	assert.Equal(t, rawMagnet, err.MagnetURL)
+}

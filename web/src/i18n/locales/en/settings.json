@@ -407,6 +407,13 @@
       "jsonCopied": "JSON log entry copied",
       "rawCopied": "Raw log entry copied",
       "copyFailed": "Failed to copy log entry"
+    },
+    "files": {
+      "title": "Log files",
+      "downloadSrOnly": "Download {{filename}}",
+      "toasts": {
+        "downloadFailed": "Failed to download {{filename}}"
+      }
     }
   },
   "themes": {

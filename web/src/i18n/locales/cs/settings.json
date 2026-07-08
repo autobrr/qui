@@ -407,6 +407,13 @@
       "jsonCopied": "JSON logový záznam zkopírován",
       "rawCopied": "Nezpracovaný logový záznam zkopírován",
       "copyFailed": "Nepodařilo se zkopírovat logový záznam"
+    },
+    "files": {
+      "title": "Soubory protokolu",
+      "downloadSrOnly": "Stáhnout {{filename}}",
+      "toasts": {
+        "downloadFailed": "Stažení souboru {{filename}} se nezdařilo"
+      }
     }
   },
   "themes": {

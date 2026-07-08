@@ -49,7 +49,9 @@ type MagnetDownloadError struct {
 }
 
 func (e *MagnetDownloadError) Error() string {
-	return fmt.Sprintf("torrent download redirected to magnet link: %s", e.MagnetURL)
+	// Redact: magnet tr= announce URLs embed private-tracker passkeys, and
+	// this error gets logged verbatim by automation runs.
+	return "torrent download redirected to magnet link: " + redact.URLString(e.MagnetURL)
 }
 
 // IsRateLimited returns true if this error indicates rate limiting (HTTP 429).

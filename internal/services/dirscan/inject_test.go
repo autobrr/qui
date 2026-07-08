@@ -45,6 +45,18 @@ func (a *failingTorrentAdder) BulkAction(_ context.Context, _ int, _ []string, _
 func (a *failingTorrentAdder) ResumeWhenComplete(_ int, _ []string, _ qbsync.ResumeWhenCompleteOptions) {
 }
 
+func (a *failingTorrentAdder) RenameTorrentFile(_ context.Context, _ int, _, _, _ string) error {
+	return nil
+}
+
+func (a *failingTorrentAdder) RenameTorrentFolder(_ context.Context, _ int, _, _, _ string) error {
+	return nil
+}
+
+func (a *failingTorrentAdder) GetTorrentFilesBatch(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	return nil, nil
+}
+
 func TestInjector_Inject_RollsBackLinkTreeOnAddFailure(t *testing.T) {
 	tmp := t.TempDir()
 
@@ -229,6 +241,18 @@ func (m *recordingTorrentManager) ResumeWhenComplete(instanceID int, hashes []st
 	}{instanceID: instanceID, hashes: hashes, opts: opts})
 }
 
+func (m *recordingTorrentManager) RenameTorrentFile(_ context.Context, _ int, _, _, _ string) error {
+	return nil
+}
+
+func (m *recordingTorrentManager) RenameTorrentFolder(_ context.Context, _ int, _, _, _ string) error {
+	return nil
+}
+
+func (m *recordingTorrentManager) GetTorrentFilesBatch(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	return nil, nil
+}
+
 func TestInjector_Inject_PausedPartial_TriggersRecheckWithoutResumeWhenComplete(t *testing.T) {
 	instance := &models.Instance{
 		ID:                       1,
@@ -396,16 +420,16 @@ func TestInjector_Inject_PausedPerfect_DoesNotTriggerRecheck(t *testing.T) {
 		},
 		Searchee: &Searchee{
 			Name: "Example.Release",
-			Path: "/tmp",
+			Path: "/downloads/Example.Release",
 			Files: []*ScannedFile{{
-				Path:    "/tmp/file.mkv",
+				Path:    "/downloads/Example.Release/file.mkv",
 				RelPath: "file.mkv",
 				Size:    4,
 			}},
 		},
 		MatchResult: &MatchResult{
 			MatchedFiles: []MatchedFilePair{{
-				SearcheeFile: &ScannedFile{Path: "/tmp/file.mkv", RelPath: "file.mkv", Size: 4},
+				SearcheeFile: &ScannedFile{Path: "/downloads/Example.Release/file.mkv", RelPath: "file.mkv", Size: 4},
 				TorrentFile:  TorrentFile{Path: "Example.Release/file.mkv", Size: 4},
 			}},
 			IsMatch:        true,
@@ -461,16 +485,19 @@ func TestInjector_Inject_DiscLayoutPerfect_TriggersRecheckAndResumeWhenComplete(
 		},
 		Searchee: &Searchee{
 			Name: "Movie",
-			Path: sourceDir,
+			// A real searchee's Path is the release directory itself, with file RelPaths relative to
+			// it (scanner.scanSearcheeDir), so the on-disk folder name matches the torrent root and
+			// no content-path alignment is needed here.
+			Path: filepath.Join(sourceDir, "Movie"),
 			Files: []*ScannedFile{{
 				Path:    sourceFile,
-				RelPath: filepath.ToSlash(filepath.Join("Movie", "BDMV", "index.bdmv")),
+				RelPath: "BDMV/index.bdmv",
 				Size:    4,
 			}},
 		},
 		MatchResult: &MatchResult{
 			MatchedFiles: []MatchedFilePair{{
-				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "Movie/BDMV/index.bdmv", Size: 4},
+				SearcheeFile: &ScannedFile{Path: sourceFile, RelPath: "BDMV/index.bdmv", Size: 4},
 				TorrentFile:  TorrentFile{Path: "Movie/BDMV/index.bdmv", Size: 4},
 			}},
 			IsMatch:        true,
@@ -557,6 +584,18 @@ func (m *safeRecordingManager) BulkAction(_ context.Context, instanceID int, has
 }
 
 func (m *safeRecordingManager) ResumeWhenComplete(_ int, _ []string, _ qbsync.ResumeWhenCompleteOptions) {
+}
+
+func (m *safeRecordingManager) RenameTorrentFile(_ context.Context, _ int, _, _, _ string) error {
+	return nil
+}
+
+func (m *safeRecordingManager) RenameTorrentFolder(_ context.Context, _ int, _, _, _ string) error {
+	return nil
+}
+
+func (m *safeRecordingManager) GetTorrentFilesBatch(_ context.Context, _ int, _ []string) (map[string]qbt.TorrentFiles, error) {
+	return nil, nil
 }
 
 func (m *safeRecordingManager) getBulkCalls() []struct {

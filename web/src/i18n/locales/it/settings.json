@@ -407,6 +407,13 @@
       "jsonCopied": "Voce di log JSON copiata",
       "rawCopied": "Voce di log grezza copiata",
       "copyFailed": "Impossibile copiare la voce di log"
+    },
+    "files": {
+      "title": "File di log",
+      "downloadSrOnly": "Scarica {{filename}}",
+      "toasts": {
+        "downloadFailed": "Download di {{filename}} non riuscito"
+      }
     }
   },
   "themes": {

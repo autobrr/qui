@@ -34,13 +34,14 @@ const (
 	qbitBoolTrue  = "true"
 	qbitBoolFalse = "false"
 
-	qbitContentLayoutOriginal = "Original"
+	qbitContentLayoutOriginal    = "Original"
+	qbitContentLayoutNoSubfolder = "NoSubfolder"
 )
 
 // Injector handles downloading and injecting torrents into qBittorrent.
 type Injector struct {
 	jackettService            JackettDownloader
-	syncManager               TorrentAdder
+	syncManager               TorrentManager
 	torrentChecker            TorrentChecker
 	instanceStore             InstanceProvider
 	trackerCustomizationStore trackerCustomizationProvider
@@ -51,11 +52,26 @@ type JackettDownloader interface {
 	DownloadTorrent(ctx context.Context, req jackett.TorrentDownloadRequest) ([]byte, error)
 }
 
-// TorrentAdder is the interface for adding torrents to qBittorrent.
+// TorrentAdder adds torrents and drives their lifecycle in qBittorrent.
 type TorrentAdder interface {
 	AddTorrent(ctx context.Context, instanceID int, fileContent []byte, options map[string]string) (*qbt.TorrentAddResponse, error)
 	BulkAction(ctx context.Context, instanceID int, hashes []string, action string) error
 	ResumeWhenComplete(instanceID int, hashes []string, opts qbsync.ResumeWhenCompleteOptions)
+}
+
+// TorrentPathAligner renames an injected torrent's internal folder/file names to match the
+// on-disk files it matched, and reads the current names back to confirm the renames landed.
+type TorrentPathAligner interface {
+	RenameTorrentFile(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
+	RenameTorrentFolder(ctx context.Context, instanceID int, hash, oldPath, newPath string) error
+	GetTorrentFilesBatch(ctx context.Context, instanceID int, hashes []string) (map[string]qbt.TorrentFiles, error)
+}
+
+// TorrentManager is the combined capability the Injector depends on: adding torrents and aligning
+// their content paths. Callers can depend on the narrower TorrentAdder/TorrentPathAligner instead.
+type TorrentManager interface {
+	TorrentAdder
+	TorrentPathAligner
 }
 
 // TorrentChecker is the interface for checking if torrents exist in qBittorrent.
@@ -74,7 +90,7 @@ type trackerCustomizationProvider interface {
 // NewInjector creates a new injector.
 func NewInjector(
 	jackettService JackettDownloader,
-	syncManager TorrentAdder,
+	syncManager TorrentManager,
 	torrentChecker TorrentChecker,
 	instanceStore InstanceProvider,
 	trackerCustomizationStore trackerCustomizationProvider,
@@ -208,6 +224,17 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	regularAddNeedsRecheck := hasUnmatchedFiles || addPolicy.ForcePaused
 	partialLinkTree := isLinkTreeMode(addMode) && hasUnmatchedFiles
 
+	// In regular (reuse) mode the torrent keeps its own folder/file names (minus the root for
+	// stripRoot plans, added with NoSubfolder). When those differ from the on-disk paths we
+	// matched, qBittorrent reports "Missing Files" until they are renamed to match. Scoped to
+	// full matches: partial matches are added unpaused so
+	// they can download the missing files, which is incompatible with the pause-rename-recheck
+	// dance here. Link-tree modes build the on-disk layout to match the torrent, so they never
+	// need this either.
+	alignPlan := buildAlignmentPlan(req, searcheePathIsDir(req.Searchee.Path))
+	regularFullMatch := addMode == injectModeRegular && !hasUnmatchedFiles
+	alignmentNeeded := regularFullMatch && alignPlan.needed()
+
 	// Reject partial link tree injections when downloading missing files is disabled.
 	if partialLinkTree && !req.DownloadMissingFiles {
 		i.rollbackLinkTree(addMode, linkPlan)
@@ -216,13 +243,23 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	}
 
 	options := i.buildAddOptions(req, savePath)
+	// A foldered torrent matched to a loose on-disk file has no folder to rename the root to;
+	// NoSubfolder makes qBittorrent strip the root from every stored path so the (rootless-style)
+	// plan lines up with the file where it actually lives.
+	if regularFullMatch && alignPlan.stripRoot {
+		options["contentLayout"] = qbitContentLayoutNoSubfolder
+	}
+	// Skip the on-add hash check for full matches (the data is already verified by the on-disk
+	// files we matched). Alignment adds MUST keep skip_checking too: qBittorrent blocks file/folder
+	// rename operations while a torrent is being verified, so letting it check the pre-rename paths
+	// would stall the renames. The manual recheck after alignment does the real verification.
 	if !hasUnmatchedFiles {
 		options["skip_checking"] = qbitBoolTrue
 	}
 
-	// For partial link tree injections, force paused so we can safely recheck
-	// before qBit tries to use the incomplete link tree.
-	if partialLinkTree {
+	// Force paused for partial link tree injections (recheck before qBit uses the incomplete
+	// tree) and for alignment injections (rename the paths before qBit acts on the wrong ones).
+	if partialLinkTree || alignmentNeeded {
 		options["paused"] = qbitBoolTrue
 		options["stopped"] = qbitBoolTrue
 	}
@@ -236,17 +273,29 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 		return result, fmt.Errorf("add torrent: %w", err)
 	}
 
-	if partialLinkTree {
+	result.TorrentHash = req.ParsedTorrent.InfoHash
+
+	switch {
+	case partialLinkTree:
 		if err := i.triggerRecheckForPartialLinkTree(req); err != nil {
 			result.ErrorMessage = fmt.Sprintf("torrent added but recheck failed: %v", err)
 			return result, fmt.Errorf("partial link tree recheck: %w", err)
 		}
-	} else {
-		i.triggerRecheckForPausedPartial(req, regularAddNeedsRecheck)
+	case alignmentNeeded:
+		// The torrent was added force-paused. If the paths could not be aligned to the on-disk
+		// files, report failure so the run surfaces it instead of silently stranding a paused,
+		// mismatched torrent that will never recheck to 100%.
+		if !i.alignAndRecheck(ctx, req, alignPlan) {
+			result.ErrorMessage = "content path alignment failed; torrent added paused for inspection"
+			return result, nil
+		}
+	default:
+		// Regular (non-aligned) adds are not force-paused, so a failed recheck is non-fatal here:
+		// log and continue rather than failing the injection.
+		_ = i.triggerRecheckForPausedPartial(req, regularAddNeedsRecheck)
 	}
 
 	result.Success = true
-	result.TorrentHash = req.ParsedTorrent.InfoHash
 	return result, nil
 }
 
@@ -453,13 +502,15 @@ func isPausedOrStoppedState(state qbt.TorrentState) bool {
 
 // triggerRecheckForPausedPartial verifies regular-mode partial or policy-forced
 // full-recheck matches after add, and only queues resume when the request did
-// not ask to stay paused.
-func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest, needsRecheck bool) {
+// not ask to stay paused. Returns an error if the recheck could not be scheduled so
+// callers that force-paused the torrent (alignment) can surface the failure instead
+// of leaving it stranded.
+func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest, needsRecheck bool) error {
 	if i == nil || i.syncManager == nil || req == nil || req.ParsedTorrent == nil || req.MatchResult == nil {
-		return
+		return nil
 	}
 	if !needsRecheck {
-		return
+		return nil
 	}
 
 	hash := req.ParsedTorrent.InfoHash
@@ -470,7 +521,7 @@ func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest, needsReche
 			Int("instanceID", req.InstanceID).
 			Str("hash", hash).
 			Msg("dirscan: failed to trigger recheck after add")
-		return
+		return fmt.Errorf("trigger recheck after add: %w", err)
 	}
 
 	if !req.StartPaused {
@@ -478,6 +529,7 @@ func (i *Injector) triggerRecheckForPausedPartial(req *InjectRequest, needsReche
 			Timeout: 60 * time.Minute,
 		})
 	}
+	return nil
 }
 
 func (i *Injector) validateInjectRequest(req *InjectRequest) error {

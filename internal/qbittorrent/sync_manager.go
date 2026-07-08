@@ -2467,31 +2467,24 @@ func (sm *SyncManager) BulkAction(ctx context.Context, instanceID int, hashes []
 		err = client.ReAnnounceTorrentsCtx(ctx, canonicalHashes)
 	case "increasePriority":
 		err = client.IncreasePriorityCtx(ctx, canonicalHashes)
-		if err == nil {
-			sm.syncAfterModification(instanceID, client, action)
-		}
 	case "decreasePriority":
 		err = client.DecreasePriorityCtx(ctx, canonicalHashes)
-		if err == nil {
-			sm.syncAfterModification(instanceID, client, action)
-		}
 	case "topPriority":
 		err = client.SetMaxPriorityCtx(ctx, canonicalHashes)
-		if err == nil {
-			sm.syncAfterModification(instanceID, client, action)
-		}
 	case "bottomPriority":
 		err = client.SetMinPriorityCtx(ctx, canonicalHashes)
-		if err == nil {
-			sm.syncAfterModification(instanceID, client, action)
-		}
 	case "toggleSequentialDownload":
 		err = client.ToggleTorrentSequentialDownloadCtx(ctx, canonicalHashes)
-		if err == nil {
-			sm.syncAfterModification(instanceID, client, action)
-		}
 	default:
 		return fmt.Errorf("unknown bulk action: %s", action)
+	}
+
+	// Refresh the sync cache shortly after any visible mutation. The list read path
+	// never applies optimistic state and never blocks for fresh data, so without
+	// this the frontend's post-action refetch races the 2s sync loop and can serve
+	// the pre-action state (reannounce is excluded: no visible state change).
+	if err == nil && action != "reannounce" {
+		sm.syncAfterModification(instanceID, client, action)
 	}
 
 	return err
@@ -4075,7 +4068,12 @@ func (sm *SyncManager) syncAfterModification(instanceID int, client *Client, ope
 
 	var timer *time.Timer
 	timer = time.AfterFunc(delay, func() {
-		sm.runDebouncedSync(instanceID, client, operation, timer)
+		// Read timer under the mutex: AfterFunc can fire before the assignment
+		// below completes (the creator holds the lock until it returns).
+		sm.syncDebounceMu.Lock()
+		self := timer
+		sm.syncDebounceMu.Unlock()
+		sm.runDebouncedSync(instanceID, client, operation, self)
 	})
 	sm.debouncedSyncTimers[instanceID] = timer
 }
@@ -4106,8 +4104,16 @@ func (sm *SyncManager) runDebouncedSync(instanceID int, client *Client, operatio
 			jitter = 10 * time.Millisecond
 		}
 		time.Sleep(jitter)
+		// Sync twice: the first call can collapse onto a periodic sync that was
+		// already in flight when the modification ran (go-qbt singleflight) and
+		// inherit its pre-modification snapshot. The second call starts after
+		// that leader finished, so at least one maindata fetch begins after the
+		// modification. The extra call is a cheap rid-based delta request.
 		if err := syncManager.Sync(ctx); err != nil {
 			log.Warn().Err(err).Int("instanceID", instanceID).Str("operation", operation).Msg("Failed to sync after modification")
+		}
+		if err := syncManager.Sync(ctx); err != nil {
+			log.Warn().Err(err).Int("instanceID", instanceID).Str("operation", operation).Msg("Failed to re-sync after modification")
 		}
 	}
 }
@@ -6129,6 +6135,7 @@ func (sm *SyncManager) AddTags(ctx context.Context, instanceID int, hashes []str
 
 	// Apply optimistic update to cache
 	sm.applyOptimisticCacheUpdate(instanceID, hashes, "addTags", map[string]any{"tags": tags})
+	sm.syncAfterModification(instanceID, client, "add_tags")
 	return nil
 }
 
@@ -6151,6 +6158,7 @@ func (sm *SyncManager) RemoveTags(ctx context.Context, instanceID int, hashes []
 
 	// Apply optimistic update to cache
 	sm.applyOptimisticCacheUpdate(instanceID, hashes, "removeTags", map[string]any{"tags": tags})
+	sm.syncAfterModification(instanceID, client, "remove_tags")
 	return nil
 }
 
@@ -6213,6 +6221,7 @@ func (sm *SyncManager) SetTags(ctx context.Context, instanceID int, hashes []str
 
 	// Apply optimistic update to cache
 	sm.applyOptimisticCacheUpdate(instanceID, hashes, "setTags", map[string]any{"tags": tags})
+	sm.syncAfterModification(instanceID, client, "set_tags")
 
 	return nil
 }
@@ -6259,6 +6268,7 @@ func (sm *SyncManager) SetCategory(ctx context.Context, instanceID int, hashes [
 
 	// Apply optimistic update to cache
 	sm.applyOptimisticCacheUpdate(instanceID, hashes, "setCategory", map[string]any{"category": category})
+	sm.syncAfterModification(instanceID, client, "set_category")
 
 	return nil
 }
@@ -6282,6 +6292,7 @@ func (sm *SyncManager) SetAutoTMM(ctx context.Context, instanceID int, hashes []
 
 	// Apply optimistic update to cache
 	sm.applyOptimisticCacheUpdate(instanceID, hashes, "toggleAutoTMM", map[string]any{"enable": enable})
+	sm.syncAfterModification(instanceID, client, "toggle_auto_tmm")
 
 	return nil
 }
@@ -6608,6 +6619,8 @@ func (sm *SyncManager) SetTorrentShareLimit(ctx context.Context, instanceID int,
 		return fmt.Errorf("failed to set torrent share limit: %w", err)
 	}
 
+	sm.syncAfterModification(instanceID, client, "set_share_limit")
+
 	return nil
 }
 
@@ -6631,6 +6644,8 @@ func (sm *SyncManager) SetTorrentUploadLimit(ctx context.Context, instanceID int
 		return fmt.Errorf("failed to set torrent upload limit: %w", err)
 	}
 
+	sm.syncAfterModification(instanceID, client, "set_upload_limit")
+
 	return nil
 }
 
@@ -6653,6 +6668,8 @@ func (sm *SyncManager) SetTorrentDownloadLimit(ctx context.Context, instanceID i
 	if err := client.SetTorrentDownloadLimitCtx(ctx, hashes, limitBytes); err != nil {
 		return fmt.Errorf("failed to set torrent download limit: %w", err)
 	}
+
+	sm.syncAfterModification(instanceID, client, "set_download_limit")
 
 	return nil
 }
@@ -6689,6 +6706,8 @@ func (sm *SyncManager) SetLocation(ctx context.Context, instanceID int, hashes [
 			}
 		}
 	}
+
+	sm.syncAfterModification(instanceID, client, "set_location")
 
 	return nil
 }

@@ -36,7 +36,7 @@ vi.mock("react-i18next", () => ({
 
 import { api } from "@/lib/api"
 import { toast } from "sonner"
-import { useTorrentActions } from "@/hooks/useTorrentActions"
+import { resetPendingListRefetchesForTests, scheduleTorrentListRefetches, useTorrentActions } from "@/hooks/useTorrentActions"
 import { makeTorrent } from "@/test/mockTorrent"
 import type { TorrentFilters } from "@/types"
 
@@ -80,6 +80,7 @@ const TORRENTS_LIST_KEY = (extra: unknown = "page-1") => ["torrents-list", INSTA
 
 beforeEach(() => {
   vi.useFakeTimers()
+  resetPendingListRefetchesForTests()
   localStorage.clear()
   mockedApi.bulkAction.mockResolvedValue(undefined as never)
   mockedApi.renameTorrent.mockResolvedValue(undefined as never)
@@ -234,7 +235,7 @@ describe("useTorrentActions - delete", () => {
     })
     const refetchedKeys = refetchSpy.mock.calls.map(c => (c[0] as { queryKey: unknown[] }).queryKey[0])
     expect(refetchedKeys).toContain("torrents-list")
-    expect(refetchedKeys).toContain("torrent-counts")
+    expect(refetchedKeys).not.toContain("torrent-counts")
   })
 
   it("uses the 2000ms refetch branch when deleteFiles is false", async () => {
@@ -389,7 +390,7 @@ describe("useTorrentActions - non-delete success transitions", () => {
     })
     const refetchedKeys = refetchSpy.mock.calls.map(c => (c[0] as { queryKey: unknown[] }).queryKey[0])
     expect(refetchedKeys).toContain("torrents-list")
-    expect(refetchedKeys).toContain("torrent-counts")
+    expect(refetchedKeys).not.toContain("torrent-counts")
   })
 
   it("setLocation uses the default 1000ms refetch branch and closes the location dialog", async () => {
@@ -423,7 +424,7 @@ describe("useTorrentActions - non-delete success transitions", () => {
     })
     const refetchedKeys = refetchSpy.mock.calls.map(c => (c[0] as { queryKey: unknown[] }).queryKey[0])
     expect(refetchedKeys).toContain("torrents-list")
-    expect(refetchedKeys).toContain("torrent-counts")
+    expect(refetchedKeys).not.toContain("torrent-counts")
   })
 })
 
@@ -504,5 +505,161 @@ describe("useTorrentActions - prepare helpers", () => {
       action: "setUploadLimit",
       uploadLimit: 500,
     })
+  })
+})
+
+describe("useTorrentActions - dead query keys", () => {
+  it("never refetches or invalidates torrent-counts: no query registers that key", async () => {
+    const { result, refetchSpy, invalidateSpy } = renderActions()
+
+    await act(async () => {
+      result.current.handleAction("pause", ["h1"])
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000)
+    })
+
+    const touchedKeys = [...refetchSpy.mock.calls, ...invalidateSpy.mock.calls]
+      .map(c => (c[0] as { queryKey: unknown[] }).queryKey[0])
+    expect(touchedKeys).not.toContain("torrent-counts")
+  })
+})
+
+describe("useTorrentActions - post-action refetch backstop", () => {
+  // Rows outside the SSE live window are only updated by these delayed
+  // refetches. The first one can read the backend before its post-action sync
+  // has landed (the debounced sync may collapse onto an in-flight pre-action
+  // sync), so a single read that lands too early would freeze the row wrong.
+  const countListRefetches = (refetchSpy: ReturnType<typeof makeHarness>["refetchSpy"]) =>
+    refetchSpy.mock.calls.filter(call => {
+      const key = (call[0] as { queryKey?: unknown[] } | undefined)?.queryKey
+      return Array.isArray(key) && key[0] === "torrents-list"
+    }).length
+
+  it("schedules a follow-up list refetch after the first one", async () => {
+    const { result, refetchSpy } = renderActions()
+
+    await act(async () => {
+      result.current.handleAction("pause", ["h1"])
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(1)
+
+    expect(countListRefetches(refetchSpy)).toBe(0)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(2)
+  })
+
+  it("a burst of mutations collapses into one trailing refetch pair (per-instance debounce)", async () => {
+    const { result, refetchSpy } = renderActions()
+
+    // Five rapid actions: without debouncing this schedules 10 refetches.
+    for (const action of ["pause", "resume", "pause", "resume", "pause"] as const) {
+      await act(async () => {
+        result.current.handleAction(action, ["h1"])
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+    }
+    expect(mockedApi.bulkAction).toHaveBeenCalledTimes(5)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000)
+    })
+    // Only the last action's pair survives: one window refetch + one verification pass.
+    expect(countListRefetches(refetchSpy)).toBe(2)
+  })
+
+  it("tag updates schedule the follow-up list refetch too", async () => {
+    const { result, refetchSpy } = renderActions()
+
+    await act(async () => {
+      await result.current.handleUpdateTags({ add: ["tag1"], remove: [] }, ["h1"])
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(2)
+  })
+
+  // The details panel's delete handlers bypass the hook's mutations and call
+  // this directly; an immediate refetch there raced the backend's debounced
+  // post-delete sync and resurrected deleted rows.
+  it("scheduleTorrentListRefetches fires a whole-family refetch pair on the given delay", async () => {
+    const { queryClient, refetchSpy } = makeHarness()
+
+    scheduleTorrentListRefetches(queryClient, 2000)
+
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(refetchSpy).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(refetchSpy).toHaveBeenCalledTimes(1)
+    // Whole ["torrents-list"] family: the all-instances view is keyed under
+    // instance id 0, which a row's real instance id can never prefix-match.
+    expect(refetchSpy.mock.calls[0][0]).toMatchObject({
+      queryKey: ["torrents-list"],
+      type: "active",
+    })
+
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(refetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it("a fast action does not shorten a slower action's pending verification window", async () => {
+    const { queryClient, refetchSpy } = makeHarness()
+
+    // Delete-with-files schedules the 5000/8000 pair...
+    scheduleTorrentListRefetches(queryClient, 5000)
+    await vi.advanceTimersByTimeAsync(500)
+    // ...then a fast action inside that window would replace it with 1000/4000.
+    scheduleTorrentListRefetches(queryClient, 1000)
+
+    // The fast action's first refetch runs on its own delay (T+1500)...
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(refetchSpy).toHaveBeenCalledTimes(1)
+
+    // ...but the final pass holds the delete's original T+8000 deadline
+    // instead of collapsing to the fast action's T+4500.
+    await vi.advanceTimersByTimeAsync(6499)
+    expect(refetchSpy).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(refetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it("torrent rename schedules the follow-up list refetch too", async () => {
+    const { result, refetchSpy } = renderActions()
+
+    await act(async () => {
+      await result.current.handleRenameTorrent("h1", "new name")
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(750)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    expect(countListRefetches(refetchSpy)).toBe(2)
   })
 })

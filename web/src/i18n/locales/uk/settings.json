@@ -411,6 +411,13 @@
       "jsonCopied": "JSON запис журналу скопійовано",
       "rawCopied": "Необроблений запис журналу скопійовано",
       "copyFailed": "Не вдалося скопіювати запис журналу"
+    },
+    "files": {
+      "title": "Файли журналу",
+      "downloadSrOnly": "Завантажити {{filename}}",
+      "toasts": {
+        "downloadFailed": "Не вдалося завантажити {{filename}}"
+      }
     }
   },
   "themes": {

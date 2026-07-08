@@ -407,6 +407,13 @@
       "jsonCopied": "Entrée JSON copiée",
       "rawCopied": "Entrée brute copiée",
       "copyFailed": "Échec de la copie de l'entrée"
+    },
+    "files": {
+      "title": "Fichiers journaux",
+      "downloadSrOnly": "Télécharger {{filename}}",
+      "toasts": {
+        "downloadFailed": "Échec du téléchargement de {{filename}}"
+      }
     }
   },
   "themes": {
