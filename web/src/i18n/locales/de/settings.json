@@ -407,6 +407,13 @@
       "jsonCopied": "JSON-Protokolleintrag kopiert",
       "rawCopied": "Roher Protokolleintrag kopiert",
       "copyFailed": "Protokolleintrag konnte nicht kopiert werden"
+    },
+    "files": {
+      "title": "Protokolldateien",
+      "downloadSrOnly": "{{filename}} herunterladen",
+      "toasts": {
+        "downloadFailed": "Download von {{filename}} fehlgeschlagen"
+      }
     }
   },
   "themes": {

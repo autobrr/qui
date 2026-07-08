@@ -67,6 +67,7 @@ import type {
   LocalCrossSeedMatch,
   LogExclusions,
   LogExclusionsInput,
+  LogFile,
   LogSettings,
   LogSettingsUpdate,
   MarkRSSAsReadRequest,
@@ -2479,6 +2480,28 @@ class ApiClient {
   // Get the SSE log stream URL for EventSource
   getLogStreamUrl(limit = 1000): string {
     return `${API_BASE}/logs/stream?limit=${limit}`
+  }
+
+  async getLogFiles(): Promise<LogFile[]> {
+    return this.request<LogFile[]>("/logs/files")
+  }
+
+  async downloadLogFile(filename: string): Promise<void> {
+    const response = await ssoSafeFetch(`${API_BASE}/logs/files/${encodeURIComponent(filename)}`, { method: "GET" })
+
+    if (!response.ok) {
+      throw new Error(`Failed to download log file: ${response.statusText}`)
+    }
+
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
   }
 
   // Directory Scanner endpoints
