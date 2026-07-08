@@ -4471,6 +4471,46 @@ paths:
                 type: string
                 description: Each message is a log line in SSE format
 
+  /api/logs/files:
+    get:
+      tags:
+        - System
+      summary: List log files
+      description: List the log files (active and rotated) in the configured log directory. Returns an empty list when file logging is not configured.
+      responses:
+        '200':
+          description: Log files available for download
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LogFile'
+
+  /api/logs/files/{filename}:
+    get:
+      tags:
+        - System
+      summary: Download a log file
+      description: Download a single log file from the configured log directory. The filename must exactly match an entry returned by the log file listing.
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          description: Log file name as returned by the listing endpoint
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Log file content
+          content:
+            text/plain:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Log file not found
+
   /api/version/latest:
     get:
       tags:
@@ -6186,6 +6226,28 @@ components:
           type: integer
           description: Number of backup files to keep
           example: 5
+
+    LogFile:
+      type: object
+      description: A log file available for download
+      required:
+        - name
+        - sizeBytes
+        - modTime
+      properties:
+        name:
+          type: string
+          description: Log file name
+          example: "qui.log"
+        sizeBytes:
+          type: integer
+          format: int64
+          description: File size in bytes
+          example: 1048576
+        modTime:
+          type: string
+          format: date-time
+          description: Last modification time
 
     LogExclusions:
       type: object

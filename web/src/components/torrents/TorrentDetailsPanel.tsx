@@ -20,6 +20,7 @@ import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { useInstanceCapabilities } from "@/hooks/useInstanceCapabilities"
 import { useInstanceMetadata } from "@/hooks/useInstanceMetadata"
 import { usePersistedTabState } from "@/hooks/usePersistedTabState"
+import { scheduleTorrentListRefetches } from "@/hooks/useTorrentActions"
 import { api } from "@/lib/api"
 import { isHardlinkManaged, useLocalCrossSeedMatches } from "@/lib/cross-seed-utils"
 import { getLinuxCategory, getLinuxComment, getLinuxCreatedBy, getLinuxFileName, getLinuxHash, getLinuxIsoName, getLinuxSavePath, getLinuxTags, getLinuxTracker, useIncognitoMode } from "@/lib/incognito"
@@ -717,10 +718,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
         plural: torrentsToDelete.length > 1 ? "s" : "",
       }))
 
-      // Refresh all instances
-      for (const instId of byInstance.keys()) {
-        queryClient.invalidateQueries({ queryKey: ["torrents", instId] })
-      }
+      // An immediate refetch can race the backend's debounced post-delete sync
+      // and resurrect the deleted rows; go through the delayed backstop instead.
+      scheduleTorrentListRefetches(queryClient, deleteCrossSeedFiles ? 5000 : 2000)
 
       setSelectedCrossSeedTorrents(new Set())
       setShowDeleteCrossSeedDialog(false)
@@ -742,7 +742,9 @@ export const TorrentDetailsPanel = memo(function TorrentDetailsPanel({ instanceI
       })
 
       toast.success(t("detailsPanel.toast.deletedTorrent", { name: torrent.name }))
-      queryClient.invalidateQueries({ queryKey: ["torrents", instanceId] })
+      // An immediate refetch can race the backend's debounced post-delete sync
+      // and resurrect the deleted row; go through the delayed backstop instead.
+      scheduleTorrentListRefetches(queryClient, deleteCurrentFiles ? 5000 : 2000)
       setShowDeleteCurrentDialog(false)
 
       // Close the details panel by clearing selection (parent component should handle this)

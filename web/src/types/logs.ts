@@ -19,3 +19,9 @@ export interface LogSettingsUpdate {
   maxSize?: number
   maxBackups?: number
 }
+
+export interface LogFile {
+  name: string
+  sizeBytes: number
+  modTime: string
+}
