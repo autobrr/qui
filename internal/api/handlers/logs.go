@@ -8,7 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -35,6 +38,99 @@ func (h *LogsHandler) Routes(r chi.Router) {
 	r.Get("/log-settings", h.GetLogSettings)
 	r.Put("/log-settings", h.UpdateLogSettings)
 	r.Get("/logs/stream", h.StreamLogs)
+	r.Get("/logs/files", h.ListLogFiles)
+	r.Get("/logs/files/{filename}", h.DownloadLogFile)
+}
+
+// LogFileEntry describes a log file available for download.
+type LogFileEntry struct {
+	Name      string    `json:"name"`
+	SizeBytes int64     `json:"sizeBytes"`
+	ModTime   time.Time `json:"modTime"`
+}
+
+// listLogFiles returns the .log files in the configured log directory.
+// Returns an empty slice when file logging is not configured or the
+// directory does not exist.
+func (h *LogsHandler) listLogFiles() []LogFileEntry {
+	files := make([]LogFileEntry, 0)
+
+	logPath := h.appConfig.GetLogSettings().Path
+	if logPath == "" {
+		return files
+	}
+
+	entries, err := os.ReadDir(filepath.Dir(logPath))
+	if err != nil {
+		return files
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".log" {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, LogFileEntry{
+			Name:      entry.Name(),
+			SizeBytes: info.Size(),
+			ModTime:   info.ModTime(),
+		})
+	}
+
+	return files
+}
+
+// ListLogFiles returns the log files available for download.
+func (h *LogsHandler) ListLogFiles(w http.ResponseWriter, _ *http.Request) {
+	RespondJSON(w, http.StatusOK, h.listLogFiles())
+}
+
+// DownloadLogFile serves a single log file from the configured log directory.
+func (h *LogsHandler) DownloadLogFile(w http.ResponseWriter, r *http.Request) {
+	filename := chi.URLParam(r, "filename")
+
+	// Traversal guard by construction: the requested name must exactly match
+	// a directory entry from the listing, so client input is never joined
+	// into a path unless it is a real .log file base name.
+	found := false
+	for _, entry := range h.listLogFiles() {
+		if entry.Name == filename {
+			found = true
+			break
+		}
+	}
+	if !found {
+		RespondError(w, http.StatusNotFound, "Log file not found")
+		return
+	}
+
+	// #nosec G703,G304 -- filename is validated against the log directory listing above.
+	file, err := os.Open(filepath.Join(filepath.Dir(h.appConfig.GetLogSettings().Path), filename))
+	if err != nil {
+		RespondError(w, http.StatusNotFound, "Log file not found")
+		return
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil || info.IsDir() {
+		RespondError(w, http.StatusNotFound, "Log file not found")
+		return
+	}
+
+	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": filename})
+	if disposition == "" {
+		disposition = fmt.Sprintf("attachment; filename=%q", filename)
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", disposition)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeContent(w, r, filename, info.ModTime(), file)
 }
 
 // GetLogSettings returns the current log settings.

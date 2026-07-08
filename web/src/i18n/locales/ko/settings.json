@@ -405,6 +405,13 @@
       "jsonCopied": "JSON 로그 항목이 복사되었습니다",
       "rawCopied": "원시 로그 항목이 복사되었습니다",
       "copyFailed": "로그 항목을 복사하지 못했습니다"
+    },
+    "files": {
+      "title": "로그 파일",
+      "downloadSrOnly": "{{filename}} 다운로드",
+      "toasts": {
+        "downloadFailed": "{{filename}} 다운로드에 실패했습니다"
+      }
     }
   },
   "themes": {

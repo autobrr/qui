@@ -30,13 +30,14 @@ import {
   SelectValue
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { useDateTimeFormatters } from "@/hooks/useDateTimeFormatters"
 import { usePersistedLogExclusions } from "@/hooks/usePersistedLogExclusions"
 import { api } from "@/lib/api"
-import { copyTextToClipboard } from "@/lib/utils"
+import { copyTextToClipboard, formatBytes } from "@/lib/utils"
 import type { LogSettingsUpdate } from "@/types"
 import { useForm } from "@tanstack/react-form"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { AlertCircle, ChevronDown, Copy, FileText, Filter, Loader2, Lock, Search, Settings, X } from "lucide-react"
+import { AlertCircle, ChevronDown, Copy, Download, FileText, Filter, Loader2, Lock, Search, Settings, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
@@ -723,11 +724,7 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
               <Button variant="outline" size="sm" className="h-8 gap-1">
                 <Filter className="h-3.5 w-3.5" />
                 <span className="text-xs">
-                  {selectedLevels.size === ALL_LOG_LEVELS.length
-                    ? t("logs.viewer.allLevels")
-                    : selectedLevels.size === 0
-                      ? t("logs.viewer.none")
-                      : t("logs.viewer.levelCount", { count: selectedLevels.size })}
+                  {selectedLevels.size === ALL_LOG_LEVELS.length? t("logs.viewer.allLevels"): selectedLevels.size === 0? t("logs.viewer.none"): t("logs.viewer.levelCount", { count: selectedLevels.size })}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 opacity-50" />
               </Button>
@@ -883,6 +880,64 @@ function LiveLogViewer({ configPath }: { configPath?: string }) {
   )
 }
 
+function LogFilesList() {
+  const { t } = useTranslation("settings")
+  const { formatDate } = useDateTimeFormatters()
+  const [downloadingFile, setDownloadingFile] = useState<string | null>(null)
+  const { data: files } = useQuery({
+    queryKey: ["log-files"],
+    queryFn: () => api.getLogFiles(),
+    staleTime: 30 * 1000,
+  })
+
+  const handleDownload = async (filename: string) => {
+    setDownloadingFile(filename)
+    try {
+      await api.downloadLogFile(filename)
+    } catch {
+      toast.error(t("logs.files.toasts.downloadFailed", { filename }))
+    } finally {
+      setDownloadingFile(null)
+    }
+  }
+
+  if (!files || files.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="space-y-2">
+      <h4 className="text-sm font-medium">{t("logs.files.title")}</h4>
+      <div className="divide-y rounded-md border">
+        {files.map((file) => (
+          <div key={file.name} className="flex items-center justify-between gap-4 px-3 py-2">
+            <div className="min-w-0">
+              <p className="truncate font-mono text-sm" title={file.name}>{file.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {formatBytes(file.sizeBytes)} • {formatDate(new Date(file.modTime))}
+              </p>
+            </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="shrink-0"
+              disabled={downloadingFile === file.name}
+              onClick={() => handleDownload(file.name)}
+            >
+              {downloadingFile === file.name ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              <span className="sr-only">{t("logs.files.downloadSrOnly", { filename: file.name })}</span>
+            </Button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function LogSettingsPanel() {
   const { t } = useTranslation("settings")
   const { data: settings } = useQuery({
@@ -921,8 +976,9 @@ export function LogSettingsPanel() {
           </Popover>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
         <LiveLogViewer configPath={settings?.configPath} />
+        <LogFilesList />
       </CardContent>
     </Card>
   )

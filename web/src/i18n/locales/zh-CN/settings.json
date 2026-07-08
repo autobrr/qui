@@ -405,6 +405,13 @@
       "jsonCopied": "JSON 日志条目已复制",
       "rawCopied": "原始日志条目已复制",
       "copyFailed": "复制日志条目失败"
+    },
+    "files": {
+      "title": "日志文件",
+      "downloadSrOnly": "下载 {{filename}}",
+      "toasts": {
+        "downloadFailed": "下载 {{filename}} 失败"
+      }
     }
   },
   "themes": {
