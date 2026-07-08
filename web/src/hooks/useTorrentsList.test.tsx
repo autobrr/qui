@@ -190,13 +190,23 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents).toHaveLength(2)
     expect(mockedApi.getTorrents).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ page: 0, limit: 300 })
+      expect.objectContaining({ page: 0, limit: 300 }),
+      expect.any(AbortSignal)
     )
     expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b"])
     expect(result.current.totalCount).toBe(5)
     // hasMore=true -> not all loaded
     expect(result.current.hasLoadedAll).toBe(false)
     expect(result.current.isLoading).toBe(false)
+  })
+
+  it("threads the queryFn AbortSignal into the API call so superseded refetches cancel their transfer", async () => {
+    renderHook(() => useTorrentsList(1), { wrapper: makeWrapper() })
+
+    await flush()
+
+    const signal = mockedApi.getTorrents.mock.calls[0]?.[2]
+    expect(signal).toBeInstanceOf(AbortSignal)
   })
 
   it("flips hasLoadedAll true when the first page reports no more pages", async () => {
@@ -265,7 +275,8 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b", "c", "d"])
     expect(mockedApi.getTorrents).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ page: 1 })
+      expect.objectContaining({ page: 1 }),
+      expect.any(AbortSignal)
     )
     expect(result.current.hasLoadedAll).toBe(true)
   })
@@ -308,6 +319,345 @@ describe("useTorrentsList", () => {
     expect(result.current.totalCount).toBe(9)
     // 2 loaded < total 9: the fallback effect overrides the page's hasMore:false.
     expect(result.current.hasLoadedAll).toBe(false)
+  })
+
+  it("refreshes rows on every loaded page when active queries refetch after a mutation", async () => {
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
+      if (params.page === 0) {
+        return Promise.resolve(makeResponse({
+          torrents: [makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" })],
+          total: 4,
+          hasMore: true,
+        }))
+      }
+      return Promise.resolve(makeResponse({
+        torrents: [makeTorrent({ hash: "c" }), makeTorrent({ hash: "d" })],
+        total: 4,
+        hasMore: false,
+      }))
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { result } = renderHook(
+      () => useTorrentsList(1, { pollingEnabled: false }),
+      { wrapper: makeWrapper(queryClient) }
+    )
+
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600)
+    })
+    act(() => {
+      result.current.loadMore()
+    })
+    await flush()
+    expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b", "c", "d"])
+
+    // The server now reports a new category on a page-0 row and a page-1 row.
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
+      if (params.page === 0) {
+        return Promise.resolve(makeResponse({
+          torrents: [makeTorrent({ hash: "a", category: "tv" }), makeTorrent({ hash: "b" })],
+          total: 4,
+          hasMore: true,
+        }))
+      }
+      return Promise.resolve(makeResponse({
+        torrents: [makeTorrent({ hash: "c", category: "tv" }), makeTorrent({ hash: "d" })],
+        total: 4,
+        hasMore: false,
+      }))
+    })
+
+    // Mirrors the post-mutation refresh every action in useTorrentActions performs.
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ["torrents-list", 1], exact: false, type: "active" })
+    })
+    await flush()
+
+    const byHash = new Map(result.current.torrents.map(t => [t.hash, t]))
+    expect(byHash.get("a")?.category).toBe("tv")
+    expect(byHash.get("c")?.category).toBe("tv")
+  })
+
+  it("drops a row deleted from a later page once the post-mutation refetch lands", async () => {
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
+      if (params.page === 0) {
+        return Promise.resolve(makeResponse({
+          torrents: [makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" })],
+          total: 4,
+          hasMore: true,
+        }))
+      }
+      return Promise.resolve(makeResponse({
+        torrents: [makeTorrent({ hash: "c" }), makeTorrent({ hash: "d" })],
+        total: 4,
+        hasMore: false,
+      }))
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { result } = renderHook(
+      () => useTorrentsList(1, { pollingEnabled: false }),
+      { wrapper: makeWrapper(queryClient) }
+    )
+
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600)
+    })
+    act(() => {
+      result.current.loadMore()
+    })
+    await flush()
+    expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b", "c", "d"])
+
+    // "c" was deleted server-side; later fetches no longer include it.
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
+      if (params.page === 0) {
+        return Promise.resolve(makeResponse({
+          torrents: [makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" })],
+          total: 3,
+          hasMore: true,
+        }))
+      }
+      return Promise.resolve(makeResponse({
+        torrents: [makeTorrent({ hash: "d" })],
+        total: 3,
+        hasMore: false,
+      }))
+    })
+
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ["torrents-list", 1], exact: false, type: "active" })
+    })
+    await flush()
+
+    expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b", "d"])
+    expect(result.current.totalCount).toBe(3)
+  })
+
+  it("refreshes later cross-instance pages when active queries refetch after a mutation", async () => {
+    const page0Rows = [
+      { ...makeTorrent({ hash: "a", name: "alpha" }), instanceId: 1, instanceName: "one" },
+    ] as CrossInstanceTorrent[]
+    const page1Rows = [
+      { ...makeTorrent({ hash: "b", name: "beta" }), instanceId: 2, instanceName: "two" },
+    ] as CrossInstanceTorrent[]
+
+    mockedApi.getCrossInstanceTorrents.mockImplementation((params) => {
+      if (params.page === 0) {
+        return Promise.resolve(makeResponse({
+          isCrossInstance: true,
+          cross_instance_torrents: page0Rows,
+          total: 2,
+          hasMore: true,
+        }))
+      }
+      return Promise.resolve(makeResponse({
+        isCrossInstance: true,
+        cross_instance_torrents: page1Rows,
+        total: 2,
+        hasMore: false,
+      }))
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { result } = renderHook(
+      () => useTorrentsList(0, { pollingEnabled: false }),
+      { wrapper: makeWrapper(queryClient) }
+    )
+
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600)
+    })
+    act(() => {
+      result.current.loadMore()
+    })
+    await flush()
+    expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b"])
+
+    // The page-1 torrent was renamed server-side.
+    mockedApi.getCrossInstanceTorrents.mockImplementation((params) => {
+      if (params.page === 0) {
+        return Promise.resolve(makeResponse({
+          isCrossInstance: true,
+          cross_instance_torrents: page0Rows,
+          total: 2,
+          hasMore: true,
+        }))
+      }
+      return Promise.resolve(makeResponse({
+        isCrossInstance: true,
+        cross_instance_torrents: [
+          { ...makeTorrent({ hash: "b", name: "beta-renamed" }), instanceId: 2, instanceName: "two" },
+        ] as CrossInstanceTorrent[],
+        total: 2,
+        hasMore: false,
+      }))
+    })
+
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ["torrents-list", 0], exact: false, type: "active" })
+    })
+    await flush()
+
+    expect(result.current.torrents.find(t => t.hash === "b")?.name).toBe("beta-renamed")
+  })
+
+  it("fetches only the new page on a pagination step, not the whole loaded window", async () => {
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
+      if (params.page === 0) {
+        return Promise.resolve(makeResponse({
+          torrents: [makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" })],
+          total: 6,
+          hasMore: true,
+        }))
+      }
+      if (params.page === 1) {
+        return Promise.resolve(makeResponse({
+          torrents: [makeTorrent({ hash: "c" }), makeTorrent({ hash: "d" })],
+          total: 6,
+          hasMore: true,
+        }))
+      }
+      return Promise.resolve(makeResponse({
+        torrents: [makeTorrent({ hash: "e" }), makeTorrent({ hash: "f" })],
+        total: 6,
+        hasMore: false,
+      }))
+    })
+
+    const { result } = renderHook(
+      () => useTorrentsList(1, { pollingEnabled: false }),
+      { wrapper: makeWrapper() }
+    )
+
+    await flush()
+    const pageCalls = () => mockedApi.getTorrents.mock.calls.map(([, params]) => params.page)
+    const page0CallsAfterLoad = pageCalls().filter(page => page === 0).length
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600)
+    })
+    act(() => {
+      result.current.loadMore()
+    })
+    await flush()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600)
+    })
+    act(() => {
+      result.current.loadMore()
+    })
+    await flush()
+
+    expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b", "c", "d", "e", "f"])
+    // Ordinary scrolling must not refetch already-loaded pages.
+    expect(pageCalls().filter(page => page === 0).length).toBe(page0CallsAfterLoad)
+    expect(pageCalls().filter(page => page === 1).length).toBe(1)
+    expect(pageCalls().filter(page => page === 2).length).toBe(1)
+  })
+
+  it("keeps polling the loaded window while a scrolled-in row is checking, and stops when it settles", async () => {
+    // A recheck holds a row in checkingUP for minutes. Rows past the stream
+    // window get no live updates, so the window query must poll while any
+    // loaded row is in a self-resolving state instead of reading it twice
+    // and freezing mid-progress.
+    let checkingState = "checkingUP"
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
+      if (params.page === 0) {
+        return Promise.resolve(makeResponse({
+          torrents: [makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" })],
+          total: 4,
+          hasMore: true,
+        }))
+      }
+      return Promise.resolve(makeResponse({
+        torrents: [makeTorrent({ hash: "c", state: checkingState as Torrent["state"] }), makeTorrent({ hash: "d" })],
+        total: 4,
+        hasMore: false,
+      }))
+    })
+
+    const { result } = renderHook(
+      () => useTorrentsList(1),
+      { wrapper: makeWrapper() }
+    )
+
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600)
+    })
+    act(() => {
+      result.current.loadMore()
+    })
+    await flush()
+    expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b", "c", "d"])
+
+    const pageCalls = () => mockedApi.getTorrents.mock.calls.map(([, params]) => params.page)
+    const page1CallsAfterLoad = pageCalls().filter(page => page === 1).length
+
+    // The checking row keeps the window polling: one interval tick refetches it.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS)
+    })
+    await flush()
+    expect(pageCalls().filter(page => page === 1).length).toBe(page1CallsAfterLoad + 1)
+
+    // The recheck finishes: the next tick delivers the settled state...
+    checkingState = "uploading"
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS)
+    })
+    await flush()
+    const callsAfterSettle = pageCalls().filter(page => page === 1).length
+    expect(callsAfterSettle).toBe(page1CallsAfterLoad + 2)
+    expect(result.current.torrents.find(t => t.hash === "c")?.state).toBe("uploading")
+
+    // ...and polling stops.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TORRENT_STREAM_POLL_INTERVAL_MS * 3)
+    })
+    await flush()
+    expect(pageCalls().filter(page => page === 1).length).toBe(callsAfterSettle)
+  })
+
+  it("keeps a row that reflows across a page boundary mid-fetch as a single entry", async () => {
+    // Window pages are fetched in parallel against a live cache, so a row can slip
+    // from one page's slice into another between requests and come back twice.
+    mockedApi.getTorrents.mockImplementation((_instanceId, params) => {
+      if (params.page === 0) {
+        return Promise.resolve(makeResponse({
+          torrents: [makeTorrent({ hash: "a" }), makeTorrent({ hash: "b" })],
+          total: 3,
+          hasMore: true,
+        }))
+      }
+      return Promise.resolve(makeResponse({
+        torrents: [makeTorrent({ hash: "b" }), makeTorrent({ hash: "c" })],
+        total: 3,
+        hasMore: false,
+      }))
+    })
+
+    const { result } = renderHook(
+      () => useTorrentsList(1, { pollingEnabled: false }),
+      { wrapper: makeWrapper() }
+    )
+
+    await flush()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600)
+    })
+    act(() => {
+      result.current.loadMore()
+    })
+    await flush()
+
+    expect(result.current.torrents.map(t => t.hash)).toEqual(["a", "b", "c"])
   })
 
   it("loadMore is a no-op while hasLoadedAll, and respects the 500ms throttle", async () => {
@@ -381,7 +731,8 @@ describe("useTorrentsList", () => {
     await flush()
     expect(mockedApi.getTorrents).not.toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ page: 2 })
+      expect.objectContaining({ page: 2 }),
+      expect.anything()
     )
     expect(result.current.torrents).toHaveLength(2)
 
@@ -396,7 +747,8 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents).toHaveLength(3)
     expect(mockedApi.getTorrents).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ page: 2 })
+      expect.objectContaining({ page: 2 }),
+      expect.any(AbortSignal)
     )
   })
 
@@ -854,7 +1206,8 @@ describe("useTorrentsList", () => {
     expect(result.current.torrents).toHaveLength(3)
     expect(result.current.torrents.map(t => t.hash)).toEqual(["x", "x", "y"])
     expect(mockedApi.getCrossInstanceTorrents).toHaveBeenCalledWith(
-      expect.objectContaining({ page: 1 })
+      expect.objectContaining({ page: 1 }),
+      expect.any(AbortSignal)
     )
 
     // (c) A fresh page-0 stream snapshot must NOT wipe the paginated-in later row:
@@ -902,7 +1255,8 @@ describe("useTorrentsList", () => {
     expect(polledCalls).toBeGreaterThan(initialCalls)
     expect(mockedApi.getTorrents).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ page: 0 })
+      expect.objectContaining({ page: 0 }),
+      expect.any(AbortSignal)
     )
   })
 
@@ -965,7 +1319,8 @@ describe("useTorrentsList", () => {
     expect(lastStreamParams).not.toBeNull()
     expect(mockedApi.getTorrents).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ page: 0 })
+      expect.objectContaining({ page: 0 }),
+      expect.any(AbortSignal)
     )
     expect(result.current.torrents[0].hash).toBe("r")
   })

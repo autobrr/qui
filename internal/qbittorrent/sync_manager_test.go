@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2278,4 +2279,78 @@ func TestGetCrossInstanceTorrents_CancellationDuringLastInstanceReturnsError(t *
 
 	require.ErrorIs(t, err, context.Canceled, "cancellation during the only instance's fetch must surface, not become a partial success")
 	assert.Nil(t, resp)
+}
+
+func TestDebouncedSyncFetchesFreshDataAfterCollapsingOntoInFlightSync(t *testing.T) {
+	t.Parallel()
+
+	var maindataCalls atomic.Int32
+	firstSyncStarted := make(chan struct{})
+	releaseFirstSync := make(chan struct{})
+	var startedOnce sync.Once
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/sync/maindata":
+			if maindataCalls.Add(1) == 1 {
+				startedOnce.Do(func() { close(firstSyncStarted) })
+				<-releaseFirstSync
+			}
+			_, _ = w.Write([]byte(`{"rid":1,"full_update":true,"torrents":{}}`))
+		case "/api/v2/app/webapiVersion":
+			_, _ = w.Write([]byte("2.16.0"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	qbtClient := qbt.NewClient(qbt.Config{Host: srv.URL, Timeout: 60})
+	syncOpts := qbt.DefaultSyncOptions()
+	syncOpts.DynamicSync = true
+	client := &Client{
+		Client:      qbtClient,
+		syncManager: qbtClient.NewSyncManager(syncOpts),
+	}
+
+	sm := &SyncManager{
+		syncDebounceDelay:     time.Millisecond,
+		syncDebounceMinJitter: time.Millisecond,
+	}
+
+	// A periodic-style sync that started BEFORE the mutation and is still in
+	// flight when the debounced post-modification sync fires.
+	leaderDone := make(chan struct{})
+	go func() {
+		defer close(leaderDone)
+		_ = client.GetSyncManager().Sync(context.Background())
+	}()
+
+	select {
+	case <-firstSyncStarted:
+	case <-time.After(time.Second):
+		t.Fatal("leader sync never started")
+	}
+
+	// The mutation happens now. Its debounced sync joins the in-flight leader
+	// via go-qbt's singleflight and inherits the pre-mutation snapshot.
+	sm.syncAfterModification(1, client, "test")
+
+	// Let the debounced timer (1ms delay + 1ms jitter) fire and join the
+	// in-flight leader before the leader is released.
+	time.Sleep(100 * time.Millisecond)
+	close(releaseFirstSync)
+
+	select {
+	case <-leaderDone:
+	case <-time.After(time.Second):
+		t.Fatal("leader sync never finished")
+	}
+
+	// The post-modification sync must issue a maindata fetch that STARTS after
+	// the mutation; the collapsed leader's data predates it.
+	require.Eventually(t, func() bool {
+		return maindataCalls.Load() >= 2
+	}, time.Second, 5*time.Millisecond,
+		"debounced sync collapsed onto the pre-mutation in-flight sync and never fetched fresh data")
 }
