@@ -34,7 +34,8 @@ const (
 	qbitBoolTrue  = "true"
 	qbitBoolFalse = "false"
 
-	qbitContentLayoutOriginal = "Original"
+	qbitContentLayoutOriginal    = "Original"
+	qbitContentLayoutNoSubfolder = "NoSubfolder"
 )
 
 // Injector handles downloading and injecting torrents into qBittorrent.
@@ -223,14 +224,16 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	regularAddNeedsRecheck := hasUnmatchedFiles || addPolicy.ForcePaused
 	partialLinkTree := isLinkTreeMode(addMode) && hasUnmatchedFiles
 
-	// In regular (reuse) mode the torrent keeps its own folder/file names. When those differ
-	// from the on-disk directory we matched, qBittorrent reports "Missing Files" until the
-	// paths are renamed to match. Scoped to full matches: partial matches are added unpaused so
+	// In regular (reuse) mode the torrent keeps its own folder/file names (minus the root for
+	// stripRoot plans, added with NoSubfolder). When those differ from the on-disk paths we
+	// matched, qBittorrent reports "Missing Files" until they are renamed to match. Scoped to
+	// full matches: partial matches are added unpaused so
 	// they can download the missing files, which is incompatible with the pause-rename-recheck
 	// dance here. Link-tree modes build the on-disk layout to match the torrent, so they never
 	// need this either.
 	alignPlan := buildAlignmentPlan(req, searcheePathIsDir(req.Searchee.Path))
-	alignmentNeeded := addMode == injectModeRegular && !hasUnmatchedFiles && alignPlan.needed()
+	regularFullMatch := addMode == injectModeRegular && !hasUnmatchedFiles
+	alignmentNeeded := regularFullMatch && alignPlan.needed()
 
 	// Reject partial link tree injections when downloading missing files is disabled.
 	if partialLinkTree && !req.DownloadMissingFiles {
@@ -240,6 +243,12 @@ func (i *Injector) Inject(ctx context.Context, req *InjectRequest) (*InjectResul
 	}
 
 	options := i.buildAddOptions(req, savePath)
+	// A foldered torrent matched to a loose on-disk file has no folder to rename the root to;
+	// NoSubfolder makes qBittorrent strip the root from every stored path so the (rootless-style)
+	// plan lines up with the file where it actually lives.
+	if regularFullMatch && alignPlan.stripRoot {
+		options["contentLayout"] = qbitContentLayoutNoSubfolder
+	}
 	// Skip the on-add hash check for full matches (the data is already verified by the on-disk
 	// files we matched). Alignment adds MUST keep skip_checking too: qBittorrent blocks file/folder
 	// rename operations while a torrent is being verified, so letting it check the pre-rename paths

@@ -29,6 +29,7 @@ func TestBuildAlignmentPlan(t *testing.T) {
 		searcheeIsDir bool
 		matched       []MatchedFilePair
 		wantNeeded    bool
+		wantStrip     bool
 		wantSource    string
 		wantTarget    string
 		wantFolder    bool
@@ -115,15 +116,32 @@ func TestBuildAlignmentPlan(t *testing.T) {
 			wantFiles:  []fileRename{{oldPath: "ep01.mkv", newPath: "Show S01E01.mkv"}},
 		},
 		{
-			name:          "foldered torrent matched to single loose file, skipped",
-			torrentFiles:  []TorrentFile{{Path: "Some.Folder/movie.mkv", Size: 7}},
+			// No on-disk folder to rename the root to; the root is stripped at add time
+			// (contentLayout=NoSubfolder) and the stripped name already matches disk.
+			name:          "foldered torrent matched to single loose file, identical filename, strip only",
+			torrentFiles:  []TorrentFile{{Path: "Some.Folder/Movie.mkv", Size: 7}},
 			searcheePath:  "/downloads/Movie.mkv",
 			searcheeIsDir: false,
 			matched: []MatchedFilePair{{
 				SearcheeFile: &ScannedFile{RelPath: "Movie.mkv", Size: 7},
-				TorrentFile:  TorrentFile{Path: "Some.Folder/movie.mkv", Size: 7},
+				TorrentFile:  TorrentFile{Path: "Some.Folder/Movie.mkv", Size: 7},
 			}},
 			wantNeeded: false,
+			wantStrip:  true,
+		},
+		{
+			name:          "foldered torrent matched to single loose file, differing filename, strip and rename",
+			torrentFiles:  []TorrentFile{{Path: "Some.Folder/movie.mkv", Size: 7}},
+			searcheePath:  "/downloads/Movie (2020).mkv",
+			searcheeIsDir: false,
+			matched: []MatchedFilePair{{
+				SearcheeFile: &ScannedFile{RelPath: "Movie (2020).mkv", Size: 7},
+				TorrentFile:  TorrentFile{Path: "Some.Folder/movie.mkv", Size: 7},
+			}},
+			wantNeeded: true,
+			wantStrip:  true,
+			wantSource: "Some.Folder",
+			wantFiles:  []fileRename{{oldPath: "movie.mkv", newPath: "Movie (2020).mkv"}},
 		},
 	}
 
@@ -138,6 +156,9 @@ func TestBuildAlignmentPlan(t *testing.T) {
 
 			if plan.needed() != tt.wantNeeded {
 				t.Fatalf("needed() = %v, want %v (plan=%+v)", plan.needed(), tt.wantNeeded, plan)
+			}
+			if plan.stripRoot != tt.wantStrip {
+				t.Errorf("stripRoot = %v, want %v", plan.stripRoot, tt.wantStrip)
 			}
 			if !tt.wantNeeded {
 				return
@@ -186,6 +207,15 @@ type alignFakeManager struct {
 	// filesErr, when set, makes GetTorrentFilesBatch fail, simulating an instance whose file list
 	// cannot be read so a rename can never be confirmed.
 	filesErr error
+	// visibleAfterCalls, when > 0, hides the torrent (empty file list, renames error) until
+	// GetTorrentFilesBatch has been called that many times, simulating a slow instance where a
+	// just-added torrent takes a while to become visible/renameable.
+	visibleAfterCalls int
+	filesCalls        int
+}
+
+func (m *alignFakeManager) visibleLocked() bool {
+	return m.filesCalls >= m.visibleAfterCalls
 }
 
 func (m *alignFakeManager) AddTorrent(_ context.Context, _ int, _ []byte, options map[string]string) (*qbt.TorrentAddResponse, error) {
@@ -214,6 +244,9 @@ func (m *alignFakeManager) RenameTorrentFile(_ context.Context, _ int, _, oldPat
 	defer m.mu.Unlock()
 	m.fileRenames = append(m.fileRenames, [2]string{oldPath, newPath})
 	m.renameLog = append(m.renameLog, "file")
+	if !m.visibleLocked() {
+		return errors.New("torrent not found")
+	}
 	if m.renameErr != nil {
 		return m.renameErr
 	}
@@ -230,6 +263,9 @@ func (m *alignFakeManager) RenameTorrentFolder(_ context.Context, _ int, _, oldP
 	defer m.mu.Unlock()
 	m.folderRenames = append(m.folderRenames, [2]string{oldPath, newPath})
 	m.renameLog = append(m.renameLog, "folder")
+	if !m.visibleLocked() {
+		return errors.New("torrent not found")
+	}
 	if m.renameErr != nil {
 		return m.renameErr
 	}
@@ -250,6 +286,10 @@ func (m *alignFakeManager) GetTorrentFilesBatch(_ context.Context, _ int, _ []st
 	defer m.mu.Unlock()
 	if m.filesErr != nil {
 		return nil, m.filesErr
+	}
+	m.filesCalls++
+	if !m.visibleLocked() {
+		return map[string]qbt.TorrentFiles{}, nil
 	}
 	cloned := make(qbt.TorrentFiles, len(m.files))
 	copy(cloned, m.files)
@@ -666,6 +706,210 @@ func TestInjector_Inject_AlignsFilesThenFolderToDisk(t *testing.T) {
 	}
 	if manager.resumeCount != 1 {
 		t.Errorf("expected ResumeWhenComplete once, got %d", manager.resumeCount)
+	}
+}
+
+func TestInjector_Inject_StripsRootForLooseFileAndRenames(t *testing.T) {
+	// A foldered torrent matched to a loose on-disk file: added with contentLayout=NoSubfolder so
+	// qBittorrent strips the root, then the (root-stripped) file is renamed to the on-disk name.
+	looseFile := filepath.Join(t.TempDir(), "Movie (2020).mkv")
+	if err := os.WriteFile(looseFile, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write loose file: %v", err)
+	}
+
+	instance := &models.Instance{ID: 1, Name: "test"}
+
+	manager := &alignFakeManager{
+		hash: "deadbeef09",
+		// qBittorrent stores the root-stripped path after a NoSubfolder add.
+		files: qbt.TorrentFiles{{Name: "movie.mkv", Size: 7}},
+	}
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:        "Some.Folder",
+			InfoHash:    "deadbeef09",
+			Files:       []TorrentFile{{Path: "Some.Folder/movie.mkv", Size: 7}},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name:  "Movie (2020)",
+			Path:  looseFile,
+			Files: []*ScannedFile{{Path: looseFile, RelPath: "Movie (2020).mkv", Size: 7}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles:   []MatchedFilePair{{SearcheeFile: &ScannedFile{RelPath: "Movie (2020).mkv", Size: 7}, TorrentFile: TorrentFile{Path: "Some.Folder/movie.mkv", Size: 7}}},
+			IsMatch:        true,
+			IsPerfectMatch: true,
+		},
+		SearchResult: &jackett.SearchResult{Indexer: "Test"},
+		StartPaused:  false,
+	}
+
+	res, err := injector.Inject(context.Background(), req)
+	if err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got %+v", res)
+	}
+
+	if manager.addOptions["contentLayout"] != "NoSubfolder" {
+		t.Errorf("expected contentLayout=NoSubfolder, got %+v", manager.addOptions)
+	}
+	if manager.addOptions["paused"] != "true" || manager.addOptions["stopped"] != "true" {
+		t.Errorf("expected paused+stopped add options, got %+v", manager.addOptions)
+	}
+	if len(manager.folderRenames) != 0 {
+		t.Errorf("expected no folder rename when the root is stripped, got %+v", manager.folderRenames)
+	}
+	if len(manager.fileRenames) != 1 || manager.fileRenames[0] != [2]string{"movie.mkv", "Movie (2020).mkv"} {
+		t.Fatalf("expected root-stripped file rename to on-disk name, got %+v", manager.fileRenames)
+	}
+	if names := manager.currentNames(); len(names) != 1 || names[0] != "Movie (2020).mkv" {
+		t.Errorf("torrent file not aligned to on-disk name, got %+v", names)
+	}
+	if len(manager.bulkActions) != 1 || manager.bulkActions[0] != "recheck" {
+		t.Fatalf("expected a single recheck, got %+v", manager.bulkActions)
+	}
+	if manager.resumeCount != 1 {
+		t.Errorf("expected ResumeWhenComplete once, got %d", manager.resumeCount)
+	}
+}
+
+func TestInjector_Inject_StripsRootForLooseFile_NoRenameNeeded(t *testing.T) {
+	// Same shape but the file name already matches disk: the NoSubfolder add alone aligns the
+	// torrent, so it keeps the fast path (no forced pause, no renames, no recheck).
+	looseFile := filepath.Join(t.TempDir(), "Movie.mkv")
+	if err := os.WriteFile(looseFile, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write loose file: %v", err)
+	}
+
+	instance := &models.Instance{ID: 1, Name: "test"}
+
+	manager := &alignFakeManager{
+		hash:  "deadbeef10",
+		files: qbt.TorrentFiles{{Name: "Movie.mkv", Size: 7}},
+	}
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:        "Some.Folder",
+			InfoHash:    "deadbeef10",
+			Files:       []TorrentFile{{Path: "Some.Folder/Movie.mkv", Size: 7}},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name:  "Movie",
+			Path:  looseFile,
+			Files: []*ScannedFile{{Path: looseFile, RelPath: "Movie.mkv", Size: 7}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles:   []MatchedFilePair{{SearcheeFile: &ScannedFile{RelPath: "Movie.mkv", Size: 7}, TorrentFile: TorrentFile{Path: "Some.Folder/Movie.mkv", Size: 7}}},
+			IsMatch:        true,
+			IsPerfectMatch: true,
+		},
+		SearchResult: &jackett.SearchResult{Indexer: "Test"},
+		StartPaused:  false,
+	}
+
+	res, err := injector.Inject(context.Background(), req)
+	if err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got %+v", res)
+	}
+
+	if manager.addOptions["contentLayout"] != "NoSubfolder" {
+		t.Errorf("expected contentLayout=NoSubfolder, got %+v", manager.addOptions)
+	}
+	if manager.addOptions["paused"] == "true" {
+		t.Errorf("expected no forced pause when the strip alone aligns, got %+v", manager.addOptions)
+	}
+	if len(manager.fileRenames) != 0 || len(manager.folderRenames) != 0 {
+		t.Errorf("expected no renames, got files=%+v folders=%+v", manager.fileRenames, manager.folderRenames)
+	}
+	if len(manager.bulkActions) != 0 {
+		t.Errorf("expected no recheck on the fast path, got %+v", manager.bulkActions)
+	}
+}
+
+func TestInjector_waitForTorrentFiles_NeverVisibleFails(t *testing.T) {
+	manager := &alignFakeManager{
+		hash:              "deadbeef11",
+		files:             qbt.TorrentFiles{{Name: "a.iso", Size: 4}},
+		visibleAfterCalls: 1 << 30, // never becomes visible
+	}
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: &models.Instance{ID: 1}}, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	if injector.waitForTorrentFiles(ctx, 1, "deadbeef11") {
+		t.Fatal("expected waitForTorrentFiles to fail for a torrent that never appears")
+	}
+}
+
+func TestInjector_Inject_WaitsForTorrentVisibilityBeforeRenaming(t *testing.T) {
+	// The just-added torrent is not visible in qBittorrent for the first few polls (slow
+	// instance); renames error until it is. Alignment must wait for visibility instead of burning
+	// its rename attempts on a torrent that is not registered yet.
+	searcheeDir := filepath.Join(t.TempDir(), "Release 01")
+	if err := os.MkdirAll(searcheeDir, 0o755); err != nil {
+		t.Fatalf("mkdir searchee: %v", err)
+	}
+
+	instance := &models.Instance{ID: 1, Name: "test"}
+
+	manager := &alignFakeManager{
+		hash:              "deadbeef12",
+		files:             qbt.TorrentFiles{{Name: "Linux.Distribution.Release.01/a.iso", Size: 4}},
+		visibleAfterCalls: 5, // more polls than renameTorrentPath alone would attempt
+	}
+	injector := NewInjector(nil, manager, nil, &fakeInstanceStore{instance: instance}, nil)
+
+	req := &InjectRequest{
+		InstanceID:   1,
+		TorrentBytes: []byte("x"),
+		ParsedTorrent: &ParsedTorrent{
+			Name:        "Linux.Distribution.Release.01",
+			InfoHash:    "deadbeef12",
+			Files:       []TorrentFile{{Path: "Linux.Distribution.Release.01/a.iso", Size: 4}},
+			PieceLength: 16384,
+		},
+		Searchee: &Searchee{
+			Name:  "Release 01",
+			Path:  searcheeDir,
+			Files: []*ScannedFile{{Path: filepath.Join(searcheeDir, "a.iso"), RelPath: "a.iso", Size: 4}},
+		},
+		MatchResult: &MatchResult{
+			MatchedFiles:   []MatchedFilePair{{SearcheeFile: &ScannedFile{RelPath: "a.iso", Size: 4}, TorrentFile: TorrentFile{Path: "Linux.Distribution.Release.01/a.iso", Size: 4}}},
+			IsMatch:        true,
+			IsPerfectMatch: true,
+		},
+		SearchResult: &jackett.SearchResult{Indexer: "Test"},
+		StartPaused:  false,
+	}
+
+	res, err := injector.Inject(context.Background(), req)
+	if err != nil {
+		t.Fatalf("inject: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success once the torrent becomes visible, got %+v", res)
+	}
+	if len(manager.folderRenames) != 1 || manager.folderRenames[0] != [2]string{"Linux.Distribution.Release.01", "Release 01"} {
+		t.Fatalf("expected folder rename after the torrent became visible, got %+v", manager.folderRenames)
+	}
+	if len(manager.bulkActions) != 1 || manager.bulkActions[0] != "recheck" {
+		t.Fatalf("expected a single recheck, got %+v", manager.bulkActions)
 	}
 }
 

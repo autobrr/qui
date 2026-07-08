@@ -20,6 +20,10 @@ const (
 	alignVerifyTimeout  = 3 * time.Second
 	alignVerifyInterval = 250 * time.Millisecond
 	alignRetryDelay     = 300 * time.Millisecond
+	// alignAvailabilityTimeout bounds the wait for a just-added torrent to become visible in
+	// qBittorrent before the first rename. Matches crossseed's crossSeedRenameWaitTimeout: renames
+	// issued before the torrent is registered fail spuriously on slow instances.
+	alignAvailabilityTimeout = 15 * time.Second
 	// alignmentTimeout bounds the whole detached rename sequence. ponytail: fixed ceiling; a torrent
 	// with hundreds of file renames could need more, bump it if that ever shows up in the wild.
 	alignmentTimeout = 5 * time.Minute
@@ -37,8 +41,9 @@ type fileRename struct {
 type alignmentPlan struct {
 	sourceRoot   string       // the torrent's top-level folder (empty for rootless torrents)
 	targetRoot   string       // the on-disk directory name we matched against
-	fileRenames  []fileRename // per-file renames, applied while still under sourceRoot
+	fileRenames  []fileRename // per-file renames, applied while still under sourceRoot (root-stripped paths for stripRoot plans)
 	renameFolder bool         // rename sourceRoot -> targetRoot after the file renames
+	stripRoot    bool         // add with contentLayout=NoSubfolder so qBittorrent drops sourceRoot from every stored path
 }
 
 func (p alignmentPlan) needed() bool {
@@ -78,11 +83,14 @@ func buildAlignmentPlan(req *InjectRequest, searcheeIsDir bool) alignmentPlan {
 	sourceRoot := detectTorrentRoot(req.ParsedTorrent.Files)
 	rooted := sourceRoot != ""
 
-	// A foldered torrent matched to a single loose file cannot be aligned: there is no on-disk
-	// folder to rename the torrent root to (filepath.Base would be the file name). Skip rather than
-	// produce a bogus "File.mkv/inner.mkv" layout.
+	// A foldered torrent matched to a single loose file has no on-disk folder to rename the
+	// torrent root to. Instead the torrent is added with contentLayout=NoSubfolder, which makes
+	// qBittorrent strip the root from every stored path, and the files are aligned rootless-style
+	// against the stripped names.
 	if rooted && !searcheeIsDir {
-		return plan
+		plan.stripRoot = true
+		plan.sourceRoot = sourceRoot
+		rooted = false
 	}
 
 	if rooted {
@@ -100,6 +108,9 @@ func buildAlignmentPlan(req *InjectRequest, searcheeIsDir bool) alignmentPlan {
 			continue
 		}
 		oldPath := pair.TorrentFile.Path
+		if plan.stripRoot {
+			oldPath = strings.TrimPrefix(oldPath, plan.sourceRoot+"/")
+		}
 		desiredRel := filepath.ToSlash(pair.SearcheeFile.RelPath)
 		if oldPath == "" || desiredRel == "" {
 			continue
@@ -140,6 +151,18 @@ func (i *Injector) alignAndRecheck(_ context.Context, req *InjectRequest, plan a
 	ctx, cancel := context.WithTimeout(context.Background(), alignmentTimeout)
 	defer cancel()
 
+	// Wait for the just-added torrent to be visible in qBittorrent before renaming anything.
+	// crossseed's aligner (waitForTorrentAvailability) learned this the hard way: on slow
+	// instances the add hasn't propagated yet and early renames fail spuriously, stranding a
+	// perfectly good match paused.
+	if !i.waitForTorrentFiles(ctx, req.InstanceID, strings.ToLower(strings.TrimSpace(hash))) {
+		log.Warn().
+			Int("instanceID", req.InstanceID).
+			Str("hash", hash).
+			Msg("dirscan: torrent never became visible for alignment; leaving torrent paused for inspection")
+		return false
+	}
+
 	if !i.applyAlignment(ctx, req.InstanceID, hash, plan) {
 		// Leave the torrent paused and untouched (no recheck/resume) so the user can inspect it.
 		log.Warn().
@@ -176,8 +199,10 @@ func (i *Injector) alignAndRecheck(_ context.Context, req *InjectRequest, plan a
 
 // applyAlignment renames the torrent's files and folder to match the on-disk layout.
 // Files are renamed first (while still under the source root, which does not exist on disk),
-// then the root folder is renamed so every path lands on the existing files. Returns false if
-// any rename could not be confirmed, in which case the caller leaves the torrent paused.
+// then the root folder is renamed so every path lands on the existing files. stripRoot plans
+// have no folder rename: the root was already dropped at add time (contentLayout=NoSubfolder),
+// so only the root-stripped file renames apply. Returns false if any rename could not be
+// confirmed, in which case the caller leaves the torrent paused.
 func (i *Injector) applyAlignment(ctx context.Context, instanceID int, hash string, plan alignmentPlan) bool {
 	for _, fr := range plan.fileRenames {
 		if !i.renameTorrentPath(ctx, instanceID, hash, fr.oldPath, fr.newPath, false) {
@@ -204,6 +229,25 @@ func (i *Injector) applyAlignment(ctx context.Context, instanceID int, hash stri
 	}
 
 	return true
+}
+
+// waitForTorrentFiles blocks until qBittorrent reports a non-empty file list for the torrent,
+// proving the just-added torrent is registered and renameable. Returns false if the torrent never
+// became visible before ctx or the availability window expired.
+func (i *Injector) waitForTorrentFiles(ctx context.Context, instanceID int, canonicalHash string) bool {
+	deadline := time.Now().Add(alignAvailabilityTimeout)
+	for {
+		filesMap, err := i.syncManager.GetTorrentFilesBatch(qbsync.WithForceFilesRefresh(ctx), instanceID, []string{canonicalHash})
+		if err == nil && len(filesMap[canonicalHash]) > 0 {
+			return true
+		}
+		if ctx.Err() != nil || !time.Now().Before(deadline) {
+			return false
+		}
+		if !sleepCtx(ctx, alignVerifyInterval) {
+			return false
+		}
+	}
 }
 
 type renameStatus int
