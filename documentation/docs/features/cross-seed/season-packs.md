@@ -78,7 +78,7 @@ Defaults are chosen to match common seasonpackarr expectations.
 
 ### Alternate titles
 
-When Sonarr resolves the show, qui pulls its series-wide alternate titles and uses them during season-pack matching. This lets a pack and a local episode match when they use different title forms, such as a romaji pack against English-titled episodes, or an abbreviated title against the full one. Season-scoped alternate titles are ignored so they cannot bridge one season's episodes onto another season's pack. Without Sonarr knowing the show, only the literal parsed titles are compared.
+When Sonarr resolves the show, qui pulls its series-wide alternate titles and uses them during season-pack matching. This lets a pack and a local episode match when they use different title forms, such as a romaji pack against English-titled episodes, or an abbreviated title against the full one. Season-scoped alternate titles only apply to their own season, so they cannot bridge one season's episodes onto another season's pack. Without Sonarr knowing the show, only the literal parsed titles are compared.
 
 ### Anime absolute numbering
 
