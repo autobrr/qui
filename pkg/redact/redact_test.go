@@ -124,6 +124,36 @@ func TestURLString(t *testing.T) {
 			wantContain: []string{"apikey=REDACTED", "t=caps"},
 			wantNotHave: nil,
 		},
+		{
+			name:        "gazelle authkey and torrent_pass",
+			input:       "https://tracker.example.com/torrents.php?action=download&id=12345&authkey=0123456789abcdef&torrent_pass=fedcba9876543210",
+			wantContain: []string{"authkey=REDACTED", "torrent_pass=REDACTED", "id=12345"},
+			wantNotHave: []string{"0123456789abcdef", "fedcba9876543210"},
+		},
+		{
+			name:        "passkey as path segment",
+			input:       "https://tracker.example.com/abcdef0123456789abcdef0123456789/announce",
+			wantContain: []string{"/REDACTED/announce"},
+			wantNotHave: []string{"abcdef0123456789abcdef0123456789"},
+		},
+		{
+			name:        "discord webhook token in path",
+			input:       "https://discord.com/api/webhooks/1234567890/aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789_aBcDeFgHiJkLmNoPqRsTuVwXyZ01",
+			wantContain: []string{"/api/webhooks/1234567890/REDACTED"},
+			wantNotHave: []string{"aBcDeFgHiJkLmNoPqRsTuVwXyZ"},
+		},
+		{
+			name:        "magnet with passkey announce urls in tr params",
+			input:       "magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&dn=Some.Release&tr=https%3A%2F%2Ftracker.example.com%2Fannounce%3Fpasskey%3DDEADBEEF01&tr=https%3A%2F%2Fother.example.com%2Fabcdef0123456789abcdef0123456789%2Fannounce",
+			wantContain: []string{"c12fe1c06bba254a9dc9f519b335aa7c1367a88a", "tracker.example.com", "other.example.com"},
+			wantNotHave: []string{"DEADBEEF01", "abcdef0123456789abcdef0123456789"},
+		},
+		{
+			name:        "short path segments untouched",
+			input:       "http://localhost:8080/api/v2/torrents/info",
+			wantContain: []string{"http://localhost:8080/api/v2/torrents/info"},
+			wantNotHave: nil,
+		},
 	}
 
 	for _, tt := range tests {
@@ -217,6 +247,24 @@ func TestString(t *testing.T) {
 			input:       "request to /proxy/mysecretkey/api/v2/torrents failed",
 			wantContain: []string{"/proxy/REDACTED/api/v2/torrents"},
 			wantNotHave: []string{"mysecretkey"},
+		},
+		{
+			name:        "shoutrrr error with discord webhook url",
+			input:       `making HTTP POST request: Post "https://discord.com/api/webhooks/1234567890/aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789_aBcDeFgHiJkLmNoPqRsTuVwXyZ01": dial tcp: i/o timeout`,
+			wantContain: []string{"/api/webhooks/1234567890/REDACTED", "dial tcp: i/o timeout"},
+			wantNotHave: []string{"aBcDeFgHiJkLmNoPqRsTuVwXyZ"},
+		},
+		{
+			name:        "error with magnet link tr passkeys",
+			input:       "torrent download redirected to magnet link: magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&tr=https%3A%2F%2Ftracker.example.com%2Fannounce%3Fpasskey%3DDEADBEEF01",
+			wantContain: []string{"c12fe1c06bba254a9dc9f519b335aa7c1367a88a", "tracker.example.com"},
+			wantNotHave: []string{"DEADBEEF01"},
+		},
+		{
+			name:        "error with gazelle download url",
+			input:       "download failed: https://tracker.example.com/torrents.php?action=download&id=1&authkey=SECRETAUTH&torrent_pass=SECRETPASS",
+			wantContain: []string{"authkey=REDACTED", "torrent_pass=REDACTED"},
+			wantNotHave: []string{"SECRETAUTH", "SECRETPASS"},
 		},
 	}
 

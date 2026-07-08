@@ -6,6 +6,7 @@ package qbittorrent
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,20 @@ var (
 	shareLimitsActionMinVersion          = semver.MustParse("2.15.1")
 	shareLimitsModeMinVersion            = semver.MustParse("2.16.0") // unused still, Web API 2.16.0+
 )
+
+// splitHostUserinfo strips userinfo credentials from a host URL, returning the
+// clean host plus the extracted username and password. Hosts without userinfo
+// (the normal case) are returned unchanged.
+func splitHostUserinfo(host string) (cleanHost, user, pass string) {
+	u, err := url.Parse(host)
+	if err != nil || u.User == nil {
+		return host, "", ""
+	}
+	user = u.User.Username()
+	pass, _ = u.User.Password()
+	u.User = nil
+	return u.String(), user, pass
+}
 
 // errInvalidWebAPIVersion marks a session whose webapiVersion endpoint answered
 // with something other than a qBittorrent version (e.g. a reverse-proxy login
@@ -102,6 +117,11 @@ type Client struct {
 }
 
 func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiKey string, basicUsername, basicPassword *string, tlsSkipVerify bool, timeout time.Duration) (*Client, error) {
+	// Strip credentials embedded in the host URL (user:pass@host) so they never
+	// reach go-qbt request URLs, whose error strings get logged verbatim all
+	// over qui. They move to basic auth, which is what URL userinfo means.
+	instanceHost, hostUser, hostPass := splitHostUserinfo(instanceHost)
+
 	cfg := qbt.Config{
 		Host:          instanceHost,
 		Username:      username,
@@ -116,6 +136,9 @@ func NewClientWithTimeout(instanceID int, instanceHost, username, password, apiK
 		if basicPassword != nil {
 			cfg.BasicPass = *basicPassword
 		}
+	} else if hostUser != "" {
+		cfg.BasicUser = hostUser
+		cfg.BasicPass = hostPass
 	}
 
 	qbtClient := qbt.NewClient(cfg)

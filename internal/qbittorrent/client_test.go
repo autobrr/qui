@@ -613,3 +613,47 @@ func TestClientSetSyncEventSinkUpdatesDispatch(t *testing.T) {
 		t.Errorf("expected 1 error call after setting sink, got %d", len(errorCalls))
 	}
 }
+
+func TestSplitHostUserinfo(t *testing.T) {
+	tests := []struct {
+		name     string
+		host     string
+		wantHost string
+		wantUser string
+		wantPass string
+	}{
+		{
+			name:     "plain host unchanged",
+			host:     "http://qbit.example.com:8080",
+			wantHost: "http://qbit.example.com:8080",
+		},
+		{
+			// #nosec G101 -- fake credentials exercising userinfo stripping.
+			name:     "userinfo stripped and returned",
+			host:     "https://proxyuser:proxypass@qbit.example.com",
+			wantHost: "https://qbit.example.com",
+			wantUser: "proxyuser",
+			wantPass: "proxypass",
+		},
+		{
+			name:     "userinfo without password",
+			host:     "http://onlyuser@qbit.example.com:8080/base",
+			wantHost: "http://qbit.example.com:8080/base",
+			wantUser: "onlyuser",
+		},
+		{
+			name:     "empty host",
+			host:     "",
+			wantHost: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotHost, gotUser, gotPass := splitHostUserinfo(tt.host)
+			require.Equal(t, tt.wantHost, gotHost)
+			require.Equal(t, tt.wantUser, gotUser)
+			require.Equal(t, tt.wantPass, gotPass)
+		})
+	}
+}
