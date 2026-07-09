@@ -349,6 +349,33 @@ func TestService_LookupSeasonEpisodeTotalReturnsSeasonTitles(t *testing.T) {
 	require.NotContains(t, result.Titles, "Oshi no Ko 3rd Season", "other-season alias must be filtered")
 }
 
+func TestService_LookupSeasonEpisodeTotalKeepsTitlesWhenSeasonHasNoEpisodes(t *testing.T) {
+	// Anime is often stored in Sonarr as one absolute-numbered season, so the requested
+	// season has no episode rows. The aliases must survive as a partial result so the
+	// caller's metadata-total fallback can still alias-match; dropping them killed alias
+	// matching in exactly the degraded path it was built for.
+	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{"series": {"id": 7, "title": "Oshi no Ko", "alternateTitles": [
+				{"title": "Oshi no Ko Romaji"}
+			]}}`))
+		case "/api/v3/episode":
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			t.Fatalf("unexpected ARR request: %s", r.URL.Path)
+		}
+	}))
+
+	result, err := service.LookupSeasonEpisodeTotal(context.Background(), "Oshi.no.Ko.S02.1080p.WEB.x264-GRP", 2)
+
+	require.NoError(t, err)
+	require.NotNil(t, result, "aliases must survive an empty season episode list")
+	require.Equal(t, 0, result.TotalEpisodes)
+	require.Contains(t, result.Titles, "Oshi no Ko")
+	require.Contains(t, result.Titles, "Oshi no Ko Romaji")
+}
+
 func TestTitlesForSeason_KeepsSeriesWideAndSameSeasonOnly(t *testing.T) {
 	season := func(i int) *int { return &i }
 	series := &SonarrSeries{

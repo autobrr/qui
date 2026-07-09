@@ -341,6 +341,7 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 		return nil, nil
 	}
 
+	var partial *SeasonEpisodeTotalResult
 	for _, instance := range instances {
 		client := s.clientForInstance(instance)
 		if client == nil {
@@ -368,9 +369,18 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 				Str("title", title).
 				Int("seasonNumber", seasonNumber).
 				Msg("[ARR-LOOKUP] Sonarr season episode lookup failed")
-			continue
 		}
-		if len(episodes) == 0 {
+		if err != nil || len(episodes) == 0 {
+			// The series resolved but the season has no episode rows (common for anime
+			// stored as one absolute-numbered season) or the call failed. Keep the alias
+			// titles so the caller's metadata-total fallback can still alias-match.
+			if partial == nil {
+				instanceID := instance.ID
+				partial = &SeasonEpisodeTotalResult{
+					ArrInstanceID: &instanceID,
+					Titles:        titlesForSeason(parseResp.Series, seasonNumber),
+				}
+			}
 			continue
 		}
 
@@ -382,7 +392,7 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 		}, nil
 	}
 
-	return nil, nil
+	return partial, nil
 }
 
 // TestConnection tests connectivity to an ARR instance.
