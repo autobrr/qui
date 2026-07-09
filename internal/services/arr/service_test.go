@@ -422,11 +422,19 @@ func TestSeasonLookupTitles_SuppressesExpansionForOtherSeasonAliasPacks(t *testi
 		AlternateTitles: []AlternateTitle{
 			{Title: "Oshi no Ko Romaji"},
 			{Title: "Oshi no Ko 2nd Season", SeasonNumber: season(2), SceneSeasonNumber: season(1)},
+			{Title: "Oshi no Ko Kai", SceneSeasonNumber: season(2)},
 		},
 	}
 
 	// Alias-titled pack labeled S01, but the alias maps to Sonarr season 2: no expansion.
+	// SceneSeasonNumber is 1 here, so treating scene equality as alignment (matchesSeason)
+	// would wrongly let this pack through; this case pins that it must not.
 	require.Nil(t, seasonLookupTitles(series, "Oshi.no.Ko.2nd.Season.S01.1080p.WEB.x264-GRP", 1))
+
+	// Alias scoped only by scene season: its Sonarr season is unknown, so a pack titled
+	// by it must not expand either, regardless of the labeled season.
+	require.Nil(t, seasonLookupTitles(series, "Oshi.no.Ko.Kai.S01.1080p.WEB.x264-GRP", 1))
+	require.Nil(t, seasonLookupTitles(series, "Oshi.no.Ko.Kai.S02.1080p.WEB.x264-GRP", 2))
 
 	// Same pack labeled with the alias's own Sonarr season: expansion is safe.
 	s2 := seasonLookupTitles(series, "Oshi.no.Ko.2nd.Season.S02.1080p.WEB.x264-GRP", 2)

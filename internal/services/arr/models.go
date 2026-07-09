@@ -289,17 +289,26 @@ func titlesForSeason(series *SonarrSeries, season int) []string {
 }
 
 // seasonLookupTitles returns titlesForSeason, unless the looked-up release title is
-// itself an alias mapped to a DIFFERENT Sonarr season than the one the release labels
+// itself a season-scoped alias whose Sonarr season is not the one the release labels
 // (e.g. a "Show 2nd Season" pack labeled S01). The pack's numbering is then alias-local,
 // and expanding to the canonical title would bridge wrong-season canonical locals onto
 // it, so alias expansion is suppressed and matching falls back to literal titles.
+//
+// Only SeasonNumber (Sonarr's numbering) counts as alignment here, deliberately NOT
+// matchesSeason: SceneSeasonNumber lives in the release-label domain, where a "2nd
+// Season" alias typically carries sceneSeasonNumber 1, so scene equality with the pack
+// label is the mismatch case, not proof of safety. An alias scoped only by scene season
+// is likewise suppressed, since its Sonarr season is unknown.
 func seasonLookupTitles(series *SonarrSeries, lookupTitle string, season int) []string {
 	if series == nil {
 		return nil
 	}
 	normalized := normalizeTitleWords(lookupTitle)
 	for _, alternate := range series.AlternateTitles {
-		if alternate.SeasonNumber == nil || *alternate.SeasonNumber < 0 || *alternate.SeasonNumber == season {
+		if !alternate.seasonScoped() {
+			continue
+		}
+		if alternate.SeasonNumber != nil && *alternate.SeasonNumber == season {
 			continue
 		}
 		alias := normalizeTitleWords(alternate.Title)
