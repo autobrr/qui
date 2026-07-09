@@ -5,6 +5,7 @@ package arr
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/autobrr/qui/internal/models"
 )
@@ -285,6 +286,42 @@ func titlesForSeason(series *SonarrSeries, season int) []string {
 		addUniqueTitle(&titles, alternate.Title)
 	}
 	return titles
+}
+
+// seasonLookupTitles returns titlesForSeason, unless the looked-up release title is
+// itself an alias mapped to a DIFFERENT Sonarr season than the one the release labels
+// (e.g. a "Show 2nd Season" pack labeled S01). The pack's numbering is then alias-local,
+// and expanding to the canonical title would bridge wrong-season canonical locals onto
+// it, so alias expansion is suppressed and matching falls back to literal titles.
+func seasonLookupTitles(series *SonarrSeries, lookupTitle string, season int) []string {
+	if series == nil {
+		return nil
+	}
+	normalized := normalizeTitleWords(lookupTitle)
+	for _, alternate := range series.AlternateTitles {
+		if alternate.SeasonNumber == nil || *alternate.SeasonNumber < 0 || *alternate.SeasonNumber == season {
+			continue
+		}
+		alias := normalizeTitleWords(alternate.Title)
+		if alias != "" && (normalized == alias || strings.HasPrefix(normalized, alias+" ")) {
+			return nil
+		}
+	}
+	return titlesForSeason(series, season)
+}
+
+// normalizeTitleWords lowercases and reduces a title (or release name) to space-separated
+// alphanumeric words, so "Oshi.no.Ko.2nd.Season.S01..." prefix-matches "Oshi no Ko 2nd Season".
+func normalizeTitleWords(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune(' ')
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
 }
 
 func titlesFromMovie(movie *RadarrMovie) []string {

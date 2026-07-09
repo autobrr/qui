@@ -361,7 +361,23 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 			continue
 		}
 
-		episodes, err := client.GetSonarrSeasonEpisodes(ctx, parseResp.Series.ID, seasonNumber)
+		// Sonarr's /parse embeds the series WITHOUT alternateTitles: only the series
+		// endpoints populate them (SeriesController.PopulateAlternateTitles, from scene
+		// mappings). Hydrate via /series/{id} so alias matching sees them; on failure
+		// fall back to the canonical title alone.
+		series := parseResp.Series
+		if full, hydrateErr := client.sonarrSeriesByID(ctx, series.ID); hydrateErr == nil && full != nil && full.ID > 0 {
+			series = full
+		} else if hydrateErr != nil {
+			log.Debug().Err(hydrateErr).
+				Int("instanceId", instance.ID).
+				Str("instanceName", instance.Name).
+				Str("title", title).
+				Msg("[ARR-LOOKUP] Sonarr series hydration failed; alias matching limited to canonical title")
+		}
+		titles := seasonLookupTitles(series, title, seasonNumber)
+
+		episodes, err := client.GetSonarrSeasonEpisodes(ctx, series.ID, seasonNumber)
 		if err != nil {
 			log.Debug().Err(err).
 				Int("instanceId", instance.ID).
@@ -378,7 +394,7 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 				instanceID := instance.ID
 				partial = &SeasonEpisodeTotalResult{
 					ArrInstanceID: &instanceID,
-					Titles:        titlesForSeason(parseResp.Series, seasonNumber),
+					Titles:        titles,
 				}
 			}
 			continue
@@ -388,7 +404,7 @@ func (s *Service) LookupSeasonEpisodeTotal(ctx context.Context, title string, se
 		return &SeasonEpisodeTotalResult{
 			TotalEpisodes: len(episodes),
 			ArrInstanceID: &instanceID,
-			Titles:        titlesForSeason(parseResp.Series, seasonNumber),
+			Titles:        titles,
 		}, nil
 	}
 

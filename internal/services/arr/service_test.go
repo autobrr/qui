@@ -320,14 +320,20 @@ func TestService_LookupSeasonEpisodeTotalReturnsSeasonTitles(t *testing.T) {
 	// Pins the wiring at the return site: season-pack alias matching consumes
 	// result.Titles, so dropping the titlesForSeason call would silently kill the
 	// feature while every other test stays green.
+	//
+	// The mock mirrors real Sonarr: /parse embeds the series WITHOUT alternateTitles
+	// (only SeriesController populates them), so the service must hydrate via
+	// /series/{id} to see aliases at all.
 	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v3/parse":
-			_, _ = w.Write([]byte(`{"series": {"id": 7, "title": "Oshi no Ko", "alternateTitles": [
+			_, _ = w.Write([]byte(`{"series": {"id": 7, "title": "Oshi no Ko"}}`))
+		case "/api/v3/series/7":
+			_, _ = w.Write([]byte(`{"id": 7, "title": "Oshi no Ko", "alternateTitles": [
 				{"title": "Oshi no Ko Romaji"},
 				{"title": "Oshi no Ko 2nd Season", "seasonNumber": 2},
 				{"title": "Oshi no Ko 3rd Season", "seasonNumber": 3}
-			]}}`))
+			]}`))
 		case "/api/v3/episode":
 			_, _ = w.Write([]byte(`[
 				{"id": 1, "seasonNumber": 2, "episodeNumber": 1},
@@ -357,9 +363,11 @@ func TestService_LookupSeasonEpisodeTotalKeepsTitlesWhenSeasonHasNoEpisodes(t *t
 	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v3/parse":
-			_, _ = w.Write([]byte(`{"series": {"id": 7, "title": "Oshi no Ko", "alternateTitles": [
+			_, _ = w.Write([]byte(`{"series": {"id": 7, "title": "Oshi no Ko"}}`))
+		case "/api/v3/series/7":
+			_, _ = w.Write([]byte(`{"id": 7, "title": "Oshi no Ko", "alternateTitles": [
 				{"title": "Oshi no Ko Romaji"}
-			]}}`))
+			]}`))
 		case "/api/v3/episode":
 			_, _ = w.Write([]byte(`[]`))
 		default:
@@ -374,6 +382,61 @@ func TestService_LookupSeasonEpisodeTotalKeepsTitlesWhenSeasonHasNoEpisodes(t *t
 	require.Equal(t, 0, result.TotalEpisodes)
 	require.Contains(t, result.Titles, "Oshi no Ko")
 	require.Contains(t, result.Titles, "Oshi no Ko Romaji")
+}
+
+func TestService_LookupSeasonEpisodeTotalSurvivesHydrationFailure(t *testing.T) {
+	// If /series/{id} fails, the lookup must still return the episode total with the
+	// canonical title instead of erroring out or dropping the result.
+	service, _ := newArrLookupTestService(t, models.ArrInstanceTypeSonarr, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v3/parse":
+			_, _ = w.Write([]byte(`{"series": {"id": 7, "title": "Oshi no Ko"}}`))
+		case "/api/v3/series/7":
+			w.WriteHeader(http.StatusInternalServerError)
+		case "/api/v3/episode":
+			_, _ = w.Write([]byte(`[
+				{"id": 1, "seasonNumber": 2, "episodeNumber": 1},
+				{"id": 2, "seasonNumber": 2, "episodeNumber": 2}
+			]`))
+		default:
+			t.Fatalf("unexpected ARR request: %s", r.URL.Path)
+		}
+	}))
+
+	result, err := service.LookupSeasonEpisodeTotal(context.Background(), "Oshi.no.Ko.S02.1080p.WEB.x264-GRP", 2)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 2, result.TotalEpisodes)
+	require.Equal(t, []string{"Oshi no Ko"}, result.Titles)
+}
+
+func TestSeasonLookupTitles_SuppressesExpansionForOtherSeasonAliasPacks(t *testing.T) {
+	// A pack titled by an alias that Sonarr maps to a different season (e.g.
+	// "Show 2nd Season" labeled S01) numbers its episodes alias-locally. Expanding
+	// to the canonical title would bridge canonical wrong-season locals onto it, so
+	// alias expansion must be suppressed entirely for that lookup.
+	season := func(i int) *int { return &i }
+	series := &SonarrSeries{
+		Title: "Oshi no Ko",
+		AlternateTitles: []AlternateTitle{
+			{Title: "Oshi no Ko Romaji"},
+			{Title: "Oshi no Ko 2nd Season", SeasonNumber: season(2), SceneSeasonNumber: season(1)},
+		},
+	}
+
+	// Alias-titled pack labeled S01, but the alias maps to Sonarr season 2: no expansion.
+	require.Nil(t, seasonLookupTitles(series, "Oshi.no.Ko.2nd.Season.S01.1080p.WEB.x264-GRP", 1))
+
+	// Same pack labeled with the alias's own Sonarr season: expansion is safe.
+	s2 := seasonLookupTitles(series, "Oshi.no.Ko.2nd.Season.S02.1080p.WEB.x264-GRP", 2)
+	require.Contains(t, s2, "Oshi no Ko")
+	require.Contains(t, s2, "Oshi no Ko 2nd Season")
+
+	// Canonical-titled pack is unaffected by the guard.
+	s1 := seasonLookupTitles(series, "Oshi.no.Ko.S01.1080p.WEB.x264-GRP", 1)
+	require.Contains(t, s1, "Oshi no Ko")
+	require.Contains(t, s1, "Oshi no Ko Romaji")
 }
 
 func TestTitlesForSeason_KeepsSeriesWideAndSameSeasonOnly(t *testing.T) {
