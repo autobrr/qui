@@ -1074,7 +1074,11 @@ func (s *Service) matchEpisodeCandidatesDetailed(
 		// with a within-season number (either direction) matches the wrong episode
 		// (absolute 13 is S02E01, not S02E13, when S01 has 12 episodes). When packEpisodes
 		// is nil (light check, no torrent data) the scheme is unknown, so no stamping and
-		// no scheme guard - any release-matching episode counts, as before.
+		// no scheme guard - any release-matching episode counts, as before. That optimism
+		// is deliberate: the check is a cheap advisory prefilter and the apply re-verifies
+		// against the real file list, so a false "ready" costs one wasted .torrent grab
+		// while filtering absolute-numbered locals here would silently kill the light
+		// path for exactly the anime libraries this matching exists for.
 		resolved := parsed
 		id := episodeIdentity{series: parsed.Series, episode: parsed.Episode}
 		if packEpisodes != nil {

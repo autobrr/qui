@@ -615,6 +615,34 @@ func TestFixC_MatchStoresStampedReleaseWithoutMutatingCache(t *testing.T) {
 	require.Equal(t, 0, cachedParse.Series, "cached release must not be mutated by stamping")
 }
 
+// TestLightCheck_CountsAbsoluteNumberedLocalsForKnownSeasonPack pins the deliberate
+// optimism of the no-torrent-data check (nil packEpisodes): seasonless absolute-numbered
+// locals count toward a known-season pack on release match alone. The apply re-verifies
+// against the real file list, so a false "ready" is self-correcting; filtering here would
+// silently disable the light webhook path for absolute-numbered anime libraries.
+func TestLightCheck_CountsAbsoluteNumberedLocalsForKnownSeasonPack(t *testing.T) {
+	packName := "Cool.Show.S03.1080p.WEB.x264-GRP"
+	parsedPack := rls.ParseString(packName)
+	packRelease := &parsedPack
+
+	inst := &models.Instance{ID: 1, Name: "Test", IsActive: true}
+	locals := []qbt.Torrent{
+		{Hash: "abs25", Name: "Cool.Show.-.25.1080p.WEB.x264-GRP", Progress: 1.0},
+		{Hash: "s03e01", Name: "Cool.Show.S03E01.1080p.WEB.x264-GRP", Progress: 1.0},
+	}
+	cached := buildCrossInstanceViews(inst, locals)
+
+	svc := &Service{releaseCache: NewReleaseCache()}
+	settings := &models.CrossSeedAutomationSettings{SeasonPackEnabled: true}
+
+	got := svc.matchEpisodeCandidatesDetailed(cached, packRelease, nil, settings, nil)
+	require.Len(t, got, 2, "light check must count both seasoned and absolute-numbered locals")
+	_, ok := got[episodeIdentity{series: 3, episode: 1}]
+	require.True(t, ok, "seasoned local must count")
+	_, ok = got[episodeIdentity{series: 0, episode: 25}]
+	require.True(t, ok, "absolute-numbered local must count without the pack file list")
+}
+
 func TestCheckSeasonPackWebhook_ReturnsNotFoundBelowThreshold(t *testing.T) {
 	fix := newSeasonPackFixture(t)
 	store := &stubSeasonPackRunStore{}
