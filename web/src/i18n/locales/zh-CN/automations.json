@@ -197,6 +197,7 @@
       "TRACKERS_COUNT": "Tracker 数量",
       "PRIORITY": "队列优先级",
       "GROUP_SIZE": "组大小",
+      "FILE_COUNT": "文件数量",
       "PRIVATE": "私有",
       "AUTO_MANAGED": "自动管理",
       "FIRST_LAST_PIECE_PRIO": "首尾块优先",

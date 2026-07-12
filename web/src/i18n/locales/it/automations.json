@@ -197,6 +197,7 @@
       "TRACKERS_COUNT": "Tracker",
       "PRIORITY": "Priorità in coda",
       "GROUP_SIZE": "Dimensione del gruppo",
+      "FILE_COUNT": "Numero di file",
       "PRIVATE": "Privato",
       "AUTO_MANAGED": "Gestito automaticamente",
       "FIRST_LAST_PIECE_PRIO": "Priorità prima/ultima parte",

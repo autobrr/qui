@@ -63,6 +63,8 @@ type EvalContext struct {
 	HardlinkCrossScopeByHash map[string]string
 	// HasMissingFilesByHash maps torrent hash to whether or not it has missing files on disk
 	HasMissingFilesByHash map[string]bool
+	// FileCountByHash maps torrent hash to its number of files (from qBittorrent's file list)
+	FileCountByHash map[string]int
 	// InstanceHasLocalAccess indicates whether the instance has local filesystem access
 	InstanceHasLocalAccess bool
 	// FreeSpace is the free space on the instance's filesystem (current active source)
@@ -520,6 +522,18 @@ func evaluateLeaf(cond *RuleCondition, torrent qbt.Torrent, ctx *EvalContext) bo
 			size = int64(idx.SizeForHash(torrent.Hash))
 		}
 		return compareInt64(size, cond)
+	case FieldFileCount:
+		// If the file count couldn't be computed for this torrent (fetch failed, rule
+		// didn't request it, etc.), treat as unknown and don't match to prevent unintended
+		// rule triggers.
+		if ctx == nil || ctx.FileCountByHash == nil {
+			return false
+		}
+		count, ok := ctx.FileCountByHash[torrent.Hash]
+		if !ok {
+			return false
+		}
+		return compareInt64(int64(count), cond)
 
 	// System time fields
 	case models.FieldSystemHour:

@@ -105,6 +105,7 @@ const (
 	FieldTrackersCount = models.FieldTrackersCount
 	FieldPriority      = models.FieldPriority
 	FieldGroupSize     = models.FieldGroupSize
+	FieldFileCount     = models.FieldFileCount
 
 	// Boolean fields
 	FieldPrivate                = models.FieldPrivate

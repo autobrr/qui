@@ -197,6 +197,7 @@
       "TRACKERS_COUNT": "Tracker",
       "PRIORITY": "Warteschlangen-Priorität",
       "GROUP_SIZE": "Gruppengröße",
+      "FILE_COUNT": "Dateianzahl",
       "PRIVATE": "Privat",
       "AUTO_MANAGED": "Automatisch verwaltet",
       "FIRST_LAST_PIECE_PRIO": "Priorität erstes/letztes Piece",

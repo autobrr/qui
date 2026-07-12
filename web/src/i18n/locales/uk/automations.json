@@ -193,6 +193,7 @@
       "TRACKERS_COUNT": "Трекери",
       "PRIORITY": "Пріоритет черги",
       "GROUP_SIZE": "Розмір групи",
+      "FILE_COUNT": "Кількість файлів",
       "PRIVATE": "Приватний",
       "AUTO_MANAGED": "Автокерування",
       "FIRST_LAST_PIECE_PRIO": "Пріоритет першого/останнього фрагмента",

@@ -97,6 +97,7 @@ export const CONDITION_FIELDS = {
   TRACKERS_COUNT: { label: "Trackers", type: "integer" as const, description: "Number of trackers" },
   PRIORITY: { label: "Queue Priority", type: "integer" as const, description: "Torrent queue priority value" },
   GROUP_SIZE: { label: "Group Size", type: "integer" as const, description: "Number of torrents in the selected group for this condition" },
+  FILE_COUNT: { label: "File Count", type: "integer" as const, description: "Number of files in the torrent" },
 
   // Boolean fields
   PRIVATE: { label: "Private", type: "boolean" as const, description: "Private tracker torrent" },
@@ -298,7 +299,7 @@ export const FIELD_GROUPS = [
   },
   {
     label: "Files",
-    fields: ["HARDLINK_SCOPE", "HARDLINK_SCOPE_CROSS", "HAS_MISSING_FILES"],
+    fields: ["FILE_COUNT", "HARDLINK_SCOPE", "HARDLINK_SCOPE_CROSS", "HAS_MISSING_FILES"],
   },
 ];
 

@@ -1001,6 +1001,7 @@ func (s *Service) PreviewDeleteRule(ctx context.Context, instanceID int, rule *m
 	}
 	hardlinkIndex := s.setupDeleteHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx, instance)
+	s.setupFileCountContext(ctx, instanceID, rule, deleteCondition, torrents, evalCtx)
 	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
@@ -1085,6 +1086,27 @@ func (s *Service) setupMissingFilesContext(
 	}
 
 	evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
+}
+
+// setupFileCountContext sets up file count detection if needed for preview sorting/conditions.
+// Unlike missing files detection, this doesn't require local filesystem access.
+func (s *Service) setupFileCountContext(
+	ctx context.Context,
+	instanceID int,
+	rule *models.Automation,
+	cond *RuleCondition,
+	torrents []qbt.Torrent,
+	evalCtx *EvalContext,
+) {
+	if rule == nil {
+		return
+	}
+
+	if !ConditionUsesField(cond, FieldFileCount) && !sortingConfigUsesField(rule.SortingConfig, FieldFileCount) {
+		return
+	}
+
+	evalCtx.FileCountByHash = s.detectFileCounts(ctx, instanceID, torrents)
 }
 
 func buildPreviewScoreMap(torrents []qbt.Torrent, rule *models.Automation, evalCtx *EvalContext) map[string]float64 {
@@ -1621,6 +1643,7 @@ func (s *Service) PreviewCategoryRule(ctx context.Context, instanceID int, rule 
 	}
 	s.setupCategoryHardlinkContext(ctx, instanceID, rule, torrents, evalCtx, instance)
 	s.setupMissingFilesContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx, instance)
+	s.setupFileCountContext(ctx, instanceID, rule, getCategoryAction(rule).condition, torrents, evalCtx)
 	activateRuleGrouping(evalCtx, rule, torrents, s.syncManager)
 
 	if err := s.setupFreeSpaceContext(ctx, instanceID, rule, evalCtx, instance); err != nil {
@@ -2089,6 +2112,11 @@ func (s *Service) applyRulesForInstance(ctx context.Context, instanceID int, for
 	// On-demand missing files detection (only if rules use HAS_MISSING_FILES and instance has local access)
 	if instance.HasLocalFilesystemAccess && rulesUseCondition(eligibleRules, FieldHasMissingFiles) {
 		evalCtx.HasMissingFilesByHash = s.detectMissingFiles(ctx, instanceID, torrents)
+	}
+
+	// On-demand file count detection (only if rules use FILE_COUNT; no local access needed)
+	if rulesUseCondition(eligibleRules, FieldFileCount) {
+		evalCtx.FileCountByHash = s.detectFileCounts(ctx, instanceID, torrents)
 	}
 
 	// On-demand cross-match lookup (same-instance and other-instance cross-seed detection)

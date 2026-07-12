@@ -197,6 +197,7 @@
       "TRACKERS_COUNT": "트래커",
       "PRIORITY": "대기열 우선순위",
       "GROUP_SIZE": "그룹 크기",
+      "FILE_COUNT": "파일 수",
       "PRIVATE": "비공개",
       "AUTO_MANAGED": "자동 관리",
       "FIRST_LAST_PIECE_PRIO": "첫/마지막 조각 우선순위",

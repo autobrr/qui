@@ -608,6 +608,56 @@ func TestEvaluateCondition_NumericFields(t *testing.T) {
 			torrent:  qbt.Torrent{NumSeeds: 10},
 			expected: true,
 		},
+		{
+			name: "file count greater than",
+			cond: &RuleCondition{
+				Field:    FieldFileCount,
+				Operator: OperatorGreaterThan,
+				Value:    "1",
+			},
+			torrent: qbt.Torrent{Hash: "abc"},
+			evalCtx: &EvalContext{
+				FileCountByHash: map[string]int{"abc": 5},
+			},
+			expected: true,
+		},
+		{
+			name: "file count equal",
+			cond: &RuleCondition{
+				Field:    FieldFileCount,
+				Operator: OperatorEqual,
+				Value:    "1",
+			},
+			torrent: qbt.Torrent{Hash: "abc"},
+			evalCtx: &EvalContext{
+				FileCountByHash: map[string]int{"abc": 1},
+			},
+			expected: true,
+		},
+		{
+			name: "file count returns false with nil context",
+			cond: &RuleCondition{
+				Field:    FieldFileCount,
+				Operator: OperatorGreaterThan,
+				Value:    "0",
+			},
+			torrent:  qbt.Torrent{Hash: "abc"},
+			evalCtx:  nil,
+			expected: false,
+		},
+		{
+			name: "file count returns false when hash unknown",
+			cond: &RuleCondition{
+				Field:    FieldFileCount,
+				Operator: OperatorGreaterThan,
+				Value:    "0",
+			},
+			torrent: qbt.Torrent{Hash: "unknown"},
+			evalCtx: &EvalContext{
+				FileCountByHash: map[string]int{"abc": 5},
+			},
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {

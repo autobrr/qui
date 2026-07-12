@@ -197,6 +197,7 @@
       "TRACKERS_COUNT": "Trackers",
       "PRIORITY": "Queue Priority",
       "GROUP_SIZE": "Group Size",
+      "FILE_COUNT": "File Count",
       "PRIVATE": "Private",
       "AUTO_MANAGED": "Auto-managed",
       "FIRST_LAST_PIECE_PRIO": "First/Last Piece Priority",
