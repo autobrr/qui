@@ -1,0 +1,193 @@
+{
+  "nav": {
+    "dashboard": "Painel",
+    "search": "Busca",
+    "crossSeed": "Cross-Seed",
+    "automations": "Automações",
+    "backups": "Backups",
+    "rss": "RSS",
+    "settings": "Configurações",
+    "logs": "Logs",
+    "instances": "Instâncias",
+    "generalSettings": "Configurações Gerais",
+    "manageInstances": "Gerenciar Instâncias",
+    "appearance": "Aparência",
+    "instanceBackups": "Backups de Instâncias"
+  },
+  "sidebar": {
+    "instances": "Instâncias",
+    "allInstancesDisabled": "Todas as instâncias estão desativadas",
+    "noInstancesConfigured": "Nenhuma instância configurada",
+    "logout": "Sair",
+    "version": "Versão {{version}}",
+    "language": "Idioma",
+    "viewOnGitHub": "Ver no GitHub",
+    "rssRunning": "RSS rodando",
+    "rssEnabled": "RSS habilitado",
+    "scanRunning": "Scan rodando",
+    "showSidebar": "Mostrar barra lateral",
+    "hideSidebar": "Ocultar barra lateral"
+  },
+  "header": {
+    "currentInstance": "Instância atual: {{name}}. Clique para trocar de instância.",
+    "connected": "Conectado",
+    "disconnected": "Desconectado",
+    "noActiveInstances": "Nenhuma instância ativa",
+    "showFilters": "Mostrar filtros",
+    "hideFilters": "Ocultar filtros",
+    "addTorrent": "Adicionar torrent",
+    "createTorrent": "Criar torrent",
+    "torrentCreationTasks": "Tarefas de criação de torrent",
+    "instanceSettings": "Configurações da instância",
+    "addToInstance": "Adicionar à instância",
+    "createForInstance": "Criar para a instância",
+    "tasksForInstance": "Tarefas para a instância",
+    "settingsForInstance": "Configurações para a instância",
+    "clearSearch": "Limpar busca",
+    "searchTorrents": "Buscar torrents... ({{shortcutKey}})",
+    "globPattern": "Padrão Glob...",
+    "smartSearchTitle": "Recursos de Busca Inteligente:",
+    "smartSearchGlob": "Padrões Glob:",
+    "smartSearchGlobExamples": "*.mkv, *1080p*, *S??E??*",
+    "smartSearchFuzzy": "Busca Aproximada (Fuzzy):",
+    "smartSearchFuzzyExample": "\"breaking bad\" encontra \"Breaking.Bad\"",
+    "smartSearchDots": "Lida com pontos, sublinhados e colchetes",
+    "smartSearchFields": "Busca no nome, categoria e tags",
+    "smartSearchEnter": "Pressione Enter para busca instantânea",
+    "smartSearchAuto": "Busca automaticamente após pausa de 500ms",
+    "torrentCreationTasksTitle": "Tarefas de Criação de Torrent",
+    "updateAvailable": "Atualização Disponível",
+    "updateVersion": "Versão {{version}}",
+    "rssRunning": "RSS rodando",
+    "rssEnabled": "RSS habilitado",
+    "scanRunning": "Scan rodando",
+    "allScope": "TODOS",
+    "unified": "Unificado"
+  },
+  "unifiedScope": {
+    "unified": "Unificado",
+    "collapseScope": "Recolher escopo unificado",
+    "expandScope": "Expandir escopo unificado",
+    "allActive": "Todos ativos ({{count}})"
+  },
+  "mobileNav": {
+    "dashboard": "Painel",
+    "clients": "Clientes",
+    "settings": "Configurações",
+    "qbittorrentClients": "Clientes qBittorrent",
+    "instances": "Instâncias",
+    "noActiveInstances": "Nenhuma instância ativa",
+    "loading": "Carregando...",
+    "noActiveClients": "Nenhum cliente ativo",
+    "updateAvailable": "Atualização Disponível",
+    "updateVersion": "Versão {{version}}",
+    "rssRunning": "RSS rodando",
+    "rssEnabled": "RSS habilitado",
+    "scanRunning": "Scan rodando",
+    "logout": "Sair",
+    "version": "Versão {{version}}",
+    "viewOnGitHub": "Ver no GitHub"
+  },
+  "footer": {
+    "copyright": "© {{years}} autobrr • GPL-2.0-or-later"
+  },
+  "actions": {
+    "cancel": "Cancelar",
+    "close": "Fechar",
+    "create": "Criar",
+    "copyPath": "Copiar caminho",
+    "scrollToTop": "Rolar para o topo",
+    "search": "Buscar",
+    "select": "Selecionar",
+    "toggle": "Alternar"
+  },
+  "placeholders": {
+    "search": "Buscar...",
+    "selectItems": "Selecionar itens..."
+  },
+  "feedback": {
+    "noResultsFound": "Nenhum resultado encontrado."
+  },
+  "status": {
+    "disabled": "Desativado",
+    "notContacted": "Não contatado",
+    "working": "Funcionando",
+    "updating": "Atualizando",
+    "error": "Erro",
+    "unknown": "Desconhecido",
+    "trackerError": "Erro no tracker",
+    "unreachable": "Inacessível"
+  },
+  "themeToggle": {
+    "changeTheme": "Mudar tema",
+    "appearance": "Aparência",
+    "mode": "Modo",
+    "light": "Claro",
+    "dark": "Escuro",
+    "system": "Sistema",
+    "theme": "Tema",
+    "premium": "Premium",
+    "switchedToMode": "Alterado para o modo {{mode}}",
+    "switchedToTheme": "Alterado para o tema {{theme}}",
+    "switchedToThemeVariation": "Alterado para o tema {{theme}} ({{variation}})",
+    "unableToVerifyLicense": "Não foi possível verificar a licença",
+    "licenseCheckFailed": "Falha na verificação da licença. A troca de temas premium está temporariamente indisponível.",
+    "premiumThemeError": "Este é um tema premium. Abra Configurações → Temas para ativar uma licença.",
+    "custom": "Personalizado"
+  },
+  "updateBanner": {
+    "updateAvailable": "Atualização Disponível",
+    "versionAvailable": "A versão {{version}} já está disponível",
+    "viewRelease": "Ver Lançamento",
+    "dismiss": "Dispensar"
+  },
+  "notFound": {
+    "title": "Ops! Perdido no swarm?",
+    "subtitle": "Parece que você se aventurou no desconhecido.",
+    "bugReport": "Caso você ache que isso é um bug em vez de um link quebrado,",
+    "reportTo": "sinta-se à vontade para relatar isso no nosso",
+    "githubRepository": "repositório do GitHub",
+    "getBackOnTrack": "Caso contrário, deixe-nos ajudar você a voltar aos trilhos!",
+    "returnToDashboard": "Voltar ao painel"
+  },
+  "magnetHandler": {
+    "registerPrompt": "Registrar o qui como seu manipulador de links magnet",
+    "register": "Registrar",
+    "dismiss": "Dispensar",
+    "registrationRequested": "Solicitação de registro do manipulador de links magnet",
+    "registrationFailed": "Falha ao registrar o manipulador magnet",
+    "guidance": {
+      "standalone": "Abra o qui em uma aba normal do navegador para registrar (o aviso pode aparecer na barra de endereços, o que PWAs não mostram).",
+      "chromium": "O Chrome geralmente mostra isso como um pequeno ícone de manipulador de protocolo na barra de endereços; se nada aparecer, ative os manipuladores de protocolo em chrome://settings/handlers.",
+      "default": "Se solicitado pelo seu navegador, por favor aceite para concluir o registro."
+    }
+  },
+  "numberInput": {
+    "unlimited": "Ilimitado",
+    "useUnlimited": " (use -1 para ilimitado)"
+  },
+  "dateTime": {
+    "na": "N/D",
+    "justNow": "Agora mesmo",
+    "today": "Hoje",
+    "yesterday": "Ontem",
+    "past": "há {{value}}",
+    "future": "em {{value}}",
+    "units": {
+      "second_one": "{{count}} segundo",
+      "second_other": "{{count}} segundos",
+      "minute_one": "{{count}} minuto",
+      "minute_other": "{{count}} minutos",
+      "hour_one": "{{count}} hora",
+      "hour_other": "{{count}} horas",
+      "day_one": "{{count}} dia",
+      "day_other": "{{count}} dias",
+      "week_one": "{{count}} semana",
+      "week_other": "{{count}} semanas",
+      "month_one": "{{count}} mês",
+      "month_other": "{{count}} meses",
+      "year_one": "{{count}} ano",
+      "year_other": "{{count}} anos"
+    }
+  }
+}
