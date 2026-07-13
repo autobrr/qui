@@ -370,7 +370,7 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 
 	baseCtx := s.baseContext()
 	if baseCtx == nil {
-		s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "service not started")
+		s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "Service not started")
 		return false
 	}
 
@@ -399,9 +399,11 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 
 	if !job.lastCompleted.IsZero() && debounceWindow > 0 {
 		if elapsed := now.Sub(job.lastCompleted); elapsed < debounceWindow {
-			reason := "debounced during cooldown window"
+			var reason string
 			if isAggressive {
-				reason = "debounced during retry interval window"
+				reason = "Debounced during retry interval window"
+			} else {
+				reason = "Debounced during cooldown window"
 			}
 			s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, reason)
 			return true
@@ -435,18 +437,18 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 	client, err := s.clientPool.GetClient(ctx, instanceID)
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: client unavailable")
-		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("client unavailable: %v", err))
+		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("Client unavailable: %v", err))
 		return
 	}
 	trackerList, err := client.GetTorrentTrackersCtx(ctx, hash)
 	if err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: failed to load trackers")
-		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("failed to load trackers: %v", err))
+		s.recordActivity(instanceID, hash, torrentName, initialTrackers, ActivityOutcomeFailed, fmt.Sprintf("Failed to load trackers: %v", err))
 		return
 	}
 	if s.hasHealthyTracker(trackerList) {
 		healthyTrackers := s.getHealthyTrackers(trackerList)
-		s.recordActivity(instanceID, hash, torrentName, healthyTrackers, ActivityOutcomeSkipped, "tracker healthy")
+		s.recordActivity(instanceID, hash, torrentName, healthyTrackers, ActivityOutcomeSkipped, "Tracker healthy")
 		return
 	}
 	// No healthy tracker - proceed with reannounce (trackers may be updating or have errors)
@@ -464,7 +466,7 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 
 	if err := client.ReannounceTorrentWithRetry(ctx, hash, opts); err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: retry failed")
-		s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeFailed, fmt.Sprintf("reannounce failed: %v", err))
+		s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeFailed, fmt.Sprintf("Reannounce failed: %v", err))
 		return
 	}
 	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSucceeded, "Reannounce job succeeded")

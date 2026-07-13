@@ -73,6 +73,22 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
   const { t } = useTranslation("instances")
   const { instances, updateInstance, isUpdating } = useInstances()
   const { formatISOTimestamp } = useDateTimeFormatters()
+
+  const translateReason = (reason: string | undefined) => {
+    if (!reason) return ""
+    if (reason === "Debounced during cooldown window") return t("preferences.reannounceOverview.reasons.debouncedCooldown")
+    if (reason === "Debounced during retry interval window") return t("preferences.reannounceOverview.reasons.debouncedRetry")
+    if (reason === "Service not started") return t("preferences.reannounceOverview.reasons.serviceNotStarted")
+    if (reason === "Tracker healthy") return t("preferences.reannounceOverview.reasons.trackerHealthy")
+    if (reason === "Reannounce job succeeded") return t("preferences.reannounceOverview.reasons.jobSucceeded")
+
+    const startedMatch = reason.match(/^Reannounce job started \(max (\d+) retries\)$/)
+    if (startedMatch) {
+      return t("preferences.reannounceOverview.reasons.jobStarted", { count: parseInt(startedMatch[1], 10) })
+    }
+
+    return reason
+  }
   const instance = useMemo(() => instances?.find((item) => item.id === instanceId), [instances, instanceId])
   const activeInstances = useMemo(
     () => (instances ?? []).filter((inst) => inst.isActive),
@@ -694,7 +710,9 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
       ) : (
         <ScrollArea className="h-[400px] rounded-md border bg-muted/20">
           <div className="divide-y divide-border">
-            {activityEvents.map((event, index) => (
+            {activityEvents.map((event, index) => {
+              const reason = translateReason(event.reason)
+              return (
               <div key={`${event.hash}-${index}-${event.timestamp}`} className="p-4 hover:bg-muted/30 transition-colors">
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                   <div className="space-y-1.5 flex-1 min-w-0">
@@ -710,7 +728,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                         </TooltipContent>
                       </Tooltip>
                       <Badge variant="outline" className={cn("capitalize text-[10px] px-1.5 py-0 h-5", outcomeClasses[event.outcome])}>
-                        {event.outcome}
+                        {t(`preferences.reannounceOverview.outcomes.${event.outcome}`)}
                       </Badge>
                     </div>
 
@@ -741,20 +759,20 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                             <span className="text-foreground break-all">{event.trackers}</span>
                           </div>
                         )}
-                        {event.reason && (
+                        {reason && (
                           <div className="flex items-start gap-2">
                             <span className="font-medium text-muted-foreground shrink-0">{t("preferences.reannounceOverview.form.reasonLabel")}</span>
-                            {formatErrorReason(event.reason) !== event.reason ? (
+                            {formatErrorReason(reason) !== reason ? (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <span className="text-foreground break-all cursor-help">{formatErrorReason(event.reason)}</span>
+                                  <span className="text-foreground break-all cursor-help">{formatErrorReason(reason)}</span>
                                 </TooltipTrigger>
                                 <TooltipContent className="max-w-md">
-                                  <p className="break-all">{event.reason}</p>
+                                  <p className="break-all">{reason}</p>
                                 </TooltipContent>
                               </Tooltip>
                             ) : (
-                              <span className="text-foreground break-all">{event.reason}</span>
+                              <span className="text-foreground break-all">{reason}</span>
                             )}
                           </div>
                         )}
@@ -763,7 +781,8 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
                   </div>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         </ScrollArea>
       )}

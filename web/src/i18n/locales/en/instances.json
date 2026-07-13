@@ -1152,6 +1152,20 @@
       "enableMonitoring": "Enable monitoring to start tracking stalled torrents.",
       "hashCopied": "Hash copied",
       "copyHash": "Copy hash",
+      "outcomes": {
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "skipped": "Skipped",
+        "started": "Started"
+      },
+      "reasons": {
+        "debouncedCooldown": "Debounced during cooldown window",
+        "debouncedRetry": "Debounced during retry interval window",
+        "serviceNotStarted": "Service not started",
+        "trackerHealthy": "Tracker healthy",
+        "jobStarted": "Reannounce job started (max {{count}} retries)",
+        "jobSucceeded": "Reannounce job succeeded"
+      },
       "form": {
         "instanceMissing": "Instance missing",
         "settingsSaved": "Settings saved successfully.",

@@ -71,6 +71,22 @@ export function ReannounceOverview({
   const queryClient = useQueryClient()
   const { formatISOTimestamp } = useDateTimeFormatters()
 
+  const translateReason = (reason: string | undefined) => {
+    if (!reason) return ""
+    if (reason === "Debounced during cooldown window") return t("preferences.reannounceOverview.reasons.debouncedCooldown")
+    if (reason === "Debounced during retry interval window") return t("preferences.reannounceOverview.reasons.debouncedRetry")
+    if (reason === "Service not started") return t("preferences.reannounceOverview.reasons.serviceNotStarted")
+    if (reason === "Tracker healthy") return t("preferences.reannounceOverview.reasons.trackerHealthy")
+    if (reason === "Reannounce job succeeded") return t("preferences.reannounceOverview.reasons.jobSucceeded")
+
+    const startedMatch = reason.match(/^Reannounce job started \(max (\d+) retries\)$/)
+    if (startedMatch) {
+      return t("preferences.reannounceOverview.reasons.jobStarted", { count: parseInt(startedMatch[1], 10) })
+    }
+
+    return reason
+  }
+
   // Internal state for standalone usage
   const [internalExpanded, setInternalExpanded] = useState<string[]>([])
 
@@ -411,11 +427,13 @@ export function ReannounceOverview({
                           ) : (
                             <div className="max-h-[350px] overflow-auto rounded-md border bg-muted/20">
                               <div className="divide-y divide-border">
-                                {filteredEvents.map((event, eventIndex) => (
-                                  <div
-                                    key={`${event.hash}-${eventIndex}-${event.timestamp}`}
-                                    className="p-3 hover:bg-muted/30 transition-colors"
-                                  >
+                                {filteredEvents.map((event, eventIndex) => {
+                                  const reason = translateReason(event.reason)
+                                  return (
+                                    <div
+                                      key={`${event.hash}-${eventIndex}-${event.timestamp}`}
+                                      className="p-3 hover:bg-muted/30 transition-colors"
+                                    >
                                     <div className="flex flex-col gap-2">
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <Tooltip>
@@ -435,7 +453,7 @@ export function ReannounceOverview({
                                             outcomeClasses[event.outcome]
                                           )}
                                         >
-                                          {event.outcome}
+                                          {t(`preferences.reannounceOverview.outcomes.${event.outcome}`)}
                                         </Badge>
                                       </div>
 
@@ -458,25 +476,26 @@ export function ReannounceOverview({
                                         <span>{formatISOTimestamp(event.timestamp)}</span>
                                       </div>
 
-                                      {event.reason && (
+                                      {reason && (
                                         <div className="text-xs bg-muted/40 p-2 rounded">
-                                          {formatErrorReason(event.reason) !== event.reason ? (
+                                          {formatErrorReason(reason) !== reason ? (
                                             <Tooltip>
                                               <TooltipTrigger asChild>
-                                                <span className="cursor-help">{formatErrorReason(event.reason)}</span>
+                                                <span className="cursor-help">{formatErrorReason(reason)}</span>
                                               </TooltipTrigger>
                                               <TooltipContent className="max-w-md">
-                                                <p className="break-all">{event.reason}</p>
+                                                <p className="break-all">{reason}</p>
                                               </TooltipContent>
                                             </Tooltip>
                                           ) : (
-                                            <span>{event.reason}</span>
+                                            <span>{reason}</span>
                                           )}
                                         </div>
                                       )}
                                     </div>
                                   </div>
-                                ))}
+                                  )
+                                })}
                               </div>
                             </div>
                           )}
