@@ -109,7 +109,7 @@ export interface InstanceReannounceActivity {
   hash: string
   torrentName?: string
   trackers?: string
-  outcome: "skipped" | "failed" | "succeeded"
+  outcome: "skipped" | "failed" | "succeeded" | "started"
   reason?: string
   timestamp: string
 }

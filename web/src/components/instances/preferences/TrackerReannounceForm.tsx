@@ -337,6 +337,7 @@ export function TrackerReannounceForm({ instanceId, onInstanceChange, onSuccess,
     succeeded: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
     failed: "bg-destructive/10 text-destructive border-destructive/30",
     skipped: "bg-muted text-muted-foreground border-border/60",
+    started: "bg-blue-500/10 text-blue-500 border-blue-500/20",
   }
 
   const headerContent = (

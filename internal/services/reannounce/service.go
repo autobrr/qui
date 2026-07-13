@@ -65,6 +65,7 @@ const (
 	ActivityOutcomeSkipped   ActivityOutcome = "skipped"
 	ActivityOutcomeFailed    ActivityOutcome = "failed"
 	ActivityOutcomeSucceeded ActivityOutcome = "succeeded"
+	ActivityOutcomeStarted   ActivityOutcome = "started"
 )
 
 // ActivityEvent records a single reannounce attempt outcome per instance/hash.
@@ -314,7 +315,8 @@ func (s *Service) GetMonitoredTorrents(ctx context.Context, instanceID int) []Mo
 		}
 
 		// Check if torrent is still in initial wait period
-		inInitialWait := settings.InitialWaitSeconds > 0 && torrent.TimeActive < int64(settings.InitialWaitSeconds)
+		age := now.Unix() - torrent.AddedOn
+		inInitialWait := settings.InitialWaitSeconds > 0 && age < int64(settings.InitialWaitSeconds)
 
 		healthy := s.hasHealthyTracker(torrent.Trackers)
 		updating := s.trackersUpdating(torrent.Trackers)
@@ -386,14 +388,14 @@ func (s *Service) enqueue(instanceID int, hash string, torrentName string, track
 	}
 	now := s.currentTime()
 	job.lastRequested = now
-	if job.isRunning {
-		s.recordActivity(instanceID, hash, torrentName, trackers, ActivityOutcomeSkipped, "already running")
-		return true
-	}
 
 	settings := s.getSettings(baseCtx, instanceID)
 	isAggressive := settings != nil && settings.Aggressive
 	debounceWindow := s.effectiveDebounceWindow(settings)
+
+	if job.isRunning {
+		return true
+	}
 
 	if !job.lastCompleted.IsZero() && debounceWindow > 0 {
 		if elapsed := now.Sub(job.lastCompleted); elapsed < debounceWindow {
@@ -457,12 +459,15 @@ func (s *Service) executeJob(parentCtx context.Context, instanceID int, hash str
 		MaxAttempts:     settings.MaxRetries,
 		DeleteOnFailure: false,
 	}
+
+	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeStarted, fmt.Sprintf("Reannounce job started (max %d retries)", opts.MaxAttempts))
+
 	if err := client.ReannounceTorrentWithRetry(ctx, hash, opts); err != nil {
 		log.Debug().Err(err).Int("instanceID", instanceID).Str("hash", hash).Msg("reannounce: retry failed")
 		s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeFailed, fmt.Sprintf("reannounce failed: %v", err))
 		return
 	}
-	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSucceeded, "reannounce requested")
+	s.recordActivity(instanceID, hash, torrentName, freshTrackers, ActivityOutcomeSucceeded, "Reannounce job succeeded")
 }
 
 func (s *Service) finishJob(instanceID int, hash string) {
@@ -545,7 +550,8 @@ func (s *Service) torrentMeetsCriteria(torrent qbt.Torrent, settings *models.Ins
 		return false
 	}
 	// Check initial wait - torrent must be old enough
-	if settings.InitialWaitSeconds > 0 && torrent.TimeActive < int64(settings.InitialWaitSeconds) {
+	age := s.currentTime().Unix() - torrent.AddedOn
+	if settings.InitialWaitSeconds > 0 && age < int64(settings.InitialWaitSeconds) {
 		return false
 	}
 	return true
@@ -564,8 +570,11 @@ func (s *Service) torrentMatchesFilters(torrent qbt.Torrent, settings *models.In
 		return false
 	}
 
-	if settings.MaxAgeSeconds > 0 && torrent.TimeActive > int64(settings.MaxAgeSeconds) {
-		return false
+	if settings.MaxAgeSeconds > 0 {
+		age := s.currentTime().Unix() - torrent.AddedOn
+		if age > int64(settings.MaxAgeSeconds) {
+			return false
+		}
 	}
 
 	// 1. Check exclusions first
@@ -840,7 +849,8 @@ func (s *Service) recordActivity(instanceID int, hash string, torrentName string
 		if len(s.historyFailed[instanceID]) > limit*2 {
 			s.historyFailed[instanceID] = s.historyFailed[instanceID][len(s.historyFailed[instanceID])-limit*2:]
 		}
-	case ActivityOutcomeSkipped:
+	case ActivityOutcomeSkipped, ActivityOutcomeStarted:
+		// Not counting skipped/started in prometheus
 		s.historySkipped[instanceID] = append(s.historySkipped[instanceID], event)
 		if len(s.historySkipped[instanceID]) > limit {
 			s.historySkipped[instanceID] = s.historySkipped[instanceID][len(s.historySkipped[instanceID])-limit:]
