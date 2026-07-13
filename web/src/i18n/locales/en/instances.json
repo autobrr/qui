@@ -1163,7 +1163,8 @@
         "debouncedRetry": "Debounced during retry interval window",
         "serviceNotStarted": "Service not started",
         "trackerHealthy": "Tracker healthy",
-        "jobStarted": "Reannounce job started (max {{count}} retries)",
+        "jobStarted_one": "Reannounce job started (max {{count}} retry)",
+        "jobStarted_other": "Reannounce job started (max {{count}} retries)",
         "jobSucceeded": "Reannounce job succeeded"
       },
       "form": {
