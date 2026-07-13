@@ -73,7 +73,7 @@ func TestTorrentMeetsCriteria_ScopedByCategoryTagAndTracker(t *testing.T) {
 	// Matches by tracker domain using raw URL when syncManager is nil
 	trackerTorrent := qbt.Torrent{
 		AddedOn: time.Now().Unix() - 10,
-		State:      qbt.TorrentStateStalledUp,
+		State:   qbt.TorrentStateStalledUp,
 		Trackers: []qbt.TorrentTracker{{
 			Url: "tracker.example.com",
 		}},
@@ -182,9 +182,9 @@ func TestTorrentMeetsCriteria_IncludeExcludeLogic(t *testing.T) {
 				Trackers:        []string{"linux.iso"},
 			},
 			torrent: qbt.Torrent{
-				AddedOn: time.Now().Unix() - 10,
-				State:      qbt.TorrentStateStalledUp,
-				Trackers:   []qbt.TorrentTracker{{Url: "http://linux.iso/announce"}},
+				AddedOn:  time.Now().Unix() - 10,
+				State:    qbt.TorrentStateStalledUp,
+				Trackers: []qbt.TorrentTracker{{Url: "http://linux.iso/announce"}},
 			},
 			want: false,
 		},
@@ -230,9 +230,9 @@ func TestTorrentMeetsCriteria_IncludeExcludeLogic(t *testing.T) {
 				Trackers:        []string{"tracker.op"},
 			},
 			torrent: qbt.Torrent{
-				AddedOn: time.Now().Unix() - 10,
-				State:      qbt.TorrentStateStalledUp,
-				Trackers:   []qbt.TorrentTracker{{Url: "http://tracker.op/announce"}},
+				AddedOn:  time.Now().Unix() - 10,
+				State:    qbt.TorrentStateStalledUp,
+				Trackers: []qbt.TorrentTracker{{Url: "http://tracker.op/announce"}},
 			},
 			want: true,
 		},
@@ -526,4 +526,3 @@ func TestServiceRecordActivityLimit(t *testing.T) {
 	}
 	require.Equal(t, 4, failedCount)
 }
-
