@@ -985,7 +985,7 @@
       }
     },
     "runtime": {
-      "title": "Ambiente de Execução (Runtime)",
+      "title": "Runtime",
       "description": "Informações do tempo de execução do servidor.",
       "uptime": "Tempo Ativo (Uptime)",
       "runtime": "Runtime"
