@@ -96,6 +96,54 @@ func TestParseTorrentBytes_InvalidUTF8RootPrefixNotDoubled(t *testing.T) {
 	require.Equal(t, "Movie.\uFFFD.2024.1080p-GROUP/file.mkv", parsed.Files[0].Path)
 }
 
+func TestParseTorrentBytes_MultiFileNormalizesEmptyPathComponents(t *testing.T) {
+	tests := []struct {
+		name     string
+		root     string
+		filePath []string
+		wantPath string
+	}{
+		{name: "leading", root: "root", filePath: []string{"", "file"}, wantPath: "root/_/file"},
+		{name: "middle", root: "root", filePath: []string{"dir", "", "file"}, wantPath: "root/dir/_/file"},
+		{name: "trailing", root: "root", filePath: []string{"dir", ""}, wantPath: "root/dir/_"},
+		{name: "consecutive", root: "root", filePath: []string{"dir", "", "", "file"}, wantPath: "root/dir/_/_/file"},
+		{name: "underscore root", root: "_", filePath: []string{"", "file"}, wantPath: "_/_/file"},
+		{name: "empty root", root: "", filePath: []string{"file"}, wantPath: "_/file"},
+		{name: "empty root and component", root: "", filePath: []string{"", "file"}, wantPath: "_/_/file"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			torrentBytes := buildTorrentBytes(t, &metainfo.Info{
+				Name:        tt.root,
+				PieceLength: 262144,
+				Files: []metainfo.FileInfo{
+					{Path: tt.filePath, Length: 1},
+				},
+			})
+
+			parsed, err := ParseTorrentBytes(torrentBytes)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantPath, parsed.Files[0].Path)
+		})
+	}
+}
+
+func TestParseTorrentBytes_MultiFileRejectsNormalizedPathCollision(t *testing.T) {
+	torrentBytes := buildTorrentBytes(t, &metainfo.Info{
+		Name:        "root",
+		PieceLength: 262144,
+		Files: []metainfo.FileInfo{
+			{Path: []string{"", "file"}, Length: 1},
+			{Path: []string{"_", "file"}, Length: 1},
+		},
+	})
+
+	_, err := ParseTorrentBytes(torrentBytes)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "resolve to the same path \"root/_/file\"")
+}
+
 func TestMatcher_Strict_NormalizesFilenames(t *testing.T) {
 	matcher := NewMatcher(MatchModeStrict, 0)
 

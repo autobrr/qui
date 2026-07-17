@@ -392,24 +392,31 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 		// Multi-file torrent
 		parsed.Files = make([]TorrentFile, 0, len(info.Files))
 		root := name
+		effectivePaths := make(map[string]int, len(info.Files))
 		for i := range info.Files {
 			f := &info.Files[i]
-			pathParts := f.BestPath()
+			rawPathParts := f.BestPath()
 			// Sanitize the parts before the root-dedup comparison below; root is already
 			// sanitized, so comparing it against a raw part would double-prefix.
-			for j, part := range pathParts {
-				pathParts[j] = stringutils.SanitizeUTF8(part)
+			for j, part := range rawPathParts {
+				rawPathParts[j] = stringutils.SanitizeUTF8(part)
 			}
 			// For multi-file torrents, qBittorrent's "Original" layout places files under the
 			// top-level folder named by the torrent's info.name.
 			//
 			// The torrent file list itself typically does NOT include that folder in each file path,
 			// so we include it here to reflect the on-disk paths qBittorrent will expect.
-			if root != "" && (len(pathParts) == 0 || pathParts[0] != root) {
-				pathParts = append([]string{root}, pathParts...)
+			if root == "" || len(rawPathParts) == 0 || rawPathParts[0] != root {
+				rawPathParts = append([]string{root}, rawPathParts...)
 			}
+			pathParts := normalizeTorrentPathParts(rawPathParts)
+			effectivePath := path.Join(pathParts...)
+			if previous, exists := effectivePaths[effectivePath]; exists {
+				return nil, fmt.Errorf("torrent files %d and %d resolve to the same path %q", previous, i, effectivePath)
+			}
+			effectivePaths[effectivePath] = i
 			tf := TorrentFile{
-				Path:   path.Join(pathParts...),
+				Path:   effectivePath,
 				Size:   f.Length,
 				Offset: offset,
 			}
@@ -420,4 +427,18 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 	}
 
 	return parsed, nil
+}
+
+// normalizeTorrentPathParts replaces empty components as libtorrent and qBittorrent do.
+// It returns a copy so metadata-owned path slices are never modified.
+func normalizeTorrentPathParts(parts []string) []string {
+	normalized := make([]string, len(parts))
+	for i, part := range parts {
+		if part == "" {
+			normalized[i] = "_"
+			continue
+		}
+		normalized[i] = part
+	}
+	return normalized
 }
