@@ -163,6 +163,8 @@ export interface TorrentStats {
   error: number
   totalDownloadSpeed?: number
   totalUploadSpeed?: number
+  totalDownloadData?: number
+  totalUploadData?: number
   totalSize?: number
   totalRemainingSize?: number
   totalSeedingSize?: number

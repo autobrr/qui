@@ -13,18 +13,22 @@
  */
 export function resolveFooterSpeeds(
   isAggregate: boolean,
-  stats: { totalDownloadSpeed?: number; totalUploadSpeed?: number } | null | undefined,
-  serverState: { dl_info_speed?: number; up_info_speed?: number } | null | undefined
-): { downloadSpeed: number; uploadSpeed: number } {
+  stats: { totalDownloadSpeed?: number; totalUploadSpeed?: number; totalDownloadData?: number; totalUploadData?: number } | null | undefined,
+  serverState: { dl_info_speed?: number; up_info_speed?: number;  dl_info_data?: number; up_info_data?: number } | null | undefined
+): { downloadSpeed: number; uploadSpeed: number; downloadData: number; uploadData: number; } {
   if (isAggregate) {
     return {
       downloadSpeed: stats?.totalDownloadSpeed ?? 0,
       uploadSpeed: stats?.totalUploadSpeed ?? 0,
+      downloadData: stats?.totalDownloadData ?? 0,
+      uploadData: stats?.totalUploadData ?? 0,
     }
   }
 
   return {
     downloadSpeed: serverState?.dl_info_speed ?? 0,
     uploadSpeed: serverState?.up_info_speed ?? 0,
+    downloadData: serverState?.dl_info_data ?? 0,
+    uploadData: serverState?.up_info_data ?? 0,
   }
 }

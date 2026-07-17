@@ -161,6 +161,8 @@ func TestCache_DifferentDataTypes(t *testing.T) {
 			Error:              5,
 			TotalDownloadSpeed: 1000000,
 			TotalUploadSpeed:   500000,
+			TotalDownloadData:  1000000000,
+			TotalUploadData:    50000000,
 			TotalRemainingSize: 5000000000,
 			TotalSeedingSize:   10000000000,
 		},

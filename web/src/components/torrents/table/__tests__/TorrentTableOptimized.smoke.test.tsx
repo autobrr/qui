@@ -130,6 +130,8 @@ vi.mock("@/hooks/useTorrentsList", () => {
           error: 0,
           totalDownloadSpeed: 0,
           totalUploadSpeed: 0,
+          totalDownloadData: 0,
+          totalUploadData: 0,
           totalSize: 0,
         },
         counts: { status: {}, categories: {}, tags: {}, trackers: {} },
