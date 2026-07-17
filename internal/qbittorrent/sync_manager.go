@@ -3458,10 +3458,12 @@ func (sm *SyncManager) enrichTorrentsWithTrackerData(ctx context.Context, client
 
 // TrackerTransferStats holds aggregated upload/download stats for a tracker domain
 type TrackerTransferStats struct {
-	Uploaded   int64 `json:"uploaded"`
-	Downloaded int64 `json:"downloaded"`
-	TotalSize  int64 `json:"totalSize"`
-	Count      int   `json:"count"`
+	Uploaded            int64 `json:"uploaded"`
+	Downloaded          int64 `json:"downloaded"`
+	UploadedSession     int64 `json:"uploadedSession"`
+	DownloadedSession   int64 `json:"downloadedSession"`
+	TotalSize           int64 `json:"totalSize"`
+	Count               int   `json:"count"`
 }
 
 // TorrentCounts represents counts for filtering sidebar
@@ -6022,6 +6024,9 @@ func trackerTransferStatsForHashes(hashSet map[string]bool, torrentMap map[strin
 
 		stats.Uploaded += torrent.Uploaded
 		stats.Downloaded += torrent.Downloaded
+		stats.UploadedSession += torrent.UploadedSession
+		stats.DownloadedSession += torrent.DownloadedSession
+
 		if torrent.ContentPath == "" {
 			stats.TotalSize += torrent.Size
 			continue
