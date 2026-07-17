@@ -1488,12 +1488,12 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
                 </TableHead>
                 <TableHead className="text-center">
                   <div className="flex items-center justify-center gap-1">
-                    <span>{t("serverStats.tableHeaders.uploadedSession")}</span>
+                    <span>{t("serverStats.tableHeaders.uploaded")}</span>
                   </div>
                 </TableHead>
                 <TableHead className="text-center">
                   <div className="flex items-center justify-center gap-1">
-                    <span>{t("serverStats.tableHeaders.uploaded")}</span>
+                    <span>{t("serverStats.tableHeaders.uploadedSession")}</span>
                   </div>
                 </TableHead>
                 <TableHead className="text-center">{t("serverStats.tableHeaders.ratio")}</TableHead>
@@ -1540,7 +1540,7 @@ function GlobalAllTimeStats({ statsData, isCollapsed, onCollapsedChange }: Globa
 }
 
 
-type TrackerSortColumn = "tracker" | "uploaded" | "downloaded" | "ratio" | "buffer" | "count" | "size" | "performance"
+type TrackerSortColumn = "tracker" | "uploaded" | "downloaded" | "uploadedSession" | "downloadedSession" | "ratio" | "buffer" | "count" | "size" | "performance"
 type SortDirection = "asc" | "desc"
 
 // Helper to compute ratio display values for tracker stats
@@ -2304,7 +2304,7 @@ function TrackerBreakdownCard({ statsData, settings, onSettingsChange, isCollaps
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="flex-1 justify-between">
                     <span className="flex items-center gap-2 text-xs">
-                      {t("trackerBreakdown.sort", { column: sortColumn === "tracker" ? t("trackerBreakdown.sortOptions.tracker") :sortColumn === "uploaded" ? t("trackerBreakdown.sortOptions.uploaded") :sortColumn === "downloaded" ? t("trackerBreakdown.sortOptions.downloaded") :sortColumn === "ratio" ? t("trackerBreakdown.sortOptions.ratio") :sortColumn === "count" ? t("trackerBreakdown.sortOptions.torrents") :sortColumn === "size" ? t("trackerBreakdown.sortOptions.size") : t("trackerBreakdown.sortOptions.seeded") })}
+                      {t("trackerBreakdown.sort", { column: sortColumn === "tracker" ? t("trackerBreakdown.sortOptions.tracker") : sortColumn === "uploaded" ?  t("trackerBreakdown.sortOptions.uploaded") : sortColumn === "downloaded" ? t("trackerBreakdown.sortOptions.downloaded") : sortColumn === "uploadedSession" ?  t("trackerBreakdown.sortOptions.uploadedSession") : sortColumn === "downloadedSession" ? t("trackerBreakdown.sortOptions.downloadedSession") : sortColumn === "ratio" ? t("trackerBreakdown.sortOptions.ratio") : sortColumn === "count" ? t("trackerBreakdown.sortOptions.torrents") : sortColumn === "size" ? t("trackerBreakdown.sortOptions.size") : t("trackerBreakdown.sortOptions.seeded") })}
                     </span>
                     {sortDirection === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
                   </Button>
