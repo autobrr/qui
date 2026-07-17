@@ -6058,8 +6058,8 @@ func (sm *SyncManager) calculateStats(torrents []qbt.Torrent) *TorrentStats {
 		stats.TotalDownloadSpeed += int(torrent.DlSpeed)
 		stats.TotalUploadSpeed += int(torrent.UpSpeed)		
 		// Add session downloaded (not deduplicated - each torrent has its own session downloaded)
-		stats.TotalDownloadData += int(torrent.DownloadedSession)
-		stats.TotalUploadData += int(torrent.UploadedSession)
+		stats.TotalDownloadData += torrent.DownloadedSession
+		stats.TotalUploadData += torrent.UploadedSession
 
 		// Add size (deduplicated by ContentPath)
 		if _, seen := totalSizeSeen[torrent.ContentPath]; !seen {
