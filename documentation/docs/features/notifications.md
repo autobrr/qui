@@ -57,7 +57,7 @@ Use any Shoutrrr-supported URL scheme. A few examples:
 - `discord://token@channel`
 - `notifiarr://apikey`
 - `slack://token@channel`
-- `telegram://token@chat-id`
+- `telegram://token@telegram?chats=chat-id`
 - `gotify://host/token`
 
 Notifiarr can also include optional parameters such as `channel` or `name`, e.g. `notifiarr://apikey?name=qui&channel=123456789`.
