@@ -305,8 +305,8 @@ type TorrentStats struct {
 	Checking           int   `json:"checking"`
 	TotalDownloadSpeed int   `json:"totalDownloadSpeed"`
 	TotalUploadSpeed   int   `json:"totalUploadSpeed"`
-	TotalDownloadData int   `json:"totalDownloadData"`
-	TotalUploadData   int   `json:"totalUploadData"`
+	TotalDownloadData  int64 `json:"totalDownloadData"`
+	TotalUploadData    int64 `json:"totalUploadData"`
 	TotalSize          int64 `json:"totalSize"`
 	TotalRemainingSize int64 `json:"totalRemainingSize"`
 	TotalSeedingSize   int64 `json:"totalSeedingSize"`
