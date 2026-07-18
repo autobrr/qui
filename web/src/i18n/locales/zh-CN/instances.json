@@ -1135,18 +1135,18 @@
       "hashCopied": "哈希已复制",
       "copyHash": "复制哈希",
       "outcomes": {
-        "succeeded": "Succeeded",
-        "failed": "Failed",
-        "skipped": "Skipped",
-        "started": "Started"
+        "succeeded": "成功",
+        "failed": "失败",
+        "skipped": "已跳过",
+        "started": "已开始"
       },
       "reasons": {
-        "debouncedCooldown": "Debounced during cooldown window",
-        "debouncedRetry": "Debounced during retry interval window",
-        "serviceNotStarted": "Service not started",
-        "trackerHealthy": "Tracker healthy",
-        "jobStarted_other": "Reannounce job started (max {{count}} retries)",
-        "jobSucceeded": "Reannounce job succeeded"
+        "debouncedCooldown": "在冷却窗口期内防抖",
+        "debouncedRetry": "在重试间隔窗口期内防抖",
+        "serviceNotStarted": "服务未启动",
+        "trackerHealthy": "Tracker 状态正常",
+        "jobSucceeded": "重新汇报任务成功",
+        "jobStarted_other": "重新汇报任务已开始 (最大重试次数 {{count}})"
       },
       "form": {
         "instanceMissing": "实例缺失",
