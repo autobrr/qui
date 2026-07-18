@@ -7639,6 +7639,27 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer waitCancel()
 
+	// torznabFailed degrades a fatal Torznab-leg error to a Gazelle-only
+	// partial response when Gazelle already produced matches; a failing
+	// tracker must not discard results the other source already returned.
+	torznabFailed := func(err error) (*TorrentSearchResponse, bool, bool, error) {
+		if len(gazelleResults) == 0 {
+			return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(err)
+		}
+		log.Warn().
+			Err(err).
+			Str("torrentName", sourceTorrent.Name).
+			Int("gazelleMatches", len(gazelleResults)).
+			Msg("[CROSSSEED-SEARCH] Torznab search failed; returning Gazelle matches only")
+		s.cacheSearchResults(instanceID, sourceTorrent.Hash, gazelleResults, tolerancePercent)
+		return &TorrentSearchResponse{
+			SourceTorrent: sourceInfo,
+			Results:       gazelleResults,
+			Partial:       true,
+			JobID:         0,
+		}, gazelleLookupAttempted, remoteRequestsMade, nil
+	}
+
 	searchReq.OnAllComplete = func(resp *jackett.SearchResponse, err error) {
 		onAllCompleteOnce.Do(func() {
 			if err != nil {
@@ -7657,17 +7678,17 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 	err = s.jackettService.Search(waitCtx, searchReq)
 	remoteRequestsMade = true
 	if err != nil {
-		return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(err)
+		return torznabFailed(err)
 	}
 
 	select {
 	case searchResp = <-respCh:
 		// continue
 	case err := <-errCh:
-		return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(err)
+		return torznabFailed(err)
 	case <-waitCtx.Done():
 		if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
-			return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(errors.New("search timed out"))
+			return torznabFailed(errors.New("search timed out"))
 		}
 		return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(waitCtx.Err())
 	}
@@ -7706,17 +7727,17 @@ func (s *Service) searchTorrentMatches(ctx context.Context, instanceID int, hash
 			})
 		}
 		if retryErr := s.jackettService.Search(waitCtx, &retryReq); retryErr != nil {
-			return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(retryErr)
+			return torznabFailed(retryErr)
 		}
 		select {
 		case retryResp := <-retryRespCh:
 			searchResp = retryResp
 			searchResults = retryResp.Results
 		case retryErr := <-retryErrCh:
-			return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(retryErr)
+			return torznabFailed(retryErr)
 		case <-waitCtx.Done():
 			if errors.Is(waitCtx.Err(), context.DeadlineExceeded) {
-				return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(errors.New("search timed out"))
+				return torznabFailed(errors.New("search timed out"))
 			}
 			return nil, gazelleLookupAttempted, remoteRequestsMade, wrapCrossSeedSearchError(waitCtx.Err())
 		}
@@ -8690,14 +8711,13 @@ func (s *Service) searchRunLoop(ctx context.Context, state *searchRunState) {
 
 		s.setCurrentCandidate(state, candidate)
 
+		// Candidate-scoped failures are already recorded per item (TorrentsFailed
+		// plus a failed result entry); they must not mark the whole run failed.
+		// Only run-scoped errors abort and fail the run.
 		delayAfterCandidate, err := s.processSearchCandidate(ctx, state, candidate)
-		if err != nil {
-			if !errors.Is(err, context.Canceled) {
-				state.lastError = err
-				if isSearchRunScopedError(state, err) {
-					return
-				}
-			}
+		if err != nil && !errors.Is(err, context.Canceled) && isSearchRunScopedError(state, err) {
+			state.lastError = err
+			return
 		}
 
 		if interval > 0 && delayAfterCandidate {
