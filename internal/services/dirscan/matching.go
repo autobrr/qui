@@ -369,8 +369,12 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 		return nil, fmt.Errorf("unmarshal info: %w", err)
 	}
 
+	// Torrent fields must be UTF-8 per the BitTorrent spec; drop any malformed bytes so
+	// downstream code (matching, path handling, storage) can assume valid UTF-8.
+	name := stringutils.SanitizeUTF8(info.BestName())
+
 	parsed := &ParsedTorrent{
-		Name:        info.BestName(),
+		Name:        name,
 		InfoHash:    mi.HashInfoBytes().HexString(),
 		PieceLength: info.PieceLength,
 		PieceCount:  info.NumPieces(),
@@ -381,7 +385,7 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 	if len(info.Files) == 0 {
 		// Single-file torrent
 		parsed.Files = []TorrentFile{{
-			Path:   info.BestName(),
+			Path:   name,
 			Size:   info.Length,
 			Offset: 0,
 		}}
@@ -389,7 +393,7 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 	} else {
 		// Multi-file torrent
 		parsed.Files = make([]TorrentFile, 0, len(info.Files))
-		root := info.BestName()
+		root := name
 		for i := range info.Files {
 			f := &info.Files[i]
 			pathParts := f.BestPath()
@@ -402,7 +406,7 @@ func ParseTorrentBytes(data []byte) (*ParsedTorrent, error) {
 				pathParts = append([]string{root}, pathParts...)
 			}
 			tf := TorrentFile{
-				Path:   path.Join(pathParts...),
+				Path:   stringutils.SanitizeUTF8(path.Join(pathParts...)),
 				Size:   f.Length,
 				Offset: offset,
 			}

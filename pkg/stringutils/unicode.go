@@ -50,6 +50,18 @@ var (
 	)
 )
 
+// SanitizeUTF8 drops invalid UTF-8 byte sequences from s, returning valid UTF-8.
+//
+// The BitTorrent spec requires all string fields in a torrent file (torrent name,
+// file paths, comment, etc.) to be UTF-8, so any non-UTF-8 bytes are malformed. Callers
+// occasionally still receive raw bytes (e.g. "á" as Latin-1 0xe1), which break code that
+// assumes valid UTF-8, for example regexp.Compile rejects invalid-UTF-8 patterns and
+// panics via MustCompile. Sanitizing at ingestion lets downstream code rely on valid
+// UTF-8. This is a no-op on well-formed input, so legitimate values are unaffected.
+func SanitizeUTF8(s string) string {
+	return strings.ToValidUTF8(s, "")
+}
+
 // normalizeUnicodeInner is the inner transformation function used by unicodeNormalizer.
 func normalizeUnicodeInner(s string) string {
 	// Handle special characters that NFKD doesn't decompose to ASCII equivalents

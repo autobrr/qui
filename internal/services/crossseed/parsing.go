@@ -14,6 +14,8 @@ import (
 	infohash_v2 "github.com/anacrolix/torrent/types/infohash-v2"
 	qbt "github.com/autobrr/go-qbittorrent"
 	"github.com/moistari/rls"
+
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // ContentTypeInfo contains all information about a torrent's detected content type
@@ -458,7 +460,9 @@ func ParseTorrentMetadataWithInfo(torrentBytes []byte) (TorrentMetadata, error) 
 		return TorrentMetadata{}, fmt.Errorf("failed to unmarshal torrent info: %w", err)
 	}
 
-	name := infoVal.Name
+	// Torrent fields must be UTF-8 per the BitTorrent spec, drop any malformed bytes so
+	// downstream code (release parsing, matching, storage) can assume valid UTF-8.
+	name := stringutils.SanitizeUTF8(infoVal.Name)
 	hashV1 := strings.ToLower(mi.HashInfoBytes().HexString())
 	var hashV2 string
 	if infoVal.HasV2() {
@@ -522,7 +526,7 @@ func BuildTorrentFilesFromInfo(rootName string, info metainfo.Info) qbt.TorrentF
 	files = make(qbt.TorrentFiles, len(info.Files))
 	var offset int64
 	for i, f := range info.Files {
-		displayPath := f.DisplayPath(&info)
+		displayPath := stringutils.SanitizeUTF8(f.DisplayPath(&info))
 		name := rootName
 		if info.IsDir() && displayPath != "" {
 			name = rootName + "/" + displayPath

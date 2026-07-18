@@ -31,6 +31,7 @@ import (
 
 	"github.com/autobrr/qui/internal/models"
 	"github.com/autobrr/qui/internal/services/trackericons"
+	"github.com/autobrr/qui/pkg/stringutils"
 )
 
 // FilesManager interface for caching torrent files.
@@ -2978,6 +2979,13 @@ func (sm *SyncManager) GetTorrentFilesBatch(ctx context.Context, instanceID int,
 			// result map and the cache. Callers must treat returned slices as read-only.
 			callerCopy := make(qbt.TorrentFiles, len(*files))
 			copy(callerCopy, *files)
+
+			// Torrent fields must be UTF-8 per the BitTorrent spec. qBittorrent can still
+			// hand back malformed bytes (e.g. "á" as Latin-1 0xe1), drop them here so the
+			// cached file list is valid UTF-8 for every downstream consumer.
+			for i := range callerCopy {
+				callerCopy[i].Name = stringutils.SanitizeUTF8(callerCopy[i].Name)
+			}
 
 			mu.Lock()
 			filesByHash[ch] = callerCopy

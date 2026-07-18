@@ -5,6 +5,7 @@ package releases
 
 import (
 	"testing"
+	"unicode/utf8"
 
 	"github.com/moistari/rls"
 	"github.com/stretchr/testify/require"
@@ -84,6 +85,19 @@ func TestParser_EnrichesHDRAliases(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParser_HandlesInvalidUTF8WithoutPanicking(t *testing.T) {
+	t.Parallel()
+
+	parser := NewDefaultParser()
+
+	// "á" encoded as Latin-1 (0xe1) rather than UTF-8 (0xc3 0xa1) is invalid UTF-8.
+	// It previously reached regexp.MustCompile and panicked the process.
+	release := parser.Parse("Movie.\xe1.2024.2160p.BluRay.x265-GROUP.mkv")
+
+	require.True(t, utf8.ValidString(release.Title), "title should be valid UTF-8")
+	require.True(t, utf8.ValidString(release.Group), "group should be valid UTF-8")
 }
 
 func TestTrimTrailingGroupOrSite_RemovesExposedTrailingTokens(t *testing.T) {
