@@ -64,14 +64,21 @@ func newTorznabGazelleFixture(t *testing.T, dbName, trackerURL string) (*Service
 		{Name: "During - LMK (2024 WF)/01 - Durante - Track.flac", Size: 123},
 	}
 
-	torrentDict := map[string]any{
-		"announce": "https://flacsfor.me/announce",
-		"info": map[string]any{
-			"length": int64(123),
-			"name":   "During - LMK (2024 WF)",
-		},
+	type torrentInfoDict struct {
+		Length int64  `bencode:"length"`
+		Name   string `bencode:"name"`
 	}
-	torrentBytes, err := bencode.Marshal(torrentDict)
+	type torrentDict struct {
+		Announce string          `bencode:"announce"`
+		Info     torrentInfoDict `bencode:"info"`
+	}
+	torrentBytes, err := bencode.Marshal(torrentDict{
+		Announce: "https://flacsfor.me/announce",
+		Info: torrentInfoDict{
+			Length: 123,
+			Name:   "During - LMK (2024 WF)",
+		},
+	})
 	require.NoError(t, err)
 
 	clients, err := gazelleClientsForTest()
