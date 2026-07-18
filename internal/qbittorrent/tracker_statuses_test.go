@@ -141,6 +141,11 @@ func TestTrackerMessageMatchesUnregistered(t *testing.T) {
 			message: "Other: Repack available, or grab internal:",
 			want:    true,
 		},
+		{
+			name:    "torrent has been rejected",
+			message: "Torrent has been rejected.",
+			want:    true,
+		},
 
 		// Non-matching messages
 		{
